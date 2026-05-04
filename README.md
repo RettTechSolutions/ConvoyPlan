@@ -1,216 +1,221 @@
-# Ansatz: Marschverbandsplanung als WebApp
+# MarschPlan
 
-## 1. Grundidee
+**Browserbasierte Planungssoftware für Marschverbände – entwickelt für BOS-Organisationen.**
 
-Das Projekt wird zunächst als browserbasierte WebApp umgesetzt.
-
-Die WebApp dient primär zur:
-- Planung von Marschverbänden
-- Erstellung von Routen
-- Verwaltung von Fahrzeugen
-- Berechnung von Durchlaufzeiten
-- Export der Route für Navigation
-
-Eine native App kann später folgen.
+MarschPlan ermöglicht die strukturierte Planung von Konvois: Fahrzeuge verwalten, Routen auf der Karte festlegen, Zeitpläne automatisch berechnen und die Route als GPX exportieren oder per Link teilen.
 
 ---
 
-## 2. Technischer Ansatz
+## Features (MVP)
 
-## Frontend
-
-Empfehlung:
-- React
-- Vue
-- SvelteKit
-- alternativ Flutter Web
-
-Kartenkomponente:
-- Leaflet
-- OpenLayers
-- MapLibre GL
-
-Kartendaten:
-- OpenStreetMap
-
----
-
-## Backend
-
-Aufgaben:
-- Benutzerverwaltung
-- Speichern von Routen
-- Fahrzeugverwaltung
-- Marschverbandsverwaltung
-- Berechnung von Zeitplänen
-- Exportfunktionen
-
-Geeignete Technologien:
-- Node.js / NestJS
-- Python FastAPI
-- Go
-- Java Spring Boot
+| Funktion | Status |
+|---|---|
+| Web-Login (JWT) | ✅ |
+| Karte mit OpenStreetMap | ✅ |
+| Start / Ziel / Wegpunkte setzen | ✅ |
+| Fahrzeuge anlegen (Höhe, Gewicht, Funkrufname …) | ✅ |
+| Marschverband zusammenstellen | ✅ |
+| Geschwindigkeit innerorts / außerorts konfigurieren | ✅ |
+| Routenberechnung via GraphHopper | ✅ |
+| Zeitplan automatisch berechnen | ✅ |
+| GPX-Export | ✅ |
+| JSON-Export | ✅ |
+| Route per Link teilen (ohne Login) | ✅ |
+| Progressive Web App (installierbar) | ✅ |
 
 ---
 
-## 3. Routing
+## Tech-Stack
 
-Mögliche Routing-Engines:
-- GraphHopper
-- OSRM
-- Valhalla
-
-Empfehlung:
-- GraphHopper oder Valhalla, weil Fahrzeugprofile besser anpassbar sind.
-
-Routingparameter:
-- maximale Höhe
-- maximales Gewicht
-- Fahrzeugtyp
-- Geschwindigkeit innerorts
-- Geschwindigkeit außerorts
-- Vermeidung bestimmter Straßen
-- Wegpunkte
-- technische Halte
+| Schicht | Technologie |
+|---|---|
+| Frontend | SvelteKit + TypeScript |
+| Karte | MapLibre GL + OpenStreetMap |
+| Backend | Python FastAPI |
+| Datenbank | PostgreSQL + PostGIS |
+| Routing | GraphHopper (self-hosted, Docker) |
+| Auth | JWT (python-jose + passlib) |
+| ORM / Migrationen | SQLAlchemy (async) + Alembic |
+| PWA | vite-plugin-pwa |
+| Infrastruktur | Docker Compose |
 
 ---
 
-## 4. App-Modell
+## Projektstruktur
 
-## Planungsmodus
-
-Funktionen:
-- Route auf Karte planen
-- Wegpunkte setzen
-- technische Halte definieren
-- Durchlaufpunkte setzen
-- Fahrzeugdaten hinterlegen
-- Konvoi zusammenstellen
-- Teilverbände vorbereiten
-- Zeitplan automatisch berechnen
-
-## Navigationsmodus
-
-Funktionen:
-- geplante Route anzeigen
-- Zeit-/Wegpunktliste anzeigen
-- Route als GPX exportieren
-- Route per Link teilen
-- später: Live-Position anzeigen
-
----
-
-## 5. Progressive Web App
-
-Die WebApp sollte direkt als PWA geplant werden.
-
-Vorteile:
-- installierbar auf Android/iOS
-- Startsymbol auf Homescreen
-- Offline-Caching möglich
-- kein App-Store-Zwang in der ersten Phase
-
-Einschränkung:
-- iOS ist bei Hintergrundnavigation und GPS teilweise restriktiver als Android.
+```
+marschplan/
+├── frontend/          # SvelteKit App
+│   └── src/
+│       ├── lib/
+│       │   ├── components/   # MapView, UI-Komponenten
+│       │   ├── stores/       # auth, convoy, map
+│       │   └── api/          # API-Client
+│       └── routes/
+│           ├── login/
+│           ├── plan/         # Planungsmodus
+│           └── share/[token] # Öffentliche Routenansicht
+├── backend/           # FastAPI
+│   ├── app/
+│   │   ├── api/routes/   # auth, vehicles, convoys, routing
+│   │   ├── models/        # SQLAlchemy ORM
+│   │   ├── schemas/       # Pydantic
+│   │   └── services/      # routing, schedule, export, geometry
+│   └── alembic/           # DB-Migrationen
+├── graphhopper/       # GraphHopper Konfiguration
+└── docker-compose.yml
+```
 
 ---
 
-## 6. Datenmodell grob
+## Quickstart
 
-### Marschverband
+### Voraussetzungen
 
-- ID
-- Name
-- Organisation
-- Startzeit
-- Startpunkt
-- Zielpunkt
-- geplante Route
-- Fahrzeuge
-- Wegpunkte
-- Status
+- Docker + Docker Compose
+- Node.js 20+
+- Python 3.12+ (nur für lokale Backend-Entwicklung ohne Docker)
 
-### Fahrzeug
+### 1. Repo klonen
 
-- ID
-- Name
-- Funkrufname
-- Kennzeichen
-- Höhe
-- Gewicht
-- Länge
-- Funktion im Konvoi
+```bash
+git clone https://github.com/RettTechSolutions/MarschPlan.git
+cd MarschPlan
+```
 
-### Wegpunkt
+### 2. OSM-Daten herunterladen
 
-- ID
-- Name
-- Typ
-- Koordinaten
-- geplante Ankunft
-- geplante Abfahrt
-- Haltezeit
-- Bemerkung
+GraphHopper benötigt eine OSM-Datei. Für Deutschland:
 
-### Route
+```bash
+cd graphhopper
+wget https://download.geofabrik.de/europe/germany-latest.osm.pbf
+cd ..
+```
 
-- ID
-- Geometrie
-- Distanz
-- Fahrzeit
-- Exportformat
-- Routingparameter
+> Für kleinere Testregionen z. B. `berlin-latest.osm.pbf` von Geofabrik verwenden.
 
----
+### 3. Backend & Datenbank starten
 
-## 7. MVP-Version
+```bash
+docker-compose up -d db backend graphhopper
+```
 
-Für eine erste Version reicht:
+Beim ersten Start werden automatisch die Datenbankmigrationen ausgeführt (PostGIS-Extension + alle Tabellen).
 
-- WebLogin
-- Karte mit OSM
-- Start/Ziel/Wegpunkte setzen
-- Fahrzeuge anlegen
-- Marschverband zusammenstellen
-- Geschwindigkeit innerorts/außerorts definieren
-- Zeitplan berechnen
-- GPX/JSON exportieren
-- Route per Link teilen
+### 4. Frontend starten
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+App läuft unter **http://localhost:5173**
+
+### 5. Account erstellen
+
+```bash
+curl -X POST http://localhost:8000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email": "pilot@bos.de", "password": "sicher123"}'
+```
 
 ---
 
-## 8. Spätere Ausbaustufen
+## API-Übersicht
+
+| Methode | Endpunkt | Beschreibung |
+|---|---|---|
+| POST | `/api/auth/register` | Account erstellen |
+| POST | `/api/auth/login` | Login → JWT-Token |
+| GET/POST/PUT/DELETE | `/api/vehicles/` | Fahrzeugverwaltung |
+| GET/POST/PUT/DELETE | `/api/convoys/` | Marschverbandsverwaltung |
+| POST/PUT/DELETE | `/api/convoys/{id}/waypoints` | Wegpunkte |
+| POST | `/api/convoys/{id}/vehicles` | Fahrzeug zuweisen |
+| POST | `/api/convoys/{id}/calculate-route` | Route + Zeitplan berechnen |
+| GET | `/api/convoys/{id}/export/gpx` | GPX-Export |
+| GET | `/api/convoys/{id}/export/json` | JSON-Export |
+| GET | `/api/convoys/share/{token}` | Öffentliche Ansicht (kein Login) |
+
+Vollständige Swagger-Doku: **http://localhost:8000/docs**
+
+---
+
+## Datenmodell
+
+```
+Benutzer
+└── Marschverband (Convoy)
+    ├── Fahrzeuge (via convoy_vehicles)
+    ├── Wegpunkte (geordnet, mit Haltezeit + Zeitplan)
+    └── Route (Geometrie, Distanz, Fahrzeit, GPX)
+
+Fahrzeug
+├── Name, Funkrufname, Kennzeichen
+└── Höhe, Gewicht, Länge, Funktion im Konvoi
+```
+
+### Routingparameter (pro Marschverband)
+
+- Geschwindigkeit innerorts / außerorts
+- Maximale Fahrzeughöhe (aus Fahrzeugdaten ermittelt)
+- Maximales Fahrzeuggewicht
+- Wegpunkte in definierter Reihenfolge
+
+---
+
+## Ausbaustufen
 
 ### Version 2
 
-- Benutzer- und Rollenmodell
-- mehrere Organisationen
+- Benutzer- und Rollenmodell (Planer, Fahrer, Beobachter)
+- Mehrere Organisationen / Mandanten
 - Teilverbände
-- technische Halte
+- Technische Halte
 - PDF-Export Marschbefehl
 - Offline-Karten
 
 ### Version 3
 
-- Live-Tracking
+- Live-Tracking (GPS-Position der Fahrzeuge)
 - Teilnehmerstatus
 - Wetterintegration
-- Sperrungen/Baustellen
+- Sperrungen / Baustellen
 - Lagedatenintegration
-- native App-Wrapper
+- Native App-Wrapper (Android / iOS)
 
 ---
 
-## 9. Empfehlung
+## Entwicklung
 
-Das Projekt sollte zuerst als WebApp/PWA umgesetzt werden.
+### Backend lokal (ohne Docker)
 
-Der Fokus liegt am Anfang nicht auf echter Turn-by-Turn-Navigation, sondern auf:
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+# Datenbankverbindung in .env konfigurieren
+alembic upgrade head
+uvicorn app.main:app --reload
+```
 
-- sauberer Planung
-- belastbarer Zeitberechnung
-- exportierbarer Route
-- einfacher Bedienbarkeit
-- BOS-tauglicher Konvoiverwaltung
+### Umgebungsvariablen Backend
 
-Die Navigation kann zunächst über bestehende Navigationsapps erfolgen.
+| Variable | Standard | Beschreibung |
+|---|---|---|
+| `DATABASE_URL` | `postgresql+asyncpg://...` | PostgreSQL-Verbindung |
+| `JWT_SECRET` | `changeme-in-production` | JWT-Signing-Key |
+| `GRAPHHOPPER_URL` | `http://localhost:8989` | GraphHopper-Endpunkt |
+
+### Umgebungsvariablen Frontend
+
+| Variable | Standard | Beschreibung |
+|---|---|---|
+| `VITE_API_URL` | `http://localhost:8000` | Backend-URL |
+
+---
+
+## Lizenz
+
+MIT
