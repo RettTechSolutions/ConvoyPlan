@@ -1,0 +1,207 @@
+import uuid
+from datetime import timezone
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import PlainTextResponse, JSONResponse
+from shapely.geometry import LineString
+from geoalchemy2.shape import from_shape
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.api.deps import get_current_user
+from app.database import get_db
+from app.models.convoy import Convoy, ConvoyVehicle
+from app.models.route import Route
+from app.models.user import User
+from app.models.waypoint import Waypoint
+from app.schemas.route import RouteResponse
+from app.services import geometry as geo_svc
+from app.services import routing as routing_svc
+from app.services import schedule as schedule_svc
+from app.services import export as export_svc
+
+router = APIRouter(prefix="/convoys", tags=["routing"])
+
+
+async def _load_convoy(convoy_id: uuid.UUID, owner_id: uuid.UUID, db: AsyncSession) -> Convoy:
+    result = await db.execute(
+        select(Convoy)
+        .where(Convoy.id == convoy_id, Convoy.owner_id == owner_id)
+        .options(
+            selectinload(Convoy.waypoints),
+            selectinload(Convoy.convoy_vehicles).selectinload(ConvoyVehicle.vehicle),
+        )
+    )
+    convoy = result.scalar_one_or_none()
+    if not convoy:
+        raise HTTPException(status_code=404, detail="Convoy not found")
+    return convoy
+
+
+@router.post("/{convoy_id}/calculate-route", response_model=RouteResponse)
+async def calculate_route(
+    convoy_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    convoy = await _load_convoy(convoy_id, current_user.id, db)
+
+    start = geo_svc.wkb_to_point(convoy.start_point)
+    end = geo_svc.wkb_to_point(convoy.end_point)
+    if not start or not end:
+        raise HTTPException(status_code=400, detail="Convoy start/end point not set")
+
+    points = [start]
+    for wp in sorted(convoy.waypoints, key=lambda w: w.order_index):
+        coords = geo_svc.waypoint_coords(wp)
+        if coords["lat"] and coords["lon"]:
+            points.append({"lat": coords["lat"], "lon": coords["lon"]})
+    points.append(end)
+
+    # Determine worst-case vehicle constraints
+    vehicle_params = {}
+    for cv in convoy.convoy_vehicles:
+        v = cv.vehicle
+        if v.height_cm:
+            max_h = vehicle_params.get("max_height_m", float("inf"))
+            vehicle_params["max_height_m"] = min(max_h, v.height_cm / 100)
+
+    try:
+        route_data = await routing_svc.calculate_route(points, vehicle_params or None)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Routing failed: {exc}")
+
+    # Persist route
+    coords = route_data["geometry"]["coordinates"]
+    line = LineString(coords)
+    existing = await db.execute(select(Route).where(Route.convoy_id == convoy_id))
+    route = existing.scalar_one_or_none()
+    if route:
+        route.geometry = from_shape(line, srid=4326)
+        route.distance_m = route_data["distance_m"]
+        route.duration_s = route_data["duration_s"]
+        route.routing_params = vehicle_params
+    else:
+        route = Route(
+            convoy_id=convoy_id,
+            geometry=from_shape(line, srid=4326),
+            distance_m=route_data["distance_m"],
+            duration_s=route_data["duration_s"],
+            routing_params=vehicle_params,
+        )
+        db.add(route)
+
+    # Calculate waypoint schedule
+    if convoy.start_time and convoy.waypoints:
+        waypoints_sorted = sorted(convoy.waypoints, key=lambda w: w.order_index)
+        n_segments = len(waypoints_sorted) + 1
+        seg_duration = route_data["duration_s"] // n_segments
+        schedule = schedule_svc.calculate_schedule(
+            waypoints_sorted,
+            convoy.start_time.replace(tzinfo=timezone.utc) if convoy.start_time.tzinfo is None else convoy.start_time,
+            [seg_duration] * (len(waypoints_sorted)),
+        )
+        for item in schedule:
+            result = await db.execute(select(Waypoint).where(Waypoint.id == item["waypoint_id"]))
+            wp = result.scalar_one_or_none()
+            if wp:
+                wp.planned_arrival = item["planned_arrival"]
+                wp.planned_departure = item["planned_departure"]
+
+    await db.commit()
+    await db.refresh(route)
+
+    return {
+        "id": route.id,
+        "convoy_id": route.convoy_id,
+        "distance_m": route.distance_m,
+        "duration_s": route.duration_s,
+        "routing_params": route.routing_params,
+        "geojson": route_data["geometry"],
+    }
+
+
+@router.get("/{convoy_id}/export/gpx")
+async def export_gpx(
+    convoy_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    convoy = await _load_convoy(convoy_id, current_user.id, db)
+    route_result = await db.execute(select(Route).where(Route.convoy_id == convoy_id))
+    route = route_result.scalar_one_or_none()
+    if not route:
+        raise HTTPException(status_code=404, detail="No route calculated yet")
+
+    line = geo_svc.linestring_to_geojson(route.geometry)
+    coords = line["coordinates"] if line else []
+    waypoints = [
+        {**geo_svc.waypoint_coords(w), "name": w.name, "notes": w.notes}
+        for w in convoy.waypoints
+    ]
+    gpx_content = export_svc.build_gpx(convoy.name, waypoints, coords)
+
+    return PlainTextResponse(
+        content=gpx_content,
+        media_type="application/gpx+xml",
+        headers={"Content-Disposition": f'attachment; filename="{convoy.name}.gpx"'},
+    )
+
+
+@router.get("/{convoy_id}/export/json")
+async def export_json(
+    convoy_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    convoy = await _load_convoy(convoy_id, current_user.id, db)
+    waypoints = [
+        {**geo_svc.waypoint_coords(w), "name": w.name, "type": w.type, "notes": w.notes,
+         "planned_arrival": w.planned_arrival.isoformat() if w.planned_arrival else None,
+         "planned_departure": w.planned_departure.isoformat() if w.planned_departure else None,
+         "hold_duration_min": w.hold_duration_min}
+        for w in convoy.waypoints
+    ]
+    vehicles = [
+        {"name": cv.vehicle.name, "callsign": cv.vehicle.callsign,
+         "license_plate": cv.vehicle.license_plate, "position": cv.position}
+        for cv in convoy.convoy_vehicles
+    ]
+    json_content = export_svc.build_json_export(convoy, waypoints, vehicles)
+    return PlainTextResponse(
+        content=json_content,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{convoy.name}.json"'},
+    )
+
+
+# Public share endpoint
+@router.get("/share/{token}", tags=["share"])
+async def get_shared_convoy(token: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Convoy)
+        .where(Convoy.share_token == token)
+        .options(
+            selectinload(Convoy.waypoints),
+            selectinload(Convoy.convoy_vehicles).selectinload(ConvoyVehicle.vehicle),
+        )
+    )
+    convoy = result.scalar_one_or_none()
+    if not convoy:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    route_result = await db.execute(select(Route).where(Route.convoy_id == convoy.id))
+    route = route_result.scalar_one_or_none()
+
+    return {
+        "name": convoy.name,
+        "organization": convoy.organization,
+        "start_time": convoy.start_time,
+        "waypoints": [
+            {**geo_svc.waypoint_coords(w), "name": w.name, "type": w.type,
+             "planned_arrival": w.planned_arrival, "planned_departure": w.planned_departure}
+            for w in convoy.waypoints
+        ],
+        "geojson": geo_svc.linestring_to_geojson(route.geometry) if route else None,
+    }
