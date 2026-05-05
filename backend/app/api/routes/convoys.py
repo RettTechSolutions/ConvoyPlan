@@ -42,8 +42,23 @@ def _serialize_convoy(convoy: Convoy) -> dict:
         "created_at": convoy.created_at,
         "start_point": geo_svc.wkb_to_point(convoy.start_point),
         "end_point": geo_svc.wkb_to_point(convoy.end_point),
+        "lage": convoy.lage,
+        "auftrag": convoy.auftrag,
+        "marschform": convoy.marschform,
+        "ablaufpunkt": convoy.ablaufpunkt,
+        "ablaufzeit": convoy.ablaufzeit,
+        "ablaufführer": convoy.ablaufführer,
+        "versorgung": convoy.versorgung,
+        "funkgruppe": convoy.funkgruppe,
+        "anlagen": convoy.anlagen,
         "convoy_vehicles": [
-            {"vehicle": cv.vehicle, "position": cv.position}
+            {
+                "vehicle": cv.vehicle,
+                "position": cv.position,
+                "vehicle_status": cv.vehicle_status,
+                "sonderfunktion": cv.sonderfunktion,
+                "mobile_phone": cv.mobile_phone,
+            }
             for cv in convoy.convoy_vehicles
         ],
         "waypoints": [
@@ -156,7 +171,13 @@ async def add_vehicle_to_convoy(
     if not vehicle_result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Vehicle not found")
 
-    cv = ConvoyVehicle(convoy_id=convoy_id, vehicle_id=data.vehicle_id, position=data.position)
+    cv = ConvoyVehicle(
+        convoy_id=convoy_id,
+        vehicle_id=data.vehicle_id,
+        position=data.position,
+        sonderfunktion=data.sonderfunktion,
+        mobile_phone=data.mobile_phone,
+    )
     db.add(cv)
     await db.commit()
     return {"status": "added"}

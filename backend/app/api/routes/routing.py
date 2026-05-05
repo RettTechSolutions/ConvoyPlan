@@ -21,6 +21,8 @@ from app.services import routing as routing_svc
 from app.services import schedule as schedule_svc
 from app.services import export as export_svc
 from app.services import pdf as pdf_svc
+from app.services import fuel as fuel_svc
+from app.services import overpass as overpass_svc
 
 router = APIRouter(prefix="/convoys", tags=["routing"])
 
@@ -113,6 +115,14 @@ async def calculate_route(
     await db.commit()
     await db.refresh(route)
 
+    # Fuel analysis
+    route_coords = route_data["geometry"].get("coordinates", [])
+    fuel_analysis = fuel_svc.analyse_fuel(
+        convoy.convoy_vehicles,
+        route_data["distance_m"],
+        route_coords,
+    )
+
     return {
         "id": route.id,
         "convoy_id": route.convoy_id,
@@ -120,6 +130,7 @@ async def calculate_route(
         "duration_s": route.duration_s,
         "routing_params": route.routing_params,
         "geojson": route_data["geometry"],
+        "fuel_analysis": fuel_analysis,
     }
 
 
@@ -209,6 +220,8 @@ async def export_pdf(
             "weight_kg": cv.vehicle.weight_kg,
             "convoy_role": cv.vehicle.convoy_role,
             "position": cv.position,
+            "sonderfunktion": cv.sonderfunktion,
+            "mobile_phone": cv.mobile_phone,
         }
         for cv in convoy.convoy_vehicles
     ]
@@ -220,6 +233,21 @@ async def export_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/{convoy_id}/fuel-stations")
+async def find_fuel_stations(
+    convoy_id: uuid.UUID,
+    lat: float,
+    lon: float,
+    radius_m: int = 3000,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Find fuel stations near (lat, lon) – typically the recommended stop position."""
+    await _load_convoy(convoy_id, current_user.id, db)
+    stations = await overpass_svc.find_fuel_stations(lat, lon, radius_m)
+    return stations
 
 
 # Public share endpoint

@@ -1,0 +1,6 @@
+# OSM-Daten und Graph-Cache nicht in den Build-Kontext einschließen
+*.osm.pbf
+*.osm.pbf.tmp
+graph-cache/
+graph/
+*.json
