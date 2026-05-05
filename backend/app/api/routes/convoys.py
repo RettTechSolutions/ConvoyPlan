@@ -263,3 +263,39 @@ async def _get_owned_convoy(convoy_id: uuid.UUID, owner_id: uuid.UUID, db: Async
     if not convoy:
         raise HTTPException(status_code=404, detail="Convoy not found")
     return convoy
+
+
+# --- V2: Teilverbände (Sub-Convoys) ---
+
+@router.get("/{convoy_id}/sub-convoys")
+async def list_sub_convoys(
+    convoy_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await _get_owned_convoy(convoy_id, current_user.id, db)
+    result = await db.execute(
+        _convoy_query(current_user.id).where(Convoy.parent_convoy_id == convoy_id)
+    )
+    return [_serialize_convoy(c) for c in result.scalars().all()]
+
+
+@router.post("/{convoy_id}/sub-convoys", response_model=ConvoyResponse, status_code=status.HTTP_201_CREATED)
+async def create_sub_convoy(
+    convoy_id: uuid.UUID,
+    data: ConvoyCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await _get_owned_convoy(convoy_id, current_user.id, db)
+    convoy_data = data.model_dump(exclude={"start_point", "end_point"})
+    sub = Convoy(**convoy_data, owner_id=current_user.id, parent_convoy_id=convoy_id)
+    if data.start_point:
+        sub.start_point = geo_svc.point_to_wkt(data.start_point.lat, data.start_point.lon)
+    if data.end_point:
+        sub.end_point = geo_svc.point_to_wkt(data.end_point.lat, data.end_point.lon)
+    db.add(sub)
+    await db.commit()
+
+    result = await db.execute(_convoy_query(current_user.id).where(Convoy.id == sub.id))
+    return _serialize_convoy(result.scalar_one())

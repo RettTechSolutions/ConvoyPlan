@@ -14,11 +14,14 @@ class Waypoint(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     convoy_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("convoys.id"))
     name: Mapped[str] = mapped_column(String(100))
-    type: Mapped[str] = mapped_column(String(30), default="waypoint")  # waypoint, stop, checkpoint
+    # waypoint | stop | checkpoint | technical_stop
+    type: Mapped[str] = mapped_column(String(30), default="waypoint")
     location = mapped_column(Geometry("POINT", srid=4326))
     planned_arrival: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     planned_departure: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     hold_duration_min: Mapped[int] = mapped_column(Integer, default=0)
+    # V2: Grund für technische Halte (fuel | rest | maintenance | other)
+    halt_purpose: Mapped[str | None] = mapped_column(String(50))
     notes: Mapped[str | None] = mapped_column(Text)
     order_index: Mapped[int] = mapped_column(Integer, default=0)
 
