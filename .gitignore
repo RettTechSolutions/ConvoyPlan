@@ -10,9 +10,13 @@ frontend/.svelte-kit/
 frontend/build/
 frontend/dist/
 
-# Docker volumes
+# Docker volumes / generierte Daten
 postgres_data/
 graphhopper_cache/
+*.osm.pbf
+*.osm.pbf.tmp
+graphhopper/graph/
+graphhopper/graph-cache/
 
 # Environment
 .env

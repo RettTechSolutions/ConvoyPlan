@@ -4,38 +4,111 @@ from typing import Any
 
 from fpdf import FPDF
 
+MARSCHFORM_LABELS = {
+    "geschlossener_verband": "Geschlossener Gesamtverband",
+    "einzelgruppen": "Einzelgruppen",
+    "individuell": "Individuelle Anreise",
+}
+
+SONDERFUNKTION_LABELS = {
+    "spitzenführer": "Spitzenführer",
+    "schließender": "Schließender (Ablaufführer)",
+    "sanitaet": "Sanitätsdienstliche Absicherung",
+    "ablaufführer": "Ablaufführer",
+    "führungsfahrzeug": "Führungsfahrzeug",
+}
+
+TYPE_LABELS = {
+    "waypoint": "Wegpunkt",
+    "stop": "Halt",
+    "checkpoint": "Kontrollpunkt / Durchlaufpunkt",
+    "technical_stop": "Technischer Halt",
+}
+
+PURPOSE_LABELS = {
+    "fuel": "Betriebsstoff",
+    "rest": "Rast",
+    "maintenance": "Wartung",
+    "other": "Sonstiges",
+}
+
 
 class _PDF(FPDF):
     def header(self):
-        self.set_font("Helvetica", "B", 18)
-        self.cell(0, 10, "MARSCHBEFEHL", align="C", new_x="LMARGIN", new_y="NEXT")
+        self.set_font("Helvetica", "B", 16)
+        self.cell(0, 9, "MARSCHBEFEHL", align="C", new_x="LMARGIN", new_y="NEXT")
         self.set_draw_color(26, 39, 68)
         self.set_line_width(0.8)
         self.line(self.l_margin, self.get_y(), self.w - self.r_margin, self.get_y())
-        self.ln(4)
+        self.ln(3)
 
     def footer(self):
         self.set_y(-12)
         self.set_font("Helvetica", "", 7)
         self.set_text_color(120, 120, 120)
-        self.cell(0, 5, f"Erstellt: {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr  |  MarschPlan", align="C")
+        self.cell(
+            0, 5,
+            f"Erstellt mit MarschPlan  |  {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr  |  Seite {self.page_no()}",
+            align="C",
+        )
+        self.set_text_color(0, 0, 0)
 
 
-def _row(pdf: _PDF, label: str, value: str, bold_label: bool = True):
-    pdf.set_font("Helvetica", "B" if bold_label else "", 9)
-    pdf.cell(50, 6, label)
-    pdf.set_font("Helvetica", "", 9)
-    pdf.cell(0, 6, value, new_x="LMARGIN", new_y="NEXT")
-
-
-def _section(pdf: _PDF, title: str):
+def _section(pdf: _PDF, number: str, title: str):
     pdf.ln(3)
     pdf.set_fill_color(26, 39, 68)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(0, 7, f"  {title}", fill=True, new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 7, f"  {number}. {title}", fill=True, new_x="LMARGIN", new_y="NEXT")
     pdf.set_text_color(0, 0, 0)
     pdf.ln(2)
+
+
+def _subsection(pdf: _PDF, title: str):
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.cell(0, 5, title, new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(1)
+
+
+def _kv(pdf: _PDF, label: str, value: str, label_w: int = 55):
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.cell(label_w, 5, label)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.multi_cell(0, 5, value or "–")
+
+
+def _textblock(pdf: _PDF, text: str | None):
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_fill_color(248, 249, 252)
+    pdf.multi_cell(0, 5, text or "–", fill=True, border=1)
+    pdf.ln(2)
+
+
+def _fmt_time(iso: str | None) -> str:
+    if not iso:
+        return "–"
+    try:
+        return datetime.fromisoformat(str(iso).replace("Z", "+00:00")).strftime("%d.%m.%Y %H:%M")
+    except Exception:
+        return str(iso)
+
+
+def _fmt_time_short(iso: str | None) -> str:
+    if not iso:
+        return "–"
+    try:
+        return datetime.fromisoformat(str(iso).replace("Z", "+00:00")).strftime("%H:%M")
+    except Exception:
+        return "–"
+
+
+def _table_header(pdf: _PDF, cols: list[tuple[int, str]]):
+    pdf.set_font("Helvetica", "B", 8)
+    pdf.set_fill_color(220, 225, 235)
+    pdf.set_text_color(0, 0, 0)
+    for w, label in cols:
+        pdf.cell(w, 6, label, border=1, fill=True)
+    pdf.ln()
 
 
 def generate_marschbefehl(convoy: Any, waypoints: list[dict], vehicles: list[dict], route: Any | None) -> bytes:
@@ -43,90 +116,214 @@ def generate_marschbefehl(convoy: Any, waypoints: list[dict], vehicles: list[dic
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
 
-    # --- Convoy-Info ---
-    _section(pdf, "Verbandsinfo")
-    _row(pdf, "Marschverband:", convoy.name)
-    _row(pdf, "Organisation:", convoy.organization or "–")
-    _row(pdf, "Startzeit:", convoy.start_time.strftime("%d.%m.%Y %H:%M Uhr") if convoy.start_time else "–")
-    _row(pdf, "Status:", convoy.status.upper())
-    _row(pdf, "Geschwindigkeit:", f"{convoy.speed_urban_kmh} km/h (innerorts) / {convoy.speed_rural_kmh} km/h (außerorts)")
-    if route:
-        dist_km = (route.distance_m or 0) / 1000
-        dur_s = route.duration_s or 0
-        h, m = divmod(dur_s // 60, 60)
-        _row(pdf, "Strecke:", f"{dist_km:.1f} km")
-        _row(pdf, "Fahrzeit:", f"{h} h {m:02d} min (Fahrzeit ohne Halte)")
+    # ── Befehlende Stelle ──────────────────────────────────────────────────────
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(120, 5, convoy.organization or "Befehlende Stelle", new_x="RIGHT", new_y="TOP")
+    pdf.set_font("Helvetica", "", 9)
+    issued_at = convoy.start_time or datetime.now()
+    pdf.cell(0, 5, issued_at.strftime("%d.%m.%Y"), align="R", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 9)
+    pdf.cell(120, 5, f"Marschverband: {convoy.name}", new_x="RIGHT", new_y="TOP")
+    pdf.cell(0, 5, issued_at.strftime("%H:%M Uhr"), align="R", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(3)
 
-    # --- Fahrzeuge ---
-    _section(pdf, f"Fahrzeuge ({len(vehicles)} Fahrzeuge)")
-    col_w = [10, 45, 35, 22, 22, 45]
-    headers = ["Nr", "Name / Rufname", "Kennzeichen", "Höhe", "Gewicht", "Funktion"]
-    pdf.set_font("Helvetica", "B", 8)
-    pdf.set_fill_color(220, 225, 235)
-    for w, h_txt in zip(col_w, headers):
-        pdf.cell(w, 6, h_txt, border=1, fill=True)
-    pdf.ln()
+    # ── 1. Lage ───────────────────────────────────────────────────────────────
+    _section(pdf, "1", "Lage")
+    _textblock(pdf, convoy.lage)
 
+    # ── 2. Auftrag ────────────────────────────────────────────────────────────
+    _section(pdf, "2", "Auftrag")
+    _textblock(pdf, convoy.auftrag)
+
+    # ── 3. Durchführung ───────────────────────────────────────────────────────
+    _section(pdf, "3", "Durchführung")
+
+    # Marschbewegung
+    _subsection(pdf, "Marschbewegung")
+    dist_km = (route.distance_m or 0) / 1000 if route else 0
+    dur_s = route.duration_s or 0 if route else 0
+    h, m = divmod(dur_s // 60, 60)
+    marschform_label = MARSCHFORM_LABELS.get(convoy.marschform or "", convoy.marschform or "–")
+
+    _kv(pdf, "Marschziel:", waypoints[-1]["name"] if waypoints else "–")
+    _kv(pdf, "Marschweg:", "von … über … nach …")
+    _kv(pdf, "Marschstrecke:", f"{dist_km:.1f} km" if dist_km else "–")
+    _kv(pdf, "Marschform:", marschform_label)
+    pdf.ln(2)
+
+    # Ablaufpunkt
+    _subsection(pdf, "Ablaufpunkt")
+    _kv(pdf, "Ablaufpunkt:", convoy.ablaufpunkt or "–")
+    _kv(pdf, "Ablaufzeit:", _fmt_time(str(convoy.ablaufzeit) if convoy.ablaufzeit else None))
+    _kv(pdf, "Ablaufführer:", convoy.ablaufführer or "–")
+    pdf.ln(2)
+
+    # Marschfolge-Tabelle
+    _subsection(pdf, "Marschfolge")
+    cols_mf = [(12, "Pos."), (45, "Funkrufname"), (35, "KFZ-Kennzeichen"), (35, "Mobiltelefon"), (0, "Sonderfunktion")]
+    # Adjust last col width
+    used = sum(c[0] for c in cols_mf[:-1])
+    total_w = pdf.w - pdf.l_margin - pdf.r_margin
+    cols_mf[-1] = (total_w - used, "Sonderfunktion")
+
+    _table_header(pdf, cols_mf)
     pdf.set_font("Helvetica", "", 8)
     fill = False
     pdf.set_fill_color(245, 246, 250)
     for v in vehicles:
         pdf.set_fill_color(245, 246, 250) if fill else pdf.set_fill_color(255, 255, 255)
-        pdf.cell(col_w[0], 6, str(v["position"] + 1), border=1, fill=fill)
+        sonder = SONDERFUNKTION_LABELS.get(v.get("sonderfunktion") or "", v.get("sonderfunktion") or "–")
+        pdf.cell(cols_mf[0][0], 6, str(v["position"] + 1), border=1, fill=fill)
+        pdf.cell(cols_mf[1][0], 6, (v.get("callsign") or "–")[:22], border=1, fill=fill)
+        pdf.cell(cols_mf[2][0], 6, (v.get("license_plate") or "–")[:18], border=1, fill=fill)
+        pdf.cell(cols_mf[3][0], 6, (v.get("mobile_phone") or "–")[:18], border=1, fill=fill)
+        pdf.cell(cols_mf[4][0], 6, sonder[:28], border=1, fill=fill, new_x="LMARGIN", new_y="NEXT")
+        fill = not fill
+    pdf.ln(3)
+
+    # Marschgeschwindigkeit
+    _subsection(pdf, "Marschgeschwindigkeit")
+    pdf.set_font("Helvetica", "", 9)
+    pdf.multi_cell(
+        0, 5,
+        f"  • Innerorts: {convoy.speed_urban_kmh} km/h\n"
+        f"  • Außerorts: {convoy.speed_rural_kmh} km/h\n"
+        "  • Die jeweils gültige Höchstgeschwindigkeit darf nicht überschritten werden\n"
+        "  • Marschverzögerungen dürfen nicht durch höhere Geschwindigkeit aufgeholt werden"
+    )
+    pdf.ln(2)
+
+    # Fahrzeugabstände
+    _subsection(pdf, "Fahrzeugabstände")
+    pdf.set_font("Helvetica", "", 9)
+    pdf.multi_cell(
+        0, 5,
+        "  • 50 Meter bei Marschgeschwindigkeit bis 50 km/h\n"
+        "  • 100 Meter bei Marschgeschwindigkeit über 50 km/h\n"
+        "  • Mindestens 100 Meter auf Autobahnen und Schnellstraßen"
+    )
+    pdf.ln(2)
+
+    # Beflaggung und Beleuchtung
+    _subsection(pdf, "Beflaggung und Beleuchtung")
+    pdf.set_font("Helvetica", "", 9)
+    pdf.multi_cell(
+        0, 5,
+        "  • Alle KFZ: Abblendlicht einschalten (auch am Tag)\n"
+        "  • Alle KFZ (Katastrophenschutz): blaues Blinklicht ohne Einsatzhorn\n"
+        "  • Erstes bis vorletztes KFZ (außer Krad): vorne links BLAUE Flagge (40×40 cm)\n"
+        "  • Letztes KFZ (Schließender): vorne links GRÜNE Flagge (40×40 cm)\n"
+        "  • Liegengebliebene KFZ: vorne links GELBE Flagge (40×40 cm)"
+    )
+    pdf.ln(2)
+
+    # Durchlaufpunkte (checkpoints)
+    checkpoints = [w for w in waypoints if w.get("type") in ("checkpoint", "waypoint")]
+    if checkpoints:
+        _subsection(pdf, "Durchlaufpunkte")
+        cols_dp = [(0, "Durchlaufpunkt"), (40, "Geplante Durchlaufzeit"), (50, "Anmerkungen")]
+        used_dp = cols_dp[1][0] + cols_dp[2][0]
+        cols_dp[0] = (total_w - used_dp, "Durchlaufpunkt")
+        _table_header(pdf, cols_dp)
+        pdf.set_font("Helvetica", "", 8)
+        fill = False
+        for w in checkpoints:
+            pdf.set_fill_color(245, 246, 250) if fill else pdf.set_fill_color(255, 255, 255)
+            pdf.cell(cols_dp[0][0], 6, w["name"][:35], border=1, fill=fill)
+            pdf.cell(cols_dp[1][0], 6, _fmt_time_short(w.get("planned_arrival")), border=1, fill=fill)
+            pdf.cell(cols_dp[2][0], 6, (w.get("notes") or "")[:28], border=1, fill=fill, new_x="LMARGIN", new_y="NEXT")
+            fill = not fill
+        pdf.ln(3)
+
+    # Marschpausen
+    pauses = [w for w in waypoints if w.get("type") in ("stop", "technical_stop")]
+    if pauses:
+        _subsection(pdf, "Marschpausen")
+        cols_mp = [(0, "Ort"), (45, "Art"), (40, "Dauer")]
+        used_mp = cols_mp[1][0] + cols_mp[2][0]
+        cols_mp[0] = (total_w - used_mp, "Ort")
+        _table_header(pdf, cols_mp)
+        pdf.set_font("Helvetica", "", 8)
+        fill = False
+        for w in pauses:
+            pdf.set_fill_color(245, 246, 250) if fill else pdf.set_fill_color(255, 255, 255)
+            art = TYPE_LABELS.get(w.get("type", ""), w.get("type", ""))
+            if w.get("halt_purpose"):
+                art += f" ({PURPOSE_LABELS.get(w['halt_purpose'], w['halt_purpose'])})"
+            dur = f"{w['hold_duration_min']} min" if w.get("hold_duration_min") else "–"
+            pdf.cell(cols_mp[0][0], 6, w["name"][:30], border=1, fill=fill)
+            pdf.cell(cols_mp[1][0], 6, art[:28], border=1, fill=fill)
+            pdf.cell(cols_mp[2][0], 6, dur, border=1, fill=fill, new_x="LMARGIN", new_y="NEXT")
+            fill = not fill
+        pdf.set_font("Helvetica", "I", 7.5)
+        pdf.set_text_color(80, 80, 80)
+        pdf.multi_cell(
+            0, 4,
+            "Technischer Halt: KFZ überprüfen, ggf. leichte Schäden beseitigen, ggf. Betriebsstoff nachfüllen. "
+            "Nach Fahrzeit von ca. 2 Stunden, Verbleib auf Marschstraße (Parkplatz). Dauer: 20–30 Minuten.\n"
+            "Rast: Nur bei längeren Märschen, nach 5–6 Std. Marschzeit, abseits der Marschstraße. Dauer: 2–3 Stunden."
+        )
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(2)
+
+    # Fahrzeugübersicht (Name, Abmessungen)
+    _subsection(pdf, "Fahrzeuge im Verband")
+    cols_kfz = [(10, "Pos"), (50, "Fahrzeug / Rufname"), (30, "Kennzeichen"), (22, "Höhe"), (25, "Gewicht"), (0, "Aufgabe")]
+    used_kfz = sum(c[0] for c in cols_kfz[:-1])
+    cols_kfz[-1] = (total_w - used_kfz, "Aufgabe / Rolle")
+    _table_header(pdf, cols_kfz)
+    pdf.set_font("Helvetica", "", 8)
+    fill = False
+    for v in vehicles:
+        pdf.set_fill_color(245, 246, 250) if fill else pdf.set_fill_color(255, 255, 255)
         label = v["name"]
         if v.get("callsign"):
             label += f' ({v["callsign"]})'
-        pdf.cell(col_w[1], 6, label[:28], border=1, fill=fill)
-        pdf.cell(col_w[2], 6, v.get("license_plate") or "–", border=1, fill=fill)
-        pdf.cell(col_w[3], 6, f'{v["height_cm"] / 100:.2f} m' if v.get("height_cm") else "–", border=1, fill=fill)
-        pdf.cell(col_w[4], 6, f'{v["weight_kg"]:,} kg' if v.get("weight_kg") else "–", border=1, fill=fill)
-        pdf.cell(col_w[5], 6, (v.get("convoy_role") or "–")[:25], border=1, fill=fill, new_x="LMARGIN", new_y="NEXT")
+        sonder = SONDERFUNKTION_LABELS.get(v.get("sonderfunktion") or "", v.get("convoy_role") or "–")
+        pdf.cell(cols_kfz[0][0], 6, str(v["position"] + 1), border=1, fill=fill)
+        pdf.cell(cols_kfz[1][0], 6, label[:28], border=1, fill=fill)
+        pdf.cell(cols_kfz[2][0], 6, (v.get("license_plate") or "–")[:16], border=1, fill=fill)
+        pdf.cell(cols_kfz[3][0], 6, f'{v["height_cm"]/100:.2f} m' if v.get("height_cm") else "–", border=1, fill=fill)
+        pdf.cell(cols_kfz[4][0], 6, f'{v["weight_kg"]:,} kg' if v.get("weight_kg") else "–", border=1, fill=fill)
+        pdf.cell(cols_kfz[5][0], 6, sonder[:25], border=1, fill=fill, new_x="LMARGIN", new_y="NEXT")
         fill = not fill
+    pdf.ln(3)
 
-    # --- Wegpunkte & Zeitplan ---
-    _section(pdf, "Marschroute & Zeitplan")
-    wp_col = [10, 55, 30, 25, 25, 25, 19]
-    wp_headers = ["Nr", "Bezeichnung", "Typ", "Ankunft", "Abfahrt", "Halt", "Zweck"]
-    pdf.set_font("Helvetica", "B", 8)
-    pdf.set_fill_color(220, 225, 235)
-    for w, h_txt in zip(wp_col, wp_headers):
-        pdf.cell(w, 6, h_txt, border=1, fill=True)
-    pdf.ln()
-
-    type_labels = {
-        "waypoint": "Wegpunkt", "stop": "Halt", "checkpoint": "Kontrollpunkt",
-        "technical_stop": "Techn. Halt",
-    }
-    purpose_labels = {"fuel": "Tanken", "rest": "Pause", "maintenance": "Wartung", "other": "Sonstiges"}
-
-    pdf.set_font("Helvetica", "", 8)
-    fill = False
-    for i, wp in enumerate(waypoints):
-        pdf.set_fill_color(245, 246, 250) if fill else pdf.set_fill_color(255, 255, 255)
-
-        def fmt_time(iso):
-            if not iso:
-                return "–"
-            try:
-                return datetime.fromisoformat(iso.replace("Z", "+00:00")).strftime("%H:%M")
-            except Exception:
-                return "–"
-
-        hold = f'{wp["hold_duration_min"]} min' if wp.get("hold_duration_min") else "–"
-        pdf.cell(wp_col[0], 6, str(i + 1), border=1, fill=fill)
-        pdf.cell(wp_col[1], 6, wp["name"][:30], border=1, fill=fill)
-        pdf.cell(wp_col[2], 6, type_labels.get(wp.get("type", ""), wp.get("type", "")), border=1, fill=fill)
-        pdf.cell(wp_col[3], 6, fmt_time(wp.get("planned_arrival")), border=1, fill=fill)
-        pdf.cell(wp_col[4], 6, fmt_time(wp.get("planned_departure")), border=1, fill=fill)
-        pdf.cell(wp_col[5], 6, hold, border=1, fill=fill)
-        pdf.cell(wp_col[6], 6, purpose_labels.get(wp.get("halt_purpose", ""), "–"), border=1, fill=fill, new_x="LMARGIN", new_y="NEXT")
-        fill = not fill
-
-    # --- Unterschrift ---
-    pdf.ln(12)
+    # ── 4. Versorgung ─────────────────────────────────────────────────────────
+    _section(pdf, "4", "Versorgung")
     pdf.set_font("Helvetica", "", 9)
-    pdf.cell(80, 6, "Ort, Datum: ________________________")
-    pdf.cell(0, 6, "Unterschrift Einsatzleitung: ________________________", new_x="LMARGIN", new_y="NEXT")
+    versorgung_text = convoy.versorgung or ""
+    if not versorgung_text:
+        versorgung_text = "Verpflegung, Betriebsstoff, Instandsetzungsdienst, ärztliche/sanitätsdienstliche Versorgung."
+    versorgung_text += "\n\nAlle Fahrzeuge haben sich grundsätzlich vollgetankt am Ablaufpunkt einzufinden!"
+    _textblock(pdf, versorgung_text)
+
+    # ── 5. Führung und Verbindung ─────────────────────────────────────────────
+    _section(pdf, "5", "Führung und Verbindung")
+    _kv(pdf, "Funkgruppe:", convoy.funkgruppe or "–")
+    pdf.set_font("Helvetica", "", 9)
+    pdf.multi_cell(
+        0, 5,
+        "  • Kommunikationsverbindungen während des Marsches (Funkgruppe, Funkbereitschaft ab/bis)\n"
+        "  • Kommunikationsverbindungen zur Ablaufstelle\n"
+        "  • Kommunikationsverbindungen zu Lotsenstellen / Verkehrsleitpunkten / Meldeköpfen\n"
+        "  • Platz der Führungskraft: Führungsfahrzeug an der Spitze"
+    )
+    pdf.ln(2)
+
+    # ── 6. Anlagen ────────────────────────────────────────────────────────────
+    _section(pdf, "6", "Anlagen")
+    _textblock(pdf, convoy.anlagen)
+
+    # ── Unterschrift ──────────────────────────────────────────────────────────
+    pdf.ln(6)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.cell(90, 5, "Ort, Datum: ______________________________")
+    pdf.cell(0, 5, "Unterschrift Marschverbandsführer/in: ______________________________", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(10)
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 4, "Vor- und Nachname / Funktion", new_x="LMARGIN", new_y="NEXT")
 
     buf = BytesIO()
     pdf.output(buf)

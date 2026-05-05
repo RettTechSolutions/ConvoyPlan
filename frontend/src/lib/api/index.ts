@@ -6,6 +6,26 @@ export interface Point { lat: number; lon: number }
 export interface Vehicle {
 	id: string; name: string; callsign: string | null; license_plate: string | null;
 	height_cm: number | null; weight_kg: number | null; length_cm: number | null; convoy_role: string | null;
+	tank_capacity_l: number | null; fuel_consumption_l100km: number | null;
+	current_fuel_l: number | null; range_km: number | null;
+}
+
+export interface FuelStopPosition { lat: number; lon: number; }
+export interface VehicleRangeInfo { name: string; callsign: string | null; range_km: number; }
+export interface FuelAnalysis {
+	vehicles_with_range: VehicleRangeInfo[];
+	min_range_km: number | null;
+	route_distance_km: number;
+	fuel_stop_needed: boolean;
+	fuel_stop_km: number | null;
+	fuel_stop_position: FuelStopPosition | null;
+	limiting_vehicle: string | null;
+}
+
+export interface FuelStation {
+	osm_id: number; lat: number; lon: number;
+	name: string; brand: string | null; operator: string | null;
+	opening_hours: string | null; distance_m: number;
 }
 
 export interface Waypoint {
@@ -16,7 +36,10 @@ export interface Waypoint {
 	notes: string | null; order_index: number;
 }
 
-export interface ConvoyVehicleItem { vehicle: Vehicle; position: number; vehicle_status: string }
+export interface ConvoyVehicleItem {
+	vehicle: Vehicle; position: number; vehicle_status: string;
+	sonderfunktion: string | null; mobile_phone: string | null;
+}
 
 export interface Convoy {
 	id: string; name: string; organization: string | null;
@@ -25,11 +48,15 @@ export interface Convoy {
 	status: string; share_token: string; created_at: string;
 	start_point: Point | null; end_point: Point | null;
 	convoy_vehicles: ConvoyVehicleItem[]; waypoints: Waypoint[];
+	lage: string | null; auftrag: string | null; marschform: string | null;
+	ablaufpunkt: string | null; ablaufzeit: string | null; ablaufführer: string | null;
+	versorgung: string | null; funkgruppe: string | null; anlagen: string | null;
 }
 
 export interface RouteResult {
 	id: string; convoy_id: string; distance_m: number | null; duration_s: number | null;
 	routing_params: Record<string, unknown> | null; geojson: Geometry | null;
+	fuel_analysis: FuelAnalysis | null;
 }
 
 export interface Organization {
@@ -80,8 +107,8 @@ export const convoysApi = {
 	get: (id: string) => api.get<Convoy>(`/api/convoys/${id}`),
 	update: (id: string, data: Record<string, unknown>) => api.put<Convoy>(`/api/convoys/${id}`, data),
 	delete: (id: string) => api.delete(`/api/convoys/${id}`),
-	addVehicle: (id: string, vehicleId: string, position: number) =>
-		api.post(`/api/convoys/${id}/vehicles`, { vehicle_id: vehicleId, position }),
+	addVehicle: (id: string, vehicleId: string, position: number, sonderfunktion?: string, mobile_phone?: string) =>
+		api.post(`/api/convoys/${id}/vehicles`, { vehicle_id: vehicleId, position, sonderfunktion, mobile_phone }),
 	removeVehicle: (id: string, vehicleId: string) =>
 		api.delete(`/api/convoys/${id}/vehicles/${vehicleId}`),
 	createWaypoint: (id: string, data: Record<string, unknown>) =>
@@ -92,6 +119,8 @@ export const convoysApi = {
 		api.delete(`/api/convoys/${id}/waypoints/${wpId}`),
 	calculateRoute: (id: string) =>
 		api.post<RouteResult>(`/api/convoys/${id}/calculate-route`, {}),
+	findFuelStations: (id: string, lat: number, lon: number, radiusM = 3000) =>
+		api.get<FuelStation[]>(`/api/convoys/${id}/fuel-stations?lat=${lat}&lon=${lon}&radius_m=${radiusM}`),
 	listSubConvoys: (id: string) => api.get<Convoy[]>(`/api/convoys/${id}/sub-convoys`),
 	createSubConvoy: (id: string, data: Record<string, unknown>) =>
 		api.post<Convoy>(`/api/convoys/${id}/sub-convoys`, data),
