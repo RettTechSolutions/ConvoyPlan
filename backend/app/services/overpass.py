@@ -36,6 +36,46 @@ def _to_geojson(elements: list) -> dict:
     return {"type": "FeatureCollection", "features": features}
 
 
+async def find_fuel_stations(lat: float, lon: float, radius_m: int = 3000) -> list[dict]:
+    """Return nearby fuel stations sorted by distance from (lat, lon)."""
+    query = f"""
+[out:json][timeout:15];
+node["amenity"="fuel"](around:{radius_m},{lat},{lon});
+out body;
+"""
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        resp = await client.post(OVERPASS_URL, data={"data": query})
+        resp.raise_for_status()
+        data = resp.json()
+
+    import math
+
+    def _dist(a_lat, a_lon):
+        dlat = math.radians(a_lat - lat)
+        dlon = math.radians(a_lon - lon)
+        a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat)) * math.cos(math.radians(a_lat)) * math.sin(dlon / 2) ** 2
+        return 6_371_000 * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    stations = []
+    for el in data.get("elements", []):
+        if el.get("type") != "node":
+            continue
+        tags = el.get("tags", {})
+        stations.append({
+            "osm_id": el["id"],
+            "lat": el["lat"],
+            "lon": el["lon"],
+            "name": tags.get("name") or tags.get("brand") or "Tankstelle",
+            "brand": tags.get("brand"),
+            "operator": tags.get("operator"),
+            "opening_hours": tags.get("opening_hours"),
+            "distance_m": round(_dist(el["lat"], el["lon"])),
+        })
+
+    stations.sort(key=lambda s: s["distance_m"])
+    return stations[:10]
+
+
 async def get_closures(lat: float, lon: float, radius_m: int = 15000) -> dict:
     query = _build_query(lat, lon, radius_m)
     async with httpx.AsyncClient(timeout=30.0) as client:

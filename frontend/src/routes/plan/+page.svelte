@@ -10,7 +10,8 @@
 	import { mapMode } from '$lib/stores/map';
 	import {
 		convoysApi, vehiclesApi, orgsApi, overpassApi,
-		type Convoy, type Vehicle, type Organization, type LageLayer
+		type Convoy, type Vehicle, type Organization, type LageLayer,
+		type FuelAnalysis, type FuelStation,
 	} from '$lib/api';
 	import type { FeatureCollection } from 'geojson';
 
@@ -19,7 +20,10 @@
 	let convoyList = $state<Convoy[]>([]);
 	let organizations = $state<Organization[]>([]);
 	let selected = $state<Convoy | null>(null);
-	let route = $state<{ geojson: unknown; distance_m: number | null; duration_s: number | null } | null>(null);
+	let route = $state<{ geojson: unknown; distance_m: number | null; duration_s: number | null; fuel_analysis: FuelAnalysis | null } | null>(null);
+	let fuelStations = $state<FuelStation[]>([]);
+	let showFuelStations = $state(false);
+	let fuelStationsLoading = $state(false);
 	let closures = $state<FeatureCollection | null>(null);
 	let showClosures = $state(false);
 	let mapCenter = $state<[number, number]>([10.0, 51.5]);
@@ -31,7 +35,7 @@
 	let showVehicleForm = $state(false);
 	let showConvoyForm = $state(false);
 	let showSubConvoyForm = $state(false);
-	let newVehicle = $state({ name:'', callsign:'', license_plate:'', height_cm:'', weight_kg:'', length_cm:'', convoy_role:'' });
+	let newVehicle = $state({ name:'', callsign:'', license_plate:'', height_cm:'', weight_kg:'', length_cm:'', convoy_role:'', tank_capacity_l:'', fuel_consumption_l100km:'', current_fuel_l:'' });
 	let newConvoy = $state({ name:'', organization:'', organization_id:'', start_time:'', speed_urban_kmh:40, speed_rural_kmh:65, lage:'', auftrag:'', marschform:'geschlossener_verband', ablaufpunkt:'', ablaufzeit:'', ablaufführer:'', versorgung:'', funkgruppe:'', anlagen:'' });
 	let newWpForm = $state({ name:'', type:'waypoint', hold_duration_min:0, halt_purpose:'' });
 	let pendingWpClick = $state(false);
@@ -102,9 +106,12 @@
 				height_cm: newVehicle.height_cm ? Number(newVehicle.height_cm) : undefined,
 				weight_kg: newVehicle.weight_kg ? Number(newVehicle.weight_kg) : undefined,
 				length_cm: newVehicle.length_cm ? Number(newVehicle.length_cm) : undefined,
+				tank_capacity_l: newVehicle.tank_capacity_l ? Number(newVehicle.tank_capacity_l) : undefined,
+				fuel_consumption_l100km: newVehicle.fuel_consumption_l100km ? Number(newVehicle.fuel_consumption_l100km) : undefined,
+				current_fuel_l: newVehicle.current_fuel_l ? Number(newVehicle.current_fuel_l) : undefined,
 			} as never);
 			allVehicles = [...allVehicles, v];
-			newVehicle = { name:'', callsign:'', license_plate:'', height_cm:'', weight_kg:'', length_cm:'', convoy_role:'' };
+			newVehicle = { name:'', callsign:'', license_plate:'', height_cm:'', weight_kg:'', length_cm:'', convoy_role:'', tank_capacity_l:'', fuel_consumption_l100km:'', current_fuel_l:'' };
 			showVehicleForm = false;
 		} catch { error = 'Fahrzeug konnte nicht erstellt werden'; }
 	}
@@ -171,13 +178,48 @@
 		loading = true; error = '';
 		try {
 			const r = await convoysApi.calculateRoute(selected.id);
-			route = { geojson: r.geojson, distance_m: r.distance_m, duration_s: r.duration_s };
+			route = { geojson: r.geojson, distance_m: r.distance_m, duration_s: r.duration_s, fuel_analysis: r.fuel_analysis };
+			fuelStations = [];
+			showFuelStations = false;
 			activeRoute.set(r);
 			await refreshConvoy();
 			activeTab = 'zeitplan';
 		} catch (e: unknown) {
 			error = e instanceof Error ? e.message : 'Routing fehlgeschlagen';
 		} finally { loading = false; }
+	}
+
+	// ── Fuel stations ────────────────────────────────────────────────
+	async function searchFuelStations() {
+		if (!selected || !route?.fuel_analysis?.fuel_stop_position) return;
+		fuelStationsLoading = true;
+		showFuelStations = false;
+		try {
+			const { lat, lon } = route.fuel_analysis.fuel_stop_position;
+			fuelStations = await convoysApi.findFuelStations(selected.id, lat, lon, 5000);
+			showFuelStations = true;
+		} catch { error = 'Tankstellensuche fehlgeschlagen'; }
+		finally { fuelStationsLoading = false; }
+	}
+
+	async function addFuelStopWaypoint(station: FuelStation) {
+		if (!selected || !route?.fuel_analysis) return;
+		const stopKm = route.fuel_analysis.fuel_stop_km ?? 0;
+		await convoysApi.createWaypoint(selected.id, {
+			name: station.name,
+			type: 'technical_stop',
+			halt_purpose: 'fuel',
+			lat: station.lat,
+			lon: station.lon,
+			hold_duration_min: 25,
+			order_index: selected.waypoints.length,
+			notes: `Tankstopp bei km ${stopKm} – ${station.brand ?? station.name}${station.opening_hours ? ' · ' + station.opening_hours : ''}`,
+		});
+		showFuelStations = false;
+		fuelStations = [];
+		await refreshConvoy();
+		// Trigger new route calculation
+		await calculateRoute();
 	}
 
 	// ── Closures ─────────────────────────────────────────────────────
@@ -299,6 +341,38 @@
 					</button>
 					{#if route}
 						<p class="route-info">{((route.distance_m ?? 0) / 1000).toFixed(1)} km · {formatDuration(route.duration_s)}</p>
+						{#if route.fuel_analysis?.fuel_stop_needed}
+							<div class="fuel-warning">
+								<p>⛽ <strong>Tankstopp nötig!</strong></p>
+								<p class="fuel-detail">
+									{route.fuel_analysis.limiting_vehicle} hat nur <strong>{route.fuel_analysis.min_range_km} km</strong> Reichweite
+									(Route: {route.fuel_analysis.route_distance_km} km).
+									Empfohlener Stopp bei km {route.fuel_analysis.fuel_stop_km}.
+								</p>
+								<button class="btn-fuel-search" onclick={searchFuelStations} disabled={fuelStationsLoading}>
+									{fuelStationsLoading ? 'Suche…' : '🔍 Tankstellen suchen'}
+								</button>
+								{#if showFuelStations && fuelStations.length}
+									<ul class="fuel-station-list">
+										{#each fuelStations as s}
+											<li class="fuel-station-item">
+												<div>
+													<strong>{s.name}</strong>
+													{#if s.brand && s.brand !== s.name}<span class="tag">{s.brand}</span>{/if}
+													<span class="tag">{(s.distance_m / 1000).toFixed(1)} km vom Stopp</span>
+													{#if s.opening_hours}<span class="tag">{s.opening_hours}</span>{/if}
+												</div>
+												<button class="btn-small" onclick={() => addFuelStopWaypoint(s)}>+ Waypoint</button>
+											</li>
+										{/each}
+									</ul>
+								{:else if showFuelStations}
+									<p class="hint">Keine Tankstellen in der Nähe gefunden. Radius erhöhen?</p>
+								{/if}
+							</div>
+						{:else if route.fuel_analysis?.min_range_km}
+							<p class="fuel-ok">✅ Reichweite ausreichend ({route.fuel_analysis.min_range_km} km / {route.fuel_analysis.route_distance_km} km)</p>
+						{/if}
 					{/if}
 				</div>
 
@@ -345,6 +419,10 @@
 							<input placeholder="Gewicht (kg)" type="number" bind:value={newVehicle.weight_kg} />
 							<input placeholder="Länge (cm)" type="number" bind:value={newVehicle.length_cm} />
 							<input placeholder="Funktion im Konvoi" bind:value={newVehicle.convoy_role} />
+							<hr style="border-color:rgba(255,255,255,.15);margin:.2rem 0" />
+							<input placeholder="Tankvolumen (Liter)" type="number" step="0.1" min="0" bind:value={newVehicle.tank_capacity_l} />
+							<input placeholder="Verbrauch (l/100 km)" type="number" step="0.1" min="0" bind:value={newVehicle.fuel_consumption_l100km} />
+							<input placeholder="Aktueller Füllstand (Liter)" type="number" step="0.1" min="0" bind:value={newVehicle.current_fuel_l} />
 							<button type="submit">Speichern</button>
 						</form>
 					{/if}
@@ -356,6 +434,7 @@
 										<strong>{v.name}</strong>
 										{#if v.callsign}<span class="tag">{v.callsign}</span>{/if}
 										{#if v.license_plate}<span class="tag">{v.license_plate}</span>{/if}
+										{#if v.range_km}<span class="tag fuel-tag">⛽ {v.range_km} km</span>{/if}
 									</div>
 									{#if selected}
 										{#if assignedIds.has(v.id)}
@@ -705,4 +784,17 @@
 
 	.detail-text { font-size: .82rem; color: rgba(255,255,255,.8); margin: .25rem 0 0; white-space: pre-wrap; }
 	details summary { cursor: pointer; font-size: .82rem; color: rgba(255,255,255,.75); }
+
+	.tag.fuel-tag { background: rgba(39,174,96,.35); color: #a9dfbf; }
+
+	.fuel-warning { background: rgba(231,76,60,.15); border: 1px solid rgba(231,76,60,.5); border-radius: 6px; padding: .6rem; margin-top: .5rem; }
+	.fuel-warning p { margin: .2rem 0; font-size: .83rem; }
+	.fuel-detail { color: rgba(255,255,255,.8); }
+	.btn-fuel-search { width: 100%; margin-top: .4rem; padding: .4rem; background: #e67e22; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: .82rem; font-weight: 600; }
+	.btn-fuel-search:disabled { opacity: .5; cursor: not-allowed; }
+
+	.fuel-station-list { list-style: none; padding: 0; margin: .4rem 0 0; display: flex; flex-direction: column; gap: .3rem; }
+	.fuel-station-item { display: flex; justify-content: space-between; align-items: flex-start; gap: .4rem; padding: .35rem; background: rgba(255,255,255,.07); border-radius: 4px; font-size: .8rem; }
+
+	.fuel-ok { font-size: .8rem; color: #a9dfbf; margin: .3rem 0 0; }
 </style>
