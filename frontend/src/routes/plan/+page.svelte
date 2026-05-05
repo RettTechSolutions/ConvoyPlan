@@ -299,321 +299,375 @@
 			<button class="btn-small" onclick={() => (showConvoyForm = true)}>+ Neu</button>
 		</div>
 
-		<!-- Tabs -->
-		<div class="tabs">
-			{#each [['convoy','Plan'],['fahrzeuge','Fahrzeuge'],['wegpunkte','Wegpunkte'],['zeitplan','Zeitplan'],['export','Export'],['lage','Lage'],['org','Org']] as [tab, label]}
-				<button class="tab" class:active={activeTab === tab} onclick={() => (activeTab = tab as typeof activeTab)}>{label}</button>
-			{/each}
-		</div>
+		{#if wizardStep === 0}
+			<!-- Tabs -->
+			<div class="tabs">
+				{#each [['convoy','Plan'],['fahrzeuge','Fahrzeuge'],['wegpunkte','Wegpunkte'],['zeitplan','Zeitplan'],['export','Export'],['lage','Lage'],['org','Org']] as [tab, label]}
+					<button class="tab" class:active={activeTab === tab} onclick={() => (activeTab = tab as typeof activeTab)}>{label}</button>
+				{/each}
+			</div>
 
-		<div class="tab-content">
+			<div class="tab-content">
 
-			<!-- ── TAB: Plan ── -->
-			{#if activeTab === 'convoy' && selected}
-				<div class="section">
-					<p><strong>Organisation:</strong> {selected.organization ?? '–'}</p>
-					<p><strong>Startzeit:</strong> {selected.start_time ? new Date(selected.start_time).toLocaleString('de-DE') : '–'}</p>
-					<p><strong>Tempo:</strong> {selected.speed_urban_kmh} km/h (innerorts) / {selected.speed_rural_kmh} km/h (außerorts)</p>
-					{#if selected.marschform}<p><strong>Marschform:</strong> {({ geschlossener_verband:'Geschlossener Verband', einzelgruppen:'Einzelgruppen', individuell:'Individuelle Anreise' })[selected.marschform] ?? selected.marschform}</p>{/if}
-					{#if selected.ablaufpunkt}<p><strong>Ablaufpunkt:</strong> {selected.ablaufpunkt}</p>{/if}
-					{#if selected.ablaufführer}<p><strong>Ablaufführer:</strong> {selected.ablaufführer}</p>{/if}
-					{#if selected.funkgruppe}<p><strong>Funkgruppe:</strong> {selected.funkgruppe}</p>{/if}
-					{#if selected.lage}<details><summary><strong>Lage</strong></summary><p class="detail-text">{selected.lage}</p></details>{/if}
-					{#if selected.auftrag}<details><summary><strong>Auftrag</strong></summary><p class="detail-text">{selected.auftrag}</p></details>{/if}
-					{#if selected.parent_convoy_id}
-						<p class="tag-pill">Teilverband</p>
-					{/if}
-				</div>
-				<div class="map-actions">
-					<button class="btn-map" class:active={$mapMode === 'set-start'} onclick={() => mapMode.set($mapMode === 'set-start' ? 'idle' : 'set-start')}>📍 Start</button>
-					<button class="btn-map" class:active={$mapMode === 'set-end'} onclick={() => mapMode.set($mapMode === 'set-end' ? 'idle' : 'set-end')}>🏁 Ziel</button>
-					<button class="btn-map" class:active={$mapMode === 'add-waypoint'} onclick={() => mapMode.set($mapMode === 'add-waypoint' ? 'idle' : 'add-waypoint')}>➕ Wegpunkt</button>
-				</div>
-				{#if $mapMode === 'add-waypoint'}
-					<div class="wp-quick-form">
-						<input placeholder="Name" bind:value={newWpForm.name} />
-						<select bind:value={newWpForm.type}>
-							<option value="waypoint">Wegpunkt</option>
-							<option value="stop">Halt</option>
-							<option value="checkpoint">Kontrollpunkt</option>
-							<option value="technical_stop">Techn. Halt</option>
-						</select>
-						{#if newWpForm.type === 'technical_stop'}
-							<select bind:value={newWpForm.halt_purpose}>
-								<option value="">Grund wählen…</option>
-								<option value="fuel">Tanken</option>
-								<option value="rest">Pause</option>
-								<option value="maintenance">Wartung</option>
-								<option value="other">Sonstiges</option>
+				<!-- ── TAB: Plan ── -->
+				{#if activeTab === 'convoy' && selected}
+					<div class="section">
+						<p><strong>Organisation:</strong> {selected.organization ?? '–'}</p>
+						<p><strong>Startzeit:</strong> {selected.start_time ? new Date(selected.start_time).toLocaleString('de-DE') : '–'}</p>
+						<p><strong>Tempo:</strong> {selected.speed_urban_kmh} km/h (innerorts) / {selected.speed_rural_kmh} km/h (außerorts)</p>
+						{#if selected.marschform}<p><strong>Marschform:</strong> {({ geschlossener_verband:'Geschlossener Verband', einzelgruppen:'Einzelgruppen', individuell:'Individuelle Anreise' })[selected.marschform] ?? selected.marschform}</p>{/if}
+						{#if selected.ablaufpunkt}<p><strong>Ablaufpunkt:</strong> {selected.ablaufpunkt}</p>{/if}
+						{#if selected.ablaufführer}<p><strong>Ablaufführer:</strong> {selected.ablaufführer}</p>{/if}
+						{#if selected.funkgruppe}<p><strong>Funkgruppe:</strong> {selected.funkgruppe}</p>{/if}
+						{#if selected.lage}<details><summary><strong>Lage</strong></summary><p class="detail-text">{selected.lage}</p></details>{/if}
+						{#if selected.auftrag}<details><summary><strong>Auftrag</strong></summary><p class="detail-text">{selected.auftrag}</p></details>{/if}
+						{#if selected.parent_convoy_id}
+							<p class="tag-pill">Teilverband</p>
+						{/if}
+					</div>
+					<div class="map-actions">
+						<button class="btn-map" class:active={$mapMode === 'set-start'} onclick={() => mapMode.set($mapMode === 'set-start' ? 'idle' : 'set-start')}>📍 Start</button>
+						<button class="btn-map" class:active={$mapMode === 'set-end'} onclick={() => mapMode.set($mapMode === 'set-end' ? 'idle' : 'set-end')}>🏁 Ziel</button>
+						<button class="btn-map" class:active={$mapMode === 'add-waypoint'} onclick={() => mapMode.set($mapMode === 'add-waypoint' ? 'idle' : 'add-waypoint')}>➕ Wegpunkt</button>
+					</div>
+					{#if $mapMode === 'add-waypoint'}
+						<div class="wp-quick-form">
+							<input placeholder="Name" bind:value={newWpForm.name} />
+							<select bind:value={newWpForm.type}>
+								<option value="waypoint">Wegpunkt</option>
+								<option value="stop">Halt</option>
+								<option value="checkpoint">Kontrollpunkt</option>
+								<option value="technical_stop">Techn. Halt</option>
 							</select>
-						{/if}
-						<input type="number" placeholder="Haltezeit (min)" bind:value={newWpForm.hold_duration_min} min="0" />
-						<p class="hint">Jetzt auf Karte klicken ↗</p>
-					</div>
-				{/if}
-				<div class="route-actions">
-					<button class="btn-primary" onclick={calculateRoute} disabled={loading}>
-						{loading ? 'Berechne…' : '🗺 Route berechnen'}
-					</button>
-					{#if route}
-						<p class="route-info">{((route.distance_m ?? 0) / 1000).toFixed(1)} km · {formatDuration(route.duration_s)}</p>
-						{#if route.fuel_analysis?.fuel_stop_needed}
-							<div class="fuel-warning">
-								<p>⛽ <strong>Tankstopp nötig!</strong></p>
-								<p class="fuel-detail">
-									{route.fuel_analysis.limiting_vehicle} hat nur <strong>{route.fuel_analysis.min_range_km} km</strong> Reichweite
-									(Route: {route.fuel_analysis.route_distance_km} km).
-									Empfohlener Stopp bei km {route.fuel_analysis.fuel_stop_km}.
-								</p>
-								<button class="btn-fuel-search" onclick={searchFuelStations} disabled={fuelStationsLoading}>
-									{fuelStationsLoading ? 'Suche…' : '🔍 Tankstellen suchen'}
-								</button>
-								{#if showFuelStations && fuelStations.length}
-									<ul class="fuel-station-list">
-										{#each fuelStations as s}
-											<li class="fuel-station-item">
-												<div>
-													<strong>{s.name}</strong>
-													{#if s.brand && s.brand !== s.name}<span class="tag">{s.brand}</span>{/if}
-													<span class="tag">{(s.distance_m / 1000).toFixed(1)} km vom Stopp</span>
-													{#if s.opening_hours}<span class="tag">{s.opening_hours}</span>{/if}
-												</div>
-												<button class="btn-small" onclick={() => addFuelStopWaypoint(s)}>+ Waypoint</button>
-											</li>
-										{/each}
-									</ul>
-								{:else if showFuelStations}
-									<p class="hint">Keine Tankstellen in der Nähe gefunden. Radius erhöhen?</p>
-								{/if}
-							</div>
-						{:else if route.fuel_analysis?.min_range_km}
-							<p class="fuel-ok">✅ Reichweite ausreichend ({route.fuel_analysis.min_range_km} km / {route.fuel_analysis.route_distance_km} km)</p>
-						{/if}
-					{/if}
-				</div>
-
-				<!-- V2: Teilverband -->
-				<div class="section" style="margin-top:.75rem">
-					<div class="section-header">
-						<strong>Teilverbände</strong>
-						<button class="btn-small" onclick={() => (showSubConvoyForm = !showSubConvoyForm)}>+ Neu</button>
-					</div>
-					{#if showSubConvoyForm}
-						<form class="inline-form" onsubmit={async (e) => {
-							e.preventDefault();
-							if (!selected) return;
-							await convoysApi.createSubConvoy(selected.id, { name: newConvoy.name, speed_urban_kmh: 40, speed_rural_kmh: 65 });
-							await loadData();
-							showSubConvoyForm = false;
-							newConvoy = { ...newConvoy, name: '' };
-						}}>
-							<input placeholder="Name des Teilverbands *" bind:value={newConvoy.name} required />
-							<button type="submit">Erstellen</button>
-						</form>
-					{/if}
-					{#each convoyList.filter(c => c.parent_convoy_id === selected?.id) as sub}
-						<div class="sub-convoy-item" onclick={() => selectConvoy(sub)}>
-							↳ {sub.name}
+							{#if newWpForm.type === 'technical_stop'}
+								<select bind:value={newWpForm.halt_purpose}>
+									<option value="">Grund wählen…</option>
+									<option value="fuel">Tanken</option>
+									<option value="rest">Pause</option>
+									<option value="maintenance">Wartung</option>
+									<option value="other">Sonstiges</option>
+								</select>
+							{/if}
+							<input type="number" placeholder="Haltezeit (min)" bind:value={newWpForm.hold_duration_min} min="0" />
+							<p class="hint">Jetzt auf Karte klicken ↗</p>
 						</div>
-					{/each}
-				</div>
-			{/if}
-
-			<!-- ── TAB: Fahrzeuge ── -->
-			{#if activeTab === 'fahrzeuge'}
-				<div class="section">
-					<div class="section-header">
-						<strong>Meine Fahrzeuge</strong>
-						<button class="btn-small" onclick={() => (showVehicleForm = !showVehicleForm)}>+ Neu</button>
-					</div>
-					{#if showVehicleForm}
-						<form class="inline-form" onsubmit={(e) => { e.preventDefault(); createVehicle(); }}>
-							<input placeholder="Name *" bind:value={newVehicle.name} required />
-							<input placeholder="Funkrufname" bind:value={newVehicle.callsign} />
-							<input placeholder="Kennzeichen" bind:value={newVehicle.license_plate} />
-							<input placeholder="Höhe (cm)" type="number" bind:value={newVehicle.height_cm} />
-							<input placeholder="Gewicht (kg)" type="number" bind:value={newVehicle.weight_kg} />
-							<input placeholder="Länge (cm)" type="number" bind:value={newVehicle.length_cm} />
-							<input placeholder="Funktion im Konvoi" bind:value={newVehicle.convoy_role} />
-							<hr style="border-color:rgba(255,255,255,.15);margin:.2rem 0" />
-							<input placeholder="Tankvolumen (Liter)" type="number" step="0.1" min="0" bind:value={newVehicle.tank_capacity_l} />
-							<input placeholder="Verbrauch (l/100 km)" type="number" step="0.1" min="0" bind:value={newVehicle.fuel_consumption_l100km} />
-							<input placeholder="Aktueller Füllstand (Liter)" type="number" step="0.1" min="0" bind:value={newVehicle.current_fuel_l} />
-							<button type="submit">Speichern</button>
-						</form>
 					{/if}
-					<ul class="vehicle-list">
-						{#each allVehicles as v}
-							<li class="vehicle-item" style="flex-direction:column;align-items:stretch;gap:.3rem">
-								<div style="display:flex;justify-content:space-between;align-items:center">
-									<div>
-										<strong>{v.name}</strong>
-										{#if v.callsign}<span class="tag">{v.callsign}</span>{/if}
-										{#if v.license_plate}<span class="tag">{v.license_plate}</span>{/if}
-										{#if v.range_km}<span class="tag fuel-tag">⛽ {v.range_km} km</span>{/if}
-									</div>
-									{#if selected}
-										{#if assignedIds.has(v.id)}
-											<button class="btn-small danger" onclick={() => removeVehicleFromConvoy(v.id)}>–</button>
-										{:else}
-											<button class="btn-small" onclick={() => addVehicleToConvoy(v.id)}>+</button>
-										{/if}
+					<div class="route-actions">
+						<button class="btn-primary" onclick={calculateRoute} disabled={loading}>
+							{loading ? 'Berechne…' : '🗺 Route berechnen'}
+						</button>
+						{#if route}
+							<p class="route-info">{((route.distance_m ?? 0) / 1000).toFixed(1)} km · {formatDuration(route.duration_s)}</p>
+							{#if route.fuel_analysis?.fuel_stop_needed}
+								<div class="fuel-warning">
+									<p>⛽ <strong>Tankstopp nötig!</strong></p>
+									<p class="fuel-detail">
+										{route.fuel_analysis.limiting_vehicle} hat nur <strong>{route.fuel_analysis.min_range_km} km</strong> Reichweite
+										(Route: {route.fuel_analysis.route_distance_km} km).
+										Empfohlener Stopp bei km {route.fuel_analysis.fuel_stop_km}.
+									</p>
+									<button class="btn-fuel-search" onclick={searchFuelStations} disabled={fuelStationsLoading}>
+										{fuelStationsLoading ? 'Suche…' : '🔍 Tankstellen suchen'}
+									</button>
+									{#if showFuelStations && fuelStations.length}
+										<ul class="fuel-station-list">
+											{#each fuelStations as s}
+												<li class="fuel-station-item">
+													<div>
+														<strong>{s.name}</strong>
+														{#if s.brand && s.brand !== s.name}<span class="tag">{s.brand}</span>{/if}
+														<span class="tag">{(s.distance_m / 1000).toFixed(1)} km vom Stopp</span>
+														{#if s.opening_hours}<span class="tag">{s.opening_hours}</span>{/if}
+													</div>
+													<button class="btn-small" onclick={() => addFuelStopWaypoint(s)}>+ Waypoint</button>
+												</li>
+											{/each}
+										</ul>
+									{:else if showFuelStations}
+										<p class="hint">Keine Tankstellen in der Nähe gefunden. Radius erhöhen?</p>
 									{/if}
 								</div>
-								{#if selected && !assignedIds.has(v.id)}
-									<select class="sf-select" bind:value={vehicleSonderfunktion[v.id]}>
-										<option value="">Sonderfunktion…</option>
-										<option value="spitzenführer">Spitzenführer</option>
-										<option value="schließender">Schließender (Ablaufführer)</option>
-										<option value="sanitaet">Sanitätsdienstliche Absicherung</option>
-										<option value="führungsfahrzeug">Führungsfahrzeug</option>
-									</select>
-								{/if}
-							</li>
+							{:else if route.fuel_analysis?.min_range_km}
+								<p class="fuel-ok">✅ Reichweite ausreichend ({route.fuel_analysis.min_range_km} km / {route.fuel_analysis.route_distance_km} km)</p>
+							{/if}
+						{/if}
+					</div>
+
+					<!-- V2: Teilverband -->
+					<div class="section" style="margin-top:.75rem">
+						<div class="section-header">
+							<strong>Teilverbände</strong>
+							<button class="btn-small" onclick={() => (showSubConvoyForm = !showSubConvoyForm)}>+ Neu</button>
+						</div>
+						{#if showSubConvoyForm}
+							<form class="inline-form" onsubmit={async (e) => {
+								e.preventDefault();
+								if (!selected) return;
+								await convoysApi.createSubConvoy(selected.id, { name: newConvoy.name, speed_urban_kmh: 40, speed_rural_kmh: 65 });
+								await loadData();
+								showSubConvoyForm = false;
+								newConvoy = { ...newConvoy, name: '' };
+							}}>
+								<input placeholder="Name des Teilverbands *" bind:value={newConvoy.name} required />
+								<button type="submit">Erstellen</button>
+							</form>
+						{/if}
+						{#each convoyList.filter(c => c.parent_convoy_id === selected?.id) as sub}
+							<div class="sub-convoy-item" onclick={() => selectConvoy(sub)}>
+								↳ {sub.name}
+							</div>
 						{/each}
-					</ul>
-					{#if selected?.convoy_vehicles.length}
-						<div class="section-header" style="margin-top:.75rem"><strong>Im Verband (Marschfolge)</strong></div>
-						<ol class="vehicle-list">
-							{#each selected.convoy_vehicles as cv}
-								<li class="vehicle-item convoy-vehicle-row">
-									<div class="veh-left">
-										<span class="veh-pos">{cv.position + 1}.</span>
+					</div>
+				{/if}
+
+				<!-- ── TAB: Fahrzeuge ── -->
+				{#if activeTab === 'fahrzeuge'}
+					<div class="section">
+						<div class="section-header">
+							<strong>Meine Fahrzeuge</strong>
+							<button class="btn-small" onclick={() => (showVehicleForm = !showVehicleForm)}>+ Neu</button>
+						</div>
+						{#if showVehicleForm}
+							<form class="inline-form" onsubmit={(e) => { e.preventDefault(); createVehicle(); }}>
+								<input placeholder="Name *" bind:value={newVehicle.name} required />
+								<input placeholder="Funkrufname" bind:value={newVehicle.callsign} />
+								<input placeholder="Kennzeichen" bind:value={newVehicle.license_plate} />
+								<input placeholder="Höhe (cm)" type="number" bind:value={newVehicle.height_cm} />
+								<input placeholder="Gewicht (kg)" type="number" bind:value={newVehicle.weight_kg} />
+								<input placeholder="Länge (cm)" type="number" bind:value={newVehicle.length_cm} />
+								<input placeholder="Funktion im Konvoi" bind:value={newVehicle.convoy_role} />
+								<hr style="border-color:rgba(255,255,255,.15);margin:.2rem 0" />
+								<input placeholder="Tankvolumen (Liter)" type="number" step="0.1" min="0" bind:value={newVehicle.tank_capacity_l} />
+								<input placeholder="Verbrauch (l/100 km)" type="number" step="0.1" min="0" bind:value={newVehicle.fuel_consumption_l100km} />
+								<input placeholder="Aktueller Füllstand (Liter)" type="number" step="0.1" min="0" bind:value={newVehicle.current_fuel_l} />
+								<button type="submit">Speichern</button>
+							</form>
+						{/if}
+						<ul class="vehicle-list">
+							{#each allVehicles as v}
+								<li class="vehicle-item" style="flex-direction:column;align-items:stretch;gap:.3rem">
+									<div style="display:flex;justify-content:space-between;align-items:center">
 										<div>
-											<span>{cv.vehicle.name}</span>
-											{#if cv.vehicle.callsign}<span class="tag">{cv.vehicle.callsign}</span>{/if}
-											{#if cv.sonderfunktion}
-												<span class="tag sonder">{({ spitzenführer:'Spitze', schließender:'Schließ.', sanitaet:'San.', ablaufführer:'Ablauf', führungsfahrzeug:'Führung' })[cv.sonderfunktion] ?? cv.sonderfunktion}</span>
-											{/if}
+											<strong>{v.name}</strong>
+											{#if v.callsign}<span class="tag">{v.callsign}</span>{/if}
+											{#if v.license_plate}<span class="tag">{v.license_plate}</span>{/if}
+											{#if v.range_km}<span class="tag fuel-tag">⛽ {v.range_km} km</span>{/if}
 										</div>
+										{#if selected}
+											{#if assignedIds.has(v.id)}
+												<button class="btn-small danger" onclick={() => removeVehicleFromConvoy(v.id)}>–</button>
+											{:else}
+												<button class="btn-small" onclick={() => addVehicleToConvoy(v.id)}>+</button>
+											{/if}
+										{/if}
 									</div>
-									<span class="status-dot" style="background:{STATUS_COLORS[cv.vehicle_status] ?? '#95a5a6'}" title={STATUS_LABELS[cv.vehicle_status] ?? cv.vehicle_status}></span>
+									{#if selected && !assignedIds.has(v.id)}
+										<select class="sf-select" bind:value={vehicleSonderfunktion[v.id]}>
+											<option value="">Sonderfunktion…</option>
+											<option value="spitzenführer">Spitzenführer</option>
+											<option value="schließender">Schließender (Ablaufführer)</option>
+											<option value="sanitaet">Sanitätsdienstliche Absicherung</option>
+											<option value="führungsfahrzeug">Führungsfahrzeug</option>
+										</select>
+									{/if}
 								</li>
 							{/each}
-						</ol>
-						<p class="hint" style="margin-top:.4rem">Position 1 = Spitzenführer, letztes Fahrzeug = Schließender</p>
-					{/if}
-				</div>
-			{/if}
-
-			<!-- ── TAB: Wegpunkte ── -->
-			{#if activeTab === 'wegpunkte' && selected}
-				<div class="section">
-					<div class="section-header">
-						<strong>Wegpunkte</strong>
-						<button class="btn-small" class:active={$mapMode === 'add-waypoint'} onclick={() => mapMode.set($mapMode === 'add-waypoint' ? 'idle' : 'add-waypoint')}>
-							+ Karte
-						</button>
-					</div>
-					{#if !selected.waypoints.length}
-						<p class="hint">Noch keine Wegpunkte.</p>
-					{/if}
-					<ul class="wp-list">
-						{#each selected.waypoints as wp}
-							<li class="wp-item">
-								<div>
-									<strong>{wp.name}</strong>
-									<span class="tag">{WP_TYPE_LABELS[wp.type] ?? wp.type}</span>
-									{#if wp.halt_purpose}<span class="tag orange">{wp.halt_purpose}</span>{/if}
-									{#if wp.hold_duration_min > 0}<span class="tag">{wp.hold_duration_min} min</span>{/if}
-								</div>
-								<button class="btn-small danger" onclick={() => deleteWaypoint(wp.id)}>✕</button>
-							</li>
-						{/each}
-					</ul>
-				</div>
-			{/if}
-
-			<!-- ── TAB: Zeitplan ── -->
-			{#if activeTab === 'zeitplan' && selected}
-				<div class="section">
-					<strong>Zeitplan</strong>
-					{#if selected.waypoints.some(w => w.planned_arrival)}
-						<table class="schedule-table">
-							<thead><tr><th>Wegpunkt</th><th>Ankunft</th><th>Abfahrt</th></tr></thead>
-							<tbody>
-								{#each selected.waypoints as wp}
-									<tr>
-										<td>{wp.name} {#if wp.type === 'technical_stop'}<span class="tag orange">Techn.</span>{/if}</td>
-										<td>{formatTime(wp.planned_arrival)}</td>
-										<td>{formatTime(wp.planned_departure)}</td>
-									</tr>
+						</ul>
+						{#if selected?.convoy_vehicles.length}
+							<div class="section-header" style="margin-top:.75rem"><strong>Im Verband (Marschfolge)</strong></div>
+							<ol class="vehicle-list">
+								{#each selected.convoy_vehicles as cv}
+									<li class="vehicle-item convoy-vehicle-row">
+										<div class="veh-left">
+											<span class="veh-pos">{cv.position + 1}.</span>
+											<div>
+												<span>{cv.vehicle.name}</span>
+												{#if cv.vehicle.callsign}<span class="tag">{cv.vehicle.callsign}</span>{/if}
+												{#if cv.sonderfunktion}
+													<span class="tag sonder">{({ spitzenführer:'Spitze', schließender:'Schließ.', sanitaet:'San.', ablaufführer:'Ablauf', führungsfahrzeug:'Führung' })[cv.sonderfunktion] ?? cv.sonderfunktion}</span>
+												{/if}
+											</div>
+										</div>
+										<span class="status-dot" style="background:{STATUS_COLORS[cv.vehicle_status] ?? '#95a5a6'}" title={STATUS_LABELS[cv.vehicle_status] ?? cv.vehicle_status}></span>
+									</li>
 								{/each}
-							</tbody>
-						</table>
-					{:else}
-						<p class="hint">Zeitplan wird nach Routenberechnung angezeigt.</p>
-					{/if}
-				</div>
-			{/if}
+							</ol>
+							<p class="hint" style="margin-top:.4rem">Position 1 = Spitzenführer, letztes Fahrzeug = Schließender</p>
+						{/if}
+					</div>
+				{/if}
 
-			<!-- ── TAB: Export ── -->
-			{#if activeTab === 'export' && selected}
-				<div class="section">
-					<strong>Exportieren</strong>
-					<div class="export-grid">
-						<a class="btn-export" href="{apiBase}/api/convoys/{selected.id}/export/gpx" target="_blank">
-							📍 GPX herunterladen
-						</a>
-						<a class="btn-export" href="{apiBase}/api/convoys/{selected.id}/export/json" target="_blank">
-							📄 JSON herunterladen
-						</a>
-						<a class="btn-export" href="{apiBase}/api/convoys/{selected.id}/export/pdf" target="_blank">
-							🖨 Marschbefehl PDF
-						</a>
-						<button class="btn-export" onclick={() => navigator.clipboard.writeText(`${window.location.origin}/share/${selected?.share_token}`)}>
-							🔗 Link kopieren
+				<!-- ── TAB: Wegpunkte ── -->
+				{#if activeTab === 'wegpunkte' && selected}
+					<div class="section">
+						<div class="section-header">
+							<strong>Wegpunkte</strong>
+							<button class="btn-small" class:active={$mapMode === 'add-waypoint'} onclick={() => mapMode.set($mapMode === 'add-waypoint' ? 'idle' : 'add-waypoint')}>
+								+ Karte
+							</button>
+						</div>
+						{#if !selected.waypoints.length}
+							<p class="hint">Noch keine Wegpunkte.</p>
+						{/if}
+						<ul class="wp-list">
+							{#each selected.waypoints as wp}
+								<li class="wp-item">
+									<div>
+										<strong>{wp.name}</strong>
+										<span class="tag">{WP_TYPE_LABELS[wp.type] ?? wp.type}</span>
+										{#if wp.halt_purpose}<span class="tag orange">{wp.halt_purpose}</span>{/if}
+										{#if wp.hold_duration_min > 0}<span class="tag">{wp.hold_duration_min} min</span>{/if}
+									</div>
+									<button class="btn-small danger" onclick={() => deleteWaypoint(wp.id)}>✕</button>
+								</li>
+							{/each}
+						</ul>
+					</div>
+				{/if}
+
+				<!-- ── TAB: Zeitplan ── -->
+				{#if activeTab === 'zeitplan' && selected}
+					<div class="section">
+						<strong>Zeitplan</strong>
+						{#if selected.waypoints.some(w => w.planned_arrival)}
+							<table class="schedule-table">
+								<thead><tr><th>Wegpunkt</th><th>Ankunft</th><th>Abfahrt</th></tr></thead>
+								<tbody>
+									{#each selected.waypoints as wp}
+										<tr>
+											<td>{wp.name} {#if wp.type === 'technical_stop'}<span class="tag orange">Techn.</span>{/if}</td>
+											<td>{formatTime(wp.planned_arrival)}</td>
+											<td>{formatTime(wp.planned_departure)}</td>
+										</tr>
+									{/each}
+								</tbody>
+							</table>
+						{:else}
+							<p class="hint">Zeitplan wird nach Routenberechnung angezeigt.</p>
+						{/if}
+					</div>
+				{/if}
+
+				<!-- ── TAB: Export ── -->
+				{#if activeTab === 'export' && selected}
+					<div class="section">
+						<strong>Exportieren</strong>
+						<div class="export-grid">
+							<a class="btn-export" href="{apiBase}/api/convoys/{selected.id}/export/gpx" target="_blank">
+								📍 GPX herunterladen
+							</a>
+							<a class="btn-export" href="{apiBase}/api/convoys/{selected.id}/export/json" target="_blank">
+								📄 JSON herunterladen
+							</a>
+							<a class="btn-export" href="{apiBase}/api/convoys/{selected.id}/export/pdf" target="_blank">
+								🖨 Marschbefehl PDF
+							</a>
+							<button class="btn-export" onclick={() => navigator.clipboard.writeText(`${window.location.origin}/share/${selected?.share_token}`)}>
+								🔗 Link kopieren
+							</button>
+						</div>
+						<div class="section-header" style="margin-top:1rem"><strong>Live-Tracking</strong></div>
+						<a class="btn-export" href="/tracking/{selected.id}" target="_blank">🔴 Tracking-Ansicht öffnen</a>
+						<div class="section-header" style="margin-top:1rem"><strong>Sperrungen & Baustellen</strong></div>
+						<button class="btn-export" class:active={showClosures} onclick={toggleClosures}>
+							{showClosures ? '🚧 Sperrungen ausblenden' : '🚧 Sperrungen laden'}
 						</button>
 					</div>
-					<div class="section-header" style="margin-top:1rem"><strong>Live-Tracking</strong></div>
-					<a class="btn-export" href="/tracking/{selected.id}" target="_blank">🔴 Tracking-Ansicht öffnen</a>
-					<div class="section-header" style="margin-top:1rem"><strong>Sperrungen & Baustellen</strong></div>
-					<button class="btn-export" class:active={showClosures} onclick={toggleClosures}>
-						{showClosures ? '🚧 Sperrungen ausblenden' : '🚧 Sperrungen laden'}
-					</button>
-				</div>
-			{/if}
+				{/if}
 
-			<!-- ── TAB: Lage ── -->
-			{#if activeTab === 'lage' && selected}
-				<LageLayerPanel
-					convoyId={selected.id}
-					onLayersChange={(layers) => lageLayers.set(layers)}
-				/>
-			{/if}
+				<!-- ── TAB: Lage ── -->
+				{#if activeTab === 'lage' && selected}
+					<LageLayerPanel
+						convoyId={selected.id}
+						onLayersChange={(layers) => lageLayers.set(layers)}
+					/>
+				{/if}
 
-			<!-- ── TAB: Org ── -->
-			{#if activeTab === 'org'}
-				<div class="section">
-					<div class="section-header">
-						<strong>Organisationen</strong>
-						<button class="btn-small" onclick={async () => {
-							const name = prompt('Organisationsname:');
-							if (name) { await orgsApi.create(name); organizations = await orgsApi.list(); }
-						}}>+ Neu</button>
-					</div>
-					{#each organizations as org}
-						<div class="org-item">
-							<div>
-								<strong>{org.name}</strong>
-								<span class="tag">{org.my_role}</span>
-								<span class="tag">{org.member_count} Mitglieder</span>
-							</div>
-							{#if org.my_role === 'admin'}
-								<button class="btn-small" onclick={async () => {
-									const email = prompt('E-Mail des neuen Mitglieds:');
-									const role = prompt('Rolle (admin/planer/fahrer/beobachter):', 'beobachter');
-									if (email && role) { await orgsApi.addMember(org.id, email, role); organizations = await orgsApi.list(); }
-								}}>+ Mitglied</button>
-							{/if}
+				<!-- ── TAB: Org ── -->
+				{#if activeTab === 'org'}
+					<div class="section">
+						<div class="section-header">
+							<strong>Organisationen</strong>
+							<button class="btn-small" onclick={async () => {
+								const name = prompt('Organisationsname:');
+								if (name) { await orgsApi.create(name); organizations = await orgsApi.list(); }
+							}}>+ Neu</button>
 						</div>
-					{/each}
-					{#if !organizations.length}
-						<p class="hint">Noch keine Organisationen erstellt.</p>
-					{/if}
+						{#each organizations as org}
+							<div class="org-item">
+								<div>
+									<strong>{org.name}</strong>
+									<span class="tag">{org.my_role}</span>
+									<span class="tag">{org.member_count} Mitglieder</span>
+								</div>
+								{#if org.my_role === 'admin'}
+									<button class="btn-small" onclick={async () => {
+										const email = prompt('E-Mail des neuen Mitglieds:');
+										const role = prompt('Rolle (admin/planer/fahrer/beobachter):', 'beobachter');
+										if (email && role) { await orgsApi.addMember(org.id, email, role); organizations = await orgsApi.list(); }
+									}}>+ Mitglied</button>
+								{/if}
+							</div>
+						{/each}
+						{#if !organizations.length}
+							<p class="hint">Noch keine Organisationen erstellt.</p>
+						{/if}
+					</div>
+				{/if}
+			</div>
+		{:else}
+			<!-- Wizard -->
+			<div class="wizard">
+				<div class="wizard-steps">
+					<span class:active={wizardStep === 1}>1</span>
+					<span class="sep">›</span>
+					<span class:active={wizardStep === 2}>2</span>
+					<span class="sep">›</span>
+					<span class:active={wizardStep === 3}>3</span>
 				</div>
-			{/if}
-		</div>
+
+				{#if wizardStep === 1}
+					<h3 class="wizard-title">Startpunkt setzen</h3>
+					<LocationSearch
+						placeholder="Startort suchen…"
+						onSelect={wizardSetPoint}
+					/>
+					<p class="hint">oder direkt auf die Karte klicken ↗</p>
+					<button class="btn-skip" onclick={wizardSkip}>Überspringen →</button>
+
+				{:else if wizardStep === 2}
+					<h3 class="wizard-title">Zielpunkt setzen</h3>
+					<LocationSearch
+						placeholder="Zielort suchen…"
+						onSelect={wizardSetPoint}
+					/>
+					<p class="hint">oder direkt auf die Karte klicken ↗</p>
+					<button class="btn-skip" onclick={wizardSkip}>Überspringen →</button>
+
+				{:else if wizardStep === 3}
+					<h3 class="wizard-title">Wegpunkte hinzufügen</h3>
+					<input
+						class="wp-name-input"
+						placeholder="Name (optional)"
+						bind:value={wizardWpName}
+					/>
+					<LocationSearch
+						placeholder="Wegpunkt suchen…"
+						onSelect={wizardSetPoint}
+					/>
+					<p class="hint">oder auf die Karte klicken ↗</p>
+					{#if selected?.waypoints?.length}
+						<ul class="wizard-wp-list">
+							{#each selected.waypoints as wp}
+								<li>📍 {wp.name}</li>
+							{/each}
+						</ul>
+					{/if}
+					<button class="btn-primary" onclick={wizardFinish}>Fertig ✓</button>
+					<button class="btn-skip" onclick={wizardSkip}>Überspringen →</button>
+				{/if}
+			</div>
+		{/if}
 
 		{#if error}
 			<p class="error-bar" onclick={() => (error = '')}>{error} ✕</p>
@@ -813,4 +867,16 @@
 	.fuel-station-item { display: flex; justify-content: space-between; align-items: flex-start; gap: .4rem; padding: .35rem; background: rgba(255,255,255,.07); border-radius: 4px; font-size: .8rem; }
 
 	.fuel-ok { font-size: .8rem; color: #a9dfbf; margin: .3rem 0 0; }
+
+	.wizard { flex: 1; overflow-y: auto; padding: .75rem 1rem; display: flex; flex-direction: column; gap: .5rem; }
+	.wizard-steps { display: flex; align-items: center; gap: .3rem; font-size: .75rem; color: rgba(255,255,255,.4); margin-bottom: .25rem; }
+	.wizard-steps span.active { color: white; font-weight: 700; }
+	.wizard-steps .sep { color: rgba(255,255,255,.25); }
+	.wizard-title { margin: 0 0 .5rem; font-size: .95rem; font-weight: 600; color: white; }
+	.btn-skip { background: none; border: none; color: rgba(255,255,255,.45); font-size: .78rem; cursor: pointer; padding: .2rem 0; text-align: left; }
+	.btn-skip:hover { color: rgba(255,255,255,.7); }
+	.wp-name-input { width: 100%; padding: .4rem .6rem; border-radius: 4px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.08); color: white; font-size: .85rem; box-sizing: border-box; }
+	.wp-name-input::placeholder { color: rgba(255,255,255,.35); }
+	.wizard-wp-list { list-style: none; padding: 0; margin: 0; max-height: 120px; overflow-y: auto; }
+	.wizard-wp-list li { font-size: .8rem; color: rgba(255,255,255,.75); padding: .2rem 0; border-bottom: 1px solid rgba(255,255,255,.07); }
 </style>
