@@ -1,0 +1,55 @@
+import httpx
+
+OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+
+WMO_CODES = {
+    0: "Klar", 1: "Überwiegend klar", 2: "Teils bewölkt", 3: "Bewölkt",
+    45: "Nebel", 48: "Raureif",
+    51: "Leichter Nieselregen", 53: "Nieselregen", 55: "Starker Nieselregen",
+    61: "Leichter Regen", 63: "Regen", 65: "Starker Regen",
+    71: "Leichter Schnee", 73: "Schnee", 75: "Starker Schnee",
+    80: "Leichte Schauer", 81: "Schauer", 82: "Starke Schauer",
+    95: "Gewitter", 96: "Gewitter mit Hagel", 99: "Schweres Gewitter mit Hagel",
+}
+
+
+async def get_weather(lat: float, lon: float) -> dict:
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "current_weather": True,
+        "hourly": "temperature_2m,precipitation_probability,weathercode,windspeed_10m",
+        "forecast_days": 1,
+        "timezone": "Europe/Berlin",
+    }
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(OPEN_METEO_URL, params=params)
+        resp.raise_for_status()
+        data = resp.json()
+
+    cw = data.get("current_weather", {})
+    hourly = data.get("hourly", {})
+    hours = hourly.get("time", [])
+    temps = hourly.get("temperature_2m", [])
+    precip = hourly.get("precipitation_probability", [])
+    wcodes = hourly.get("weathercode", [])
+
+    forecast = [
+        {
+            "time": hours[i],
+            "temp_c": temps[i],
+            "precip_pct": precip[i],
+            "condition": WMO_CODES.get(wcodes[i], "Unbekannt"),
+        }
+        for i in range(min(len(hours), 12))
+    ]
+
+    return {
+        "current": {
+            "temp_c": cw.get("temperature"),
+            "windspeed_kmh": cw.get("windspeed"),
+            "condition": WMO_CODES.get(cw.get("weathercode", -1), "Unbekannt"),
+            "is_day": cw.get("is_day", 1) == 1,
+        },
+        "hourly_forecast": forecast,
+    }
