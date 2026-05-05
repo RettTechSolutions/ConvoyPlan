@@ -16,7 +16,10 @@ export interface Waypoint {
 	notes: string | null; order_index: number;
 }
 
-export interface ConvoyVehicleItem { vehicle: Vehicle; position: number; vehicle_status: string }
+export interface ConvoyVehicleItem {
+	vehicle: Vehicle; position: number; vehicle_status: string;
+	sonderfunktion: string | null; mobile_phone: string | null;
+}
 
 export interface Convoy {
 	id: string; name: string; organization: string | null;
@@ -25,6 +28,9 @@ export interface Convoy {
 	status: string; share_token: string; created_at: string;
 	start_point: Point | null; end_point: Point | null;
 	convoy_vehicles: ConvoyVehicleItem[]; waypoints: Waypoint[];
+	lage: string | null; auftrag: string | null; marschform: string | null;
+	ablaufpunkt: string | null; ablaufzeit: string | null; ablaufführer: string | null;
+	versorgung: string | null; funkgruppe: string | null; anlagen: string | null;
 }
 
 export interface RouteResult {
@@ -80,8 +86,8 @@ export const convoysApi = {
 	get: (id: string) => api.get<Convoy>(`/api/convoys/${id}`),
 	update: (id: string, data: Record<string, unknown>) => api.put<Convoy>(`/api/convoys/${id}`, data),
 	delete: (id: string) => api.delete(`/api/convoys/${id}`),
-	addVehicle: (id: string, vehicleId: string, position: number) =>
-		api.post(`/api/convoys/${id}/vehicles`, { vehicle_id: vehicleId, position }),
+	addVehicle: (id: string, vehicleId: string, position: number, sonderfunktion?: string, mobile_phone?: string) =>
+		api.post(`/api/convoys/${id}/vehicles`, { vehicle_id: vehicleId, position, sonderfunktion, mobile_phone }),
 	removeVehicle: (id: string, vehicleId: string) =>
 		api.delete(`/api/convoys/${id}/vehicles/${vehicleId}`),
 	createWaypoint: (id: string, data: Record<string, unknown>) =>

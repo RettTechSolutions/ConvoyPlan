@@ -18,8 +18,17 @@ class ConvoyCreate(BaseModel):
     start_time: datetime | None = None
     start_point: PointSchema | None = None
     end_point: PointSchema | None = None
-    speed_urban_kmh: int = 50
-    speed_rural_kmh: int = 80
+    speed_urban_kmh: int = 40
+    speed_rural_kmh: int = 65
+    lage: str | None = None
+    auftrag: str | None = None
+    marschform: str | None = None
+    ablaufpunkt: str | None = None
+    ablaufzeit: datetime | None = None
+    ablaufführer: str | None = None
+    versorgung: str | None = None
+    funkgruppe: str | None = None
+    anlagen: str | None = None
 
 
 class ConvoyUpdate(BaseModel):
@@ -31,11 +40,23 @@ class ConvoyUpdate(BaseModel):
     speed_urban_kmh: int | None = None
     speed_rural_kmh: int | None = None
     status: str | None = None
+    lage: str | None = None
+    auftrag: str | None = None
+    marschform: str | None = None
+    ablaufpunkt: str | None = None
+    ablaufzeit: datetime | None = None
+    ablaufführer: str | None = None
+    versorgung: str | None = None
+    funkgruppe: str | None = None
+    anlagen: str | None = None
 
 
 class ConvoyVehicleItem(BaseModel):
     vehicle: VehicleResponse
     position: int
+    vehicle_status: str = "planned"
+    sonderfunktion: str | None = None
+    mobile_phone: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -54,6 +75,15 @@ class ConvoyResponse(BaseModel):
     end_point: PointSchema | None = None
     convoy_vehicles: list[ConvoyVehicleItem] = []
     waypoints: list[WaypointResponse] = []
+    lage: str | None = None
+    auftrag: str | None = None
+    marschform: str | None = None
+    ablaufpunkt: str | None = None
+    ablaufzeit: datetime | None = None
+    ablaufführer: str | None = None
+    versorgung: str | None = None
+    funkgruppe: str | None = None
+    anlagen: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -61,3 +91,11 @@ class ConvoyResponse(BaseModel):
 class AddVehicleRequest(BaseModel):
     vehicle_id: uuid.UUID
     position: int = 0
+    sonderfunktion: str | None = None
+    mobile_phone: str | None = None
+
+
+class UpdateVehicleInConvoyRequest(BaseModel):
+    position: int | None = None
+    sonderfunktion: str | None = None
+    mobile_phone: str | None = None

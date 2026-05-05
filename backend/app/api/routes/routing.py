@@ -209,6 +209,8 @@ async def export_pdf(
             "weight_kg": cv.vehicle.weight_kg,
             "convoy_role": cv.vehicle.convoy_role,
             "position": cv.position,
+            "sonderfunktion": cv.sonderfunktion,
+            "mobile_phone": cv.mobile_phone,
         }
         for cv in convoy.convoy_vehicles
     ]
