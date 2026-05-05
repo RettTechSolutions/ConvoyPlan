@@ -714,39 +714,14 @@
 		<div class="modal" onclick={(e) => e.stopPropagation()}>
 			<h2>Neuer Marschverband</h2>
 			<form onsubmit={(e) => { e.preventDefault(); createConvoy(); }}>
-				<label>Name *<input bind:value={newConvoy.name} required /></label>
-				<label>Organisation (Text)<input bind:value={newConvoy.organization} /></label>
-				{#if organizations.length}
-					<label>Organisation (aus Liste)
-						<select bind:value={newConvoy.organization_id}>
-							<option value="">– keine –</option>
-							{#each organizations as org}
-								<option value={org.id}>{org.name}</option>
-							{/each}
-						</select>
-					</label>
-				{/if}
-				<label>Startzeit<input type="datetime-local" bind:value={newConvoy.start_time} /></label>
-				<label>Geschw. innerorts (km/h) <small>Empf.: 30–45</small><input type="number" bind:value={newConvoy.speed_urban_kmh} min="10" max="60" /></label>
-				<label>Geschw. außerorts (km/h) <small>Empf.: 60–70</small><input type="number" bind:value={newConvoy.speed_rural_kmh} min="30" max="100" /></label>
-				<label>Marschform
-					<select bind:value={newConvoy.marschform}>
-						<option value="geschlossener_verband">Geschlossener Gesamtverband</option>
-						<option value="einzelgruppen">Einzelgruppen</option>
-						<option value="individuell">Individuelle Anreise</option>
-					</select>
-				</label>
-				<label>Ablaufpunkt<input placeholder="Ort des Ablaufpunkts" bind:value={newConvoy.ablaufpunkt} /></label>
-				<label>Ablaufzeit<input type="datetime-local" bind:value={newConvoy.ablaufzeit} /></label>
-				<label>Ablaufführer<input placeholder="Name / Rufname" bind:value={newConvoy.ablaufführer} /></label>
-				<label>Funkgruppe<input placeholder="z.B. KatS Bayern 1" bind:value={newConvoy.funkgruppe} /></label>
-				<label>1. Lage (Gefahren-/Schadenslage)<textarea rows="2" placeholder="Lageschilderung…" bind:value={newConvoy.lage}></textarea></label>
-				<label>2. Auftrag<textarea rows="2" placeholder="Erhaltener Auftrag, Zuteilung…" bind:value={newConvoy.auftrag}></textarea></label>
-				<label>4. Versorgung<textarea rows="2" placeholder="Verpflegung, Betriebsstoff, Sanitätsdienst…" bind:value={newConvoy.versorgung}></textarea></label>
-				<label>6. Anlagen<textarea rows="2" placeholder="Begleitdokumente, Karten…" bind:value={newConvoy.anlagen}></textarea></label>
+				<label>Name *<input bind:value={newConvoy.name} required placeholder="z.B. KatS-Verband Bayern 1" /></label>
+				<label>Startzeit (optional)<input type="datetime-local" bind:value={newConvoy.start_time} /></label>
+				<label>Geschw. innerorts (km/h)<input type="number" bind:value={newConvoy.speed_urban_kmh} min="10" max="60" /></label>
+				<label>Geschw. außerorts (km/h)<input type="number" bind:value={newConvoy.speed_rural_kmh} min="30" max="100" /></label>
+				<p class="hint" style="margin:.25rem 0">Weitere Felder (Lage, Auftrag, Funkgruppe…) kannst du nach dem Erstellen im Plan-Tab ergänzen.</p>
 				<div class="modal-actions">
 					<button type="button" onclick={() => (showConvoyForm = false)}>Abbrechen</button>
-					<button type="submit" class="btn-primary">Erstellen</button>
+					<button type="submit" class="btn-primary">Erstellen & Punkte setzen →</button>
 				</div>
 			</form>
 		</div>
