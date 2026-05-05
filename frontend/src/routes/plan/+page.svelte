@@ -32,7 +32,7 @@
 	let showConvoyForm = $state(false);
 	let showSubConvoyForm = $state(false);
 	let newVehicle = $state({ name:'', callsign:'', license_plate:'', height_cm:'', weight_kg:'', length_cm:'', convoy_role:'' });
-	let newConvoy = $state({ name:'', organization:'', organization_id:'', start_time:'', speed_urban_kmh:50, speed_rural_kmh:80 });
+	let newConvoy = $state({ name:'', organization:'', organization_id:'', start_time:'', speed_urban_kmh:40, speed_rural_kmh:65, lage:'', auftrag:'', marschform:'geschlossener_verband', ablaufpunkt:'', ablaufzeit:'', ablaufführer:'', versorgung:'', funkgruppe:'', anlagen:'' });
 	let newWpForm = $state({ name:'', type:'waypoint', hold_duration_min:0, halt_purpose:'' });
 	let pendingWpClick = $state(false);
 
@@ -76,12 +76,21 @@
 				start_time: newConvoy.start_time || undefined,
 				speed_urban_kmh: newConvoy.speed_urban_kmh,
 				speed_rural_kmh: newConvoy.speed_rural_kmh,
+				lage: newConvoy.lage || undefined,
+				auftrag: newConvoy.auftrag || undefined,
+				marschform: newConvoy.marschform || undefined,
+				ablaufpunkt: newConvoy.ablaufpunkt || undefined,
+				ablaufzeit: newConvoy.ablaufzeit || undefined,
+				ablaufführer: newConvoy.ablaufführer || undefined,
+				versorgung: newConvoy.versorgung || undefined,
+				funkgruppe: newConvoy.funkgruppe || undefined,
+				anlagen: newConvoy.anlagen || undefined,
 			});
 			convoyList = [...convoyList, c];
 			convoys.set(convoyList);
 			selectConvoy(c);
 			showConvoyForm = false;
-			newConvoy = { name:'', organization:'', organization_id:'', start_time:'', speed_urban_kmh:50, speed_rural_kmh:80 };
+			newConvoy = { name:'', organization:'', organization_id:'', start_time:'', speed_urban_kmh:40, speed_rural_kmh:65, lage:'', auftrag:'', marschform:'geschlossener_verband', ablaufpunkt:'', ablaufzeit:'', ablaufführer:'', versorgung:'', funkgruppe:'', anlagen:'' };
 		} catch { error = 'Konvoi konnte nicht erstellt werden'; }
 	}
 
@@ -100,10 +109,13 @@
 		} catch { error = 'Fahrzeug konnte nicht erstellt werden'; }
 	}
 
+	let vehicleSonderfunktion = $state<Record<string, string>>({});
+
 	async function addVehicleToConvoy(vehicleId: string) {
 		if (!selected) return;
 		try {
-			await convoysApi.addVehicle(selected.id, vehicleId, selected.convoy_vehicles.length);
+			const sf = vehicleSonderfunktion[vehicleId] || undefined;
+			await convoysApi.addVehicle(selected.id, vehicleId, selected.convoy_vehicles.length, sf);
 			await refreshConvoy();
 		} catch { error = 'Fehler beim Hinzufügen'; }
 	}
@@ -243,7 +255,13 @@
 				<div class="section">
 					<p><strong>Organisation:</strong> {selected.organization ?? '–'}</p>
 					<p><strong>Startzeit:</strong> {selected.start_time ? new Date(selected.start_time).toLocaleString('de-DE') : '–'}</p>
-					<p><strong>Tempo:</strong> {selected.speed_urban_kmh} km/h / {selected.speed_rural_kmh} km/h</p>
+					<p><strong>Tempo:</strong> {selected.speed_urban_kmh} km/h (innerorts) / {selected.speed_rural_kmh} km/h (außerorts)</p>
+					{#if selected.marschform}<p><strong>Marschform:</strong> {({ geschlossener_verband:'Geschlossener Verband', einzelgruppen:'Einzelgruppen', individuell:'Individuelle Anreise' })[selected.marschform] ?? selected.marschform}</p>{/if}
+					{#if selected.ablaufpunkt}<p><strong>Ablaufpunkt:</strong> {selected.ablaufpunkt}</p>{/if}
+					{#if selected.ablaufführer}<p><strong>Ablaufführer:</strong> {selected.ablaufführer}</p>{/if}
+					{#if selected.funkgruppe}<p><strong>Funkgruppe:</strong> {selected.funkgruppe}</p>{/if}
+					{#if selected.lage}<details><summary><strong>Lage</strong></summary><p class="detail-text">{selected.lage}</p></details>{/if}
+					{#if selected.auftrag}<details><summary><strong>Auftrag</strong></summary><p class="detail-text">{selected.auftrag}</p></details>{/if}
 					{#if selected.parent_convoy_id}
 						<p class="tag-pill">Teilverband</p>
 					{/if}
@@ -294,7 +312,7 @@
 						<form class="inline-form" onsubmit={async (e) => {
 							e.preventDefault();
 							if (!selected) return;
-							await convoysApi.createSubConvoy(selected.id, { name: newConvoy.name, speed_urban_kmh: 50, speed_rural_kmh: 80 });
+							await convoysApi.createSubConvoy(selected.id, { name: newConvoy.name, speed_urban_kmh: 40, speed_rural_kmh: 65 });
 							await loadData();
 							showSubConvoyForm = false;
 							newConvoy = { ...newConvoy, name: '' };
@@ -332,35 +350,53 @@
 					{/if}
 					<ul class="vehicle-list">
 						{#each allVehicles as v}
-							<li class="vehicle-item">
-								<div>
-									<strong>{v.name}</strong>
-									{#if v.callsign}<span class="tag">{v.callsign}</span>{/if}
-									{#if v.license_plate}<span class="tag">{v.license_plate}</span>{/if}
-								</div>
-								{#if selected}
-									{#if assignedIds.has(v.id)}
-										<button class="btn-small danger" onclick={() => removeVehicleFromConvoy(v.id)}>–</button>
-									{:else}
-										<button class="btn-small" onclick={() => addVehicleToConvoy(v.id)}>+</button>
+							<li class="vehicle-item" style="flex-direction:column;align-items:stretch;gap:.3rem">
+								<div style="display:flex;justify-content:space-between;align-items:center">
+									<div>
+										<strong>{v.name}</strong>
+										{#if v.callsign}<span class="tag">{v.callsign}</span>{/if}
+										{#if v.license_plate}<span class="tag">{v.license_plate}</span>{/if}
+									</div>
+									{#if selected}
+										{#if assignedIds.has(v.id)}
+											<button class="btn-small danger" onclick={() => removeVehicleFromConvoy(v.id)}>–</button>
+										{:else}
+											<button class="btn-small" onclick={() => addVehicleToConvoy(v.id)}>+</button>
+										{/if}
 									{/if}
+								</div>
+								{#if selected && !assignedIds.has(v.id)}
+									<select class="sf-select" bind:value={vehicleSonderfunktion[v.id]}>
+										<option value="">Sonderfunktion…</option>
+										<option value="spitzenführer">Spitzenführer</option>
+										<option value="schließender">Schließender (Ablaufführer)</option>
+										<option value="sanitaet">Sanitätsdienstliche Absicherung</option>
+										<option value="führungsfahrzeug">Führungsfahrzeug</option>
+									</select>
 								{/if}
 							</li>
 						{/each}
 					</ul>
 					{#if selected?.convoy_vehicles.length}
-						<div class="section-header" style="margin-top:.75rem"><strong>Im Verband</strong></div>
+						<div class="section-header" style="margin-top:.75rem"><strong>Im Verband (Marschfolge)</strong></div>
 						<ol class="vehicle-list">
 							{#each selected.convoy_vehicles as cv}
-								<li class="vehicle-item">
-									<div>
-										<span>{cv.position + 1}. {cv.vehicle.name}</span>
-										{#if cv.vehicle.callsign}<span class="tag">{cv.vehicle.callsign}</span>{/if}
+								<li class="vehicle-item convoy-vehicle-row">
+									<div class="veh-left">
+										<span class="veh-pos">{cv.position + 1}.</span>
+										<div>
+											<span>{cv.vehicle.name}</span>
+											{#if cv.vehicle.callsign}<span class="tag">{cv.vehicle.callsign}</span>{/if}
+											{#if cv.sonderfunktion}
+												<span class="tag sonder">{({ spitzenführer:'Spitze', schließender:'Schließ.', sanitaet:'San.', ablaufführer:'Ablauf', führungsfahrzeug:'Führung' })[cv.sonderfunktion] ?? cv.sonderfunktion}</span>
+											{/if}
+										</div>
 									</div>
 									<span class="status-dot" style="background:{STATUS_COLORS[cv.vehicle_status] ?? '#95a5a6'}" title={STATUS_LABELS[cv.vehicle_status] ?? cv.vehicle_status}></span>
 								</li>
 							{/each}
 						</ol>
+						<p class="hint" style="margin-top:.4rem">Position 1 = Spitzenführer, letztes Fahrzeug = Schließender</p>
 					{/if}
 				</div>
 			{/if}
@@ -542,8 +578,23 @@
 					</label>
 				{/if}
 				<label>Startzeit<input type="datetime-local" bind:value={newConvoy.start_time} /></label>
-				<label>Geschw. innerorts (km/h)<input type="number" bind:value={newConvoy.speed_urban_kmh} /></label>
-				<label>Geschw. außerorts (km/h)<input type="number" bind:value={newConvoy.speed_rural_kmh} /></label>
+				<label>Geschw. innerorts (km/h) <small>Empf.: 30–45</small><input type="number" bind:value={newConvoy.speed_urban_kmh} min="10" max="60" /></label>
+				<label>Geschw. außerorts (km/h) <small>Empf.: 60–70</small><input type="number" bind:value={newConvoy.speed_rural_kmh} min="30" max="100" /></label>
+				<label>Marschform
+					<select bind:value={newConvoy.marschform}>
+						<option value="geschlossener_verband">Geschlossener Gesamtverband</option>
+						<option value="einzelgruppen">Einzelgruppen</option>
+						<option value="individuell">Individuelle Anreise</option>
+					</select>
+				</label>
+				<label>Ablaufpunkt<input placeholder="Ort des Ablaufpunkts" bind:value={newConvoy.ablaufpunkt} /></label>
+				<label>Ablaufzeit<input type="datetime-local" bind:value={newConvoy.ablaufzeit} /></label>
+				<label>Ablaufführer<input placeholder="Name / Rufname" bind:value={newConvoy.ablaufführer} /></label>
+				<label>Funkgruppe<input placeholder="z.B. KatS Bayern 1" bind:value={newConvoy.funkgruppe} /></label>
+				<label>1. Lage (Gefahren-/Schadenslage)<textarea rows="2" placeholder="Lageschilderung…" bind:value={newConvoy.lage}></textarea></label>
+				<label>2. Auftrag<textarea rows="2" placeholder="Erhaltener Auftrag, Zuteilung…" bind:value={newConvoy.auftrag}></textarea></label>
+				<label>4. Versorgung<textarea rows="2" placeholder="Verpflegung, Betriebsstoff, Sanitätsdienst…" bind:value={newConvoy.versorgung}></textarea></label>
+				<label>6. Anlagen<textarea rows="2" placeholder="Begleitdokumente, Karten…" bind:value={newConvoy.anlagen}></textarea></label>
 				<div class="modal-actions">
 					<button type="button" onclick={() => (showConvoyForm = false)}>Abbrechen</button>
 					<button type="submit" class="btn-primary">Erstellen</button>
@@ -641,4 +692,17 @@
 	.modal-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: 1rem; }
 	.modal-actions button { padding: .5rem 1rem; border-radius: 4px; cursor: pointer; border: 1px solid #ccc; }
 	.modal-actions .btn-primary { background: #1a2744; color: white; border-color: #1a2744; }
+	.modal { max-height: 90vh; overflow-y: auto; }
+	.modal label textarea { padding: .5rem; border: 1px solid #ccc; border-radius: 4px; font-size: .9rem; resize: vertical; }
+	.modal label small { font-weight: 400; color: #888; font-size: .78rem; }
+
+	.convoy-vehicle-row { flex-direction: row; gap: .4rem; }
+	.veh-left { display: flex; align-items: center; gap: .35rem; flex: 1; min-width: 0; }
+	.veh-pos { font-size: .75rem; color: rgba(255,255,255,.5); flex-shrink: 0; }
+	.tag.sonder { background: rgba(52,152,219,.4); color: #aed6f1; }
+
+	.sf-select { width: 100%; padding: .25rem .35rem; border-radius: 3px; border: none; background: rgba(255,255,255,.08); color: rgba(255,255,255,.7); font-size: .72rem; }
+
+	.detail-text { font-size: .82rem; color: rgba(255,255,255,.8); margin: .25rem 0 0; white-space: pre-wrap; }
+	details summary { cursor: pointer; font-size: .82rem; color: rgba(255,255,255,.75); }
 </style>
