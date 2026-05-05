@@ -1,0 +1,57 @@
+services:
+  db:
+    image: postgis/postgis:15-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-marschplan}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-marschplan}
+      POSTGRES_DB: ${POSTGRES_DB:-marschplan}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-marschplan}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    image: ${BACKEND_IMAGE:-marschplan-backend:latest}
+    restart: unless-stopped
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-marschplan}:${POSTGRES_PASSWORD:-marschplan}@db:5432/${POSTGRES_DB:-marschplan}
+      JWT_SECRET: ${JWT_SECRET:-changeme-in-production}
+      GRAPHHOPPER_URL: http://graphhopper:8989
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      graphhopper:
+        condition: service_healthy
+
+  graphhopper:
+    image: ${GRAPHHOPPER_IMAGE:-marschplan-graphhopper:latest}
+    restart: unless-stopped
+    environment:
+      OSM_DOWNLOAD_URL: ${OSM_DOWNLOAD_URL:-https://download.geofabrik.de/europe/germany-latest.osm.pbf}
+      OSM_FILENAME: ${OSM_FILENAME:-germany-latest.osm.pbf}
+      JAVA_OPTS: ${JAVA_OPTS:--Xmx2g -Xms512m -XX:+UseG1GC}
+    volumes:
+      - osm_data:/data/osm
+      - gh_graph:/data/graph
+    ports:
+      - "${GH_PORT:-8989}:8989"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8989/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 30s
+
+volumes:
+  postgres_data:
+  osm_data:
+  gh_graph:

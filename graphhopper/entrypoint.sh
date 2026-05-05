@@ -10,10 +10,10 @@ JAVA_OPTS="${JAVA_OPTS:--Xmx2g -Xms512m -XX:+UseG1GC}"
 
 mkdir -p "$OSM_DIR" "$GRAPH_DIR"
 
-# ── OSM-Daten holen (nur beim ersten Start) ──────────────────────────────────
+# â”€â”€ OSM-Daten holen (nur beim ersten Start) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if [ ! -f "$OSM_FILE" ]; then
     echo "================================================================"
-    echo "  OSM-Kartendaten fehlen – Download wird gestartet"
+    echo "  OSM-Kartendaten fehlen â€“ Download wird gestartet"
     echo "  Quelle : $DOWNLOAD_URL"
     echo "  Ziel   : $OSM_FILE"
     echo "  (Erster Start kann je nach Region mehrere Minuten dauern)"
@@ -23,14 +23,14 @@ if [ ! -f "$OSM_FILE" ]; then
         echo "Download erfolgreich: $OSM_FILE"
     else
         rm -f "${OSM_FILE}.tmp"
-        echo "FEHLER: Download fehlgeschlagen. URL prüfen: $DOWNLOAD_URL"
+        echo "FEHLER: Download fehlgeschlagen. URL prÃ¼fen: $DOWNLOAD_URL"
         exit 1
     fi
 else
     echo "OSM-Daten vorhanden: $OSM_FILE"
 fi
 
-# ── GraphHopper-Konfiguration generieren ─────────────────────────────────────
+# â”€â”€ GraphHopper-Konfiguration generieren â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 CONFIG_FILE="/tmp/graphhopper-config.yml"
 cat > "$CONFIG_FILE" << CONF
 graphhopper:
@@ -61,7 +61,7 @@ server:
     port: 8990
 CONF
 
-# ── GraphHopper starten ───────────────────────────────────────────────────────
+# â”€â”€ GraphHopper starten â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 echo "Starte GraphHopper (Graph-Cache: $GRAPH_DIR)..."
 exec java $JAVA_OPTS \
     -jar /graphhopper/graphhopper.jar \
