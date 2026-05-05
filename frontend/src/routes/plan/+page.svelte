@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import MapView from '$lib/components/MapView.svelte';
+	import LocationSearch from '$lib/components/LocationSearch.svelte';
 	import WeatherWidget from '$lib/components/WeatherWidget.svelte';
 	import LageLayerPanel from '$lib/components/LageLayerPanel.svelte';
 	import { auth } from '$lib/stores/auth';
@@ -39,6 +40,8 @@
 	let newConvoy = $state({ name:'', organization:'', organization_id:'', start_time:'', speed_urban_kmh:40, speed_rural_kmh:65, lage:'', auftrag:'', marschform:'geschlossener_verband', ablaufpunkt:'', ablaufzeit:'', ablaufführer:'', versorgung:'', funkgruppe:'', anlagen:'' });
 	let newWpForm = $state({ name:'', type:'waypoint', hold_duration_min:0, halt_purpose:'' });
 	let pendingWpClick = $state(false);
+	let wizardStep = $state<0 | 1 | 2 | 3>(0);
+	let wizardWpName = $state('');
 
 	// ── Init ──────────────────────────────────────────────────────────
 	onMount(async () => {
@@ -80,21 +83,14 @@
 				start_time: newConvoy.start_time || undefined,
 				speed_urban_kmh: newConvoy.speed_urban_kmh,
 				speed_rural_kmh: newConvoy.speed_rural_kmh,
-				lage: newConvoy.lage || undefined,
-				auftrag: newConvoy.auftrag || undefined,
-				marschform: newConvoy.marschform || undefined,
-				ablaufpunkt: newConvoy.ablaufpunkt || undefined,
-				ablaufzeit: newConvoy.ablaufzeit || undefined,
-				ablaufführer: newConvoy.ablaufführer || undefined,
-				versorgung: newConvoy.versorgung || undefined,
-				funkgruppe: newConvoy.funkgruppe || undefined,
-				anlagen: newConvoy.anlagen || undefined,
 			});
 			convoyList = [...convoyList, c];
 			convoys.set(convoyList);
 			selectConvoy(c);
 			showConvoyForm = false;
 			newConvoy = { name:'', organization:'', organization_id:'', start_time:'', speed_urban_kmh:40, speed_rural_kmh:65, lage:'', auftrag:'', marschform:'geschlossener_verband', ablaufpunkt:'', ablaufzeit:'', ablaufführer:'', versorgung:'', funkgruppe:'', anlagen:'' };
+			wizardStep = 1;
+			mapMode.set('set-start');
 		} catch { error = 'Konvoi konnte nicht erstellt werden'; }
 	}
 
@@ -142,27 +138,47 @@
 		if (mode === 'set-start') {
 			await convoysApi.update(selected.id, { start_point: { lat, lon } });
 			mapMode.set('idle');
+			if (wizardStep === 1) { wizardStep = 2; mapMode.set('set-end'); }
 		} else if (mode === 'set-end') {
 			await convoysApi.update(selected.id, { end_point: { lat, lon } });
 			mapMode.set('idle');
+			if (wizardStep === 2) { wizardStep = 3; mapMode.set('add-waypoint'); }
 		} else if (mode === 'add-waypoint') {
-			const name = newWpForm.name || prompt('Wegpunktname:') || `WP ${(selected.waypoints.length + 1)}`;
+			const name = wizardStep === 3
+				? (wizardWpName.trim() || `WP ${(selected.waypoints.length + 1)}`)
+				: (newWpForm.name || prompt('Wegpunktname:') || `WP ${(selected.waypoints.length + 1)}`);
 			await convoysApi.createWaypoint(selected.id, {
 				name,
-				type: newWpForm.type,
+				type: wizardStep === 3 ? 'waypoint' : newWpForm.type,
 				lat,
 				lon,
-				hold_duration_min: newWpForm.hold_duration_min,
-				halt_purpose: newWpForm.halt_purpose || undefined,
+				hold_duration_min: wizardStep === 3 ? 0 : newWpForm.hold_duration_min,
+				halt_purpose: wizardStep === 3 ? undefined : (newWpForm.halt_purpose || undefined),
 				order_index: selected.waypoints.length,
 			});
-			mapMode.set('idle');
+			wizardWpName = '';
+			if (wizardStep !== 3) mapMode.set('idle');
 		}
 		await refreshConvoy();
 	}
 
 	function handleMapMove(lat: number, lon: number) {
 		mapCenter = [lat, lon];
+	}
+
+	function wizardSetPoint(lat: number, lon: number, _label: string) {
+		handleMapClick(lat, lon);
+	}
+
+	function wizardSkip() {
+		if (wizardStep === 1) { wizardStep = 2; mapMode.set('set-end'); }
+		else if (wizardStep === 2) { wizardStep = 3; mapMode.set('add-waypoint'); }
+		else if (wizardStep === 3) { wizardStep = 0; mapMode.set('idle'); }
+	}
+
+	function wizardFinish() {
+		wizardStep = 0;
+		mapMode.set('idle');
 	}
 
 	// ── Waypoint ────────────────────────────────────────────────────
@@ -245,8 +261,8 @@
 	}
 	function logout() { auth.logout(); goto('/login'); }
 
-	$: assignedIds = new Set(selected?.convoy_vehicles.map(cv => cv.vehicle.id) ?? []);
-	$: apiBase = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+	let assignedIds = $derived(new Set(selected?.convoy_vehicles.map(cv => cv.vehicle.id) ?? []));
+	const apiBase = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
 	const WP_TYPE_LABELS: Record<string, string> = {
 		waypoint: 'Wegpunkt', stop: 'Halt',
@@ -632,8 +648,8 @@
 			routeGeojson={route?.geojson as never}
 			lageLayers={$lageLayers}
 			closuresGeojson={showClosures ? closures : null}
-			{onMapClick: handleMapClick}
-			{onMapMove: handleMapMove}
+			onMapClick={handleMapClick}
+			onMapMove={handleMapMove}
 		/>
 	</main>
 </div>
