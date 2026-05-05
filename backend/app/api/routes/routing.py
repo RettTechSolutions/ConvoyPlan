@@ -2,7 +2,7 @@ import uuid
 from datetime import timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import PlainTextResponse, JSONResponse
+from fastapi.responses import PlainTextResponse, JSONResponse, Response
 from shapely.geometry import LineString
 from geoalchemy2.shape import from_shape
 from sqlalchemy import select
@@ -20,6 +20,7 @@ from app.services import geometry as geo_svc
 from app.services import routing as routing_svc
 from app.services import schedule as schedule_svc
 from app.services import export as export_svc
+from app.services import pdf as pdf_svc
 
 router = APIRouter(prefix="/convoys", tags=["routing"])
 
@@ -173,6 +174,51 @@ async def export_json(
         content=json_content,
         media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="{convoy.name}.json"'},
+    )
+
+
+@router.get("/{convoy_id}/export/pdf")
+async def export_pdf(
+    convoy_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    convoy = await _load_convoy(convoy_id, current_user.id, db)
+    route_result = await db.execute(select(Route).where(Route.convoy_id == convoy_id))
+    route = route_result.scalar_one_or_none()
+
+    waypoints = [
+        {
+            **geo_svc.waypoint_coords(w),
+            "name": w.name,
+            "type": w.type,
+            "notes": w.notes,
+            "halt_purpose": getattr(w, "halt_purpose", None),
+            "hold_duration_min": w.hold_duration_min,
+            "planned_arrival": w.planned_arrival.isoformat() if w.planned_arrival else None,
+            "planned_departure": w.planned_departure.isoformat() if w.planned_departure else None,
+        }
+        for w in convoy.waypoints
+    ]
+    vehicles = [
+        {
+            "name": cv.vehicle.name,
+            "callsign": cv.vehicle.callsign,
+            "license_plate": cv.vehicle.license_plate,
+            "height_cm": cv.vehicle.height_cm,
+            "weight_kg": cv.vehicle.weight_kg,
+            "convoy_role": cv.vehicle.convoy_role,
+            "position": cv.position,
+        }
+        for cv in convoy.convoy_vehicles
+    ]
+
+    pdf_bytes = pdf_svc.generate_marschbefehl(convoy, waypoints, vehicles, route)
+    filename = f"Marschbefehl_{convoy.name.replace(' ', '_')}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
