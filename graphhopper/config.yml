@@ -1,12 +1,18 @@
+# Referenz-Konfiguration – wird im Container durch entrypoint.sh dynamisch generiert.
+# Diese Datei wird NICHT direkt verwendet; Pfade/Profile werden aus Umgebungsvariablen
+# abgeleitet (OSM_DOWNLOAD_URL, OSM_FILENAME).
+#
+# Für direkten Einsatz ohne Docker:
+#   java -jar graphhopper.jar server config.yml
+
 graphhopper:
-  datareader.file: /data/germany-latest.osm.pbf
-  graph.location: /graphhopper/graph-cache
+  datareader.file: /data/osm/germany-latest.osm.pbf
+  graph.location: /data/graph
 
   profiles:
     - name: car
       vehicle: car
       weighting: fastest
-
     - name: truck
       vehicle: truck
       weighting: fastest

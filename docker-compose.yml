@@ -29,17 +29,35 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      graphhopper:
+        condition: service_healthy
 
   graphhopper:
-    image: israelhikingmap/graphhopper:latest
+    build:
+      context: ./graphhopper
+      args:
+        GH_VERSION: "9.1"
     environment:
-      - JAVA_OPTS=-Xmx1g -Xms512m
+      # Geofabrik-URL der gewünschten Region:
+      #   Deutschland (Standard, ~4 GB): https://download.geofabrik.de/europe/germany-latest.osm.pbf
+      #   Bayern      (~1 GB):           https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf
+      #   Berlin      (~30 MB, Tests):   https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf
+      OSM_DOWNLOAD_URL: https://download.geofabrik.de/europe/germany-latest.osm.pbf
+      OSM_FILENAME: germany-latest.osm.pbf
+      JAVA_OPTS: -Xmx2g -Xms512m -XX:+UseG1GC
     volumes:
-      - ./graphhopper:/data
-      - graphhopper_cache:/graphhopper/graph-cache
+      - osm_data:/data/osm      # OSM-PBF (wird beim ersten Start automatisch geladen)
+      - gh_graph:/data/graph    # Kompilierter Graph-Cache (persistiert zwischen Neustarts)
     ports:
       - "8989:8989"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8989/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 40          # bis zu ~10 Minuten für erstmaligen Graph-Import
+      start_period: 30s
 
 volumes:
   postgres_data:
-  graphhopper_cache:
+  osm_data:
+  gh_graph:

@@ -112,25 +112,28 @@ git clone https://github.com/RettTechSolutions/MarschPlan.git
 cd MarschPlan
 ```
 
-### 2. OSM-Daten herunterladen
+### 2. Stack starten
 
 ```bash
-cd graphhopper
-wget https://download.geofabrik.de/europe/germany-latest.osm.pbf
-cd ..
+docker-compose up -d
 ```
 
-> Für Tests: `berlin-latest.osm.pbf` (kleiner, schneller)
+**Beim ersten Start lädt GraphHopper die OSM-Kartendaten automatisch herunter** (~4 GB für Deutschland).
+Datenbank-Migrationen laufen ebenfalls automatisch. Das Backend wartet per Healthcheck auf GraphHopper.
 
-### 3. Backend starten
-
+Fortschritt verfolgen:
 ```bash
-docker-compose up -d db backend graphhopper
+docker-compose logs -f graphhopper
 ```
 
-Alembic-Migrationen laufen automatisch beim Start.
+> **Schnellstart für Tests** – nur Berlin (~30 MB) in `docker-compose.yml` setzen:
+> ```yaml
+> OSM_DOWNLOAD_URL: https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf
+> OSM_FILENAME: berlin-latest.osm.pbf
+> ```
+> Weitere Regionen: [download.geofabrik.de](https://download.geofabrik.de)
 
-### 4. Frontend starten
+### 3. Frontend starten
 
 ```bash
 cd frontend
@@ -140,7 +143,7 @@ npm run dev
 
 App läuft unter **http://localhost:5173**
 
-### 5. Ersten Account anlegen
+### 4. Ersten Account anlegen
 
 ```bash
 curl -X POST http://localhost:8000/api/auth/register \
@@ -217,6 +220,14 @@ npx cap open android  # öffnet Android Studio
 | `DATABASE_URL` | `postgresql+asyncpg://…` | PostgreSQL-Verbindung |
 | `JWT_SECRET` | `changeme-in-production` | **Unbedingt ändern!** |
 | `GRAPHHOPPER_URL` | `http://localhost:8989` | Routing-Engine |
+
+### GraphHopper
+
+| Variable | Standard | Beschreibung |
+|---|---|---|
+| `OSM_DOWNLOAD_URL` | `…/germany-latest.osm.pbf` | Geofabrik-URL der OSM-Region |
+| `OSM_FILENAME` | `germany-latest.osm.pbf` | Dateiname im Volume |
+| `JAVA_OPTS` | `-Xmx2g -Xms512m` | JVM-Heap (mind. 1 g für kleine Regionen) |
 
 ### Frontend
 
