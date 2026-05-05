@@ -6,10 +6,11 @@ from pydantic import BaseModel
 
 class WaypointCreate(BaseModel):
     name: str
-    type: str = "waypoint"
+    type: str = "waypoint"  # waypoint | stop | checkpoint | technical_stop
     lat: float
     lon: float
     hold_duration_min: int = 0
+    halt_purpose: str | None = None  # fuel | rest | maintenance | other
     notes: str | None = None
     order_index: int = 0
 
@@ -22,6 +23,7 @@ class WaypointUpdate(BaseModel):
     planned_arrival: datetime | None = None
     planned_departure: datetime | None = None
     hold_duration_min: int | None = None
+    halt_purpose: str | None = None
     notes: str | None = None
     order_index: int | None = None
 
@@ -35,6 +37,7 @@ class WaypointResponse(BaseModel):
     planned_arrival: datetime | None
     planned_departure: datetime | None
     hold_duration_min: int
+    halt_purpose: str | None = None
     notes: str | None
     order_index: int
 
