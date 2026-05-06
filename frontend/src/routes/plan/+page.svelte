@@ -17,6 +17,7 @@
 		type FuelAnalysis, type FuelStation, type Waypoint, type RoadPreference,
 	} from '$lib/api';
 	import type { FeatureCollection } from 'geojson';
+	import { dndzone } from 'svelte-dnd-action';
 
 	// ── State ──────────────────────────────────────────────────────────
 	let allVehicles = $state<Vehicle[]>([]);
@@ -32,6 +33,9 @@
 	let mapCenter = $state<[number, number]>([10.0, 51.5]);
 	let activeTab = $state<'convoy'|'fahrzeuge'|'wegpunkte'|'zeitplan'|'export'|'lage'|'org'>('convoy');
 	let loading = $state(false);
+	let dndWaypoints = $state<Waypoint[]>([]);
+	let editingWpId = $state<string | null>(null);
+	let editWpForm = $state({ name: '', type: 'waypoint', hold_duration_min: 0, halt_purpose: '', notes: '' });
 	let sidebarOpen = $state(false);
 	let error = $state('');
 
@@ -200,9 +204,64 @@
 	// ── Waypoint ────────────────────────────────────────────────────
 	async function deleteWaypoint(wpId: string) {
 		if (!selected) return;
-		await convoysApi.deleteWaypoint(selected.id, wpId);
-		await refreshConvoy();
+		try {
+			await convoysApi.deleteWaypoint(selected.id, wpId);
+			await refreshConvoy();
+		} catch {
+			error = 'Wegpunkt konnte nicht gelöscht werden';
+		}
 	}
+
+	function handleDndConsider(e: CustomEvent) {
+    dndWaypoints = e.detail.items;
+  }
+
+  async function handleDndFinalize(e: CustomEvent) {
+    const reordered: Waypoint[] = (e.detail.items as Waypoint[]).map(
+      (wp, i) => ({ ...wp, order_index: i })
+    );
+    dndWaypoints = reordered;
+    const prevWaypoints = selected!.waypoints;
+    selected = { ...selected!, waypoints: reordered };
+    activeConvoy.set(selected!);
+    try {
+      await convoysApi.reorderWaypoints(
+        selected!.id,
+        reordered.map((wp) => ({ id: wp.id, order_index: wp.order_index })),
+      );
+    } catch {
+      dndWaypoints = prevWaypoints;
+      selected = { ...selected!, waypoints: prevWaypoints };
+      activeConvoy.set(selected!);
+    }
+  }
+
+  function startEditWp(wp: Waypoint) {
+    editingWpId = wp.id;
+    editWpForm = {
+      name: wp.name,
+      type: wp.type,
+      hold_duration_min: wp.hold_duration_min,
+      halt_purpose: wp.halt_purpose ?? '',
+      notes: wp.notes ?? '',
+    };
+  }
+
+  async function saveWp(wpId: string) {
+    try {
+      await convoysApi.updateWaypoint(selected!.id, wpId, {
+        name: editWpForm.name,
+        type: editWpForm.type,
+        hold_duration_min: editWpForm.hold_duration_min,
+        halt_purpose: editWpForm.type === 'technical_stop' ? (editWpForm.halt_purpose || null) : null,
+        notes: editWpForm.notes || null,
+      });
+      editingWpId = null;
+      await refreshConvoy();
+    } catch {
+      error = 'Wegpunkt konnte nicht gespeichert werden';
+    }
+  }
 
 	// ── Route ────────────────────────────────────────────────────────
 	async function calculateRoute() {
@@ -278,6 +337,12 @@
 	function logout() { auth.logout(); goto('/login'); }
 
 	let assignedIds = $derived(new Set(selected?.convoy_vehicles.map(cv => cv.vehicle.id) ?? []));
+
+	$effect(() => {
+    if (selected) {
+      dndWaypoints = [...selected.waypoints].sort((a, b) => a.order_index - b.order_index);
+    }
+  });
 	const apiBase = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
 	const WP_TYPE_LABELS: Record<string, string> = {
@@ -549,16 +614,50 @@
 						{#if !selected.waypoints.length}
 							<p class="hint">Noch keine Wegpunkte.</p>
 						{/if}
-						<ul class="wp-list">
-							{#each selected.waypoints as wp}
+						<ul
+							class="wp-list"
+							use:dndzone={{ items: dndWaypoints, flipDurationMs: 200 }}
+							onconsider={handleDndConsider}
+							onfinalize={handleDndFinalize}
+						>
+							{#each dndWaypoints as wp (wp.id)}
 								<li class="wp-item">
-									<div>
+									<div class="wp-main">
 										<strong>{wp.name}</strong>
 										<span class="tag">{WP_TYPE_LABELS[wp.type] ?? wp.type}</span>
 										{#if wp.halt_purpose}<span class="tag orange">{wp.halt_purpose}</span>{/if}
 										{#if wp.hold_duration_min > 0}<span class="tag">{wp.hold_duration_min} min</span>{/if}
 									</div>
-									<button class="btn-small danger" onclick={() => deleteWaypoint(wp.id)}>✕</button>
+									<div class="wp-actions">
+										<button class="btn-small" onclick={() => startEditWp(wp)} title="Bearbeiten">✎</button>
+										<button class="btn-small danger" onclick={() => deleteWaypoint(wp.id)}>✕</button>
+									</div>
+									{#if editingWpId === wp.id}
+										<div class="wp-edit-form">
+											<input bind:value={editWpForm.name} placeholder="Name" />
+											<select bind:value={editWpForm.type}>
+												<option value="waypoint">Wegpunkt</option>
+												<option value="stop">Halt</option>
+												<option value="checkpoint">Kontrollpunkt</option>
+												<option value="technical_stop">Techn. Halt</option>
+											</select>
+											{#if editWpForm.type === 'technical_stop'}
+												<select bind:value={editWpForm.halt_purpose}>
+													<option value="">Zweck wählen…</option>
+													<option value="fuel">Tanken</option>
+													<option value="rest">Pause</option>
+													<option value="maintenance">Wartung</option>
+													<option value="other">Sonstiges</option>
+												</select>
+											{/if}
+											<input type="number" bind:value={editWpForm.hold_duration_min} min="0" placeholder="Haltezeit (min)" />
+											<input bind:value={editWpForm.notes} placeholder="Notiz (optional)" />
+											<div class="wp-edit-actions">
+												<button class="btn-small" onclick={() => saveWp(wp.id)}>Speichern</button>
+												<button class="btn-small" onclick={() => (editingWpId = null)}>Abbrechen</button>
+											</div>
+										</div>
+									{/if}
 								</li>
 							{/each}
 						</ul>
@@ -830,7 +929,22 @@
 	.tag.orange { background: rgba(230,126,34,.4); }
 
 	.wp-list { list-style: none; padding: 0; margin: 0; }
-	.wp-item { display: flex; justify-content: space-between; align-items: center; padding: .35rem 0; border-bottom: 1px solid rgba(255,255,255,.08); font-size: .83rem; }
+	.wp-item { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; padding: .35rem 0; border-bottom: 1px solid rgba(255,255,255,.08); font-size: .83rem; cursor: grab; }
+	.wp-main { flex: 1; }
+	.wp-actions { display: flex; gap: .25rem; }
+	.wp-edit-form {
+  width: 100%;
+  display: flex; flex-direction: column; gap: .3rem;
+  padding: .4rem .5rem;
+  background: rgba(255,255,255,.05);
+  border-radius: 4px;
+  margin-bottom: .25rem;
+}
+	.wp-edit-form input, .wp-edit-form select {
+  padding: .3rem .4rem; border: none; border-radius: 3px;
+  background: rgba(255,255,255,.12); color: white; font-size: .82rem;
+}
+	.wp-edit-actions { display: flex; gap: .3rem; }
 
 	.wp-quick-form { background: rgba(255,255,255,.07); border-radius: 4px; padding: .5rem; margin-bottom: .5rem; display: flex; flex-direction: column; gap: .35rem; }
 	.wp-quick-form input, .wp-quick-form select { padding: .3rem .4rem; border: none; border-radius: 3px; background: rgba(255,255,255,.12); color: white; font-size: .82rem; }

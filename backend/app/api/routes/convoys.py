@@ -12,7 +12,7 @@ from app.models.user import User
 from app.models.vehicle import Vehicle
 from app.models.waypoint import Waypoint
 from app.schemas.convoy import AddVehicleRequest, ConvoyCreate, ConvoyResponse, ConvoyUpdate
-from app.schemas.waypoint import WaypointCreate, WaypointResponse, WaypointUpdate
+from app.schemas.waypoint import WaypointCreate, WaypointReorderItem, WaypointResponse, WaypointUpdate
 from app.services import geometry as geo_svc
 
 router = APIRouter(prefix="/convoys", tags=["convoys"])
@@ -278,6 +278,43 @@ async def delete_waypoint(
         raise HTTPException(status_code=404, detail="Waypoint not found")
     await db.delete(wp)
     await db.commit()
+
+
+@router.patch("/{convoy_id}/waypoints/reorder", response_model=list[WaypointResponse])
+async def reorder_waypoints(
+    convoy_id: uuid.UUID,
+    items: list[WaypointReorderItem],
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    convoy = await _get_owned_convoy(convoy_id, current_user.id, db)
+    if len({i.order_index for i in items}) != len(items):
+        raise HTTPException(status_code=400, detail="Duplicate order_index values in request")
+    result = await db.execute(
+        select(Waypoint).where(Waypoint.convoy_id == convoy.id)
+    )
+    existing = {wp.id: wp for wp in result.scalars().all()}
+
+    if len(items) != len(existing):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Expected {len(existing)} waypoints, got {len(items)}",
+        )
+
+    for item in items:
+        if item.id not in existing:
+            raise HTTPException(status_code=404, detail=f"Waypoint {item.id} not found in convoy")
+        existing[item.id].order_index = item.order_index
+
+    await db.commit()
+
+    result2 = await db.execute(
+        select(Waypoint)
+        .where(Waypoint.convoy_id == convoy.id)
+        .order_by(Waypoint.order_index)
+    )
+    waypoints = result2.scalars().all()
+    return [{**w.__dict__, **geo_svc.waypoint_coords(w)} for w in waypoints]
 
 
 async def _get_owned_convoy(convoy_id: uuid.UUID, owner_id: uuid.UUID, db: AsyncSession) -> Convoy:
