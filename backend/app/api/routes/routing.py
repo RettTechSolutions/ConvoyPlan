@@ -23,6 +23,33 @@ from app.services import export as export_svc
 from app.services import pdf as pdf_svc
 from app.services import fuel as fuel_svc
 from app.services import overpass as overpass_svc
+from app.services.routing import URBAN_ROAD_CLASSES, _segment_dist_m
+
+
+def _convoy_duration_s(
+    distance_m: int,
+    coords: list,
+    road_class_details: list,
+    speed_urban_kmh: int,
+    speed_rural_kmh: int,
+) -> int:
+    """Calculate convoy travel time using actual road class distribution."""
+    if road_class_details and coords:
+        urban_dist = 0.0
+        nonurban_dist = 0.0
+        for from_i, to_i, rc in road_class_details:
+            d = _segment_dist_m(coords, from_i, to_i)
+            if rc.lower() in URBAN_ROAD_CLASSES:
+                urban_dist += d
+            else:
+                nonurban_dist += d
+        h = urban_dist / 1000 / speed_urban_kmh + nonurban_dist / 1000 / speed_rural_kmh
+    else:
+        # Fallback: fixed 70/30 split
+        avg_speed = 0.7 * speed_rural_kmh + 0.3 * speed_urban_kmh
+        h = distance_m / 1000 / avg_speed
+    return max(1, int(h * 3600))
+
 
 router = APIRouter(prefix="/convoys", tags=["routing"])
 
@@ -71,9 +98,21 @@ async def calculate_route(
             vehicle_params["max_height_m"] = min(max_h, v.height_cm / 100)
 
     try:
-        route_data = await routing_svc.calculate_route(points, vehicle_params or None)
+        route_data = await routing_svc.calculate_route(
+            points,
+            vehicle_params or None,
+            road_preference=convoy.road_preference,
+        )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Routing failed: {exc}")
+
+    convoy_duration_s = _convoy_duration_s(
+        route_data["distance_m"],
+        route_data["geometry"]["coordinates"],
+        route_data.get("road_class_details", []),
+        convoy.speed_urban_kmh,
+        convoy.speed_rural_kmh,
+    )
 
     # Persist route
     coords = route_data["geometry"]["coordinates"]
@@ -83,14 +122,14 @@ async def calculate_route(
     if route:
         route.geometry = from_shape(line, srid=4326)
         route.distance_m = route_data["distance_m"]
-        route.duration_s = route_data["duration_s"]
+        route.duration_s = convoy_duration_s
         route.routing_params = vehicle_params
     else:
         route = Route(
             convoy_id=convoy_id,
             geometry=from_shape(line, srid=4326),
             distance_m=route_data["distance_m"],
-            duration_s=route_data["duration_s"],
+            duration_s=convoy_duration_s,
             routing_params=vehicle_params,
         )
         db.add(route)
@@ -99,7 +138,7 @@ async def calculate_route(
     if convoy.start_time and convoy.waypoints:
         waypoints_sorted = sorted(convoy.waypoints, key=lambda w: w.order_index)
         n_segments = len(waypoints_sorted) + 1
-        seg_duration = route_data["duration_s"] // n_segments
+        seg_duration = convoy_duration_s // n_segments
         schedule = schedule_svc.calculate_schedule(
             waypoints_sorted,
             convoy.start_time.replace(tzinfo=timezone.utc) if convoy.start_time.tzinfo is None else convoy.start_time,
