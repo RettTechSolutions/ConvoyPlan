@@ -57,6 +57,16 @@ services:
       retries: 40          # bis zu ~10 Minuten für erstmaligen Graph-Import
       start_period: 30s
 
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
 volumes:
   postgres_data:
   osm_data:

@@ -244,12 +244,16 @@
   .pill-wrap {
     position: absolute;
     top: 14px;
-    left: 50%;
-    transform: translateX(-50%);
+    left: 1rem;
+    right: 1rem;
     z-index: 500;
     display: flex;
     flex-direction: column;
     align-items: center;
+    pointer-events: none;
+  }
+  .pill-wrap > * {
+    pointer-events: auto;
   }
 
   .pill {
@@ -305,7 +309,8 @@
     color: white;
     font-size: 11px;
     box-shadow: 0 8px 30px rgba(0, 0, 0, .5);
-    min-width: 420px;
+    width: min(440px, 100%);
+    box-sizing: border-box;
   }
 
   .panel-header {
