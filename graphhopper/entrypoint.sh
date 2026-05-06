@@ -46,8 +46,10 @@ graphhopper:
 
   profiles:
     - name: car
+      weighting: custom
       custom_model_files: []
     - name: truck
+      weighting: custom
       custom_model_files: []
 
   profiles_ch:
