@@ -23,7 +23,7 @@
 		timer = setTimeout(async () => {
 			try {
 				const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5&addressdetails=0`;
-				const res = await fetch(url, { headers: { 'User-Agent': 'MarschPlan/1.0' } });
+				const res = await fetch(url, { headers: { 'User-Agent': 'ConvoyPlan/1.0' } });
 				results = await res.json();
 			} catch { results = []; }
 		}, 300);

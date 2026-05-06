@@ -261,7 +261,7 @@
     align-items: center;
     gap: 8px;
     padding: 7px 16px;
-    background: rgba(20, 32, 60, 0.92);
+    background: rgba(15, 27, 36, 0.92);
     backdrop-filter: blur(8px);
     border: 1px solid rgba(255, 255, 255, .18);
     border-radius: 24px;
@@ -272,7 +272,7 @@
     box-shadow: 0 2px 12px rgba(0, 0, 0, .35);
     transition: background .15s;
   }
-  .pill:hover { background: rgba(20, 32, 60, .98); }
+  .pill:hover { background: rgba(15, 27, 36, .98); }
 
   .pill-ico { font-size: 14px; }
   .pill-temp { font-weight: 700; font-size: 13px; }
@@ -280,7 +280,7 @@
   .pill-dots { display: flex; align-items: center; gap: 4px; }
   .pill-users { font-size: 11px; }
   .pill-closures {
-    background: #c0392b;
+    background: #C23020;
     border-radius: 10px;
     padding: 2px 8px;
     font-size: 9px;
@@ -296,12 +296,12 @@
   }
   .dot.ok { background: #27ae60; }
   .dot.warn { background: #f39c12; }
-  .dot.err { background: #e74c3c; }
+  .dot.err { background: #E23D28; }
   .dot.unknown { background: #6b7177; }
 
   .panel {
     margin-top: 6px;
-    background: rgba(15, 27, 53, 0.97);
+    background: rgba(15, 27, 36, 0.97);
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255, 255, 255, .15);
     border-radius: 12px;
@@ -347,7 +347,7 @@
   .svc-val { font-weight: 600; font-size: 10px; }
   .svc-val.ok { color: #2ecc71; }
   .svc-val.warn { color: #f39c12; }
-  .svc-val.err { color: #e74c3c; }
+  .svc-val.err { color: #E23D28; }
   .svc-val.unknown { color: #6b7177; }
 
   .weather-block { margin-bottom: 10px; }
@@ -383,7 +383,7 @@
   }
   .closures-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
   .closures-badge {
-    background: #c0392b; border-radius: 10px;
+    background: #C23020; border-radius: 10px;
     padding: 2px 8px; font-size: 9px; font-weight: 600;
   }
   .btn-show-closures {
