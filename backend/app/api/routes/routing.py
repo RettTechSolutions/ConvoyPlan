@@ -23,33 +23,6 @@ from app.services import export as export_svc
 from app.services import pdf as pdf_svc
 from app.services import fuel as fuel_svc
 from app.services import overpass as overpass_svc
-from app.services.routing import URBAN_ROAD_CLASSES, _segment_dist_m
-
-
-def _convoy_duration_s(
-    distance_m: int,
-    coords: list,
-    road_class_details: list,
-    speed_urban_kmh: int,
-    speed_rural_kmh: int,
-) -> int:
-    """Calculate convoy travel time using actual road class distribution."""
-    if road_class_details and coords:
-        urban_dist = 0.0
-        nonurban_dist = 0.0
-        for from_i, to_i, rc in road_class_details:
-            d = _segment_dist_m(coords, from_i, to_i)
-            if rc.lower() in URBAN_ROAD_CLASSES:
-                urban_dist += d
-            else:
-                nonurban_dist += d
-        h = urban_dist / 1000 / speed_urban_kmh + nonurban_dist / 1000 / speed_rural_kmh
-    else:
-        # Fallback: fixed 70/30 split
-        avg_speed = 0.7 * speed_rural_kmh + 0.3 * speed_urban_kmh
-        h = distance_m / 1000 / avg_speed
-    return max(1, int(h * 3600))
-
 
 router = APIRouter(prefix="/convoys", tags=["routing"])
 
@@ -106,16 +79,16 @@ async def calculate_route(
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Routing failed: {exc}")
 
-    convoy_duration_s = _convoy_duration_s(
+    coords = route_data["geometry"].get("coordinates", [])
+    convoy_duration_s = routing_svc.convoy_duration_s(
         route_data["distance_m"],
-        route_data["geometry"]["coordinates"],
+        coords,
         route_data.get("road_class_details", []),
         convoy.speed_urban_kmh,
         convoy.speed_rural_kmh,
     )
 
     # Persist route
-    coords = route_data["geometry"]["coordinates"]
     line = LineString(coords)
     existing = await db.execute(select(Route).where(Route.convoy_id == convoy_id))
     route = existing.scalar_one_or_none()
