@@ -28,3 +28,6 @@ graphhopper/graph-cache/
 
 # OS
 .DS_Store
+
+# Git worktrees
+.worktrees/
