@@ -363,7 +363,7 @@
 	<!-- ── Mobile top bar (hidden on desktop via CSS) ── -->
 	<div class="topbar">
 		<button class="hamburger" onclick={() => (sidebarOpen = !sidebarOpen)} aria-expanded={sidebarOpen} aria-controls="sidebar" aria-label="Menü">☰</button>
-		<span class="topbar-name">{selected?.name ?? 'MarschPlan'}</span>
+		<span class="topbar-name">{selected?.name ?? 'ConvoyPlan'}</span>
 		<div class="topbar-actions">
 			<button class="btn-map" class:active={$mapMode === 'set-start'} onclick={() => mapMode.set($mapMode === 'set-start' ? 'idle' : 'set-start')} aria-label="Startpunkt setzen">📍</button>
 			<button class="btn-map" class:active={$mapMode === 'set-end'} onclick={() => mapMode.set($mapMode === 'set-end' ? 'idle' : 'set-end')} aria-label="Zielpunkt setzen">🏁</button>
@@ -379,7 +379,7 @@
 	<!-- ── Sidebar ──────────────────────────────────────────────────── -->
 	<aside id="sidebar" class="sidebar" class:open={sidebarOpen}>
 		<div class="sidebar-header">
-			<span class="logo">MarschPlan</span>
+			<span class="logo">ConvoyPlan</span>
 			<button class="logout-btn" onclick={logout} title="Abmelden">✕</button>
 		</div>
 
