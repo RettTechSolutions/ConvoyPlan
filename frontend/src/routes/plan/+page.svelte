@@ -3,9 +3,8 @@
 	import { goto } from '$app/navigation';
 	import MapView from '$lib/components/MapView.svelte';
 	import LocationSearch from '$lib/components/LocationSearch.svelte';
-	import WeatherWidget from '$lib/components/WeatherWidget.svelte';
+	import InfoPill from '$lib/components/InfoPill.svelte';
 	import LageLayerPanel from '$lib/components/LageLayerPanel.svelte';
-	import ServiceStatus from '$lib/components/ServiceStatus.svelte';
 	import { get } from 'svelte/store';
 	import { auth } from '$lib/stores/auth';
 	import { activeConvoy, activeRoute, convoys } from '$lib/stores/convoy';
@@ -318,7 +317,8 @@
 		if (closures && showClosures) { showClosures = false; return; }
 		showClosures = false;
 		try {
-			const [lat, lon] = mapCenter;
+			const lat = selected?.start_point?.lat ?? mapCenter[0];
+			const lon = selected?.start_point?.lon ?? mapCenter[1];
 			closures = await overpassApi.getClosures(lat, lon) as FeatureCollection;
 			showClosures = true;
 		} catch { error = 'Sperrungsdaten nicht verfügbar'; }
@@ -824,8 +824,11 @@
 			</div>
 		{/if}
 
-		<!-- V3: Wetter-Widget -->
-		<WeatherWidget lat={mapCenter[0]} lon={mapCenter[1]} />
+		<InfoPill
+			startPoint={selected?.start_point}
+			closuresCount={closures?.features?.length ?? 0}
+			onShowClosures={toggleClosures}
+		/>
 
 		<!-- V3: Lage-Layer-Panel (floating) -->
 		{#if selected && $lageLayers.length > 0}
@@ -833,8 +836,6 @@
 				<LageLayerPanel convoyId={selected.id} onLayersChange={(layers) => lageLayers.set(layers)} />
 			</div>
 		{/if}
-
-		<ServiceStatus />
 
 		<MapView
 			startPoint={selected?.start_point}

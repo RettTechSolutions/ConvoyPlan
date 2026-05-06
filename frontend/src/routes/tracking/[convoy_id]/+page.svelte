@@ -2,7 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
 	import MapView from '$lib/components/MapView.svelte';
-	import WeatherWidget from '$lib/components/WeatherWidget.svelte';
+	import InfoPill from '$lib/components/InfoPill.svelte';
 	import { convoysApi, trackingApi, type Convoy, type VehiclePosition } from '$lib/api';
 	import { livePositions, vehicleStatuses, connectTracking, disconnectTracking, sendPosition, trackingActive } from '$lib/stores/tracking';
 
@@ -147,7 +147,7 @@
 
 	<!-- Karte -->
 	<main class="map-area">
-		<WeatherWidget lat={mapCenter[0]} lon={mapCenter[1]} />
+		<InfoPill startPoint={{ lat: mapCenter[0], lon: mapCenter[1] }} />
 		<MapView
 			startPoint={convoy?.start_point}
 			endPoint={convoy?.end_point}
