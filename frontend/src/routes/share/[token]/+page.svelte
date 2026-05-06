@@ -63,7 +63,7 @@
 <style>
 	:global(body) { margin: 0; font-family: system-ui, sans-serif; }
 	.share-app { display: flex; height: 100vh; }
-	.share-sidebar { width: 300px; background: #1a2744; color: white; padding: 1.5rem; overflow-y: auto; }
+	.share-sidebar { width: 300px; background: #0F1B24; color: white; padding: 1.5rem; overflow-y: auto; }
 	.share-header h1 { margin: 0 0 .5rem; font-size: 1.2rem; }
 	.share-header h2 { margin: 0 0 .25rem; font-size: 1rem; }
 	.share-header p { margin: .2rem 0; font-size: .85rem; color: rgba(255,255,255,.75); }
@@ -71,6 +71,6 @@
 	table { width: 100%; border-collapse: collapse; font-size: .8rem; }
 	th, td { padding: .3rem .4rem; border-bottom: 1px solid rgba(255,255,255,.1); text-align: left; }
 	th { color: rgba(255,255,255,.6); }
-	.error { color: #e74c3c; font-size: .9rem; }
+	.error { color: #E23D28; font-size: .9rem; }
 	.share-map { flex: 1; }
 </style>
