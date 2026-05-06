@@ -43,6 +43,10 @@ def convoy_duration_s(
     speed_rural_kmh: int,
 ) -> int:
     """Calculate convoy travel time using actual road class distribution."""
+    # Guard against zero speeds to prevent division by zero
+    speed_urban_kmh = max(1, speed_urban_kmh)
+    speed_rural_kmh = max(1, speed_rural_kmh)
+
     if road_class_details and coords:
         urban_dist = 0.0
         nonurban_dist = 0.0
@@ -89,6 +93,7 @@ async def calculate_route(
 
     if custom_model:
         payload["custom_model"] = custom_model
+        payload["ch.disable"] = True
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(
