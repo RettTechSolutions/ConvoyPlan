@@ -39,10 +39,8 @@ graphhopper:
 
   profiles:
     - name: car
-      vehicle: car
       weighting: fastest
     - name: truck
-      vehicle: truck
       weighting: fastest
       turn_costs: true
 
