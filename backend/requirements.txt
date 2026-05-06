@@ -7,9 +7,10 @@ geoalchemy2==0.15.2
 pydantic[email]==2.9.2
 pydantic-settings==2.5.2
 python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
+bcrypt==4.2.1
 python-multipart==0.0.12
 httpx==0.27.2
 shapely==2.0.6
 gpxpy==1.6.2
 fpdf2==2.8.1
+pytest>=8.0
