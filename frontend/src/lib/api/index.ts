@@ -123,6 +123,8 @@ export const convoysApi = {
 		api.put<Waypoint>(`/api/convoys/${id}/waypoints/${wpId}`, data),
 	deleteWaypoint: (id: string, wpId: string) =>
 		api.delete(`/api/convoys/${id}/waypoints/${wpId}`),
+	reorderWaypoints: (id: string, items: { id: string; order_index: number }[]) =>
+		api.patch<Waypoint[]>(`/api/convoys/${id}/waypoints/reorder`, items),
 	calculateRoute: (id: string) =>
 		api.post<RouteResult>(`/api/convoys/${id}/calculate-route`, {}),
 	findFuelStations: (id: string, lat: number, lon: number, radiusM = 3000) =>
