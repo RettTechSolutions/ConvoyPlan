@@ -24,8 +24,8 @@
 
 <div class="login-container">
 	<div class="login-card">
-		<h1>MarschPlan</h1>
-		<p class="subtitle">Marschverbandsplanung für BOS</p>
+		<h1>ConvoyPlan</h1>
+		<p class="subtitle">PLAN. MOVE. CONNECT.</p>
 
 		<form onsubmit={handleLogin}>
 			<div class="field">

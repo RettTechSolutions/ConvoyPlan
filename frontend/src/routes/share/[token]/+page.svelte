@@ -24,7 +24,7 @@
 <div class="share-app">
 	<div class="share-sidebar">
 		<div class="share-header">
-			<h1>MarschPlan</h1>
+			<h1>ConvoyPlan</h1>
 			{#if data}
 				<h2>{data.name}</h2>
 				{#if data.organization}<p>{data.organization}</p>{/if}

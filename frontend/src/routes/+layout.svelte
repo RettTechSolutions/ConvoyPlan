@@ -21,7 +21,7 @@
 </script>
 
 <svelte:head>
-	<title>MarschPlan</title>
+	<title>ConvoyPlan</title>
 </svelte:head>
 
 {@render children()}
