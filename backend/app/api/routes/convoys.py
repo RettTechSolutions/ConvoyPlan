@@ -288,6 +288,8 @@ async def reorder_waypoints(
     db: AsyncSession = Depends(get_db),
 ):
     convoy = await _get_owned_convoy(convoy_id, current_user.id, db)
+    if len({i.order_index for i in items}) != len(items):
+        raise HTTPException(status_code=400, detail="Duplicate order_index values in request")
     result = await db.execute(
         select(Waypoint).where(Waypoint.convoy_id == convoy.id)
     )
