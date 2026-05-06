@@ -52,7 +52,7 @@
 		align-items: center;
 		justify-content: center;
 		min-height: 100vh;
-		background: #1a2744;
+		background: #0F1B24;
 	}
 	.login-card {
 		background: white;
@@ -65,7 +65,7 @@
 	h1 {
 		margin: 0 0 0.25rem;
 		font-size: 1.8rem;
-		color: #1a2744;
+		color: #0F1B24;
 	}
 	.subtitle {
 		color: #666;
@@ -92,12 +92,12 @@
 	}
 	input:focus {
 		outline: none;
-		border-color: #1a2744;
+		border-color: #0F1B24;
 	}
 	button {
 		width: 100%;
 		padding: 0.75rem;
-		background: #1a2744;
+		background: #6B7F4D;
 		color: white;
 		border: none;
 		border-radius: 4px;
