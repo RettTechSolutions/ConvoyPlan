@@ -46,7 +46,9 @@ graphhopper:
 
   profiles:
     - name: car
+      custom_model_files: []
     - name: truck
+      custom_model_files: []
 
   profiles_ch:
     - profile: car
