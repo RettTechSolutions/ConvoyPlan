@@ -37,6 +37,13 @@ graphhopper:
   datareader.file: $OSM_FILE
   graph.location: $GRAPH_DIR
 
+  import.osm.ignored_highways:
+    - footway
+    - cycleway
+    - path
+    - pedestrian
+    - platform
+
   profiles:
     - name: car
       weighting: fastest
