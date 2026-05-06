@@ -46,9 +46,7 @@ graphhopper:
 
   profiles:
     - name: car
-      weighting: fastest
     - name: truck
-      weighting: fastest
 
   profiles_ch:
     - profile: car
