@@ -836,6 +836,10 @@
 	.error-bar button { background: none; border: none; color: white; cursor: pointer; font-size: 1rem; flex-shrink: 0; line-height: 1; padding: 0; }
 
 	.map-area { flex: 1; position: relative; }
+	/* Desktop defaults — these elements exist in DOM but are hidden */
+	.topbar { display: none; }
+	.sidebar-backdrop { display: none; }
+	.fab-route { display: none; }
 	.map-hint-bar { position: absolute; top: 1rem; left: 50%; transform: translateX(-50%); z-index: 10; background: rgba(26,39,68,.9); color: white; padding: .5rem 1rem; border-radius: 20px; display: flex; align-items: center; gap: 1rem; font-size: .85rem; }
 	.map-hint-bar button { background: rgba(255,255,255,.2); border: none; color: white; border-radius: 12px; padding: .2rem .6rem; cursor: pointer; }
 
@@ -888,4 +892,103 @@
 	.wp-name-input::placeholder { color: rgba(255,255,255,.35); }
 	.wizard-wp-list { list-style: none; padding: 0; margin: 0; max-height: 120px; overflow-y: auto; }
 	.wizard-wp-list li { font-size: .8rem; color: rgba(255,255,255,.75); padding: .2rem 0; border-bottom: 1px solid rgba(255,255,255,.07); }
+
+	/* ── Mobile layout (≤ 768px) ─────────────────────────────────── */
+	@media (max-width: 768px) {
+		/* Show top bar, push content down */
+		.topbar {
+			display: flex;
+			align-items: center;
+			gap: .5rem;
+			position: fixed;
+			top: 0; left: 0; right: 0;
+			height: 48px;
+			padding: 0 .75rem;
+			background: #1a2744;
+			border-bottom: 1px solid rgba(255,255,255,.1);
+			z-index: 200;
+		}
+		.hamburger {
+			background: rgba(255,255,255,.1);
+			border: none;
+			color: white;
+			border-radius: 6px;
+			width: 34px;
+			height: 34px;
+			font-size: 1.1rem;
+			cursor: pointer;
+			flex-shrink: 0;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+		}
+		.topbar-name {
+			flex: 1;
+			font-size: .9rem;
+			font-weight: 600;
+			color: white;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+		.topbar-actions {
+			display: flex;
+			gap: .3rem;
+		}
+		.topbar-actions .btn-map {
+			padding: .3rem .45rem;
+			font-size: .8rem;
+		}
+
+		/* Push the flex layout down to clear the fixed top bar */
+		.app {
+			padding-top: 48px;
+		}
+
+		/* Sidebar becomes a fixed overlay from the left */
+		.sidebar {
+			position: fixed;
+			top: 48px;
+			left: 0;
+			bottom: 0;
+			width: 300px;
+			z-index: 300;
+			transform: translateX(-100%);
+			transition: transform .25s ease;
+		}
+		.sidebar.open {
+			transform: translateX(0);
+		}
+
+		/* Backdrop behind open sidebar */
+		.sidebar-backdrop {
+			display: block;
+			position: fixed;
+			inset: 0;
+			background: rgba(0,0,0,.45);
+			z-index: 299;
+		}
+
+		/* FAB route button floating over map */
+		.fab-route {
+			display: block;
+			position: fixed;
+			bottom: 1.5rem;
+			right: 1rem;
+			z-index: 100;
+			padding: .6rem 1.1rem;
+			background: #e74c3c;
+			color: white;
+			border: none;
+			border-radius: 8px;
+			font-size: .9rem;
+			font-weight: 600;
+			cursor: pointer;
+			box-shadow: 0 2px 12px rgba(0,0,0,.3);
+		}
+		.fab-route:disabled {
+			opacity: .55;
+			cursor: not-allowed;
+		}
+	}
 </style>
