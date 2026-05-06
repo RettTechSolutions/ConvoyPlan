@@ -3,6 +3,8 @@ import type { Geometry } from 'geojson';
 
 export interface Point { lat: number; lon: number }
 
+export type RoadPreference = 'schnell' | 'bundesstrasse' | 'landstrasse';
+
 export interface Vehicle {
 	id: string; name: string; callsign: string | null; license_plate: string | null;
 	height_cm: number | null; weight_kg: number | null; length_cm: number | null; convoy_role: string | null;
@@ -45,7 +47,7 @@ export interface Convoy {
 	id: string; name: string; organization: string | null;
 	organization_id: string | null; parent_convoy_id: string | null;
 	start_time: string | null; speed_urban_kmh: number; speed_rural_kmh: number;
-	road_preference: string;
+	road_preference: RoadPreference;
 	spacing_urban_m: number;
 	spacing_rural_m: number;
 	spacing_motorway_m: number;

@@ -14,7 +14,7 @@
 	import {
 		convoysApi, vehiclesApi, orgsApi, overpassApi,
 		type Convoy, type Vehicle, type Organization, type LageLayer,
-		type FuelAnalysis, type FuelStation,
+		type FuelAnalysis, type FuelStation, type Waypoint, type RoadPreference,
 	} from '$lib/api';
 	import type { FeatureCollection } from 'geojson';
 
@@ -40,11 +40,15 @@
 	let showConvoyForm = $state(false);
 	let showSubConvoyForm = $state(false);
 	let newVehicle = $state({ name:'', callsign:'', license_plate:'', height_cm:'', weight_kg:'', length_cm:'', convoy_role:'', tank_capacity_l:'', fuel_consumption_l100km:'', current_fuel_l:'' });
-	let newConvoy = $state({ name:'', organization:'', organization_id:'', start_time:'', speed_urban_kmh:40, speed_rural_kmh:65, road_preference:'schnell', spacing_urban_m:15, spacing_rural_m:50, spacing_motorway_m:100, lage:'', auftrag:'', marschform:'geschlossener_verband', ablaufpunkt:'', ablaufzeit:'', ablaufführer:'', versorgung:'', funkgruppe:'', anlagen:'' });
+	let newConvoy = $state(defaultConvoyForm());
 	let newWpForm = $state({ name:'', type:'waypoint', hold_duration_min:0, halt_purpose:'' });
 	let pendingWpClick = $state(false);
 	let wizardStep = $state<0 | 1 | 2 | 3>(0);
 	let wizardWpName = $state('');
+
+	function defaultConvoyForm() {
+		return { name:'', organization:'', organization_id:'', start_time:'', speed_urban_kmh:40, speed_rural_kmh:65, road_preference:'schnell' as RoadPreference, spacing_urban_m:15, spacing_rural_m:50, spacing_motorway_m:100, lage:'', auftrag:'', marschform:'geschlossener_verband', ablaufpunkt:'', ablaufzeit:'', ablaufführer:'', versorgung:'', funkgruppe:'', anlagen:'' };
+	}
 
 	// ── Init ──────────────────────────────────────────────────────────
 	onMount(async () => {
@@ -95,7 +99,7 @@
 			convoys.set(convoyList);
 			selectConvoy(c);
 			showConvoyForm = false;
-			newConvoy = { name:'', organization:'', organization_id:'', start_time:'', speed_urban_kmh:40, speed_rural_kmh:65, road_preference:'schnell', spacing_urban_m:15, spacing_rural_m:50, spacing_motorway_m:100, lage:'', auftrag:'', marschform:'geschlossener_verband', ablaufpunkt:'', ablaufzeit:'', ablaufführer:'', versorgung:'', funkgruppe:'', anlagen:'' };
+			newConvoy = defaultConvoyForm();
 			wizardStep = 1;
 			mapMode.set('set-start');
 		} catch { error = 'Konvoi konnte nicht erstellt werden'; }
