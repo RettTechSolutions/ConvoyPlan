@@ -25,6 +25,7 @@
 	"dependencies": {
 		"@vite-pwa/sveltekit": "^1.1.0",
 		"maplibre-gl": "^5.24.0",
+		"svelte-dnd-action": "^0.9.69",
 		"workbox-window": "^7.4.1"
 	}
 }
