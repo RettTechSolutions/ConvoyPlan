@@ -91,6 +91,22 @@ export interface WeatherResponse {
 	hourly_forecast: WeatherForecastItem[];
 }
 
+export interface ServiceCheck {
+	status: 'ok' | 'error' | 'unknown';
+	latency_ms: number | null;
+	checked_at: string | null;
+}
+
+export interface StatusResponse {
+	checked_at: string;
+	backend: 'ok' | 'error';
+	database: 'ok' | 'error';
+	graphhopper: 'ok' | 'building' | 'offline';
+	graphhopper_bbox: number[] | null;
+	weather_api: ServiceCheck;
+	overpass_api: ServiceCheck;
+}
+
 // Auth
 export const authApi = {
 	register: (email: string, password: string) => api.post('/api/auth/register', { email, password }),
@@ -172,6 +188,19 @@ export const lageApi = {
 export const weatherApi = {
 	get: (lat: number, lon: number) =>
 		api.get<WeatherResponse>(`/api/weather/?lat=${lat}&lon=${lon}`),
+};
+
+// V3: Status
+export const statusApi = {
+	get: () => api.get<StatusResponse>('/api/status'),
+};
+
+// V3: Online Users (SSE)
+export const usersApi = {
+	onlineStream: (): EventSource =>
+		new EventSource(
+			`${import.meta.env.VITE_API_URL ?? 'http://localhost:8000'}/api/users/online`
+		),
 };
 
 // V3: Sperrungen
