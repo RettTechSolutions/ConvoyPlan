@@ -32,3 +32,22 @@ def test_segment_dist_empty():
     from app.services.routing import _segment_dist_m
     d = _segment_dist_m([[10.0, 48.0], [10.0, 49.0]], 0, 0)
     assert d == 0.0
+
+
+def test_convoy_duration_with_details():
+    from app.services.routing import convoy_duration_s
+    # 10 km komplett urban → 10/40 h = 0.25 h = 900 s
+    coords = [[10.0, 48.0], [10.0, 48.09]]  # ~10 km
+    details = [[0, 1, "residential"]]
+    # Actual haversine distance for this segment ≈ 10.008 km
+    d = convoy_duration_s(10_000, coords, details, speed_urban_kmh=40, speed_rural_kmh=65)
+    # 10 km / 40 km/h = 900 s, allow ±60 s for floating point
+    assert 840 < d < 960
+
+
+def test_convoy_duration_fallback():
+    from app.services.routing import convoy_duration_s
+    # no details → fallback formula
+    d = convoy_duration_s(65_000, [], [], speed_urban_kmh=40, speed_rural_kmh=65)
+    # avg = 0.7*65 + 0.3*40 = 57.5 km/h → 65/57.5 h ≈ 4061 s
+    assert 4000 < d < 4120

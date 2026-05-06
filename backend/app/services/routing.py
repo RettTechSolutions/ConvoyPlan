@@ -35,6 +35,35 @@ def _segment_dist_m(coords: list, from_i: int, to_i: int) -> float:
     )
 
 
+def convoy_duration_s(
+    distance_m: int,
+    coords: list,
+    road_class_details: list,
+    speed_urban_kmh: int,
+    speed_rural_kmh: int,
+) -> int:
+    """Calculate convoy travel time using actual road class distribution."""
+    # Guard against zero speeds to prevent division by zero
+    speed_urban_kmh = max(1, speed_urban_kmh)
+    speed_rural_kmh = max(1, speed_rural_kmh)
+
+    if road_class_details and coords:
+        urban_dist = 0.0
+        nonurban_dist = 0.0
+        for from_i, to_i, rc in road_class_details:
+            d = _segment_dist_m(coords, from_i, to_i)
+            if rc.lower() in URBAN_ROAD_CLASSES:
+                urban_dist += d
+            else:
+                nonurban_dist += d
+        h = urban_dist / 1000 / speed_urban_kmh + nonurban_dist / 1000 / speed_rural_kmh
+    else:
+        # Fallback: fixed 70/30 split
+        avg_speed = 0.7 * speed_rural_kmh + 0.3 * speed_urban_kmh
+        h = distance_m / 1000 / avg_speed
+    return max(1, int(h * 3600))
+
+
 async def calculate_route(
     points: list[dict[str, float]],
     vehicle_params: dict[str, Any] | None = None,
@@ -64,6 +93,7 @@ async def calculate_route(
 
     if custom_model:
         payload["custom_model"] = custom_model
+        payload["ch.disable"] = True
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(

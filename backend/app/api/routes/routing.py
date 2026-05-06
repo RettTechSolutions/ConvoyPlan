@@ -71,26 +71,38 @@ async def calculate_route(
             vehicle_params["max_height_m"] = min(max_h, v.height_cm / 100)
 
     try:
-        route_data = await routing_svc.calculate_route(points, vehicle_params or None)
+        route_data = await routing_svc.calculate_route(
+            points,
+            vehicle_params or None,
+            road_preference=convoy.road_preference,
+        )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Routing failed: {exc}")
 
+    coords = route_data["geometry"].get("coordinates", [])
+    convoy_duration_s = routing_svc.convoy_duration_s(
+        route_data["distance_m"],
+        coords,
+        route_data.get("road_class_details", []),
+        convoy.speed_urban_kmh,
+        convoy.speed_rural_kmh,
+    )
+
     # Persist route
-    coords = route_data["geometry"]["coordinates"]
     line = LineString(coords)
     existing = await db.execute(select(Route).where(Route.convoy_id == convoy_id))
     route = existing.scalar_one_or_none()
     if route:
         route.geometry = from_shape(line, srid=4326)
         route.distance_m = route_data["distance_m"]
-        route.duration_s = route_data["duration_s"]
+        route.duration_s = convoy_duration_s
         route.routing_params = vehicle_params
     else:
         route = Route(
             convoy_id=convoy_id,
             geometry=from_shape(line, srid=4326),
             distance_m=route_data["distance_m"],
-            duration_s=route_data["duration_s"],
+            duration_s=convoy_duration_s,
             routing_params=vehicle_params,
         )
         db.add(route)
@@ -99,7 +111,7 @@ async def calculate_route(
     if convoy.start_time and convoy.waypoints:
         waypoints_sorted = sorted(convoy.waypoints, key=lambda w: w.order_index)
         n_segments = len(waypoints_sorted) + 1
-        seg_duration = route_data["duration_s"] // n_segments
+        seg_duration = convoy_duration_s // n_segments
         schedule = schedule_svc.calculate_schedule(
             waypoints_sorted,
             convoy.start_time.replace(tzinfo=timezone.utc) if convoy.start_time.tzinfo is None else convoy.start_time,

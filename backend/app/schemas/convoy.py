@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -20,6 +21,10 @@ class ConvoyCreate(BaseModel):
     end_point: PointSchema | None = None
     speed_urban_kmh: int = 40
     speed_rural_kmh: int = 65
+    road_preference: Literal["schnell", "bundesstrasse", "landstrasse"] = "schnell"
+    spacing_urban_m: int = 15
+    spacing_rural_m: int = 50
+    spacing_motorway_m: int = 100
     lage: str | None = None
     auftrag: str | None = None
     marschform: str | None = None
@@ -39,6 +44,10 @@ class ConvoyUpdate(BaseModel):
     end_point: PointSchema | None = None
     speed_urban_kmh: int | None = None
     speed_rural_kmh: int | None = None
+    road_preference: Literal["schnell", "bundesstrasse", "landstrasse"] | None = None
+    spacing_urban_m: int | None = None
+    spacing_rural_m: int | None = None
+    spacing_motorway_m: int | None = None
     status: str | None = None
     lage: str | None = None
     auftrag: str | None = None
@@ -68,6 +77,10 @@ class ConvoyResponse(BaseModel):
     start_time: datetime | None
     speed_urban_kmh: int
     speed_rural_kmh: int
+    road_preference: str
+    spacing_urban_m: int
+    spacing_rural_m: int
+    spacing_motorway_m: int
     status: str
     share_token: uuid.UUID
     created_at: datetime

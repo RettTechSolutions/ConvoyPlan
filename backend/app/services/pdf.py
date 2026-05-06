@@ -198,9 +198,9 @@ def generate_marschbefehl(convoy: Any, waypoints: list[dict], vehicles: list[dic
     pdf.set_font("Helvetica", "", 9)
     pdf.multi_cell(
         0, 5,
-        "  • 50 Meter bei Marschgeschwindigkeit bis 50 km/h\n"
-        "  • 100 Meter bei Marschgeschwindigkeit über 50 km/h\n"
-        "  • Mindestens 100 Meter auf Autobahnen und Schnellstraßen"
+        f"  • Innerorts: {getattr(convoy, 'spacing_urban_m', 15)} m\n"
+        f"  • Außerorts: {getattr(convoy, 'spacing_rural_m', 50)} m\n"
+        f"  • Autobahn: {getattr(convoy, 'spacing_motorway_m', 100)} m"
     )
     pdf.ln(2)
 
