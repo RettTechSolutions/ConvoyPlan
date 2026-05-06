@@ -44,6 +44,8 @@ graphhopper:
     - pedestrian
     - platform
 
+  graph.encoded_values: car_access, car_average_speed
+
   profiles:
     - name: car
       custom_model_files: [car.json]
