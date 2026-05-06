@@ -1,4 +1,5 @@
 import asyncio
+import os
 from logging.config import fileConfig
 
 from sqlalchemy import pool
@@ -10,6 +11,10 @@ config = context.config
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+# Override sqlalchemy.url from DATABASE_URL env var if set
+if os.environ.get("DATABASE_URL"):
+    config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"])
 
 from app.database import Base
 from app.models import *  # noqa: F401,F403 – ensures all models are registered
