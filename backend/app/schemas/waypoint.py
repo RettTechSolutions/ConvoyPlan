@@ -42,3 +42,8 @@ class WaypointResponse(BaseModel):
     order_index: int
 
     model_config = {"from_attributes": True}
+
+
+class WaypointReorderItem(BaseModel):
+    id: uuid.UUID
+    order_index: int
