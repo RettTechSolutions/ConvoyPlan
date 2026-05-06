@@ -289,22 +289,22 @@
 <div class="app">
 	<!-- ── Mobile top bar (hidden on desktop via CSS) ── -->
 	<div class="topbar">
-		<button class="hamburger" onclick={() => (sidebarOpen = !sidebarOpen)} title="Menü">☰</button>
+		<button class="hamburger" onclick={() => (sidebarOpen = !sidebarOpen)} aria-expanded={sidebarOpen} aria-controls="sidebar" aria-label="Menü">☰</button>
 		<span class="topbar-name">{selected?.name ?? 'MarschPlan'}</span>
 		<div class="topbar-actions">
-			<button class="btn-map" class:active={$mapMode === 'set-start'} onclick={() => mapMode.set($mapMode === 'set-start' ? 'idle' : 'set-start')}>📍</button>
-			<button class="btn-map" class:active={$mapMode === 'set-end'} onclick={() => mapMode.set($mapMode === 'set-end' ? 'idle' : 'set-end')}>🏁</button>
-			<button class="btn-map" class:active={$mapMode === 'add-waypoint'} onclick={() => mapMode.set($mapMode === 'add-waypoint' ? 'idle' : 'add-waypoint')}>➕</button>
+			<button class="btn-map" class:active={$mapMode === 'set-start'} onclick={() => mapMode.set($mapMode === 'set-start' ? 'idle' : 'set-start')} aria-label="Startpunkt setzen">📍</button>
+			<button class="btn-map" class:active={$mapMode === 'set-end'} onclick={() => mapMode.set($mapMode === 'set-end' ? 'idle' : 'set-end')} aria-label="Zielpunkt setzen">🏁</button>
+			<button class="btn-map" class:active={$mapMode === 'add-waypoint'} onclick={() => mapMode.set($mapMode === 'add-waypoint' ? 'idle' : 'add-waypoint')} aria-label="Wegpunkt hinzufügen">➕</button>
 		</div>
 	</div>
 
 	<!-- ── Sidebar backdrop (mobile only, shown when sidebar is open) ── -->
 	{#if sidebarOpen}
-		<div class="sidebar-backdrop" onclick={() => (sidebarOpen = false)}></div>
+		<button class="sidebar-backdrop" onclick={() => (sidebarOpen = false)} aria-label="Menü schließen"></button>
 	{/if}
 
 	<!-- ── Sidebar ──────────────────────────────────────────────────── -->
-	<aside class="sidebar" class:open={sidebarOpen}>
+	<aside id="sidebar" class="sidebar" class:open={sidebarOpen}>
 		<div class="sidebar-header">
 			<span class="logo">MarschPlan</span>
 			<button class="logout-btn" onclick={logout} title="Abmelden">✕</button>
