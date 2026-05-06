@@ -1,9 +1,12 @@
+import logging
 from math import asin, cos, radians, sin, sqrt
 from typing import Any
 
 import httpx
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 URBAN_ROAD_CLASSES = {"residential", "living_street", "service"}
 
@@ -19,7 +22,7 @@ _PRIORITY_RULES = {
 
 
 def _haversine_m(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
-    R = 6_371_000
+    R = 6_371_000  # mean Earth radius in metres
     dlon, dlat = radians(lon2 - lon1), radians(lat2 - lat1)
     a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
     return 2 * R * asin(sqrt(a))
@@ -46,6 +49,8 @@ async def calculate_route(
         "details": ["road_class"],
     }
 
+    if road_preference not in _PRIORITY_RULES:
+        logger.warning("Unknown road_preference %r, falling back to 'schnell'", road_preference)
     priority_rules = list(_PRIORITY_RULES.get(road_preference, []))
 
     custom_model: dict[str, Any] = {}
