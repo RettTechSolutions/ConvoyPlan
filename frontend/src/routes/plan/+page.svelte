@@ -224,6 +224,7 @@
         reordered.map((wp: Waypoint, i: number) => ({ id: wp.id, order_index: i })),
       );
     } catch {
+      dndWaypoints = prevWaypoints;
       selected = { ...selected!, waypoints: prevWaypoints };
       activeConvoy.set(selected!);
     }
@@ -621,33 +622,33 @@
 										<button class="btn-small" onclick={() => startEditWp(wp)} title="Bearbeiten">✎</button>
 										<button class="btn-small danger" onclick={() => deleteWaypoint(wp.id)}>✕</button>
 									</div>
-								</li>
-								{#if editingWpId === wp.id}
-									<li class="wp-edit-form">
-										<input bind:value={editWpForm.name} placeholder="Name" />
-										<select bind:value={editWpForm.type}>
-											<option value="waypoint">Wegpunkt</option>
-											<option value="stop">Halt</option>
-											<option value="checkpoint">Kontrollpunkt</option>
-											<option value="technical_stop">Techn. Halt</option>
-										</select>
-										{#if editWpForm.type === 'technical_stop'}
-											<select bind:value={editWpForm.halt_purpose}>
-												<option value="">Zweck wählen…</option>
-												<option value="fuel">Tanken</option>
-												<option value="rest">Pause</option>
-												<option value="maintenance">Wartung</option>
-												<option value="other">Sonstiges</option>
+									{#if editingWpId === wp.id}
+										<div class="wp-edit-form">
+											<input bind:value={editWpForm.name} placeholder="Name" />
+											<select bind:value={editWpForm.type}>
+												<option value="waypoint">Wegpunkt</option>
+												<option value="stop">Halt</option>
+												<option value="checkpoint">Kontrollpunkt</option>
+												<option value="technical_stop">Techn. Halt</option>
 											</select>
-										{/if}
-										<input type="number" bind:value={editWpForm.hold_duration_min} min="0" placeholder="Haltezeit (min)" />
-										<input bind:value={editWpForm.notes} placeholder="Notiz (optional)" />
-										<div class="wp-edit-actions">
-											<button class="btn-small" onclick={() => saveWp(wp.id)}>Speichern</button>
-											<button class="btn-small" onclick={() => (editingWpId = null)}>Abbrechen</button>
+											{#if editWpForm.type === 'technical_stop'}
+												<select bind:value={editWpForm.halt_purpose}>
+													<option value="">Zweck wählen…</option>
+													<option value="fuel">Tanken</option>
+													<option value="rest">Pause</option>
+													<option value="maintenance">Wartung</option>
+													<option value="other">Sonstiges</option>
+												</select>
+											{/if}
+											<input type="number" bind:value={editWpForm.hold_duration_min} min="0" placeholder="Haltezeit (min)" />
+											<input bind:value={editWpForm.notes} placeholder="Notiz (optional)" />
+											<div class="wp-edit-actions">
+												<button class="btn-small" onclick={() => saveWp(wp.id)}>Speichern</button>
+												<button class="btn-small" onclick={() => (editingWpId = null)}>Abbrechen</button>
+											</div>
 										</div>
-									</li>
-								{/if}
+									{/if}
+								</li>
 							{/each}
 						</ul>
 					</div>
