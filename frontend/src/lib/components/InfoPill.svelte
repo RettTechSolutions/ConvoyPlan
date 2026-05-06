@@ -17,6 +17,7 @@
   let weatherLoading = $state(false);
 
   let pollInterval: ReturnType<typeof setInterval>;
+  let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   let sse: EventSource | null = null;
 
   async function fetchStatus() {
@@ -33,20 +34,22 @@
     };
     sse.onerror = () => {
       sse?.close();
-      setTimeout(connectSSE, 5000);
+      reconnectTimer = setTimeout(connectSSE, 5000);
     };
   }
 
   $effect(() => {
-    if (startPoint?.lat && startPoint?.lon) {
-      weatherLoading = true;
-      weatherApi.get(startPoint.lat, startPoint.lon)
-        .then(w => { weather = w; })
-        .catch(() => { weather = null; })
-        .finally(() => { weatherLoading = false; });
-    } else {
+    if (!startPoint?.lat || !startPoint?.lon) {
       weather = null;
+      return;
     }
+    const controller = new AbortController();
+    weatherLoading = true;
+    weatherApi.get(startPoint.lat, startPoint.lon)
+      .then(w => { if (!controller.signal.aborted) weather = w; })
+      .catch(() => { if (!controller.signal.aborted) weather = null; })
+      .finally(() => { if (!controller.signal.aborted) weatherLoading = false; });
+    return () => controller.abort();
   });
 
   onMount(() => {
@@ -57,6 +60,7 @@
 
   onDestroy(() => {
     clearInterval(pollInterval);
+    clearTimeout(reconnectTimer);
     sse?.close();
   });
 
