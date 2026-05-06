@@ -204,8 +204,12 @@
 	// ── Waypoint ────────────────────────────────────────────────────
 	async function deleteWaypoint(wpId: string) {
 		if (!selected) return;
-		await convoysApi.deleteWaypoint(selected.id, wpId);
-		await refreshConvoy();
+		try {
+			await convoysApi.deleteWaypoint(selected.id, wpId);
+			await refreshConvoy();
+		} catch {
+			error = 'Wegpunkt konnte nicht gelöscht werden';
+		}
 	}
 
 	function handleDndConsider(e: CustomEvent) {
@@ -213,7 +217,9 @@
   }
 
   async function handleDndFinalize(e: CustomEvent) {
-    const reordered = e.detail.items;
+    const reordered: Waypoint[] = (e.detail.items as Waypoint[]).map(
+      (wp, i) => ({ ...wp, order_index: i })
+    );
     dndWaypoints = reordered;
     const prevWaypoints = selected!.waypoints;
     selected = { ...selected!, waypoints: reordered };
@@ -221,7 +227,7 @@
     try {
       await convoysApi.reorderWaypoints(
         selected!.id,
-        reordered.map((wp: Waypoint, i: number) => ({ id: wp.id, order_index: i })),
+        reordered.map((wp) => ({ id: wp.id, order_index: wp.order_index })),
       );
     } catch {
       dndWaypoints = prevWaypoints;
@@ -242,15 +248,19 @@
   }
 
   async function saveWp(wpId: string) {
-    await convoysApi.updateWaypoint(selected!.id, wpId, {
-      name: editWpForm.name,
-      type: editWpForm.type,
-      hold_duration_min: editWpForm.hold_duration_min,
-      halt_purpose: editWpForm.type === 'technical_stop' ? (editWpForm.halt_purpose || null) : null,
-      notes: editWpForm.notes || null,
-    });
-    editingWpId = null;
-    await refreshConvoy();
+    try {
+      await convoysApi.updateWaypoint(selected!.id, wpId, {
+        name: editWpForm.name,
+        type: editWpForm.type,
+        hold_duration_min: editWpForm.hold_duration_min,
+        halt_purpose: editWpForm.type === 'technical_stop' ? (editWpForm.halt_purpose || null) : null,
+        notes: editWpForm.notes || null,
+      });
+      editingWpId = null;
+      await refreshConvoy();
+    } catch {
+      error = 'Wegpunkt konnte nicht gespeichert werden';
+    }
   }
 
 	// ── Route ────────────────────────────────────────────────────────
@@ -919,10 +929,11 @@
 	.tag.orange { background: rgba(230,126,34,.4); }
 
 	.wp-list { list-style: none; padding: 0; margin: 0; }
-	.wp-item { display: flex; justify-content: space-between; align-items: center; padding: .35rem 0; border-bottom: 1px solid rgba(255,255,255,.08); font-size: .83rem; cursor: grab; }
+	.wp-item { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; padding: .35rem 0; border-bottom: 1px solid rgba(255,255,255,.08); font-size: .83rem; cursor: grab; }
 	.wp-main { flex: 1; }
 	.wp-actions { display: flex; gap: .25rem; }
 	.wp-edit-form {
+  width: 100%;
   display: flex; flex-direction: column; gap: .3rem;
   padding: .4rem .5rem;
   background: rgba(255,255,255,.05);

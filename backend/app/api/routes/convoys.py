@@ -295,6 +295,12 @@ async def reorder_waypoints(
     )
     existing = {wp.id: wp for wp in result.scalars().all()}
 
+    if len(items) != len(existing):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Expected {len(existing)} waypoints, got {len(items)}",
+        )
+
     for item in items:
         if item.id not in existing:
             raise HTTPException(status_code=404, detail=f"Waypoint {item.id} not found in convoy")
