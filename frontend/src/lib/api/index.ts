@@ -45,6 +45,10 @@ export interface Convoy {
 	id: string; name: string; organization: string | null;
 	organization_id: string | null; parent_convoy_id: string | null;
 	start_time: string | null; speed_urban_kmh: number; speed_rural_kmh: number;
+	road_preference: string;
+	spacing_urban_m: number;
+	spacing_rural_m: number;
+	spacing_motorway_m: number;
 	status: string; share_token: string; created_at: string;
 	start_point: Point | null; end_point: Point | null;
 	convoy_vehicles: ConvoyVehicleItem[]; waypoints: Waypoint[];

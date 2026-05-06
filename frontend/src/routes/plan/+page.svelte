@@ -40,7 +40,7 @@
 	let showConvoyForm = $state(false);
 	let showSubConvoyForm = $state(false);
 	let newVehicle = $state({ name:'', callsign:'', license_plate:'', height_cm:'', weight_kg:'', length_cm:'', convoy_role:'', tank_capacity_l:'', fuel_consumption_l100km:'', current_fuel_l:'' });
-	let newConvoy = $state({ name:'', organization:'', organization_id:'', start_time:'', speed_urban_kmh:40, speed_rural_kmh:65, lage:'', auftrag:'', marschform:'geschlossener_verband', ablaufpunkt:'', ablaufzeit:'', ablaufführer:'', versorgung:'', funkgruppe:'', anlagen:'' });
+	let newConvoy = $state({ name:'', organization:'', organization_id:'', start_time:'', speed_urban_kmh:40, speed_rural_kmh:65, road_preference:'schnell', spacing_urban_m:15, spacing_rural_m:50, spacing_motorway_m:100, lage:'', auftrag:'', marschform:'geschlossener_verband', ablaufpunkt:'', ablaufzeit:'', ablaufführer:'', versorgung:'', funkgruppe:'', anlagen:'' });
 	let newWpForm = $state({ name:'', type:'waypoint', hold_duration_min:0, halt_purpose:'' });
 	let pendingWpClick = $state(false);
 	let wizardStep = $state<0 | 1 | 2 | 3>(0);
@@ -86,12 +86,16 @@
 				start_time: newConvoy.start_time || undefined,
 				speed_urban_kmh: newConvoy.speed_urban_kmh,
 				speed_rural_kmh: newConvoy.speed_rural_kmh,
+				road_preference: newConvoy.road_preference,
+				spacing_urban_m: newConvoy.spacing_urban_m,
+				spacing_rural_m: newConvoy.spacing_rural_m,
+				spacing_motorway_m: newConvoy.spacing_motorway_m,
 			});
 			convoyList = [...convoyList, c];
 			convoys.set(convoyList);
 			selectConvoy(c);
 			showConvoyForm = false;
-			newConvoy = { name:'', organization:'', organization_id:'', start_time:'', speed_urban_kmh:40, speed_rural_kmh:65, lage:'', auftrag:'', marschform:'geschlossener_verband', ablaufpunkt:'', ablaufzeit:'', ablaufführer:'', versorgung:'', funkgruppe:'', anlagen:'' };
+			newConvoy = { name:'', organization:'', organization_id:'', start_time:'', speed_urban_kmh:40, speed_rural_kmh:65, road_preference:'schnell', spacing_urban_m:15, spacing_rural_m:50, spacing_motorway_m:100, lage:'', auftrag:'', marschform:'geschlossener_verband', ablaufpunkt:'', ablaufzeit:'', ablaufführer:'', versorgung:'', funkgruppe:'', anlagen:'' };
 			wizardStep = 1;
 			mapMode.set('set-start');
 		} catch { error = 'Konvoi konnte nicht erstellt werden'; }
@@ -345,7 +349,8 @@
 					<div class="section">
 						<p><strong>Organisation:</strong> {selected.organization ?? '–'}</p>
 						<p><strong>Startzeit:</strong> {selected.start_time ? new Date(selected.start_time).toLocaleString('de-DE') : '–'}</p>
-						<p><strong>Tempo:</strong> {selected.speed_urban_kmh} km/h (innerorts) / {selected.speed_rural_kmh} km/h (außerorts)</p>
+						<p><strong>Tempo:</strong> {selected.speed_urban_kmh} km/h (innerorts) / {selected.speed_rural_kmh} km/h (außerorts) · {{ schnell: 'Autobahn', bundesstrasse: 'Bundesstr.', landstrasse: 'Landstr.' }[selected.road_preference] ?? selected.road_preference}</p>
+						<p><strong>Abstände:</strong> {selected.spacing_urban_m} m / {selected.spacing_rural_m} m / {selected.spacing_motorway_m} m (i/a/BAB)</p>
 						{#if selected.marschform}<p><strong>Marschform:</strong> {({ geschlossener_verband:'Geschlossener Verband', einzelgruppen:'Einzelgruppen', individuell:'Individuelle Anreise' })[selected.marschform] ?? selected.marschform}</p>{/if}
 						{#if selected.ablaufpunkt}<p><strong>Ablaufpunkt:</strong> {selected.ablaufpunkt}</p>{/if}
 						{#if selected.ablaufführer}<p><strong>Ablaufführer:</strong> {selected.ablaufführer}</p>{/if}
@@ -751,6 +756,16 @@
 				<label>Startzeit (optional)<input type="datetime-local" bind:value={newConvoy.start_time} /></label>
 				<label>Geschw. innerorts (km/h)<input type="number" bind:value={newConvoy.speed_urban_kmh} min="10" max="60" /></label>
 				<label>Geschw. außerorts (km/h)<input type="number" bind:value={newConvoy.speed_rural_kmh} min="30" max="100" /></label>
+				<label>Straßenpräferenz
+					<select bind:value={newConvoy.road_preference}>
+						<option value="schnell">Schnellste Route (Autobahn erlaubt)</option>
+						<option value="bundesstrasse">Bundesstraßen bevorzugt</option>
+						<option value="landstrasse">Nur Landstraßen</option>
+					</select>
+				</label>
+				<label>Fahrzeugabstand Innerorts (m)<input type="number" bind:value={newConvoy.spacing_urban_m} min="5" max="200" /></label>
+				<label>Fahrzeugabstand Außerorts (m)<input type="number" bind:value={newConvoy.spacing_rural_m} min="10" max="500" /></label>
+				<label>Fahrzeugabstand Autobahn (m)<input type="number" bind:value={newConvoy.spacing_motorway_m} min="10" max="500" /></label>
 				<p class="hint" style="margin:.25rem 0">Weitere Felder (Lage, Auftrag, Funkgruppe…) kannst du nach dem Erstellen im Plan-Tab ergänzen.</p>
 				<div class="modal-actions">
 					<button type="button" onclick={() => (showConvoyForm = false)}>Abbrechen</button>
