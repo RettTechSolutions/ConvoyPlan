@@ -1,4 +1,6 @@
 import httpx
+import time
+from datetime import datetime, timezone
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 
@@ -12,8 +14,15 @@ WMO_CODES = {
     95: "Gewitter", 96: "Gewitter mit Hagel", 99: "Schweres Gewitter mit Hagel",
 }
 
+_last_check: dict = {"status": "unknown", "latency_ms": None, "checked_at": None}
+
+
+def last_check() -> dict:
+    return dict(_last_check)
+
 
 async def get_weather(lat: float, lon: float) -> dict:
+    global _last_check
     params = {
         "latitude": lat,
         "longitude": lon,
@@ -22,10 +31,24 @@ async def get_weather(lat: float, lon: float) -> dict:
         "forecast_days": 1,
         "timezone": "Europe/Berlin",
     }
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(OPEN_METEO_URL, params=params)
-        resp.raise_for_status()
-        data = resp.json()
+    t0 = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(OPEN_METEO_URL, params=params)
+            resp.raise_for_status()
+            data = resp.json()
+        _last_check = {
+            "status": "ok",
+            "latency_ms": round((time.monotonic() - t0) * 1000),
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception:
+        _last_check = {
+            "status": "error",
+            "latency_ms": None,
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+        }
+        raise
 
     cw = data.get("current_weather", {})
     hourly = data.get("hourly", {})

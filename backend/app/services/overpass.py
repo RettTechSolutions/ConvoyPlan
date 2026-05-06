@@ -1,6 +1,14 @@
 import httpx
+import time
+from datetime import datetime, timezone
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+
+_last_check: dict = {"status": "unknown", "latency_ms": None, "checked_at": None}
+
+
+def last_check() -> dict:
+    return dict(_last_check)
 
 
 def _build_query(lat: float, lon: float, radius_m: int = 15000) -> str:
@@ -77,10 +85,25 @@ out body;
 
 
 async def get_closures(lat: float, lon: float, radius_m: int = 15000) -> dict:
+    global _last_check
     query = _build_query(lat, lon, radius_m)
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(OVERPASS_URL, data={"data": query})
-        resp.raise_for_status()
-        data = resp.json()
+    t0 = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(OVERPASS_URL, data={"data": query})
+            resp.raise_for_status()
+            data = resp.json()
+        _last_check = {
+            "status": "ok",
+            "latency_ms": round((time.monotonic() - t0) * 1000),
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception:
+        _last_check = {
+            "status": "error",
+            "latency_ms": None,
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+        }
+        raise
 
     return _to_geojson(data.get("elements", []))
