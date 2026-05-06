@@ -5,6 +5,8 @@
 	import LocationSearch from '$lib/components/LocationSearch.svelte';
 	import WeatherWidget from '$lib/components/WeatherWidget.svelte';
 	import LageLayerPanel from '$lib/components/LageLayerPanel.svelte';
+	import ServiceStatus from '$lib/components/ServiceStatus.svelte';
+	import { get } from 'svelte/store';
 	import { auth } from '$lib/stores/auth';
 	import { activeConvoy, activeRoute, convoys } from '$lib/stores/convoy';
 	import { lageLayers } from '$lib/stores/lage';
@@ -30,6 +32,7 @@
 	let mapCenter = $state<[number, number]>([10.0, 51.5]);
 	let activeTab = $state<'convoy'|'fahrzeuge'|'wegpunkte'|'zeitplan'|'export'|'lage'|'org'>('convoy');
 	let loading = $state(false);
+	let sidebarOpen = $state(false);
 	let error = $state('');
 
 	// Forms
@@ -133,33 +136,38 @@
 
 	// ── Map Click Handler ─────────────────────────────────────────────
 	async function handleMapClick(lat: number, lon: number) {
-		if (!selected) return;
-		const mode = $mapMode;
-		if (mode === 'set-start') {
-			await convoysApi.update(selected.id, { start_point: { lat, lon } });
-			mapMode.set('idle');
-			if (wizardStep === 1) { wizardStep = 2; mapMode.set('set-end'); }
-		} else if (mode === 'set-end') {
-			await convoysApi.update(selected.id, { end_point: { lat, lon } });
-			mapMode.set('idle');
-			if (wizardStep === 2) { wizardStep = 3; mapMode.set('add-waypoint'); }
-		} else if (mode === 'add-waypoint') {
-			const name = wizardStep === 3
-				? (wizardWpName.trim() || `WP ${(selected.waypoints.length + 1)}`)
-				: (newWpForm.name || prompt('Wegpunktname:') || `WP ${(selected.waypoints.length + 1)}`);
-			await convoysApi.createWaypoint(selected.id, {
-				name,
-				type: wizardStep === 3 ? 'waypoint' : newWpForm.type,
-				lat,
-				lon,
-				hold_duration_min: wizardStep === 3 ? 0 : newWpForm.hold_duration_min,
-				halt_purpose: wizardStep === 3 ? undefined : (newWpForm.halt_purpose || undefined),
-				order_index: selected.waypoints.length,
-			});
-			wizardWpName = '';
-			if (wizardStep !== 3) mapMode.set('idle');
+		if (!selected) { error = 'Kein Verband ausgewählt'; return; }
+		const mode = get(mapMode);
+		try {
+			if (mode === 'set-start') {
+				await convoysApi.update(selected.id, { start_point: { lat, lon } });
+				mapMode.set('idle');
+				if (wizardStep === 1) { wizardStep = 2; mapMode.set('set-end'); }
+			} else if (mode === 'set-end') {
+				await convoysApi.update(selected.id, { end_point: { lat, lon } });
+				mapMode.set('idle');
+				if (wizardStep === 2) { wizardStep = 3; mapMode.set('add-waypoint'); }
+			} else if (mode === 'add-waypoint') {
+				const name = wizardStep === 3
+					? (wizardWpName.trim() || `WP ${(selected.waypoints.length + 1)}`)
+					: (newWpForm.name || prompt('Wegpunktname:') || `WP ${(selected.waypoints.length + 1)}`);
+				await convoysApi.createWaypoint(selected.id, {
+					name,
+					type: wizardStep === 3 ? 'waypoint' : newWpForm.type,
+					lat,
+					lon,
+					hold_duration_min: wizardStep === 3 ? 0 : newWpForm.hold_duration_min,
+					halt_purpose: wizardStep === 3 ? undefined : (newWpForm.halt_purpose || undefined),
+					order_index: selected.waypoints.length,
+				});
+				wizardWpName = '';
+				if (wizardStep !== 3) mapMode.set('idle');
+			}
+			await refreshConvoy();
+		} catch (e) {
+			console.error('handleMapClick error:', e);
+			error = e instanceof Error ? e.message : 'Fehler beim Setzen des Punkts';
 		}
-		await refreshConvoy();
 	}
 
 	function handleMapMove(lat: number, lon: number) {
@@ -279,8 +287,24 @@
 </script>
 
 <div class="app">
+	<!-- ── Mobile top bar (hidden on desktop via CSS) ── -->
+	<div class="topbar">
+		<button class="hamburger" onclick={() => (sidebarOpen = !sidebarOpen)} title="Menü">☰</button>
+		<span class="topbar-name">{selected?.name ?? 'MarschPlan'}</span>
+		<div class="topbar-actions">
+			<button class="btn-map" class:active={$mapMode === 'set-start'} onclick={() => mapMode.set($mapMode === 'set-start' ? 'idle' : 'set-start')}>📍</button>
+			<button class="btn-map" class:active={$mapMode === 'set-end'} onclick={() => mapMode.set($mapMode === 'set-end' ? 'idle' : 'set-end')}>🏁</button>
+			<button class="btn-map" class:active={$mapMode === 'add-waypoint'} onclick={() => mapMode.set($mapMode === 'add-waypoint' ? 'idle' : 'add-waypoint')}>➕</button>
+		</div>
+	</div>
+
+	<!-- ── Sidebar backdrop (mobile only, shown when sidebar is open) ── -->
+	{#if sidebarOpen}
+		<div class="sidebar-backdrop" onclick={() => (sidebarOpen = false)}></div>
+	{/if}
+
 	<!-- ── Sidebar ──────────────────────────────────────────────────── -->
-	<aside class="sidebar">
+	<aside class="sidebar" class:open={sidebarOpen}>
 		<div class="sidebar-header">
 			<span class="logo">MarschPlan</span>
 			<button class="logout-btn" onclick={logout} title="Abmelden">✕</button>
@@ -298,6 +322,13 @@
 			</select>
 			<button class="btn-small" onclick={() => (showConvoyForm = true)}>+ Neu</button>
 		</div>
+
+		{#if error}
+			<div class="error-bar">
+				<span>{error}</span>
+				<button onclick={() => (error = '')}>✕</button>
+			</div>
+		{/if}
 
 		{#if wizardStep === 0}
 			<!-- Tabs -->
@@ -668,14 +699,14 @@
 				{/if}
 			</div>
 		{/if}
-
-		{#if error}
-			<p class="error-bar" onclick={() => (error = '')}>{error} ✕</p>
-		{/if}
 	</aside>
 
 	<!-- ── Karte ─────────────────────────────────────────────────────── -->
 	<main class="map-area">
+		<!-- FAB route button shown on mobile only -->
+		<button class="fab-route" onclick={calculateRoute} disabled={loading}>
+			{loading ? 'Berechne…' : '🗺 Route'}
+		</button>
 		{#if $mapMode !== 'idle'}
 			<div class="map-hint-bar">
 				{#if $mapMode === 'set-start'}Start setzen – auf Karte klicken{/if}
@@ -694,6 +725,8 @@
 				<LageLayerPanel convoyId={selected.id} onLayersChange={(layers) => lageLayers.set(layers)} />
 			</div>
 		{/if}
+
+		<ServiceStatus />
 
 		<MapView
 			startPoint={selected?.start_point}
@@ -799,7 +832,8 @@
 
 	.tag-pill { display: inline-block; background: rgba(52,152,219,.3); border: 1px solid #3498db; border-radius: 12px; padding: .1rem .5rem; font-size: .72rem; color: #74b9ff; }
 
-	.error-bar { background: #c0392b; color: white; padding: .5rem 1rem; font-size: .82rem; margin: 0; cursor: pointer; }
+	.error-bar { background: #c0392b; color: white; padding: .4rem .75rem; font-size: .8rem; margin: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; flex-shrink: 0; word-break: break-word; }
+	.error-bar button { background: none; border: none; color: white; cursor: pointer; font-size: 1rem; flex-shrink: 0; line-height: 1; padding: 0; }
 
 	.map-area { flex: 1; position: relative; }
 	.map-hint-bar { position: absolute; top: 1rem; left: 50%; transform: translateX(-50%); z-index: 10; background: rgba(26,39,68,.9); color: white; padding: .5rem 1rem; border-radius: 20px; display: flex; align-items: center; gap: 1rem; font-size: .85rem; }
