@@ -943,6 +943,7 @@
 		/* Push the flex layout down to clear the fixed top bar */
 		.app {
 			padding-top: 48px;
+			box-sizing: border-box;
 		}
 
 		/* Sidebar becomes a fixed overlay from the left */
@@ -951,8 +952,9 @@
 			top: 48px;
 			left: 0;
 			bottom: 0;
-			width: 300px;
+			width: min(300px, 85vw);
 			z-index: 300;
+			overflow-y: auto;
 			transform: translateX(-100%);
 			transition: transform .25s ease;
 		}
@@ -975,7 +977,7 @@
 			position: fixed;
 			bottom: 1.5rem;
 			right: 1rem;
-			z-index: 100;
+			z-index: 50;
 			padding: .6rem 1.1rem;
 			background: #e74c3c;
 			color: white;
