@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, convoys, vehicles, routing, organizations, tracking, lage, weather, overpass
+from app.api.routes import auth, convoys, vehicles, routing, organizations, tracking, lage, weather, overpass, status, users
 
 app = FastAPI(title="MarschPlan API", version="0.2.0")
 
@@ -27,6 +27,8 @@ app.include_router(tracking.router, prefix="/api")
 app.include_router(lage.router, prefix="/api")
 app.include_router(weather.router, prefix="/api")
 app.include_router(overpass.router, prefix="/api")
+app.include_router(status.router, prefix="/api")
+app.include_router(users.router, prefix="/api")
 
 
 @app.get("/health")
