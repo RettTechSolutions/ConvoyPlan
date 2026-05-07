@@ -1,14 +1,16 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
+from app.api.guards import get_convoy_access, get_vehicle_access, ROLE_ORDER
 from app.database import get_db
 from app.models.convoy import Convoy, ConvoyVehicle
 from app.models.user import User
+from app.models.organization import UserOrganization
 from app.models.vehicle import Vehicle
 from app.models.waypoint import Waypoint
 from app.schemas.convoy import AddVehicleRequest, ConvoyCreate, ConvoyResponse, ConvoyUpdate
@@ -18,10 +20,20 @@ from app.services import geometry as geo_svc
 router = APIRouter(prefix="/convoys", tags=["convoys"])
 
 
-def _convoy_query(owner_id):
+def _convoy_query(user_id: uuid.UUID):
+    org_ids_subq = (
+        select(UserOrganization.organization_id)
+        .where(UserOrganization.user_id == user_id)
+        .scalar_subquery()
+    )
     return (
         select(Convoy)
-        .where(Convoy.owner_id == owner_id)
+        .where(
+            or_(
+                Convoy.owner_id == user_id,
+                Convoy.organization_id.in_(org_ids_subq),
+            )
+        )
         .options(
             selectinload(Convoy.convoy_vehicles).selectinload(ConvoyVehicle.vehicle),
             selectinload(Convoy.waypoints),
@@ -34,6 +46,7 @@ def _serialize_convoy(convoy: Convoy) -> dict:
         "id": convoy.id,
         "name": convoy.name,
         "organization": convoy.organization,
+        "organization_id": convoy.organization_id,
         "start_time": convoy.start_time,
         "speed_urban_kmh": convoy.speed_urban_kmh,
         "speed_rural_kmh": convoy.speed_rural_kmh,
@@ -88,6 +101,17 @@ async def create_convoy(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    if data.organization_id:
+        mem = await db.execute(
+            select(UserOrganization).where(
+                UserOrganization.user_id == current_user.id,
+                UserOrganization.organization_id == data.organization_id,
+            )
+        )
+        membership = mem.scalar_one_or_none()
+        if not membership or ROLE_ORDER.get(membership.role, -1) < ROLE_ORDER["planer"]:
+            raise HTTPException(403, "Insufficient role: requires planer")
+
     convoy_data = data.model_dump(exclude={"start_point", "end_point"})
     convoy = Convoy(**convoy_data, owner_id=current_user.id)
     if data.start_point:
@@ -123,12 +147,7 @@ async def update_convoy(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(
-        _convoy_query(current_user.id).where(Convoy.id == convoy_id)
-    )
-    convoy = result.scalar_one_or_none()
-    if not convoy:
-        raise HTTPException(status_code=404, detail="Convoy not found")
+    convoy = await get_convoy_access(convoy_id, current_user, db, require="write")
 
     update_data = data.model_dump(exclude_none=True, exclude={"start_point", "end_point"})
     for key, value in update_data.items():
@@ -149,12 +168,7 @@ async def delete_convoy(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(
-        select(Convoy).where(Convoy.id == convoy_id, Convoy.owner_id == current_user.id)
-    )
-    convoy = result.scalar_one_or_none()
-    if not convoy:
-        raise HTTPException(status_code=404, detail="Convoy not found")
+    convoy = await get_convoy_access(convoy_id, current_user, db, require="delete")
     await db.delete(convoy)
     await db.commit()
 
@@ -168,12 +182,8 @@ async def add_vehicle_to_convoy(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    convoy = await _get_owned_convoy(convoy_id, current_user.id, db)
-    vehicle_result = await db.execute(
-        select(Vehicle).where(Vehicle.id == data.vehicle_id, Vehicle.owner_id == current_user.id)
-    )
-    if not vehicle_result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Vehicle not found")
+    await get_convoy_access(convoy_id, current_user, db, require="write")
+    await get_vehicle_access(data.vehicle_id, current_user, db, require="read")
 
     cv = ConvoyVehicle(
         convoy_id=convoy_id,
@@ -194,7 +204,7 @@ async def remove_vehicle_from_convoy(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _get_owned_convoy(convoy_id, current_user.id, db)
+    await get_convoy_access(convoy_id, current_user, db, require="write")
     await db.execute(
         delete(ConvoyVehicle).where(
             ConvoyVehicle.convoy_id == convoy_id,
@@ -212,7 +222,7 @@ async def list_waypoints(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _get_owned_convoy(convoy_id, current_user.id, db)
+    await get_convoy_access(convoy_id, current_user, db, require="read")
     result = await db.execute(
         select(Waypoint).where(Waypoint.convoy_id == convoy_id).order_by(Waypoint.order_index)
     )
@@ -227,7 +237,7 @@ async def create_waypoint(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _get_owned_convoy(convoy_id, current_user.id, db)
+    await get_convoy_access(convoy_id, current_user, db, require="write")
     wp_data = data.model_dump(exclude={"lat", "lon"})
     wp = Waypoint(**wp_data, convoy_id=convoy_id)
     wp.location = geo_svc.point_to_wkt(data.lat, data.lon)
@@ -245,7 +255,7 @@ async def update_waypoint(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _get_owned_convoy(convoy_id, current_user.id, db)
+    await get_convoy_access(convoy_id, current_user, db, require="write")
     result = await db.execute(
         select(Waypoint).where(Waypoint.id == waypoint_id, Waypoint.convoy_id == convoy_id)
     )
@@ -269,7 +279,7 @@ async def delete_waypoint(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _get_owned_convoy(convoy_id, current_user.id, db)
+    await get_convoy_access(convoy_id, current_user, db, require="write")
     result = await db.execute(
         select(Waypoint).where(Waypoint.id == waypoint_id, Waypoint.convoy_id == convoy_id)
     )
@@ -287,7 +297,7 @@ async def reorder_waypoints(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    convoy = await _get_owned_convoy(convoy_id, current_user.id, db)
+    convoy = await get_convoy_access(convoy_id, current_user, db, require="write")
     if len({i.order_index for i in items}) != len(items):
         raise HTTPException(status_code=400, detail="Duplicate order_index values in request")
     result = await db.execute(
@@ -317,16 +327,6 @@ async def reorder_waypoints(
     return [{**w.__dict__, **geo_svc.waypoint_coords(w)} for w in waypoints]
 
 
-async def _get_owned_convoy(convoy_id: uuid.UUID, owner_id: uuid.UUID, db: AsyncSession) -> Convoy:
-    result = await db.execute(
-        select(Convoy).where(Convoy.id == convoy_id, Convoy.owner_id == owner_id)
-    )
-    convoy = result.scalar_one_or_none()
-    if not convoy:
-        raise HTTPException(status_code=404, detail="Convoy not found")
-    return convoy
-
-
 # --- V2: Teilverbände (Sub-Convoys) ---
 
 @router.get("/{convoy_id}/sub-convoys")
@@ -335,7 +335,7 @@ async def list_sub_convoys(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _get_owned_convoy(convoy_id, current_user.id, db)
+    await get_convoy_access(convoy_id, current_user, db, require="read")
     result = await db.execute(
         _convoy_query(current_user.id).where(Convoy.parent_convoy_id == convoy_id)
     )
@@ -349,7 +349,7 @@ async def create_sub_convoy(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _get_owned_convoy(convoy_id, current_user.id, db)
+    await get_convoy_access(convoy_id, current_user, db, require="write")
     convoy_data = data.model_dump(exclude={"start_point", "end_point"})
     sub = Convoy(**convoy_data, owner_id=current_user.id, parent_convoy_id=convoy_id)
     if data.start_point:

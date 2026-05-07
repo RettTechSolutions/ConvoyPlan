@@ -16,6 +16,7 @@ class PointSchema(BaseModel):
 class ConvoyCreate(BaseModel):
     name: str
     organization: str | None = None
+    organization_id: uuid.UUID | None = None
     start_time: datetime | None = None
     start_point: PointSchema | None = None
     end_point: PointSchema | None = None
@@ -74,6 +75,7 @@ class ConvoyResponse(BaseModel):
     id: uuid.UUID
     name: str
     organization: str | None
+    organization_id: uuid.UUID | None = None
     start_time: datetime | None
     speed_urban_kmh: int
     speed_rural_kmh: int
