@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { auth } from '$lib/stores/auth';
+	import AppLogo from '$lib/components/AppLogo.svelte';
 
 	let email = $state('');
 	let password = $state('');
@@ -24,7 +25,9 @@
 
 <div class="login-container">
 	<div class="login-card">
-		<h1>ConvoyPlan</h1>
+		<div class="login-logo">
+			<AppLogo variant="main" height={170} />
+		</div>
 		<p class="subtitle">PLAN. MOVE. CONNECT.</p>
 
 		<form onsubmit={handleLogin}>
@@ -62,11 +65,8 @@
 		max-width: 380px;
 		box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
 	}
-	h1 {
-		margin: 0 0 0.25rem;
-		font-size: 1.8rem;
-		color: #0F1B24;
-	}
+	.login-logo { display: flex; justify-content: center; margin-bottom: 1rem; }
+	h1 { display: none; }
 	.subtitle {
 		color: #666;
 		margin: 0 0 1.5rem;

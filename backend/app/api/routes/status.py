@@ -45,6 +45,8 @@ async def service_status(db: AsyncSession = Depends(get_db)):
         # ReadTimeout / other — GH is up but still importing graph
         gh_status = "building"
 
+    overpass_check = await overpass_svc.probe()
+
     return {
         "checked_at": datetime.now(timezone.utc).isoformat(),
         "backend": "ok",
@@ -52,5 +54,5 @@ async def service_status(db: AsyncSession = Depends(get_db)):
         "graphhopper": gh_status,
         "graphhopper_bbox": gh_bbox,
         "weather_api": weather_svc.last_check(),
-        "overpass_api": overpass_svc.last_check(),
+        "overpass_api": overpass_check,
     }

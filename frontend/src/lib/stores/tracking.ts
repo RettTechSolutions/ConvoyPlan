@@ -11,9 +11,11 @@ export function connectTracking(convoyId: string) {
 	const token = localStorage.getItem('token');
 	if (!token) return;
 
-	const wsBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000')
-		.replace(/^http/, 'ws');
-	ws = new WebSocket(`${wsBase}/api/ws/tracking/${convoyId}?token=${token}`);
+	// SvelteKit's server-side proxy doesn't support WebSocket upgrades,
+	// so we connect directly to the backend using the same hostname but port 8000.
+	const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+	const backendHost = import.meta.env.VITE_WS_HOST ?? `${window.location.hostname}:8000`;
+	ws = new WebSocket(`${protocol}//${backendHost}/api/ws/tracking/${convoyId}?token=${token}`);
 
 	ws.onmessage = (event) => {
 		const data = JSON.parse(event.data) as VehiclePosition & { type?: string; vehicle_status?: string };
@@ -31,12 +33,18 @@ export function connectTracking(convoyId: string) {
 	};
 
 	ws.onopen = () => trackingActive.set(true);
-	ws.onclose = () => trackingActive.set(false);
+	ws.onerror = () => trackingActive.set(false);
+	ws.onclose = () => {
+		trackingActive.set(false);
+		// Auto-reconnect after 3 s unless disconnected intentionally
+		if (ws) setTimeout(() => connectTracking(convoyId), 3000);
+	};
 }
 
 export function disconnectTracking() {
-	ws?.close();
-	ws = null;
+	const _ws = ws;
+	ws = null; // clear first so reconnect logic doesn't fire
+	_ws?.close();
 	trackingActive.set(false);
 	livePositions.set(new Map());
 }

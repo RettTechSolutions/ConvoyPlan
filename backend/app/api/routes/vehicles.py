@@ -1,6 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,8 +19,32 @@ async def list_vehicles(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(Vehicle).where(Vehicle.owner_id == current_user.id))
+    result = await db.execute(
+        select(Vehicle).where(Vehicle.owner_id == current_user.id).order_by(Vehicle.order_index)
+    )
     return result.scalars().all()
+
+
+class ReorderItem(BaseModel):
+    id: uuid.UUID
+    order_index: int
+
+
+@router.patch("/reorder", status_code=status.HTTP_204_NO_CONTENT)
+async def reorder_vehicles(
+    items: list[ReorderItem],
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    ids = [item.id for item in items]
+    result = await db.execute(
+        select(Vehicle).where(Vehicle.id.in_(ids), Vehicle.owner_id == current_user.id)
+    )
+    vehicles = {v.id: v for v in result.scalars().all()}
+    for item in items:
+        if item.id in vehicles:
+            vehicles[item.id].order_index = item.order_index
+    await db.commit()
 
 
 @router.post("/", response_model=VehicleResponse, status_code=status.HTTP_201_CREATED)

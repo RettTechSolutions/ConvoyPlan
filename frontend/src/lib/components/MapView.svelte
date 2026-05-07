@@ -16,6 +16,8 @@
 		closuresGeojson?: FeatureCollection | null;
 		onMapClick?: (lat: number, lon: number) => void;
 		onMapMove?: (lat: number, lon: number) => void;
+		/** When true, every map click fires onMapClick regardless of mapMode */
+		clickEnabled?: boolean;
 	}
 
 	let {
@@ -28,11 +30,12 @@
 		closuresGeojson = null,
 		onMapClick,
 		onMapMove,
+		clickEnabled = false,
 	}: Props = $props();
 
 	let mapContainer: HTMLDivElement;
 	let map: maplibregl.Map;
-	let ready = false;
+	let ready = $state(false);
 	let startMarker: maplibregl.Marker | null = null;
 	let endMarker: maplibregl.Marker | null = null;
 	let waypointMarkers: maplibregl.Marker[] = [];
@@ -60,7 +63,7 @@
 		map.addControl(new maplibregl.NavigationControl());
 
 		map.on('click', (e) => {
-			if ($mapMode !== 'idle' && onMapClick) {
+			if (onMapClick && (clickEnabled || $mapMode !== 'idle')) {
 				onMapClick(e.lngLat.lat, e.lngLat.lng);
 			}
 		});

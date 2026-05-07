@@ -22,6 +22,7 @@
 
 <svelte:head>
 	<title>ConvoyPlan</title>
+	<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 </svelte:head>
 
 {@render children()}

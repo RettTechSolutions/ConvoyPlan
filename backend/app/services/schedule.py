@@ -19,8 +19,8 @@ def calculate_schedule(
     current_time = start_time
 
     for i, wp in enumerate(waypoints):
-        if i > 0:
-            current_time += timedelta(seconds=segment_durations_s[i - 1])
+        # segment_durations_s[i] = travel time from previous point (start or last wp) to this wp
+        current_time += timedelta(seconds=segment_durations_s[i])
 
         arrival = current_time
         departure = arrival + timedelta(minutes=wp.hold_duration_min)

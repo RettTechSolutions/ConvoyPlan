@@ -3,6 +3,7 @@ import time
 from datetime import datetime, timezone
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+_HEADERS = {"Accept": "*/*", "User-Agent": "ConvoyPlan/1.0"}
 
 _last_check: dict = {"status": "unknown", "latency_ms": None, "checked_at": None}
 
@@ -11,16 +12,46 @@ def last_check() -> dict:
     return dict(_last_check)
 
 
+async def probe() -> dict:
+    """Lightweight reachability check, cached for 60 s to avoid hammering Overpass."""
+    global _last_check
+    if _last_check["checked_at"] is not None:
+        last = datetime.fromisoformat(_last_check["checked_at"])
+        if (datetime.now(timezone.utc) - last).total_seconds() < 60:
+            return dict(_last_check)
+
+    query = "[out:json][timeout:5];node(51.505,-0.09,51.51,-0.08);out 1;"
+    t0 = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.post(OVERPASS_URL, data={"data": query}, headers=_HEADERS)
+            resp.raise_for_status()
+        _last_check = {
+            "status": "ok",
+            "latency_ms": round((time.monotonic() - t0) * 1000),
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception:
+        _last_check = {
+            "status": "error",
+            "latency_ms": None,
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+        }
+    return dict(_last_check)
+
+
 def _build_query(lat: float, lon: float, radius_m: int = 15000) -> str:
+    # Focused only on actual construction/road-works — access=no is far too broad
     return f"""
-[out:json][timeout:25];
+[out:json][timeout:20];
 (
-  way["highway"]["construction"](around:{radius_m},{lat},{lon});
+  way["highway"="construction"](around:{radius_m},{lat},{lon});
+  way["highway"]["construction"~"."](around:{radius_m},{lat},{lon});
   node["highway"="road_works"](around:{radius_m},{lat},{lon});
-  way["access"="no"]["highway"](around:{radius_m},{lat},{lon});
-  node["access"="no"]["highway"](around:{radius_m},{lat},{lon});
+  node["highway"="construction"](around:{radius_m},{lat},{lon});
+  node["hazard"="construction"](around:{radius_m},{lat},{lon});
 );
-out body geom;
+out geom;
 """
 
 
@@ -52,7 +83,7 @@ node["amenity"="fuel"](around:{radius_m},{lat},{lon});
 out body;
 """
     async with httpx.AsyncClient(timeout=20.0) as client:
-        resp = await client.post(OVERPASS_URL, data={"data": query})
+        resp = await client.post(OVERPASS_URL, data={"data": query}, headers=_HEADERS)
         resp.raise_for_status()
         data = resp.json()
 
@@ -89,8 +120,8 @@ async def get_closures(lat: float, lon: float, radius_m: int = 15000) -> dict:
     query = _build_query(lat, lon, radius_m)
     t0 = time.monotonic()
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(OVERPASS_URL, data={"data": query})
+        async with httpx.AsyncClient(timeout=40.0) as client:
+            resp = await client.post(OVERPASS_URL, data={"data": query}, headers=_HEADERS)
             resp.raise_for_status()
             data = resp.json()
         _last_check = {

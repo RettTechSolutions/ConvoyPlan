@@ -21,6 +21,7 @@ class Vehicle(Base):
     tank_capacity_l: Mapped[float | None] = mapped_column(Float, nullable=True)
     fuel_consumption_l100km: Mapped[float | None] = mapped_column(Float, nullable=True)
     current_fuel_l: Mapped[float | None] = mapped_column(Float, nullable=True)
+    order_index: Mapped[int] = mapped_column(Integer, default=0)
     owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
 
     owner: Mapped["User"] = relationship(back_populates="vehicles")

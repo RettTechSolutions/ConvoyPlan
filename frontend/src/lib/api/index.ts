@@ -9,11 +9,17 @@ export interface Vehicle {
 	id: string; name: string; callsign: string | null; license_plate: string | null;
 	height_cm: number | null; weight_kg: number | null; length_cm: number | null; convoy_role: string | null;
 	tank_capacity_l: number | null; fuel_consumption_l100km: number | null;
-	current_fuel_l: number | null; range_km: number | null;
+	current_fuel_l: number | null; order_index: number; range_km: number | null; range_uses_defaults: boolean;
 }
 
 export interface FuelStopPosition { lat: number; lon: number; }
-export interface VehicleRangeInfo { name: string; callsign: string | null; range_km: number; }
+export interface VehicleRangeInfo { name: string; callsign: string | null; range_km: number; using_defaults: boolean; }
+export interface DurationHalt {
+	stop_km: number;
+	stop_position: FuelStopPosition | null;
+	duration_min: number;
+	is_rest: boolean;
+}
 export interface FuelAnalysis {
 	vehicles_with_range: VehicleRangeInfo[];
 	min_range_km: number | null;
@@ -22,6 +28,12 @@ export interface FuelAnalysis {
 	fuel_stop_km: number | null;
 	fuel_stop_position: FuelStopPosition | null;
 	limiting_vehicle: string | null;
+	has_default_values: boolean;
+	vehicles_without_data: number;
+	recommended_stop_duration_min: number | null;
+	duration_halt_needed: boolean;
+	duration_halts: DurationHalt[];
+	rest_needed: boolean;
 }
 
 export interface FuelStation {
@@ -68,6 +80,10 @@ export interface RouteResult {
 export interface Organization {
 	id: string; name: string; description: string | null;
 	member_count: number; my_role: string;
+}
+
+export interface OrgMember {
+	user_id: string; email: string; role: string;
 }
 
 export interface LageLayer {
@@ -119,6 +135,7 @@ export const vehiclesApi = {
 	list: () => api.get<Vehicle[]>('/api/vehicles/'),
 	create: (data: Partial<Vehicle>) => api.post<Vehicle>('/api/vehicles/', data),
 	update: (id: string, data: Partial<Vehicle>) => api.put<Vehicle>(`/api/vehicles/${id}`, data),
+	reorder: (items: { id: string; order_index: number }[]) => api.patch('/api/vehicles/reorder', items),
 	delete: (id: string) => api.delete(`/api/vehicles/${id}`),
 };
 
@@ -166,8 +183,11 @@ export const orgsApi = {
 	list: () => api.get<Organization[]>('/api/organizations/'),
 	create: (name: string, description?: string) =>
 		api.post<Organization>('/api/organizations/', { name, description }),
+	listMembers: (orgId: string) => api.get<OrgMember[]>(`/api/organizations/${orgId}/members`),
 	addMember: (orgId: string, email: string, role: string) =>
 		api.post(`/api/organizations/${orgId}/members`, { email, role }),
+	updateMemberRole: (orgId: string, userId: string, role: string) =>
+		api.patch(`/api/organizations/${orgId}/members/${userId}`, { role }),
 	removeMember: (orgId: string, userId: string) =>
 		api.delete(`/api/organizations/${orgId}/members/${userId}`),
 	delete: (orgId: string) => api.delete(`/api/organizations/${orgId}`),

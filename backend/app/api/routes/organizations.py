@@ -24,6 +24,16 @@ class OrgMemberAdd(BaseModel):
     role: str = "beobachter"
 
 
+class OrgMemberRoleUpdate(BaseModel):
+    role: str
+
+
+class OrgMemberResponse(BaseModel):
+    user_id: uuid.UUID
+    email: str
+    role: str
+
+
 class OrgResponse(BaseModel):
     id: uuid.UUID
     name: str
@@ -124,6 +134,57 @@ async def remove_member(
     if membership:
         await db.delete(membership)
         await db.commit()
+
+
+@router.get("/{org_id}/members", response_model=list[OrgMemberResponse])
+async def list_members(
+    org_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # Only members and owner can list
+    result = await db.execute(
+        select(Organization)
+        .options(selectinload(Organization.members))
+        .where(Organization.id == org_id)
+    )
+    org = result.scalar_one_or_none()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organisation nicht gefunden")
+    is_member = org.owner_id == current_user.id or any(m.user_id == current_user.id for m in org.members)
+    if not is_member:
+        raise HTTPException(status_code=403, detail="Kein Zugriff")
+
+    out = []
+    for m in org.members:
+        user_result = await db.execute(select(User).where(User.id == m.user_id))
+        user = user_result.scalar_one_or_none()
+        if user:
+            out.append(OrgMemberResponse(user_id=m.user_id, email=user.email, role=m.role))
+    return out
+
+
+@router.patch("/{org_id}/members/{user_id}", status_code=status.HTTP_200_OK)
+async def update_member_role(
+    org_id: uuid.UUID,
+    user_id: uuid.UUID,
+    data: OrgMemberRoleUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await _get_org_admin(org_id, current_user.id, db)
+    result = await db.execute(
+        select(UserOrganization).where(
+            UserOrganization.organization_id == org_id,
+            UserOrganization.user_id == user_id,
+        )
+    )
+    membership = result.scalar_one_or_none()
+    if not membership:
+        raise HTTPException(status_code=404, detail="Mitglied nicht gefunden")
+    membership.role = data.role
+    await db.commit()
+    return {"status": "updated", "role": data.role}
 
 
 @router.delete("/{org_id}", status_code=status.HTTP_204_NO_CONTENT)

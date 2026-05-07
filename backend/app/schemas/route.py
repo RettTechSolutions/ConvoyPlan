@@ -13,6 +13,14 @@ class VehicleRangeInfo(BaseModel):
     name: str
     callsign: str | None
     range_km: float
+    using_defaults: bool = False
+
+
+class DurationHalt(BaseModel):
+    stop_km: float
+    stop_position: FuelStopPosition | None
+    duration_min: int
+    is_rest: bool = False
 
 
 class FuelAnalysis(BaseModel):
@@ -23,6 +31,12 @@ class FuelAnalysis(BaseModel):
     fuel_stop_km: float | None
     fuel_stop_position: FuelStopPosition | None
     limiting_vehicle: str | None
+    has_default_values: bool = False
+    vehicles_without_data: int = 0
+    recommended_stop_duration_min: int | None = None
+    duration_halt_needed: bool = False
+    duration_halts: list[DurationHalt] = []
+    rest_needed: bool = False
 
 
 class RouteResponse(BaseModel):

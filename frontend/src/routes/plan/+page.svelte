@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import AppLogo from '$lib/components/AppLogo.svelte';
 	import MapView from '$lib/components/MapView.svelte';
 	import LocationSearch from '$lib/components/LocationSearch.svelte';
 	import InfoPill from '$lib/components/InfoPill.svelte';
@@ -12,7 +13,7 @@
 	import { mapMode } from '$lib/stores/map';
 	import {
 		convoysApi, vehiclesApi, orgsApi, overpassApi,
-		type Convoy, type Vehicle, type Organization, type LageLayer,
+		type Convoy, type Vehicle, type Organization, type OrgMember, type LageLayer,
 		type FuelAnalysis, type FuelStation, type Waypoint, type RoadPreference,
 	} from '$lib/api';
 	import type { FeatureCollection } from 'geojson';
@@ -27,22 +28,54 @@
 	let fuelStations = $state<FuelStation[]>([]);
 	let showFuelStations = $state(false);
 	let fuelStationsLoading = $state(false);
+
+	// Derived from actual waypoints so recalculating the route doesn't reset them
+	let fuelStopExists = $derived(
+		(selected?.waypoints ?? []).some(wp => wp.halt_purpose === 'fuel')
+	);
+	let thStopsAdded = $derived(
+		(selected?.waypoints ?? []).filter(wp =>
+			wp.type === 'technical_stop' && wp.halt_purpose !== 'fuel'
+		).length
+	);
 	let closures = $state<FeatureCollection | null>(null);
 	let showClosures = $state(false);
 	let mapCenter = $state<[number, number]>([10.0, 51.5]);
 	let activeTab = $state<'convoy'|'fahrzeuge'|'wegpunkte'|'zeitplan'|'export'|'lage'|'org'>('convoy');
 	let loading = $state(false);
 	let dndWaypoints = $state<Waypoint[]>([]);
+	let dndVehicles = $state<Vehicle[]>([]);
 	let editingWpId = $state<string | null>(null);
 	let editWpForm = $state({ name: '', type: 'waypoint', hold_duration_min: 0, halt_purpose: '', notes: '' });
 	let sidebarOpen = $state(false);
 	let error = $state('');
 
+	// Org management
+	let expandedOrgId = $state<string | null>(null);
+	let orgMembers = $state<Record<string, OrgMember[]>>({});
+	let orgAddForm = $state<Record<string, { email: string; role: string }>>({});
+
+	async function loadOrgMembers(orgId: string) {
+		try {
+			orgMembers = { ...orgMembers, [orgId]: await orgsApi.listMembers(orgId) };
+		} catch { /* ignore */ }
+	}
+
+	async function toggleOrgExpand(orgId: string) {
+		if (expandedOrgId === orgId) { expandedOrgId = null; return; }
+		expandedOrgId = orgId;
+		if (!orgAddForm[orgId]) orgAddForm = { ...orgAddForm, [orgId]: { email: '', role: 'beobachter' } };
+		if (!orgMembers[orgId]) await loadOrgMembers(orgId);
+	}
+
 	// Forms
 	let showVehicleForm = $state(false);
 	let showConvoyForm = $state(false);
+	let showBefehlModal = $state(false);
 	let showSubConvoyForm = $state(false);
 	let newVehicle = $state({ name:'', callsign:'', license_plate:'', height_cm:'', weight_kg:'', length_cm:'', convoy_role:'', tank_capacity_l:'', fuel_consumption_l100km:'', current_fuel_l:'' });
+	let editingVehicleId = $state<string | null>(null);
+	let editVehicleForm = $state({ name:'', callsign:'', license_plate:'', height_cm:'', weight_kg:'', length_cm:'', convoy_role:'', tank_capacity_l:'', fuel_consumption_l100km:'', current_fuel_l:'' });
 	let newConvoy = $state(defaultConvoyForm());
 	let newWpForm = $state({ name:'', type:'waypoint', hold_duration_min:0, halt_purpose:'' });
 	let pendingWpClick = $state(false);
@@ -63,6 +96,7 @@
 			[allVehicles, convoyList, organizations] = await Promise.all([
 				vehiclesApi.list(), convoysApi.list(), orgsApi.list(),
 			]);
+			dndVehicles = [...allVehicles];
 			convoys.set(convoyList);
 			if (!selected && convoyList.length) selectConvoy(convoyList[0]);
 		} catch { error = 'Fehler beim Laden'; }
@@ -121,9 +155,44 @@
 				current_fuel_l: newVehicle.current_fuel_l ? Number(newVehicle.current_fuel_l) : undefined,
 			} as never);
 			allVehicles = [...allVehicles, v];
+			dndVehicles = [...allVehicles];
 			newVehicle = { name:'', callsign:'', license_plate:'', height_cm:'', weight_kg:'', length_cm:'', convoy_role:'', tank_capacity_l:'', fuel_consumption_l100km:'', current_fuel_l:'' };
 			showVehicleForm = false;
 		} catch { error = 'Fahrzeug konnte nicht erstellt werden'; }
+	}
+
+	function startEditVehicle(v: Vehicle) {
+		editingVehicleId = v.id;
+		editVehicleForm = {
+			name: v.name,
+			callsign: v.callsign ?? '',
+			license_plate: v.license_plate ?? '',
+			height_cm: v.height_cm != null ? String(v.height_cm) : '',
+			weight_kg: v.weight_kg != null ? String(v.weight_kg) : '',
+			length_cm: v.length_cm != null ? String(v.length_cm) : '',
+			convoy_role: v.convoy_role ?? '',
+			tank_capacity_l: v.tank_capacity_l != null ? String(v.tank_capacity_l) : '',
+			fuel_consumption_l100km: v.fuel_consumption_l100km != null ? String(v.fuel_consumption_l100km) : '',
+			current_fuel_l: v.current_fuel_l != null ? String(v.current_fuel_l) : '',
+		};
+	}
+
+	async function saveEditVehicle() {
+		if (!editingVehicleId) return;
+		try {
+			const updated = await vehiclesApi.update(editingVehicleId, {
+				...editVehicleForm,
+				height_cm: editVehicleForm.height_cm ? Number(editVehicleForm.height_cm) : null,
+				weight_kg: editVehicleForm.weight_kg ? Number(editVehicleForm.weight_kg) : null,
+				length_cm: editVehicleForm.length_cm ? Number(editVehicleForm.length_cm) : null,
+				tank_capacity_l: editVehicleForm.tank_capacity_l ? Number(editVehicleForm.tank_capacity_l) : null,
+				fuel_consumption_l100km: editVehicleForm.fuel_consumption_l100km ? Number(editVehicleForm.fuel_consumption_l100km) : null,
+				current_fuel_l: editVehicleForm.current_fuel_l ? Number(editVehicleForm.current_fuel_l) : null,
+			} as never);
+			allVehicles = allVehicles.map(v => v.id === editingVehicleId ? updated : v);
+			dndVehicles = [...allVehicles];
+			editingVehicleId = null;
+		} catch { error = 'Fahrzeug konnte nicht gespeichert werden'; }
 	}
 
 	let vehicleSonderfunktion = $state<Record<string, string>>({});
@@ -211,6 +280,22 @@
 		}
 	}
 
+	function handleVehicleDndConsider(e: CustomEvent) {
+		dndVehicles = e.detail.items;
+	}
+
+	async function handleVehicleDndFinalize(e: CustomEvent) {
+		const reordered: Vehicle[] = (e.detail.items as Vehicle[]).map((v, i) => ({ ...v, order_index: i }));
+		dndVehicles = reordered;
+		allVehicles = reordered;
+		try {
+			await vehiclesApi.reorder(reordered.map(v => ({ id: v.id, order_index: v.order_index })));
+		} catch {
+			// revert
+			dndVehicles = [...allVehicles];
+		}
+	}
+
 	function handleDndConsider(e: CustomEvent) {
     dndWaypoints = e.detail.items;
   }
@@ -274,6 +359,28 @@
 			activeRoute.set(r);
 			await refreshConvoy();
 			activeTab = 'zeitplan';
+
+			// Auto-search fuel stations if a stop is recommended
+			if (r.fuel_analysis?.fuel_stop_needed && r.fuel_analysis.fuel_stop_position) {
+				fuelStationsLoading = true;
+				activeTab = 'convoy';
+				try {
+					const { lat, lon } = r.fuel_analysis.fuel_stop_position;
+					fuelStations = await convoysApi.findFuelStations(selected.id, lat, lon, 8000);
+					showFuelStations = fuelStations.length > 0;
+				} catch { /* non-critical */ }
+				finally { fuelStationsLoading = false; }
+			}
+
+			// Auto-load closures along the route start area
+			if (selected?.start_point) {
+				try {
+					closures = await overpassApi.getClosures(
+						selected.start_point.lat, selected.start_point.lon, 25000
+					) as FeatureCollection;
+					showClosures = closures.features.length > 0;
+				} catch { /* closures optional */ }
+			}
 		} catch (e: unknown) {
 			error = e instanceof Error ? e.message : 'Routing fehlgeschlagen';
 		} finally { loading = false; }
@@ -294,22 +401,39 @@
 
 	async function addFuelStopWaypoint(station: FuelStation) {
 		if (!selected || !route?.fuel_analysis) return;
-		const stopKm = route.fuel_analysis.fuel_stop_km ?? 0;
+		const fa = route.fuel_analysis;
+		const stopKm = fa.fuel_stop_km ?? 0;
+		const holdMin = fa.recommended_stop_duration_min ?? 15;
 		await convoysApi.createWaypoint(selected.id, {
 			name: station.name,
 			type: 'technical_stop',
 			halt_purpose: 'fuel',
 			lat: station.lat,
 			lon: station.lon,
-			hold_duration_min: 25,
+			hold_duration_min: holdMin,
 			order_index: selected.waypoints.length,
 			notes: `Tankstopp bei km ${stopKm} – ${station.brand ?? station.name}${station.opening_hours ? ' · ' + station.opening_hours : ''}`,
 		});
 		showFuelStations = false;
 		fuelStations = [];
 		await refreshConvoy();
-		// Trigger new route calculation
 		await calculateRoute();
+	}
+
+	async function addTHStopWaypoint(halt: import('$lib/api').DurationHalt) {
+		if (!selected) return;
+		try {
+			await convoysApi.createWaypoint(selected.id, {
+				name: halt.is_rest ? `Rast (km ${halt.stop_km})` : `Technischer Halt (km ${halt.stop_km})`,
+				type: 'technical_stop',
+				halt_purpose: halt.is_rest ? 'rest' : null,
+				lat: halt.stop_position?.lat ?? null,
+				lon: halt.stop_position?.lon ?? null,
+				hold_duration_min: halt.duration_min,
+				order_index: selected.waypoints.length,
+			});
+			await refreshConvoy();
+		} catch { error = 'Fehler beim Hinzufügen des Halts'; }
 	}
 
 	// ── Closures ─────────────────────────────────────────────────────
@@ -338,12 +462,74 @@
 
 	let assignedIds = $derived(new Set(selected?.convoy_vehicles.map(cv => cv.vehicle.id) ?? []));
 
+	// Marschbefehl edit form (Export tab)
+	let befehlForm = $state({ marschform:'', ablaufpunkt:'', ablaufzeit:'', ablaufführer:'', lage:'', auftrag:'', versorgung:'', funkgruppe:'', anlagen:'' });
+	let befehlSaving = $state(false);
+	let befehlSaved = $state(false);
+
+	$effect(() => {
+		if (selected) {
+			befehlForm = {
+				marschform: selected.marschform ?? '',
+				ablaufpunkt: selected.ablaufpunkt ?? '',
+				ablaufzeit: selected.ablaufzeit ? new Date(selected.ablaufzeit).toISOString().slice(0,16) : '',
+				ablaufführer: selected.ablaufführer ?? '',
+				lage: selected.lage ?? '',
+				auftrag: selected.auftrag ?? '',
+				versorgung: selected.versorgung ?? '',
+				funkgruppe: selected.funkgruppe ?? '',
+				anlagen: selected.anlagen ?? '',
+			};
+		}
+	});
+
+	async function saveBefehlForm() {
+		if (!selected) return;
+		befehlSaving = true;
+		befehlSaved = false;
+		try {
+			await convoysApi.update(selected.id, {
+				marschform: befehlForm.marschform || null,
+				ablaufpunkt: befehlForm.ablaufpunkt || null,
+				ablaufzeit: befehlForm.ablaufzeit || null,
+				ablaufführer: befehlForm.ablaufführer || null,
+				lage: befehlForm.lage || null,
+				auftrag: befehlForm.auftrag || null,
+				versorgung: befehlForm.versorgung || null,
+				funkgruppe: befehlForm.funkgruppe || null,
+				anlagen: befehlForm.anlagen || null,
+			});
+			await refreshConvoy();
+			befehlSaved = true;
+			setTimeout(() => (befehlSaved = false), 2000);
+		} catch { error = 'Speichern fehlgeschlagen'; }
+		finally { befehlSaving = false; }
+	}
+
 	$effect(() => {
     if (selected) {
       dndWaypoints = [...selected.waypoints].sort((a, b) => a.order_index - b.order_index);
     }
   });
-	const apiBase = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+	async function downloadExport(format: 'gpx' | 'json' | 'pdf') {
+		if (!selected) return;
+		try {
+			const token = localStorage.getItem('token');
+			const res = await fetch(`/api/convoys/${selected.id}/export/${format}`, {
+				headers: { 'Authorization': `Bearer ${token}` },
+			});
+			if (!res.ok) { error = `Export fehlgeschlagen (${res.status})`; return; }
+			const blob = await res.blob();
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = `${selected.name}.${format}`;
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+			URL.revokeObjectURL(url);
+		} catch { error = 'Export fehlgeschlagen'; }
+	}
 
 	const WP_TYPE_LABELS: Record<string, string> = {
 		waypoint: 'Wegpunkt', stop: 'Halt',
@@ -379,7 +565,7 @@
 	<!-- ── Sidebar ──────────────────────────────────────────────────── -->
 	<aside id="sidebar" class="sidebar" class:open={sidebarOpen}>
 		<div class="sidebar-header">
-			<span class="logo">ConvoyPlan</span>
+			<AppLogo width={190} />
 			<button class="logout-btn" onclick={logout} title="Abmelden">✕</button>
 		</div>
 
@@ -404,9 +590,16 @@
 		{/if}
 
 		{#if wizardStep === 0}
-			<!-- Tabs -->
+			<!-- Primary planning tabs -->
 			<div class="tabs">
-				{#each [['convoy','Plan'],['fahrzeuge','Fahrzeuge'],['wegpunkte','Wegpunkte'],['zeitplan','Zeitplan'],['export','Export'],['lage','Lage'],['org','Org']] as [tab, label]}
+				{#each [['convoy','Plan'],['wegpunkte','Wegpunkte'],['zeitplan','Zeitplan'],['lage','Lage']] as [tab, label]}
+					<button class="tab" class:active={activeTab === tab} onclick={() => (activeTab = tab as typeof activeTab)}>{label}</button>
+				{/each}
+			</div>
+			<!-- Verwaltung tabs -->
+			<div class="tabs tabs-verwaltung">
+				<span class="tabs-section-label">Verwaltung</span>
+				{#each [['fahrzeuge','Fahrzeuge'],['org','Organisation'],['export','Export']] as [tab, label]}
 					<button class="tab" class:active={activeTab === tab} onclick={() => (activeTab = tab as typeof activeTab)}>{label}</button>
 				{/each}
 			</div>
@@ -463,17 +656,31 @@
 						</button>
 						{#if route}
 							<p class="route-info">{((route.distance_m ?? 0) / 1000).toFixed(1)} km · {formatDuration(route.duration_s)}</p>
-							{#if route.fuel_analysis?.fuel_stop_needed}
+							{#if route.fuel_analysis?.fuel_stop_needed && !fuelStopExists}
 								<div class="fuel-warning">
-									<p>⛽ <strong>Tankstopp nötig!</strong></p>
+									<p class="fuel-rec-title">⛽ Tankstopp empfohlen</p>
 									<p class="fuel-detail">
-										{route.fuel_analysis.limiting_vehicle} hat nur <strong>{route.fuel_analysis.min_range_km} km</strong> Reichweite
-										(Route: {route.fuel_analysis.route_distance_km} km).
-										Empfohlener Stopp bei km {route.fuel_analysis.fuel_stop_km}.
+										<strong>{route.fuel_analysis.limiting_vehicle}</strong> erreicht das Ziel nicht ohne Tanken:
+										Reichweite <strong>{route.fuel_analysis.min_range_km} km</strong>,
+										Routenlänge <strong>{route.fuel_analysis.route_distance_km} km</strong>.
 									</p>
-									<button class="btn-fuel-search" onclick={searchFuelStations} disabled={fuelStationsLoading}>
-										{fuelStationsLoading ? 'Suche…' : '🔍 Tankstellen suchen'}
-									</button>
+									<p class="fuel-detail">
+										Empfohlener Stopp bei ca. <strong>km {route.fuel_analysis.fuel_stop_km}</strong>
+										(80 % der Reichweite als Sicherheitspuffer) —
+										geplante Haltezeit <strong>{route.fuel_analysis.recommended_stop_duration_min} min</strong>
+										({selected?.convoy_vehicles.length ?? '?'} KFZ →
+										{Math.ceil((selected?.convoy_vehicles.length ?? 1) / 3)} × 15 min).
+									</p>
+									{#if route.fuel_analysis.has_default_values}
+										<p class="fuel-defaults-note">
+											ℹ {route.fuel_analysis.vehicles_without_data === 1 ? '1 Fahrzeug' : `${route.fuel_analysis.vehicles_without_data} Fahrzeuge`}
+											ohne hinterlegte Verbrauchsdaten – Berechnung mit Standardwerten
+											(7,5 L/100 km, 70 L Tank).
+										</p>
+									{/if}
+									{#if fuelStationsLoading}
+										<p class="hint">Suche Tankstellen…</p>
+									{/if}
 									{#if showFuelStations && fuelStations.length}
 										<ul class="fuel-station-list">
 											{#each fuelStations as s}
@@ -481,19 +688,49 @@
 													<div>
 														<strong>{s.name}</strong>
 														{#if s.brand && s.brand !== s.name}<span class="tag">{s.brand}</span>{/if}
-														<span class="tag">{(s.distance_m / 1000).toFixed(1)} km vom Stopp</span>
+														<span class="tag">{(s.distance_m / 1000).toFixed(1)} km</span>
 														{#if s.opening_hours}<span class="tag">{s.opening_hours}</span>{/if}
 													</div>
-													<button class="btn-small" onclick={() => addFuelStopWaypoint(s)}>+ Waypoint</button>
+													<button class="btn-small" onclick={() => addFuelStopWaypoint(s)}>+ Halt</button>
 												</li>
 											{/each}
 										</ul>
 									{:else if showFuelStations}
-										<p class="hint">Keine Tankstellen in der Nähe gefunden. Radius erhöhen?</p>
+										<p class="hint">Keine Tankstellen in der Nähe gefunden.</p>
 									{/if}
 								</div>
-							{:else if route.fuel_analysis?.min_range_km}
-								<p class="fuel-ok">✅ Reichweite ausreichend ({route.fuel_analysis.min_range_km} km / {route.fuel_analysis.route_distance_km} km)</p>
+							{:else if route.fuel_analysis?.min_range_km && !fuelStopExists}
+								<p class="fuel-ok">
+									✅ Reichweite ausreichend — {route.fuel_analysis.min_range_km} km
+									(Route: {route.fuel_analysis.route_distance_km} km)
+									{#if route.fuel_analysis.has_default_values}
+										<span class="fuel-defaults-inline"> · Standardwerte</span>
+									{/if}
+								</p>
+							{:else if route.fuel_analysis && route.fuel_analysis.vehicles_with_range.length === 0 && allVehicles.length > 0}
+								<p class="hint" style="margin-top:.4rem">⚠ Keine Fahrzeuge im Verband – gehe zu <strong>Fahrzeuge</strong> und füge sie mit + hinzu, um die Reichweitenanalyse zu nutzen.</p>
+							{/if}
+							{#if route.fuel_analysis?.duration_halt_needed}
+								{@const remaining = route.fuel_analysis.duration_halts.slice(thStopsAdded)}
+								{#if remaining.length > 0}
+									<div class="th-warning">
+										<p class="th-title">🛑 Technische Halte empfohlen</p>
+										<p class="th-detail">Marschdauer &gt; 3 h — WOLKE-Prüfung{route.fuel_analysis.rest_needed ? ' + Rast' : ''} einplanen:</p>
+										<ul class="th-list">
+											{#each remaining as halt}
+												<li class="th-item">
+													<div>
+														<strong>{halt.is_rest ? '🛏 Rast' : '🔧 TH'}</strong>
+														bei ca. km <strong>{halt.stop_km}</strong>
+														— <strong>{halt.duration_min} min</strong>
+														{#if halt.is_rest}<span class="tag th-rest-tag">Fahrerwechsel / Erholung</span>{:else}<span class="tag th-tag">WOLKE</span>{/if}
+													</div>
+													<button class="btn-small" onclick={() => addTHStopWaypoint(halt)}>+ Halt</button>
+												</li>
+											{/each}
+										</ul>
+									</div>
+								{/if}
 							{/if}
 						{/if}
 					</div>
@@ -548,32 +785,62 @@
 								<button type="submit">Speichern</button>
 							</form>
 						{/if}
-						<ul class="vehicle-list">
-							{#each allVehicles as v}
+						<ul
+							class="vehicle-list"
+							use:dndzone={{ items: dndVehicles, flipDurationMs: 200 }}
+							onconsider={handleVehicleDndConsider}
+							onfinalize={handleVehicleDndFinalize}
+						>
+							{#each dndVehicles as v (v.id)}
 								<li class="vehicle-item" style="flex-direction:column;align-items:stretch;gap:.3rem">
-									<div style="display:flex;justify-content:space-between;align-items:center">
-										<div>
-											<strong>{v.name}</strong>
-											{#if v.callsign}<span class="tag">{v.callsign}</span>{/if}
-											{#if v.license_plate}<span class="tag">{v.license_plate}</span>{/if}
-											{#if v.range_km}<span class="tag fuel-tag">⛽ {v.range_km} km</span>{/if}
+									{#if editingVehicleId === v.id}
+										<form class="inline-form" onsubmit={(e) => { e.preventDefault(); saveEditVehicle(); }}>
+											<input placeholder="Name *" bind:value={editVehicleForm.name} required />
+											<input placeholder="Funkrufname" bind:value={editVehicleForm.callsign} />
+											<input placeholder="Kennzeichen" bind:value={editVehicleForm.license_plate} />
+											<input placeholder="Höhe (cm)" type="number" bind:value={editVehicleForm.height_cm} />
+											<input placeholder="Gewicht (kg)" type="number" bind:value={editVehicleForm.weight_kg} />
+											<input placeholder="Länge (cm)" type="number" bind:value={editVehicleForm.length_cm} />
+											<input placeholder="Funktion im Konvoi" bind:value={editVehicleForm.convoy_role} />
+											<hr style="border-color:rgba(255,255,255,.15);margin:.2rem 0" />
+											<input placeholder="Tankvolumen (Liter)" type="number" step="0.1" min="0" bind:value={editVehicleForm.tank_capacity_l} />
+											<input placeholder="Verbrauch (l/100 km)" type="number" step="0.1" min="0" bind:value={editVehicleForm.fuel_consumption_l100km} />
+											<input placeholder="Aktueller Füllstand (Liter)" type="number" step="0.1" min="0" bind:value={editVehicleForm.current_fuel_l} />
+											<div style="display:flex;gap:.4rem">
+												<button type="submit" style="flex:1">Speichern</button>
+												<button type="button" class="btn-small danger" onclick={() => editingVehicleId = null}>Abbrechen</button>
+											</div>
+										</form>
+									{:else}
+										<div style="display:flex;justify-content:space-between;align-items:center">
+											<div>
+												<strong>{v.name}</strong>
+												{#if v.callsign}<span class="tag">{v.callsign}</span>{/if}
+												{#if v.license_plate}<span class="tag">{v.license_plate}</span>{/if}
+												{#if v.range_km != null}
+													<span class="tag" class:fuel-tag={!v.range_uses_defaults} class:fuel-tag-default={v.range_uses_defaults} title={v.range_uses_defaults ? 'Reichweite basiert auf Standardwerten (7,5 l/100km, 70 l)' : ''}>⛽ {v.range_uses_defaults ? '~' : ''}{v.range_km} km</span>
+												{/if}
+											</div>
+											<div style="display:flex;gap:.3rem;align-items:center">
+												<button class="btn-small" title="Bearbeiten" onclick={() => startEditVehicle(v)}>✏️</button>
+												{#if selected}
+													{#if assignedIds.has(v.id)}
+														<button class="btn-small danger" onclick={() => removeVehicleFromConvoy(v.id)}>–</button>
+													{:else}
+														<button class="btn-small" onclick={() => addVehicleToConvoy(v.id)}>+</button>
+													{/if}
+												{/if}
+											</div>
 										</div>
-										{#if selected}
-											{#if assignedIds.has(v.id)}
-												<button class="btn-small danger" onclick={() => removeVehicleFromConvoy(v.id)}>–</button>
-											{:else}
-												<button class="btn-small" onclick={() => addVehicleToConvoy(v.id)}>+</button>
-											{/if}
+										{#if selected && !assignedIds.has(v.id)}
+											<select class="sf-select" bind:value={vehicleSonderfunktion[v.id]}>
+												<option value="">Sonderfunktion…</option>
+												<option value="spitzenführer">Spitzenführer</option>
+												<option value="schließender">Schließender (Ablaufführer)</option>
+												<option value="sanitaet">Sanitätsdienstliche Absicherung</option>
+												<option value="führungsfahrzeug">Führungsfahrzeug</option>
+											</select>
 										{/if}
-									</div>
-									{#if selected && !assignedIds.has(v.id)}
-										<select class="sf-select" bind:value={vehicleSonderfunktion[v.id]}>
-											<option value="">Sonderfunktion…</option>
-											<option value="spitzenführer">Spitzenführer</option>
-											<option value="schließender">Schließender (Ablaufführer)</option>
-											<option value="sanitaet">Sanitätsdienstliche Absicherung</option>
-											<option value="führungsfahrzeug">Führungsfahrzeug</option>
-										</select>
 									{/if}
 								</li>
 							{/each}
@@ -625,7 +892,7 @@
 									<div class="wp-main">
 										<strong>{wp.name}</strong>
 										<span class="tag">{WP_TYPE_LABELS[wp.type] ?? wp.type}</span>
-										{#if wp.halt_purpose}<span class="tag orange">{wp.halt_purpose}</span>{/if}
+										{#if wp.halt_purpose && wp.halt_purpose !== 'technical'}<span class="tag orange">{wp.halt_purpose}</span>{/if}
 										{#if wp.hold_duration_min > 0}<span class="tag">{wp.hold_duration_min} min</span>{/if}
 									</div>
 									<div class="wp-actions">
@@ -692,24 +959,22 @@
 					<div class="section">
 						<strong>Exportieren</strong>
 						<div class="export-grid">
-							<a class="btn-export" href="{apiBase}/api/convoys/{selected.id}/export/gpx" target="_blank">
-								📍 GPX herunterladen
-							</a>
-							<a class="btn-export" href="{apiBase}/api/convoys/{selected.id}/export/json" target="_blank">
-								📄 JSON herunterladen
-							</a>
-							<a class="btn-export" href="{apiBase}/api/convoys/{selected.id}/export/pdf" target="_blank">
-								🖨 Marschbefehl PDF
-							</a>
-							<button class="btn-export" onclick={() => navigator.clipboard.writeText(`${window.location.origin}/share/${selected?.share_token}`)}>
-								🔗 Link kopieren
-							</button>
+							<button class="btn-export" onclick={() => downloadExport('gpx')}>📍 GPX herunterladen</button>
+							<button class="btn-export" onclick={() => downloadExport('json')}>📄 JSON herunterladen</button>
+							<button class="btn-export" onclick={() => downloadExport('pdf')}>🖨 Marschbefehl PDF</button>
+							<button class="btn-export" onclick={() => navigator.clipboard.writeText(`${window.location.origin}/share/${selected?.share_token}`)}>🔗 Link kopieren</button>
 						</div>
 						<div class="section-header" style="margin-top:1rem"><strong>Live-Tracking</strong></div>
 						<a class="btn-export" href="/tracking/{selected.id}" target="_blank">🔴 Tracking-Ansicht öffnen</a>
 						<div class="section-header" style="margin-top:1rem"><strong>Sperrungen & Baustellen</strong></div>
 						<button class="btn-export" class:active={showClosures} onclick={toggleClosures}>
 							{showClosures ? '🚧 Sperrungen ausblenden' : '🚧 Sperrungen laden'}
+						</button>
+					</div>
+
+					<div class="section">
+						<button class="btn-export" style="margin-top:.5rem" onclick={() => (showBefehlModal = true)}>
+							📋 Marschbefehl ausfüllen
 						</button>
 					</div>
 				{/if}
@@ -732,25 +997,104 @@
 								if (name) { await orgsApi.create(name); organizations = await orgsApi.list(); }
 							}}>+ Neu</button>
 						</div>
-						{#each organizations as org}
-							<div class="org-item">
-								<div>
-									<strong>{org.name}</strong>
-									<span class="tag">{org.my_role}</span>
-									<span class="tag">{org.member_count} Mitglieder</span>
-								</div>
-								{#if org.my_role === 'admin'}
-									<button class="btn-small" onclick={async () => {
-										const email = prompt('E-Mail des neuen Mitglieds:');
-										const role = prompt('Rolle (admin/planer/fahrer/beobachter):', 'beobachter');
-										if (email && role) { await orgsApi.addMember(org.id, email, role); organizations = await orgsApi.list(); }
-									}}>+ Mitglied</button>
-								{/if}
-							</div>
-						{/each}
 						{#if !organizations.length}
 							<p class="hint">Noch keine Organisationen erstellt.</p>
 						{/if}
+						{#each organizations as org}
+							<div class="org-card">
+								<div class="org-header" onclick={() => toggleOrgExpand(org.id)}>
+									<div>
+										<strong>{org.name}</strong>
+										<span class="tag">{org.my_role === 'admin' ? 'Admin' : org.my_role}</span>
+										<span class="tag">{org.member_count} Mitglieder</span>
+									</div>
+									<div style="display:flex;gap:.3rem;align-items:center">
+										<span style="font-size:.75rem;color:rgba(255,255,255,.45)">{expandedOrgId === org.id ? '▲' : '▼'}</span>
+										{#if org.my_role === 'admin'}
+											<button class="btn-small danger" onclick={(e) => { e.stopPropagation(); if(confirm('Organisation löschen?')) orgsApi.delete(org.id).then(() => { organizations = organizations.filter(o => o.id !== org.id); }); }}>✕</button>
+										{/if}
+									</div>
+								</div>
+
+								{#if expandedOrgId === org.id}
+									<div class="org-detail">
+										<!-- Convoy assignment -->
+										<p class="org-section-label">Verbände</p>
+										{#each convoyList as c}
+											<div class="org-convoy-row">
+												<span>{c.name}</span>
+												{#if c.organization_id === org.id}
+													<span class="tag" style="background:rgba(39,174,96,.3);color:#7dcea0">zugewiesen</span>
+												{:else}
+													<button class="btn-small" onclick={async () => {
+														await convoysApi.update(c.id, { organization_id: org.id });
+														await loadData();
+													}}>+ Zuweisen</button>
+												{/if}
+											</div>
+										{/each}
+										{#if !convoyList.length}<p class="hint">Keine Verbände vorhanden.</p>{/if}
+
+										<!-- Member list -->
+										<p class="org-section-label" style="margin-top:.6rem">Mitglieder</p>
+										{#if orgMembers[org.id]}
+											{#each orgMembers[org.id] as m}
+												<div class="org-member-row">
+													<span class="org-member-email">{m.email}</span>
+													{#if org.my_role === 'admin'}
+														<select class="org-role-select" value={m.role} onchange={async (e) => {
+															const target = e.target as HTMLSelectElement;
+															await orgsApi.updateMemberRole(org.id, m.user_id, target.value);
+															await loadOrgMembers(org.id);
+														}}>
+															<option value="admin">Admin</option>
+															<option value="planer">Planer</option>
+															<option value="fahrer">Fahrer</option>
+															<option value="beobachter">Beobachter</option>
+														</select>
+														<button class="btn-small danger" onclick={async () => {
+															await orgsApi.removeMember(org.id, m.user_id);
+															await loadOrgMembers(org.id);
+															organizations = await orgsApi.list();
+														}}>✕</button>
+													{:else}
+														<span class="tag">{m.role}</span>
+													{/if}
+												</div>
+											{/each}
+
+											{#if org.my_role === 'admin'}
+												<div class="org-add-member">
+													<input
+														class="org-email-input"
+														placeholder="E-Mail"
+														bind:value={orgAddForm[org.id].email}
+													/>
+													<select class="org-role-select" bind:value={orgAddForm[org.id].role}>
+														<option value="admin">Admin</option>
+														<option value="planer">Planer</option>
+														<option value="fahrer">Fahrer</option>
+														<option value="beobachter">Beobachter</option>
+													</select>
+													<button class="btn-small" onclick={async () => {
+														const f = orgAddForm[org.id];
+														if (!f?.email) return;
+														try {
+															await orgsApi.addMember(org.id, f.email, f.role);
+															orgAddForm = { ...orgAddForm, [org.id]: { email: '', role: 'beobachter' } };
+															await loadOrgMembers(org.id);
+															organizations = await orgsApi.list();
+														} catch (err: unknown) { error = (err as Error).message ?? 'Fehler'; }
+													}}>+ Hinzufügen</button>
+												</div>
+											{/if}
+										{:else}
+											<p class="hint">Lade…</p>
+										{/if}
+									</div>
+								{/if}
+							</div>
+						{/each}
 					</div>
 				{/if}
 			</div>
@@ -850,6 +1194,101 @@
 	</main>
 </div>
 
+<!-- ── Modal: Marschbefehl ausfüllen ──────────────────────────────── -->
+{#if showBefehlModal}
+	<div class="modal-backdrop befehl-backdrop" onclick={() => (showBefehlModal = false)}>
+		<div class="modal befehl-modal" onclick={(e) => e.stopPropagation()}>
+			<div class="befehl-modal-header">
+				<h2>Marschbefehl</h2>
+				<span class="befehl-convoy-name">{selected?.name}</span>
+				<button class="modal-close" onclick={() => (showBefehlModal = false)}>✕</button>
+			</div>
+
+			<div class="befehl-modal-body">
+				<!-- Marschbewegung -->
+				<div class="befehl-section">
+					<div class="befehl-section-title">Marschbewegung</div>
+					<div class="befehl-row">
+						<label class="bf-label">
+							Marschform
+							<select bind:value={befehlForm.marschform}>
+								<option value="">– nicht angegeben –</option>
+								<option value="geschlossener_verband">Geschlossener Gesamtverband</option>
+								<option value="einzelgruppen">Einzelgruppen</option>
+								<option value="individuell">Individuelle Anreise</option>
+							</select>
+						</label>
+					</div>
+				</div>
+
+				<!-- Ablaufpunkt -->
+				<div class="befehl-section">
+					<div class="befehl-section-title">Ablaufpunkt</div>
+					<div class="befehl-row befehl-row-3">
+						<label class="bf-label">
+							Ablaufpunkt (Ort)
+							<input type="text" placeholder="z.B. Parkplatz Messehalle Nord" bind:value={befehlForm.ablaufpunkt} />
+						</label>
+						<label class="bf-label">
+							Ablaufzeit
+							<input type="datetime-local" bind:value={befehlForm.ablaufzeit} />
+						</label>
+						<label class="bf-label">
+							Ablaufführer
+							<input type="text" placeholder="Name / Rufname" bind:value={befehlForm.ablaufführer} />
+						</label>
+					</div>
+				</div>
+
+				<!-- Führung & Verbindung -->
+				<div class="befehl-section">
+					<div class="befehl-section-title">Führung & Verbindung</div>
+					<div class="befehl-row">
+						<label class="bf-label">
+							Funkgruppe
+							<input type="text" placeholder="z.B. KatS Bayern 1" bind:value={befehlForm.funkgruppe} />
+						</label>
+					</div>
+				</div>
+
+				<!-- 1. Lage -->
+				<div class="befehl-section">
+					<div class="befehl-section-title">1. Lage</div>
+					<textarea class="befehl-textarea" rows="4" placeholder="Lagebeschreibung – Eigene und feindliche/gegnerische Kräfte, Lage der Bevölkerung, zivile Behörden…" bind:value={befehlForm.lage}></textarea>
+				</div>
+
+				<!-- 2. Auftrag -->
+				<div class="befehl-section">
+					<div class="befehl-section-title">2. Auftrag</div>
+					<textarea class="befehl-textarea" rows="4" placeholder="Aufgabe des Verbandes – Wer, Was, Wann, Wo, Warum…" bind:value={befehlForm.auftrag}></textarea>
+				</div>
+
+				<!-- 4. Versorgung -->
+				<div class="befehl-section">
+					<div class="befehl-section-title">4. Versorgung</div>
+					<textarea class="befehl-textarea" rows="3" placeholder="Verpflegung, Betriebsstoff, Instandsetzung, sanitätsdienstliche Versorgung…" bind:value={befehlForm.versorgung}></textarea>
+				</div>
+
+				<!-- 6. Anlagen -->
+				<div class="befehl-section">
+					<div class="befehl-section-title">6. Anlagen</div>
+					<textarea class="befehl-textarea" rows="2" placeholder="Beigefügte Dokumente, Karten, Skizzen…" bind:value={befehlForm.anlagen}></textarea>
+				</div>
+			</div>
+
+			<div class="befehl-modal-footer">
+				<button class="modal-btn-secondary" onclick={() => (showBefehlModal = false)}>Abbrechen</button>
+				<button class="modal-btn-primary" onclick={async () => { await saveBefehlForm(); if (!error) showBefehlModal = false; }} disabled={befehlSaving}>
+					{befehlSaved ? '✓ Gespeichert' : befehlSaving ? 'Speichert…' : 'Speichern & Schließen'}
+				</button>
+				<button class="modal-btn-export" onclick={async () => { await saveBefehlForm(); if (!error) downloadExport('pdf'); }} disabled={befehlSaving}>
+					🖨 Speichern & PDF
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
 <!-- ── Modal: Neuer Marschverband ─────────────────────────────────── -->
 {#if showConvoyForm}
 	<div class="modal-backdrop" onclick={() => (showConvoyForm = false)}>
@@ -886,15 +1325,19 @@
 
 	.sidebar { width: 340px; min-width: 280px; background: #0F1B24; color: white; display: flex; flex-direction: column; overflow: hidden; }
 	.sidebar-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem; border-bottom: 1px solid rgba(255,255,255,.15); }
-	.logo { font-size: 1.1rem; font-weight: 700; }
-	.logout-btn { background: none; border: none; color: rgba(255,255,255,.6); cursor: pointer; font-size: 1rem; }
+.logout-btn { background: none; border: none; color: rgba(255,255,255,.6); cursor: pointer; font-size: 1rem; }
 
 	.convoy-selector { display: flex; gap: .5rem; padding: .75rem 1rem; border-bottom: 1px solid rgba(255,255,255,.1); }
 	.convoy-selector select { flex: 1; padding: .4rem; border-radius: 4px; border: none; background: rgba(255,255,255,.12); color: white; }
 
-	.tabs { display: flex; flex-wrap: wrap; border-bottom: 1px solid rgba(255,255,255,.1); }
-	.tab { flex: 1; min-width: 48px; padding: .5rem .2rem; background: none; border: none; color: rgba(255,255,255,.6); font-size: .72rem; cursor: pointer; border-bottom: 2px solid transparent; }
-	.tab.active { color: white; border-bottom-color: #E23D28; }
+	.tabs { display: flex; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid rgba(255,255,255,.1); }
+	.tabs::-webkit-scrollbar { display: none; }
+	.tab { flex: 0 0 auto; padding: .55rem .75rem; background: none; border: none; color: rgba(255,255,255,.55); font-size: .8rem; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; }
+	.tab.active { color: white; border-bottom-color: #E23D28; font-weight: 600; }
+	.tabs-verwaltung { background: rgba(0,0,0,.25); align-items: center; border-bottom: 1px solid rgba(255,255,255,.08); }
+	.tabs-verwaltung .tab { font-size: .78rem; padding: .4rem .7rem; }
+	.tabs-verwaltung .tab.active { border-bottom-color: rgba(226,61,40,.7); color: rgba(255,255,255,.9); }
+	.tabs-section-label { flex-shrink: 0; font-size: .65rem; text-transform: uppercase; letter-spacing: .05em; color: rgba(255,255,255,.3); padding: 0 .6rem 0 .75rem; white-space: nowrap; }
 
 	.tab-content { flex: 1; overflow-y: auto; padding: .75rem 1rem; }
 
@@ -914,6 +1357,36 @@
 	.btn-small.active { background: #E23D28; }
 
 	.export-grid { display: flex; flex-direction: column; gap: .4rem; margin-top: .4rem; }
+	/* Marschbefehl Modal */
+	.befehl-backdrop { align-items: flex-start; padding: 2rem 1rem; overflow-y: auto; }
+	.befehl-modal { background: white; color: #1a1a1a; border-radius: 10px; width: 100%; max-width: 720px; margin: auto; display: flex; flex-direction: column; max-height: 90vh; box-shadow: 0 12px 48px rgba(0,0,0,.45); }
+	.befehl-modal-header { display: flex; align-items: center; gap: .75rem; padding: 1.25rem 1.5rem; border-bottom: 2px solid #0F1B24; background: #0F1B24; border-radius: 10px 10px 0 0; flex-shrink: 0; }
+	.befehl-modal-header h2 { margin: 0; font-size: 1.15rem; color: white; }
+	.befehl-convoy-name { flex: 1; font-size: .85rem; color: rgba(255,255,255,.55); }
+	.modal-close { background: none; border: none; color: rgba(255,255,255,.55); cursor: pointer; font-size: 1.1rem; padding: 0; line-height: 1; }
+	.modal-close:hover { color: white; }
+	.befehl-modal-body { flex: 1; overflow-y: auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 1.4rem; }
+	.befehl-section { display: flex; flex-direction: column; gap: .6rem; }
+	.befehl-section-title { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; color: #0F1B24; border-bottom: 2px solid #0F1B24; padding-bottom: .3rem; }
+	.befehl-row { display: flex; gap: .75rem; flex-wrap: wrap; }
+	.befehl-row-3 > * { flex: 1; min-width: 140px; }
+	.befehl-row > * { flex: 1; }
+	.bf-label { display: flex; flex-direction: column; gap: .3rem; font-size: .8rem; font-weight: 600; color: #333; }
+	.bf-label input, .bf-label select { padding: .5rem .65rem; border-radius: 5px; border: 1.5px solid #ccc; background: white; color: #111; font-size: .9rem; font-family: inherit; }
+	.bf-label input:focus, .bf-label select:focus { outline: none; border-color: #E23D28; box-shadow: 0 0 0 3px rgba(226,61,40,.12); }
+	.bf-label input::placeholder { color: #aaa; }
+	.befehl-textarea { padding: .55rem .7rem; border-radius: 5px; border: 1.5px solid #ccc; background: white; color: #111; font-size: .9rem; font-family: inherit; resize: vertical; width: 100%; box-sizing: border-box; line-height: 1.5; }
+	.befehl-textarea:focus { outline: none; border-color: #E23D28; box-shadow: 0 0 0 3px rgba(226,61,40,.12); }
+	.befehl-textarea::placeholder { color: #aaa; }
+	.befehl-modal-footer { display: flex; justify-content: flex-end; gap: .6rem; padding: 1rem 1.5rem; border-top: 1px solid #e5e5e5; flex-shrink: 0; flex-wrap: wrap; background: #f8f9fa; border-radius: 0 0 10px 10px; }
+	.modal-btn-secondary { padding: .55rem 1.1rem; border-radius: 5px; border: 1.5px solid #ccc; background: white; color: #555; cursor: pointer; font-size: .88rem; }
+	.modal-btn-secondary:hover { background: #f0f0f0; }
+	.modal-btn-primary { padding: .55rem 1.1rem; border-radius: 5px; border: none; background: #0F1B24; color: white; cursor: pointer; font-size: .88rem; font-weight: 600; }
+	.modal-btn-primary:hover { background: #1a2f42; }
+	.modal-btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+	.modal-btn-export { padding: .55rem 1.1rem; border-radius: 5px; border: none; background: #E23D28; color: white; cursor: pointer; font-size: .88rem; font-weight: 600; }
+	.modal-btn-export:hover { background: #c7321f; }
+	.modal-btn-export:disabled { opacity: .5; cursor: not-allowed; }
 	.btn-export { display: block; padding: .45rem .75rem; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2); color: white; border-radius: 4px; font-size: .82rem; text-decoration: none; cursor: pointer; text-align: left; }
 	.btn-export.active { background: rgba(226,61,40,.3); border-color: #E23D28; }
 
@@ -1003,17 +1476,31 @@
 	details summary { cursor: pointer; font-size: .82rem; color: rgba(255,255,255,.75); }
 
 	.tag.fuel-tag { background: rgba(39,174,96,.35); color: #a9dfbf; }
+	.tag.fuel-tag-default { background: rgba(180,150,30,.25); color: #d4b96a; }
 
-	.fuel-warning { background: rgba(226,61,40,.15); border: 1px solid rgba(226,61,40,.5); border-radius: 6px; padding: .6rem; margin-top: .5rem; }
-	.fuel-warning p { margin: .2rem 0; font-size: .83rem; }
-	.fuel-detail { color: rgba(255,255,255,.8); }
-	.btn-fuel-search { width: 100%; margin-top: .4rem; padding: .4rem; background: #e67e22; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: .82rem; font-weight: 600; }
+	.fuel-warning { background: rgba(226,61,40,.15); border: 1px solid rgba(226,61,40,.5); border-radius: 6px; padding: .65rem; margin-top: .5rem; display: flex; flex-direction: column; gap: .3rem; }
+	.fuel-warning p { margin: 0; font-size: .83rem; }
+	.fuel-rec-title { font-weight: 700; font-size: .88rem; color: #f0a070; }
+	.fuel-detail { color: rgba(255,255,255,.85); }
+	.fuel-defaults-note { color: rgba(255,255,255,.55); font-size: .78rem; font-style: italic; border-top: 1px solid rgba(255,255,255,.1); padding-top: .3rem; margin-top: .1rem; }
+	.fuel-actions { margin-top: .2rem; }
+	.btn-fuel-search { width: 100%; padding: .4rem; background: #e67e22; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: .82rem; font-weight: 600; }
 	.btn-fuel-search:disabled { opacity: .5; cursor: not-allowed; }
+	.fuel-defaults-inline { color: rgba(255,255,255,.45); font-size: .78rem; }
 
 	.fuel-station-list { list-style: none; padding: 0; margin: .4rem 0 0; display: flex; flex-direction: column; gap: .3rem; }
 	.fuel-station-item { display: flex; justify-content: space-between; align-items: flex-start; gap: .4rem; padding: .35rem; background: rgba(255,255,255,.07); border-radius: 4px; font-size: .8rem; }
 
 	.fuel-ok { font-size: .8rem; color: #a9dfbf; margin: .3rem 0 0; }
+
+	.th-warning { background: rgba(52,152,219,.12); border: 1px solid rgba(52,152,219,.4); border-radius: 6px; padding: .65rem; margin-top: .5rem; display: flex; flex-direction: column; gap: .3rem; }
+	.th-warning p { margin: 0; font-size: .83rem; }
+	.th-title { font-weight: 700; font-size: .88rem; color: #7fbde8; }
+	.th-detail { color: rgba(255,255,255,.8); }
+	.th-list { list-style: none; padding: 0; margin: .2rem 0 0; display: flex; flex-direction: column; gap: .3rem; }
+	.th-item { display: flex; justify-content: space-between; align-items: center; gap: .4rem; padding: .35rem; background: rgba(255,255,255,.06); border-radius: 4px; font-size: .82rem; }
+	.tag.th-tag { background: rgba(52,152,219,.25); color: #7fbde8; }
+	.tag.th-rest-tag { background: rgba(155,89,182,.25); color: #c39bd3; }
 
 	.wizard { flex: 1; overflow-y: auto; padding: .75rem 1rem; display: flex; flex-direction: column; gap: .5rem; }
 	.wizard-steps { display: flex; align-items: center; gap: .3rem; font-size: .75rem; color: rgba(255,255,255,.4); margin-bottom: .25rem; }
@@ -1027,6 +1514,25 @@
 	.wizard-wp-list { list-style: none; padding: 0; margin: 0; max-height: 120px; overflow-y: auto; }
 	.wizard-wp-list li { font-size: .8rem; color: rgba(255,255,255,.75); padding: .2rem 0; border-bottom: 1px solid rgba(255,255,255,.07); }
 
+	/* ── Org management ─────────────────────────────────────────── */
+	.org-card { background: rgba(255,255,255,.05); border-radius: 8px; margin-bottom: .5rem; overflow: hidden; }
+	.org-header { display: flex; justify-content: space-between; align-items: center; padding: .55rem .75rem; cursor: pointer; user-select: none; }
+	.org-header:hover { background: rgba(255,255,255,.05); }
+	.org-header span { font-size: .85rem; font-weight: 600; color: white; }
+	.org-header small { font-size: .72rem; color: rgba(255,255,255,.45); }
+	.org-header .expand-icon { font-size: .7rem; color: rgba(255,255,255,.4); }
+	.org-detail { padding: .5rem .75rem .75rem; border-top: 1px solid rgba(255,255,255,.08); }
+	.org-section-label { margin: 0 0 .35rem; font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: rgba(255,255,255,.4); }
+	.org-convoy-row { display: flex; align-items: center; justify-content: space-between; padding: .25rem 0; font-size: .8rem; color: rgba(255,255,255,.75); border-bottom: 1px solid rgba(255,255,255,.06); }
+	.org-convoy-row:last-child { border-bottom: none; }
+	.org-member-row { display: flex; align-items: center; gap: .5rem; padding: .25rem 0; border-bottom: 1px solid rgba(255,255,255,.06); }
+	.org-member-row:last-child { border-bottom: none; }
+	.org-member-email { flex: 1; font-size: .8rem; color: rgba(255,255,255,.8); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.org-role-select { background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2); color: white; border-radius: 4px; padding: .2rem .4rem; font-size: .75rem; cursor: pointer; }
+	.org-add-member { display: flex; gap: .4rem; margin-top: .6rem; flex-wrap: wrap; }
+	.org-email-input { flex: 1; min-width: 120px; padding: .3rem .5rem; border-radius: 4px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.08); color: white; font-size: .8rem; }
+	.org-email-input::placeholder { color: rgba(255,255,255,.3); }
+
 	/* ── Mobile layout (≤ 768px) ─────────────────────────────────── */
 	@media (max-width: 768px) {
 		/* Show top bar, push content down */
@@ -1036,7 +1542,7 @@
 			gap: .5rem;
 			position: fixed;
 			top: 0; left: 0; right: 0;
-			height: 48px;
+			height: 52px;
 			padding: 0 .75rem;
 			background: #0F1B24;
 			border-bottom: 1px solid rgba(255,255,255,.1);
@@ -1046,10 +1552,10 @@
 			background: rgba(255,255,255,.1);
 			border: none;
 			color: white;
-			border-radius: 6px;
-			width: 34px;
-			height: 34px;
-			font-size: 1.1rem;
+			border-radius: 8px;
+			width: 40px;
+			height: 40px;
+			font-size: 1.2rem;
 			cursor: pointer;
 			flex-shrink: 0;
 			display: flex;
@@ -1067,26 +1573,31 @@
 		}
 		.topbar-actions {
 			display: flex;
-			gap: .3rem;
+			gap: .25rem;
 		}
 		.topbar-actions .btn-map {
-			padding: .3rem .45rem;
-			font-size: .8rem;
+			min-width: 40px;
+			height: 40px;
+			padding: 0 .5rem;
+			font-size: .9rem;
+			display: flex;
+			align-items: center;
+			justify-content: center;
 		}
 
 		/* Push the flex layout down to clear the fixed top bar */
 		.app {
-			padding-top: 48px;
+			padding-top: 52px;
 			box-sizing: border-box;
 		}
 
 		/* Sidebar becomes a fixed overlay from the left */
 		.sidebar {
 			position: fixed;
-			top: 48px;
+			top: 52px;
 			left: 0;
 			bottom: 0;
-			width: min(300px, 85vw);
+			width: min(320px, 88vw);
 			z-index: 300;
 			overflow-y: auto;
 			transform: translateX(-100%);
@@ -1107,24 +1618,34 @@
 
 		/* FAB route button floating over map */
 		.fab-route {
-			display: block;
+			display: flex;
+			align-items: center;
+			gap: .4rem;
 			position: fixed;
 			bottom: 1.5rem;
 			right: 1rem;
 			z-index: 50;
-			padding: .6rem 1.1rem;
+			padding: .7rem 1.25rem;
 			background: #E23D28;
 			color: white;
 			border: none;
-			border-radius: 8px;
-			font-size: .9rem;
+			border-radius: 10px;
+			font-size: .95rem;
 			font-weight: 600;
 			cursor: pointer;
-			box-shadow: 0 2px 12px rgba(0,0,0,.3);
+			box-shadow: 0 4px 16px rgba(0,0,0,.35);
+			min-height: 44px;
 		}
 		.fab-route:disabled {
 			opacity: .55;
 			cursor: not-allowed;
+		}
+
+		/* Modal: edge-to-edge with safe insets */
+		.modal {
+			max-width: calc(100vw - 2rem);
+			padding: 1.25rem;
+			margin: .75rem;
 		}
 	}
 </style>

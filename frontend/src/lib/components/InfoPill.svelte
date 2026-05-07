@@ -245,11 +245,10 @@
     position: absolute;
     top: 14px;
     left: 1rem;
-    right: 1rem;
     z-index: 500;
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: flex-start;
     pointer-events: none;
   }
   .pill-wrap > * {
@@ -309,7 +308,7 @@
     color: white;
     font-size: 11px;
     box-shadow: 0 8px 30px rgba(0, 0, 0, .5);
-    width: min(440px, 100%);
+    width: min(440px, calc(100vw - 2rem));
     box-sizing: border-box;
   }
 
@@ -401,4 +400,32 @@
     100% { box-shadow: 0 0 0 0 rgba(243,156,18,0); }
   }
   .pulse { animation: pulse-ring 1.4s ease-out infinite; }
+
+  @media (max-width: 768px) {
+    .pill-wrap {
+      top: 10px;
+      left: .75rem;
+    }
+    .pill {
+      font-size: 12px;
+      padding: 8px 14px;
+    }
+    .pill-temp { font-size: 14px; }
+    .panel {
+      width: 100%;
+      font-size: 12px;
+      padding: 12px 14px;
+    }
+    .panel-grid {
+      grid-template-columns: 1fr;
+      gap: 12px 0;
+    }
+    .svc-name { font-size: 12px; }
+    .svc-val { font-size: 11px; }
+    .col-label { font-size: 10px; }
+    .forecast { flex-wrap: wrap; }
+    .fc-hour { font-size: 10px; }
+    .fc-ico { font-size: 12px; }
+    .fc-temp, .fc-precip { font-size: 11px; }
+  }
 </style>

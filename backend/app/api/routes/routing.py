@@ -127,12 +127,27 @@ async def calculate_route(
     await db.commit()
     await db.refresh(route)
 
-    # Fuel analysis
+    # Re-sort waypoints by their projected position along the route geometry
     route_coords = route_data["geometry"].get("coordinates", [])
+    if route_coords and convoy.waypoints:
+        from app.services import geometry as _geo
+        projected: list[tuple[float, object]] = []
+        for wp in convoy.waypoints:
+            c = _geo.waypoint_coords(wp)
+            if c["lat"] is not None and c["lon"] is not None:
+                d = fuel_svc.project_onto_route(route_coords, c["lat"], c["lon"])
+                projected.append((d, wp))
+        projected.sort(key=lambda x: x[0])
+        for new_idx, (_, wp) in enumerate(projected):
+            wp.order_index = new_idx
+        await db.commit()
+
+    # Fuel analysis
     fuel_analysis = fuel_svc.analyse_fuel(
         convoy.convoy_vehicles,
         route_data["distance_m"],
         route_coords,
+        route_duration_s=convoy_duration_s,
     )
 
     return {

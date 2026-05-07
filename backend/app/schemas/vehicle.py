@@ -20,6 +20,10 @@ class VehicleUpdate(VehicleCreate):
     name: str | None = None
 
 
+DEFAULT_CONSUMPTION = 7.5
+DEFAULT_TANK = 70.0
+
+
 class VehicleResponse(BaseModel):
     id: uuid.UUID
     name: str
@@ -32,7 +36,9 @@ class VehicleResponse(BaseModel):
     tank_capacity_l: float | None = None
     fuel_consumption_l100km: float | None = None
     current_fuel_l: float | None = None
+    order_index: int = 0
     range_km: float | None = None
+    range_uses_defaults: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -40,8 +46,10 @@ class VehicleResponse(BaseModel):
     def compute_range(self) -> "VehicleResponse":
         fuel = self.current_fuel_l
         cons = self.fuel_consumption_l100km
-        if fuel and cons and cons > 0:
-            self.range_km = round((fuel / cons) * 100, 1)
-        elif self.tank_capacity_l and cons and cons > 0:
-            self.range_km = round((self.tank_capacity_l / cons) * 100, 1)
+        cap = self.tank_capacity_l
+        has_real_data = bool(cons and cons > 0 and (fuel or cap))
+        eff_fuel = fuel if fuel else (cap if cap else DEFAULT_TANK)
+        eff_cons = cons if (cons and cons > 0) else DEFAULT_CONSUMPTION
+        self.range_km = round((eff_fuel / eff_cons) * 100, 1)
+        self.range_uses_defaults = not has_real_data
         return self
