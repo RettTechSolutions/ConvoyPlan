@@ -14,8 +14,13 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("users", sa.Column("is_active", sa.Boolean(), nullable=False, server_default="true"))
-    op.add_column("users", sa.Column("is_superadmin", sa.Boolean(), nullable=False, server_default="false"))
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    existing = [col["name"] for col in inspector.get_columns("users")]
+    if "is_active" not in existing:
+        op.add_column("users", sa.Column("is_active", sa.Boolean(), nullable=False, server_default="true"))
+    if "is_superadmin" not in existing:
+        op.add_column("users", sa.Column("is_superadmin", sa.Boolean(), nullable=False, server_default="false"))
 
 
 def downgrade() -> None:
