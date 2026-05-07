@@ -54,6 +54,8 @@
 	let expandedOrgId = $state<string | null>(null);
 	let orgMembers = $state<Record<string, OrgMember[]>>({});
 	let orgAddForm = $state<Record<string, { email: string; role: string }>>({});
+	let orgInviteForm = $state<Record<string, { email: string; password: string }>>({});
+	let orgInviteError = $state<Record<string, string>>({});
 
 	async function loadOrgMembers(orgId: string) {
 		try {
@@ -66,6 +68,18 @@
 		expandedOrgId = orgId;
 		if (!orgAddForm[orgId]) orgAddForm = { ...orgAddForm, [orgId]: { email: '', role: 'beobachter' } };
 		if (!orgMembers[orgId]) await loadOrgMembers(orgId);
+	}
+
+	async function inviteMember(orgId: string) {
+		const form = orgInviteForm[orgId];
+		if (!form?.email || !form?.password) return;
+		try {
+			await orgsApi.inviteMember(orgId, form.email, form.password);
+			orgInviteForm = { ...orgInviteForm, [orgId]: { email: '', password: '' } };
+			await loadOrgMembers(orgId);
+		} catch (e: unknown) {
+			orgInviteError = { ...orgInviteError, [orgId]: e instanceof Error ? e.message : 'Fehler' };
+		}
 	}
 
 	// Forms
@@ -1101,6 +1115,26 @@
 										{:else}
 											<p class="hint">Lade…</p>
 										{/if}
+
+										{#if org.my_role === 'admin'}
+											<p class="org-section-label" style="margin-top:.75rem">User einladen</p>
+											<div class="invite-form">
+												<input
+													type="email"
+													placeholder="E-Mail"
+													bind:value={(orgInviteForm[org.id] = orgInviteForm[org.id] ?? { email: '', password: '' }).email}
+												/>
+												<input
+													type="password"
+													placeholder="Passwort"
+													bind:value={(orgInviteForm[org.id] = orgInviteForm[org.id] ?? { email: '', password: '' }).password}
+												/>
+												<button class="btn-small" onclick={() => inviteMember(org.id)}>Einladen</button>
+											</div>
+											{#if orgInviteError[org.id]}
+												<p class="hint" style="color:#E23D28">{orgInviteError[org.id]}</p>
+											{/if}
+										{/if}
 									</div>
 								{/if}
 							</div>
@@ -1545,6 +1579,8 @@
 	.org-add-member { display: flex; gap: .4rem; margin-top: .6rem; flex-wrap: wrap; }
 	.org-email-input { flex: 1; min-width: 120px; padding: .3rem .5rem; border-radius: 4px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.08); color: white; font-size: .8rem; }
 	.org-email-input::placeholder { color: rgba(255,255,255,.3); }
+	.invite-form { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .3rem; }
+	.invite-form input { flex: 1; min-width: 120px; padding: .3rem .5rem; border-radius: 4px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.1); color: white; font-size: .8rem; }
 
 	/* ── Mobile layout (≤ 768px) ─────────────────────────────────── */
 	@media (max-width: 768px) {
