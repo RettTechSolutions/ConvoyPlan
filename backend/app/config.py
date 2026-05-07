@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     superadmin_email: str = ""
     superadmin_password: str = ""
     acme_email: str = "admin@example.com"
+    caddy_admin_url: str = "http://caddy:2019"
 
     class Config:
         env_file = ".env"
