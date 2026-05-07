@@ -22,10 +22,9 @@ services:
       DATABASE_URL: postgresql+asyncpg://marschplan:marschplan@db:5432/marschplan
       JWT_SECRET: changeme-in-production
       GRAPHHOPPER_URL: http://graphhopper:8989
-      SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:-}
-      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-}
     volumes:
       - ./backend:/app
+      - cert_uploads:/certs
     depends_on:
       db:
         condition: service_healthy
@@ -77,7 +76,7 @@ services:
       - ./caddy/entrypoint.sh:/entrypoint.sh:ro
       - caddy_data:/data
       - caddy_config:/config
-      - ${CERT_DIR:-/tmp}:/certs:ro
+      - cert_uploads:/certs:ro
     entrypoint: ["/bin/sh", "/entrypoint.sh"]
     depends_on:
       - frontend
@@ -89,3 +88,4 @@ volumes:
   gh_graph:
   caddy_data:
   caddy_config:
+  cert_uploads:

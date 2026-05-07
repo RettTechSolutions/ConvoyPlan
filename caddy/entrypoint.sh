@@ -1,6 +1,13 @@
 #!/bin/sh
 set -e
 
+# If setup wizard wrote a Caddyfile to the shared volume, use it directly.
+if [ -f "/certs/Caddyfile" ]; then
+    echo "[caddy] Using persisted Caddyfile from /certs/Caddyfile"
+    exec caddy run --config /certs/Caddyfile --adapter caddyfile
+fi
+
+# Otherwise fall back to env-var-based generation (initial start before setup).
 DOMAIN="${DOMAIN:-localhost}"
 ACME_EMAIL="${ACME_EMAIL:-admin@example.com}"
 
@@ -22,6 +29,7 @@ esac
 
 cat > /tmp/Caddyfile << CADDYEOF
 {
+    admin 0.0.0.0:2019
     email $ACME_EMAIL
 }
 
@@ -40,5 +48,5 @@ $DOMAIN {
 }
 CADDYEOF
 
-echo "[caddy] Starting with domain: $DOMAIN"
+echo "[caddy] Starting with domain: $DOMAIN (env-var mode)"
 exec caddy run --config /tmp/Caddyfile --adapter caddyfile
