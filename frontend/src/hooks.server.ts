@@ -14,11 +14,17 @@ export const handle: Handle = async ({ event, resolve }) => {
 		const isGetOrHead = ['GET', 'HEAD'].includes(event.request.method);
 		const body = isGetOrHead ? undefined : await event.request.arrayBuffer();
 
-		const response = await fetch(url, {
-			method: event.request.method,
-			headers: reqHeaders,
-			body: body,
-		});
+		let response: Response;
+		try {
+			response = await fetch(url, {
+				method: event.request.method,
+				headers: reqHeaders,
+				body: body,
+			});
+		} catch (err) {
+			console.error(`[proxy] ${event.request.method} ${url} → fetch error:`, err);
+			return new Response(JSON.stringify({ detail: 'Proxy error' }), { status: 502 });
+		}
 
 		const resHeaders = new Headers();
 		response.headers.forEach((value, key) => {
