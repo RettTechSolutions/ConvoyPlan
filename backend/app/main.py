@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
 from app.api.routes import auth, convoys, vehicles, routing, organizations, tracking, lage, weather, overpass, status, users
+from app.api.routes import admin as admin_router
 from app.config import settings
 from app.database import get_db_session
 from app.models.user import User
@@ -61,6 +62,7 @@ app.include_router(weather.router, prefix="/api")
 app.include_router(overpass.router, prefix="/api")
 app.include_router(status.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
+app.include_router(admin_router.router, prefix="/api")
 
 
 @app.get("/health")
