@@ -206,6 +206,16 @@
 		} catch { error = 'Fehler beim Hinzufügen'; }
 	}
 
+	async function deleteVehicle(id: string) {
+		if (!confirm('Fahrzeug wirklich löschen?')) return;
+		try {
+			await vehiclesApi.delete(id);
+			allVehicles = allVehicles.filter(v => v.id !== id);
+			dndVehicles = dndVehicles.filter(v => v.id !== id);
+			if (selected?.convoy_vehicles.some(cv => cv.vehicle.id === id)) await refreshConvoy();
+		} catch { error = 'Fahrzeug konnte nicht gelöscht werden'; }
+	}
+
 	async function removeVehicleFromConvoy(vehicleId: string) {
 		if (!selected) return;
 		try {
@@ -565,8 +575,13 @@
 	<!-- ── Sidebar ──────────────────────────────────────────────────── -->
 	<aside id="sidebar" class="sidebar" class:open={sidebarOpen}>
 		<div class="sidebar-header">
-			<AppLogo width={190} />
-			<button class="logout-btn" onclick={logout} title="Abmelden">✕</button>
+			<div class="logo-wrap"><AppLogo width={null} /></div>
+			<div style="display:flex;align-items:center;gap:.5rem">
+				{#if $auth.is_superadmin}
+					<a href="/admin" class="admin-link">⚙ Admin</a>
+				{/if}
+				<button class="logout-btn" onclick={logout} title="Abmelden">✕</button>
+			</div>
 		</div>
 
 		<!-- Convoy-Selektor -->
@@ -823,6 +838,7 @@
 											</div>
 											<div style="display:flex;gap:.3rem;align-items:center">
 												<button class="btn-small" title="Bearbeiten" onclick={() => startEditVehicle(v)}>✏️</button>
+												<button class="btn-small danger" title="Löschen" onclick={() => deleteVehicle(v.id)}>🗑</button>
 												{#if selected}
 													{#if assignedIds.has(v.id)}
 														<button class="btn-small danger" onclick={() => removeVehicleFromConvoy(v.id)}>–</button>
@@ -961,7 +977,7 @@
 						<div class="export-grid">
 							<button class="btn-export" onclick={() => downloadExport('gpx')}>📍 GPX herunterladen</button>
 							<button class="btn-export" onclick={() => downloadExport('json')}>📄 JSON herunterladen</button>
-							<button class="btn-export" onclick={() => downloadExport('pdf')}>🖨 Marschbefehl PDF</button>
+							<button class="btn-export" onclick={() => (showBefehlModal = true)}>📋 Marschbefehl</button>
 							<button class="btn-export" onclick={() => navigator.clipboard.writeText(`${window.location.origin}/share/${selected?.share_token}`)}>🔗 Link kopieren</button>
 						</div>
 						<div class="section-header" style="margin-top:1rem"><strong>Live-Tracking</strong></div>
@@ -969,12 +985,6 @@
 						<div class="section-header" style="margin-top:1rem"><strong>Sperrungen & Baustellen</strong></div>
 						<button class="btn-export" class:active={showClosures} onclick={toggleClosures}>
 							{showClosures ? '🚧 Sperrungen ausblenden' : '🚧 Sperrungen laden'}
-						</button>
-					</div>
-
-					<div class="section">
-						<button class="btn-export" style="margin-top:.5rem" onclick={() => (showBefehlModal = true)}>
-							📋 Marschbefehl ausfüllen
 						</button>
 					</div>
 				{/if}
@@ -1324,8 +1334,11 @@
 	.app { display: flex; height: 100vh; overflow: hidden; }
 
 	.sidebar { width: 340px; min-width: 280px; background: #0F1B24; color: white; display: flex; flex-direction: column; overflow: hidden; }
-	.sidebar-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem; border-bottom: 1px solid rgba(255,255,255,.15); }
-.logout-btn { background: none; border: none; color: rgba(255,255,255,.6); cursor: pointer; font-size: 1rem; }
+	.sidebar-header { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; border-bottom: 1px solid rgba(255,255,255,.15); background: #f5f3ee; }
+	.logo-wrap { flex: 1; min-width: 0; }
+.logout-btn { background: none; border: none; color: rgba(0,0,0,.4); cursor: pointer; font-size: 1rem; flex-shrink: 0; }
+	.admin-link { font-size: .72rem; color: rgba(0,0,0,.45); text-decoration: none; white-space: nowrap; }
+	.admin-link:hover { color: rgba(0,0,0,.7); }
 
 	.convoy-selector { display: flex; gap: .5rem; padding: .75rem 1rem; border-bottom: 1px solid rgba(255,255,255,.1); }
 	.convoy-selector select { flex: 1; padding: .4rem; border-radius: 4px; border: none; background: rgba(255,255,255,.12); color: white; }
