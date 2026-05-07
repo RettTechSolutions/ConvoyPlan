@@ -65,11 +65,11 @@ async def _reload_caddy(caddyfile: str) -> bool:
                 params={"adapter": "caddyfile"},
             )
             adapt.raise_for_status()
-            # Step 2: load JSON config
+            # Step 2: load JSON config (Caddy /adapt returns {"result": ..., "warnings": [...]})
+            adapted_config = adapt.json()["result"]
             load = await client.post(
                 f"{settings.caddy_admin_url}/load",
-                content=adapt.content,
-                headers={"Content-Type": "application/json"},
+                json=adapted_config,
             )
             load.raise_for_status()
             return True
@@ -92,6 +92,9 @@ async def run_setup(data: SetupRequest, db: AsyncSession = Depends(get_db)):
     if not re.match(r'^[a-zA-Z0-9._-]+$', data.domain):
         raise HTTPException(400, "Invalid domain format")
 
+    if data.tls_mode == "custom" and (not data.cert_pem or not data.key_pem):
+        raise HTTPException(400, "cert_pem and key_pem are required for custom TLS")
+
     # Create superadmin
     user = User(
         email=data.email,
@@ -108,17 +111,18 @@ async def run_setup(data: SetupRequest, db: AsyncSession = Depends(get_db)):
     ]:
         db.add(SystemSetting(key=key, value=value))
 
-    await db.commit()
-
-    # Write cert files if custom TLS
+    # Write cert files if custom TLS (before commit to avoid half-configured state)
     CERTS_DIR.mkdir(parents=True, exist_ok=True)
     if data.tls_mode == "custom" and data.cert_pem and data.key_pem:
         (CERTS_DIR / "cert.pem").write_text(data.cert_pem)
         (CERTS_DIR / "key.pem").write_text(data.key_pem)
+        (CERTS_DIR / "key.pem").chmod(0o600)
 
     # Write Caddyfile to shared volume (persists across restarts)
     caddyfile = _generate_caddyfile(data.domain, data.tls_mode, data.acme_email)
     (CERTS_DIR / "Caddyfile").write_text(caddyfile)
+
+    await db.commit()
 
     # Live-reload Caddy
     reloaded = await _reload_caddy(caddyfile)
