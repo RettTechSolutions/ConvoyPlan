@@ -9,8 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
+from app.api.guards import get_convoy_access
 from app.database import get_db, AsyncSessionLocal
-from app.models.convoy import Convoy, ConvoyVehicle
+from app.models.convoy import ConvoyVehicle
 from app.models.user import User
 from app.models.vehicle_position import VehiclePosition
 from app.services.tracking import tracking_manager
@@ -36,7 +37,7 @@ async def get_positions(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _assert_convoy_access(convoy_id, current_user.id, db)
+    await get_convoy_access(convoy_id, current_user, db, require="read")
     result = await db.execute(
         select(VehiclePosition).where(VehiclePosition.convoy_id == convoy_id)
     )
@@ -61,7 +62,7 @@ async def update_position(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _assert_convoy_access(convoy_id, current_user.id, db)
+    await get_convoy_access(convoy_id, current_user, db, require="fahrer")
     stmt = (
         pg_insert(VehiclePosition)
         .values(
@@ -106,7 +107,7 @@ async def update_vehicle_status(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _assert_convoy_access(convoy_id, current_user.id, db)
+    await get_convoy_access(convoy_id, current_user, db, require="fahrer")
     result = await db.execute(
         select(ConvoyVehicle).where(
             ConvoyVehicle.convoy_id == convoy_id,
@@ -181,10 +182,3 @@ async def tracking_ws(
     except (WebSocketDisconnect, Exception):
         tracking_manager.disconnect(convoy_id, ws)
 
-
-async def _assert_convoy_access(convoy_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession):
-    result = await db.execute(
-        select(Convoy).where(Convoy.id == convoy_id, Convoy.owner_id == user_id)
-    )
-    if not result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Convoy nicht gefunden")
