@@ -220,6 +220,11 @@ async def invite_member(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Check org exists
+    org_result = await db.execute(select(Organization).where(Organization.id == org_id))
+    if not org_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Organization not found")
+
     membership_result = await db.execute(
         select(UserOrganization).where(
             UserOrganization.organization_id == org_id,
