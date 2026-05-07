@@ -1,3 +1,4 @@
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -11,6 +12,8 @@ from app.api.routes import admin as admin_router
 from app.config import settings
 from app.database import get_db_session
 from app.models.user import User
+
+logger = logging.getLogger(__name__)
 
 
 async def _seed_superadmin() -> None:
@@ -29,7 +32,7 @@ async def _seed_superadmin() -> None:
         )
         db.add(user)
         await db.commit()
-        print(f"[seed] Superadmin created: {settings.superadmin_email}")
+        logger.info("Superadmin seeded: %s", settings.superadmin_email)
 
 
 @asynccontextmanager

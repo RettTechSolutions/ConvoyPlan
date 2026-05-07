@@ -11,10 +11,10 @@ export function connectTracking(convoyId: string) {
 	const token = localStorage.getItem('token');
 	if (!token) return;
 
-	// SvelteKit's server-side proxy doesn't support WebSocket upgrades,
-	// so we connect directly to the backend using the same hostname but port 8000.
+	// WebSocket connects through the same origin (e.g. via Caddy reverse-proxy).
+	// For local dev without Caddy set VITE_WS_HOST=localhost:8000 in .env.local.
 	const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-	const backendHost = import.meta.env.VITE_WS_HOST ?? `${window.location.hostname}:8000`;
+	const backendHost = import.meta.env.VITE_WS_HOST ?? window.location.host;
 	ws = new WebSocket(`${protocol}//${backendHost}/api/ws/tracking/${convoyId}?token=${token}`);
 
 	ws.onmessage = (event) => {

@@ -79,6 +79,9 @@ async def update_user(
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(404, "User not found")
+    if user.id == current.id:
+        if data.is_superadmin is False or data.is_active is False:
+            raise HTTPException(400, "Cannot demote or deactivate your own account")
     if data.is_active is not None:
         user.is_active = data.is_active
     if data.is_superadmin is not None:
