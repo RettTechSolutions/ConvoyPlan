@@ -1,14 +1,18 @@
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import auth, convoys, vehicles, routing, organizations, tracking, lage, weather, overpass, status, users
 
-app = FastAPI(title="MarschPlan API", version="0.2.0")
+app = FastAPI(title="ConvoyPlan API", version="0.2.0")
+
+_origins_env = os.environ.get("CORS_ORIGINS", "*")
+_allow_origins = [o.strip() for o in _origins_env.split(",")] if _origins_env != "*" else ["*"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:4173"],
-    allow_credentials=True,
+    allow_origins=_allow_origins,
+    allow_credentials=_allow_origins != ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
