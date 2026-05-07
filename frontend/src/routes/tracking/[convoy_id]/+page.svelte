@@ -108,8 +108,8 @@
 	<!-- Sidebar -->
 	<aside class="sidebar" class:open={sidebarOpen}>
 		<div class="sidebar-header">
-			<div>
-				<AppLogo width={170} />
+			<div class="logo-wrap">
+				<AppLogo width={null} />
 				<div class="convoy-name">{convoy?.name ?? 'Laden…'}</div>
 				{#if convoy?.organization}<div class="org-name">{convoy.organization}</div>{/if}
 			</div>
@@ -230,7 +230,8 @@
 
 	/* Sidebar */
 	.sidebar { width: 320px; min-width: 280px; background: #0F1B24; color: white; display: flex; flex-direction: column; overflow: hidden; }
-	.sidebar-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 1rem; border-bottom: 1px solid rgba(255,255,255,.15); }
+	.sidebar-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 0.75rem 1rem; border-bottom: 1px solid rgba(255,255,255,.15); background: #f5f3ee; }
+	.logo-wrap { flex: 1; min-width: 0; }
 	.logo { font-size: 1rem; font-weight: 700; }
 	.convoy-name { font-size: .78rem; color: rgba(255,255,255,.65); margin-top: .3rem; }
 	.org-name { font-size: .72rem; color: rgba(255,255,255,.4); margin-top: .1rem; }
