@@ -104,27 +104,31 @@ Im Repository liegen bereits Logo- und Design-Assets unter [`logo/`](logo/):
 
 ## Architektur
 
-MarschPlan besteht aus vier Kernbausteinen:
+MarschPlan besteht aus fünf Kernbausteinen:
 
 ```mermaid
 flowchart LR
     Browser[Browser / PWA / Capacitor App]
+    Caddy[Caddy Reverse Proxy\nTLS + WebSocket]
     Frontend[SvelteKit Frontend]
     API[FastAPI Backend]
     DB[(PostgreSQL + PostGIS)]
     GH[GraphHopper]
     EXT[Open-Meteo / Overpass]
 
-    Browser --> Frontend
-    Frontend -->|REST + WebSocket| API
+    Browser -->|HTTPS / WSS| Caddy
+    Caddy -->|/api /ws| API
+    Caddy --> Frontend
     API --> DB
     API --> GH
     API --> EXT
+    API -->|Caddy Admin API :2019| Caddy
 ```
 
-- Das **Frontend** stellt Login, Planung, Karte, Live-Tracking und öffentliche Freigabelinks bereit.
-- Das **Backend** bündelt Authentifizierung, Geschäftslogik, Routing-Aufbereitung, Exporte und Integrationen.
-- **PostgreSQL mit PostGIS** speichert Nutzer, Fahrzeuge, Konvois, Geometrien, Positionen und Lagedaten.
+- **Caddy** terminiert TLS (Let's Encrypt oder eigenes Zertifikat), leitet `/api/*` und `/ws/*` ans Backend und alles andere ans Frontend. Die Konfiguration kann per Admin-API live neu geladen werden.
+- Das **Frontend** stellt Login, Setup-Wizard, Planung, Karte, Live-Tracking und öffentliche Freigabelinks bereit.
+- Das **Backend** bündelt Authentifizierung, Geschäftslogik, Routing-Aufbereitung, Exporte, Integrationen und die Caddy-Konfiguration.
+- **PostgreSQL mit PostGIS** speichert Nutzer, Fahrzeuge, Konvois, Geometrien, Positionen, Lagedaten und Systemeinstellungen.
 - **GraphHopper** läuft selbst gehostet und verarbeitet beim ersten Start die gewählte OSM-PBF-Datei.
 
 ---
@@ -145,6 +149,7 @@ flowchart LR
 | Geodaten | GeoAlchemy2, Shapely, GeoJSON |
 | Exporte | GPXPy, fpdf2, JSON |
 | Externe Daten | Open-Meteo, OpenStreetMap Overpass API |
+| Reverse Proxy / TLS | Caddy 2 (Let's Encrypt, eigenes Zertifikat, intern) |
 | Infrastruktur | Docker Compose, Portainer Stack |
 
 ---
@@ -156,30 +161,61 @@ MarschPlan/
 ├── backend/
 │   ├── app/
 │   │   ├── api/routes/       # REST- und WebSocket-Endpunkte
+│   │   │   ├── auth.py       # Registrierung, Login
+│   │   │   ├── setup.py      # Ersteinrichtungs-Wizard (Status + Ausführen)
+│   │   │   ├── admin.py      # Superadmin-Benutzerverwaltung
+│   │   │   ├── convoys.py    # Marschverbände, Waypoints, Export
+│   │   │   ├── vehicles.py   # Fahrzeugverwaltung
+│   │   │   ├── organizations.py  # Organisationen und Mitglieder
+│   │   │   ├── tracking.py   # Live-Positionen + WebSocket
+│   │   │   ├── routing.py    # GraphHopper-Routing
+│   │   │   ├── lage.py       # GeoJSON-Lagedaten
+│   │   │   ├── weather.py    # Open-Meteo-Integration
+│   │   │   ├── overpass.py   # OSM-Sperrungsabfragen
+│   │   │   ├── users.py      # Eigenes Benutzerprofil
+│   │   │   └── status.py     # Systemstatus
 │   │   ├── models/           # SQLAlchemy-Modelle
 │   │   ├── schemas/          # Pydantic-Schemas
 │   │   ├── services/         # Routing, Zeitplan, Export, Wetter, Tracking
 │   │   ├── config.py         # Backend-Konfiguration über Umgebungsvariablen
 │   │   ├── database.py       # Async-Datenbankanbindung
 │   │   └── main.py           # FastAPI-App und Router-Registrierung
-│   ├── alembic/              # Datenbankmigrationen
+│   ├── alembic/              # Datenbankmigrationen (0001–0008)
+│   ├── tests/                # pytest-Tests
 │   ├── Dockerfile
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/lib/api/          # API-Client
 │   ├── src/lib/components/   # Karte, Wetter, Lagedatenpanel
 │   ├── src/lib/stores/       # Auth-, Karten-, Konvoi-, Tracking-Stores
-│   ├── src/routes/           # Login, Planung, Tracking, Share-Ansicht
+│   ├── src/routes/
+│   │   ├── setup/            # Ersteinrichtungs-Wizard (3 Schritte)
+│   │   ├── login/            # Anmeldung
+│   │   ├── plan/             # Planungsansicht mit Karte
+│   │   ├── tracking/         # Live-Tracking-Ansicht
+│   │   ├── share/            # Öffentliche Routenansicht
+│   │   └── admin/            # Superadmin-Benutzerverwaltung
 │   ├── capacitor.config.ts
 │   ├── package.json
 │   └── vite.config.ts
+├── caddy/
+│   └── entrypoint.sh         # Caddyfile-Generierung aus Env-Variablen (Fallback vor Setup)
 ├── graphhopper/
 │   ├── Dockerfile
 │   ├── entrypoint.sh         # OSM-Download und GraphHopper-Start
 │   └── config.yml
+├── .github/workflows/
+│   ├── ci.yml                # Backend-Tests + Frontend-Check + Docker-Build bei Push/PR
+│   └── release.yml           # Docker-Images zu GHCR + GitHub Release bei v*.*.*-Tag
+├── .hooks/pre-commit         # Lokaler Pre-Commit-Hook (ruff + svelte-check)
+├── scripts/install-hooks.sh  # Installiert .hooks/ in .git/hooks/
 ├── logo/                     # Logo-, Favicon- und Design-Assets
+├── docs/                     # Spezifikationen und Implementierungspläne
+├── CHANGELOG.md              # Versionshistorie
+├── RELEASING.md              # Anleitung zum Schneiden eines Releases
+├── .env.example              # Alle Umgebungsvariablen mit Erklärungen
 ├── docker-compose.yml        # Lokales Entwicklungssetup
-└── portainer-stack.yml       # Beispielstack für Portainer/Serverbetrieb
+└── portainer-stack.yml       # Produktivstack für Portainer
 ```
 
 ---
@@ -253,47 +289,53 @@ Die Anwendung ist anschließend erreichbar unter:
 - Swagger UI: <http://localhost:8000/docs>
 - GraphHopper: <http://localhost:8989>
 
-### 5. Ersten Account anlegen
+### 5. Setup-Wizard ausführen
 
-```bash
-curl -X POST http://localhost:8000/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email":"pilot@bos.de","password":"sicheres-passwort"}'
-```
+Beim ersten Start leitet die Anwendung automatisch auf `http://localhost:5173/setup` weiter. Der dreistufige Wizard führt durch:
 
-Login per API:
+1. **Superadmin-Account** — E-Mail-Adresse und Passwort festlegen.
+2. **Domain und SSL** — Serverdomain (FQDN) eingeben und TLS-Modus wählen: Let's Encrypt, eigenes Zertifikat (Datei-Upload) oder internes Zertifikat für lokale Nutzung.
+3. **Abschluss** — Caddy wird live neu geladen; danach direkt zur Anmeldung.
 
-```bash
-curl -X POST http://localhost:8000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"pilot@bos.de","password":"sicheres-passwort"}'
-```
+> Für lokale Entwicklung ohne Caddy (reiner `npm run dev`-Modus) kann der Wizard mit `localhost` als Domain und `internal` als TLS-Modus ausgeführt werden.
 
 ---
 
 ## Konfiguration
 
+Eine vollständige Vorlage liegt in `.env.example`. Die wichtigsten Variablen:
+
+### Datenbank
+
+| Variable | Beschreibung |
+|---|---|
+| `POSTGRES_USER` | Datenbankbenutzer |
+| `POSTGRES_PASSWORD` | Datenbankpasswort – in Produktion ändern |
+| `POSTGRES_DB` | Datenbankname |
+
 ### Backend
 
 | Variable | Standard | Beschreibung |
 |---|---|---|
-| `DATABASE_URL` | `postgresql+asyncpg://marschplan:marschplan@localhost:5432/marschplan` | PostgreSQL/PostGIS-Verbindung |
-| `JWT_SECRET` | `changeme-in-production` | Signaturschlüssel für JWTs; in Produktion zwingend ändern |
+| `DATABASE_URL` | *(wird aus POSTGRES_\* zusammengesetzt)* | PostgreSQL/PostGIS-Verbindung |
+| `JWT_SECRET` | `changeme-in-production` | Signaturschlüssel für JWTs – in Produktion zwingend ersetzen (`openssl rand -hex 32`) |
 | `JWT_ALGORITHM` | `HS256` | JWT-Algorithmus |
-| `JWT_EXPIRE_MINUTES` | `10080` | Ablaufzeit eines Tokens in Minuten |
-| `GRAPHHOPPER_URL` | `http://localhost:8989` | URL der Routing-Engine |
+| `JWT_EXPIRE_MINUTES` | `10080` | Token-Ablaufzeit in Minuten (7 Tage) |
+| `GRAPHHOPPER_URL` | `http://graphhopper:8989` | URL der Routing-Engine |
+| `CORS_ORIGINS` | `*` | Erlaubte CORS-Origins; in Produktion auf die eigene Domain einschränken |
 
-### Frontend
+### SSL / Caddy
 
-| Variable | Standard | Beschreibung |
-|---|---|---|
-| `VITE_API_URL` | `http://localhost:8000` | Basis-URL des Backends für REST-Aufrufe |
+Domain und Zertifikat werden beim ersten Start über den Setup-Wizard in der Datenbank gespeichert und als Caddyfile auf einem geteilten Volume abgelegt. Die folgenden Variablen gelten als Fallback für den allerersten Container-Start vor dem Wizard:
 
-Beispiel für `frontend/.env.local`:
-
-```env
-VITE_API_URL=http://localhost:8000
-```
+| Variable | Beschreibung |
+|---|---|
+| `DOMAIN` | Serverdomain (z. B. `convoy.example.com`), Standard: `localhost` |
+| `ACME_EMAIL` | E-Mail für Let's Encrypt, Standard: `admin@example.com` |
+| `CADDY_TLS_CERT` | Pfad zum PEM-Zertifikat (optional, für eigene Zertifikate) |
+| `CADDY_TLS_KEY` | Pfad zum PEM-Schlüssel (optional, für eigene Zertifikate) |
+| `HTTP_PORT` | Externer HTTP-Port, Standard: `80` |
+| `HTTPS_PORT` | Externer HTTPS-Port, Standard: `443` |
 
 ### GraphHopper
 
@@ -302,6 +344,15 @@ VITE_API_URL=http://localhost:8000
 | `OSM_DOWNLOAD_URL` | `https://download.geofabrik.de/europe/germany-latest.osm.pbf` | Download-URL der OSM-PBF-Datei |
 | `OSM_FILENAME` | `germany-latest.osm.pbf` | Dateiname im persistenten OSM-Volume |
 | `JAVA_OPTS` | `-Xmx2g -Xms512m -XX:+UseG1GC` | JVM-Speicherkonfiguration |
+
+### Frontend (lokale Entwicklung)
+
+Für lokale Entwicklung ohne Caddy kann `frontend/.env.local` angelegt werden:
+
+```env
+# WebSocket-Host überschreiben, wenn kein Caddy läuft
+VITE_WS_HOST=localhost:8000
+```
 
 ---
 
@@ -312,10 +363,31 @@ Die vollständige OpenAPI-Dokumentation wird automatisch von FastAPI bereitgeste
 - Swagger UI: <http://localhost:8000/docs>
 - OpenAPI JSON: <http://localhost:8000/openapi.json>
 
+**Ersteinrichtung**
+
+| Methode | Endpunkt | Beschreibung |
+|---|---|---|
+| `GET` | `/api/setup/status` | Prüft ob Setup erforderlich ist (kein Superadmin vorhanden) |
+| `POST` | `/api/setup` | Superadmin anlegen, Domain und TLS konfigurieren, Caddy live neu laden |
+
+**Authentifizierung**
+
 | Methode | Endpunkt | Beschreibung |
 |---|---|---|
 | `POST` | `/api/auth/register` | Account erstellen |
 | `POST` | `/api/auth/login` | Login und JWT erhalten |
+
+**Superadmin-Verwaltung**
+
+| Methode | Endpunkt | Beschreibung |
+|---|---|---|
+| `GET` | `/api/admin/users` | Alle Benutzer auflisten (Superadmin) |
+| `PATCH` | `/api/admin/users/{user_id}` | Benutzer aktivieren/deaktivieren, Superadmin-Flag setzen |
+
+**Fahrzeuge und Konvois**
+
+| Methode | Endpunkt | Beschreibung |
+|---|---|---|
 | `GET/POST/PUT/DELETE` | `/api/vehicles/` | Fahrzeuge verwalten |
 | `GET/POST/PUT/DELETE` | `/api/convoys/` | Marschverbände verwalten |
 | `POST/DELETE` | `/api/convoys/{convoy_id}/vehicles` | Fahrzeuge einem Konvoi zuordnen oder entfernen |
@@ -327,10 +399,25 @@ Die vollständige OpenAPI-Dokumentation wird automatisch von FastAPI bereitgeste
 | `GET` | `/api/convoys/{convoy_id}/export/pdf` | Marschbefehl als PDF exportieren |
 | `GET` | `/api/convoys/{convoy_id}/fuel-stations` | Tankstellen entlang der Route abrufen |
 | `GET` | `/api/convoys/share/{token}` | Öffentliche Routenansicht abrufen |
+
+**Organisationen**
+
+| Methode | Endpunkt | Beschreibung |
+|---|---|---|
 | `GET/POST/DELETE` | `/api/organizations/` | Organisationen und Mitglieder verwalten |
+
+**Live-Tracking**
+
+| Methode | Endpunkt | Beschreibung |
+|---|---|---|
 | `GET/POST` | `/api/convoys/{convoy_id}/positions` | Live-Positionen abrufen oder aktualisieren |
 | `PATCH` | `/api/convoys/{convoy_id}/vehicles/{vehicle_id}/status` | Fahrzeugstatus ändern |
-| `WS` | `/api/ws/tracking/{convoy_id}?token=...` | WebSocket für Live-Tracking |
+| `WS` | `/ws/tracking/{convoy_id}?token=...` | WebSocket für Live-Tracking |
+
+**Lage, Wetter und Overpass**
+
+| Methode | Endpunkt | Beschreibung |
+|---|---|---|
 | `GET/POST/PUT/DELETE` | `/api/convoys/{convoy_id}/lage` | GeoJSON-Lagedaten verwalten |
 | `GET` | `/api/weather/?lat=...&lon=...` | Wetterdaten abrufen |
 | `GET` | `/api/overpass/closures?lat=...&lon=...` | Sperrungen und Baustellen abrufen |
@@ -431,25 +518,39 @@ docker compose down -v
 
 ## Deployment
 
-Für Server- oder Portainer-Setups liegt eine Beispielkonfiguration in `portainer-stack.yml` bereit. Dort werden Images über Variablen konfiguriert:
+### Produktivsetup (Docker Compose / Portainer)
 
-| Variable | Zweck |
-|---|---|
-| `BACKEND_IMAGE` | Backend-Image für den produktiven Stack |
-| `GRAPHHOPPER_IMAGE` | GraphHopper-Image für den produktiven Stack |
-| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Datenbankzugang |
-| `JWT_SECRET` | Produktiver JWT-Schlüssel |
-| `DB_PORT`, `BACKEND_PORT`, `GH_PORT` | Externe Ports |
-| `OSM_DOWNLOAD_URL`, `OSM_FILENAME`, `JAVA_OPTS` | GraphHopper-Konfiguration |
+1. `.env.example` als `.env` kopieren und anpassen:
+   ```bash
+   cp .env.example .env
+   # JWT_SECRET, POSTGRES_PASSWORD, DOMAIN, ACME_EMAIL setzen
+   ```
 
-Empfehlungen für Produktion:
+2. Stack starten:
+   ```bash
+   docker compose -f docker-compose.yml up -d --build
+   ```
 
-1. `JWT_SECRET` durch einen langen, zufälligen Wert ersetzen.
-2. Datenbankpasswort ändern und nicht öffentlich versionieren.
-3. API nur über HTTPS bereitstellen.
-4. CORS-Origins im Backend auf die produktive Domain einschränken.
-5. Persistente Volumes regelmäßig sichern.
-6. Für große OSM-Regionen ausreichend RAM und Speicherplatz einplanen.
+3. Im Browser `https://<DOMAIN>/setup` aufrufen und den Setup-Wizard abschließen. Caddy wird danach automatisch mit dem konfigurierten Zertifikat neu geladen.
+
+### Portainer
+
+Eine fertige Stack-Konfiguration liegt in `portainer-stack.yml`. Images werden dort über Variablen gesetzt; der Setup-Wizard übernimmt die Erstkonfiguration von Domain und Zertifikat.
+
+### Empfehlungen für Produktion
+
+1. `JWT_SECRET` mit `openssl rand -hex 32` generieren und nicht in Git versionieren.
+2. Datenbankpasswort ändern.
+3. `CORS_ORIGINS` auf die produktive Domain einschränken.
+4. Persistente Volumes (`postgres_data`, `caddy_data`, `cert_uploads`) regelmäßig sichern.
+5. Für große OSM-Regionen (Deutschland: ~4 GB) ausreichend RAM (`JAVA_OPTS=-Xmx4g`) und Speicherplatz einplanen.
+6. GraphHopper-Graph-Cache (`gh_graph`) auf schnellem Speicher ablegen – erster Build dauert mehrere Minuten.
+
+### CI und Releases
+
+CI-Checks (Backend-Tests, Frontend-Typecheck, Docker-Build) laufen automatisch auf Push und Pull Requests gegen `main`.
+
+Für ein neues Release den Tag `vX.Y.Z` setzen – Docker-Images werden dann automatisch zu GHCR gebaut und gepusht; ein GitHub Release wird erstellt. Vollständige Anleitung in [`RELEASING.md`](RELEASING.md).
 
 ---
 
@@ -474,10 +575,11 @@ Für iOS wird eine macOS-Umgebung mit Xcode benötigt.
 ## Sicherheitshinweise
 
 - Der Standardwert `changeme-in-production` für `JWT_SECRET` ist nur für lokale Entwicklung gedacht.
-- Die Beispiel-Datenbankzugänge in `docker-compose.yml` sind nicht produktionsgeeignet.
+- Die Datenbankzugänge in `docker-compose.yml` sind Entwicklungs-Defaults und nicht produktionsgeeignet.
+- Die Caddy-Admin-API läuft auf Port `:2019` und ist im Docker-Netzwerk intern erreichbar. Der Port wird nicht nach außen exponiert (`ports:` fehlt bewusst in der Caddy-Service-Definition). In Multi-Tenant-Umgebungen mit nicht vertrauenswürdigen Containern sollte das gesondert abgesichert werden.
 - Live-Tracking verarbeitet Standortdaten. Für reale Einsätze sollten Zugriff, Aufbewahrung, Protokollierung und Löschung organisatorisch geregelt werden.
 - Öffentliche Share-Links sind ohne Login abrufbar. Tokens sollten wie vertrauliche Links behandelt werden.
-- Externe Dienste wie Open-Meteo, Overpass und Geofabrik können Verfügbarkeit, Limits oder Nutzungsbedingungen haben.
+- Externe Dienste (Open-Meteo, Overpass, Geofabrik) können Verfügbarkeit, Limits oder Nutzungsbedingungen haben.
 
 ---
 
@@ -490,7 +592,7 @@ Diese Punkte sind mögliche nächste Ausbauschritte:
 - Benachrichtigungen bei Verzögerungen oder Abweichungen von der Route.
 - Audit-Log für Änderungen an Marschbefehlen und Konvois.
 - Offline-First-Synchronisation für mobile Nutzung.
-- CI-Pipeline für Backend-Tests, Frontend-Checks und Docker-Builds.
+- ~~CI-Pipeline für Backend-Tests, Frontend-Checks und Docker-Builds~~ ✅ (seit 0.4.0)
 - Erweiterte Einsatzdokumentation und Einsatznachbereitung.
 
 ---

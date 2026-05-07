@@ -1,0 +1,31 @@
+#!/bin/sh
+# Pre-commit hook: runs fast checks before each commit.
+# Install with: bash scripts/install-hooks.sh
+
+set -e
+
+STAGED=$(git diff --cached --name-only)
+
+# --- Python (ruff) ---
+PY_FILES=$(echo "$STAGED" | grep '^backend/app/.*\.py$' || true)
+if [ -n "$PY_FILES" ]; then
+    if command -v ruff > /dev/null 2>&1; then
+        echo "[pre-commit] ruff check backend/app/"
+        ruff check backend/app/
+    else
+        echo "[pre-commit] ruff not found – skipping Python lint (run: pip install ruff)"
+    fi
+fi
+
+# --- Frontend (svelte-check) ---
+FE_FILES=$(echo "$STAGED" | grep -E '^frontend/src/.*\.(svelte|ts)$' || true)
+if [ -n "$FE_FILES" ]; then
+    if [ -f "frontend/node_modules/.bin/svelte-check" ]; then
+        echo "[pre-commit] svelte-check"
+        (cd frontend && npm run check 2>&1 | tail -5)
+    else
+        echo "[pre-commit] svelte-check not found – run: cd frontend && npm install"
+    fi
+fi
+
+exit 0
