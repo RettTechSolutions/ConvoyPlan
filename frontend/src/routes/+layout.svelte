@@ -7,11 +7,12 @@
 	let { children } = $props();
 
 	const PUBLIC_ROUTES = ['/login', '/share', '/setup'];
+	let setupChecked = $state(false);
 
 	onMount(async () => {
 		auth.init();
 
-		// Check if first-run setup is required
+		// Check setup status before auth redirect to avoid flash of /login on fresh install
 		try {
 			const resp = await fetch('/api/setup/status');
 			if (resp.ok) {
@@ -24,9 +25,12 @@
 		} catch {
 			// Backend not reachable yet — don't block the UI
 		}
+
+		setupChecked = true;
 	});
 
 	$effect(() => {
+		if (!setupChecked) return;
 		const isPublic = PUBLIC_ROUTES.some((r) => $page.url.pathname.startsWith(r));
 		if (!isPublic && !$auth.token && typeof window !== 'undefined') {
 			goto('/login');

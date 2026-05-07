@@ -5,7 +5,7 @@ from pathlib import Path
 import bcrypt
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -55,7 +55,13 @@ def _generate_caddyfile(domain: str, tls_mode: str, acme_email: str) -> str:
 
 
 async def _reload_caddy(caddyfile: str) -> bool:
-    """Push new Caddyfile to Caddy's admin API. Returns True on success."""
+    """Push new Caddyfile to Caddy's admin API at :2019.
+
+    NOTE: Caddy admin is bound to 0.0.0.0:2019 so this backend container can reach it
+    on the Docker bridge network. The port is not exposed to the host (no ports: entry
+    in docker-compose.yml for the caddy admin port), so exposure is limited to the
+    internal Docker network.
+    """
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             # Step 1: adapt Caddyfile -> JSON
@@ -85,6 +91,11 @@ async def setup_status(db: AsyncSession = Depends(get_db)):
 
 @router.post("", status_code=201)
 async def run_setup(data: SetupRequest, db: AsyncSession = Depends(get_db)):
+    # Advisory lock prevents concurrent setup requests from both creating a superadmin
+    lock = await db.execute(text("SELECT pg_try_advisory_xact_lock(1)"))
+    if not lock.scalar():
+        raise HTTPException(409, "Setup already in progress")
+
     if await _superadmin_exists(db):
         raise HTTPException(409, "Setup already completed")
 
@@ -94,6 +105,9 @@ async def run_setup(data: SetupRequest, db: AsyncSession = Depends(get_db)):
 
     if data.tls_mode == "custom" and (not data.cert_pem or not data.key_pem):
         raise HTTPException(400, "cert_pem and key_pem are required for custom TLS")
+
+    if len(data.password) < 8:
+        raise HTTPException(400, "Password must be at least 8 characters")
 
     # Create superadmin
     user = User(
@@ -111,7 +125,9 @@ async def run_setup(data: SetupRequest, db: AsyncSession = Depends(get_db)):
     ]:
         db.add(SystemSetting(key=key, value=value))
 
-    # Write cert files if custom TLS (before commit to avoid half-configured state)
+    await db.commit()
+
+    # Write files after successful commit so DB is always the source of truth
     CERTS_DIR.mkdir(parents=True, exist_ok=True)
     if data.tls_mode == "custom" and data.cert_pem and data.key_pem:
         (CERTS_DIR / "cert.pem").write_text(data.cert_pem)
@@ -121,8 +137,6 @@ async def run_setup(data: SetupRequest, db: AsyncSession = Depends(get_db)):
     # Write Caddyfile to shared volume (persists across restarts)
     caddyfile = _generate_caddyfile(data.domain, data.tls_mode, data.acme_email)
     (CERTS_DIR / "Caddyfile").write_text(caddyfile)
-
-    await db.commit()
 
     # Live-reload Caddy
     reloaded = await _reload_caddy(caddyfile)
