@@ -171,6 +171,11 @@ async def tracking_ws(
             data = await ws.receive_json()
             # Client kann Positionen über WS schicken
             async with AsyncSessionLocal() as db:
+                try:
+                    await get_convoy_access(uuid.UUID(convoy_id), user, db, require="fahrer")
+                except HTTPException:
+                    await ws.close(code=4403)
+                    return
                 stmt = (
                     pg_insert(VehiclePosition)
                     .values(
