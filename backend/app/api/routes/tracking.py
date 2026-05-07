@@ -1,7 +1,9 @@
+import logging
 import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
+from jose import jwt, JWTError
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -10,11 +12,14 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
 from app.api.guards import get_convoy_access
+from app.config import settings
 from app.database import get_db, AsyncSessionLocal
 from app.models.convoy import ConvoyVehicle
 from app.models.user import User
 from app.models.vehicle_position import VehiclePosition
 from app.services.tracking import tracking_manager
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["tracking"])
 
@@ -134,9 +139,6 @@ async def tracking_ws(
     ws: WebSocket,
     token: str = Query(...),
 ):
-    from jose import jwt, JWTError
-    from app.config import settings
-
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
         user_id = payload.get("sub")
@@ -146,6 +148,22 @@ async def tracking_ws(
     except JWTError:
         await ws.close(code=4001)
         return
+
+    async with AsyncSessionLocal() as db:
+        try:
+            convoy_uuid = uuid.UUID(convoy_id)
+            user_result = await db.execute(select(User).where(User.id == user_id))
+            user = user_result.scalar_one_or_none()
+            if not user:
+                await ws.close(code=4401)
+                return
+            await get_convoy_access(convoy_uuid, user, db, require="read")
+        except HTTPException as exc:
+            await ws.close(code=4403 if exc.status_code == 403 else 4404)
+            return
+        except ValueError:
+            await ws.close(code=4400)
+            return
 
     await tracking_manager.connect(convoy_id, ws)
     try:
@@ -179,6 +197,11 @@ async def tracking_ws(
                 await db.commit()
 
             await tracking_manager.broadcast(convoy_id, {**data, "type": "position"})
-    except (WebSocketDisconnect, Exception):
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:
+        logger.error("WebSocket error for convoy %s: %s", convoy_id, exc)
+        raise
+    finally:
         tracking_manager.disconnect(convoy_id, ws)
 
