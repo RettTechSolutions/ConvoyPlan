@@ -1,5 +1,6 @@
 import uuid
 
+import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -10,6 +11,7 @@ from app.api.deps import get_current_user
 from app.database import get_db
 from app.models.organization import Organization, UserOrganization
 from app.models.user import User
+from app.schemas.user import InviteUserRequest, UserResponse
 
 router = APIRouter(prefix="/organizations", tags=["organizations"])
 
@@ -209,3 +211,42 @@ async def _get_org_admin(org_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession
     if org.owner_id != user_id:
         raise HTTPException(status_code=403, detail="Nur der Organisationsinhaber darf Mitglieder verwalten")
     return org
+
+
+@router.post("/{org_id}/members/invite", response_model=UserResponse, status_code=201)
+async def invite_member(
+    org_id: uuid.UUID,
+    data: InviteUserRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    membership_result = await db.execute(
+        select(UserOrganization).where(
+            UserOrganization.organization_id == org_id,
+            UserOrganization.user_id == current_user.id,
+            UserOrganization.role == "admin",
+        )
+    )
+    if not membership_result.scalar_one_or_none():
+        raise HTTPException(status_code=403, detail="Org admin required")
+
+    existing = await db.execute(select(User).where(User.email == data.email))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    user = User(
+        email=data.email,
+        hashed_password=bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode(),
+    )
+    db.add(user)
+    await db.flush()
+
+    new_membership = UserOrganization(
+        user_id=user.id,
+        organization_id=org_id,
+        role="beobachter",
+    )
+    db.add(new_membership)
+    await db.commit()
+    await db.refresh(user)
+    return user
