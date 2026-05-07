@@ -191,6 +191,8 @@ export const orgsApi = {
 	removeMember: (orgId: string, userId: string) =>
 		api.delete(`/api/organizations/${orgId}/members/${userId}`),
 	delete: (orgId: string) => api.delete(`/api/organizations/${orgId}`),
+	inviteMember: (orgId: string, email: string, password: string) =>
+		api.post(`/api/organizations/${orgId}/members/invite`, { email, password }),
 };
 
 // V2: Lage-Layer
@@ -232,4 +234,31 @@ export const shareApi = {
 		name: string; organization: string | null; start_time: string | null;
 		waypoints: Waypoint[]; geojson: Geometry | null;
 	}>(`/api/convoys/share/${token}`),
+};
+
+export interface AdminUser {
+    id: string;
+    email: string;
+    is_active: boolean;
+    is_superadmin: boolean;
+    created_at: string;
+    orgs: { id: string; name: string; role: string }[];
+}
+
+export interface AdminUserCreate {
+    email: string;
+    password: string;
+    is_superadmin?: boolean;
+}
+
+export interface AdminUserUpdate {
+    is_active?: boolean;
+    is_superadmin?: boolean;
+}
+
+export const adminApi = {
+    listUsers: () => api.get<AdminUser[]>('/api/admin/users'),
+    createUser: (data: AdminUserCreate) => api.post<AdminUser>('/api/admin/users', data),
+    updateUser: (id: string, data: AdminUserUpdate) => api.patch<AdminUser>(`/api/admin/users/${id}`, data),
+    deleteUser: (id: string) => api.delete(`/api/admin/users/${id}`),
 };
