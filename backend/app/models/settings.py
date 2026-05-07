@@ -8,4 +8,4 @@ class SystemSetting(Base):
     __tablename__ = "system_settings"
 
     key: Mapped[str] = mapped_column(String(255), primary_key=True)
-    value: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    value: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
