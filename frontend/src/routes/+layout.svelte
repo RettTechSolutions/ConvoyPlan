@@ -6,10 +6,24 @@
 
 	let { children } = $props();
 
-	const PUBLIC_ROUTES = ['/login', '/share'];
+	const PUBLIC_ROUTES = ['/login', '/share', '/setup'];
 
-	onMount(() => {
+	onMount(async () => {
 		auth.init();
+
+		// Check if first-run setup is required
+		try {
+			const resp = await fetch('/api/setup/status');
+			if (resp.ok) {
+				const data = await resp.json();
+				if (data.setup_required && !$page.url.pathname.startsWith('/setup')) {
+					goto('/setup');
+					return;
+				}
+			}
+		} catch {
+			// Backend not reachable yet — don't block the UI
+		}
 	});
 
 	$effect(() => {
