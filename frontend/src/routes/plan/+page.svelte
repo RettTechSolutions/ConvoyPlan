@@ -67,6 +67,7 @@
 		if (expandedOrgId === orgId) { expandedOrgId = null; return; }
 		expandedOrgId = orgId;
 		if (!orgAddForm[orgId]) orgAddForm = { ...orgAddForm, [orgId]: { email: '', role: 'beobachter' } };
+		if (!orgInviteForm[orgId]) orgInviteForm = { ...orgInviteForm, [orgId]: { email: '', password: '' } };
 		if (!orgMembers[orgId]) await loadOrgMembers(orgId);
 	}
 
@@ -76,6 +77,7 @@
 		try {
 			await orgsApi.inviteMember(orgId, form.email, form.password);
 			orgInviteForm = { ...orgInviteForm, [orgId]: { email: '', password: '' } };
+			orgInviteError = { ...orgInviteError, [orgId]: '' };
 			await loadOrgMembers(orgId);
 		} catch (e: unknown) {
 			orgInviteError = { ...orgInviteError, [orgId]: e instanceof Error ? e.message : 'Fehler' };
@@ -1116,18 +1118,18 @@
 											<p class="hint">Lade…</p>
 										{/if}
 
-										{#if org.my_role === 'admin'}
+										{#if org.my_role === 'admin' && orgInviteForm[org.id]}
 											<p class="org-section-label" style="margin-top:.75rem">User einladen</p>
 											<div class="invite-form">
 												<input
 													type="email"
 													placeholder="E-Mail"
-													bind:value={(orgInviteForm[org.id] = orgInviteForm[org.id] ?? { email: '', password: '' }).email}
+													bind:value={orgInviteForm[org.id].email}
 												/>
 												<input
 													type="password"
 													placeholder="Passwort"
-													bind:value={(orgInviteForm[org.id] = orgInviteForm[org.id] ?? { email: '', password: '' }).password}
+													bind:value={orgInviteForm[org.id].password}
 												/>
 												<button class="btn-small" onclick={() => inviteMember(org.id)}>Einladen</button>
 											</div>
