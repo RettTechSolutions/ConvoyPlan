@@ -22,10 +22,10 @@ services:
       DATABASE_URL: postgresql+asyncpg://marschplan:marschplan@db:5432/marschplan
       JWT_SECRET: changeme-in-production
       GRAPHHOPPER_URL: http://graphhopper:8989
+      SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:-}
+      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-}
     volumes:
       - ./backend:/app
-    ports:
-      - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -60,12 +60,32 @@ services:
   frontend:
     build:
       context: ./frontend
-    ports:
-      - "3000:3000"
     depends_on:
+      - backend
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
+      CADDY_TLS_CERT: ${CADDY_TLS_CERT:-}
+      CADDY_TLS_KEY: ${CADDY_TLS_KEY:-}
+    volumes:
+      - ./caddy/entrypoint.sh:/entrypoint.sh:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - ${CERT_DIR:-/tmp}:/certs:ro
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    depends_on:
+      - frontend
       - backend
 
 volumes:
   postgres_data:
   osm_data:
   gh_graph:
+  caddy_data:
+  caddy_config:
