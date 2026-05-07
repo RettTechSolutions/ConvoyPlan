@@ -9,8 +9,16 @@ if [ -n "$CADDY_TLS_CERT" ] && [ -n "$CADDY_TLS_KEY" ]; then
 elif [ "$DOMAIN" = "localhost" ]; then
     TLS_DIRECTIVE="tls internal"
 else
-    TLS_DIRECTIVE=""  # automatic Let's Encrypt via ACME
+    TLS_DIRECTIVE=""
 fi
+
+# Validate DOMAIN to prevent Caddyfile injection
+case "$DOMAIN" in
+    *[!a-zA-Z0-9._-]*)
+        echo "[caddy] ERROR: DOMAIN contains invalid characters: $DOMAIN" >&2
+        exit 1
+        ;;
+esac
 
 cat > /tmp/Caddyfile << CADDYEOF
 {
@@ -20,9 +28,15 @@ cat > /tmp/Caddyfile << CADDYEOF
 $DOMAIN {
     $TLS_DIRECTIVE
 
-    reverse_proxy /api/* backend:8000
-    reverse_proxy /ws/* backend:8000
-    reverse_proxy /* frontend:3000
+    handle /api/* {
+        reverse_proxy backend:8000
+    }
+    handle /ws/* {
+        reverse_proxy backend:8000
+    }
+    handle {
+        reverse_proxy frontend:3000
+    }
 }
 CADDYEOF
 
