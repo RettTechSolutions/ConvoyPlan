@@ -77,7 +77,6 @@ async def get_vehicle_access(
     owner_org_ids = (
         select(UserOrganization.organization_id)
         .where(UserOrganization.user_id == vehicle.owner_id)
-        .scalar_subquery()
     )
     mem_result = await db.execute(
         select(UserOrganization).where(

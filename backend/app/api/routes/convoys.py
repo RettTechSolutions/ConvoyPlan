@@ -24,7 +24,6 @@ def _convoy_query(user_id: uuid.UUID):
     org_ids_subq = (
         select(UserOrganization.organization_id)
         .where(UserOrganization.user_id == user_id)
-        .scalar_subquery()
     )
     return (
         select(Convoy)
@@ -109,7 +108,9 @@ async def create_convoy(
             )
         )
         membership = mem.scalar_one_or_none()
-        if not membership or ROLE_ORDER.get(membership.role, -1) < ROLE_ORDER["planer"]:
+        if not membership:
+            raise HTTPException(403, "Not a member of this organisation")
+        if ROLE_ORDER.get(membership.role, -1) < ROLE_ORDER["planer"]:
             raise HTTPException(403, "Insufficient role: requires planer")
 
     convoy_data = data.model_dump(exclude={"start_point", "end_point"})
