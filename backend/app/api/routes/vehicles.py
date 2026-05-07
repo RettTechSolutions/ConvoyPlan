@@ -55,6 +55,7 @@ async def reorder_vehicles(
     current_user: User = Depends(get_current_user),
 ):
     ids = [item.id for item in items]
+    # owner_id check is intentional: reordering is a personal UI preference, not an org action
     result = await db.execute(
         select(Vehicle).where(Vehicle.id.in_(ids), Vehicle.owner_id == current_user.id)
     )
