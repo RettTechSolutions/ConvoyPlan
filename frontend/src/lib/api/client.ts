@@ -1,5 +1,9 @@
-const BASE_URL = import.meta.env.VITE_API_URL ||
-	(typeof window !== 'undefined' ? `http://${window.location.hostname}:8000` : 'http://localhost:8000');
+function getBaseUrl(): string {
+	const env = import.meta.env.VITE_API_URL;
+	if (env) return env;
+	if (typeof window !== 'undefined') return `http://${window.location.hostname}:8000`;
+	return 'http://localhost:8000';
+}
 
 function getToken(): string | null {
 	if (typeof localStorage === 'undefined') return null;
@@ -17,7 +21,7 @@ async function request<T>(
 	};
 	if (token) headers['Authorization'] = `Bearer ${token}`;
 
-	const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+	const res = await fetch(`${getBaseUrl()}${path}`, { ...options, headers });
 	if (!res.ok) {
 		const err = await res.json().catch(() => ({ detail: res.statusText }));
 		throw new Error(err.detail ?? 'Request failed');

@@ -149,7 +149,7 @@ export const convoysApi = {
 	createSubConvoy: (id: string, data: Record<string, unknown>) =>
 		api.post<Convoy>(`/api/convoys/${id}/sub-convoys`, data),
 	exportUrl: (id: string, format: 'gpx' | 'json' | 'pdf') =>
-		`${import.meta.env.VITE_API_URL || (typeof window !== 'undefined' ? `http://${window.location.hostname}:8000` : 'http://localhost:8000')}/api/convoys/${id}/export/${format}`,
+		`${typeof window !== 'undefined' ? `http://${window.location.hostname}:8000` : (import.meta.env.VITE_API_URL ?? 'http://localhost:8000')}/api/convoys/${id}/export/${format}`,
 };
 
 // V3: Tracking
@@ -199,7 +199,7 @@ export const statusApi = {
 export const usersApi = {
 	onlineStream: (): EventSource =>
 		new EventSource(
-			`${import.meta.env.VITE_API_URL || (typeof window !== 'undefined' ? `http://${window.location.hostname}:8000` : 'http://localhost:8000')}/api/users/online`
+			`http://${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:8000/api/users/online`
 		),
 };
 
