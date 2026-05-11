@@ -71,10 +71,20 @@ export interface Convoy {
 	versorgung: string | null; funkgruppe: string | null; anlagen: string | null;
 }
 
+export interface KanalwechselEntry {
+	km: number;
+	lat: number;
+	lon: number;
+	leitstelle_id: string;
+	leitstelle_name: string;
+	anrufgruppe: string;
+}
+
 export interface RouteResult {
 	id: string; convoy_id: string; distance_m: number | null; duration_s: number | null;
 	routing_params: Record<string, unknown> | null; geojson: Geometry | null;
 	fuel_analysis: FuelAnalysis | null;
+	kanalwechsel?: KanalwechselEntry[];
 }
 
 export interface Organization {

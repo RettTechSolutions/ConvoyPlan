@@ -402,7 +402,8 @@ async def export_pdf(
         for cv in convoy.convoy_vehicles
     ]
 
-    pdf_bytes = pdf_svc.generate_marschbefehl(convoy, waypoints, vehicles, route)
+    kanalwechsel = route.kanalwechsel if route else None
+    pdf_bytes = pdf_svc.generate_marschbefehl(convoy, waypoints, vehicles, route, kanalwechsel)
     filename = f"Marschbefehl_{convoy.name.replace(' ', '_')}.pdf"
     return Response(
         content=pdf_bytes,

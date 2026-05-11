@@ -134,7 +134,13 @@ def _build_marschweg(waypoints: list[dict]) -> str:
     return f"von {names[0]} über {middle} nach {names[-1]}"
 
 
-def generate_marschbefehl(convoy: Any, waypoints: list[dict], vehicles: list[dict], route: Any | None) -> bytes:
+def generate_marschbefehl(
+    convoy: Any,
+    waypoints: list[dict],
+    vehicles: list[dict],
+    route: Any | None,
+    kanalwechsel: list[dict] | None = None,
+) -> bytes:
     pdf = _PDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
@@ -339,6 +345,25 @@ def generate_marschbefehl(convoy: Any, waypoints: list[dict], vehicles: list[dic
         "  • Platz der Führungskraft: Führungsfahrzeug an der Spitze"
     )
     pdf.ln(2)
+
+    # ── Kanalwechsel (under section 5) ───────────────────────────────────────
+    if kanalwechsel:
+        _subsection(pdf, "Kanalwechsel")
+        kw_cols = [
+            (25, "km"),
+            (total_w - 25 - 40, "Leitstelle"),
+            (40, "Anrufgruppe"),
+        ]
+        _table_header(pdf, kw_cols)
+        pdf.set_font("DV", "", 8)
+        fill = False
+        for kw in kanalwechsel:
+            pdf.set_fill_color(245, 246, 250) if fill else pdf.set_fill_color(255, 255, 255)
+            pdf.cell(kw_cols[0][0], 6, f"{kw.get('km', 0):.1f} km", border=1, fill=fill)
+            pdf.cell(kw_cols[1][0], 6, str(kw.get("leitstelle_name", ""))[:35], border=1, fill=fill)
+            pdf.cell(kw_cols[2][0], 6, str(kw.get("anrufgruppe", "")), border=1, fill=fill, new_x="LMARGIN", new_y="NEXT")
+            fill = not fill
+        pdf.ln(3)
 
     # ── 6. Anlagen ────────────────────────────────────────────────────────────
     if convoy.anlagen:

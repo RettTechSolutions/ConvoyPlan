@@ -15,6 +15,7 @@
 		convoysApi, vehiclesApi, orgsApi, overpassApi,
 		type Convoy, type Vehicle, type Organization, type OrgMember, type LageLayer,
 		type FuelAnalysis, type FuelStation, type Waypoint, type RoadPreference,
+		type KanalwechselEntry,
 	} from '$lib/api';
 	import type { FeatureCollection } from 'geojson';
 	import { dndzone } from 'svelte-dnd-action';
@@ -24,7 +25,7 @@
 	let convoyList = $state<Convoy[]>([]);
 	let organizations = $state<Organization[]>([]);
 	let selected = $state<Convoy | null>(null);
-	let route = $state<{ geojson: unknown; distance_m: number | null; duration_s: number | null; fuel_analysis: FuelAnalysis | null } | null>(null);
+	let route = $state<{ geojson: unknown; distance_m: number | null; duration_s: number | null; fuel_analysis: FuelAnalysis | null; kanalwechsel: KanalwechselEntry[] } | null>(null);
 	let fuelStations = $state<FuelStation[]>([]);
 	let showFuelStations = $state(false);
 	let fuelStationsLoading = $state(false);
@@ -387,7 +388,7 @@
 		loading = true; error = '';
 		try {
 			const r = await convoysApi.calculateRoute(selected.id);
-			route = { geojson: r.geojson, distance_m: r.distance_m, duration_s: r.duration_s, fuel_analysis: r.fuel_analysis };
+			route = { geojson: r.geojson, distance_m: r.distance_m, duration_s: r.duration_s, fuel_analysis: r.fuel_analysis, kanalwechsel: r.kanalwechsel ?? [] };
 			fuelStations = [];
 			showFuelStations = false;
 			activeRoute.set(r);
@@ -1013,6 +1014,23 @@
 						{:else}
 							<p class="hint">Zeitplan wird nach Routenberechnung angezeigt.</p>
 						{/if}
+						{#if route?.kanalwechsel?.length}
+							<div class="kw-section">
+								<strong>Kanalwechsel</strong>
+								<table class="schedule-table kw-table">
+									<thead><tr><th>km</th><th>Leitstelle</th><th>Anrufgruppe</th></tr></thead>
+									<tbody>
+										{#each route.kanalwechsel as kw}
+											<tr>
+												<td>{kw.km.toFixed(1)}</td>
+												<td>📡 {kw.leitstelle_name}</td>
+												<td><code>{kw.anrufgruppe}</code></td>
+											</tr>
+										{/each}
+									</tbody>
+								</table>
+							</div>
+						{/if}
 					</div>
 				{/if}
 
@@ -1361,6 +1379,23 @@
 							<input type="text" placeholder="z.B. KatS Bayern 1" bind:value={befehlForm.funkgruppe} />
 						</label>
 					</div>
+					{#if route?.kanalwechsel?.length}
+						<div class="modal-field">
+							<label>Kanalwechsel</label>
+							<table class="kw-befehl-table">
+								<thead><tr><th>km</th><th>Leitstelle</th><th>Anrufgruppe</th></tr></thead>
+								<tbody>
+									{#each route.kanalwechsel as kw}
+										<tr>
+											<td>{kw.km.toFixed(1)}</td>
+											<td>📡 {kw.leitstelle_name}</td>
+											<td><code>{kw.anrufgruppe}</code></td>
+										</tr>
+									{/each}
+								</tbody>
+							</table>
+						</div>
+					{/if}
 				</div>
 
 				<!-- 1. Lage -->
@@ -1765,4 +1800,10 @@
 			margin: .75rem;
 		}
 	}
+
+	.kw-section { margin-top: .75rem; }
+	.kw-table td code { background: #f0f4f8; padding: .1rem .3rem; border-radius: 3px; font-size: .8rem; }
+	.kw-befehl-table { width: 100%; border-collapse: collapse; font-size: .82rem; margin-top: .3rem; }
+	.kw-befehl-table th, .kw-befehl-table td { padding: .3rem .5rem; border: 1px solid #ddd; text-align: left; }
+	.kw-befehl-table th { background: #f5f3ee; }
 </style>
