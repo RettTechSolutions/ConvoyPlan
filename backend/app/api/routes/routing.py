@@ -1,15 +1,17 @@
 import uuid
 from datetime import timezone
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, File, Query, UploadFile
 from fastapi.responses import PlainTextResponse, JSONResponse, Response
 from shapely.geometry import LineString
 from geoalchemy2.shape import from_shape
-from sqlalchemy import select
+from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
+from app.api.guards import get_convoy_access
 from app.database import get_db
 from app.models.convoy import Convoy, ConvoyVehicle
 from app.models.route import Route
@@ -23,8 +25,57 @@ from app.services import export as export_svc
 from app.services import pdf as pdf_svc
 from app.services import fuel as fuel_svc
 from app.services import overpass as overpass_svc
+from app.services import importer as importer_svc
 
 router = APIRouter(prefix="/convoys", tags=["routing"])
+
+
+async def _apply_import(
+    convoy_id: uuid.UUID,
+    result: importer_svc.ImportResult,
+    mode: str,
+    db: AsyncSession,
+) -> dict:
+    if mode == "replace":
+        await db.execute(delete(Waypoint).where(Waypoint.convoy_id == convoy_id))
+        start_index = 0
+    else:
+        max_res = await db.execute(
+            select(func.max(Waypoint.order_index)).where(Waypoint.convoy_id == convoy_id)
+        )
+        max_val = max_res.scalar_one_or_none()
+        start_index = (max_val + 1) if max_val is not None else 0
+
+    for i, wp in enumerate(result.waypoints):
+        db.add(Waypoint(
+            convoy_id=convoy_id,
+            name=wp["name"],
+            type="waypoint",
+            location=geo_svc.point_to_wkt(wp["lat"], wp["lon"]),
+            notes=wp["notes"],
+            order_index=start_index + i,
+        ))
+
+    route_stored = False
+    if result.route_coords:
+        line = LineString(result.route_coords)
+        existing = await db.execute(select(Route).where(Route.convoy_id == convoy_id))
+        route = existing.scalar_one_or_none()
+        if route:
+            route.geometry = from_shape(line, srid=4326)
+            route.distance_m = None
+            route.duration_s = None
+        else:
+            db.add(Route(
+                convoy_id=convoy_id,
+                geometry=from_shape(line, srid=4326),
+                distance_m=None,
+                duration_s=None,
+            ))
+        route_stored = True
+
+    await db.commit()
+    return {"waypoints_imported": len(result.waypoints), "route_stored": route_stored}
 
 
 async def _load_convoy(convoy_id: uuid.UUID, owner_id: uuid.UUID, db: AsyncSession) -> Convoy:
@@ -260,6 +311,40 @@ async def export_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.post("/{convoy_id}/import/gpx")
+async def import_gpx(
+    convoy_id: uuid.UUID,
+    mode: Literal["add", "replace"] = Query(...),
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await get_convoy_access(convoy_id, current_user, db, require="write")
+    content = await file.read()
+    try:
+        result = importer_svc.parse_gpx(content)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return await _apply_import(convoy_id, result, mode, db)
+
+
+@router.post("/{convoy_id}/import/geojson")
+async def import_geojson(
+    convoy_id: uuid.UUID,
+    mode: Literal["add", "replace"] = Query(...),
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await get_convoy_access(convoy_id, current_user, db, require="write")
+    content = await file.read()
+    try:
+        result = importer_svc.parse_geojson(content)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return await _apply_import(convoy_id, result, mode, db)
 
 
 @router.get("/{convoy_id}/fuel-stations")

@@ -147,3 +147,127 @@ def test_parse_geojson_empty_raises():
     data = {"type": "FeatureCollection", "features": []}
     with pytest.raises(ValueError, match="No importable data"):
         parse_geojson(json.dumps(data).encode())
+
+
+# ── _apply_import helper tests (mock DB) ────────────────────────────────────
+
+def _mock_db(*scalar_values):
+    """Mock db where each execute() call returns a result whose scalar_one_or_none() returns the given value."""
+    db = AsyncMock()
+    mocks = []
+    for val in scalar_values:
+        mr = MagicMock()
+        mr.scalar_one_or_none.return_value = val
+        mocks.append(mr)
+    db.execute.side_effect = mocks
+    return db
+
+
+@pytest.mark.asyncio
+async def test_apply_import_replace_deletes_existing():
+    from app.api.routes.routing import _apply_import
+    from app.services.importer import ImportResult
+
+    convoy_id = uuid.uuid4()
+    result = ImportResult(
+        waypoints=[{"name": "A", "lat": 48.1, "lon": 11.5, "notes": None}],
+        route_coords=None,
+    )
+    db = _mock_db(None)  # one execute call (delete), result not used
+
+    response = await _apply_import(convoy_id, result, "replace", db)
+
+    assert response == {"waypoints_imported": 1, "route_stored": False}
+    assert db.execute.call_count == 1  # only the delete statement
+    assert db.add.call_count == 1
+    db.commit.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_apply_import_add_mode_appends_order_index():
+    from app.api.routes.routing import _apply_import
+    from app.services.importer import ImportResult
+
+    convoy_id = uuid.uuid4()
+    result = ImportResult(
+        waypoints=[
+            {"name": "A", "lat": 48.1, "lon": 11.5, "notes": None},
+            {"name": "B", "lat": 48.2, "lon": 11.6, "notes": None},
+        ],
+        route_coords=None,
+    )
+    # add mode: max existing order_index is 2 → new ones start at 3
+    db = _mock_db(2)
+
+    response = await _apply_import(convoy_id, result, "add", db)
+
+    assert response == {"waypoints_imported": 2, "route_stored": False}
+    added = [call.args[0] for call in db.add.call_args_list]
+    assert added[0].order_index == 3
+    assert added[1].order_index == 4
+
+
+@pytest.mark.asyncio
+async def test_apply_import_add_mode_no_existing_starts_at_zero():
+    from app.api.routes.routing import _apply_import
+    from app.services.importer import ImportResult
+
+    convoy_id = uuid.uuid4()
+    result = ImportResult(
+        waypoints=[{"name": "A", "lat": 48.1, "lon": 11.5, "notes": None}],
+        route_coords=None,
+    )
+    # add mode: no existing waypoints → scalar_one_or_none returns None
+    db = _mock_db(None)
+
+    await _apply_import(convoy_id, result, "add", db)
+
+    added = db.add.call_args_list[0].args[0]
+    assert added.order_index == 0
+
+
+@pytest.mark.asyncio
+async def test_apply_import_stores_route_when_no_existing():
+    from app.api.routes.routing import _apply_import
+    from app.services.importer import ImportResult
+    from app.models.route import Route
+
+    convoy_id = uuid.uuid4()
+    result = ImportResult(
+        waypoints=[],
+        route_coords=[(11.5, 48.1), (11.6, 48.2)],
+    )
+    # replace mode: delete call (result ignored), route select returns None
+    db = _mock_db(None, None)
+
+    response = await _apply_import(convoy_id, result, "replace", db)
+
+    assert response == {"waypoints_imported": 0, "route_stored": True}
+    assert db.add.call_count == 1
+    added = db.add.call_args_list[0].args[0]
+    assert isinstance(added, Route)
+    assert added.distance_m is None
+    assert added.duration_s is None
+
+
+@pytest.mark.asyncio
+async def test_apply_import_updates_existing_route():
+    from app.api.routes.routing import _apply_import
+    from app.services.importer import ImportResult
+    from app.models.route import Route
+
+    convoy_id = uuid.uuid4()
+    result = ImportResult(
+        waypoints=[],
+        route_coords=[(11.5, 48.1), (11.6, 48.2)],
+    )
+    existing_route = MagicMock(spec=Route)
+    # replace mode: delete call, route select returns existing route
+    db = _mock_db(None, existing_route)
+
+    response = await _apply_import(convoy_id, result, "replace", db)
+
+    assert response["route_stored"] is True
+    assert db.add.call_count == 0  # updated in-place, not added again
+    assert existing_route.distance_m is None
+    assert existing_route.duration_s is None
