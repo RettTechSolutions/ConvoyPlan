@@ -464,6 +464,9 @@
 		try {
 			importResult = await convoysApi.importFile(selected.id, format, importFile, importMode);
 			await refreshConvoy();
+			if (importResult.route_stored) {
+				await calculateRoute();
+			}
 		} catch (e: unknown) {
 			importError = e instanceof Error ? e.message : 'Import fehlgeschlagen';
 		} finally {
@@ -1058,7 +1061,7 @@
 							{#if importResult}
 								<p role="status" aria-live="polite" style="font-size:.8rem;color:#2e7d32;margin:0">
 									{importResult.waypoints_imported} Wegpunkt{importResult.waypoints_imported !== 1 ? 'e' : ''} importiert
-									{importResult.route_stored ? '· Route gespeichert' : ''}
+									{importResult.route_stored ? '· Route auf Karte geladen' : ''}
 								</p>
 							{/if}
 							{#if importError}

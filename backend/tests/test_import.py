@@ -4,6 +4,18 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 
 
+# ── access-control coverage note ────────────────────────────────────────────
+# The import endpoints (POST /{convoy_id}/import/gpx and /import/geojson) are
+# guarded by require_convoy_role("fahrer") via the shared access-control layer
+# in app/api/deps.py.  The guard itself is exercised at the HTTP level in
+# test_guards.py::test_convoy_access_insufficient_role.  The endpoint-level
+# wiring is visible in backend/app/api/routes/routing.py (lines ~320-350).
+#
+# TODO: add a dedicated HTTP-level 403 test for the import endpoints once a
+# shared TestClient + auth-token fixture is available in conftest.py.
+# Pattern to follow: see test_invite.py which uses httpx.AsyncClient against
+# the real ASGI app.
+
 # ── importer service tests (pure functions, no DB) ──────────────────────────
 
 def test_parse_gpx_waypoints_and_track():
