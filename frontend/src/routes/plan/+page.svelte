@@ -1380,7 +1380,7 @@
 						</label>
 					</div>
 					{#if route?.kanalwechsel?.length}
-						<div class="modal-field">
+						<div class="befehl-row">
 							<label>Kanalwechsel</label>
 							<table class="kw-befehl-table">
 								<thead><tr><th>km</th><th>Leitstelle</th><th>Anrufgruppe</th></tr></thead>
