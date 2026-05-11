@@ -140,18 +140,6 @@
                     }
                 }
 
-                polyMap!.on('click', (e) => {
-                    if (!drawingMode) return;
-                    polygonCoords = [...polygonCoords, [e.lngLat.lng, e.lngLat.lat]];
-                    updatePolySource();
-                });
-
-                polyMap!.on('dblclick', (e) => {
-                    if (!drawingMode || polygonCoords.length < 3) return;
-                    e.preventDefault();
-                    drawingMode = false;
-                    updatePolySource();
-                });
             });
         }, 100);
     }
@@ -176,6 +164,33 @@
             src.setData({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [closed] }, properties: {} } as GeoJSON.Feature);
         }
     }
+
+    $effect(() => {
+        // Reactive re-wiring of map handlers when drawingMode changes
+        const drawing = drawingMode;
+        if (!polyMap) return;
+
+        const clickHandler = (e: maplibregl.MapMouseEvent) => {
+            if (!drawing) return;
+            polygonCoords = [...polygonCoords, [e.lngLat.lng, e.lngLat.lat]];
+            updatePolySource();
+        };
+
+        const dblClickHandler = (e: maplibregl.MapMouseEvent) => {
+            if (!drawing || polygonCoords.length < 3) return;
+            e.preventDefault();
+            drawingMode = false;
+            updatePolySource();
+        };
+
+        polyMap.on('click', clickHandler);
+        polyMap.on('dblclick', dblClickHandler);
+
+        return () => {
+            polyMap?.off('click', clickHandler);
+            polyMap?.off('dblclick', dblClickHandler);
+        };
+    });
 
     function resetPolygon() {
         polygonCoords = [];
@@ -411,7 +426,10 @@
                                             if (!file || !editingLs) return;
                                             await leistellenApi.importBoundary(editingLs.id, file);
                                             editingLs = await leistellenApi.get(editingLs.id);
-                                            initPolyMap(editingLs.geometry_geojson);
+                                            if (editingLs.geometry_geojson) {
+                                                updatePolySource(editingLs.geometry_geojson as GeoJSON.Geometry);
+                                            }
+                                            input.value = '';
                                             await loadLeitstellen();
                                         }}
                                     />
