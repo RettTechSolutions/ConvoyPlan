@@ -1,5 +1,5 @@
 import uuid
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ZusatzKanal(BaseModel):
@@ -8,8 +8,8 @@ class ZusatzKanal(BaseModel):
 
 
 class LeistelleCreate(BaseModel):
-    name: str
-    anrufgruppe: str
+    name: str = Field(min_length=1, max_length=100)
+    anrufgruppe: str = Field(min_length=1, max_length=50)
     zusatz_kanaele: list[ZusatzKanal] = []
 
 

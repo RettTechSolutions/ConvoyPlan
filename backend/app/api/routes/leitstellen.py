@@ -4,7 +4,7 @@ import xml.etree.ElementTree as ET
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from geoalchemy2.shape import from_shape, to_shape
-from shapely.geometry import shape, mapping
+from shapely.geometry import shape, mapping, Polygon
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,21 +32,14 @@ def _to_response(ls: Leitstelle) -> LeistelleResponse:
 
 
 def _to_detail_response(ls: Leitstelle) -> LeistelleDetailResponse:
-    kanaele = [ZusatzKanal(**k) for k in (ls.zusatz_kanaele or [])]
+    base = _to_response(ls)
     geojson = None
     if ls.geometry is not None:
         try:
             geojson = mapping(to_shape(ls.geometry))
         except Exception:
             geojson = None
-    return LeistelleDetailResponse(
-        id=ls.id,
-        name=ls.name,
-        anrufgruppe=ls.anrufgruppe,
-        zusatz_kanaele=kanaele,
-        has_geometry=ls.geometry is not None,
-        geometry_geojson=geojson,
-    )
+    return LeistelleDetailResponse(**base.model_dump(), geometry_geojson=geojson)
 
 
 @router.get("/", response_model=list[LeistelleResponse])
@@ -67,7 +60,7 @@ async def get_leitstelle(
     result = await db.execute(select(Leitstelle).where(Leitstelle.id == leitstelle_id))
     ls = result.scalar_one_or_none()
     if not ls:
-        raise HTTPException(404, "Leitstelle not found")
+        raise HTTPException(status_code=404, detail="Leitstelle not found")
     return _to_detail_response(ls)
 
 
@@ -78,7 +71,7 @@ async def create_leitstelle(
     current_user: User = Depends(get_current_user),
 ):
     if not current_user.is_superadmin:
-        raise HTTPException(403, "Superadmin required")
+        raise HTTPException(status_code=403, detail="Superadmin required")
     ls = Leitstelle(
         name=data.name,
         anrufgruppe=data.anrufgruppe,
@@ -98,11 +91,11 @@ async def update_leitstelle(
     current_user: User = Depends(get_current_user),
 ):
     if not current_user.is_superadmin:
-        raise HTTPException(403, "Superadmin required")
+        raise HTTPException(status_code=403, detail="Superadmin required")
     result = await db.execute(select(Leitstelle).where(Leitstelle.id == leitstelle_id))
     ls = result.scalar_one_or_none()
     if not ls:
-        raise HTTPException(404, "Leitstelle not found")
+        raise HTTPException(status_code=404, detail="Leitstelle not found")
     if data.name is not None:
         ls.name = data.name
     if data.anrufgruppe is not None:
@@ -121,16 +114,16 @@ async def delete_leitstelle(
     current_user: User = Depends(get_current_user),
 ):
     if not current_user.is_superadmin:
-        raise HTTPException(403, "Superadmin required")
+        raise HTTPException(status_code=403, detail="Superadmin required")
     result = await db.execute(select(Leitstelle).where(Leitstelle.id == leitstelle_id))
     ls = result.scalar_one_or_none()
     if not ls:
-        raise HTTPException(404, "Leitstelle not found")
+        raise HTTPException(status_code=404, detail="Leitstelle not found")
     await db.delete(ls)
     await db.commit()
 
 
-@router.post("/{leitstelle_id}/boundary", response_model=LeistelleResponse)
+@router.post("/{leitstelle_id}/boundary", response_model=LeistelleDetailResponse)
 async def import_boundary(
     leitstelle_id: uuid.UUID,
     file: UploadFile = File(...),
@@ -138,13 +131,15 @@ async def import_boundary(
     current_user: User = Depends(get_current_user),
 ):
     if not current_user.is_superadmin:
-        raise HTTPException(403, "Superadmin required")
+        raise HTTPException(status_code=403, detail="Superadmin required")
     result = await db.execute(select(Leitstelle).where(Leitstelle.id == leitstelle_id))
     ls = result.scalar_one_or_none()
     if not ls:
-        raise HTTPException(404, "Leitstelle not found")
+        raise HTTPException(status_code=404, detail="Leitstelle not found")
 
     content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (max 5 MB)")
     filename = (file.filename or "").lower()
 
     if filename.endswith(".kml"):
@@ -153,12 +148,12 @@ async def import_boundary(
         poly = _parse_geojson(content)
 
     if poly is None:
-        raise HTTPException(400, "No valid Polygon/MultiPolygon found in file")
+        raise HTTPException(status_code=400, detail="No valid Polygon/MultiPolygon found in file")
 
     ls.geometry = from_shape(poly, srid=4326)
     await db.commit()
     await db.refresh(ls)
-    return _to_response(ls)
+    return _to_detail_response(ls)
 
 
 def _parse_geojson(content: bytes):
@@ -199,6 +194,5 @@ def _parse_kml(content: bytes):
                     except ValueError:
                         continue
             if len(pts) >= 3:
-                from shapely.geometry import Polygon
                 return Polygon(pts)
     return None
