@@ -55,5 +55,5 @@ export async function uploadFile<T>(path: string, file: File): Promise<T> {
 		const err = await res.json().catch(() => ({ detail: res.statusText }));
 		throw new Error(err.detail ?? 'Request failed');
 	}
-	return res.json() as T;
+	return res.json() as Promise<T>;
 }

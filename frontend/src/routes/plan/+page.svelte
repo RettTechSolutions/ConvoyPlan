@@ -52,6 +52,7 @@
 
 	// Import state
 	let importFile = $state<File | null>(null);
+	let importFileInput = $state<HTMLInputElement | null>(null);
 	let importMode = $state<'add' | 'replace'>('replace');
 	let importResult = $state<{ waypoints_imported: number; route_stored: boolean } | null>(null);
 	let importError = $state('');
@@ -468,6 +469,7 @@
 		} finally {
 			importing = false;
 			importFile = null;
+			if (importFileInput) importFileInput.value = '';
 		}
 	}
 
@@ -1032,17 +1034,20 @@
 							<input
 								type="file"
 								accept=".gpx,.geojson,.json"
+								bind:this={importFileInput}
+								disabled={importing}
 								onchange={(e) => { importFile = (e.target as HTMLInputElement).files?.[0] ?? null; importResult = null; importError = ''; }}
 								style="font-size:.8rem"
 							/>
-							<div style="display:flex;gap:1rem;font-size:.85rem">
+							<fieldset style="border:none;padding:0;margin:0;display:flex;gap:1rem;font-size:.85rem">
+								<legend style="float:left;font-size:.85rem;margin-right:.5rem;color:#aaa">Modus:</legend>
 								<label style="display:flex;gap:.3rem;align-items:center;cursor:pointer">
 									<input type="radio" bind:group={importMode} value="replace" /> Ersetzen
 								</label>
 								<label style="display:flex;gap:.3rem;align-items:center;cursor:pointer">
 									<input type="radio" bind:group={importMode} value="add" /> Hinzufügen
 								</label>
-							</div>
+							</fieldset>
 							<button
 								class="btn-export"
 								onclick={doImport}
@@ -1051,13 +1056,13 @@
 								{importing ? 'Importiere…' : '⬆ Importieren'}
 							</button>
 							{#if importResult}
-								<p style="font-size:.8rem;color:#4caf50;margin:0">
+								<p role="status" aria-live="polite" style="font-size:.8rem;color:#2e7d32;margin:0">
 									{importResult.waypoints_imported} Wegpunkt{importResult.waypoints_imported !== 1 ? 'e' : ''} importiert
 									{importResult.route_stored ? '· Route gespeichert' : ''}
 								</p>
 							{/if}
 							{#if importError}
-								<p style="font-size:.8rem;color:#f44336;margin:0">{importError}</p>
+								<p role="alert" aria-live="assertive" style="font-size:.8rem;color:#f44336;margin:0">{importError}</p>
 							{/if}
 						</div>
 					</div>
