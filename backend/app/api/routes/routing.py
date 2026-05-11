@@ -100,10 +100,12 @@ async def _load_convoy(convoy_id: uuid.UUID, owner_id: uuid.UUID, db: AsyncSessi
 
 async def _compute_kanalwechsel(
     db: AsyncSession,
-    route_wkb,
+    route_line,  # shapely LineString
     distance_m: int,
 ) -> list[dict]:
     from app.models.leitstelle import Leitstelle
+    from geoalchemy2.shape import from_shape
+    route_geom = from_shape(route_line, srid=4326)
 
     rows = await db.execute(
         select(
@@ -111,12 +113,15 @@ async def _compute_kanalwechsel(
             Leitstelle.name,
             Leitstelle.anrufgruppe,
             func.ST_AsGeoJSON(
-                func.ST_Intersection(route_wkb, func.ST_Boundary(Leitstelle.geometry))
+                func.ST_CollectionExtract(
+                    func.ST_Intersection(route_geom, func.ST_Boundary(Leitstelle.geometry)),
+                    1,  # 1 = extract Points only
+                )
             ).label("crossing_geojson"),
         )
         .where(
             Leitstelle.geometry.isnot(None),
-            func.ST_Intersects(route_wkb, Leitstelle.geometry),
+            func.ST_Intersects(route_geom, Leitstelle.geometry),
         )
     )
 
@@ -136,12 +141,14 @@ async def _compute_kanalwechsel(
             frac_res = await db.execute(
                 select(
                     func.ST_LineLocatePoint(
-                        route_wkb,
+                        route_geom,
                         func.ST_SetSRID(func.ST_MakePoint(lon, lat), 4326),
                     )
                 )
             )
-            frac = frac_res.scalar() or 0.0
+            frac = frac_res.scalar()
+            if frac is None:
+                continue
             entries.append({
                 "km": round((distance_m / 1000) * frac, 1),
                 "lat": round(lat, 6),
@@ -279,7 +286,7 @@ async def calculate_route(
         await db.commit()
 
     # Kanalwechsel computation
-    kanalwechsel = await _compute_kanalwechsel(db, route.geometry, route_data["distance_m"])
+    kanalwechsel = await _compute_kanalwechsel(db, line, route_data["distance_m"])
     route.kanalwechsel = kanalwechsel
     await db.commit()
 
