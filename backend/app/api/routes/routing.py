@@ -36,46 +36,50 @@ async def _apply_import(
     mode: str,
     db: AsyncSession,
 ) -> dict:
-    if mode == "replace":
-        await db.execute(delete(Waypoint).where(Waypoint.convoy_id == convoy_id))
-        start_index = 0
-    else:
-        max_res = await db.execute(
-            select(func.max(Waypoint.order_index)).where(Waypoint.convoy_id == convoy_id)
-        )
-        max_val = max_res.scalar_one_or_none()
-        start_index = (max_val + 1) if max_val is not None else 0
-
-    for i, wp in enumerate(result.waypoints):
-        db.add(Waypoint(
-            convoy_id=convoy_id,
-            name=wp["name"],
-            type="waypoint",
-            location=geo_svc.point_to_wkt(wp["lat"], wp["lon"]),
-            notes=wp["notes"],
-            order_index=start_index + i,
-        ))
-
-    route_stored = False
-    if result.route_coords:
-        line = LineString(result.route_coords)
-        existing = await db.execute(select(Route).where(Route.convoy_id == convoy_id))
-        route = existing.scalar_one_or_none()
-        if route:
-            route.geometry = from_shape(line, srid=4326)
-            route.distance_m = None
-            route.duration_s = None
+    try:
+        if mode == "replace":
+            await db.execute(delete(Waypoint).where(Waypoint.convoy_id == convoy_id))
+            start_index = 0
         else:
-            db.add(Route(
-                convoy_id=convoy_id,
-                geometry=from_shape(line, srid=4326),
-                distance_m=None,
-                duration_s=None,
-            ))
-        route_stored = True
+            max_res = await db.execute(
+                select(func.max(Waypoint.order_index)).where(Waypoint.convoy_id == convoy_id)
+            )
+            max_val = max_res.scalar_one_or_none()
+            start_index = (max_val + 1) if max_val is not None else 0
 
-    await db.commit()
-    return {"waypoints_imported": len(result.waypoints), "route_stored": route_stored}
+        for i, wp in enumerate(result.waypoints):
+            db.add(Waypoint(
+                convoy_id=convoy_id,
+                name=wp["name"],
+                type="waypoint",
+                location=geo_svc.point_to_wkt(wp["lat"], wp["lon"]),
+                notes=wp["notes"],
+                order_index=start_index + i,
+            ))
+
+        route_stored = False
+        if result.route_coords and len(result.route_coords) >= 2:
+            line = LineString(result.route_coords)
+            existing = await db.execute(select(Route).where(Route.convoy_id == convoy_id))
+            route = existing.scalar_one_or_none()
+            if route:
+                route.geometry = from_shape(line, srid=4326)
+                route.distance_m = None
+                route.duration_s = None
+            else:
+                db.add(Route(
+                    convoy_id=convoy_id,
+                    geometry=from_shape(line, srid=4326),
+                    distance_m=None,
+                    duration_s=None,
+                ))
+            route_stored = True
+
+        await db.commit()
+        return {"waypoints_imported": len(result.waypoints), "route_stored": route_stored}
+    except Exception:
+        await db.rollback()
+        raise
 
 
 async def _load_convoy(convoy_id: uuid.UUID, owner_id: uuid.UUID, db: AsyncSession) -> Convoy:

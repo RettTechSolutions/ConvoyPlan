@@ -1,7 +1,7 @@
 import json
-import uuid  # noqa: F401
+import uuid
 import pytest
-from unittest.mock import AsyncMock, MagicMock  # noqa: F401
+from unittest.mock import AsyncMock, MagicMock
 
 
 # ── importer service tests (pure functions, no DB) ──────────────────────────
@@ -154,6 +154,7 @@ def test_parse_geojson_empty_raises():
 def _mock_db(*scalar_values):
     """Mock db where each execute() call returns a result whose scalar_one_or_none() returns the given value."""
     db = AsyncMock()
+    db.add = MagicMock()  # add() is synchronous in SQLAlchemy
     mocks = []
     for val in scalar_values:
         mr = MagicMock()
