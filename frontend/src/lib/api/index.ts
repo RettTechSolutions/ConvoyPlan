@@ -158,6 +158,8 @@ export const convoysApi = {
 		api.delete(`/api/convoys/${id}/waypoints/${wpId}`),
 	reorderWaypoints: (id: string, items: { id: string; order_index: number }[]) =>
 		api.patch<Waypoint[]>(`/api/convoys/${id}/waypoints/reorder`, items),
+	getRoute: (id: string) =>
+		api.get<RouteResult | null>(`/api/convoys/${id}/route`),
 	calculateRoute: (id: string) =>
 		api.post<RouteResult>(`/api/convoys/${id}/calculate-route`, {}),
 	findFuelStations: (id: string, lat: number, lon: number, radiusM = 3000) =>
@@ -266,4 +268,33 @@ export const adminApi = {
     createUser: (data: AdminUserCreate) => api.post<AdminUser>('/api/admin/users', data),
     updateUser: (id: string, data: AdminUserUpdate) => api.patch<AdminUser>(`/api/admin/users/${id}`, data),
     deleteUser: (id: string) => api.delete(`/api/admin/users/${id}`),
+};
+
+export interface ZusatzKanal {
+    name: string;
+    kanal: string;
+}
+
+export interface Leitstelle {
+    id: string;
+    name: string;
+    anrufgruppe: string;
+    zusatz_kanaele: ZusatzKanal[];
+    has_geometry: boolean;
+}
+
+export interface LeistelleDetail extends Leitstelle {
+    geometry_geojson: object | null;
+}
+
+export const leistellenApi = {
+    list: () => api.get<Leitstelle[]>('/api/leitstellen'),
+    get: (id: string) => api.get<LeistelleDetail>(`/api/leitstellen/${id}`),
+    create: (data: { name: string; anrufgruppe: string; zusatz_kanaele: ZusatzKanal[] }) =>
+        api.post<Leitstelle>('/api/leitstellen', data),
+    update: (id: string, data: { name?: string; anrufgruppe?: string; zusatz_kanaele?: ZusatzKanal[] }) =>
+        api.put<Leitstelle>(`/api/leitstellen/${id}`, data),
+    delete: (id: string) => api.delete(`/api/leitstellen/${id}`),
+    importBoundary: (id: string, file: File) =>
+        uploadFile<Leitstelle>(`/api/leitstellen/${id}/boundary`, file),
 };
