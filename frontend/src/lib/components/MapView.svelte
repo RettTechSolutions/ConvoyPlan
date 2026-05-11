@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import maplibregl from 'maplibre-gl';
 	import 'maplibre-gl/dist/maplibre-gl.css';
+	import { get } from 'svelte/store';
 	import { mapMode } from '$lib/stores/map';
 	import type { Waypoint, LageLayer, VehiclePosition } from '$lib/api';
 	import type { Geometry, FeatureCollection } from 'geojson';
@@ -63,9 +64,15 @@
 		map.addControl(new maplibregl.NavigationControl());
 
 		map.on('click', (e) => {
-			if (onMapClick && (clickEnabled || $mapMode !== 'idle')) {
+			const mode = get(mapMode);
+			if (onMapClick && (clickEnabled || mode !== 'idle')) {
 				onMapClick(e.lngLat.lat, e.lngLat.lng);
 			}
+		});
+
+		// Cursor: crosshair in placing mode, default otherwise
+		mapMode.subscribe((mode) => {
+			if (map) map.getCanvas().style.cursor = mode !== 'idle' ? 'crosshair' : '';
 		});
 
 		map.on('moveend', () => {
