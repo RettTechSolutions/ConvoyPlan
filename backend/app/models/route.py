@@ -17,5 +17,6 @@ class Route(Base):
     duration_s: Mapped[int | None] = mapped_column(Integer)
     routing_params: Mapped[dict | None] = mapped_column(JSON)
     gpx_data: Mapped[str | None] = mapped_column(Text)
+    kanalwechsel: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     convoy: Mapped["Convoy"] = relationship(back_populates="route")
