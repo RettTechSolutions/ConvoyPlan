@@ -14,8 +14,8 @@ class ImportResult:
 def parse_gpx(content: bytes) -> ImportResult:
     try:
         gpx = gpxpy.parse(content.decode("utf-8"))
-    except Exception:
-        raise ValueError("Invalid GPX file")
+    except (gpxpy.gpx.GPXException, UnicodeDecodeError, ValueError) as e:
+        raise ValueError("Invalid GPX file") from e
 
     waypoints = []
     for i, wpt in enumerate(gpx.waypoints):
@@ -26,14 +26,15 @@ def parse_gpx(content: bytes) -> ImportResult:
             "notes": wpt.description or None,
         })
 
-    route_coords = None
+    route_coords: list[tuple[float, float]] | None = None
     for track in gpx.tracks:
         for segment in track.segments:
-            if segment.points:
-                route_coords = [(p.longitude, p.latitude) for p in segment.points]
-                break
+            for p in segment.points:
+                if route_coords is None:
+                    route_coords = []
+                route_coords.append((p.longitude, p.latitude))
         if route_coords is not None:
-            break
+            break  # use first track only, but all its segments
 
     if not waypoints and route_coords is None:
         raise ValueError("No importable data found")
@@ -44,8 +45,8 @@ def parse_gpx(content: bytes) -> ImportResult:
 def parse_geojson(content: bytes) -> ImportResult:
     try:
         data = json.loads(content)
-    except Exception:
-        raise ValueError("Invalid GeoJSON file")
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as e:
+        raise ValueError("Invalid GeoJSON file") from e
 
     if data.get("type") == "FeatureCollection":
         features = data.get("features", [])
@@ -63,7 +64,10 @@ def parse_geojson(content: bytes) -> ImportResult:
         props = feature.get("properties") or {}
 
         if geom.get("type") == "Point":
-            lon, lat = geom["coordinates"][0], geom["coordinates"][1]
+            try:
+                lon, lat = geom["coordinates"][0], geom["coordinates"][1]
+            except (KeyError, IndexError, TypeError):
+                raise ValueError("Invalid GeoJSON file")
             wp_count += 1
             waypoints.append({
                 "name": props.get("name") or f"Waypoint {wp_count}",
@@ -72,7 +76,10 @@ def parse_geojson(content: bytes) -> ImportResult:
                 "notes": props.get("description") or props.get("notes") or None,
             })
         elif geom.get("type") == "LineString" and route_coords is None:
-            route_coords = [(c[0], c[1]) for c in geom["coordinates"]]
+            try:
+                route_coords = [(c[0], c[1]) for c in geom["coordinates"]]
+            except (KeyError, IndexError, TypeError):
+                raise ValueError("Invalid GeoJSON file")
 
     if not waypoints and route_coords is None:
         raise ValueError("No importable data found")
