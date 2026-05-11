@@ -38,3 +38,22 @@ export const api = {
 		request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
 	delete: (path: string) => request<void>(path, { method: 'DELETE' }),
 };
+
+export async function uploadFile<T>(path: string, file: File): Promise<T> {
+	const token = getToken();
+	const headers: Record<string, string> = {};
+	if (token) headers['Authorization'] = `Bearer ${token}`;
+	// Do NOT set Content-Type — browser sets multipart/form-data + boundary automatically
+	const formData = new FormData();
+	formData.append('file', file);
+	const res = await fetch(`${getBaseUrl()}${path}`, {
+		method: 'POST',
+		headers,
+		body: formData,
+	});
+	if (!res.ok) {
+		const err = await res.json().catch(() => ({ detail: res.statusText }));
+		throw new Error(err.detail ?? 'Request failed');
+	}
+	return res.json() as T;
+}

@@ -50,6 +50,13 @@
 	let sidebarOpen = $state(false);
 	let error = $state('');
 
+	// Import state
+	let importFile = $state<File | null>(null);
+	let importMode = $state<'add' | 'replace'>('replace');
+	let importResult = $state<{ waypoints_imported: number; route_stored: boolean } | null>(null);
+	let importError = $state('');
+	let importing = $state(false);
+
 	// Org management
 	let expandedOrgId = $state<string | null>(null);
 	let orgMembers = $state<Record<string, OrgMember[]>>({});
@@ -444,6 +451,24 @@
 		fuelStations = [];
 		await refreshConvoy();
 		await calculateRoute();
+	}
+
+	async function doImport() {
+		if (!importFile || !selected) return;
+		const ext = importFile.name.split('.').pop()?.toLowerCase();
+		const format = ext === 'gpx' ? 'gpx' : 'geojson';
+		importing = true;
+		importResult = null;
+		importError = '';
+		try {
+			importResult = await convoysApi.importFile(selected.id, format, importFile, importMode);
+			await refreshConvoy();
+		} catch (e: unknown) {
+			importError = e instanceof Error ? e.message : 'Import fehlgeschlagen';
+		} finally {
+			importing = false;
+			importFile = null;
+		}
 	}
 
 	async function addTHStopWaypoint(halt: import('$lib/api').DurationHalt) {
@@ -1002,6 +1027,39 @@
 						<button class="btn-export" class:active={showClosures} onclick={toggleClosures}>
 							{showClosures ? '🚧 Sperrungen ausblenden' : '🚧 Sperrungen laden'}
 						</button>
+						<div class="section-header" style="margin-top:1rem"><strong>Import</strong></div>
+						<div style="display:flex;flex-direction:column;gap:.5rem">
+							<input
+								type="file"
+								accept=".gpx,.geojson,.json"
+								onchange={(e) => { importFile = (e.target as HTMLInputElement).files?.[0] ?? null; importResult = null; importError = ''; }}
+								style="font-size:.8rem"
+							/>
+							<div style="display:flex;gap:1rem;font-size:.85rem">
+								<label style="display:flex;gap:.3rem;align-items:center;cursor:pointer">
+									<input type="radio" bind:group={importMode} value="replace" /> Ersetzen
+								</label>
+								<label style="display:flex;gap:.3rem;align-items:center;cursor:pointer">
+									<input type="radio" bind:group={importMode} value="add" /> Hinzufügen
+								</label>
+							</div>
+							<button
+								class="btn-export"
+								onclick={doImport}
+								disabled={!importFile || importing}
+							>
+								{importing ? 'Importiere…' : '⬆ Importieren'}
+							</button>
+							{#if importResult}
+								<p style="font-size:.8rem;color:#4caf50;margin:0">
+									{importResult.waypoints_imported} Wegpunkt{importResult.waypoints_imported !== 1 ? 'e' : ''} importiert
+									{importResult.route_stored ? '· Route gespeichert' : ''}
+								</p>
+							{/if}
+							{#if importError}
+								<p style="font-size:.8rem;color:#f44336;margin:0">{importError}</p>
+							{/if}
+						</div>
 					</div>
 				{/if}
 

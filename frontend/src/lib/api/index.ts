@@ -1,4 +1,4 @@
-import { api } from './client';
+import { api, uploadFile } from './client';
 import type { Geometry } from 'geojson';
 
 export interface Point { lat: number; lon: number }
@@ -167,6 +167,11 @@ export const convoysApi = {
 		api.post<Convoy>(`/api/convoys/${id}/sub-convoys`, data),
 	exportUrl: (id: string, format: 'gpx' | 'json' | 'pdf') =>
 		`/api/convoys/${id}/export/${format}`,
+	importFile: (id: string, format: 'gpx' | 'geojson', file: File, mode: 'add' | 'replace') =>
+		uploadFile<{ waypoints_imported: number; route_stored: boolean }>(
+			`/api/convoys/${id}/import/${format}?mode=${mode}`,
+			file
+		),
 };
 
 // V3: Tracking
