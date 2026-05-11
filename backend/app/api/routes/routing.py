@@ -1,3 +1,4 @@
+import json as _json
 import uuid
 from datetime import timezone
 from typing import Literal
@@ -95,6 +96,86 @@ async def _load_convoy(convoy_id: uuid.UUID, owner_id: uuid.UUID, db: AsyncSessi
     if not convoy:
         raise HTTPException(status_code=404, detail="Convoy not found")
     return convoy
+
+
+async def _compute_kanalwechsel(
+    db: AsyncSession,
+    route_wkb,
+    distance_m: int,
+) -> list[dict]:
+    from app.models.leitstelle import Leitstelle
+
+    rows = await db.execute(
+        select(
+            Leitstelle.id,
+            Leitstelle.name,
+            Leitstelle.anrufgruppe,
+            func.ST_AsGeoJSON(
+                func.ST_Intersection(route_wkb, func.ST_Boundary(Leitstelle.geometry))
+            ).label("crossing_geojson"),
+        )
+        .where(
+            Leitstelle.geometry.isnot(None),
+            func.ST_Intersects(route_wkb, Leitstelle.geometry),
+        )
+    )
+
+    entries: list[dict] = []
+    for row in rows.all():
+        if not row.crossing_geojson:
+            continue
+        crossing = _json.loads(row.crossing_geojson)
+        if crossing["type"] == "Point":
+            pts: list[list[float]] = [crossing["coordinates"]]
+        elif crossing["type"] == "MultiPoint":
+            pts = crossing["coordinates"]
+        else:
+            continue
+
+        for lon, lat in pts:
+            frac_res = await db.execute(
+                select(
+                    func.ST_LineLocatePoint(
+                        route_wkb,
+                        func.ST_SetSRID(func.ST_MakePoint(lon, lat), 4326),
+                    )
+                )
+            )
+            frac = frac_res.scalar() or 0.0
+            entries.append({
+                "km": round((distance_m / 1000) * frac, 1),
+                "lat": round(lat, 6),
+                "lon": round(lon, 6),
+                "leitstelle_id": str(row.id),
+                "leitstelle_name": row.name,
+                "anrufgruppe": row.anrufgruppe,
+            })
+
+    entries.sort(key=lambda x: x["km"])
+    return entries
+
+
+@router.get("/{convoy_id}/route", response_model=RouteResponse | None)
+async def get_route(
+    convoy_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await _load_convoy(convoy_id, current_user.id, db)
+    result = await db.execute(select(Route).where(Route.convoy_id == convoy_id))
+    route = result.scalar_one_or_none()
+    if not route:
+        return None
+    geojson = geo_svc.linestring_to_geojson(route.geometry)
+    return RouteResponse(
+        id=route.id,
+        convoy_id=convoy_id,
+        distance_m=route.distance_m,
+        duration_s=route.duration_s,
+        routing_params=route.routing_params,
+        geojson=geojson,
+        kanalwechsel=route.kanalwechsel or [],
+    )
 
 
 @router.post("/{convoy_id}/calculate-route", response_model=RouteResponse)
@@ -197,6 +278,11 @@ async def calculate_route(
             wp.order_index = new_idx
         await db.commit()
 
+    # Kanalwechsel computation
+    kanalwechsel = await _compute_kanalwechsel(db, route.geometry, route_data["distance_m"])
+    route.kanalwechsel = kanalwechsel
+    await db.commit()
+
     # Fuel analysis
     fuel_analysis = fuel_svc.analyse_fuel(
         convoy.convoy_vehicles,
@@ -213,6 +299,7 @@ async def calculate_route(
         "routing_params": route.routing_params,
         "geojson": route_data["geometry"],
         "fuel_analysis": fuel_analysis,
+        "kanalwechsel": kanalwechsel,
     }
 
 

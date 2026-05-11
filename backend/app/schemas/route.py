@@ -39,6 +39,15 @@ class FuelAnalysis(BaseModel):
     rest_needed: bool = False
 
 
+class KanalwechselEntry(BaseModel):
+    km: float
+    lat: float
+    lon: float
+    leitstelle_id: str
+    leitstelle_name: str
+    anrufgruppe: str
+
+
 class RouteResponse(BaseModel):
     id: uuid.UUID
     convoy_id: uuid.UUID
@@ -47,5 +56,6 @@ class RouteResponse(BaseModel):
     routing_params: dict[str, Any] | None
     geojson: dict | None = None
     fuel_analysis: FuelAnalysis | None = None
+    kanalwechsel: list[KanalwechselEntry] = []
 
     model_config = {"from_attributes": True}
