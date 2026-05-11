@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import (
     auth, convoys, vehicles, routing, organizations,
-    tracking, lage, weather, overpass, status, users,
+    tracking, lage, weather, overpass, status, users, leitstellen,
 )
 from app.api.routes import admin as admin_router
 from app.api.routes import setup as setup_router
@@ -39,6 +39,7 @@ app.include_router(status.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(admin_router.router, prefix="/api")
 app.include_router(setup_router.router, prefix="/api")
+app.include_router(leitstellen.router, prefix="/api")
 
 
 @app.get("/health")
