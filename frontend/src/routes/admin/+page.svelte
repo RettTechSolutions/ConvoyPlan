@@ -5,7 +5,7 @@
     import 'maplibre-gl/dist/maplibre-gl.css';
     import { auth } from '$lib/stores/auth';
     import { adminApi, leistellenApi, type AdminUser, type Leitstelle, type LeistelleDetail, type ZusatzKanal } from '$lib/api';
-    import { brandingStore, applyBranding, BRANDING_DEFAULTS, type Branding } from '$lib/stores/branding';
+    import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
 
     // ── Tab ──────────────────────────────────────────────────────────────────
@@ -258,14 +258,15 @@
     });
     let logoMainPreview = $state<string | null>(null);
     let logoHorizPreview = $state<string | null>(null);
-    let logoMainFile = $state<File | null>(null);
-    let logoHorizFile = $state<File | null>(null);
     let brandingSaving = $state(false);
     let brandingError = $state('');
     let brandingSuccess = $state(false);
 
     $effect(() => {
-        if (activeTab !== 'branding') return;
+        if (activeTab !== 'branding') {
+            applyBranding($brandingStore);
+            return;
+        }
         const root = document.documentElement;
         root.style.setProperty('--color-primary', brandingForm.color_primary);
         root.style.setProperty('--color-primary-hover', brandingForm.color_primary_hover);
@@ -306,6 +307,20 @@
             const result = await brandingApi.update(brandingForm);
             brandingStore.set({ ...result });
             applyBranding({ ...result });
+            brandingForm = {
+                app_name: result.app_name,
+                color_primary: result.color_primary,
+                color_primary_hover: result.color_primary_hover,
+                color_accent: result.color_accent,
+                color_bg: result.color_bg,
+                color_surface: result.color_surface,
+                color_nav_bg: result.color_nav_bg,
+                color_nav_text: result.color_nav_text,
+                color_text: result.color_text,
+                color_text_muted: result.color_text_muted,
+            };
+            logoMainPreview = result.logo_main_url;
+            logoHorizPreview = result.logo_horizontal_url;
             brandingSuccess = true;
             setTimeout(() => { brandingSuccess = false; }, 3000);
         } catch (e: unknown) {
@@ -335,7 +350,6 @@
     function onAdminLogoMainChange(e: Event) {
         const file = (e.target as HTMLInputElement).files?.[0];
         if (!file) return;
-        logoMainFile = file;
         logoMainPreview = URL.createObjectURL(file);
         brandingApi.uploadLogo('main', file)
             .then(result => { brandingStore.set({ ...result }); applyBranding({ ...result }); })
@@ -345,7 +359,6 @@
     function onAdminLogoHorizChange(e: Event) {
         const file = (e.target as HTMLInputElement).files?.[0];
         if (!file) return;
-        logoHorizFile = file;
         logoHorizPreview = URL.createObjectURL(file);
         brandingApi.uploadLogo('horizontal', file)
             .then(result => { brandingStore.set({ ...result }); applyBranding({ ...result }); })
