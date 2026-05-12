@@ -3,7 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
-	import { brandingStore, applyBranding } from '$lib/stores/branding';
+	import { brandingStore, applyBranding, type Branding } from '$lib/stores/branding';
 
 	let { children } = $props();
 
@@ -13,10 +13,11 @@
 	onMount(async () => {
 		auth.init();
 
+		// Raw fetch (not brandingApi) — GET /api/branding is public and needs no auth token
 		try {
 			const resp = await fetch('/api/branding');
 			if (resp.ok) {
-				const data = await resp.json();
+				const data = await resp.json() as Branding;
 				brandingStore.set(data);
 				applyBranding(data);
 			}
