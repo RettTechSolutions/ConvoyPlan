@@ -1,19 +1,26 @@
 <script lang="ts">
-  interface Props {
-    variant?: 'horizontal' | 'main';
-    height?: number | null;
-    width?: number | null;
-  }
-  let { variant = 'horizontal', height = null, width = null }: Props = $props();
+    import { brandingStore } from '$lib/stores/branding';
 
-  const src = variant === 'main' ? '/Hauptlogo.svg' : '/LogoHorizontal.svg';
+    interface Props {
+        variant?: 'horizontal' | 'main';
+        height?: number | null;
+        width?: number | null;
+    }
+    let { variant = 'horizontal', height = null, width = null }: Props = $props();
 
-  // width takes precedence for horizontal logos; height for main/icon
-  const style = width
-    ? `width:${width}px;height:auto;display:block;object-fit:contain`
-    : height
-    ? `height:${height}px;width:auto;display:block;object-fit:contain`
-    : `width:100%;height:auto;display:block;object-fit:contain`;
+    const fallbackSrc = variant === 'main' ? '/Hauptlogo.svg' : '/LogoHorizontal.svg';
+
+    const src = $derived(
+        variant === 'main'
+            ? ($brandingStore.logo_main_url ?? fallbackSrc)
+            : ($brandingStore.logo_horizontal_url ?? fallbackSrc)
+    );
+
+    const style = width
+        ? `width:${width}px;height:auto;display:block;object-fit:contain`
+        : height
+        ? `height:${height}px;width:auto;display:block;object-fit:contain`
+        : `width:100%;height:auto;display:block;object-fit:contain`;
 </script>
 
-<img {src} alt="ConvoyPlan" {style} />
+<img {src} alt={$brandingStore.app_name} {style} />

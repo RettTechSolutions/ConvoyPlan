@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
+	import { brandingStore, applyBranding } from '$lib/stores/branding';
 
 	let { children } = $props();
 
@@ -12,7 +13,17 @@
 	onMount(async () => {
 		auth.init();
 
-		// Check setup status before auth redirect to avoid flash of /login on fresh install
+		try {
+			const resp = await fetch('/api/branding');
+			if (resp.ok) {
+				const data = await resp.json();
+				brandingStore.set(data);
+				applyBranding(data);
+			}
+		} catch {
+			// Keep defaults
+		}
+
 		try {
 			const resp = await fetch('/api/setup/status');
 			if (resp.ok) {
@@ -39,8 +50,24 @@
 </script>
 
 <svelte:head>
-	<title>ConvoyPlan</title>
+	<title>{$brandingStore.app_name}</title>
 	<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 </svelte:head>
 
 {@render children()}
+
+<footer class="powered-by">Powered by ConvoyPlan</footer>
+
+<style>
+	.powered-by {
+		position: fixed;
+		bottom: .25rem;
+		right: .5rem;
+		font-size: .65rem;
+		color: var(--color-text-muted, #7f8c8d);
+		opacity: 0.55;
+		pointer-events: none;
+		z-index: 1;
+		user-select: none;
+	}
+</style>

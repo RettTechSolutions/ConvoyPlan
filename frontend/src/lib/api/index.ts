@@ -280,6 +280,41 @@ export const adminApi = {
     deleteUser: (id: string) => api.delete(`/api/admin/users/${id}`),
 };
 
+export interface BrandingData {
+    app_name: string;
+    logo_main_url: string | null;
+    logo_horizontal_url: string | null;
+    color_primary: string;
+    color_primary_hover: string;
+    color_accent: string;
+    color_bg: string;
+    color_surface: string;
+    color_nav_bg: string;
+    color_nav_text: string;
+    color_text: string;
+    color_text_muted: string;
+}
+
+export interface BrandingUpdate {
+    app_name: string;
+    color_primary: string;
+    color_primary_hover: string;
+    color_accent: string;
+    color_bg: string;
+    color_surface: string;
+    color_nav_bg: string;
+    color_nav_text: string;
+    color_text: string;
+    color_text_muted: string;
+}
+
+export const brandingApi = {
+    get: () => api.get<BrandingData>('/api/branding'),
+    update: (data: BrandingUpdate) => api.put<BrandingData>('/api/branding', data),
+    uploadLogo: (slot: 'main' | 'horizontal', file: File) =>
+        uploadFile<BrandingData>(`/api/branding/logo/${slot}`, file),
+};
+
 export interface ZusatzKanal {
     name: string;
     kanal: string;
