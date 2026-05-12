@@ -5,9 +5,11 @@
     import 'maplibre-gl/dist/maplibre-gl.css';
     import { auth } from '$lib/stores/auth';
     import { adminApi, leistellenApi, type AdminUser, type Leitstelle, type LeistelleDetail, type ZusatzKanal } from '$lib/api';
+    import { brandingStore, applyBranding, BRANDING_DEFAULTS, type Branding } from '$lib/stores/branding';
+    import { brandingApi, type BrandingUpdate } from '$lib/api';
 
     // ── Tab ──────────────────────────────────────────────────────────────────
-    let activeTab = $state<'benutzer' | 'leitstellen'>('benutzer');
+    let activeTab = $state<'benutzer' | 'leitstellen' | 'branding'>('benutzer');
 
     // ── Users ────────────────────────────────────────────────────────────────
     let users = $state<AdminUser[]>([]);
@@ -20,6 +22,7 @@
         if (!$auth.is_superadmin) { goto('/plan'); return; }
         await loadUsers();
         await loadLeitstellen();
+        await loadBranding();
     });
 
     async function loadUsers() {
@@ -239,6 +242,115 @@
             await loadLeitstellen();
         } catch { lsError = 'Leitstelle konnte nicht gelöscht werden'; }
     }
+
+    // ── Branding ──────────────────────────────────────────────────────────────
+    let brandingForm = $state<BrandingUpdate>({
+        app_name: BRANDING_DEFAULTS.app_name,
+        color_primary: BRANDING_DEFAULTS.color_primary,
+        color_primary_hover: BRANDING_DEFAULTS.color_primary_hover,
+        color_accent: BRANDING_DEFAULTS.color_accent,
+        color_bg: BRANDING_DEFAULTS.color_bg,
+        color_surface: BRANDING_DEFAULTS.color_surface,
+        color_nav_bg: BRANDING_DEFAULTS.color_nav_bg,
+        color_nav_text: BRANDING_DEFAULTS.color_nav_text,
+        color_text: BRANDING_DEFAULTS.color_text,
+        color_text_muted: BRANDING_DEFAULTS.color_text_muted,
+    });
+    let logoMainPreview = $state<string | null>(null);
+    let logoHorizPreview = $state<string | null>(null);
+    let logoMainFile = $state<File | null>(null);
+    let logoHorizFile = $state<File | null>(null);
+    let brandingSaving = $state(false);
+    let brandingError = $state('');
+    let brandingSuccess = $state(false);
+
+    $effect(() => {
+        if (activeTab !== 'branding') return;
+        const root = document.documentElement;
+        root.style.setProperty('--color-primary', brandingForm.color_primary);
+        root.style.setProperty('--color-primary-hover', brandingForm.color_primary_hover);
+        root.style.setProperty('--color-accent', brandingForm.color_accent);
+        root.style.setProperty('--color-bg', brandingForm.color_bg);
+        root.style.setProperty('--color-surface', brandingForm.color_surface);
+        root.style.setProperty('--color-nav-bg', brandingForm.color_nav_bg);
+        root.style.setProperty('--color-nav-text', brandingForm.color_nav_text);
+        root.style.setProperty('--color-text', brandingForm.color_text);
+        root.style.setProperty('--color-text-muted', brandingForm.color_text_muted);
+    });
+
+    async function loadBranding() {
+        try {
+            const data = await brandingApi.get();
+            brandingForm = {
+                app_name: data.app_name,
+                color_primary: data.color_primary,
+                color_primary_hover: data.color_primary_hover,
+                color_accent: data.color_accent,
+                color_bg: data.color_bg,
+                color_surface: data.color_surface,
+                color_nav_bg: data.color_nav_bg,
+                color_nav_text: data.color_nav_text,
+                color_text: data.color_text,
+                color_text_muted: data.color_text_muted,
+            };
+            logoMainPreview = data.logo_main_url;
+            logoHorizPreview = data.logo_horizontal_url;
+        } catch { /* keep defaults */ }
+    }
+
+    async function saveBranding() {
+        brandingError = '';
+        brandingSuccess = false;
+        brandingSaving = true;
+        try {
+            const result = await brandingApi.update(brandingForm);
+            brandingStore.set({ ...result });
+            applyBranding({ ...result });
+            brandingSuccess = true;
+            setTimeout(() => { brandingSuccess = false; }, 3000);
+        } catch (e: unknown) {
+            brandingError = e instanceof Error ? e.message : 'Fehler beim Speichern';
+        } finally {
+            brandingSaving = false;
+        }
+    }
+
+    function resetBrandingDefaults() {
+        brandingForm = {
+            app_name: BRANDING_DEFAULTS.app_name,
+            color_primary: BRANDING_DEFAULTS.color_primary,
+            color_primary_hover: BRANDING_DEFAULTS.color_primary_hover,
+            color_accent: BRANDING_DEFAULTS.color_accent,
+            color_bg: BRANDING_DEFAULTS.color_bg,
+            color_surface: BRANDING_DEFAULTS.color_surface,
+            color_nav_bg: BRANDING_DEFAULTS.color_nav_bg,
+            color_nav_text: BRANDING_DEFAULTS.color_nav_text,
+            color_text: BRANDING_DEFAULTS.color_text,
+            color_text_muted: BRANDING_DEFAULTS.color_text_muted,
+        };
+        logoMainPreview = null;
+        logoHorizPreview = null;
+    }
+
+    function onAdminLogoMainChange(e: Event) {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (!file) return;
+        logoMainFile = file;
+        logoMainPreview = URL.createObjectURL(file);
+        brandingApi.uploadLogo('main', file)
+            .then(result => { brandingStore.set({ ...result }); applyBranding({ ...result }); })
+            .catch(() => { brandingError = 'Logo-Upload fehlgeschlagen'; });
+    }
+
+    function onAdminLogoHorizChange(e: Event) {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (!file) return;
+        logoHorizFile = file;
+        logoHorizPreview = URL.createObjectURL(file);
+        brandingApi.uploadLogo('horizontal', file)
+            .then(result => { brandingStore.set({ ...result }); applyBranding({ ...result }); })
+            .catch(() => { brandingError = 'Logo-Upload fehlgeschlagen'; });
+    }
 </script>
 
 <div class="admin-page">
@@ -250,6 +362,9 @@
     <div class="tab-bar">
         <button class="tab" class:active={activeTab === 'benutzer'} onclick={() => (activeTab = 'benutzer')}>Benutzer</button>
         <button class="tab" class:active={activeTab === 'leitstellen'} onclick={() => (activeTab = 'leitstellen')}>Leitstellen</button>
+        <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>
+            Branding
+        </button>
     </div>
 
     <!-- ── Benutzer ── -->
@@ -364,6 +479,113 @@
                 </tbody>
             </table>
         </div>
+    {/if}
+
+    <!-- ── Branding ── -->
+    {#if activeTab === 'branding'}
+    <div class="branding-panel">
+        <h2>Branding</h2>
+
+        {#if brandingError}
+            <div class="error-bar">{brandingError} <button onclick={() => brandingError = ''}>✕</button></div>
+        {/if}
+        {#if brandingSuccess}
+            <div class="success-bar">Gespeichert.</div>
+        {/if}
+
+        <div class="bf-section">
+            <label class="bf-label">App-Name
+                <input type="text" bind:value={brandingForm.app_name} placeholder="z.B. Feuerwehr München" />
+            </label>
+        </div>
+
+        <div class="bf-section">
+            <h3>Logos</h3>
+            <div class="logo-row">
+                <div class="logo-slot">
+                    <span class="bf-sublabel">Hauptlogo</span>
+                    {#if logoMainPreview}
+                        <img src={logoMainPreview} alt="Hauptlogo" class="logo-thumb" />
+                    {/if}
+                    <input type="file" accept=".png,.jpg,.jpeg,.svg" onchange={onAdminLogoMainChange} />
+                </div>
+                <div class="logo-slot">
+                    <span class="bf-sublabel">Horizontales Logo</span>
+                    {#if logoHorizPreview}
+                        <img src={logoHorizPreview} alt="Horizontales Logo" class="logo-thumb" />
+                    {/if}
+                    <input type="file" accept=".png,.jpg,.jpeg,.svg" onchange={onAdminLogoHorizChange} />
+                </div>
+            </div>
+        </div>
+
+        <div class="bf-section">
+            <h3>Farben</h3>
+            <div class="colors-grid">
+                <label class="color-label">Primärfarbe
+                    <div class="color-row">
+                        <input type="color" bind:value={brandingForm.color_primary} class="color-swatch" />
+                        <span class="color-hex">{brandingForm.color_primary}</span>
+                    </div>
+                </label>
+                <label class="color-label">Hover
+                    <div class="color-row">
+                        <input type="color" bind:value={brandingForm.color_primary_hover} class="color-swatch" />
+                        <span class="color-hex">{brandingForm.color_primary_hover}</span>
+                    </div>
+                </label>
+                <label class="color-label">Akzent
+                    <div class="color-row">
+                        <input type="color" bind:value={brandingForm.color_accent} class="color-swatch" />
+                        <span class="color-hex">{brandingForm.color_accent}</span>
+                    </div>
+                </label>
+                <label class="color-label">Hintergrund
+                    <div class="color-row">
+                        <input type="color" bind:value={brandingForm.color_bg} class="color-swatch" />
+                        <span class="color-hex">{brandingForm.color_bg}</span>
+                    </div>
+                </label>
+                <label class="color-label">Oberfläche
+                    <div class="color-row">
+                        <input type="color" bind:value={brandingForm.color_surface} class="color-swatch" />
+                        <span class="color-hex">{brandingForm.color_surface}</span>
+                    </div>
+                </label>
+                <label class="color-label">Nav-Hintergrund
+                    <div class="color-row">
+                        <input type="color" bind:value={brandingForm.color_nav_bg} class="color-swatch" />
+                        <span class="color-hex">{brandingForm.color_nav_bg}</span>
+                    </div>
+                </label>
+                <label class="color-label">Nav-Text
+                    <div class="color-row">
+                        <input type="color" bind:value={brandingForm.color_nav_text} class="color-swatch" />
+                        <span class="color-hex">{brandingForm.color_nav_text}</span>
+                    </div>
+                </label>
+                <label class="color-label">Text
+                    <div class="color-row">
+                        <input type="color" bind:value={brandingForm.color_text} class="color-swatch" />
+                        <span class="color-hex">{brandingForm.color_text}</span>
+                    </div>
+                </label>
+                <label class="color-label">Gedämpfter Text
+                    <div class="color-row">
+                        <input type="color" bind:value={brandingForm.color_text_muted} class="color-swatch" />
+                        <span class="color-hex">{brandingForm.color_text_muted}</span>
+                    </div>
+                </label>
+            </div>
+        </div>
+
+        <div class="bf-actions">
+            <button class="btn-secondary" onclick={resetBrandingDefaults}>Defaults wiederherstellen</button>
+            <button class="btn-primary" onclick={saveBranding} disabled={brandingSaving}>
+                {brandingSaving ? 'Wird gespeichert…' : 'Speichern'}
+            </button>
+        </div>
+    </div>
     {/if}
 </div>
 
@@ -510,4 +732,24 @@
     .poly-map { height: 280px; border-radius: 6px; overflow: hidden; border: 1px solid rgba(255,255,255,.2); }
     .import-row { display: flex; gap: .5rem; align-items: center; font-weight: 400; }
     .file-label { cursor: pointer; }
+
+    .branding-panel { padding: 1.5rem; max-width: 700px; }
+    .branding-panel h2 { margin: 0 0 1rem; font-size: 1.1rem; }
+    .branding-panel h3 { margin: 0 0 .6rem; font-size: .9rem; color: #555; }
+    .bf-section { margin-bottom: 1.5rem; }
+    .bf-label { display: flex; flex-direction: column; gap: .3rem; font-size: .85rem; color: #555; }
+    .bf-label input[type="text"] { padding: .45rem .7rem; border: 1px solid #ddd; border-radius: 4px; font-size: .9rem; width: 100%; box-sizing: border-box; }
+    .bf-sublabel { font-size: .82rem; color: #555; margin-bottom: .25rem; display: block; }
+    .success-bar { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: .4rem .75rem; border-radius: 4px; margin-bottom: 1rem; font-size: .85rem; }
+    .logo-row { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+    .logo-slot { display: flex; flex-direction: column; gap: .3rem; }
+    .logo-thumb { max-height: 52px; max-width: 160px; border: 1px solid #ddd; border-radius: 4px; }
+    .colors-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .75rem 1rem; }
+    .color-label { display: flex; flex-direction: column; gap: .25rem; font-size: .8rem; color: #555; }
+    .color-row { display: flex; align-items: center; gap: .4rem; }
+    .color-swatch { width: 32px; height: 32px; padding: 0; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; }
+    .color-hex { font-size: .75rem; font-family: monospace; color: #666; }
+    .bf-actions { display: flex; gap: .75rem; justify-content: flex-end; padding-top: .5rem; border-top: 1px solid #eee; margin-top: 1rem; }
+    .btn-secondary { padding: .45rem 1rem; background: rgba(255,255,255,.08); color: rgba(255,255,255,.8); border: 1px solid rgba(255,255,255,.2); border-radius: 4px; font-weight: 600; cursor: pointer; }
+    .btn-secondary:hover { background: rgba(255,255,255,.15); }
 </style>
