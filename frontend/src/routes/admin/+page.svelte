@@ -458,9 +458,9 @@
 
     .tab-bar { display: flex; gap: 0; border-bottom: 1px solid rgba(255,255,255,.15); margin-bottom: 1.5rem; }
     .tab { padding: .5rem 1.2rem; background: none; border: none; cursor: pointer; font-size: .9rem; color: rgba(255,255,255,.5); border-bottom: 2px solid transparent; margin-bottom: -1px; }
-    .tab.active { color: #E23D28; border-bottom-color: #E23D28; font-weight: 600; }
+    .tab.active { color: var(--color-primary); border-bottom-color: var(--color-primary); font-weight: 600; }
 
-    .error-bar { background: #C23020; color: white; padding: .4rem .75rem; border-radius: 4px; margin-bottom: 1rem; display: flex; justify-content: space-between; }
+    .error-bar { background: var(--color-primary-hover); color: white; padding: .4rem .75rem; border-radius: 4px; margin-bottom: 1rem; display: flex; justify-content: space-between; }
     .error-bar button { background: none; border: none; color: white; cursor: pointer; }
     .section { background: rgba(255,255,255,.05); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
     .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: .75rem; }
@@ -484,9 +484,9 @@
 
     .btn-small { padding: .2rem .5rem; font-size: .78rem; border-radius: 3px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.08); color: white; cursor: pointer; }
     .btn-small:hover { background: rgba(255,255,255,.15); }
-    .btn-small.danger { border-color: #E23D28; color: #E23D28; }
+    .btn-small.danger { border-color: var(--color-primary); color: var(--color-primary); }
     .btn-small.active { background: #e74c3c; color: white; border-color: #e74c3c; }
-    .btn-primary { padding: .45rem 1rem; background: #E23D28; color: white; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; }
+    .btn-primary { padding: .45rem 1rem; background: var(--color-primary); color: white; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; }
     .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
 
     /* Modal */

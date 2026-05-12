@@ -279,7 +279,7 @@
   .pill-dots { display: flex; align-items: center; gap: 4px; }
   .pill-users { font-size: 11px; }
   .pill-closures {
-    background: #C23020;
+    background: var(--color-primary-hover);
     border-radius: 10px;
     padding: 2px 8px;
     font-size: 9px;
@@ -295,7 +295,7 @@
   }
   .dot.ok { background: #27ae60; }
   .dot.warn { background: #f39c12; }
-  .dot.err { background: #E23D28; }
+  .dot.err { background: var(--color-primary); }
   .dot.unknown { background: #6b7177; }
 
   .panel {
@@ -346,7 +346,7 @@
   .svc-val { font-weight: 600; font-size: 10px; }
   .svc-val.ok { color: #2ecc71; }
   .svc-val.warn { color: #f39c12; }
-  .svc-val.err { color: #E23D28; }
+  .svc-val.err { color: var(--color-primary); }
   .svc-val.unknown { color: #6b7177; }
 
   .weather-block { margin-bottom: 10px; }
@@ -382,7 +382,7 @@
   }
   .closures-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
   .closures-badge {
-    background: #C23020; border-radius: 10px;
+    background: var(--color-primary-hover); border-radius: 10px;
     padding: 2px 8px; font-size: 9px; font-weight: 600;
   }
   .btn-show-closures {

@@ -1218,7 +1218,7 @@
 												<button class="btn-small" onclick={() => inviteMember(org.id)}>Einladen</button>
 											</div>
 											{#if orgInviteError[org.id]}
-												<p class="hint" style="color:#E23D28">{orgInviteError[org.id]}</p>
+												<p class="hint" style="color: var(--color-primary)">{orgInviteError[org.id]}</p>
 											{/if}
 										{/if}
 									</div>
@@ -1471,7 +1471,7 @@
 	.app { display: flex; height: 100vh; overflow: hidden; }
 
 	.sidebar { width: 340px; min-width: 280px; background: #0F1B24; color: white; display: flex; flex-direction: column; overflow: hidden; }
-	.sidebar-header { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; border-bottom: 1px solid rgba(255,255,255,.15); background: #f5f3ee; }
+	.sidebar-header { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; border-bottom: 1px solid rgba(255,255,255,.15); background: var(--color-bg); }
 	.logo-wrap { flex: 1; min-width: 0; }
 .logout-btn { background: none; border: none; color: rgba(0,0,0,.4); cursor: pointer; font-size: 1rem; flex-shrink: 0; }
 	.admin-link { font-size: .72rem; color: rgba(0,0,0,.45); text-decoration: none; white-space: nowrap; }
@@ -1483,7 +1483,7 @@
 	.tabs { display: flex; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid rgba(255,255,255,.1); }
 	.tabs::-webkit-scrollbar { display: none; }
 	.tab { flex: 0 0 auto; padding: .55rem .75rem; background: none; border: none; color: rgba(255,255,255,.55); font-size: .8rem; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; }
-	.tab.active { color: white; border-bottom-color: #E23D28; font-weight: 600; }
+	.tab.active { color: white; border-bottom-color: var(--color-primary); font-weight: 600; }
 	.tabs-verwaltung { background: rgba(0,0,0,.25); align-items: center; border-bottom: 1px solid rgba(255,255,255,.08); }
 	.tabs-verwaltung .tab { font-size: .78rem; padding: .4rem .7rem; }
 	.tabs-verwaltung .tab.active { border-bottom-color: rgba(226,61,40,.7); color: rgba(255,255,255,.9); }
@@ -1497,14 +1497,14 @@
 
 	.map-actions { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .5rem; }
 	.btn-map { padding: .35rem .55rem; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2); color: white; border-radius: 4px; font-size: .78rem; cursor: pointer; }
-	.btn-map.active { background: #E23D28; border-color: #E23D28; }
+	.btn-map.active { background: var(--color-primary); border-color: var(--color-primary); }
 
-	.btn-primary { width: 100%; padding: .6rem; background: #E23D28; color: white; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: .9rem; }
+	.btn-primary { width: 100%; padding: .6rem; background: var(--color-primary); color: white; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: .9rem; }
 	.btn-primary:disabled { opacity: .5; cursor: not-allowed; }
 
 	.btn-small { padding: .22rem .45rem; background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.25); color: white; border-radius: 4px; font-size: .75rem; cursor: pointer; }
-	.btn-small.danger { background: rgba(226,61,40,.3); border-color: #E23D28; }
-	.btn-small.active { background: #E23D28; }
+	.btn-small.danger { background: rgba(226,61,40,.3); border-color: var(--color-primary); }
+	.btn-small.active { background: var(--color-primary); }
 
 	.export-grid { display: flex; flex-direction: column; gap: .4rem; margin-top: .4rem; }
 	/* Marschbefehl Modal */
@@ -1534,11 +1534,11 @@
 	.modal-btn-primary { padding: .55rem 1.1rem; border-radius: 5px; border: none; background: #0F1B24; color: white; cursor: pointer; font-size: .88rem; font-weight: 600; }
 	.modal-btn-primary:hover { background: #1a2f42; }
 	.modal-btn-primary:disabled { opacity: .5; cursor: not-allowed; }
-	.modal-btn-export { padding: .55rem 1.1rem; border-radius: 5px; border: none; background: #E23D28; color: white; cursor: pointer; font-size: .88rem; font-weight: 600; }
+	.modal-btn-export { padding: .55rem 1.1rem; border-radius: 5px; border: none; background: var(--color-primary); color: white; cursor: pointer; font-size: .88rem; font-weight: 600; }
 	.modal-btn-export:hover { background: #c7321f; }
 	.modal-btn-export:disabled { opacity: .5; cursor: not-allowed; }
 	.btn-export { display: block; padding: .45rem .75rem; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2); color: white; border-radius: 4px; font-size: .82rem; text-decoration: none; cursor: pointer; text-align: left; }
-	.btn-export.active { background: rgba(226,61,40,.3); border-color: #E23D28; }
+	.btn-export.active { background: rgba(226,61,40,.3); border-color: var(--color-primary); }
 
 	.route-actions { margin-top: .75rem; }
 	.route-info { font-size: .85rem; color: rgba(255,255,255,.8); margin: .4rem 0; }
@@ -1587,9 +1587,9 @@
 
 	.org-item { display: flex; justify-content: space-between; align-items: center; padding: .35rem 0; border-bottom: 1px solid rgba(255,255,255,.08); font-size: .83rem; }
 
-	.tag-pill { display: inline-block; background: rgba(52,152,219,.3); border: 1px solid #3498db; border-radius: 12px; padding: .1rem .5rem; font-size: .72rem; color: #74b9ff; }
+	.tag-pill { display: inline-block; background: rgba(52,152,219,.3); border: 1px solid var(--color-accent); border-radius: 12px; padding: .1rem .5rem; font-size: .72rem; color: #74b9ff; }
 
-	.error-bar { background: #C23020; color: white; padding: .4rem .75rem; font-size: .8rem; margin: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; flex-shrink: 0; word-break: break-word; }
+	.error-bar { background: var(--color-primary-hover); color: white; padding: .4rem .75rem; font-size: .8rem; margin: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; flex-shrink: 0; word-break: break-word; }
 	.error-bar button { background: none; border: none; color: white; cursor: pointer; font-size: 1rem; flex-shrink: 0; line-height: 1; padding: 0; }
 
 	.map-area { flex: 1; position: relative; }
@@ -1778,7 +1778,7 @@
 			right: 1rem;
 			z-index: 50;
 			padding: .7rem 1.25rem;
-			background: #E23D28;
+			background: var(--color-primary);
 			color: white;
 			border: none;
 			border-radius: 10px;
@@ -1805,5 +1805,5 @@
 	.kw-table td code { background: #f0f4f8; padding: .1rem .3rem; border-radius: 3px; font-size: .8rem; }
 	.kw-befehl-table { width: 100%; border-collapse: collapse; font-size: .82rem; margin-top: .3rem; }
 	.kw-befehl-table th, .kw-befehl-table td { padding: .3rem .5rem; border: 1px solid #ddd; text-align: left; }
-	.kw-befehl-table th { background: #f5f3ee; }
+	.kw-befehl-table th { background: var(--color-bg); }
 </style>

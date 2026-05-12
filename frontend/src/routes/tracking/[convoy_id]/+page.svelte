@@ -3,12 +3,13 @@
 	import { page } from '$app/stores';
 	import MapView from '$lib/components/MapView.svelte';
 	import AppLogo from '$lib/components/AppLogo.svelte';
-	import { convoysApi, trackingApi, type Convoy, type VehiclePosition } from '$lib/api';
+	import { convoysApi, trackingApi, type Convoy, type VehiclePosition, type RouteResult } from '$lib/api';
 	import { livePositions, vehicleStatuses, connectTracking, disconnectTracking, sendPosition, trackingActive } from '$lib/stores/tracking';
 
 	const convoyId = $page.params.convoy_id;
 
 	let convoy = $state<Convoy | null>(null);
+	let routeGeojson = $state<RouteResult['geojson']>(null);
 	let myVehicleId = $state('');
 	let transmitting = $state(false);
 	let manualMode = $state(false);
@@ -25,9 +26,13 @@
 
 	onMount(async () => {
 		try {
-			convoy = await convoysApi.get(convoyId);
-			const positions = await trackingApi.getPositions(convoyId);
-			livePositions.set(new Map(positions.map(p => [p.vehicle_id, p])));
+			[convoy] = await Promise.all([
+				convoysApi.get(convoyId),
+				convoysApi.getRoute(convoyId).then(r => { routeGeojson = r?.geojson ?? null; }),
+				trackingApi.getPositions(convoyId).then(positions => {
+					livePositions.set(new Map(positions.map(p => [p.vehicle_id, p])));
+				}),
+			]);
 			connectTracking(convoyId);
 		} catch {
 			error = 'Marschverband konnte nicht geladen werden';
@@ -216,6 +221,7 @@
 			startPoint={convoy?.start_point}
 			endPoint={convoy?.end_point}
 			waypoints={convoy?.waypoints ?? []}
+			routeGeojson={routeGeojson}
 			livePositions={$livePositions}
 			clickEnabled={manualMode && transmitting}
 			onMapClick={handleMapTap}
@@ -230,7 +236,7 @@
 
 	/* Sidebar */
 	.sidebar { width: 320px; min-width: 280px; background: #0F1B24; color: white; display: flex; flex-direction: column; overflow: hidden; }
-	.sidebar-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 0.75rem 1rem; border-bottom: 1px solid rgba(255,255,255,.15); background: #f5f3ee; }
+	.sidebar-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 0.75rem 1rem; border-bottom: 1px solid rgba(255,255,255,.15); background: var(--color-bg); }
 	.logo-wrap { flex: 1; min-width: 0; }
 	.logo { font-size: 1rem; font-weight: 700; }
 	.convoy-name { font-size: .78rem; color: rgba(255,255,255,.65); margin-top: .3rem; }
@@ -243,7 +249,7 @@
 	.ws-label { white-space: nowrap; }
 
 	/* Error bar */
-	.error-bar { background: #C23020; color: white; padding: .4rem .75rem; font-size: .8rem; margin: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; flex-shrink: 0; word-break: break-word; }
+	.error-bar { background: var(--color-primary-hover); color: white; padding: .4rem .75rem; font-size: .8rem; margin: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; flex-shrink: 0; word-break: break-word; }
 	.error-bar button { background: none; border: none; color: white; cursor: pointer; font-size: 1rem; flex-shrink: 0; line-height: 1; padding: 0; }
 
 	/* Position block */
@@ -252,7 +258,7 @@
 	.position-block select { width: 100%; padding: .4rem; border-radius: 4px; border: none; background: rgba(255,255,255,.12); color: white; font-size: .83rem; }
 	.position-block select:disabled { opacity: .6; }
 
-	.btn-primary { width: 100%; padding: .55rem; background: #E23D28; color: white; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: .88rem; }
+	.btn-primary { width: 100%; padding: .55rem; background: var(--color-primary); color: white; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: .88rem; }
 	.btn-primary:disabled { opacity: .5; cursor: not-allowed; }
 	.btn-stop { width: 100%; padding: .55rem; background: rgba(226,61,40,.3); border: 1px solid #E23D28; color: white; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: .88rem; }
 
@@ -263,7 +269,7 @@
 	.tabs { display: flex; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid rgba(255,255,255,.1); flex-shrink: 0; }
 	.tabs::-webkit-scrollbar { display: none; }
 	.tab { flex: 0 0 auto; padding: .55rem .75rem; background: none; border: none; color: rgba(255,255,255,.55); font-size: .8rem; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; }
-	.tab.active { color: white; border-bottom-color: #E23D28; font-weight: 600; }
+	.tab.active { color: white; border-bottom-color: var(--color-primary); font-weight: 600; }
 
 	/* Tab content */
 	.tab-content { flex: 1; overflow-y: auto; padding: .75rem 1rem; }
