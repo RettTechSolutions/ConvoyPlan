@@ -25,6 +25,7 @@ services:
     volumes:
       - ./backend:/app
       - cert_uploads:/certs
+      - logo_uploads:/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -91,3 +92,4 @@ volumes:
   caddy_data:
   caddy_config:
   cert_uploads:
+  logo_uploads:
