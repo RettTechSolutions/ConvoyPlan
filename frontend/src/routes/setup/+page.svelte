@@ -31,7 +31,6 @@
 	let colorNavText = $state('#ecf0f1');
 	let colorText = $state('#2c3e50');
 	let colorTextMuted = $state('#7f8c8d');
-	let showAdvancedColors = $state(false);
 	let logoMainFile = $state<File | null>(null);
 	let logoMainPreview = $state<string | null>(null);
 	let logoHorizFile = $state<File | null>(null);
