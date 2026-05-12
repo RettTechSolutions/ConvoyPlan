@@ -1523,10 +1523,10 @@
 	.befehl-row > * { flex: 1; }
 	.bf-label { display: flex; flex-direction: column; gap: .3rem; font-size: .8rem; font-weight: 600; color: #333; }
 	.bf-label input, .bf-label select { padding: .5rem .65rem; border-radius: 5px; border: 1.5px solid #ccc; background: white; color: #111; font-size: .9rem; font-family: inherit; }
-	.bf-label input:focus, .bf-label select:focus { outline: none; border-color: #E23D28; box-shadow: 0 0 0 3px rgba(226,61,40,.12); }
+	.bf-label input:focus, .bf-label select:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(226,61,40,.12); }
 	.bf-label input::placeholder { color: #aaa; }
 	.befehl-textarea { padding: .55rem .7rem; border-radius: 5px; border: 1.5px solid #ccc; background: white; color: #111; font-size: .9rem; font-family: inherit; resize: vertical; width: 100%; box-sizing: border-box; line-height: 1.5; }
-	.befehl-textarea:focus { outline: none; border-color: #E23D28; box-shadow: 0 0 0 3px rgba(226,61,40,.12); }
+	.befehl-textarea:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(226,61,40,.12); }
 	.befehl-textarea::placeholder { color: #aaa; }
 	.befehl-modal-footer { display: flex; justify-content: flex-end; gap: .6rem; padding: 1rem 1.5rem; border-top: 1px solid #e5e5e5; flex-shrink: 0; flex-wrap: wrap; background: #f8f9fa; border-radius: 0 0 10px 10px; }
 	.modal-btn-secondary { padding: .55rem 1.1rem; border-radius: 5px; border: 1.5px solid #ccc; background: white; color: #555; cursor: pointer; font-size: .88rem; }
@@ -1535,7 +1535,7 @@
 	.modal-btn-primary:hover { background: #1a2f42; }
 	.modal-btn-primary:disabled { opacity: .5; cursor: not-allowed; }
 	.modal-btn-export { padding: .55rem 1.1rem; border-radius: 5px; border: none; background: var(--color-primary); color: white; cursor: pointer; font-size: .88rem; font-weight: 600; }
-	.modal-btn-export:hover { background: #c7321f; }
+	.modal-btn-export:hover { background: var(--color-primary-hover); }
 	.modal-btn-export:disabled { opacity: .5; cursor: not-allowed; }
 	.btn-export { display: block; padding: .45rem .75rem; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2); color: white; border-radius: 4px; font-size: .82rem; text-decoration: none; cursor: pointer; text-align: left; }
 	.btn-export.active { background: rgba(226,61,40,.3); border-color: var(--color-primary); }

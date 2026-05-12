@@ -260,7 +260,7 @@
 
 	.btn-primary { width: 100%; padding: .55rem; background: var(--color-primary); color: white; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: .88rem; }
 	.btn-primary:disabled { opacity: .5; cursor: not-allowed; }
-	.btn-stop { width: 100%; padding: .55rem; background: rgba(226,61,40,.3); border: 1px solid #E23D28; color: white; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: .88rem; }
+	.btn-stop { width: 100%; padding: .55rem; background: rgba(226,61,40,.3); border: 1px solid var(--color-primary); color: white; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: .88rem; }
 
 	.hint { font-size: .75rem; color: rgba(255,255,255,.45); font-style: italic; margin: 0; line-height: 1.4; }
 	.hint.hint-active { color: #f1c40f; font-style: normal; }
