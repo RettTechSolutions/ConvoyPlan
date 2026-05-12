@@ -12,6 +12,7 @@ down_revision = "0010"
 branch_labels = None
 depends_on = None
 
+# Keep in sync with app/api/routes/branding.py BRANDING_DEFAULTS
 _DEFAULTS = {
     "branding.app_name": "ConvoyPlan",
     "branding.logo_main": "",

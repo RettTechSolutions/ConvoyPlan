@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from pathlib import Path
 from typing import Literal
@@ -14,6 +15,7 @@ from app.schemas.branding import BrandingResponse, BrandingUpdate
 router = APIRouter(prefix="/branding", tags=["branding"])
 logger = logging.getLogger(__name__)
 
+# Keep in sync with alembic/versions/0011_branding_defaults.py _DEFAULTS
 BRANDING_DEFAULTS: dict[str, str] = {
     "branding.app_name": "ConvoyPlan",
     "branding.logo_main": "",
@@ -113,7 +115,8 @@ async def upload_logo(
         raise HTTPException(status_code=400, detail="Invalid file type (PNG, JPG, SVG only)")
     LOGOS_DIR.mkdir(parents=True, exist_ok=True)
     filename = f"{slot}{ext}"
-    (LOGOS_DIR / filename).write_bytes(content)
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, (LOGOS_DIR / filename).write_bytes, content)
     await _upsert(db, f"branding.logo_{slot}", filename)
     await db.commit()
     return await _get_branding_response(db)
