@@ -2,9 +2,17 @@
 set -euo pipefail
 
 REPO_DIR=/workspace
-REPO_URL="https://${GITHUB_TOKEN:-}@github.com/RettTechSolutions/MarschPlan.git"
-COMPOSE_FILES="-f ${REPO_DIR}/docker-compose.yml -f ${REPO_DIR}/docker-compose.override.yml"
-INTERVAL=300
+REPO_URL="https://github.com/RettTechSolutions/MarschPlan.git"
+INTERVAL="${UPDATE_INTERVAL:-300}"
+
+# Fail fast if token not provided
+: "${GITHUB_TOKEN:?GITHUB_TOKEN must be set}"
+
+# Store credentials securely in netrc — never exposed in URL or process list
+printf 'machine github.com\nlogin x-access-token\npassword %s\n' "${GITHUB_TOKEN}" > ~/.netrc
+chmod 600 ~/.netrc
+
+COMPOSE_FILES=(-f "${REPO_DIR}/docker-compose.yml" -f "${REPO_DIR}/docker-compose.override.yml")
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 
@@ -15,26 +23,33 @@ if [ ! -d "${REPO_DIR}/.git" ]; then
   log "Cloned to ${REPO_DIR}"
 fi
 
-# Keep remote URL current (supports token rotation)
+# Keep remote URL current (no token in URL — auth is via ~/.netrc)
 git -C "${REPO_DIR}" remote set-url origin "${REPO_URL}"
+
+# Track last successfully deployed SHA separately from HEAD
+# so a failed build is retried next iteration
+DEPLOYED=$(git -C "${REPO_DIR}" rev-parse HEAD)
 
 log "Updater started. Polling every ${INTERVAL}s."
 
 while true; do
-  git -C "${REPO_DIR}" fetch origin main --quiet 2>/dev/null || {
-    log "fetch failed (network issue?), retrying in ${INTERVAL}s"
+  if ! git -C "${REPO_DIR}" fetch origin main --quiet 2>&1; then
+    log "fetch failed, retrying in ${INTERVAL}s"
     sleep "${INTERVAL}"
     continue
-  }
+  fi
 
-  LOCAL=$(git -C "${REPO_DIR}" rev-parse HEAD)
   REMOTE=$(git -C "${REPO_DIR}" rev-parse origin/main)
 
-  if [ "${LOCAL}" != "${REMOTE}" ]; then
-    log "Update detected: ${LOCAL:0:7} → ${REMOTE:0:7}"
-    git -C "${REPO_DIR}" pull --ff-only origin main
-    docker compose ${COMPOSE_FILES} up -d --build
-    log "Updated to $(git -C "${REPO_DIR}" rev-parse --short HEAD)"
+  if [ "${DEPLOYED}" != "${REMOTE}" ]; then
+    log "Update detected: ${DEPLOYED:0:7} → ${REMOTE:0:7}"
+    if git -C "${REPO_DIR}" pull --ff-only origin main && \
+       docker compose "${COMPOSE_FILES[@]}" up -d --build; then
+      DEPLOYED=$(git -C "${REPO_DIR}" rev-parse HEAD)
+      log "Updated to ${DEPLOYED:0:7}"
+    else
+      log "Deploy failed — will retry in ${INTERVAL}s"
+    fi
   fi
 
   sleep "${INTERVAL}"
