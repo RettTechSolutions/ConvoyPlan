@@ -13,10 +13,12 @@
 	onMount(async () => {
 		auth.init();
 
-		const saved = localStorage.getItem('marschplan-theme');
-		if (saved === 'light' || saved === 'dark') {
-			document.documentElement.setAttribute('data-theme', saved);
-		}
+		try {
+			const saved = localStorage.getItem('marschplan-theme');
+			if (saved === 'light' || saved === 'dark') {
+				document.documentElement.setAttribute('data-theme', saved);
+			}
+		} catch (_) {}
 
 		// Raw fetch (not brandingApi) — GET /api/branding is public and needs no auth token
 		try {

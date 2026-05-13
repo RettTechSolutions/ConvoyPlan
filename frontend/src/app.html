@@ -5,8 +5,10 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<script>
 			(function() {
-				var t = localStorage.getItem('marschplan-theme');
-				if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+				try {
+					var t = localStorage.getItem('marschplan-theme');
+					if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+				} catch (_) {}
 			})();
 		</script>
 		<style>
