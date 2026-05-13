@@ -55,64 +55,69 @@
 		align-items: center;
 		justify-content: center;
 		min-height: 100vh;
-		background: #0F1B24;
+		background: var(--bg);
 	}
 	.login-card {
-		background: white;
+		background: var(--surface-1);
+		border: 1px solid var(--border);
 		border-radius: 8px;
 		padding: 2.5rem;
 		width: 100%;
 		max-width: 380px;
-		box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+		box-shadow: var(--shadow);
 	}
 	.login-logo { display: flex; justify-content: center; margin-bottom: 1rem; }
 	h1 { display: none; }
 	.subtitle {
-		color: #666;
+		color: var(--text-muted);
 		margin: 0 0 1.5rem;
-		font-size: 0.9rem;
+		font-size: var(--text-sm);
+		letter-spacing: .08em;
+		text-align: center;
 	}
-	.field {
-		margin-bottom: 1rem;
-	}
+	.field { margin-bottom: 1rem; }
 	label {
 		display: block;
-		font-size: 0.85rem;
-		font-weight: 600;
-		margin-bottom: 0.3rem;
-		color: #333;
+		font-size: var(--text-sm);
+		font-weight: 500;
+		margin-bottom: .25rem;
+		color: var(--text-2);
 	}
 	input {
 		width: 100%;
-		padding: 0.6rem 0.75rem;
-		border: 1px solid #ccc;
-		border-radius: 4px;
-		font-size: 1rem;
+		padding: .5rem .75rem;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		font-size: var(--text-base);
 		box-sizing: border-box;
+		background: var(--surface-2);
+		color: var(--text-1);
 	}
 	input:focus {
 		outline: none;
-		border-color: #0F1B24;
+		border-color: var(--color-primary);
+		box-shadow: 0 0 0 3px rgba(226, 61, 40, .15);
 	}
 	button {
 		width: 100%;
-		padding: 0.75rem;
-		background: #6B7F4D;
+		padding: .6rem;
+		background: var(--color-primary);
 		color: white;
 		border: none;
-		border-radius: 4px;
-		font-size: 1rem;
+		border-radius: 6px;
+		font-size: var(--text-base);
 		font-weight: 600;
 		cursor: pointer;
-		margin-top: 0.5rem;
+		margin-top: .5rem;
 	}
+	button:hover:not(:disabled) { background: var(--color-primary-hover); }
 	button:disabled {
 		opacity: 0.6;
 		cursor: not-allowed;
 	}
 	.error {
-		color: #c0392b;
-		font-size: 0.875rem;
-		margin-bottom: 0.5rem;
+		color: var(--color-primary);
+		font-size: var(--text-sm);
+		margin-bottom: .5rem;
 	}
 </style>
