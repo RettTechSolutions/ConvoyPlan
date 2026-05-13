@@ -1,12 +1,29 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<script>
+			(function() {
+				var t = localStorage.getItem('marschplan-theme');
+				if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+			})();
+		</script>
 		<style>
 			*, *::before, *::after { box-sizing: border-box; }
 			html, body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+
 			:root {
+				/* Typography scale */
+				--text-xs:   .72rem;
+				--text-sm:   .82rem;
+				--text-base: .92rem;
+				--text-lg:   1.05rem;
+
+				/* Sidebar always dark regardless of theme */
+				--sidebar-bg: #161f2e;
+
+				/* Branding vars (overridden at runtime by /api/branding) */
 				--color-primary: #E23D28;
 				--color-primary-hover: #C23020;
 				--color-accent: #3498db;
@@ -16,6 +33,28 @@
 				--color-nav-text: #ecf0f1;
 				--color-text: #2c3e50;
 				--color-text-muted: #7f8c8d;
+			}
+
+			[data-theme="dark"] {
+				--bg:         #0f1419;
+				--surface-1:  #161f2e;
+				--surface-2:  #1e2d3d;
+				--border:     rgba(255, 255, 255, .1);
+				--text-1:     #e8edf2;
+				--text-2:     rgba(255, 255, 255, .55);
+				--text-muted: rgba(255, 255, 255, .32);
+				--shadow:     none;
+			}
+
+			[data-theme="light"] {
+				--bg:         #f0f2f5;
+				--surface-1:  #ffffff;
+				--surface-2:  #f8f9fa;
+				--border:     #dde1e7;
+				--text-1:     #1a2332;
+				--text-2:     #4a5568;
+				--text-muted: #9aa3b0;
+				--shadow:     0 1px 3px rgba(0, 0, 0, .08);
 			}
 		</style>
 		%sveltekit.head%
