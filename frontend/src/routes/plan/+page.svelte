@@ -57,7 +57,9 @@
 	);
 	function toggleTheme() {
 	    theme = theme === 'dark' ? 'light' : 'dark';
-	    document.documentElement.setAttribute('data-theme', theme);
+	    if (typeof document !== 'undefined') {
+	        document.documentElement.setAttribute('data-theme', theme);
+	    }
 	    try { localStorage.setItem('marschplan-theme', theme); } catch (_) {}
 	}
 
@@ -1675,12 +1677,12 @@
 	.wizard-steps span.active { color: white; font-weight: 700; }
 	.wizard-steps .sep { color: rgba(255,255,255,.25); }
 	.wizard-title { margin: 0 0 .5rem; font-size: .95rem; font-weight: 600; color: white; }
-	.btn-skip { background: none; border: none; color: rgba(255,255,255,.45); font-size: .78rem; cursor: pointer; padding: .2rem 0; text-align: left; }
-	.btn-skip:hover { color: rgba(255,255,255,.7); }
-	.wp-name-input { width: 100%; padding: .4rem .6rem; border-radius: 4px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.08); color: white; font-size: .85rem; box-sizing: border-box; }
-	.wp-name-input::placeholder { color: rgba(255,255,255,.35); }
+	.btn-skip { background: none; border: none; color: var(--text-muted); font-size: .78rem; cursor: pointer; padding: .2rem 0; text-align: left; }
+	.btn-skip:hover { color: var(--text-2); }
+	.wp-name-input { width: 100%; padding: .4rem .6rem; border-radius: 4px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-1); font-size: .85rem; box-sizing: border-box; }
+	.wp-name-input::placeholder { color: var(--text-muted); }
 	.wizard-wp-list { list-style: none; padding: 0; margin: 0; max-height: 120px; overflow-y: auto; }
-	.wizard-wp-list li { font-size: .8rem; color: rgba(255,255,255,.75); padding: .2rem 0; border-bottom: 1px solid rgba(255,255,255,.07); }
+	.wizard-wp-list li { font-size: .8rem; color: var(--text-2); padding: .2rem 0; border-bottom: 1px solid var(--border); }
 
 	/* ── Org management ─────────────────────────────────────────── */
 	.org-card { background: rgba(255,255,255,.05); border-radius: 8px; margin-bottom: .5rem; overflow: hidden; }
@@ -1696,12 +1698,12 @@
 	.org-member-row { display: flex; align-items: center; gap: .5rem; padding: .25rem 0; border-bottom: 1px solid rgba(255,255,255,.06); }
 	.org-member-row:last-child { border-bottom: none; }
 	.org-member-email { flex: 1; font-size: .8rem; color: rgba(255,255,255,.8); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.org-role-select { background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2); color: white; border-radius: 4px; padding: .2rem .4rem; font-size: .75rem; cursor: pointer; }
+	.org-role-select { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-1); border-radius: 4px; padding: .2rem .4rem; font-size: .75rem; cursor: pointer; }
 	.org-add-member { display: flex; gap: .4rem; margin-top: .6rem; flex-wrap: wrap; }
-	.org-email-input { flex: 1; min-width: 120px; padding: .3rem .5rem; border-radius: 4px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.08); color: white; font-size: .8rem; }
-	.org-email-input::placeholder { color: rgba(255,255,255,.3); }
+	.org-email-input { flex: 1; min-width: 120px; padding: .3rem .5rem; border-radius: 4px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-1); font-size: .8rem; }
+	.org-email-input::placeholder { color: var(--text-muted); }
 	.invite-form { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .3rem; }
-	.invite-form input { flex: 1; min-width: 120px; padding: .3rem .5rem; border-radius: 4px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.1); color: white; font-size: .8rem; }
+	.invite-form input { flex: 1; min-width: 120px; padding: .3rem .5rem; border-radius: 4px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-1); font-size: .8rem; }
 
 	/* ── Mobile layout (≤ 768px) ─────────────────────────────────── */
 	@media (max-width: 768px) {
@@ -1769,7 +1771,7 @@
 			bottom: 0;
 			width: min(320px, 88vw);
 			z-index: 300;
-			overflow-y: auto;
+			overflow-y: hidden;
 			transform: translateX(-100%);
 			transition: transform .25s ease;
 		}
