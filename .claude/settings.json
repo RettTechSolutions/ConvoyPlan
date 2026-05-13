@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "s-lx04-docker": {
+      "command": "ssh",
+      "args": ["s-lx04-docker", "node", "/home/ad_zeitler/mcp-server/index.js"]
+    }
+  }
+}
