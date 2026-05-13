@@ -67,16 +67,16 @@
 <style>
 	:global(body) { margin: 0; font-family: system-ui, sans-serif; }
 	.share-app { display: flex; height: 100vh; }
-	.share-sidebar { width: 300px; background: #0F1B24; color: white; padding: 1.5rem; overflow-y: auto; }
+	.share-sidebar { width: 300px; background: var(--sidebar-bg); color: var(--text-1); padding: 1.5rem; overflow-y: auto; }
 	.share-header { display: flex; align-items: center; gap: .5rem; margin-bottom: .75rem; }
-	.share-header h1 { margin: 0; font-size: 1.1rem; }
-	.convoy-info { margin-bottom: .75rem; border-bottom: 1px solid rgba(255,255,255,.1); padding-bottom: .75rem; }
-	.convoy-info h2 { margin: 0 0 .25rem; font-size: 1rem; }
-	.convoy-info p { margin: .2rem 0; font-size: .85rem; color: rgba(255,255,255,.75); }
-	.wp-section h3 { font-size: .9rem; margin: 1rem 0 .5rem; }
-	table { width: 100%; border-collapse: collapse; font-size: .8rem; }
-	th, td { padding: .3rem .4rem; border-bottom: 1px solid rgba(255,255,255,.1); text-align: left; }
-	th { color: rgba(255,255,255,.6); }
-	.error { color: #E23D28; font-size: .9rem; }
+	.share-header h1 { margin: 0; font-size: var(--text-base); font-weight: 700; }
+	.convoy-info { margin-bottom: .75rem; border-bottom: 1px solid var(--border); padding-bottom: .75rem; }
+	.convoy-info h2 { margin: 0 0 .25rem; font-size: var(--text-base); }
+	.convoy-info p { margin: .2rem 0; font-size: var(--text-sm); color: var(--text-2); }
+	.wp-section h3 { font-size: var(--text-xs); font-weight: 600; margin: 1rem 0 .5rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; }
+	table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+	th, td { padding: .5rem; border-bottom: 1px solid var(--border); text-align: left; }
+	th { color: var(--text-muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; }
+	.error { color: var(--color-primary); font-size: var(--text-sm); }
 	.share-map { flex: 1; }
 </style>
