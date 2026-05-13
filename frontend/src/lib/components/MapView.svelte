@@ -183,6 +183,20 @@
 				? { type: 'Feature', geometry: routeGeojson, properties: {} }
 				: empty()
 		);
+		if (routeGeojson) {
+			const coords: number[][] =
+				routeGeojson.type === 'LineString' ? routeGeojson.coordinates as number[][]
+				: routeGeojson.type === 'MultiLineString' ? (routeGeojson.coordinates as number[][][]).flat()
+				: [];
+			if (coords.length > 1) {
+				const lons = coords.map(c => c[0]);
+				const lats = coords.map(c => c[1]);
+				map.fitBounds(
+					[[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+					{ padding: 60, duration: 800 }
+				);
+			}
+		}
 	});
 
 	// Live tracking markers
