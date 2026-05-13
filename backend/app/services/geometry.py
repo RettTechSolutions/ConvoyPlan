@@ -9,8 +9,11 @@ def point_to_wkt(lat: float, lon: float) -> str:
 def wkb_to_point(geom) -> dict | None:
     if geom is None:
         return None
-    shape = to_shape(geom)
-    return {"lat": shape.y, "lon": shape.x}
+    try:
+        shape = to_shape(geom)
+        return {"lat": shape.y, "lon": shape.x}
+    except (AssertionError, Exception):
+        return None
 
 
 def waypoint_coords(waypoint) -> dict:

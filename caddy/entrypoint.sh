@@ -27,13 +27,25 @@ case "$DOMAIN" in
         ;;
 esac
 
+# For bare IP addresses Caddy would attempt ACME (which fails for private IPs).
+# Force plain HTTP by prefixing with http:// when DOMAIN is an IPv4 address.
+case "$DOMAIN" in
+    [0-9]*.[0-9]*.[0-9]*.[0-9]*)
+        SITE_ADDRESS="http://$DOMAIN"
+        TLS_DIRECTIVE="tls off"
+        ;;
+    *)
+        SITE_ADDRESS="$DOMAIN"
+        ;;
+esac
+
 cat > /tmp/Caddyfile << CADDYEOF
 {
     admin 0.0.0.0:2019
     email $ACME_EMAIL
 }
 
-$DOMAIN {
+$SITE_ADDRESS {
     $TLS_DIRECTIVE
 
     handle /api/* {
