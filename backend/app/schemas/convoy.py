@@ -40,6 +40,7 @@ class ConvoyCreate(BaseModel):
 class ConvoyUpdate(BaseModel):
     name: str | None = None
     organization: str | None = None
+    organization_id: uuid.UUID | None = None
     start_time: datetime | None = None
     start_point: PointSchema | None = None
     end_point: PointSchema | None = None
