@@ -48,9 +48,11 @@ while true; do
 
   if [ "${DEPLOYED}" != "${REMOTE}" ]; then
     log "Update detected: ${DEPLOYED:0:7} → ${REMOTE:0:7}"
+    # Get all services except the updater itself (to avoid killing this container)
+    SERVICES=$(docker compose "${COMPOSE_FILES[@]}" config --services 2>/dev/null | grep -v '^updater$' | tr '\n' ' ')
     if git -C "${REPO_DIR}" reset --hard origin/main && \
        git -C "${REPO_DIR}" clean -fd && \
-       docker compose "${COMPOSE_FILES[@]}" up -d --build; then
+       docker compose "${COMPOSE_FILES[@]}" up -d --build ${SERVICES}; then
       DEPLOYED=$(git -C "${REPO_DIR}" rev-parse HEAD)
       log "Updated to ${DEPLOYED:0:7}"
     else
