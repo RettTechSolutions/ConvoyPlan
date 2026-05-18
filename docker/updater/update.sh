@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO_DIR=/workspace
-REPO_URL="https://github.com/RettTechSolutions/MarschPlan.git"
+REPO_URL="https://github.com/RettTechSolutions/ConvoyPlan.git"
 INTERVAL="${UPDATE_INTERVAL:-300}"
 
 # Fail fast if token not provided
@@ -15,7 +15,7 @@ chmod 600 ~/.netrc
 # Allow git to operate on the mounted workspace (owned by host user, not container root)
 git config --global --add safe.directory "${REPO_DIR}"
 
-COMPOSE_PROJECT="${COMPOSE_PROJECT_NAME:-marschplan}"
+COMPOSE_PROJECT="${COMPOSE_PROJECT_NAME:-convoyplan}"
 COMPOSE_FILES=(-p "${COMPOSE_PROJECT}" -f "${REPO_DIR}/docker-compose.yml")
 [ -f "${REPO_DIR}/docker-compose.override.yml" ] && COMPOSE_FILES+=(-f "${REPO_DIR}/docker-compose.override.yml")
 

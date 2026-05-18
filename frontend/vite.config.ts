@@ -7,8 +7,8 @@ export default defineConfig({
 		sveltekit(),
 		SvelteKitPWA({
 			manifest: {
-				name: 'MarschPlan',
-				short_name: 'MarschPlan',
+				name: 'ConvoyPlan',
+				short_name: 'ConvoyPlan',
 				description: 'Marschverbandsplanung für BOS',
 				theme_color: '#1a2744',
 				background_color: '#1a2744',

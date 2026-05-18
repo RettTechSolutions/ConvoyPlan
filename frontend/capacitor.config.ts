@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'de.bos.marschplan',
-  appName: 'MarschPlan',
+  appId: 'de.bos.convoyplan',
+  appName: 'ConvoyPlan',
   webDir: 'build',
   server: {
     androidScheme: 'https',

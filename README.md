@@ -1,13 +1,13 @@
 <p align="center">
-  <img src="logo/Logo%20Horizontal.png" alt="MarschPlan Logo" width="420">
+  <img src="logo/Logo%20Horizontal.png" alt="ConvoyPlan Logo" width="420">
 </p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg" alt="License"></a>
-  <a href="https://github.com/RettTechSolutions/MarschPlan/releases/latest"><img src="https://img.shields.io/github/v/release/RettTechSolutions/MarschPlan?label=Version&color=green" alt="Latest Release"></a>
-  <a href="https://github.com/RettTechSolutions/MarschPlan/actions/workflows/ci.yml"><img src="https://github.com/RettTechSolutions/MarschPlan/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/RettTechSolutions/MarschPlan/issues"><img src="https://img.shields.io/github/issues/RettTechSolutions/MarschPlan" alt="Issues"></a>
-  <a href="https://github.com/RettTechSolutions/MarschPlan/pulls"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs welcome"></a>
+  <a href="https://github.com/RettTechSolutions/ConvoyPlan/releases/latest"><img src="https://img.shields.io/github/v/release/RettTechSolutions/ConvoyPlan?label=Version&color=green" alt="Latest Release"></a>
+  <a href="https://github.com/RettTechSolutions/ConvoyPlan/actions/workflows/ci.yml"><img src="https://github.com/RettTechSolutions/ConvoyPlan/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/RettTechSolutions/ConvoyPlan/issues"><img src="https://img.shields.io/github/issues/RettTechSolutions/ConvoyPlan" alt="Issues"></a>
+  <a href="https://github.com/RettTechSolutions/ConvoyPlan/pulls"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs welcome"></a>
 </p>
 
 <p align="center">
@@ -180,7 +180,7 @@ flowchart LR
 ## Projektstruktur
 
 ```text
-MarschPlan/
+ConvoyPlan/
 ├── backend/
 │   ├── app/
 │   │   ├── api/routes/       # REST- und WebSocket-Endpunkte
@@ -257,8 +257,8 @@ MarschPlan/
 ### 1. Repository klonen
 
 ```bash
-git clone https://github.com/RettTechSolutions/MarschPlan.git
-cd MarschPlan
+git clone https://github.com/RettTechSolutions/ConvoyPlan.git
+cd ConvoyPlan
 ```
 
 ### 2. Backend, Datenbank und GraphHopper starten
@@ -295,7 +295,7 @@ Nach einer Änderung der OSM-Datei sollte der GraphHopper-Graph-Cache neu aufgeb
 
 ```bash
 docker compose down
-docker volume rm marschplan_gh_graph
+docker volume rm convoyplan_gh_graph
 docker compose up -d --build
 ```
 
@@ -629,5 +629,5 @@ Alle Beiträge unterliegen ebenfalls der AGPL-3.0-Lizenz.
 ---
 
 <p align="center">
-  <strong>MarschPlan</strong> – strukturierte Marschverbandsplanung für moderne Einsatzorganisationen.
+  <strong>ConvoyPlan</strong> – strukturierte Marschverbandsplanung für moderne Einsatzorganisationen.
 </p>

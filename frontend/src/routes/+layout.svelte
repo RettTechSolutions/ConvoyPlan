@@ -14,7 +14,7 @@
 		auth.init();
 
 		try {
-			const saved = localStorage.getItem('marschplan-theme');
+			const saved = localStorage.getItem('convoyplan-theme');
 			if (saved === 'light' || saved === 'dark') {
 				document.documentElement.setAttribute('data-theme', saved);
 			}

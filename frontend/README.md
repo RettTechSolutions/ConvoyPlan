@@ -1,6 +1,6 @@
-# MarschPlan – Frontend
+# ConvoyPlan – Frontend
 
-SvelteKit-Frontend für MarschPlan. Svelte 5 mit Runes (`$state`, `$effect`, `$derived`), TypeScript, MapLibre GL für die Karte.
+SvelteKit-Frontend für ConvoyPlan. Svelte 5 mit Runes (`$state`, `$effect`, `$derived`), TypeScript, MapLibre GL für die Karte.
 
 ## Voraussetzungen
 
