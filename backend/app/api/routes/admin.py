@@ -1,17 +1,25 @@
+import json
+import os
 import uuid
+from datetime import datetime, timezone
 
 import bcrypt
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_db, require_superadmin
+from app.config import settings
 from app.models.organization import UserOrganization
 from app.models.user import User
 from app.schemas.user import AdminUserCreate, AdminUserResponse, AdminUserUpdate, AdminUserOrgInfo
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+STATUS_FILE = "/update_status/status.json"
+TRIGGER_FILE = "/update_status/trigger"
 
 
 @router.get("/users", response_model=list[AdminUserResponse])
@@ -111,3 +119,61 @@ async def delete_user(
         raise HTTPException(404, "User not found")
     await db.delete(user)
     await db.commit()
+
+
+@router.get("/update-status")
+async def get_update_status(
+    _: User = Depends(require_superadmin),
+):
+    deployed_sha = None
+    deployed_at = None
+    try:
+        with open(STATUS_FILE) as f:
+            data = json.load(f)
+            deployed_sha = data.get("deployed_sha")
+            deployed_at = data.get("deployed_at")
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+
+    remote_sha = None
+    github_reachable = False
+    try:
+        headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
+        if settings.github_token:
+            headers["Authorization"] = f"Bearer {settings.github_token}"
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(
+                f"https://api.github.com/repos/{settings.github_repo}/commits/main",
+                headers=headers,
+            )
+        if resp.is_success:
+            commits = resp.json()
+            if commits and isinstance(commits, list):
+                remote_sha = commits[0]["sha"][:7]
+            github_reachable = True
+    except Exception:
+        pass
+
+    update_available = bool(
+        deployed_sha and remote_sha and deployed_sha[:7] != remote_sha[:7]
+    )
+
+    return {
+        "deployed_sha": deployed_sha,
+        "deployed_at": deployed_at,
+        "remote_sha": remote_sha,
+        "update_available": update_available,
+        "github_reachable": github_reachable,
+    }
+
+
+@router.post("/trigger-update", status_code=202)
+async def trigger_update(
+    _: User = Depends(require_superadmin),
+):
+    if os.path.exists(TRIGGER_FILE):
+        raise HTTPException(409, "Update already triggered")
+    os.makedirs(os.path.dirname(TRIGGER_FILE), exist_ok=True)
+    with open(TRIGGER_FILE, "w") as f:
+        f.write(datetime.now(timezone.utc).isoformat())
+    return {"status": "triggered"}
