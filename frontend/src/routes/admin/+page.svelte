@@ -9,7 +9,7 @@
     import { brandingApi, type BrandingUpdate } from '$lib/api';
 
     // ── Tab ──────────────────────────────────────────────────────────────────
-    let activeTab = $state<'benutzer' | 'leitstellen' | 'branding'>('benutzer');
+    let activeTab = $state<'benutzer' | 'leitstellen' | 'branding' | 'system'>('benutzer');
 
     // ── Users ────────────────────────────────────────────────────────────────
     let users = $state<AdminUser[]>([]);
@@ -72,6 +72,65 @@
     let showLsModal = $state(false);
     let editingLs = $state<LeistelleDetail | null>(null);
     let lsForm = $state({ name: '', anrufgruppe: '', zusatz_kanaele: [] as ZusatzKanal[] });
+
+    // ── System / Update ──────────────────────────────────────────────────────────
+    let updateStatus = $state<import('$lib/api').UpdateStatus | null>(null);
+    let updateLoading = $state(false);
+    let updateTriggering = $state(false);
+    let updateError = $state('');
+    let updateSuccess = $state('');
+
+    async function loadUpdateStatus() {
+        updateLoading = true;
+        updateError = '';
+        try {
+            updateStatus = await adminApi.getUpdateStatus();
+        } catch {
+            updateError = 'Status konnte nicht geladen werden';
+        } finally {
+            updateLoading = false;
+        }
+    }
+
+    async function triggerUpdate() {
+        updateError = '';
+        updateSuccess = '';
+        updateTriggering = true;
+        try {
+            await adminApi.triggerUpdate();
+        } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : 'Fehler beim Trigger';
+            if (msg.includes('409') || msg.includes('already')) {
+                updateError = 'Update läuft bereits';
+            } else {
+                updateError = msg;
+            }
+            updateTriggering = false;
+            return;
+        }
+
+        // Poll every 3s until deployed_sha changes or 3min timeout
+        const startSha = updateStatus?.deployed_sha ?? null;
+        const deadline = Date.now() + 3 * 60 * 1000;
+        const poll = async () => {
+            if (Date.now() > deadline) {
+                updateTriggering = false;
+                updateError = 'Timeout — bitte Server-Logs prüfen';
+                return;
+            }
+            try {
+                const fresh = await adminApi.getUpdateStatus();
+                updateStatus = fresh;
+                if (!fresh.update_available && fresh.deployed_sha !== startSha) {
+                    updateTriggering = false;
+                    updateSuccess = `Aktualisiert auf ${fresh.deployed_sha?.slice(0, 7) ?? '?'}`;
+                    return;
+                }
+            } catch { /* ignore transient errors during polling */ }
+            setTimeout(poll, 3000);
+        };
+        setTimeout(poll, 3000);
+    }
 
     // Polygon drawing state
     let polyMapContainer: HTMLDivElement | undefined;
@@ -378,6 +437,9 @@
         <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>
             Branding
         </button>
+        <button class="tab" class:active={activeTab === 'system'} onclick={() => { activeTab = 'system'; loadUpdateStatus(); }}>
+            System
+        </button>
     </div>
 
     <!-- ── Benutzer ── -->
@@ -600,6 +662,74 @@
         </div>
     </div>
     {/if}
+
+    {#if activeTab === 'system'}
+        <div class="section">
+            <div class="section-header">
+                <strong>Software-Update</strong>
+                {#if !updateTriggering}
+                    <button class="btn-small" onclick={loadUpdateStatus}>↺ Aktualisieren</button>
+                {/if}
+            </div>
+
+            {#if updateError}
+                <div class="error-bar">{updateError} <button onclick={() => updateError = ''}>✕</button></div>
+            {/if}
+            {#if updateSuccess}
+                <div class="success-bar">{updateSuccess}</div>
+            {/if}
+
+            {#if updateLoading}
+                <p class="hint">Lade Status…</p>
+            {:else if updateStatus}
+                <div class="update-grid">
+                    <div class="update-row">
+                        <span class="update-label">Installiert</span>
+                        <code>{updateStatus.deployed_sha?.slice(0, 7) ?? '—'}</code>
+                        {#if updateStatus.deployed_at}
+                            <span class="hint">{new Date(updateStatus.deployed_at).toLocaleString('de-DE')}</span>
+                        {/if}
+                    </div>
+                    <div class="update-row">
+                        <span class="update-label">GitHub (main)</span>
+                        {#if updateStatus.github_reachable}
+                            <code>{updateStatus.remote_sha?.slice(0, 7) ?? '—'}</code>
+                        {:else}
+                            <span class="hint">nicht erreichbar</span>
+                        {/if}
+                    </div>
+                    <div class="update-row">
+                        <span class="update-label">Status</span>
+                        {#if !updateStatus.github_reachable}
+                            <span class="badge badge-warn">GitHub nicht erreichbar</span>
+                        {:else if updateStatus.update_available}
+                            <span class="badge badge-update">Update verfügbar ↑</span>
+                        {:else}
+                            <span class="badge badge-ok">Aktuell ✓</span>
+                        {/if}
+                    </div>
+                </div>
+
+                <div style="margin-top: 1rem;">
+                    {#if updateTriggering}
+                        <button class="btn-primary" disabled>
+                            <span class="spinner"></span> Update wird durchgeführt…
+                        </button>
+                    {:else}
+                        <button
+                            class="btn-primary"
+                            disabled={!updateStatus.update_available || !updateStatus.github_reachable}
+                            onclick={triggerUpdate}
+                        >
+                            Jetzt updaten
+                        </button>
+                    {/if}
+                </div>
+            {:else}
+                <p class="hint">Status nicht verfügbar</p>
+            {/if}
+        </div>
+    {/if}
 </div>
 
 <!-- ── Leitstelle Modal ── -->
@@ -769,4 +899,13 @@
     .bf-actions { display: flex; gap: .75rem; justify-content: flex-end; padding-top: .5rem; border-top: 1px solid var(--border); margin-top: 1rem; }
     .btn-secondary { padding: .5rem 1rem; background: transparent; color: var(--text-2); border: 1px solid var(--border); border-radius: 6px; font-weight: 600; cursor: pointer; font-size: var(--text-sm); }
     .btn-secondary:hover { background: var(--surface-2); }
+    .update-grid { display: flex; flex-direction: column; gap: .6rem; }
+    .update-row { display: flex; align-items: center; gap: .75rem; font-size: var(--text-sm); }
+    .update-label { width: 130px; color: var(--text-muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; flex-shrink: 0; }
+    .badge { display: inline-block; padding: .15rem .5rem; border-radius: 3px; font-size: var(--text-xs); font-weight: 600; }
+    .badge-ok { background: rgba(107,127,77,.2); color: #a8c070; border: 1px solid rgba(107,127,77,.4); }
+    .badge-update { background: rgba(210,120,30,.2); color: #e8a050; border: 1px solid rgba(210,120,30,.4); }
+    .badge-warn { background: rgba(180,60,40,.15); color: var(--color-primary); border: 1px solid rgba(180,60,40,.3); }
+    .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(255,255,255,.3); border-top-color: white; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: .3rem; }
+    @keyframes spin { to { transform: rotate(360deg); } }
 </style>
