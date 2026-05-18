@@ -1,12 +1,12 @@
 # Release Process
 
-This document describes how to cut a new release of MarschPlan.
+This document describes how to cut a new release of ConvoyPlan.
 
 ---
 
 ## Versioning
 
-MarschPlan follows [Semantic Versioning](https://semver.org/):
+ConvoyPlan follows [Semantic Versioning](https://semver.org/):
 
 - **MAJOR** – incompatible API or database changes requiring manual migration steps.
 - **MINOR** – new features, backwards-compatible.
@@ -66,10 +66,10 @@ The `release.yml` workflow triggers on the `v*.*.*` tag and:
 1. Builds the `backend` and `frontend` Docker images.
 2. Pushes them to GitHub Container Registry (GHCR) as:
    ```
-   ghcr.io/retttechsolutions/marschplan/backend:0.5.0
-   ghcr.io/retttechsolutions/marschplan/backend:0.5
-   ghcr.io/retttechsolutions/marschplan/backend:latest
-   ghcr.io/retttechsolutions/marschplan/frontend:0.5.0
+   ghcr.io/retttechsolutions/convoyplan/backend:0.5.0
+   ghcr.io/retttechsolutions/convoyplan/backend:0.5
+   ghcr.io/retttechsolutions/convoyplan/backend:latest
+   ghcr.io/retttechsolutions/convoyplan/frontend:0.5.0
    ...
    ```
 3. Creates a GitHub Release with auto-generated release notes from commit messages.
@@ -103,7 +103,7 @@ Alembic migrations run automatically on backend start via the `command` in `dock
 
 ```bash
 # Roll back to the previous image tag
-docker compose up -d --no-deps -e BACKEND_IMAGE=ghcr.io/retttechsolutions/marschplan/backend:0.4.0 backend
+docker compose up -d --no-deps -e BACKEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/backend:0.4.0 backend
 ```
 
 If the new release introduced a database migration, run `alembic downgrade -1` inside the backend container before rolling back the image:

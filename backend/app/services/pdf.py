@@ -57,7 +57,7 @@ class _PDF(FPDF):
         self.set_text_color(120, 120, 120)
         self.cell(
             0, 5,
-            f"Erstellt mit MarschPlan  |  {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr  |  Seite {self.page_no()}",
+            f"Erstellt mit ConvoyPlan  |  {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr  |  Seite {self.page_no()}",
             align="C",
         )
         self.set_text_color(0, 0, 0)

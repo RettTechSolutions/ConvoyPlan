@@ -5,12 +5,12 @@ set -euo pipefail
 # future deployments happen automatically via git push to origin/main.
 #
 # ONE-TIME SERVER MIGRATION (run after this deploy lands):
-#   1. On the server: echo "GITHUB_TOKEN=<pat>" > ~/MarschPlan/.env
+#   1. On the server: echo "GITHUB_TOKEN=<pat>" > ~/ConvoyPlan/.env
 #   2. docker compose up -d   (starts the updater)
 #   3. Verify: docker logs -f updater
 
 REMOTE="${DEPLOY_HOST:-s-lx04-docker}"
-REMOTE_DIR="${DEPLOY_DIR:-~/MarschPlan}"
+REMOTE_DIR="${DEPLOY_DIR:-~/ConvoyPlan}"
 
 echo "→ Sync to ${REMOTE}:${REMOTE_DIR}"
 rsync -az --delete \

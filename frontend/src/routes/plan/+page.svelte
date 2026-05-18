@@ -53,14 +53,14 @@
 
 	// Theme toggle
 	let theme = $state<'dark' | 'light'>(
-	    (typeof window !== 'undefined' ? localStorage.getItem('marschplan-theme') : null) as 'dark' | 'light' ?? 'dark'
+	    (typeof window !== 'undefined' ? localStorage.getItem('convoyplan-theme') : null) as 'dark' | 'light' ?? 'dark'
 	);
 	function toggleTheme() {
 	    theme = theme === 'dark' ? 'light' : 'dark';
 	    if (typeof document !== 'undefined') {
 	        document.documentElement.setAttribute('data-theme', theme);
 	    }
-	    try { localStorage.setItem('marschplan-theme', theme); } catch (_) {}
+	    try { localStorage.setItem('convoyplan-theme', theme); } catch (_) {}
 	}
 
 	// Import state

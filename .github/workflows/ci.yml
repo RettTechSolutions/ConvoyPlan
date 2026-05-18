@@ -15,11 +15,11 @@ jobs:
       postgres:
         image: postgis/postgis:15-3.4
         env:
-          POSTGRES_USER: marschplan
-          POSTGRES_PASSWORD: marschplan
-          POSTGRES_DB: marschplan
+          POSTGRES_USER: convoyplan
+          POSTGRES_PASSWORD: convoyplan
+          POSTGRES_DB: convoyplan
         options: >-
-          --health-cmd "pg_isready -U marschplan"
+          --health-cmd "pg_isready -U convoyplan"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -46,12 +46,12 @@ jobs:
 
       - name: Run migrations
         env:
-          DATABASE_URL: postgresql+asyncpg://marschplan:marschplan@localhost:5432/marschplan
+          DATABASE_URL: postgresql+asyncpg://convoyplan:convoyplan@localhost:5432/convoyplan
         run: cd backend && alembic upgrade head
 
       - name: Run tests
         env:
-          DATABASE_URL: postgresql+asyncpg://marschplan:marschplan@localhost:5432/marschplan
+          DATABASE_URL: postgresql+asyncpg://convoyplan:convoyplan@localhost:5432/convoyplan
           JWT_SECRET: ci-test-secret-do-not-use
           GRAPHHOPPER_URL: http://localhost:8989
         run: cd backend && pytest tests/ -v --tb=short
