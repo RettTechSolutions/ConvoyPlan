@@ -22,6 +22,9 @@ graphhopper/graph-cache/
 .env
 .env.local
 
+# Server-spezifische Konfiguration (nie öffentlich einchecken)
+docker-compose.override.yml
+
 # Editor
 .vscode/
 .idea/
