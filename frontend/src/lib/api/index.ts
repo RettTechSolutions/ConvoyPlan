@@ -278,7 +278,17 @@ export const adminApi = {
     createUser: (data: AdminUserCreate) => api.post<AdminUser>('/api/admin/users', data),
     updateUser: (id: string, data: AdminUserUpdate) => api.patch<AdminUser>(`/api/admin/users/${id}`, data),
     deleteUser: (id: string) => api.delete(`/api/admin/users/${id}`),
+    getUpdateStatus: () => api.get<UpdateStatus>('/api/admin/update-status'),
+    triggerUpdate: () => api.post<{ status: string }>('/api/admin/trigger-update', {}),
 };
+
+export interface UpdateStatus {
+    deployed_sha: string | null;
+    deployed_at: string | null;
+    remote_sha: string | null;
+    update_available: boolean;
+    github_reachable: boolean;
+}
 
 export interface BrandingData {
     app_name: string;
