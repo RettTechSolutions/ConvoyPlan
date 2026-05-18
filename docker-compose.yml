@@ -17,7 +17,7 @@ services:
 
   backend:
     build: ./backend
-    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     environment:
       DATABASE_URL: postgresql+asyncpg://marschplan:marschplan@db:5432/marschplan
       JWT_SECRET: changeme-in-production
@@ -25,7 +25,6 @@ services:
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GITHUB_REPO: ${GITHUB_REPO:-RettTechSolutions/MarschPlan}
     volumes:
-      - ./backend:/app
       - cert_uploads:/certs
       - logo_uploads:/uploads
       - update_status:/update_status
