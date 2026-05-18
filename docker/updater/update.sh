@@ -12,6 +12,9 @@ INTERVAL="${UPDATE_INTERVAL:-300}"
 printf 'machine github.com\nlogin x-access-token\npassword %s\n' "${GITHUB_TOKEN}" > ~/.netrc
 chmod 600 ~/.netrc
 
+# Allow git to operate on the mounted workspace (owned by host user, not container root)
+git config --global --add safe.directory "${REPO_DIR}"
+
 COMPOSE_FILES=(-f "${REPO_DIR}/docker-compose.yml" -f "${REPO_DIR}/docker-compose.override.yml")
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
