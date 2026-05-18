@@ -1295,8 +1295,8 @@
 		{/if}
 	<div class="sidebar-footer">
 		<button class="theme-toggle" onclick={toggleTheme} aria-label="Theme umschalten">
-			{theme === 'dark' ? '☾' : '☀'}
-			<span>{theme === 'dark' ? 'Dark' : 'Light'}</span>
+			{theme === 'dark' ? '☀' : '☾'}
+			<span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
 		</button>
 		<span class="app-version">v0.4.0</span>
 	</div>
