@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# NOTE: This script is only needed for the initial server migration or emergency
+# manual deploys. Once the `updater` container is running on the server, all
+# future deployments happen automatically via git push to origin/main.
+#
+# ONE-TIME SERVER MIGRATION (run after this deploy lands):
+#   1. On the server: echo "GITHUB_TOKEN=<pat>" > ~/MarschPlan/.env
+#   2. docker compose up -d   (starts the updater)
+#   3. Verify: docker logs -f updater
 
 REMOTE="${DEPLOY_HOST:-s-lx04-docker}"
 REMOTE_DIR="${DEPLOY_DIR:-~/MarschPlan}"
