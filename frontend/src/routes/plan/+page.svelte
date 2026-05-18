@@ -108,6 +108,8 @@
 	// Forms
 	let showVehicleForm = $state(false);
 	let showConvoyForm = $state(false);
+	let showEditConvoyForm = $state(false);
+	let editConvoy = $state({ name:'', organization:'', organization_id:'', start_time:'', speed_urban_kmh:40, speed_rural_kmh:65, road_preference:'schnell' as RoadPreference, spacing_urban_m:15, spacing_rural_m:50, spacing_motorway_m:100 });
 	let showBefehlModal = $state(false);
 	let showSubConvoyForm = $state(false);
 	let newVehicle = $state({ name:'', callsign:'', license_plate:'', height_cm:'', weight_kg:'', length_cm:'', convoy_role:'', tank_capacity_l:'', fuel_consumption_l100km:'', current_fuel_l:'' });
@@ -177,6 +179,43 @@
 			wizardStep = 1;
 			mapMode.set('set-start');
 		} catch { error = 'Konvoi konnte nicht erstellt werden'; }
+	}
+
+	function openEditConvoyForm() {
+		if (!selected) return;
+		editConvoy = {
+			name: selected.name,
+			organization: selected.organization ?? '',
+			organization_id: selected.organization_id ?? '',
+			start_time: selected.start_time ? new Date(selected.start_time).toISOString().slice(0, 16) : '',
+			speed_urban_kmh: selected.speed_urban_kmh,
+			speed_rural_kmh: selected.speed_rural_kmh,
+			road_preference: selected.road_preference as RoadPreference,
+			spacing_urban_m: selected.spacing_urban_m,
+			spacing_rural_m: selected.spacing_rural_m,
+			spacing_motorway_m: selected.spacing_motorway_m,
+		};
+		showEditConvoyForm = true;
+	}
+
+	async function saveConvoyEdit() {
+		if (!selected) return;
+		try {
+			await convoysApi.update(selected.id, {
+				name: editConvoy.name,
+				organization: editConvoy.organization || undefined,
+				organization_id: editConvoy.organization_id || undefined,
+				start_time: editConvoy.start_time || undefined,
+				speed_urban_kmh: editConvoy.speed_urban_kmh,
+				speed_rural_kmh: editConvoy.speed_rural_kmh,
+				road_preference: editConvoy.road_preference,
+				spacing_urban_m: editConvoy.spacing_urban_m,
+				spacing_rural_m: editConvoy.spacing_rural_m,
+				spacing_motorway_m: editConvoy.spacing_motorway_m,
+			});
+			await refreshConvoy();
+			showEditConvoyForm = false;
+		} catch { error = 'Einstellungen konnten nicht gespeichert werden'; }
 	}
 
 	// ── Vehicles ─────────────────────────────────────────────────────
@@ -683,6 +722,10 @@
 				<!-- ── TAB: Plan ── -->
 				{#if activeTab === 'convoy' && selected}
 					<div class="section">
+						<div class="section-header" style="margin-top:0">
+							<span>Marschverband</span>
+							<button class="btn-small" onclick={openEditConvoyForm}>✎ Bearbeiten</button>
+						</div>
 						<p><strong>Organisation:</strong> {selected.organization ?? '–'}</p>
 						<p><strong>Startzeit:</strong> {selected.start_time ? new Date(selected.start_time).toLocaleString('de-DE') : '–'}</p>
 						<p><strong>Tempo:</strong> {selected.speed_urban_kmh} km/h (innerorts) / {selected.speed_rural_kmh} km/h (außerorts) · {{ schnell: 'Autobahn', bundesstrasse: 'Bundesstr.', landstrasse: 'Landstr.' }[selected.road_preference] ?? selected.road_preference}</p>
@@ -1479,6 +1522,46 @@
 				<div class="modal-actions">
 					<button type="button" onclick={() => (showConvoyForm = false)}>Abbrechen</button>
 					<button type="submit" class="btn-primary">Erstellen & Punkte setzen →</button>
+				</div>
+			</form>
+		</div>
+	</div>
+{/if}
+
+<!-- ── Modal: Marschverband bearbeiten ──────────────────────────── -->
+{#if showEditConvoyForm}
+	<div class="modal-backdrop" onclick={() => (showEditConvoyForm = false)}>
+		<div class="modal" onclick={(e) => e.stopPropagation()}>
+			<h2>Marschverband bearbeiten</h2>
+			<form onsubmit={(e) => { e.preventDefault(); saveConvoyEdit(); }}>
+				<label>Name *<input bind:value={editConvoy.name} required /></label>
+				<label>Organisation
+					<select bind:value={editConvoy.organization_id} onchange={() => {
+						const org = organizations.find(o => o.id === editConvoy.organization_id);
+						editConvoy.organization = org?.name ?? '';
+					}}>
+						<option value="">– keine –</option>
+						{#each organizations as org}
+							<option value={org.id}>{org.name}</option>
+						{/each}
+					</select>
+				</label>
+				<label>Startzeit (optional)<input type="datetime-local" bind:value={editConvoy.start_time} /></label>
+				<label>Geschw. innerorts (km/h)<input type="number" bind:value={editConvoy.speed_urban_kmh} min="10" max="60" /></label>
+				<label>Geschw. außerorts (km/h)<input type="number" bind:value={editConvoy.speed_rural_kmh} min="30" max="100" /></label>
+				<label>Straßenpräferenz
+					<select bind:value={editConvoy.road_preference}>
+						<option value="schnell">Schnellste Route (Autobahn erlaubt)</option>
+						<option value="bundesstrasse">Bundesstraßen bevorzugt</option>
+						<option value="landstrasse">Nur Landstraßen</option>
+					</select>
+				</label>
+				<label>Fahrzeugabstand Innerorts (m)<input type="number" bind:value={editConvoy.spacing_urban_m} min="5" max="200" /></label>
+				<label>Fahrzeugabstand Außerorts (m)<input type="number" bind:value={editConvoy.spacing_rural_m} min="10" max="500" /></label>
+				<label>Fahrzeugabstand Autobahn (m)<input type="number" bind:value={editConvoy.spacing_motorway_m} min="10" max="500" /></label>
+				<div class="modal-actions">
+					<button type="button" onclick={() => (showEditConvoyForm = false)}>Abbrechen</button>
+					<button type="submit" class="btn-primary">Speichern</button>
 				</div>
 			</form>
 		</div>
