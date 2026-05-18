@@ -8,6 +8,41 @@ All notable changes to MarschPlan are documented here.
 
 ---
 
+## [0.5.0] – 2026-05-18
+
+### Added
+
+- **Organisations-Rollenmodell** – feingranulare Zugriffskontrolle auf Konvoi- und Fahrzeugendpoints (`get_convoy_access`, `get_vehicle_access`). Lesen ab Beobachter-Rolle, Schreiben ab Fahrer- bzw. Planer-Rolle; WebSocket-Handler prüft Konvoi-Zugehörigkeit und Fahrer-Rolle für Positionsschreibzugriff.
+- **GPX/GeoJSON-Import** – Parser-Service für GPX-Tracks und GeoJSON-FeatureCollections; REST-Endpunkte `POST /api/convoys/{id}/import/gpx` und `.../geojson`; Import-UI im Export-Tab der Planungsseite mit Datei-Upload und Reset.
+- **Leitstellen** – vollständiges CRUD-Datenmodell (`Leitstelle`, GeoJSON/KML-Grenzimport); Admin-Tab mit Polygon-Zeichnung direkt auf der Karte; automatische Berechnung von Kanalwechseln beim Routingdurchlauf; Anzeige im Zeitplan-Tab, Marschbefehl-Modal und PDF-Export.
+- **Branding-System** – CSS Custom Properties für alle Markenfarben; Branding-API (`GET/PUT /api/admin/branding`) mit Logo-Upload und persistentem `BrandingConfig`-JSON; Branding-Tab im Admin-Panel mit Live-Vorschau; Branding-Schritt (Schritt 3) im Setup-Wizard.
+- **Design-Token-System und Dark/Light-Theme** – vollständiges Token-Set (Farben, Typografie, Abstände, Radien, Schatten) mit CSS-Variablen; `ThemeStore` mit `localStorage`-Persistenz und SSR-Guard; Theme-Toggle in der Seitenleiste; Token-Migration für Plan-, Admin-, Tracking-, Login- und Share-Seiten.
+- **Auto-Updater** – separater Docker-Container `updater` mit Git-Poll-Schleife (5-Minuten-Intervall); authentifizierter Fetch via `GITHUB_TOKEN`; `git reset --hard` für saubere Deploys; schreibt `status.json` auf gemeinsames Volume; reagiert auf manuelles Trigger-Flag.
+- **Update-Status-Admin-UI** – neuer Tab "System" im Admin-Panel zeigt letzten Check-Zeitstempel, aktuellen und verfügbaren Commit-SHA sowie Update-Status; Schaltfläche zum manuellen Auslösen eines Updates via `POST /api/admin/trigger-update`.
+- **Konvoi-Einstellungen bearbeiten** – bestehende Konvois können nach der Erstellung vollständig editiert werden (Name, Beschreibung, Start-/Endzeit, Geschwindigkeitsprofile).
+
+### Changed
+
+- Fahrzeugliste zeigt alle Org-Mitglieder (nicht nur Owner); Lese- und Schreibzugriff durch Rollen-Guards gesteuert.
+- Seitenleiste der Planungsseite komplett auf Design-Tokens umgestellt; theme-bewusste Hintergrundfarbe.
+- Tracking-Ansicht auto-zoomt beim Laden auf die berechnete Route.
+- `docker-compose.yml`: `updater`-Service mit `update_status`-Volume; `GITHUB_TOKEN` wird an Backend weitergegeben.
+- Backend-Version auf `0.5.0` erhöht.
+
+### Fixed
+
+- Backend-Bind-Mount entfernt; Code läuft im Produktionsbetrieb ausschließlich aus dem gebauten Image.
+- `toggleTheme` mit SSR-Guard für `localStorage`-Zugriff abgesichert.
+- Kanalwechsel-Geometrie-Binding und MultiPolygon-Handling korrigiert.
+- Branding-Response-Typ korrekt gecastet.
+- `mapMode` in MapView-Click-Handler via `get()` für Svelte-5-Kompatibilität gelesen.
+- CSS-Variablen beim Tab-Wechsel wiederhergestellt; Branding-Formular nach Speichern synchronisiert.
+- Expliziten Compose-Projektnamen gesetzt, um Workspace/marschplan-Namenskonflikt zu vermeiden.
+- `git safe.directory` für gemounteten Workspace im Updater-Container gesetzt.
+- Updater-Skript gegen Self-Kill bei laufendem Compose-Neustart abgesichert.
+
+---
+
 ## [0.4.0] – 2026-05-07
 
 ### Added
@@ -92,7 +127,8 @@ All notable changes to MarschPlan are documented here.
 - Capacitor configuration for Android/iOS native wrapper.
 - Docker Compose setup with GraphHopper OSM pre-download.
 
-[Unreleased]: https://github.com/RettTechSolutions/MarschPlan/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/RettTechSolutions/MarschPlan/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/RettTechSolutions/MarschPlan/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/RettTechSolutions/MarschPlan/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/RettTechSolutions/MarschPlan/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/RettTechSolutions/MarschPlan/compare/v0.1.0...v0.2.0
