@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 60 * 24 * 7  # 7 days
     graphhopper_url: str = "http://localhost:8989"
     caddy_admin_url: str = "http://caddy:2019"
+    github_token: str = ""
+    github_repo: str = "RettTechSolutions/MarschPlan"
 
     class Config:
         env_file = ".env"
