@@ -4,6 +4,8 @@
 
 # MarschPlan
 
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+
 **MarschPlan ist eine browserbasierte Planungssoftware für Marschverbände, Konvois und Einsatzfahrten von BOS-Organisationen.**
 
 Die Anwendung unterstützt Planerinnen und Planer dabei, Fahrzeuge zu verwalten, Marschrouten auf Basis von OpenStreetMap zu erstellen, Wegpunkte und technische Halte zu strukturieren, Zeitpläne automatisch zu berechnen und Marschbefehle als PDF, GPX oder JSON zu exportieren. Live-Tracking, Wetterdaten, Sperrungsinformationen und GeoJSON-Lagedaten machen MarschPlan zu einer zentralen Lage- und Planungsoberfläche für Übungen, Einsätze und Verlegungen.
@@ -28,6 +30,7 @@ Die Anwendung unterstützt Planerinnen und Planer dabei, Fahrzeuge zu verwalten,
 - [Sicherheitshinweise](#sicherheitshinweise)
 - [Roadmap-Ideen](#roadmap-ideen)
 - [Lizenz](#lizenz)
+- [Beitragen](#beitragen)
 
 ---
 
@@ -70,6 +73,8 @@ Die Anwendung unterstützt Planerinnen und Planer dabei, Fahrzeuge zu verwalten,
 | Mandanten | Organisationen mit Mitgliederverwaltung | ✅ |
 | Rollen | Admin, Planer, Fahrer und Beobachter | ✅ |
 | Freigabelink | Öffentliche Routenansicht per Share-Token | ✅ |
+| Branding | Eigenes App-Logo, Farben und Name über Admin-UI konfigurierbar | ✅ |
+| Leitstellen | Leitstellen und Kanalwechselpunkte entlang der Route | ✅ |
 
 ### Live, Lage und Export
 
@@ -81,9 +86,18 @@ Die Anwendung unterstützt Planerinnen und Planer dabei, Fahrzeuge zu verwalten,
 | Sperrungen | Abfrage von OSM-Daten über Overpass API | ✅ |
 | Lagedaten | GeoJSON-Layer hochladen, anzeigen und verwalten | ✅ |
 | PDF | Marschbefehl als PDF | ✅ |
-| GPX / JSON | Export für Navigation, Dokumentation und Weiterverarbeitung | ✅ |
+| GPX / JSON | Export und Import für Navigation, Dokumentation und Weiterverarbeitung | ✅ |
 | PWA | Installierbare Web-App mit Tile-Caching | ✅ |
 | Native Wrapper | Capacitor-Konfiguration für Android und iOS | ✅ |
+
+### Betrieb und Administration
+
+| Funktion | Beschreibung | Status |
+|---|---|---:|
+| Setup-Wizard | Ersteinrichtung per Browser ohne SSH-Zugang | ✅ |
+| Admin-Bereich | Benutzer-, Leitstellen- und Branding-Verwaltung | ✅ |
+| Auto-Updater | Git-Polling-Container aktualisiert die Instanz automatisch bei neuem Commit | ✅ |
+| Update-Status | Admin-UI zeigt Deploy-SHA und GitHub-Stand; manueller Trigger per Button | ✅ |
 
 ---
 
@@ -115,6 +129,7 @@ flowchart LR
     DB[(PostgreSQL + PostGIS)]
     GH[GraphHopper]
     EXT[Open-Meteo / Overpass]
+    Updater[Updater Container\ngit-poll auto-deploy]
 
     Browser -->|HTTPS / WSS| Caddy
     Caddy -->|/api /ws| API
@@ -123,6 +138,8 @@ flowchart LR
     API --> GH
     API --> EXT
     API -->|Caddy Admin API :2019| Caddy
+    Updater -->|docker compose up --build| API
+    Updater -->|HTTPS| GH[GitHub]
 ```
 
 - **Caddy** terminiert TLS (Let's Encrypt oder eigenes Zertifikat), leitet `/api/*` und `/ws/*` ans Backend und alles andere ans Frontend. Die Konfiguration kann per Admin-API live neu geladen werden.
@@ -164,6 +181,8 @@ MarschPlan/
 │   │   │   ├── auth.py       # Registrierung, Login
 │   │   │   ├── setup.py      # Ersteinrichtungs-Wizard (Status + Ausführen)
 │   │   │   ├── admin.py      # Superadmin-Benutzerverwaltung
+│   │   │   ├── leitstellen.py  # Leitstellen und Kanalwechsel
+│   │   │   ├── branding.py   # Branding-Konfiguration und Logo-Upload
 │   │   │   ├── convoys.py    # Marschverbände, Waypoints, Export
 │   │   │   ├── vehicles.py   # Fahrzeugverwaltung
 │   │   │   ├── organizations.py  # Organisationen und Mitglieder
@@ -194,10 +213,11 @@ MarschPlan/
 │   │   ├── plan/             # Planungsansicht mit Karte
 │   │   ├── tracking/         # Live-Tracking-Ansicht
 │   │   ├── share/            # Öffentliche Routenansicht
-│   │   └── admin/            # Superadmin-Benutzerverwaltung
+│   │   └── admin/            # Superadmin-Benutzerverwaltung, Leitstellen, Branding, System (Update-Status)
 │   ├── capacitor.config.ts
 │   ├── package.json
 │   └── vite.config.ts
+├── docker/updater/           # Git-Polling-Container (update.sh, Dockerfile)
 ├── caddy/
 │   └── entrypoint.sh         # Caddyfile-Generierung aus Env-Variablen (Fallback vor Setup)
 ├── graphhopper/
@@ -587,7 +607,7 @@ Für iOS wird eine macOS-Umgebung mit Xcode benötigt.
 
 Diese Punkte sind mögliche nächste Ausbauschritte:
 
-- Import vorhandener GPX-/GeoJSON-Routen.
+- ~~Import vorhandener GPX-/GeoJSON-Routen~~ ✅ (seit 0.5.0)
 - Rechte- und Rollenprüfung pro Organisation weiter verfeinern.
 - Benachrichtigungen bei Verzögerungen oder Abweichungen von der Route.
 - Audit-Log für Änderungen an Marschbefehlen und Konvois.
@@ -599,7 +619,14 @@ Diese Punkte sind mögliche nächste Ausbauschritte:
 
 ## Lizenz
 
-Dieses Projekt steht unter der MIT-Lizenz.
+Dieses Projekt steht unter der [GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE).
+
+---
+
+## Beitragen
+
+Pull Requests sind willkommen. Bitte öffne zuerst ein Issue für größere Änderungen.
+Alle Beiträge unterliegen ebenfalls der AGPL-3.0-Lizenz.
 
 ---
 
