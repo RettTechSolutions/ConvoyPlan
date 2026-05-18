@@ -26,6 +26,7 @@ services:
       - ./backend:/app
       - cert_uploads:/certs
       - logo_uploads:/uploads
+      - update_status:/update_status
     depends_on:
       db:
         condition: service_healthy
@@ -90,6 +91,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - .:/workspace
+      - update_status:/update_status
     environment:
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
     restart: unless-stopped
@@ -102,3 +104,4 @@ volumes:
   caddy_config:
   cert_uploads:
   logo_uploads:
+  update_status:
