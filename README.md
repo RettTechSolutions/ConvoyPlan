@@ -2,13 +2,21 @@
   <img src="logo/Logo%20Horizontal.png" alt="MarschPlan Logo" width="420">
 </p>
 
-# MarschPlan
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg" alt="License"></a>
+  <a href="https://github.com/RettTechSolutions/MarschPlan/releases/latest"><img src="https://img.shields.io/github/v/release/RettTechSolutions/MarschPlan?label=Version&color=green" alt="Latest Release"></a>
+  <a href="https://github.com/RettTechSolutions/MarschPlan/actions/workflows/ci.yml"><img src="https://github.com/RettTechSolutions/MarschPlan/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/RettTechSolutions/MarschPlan/issues"><img src="https://img.shields.io/github/issues/RettTechSolutions/MarschPlan" alt="Issues"></a>
+  <a href="https://github.com/RettTechSolutions/MarschPlan/pulls"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs welcome"></a>
+</p>
 
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+<p align="center">
+  <strong>Browserbasierte Planungssoftware für Marschverbände, Konvois und Einsatzfahrten von BOS-Organisationen.</strong>
+</p>
 
-**MarschPlan ist eine browserbasierte Planungssoftware für Marschverbände, Konvois und Einsatzfahrten von BOS-Organisationen.**
-
-Die Anwendung unterstützt Planerinnen und Planer dabei, Fahrzeuge zu verwalten, Marschrouten auf Basis von OpenStreetMap zu erstellen, Wegpunkte und technische Halte zu strukturieren, Zeitpläne automatisch zu berechnen und Marschbefehle als PDF, GPX oder JSON zu exportieren. Live-Tracking, Wetterdaten, Sperrungsinformationen und GeoJSON-Lagedaten machen MarschPlan zu einer zentralen Lage- und Planungsoberfläche für Übungen, Einsätze und Verlegungen.
+<p align="center">
+  Kartenbasierte Routenplanung · Live-Tracking · Marschbefehl-PDF · Self-hosted · Docker
+</p>
 
 ---
 
@@ -16,7 +24,7 @@ Die Anwendung unterstützt Planerinnen und Planer dabei, Fahrzeuge zu verwalten,
 
 - [Highlights](#highlights)
 - [Funktionsumfang](#funktionsumfang)
-- [Screenshots und Assets](#screenshots-und-assets)
+- [Screenshots](#screenshots)
 - [Architektur](#architektur)
 - [Tech-Stack](#tech-stack)
 - [Projektstruktur](#projektstruktur)
@@ -36,22 +44,24 @@ Die Anwendung unterstützt Planerinnen und Planer dabei, Fahrzeuge zu verwalten,
 
 ## Highlights
 
-- **Kartenbasierte Marschplanung** mit OpenStreetMap und MapLibre GL.
-- **Routing über GraphHopper** inklusive selbst gehosteter Routing-Engine im Docker-Setup.
-- **Fahrzeugverwaltung** mit Funkrufname, Kennzeichen, Abmessungen, Gewicht, Rolle und Kraftstoffdaten.
-- **Wegpunkte, Kontrollpunkte und technische Halte** inklusive Haltezeiten und Zweck wie Tanken, Pause oder Wartung.
-- **Automatische Zeitplanung** anhand von Startzeit, Marschgeschwindigkeiten und Halten.
-- **Marschbefehl-PDF** sowie GPX- und JSON-Export für Weitergabe und Nachbearbeitung.
-- **Live-Tracking per WebSocket** mit Browser-Geolocation und Fahrzeugstatus.
-- **Organisations- und Rollenmodell** für Admins, Planer, Fahrer und Beobachter.
-- **Wetter- und Overpass-Integration** für Wetterdaten, Sperrungen und Baustellen.
-- **PWA und Capacitor-Konfiguration** für installierbare Web-App und native App-Wrapper.
+- 🗺️ **Kartenbasierte Marschplanung** mit OpenStreetMap und MapLibre GL.
+- 🚗 **Routing über GraphHopper** inklusive selbst gehosteter Routing-Engine im Docker-Setup.
+- 🚒 **Fahrzeugverwaltung** mit Funkrufname, Kennzeichen, Abmessungen, Gewicht, Rolle und Kraftstoffdaten.
+- 📍 **Wegpunkte, Kontrollpunkte und technische Halte** inklusive Haltezeiten und Zweck wie Tanken, Pause oder Wartung.
+- ⏱️ **Automatische Zeitplanung** anhand von Startzeit, Marschgeschwindigkeiten und Halten.
+- 📄 **Marschbefehl-PDF** sowie GPX- und JSON-Export für Weitergabe und Nachbearbeitung.
+- 📡 **Live-Tracking per WebSocket** mit Browser-Geolocation und Fahrzeugstatus.
+- 🔐 **Organisations- und Rollenmodell** für Admins, Planer, Fahrer und Beobachter.
+- 🌤️ **Wetter- und Overpass-Integration** für Wetterdaten, Sperrungen und Baustellen.
+- 📱 **PWA und Capacitor-Konfiguration** für installierbare Web-App und native App-Wrapper.
+- 🎨 **Branding-System** – eigenes Logo, Farben und App-Name über den Admin-Bereich konfigurierbar.
+- 🔄 **Auto-Updater** – Docker-Container pollt das Repository und deployt neue Commits automatisch.
 
 ---
 
 ## Funktionsumfang
 
-### Planung und Routing
+### 🗺️ Planung und Routing
 
 | Funktion | Beschreibung | Status |
 |---|---|---:|
@@ -62,7 +72,7 @@ Die Anwendung unterstützt Planerinnen und Planer dabei, Fahrzeuge zu verwalten,
 | Marschgeschwindigkeiten | Separate innerörtliche und außerörtliche Geschwindigkeit | ✅ |
 | Kraftstoffplanung | Fahrzeugdaten und Tankstellenabfrage entlang der Route | ✅ |
 
-### Verwaltung und Zusammenarbeit
+### 👥 Verwaltung und Zusammenarbeit
 
 | Funktion | Beschreibung | Status |
 |---|---|---:|
@@ -76,7 +86,7 @@ Die Anwendung unterstützt Planerinnen und Planer dabei, Fahrzeuge zu verwalten,
 | Branding | Eigenes App-Logo, Farben und Name über Admin-UI konfigurierbar | ✅ |
 | Leitstellen | Leitstellen und Kanalwechselpunkte entlang der Route | ✅ |
 
-### Live, Lage und Export
+### 📡 Live, Lage und Export
 
 | Funktion | Beschreibung | Status |
 |---|---|---:|
@@ -90,7 +100,7 @@ Die Anwendung unterstützt Planerinnen und Planer dabei, Fahrzeuge zu verwalten,
 | PWA | Installierbare Web-App mit Tile-Caching | ✅ |
 | Native Wrapper | Capacitor-Konfiguration für Android und iOS | ✅ |
 
-### Betrieb und Administration
+### ⚙️ Betrieb und Administration
 
 | Funktion | Beschreibung | Status |
 |---|---|---:|
@@ -101,9 +111,9 @@ Die Anwendung unterstützt Planerinnen und Planer dabei, Fahrzeuge zu verwalten,
 
 ---
 
-## Screenshots und Assets
+## Screenshots
 
-Im Repository liegen bereits Logo- und Design-Assets unter [`logo/`](logo/):
+Screenshots folgen. Logo- und Design-Assets liegen unter [`logo/`](logo/):
 
 | Asset | Datei |
 |---|---|
@@ -112,13 +122,9 @@ Im Repository liegen bereits Logo- und Design-Assets unter [`logo/`](logo/):
 | Favicon | `logo/Favicon.svg` / `logo/Favicon.png` |
 | Designgrafik | `logo/ConvoyPlan_Design.png` |
 
-> Tipp für GitHub: Screenshots der Planungsansicht, Tracking-Ansicht und PDF-Ausgabe können später in `docs/screenshots/` abgelegt und hier eingebunden werden.
-
 ---
 
 ## Architektur
-
-MarschPlan besteht aus fünf Kernbausteinen:
 
 ```mermaid
 flowchart LR
@@ -199,7 +205,7 @@ MarschPlan/
 │   │   ├── config.py         # Backend-Konfiguration über Umgebungsvariablen
 │   │   ├── database.py       # Async-Datenbankanbindung
 │   │   └── main.py           # FastAPI-App und Router-Registrierung
-│   ├── alembic/              # Datenbankmigrationen (0001–0008)
+│   ├── alembic/              # Datenbankmigrationen (0001–0009)
 │   ├── tests/                # pytest-Tests
 │   ├── Dockerfile
 │   └── requirements.txt
@@ -213,24 +219,23 @@ MarschPlan/
 │   │   ├── plan/             # Planungsansicht mit Karte
 │   │   ├── tracking/         # Live-Tracking-Ansicht
 │   │   ├── share/            # Öffentliche Routenansicht
-│   │   └── admin/            # Superadmin-Benutzerverwaltung, Leitstellen, Branding, System (Update-Status)
+│   │   └── admin/            # Benutzerverwaltung, Leitstellen, Branding, System
 │   ├── capacitor.config.ts
 │   ├── package.json
 │   └── vite.config.ts
 ├── docker/updater/           # Git-Polling-Container (update.sh, Dockerfile)
 ├── caddy/
-│   └── entrypoint.sh         # Caddyfile-Generierung aus Env-Variablen (Fallback vor Setup)
+│   └── entrypoint.sh         # Caddyfile-Generierung aus Env-Variablen
 ├── graphhopper/
 │   ├── Dockerfile
 │   ├── entrypoint.sh         # OSM-Download und GraphHopper-Start
 │   └── config.yml
 ├── .github/workflows/
-│   ├── ci.yml                # Backend-Tests + Frontend-Check + Docker-Build bei Push/PR
-│   └── release.yml           # Docker-Images zu GHCR + GitHub Release bei v*.*.*-Tag
+│   ├── ci.yml                # Tests + Typecheck + Docker-Build bei Push/PR
+│   └── release.yml           # Docker-Images zu GHCR + GitHub Release bei Tag
 ├── .hooks/pre-commit         # Lokaler Pre-Commit-Hook (ruff + svelte-check)
 ├── scripts/install-hooks.sh  # Installiert .hooks/ in .git/hooks/
 ├── logo/                     # Logo-, Favicon- und Design-Assets
-├── docs/                     # Spezifikationen und Implementierungspläne
 ├── CHANGELOG.md              # Versionshistorie
 ├── RELEASING.md              # Anleitung zum Schneiden eines Releases
 ├── .env.example              # Alle Umgebungsvariablen mit Erklärungen
@@ -304,10 +309,12 @@ npm run dev
 
 Die Anwendung ist anschließend erreichbar unter:
 
-- Frontend: <http://localhost:5173>
-- Backend API: <http://localhost:8000>
-- Swagger UI: <http://localhost:8000/docs>
-- GraphHopper: <http://localhost:8989>
+| Dienst | URL |
+|---|---|
+| Frontend | <http://localhost:5173> |
+| Backend API | <http://localhost:8000> |
+| Swagger UI | <http://localhost:8000/docs> |
+| GraphHopper | <http://localhost:8989> |
 
 ### 5. Setup-Wizard ausführen
 
@@ -317,7 +324,7 @@ Beim ersten Start leitet die Anwendung automatisch auf `http://localhost:5173/se
 2. **Domain und SSL** — Serverdomain (FQDN) eingeben und TLS-Modus wählen: Let's Encrypt, eigenes Zertifikat (Datei-Upload) oder internes Zertifikat für lokale Nutzung.
 3. **Abschluss** — Caddy wird live neu geladen; danach direkt zur Anmeldung.
 
-> Für lokale Entwicklung ohne Caddy (reiner `npm run dev`-Modus) kann der Wizard mit `localhost` als Domain und `internal` als TLS-Modus ausgeführt werden.
+> Für lokale Entwicklung ohne Caddy kann der Wizard mit `localhost` als Domain und `internal` als TLS-Modus ausgeführt werden.
 
 ---
 
@@ -337,8 +344,8 @@ Eine vollständige Vorlage liegt in `.env.example`. Die wichtigsten Variablen:
 
 | Variable | Standard | Beschreibung |
 |---|---|---|
-| `DATABASE_URL` | *(wird aus POSTGRES_\* zusammengesetzt)* | PostgreSQL/PostGIS-Verbindung |
-| `JWT_SECRET` | `changeme-in-production` | Signaturschlüssel für JWTs – in Produktion zwingend ersetzen (`openssl rand -hex 32`) |
+| `DATABASE_URL` | *(aus POSTGRES_\* zusammengesetzt)* | PostgreSQL/PostGIS-Verbindung |
+| `JWT_SECRET` | `changeme-in-production` | Signaturschlüssel für JWTs – zwingend ersetzen (`openssl rand -hex 32`) |
 | `JWT_ALGORITHM` | `HS256` | JWT-Algorithmus |
 | `JWT_EXPIRE_MINUTES` | `10080` | Token-Ablaufzeit in Minuten (7 Tage) |
 | `GRAPHHOPPER_URL` | `http://graphhopper:8989` | URL der Routing-Engine |
@@ -367,10 +374,8 @@ Domain und Zertifikat werden beim ersten Start über den Setup-Wizard in der Dat
 
 ### Frontend (lokale Entwicklung)
 
-Für lokale Entwicklung ohne Caddy kann `frontend/.env.local` angelegt werden:
-
 ```env
-# WebSocket-Host überschreiben, wenn kein Caddy läuft
+# frontend/.env.local
 VITE_WS_HOST=localhost:8000
 ```
 
@@ -380,15 +385,15 @@ VITE_WS_HOST=localhost:8000
 
 Die vollständige OpenAPI-Dokumentation wird automatisch von FastAPI bereitgestellt:
 
-- Swagger UI: <http://localhost:8000/docs>
-- OpenAPI JSON: <http://localhost:8000/openapi.json>
+- **Swagger UI:** <http://localhost:8000/docs>
+- **OpenAPI JSON:** <http://localhost:8000/openapi.json>
 
 **Ersteinrichtung**
 
 | Methode | Endpunkt | Beschreibung |
 |---|---|---|
-| `GET` | `/api/setup/status` | Prüft ob Setup erforderlich ist (kein Superadmin vorhanden) |
-| `POST` | `/api/setup` | Superadmin anlegen, Domain und TLS konfigurieren, Caddy live neu laden |
+| `GET` | `/api/setup/status` | Prüft ob Setup erforderlich ist |
+| `POST` | `/api/setup` | Superadmin anlegen, Domain und TLS konfigurieren |
 
 **Authentifizierung**
 
@@ -401,8 +406,8 @@ Die vollständige OpenAPI-Dokumentation wird automatisch von FastAPI bereitgeste
 
 | Methode | Endpunkt | Beschreibung |
 |---|---|---|
-| `GET` | `/api/admin/users` | Alle Benutzer auflisten (Superadmin) |
-| `PATCH` | `/api/admin/users/{user_id}` | Benutzer aktivieren/deaktivieren, Superadmin-Flag setzen |
+| `GET` | `/api/admin/users` | Alle Benutzer auflisten |
+| `PATCH` | `/api/admin/users/{user_id}` | Benutzer aktivieren/deaktivieren, Rolle setzen |
 
 **Fahrzeuge und Konvois**
 
@@ -410,15 +415,17 @@ Die vollständige OpenAPI-Dokumentation wird automatisch von FastAPI bereitgeste
 |---|---|---|
 | `GET/POST/PUT/DELETE` | `/api/vehicles/` | Fahrzeuge verwalten |
 | `GET/POST/PUT/DELETE` | `/api/convoys/` | Marschverbände verwalten |
-| `POST/DELETE` | `/api/convoys/{convoy_id}/vehicles` | Fahrzeuge einem Konvoi zuordnen oder entfernen |
+| `POST/DELETE` | `/api/convoys/{convoy_id}/vehicles` | Fahrzeuge zuordnen oder entfernen |
 | `GET/POST/PUT/DELETE` | `/api/convoys/{convoy_id}/waypoints` | Wegpunkte verwalten |
 | `GET/POST` | `/api/convoys/{convoy_id}/sub-convoys` | Teilverbände anzeigen oder erstellen |
 | `POST` | `/api/convoys/{convoy_id}/calculate-route` | Route und Zeitplan berechnen |
 | `GET` | `/api/convoys/{convoy_id}/export/gpx` | GPX exportieren |
 | `GET` | `/api/convoys/{convoy_id}/export/json` | JSON exportieren |
 | `GET` | `/api/convoys/{convoy_id}/export/pdf` | Marschbefehl als PDF exportieren |
-| `GET` | `/api/convoys/{convoy_id}/fuel-stations` | Tankstellen entlang der Route abrufen |
-| `GET` | `/api/convoys/share/{token}` | Öffentliche Routenansicht abrufen |
+| `POST` | `/api/convoys/{convoy_id}/import/gpx` | GPX-Track importieren |
+| `POST` | `/api/convoys/{convoy_id}/import/geojson` | GeoJSON-Route importieren |
+| `GET` | `/api/convoys/{convoy_id}/fuel-stations` | Tankstellen entlang der Route |
+| `GET` | `/api/convoys/share/{token}` | Öffentliche Routenansicht |
 
 **Organisationen**
 
@@ -460,9 +467,12 @@ Convoy
 ├── organization_id         # Mandant / Organisation
 ├── ConvoyVehicles          # Fahrzeugzuordnung inkl. Status
 ├── Waypoints               # Wegpunkte, Kontrollpunkte, technische Halte
-├── Route                   # Liniengeometrie, Distanz, Dauer, GPX
+├── Route                   # Liniengeometrie, Distanz, Dauer, GPX, Kanalwechsel
 ├── VehiclePositions        # Live-Tracking-Positionen
 └── LageLayers              # GeoJSON-Lagedaten
+
+Leitstelle
+└── boundary                # GeoJSON/KML-Zuständigkeitsgebiet
 ```
 
 Wichtige fachliche Objekte:
@@ -472,9 +482,10 @@ Wichtige fachliche Objekte:
 - **Vehicle**: Fahrzeug mit Funkrufname, Kennzeichen, Abmessungen, Gewicht und Kraftstoffdaten.
 - **Convoy**: Marschverband mit Start-/Zielpunkt, Marschbefehl-Feldern, Share-Token und Status.
 - **Waypoint**: Wegpunkt, Stopp, Kontrollpunkt oder technischer Halt mit Zeitplanung.
-- **Route**: Berechnete Route inklusive Geometrie, Distanz, Dauer und Exportdaten.
+- **Route**: Berechnete Route inklusive Geometrie, Distanz, Dauer, Exportdaten und Kanalwechseln.
 - **VehiclePosition**: Aktuelle Fahrzeugposition innerhalb eines Konvois.
 - **LageLayer**: Zusätzliche GeoJSON-Lageinformationen.
+- **Leitstelle**: Leitstelle mit GeoJSON/KML-Grenzgebiet; bestimmt Kanalwechselpunkte auf der Route.
 
 ---
 
@@ -491,7 +502,14 @@ alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-> Hinweis: Für lokale Backend-Entwicklung müssen PostgreSQL/PostGIS und GraphHopper erreichbar sein. Am einfachsten laufen diese weiterhin über Docker Compose.
+> PostgreSQL/PostGIS und GraphHopper müssen erreichbar sein — am einfachsten weiterhin über Docker Compose.
+
+### Tests ausführen
+
+```bash
+cd backend
+pytest
+```
 
 ### Frontend prüfen und bauen
 
@@ -504,34 +522,21 @@ npm run build
 
 ### Datenbankmigrationen
 
-Aktuelle Migrationen ausführen:
-
 ```bash
-cd backend
-alembic upgrade head
-```
+# Aktuelle Migrationen ausführen
+cd backend && alembic upgrade head
 
-Neue Migration erzeugen:
-
-```bash
-cd backend
-alembic revision --autogenerate -m "beschreibung"
+# Neue Migration erzeugen
+cd backend && alembic revision --autogenerate -m "beschreibung"
 ```
 
 ### Nützliche Docker-Befehle
 
 ```bash
-# Stack starten
-docker compose up -d --build
-
-# Logs anzeigen
-docker compose logs -f backend
-
-# Services stoppen
-docker compose down
-
-# Persistente Daten inklusive OSM-/GraphHopper-Cache entfernen
-docker compose down -v
+docker compose up -d --build        # Stack starten
+docker compose logs -f backend      # Logs anzeigen
+docker compose down                 # Services stoppen
+docker compose down -v              # inklusive persistenter Daten
 ```
 
 ---
@@ -540,37 +545,36 @@ docker compose down -v
 
 ### Produktivsetup (Docker Compose / Portainer)
 
-1. `.env.example` als `.env` kopieren und anpassen:
-   ```bash
-   cp .env.example .env
-   # JWT_SECRET, POSTGRES_PASSWORD, DOMAIN, ACME_EMAIL setzen
-   ```
+```bash
+# 1. Umgebungsvariablen anpassen
+cp .env.example .env
+# JWT_SECRET, POSTGRES_PASSWORD, DOMAIN, ACME_EMAIL setzen
 
-2. Stack starten:
-   ```bash
-   docker compose -f docker-compose.yml up -d --build
-   ```
+# 2. Stack starten
+docker compose -f docker-compose.yml up -d --build
 
-3. Im Browser `https://<DOMAIN>/setup` aufrufen und den Setup-Wizard abschließen. Caddy wird danach automatisch mit dem konfigurierten Zertifikat neu geladen.
+# 3. Setup-Wizard aufrufen
+open https://<DOMAIN>/setup
+```
 
 ### Portainer
 
-Eine fertige Stack-Konfiguration liegt in `portainer-stack.yml`. Images werden dort über Variablen gesetzt; der Setup-Wizard übernimmt die Erstkonfiguration von Domain und Zertifikat.
+Eine fertige Stack-Konfiguration liegt in `portainer-stack.yml`. Images werden über Variablen gesetzt; der Setup-Wizard übernimmt die Erstkonfiguration.
 
 ### Empfehlungen für Produktion
 
-1. `JWT_SECRET` mit `openssl rand -hex 32` generieren und nicht in Git versionieren.
+1. `JWT_SECRET` mit `openssl rand -hex 32` generieren — nicht in Git versionieren.
 2. Datenbankpasswort ändern.
 3. `CORS_ORIGINS` auf die produktive Domain einschränken.
 4. Persistente Volumes (`postgres_data`, `caddy_data`, `cert_uploads`) regelmäßig sichern.
-5. Für große OSM-Regionen (Deutschland: ~4 GB) ausreichend RAM (`JAVA_OPTS=-Xmx4g`) und Speicherplatz einplanen.
-6. GraphHopper-Graph-Cache (`gh_graph`) auf schnellem Speicher ablegen – erster Build dauert mehrere Minuten.
+5. Für große OSM-Regionen (Deutschland: ~4 GB) ausreichend RAM (`JAVA_OPTS=-Xmx4g`) einplanen.
+6. GraphHopper-Graph-Cache (`gh_graph`) auf schnellem Speicher ablegen — erster Build dauert mehrere Minuten.
 
 ### CI und Releases
 
 CI-Checks (Backend-Tests, Frontend-Typecheck, Docker-Build) laufen automatisch auf Push und Pull Requests gegen `main`.
 
-Für ein neues Release den Tag `vX.Y.Z` setzen – Docker-Images werden dann automatisch zu GHCR gebaut und gepusht; ein GitHub Release wird erstellt. Vollständige Anleitung in [`RELEASING.md`](RELEASING.md).
+Für ein neues Release den Tag `vX.Y.Z` setzen — Docker-Images werden dann automatisch zu GHCR gebaut und gepusht; ein GitHub Release wird erstellt. Vollständige Anleitung in [`RELEASING.md`](RELEASING.md).
 
 ---
 
@@ -578,12 +582,10 @@ Für ein neues Release den Tag `vX.Y.Z` setzen – Docker-Images werden dann aut
 
 Das Frontend ist als Progressive Web App konfiguriert und kann im Browser installiert werden. Zusätzlich ist Capacitor vorbereitet.
 
-Native Wrapper bauen:
-
 ```bash
 cd frontend
 npm run build
-npx cap add android   # einmalig, alternativ: ios
+npx cap add android   # einmalig; alternativ: ios
 npx cap sync
 npx cap open android
 ```
@@ -596,23 +598,19 @@ Für iOS wird eine macOS-Umgebung mit Xcode benötigt.
 
 - Der Standardwert `changeme-in-production` für `JWT_SECRET` ist nur für lokale Entwicklung gedacht.
 - Die Datenbankzugänge in `docker-compose.yml` sind Entwicklungs-Defaults und nicht produktionsgeeignet.
-- Die Caddy-Admin-API läuft auf Port `:2019` und ist im Docker-Netzwerk intern erreichbar. Der Port wird nicht nach außen exponiert (`ports:` fehlt bewusst in der Caddy-Service-Definition). In Multi-Tenant-Umgebungen mit nicht vertrauenswürdigen Containern sollte das gesondert abgesichert werden.
+- Die Caddy-Admin-API läuft auf Port `:2019` und ist nur im Docker-Netzwerk intern erreichbar — der Port wird nicht nach außen exponiert.
 - Live-Tracking verarbeitet Standortdaten. Für reale Einsätze sollten Zugriff, Aufbewahrung, Protokollierung und Löschung organisatorisch geregelt werden.
-- Öffentliche Share-Links sind ohne Login abrufbar. Tokens sollten wie vertrauliche Links behandelt werden.
-- Externe Dienste (Open-Meteo, Overpass, Geofabrik) können Verfügbarkeit, Limits oder Nutzungsbedingungen haben.
+- Öffentliche Share-Links sind ohne Login abrufbar — Tokens sollten wie vertrauliche Links behandelt werden.
 
 ---
 
 ## Roadmap-Ideen
 
-Diese Punkte sind mögliche nächste Ausbauschritte:
-
 - ~~Import vorhandener GPX-/GeoJSON-Routen~~ ✅ (seit 0.5.0)
-- Rechte- und Rollenprüfung pro Organisation weiter verfeinern.
+- ~~CI-Pipeline für Backend-Tests, Frontend-Checks und Docker-Builds~~ ✅ (seit 0.4.0)
 - Benachrichtigungen bei Verzögerungen oder Abweichungen von der Route.
 - Audit-Log für Änderungen an Marschbefehlen und Konvois.
 - Offline-First-Synchronisation für mobile Nutzung.
-- ~~CI-Pipeline für Backend-Tests, Frontend-Checks und Docker-Builds~~ ✅ (seit 0.4.0)
 - Erweiterte Einsatzdokumentation und Einsatznachbereitung.
 
 ---
