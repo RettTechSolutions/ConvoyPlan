@@ -55,9 +55,20 @@ while true; do
        docker compose "${COMPOSE_FILES[@]}" up -d --build ${SERVICES}; then
       DEPLOYED=$(git -C "${REPO_DIR}" rev-parse HEAD)
       log "Updated to ${DEPLOYED:0:7}"
+      mkdir -p /update_status
+      printf '{"deployed_sha":"%s","deployed_at":"%s"}\n' \
+        "${DEPLOYED}" \
+        "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+        > /update_status/status.json
     else
       log "Deploy failed — will retry in ${INTERVAL}s"
     fi
+  fi
+
+  if [ -f /update_status/trigger ]; then
+    log "Manual trigger detected"
+    rm -f /update_status/trigger
+    DEPLOYED=""
   fi
 
   sleep "${INTERVAL}"
