@@ -15,7 +15,8 @@ chmod 600 ~/.netrc
 # Allow git to operate on the mounted workspace (owned by host user, not container root)
 git config --global --add safe.directory "${REPO_DIR}"
 
-COMPOSE_FILES=(-f "${REPO_DIR}/docker-compose.yml" -f "${REPO_DIR}/docker-compose.override.yml")
+COMPOSE_FILES=(-f "${REPO_DIR}/docker-compose.yml")
+[ -f "${REPO_DIR}/docker-compose.override.yml" ] && COMPOSE_FILES+=(-f "${REPO_DIR}/docker-compose.override.yml")
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 
@@ -46,7 +47,8 @@ while true; do
 
   if [ "${DEPLOYED}" != "${REMOTE}" ]; then
     log "Update detected: ${DEPLOYED:0:7} → ${REMOTE:0:7}"
-    if git -C "${REPO_DIR}" pull --ff-only origin main && \
+    if git -C "${REPO_DIR}" reset --hard origin/main && \
+       git -C "${REPO_DIR}" clean -fd && \
        docker compose "${COMPOSE_FILES[@]}" up -d --build; then
       DEPLOYED=$(git -C "${REPO_DIR}" rev-parse HEAD)
       log "Updated to ${DEPLOYED:0:7}"
