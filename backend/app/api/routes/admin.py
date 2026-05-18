@@ -143,7 +143,7 @@ async def get_update_status(
             headers["Authorization"] = f"Bearer {settings.github_token}"
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(
-                f"https://api.github.com/repos/{settings.github_repo}/commits/main",
+                f"https://api.github.com/repos/{settings.github_repo}/commits?sha=main&per_page=1",
                 headers=headers,
             )
         if resp.is_success:
