@@ -34,3 +34,7 @@ docker-compose.override.yml
 
 # Git worktrees
 .worktrees/
+
+# Claude Code / Superpowers internal tooling
+.superpowers/
+docs/
