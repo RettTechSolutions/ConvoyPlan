@@ -85,6 +85,15 @@ services:
       - frontend
       - backend
 
+  updater:
+    build: ./docker/updater
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/workspace
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   osm_data:
