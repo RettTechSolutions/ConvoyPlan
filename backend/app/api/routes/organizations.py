@@ -97,7 +97,7 @@ async def add_member(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    org = await _get_org_admin(org_id, current_user.id, db)
+    await _get_org_admin(org_id, current_user.id, db)
 
     user_result = await db.execute(select(User).where(User.email == data.email))
     user = user_result.scalar_one_or_none()
@@ -220,7 +220,7 @@ async def invite_member(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    org = await _get_org_admin(org_id, current_user.id, db)
+    await _get_org_admin(org_id, current_user.id, db)
 
     existing = await db.execute(select(User).where(User.email == data.email))
     if existing.scalar_one_or_none():

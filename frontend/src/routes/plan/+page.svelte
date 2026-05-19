@@ -463,7 +463,7 @@
 				try {
 					closures = await overpassApi.getClosures(
 						selected.start_point.lat, selected.start_point.lon, 25000
-					) as FeatureCollection;
+					) as unknown as FeatureCollection;
 					showClosures = closures.features.length > 0;
 				} catch { /* closures optional */ }
 			}
@@ -551,7 +551,7 @@
 		try {
 			const lat = selected?.start_point?.lat ?? mapCenter[0];
 			const lon = selected?.start_point?.lon ?? mapCenter[1];
-			closures = await overpassApi.getClosures(lat, lon) as FeatureCollection;
+			closures = await overpassApi.getClosures(lat, lon) as unknown as FeatureCollection;
 			showClosures = true;
 		} catch { error = 'Sperrungsdaten nicht verfügbar'; }
 	}

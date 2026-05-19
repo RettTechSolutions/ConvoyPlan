@@ -10,7 +10,7 @@
 
 	onMount(async () => {
 		try {
-			data = await shareApi.get($page.params.token);
+			data = await shareApi.get($page.params.token!);
 		} catch {
 			error = 'Marschverband nicht gefunden oder Link ungültig.';
 		}

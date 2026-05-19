@@ -22,6 +22,10 @@ graphhopper/graph-cache/
 .env
 .env.local
 
+# License private key and issuer tool — admin-only, never commit
+scripts/convoyplan_license.key
+scripts/issue_license.py
+
 # Server-spezifische Konfiguration (nie öffentlich einchecken)
 docker-compose.override.yml
 
