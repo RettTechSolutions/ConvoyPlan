@@ -18,12 +18,24 @@ if [ ! -f "$OSM_FILE" ]; then
     echo "  Ziel   : $OSM_FILE"
     echo "  (Erster Start kann je nach Region mehrere Minuten dauern)"
     echo "================================================================"
-    if curl -fL --progress-bar -o "${OSM_FILE}.tmp" "$DOWNLOAD_URL"; then
-        mv "${OSM_FILE}.tmp" "$OSM_FILE"
-        echo "Download erfolgreich: $OSM_FILE"
-    else
-        rm -f "${OSM_FILE}.tmp"
-        echo "FEHLER: Download fehlgeschlagen. URL prÃ¼fen: $DOWNLOAD_URL"
+    RETRIES=5
+    DELAY=10
+    SUCCESS=0
+    for i in $(seq 1 $RETRIES); do
+        echo "Versuch $i/$RETRIES..."
+        if curl -fL --progress-bar -o "${OSM_FILE}.tmp" "$DOWNLOAD_URL"; then
+            mv "${OSM_FILE}.tmp" "$OSM_FILE"
+            echo "Download erfolgreich: $OSM_FILE"
+            SUCCESS=1
+            break
+        else
+            rm -f "${OSM_FILE}.tmp"
+            echo "Versuch $i fehlgeschlagen, warte ${DELAY}s..."
+            sleep $DELAY
+        fi
+    done
+    if [ $SUCCESS -eq 0 ]; then
+        echo "FEHLER: Download nach $RETRIES Versuchen fehlgeschlagen. URL prüfen: $DOWNLOAD_URL"
         exit 1
     fi
 else
