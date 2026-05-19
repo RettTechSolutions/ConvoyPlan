@@ -1,5 +1,6 @@
 import logging
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -20,7 +21,18 @@ from app.services.license import validate_license
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="ConvoyPlan API", version="0.4.0")
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    info = validate_license(settings.license_key)
+    if info.valid:
+        logger.info("License OK — customer=%s expires=%s", info.customer, info.expires)
+    else:
+        logger.warning("LICENSE INVALID: %s", info.error)
+    yield
+
+
+app = FastAPI(title="ConvoyPlan API", version="0.4.0", lifespan=_lifespan)
 
 _origins_env = os.environ.get("CORS_ORIGINS", "*")
 _allow_origins = [o.strip() for o in _origins_env.split(",")] if _origins_env != "*" else ["*"]
@@ -58,15 +70,6 @@ except OSError:
     pass  # directory may already exist or be read-only in dev/test environments
 if _uploads_dir.is_dir():
     app.mount("/uploads", StaticFiles(directory="/uploads", html=False), name="uploads")
-
-
-@app.on_event("startup")
-async def _check_license_on_startup():
-    info = validate_license(settings.license_key)
-    if info.valid:
-        logger.info("License OK — customer=%s expires=%s", info.customer, info.expires)
-    else:
-        logger.warning("LICENSE INVALID: %s", info.error)
 
 
 @app.get("/health")
