@@ -29,6 +29,7 @@ class LicenseInfo:
     issued: str = ""
     expires: str = ""
     max_users: int = 0
+    domain: str = ""
     error: str = ""
 
     @property
@@ -42,12 +43,19 @@ class LicenseInfo:
 
 
 def _b64url_decode(s: str) -> bytes:
-    # Add padding and decode; accept both standard and URL-safe base64
     padded = s + "=" * (-len(s) % 4)
     return base64.urlsafe_b64decode(padded)
 
 
-def validate_license(license_key: str) -> LicenseInfo:
+def _normalize_domain(d: str) -> str:
+    return d.lower().strip().removeprefix("www.")
+
+
+# Domains that are never checked against the license (local/dev/CI installs).
+_LOCAL_DOMAINS = {"localhost", "127.0.0.1", "::1", ""}
+
+
+def validate_license(license_key: str, current_domain: str = "") -> LicenseInfo:
     if not license_key or not license_key.strip():
         return LicenseInfo(valid=False, error="No license key configured")
 
@@ -72,11 +80,25 @@ def validate_license(license_key: str) -> LicenseInfo:
             issued=payload.get("issued", ""),
             expires=payload.get("expires", ""),
             max_users=int(payload.get("max_users", 0)),
+            domain=payload.get("domain", ""),
         )
 
         if info.expired:
             info.valid = False
             info.error = f"License expired on {info.expires}"
+            return info
+
+        # Domain binding: only enforced when the license specifies a domain
+        # and the installation is not running on localhost.
+        license_domain = _normalize_domain(info.domain)
+        inst_domain = _normalize_domain(current_domain)
+        if license_domain and inst_domain not in _LOCAL_DOMAINS:
+            if inst_domain != license_domain:
+                info.valid = False
+                info.error = (
+                    f"License issued for '{info.domain}', "
+                    f"but this instance runs on '{current_domain}'"
+                )
 
         return info
 

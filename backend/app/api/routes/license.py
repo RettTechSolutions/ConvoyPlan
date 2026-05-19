@@ -10,7 +10,7 @@ router = APIRouter(tags=["license"])
 
 @router.get("/license/status")
 async def license_status(_: User = Depends(require_superadmin)):
-    info = validate_license(settings.license_key)
+    info = validate_license(settings.license_key, settings.domain)
     return {
         "valid": info.valid,
         "license_id": info.license_id,
@@ -19,5 +19,6 @@ async def license_status(_: User = Depends(require_superadmin)):
         "issued": info.issued,
         "expires": info.expires,
         "max_users": info.max_users,
+        "domain": info.domain,
         "error": info.error if not info.valid else None,
     }

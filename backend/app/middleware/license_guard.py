@@ -27,15 +27,14 @@ _EXEMPT_PREFIXES = (
     "/openapi.json",
 )
 
-# Cache the validation result so we don't re-parse on every request.
-# The cache is invalidated when LICENSE_KEY changes (restart required).
+# Cache result — invalidated only on restart (LICENSE_KEY / DOMAIN change requires restart).
 _cached_valid: bool | None = None
 
 
 def _is_licensed() -> bool:
     global _cached_valid
     if _cached_valid is None:
-        _cached_valid = validate_license(settings.license_key).valid
+        _cached_valid = validate_license(settings.license_key, settings.domain).valid
     return _cached_valid
 
 
