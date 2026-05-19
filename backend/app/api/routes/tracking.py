@@ -8,7 +8,6 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
 from app.api.guards import get_convoy_access

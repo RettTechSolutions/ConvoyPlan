@@ -11,7 +11,6 @@ from app.database import get_db
 from app.models.convoy import Convoy, ConvoyVehicle
 from app.models.user import User
 from app.models.organization import UserOrganization
-from app.models.vehicle import Vehicle
 from app.models.waypoint import Waypoint
 from app.schemas.convoy import AddVehicleRequest, ConvoyCreate, ConvoyResponse, ConvoyUpdate
 from app.schemas.waypoint import WaypointCreate, WaypointReorderItem, WaypointResponse, WaypointUpdate
