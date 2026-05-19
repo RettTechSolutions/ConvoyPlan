@@ -19,6 +19,7 @@
 	} from '$lib/api';
 	import type { FeatureCollection } from 'geojson';
 	import { dndzone } from 'svelte-dnd-action';
+	import { themeStore } from '$lib/stores/theme';
 
 	// ── State ──────────────────────────────────────────────────────────
 	let allVehicles = $state<Vehicle[]>([]);
@@ -52,15 +53,8 @@
 	let error = $state('');
 
 	// Theme toggle
-	let theme = $state<'dark' | 'light'>(
-	    (typeof window !== 'undefined' ? localStorage.getItem('convoyplan-theme') : null) as 'dark' | 'light' ?? 'dark'
-	);
 	function toggleTheme() {
-	    theme = theme === 'dark' ? 'light' : 'dark';
-	    if (typeof document !== 'undefined') {
-	        document.documentElement.setAttribute('data-theme', theme);
-	    }
-	    try { localStorage.setItem('convoyplan-theme', theme); } catch (_) {}
+	    themeStore.toggle();
 	}
 
 	// Import state
@@ -1338,8 +1332,8 @@
 		{/if}
 	<div class="sidebar-footer">
 		<button class="theme-toggle" onclick={toggleTheme} aria-label="Theme umschalten">
-			{theme === 'dark' ? '☀' : '☾'}
-			<span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
+			{$themeStore === 'dark' ? '☀' : '☾'}
+			<span>{$themeStore === 'dark' ? 'Light' : 'Dark'}</span>
 		</button>
 		<span class="app-version">v0.4.0</span>
 	</div>
