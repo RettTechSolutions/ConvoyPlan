@@ -24,9 +24,9 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
-    info = validate_license(settings.license_key)
+    info = validate_license(settings.license_key, settings.domain)
     if info.valid:
-        logger.info("License OK — customer=%s expires=%s", info.customer, info.expires)
+        logger.info("License OK — customer=%s domain=%s expires=%s", info.customer, info.domain, info.expires)
     else:
         logger.warning("LICENSE INVALID: %s", info.error)
     yield
