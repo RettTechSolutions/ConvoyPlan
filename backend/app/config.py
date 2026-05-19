@@ -11,7 +11,6 @@ class Settings(BaseSettings):
     github_token: str = ""
     github_repo: str = "RettTechSolutions/ConvoyPlan"
     license_key: str = ""
-    domain: str = "localhost"
 
     class Config:
         env_file = ".env"

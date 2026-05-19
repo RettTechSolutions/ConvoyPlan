@@ -21,7 +21,7 @@ def _make_key():
     return priv, pub_b64
 
 
-def _valid_payload(domain: str = "") -> dict:
+def _valid_payload(instance_id: str = "") -> dict:
     return {
         "id": "test-uuid",
         "customer": "Test GmbH",
@@ -29,7 +29,7 @@ def _valid_payload(domain: str = "") -> dict:
         "issued": date.today().isoformat(),
         "expires": (date.today() + timedelta(days=365)).isoformat(),
         "max_users": 10,
-        "domain": domain,
+        "instance_id": instance_id,
     }
 
 
@@ -47,58 +47,49 @@ def test_malformed_key():
     assert "Malformed" in info.error
 
 
-def test_valid_license_no_domain(monkeypatch):
+def test_valid_license_no_instance_binding(monkeypatch):
     import app.services.license as lic_mod
     priv, pub_b64 = _make_key()
     monkeypatch.setattr(lic_mod, "_PUBLIC_KEY_B64", pub_b64)
 
-    key = _sign_payload(_valid_payload(domain=""), priv)
-    info = lic_mod.validate_license(key, current_domain="convoy.fw-musterstadt.de")
+    key = _sign_payload(_valid_payload(instance_id=""), priv)
+    # License without instance_id is valid on any installation
+    info = lic_mod.validate_license(key, instance_id="some-random-uuid")
     assert info.valid
     assert info.customer == "Test GmbH"
-    assert not info.expired
 
 
-def test_valid_license_matching_domain(monkeypatch):
+def test_valid_license_matching_instance(monkeypatch):
     import app.services.license as lic_mod
     priv, pub_b64 = _make_key()
     monkeypatch.setattr(lic_mod, "_PUBLIC_KEY_B64", pub_b64)
 
-    key = _sign_payload(_valid_payload(domain="convoy.fw-musterstadt.de"), priv)
-    info = lic_mod.validate_license(key, current_domain="convoy.fw-musterstadt.de")
+    iid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    key = _sign_payload(_valid_payload(instance_id=iid), priv)
+    info = lic_mod.validate_license(key, instance_id=iid)
     assert info.valid
-    assert info.domain == "convoy.fw-musterstadt.de"
+    assert info.instance_id == iid
 
 
-def test_domain_mismatch_rejected(monkeypatch):
+def test_instance_mismatch_rejected(monkeypatch):
     import app.services.license as lic_mod
     priv, pub_b64 = _make_key()
     monkeypatch.setattr(lic_mod, "_PUBLIC_KEY_B64", pub_b64)
 
-    key = _sign_payload(_valid_payload(domain="convoy.fw-musterstadt.de"), priv)
-    info = lic_mod.validate_license(key, current_domain="convoy.fw-other.de")
+    key = _sign_payload(_valid_payload(instance_id="correct-instance-id"), priv)
+    info = lic_mod.validate_license(key, instance_id="other-instance-id")
     assert not info.valid
-    assert "convoy.fw-musterstadt.de" in info.error
+    assert "not valid for this installation" in info.error
 
 
-def test_domain_check_skipped_on_localhost(monkeypatch):
+def test_instance_check_skipped_when_no_local_id(monkeypatch):
     import app.services.license as lic_mod
     priv, pub_b64 = _make_key()
     monkeypatch.setattr(lic_mod, "_PUBLIC_KEY_B64", pub_b64)
 
-    key = _sign_payload(_valid_payload(domain="convoy.fw-musterstadt.de"), priv)
-    # localhost installs are always allowed regardless of licensed domain
-    info = lic_mod.validate_license(key, current_domain="localhost")
-    assert info.valid
-
-
-def test_www_prefix_ignored(monkeypatch):
-    import app.services.license as lic_mod
-    priv, pub_b64 = _make_key()
-    monkeypatch.setattr(lic_mod, "_PUBLIC_KEY_B64", pub_b64)
-
-    key = _sign_payload(_valid_payload(domain="convoy.fw-musterstadt.de"), priv)
-    info = lic_mod.validate_license(key, current_domain="www.convoy.fw-musterstadt.de")
+    key = _sign_payload(_valid_payload(instance_id="bound-to-this"), priv)
+    # If instance_id not yet available (first boot), skip binding check
+    info = lic_mod.validate_license(key, instance_id="")
     assert info.valid
 
 

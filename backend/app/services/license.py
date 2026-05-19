@@ -29,7 +29,7 @@ class LicenseInfo:
     issued: str = ""
     expires: str = ""
     max_users: int = 0
-    domain: str = ""
+    instance_id: str = ""
     error: str = ""
 
     @property
@@ -47,15 +47,14 @@ def _b64url_decode(s: str) -> bytes:
     return base64.urlsafe_b64decode(padded)
 
 
-def _normalize_domain(d: str) -> str:
-    return d.lower().strip().removeprefix("www.")
+def validate_license(license_key: str, instance_id: str = "") -> LicenseInfo:
+    """
+    Validate a license key.
 
-
-# Domains that are never checked against the license (local/dev/CI installs).
-_LOCAL_DOMAINS = {"localhost", "127.0.0.1", "::1", ""}
-
-
-def validate_license(license_key: str, current_domain: str = "") -> LicenseInfo:
+    instance_id – the installation's machine fingerprint (from system_settings).
+                  If the license contains an instance_id field, it must match.
+                  An empty instance_id skips the binding check (CI / first boot).
+    """
     if not license_key or not license_key.strip():
         return LicenseInfo(valid=False, error="No license key configured")
 
@@ -80,7 +79,7 @@ def validate_license(license_key: str, current_domain: str = "") -> LicenseInfo:
             issued=payload.get("issued", ""),
             expires=payload.get("expires", ""),
             max_users=int(payload.get("max_users", 0)),
-            domain=payload.get("domain", ""),
+            instance_id=payload.get("instance_id", ""),
         )
 
         if info.expired:
@@ -88,17 +87,12 @@ def validate_license(license_key: str, current_domain: str = "") -> LicenseInfo:
             info.error = f"License expired on {info.expires}"
             return info
 
-        # Domain binding: only enforced when the license specifies a domain
-        # and the installation is not running on localhost.
-        license_domain = _normalize_domain(info.domain)
-        inst_domain = _normalize_domain(current_domain)
-        if license_domain and inst_domain not in _LOCAL_DOMAINS:
-            if inst_domain != license_domain:
+        # Instance binding: enforced when both the license and the running
+        # installation carry an instance_id.
+        if info.instance_id and instance_id:
+            if info.instance_id != instance_id:
                 info.valid = False
-                info.error = (
-                    f"License issued for '{info.domain}', "
-                    f"but this instance runs on '{current_domain}'"
-                )
+                info.error = "License is not valid for this installation"
 
         return info
 
