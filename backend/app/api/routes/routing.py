@@ -4,7 +4,7 @@ from datetime import timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, File, Query, UploadFile
-from fastapi.responses import PlainTextResponse, JSONResponse, Response
+from fastapi.responses import PlainTextResponse, Response
 from shapely.geometry import LineString
 from geoalchemy2.shape import from_shape
 from sqlalchemy import select, delete, func
