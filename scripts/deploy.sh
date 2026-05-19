@@ -15,6 +15,7 @@ REMOTE_DIR="${DEPLOY_DIR:-~/ConvoyPlan}"
 echo "→ Sync to ${REMOTE}:${REMOTE_DIR}"
 rsync -az --delete \
   --exclude='.git' \
+  --exclude='.env' \
   --exclude='__pycache__' \
   --exclude='*.pyc' \
   --exclude='.venv' \
