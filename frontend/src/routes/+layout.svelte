@@ -4,6 +4,7 @@
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
 	import { brandingStore, applyBranding, type Branding } from '$lib/stores/branding';
+	import { themeStore } from '$lib/stores/theme';
 
 	let { children } = $props();
 
@@ -12,13 +13,7 @@
 
 	onMount(async () => {
 		auth.init();
-
-		try {
-			const saved = localStorage.getItem('convoyplan-theme');
-			if (saved === 'light' || saved === 'dark') {
-				document.documentElement.setAttribute('data-theme', saved);
-			}
-		} catch (_) {}
+		themeStore.init();
 
 		// Raw fetch (not brandingApi) — GET /api/branding is public and needs no auth token
 		try {
@@ -59,7 +54,7 @@
 
 <svelte:head>
 	<title>{$brandingStore.app_name}</title>
-	<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+	<link rel="icon" type="image/png" href={$themeStore === 'light' ? '/logo/dark/Logo_Favicon.png' : '/logo/light/Logo_Favicon.png'} />
 </svelte:head>
 
 {@render children()}
