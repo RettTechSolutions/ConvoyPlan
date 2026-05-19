@@ -24,6 +24,7 @@ services:
       GRAPHHOPPER_URL: http://graphhopper:8989
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GITHUB_REPO: ${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}
+      LICENSE_KEY: ${LICENSE_KEY:-}
     volumes:
       - cert_uploads:/certs
       - logo_uploads:/uploads
