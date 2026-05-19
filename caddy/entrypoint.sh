@@ -32,7 +32,7 @@ esac
 case "$DOMAIN" in
     [0-9]*.[0-9]*.[0-9]*.[0-9]*)
         SITE_ADDRESS="http://$DOMAIN"
-        TLS_DIRECTIVE="tls off"
+        TLS_DIRECTIVE=""
         ;;
     *)
         SITE_ADDRESS="$DOMAIN"
