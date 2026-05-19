@@ -15,20 +15,13 @@ from app.api.routes import admin as admin_router
 from app.api.routes import branding as branding_router
 from app.api.routes import license as license_router
 from app.api.routes import setup as setup_router
-from app.config import settings
 from app.middleware.license_guard import LicenseGuardMiddleware
-from app.services.license import validate_license
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
-    info = validate_license(settings.license_key, settings.domain)
-    if info.valid:
-        logger.info("License OK — customer=%s domain=%s expires=%s", info.customer, info.domain, info.expires)
-    else:
-        logger.warning("LICENSE INVALID: %s", info.error)
     yield
 
 
