@@ -12,7 +12,11 @@ from app.api.routes import (
 )
 from app.api.routes import admin as admin_router
 from app.api.routes import branding as branding_router
+from app.api.routes import license as license_router
 from app.api.routes import setup as setup_router
+from app.config import settings
+from app.middleware.license_guard import LicenseGuardMiddleware
+from app.services.license import validate_license
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +25,7 @@ app = FastAPI(title="ConvoyPlan API", version="0.4.0")
 _origins_env = os.environ.get("CORS_ORIGINS", "*")
 _allow_origins = [o.strip() for o in _origins_env.split(",")] if _origins_env != "*" else ["*"]
 
+app.add_middleware(LicenseGuardMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allow_origins,
@@ -44,6 +49,7 @@ app.include_router(admin_router.router, prefix="/api")
 app.include_router(setup_router.router, prefix="/api")
 app.include_router(leitstellen.router, prefix="/api")
 app.include_router(branding_router.router, prefix="/api")
+app.include_router(license_router.router, prefix="/api")
 
 _uploads_dir = Path("/uploads")
 try:
@@ -52,6 +58,15 @@ except OSError:
     pass  # directory may already exist or be read-only in dev/test environments
 if _uploads_dir.is_dir():
     app.mount("/uploads", StaticFiles(directory="/uploads", html=False), name="uploads")
+
+
+@app.on_event("startup")
+async def _check_license_on_startup():
+    info = validate_license(settings.license_key)
+    if info.valid:
+        logger.info("License OK — customer=%s expires=%s", info.customer, info.expires)
+    else:
+        logger.warning("LICENSE INVALID: %s", info.error)
 
 
 @app.get("/health")

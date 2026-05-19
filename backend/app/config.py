@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     caddy_admin_url: str = "http://caddy:2019"
     github_token: str = ""
     github_repo: str = "RettTechSolutions/ConvoyPlan"
+    license_key: str = ""
 
     class Config:
         env_file = ".env"
