@@ -34,8 +34,17 @@ _EXEMPT_PREFIXES = (
     "/openapi.json",
 )
 
-_lock = asyncio.Lock()
 _license_valid: bool | None = None
+_lock: asyncio.Lock | None = None
+
+
+def _get_lock() -> asyncio.Lock:
+    # Create the lock lazily inside the running event loop to avoid
+    # module-level asyncio.Lock() pitfalls with uvicorn worker startup.
+    global _lock
+    if _lock is None:
+        _lock = asyncio.Lock()
+    return _lock
 
 
 async def _check_license() -> bool:
@@ -43,7 +52,7 @@ async def _check_license() -> bool:
     if _license_valid is not None:
         return _license_valid
 
-    async with _lock:
+    async with _get_lock():
         if _license_valid is not None:
             return _license_valid
 
