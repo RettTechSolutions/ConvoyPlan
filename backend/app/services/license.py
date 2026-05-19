@@ -10,7 +10,7 @@ otherwise an attacker could substitute their own key.
 """
 import base64
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
 
 from cryptography.exceptions import InvalidSignature
