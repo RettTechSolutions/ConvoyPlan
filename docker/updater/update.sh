@@ -35,6 +35,13 @@ git -C "${REPO_DIR}" remote set-url origin "${REPO_URL}"
 # so a failed build is retried next iteration
 DEPLOYED=$(git -C "${REPO_DIR}" rev-parse HEAD)
 
+# Write initial status so the UI shows something on first load
+mkdir -p /update_status
+printf '{"deployed_sha":"%s","deployed_at":"%s"}\n' \
+  "${DEPLOYED}" \
+  "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+  > /update_status/status.json
+
 log "Updater started. Polling every ${INTERVAL}s."
 
 while true; do
@@ -69,6 +76,7 @@ while true; do
     log "Manual trigger detected"
     rm -f /update_status/trigger
     DEPLOYED=""
+    continue  # skip sleep, start update immediately
   fi
 
   sleep "${INTERVAL}"
