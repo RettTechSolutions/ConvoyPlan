@@ -1,5 +1,6 @@
 <script lang="ts">
     import { brandingStore } from '$lib/stores/branding';
+    import { themeStore } from '$lib/stores/theme';
 
     interface Props {
         variant?: 'horizontal' | 'main';
@@ -8,12 +9,14 @@
     }
     let { variant = 'horizontal', height = null, width = null }: Props = $props();
 
-    const fallbackSrc = variant === 'main' ? '/Hauptlogo.svg' : '/LogoHorizontal.svg';
-
+    // Dark theme (dunkle Seite) → Light-Set-Logos (helle Logos auf dunklem Hintergrund)
+    // Light theme (helle Seite)  → Dark-Set-Logos  (dunkle Logos auf hellem Hintergrund)
     const src = $derived(
         variant === 'main'
-            ? ($brandingStore.logo_main_url ?? fallbackSrc)
-            : ($brandingStore.logo_horizontal_url ?? fallbackSrc)
+            ? ($brandingStore.logo_main_url
+                ?? ($themeStore === 'light' ? '/logo/dark/LogoVertical.png' : '/logo/light/LogoVertical.png'))
+            : ($brandingStore.logo_horizontal_url
+                ?? ($themeStore === 'light' ? '/logo/dark/LogoHorinzontal.png' : '/logo/light/LogoHorinzontal.png'))
     );
 
     const style = width
