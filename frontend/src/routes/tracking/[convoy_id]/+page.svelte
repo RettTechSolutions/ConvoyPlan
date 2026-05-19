@@ -6,7 +6,7 @@
 	import { convoysApi, trackingApi, type Convoy, type VehiclePosition, type RouteResult } from '$lib/api';
 	import { livePositions, vehicleStatuses, connectTracking, disconnectTracking, sendPosition, trackingActive } from '$lib/stores/tracking';
 
-	const convoyId = $page.params.convoy_id;
+	const convoyId = $page.params.convoy_id!;
 
 	let convoy = $state<Convoy | null>(null);
 	let routeGeojson = $state<RouteResult['geojson']>(null);

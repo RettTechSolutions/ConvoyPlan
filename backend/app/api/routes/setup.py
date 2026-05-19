@@ -21,7 +21,7 @@ CERTS_DIR = Path("/certs")
 
 
 async def _superadmin_exists(db: AsyncSession) -> bool:
-    result = await db.execute(select(User).where(User.is_superadmin == True))
+    result = await db.execute(select(User).where(User.is_superadmin.is_(True)))
     return result.scalar_one_or_none() is not None
 
 

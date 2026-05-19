@@ -1,5 +1,5 @@
 from geoalchemy2.shape import to_shape
-from shapely.geometry import Point, mapping
+from shapely.geometry import mapping
 
 
 def point_to_wkt(lat: float, lon: float) -> str:

@@ -242,7 +242,7 @@
 		lageLayers.filter((l) => l.visible).forEach((layer) => {
 			const sid = `lage-${layer.id}`;
 			lageSourceIds.push(sid);
-			map.addSource(sid, { type: 'geojson', data: layer.geojson_data as FeatureCollection });
+			map.addSource(sid, { type: 'geojson', data: layer.geojson_data as unknown as FeatureCollection });
 			map.addLayer({ id: sid + '-line', type: 'line', source: sid, paint: { 'line-color': layer.color, 'line-width': 2 } });
 			map.addLayer({ id: sid + '-fill', type: 'fill', source: sid, filter: ['==', '$type', 'Polygon'], paint: { 'fill-color': layer.color, 'fill-opacity': 0.2 } });
 			map.addLayer({ id: sid + '-circle', type: 'circle', source: sid, filter: ['==', '$type', 'Point'], paint: { 'circle-color': layer.color, 'circle-radius': 6 } });
