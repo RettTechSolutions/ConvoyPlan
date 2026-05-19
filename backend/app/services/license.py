@@ -17,7 +17,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 # Embedded public key — generated once, matches the private key in scripts/convoyplan_license.key
-_PUBLIC_KEY_B64 = "ANM+Olsscy4ao+gss6wUyK8ybrZddS6B/BaICUhUEZU="
+_PUBLIC_KEY_B64 = "VGt705s9B3ZUibONKvGRV2un9KUsS+zeQsmO2qxkaW0="
 
 
 @dataclass
