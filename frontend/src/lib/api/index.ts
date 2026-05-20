@@ -342,6 +342,26 @@ export interface LeistelleDetail extends Leitstelle {
     geometry_geojson: object | null;
 }
 
+export interface LicenseStatus {
+    valid: boolean;
+    demo_mode: boolean;
+    license_id: string | null;
+    customer: string | null;
+    email: string | null;
+    issued: string | null;
+    expires: string | null;
+    max_users: number | null;
+    instance_id: string;
+    key_source: string | null;
+    error: string | null;
+}
+
+export const licenseApi = {
+    getStatus: () => api.get<LicenseStatus>('/api/license/status'),
+    activate: (license_key: string) =>
+        api.post<LicenseStatus>('/api/license/activate', { license_key }),
+};
+
 export const leistellenApi = {
     list: () => api.get<Leitstelle[]>('/api/leitstellen'),
     get: (id: string) => api.get<LeistelleDetail>(`/api/leitstellen/${id}`),
