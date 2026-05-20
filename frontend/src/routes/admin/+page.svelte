@@ -4,7 +4,7 @@
     import maplibregl from 'maplibre-gl';
     import 'maplibre-gl/dist/maplibre-gl.css';
     import { auth } from '$lib/stores/auth';
-    import { adminApi, leistellenApi, type AdminUser, type Leitstelle, type LeistelleDetail, type ZusatzKanal } from '$lib/api';
+    import { adminApi, leistellenApi, licenseApi, type AdminUser, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus } from '$lib/api';
     import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
 
@@ -72,6 +72,44 @@
     let showLsModal = $state(false);
     let editingLs = $state<LeistelleDetail | null>(null);
     let lsForm = $state({ name: '', anrufgruppe: '', zusatz_kanaele: [] as ZusatzKanal[] });
+
+    // ── Lizenz ───────────────────────────────────────────────────────────────────
+    let licenseStatus = $state<LicenseStatus | null>(null);
+    let licenseLoading = $state(false);
+    let licenseError = $state('');
+    let licenseSuccess = $state('');
+    let licenseKeyInput = $state('');
+    let licenseActivating = $state(false);
+    let showLicenseKey = $state(false);
+
+    async function loadLicenseStatus() {
+        licenseLoading = true;
+        licenseError = '';
+        try {
+            licenseStatus = await licenseApi.getStatus();
+        } catch {
+            licenseError = 'Lizenzstatus konnte nicht geladen werden';
+        } finally {
+            licenseLoading = false;
+        }
+    }
+
+    async function activateLicense() {
+        licenseError = '';
+        licenseSuccess = '';
+        if (!licenseKeyInput.trim()) return;
+        licenseActivating = true;
+        try {
+            licenseStatus = await licenseApi.activate(licenseKeyInput.trim());
+            licenseKeyInput = '';
+            licenseSuccess = `Lizenz aktiviert für ${licenseStatus.customer ?? 'Unbekannt'}`;
+            setTimeout(() => { licenseSuccess = ''; }, 5000);
+        } catch (e: unknown) {
+            licenseError = e instanceof Error ? e.message : 'Ungültiger Lizenzschlüssel';
+        } finally {
+            licenseActivating = false;
+        }
+    }
 
     // ── System / Update ──────────────────────────────────────────────────────────
     let updateStatus = $state<import('$lib/api').UpdateStatus | null>(null);
@@ -437,7 +475,7 @@
         <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>
             Branding
         </button>
-        <button class="tab" class:active={activeTab === 'system'} onclick={() => { activeTab = 'system'; loadUpdateStatus(); }}>
+        <button class="tab" class:active={activeTab === 'system'} onclick={() => { activeTab = 'system'; loadUpdateStatus(); loadLicenseStatus(); }}>
             System
         </button>
     </div>
@@ -664,6 +702,108 @@
     {/if}
 
     {#if activeTab === 'system'}
+        <!-- ── Lizenz-Sektion ── -->
+        <div class="section">
+            <div class="section-header">
+                <strong>Lizenz</strong>
+                <button class="btn-small" onclick={loadLicenseStatus}>↺</button>
+            </div>
+
+            {#if licenseError}
+                <div class="error-bar">{licenseError} <button onclick={() => licenseError = ''}>✕</button></div>
+            {/if}
+            {#if licenseSuccess}
+                <div class="success-bar">{licenseSuccess}</div>
+            {/if}
+
+            {#if licenseLoading}
+                <p class="hint">Lade…</p>
+            {:else if licenseStatus}
+                <!-- Status-Badge -->
+                <div class="license-status-row">
+                    {#if licenseStatus.valid}
+                        <span class="badge badge-ok">Lizenziert ✓</span>
+                        <span class="hint" style="margin-left:.5rem">{licenseStatus.customer ?? ''}</span>
+                    {:else}
+                        <span class="badge badge-warn">Demo-Modus — keine gültige Lizenz</span>
+                    {/if}
+                </div>
+
+                <!-- Lizenz-Details wenn aktiv -->
+                {#if licenseStatus.valid}
+                    <div class="update-grid" style="margin-top:.75rem">
+                        {#if licenseStatus.customer}
+                            <div class="update-row">
+                                <span class="update-label">Kunde</span>
+                                <span>{licenseStatus.customer}</span>
+                            </div>
+                        {/if}
+                        {#if licenseStatus.expires}
+                            <div class="update-row">
+                                <span class="update-label">Gültig bis</span>
+                                <span>{licenseStatus.expires}</span>
+                            </div>
+                        {/if}
+                        {#if licenseStatus.max_users}
+                            <div class="update-row">
+                                <span class="update-label">Max. Benutzer</span>
+                                <span>{licenseStatus.max_users}</span>
+                            </div>
+                        {/if}
+                        {#if licenseStatus.license_id}
+                            <div class="update-row">
+                                <span class="update-label">Lizenz-ID</span>
+                                <code>{licenseStatus.license_id}</code>
+                            </div>
+                        {/if}
+                    </div>
+                {/if}
+
+                <!-- Instanz-UUID -->
+                <div class="update-grid" style="margin-top:.75rem">
+                    <div class="update-row">
+                        <span class="update-label">Instanz-UUID</span>
+                        <code class="uuid-code">{licenseStatus.instance_id}</code>
+                        <button class="btn-small" onclick={() => navigator.clipboard.writeText(licenseStatus!.instance_id)} title="Kopieren">⎘</button>
+                    </div>
+                </div>
+
+                <!-- Lizenzschlüssel eingeben -->
+                <div class="license-input-section">
+                    <label class="license-input-label">
+                        {licenseStatus.valid ? 'Lizenzschlüssel ersetzen' : 'Lizenzschlüssel eingeben'}
+                    </label>
+                    <div class="license-input-row">
+                        <input
+                            type={showLicenseKey ? 'text' : 'password'}
+                            class="license-input"
+                            placeholder="eyJ…"
+                            bind:value={licenseKeyInput}
+                            onkeydown={(e) => { if (e.key === 'Enter') activateLicense(); }}
+                        />
+                        <button class="btn-small" onclick={() => showLicenseKey = !showLicenseKey} title="Anzeigen/Verstecken">
+                            {showLicenseKey ? '🙈' : '👁'}
+                        </button>
+                        <button
+                            class="btn-primary"
+                            onclick={activateLicense}
+                            disabled={licenseActivating || !licenseKeyInput.trim()}
+                        >
+                            {licenseActivating ? '…' : 'Aktivieren'}
+                        </button>
+                    </div>
+                    {#if !licenseStatus.valid}
+                        <p class="hint" style="margin-top:.4rem">
+                            Im Demo-Modus sind Schreiboperationen gesperrt. Geben Sie die Instanz-UUID an den Entwickler weiter, um einen Lizenzschlüssel zu erhalten.
+                        </p>
+                    {/if}
+                </div>
+            {:else}
+                <p class="hint">Lizenzstatus nicht verfügbar</p>
+            {/if}
+        </div>
+
+        <!-- ── Software-Update ── -->
         <div class="section">
             <div class="section-header">
                 <strong>Software-Update</strong>
@@ -908,4 +1048,12 @@
     .badge-warn { background: rgba(180,60,40,.15); color: var(--color-primary); border: 1px solid rgba(180,60,40,.3); }
     .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(255,255,255,.3); border-top-color: white; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: .3rem; }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    .license-status-row { display: flex; align-items: center; margin-bottom: .25rem; }
+    .uuid-code { font-size: var(--text-xs); font-family: monospace; word-break: break-all; background: var(--surface-2); padding: .1rem .3rem; border-radius: 3px; color: var(--text-1); }
+    .license-input-section { margin-top: 1rem; padding-top: .75rem; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: .3rem; }
+    .license-input-label { font-size: var(--text-xs); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+    .license-input-row { display: flex; gap: .4rem; align-items: center; }
+    .license-input { flex: 1; padding: .45rem .65rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); font-family: monospace; }
+    .license-input:focus { outline: none; border-color: var(--color-primary); }
 </style>
