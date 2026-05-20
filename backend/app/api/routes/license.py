@@ -7,7 +7,7 @@ from app.config import settings
 from app.database import get_db
 from app.middleware.license_guard import reset_license_cache
 from app.models.user import User
-from app.services.instance import get_or_create_instance_id, save_license_key
+from app.services.instance import get_or_create_instance_id, get_saved_license_key, save_license_key
 from app.services.license import validate_license
 
 router = APIRouter(prefix="/license", tags=["license"])
@@ -32,7 +32,6 @@ async def license_status(
     license_key = settings.license_key
     key_source = "env"
     if not license_key:
-        from app.services.instance import get_saved_license_key
         license_key = await get_saved_license_key(db)
         key_source = "db"
 
