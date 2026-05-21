@@ -8,6 +8,23 @@ All notable changes to ConvoyPlan are documented here.
 
 ---
 
+## [0.5.1] – 2026-05-20
+
+### Added
+
+- **Demo-Modus** – ohne gültigen Lizenzschlüssel startet die App im Demo-Modus: Lesezugriffe (GET) sind uneingeschränkt möglich, schreibende Operationen (POST/PUT/PATCH/DELETE) werden mit HTTP 402 abgewiesen.
+- **Lizenzaktivierung über Admin-UI** – neuer Abschnitt im Admin-Tab „System": zeigt die Instanz-UUID (mit Kopieren-Button) und ein Eingabefeld für den Lizenzschlüssel; nach erfolgreicher Aktivierung wird der Middleware-Cache ohne Serverneustart zurückgesetzt.
+- **Lizenzschlüssel-Persistenz in DB** – der eingegebene Schlüssel wird in `system_settings` (`license.key`) gespeichert und überlebt Neustarts; Auflösung in der Reihenfolge: Env-Variable `LICENSE_KEY` → DB-Eintrag.
+- **`POST /api/license/activate`** – neuer Superadmin-Endpoint: validiert, speichert und setzt den Middleware-Cache atomar.
+- **`GET /api/license/status`** – gibt jetzt zusätzlich `demo_mode` und `key_source` zurück.
+
+### Fixed
+
+- Backend- und Frontend-Versionsstring auf `0.5.0` korrigiert (war irrtümlich auf `0.4.0` bzw. `0.0.1` geblieben).
+- CI-Lizenzschlüssel-Abhängigkeit entkoppelt: `conftest.py` setzt den Middleware-Cache vor Testbeginn, damit Tests nach Keypair-Rotation nicht fehlschlagen.
+
+---
+
 ## [0.5.0] – 2026-05-18
 
 ### Added

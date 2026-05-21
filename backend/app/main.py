@@ -25,7 +25,7 @@ async def _lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="ConvoyPlan API", version="0.4.0", lifespan=_lifespan)
+app = FastAPI(title="ConvoyPlan API", version="0.5.0", lifespan=_lifespan)
 
 _origins_env = os.environ.get("CORS_ORIGINS", "*")
 _allow_origins = [o.strip() for o in _origins_env.split(",")] if _origins_env != "*" else ["*"]
@@ -67,4 +67,4 @@ if _uploads_dir.is_dir():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "version": "0.4.0"}
+    return {"status": "ok", "version": "0.5.0"}
