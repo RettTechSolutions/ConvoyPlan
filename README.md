@@ -56,6 +56,7 @@
 - 📱 **PWA und Capacitor-Konfiguration** für installierbare Web-App und native App-Wrapper.
 - 🎨 **Branding-System** – eigenes Logo, Farben und App-Name über den Admin-Bereich konfigurierbar.
 - 🔄 **Auto-Updater** – Docker-Container pollt das Repository und deployt neue Commits automatisch.
+- 🔑 **Lizenzmodell mit Demo-Modus** – ohne gültigen Lizenzschlüssel läuft die App im Demo-Modus (Lesezugriffe uneingeschränkt, schreibende Operationen mit HTTP 402 gesperrt); Aktivierung direkt über Admin-UI.
 
 ---
 
@@ -104,10 +105,12 @@
 
 | Funktion | Beschreibung | Status |
 |---|---|---:|
-| Setup-Wizard | Ersteinrichtung per Browser ohne SSH-Zugang | ✅ |
+| Setup-Wizard | Ersteinrichtung per Browser ohne SSH-Zugang (4 Schritte inkl. Branding) | ✅ |
 | Admin-Bereich | Benutzer-, Leitstellen- und Branding-Verwaltung | ✅ |
 | Auto-Updater | Git-Polling-Container aktualisiert die Instanz automatisch bei neuem Commit | ✅ |
 | Update-Status | Admin-UI zeigt Deploy-SHA und GitHub-Stand; manueller Trigger per Button | ✅ |
+| Demo-Modus | Ohne Lizenzschlüssel: Lesezugriff uneingeschränkt, Schreibzugriff gesperrt (HTTP 402) | ✅ |
+| Lizenzaktivierung | Schlüsseleingabe und Instanz-UUID im Admin-Bereich „System"; Cache-Reset ohne Neustart | ✅ |
 
 ---
 
@@ -318,11 +321,12 @@ Die Anwendung ist anschließend erreichbar unter:
 
 ### 5. Setup-Wizard ausführen
 
-Beim ersten Start leitet die Anwendung automatisch auf `http://localhost:5173/setup` weiter. Der dreistufige Wizard führt durch:
+Beim ersten Start leitet die Anwendung automatisch auf `http://localhost:5173/setup` weiter. Der vierstufige Wizard führt durch:
 
 1. **Superadmin-Account** — E-Mail-Adresse und Passwort festlegen.
 2. **Domain und SSL** — Serverdomain (FQDN) eingeben und TLS-Modus wählen: Let's Encrypt, eigenes Zertifikat (Datei-Upload) oder internes Zertifikat für lokale Nutzung.
-3. **Abschluss** — Caddy wird live neu geladen; danach direkt zur Anmeldung.
+3. **Branding** (optional) — App-Name, Farben und Logo an die eigene Organisation anpassen. Dieser Schritt kann übersprungen werden und ist auch später im Admin-Bereich erreichbar.
+4. **Abschluss** — Caddy wird live neu geladen; danach direkt zur Anmeldung.
 
 > Für lokale Entwicklung ohne Caddy kann der Wizard mit `localhost` als Domain und `internal` als TLS-Modus ausgeführt werden.
 
@@ -372,6 +376,14 @@ Domain und Zertifikat werden beim ersten Start über den Setup-Wizard in der Dat
 | `OSM_FILENAME` | `germany-latest.osm.pbf` | Dateiname im persistenten OSM-Volume |
 | `JAVA_OPTS` | `-Xmx2g -Xms512m -XX:+UseG1GC` | JVM-Speicherkonfiguration |
 
+### Lizenz und Auto-Updater
+
+| Variable | Beschreibung |
+|---|---|
+| `LICENSE_KEY` | Lizenzschlüssel (ausgestellt von ConvoyPlan). Ohne gültigen Schlüssel läuft die App im Demo-Modus. Alternativ zur Env-Variable auch über den Admin-Bereich eintragbar (wird dann in der DB gespeichert). |
+| `GITHUB_TOKEN` | GitHub PAT mit `repo`-Leseberechtigung (Classic Token: `repo`-Scope). Benötigt für den Auto-Updater-Container, um das GitHub-Repository zu pollen und neue Commits zu erkennen. |
+| `GITHUB_REPO` | Repository das der Auto-Updater überwacht. Standard: `RettTechSolutions/ConvoyPlan`. Bei Fork auf das eigene Repository anpassen. |
+
 ### Frontend (lokale Entwicklung)
 
 ```env
@@ -408,6 +420,14 @@ Die vollständige OpenAPI-Dokumentation wird automatisch von FastAPI bereitgeste
 |---|---|---|
 | `GET` | `/api/admin/users` | Alle Benutzer auflisten |
 | `PATCH` | `/api/admin/users/{user_id}` | Benutzer aktivieren/deaktivieren, Rolle setzen |
+
+**Lizenz**
+
+| Methode | Endpunkt | Beschreibung |
+|---|---|---|
+| `GET` | `/api/license/instance-id` | Instanz-UUID abfragen (für Lizenzbeantragung) |
+| `GET` | `/api/license/status` | Lizenzstatus, `demo_mode` und `key_source` |
+| `POST` | `/api/license/activate` | Lizenzschlüssel validieren, speichern und Cache zurücksetzen |
 
 **Fahrzeuge und Konvois**
 
@@ -559,16 +579,36 @@ open https://<DOMAIN>/setup
 
 ### Portainer
 
-Eine fertige Stack-Konfiguration liegt in `portainer-stack.yml`. Images werden über Variablen gesetzt; der Setup-Wizard übernimmt die Erstkonfiguration.
+Eine fertige Stack-Konfiguration liegt in `portainer-stack.yml`. Sie verwendet vorgefertigte Images aus der GitHub Container Registry (GHCR) statt lokaler Builds — kein `git clone` auf dem Server nötig.
+
+Pflichtfelder beim Anlegen des Stacks in Portainer:
+
+| Variable | Beschreibung |
+|---|---|
+| `BACKEND_IMAGE` | z. B. `ghcr.io/retttechsolutions/convoyplan-backend:latest` |
+| `FRONTEND_IMAGE` | z. B. `ghcr.io/retttechsolutions/convoyplan-frontend:latest` |
+| `GRAPHHOPPER_IMAGE` | z. B. `ghcr.io/retttechsolutions/convoyplan-graphhopper:latest` |
+| `JWT_SECRET` | Mit `openssl rand -hex 32` erzeugen |
+| `POSTGRES_PASSWORD` | Sicheres Datenbankpasswort setzen |
+| `DOMAIN` | FQDN des Servers |
+| `ACME_EMAIL` | E-Mail für Let's Encrypt |
+| `GITHUB_TOKEN` | PAT für Auto-Updater (optional, aber empfohlen) |
+| `LICENSE_KEY` | Lizenzschlüssel (optional; alternativ nach dem Start über Admin-UI eintragen) |
+
+Der Setup-Wizard übernimmt die Erstkonfiguration nach dem ersten Stack-Start.
+
+> **Hinweis:** Der `updater`-Container ist nur in `docker-compose.yml` enthalten. In Portainer übernimmt der Stack-Update-Mechanismus von Portainer selbst das Deployment neuer Images.
 
 ### Empfehlungen für Produktion
 
 1. `JWT_SECRET` mit `openssl rand -hex 32` generieren — nicht in Git versionieren.
 2. Datenbankpasswort ändern.
 3. `CORS_ORIGINS` auf die produktive Domain einschränken.
-4. Persistente Volumes (`postgres_data`, `caddy_data`, `cert_uploads`) regelmäßig sichern.
+4. Persistente Volumes (`postgres_data`, `caddy_data`, `cert_uploads`, `logo_uploads`) regelmäßig sichern.
 5. Für große OSM-Regionen (Deutschland: ~4 GB) ausreichend RAM (`JAVA_OPTS=-Xmx4g`) einplanen.
 6. GraphHopper-Graph-Cache (`gh_graph`) auf schnellem Speicher ablegen — erster Build dauert mehrere Minuten.
+7. `GITHUB_TOKEN` setzen, damit der Auto-Updater (bzw. der Admin-Bereich „System") Commit-Stände von GitHub abrufen kann.
+8. Lizenzschlüssel entweder als `LICENSE_KEY` Env-Variable oder nach dem Start über Admin → System eintragen. Ohne Schlüssel läuft die Instanz dauerhaft im Demo-Modus.
 
 ### CI und Releases
 
@@ -601,6 +641,7 @@ Für iOS wird eine macOS-Umgebung mit Xcode benötigt.
 - Die Caddy-Admin-API läuft auf Port `:2019` und ist nur im Docker-Netzwerk intern erreichbar — der Port wird nicht nach außen exponiert.
 - Live-Tracking verarbeitet Standortdaten. Für reale Einsätze sollten Zugriff, Aufbewahrung, Protokollierung und Löschung organisatorisch geregelt werden.
 - Öffentliche Share-Links sind ohne Login abrufbar — Tokens sollten wie vertrauliche Links behandelt werden.
+- Im Demo-Modus (kein gültiger `LICENSE_KEY`) sind alle schreibenden API-Operationen (POST/PUT/PATCH/DELETE) mit HTTP 402 gesperrt. Der Demo-Modus ist für Tests geeignet, nicht für Einsatzbetrieb.
 
 ---
 
@@ -608,6 +649,7 @@ Für iOS wird eine macOS-Umgebung mit Xcode benötigt.
 
 - ~~Import vorhandener GPX-/GeoJSON-Routen~~ ✅ (seit 0.5.0)
 - ~~CI-Pipeline für Backend-Tests, Frontend-Checks und Docker-Builds~~ ✅ (seit 0.4.0)
+- ~~Demo-Modus und Lizenzaktivierung über Admin-UI~~ ✅ (seit 0.5.1)
 - Benachrichtigungen bei Verzögerungen oder Abweichungen von der Route.
 - Audit-Log für Änderungen an Marschbefehlen und Konvois.
 - Offline-First-Synchronisation für mobile Nutzung.
