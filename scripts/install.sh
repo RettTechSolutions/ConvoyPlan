@@ -33,11 +33,11 @@ prompt() {
   local msg="$1" default="$2" varname="$3"
   local val
   if [[ -n "$default" ]]; then
-    read -rp "$msg [$default]: " val
+    read -rp "$msg [$default]: " val </dev/tty
     printf -v "$varname" '%s' "${val:-$default}"
   else
     while true; do
-      read -rp "$msg: " val
+      read -rp "$msg: " val </dev/tty
       [[ -n "$val" ]] && break
       echo "  Dieses Feld ist Pflicht."
     done
@@ -49,8 +49,8 @@ prompt_secret() {
   local msg="$1" varname="$2"
   local val1 val2
   while true; do
-    read -rsp "$msg: " val1; echo
-    read -rsp "Passwort bestätigen: " val2; echo
+    read -rsp "$msg: " val1 </dev/tty; echo
+    read -rsp "Passwort bestätigen: " val2 </dev/tty; echo
     if [[ -n "$val1" && "$val1" == "$val2" ]]; then
       printf -v "$varname" '%s' "$val1"
       break
@@ -71,7 +71,7 @@ echo "  1) Deutschland (~4 GB)"
 echo "  2) Bayern      (~1 GB)"
 echo "  3) Berlin      (~30 MB, für Tests)"
 echo "  4) Eigene URL eingeben"
-read -rp "Auswahl [1]: " OSM_CHOICE
+read -rp "Auswahl [1]: " OSM_CHOICE </dev/tty
 OSM_CHOICE="${OSM_CHOICE:-1}"
 
 case "$OSM_CHOICE" in
@@ -88,15 +88,15 @@ esac
 
 LICENSE_KEY=""
 GITHUB_TOKEN=""
-read -rp "Lizenzschlüssel [Enter = Demo-Modus]: " LICENSE_KEY 2>/dev/null || true
-read -rp "GitHub Token für Auto-Updater [Enter = überspringen]: " GITHUB_TOKEN 2>/dev/null || true
+read -rp "Lizenzschlüssel [Enter = Demo-Modus]: " LICENSE_KEY </dev/tty 2>/dev/null || true
+read -rp "GitHub Token für Auto-Updater [Enter = überspringen]: " GITHUB_TOKEN </dev/tty 2>/dev/null || true
 
 # JWT_SECRET generieren
 JWT_SECRET="$(openssl rand -hex 32)"
 
 # Installationsverzeichnis anlegen
 if [[ -d "$INSTALL_DIR" && -f "$INSTALL_DIR/.env" ]]; then
-  read -rp "Verzeichnis '$INSTALL_DIR' mit .env existiert. Überschreiben? [j/N]: " OVERWRITE || true
+  read -rp "Verzeichnis '$INSTALL_DIR' mit .env existiert. Überschreiben? [j/N]: " OVERWRITE </dev/tty || true
   if [[ "${OVERWRITE,,}" != "j" ]]; then
     echo "Abgebrochen."
     exit 0
