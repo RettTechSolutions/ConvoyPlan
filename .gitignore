@@ -1,8 +1,13 @@
 # Python
 __pycache__/
 *.py[cod]
+*.pyo
 .venv/
 *.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
 
 # Node
 node_modules/
@@ -18,9 +23,12 @@ graphhopper_cache/
 graphhopper/graph/
 graphhopper/graph-cache/
 
-# Environment
+# Environment — never commit secrets
 .env
 .env.local
+.env.*.local
+frontend/.env
+frontend/.env.local
 
 # License private key and issuer tool — admin-only, never commit
 scripts/convoyplan_license.key
@@ -32,13 +40,28 @@ docker-compose.override.yml
 # Editor
 .vscode/
 .idea/
+*.swp
+*.swo
 
 # OS
 .DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temp
+*.tmp
+*.bak
 
 # Git worktrees
 .worktrees/
 
+# Claude Code — lokale IDE-Konfiguration (MCP-Server, Pfade, etc.)
+.claude/
+
 # Claude Code / Superpowers internal tooling
 .superpowers/
 docs/
+.remember/
