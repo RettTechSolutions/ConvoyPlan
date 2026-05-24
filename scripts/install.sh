@@ -123,9 +123,9 @@ HTTPS_PORT=443
 OSM_DOWNLOAD_URL=${OSM_URL}
 OSM_FILENAME=${OSM_FILE}
 JAVA_OPTS="-Xmx2g -Xms512m -XX:+UseG1GC"
-BACKEND_IMAGE=ghcr.io/retttechsolutions/convoyplan-backend:latest
-FRONTEND_IMAGE=ghcr.io/retttechsolutions/convoyplan-frontend:latest
-GRAPHHOPPER_IMAGE=ghcr.io/retttechsolutions/convoyplan-graphhopper:latest
+BACKEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/backend:latest
+FRONTEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/frontend:latest
+GRAPHHOPPER_IMAGE=ghcr.io/retttechsolutions/convoyplan/graphhopper:latest
 GITHUB_REPO=RettTechSolutions/ConvoyPlan
 ENVEOF
 
