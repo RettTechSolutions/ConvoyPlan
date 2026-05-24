@@ -86,8 +86,10 @@ case "$OSM_CHOICE" in
   *) echo "FEHLER: Ungültige Auswahl '$OSM_CHOICE'."; exit 1 ;;
 esac
 
-read -rp "Lizenzschlüssel [Enter = Demo-Modus]: " LICENSE_KEY || true
-read -rp "GitHub Token für Auto-Updater [Enter = überspringen]: " GITHUB_TOKEN || true
+LICENSE_KEY=""
+GITHUB_TOKEN=""
+read -rp "Lizenzschlüssel [Enter = Demo-Modus]: " LICENSE_KEY 2>/dev/null || true
+read -rp "GitHub Token für Auto-Updater [Enter = überspringen]: " GITHUB_TOKEN 2>/dev/null || true
 
 # JWT_SECRET generieren
 JWT_SECRET="$(openssl rand -hex 32)"
@@ -105,7 +107,8 @@ mkdir -p "$INSTALL_DIR"
 # Stack-Datei herunterladen
 echo ""
 echo "→ Stack-Konfiguration herunterladen..."
-curl -sSL "$STACK_URL" -o "$INSTALL_DIR/docker-compose.yml"
+curl -sSfL "$STACK_URL" -o "$INSTALL_DIR/docker-compose.yml" \
+  || { echo "FEHLER: Stack-Datei konnte nicht heruntergeladen werden."; rm -f "$INSTALL_DIR/docker-compose.yml"; exit 1; }
 
 # .env schreiben
 cat > "$INSTALL_DIR/.env" <<ENVEOF
@@ -119,7 +122,7 @@ HTTP_PORT=80
 HTTPS_PORT=443
 OSM_DOWNLOAD_URL=${OSM_URL}
 OSM_FILENAME=${OSM_FILE}
-JAVA_OPTS=-Xmx2g -Xms512m -XX:+UseG1GC
+JAVA_OPTS="-Xmx2g -Xms512m -XX:+UseG1GC"
 BACKEND_IMAGE=ghcr.io/retttechsolutions/convoyplan-backend:latest
 FRONTEND_IMAGE=ghcr.io/retttechsolutions/convoyplan-frontend:latest
 GRAPHHOPPER_IMAGE=ghcr.io/retttechsolutions/convoyplan-graphhopper:latest
@@ -130,14 +133,13 @@ ENVEOF
 [[ -n "${GITHUB_TOKEN:-}" ]] && echo "GITHUB_TOKEN=${GITHUB_TOKEN}" >> "$INSTALL_DIR/.env"
 
 # Stack starten
-cd "$INSTALL_DIR"
 echo ""
 echo "→ Images herunterladen (kann einige Minuten dauern)..."
-docker compose pull
+docker compose --project-directory "$INSTALL_DIR" pull
 
 echo ""
 echo "→ ConvoyPlan starten..."
-docker compose up -d
+docker compose --project-directory "$INSTALL_DIR" up -d
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════╗"
