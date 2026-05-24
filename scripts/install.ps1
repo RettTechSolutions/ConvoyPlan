@@ -99,7 +99,7 @@ $JwtSecret = ($Bytes | ForEach-Object { $_.ToString('x2') }) -join ''
 # Installationsverzeichnis anlegen
 if ((Test-Path $InstallDir) -and (Test-Path (Join-Path $InstallDir '.env'))) {
     $overwrite = Read-Host "Verzeichnis '$InstallDir' mit .env existiert. Ueberschreiben? [j/N]"
-    if ($overwrite -ne 'j') { Write-Host 'Abgebrochen.'; exit 0 }
+    if ($overwrite -ine 'j') { Write-Host 'Abgebrochen.'; exit 0 }
 }
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
@@ -149,6 +149,6 @@ docker compose --project-directory $InstallDir up -d
 Write-Host ''
 Write-Host '╔══════════════════════════════════════════════════════════╗' -ForegroundColor Green
 Write-Host '║  ConvoyPlan laeuft!                                      ║' -ForegroundColor Green
-Write-Host "║  Setup-Wizard: https://$Domain/setup" -ForegroundColor Green
+Write-Host ("║  Setup-Wizard: https://$Domain/setup").PadRight(61) + "║" -ForegroundColor Green
 Write-Host '╚══════════════════════════════════════════════════════════╝' -ForegroundColor Green
 Write-Host ''
