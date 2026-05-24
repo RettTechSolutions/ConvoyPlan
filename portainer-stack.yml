@@ -17,7 +17,7 @@ services:
       retries: 10
 
   backend:
-    image: ${BACKEND_IMAGE:-convoyplan-backend:latest}
+    image: ${BACKEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/backend:latest}
     restart: unless-stopped
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     environment:
@@ -37,7 +37,7 @@ services:
         condition: service_healthy
 
   graphhopper:
-    image: ${GRAPHHOPPER_IMAGE:-convoyplan-graphhopper:latest}
+    image: ${GRAPHHOPPER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/graphhopper:latest}
     restart: unless-stopped
     environment:
       OSM_DOWNLOAD_URL: ${OSM_DOWNLOAD_URL:-https://download.geofabrik.de/europe/germany-latest.osm.pbf}
@@ -56,7 +56,7 @@ services:
       start_period: 30s
 
   frontend:
-    image: ${FRONTEND_IMAGE:-convoyplan-frontend:latest}
+    image: ${FRONTEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/frontend:latest}
     restart: unless-stopped
     depends_on:
       - backend

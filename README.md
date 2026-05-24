@@ -694,7 +694,7 @@ Diese Lizenz gilt für alle, die ConvoyPlan für interne, nicht-kommerzielle ode
 Für Organisationen, die ConvoyPlan in proprietäre Produkte einbetten, als SaaS betreiben oder Änderungen nicht veröffentlichen möchten, ist eine kommerzielle Lizenz erhältlich — ohne Copyleft-Pflichten.
 
 Details und Kontakt: [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md)  
-Anfragen: **christoph@zeitler.tech**
+Anfragen: **anfrage@convoyplan.de**
 
 ---
 

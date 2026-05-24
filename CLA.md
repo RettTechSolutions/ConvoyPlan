@@ -28,7 +28,7 @@ Das Einreichen eines Pull Requests gilt als Zustimmung zu den Bedingungen dieser
 
 Bei Beiträgen im Auftrag einer Organisation muss eine bevollmächtigte Person die CLA per E-Mail bestätigen:
 
-**E-Mail:** christoph@zeitler.tech  
+**E-Mail:** anfrage@convoyplan.de  
 **Betreff:** ConvoyPlan CLA — [Organisation]
 
 ## Fragen

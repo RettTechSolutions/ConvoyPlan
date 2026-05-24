@@ -42,7 +42,7 @@ Die AGPL-3.0 erlaubt folgende Nutzung ohne kommerzielle Lizenz:
 
 Für kommerzielle Lizenzanfragen, Preise und individuelle Vereinbarungen:
 
-**E-Mail:** christoph@zeitler.tech  
+**E-Mail:** anfrage@convoyplan.de  
 **Betreff:** ConvoyPlan Commercial License
 
 Bitte Anwendungsfall, Organisation und ungefähre Nutzerzahl angeben.

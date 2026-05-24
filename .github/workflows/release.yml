@@ -44,6 +44,16 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest
 
+      - name: Docker metadata – graphhopper
+        id: meta-graphhopper
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/graphhopper
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
       - name: Build and push backend
         uses: docker/build-push-action@v5
         with:
@@ -59,6 +69,14 @@ jobs:
           push: true
           tags: ${{ steps.meta-frontend.outputs.tags }}
           labels: ${{ steps.meta-frontend.outputs.labels }}
+
+      - name: Build and push graphhopper
+        uses: docker/build-push-action@v5
+        with:
+          context: ./graphhopper
+          push: true
+          tags: ${{ steps.meta-graphhopper.outputs.tags }}
+          labels: ${{ steps.meta-graphhopper.outputs.labels }}
 
   github-release:
     name: Create GitHub Release

@@ -8,7 +8,7 @@ All notable changes to ConvoyPlan are documented here.
 
 ---
 
-## [0.5.1] – 2026-05-20
+## [0.5.1] – 2026-05-24
 
 ### Added
 
@@ -17,6 +17,12 @@ All notable changes to ConvoyPlan are documented here.
 - **Lizenzschlüssel-Persistenz in DB** – der eingegebene Schlüssel wird in `system_settings` (`license.key`) gespeichert und überlebt Neustarts; Auflösung in der Reihenfolge: Env-Variable `LICENSE_KEY` → DB-Eintrag.
 - **`POST /api/license/activate`** – neuer Superadmin-Endpoint: validiert, speichert und setzt den Middleware-Cache atomar.
 - **`GET /api/license/status`** – gibt jetzt zusätzlich `demo_mode` und `key_source` zurück.
+
+### Added (continued)
+
+- **Installer-Scripts** – interaktive One-liner-Installatoren für Linux (`install.sh`) und Windows (`install.ps1`); prüfen Voraussetzungen, fragen Domain/E-Mail/Datenbankpasswort/OSM-Region, generieren `JWT_SECRET` automatisch und starten den Stack.
+- **Lizenzmodell (AGPL-3.0 + Dual-Lizenz)** – Demo-Modus und eine Produktivinstallation dauerhaft kostenlos; `COMMERCIAL_LICENSE.md` und `CLA.md` dokumentieren kommerzielle Optionen und Contributor-Bedingungen.
+- **CLAUDE.md** – Cross-Repo-Sync-Anweisungen für Installer-Scripts zwischen App- und Website-Repo.
 
 ### Fixed
 
