@@ -250,7 +250,29 @@ ConvoyPlan/
 
 ## Quickstart
 
-### Voraussetzungen
+### Schnellinstallation (empfohlen)
+
+**Linux:**
+
+```bash
+curl -sSL https://convoyplan.de/install.sh | bash
+```
+
+**Windows (PowerShell als Administrator):**
+
+```powershell
+irm https://convoyplan.de/install.ps1 | iex
+```
+
+Der Installer prüft Voraussetzungen (Docker, Docker Compose), fragt interaktiv nach Domain, E-Mail, Datenbankpasswort und OSM-Region, generiert einen `JWT_SECRET` automatisch und startet den Stack. Nach Abschluss öffnet sich der Setup-Wizard unter `https://<DOMAIN>/setup`.
+
+**Voraussetzungen:** Docker Engine (Linux) oder Docker Desktop (Windows) muss installiert und gestartet sein.
+
+---
+
+### Manuelle Installation (Entwicklung / Portainer)
+
+#### Voraussetzungen
 
 - Git
 - Docker und Docker Compose Plugin
