@@ -681,14 +681,28 @@ Für iOS wird eine macOS-Umgebung mit Xcode benötigt.
 
 ## Lizenz
 
-Dieses Projekt steht unter der [GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE).
+ConvoyPlan wird unter einem **Dual-Lizenz-Modell** veröffentlicht:
+
+### Open Source — AGPL-3.0
+
+Der Quelltext steht unter der [GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE). Das bedeutet: wer ConvoyPlan nutzt, modifiziert oder als Dienst betreibt, muss eigene Änderungen ebenfalls unter AGPL-3.0 veröffentlichen.
+
+Diese Lizenz gilt für alle, die ConvoyPlan für interne, nicht-kommerzielle oder vollständig quelloffene Zwecke einsetzen.
+
+### Kommerzielle Lizenz
+
+Für Organisationen, die ConvoyPlan in proprietäre Produkte einbetten, als SaaS betreiben oder Änderungen nicht veröffentlichen möchten, ist eine kommerzielle Lizenz erhältlich — ohne Copyleft-Pflichten.
+
+Details und Kontakt: [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md)  
+Anfragen: **christoph@zeitler.tech**
 
 ---
 
 ## Beitragen
 
 Pull Requests sind willkommen. Bitte öffne zuerst ein Issue für größere Änderungen.
-Alle Beiträge unterliegen ebenfalls der AGPL-3.0-Lizenz.
+
+Alle Beiträge unterliegen dem [Contributor License Agreement (CLA)](CLA.md), das durch das Einreichen eines Pull Requests automatisch akzeptiert wird. Die CLA stellt sicher, dass Beiträge sowohl unter AGPL-3.0 als auch im Rahmen kommerzieller Lizenzen genutzt werden können.
 
 ---
 
