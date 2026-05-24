@@ -24,8 +24,12 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-convoyplan}:${POSTGRES_PASSWORD:-convoyplan}@db:5432/${POSTGRES_DB:-convoyplan}
       JWT_SECRET: ${JWT_SECRET:-changeme-in-production}
       GRAPHHOPPER_URL: http://graphhopper:8989
+      LICENSE_KEY: ${LICENSE_KEY:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_REPO: ${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}
     volumes:
       - cert_uploads:/certs
+      - logo_uploads:/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -85,3 +89,4 @@ volumes:
   caddy_data:
   caddy_config:
   cert_uploads:
+  logo_uploads:
