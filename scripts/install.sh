@@ -76,13 +76,17 @@ OSM_CHOICE="${OSM_CHOICE:-1}"
 
 case "$OSM_CHOICE" in
   1) OSM_URL="https://download.geofabrik.de/europe/germany-latest.osm.pbf"
-     OSM_FILE="germany-latest.osm.pbf" ;;
+     OSM_FILE="germany-latest.osm.pbf"
+     JAVA_OPTS="-Xmx6g -Xms1g -XX:+UseG1GC" ;;
   2) OSM_URL="https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf"
-     OSM_FILE="bayern-latest.osm.pbf" ;;
+     OSM_FILE="bayern-latest.osm.pbf"
+     JAVA_OPTS="-Xmx3g -Xms512m -XX:+UseG1GC" ;;
   3) OSM_URL="https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf"
-     OSM_FILE="berlin-latest.osm.pbf" ;;
+     OSM_FILE="berlin-latest.osm.pbf"
+     JAVA_OPTS="-Xmx1g -Xms256m -XX:+UseG1GC" ;;
   4) prompt "OSM-Download-URL" "" OSM_URL
-     OSM_FILE="$(basename "$OSM_URL")" ;;
+     OSM_FILE="$(basename "$OSM_URL")"
+     JAVA_OPTS="-Xmx4g -Xms1g -XX:+UseG1GC" ;;
   *) echo "FEHLER: Ungültige Auswahl '$OSM_CHOICE'."; exit 1 ;;
 esac
 
@@ -127,7 +131,7 @@ HTTP_PORT=80
 HTTPS_PORT=443
 OSM_DOWNLOAD_URL=${OSM_URL}
 OSM_FILENAME=${OSM_FILE}
-JAVA_OPTS="-Xmx2g -Xms512m -XX:+UseG1GC"
+JAVA_OPTS=${JAVA_OPTS}
 BACKEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/backend:latest
 FRONTEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/frontend:latest
 GRAPHHOPPER_IMAGE=ghcr.io/retttechsolutions/convoyplan/graphhopper:latest
@@ -149,9 +153,9 @@ docker compose --project-directory "$INSTALL_DIR" up -d || true
 echo ""
 # GraphHopper-Hinweis je nach Region
 if [[ "$OSM_FILE" == *"germany-latest"* ]]; then
-  GH_HINT="⚠  GraphHopper (Deutschland) braucht 30-60 Min. beim ersten Start."
+  GH_HINT="⚠  GraphHopper (Deutschland) braucht 45-90 Min. und 6 GB RAM."
 elif [[ "$OSM_FILE" == *"bayern"* ]]; then
-  GH_HINT="⚠  GraphHopper (Bayern) braucht ca. 10-20 Min. beim ersten Start."
+  GH_HINT="⚠  GraphHopper (Bayern) braucht ca. 10-20 Min. und 3 GB RAM."
 else
   GH_HINT="ℹ  GraphHopper lädt im Hintergrund. Routing ist danach verfügbar."
 fi

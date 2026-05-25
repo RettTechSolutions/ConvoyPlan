@@ -42,7 +42,7 @@ services:
     environment:
       OSM_DOWNLOAD_URL: ${OSM_DOWNLOAD_URL:-https://download.geofabrik.de/europe/germany-latest.osm.pbf}
       OSM_FILENAME: ${OSM_FILENAME:-germany-latest.osm.pbf}
-      JAVA_OPTS: ${JAVA_OPTS:--Xmx2g -Xms512m -XX:+UseG1GC}
+      JAVA_OPTS: ${JAVA_OPTS:--Xmx6g -Xms1g -XX:+UseG1GC}
     volumes:
       - osm_data:/data/osm
       - gh_graph:/data/graph
