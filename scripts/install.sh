@@ -104,11 +104,16 @@ if [[ -d "$INSTALL_DIR" && -f "$INSTALL_DIR/.env" ]]; then
 fi
 mkdir -p "$INSTALL_DIR"
 
-# Stack-Datei herunterladen
+# Stack-Datei und Caddy-Entrypoint herunterladen
 echo ""
 echo "→ Stack-Konfiguration herunterladen..."
 curl -sSfL "$STACK_URL" -o "$INSTALL_DIR/docker-compose.yml" \
   || { echo "FEHLER: Stack-Datei konnte nicht heruntergeladen werden."; rm -f "$INSTALL_DIR/docker-compose.yml"; exit 1; }
+
+mkdir -p "$INSTALL_DIR/caddy"
+curl -sSfL "$REPO_RAW/caddy/entrypoint.sh" -o "$INSTALL_DIR/caddy/entrypoint.sh" \
+  || { echo "FEHLER: Caddy-Entrypoint konnte nicht heruntergeladen werden."; exit 1; }
+chmod +x "$INSTALL_DIR/caddy/entrypoint.sh"
 
 # .env schreiben
 cat > "$INSTALL_DIR/.env" <<ENVEOF
