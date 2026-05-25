@@ -139,11 +139,23 @@ docker compose --project-directory "$INSTALL_DIR" pull
 
 echo ""
 echo "→ ConvoyPlan starten..."
-docker compose --project-directory "$INSTALL_DIR" up -d
+docker compose --project-directory "$INSTALL_DIR" up -d || true
 
 echo ""
+# GraphHopper-Hinweis je nach Region
+if [[ "$OSM_FILE" == *"germany-latest"* ]]; then
+  GH_HINT="⚠  GraphHopper (Deutschland) braucht 30-60 Min. beim ersten Start."
+elif [[ "$OSM_FILE" == *"bayern"* ]]; then
+  GH_HINT="⚠  GraphHopper (Bayern) braucht ca. 10-20 Min. beim ersten Start."
+else
+  GH_HINT="ℹ  GraphHopper lädt im Hintergrund. Routing ist danach verfügbar."
+fi
+
 echo "╔══════════════════════════════════════════════════════════╗"
-echo "║  ConvoyPlan läuft!                                       ║"
+echo "║  ConvoyPlan wurde gestartet!                             ║"
 printf "║  Setup-Wizard: https://%-34s║\n" "${DOMAIN}/setup"
+echo "╠══════════════════════════════════════════════════════════╣"
+printf "║  %-56s║\n" "$GH_HINT"
+echo "║  Fortschritt: docker compose logs -f graphhopper         ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo ""

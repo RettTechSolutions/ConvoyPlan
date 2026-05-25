@@ -34,7 +34,7 @@ services:
       db:
         condition: service_healthy
       graphhopper:
-        condition: service_healthy
+        condition: service_started
 
   graphhopper:
     image: ${GRAPHHOPPER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/graphhopper:latest}
@@ -50,10 +50,10 @@ services:
       - "${GH_PORT:-8989}:8989"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8989/health"]
-      interval: 15s
+      interval: 30s
       timeout: 10s
-      retries: 40
-      start_period: 30s
+      retries: 240
+      start_period: 120s
 
   frontend:
     image: ${FRONTEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/frontend:latest}
