@@ -172,20 +172,24 @@ echo "→ ConvoyPlan starten..."
 docker compose --project-directory "$INSTALL_DIR" up -d || true
 
 echo ""
-# GraphHopper-Hinweis je nach Region
+# GraphHopper-Hinweis je nach Region (max. 54 ASCII-Zeichen für saubere Box)
 if [[ "$OSM_FILE" == *"germany-latest"* ]]; then
-  GH_HINT="⚠  GraphHopper (Deutschland) braucht 45-90 Min. und 6 GB RAM."
+  GH_HINT1="! Routing-Graph DE: ca. 45-90 Min. Ladezeit"
+  GH_HINT2="  Voraussetzung: mind. 6 GB RAM verfuegbar"
 elif [[ "$OSM_FILE" == *"bayern"* ]]; then
-  GH_HINT="⚠  GraphHopper (Bayern) braucht ca. 10-20 Min. und 3 GB RAM."
+  GH_HINT1="! Routing-Graph BY: ca. 10-20 Min. Ladezeit"
+  GH_HINT2="  Voraussetzung: mind. 3 GB RAM verfuegbar"
 else
-  GH_HINT="ℹ  GraphHopper lädt im Hintergrund. Routing ist danach verfügbar."
+  GH_HINT1="i GraphHopper laedt im Hintergrund"
+  GH_HINT2="  Routing steht danach bereit"
 fi
 
 echo "╔══════════════════════════════════════════════════════════╗"
 echo "║  ConvoyPlan wurde gestartet!                             ║"
 printf "║  Setup-Wizard: https://%-34s║\n" "${DOMAIN}/setup"
 echo "╠══════════════════════════════════════════════════════════╣"
-printf "║  %-56s║\n" "$GH_HINT"
-echo "║  Fortschritt: docker compose logs -f graphhopper         ║"
+printf "║  %-56s║\n" "$GH_HINT1"
+printf "║  %-56s║\n" "$GH_HINT2"
+echo "║  Logs:  docker compose logs -f graphhopper               ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo ""
