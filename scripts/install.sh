@@ -108,15 +108,16 @@ if [[ -d "$INSTALL_DIR" && -f "$INSTALL_DIR/.env" ]]; then
 fi
 mkdir -p "$INSTALL_DIR"
 
+# Docker erstellt fehlende Bind-Mount-Quellen als Verzeichnisse statt als Dateien.
+# Vor dem Download immer bereinigen, damit curl sauber schreiben kann.
+rm -rf "$INSTALL_DIR/docker-compose.yml" "$INSTALL_DIR/caddy/entrypoint.sh"
+mkdir -p "$INSTALL_DIR/caddy"
+
 # Stack-Datei und Caddy-Entrypoint herunterladen
 echo ""
 echo "→ Stack-Konfiguration herunterladen..."
 curl -sSfL "$STACK_URL" -o "$INSTALL_DIR/docker-compose.yml" \
-  || { echo "FEHLER: Stack-Datei konnte nicht heruntergeladen werden."; rm -f "$INSTALL_DIR/docker-compose.yml"; exit 1; }
-
-# Docker erstellt fehlende Bind-Mount-Quellen als Verzeichnisse — das rückgängig machen.
-[[ -d "$INSTALL_DIR/caddy/entrypoint.sh" ]] && rm -rf "$INSTALL_DIR/caddy/entrypoint.sh"
-mkdir -p "$INSTALL_DIR/caddy"
+  || { echo "FEHLER: Stack-Datei konnte nicht heruntergeladen werden."; exit 1; }
 curl -sSfL "$REPO_RAW/caddy/entrypoint.sh" -o "$INSTALL_DIR/caddy/entrypoint.sh" \
   || { echo "FEHLER: Caddy-Entrypoint konnte nicht heruntergeladen werden."; exit 1; }
 chmod +x "$INSTALL_DIR/caddy/entrypoint.sh"
