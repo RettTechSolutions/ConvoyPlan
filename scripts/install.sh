@@ -92,8 +92,10 @@ esac
 
 LICENSE_KEY=""
 GITHUB_TOKEN=""
-read -rp "Lizenzschlüssel [Enter = Demo-Modus]: " LICENSE_KEY </dev/tty 2>/dev/null || true
-read -rp "GitHub Token für Auto-Updater [Enter = überspringen]: " GITHUB_TOKEN </dev/tty 2>/dev/null || true
+printf "Lizenzschlüssel [Enter = Demo-Modus]: " >/dev/tty
+read -r LICENSE_KEY </dev/tty || true
+printf "GitHub Token für Auto-Updater [Enter = überspringen]: " >/dev/tty
+read -r GITHUB_TOKEN </dev/tty || true
 
 # JWT_SECRET generieren
 JWT_SECRET="$(openssl rand -hex 32)"
@@ -108,9 +110,18 @@ if [[ -d "$INSTALL_DIR" && -f "$INSTALL_DIR/.env" ]]; then
 fi
 mkdir -p "$INSTALL_DIR"
 
-# Docker erstellt fehlende Bind-Mount-Quellen als Verzeichnisse statt als Dateien.
-# Vor dem Download immer bereinigen, damit curl sauber schreiben kann.
-rm -rf "$INSTALL_DIR/docker-compose.yml" "$INSTALL_DIR/caddy/entrypoint.sh"
+# Docker erstellt fehlende Bind-Mount-Quellen als root-eigene Verzeichnisse.
+# Vor dem Download bereinigen; sudo nötig wenn Docker als root lief.
+_cleanup() {
+  rm -rf "$@" 2>/dev/null && return
+  echo "  → sudo erforderlich (Docker-Artefakte gehören root)..."
+  sudo rm -rf "$@" || {
+    echo "FEHLER: Kann alte Docker-Artefakte nicht entfernen."
+    echo "       Manuell ausführen: sudo rm -rf $*"
+    exit 1
+  }
+}
+_cleanup "$INSTALL_DIR/docker-compose.yml" "$INSTALL_DIR/caddy/entrypoint.sh"
 mkdir -p "$INSTALL_DIR/caddy"
 
 # Stack-Datei und Caddy-Entrypoint herunterladen
