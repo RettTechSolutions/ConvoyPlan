@@ -26,6 +26,15 @@ if ! docker info &>/dev/null 2>&1; then
   exit 1
 fi
 echo "✓ Docker und Docker Compose gefunden"
+
+# sudo-Verfügbarkeit prüfen (wird für root-eigene Docker-Artefakte benötigt)
+if [[ "$EUID" -ne 0 ]] && ! sudo -n true 2>/dev/null; then
+  echo ""
+  echo "Dieser Installer benötigt sudo-Rechte, um von Docker als root angelegte"
+  echo "Verzeichnisse bereinigen zu können. Bitte sudo-Passwort einmalig eingeben:"
+  sudo true || { echo "FEHLER: sudo nicht verfügbar. Installation als root starten: sudo bash"; exit 1; }
+fi
+echo "✓ sudo verfügbar"
 echo ""
 
 # Hilfsfunktionen
