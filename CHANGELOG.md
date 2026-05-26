@@ -8,6 +8,14 @@ All notable changes to ConvoyPlan are documented here.
 
 ---
 
+## [0.5.2] – 2026-05-26
+
+### Fixed
+
+- **Leitstellen konnten nicht geladen werden** – `GET /api/leitstellen` (ohne Trailing Slash) löste einen FastAPI-307-Redirect aus; hinter Caddy enthielt der `Location`-Header `http://` statt `https://`, was der Browser als Mixed Content blockierte. Frontend-API-Calls auf `/api/leitstellen/` und `/api/leitstellen/` (POST) korrigiert.
+
+---
+
 ## [0.5.1] – 2026-05-24
 
 ### Added
@@ -150,7 +158,9 @@ All notable changes to ConvoyPlan are documented here.
 - Capacitor configuration for Android/iOS native wrapper.
 - Docker Compose setup with GraphHopper OSM pre-download.
 
-[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.5.1...v0.5.2
+[0.5.1]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.2.0...v0.3.0
