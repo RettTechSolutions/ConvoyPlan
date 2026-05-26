@@ -119,18 +119,13 @@ if [[ -d "$INSTALL_DIR" && -f "$INSTALL_DIR/.env" ]]; then
 fi
 mkdir -p "$INSTALL_DIR"
 
-# Docker erstellt fehlende Bind-Mount-Quellen als root-eigene Verzeichnisse.
-# Vor dem Download bereinigen; sudo nötig wenn Docker als root lief.
-_cleanup() {
-  rm -rf "$@" 2>/dev/null && return
-  echo "  → sudo erforderlich (Docker-Artefakte gehören root)..."
-  sudo rm -rf "$@" || {
-    echo "FEHLER: Kann alte Docker-Artefakte nicht entfernen."
-    echo "       Manuell ausführen: sudo rm -rf $*"
-    exit 1
-  }
-}
-_cleanup "$INSTALL_DIR/docker-compose.yml" "$INSTALL_DIR/caddy/entrypoint.sh"
+# Docker (Daemon läuft als root) kann Dateien und Verzeichnisse im Install-Dir
+# als root anlegen. Ownership einmalig auf den aktuellen User zurücksetzen,
+# damit alle nachfolgenden Operationen ohne sudo laufen.
+sudo chown -R "$(id -u):$(id -g)" "$INSTALL_DIR"
+
+# Download-Ziele bereinigen (jetzt als normaler User möglich)
+rm -rf "$INSTALL_DIR/docker-compose.yml" "$INSTALL_DIR/caddy/entrypoint.sh"
 mkdir -p "$INSTALL_DIR/caddy"
 
 # Stack-Datei und Caddy-Entrypoint herunterladen
