@@ -84,3 +84,18 @@ async def activate_license(
         "key_source": "db",
         "error": None,
     }
+
+
+@router.get("/mode")
+async def license_mode(db: AsyncSession = Depends(get_db)):
+    """Public endpoint — no auth required.
+
+    Returns only {demo_mode: bool} so any logged-in frontend client can show
+    a banner without exposing instance IDs or license details.
+    """
+    license_key = settings.license_key
+    if not license_key:
+        license_key = await get_saved_license_key(db)
+    instance_id = await get_or_create_instance_id(db)
+    info = validate_license(license_key, instance_id)
+    return {"demo_mode": not info.valid}
