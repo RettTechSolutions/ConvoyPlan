@@ -364,10 +364,10 @@ export const licenseApi = {
 };
 
 export const leistellenApi = {
-    list: () => api.get<Leitstelle[]>('/api/leitstellen'),
+    list: () => api.get<Leitstelle[]>('/api/leitstellen/'),
     get: (id: string) => api.get<LeistelleDetail>(`/api/leitstellen/${id}`),
     create: (data: { name: string; anrufgruppe: string; zusatz_kanaele: ZusatzKanal[] }) =>
-        api.post<Leitstelle>('/api/leitstellen', data),
+        api.post<Leitstelle>('/api/leitstellen/', data),
     update: (id: string, data: { name?: string; anrufgruppe?: string; zusatz_kanaele?: ZusatzKanal[] }) =>
         api.put<Leitstelle>(`/api/leitstellen/${id}`, data),
     delete: (id: string) => api.delete(`/api/leitstellen/${id}`),
