@@ -70,9 +70,50 @@ prompt_secret() {
 
 # Eingaben
 prompt "Installationsverzeichnis" "$HOME/convoyplan" INSTALL_DIR
-prompt "Domain (z.B. convoy.example.com)" "" DOMAIN
-prompt "E-Mail für Let's Encrypt" "" ACME_EMAIL
-prompt_secret "Datenbankpasswort" DB_PASSWORD
+
+# Bestehende .env laden und als Vorauswahl anbieten
+PREV_DOMAIN="" PREV_EMAIL="" PREV_DB_PASS="" PREV_JWT=""
+PREV_OSM_URL="" PREV_OSM_FILE="" PREV_JAVA_OPTS=""
+if [[ -f "$INSTALL_DIR/.env" ]]; then
+  echo ""
+  echo "Bestehende Konfiguration in '$INSTALL_DIR/.env' gefunden."
+  read -rp "Werte als Vorauswahl übernehmen? [J/n]: " _reuse </dev/tty || true
+  if [[ "${_reuse,,}" != "n" ]]; then
+    _ev() { grep "^${1}=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2-; }
+    PREV_DOMAIN=$(_ev DOMAIN)
+    PREV_EMAIL=$(_ev ACME_EMAIL)
+    PREV_DB_PASS=$(_ev POSTGRES_PASSWORD)
+    PREV_JWT=$(_ev JWT_SECRET)
+    PREV_OSM_URL=$(_ev OSM_DOWNLOAD_URL)
+    PREV_OSM_FILE=$(_ev OSM_FILENAME)
+    PREV_JAVA_OPTS=$(_ev JAVA_OPTS)
+    echo "✓ Bestehende Werte geladen."
+  fi
+  echo ""
+fi
+
+prompt "Domain (z.B. convoy.example.com)" "${PREV_DOMAIN:-}" DOMAIN
+prompt "E-Mail für Let's Encrypt" "${PREV_EMAIL:-}" ACME_EMAIL
+
+if [[ -n "$PREV_DB_PASS" ]]; then
+  printf "Datenbankpasswort [Enter = bestehendes beibehalten]: " >/dev/tty
+  read -rs _new_pw </dev/tty; echo >/dev/tty
+  if [[ -z "$_new_pw" ]]; then
+    DB_PASSWORD="$PREV_DB_PASS"
+  else
+    while true; do
+      printf "Passwort bestätigen: " >/dev/tty
+      read -rs _new_pw2 </dev/tty; echo >/dev/tty
+      [[ -n "$_new_pw" && "$_new_pw" == "$_new_pw2" ]] && break
+      echo "  Passwörter stimmen nicht überein oder leer. Erneut versuchen."
+      printf "Datenbankpasswort: " >/dev/tty
+      read -rs _new_pw </dev/tty; echo >/dev/tty
+    done
+    DB_PASSWORD="$_new_pw"
+  fi
+else
+  prompt_secret "Datenbankpasswort" DB_PASSWORD
+fi
 
 echo ""
 echo "OSM-Region wählen:"
@@ -80,36 +121,37 @@ echo "  1) Deutschland (~4 GB)"
 echo "  2) Bayern      (~1 GB)"
 echo "  3) Berlin      (~30 MB, für Tests)"
 echo "  4) Eigene URL eingeben"
-read -rp "Auswahl [1]: " OSM_CHOICE </dev/tty
-OSM_CHOICE="${OSM_CHOICE:-1}"
-
-case "$OSM_CHOICE" in
-  1) OSM_URL="https://download.geofabrik.de/europe/germany-latest.osm.pbf"
-     OSM_FILE="germany-latest.osm.pbf"
-     JAVA_OPTS="-Xmx6g -Xms1g -XX:+UseG1GC" ;;
-  2) OSM_URL="https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf"
-     OSM_FILE="bayern-latest.osm.pbf"
-     JAVA_OPTS="-Xmx3g -Xms512m -XX:+UseG1GC" ;;
-  3) OSM_URL="https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf"
-     OSM_FILE="berlin-latest.osm.pbf"
-     JAVA_OPTS="-Xmx1g -Xms256m -XX:+UseG1GC" ;;
-  4) prompt "OSM-Download-URL" "" OSM_URL
-     OSM_FILE="$(basename "$OSM_URL")"
-     JAVA_OPTS="-Xmx4g -Xms1g -XX:+UseG1GC" ;;
-  *) echo "FEHLER: Ungültige Auswahl '$OSM_CHOICE'."; exit 1 ;;
-esac
-
-# JWT_SECRET generieren
-JWT_SECRET="$(openssl rand -hex 32)"
-
-# Installationsverzeichnis anlegen
-if [[ -d "$INSTALL_DIR" && -f "$INSTALL_DIR/.env" ]]; then
-  read -rp "Verzeichnis '$INSTALL_DIR' mit .env existiert. Überschreiben? [j/N]: " OVERWRITE </dev/tty || true
-  if [[ "${OVERWRITE,,}" != "j" ]]; then
-    echo "Abgebrochen."
-    exit 0
-  fi
+if [[ -n "$PREV_OSM_FILE" ]]; then
+  read -rp "Auswahl [Enter = beibehalten: $PREV_OSM_FILE]: " OSM_CHOICE </dev/tty
+else
+  read -rp "Auswahl [1]: " OSM_CHOICE </dev/tty
 fi
+
+if [[ -z "$OSM_CHOICE" && -n "$PREV_OSM_FILE" ]]; then
+  OSM_URL="$PREV_OSM_URL"
+  OSM_FILE="$PREV_OSM_FILE"
+  JAVA_OPTS="${PREV_JAVA_OPTS:--Xmx4g -Xms1g -XX:+UseG1GC}"
+else
+  OSM_CHOICE="${OSM_CHOICE:-1}"
+  case "$OSM_CHOICE" in
+    1) OSM_URL="https://download.geofabrik.de/europe/germany-latest.osm.pbf"
+       OSM_FILE="germany-latest.osm.pbf"
+       JAVA_OPTS="-Xmx6g -Xms1g -XX:+UseG1GC" ;;
+    2) OSM_URL="https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf"
+       OSM_FILE="bayern-latest.osm.pbf"
+       JAVA_OPTS="-Xmx3g -Xms512m -XX:+UseG1GC" ;;
+    3) OSM_URL="https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf"
+       OSM_FILE="berlin-latest.osm.pbf"
+       JAVA_OPTS="-Xmx1g -Xms256m -XX:+UseG1GC" ;;
+    4) prompt "OSM-Download-URL" "" OSM_URL
+       OSM_FILE="$(basename "$OSM_URL")"
+       JAVA_OPTS="-Xmx4g -Xms1g -XX:+UseG1GC" ;;
+    *) echo "FEHLER: Ungültige Auswahl '$OSM_CHOICE'."; exit 1 ;;
+  esac
+fi
+
+# JWT_SECRET beibehalten oder neu generieren
+JWT_SECRET="${PREV_JWT:-$(openssl rand -hex 32)}"
 mkdir -p "$INSTALL_DIR"
 
 # Docker (Daemon läuft als root) kann Dateien und Verzeichnisse im Install-Dir
