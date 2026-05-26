@@ -11,7 +11,7 @@ otherwise an attacker could substitute their own key.
 import base64
 import json
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -36,10 +36,17 @@ class LicenseInfo:
     def expired(self) -> bool:
         if not self.expires:
             return True
+        # ISO date string (YYYY-MM-DD) — preferred format
         try:
             return date.fromisoformat(self.expires) < date.today()
         except ValueError:
-            return True
+            pass
+        # Unix timestamp — "exp" field in JWT convention
+        try:
+            return datetime.utcfromtimestamp(int(self.expires)).date() < date.today()
+        except (ValueError, OSError, OverflowError):
+            pass
+        return True  # unknown format → treat as expired
 
 
 def _b64url_decode(s: str) -> bytes:
@@ -71,13 +78,15 @@ def validate_license(license_key: str, instance_id: str = "") -> LicenseInfo:
         pub_key.verify(sig_bytes, payload_bytes)
 
         payload = json.loads(payload_bytes.decode())
+        # Accept both "expires" (internal convention) and "exp" (JWT convention)
+        expires_raw = payload.get("expires") or payload.get("exp") or ""
         info = LicenseInfo(
             valid=True,
             license_id=payload.get("id", ""),
             customer=payload.get("customer", ""),
             email=payload.get("email", ""),
             issued=payload.get("issued", ""),
-            expires=payload.get("expires", ""),
+            expires=str(expires_raw),
             max_users=int(payload.get("max_users", 0)),
             instance_id=payload.get("instance_id", ""),
         )
