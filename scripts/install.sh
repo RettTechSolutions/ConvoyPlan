@@ -99,13 +99,6 @@ case "$OSM_CHOICE" in
   *) echo "FEHLER: Ungültige Auswahl '$OSM_CHOICE'."; exit 1 ;;
 esac
 
-LICENSE_KEY=""
-GITHUB_TOKEN=""
-printf "Lizenzschlüssel [Enter = Demo-Modus]: " >/dev/tty
-read -r LICENSE_KEY </dev/tty || true
-printf "GitHub Token für Auto-Updater [Enter = überspringen]: " >/dev/tty
-read -r GITHUB_TOKEN </dev/tty || true
-
 # JWT_SECRET generieren
 JWT_SECRET="$(openssl rand -hex 32)"
 
@@ -157,10 +150,9 @@ GITHUB_REPO=RettTechSolutions/ConvoyPlan
 # Interne Ports (Docker-Netzwerk, nicht nach außen exponiert — bei Bedarf anpassen)
 FRONTEND_PORT=3000
 BACKEND_PORT=8000
+# Lizenzschlüssel nach dem Setup im Admin-Panel unter System → Lizenz eintragen
+# LICENSE_KEY=
 ENVEOF
-
-[[ -n "${LICENSE_KEY:-}" ]] && echo "LICENSE_KEY=${LICENSE_KEY}" >> "$INSTALL_DIR/.env"
-[[ -n "${GITHUB_TOKEN:-}" ]] && echo "GITHUB_TOKEN=${GITHUB_TOKEN}" >> "$INSTALL_DIR/.env"
 
 # Stack starten
 echo ""
@@ -191,5 +183,8 @@ echo "╠═══════════════════════�
 printf "║  %-56s║\n" "$GH_HINT1"
 printf "║  %-56s║\n" "$GH_HINT2"
 echo "║  Logs:  docker compose logs -f graphhopper               ║"
+echo "╠══════════════════════════════════════════════════════════╣"
+echo "║  Lizenz: Admin-Panel > System > Lizenz nach dem Setup    ║"
+echo "║  Anfrage: anfrage@convoyplan.de (mit Instanz-UUID)       ║"
 echo "╚══════════════════════════════════════════════════════════╝"
 echo ""
