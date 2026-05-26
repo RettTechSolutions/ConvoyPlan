@@ -42,26 +42,22 @@
 		}
 
 		setupChecked = true;
-
-		// Fetch demo mode status — public endpoint, only meaningful when logged in
-		if ($auth.token && !PUBLIC_ROUTES.some(r => $page.url.pathname.startsWith(r))) {
-			try {
-				const resp = await fetch('/api/license/mode');
-				if (resp.ok) {
-					const data = await resp.json();
-					demoMode = data.demo_mode === true;
-				}
-			} catch {
-				// Silently ignore — demo mode banner is non-critical
-			}
-		}
 	});
 
 	$effect(() => {
 		if (!setupChecked) return;
 		const isPublic = PUBLIC_ROUTES.some((r) => $page.url.pathname.startsWith(r));
-		if (!isPublic && !$auth.token && typeof window !== 'undefined') {
+		if (!isPublic && !$auth.token) {
 			goto('/login');
+			return;
+		}
+		if ($auth.token && !isPublic) {
+			fetch('/api/license/mode')
+				.then(r => r.ok ? r.json() : null)
+				.then(data => { if (data) demoMode = data.demo_mode === true; })
+				.catch(() => {});
+		} else {
+			demoMode = false;
 		}
 	});
 </script>
@@ -73,7 +69,7 @@
 
 {#if demoMode}
 	<div class="demo-banner" role="alert">
-		<span>⚠ Demo-Modus — keine gültige Lizenz. Schreiboperationen sind gesperrt.</span>
+		<span><span aria-hidden="true">⚠</span> Demo-Modus — keine gültige Lizenz. Schreiboperationen sind gesperrt.</span>
 		{#if $auth.is_superadmin}
 			<a href="/admin">Lizenz aktivieren →</a>
 		{/if}
