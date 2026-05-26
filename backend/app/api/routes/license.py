@@ -86,6 +86,17 @@ async def activate_license(
     }
 
 
+@router.delete("/")
+async def remove_license(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    """Remove the stored license key, reverting to demo mode."""
+    await save_license_key(db, "")
+    reset_license_cache()
+    return {"demo_mode": True}
+
+
 @router.get("/mode")
 async def license_mode(db: AsyncSession = Depends(get_db)):
     """Public endpoint — no auth required.

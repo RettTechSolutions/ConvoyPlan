@@ -360,6 +360,7 @@ export const licenseApi = {
     getStatus: () => api.get<LicenseStatus>('/api/license/status'),
     activate: (license_key: string) =>
         api.post<LicenseStatus>('/api/license/activate', { license_key }),
+    remove: () => api.delete<{ demo_mode: boolean }>('/api/license/'),
 };
 
 export const leistellenApi = {

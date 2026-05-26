@@ -163,3 +163,35 @@ async def test_license_mode_endpoint_licensed(monkeypatch):
 
     assert r.status_code == 200
     assert r.json()["demo_mode"] is False
+
+
+@pytest.mark.asyncio
+async def test_remove_license_endpoint(monkeypatch):
+    """DELETE /api/license/ clears the stored key and returns demo_mode=true."""
+    from httpx import AsyncClient, ASGITransport
+    from app.main import app
+    from unittest.mock import patch, AsyncMock, MagicMock
+    from app.api.deps import require_superadmin
+    from app.config import settings as app_settings
+
+    saved_calls = []
+
+    async def fake_save(db, key):
+        saved_calls.append(key)
+
+    async def fake_superadmin():
+        return None  # bypass auth
+
+    app.dependency_overrides[require_superadmin] = fake_superadmin
+    try:
+        with patch("app.api.routes.license.save_license_key", new=fake_save), \
+             patch("app.api.routes.license.reset_license_cache", new=MagicMock()), \
+             patch.object(app_settings, "license_key", ""):
+            async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+                r = await client.delete("/api/license/")
+    finally:
+        app.dependency_overrides.pop(require_superadmin, None)
+
+    assert r.status_code == 200
+    assert r.json() == {"demo_mode": True}
+    assert saved_calls == [""]  # license key was cleared

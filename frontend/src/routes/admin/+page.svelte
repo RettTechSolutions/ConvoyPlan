@@ -80,7 +80,24 @@
     let licenseSuccess = $state('');
     let licenseKeyInput = $state('');
     let licenseActivating = $state(false);
+    let licenseRemoving = $state(false);
     let showLicenseKey = $state(false);
+
+    async function removeLicense() {
+        if (!confirm('Lizenz wirklich entfernen? Die Installation wechselt zurück in den Demo-Modus.')) return;
+        licenseRemoving = true;
+        licenseError = '';
+        try {
+            await licenseApi.remove();
+            licenseStatus = await licenseApi.getStatus();
+            licenseSuccess = 'Lizenz entfernt. Demo-Modus aktiv.';
+            setTimeout(() => { licenseSuccess = ''; }, 5000);
+        } catch (e: unknown) {
+            licenseError = e instanceof Error ? e.message : 'Lizenz konnte nicht entfernt werden';
+        } finally {
+            licenseRemoving = false;
+        }
+    }
 
     async function loadLicenseStatus() {
         licenseLoading = true;
@@ -724,6 +741,14 @@
                     {#if licenseStatus.valid}
                         <span class="badge badge-ok">Lizenziert ✓</span>
                         <span class="hint" style="margin-left:.5rem">{licenseStatus.customer ?? ''}</span>
+                        <button
+                            class="btn-danger-small"
+                            onclick={removeLicense}
+                            disabled={licenseRemoving}
+                            style="margin-left:auto"
+                        >
+                            {licenseRemoving ? '…' : 'Lizenz entfernen'}
+                        </button>
                     {:else}
                         <span class="badge badge-warn">Demo-Modus — keine gültige Lizenz</span>
                     {/if}
@@ -994,6 +1019,9 @@
     .btn-primary { padding: .5rem 1rem; background: var(--color-primary); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: var(--text-sm); }
     .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
     .btn-primary:hover:not(:disabled) { background: var(--color-primary-hover); }
+    .btn-danger-small { padding: .2rem .6rem; font-size: var(--text-xs); border-radius: 3px; border: 1px solid #e74c3c; background: transparent; color: #e74c3c; cursor: pointer; }
+    .btn-danger-small:hover:not(:disabled) { background: #e74c3c; color: white; }
+    .btn-danger-small:disabled { opacity: .5; cursor: not-allowed; }
 
     /* Modal */
     .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
