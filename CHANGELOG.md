@@ -8,6 +8,14 @@ All notable changes to ConvoyPlan are documented here.
 
 ---
 
+## [0.5.3] – 2026-05-26
+
+### Fixed
+
+- **Lizenzvalidierung schlug immer fehl** – der Lizenzmanager kodiert das Ablaufdatum als `"exp"` (JWT-Konvention); das Backend las nur `"expires"` → leerer String → Lizenz galt immer als abgelaufen. Beide Feldnamen werden jetzt akzeptiert; Fallback auf Unix-Timestamp (integer) ergänzt.
+
+---
+
 ## [0.5.2] – 2026-05-26
 
 ### Fixed
@@ -158,7 +166,8 @@ All notable changes to ConvoyPlan are documented here.
 - Capacitor configuration for Android/iOS native wrapper.
 - Docker Compose setup with GraphHopper OSM pre-download.
 
-[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.5.3...HEAD
+[0.5.3]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.4.0...v0.5.0
