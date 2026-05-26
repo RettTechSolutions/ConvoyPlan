@@ -10,6 +10,7 @@
 
 	const PUBLIC_ROUTES = ['/login', '/share', '/setup'];
 	let setupChecked = $state(false);
+	let demoMode = $state(false);
 
 	onMount(async () => {
 		auth.init();
@@ -41,6 +42,19 @@
 		}
 
 		setupChecked = true;
+
+		// Fetch demo mode status — public endpoint, only meaningful when logged in
+		if ($auth.token && !PUBLIC_ROUTES.some(r => $page.url.pathname.startsWith(r))) {
+			try {
+				const resp = await fetch('/api/license/mode');
+				if (resp.ok) {
+					const data = await resp.json();
+					demoMode = data.demo_mode === true;
+				}
+			} catch {
+				// Silently ignore — demo mode banner is non-critical
+			}
+		}
 	});
 
 	$effect(() => {
@@ -57,6 +71,15 @@
 	<link rel="icon" type="image/png" href={$themeStore === 'light' ? '/logo/dark/Logo_Favicon.png' : '/logo/light/Logo_Favicon.png'} />
 </svelte:head>
 
+{#if demoMode}
+	<div class="demo-banner" role="alert">
+		<span>⚠ Demo-Modus — keine gültige Lizenz. Schreiboperationen sind gesperrt.</span>
+		{#if $auth.is_superadmin}
+			<a href="/admin">Lizenz aktivieren →</a>
+		{/if}
+	</div>
+{/if}
+
 {@render children()}
 
 <footer class="powered-by">Powered by ConvoyPlan</footer>
@@ -72,5 +95,28 @@
 		pointer-events: none;
 		z-index: 1;
 		user-select: none;
+	}
+
+	.demo-banner {
+		position: sticky;
+		top: 0;
+		z-index: 1000;
+		background: #f59e0b;
+		color: #1c1917;
+		padding: 0.5rem 1.25rem;
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		gap: 1.25rem;
+		font-size: 0.875rem;
+		font-weight: 500;
+		text-align: center;
+	}
+
+	.demo-banner a {
+		color: #1c1917;
+		text-decoration: underline;
+		font-weight: 700;
+		white-space: nowrap;
 	}
 </style>
