@@ -128,8 +128,10 @@ async def test_license_mode_endpoint_demo_mode():
     from app.main import app
     from unittest.mock import patch, AsyncMock
 
+    from app.config import settings as app_settings
     with patch("app.api.routes.license.get_saved_license_key", new=AsyncMock(return_value="")), \
-         patch("app.api.routes.license.get_or_create_instance_id", new=AsyncMock(return_value="test-id")):
+         patch("app.api.routes.license.get_or_create_instance_id", new=AsyncMock(return_value="test-id")), \
+         patch.object(app_settings, "license_key", ""):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             r = await client.get("/api/license/mode")
 
@@ -142,34 +144,20 @@ async def test_license_mode_endpoint_demo_mode():
 @pytest.mark.asyncio
 async def test_license_mode_endpoint_licensed(monkeypatch):
     """GET /api/license/mode returns demo_mode=false when a valid key is stored."""
-    import base64
-    import json
-    from datetime import date, timedelta
     from httpx import AsyncClient, ASGITransport
     from app.main import app
     from unittest.mock import patch, AsyncMock
     import app.services.license as lic_mod
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-    from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+    from app.config import settings as app_settings
 
-    priv = Ed25519PrivateKey.generate()
-    pub_b64 = base64.b64encode(
-        priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
-    ).decode()
+    priv, pub_b64 = _make_key()
     monkeypatch.setattr(lic_mod, "_PUBLIC_KEY_B64", pub_b64)
 
-    payload = {
-        "expires": (date.today() + timedelta(days=365)).isoformat(),
-        "instance_id": "",
-    }
-    payload_bytes = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
-    sig = priv.sign(payload_bytes)
-    p64 = base64.urlsafe_b64encode(payload_bytes).decode().rstrip("=")
-    s64 = base64.urlsafe_b64encode(sig).decode().rstrip("=")
-    valid_key = f"{p64}.{s64}"
+    valid_key = _sign_payload(_valid_payload(instance_id=""), priv)
 
     with patch("app.api.routes.license.get_saved_license_key", new=AsyncMock(return_value=valid_key)), \
-         patch("app.api.routes.license.get_or_create_instance_id", new=AsyncMock(return_value="")):
+         patch("app.api.routes.license.get_or_create_instance_id", new=AsyncMock(return_value="")), \
+         patch.object(app_settings, "license_key", ""):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             r = await client.get("/api/license/mode")
 
