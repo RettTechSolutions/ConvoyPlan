@@ -1335,7 +1335,7 @@
 			{$themeStore === 'dark' ? '☀' : '☾'}
 			<span>{$themeStore === 'dark' ? 'Light' : 'Dark'}</span>
 		</button>
-		<span class="app-version">v0.5.2</span>
+		<span class="app-version">v0.5.3</span>
 	</div>
 	</aside>
 
