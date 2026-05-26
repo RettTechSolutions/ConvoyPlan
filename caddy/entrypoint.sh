@@ -10,6 +10,8 @@ fi
 # Otherwise fall back to env-var-based generation (initial start before setup).
 DOMAIN="${DOMAIN:-localhost}"
 ACME_EMAIL="${ACME_EMAIL:-admin@example.com}"
+FRONTEND_PORT="${FRONTEND_PORT:-3000}"
+BACKEND_PORT="${BACKEND_PORT:-8000}"
 
 if [ -n "$CADDY_TLS_CERT" ] && [ -n "$CADDY_TLS_KEY" ]; then
     TLS_DIRECTIVE="tls $CADDY_TLS_CERT $CADDY_TLS_KEY"
@@ -49,13 +51,13 @@ $SITE_ADDRESS {
     $TLS_DIRECTIVE
 
     handle /api/* {
-        reverse_proxy backend:8000
+        reverse_proxy backend:$BACKEND_PORT
     }
     handle /ws/* {
-        reverse_proxy backend:8000
+        reverse_proxy backend:$BACKEND_PORT
     }
     handle {
-        reverse_proxy frontend:3000
+        reverse_proxy frontend:$FRONTEND_PORT
     }
 }
 CADDYEOF

@@ -138,6 +138,9 @@ BACKEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/backend:latest
 FRONTEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/frontend:latest
 GRAPHHOPPER_IMAGE=ghcr.io/retttechsolutions/convoyplan/graphhopper:latest
 GITHUB_REPO=RettTechSolutions/ConvoyPlan
+# Interne Ports (Docker-Netzwerk, nicht nach außen exponiert — bei Bedarf anpassen)
+FRONTEND_PORT=3000
+BACKEND_PORT=8000
 ENVEOF
 
 [[ -n "${LICENSE_KEY:-}" ]] && echo "LICENSE_KEY=${LICENSE_KEY}" >> "$INSTALL_DIR/.env"

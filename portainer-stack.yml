@@ -19,11 +19,12 @@ services:
   backend:
     image: ${BACKEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/backend:latest}
     restart: unless-stopped
-    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${BACKEND_PORT:-8000}"
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-convoyplan}:${POSTGRES_PASSWORD:-convoyplan}@db:5432/${POSTGRES_DB:-convoyplan}
       JWT_SECRET: ${JWT_SECRET:-changeme-in-production}
       GRAPHHOPPER_URL: http://graphhopper:8989
+      BACKEND_PORT: ${BACKEND_PORT:-8000}
       LICENSE_KEY: ${LICENSE_KEY:-}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GITHUB_REPO: ${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}
@@ -58,6 +59,8 @@ services:
   frontend:
     image: ${FRONTEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/frontend:latest}
     restart: unless-stopped
+    environment:
+      PORT: ${FRONTEND_PORT:-3000}
     depends_on:
       - backend
 
@@ -72,6 +75,8 @@ services:
       ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
       CADDY_TLS_CERT: ${CADDY_TLS_CERT:-}
       CADDY_TLS_KEY: ${CADDY_TLS_KEY:-}
+      FRONTEND_PORT: ${FRONTEND_PORT:-3000}
+      BACKEND_PORT: ${BACKEND_PORT:-8000}
     volumes:
       - ./caddy/entrypoint.sh:/entrypoint.sh:ro
       - caddy_data:/data
