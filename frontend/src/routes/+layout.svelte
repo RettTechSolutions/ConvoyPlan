@@ -9,13 +9,18 @@
 	let { children } = $props();
 
 	// /o/ hat eigenes Guard-Layout; /tracking/ und /share/ sind öffentlich
-	const PUBLIC_ROUTES = ['/login', '/share', '/setup', '/tracking', '/o/'];
+	const PUBLIC_ROUTES = ['/login', '/share', '/setup', '/tracking', '/o/', '/admin'];
 	let setupChecked = $state(false);
 	let demoMode = $state(false);
 
-	onMount(async () => {
+	// Auth synchron initialisieren — muss vor jedem onMount der Kind-Komponenten
+	// verfügbar sein, da Svelte onMount von innen nach außen aufruft.
+	if (typeof localStorage !== 'undefined') {
 		auth.init();
 		themeStore.init();
+	}
+
+	onMount(async () => {
 
 		// Raw fetch (not brandingApi) — GET /api/branding is public and needs no auth token
 		try {
