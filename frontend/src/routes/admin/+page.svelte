@@ -1054,19 +1054,26 @@
                     </div>
                 </div>
 
-                <div style="margin-top: 1rem;">
+                <div style="margin-top: 1rem; display:flex; align-items:center; gap:.75rem; flex-wrap:wrap;">
                     {#if updateTriggering}
                         <button class="btn-primary" disabled>
                             <span class="spinner"></span> Update wird durchgeführt…
                         </button>
-                    {:else}
+                    {:else if updateStatus.github_reachable}
+                        <!-- GitHub erreichbar: Button nur aktiv wenn Update vorhanden -->
                         <button
                             class="btn-primary"
-                            disabled={!updateStatus.update_available || !updateStatus.github_reachable}
+                            disabled={!updateStatus.update_available}
                             onclick={triggerUpdate}
                         >
                             Jetzt updaten
                         </button>
+                    {:else}
+                        <!-- GitHub nicht erreichbar: Manuelles Auslösen immer erlaubt -->
+                        <button class="btn-primary" onclick={triggerUpdate}>
+                            Manuell aktualisieren
+                        </button>
+                        <span class="hint" style="font-size:var(--text-xs)">GitHub nicht erreichbar — zieht trotzdem neueste Images</span>
                     {/if}
                 </div>
             {:else}

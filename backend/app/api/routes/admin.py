@@ -157,7 +157,7 @@ async def get_update_status(
         headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
         if settings.github_token:
             headers["Authorization"] = f"Bearer {settings.github_token}"
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(
                 f"https://api.github.com/repos/{settings.github_repo}/commits?sha=main&per_page=1",
                 headers=headers,
