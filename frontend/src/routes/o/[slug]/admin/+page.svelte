@@ -5,7 +5,7 @@
     import maplibregl from 'maplibre-gl';
     import 'maplibre-gl/dist/maplibre-gl.css';
     import { orgStore } from '$lib/stores/org';
-    import { leistellenApi, type Leitstelle, type LeistelleDetail, type ZusatzKanal } from '$lib/api';
+    import { leistellenApi, orgsApi, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type OrgMember } from '$lib/api';
     import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
 
@@ -13,20 +13,83 @@
     const slug = $derived(($page.params as Record<string, string>).slug);
 
     // ── Tab ──────────────────────────────────────────────────────────────────
-    let activeTab = $state<'leitstellen' | 'branding'>('leitstellen');
+    let activeTab = $state<'mitglieder' | 'leitstellen' | 'branding'>('mitglieder');
 
     // ── Auth guard ───────────────────────────────────────────────────────────
-    // The org-guard layout already ensures the user is logged in.
-    // Here we additionally ensure the user is an org admin.
     onMount(async () => {
         const s = ($page.params as Record<string, string>).slug;
         if ($orgStore?.user_role !== 'admin') {
             goto(`/o/${s}/plan`);
             return;
         }
+        await loadMembers();
         await loadLeitstellen();
         await loadBranding();
     });
+
+    // ── Mitglieder ───────────────────────────────────────────────────────────
+    let members = $state<OrgMember[]>([]);
+    let membersLoading = $state(false);
+    let membersError = $state('');
+    let addMemberForm = $state({ email: '', role: 'beobachter' });
+    let addMemberWorking = $state(false);
+    let inviteForm = $state({ email: '', password: '', role: 'beobachter' });
+    let inviteWorking = $state(false);
+    let showInviteForm = $state(false);
+
+    async function loadMembers() {
+        if (!$orgStore?.org_id) return;
+        membersLoading = true;
+        try { members = await orgsApi.listMembers($orgStore.org_id); }
+        catch { membersError = 'Mitglieder konnten nicht geladen werden'; }
+        finally { membersLoading = false; }
+    }
+
+    async function addMember() {
+        if (!$orgStore?.org_id || !addMemberForm.email) return;
+        addMemberWorking = true;
+        membersError = '';
+        try {
+            await orgsApi.addMember($orgStore.org_id, addMemberForm.email, addMemberForm.role);
+            addMemberForm = { email: '', role: 'beobachter' };
+            await loadMembers();
+        } catch (e: unknown) {
+            membersError = e instanceof Error ? e.message : 'Fehler beim Hinzufügen';
+        } finally { addMemberWorking = false; }
+    }
+
+    async function inviteMember() {
+        if (!$orgStore?.org_id || !inviteForm.email || !inviteForm.password) return;
+        inviteWorking = true;
+        membersError = '';
+        try {
+            await orgsApi.inviteMember($orgStore.org_id, inviteForm.email, inviteForm.password);
+            // After invite, also set the role if not default
+            if (inviteForm.role !== 'beobachter') {
+                const fresh = await orgsApi.listMembers($orgStore.org_id);
+                const invited = fresh.find(m => m.email === inviteForm.email);
+                if (invited) await orgsApi.updateMemberRole($orgStore.org_id, invited.user_id, inviteForm.role);
+            }
+            inviteForm = { email: '', password: '', role: 'beobachter' };
+            showInviteForm = false;
+            await loadMembers();
+        } catch (e: unknown) {
+            membersError = e instanceof Error ? e.message : 'Fehler beim Einladen';
+        } finally { inviteWorking = false; }
+    }
+
+    async function updateRole(userId: string, role: string) {
+        if (!$orgStore?.org_id) return;
+        try { await orgsApi.updateMemberRole($orgStore.org_id, userId, role); await loadMembers(); }
+        catch { membersError = 'Rolle konnte nicht geändert werden'; }
+    }
+
+    async function removeMember(userId: string, email: string) {
+        if (!confirm(`${email} aus der Organisation entfernen?`)) return;
+        if (!$orgStore?.org_id) return;
+        try { await orgsApi.removeMember($orgStore.org_id, userId); await loadMembers(); }
+        catch { membersError = 'Mitglied konnte nicht entfernt werden'; }
+    }
 
     // ── Leitstellen ──────────────────────────────────────────────────────────
     let leitstellen = $state<Leitstelle[]>([]);
@@ -334,11 +397,98 @@
     </div>
 
     <div class="tab-bar">
+        <button class="tab" class:active={activeTab === 'mitglieder'} onclick={() => { activeTab = 'mitglieder'; loadMembers(); }}>Mitglieder</button>
         <button class="tab" class:active={activeTab === 'leitstellen'} onclick={() => (activeTab = 'leitstellen')}>Leitstellen</button>
-        <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>
-            Branding
-        </button>
+        <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>Branding</button>
     </div>
+
+    <!-- ── Mitglieder ── -->
+    {#if activeTab === 'mitglieder'}
+        {#if membersError}
+            <div class="error-bar">{membersError} <button onclick={() => (membersError = '')}>✕</button></div>
+        {/if}
+
+        <div class="section">
+            <div class="section-header">
+                <strong>Mitglieder ({members.length})</strong>
+                <div style="display:flex;gap:.4rem">
+                    <button class="btn-small" onclick={() => (showInviteForm = !showInviteForm)}>+ Einladen</button>
+                    <button class="btn-small" onclick={loadMembers}>↺</button>
+                </div>
+            </div>
+
+            <!-- Neuen einladen (Konto anlegen + hinzufügen) -->
+            {#if showInviteForm}
+                <div class="invite-section">
+                    <p class="invite-label">Neuen Benutzer einladen (Konto wird angelegt)</p>
+                    <div class="invite-row">
+                        <input type="email" placeholder="E-Mail *" bind:value={inviteForm.email} />
+                        <input type="password" placeholder="Passwort *" bind:value={inviteForm.password} autocomplete="new-password" />
+                        <select bind:value={inviteForm.role}>
+                            <option value="beobachter">Beobachter</option>
+                            <option value="fahrer">Fahrer</option>
+                            <option value="planer">Planer</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                        <button class="btn-small" onclick={inviteMember} disabled={inviteWorking || !inviteForm.email || !inviteForm.password}>
+                            {inviteWorking ? '…' : 'Einladen'}
+                        </button>
+                        <button class="btn-small" onclick={() => (showInviteForm = false)}>✕</button>
+                    </div>
+                </div>
+            {/if}
+
+            <!-- Bestehenden User hinzufügen -->
+            <div class="add-member-row">
+                <input type="email" placeholder="E-Mail (bestehendes Konto)" bind:value={addMemberForm.email} class="add-email" />
+                <select bind:value={addMemberForm.role} class="add-role">
+                    <option value="beobachter">Beobachter</option>
+                    <option value="fahrer">Fahrer</option>
+                    <option value="planer">Planer</option>
+                    <option value="admin">Admin</option>
+                </select>
+                <button class="btn-small" onclick={addMember} disabled={addMemberWorking || !addMemberForm.email}>
+                    {addMemberWorking ? '…' : '+ Hinzufügen'}
+                </button>
+            </div>
+
+            {#if membersLoading}
+                <p class="hint">Lade…</p>
+            {:else}
+                <table class="user-table">
+                    <thead>
+                        <tr>
+                            <th>E-Mail</th>
+                            <th>Rolle</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {#each members as m}
+                            <tr>
+                                <td>{m.email}</td>
+                                <td>
+                                    <select class="role-select-inline" value={m.role}
+                                        onchange={(e) => updateRole(m.user_id, (e.target as HTMLSelectElement).value)}>
+                                        <option value="beobachter">Beobachter</option>
+                                        <option value="fahrer">Fahrer</option>
+                                        <option value="planer">Planer</option>
+                                        <option value="admin">Admin</option>
+                                    </select>
+                                </td>
+                                <td class="actions-cell">
+                                    <button class="btn-small danger" onclick={() => removeMember(m.user_id, m.email)}>✕</button>
+                                </td>
+                            </tr>
+                        {/each}
+                        {#if members.length === 0}
+                            <tr><td colspan="3" class="hint" style="text-align:center">Noch keine Mitglieder.</td></tr>
+                        {/if}
+                    </tbody>
+                </table>
+            {/if}
+        </div>
+    {/if}
 
     <!-- ── Leitstellen ── -->
     {#if activeTab === 'leitstellen'}
@@ -648,4 +798,18 @@
     .bf-actions { display: flex; gap: .75rem; justify-content: flex-end; padding-top: .5rem; border-top: 1px solid var(--border); margin-top: 1rem; }
     .btn-secondary { padding: .5rem 1rem; background: transparent; color: var(--text-2); border: 1px solid var(--border); border-radius: 6px; font-weight: 600; cursor: pointer; font-size: var(--text-sm); }
     .btn-secondary:hover { background: var(--surface-2); }
+
+    /* Mitglieder tab */
+    .invite-section { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: .75rem; margin-bottom: .75rem; }
+    .invite-label { margin: 0 0 .5rem; font-size: var(--text-xs); color: var(--text-muted); }
+    .invite-row { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
+    .invite-row input, .invite-row select { flex: 1; min-width: 120px; padding: .3rem .5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-1); color: var(--text-1); font-size: var(--text-sm); }
+    .invite-row input:focus, .invite-row select:focus { outline: none; border-color: var(--color-primary); }
+    .add-member-row { display: flex; gap: .4rem; align-items: center; margin-bottom: .75rem; flex-wrap: wrap; }
+    .add-email { flex: 1; min-width: 160px; padding: .3rem .5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); }
+    .add-email:focus { outline: none; border-color: var(--color-primary); }
+    .add-role { padding: .3rem .5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); }
+    .add-role:focus { outline: none; border-color: var(--color-primary); }
+    .role-select-inline { padding: .2rem .4rem; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--text-1); font-size: var(--text-xs); }
+    .role-select-inline:focus { outline: none; border-color: var(--color-primary); }
 </style>

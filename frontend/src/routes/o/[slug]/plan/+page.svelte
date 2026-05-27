@@ -44,7 +44,7 @@
 	let closures = $state<FeatureCollection | null>(null);
 	let showClosures = $state(false);
 	let mapCenter = $state<[number, number]>([10.0, 51.5]);
-	let activeTab = $state<'convoy'|'fahrzeuge'|'wegpunkte'|'zeitplan'|'export'|'lage'|'org'>('convoy');
+	let activeTab = $state<'convoy'|'fahrzeuge'|'wegpunkte'|'zeitplan'|'export'|'lage'>('convoy');
 	let loading = $state(false);
 	let dndWaypoints = $state<Waypoint[]>([]);
 	let dndVehicles = $state<Vehicle[]>([]);
@@ -705,14 +705,14 @@
 		{#if wizardStep === 0}
 			<!-- Primary planning tabs -->
 			<div class="tabs">
-				{#each [['convoy','Plan'],['wegpunkte','Wegpunkte'],['zeitplan','Zeitplan'],['lage','Lage']] as [tab, label]}
+				{#each [['convoy','Plan'],['wegpunkte','Wegpunkte'],['zeitplan','Zeitplan'],['lage','Lage'],['export','Export']] as [tab, label]}
 					<button class="tab" class:active={activeTab === tab} onclick={() => (activeTab = tab as typeof activeTab)}>{label}</button>
 				{/each}
 			</div>
 			<!-- Verwaltung tabs -->
 			<div class="tabs tabs-verwaltung">
 				<span class="tabs-section-label">Verwaltung</span>
-				{#each [['fahrzeuge','Fahrzeuge'],['org','Organisation'],['export','Export']] as [tab, label]}
+				{#each [['fahrzeuge','Fahrzeuge']] as [tab, label]}
 					<button class="tab" class:active={activeTab === tab} onclick={() => (activeTab = tab as typeof activeTab)}>{label}</button>
 				{/each}
 			</div>
@@ -1152,136 +1152,6 @@
 					/>
 				{/if}
 
-				<!-- ── TAB: Org ── -->
-				{#if activeTab === 'org'}
-					<div class="section">
-						<div class="section-header">
-							<strong>Organisationen</strong>
-							<button class="btn-small" onclick={async () => {
-								const name = prompt('Organisationsname:');
-								if (name) { await orgsApi.create(name); organizations = await orgsApi.list(); }
-							}}>+ Neu</button>
-						</div>
-						{#if !organizations.length}
-							<p class="hint">Noch keine Organisationen erstellt.</p>
-						{/if}
-						{#each organizations as org}
-							<div class="org-card">
-								<div class="org-header" onclick={() => toggleOrgExpand(org.id)}>
-									<div>
-										<strong>{org.name}</strong>
-										<span class="tag">{org.my_role === 'admin' ? 'Admin' : org.my_role}</span>
-										<span class="tag">{org.member_count} Mitglieder</span>
-									</div>
-									<div style="display:flex;gap:.3rem;align-items:center">
-										<span style="font-size:.75rem;color:rgba(255,255,255,.45)">{expandedOrgId === org.id ? '▲' : '▼'}</span>
-										{#if org.my_role === 'admin'}
-											<button class="btn-small danger" onclick={(e) => { e.stopPropagation(); if(confirm('Organisation löschen?')) orgsApi.delete(org.id).then(() => { organizations = organizations.filter(o => o.id !== org.id); }); }}>✕</button>
-										{/if}
-									</div>
-								</div>
-
-								{#if expandedOrgId === org.id}
-									<div class="org-detail">
-										<!-- Convoy assignment -->
-										<p class="org-section-label">Verbände</p>
-										{#each convoyList as c}
-											<div class="org-convoy-row">
-												<span>{c.name}</span>
-												{#if c.organization_id === org.id}
-													<span class="tag" style="background:rgba(39,174,96,.3);color:#7dcea0">zugewiesen</span>
-												{:else}
-													<button class="btn-small" onclick={async () => {
-														await convoysApi.update(c.id, { organization_id: org.id });
-														await loadData();
-													}}>+ Zuweisen</button>
-												{/if}
-											</div>
-										{/each}
-										{#if !convoyList.length}<p class="hint">Keine Verbände vorhanden.</p>{/if}
-
-										<!-- Member list -->
-										<p class="org-section-label" style="margin-top:.6rem">Mitglieder</p>
-										{#if orgMembers[org.id]}
-											{#each orgMembers[org.id] as m}
-												<div class="org-member-row">
-													<span class="org-member-email">{m.email}</span>
-													{#if org.my_role === 'admin'}
-														<select class="org-role-select" value={m.role} onchange={async (e) => {
-															const target = e.target as HTMLSelectElement;
-															await orgsApi.updateMemberRole(org.id, m.user_id, target.value);
-															await loadOrgMembers(org.id);
-														}}>
-															<option value="admin">Admin</option>
-															<option value="planer">Planer</option>
-															<option value="fahrer">Fahrer</option>
-															<option value="beobachter">Beobachter</option>
-														</select>
-														<button class="btn-small danger" onclick={async () => {
-															await orgsApi.removeMember(org.id, m.user_id);
-															await loadOrgMembers(org.id);
-															organizations = await orgsApi.list();
-														}}>✕</button>
-													{:else}
-														<span class="tag">{m.role}</span>
-													{/if}
-												</div>
-											{/each}
-
-											{#if org.my_role === 'admin'}
-												<div class="org-add-member">
-													<input
-														class="org-email-input"
-														placeholder="E-Mail"
-														bind:value={orgAddForm[org.id].email}
-													/>
-													<select class="org-role-select" bind:value={orgAddForm[org.id].role}>
-														<option value="admin">Admin</option>
-														<option value="planer">Planer</option>
-														<option value="fahrer">Fahrer</option>
-														<option value="beobachter">Beobachter</option>
-													</select>
-													<button class="btn-small" onclick={async () => {
-														const f = orgAddForm[org.id];
-														if (!f?.email) return;
-														try {
-															await orgsApi.addMember(org.id, f.email, f.role);
-															orgAddForm = { ...orgAddForm, [org.id]: { email: '', role: 'beobachter' } };
-															await loadOrgMembers(org.id);
-															organizations = await orgsApi.list();
-														} catch (err: unknown) { error = (err as Error).message ?? 'Fehler'; }
-													}}>+ Hinzufügen</button>
-												</div>
-											{/if}
-										{:else}
-											<p class="hint">Lade…</p>
-										{/if}
-
-										{#if org.my_role === 'admin' && orgInviteForm[org.id]}
-											<p class="org-section-label" style="margin-top:.75rem">User einladen</p>
-											<div class="invite-form">
-												<input
-													type="email"
-													placeholder="E-Mail"
-													bind:value={orgInviteForm[org.id].email}
-												/>
-												<input
-													type="password"
-													placeholder="Passwort"
-													bind:value={orgInviteForm[org.id].password}
-												/>
-												<button class="btn-small" onclick={() => inviteMember(org.id)}>Einladen</button>
-											</div>
-											{#if orgInviteError[org.id]}
-												<p class="hint" style="color: var(--color-primary)">{orgInviteError[org.id]}</p>
-											{/if}
-										{/if}
-									</div>
-								{/if}
-							</div>
-						{/each}
-					</div>
-				{/if}
 			</div>
 		{:else}
 			<!-- Wizard -->
