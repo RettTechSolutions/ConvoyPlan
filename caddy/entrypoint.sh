@@ -50,11 +50,19 @@ cat > /tmp/Caddyfile << CADDYEOF
 $SITE_ADDRESS {
     $TLS_DIRECTIVE
 
+    # SSE endpoint — must flush every chunk immediately, no buffering
+    handle /api/admin/update-log {
+        reverse_proxy backend:$BACKEND_PORT {
+            flush_interval -1
+        }
+    }
     handle /api/* {
         reverse_proxy backend:$BACKEND_PORT
     }
     handle /ws/* {
-        reverse_proxy backend:$BACKEND_PORT
+        reverse_proxy backend:$BACKEND_PORT {
+            flush_interval -1
+        }
     }
     handle {
         reverse_proxy frontend:$FRONTEND_PORT

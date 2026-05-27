@@ -42,11 +42,19 @@ def _generate_caddyfile(domain: str, tls_mode: str, acme_email: str) -> str:
 {domain} {{
     {tls_directive}
 
+    # SSE live-log endpoint — flush every chunk immediately
+    handle /api/admin/update-log {{
+        reverse_proxy backend:8000 {{
+            flush_interval -1
+        }}
+    }}
     handle /api/* {{
         reverse_proxy backend:8000
     }}
     handle /ws/* {{
-        reverse_proxy backend:8000
+        reverse_proxy backend:8000 {{
+            flush_interval -1
+        }}
     }}
     handle {{
         reverse_proxy frontend:3000
