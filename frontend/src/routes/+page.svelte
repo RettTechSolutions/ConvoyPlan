@@ -1,6 +1,7 @@
 <script lang="ts">
     import { goto } from '$app/navigation';
     import { orgAuthApi } from '$lib/api';
+    import AppLogo from '$lib/components/AppLogo.svelte';
 
     let slugInput = $state('');
     let error = $state('');
@@ -22,18 +23,24 @@
     }
 </script>
 
-<div class="root-page">
-    <div class="card">
-        <h1>ConvoyPlan</h1>
-        <p class="subtitle">Bitte Organisations-Code eingeben</p>
+<div class="login-container">
+    <div class="login-card">
+        <div class="login-logo">
+            <AppLogo variant="main" height={170} />
+        </div>
+
         <form onsubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
-            <input
-                type="text"
-                bind:value={slugInput}
-                placeholder="z.B. rettdienst-muenchen"
-                autocomplete="organization"
-                spellcheck="false"
-            />
+            <div class="field">
+                <label for="slug">Organisations-Code</label>
+                <input
+                    id="slug"
+                    type="text"
+                    bind:value={slugInput}
+                    placeholder="z.B. rettdienst-muenchen"
+                    autocomplete="organization"
+                    spellcheck="false"
+                />
+            </div>
             {#if error}
                 <p class="error">{error}</p>
             {/if}
@@ -45,44 +52,63 @@
 </div>
 
 <style>
-    .root-page {
+    .login-container {
         display: flex;
         align-items: center;
         justify-content: center;
         min-height: 100vh;
-        background: var(--color-bg, #f5f5f5);
+        background: var(--bg);
     }
-    .card {
-        background: var(--color-surface, #fff);
-        border-radius: 12px;
+    .login-card {
+        background: var(--surface-1);
+        border: 1px solid var(--border);
+        border-radius: 8px;
         padding: 2.5rem;
         width: 100%;
         max-width: 380px;
-        box-shadow: 0 4px 24px rgba(0,0,0,0.08);
-        display: flex;
-        flex-direction: column;
-        gap: 1rem;
+        box-shadow: var(--shadow);
     }
-    h1 { margin: 0; font-size: 1.6rem; }
-    .subtitle { color: var(--color-text-muted, #666); margin: 0; }
+    .login-logo { display: flex; justify-content: center; margin-bottom: 1.5rem; }
+    .field { margin-bottom: 1rem; }
+    label {
+        display: block;
+        font-size: var(--text-sm);
+        font-weight: 500;
+        margin-bottom: .25rem;
+        color: var(--text-2);
+    }
     input {
         width: 100%;
-        padding: 0.75rem 1rem;
-        border: 1px solid var(--color-border, #ddd);
-        border-radius: 8px;
-        font-size: 1rem;
+        padding: .5rem .75rem;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font-size: var(--text-base);
         box-sizing: border-box;
+        background: var(--surface-2);
+        color: var(--text-1);
+    }
+    input:focus {
+        outline: none;
+        border-color: var(--color-primary);
+        box-shadow: 0 0 0 3px rgba(226, 61, 40, .15);
     }
     button {
         width: 100%;
-        padding: 0.75rem;
-        background: var(--color-primary, #2563eb);
-        color: #fff;
+        padding: .6rem;
+        background: var(--color-primary);
+        color: white;
         border: none;
-        border-radius: 8px;
-        font-size: 1rem;
+        border-radius: 6px;
+        font-size: var(--text-base);
+        font-weight: 600;
         cursor: pointer;
+        margin-top: .5rem;
     }
+    button:hover:not(:disabled) { background: var(--color-primary-hover); }
     button:disabled { opacity: 0.6; cursor: not-allowed; }
-    .error { color: #dc2626; font-size: 0.9rem; margin: 0; }
+    .error {
+        color: var(--color-primary);
+        font-size: var(--text-sm);
+        margin-bottom: .5rem;
+    }
 </style>
