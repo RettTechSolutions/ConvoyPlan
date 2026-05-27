@@ -299,6 +299,27 @@ export interface AdminOrg {
     member_count: number;
 }
 
+export interface SmtpConfig {
+    host: string;
+    port: number;
+    username: string;
+    password: string;
+    from_email: string;
+    from_name: string;
+    use_tls: 'starttls' | 'ssl' | 'false';
+}
+
+export interface SmtpConfigResponse {
+    host: string;
+    port: number;
+    username: string;
+    password_set: boolean;
+    from_email: string;
+    from_name: string;
+    use_tls: string;
+    configured: boolean;
+}
+
 export const adminApi = {
     listUsers: () => api.get<AdminUser[]>('/api/admin/users'),
     createUser: (data: AdminUserCreate) => api.post<AdminUser>('/api/admin/users', data),
@@ -315,6 +336,10 @@ export const adminApi = {
     triggerUpdate: () => api.post<{ status: string }>('/api/admin/trigger-update', {}),
     getGithubTokenStatus: () => api.get<{ set: boolean; source: string | null }>('/api/admin/settings/github-token-set'),
     setGithubToken: (token: string) => api.put<void>('/api/admin/settings/github-token', { token }),
+    getSmtpSettings: () => api.get<SmtpConfigResponse>('/api/admin/settings/smtp'),
+    saveSmtpSettings: (data: SmtpConfig) => api.put<void>('/api/admin/settings/smtp', data),
+    testSmtp: () => api.post<{ status: string }>('/api/admin/settings/smtp/test', {}),
+    sendUserPassword: (userId: string) => api.post<{ status: string; email: string }>(`/api/admin/users/${userId}/send-password`, {}),
 };
 
 export interface UpdateStatus {

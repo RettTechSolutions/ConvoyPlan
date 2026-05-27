@@ -20,6 +20,7 @@ from app.models.organization import Organization, UserOrganization, _slugify
 from app.models.settings import SystemSetting
 from app.models.user import User
 from app.schemas.user import AdminUserCreate, AdminUserResponse, AdminUserUpdate, AdminUserOrgInfo
+from app.services.email import save_smtp_settings, send_password_email, test_smtp_connection
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -429,3 +430,142 @@ async def stream_update_log(
             "X-Accel-Buffering": "no",  # disable Nginx/Caddy buffering
         },
     )
+
+
+# ── SMTP Settings ─────────────────────────────────────────────────────────────
+
+SMTP_KEYS = ["smtp.host", "smtp.port", "smtp.username", "smtp.password",
+             "smtp.from_email", "smtp.from_name", "smtp.use_tls"]
+
+
+class SmtpConfig(BaseModel):
+    host: str = ""
+    port: int = 587
+    username: str = ""
+    password: str = ""
+    from_email: str = ""
+    from_name: str = "ConvoyPlan"
+    use_tls: str = "starttls"   # "starttls" | "ssl" | "false"
+
+
+class SmtpConfigResponse(BaseModel):
+    host: str
+    port: int
+    username: str
+    password_set: bool          # never expose actual password
+    from_email: str
+    from_name: str
+    use_tls: str
+    configured: bool
+
+
+@router.get("/settings/smtp", response_model=SmtpConfigResponse)
+async def get_smtp_settings(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    result = await db.execute(
+        select(SystemSetting).where(SystemSetting.key.in_(SMTP_KEYS))
+    )
+    rows = {r.key: r.value for r in result.scalars().all()}
+    host = rows.get("smtp.host", "")
+    return SmtpConfigResponse(
+        host=host,
+        port=int(rows.get("smtp.port", "587")),
+        username=rows.get("smtp.username", ""),
+        password_set=bool(rows.get("smtp.password", "")),
+        from_email=rows.get("smtp.from_email", ""),
+        from_name=rows.get("smtp.from_name", "ConvoyPlan"),
+        use_tls=rows.get("smtp.use_tls", "starttls"),
+        configured=bool(host),
+    )
+
+
+@router.put("/settings/smtp", status_code=204)
+async def update_smtp_settings(
+    data: SmtpConfig,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    await save_smtp_settings(db, {
+        "smtp.host": data.host,
+        "smtp.port": str(data.port),
+        "smtp.username": data.username,
+        "smtp.password": data.password,
+        "smtp.from_email": data.from_email,
+        "smtp.from_name": data.from_name,
+        "smtp.use_tls": data.use_tls,
+    })
+
+
+@router.post("/settings/smtp/test")
+async def smtp_test(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    result = await test_smtp_connection(db)
+    if not result["ok"]:
+        raise HTTPException(400, result["error"])
+    return {"status": "ok"}
+
+
+# ── Send password email ───────────────────────────────────────────────────────
+
+import secrets
+import string
+
+
+def _generate_password(length: int = 14) -> str:
+    alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+    while True:
+        pwd = "".join(secrets.choice(alphabet) for _ in range(length))
+        # Ensure at least one of each class
+        if (any(c.islower() for c in pwd)
+                and any(c.isupper() for c in pwd)
+                and any(c.isdigit() for c in pwd)
+                and any(c in "!@#$%^&*" for c in pwd)):
+            return pwd
+
+
+@router.post("/users/{user_id}/send-password", status_code=202)
+async def send_user_password(
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    """Generate a new password, update the user, and email credentials."""
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.org_memberships).selectinload(UserOrganization.organization))
+        .where(User.id == user_id)
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    new_password = _generate_password()
+    user.hashed_password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+    await db.commit()
+
+    # Pick login URL: first org login page if member, else superadmin login
+    base_url = settings.app_base_url.rstrip("/")
+    if user.org_memberships:
+        first_org = user.org_memberships[0].organization
+        login_url = f"{base_url}/o/{first_org.slug}/login" if first_org else f"{base_url}/login"
+    else:
+        login_url = f"{base_url}/login"
+
+    try:
+        await send_password_email(
+            db=db,
+            recipient_email=user.email,
+            recipient_name="",
+            password=new_password,
+            login_url=login_url,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(502, f"E-Mail konnte nicht gesendet werden: {e}")
+
+    return {"status": "sent", "email": user.email}

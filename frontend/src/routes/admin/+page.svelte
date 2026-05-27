@@ -4,7 +4,7 @@
     import maplibregl from 'maplibre-gl';
     import 'maplibre-gl/dist/maplibre-gl.css';
     import { auth } from '$lib/stores/auth';
-    import { adminApi, mfaApi, leistellenApi, licenseApi, type AdminUser, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus } from '$lib/api';
+    import { adminApi, mfaApi, leistellenApi, licenseApi, type AdminUser, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse } from '$lib/api';
     import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
     import QRCode from 'qrcode';
@@ -24,7 +24,7 @@
         await loadUsers();
         await loadLeitstellen();
         await loadBranding();
-        await Promise.all([loadGithubTokenStatus(), loadUpdateStatus(), loadMfaStatus()]);
+        await Promise.all([loadGithubTokenStatus(), loadUpdateStatus(), loadMfaStatus(), loadSmtpSettings()]);
     });
 
     // ── Edit User Modal ───────────────────────────────────────────────────────
@@ -467,6 +467,85 @@
         }
     }
 
+    // ── SMTP ─────────────────────────────────────────────────────────────────
+    let smtpConfig = $state<SmtpConfigResponse | null>(null);
+    let smtpForm = $state<SmtpConfig>({
+        host: '', port: 587, username: '', password: '',
+        from_email: '', from_name: 'ConvoyPlan', use_tls: 'starttls',
+    });
+    let smtpSaving = $state(false);
+    let smtpTesting = $state(false);
+    let smtpError = $state('');
+    let smtpSuccess = $state('');
+    let showSmtpPassword = $state(false);
+
+    async function loadSmtpSettings() {
+        try {
+            smtpConfig = await adminApi.getSmtpSettings();
+            smtpForm = {
+                host: smtpConfig.host,
+                port: smtpConfig.port,
+                username: smtpConfig.username,
+                password: '',  // never pre-fill password
+                from_email: smtpConfig.from_email,
+                from_name: smtpConfig.from_name,
+                use_tls: smtpConfig.use_tls as SmtpConfig['use_tls'],
+            };
+        } catch { /* ignore */ }
+    }
+
+    async function saveSmtp() {
+        smtpSaving = true;
+        smtpError = '';
+        smtpSuccess = '';
+        try {
+            await adminApi.saveSmtpSettings(smtpForm);
+            smtpSuccess = 'SMTP-Einstellungen gespeichert.';
+            await loadSmtpSettings();
+            setTimeout(() => { smtpSuccess = ''; }, 4000);
+        } catch (e: unknown) {
+            smtpError = e instanceof Error ? e.message : 'Fehler beim Speichern';
+        } finally {
+            smtpSaving = false;
+        }
+    }
+
+    async function testSmtp() {
+        smtpTesting = true;
+        smtpError = '';
+        smtpSuccess = '';
+        try {
+            await adminApi.testSmtp();
+            smtpSuccess = 'Verbindung erfolgreich ✓';
+            setTimeout(() => { smtpSuccess = ''; }, 4000);
+        } catch (e: unknown) {
+            smtpError = e instanceof Error ? e.message : 'Verbindungsfehler';
+        } finally {
+            smtpTesting = false;
+        }
+    }
+
+    // ── Send-password per user ────────────────────────────────────────────────
+    let sendingPasswordFor = $state<string | null>(null);
+    let sendPasswordResult = $state<Record<string, 'ok' | 'error'>>({});
+
+    async function sendUserPassword(userId: string) {
+        sendingPasswordFor = userId;
+        try {
+            await adminApi.sendUserPassword(userId);
+            sendPasswordResult = { ...sendPasswordResult, [userId]: 'ok' };
+            setTimeout(() => {
+                sendPasswordResult = Object.fromEntries(
+                    Object.entries(sendPasswordResult).filter(([k]) => k !== userId)
+                );
+            }, 4000);
+        } catch (e: unknown) {
+            sendPasswordResult = { ...sendPasswordResult, [userId]: 'error' };
+        } finally {
+            sendingPasswordFor = null;
+        }
+    }
+
     // Polygon drawing state
     let polyMapContainer: HTMLDivElement | undefined;
     let polyMap: maplibregl.Map | undefined;
@@ -836,8 +915,20 @@
                                     </button>
                                 </td>
                                 <td class="actions-cell">
-                                    <div><button class="btn-small" onclick={() => openEditUser(user)} title="Bearbeiten">✎</button>
-                                    <button class="btn-small danger" onclick={() => deleteUser(user)} title="Löschen">🗑</button></div>
+                                    <div>
+                                        <button class="btn-small" onclick={() => openEditUser(user)} title="Bearbeiten">✎</button>
+                                        <button
+                                            class="btn-small"
+                                            class:success-btn={sendPasswordResult[user.id] === 'ok'}
+                                            class:danger={sendPasswordResult[user.id] === 'error'}
+                                            onclick={() => sendUserPassword(user.id)}
+                                            disabled={sendingPasswordFor === user.id || !smtpConfig?.configured}
+                                            title={smtpConfig?.configured ? 'Passwort generieren & E-Mail senden' : 'SMTP zuerst konfigurieren'}
+                                        >
+                                            {sendingPasswordFor === user.id ? '…' : sendPasswordResult[user.id] === 'ok' ? '✓' : sendPasswordResult[user.id] === 'error' ? '✕' : '✉'}
+                                        </button>
+                                        <button class="btn-small danger" onclick={() => deleteUser(user)} title="Löschen">🗑</button>
+                                    </div>
                                 </td>
                             </tr>
                         {/each}
@@ -1377,6 +1468,68 @@
                 </div>
             {/if}
         </div>
+
+        <!-- ── E-Mail / SMTP ── -->
+        <div class="section">
+            <div class="section-header">
+                <strong>E-Mail (SMTP)</strong>
+            </div>
+
+            {#if smtpError}
+                <div class="error-bar">{smtpError} <button onclick={() => smtpError = ''}>✕</button></div>
+            {/if}
+            {#if smtpSuccess}
+                <div class="success-bar">{smtpSuccess}</div>
+            {/if}
+
+            <div class="smtp-grid">
+                <label class="smtp-label">Host
+                    <input type="text" bind:value={smtpForm.host} placeholder="smtp.example.com" autocomplete="off" />
+                </label>
+                <label class="smtp-label smtp-port">Port
+                    <input type="number" bind:value={smtpForm.port} min="1" max="65535" />
+                </label>
+                <label class="smtp-label">Sicherheit
+                    <select bind:value={smtpForm.use_tls}>
+                        <option value="starttls">STARTTLS (Port 587)</option>
+                        <option value="ssl">SSL/TLS (Port 465)</option>
+                        <option value="false">Kein TLS (unsicher)</option>
+                    </select>
+                </label>
+                <label class="smtp-label">Benutzername
+                    <input type="text" bind:value={smtpForm.username} placeholder="user@example.com" autocomplete="off" />
+                </label>
+                <label class="smtp-label">
+                    Passwort {#if smtpConfig?.password_set}<span class="hint">(gesetzt — leer lassen = nicht ändern)</span>{/if}
+                    <div class="smtp-pw-row">
+                        <input
+                            type={showSmtpPassword ? 'text' : 'password'}
+                            bind:value={smtpForm.password}
+                            placeholder={smtpConfig?.password_set ? '••••••••' : 'Passwort'}
+                            autocomplete="new-password"
+                        />
+                        <button type="button" class="btn-small" onclick={() => showSmtpPassword = !showSmtpPassword}>
+                            {showSmtpPassword ? '🙈' : '👁'}
+                        </button>
+                    </div>
+                </label>
+                <label class="smtp-label">Absender-E-Mail
+                    <input type="email" bind:value={smtpForm.from_email} placeholder="noreply@example.com" />
+                </label>
+                <label class="smtp-label">Absender-Name
+                    <input type="text" bind:value={smtpForm.from_name} placeholder="ConvoyPlan" />
+                </label>
+            </div>
+
+            <div style="margin-top:1rem; display:flex; gap:.5rem; flex-wrap:wrap;">
+                <button class="btn-primary" onclick={saveSmtp} disabled={smtpSaving}>
+                    {smtpSaving ? '…' : 'Speichern'}
+                </button>
+                <button class="btn-secondary" onclick={testSmtp} disabled={smtpTesting || !smtpConfig?.configured}>
+                    {smtpTesting ? 'Teste…' : 'Verbindung testen'}
+                </button>
+            </div>
+        </div>
     {/if}
 </div>
 
@@ -1713,6 +1866,14 @@
     .qr-img { border-radius: 6px; border: 4px solid white; }
     .mfa-secret-box { display: flex; flex-direction: column; gap: .5rem; }
     .mfa-secret { display: block; font-size: 13px; letter-spacing: .08em; word-break: break-all; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: .4rem .6rem; }
+    .smtp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+    @media (max-width: 600px) { .smtp-grid { grid-template-columns: 1fr; } }
+    .smtp-port { grid-column: span 1; }
+    .smtp-label { display: flex; flex-direction: column; gap: .3rem; font-size: var(--text-sm); font-weight: 500; color: var(--text-2); }
+    .smtp-label input, .smtp-label select { padding: .4rem .6rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); }
+    .smtp-pw-row { display: flex; gap: .3rem; }
+    .smtp-pw-row input { flex: 1; }
+    .success-btn { background: rgba(107,127,77,.2) !important; color: #a8c070 !important; border-color: rgba(107,127,77,.4) !important; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
     .license-status-row { display: flex; align-items: center; margin-bottom: .25rem; }
