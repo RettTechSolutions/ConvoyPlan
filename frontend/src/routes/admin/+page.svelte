@@ -711,10 +711,15 @@
                         {#each users as user}
                             <tr class:inactive={!user.is_active}>
                                 <td>{user.email}</td>
-                                <td class="orgs-cell">
-                                    {#each user.orgs as org}
-                                        <span class="tag">{org.name} ({org.role})</span>
-                                    {/each}
+                                <td>
+                                    <div class="orgs-cell">
+                                        {#each user.orgs as org}
+                                            <span class="tag">{org.name} ({org.role})</span>
+                                        {/each}
+                                        {#if user.orgs.length === 0}
+                                            <span class="hint">—</span>
+                                        {/if}
+                                    </div>
                                 </td>
                                 <td>
                                     <button class="toggle-btn" class:on={user.is_active} onclick={() => toggleActive(user)}>
@@ -727,8 +732,8 @@
                                     </button>
                                 </td>
                                 <td class="actions-cell">
-                                    <button class="btn-small" onclick={() => openEditUser(user)} title="Bearbeiten">✎</button>
-                                    <button class="btn-small danger" onclick={() => deleteUser(user)} title="Löschen">🗑</button>
+                                    <div><button class="btn-small" onclick={() => openEditUser(user)} title="Bearbeiten">✎</button>
+                                    <button class="btn-small danger" onclick={() => deleteUser(user)} title="Löschen">🗑</button></div>
                                 </td>
                             </tr>
                         {/each}
@@ -774,7 +779,7 @@
                                 <td class="hint">{org.owner_email ?? '–'}</td>
                                 <td>{org.member_count}</td>
                                 <td class="actions-cell">
-                                    <button class="btn-small danger" onclick={() => deleteOrg(org)} title="Löschen">🗑</button>
+                                    <div><button class="btn-small danger" onclick={() => deleteOrg(org)} title="Löschen">🗑</button></div>
                                 </td>
                             </tr>
                         {/each}
@@ -820,8 +825,8 @@
                             <td>{ls.has_geometry ? '✓' : '✗'}</td>
                             {#if $auth.is_superadmin}
                                 <td class="actions-cell">
-                                    <button class="btn-small" onclick={() => openEditLs(ls)}>✎</button>
-                                    <button class="btn-small danger" onclick={() => deleteLs(ls)}>✕</button>
+                                    <div><button class="btn-small" onclick={() => openEditLs(ls)}>✎</button>
+                                    <button class="btn-small danger" onclick={() => deleteLs(ls)}>✕</button></div>
                                 </td>
                             {/if}
                         </tr>
@@ -1419,11 +1424,12 @@
     .user-table th { text-align: left; padding: .5rem; color: var(--text-muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--border); }
     .user-table td { padding: .5rem; border-bottom: 1px solid var(--border); vertical-align: middle; color: var(--text-2); }
     .user-table tr.inactive td { opacity: .45; }
-    .orgs-cell { display: flex; flex-wrap: wrap; gap: .25rem; }
+    .orgs-cell { display: flex; flex-wrap: wrap; gap: .25rem; align-items: center; min-height: 1.4rem; }
     .tag { display: inline-block; padding: .1rem .35rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 3px; font-size: var(--text-xs); color: var(--text-2); }
     .toggle-btn { padding: .2rem .5rem; border-radius: 3px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); font-size: var(--text-xs); cursor: pointer; }
     .toggle-btn.on { background: rgba(107,127,77,.3); border-color: #6B7F4D; color: #a8c070; }
-    .actions-cell { display: flex; gap: .3rem; }
+    .actions-cell { white-space: nowrap; }
+    .actions-cell > div { display: flex; gap: .3rem; }
     .hint { color: var(--text-muted); font-size: var(--text-sm); }
     code { background: var(--surface-2); padding: .1rem .3rem; border-radius: 3px; font-size: var(--text-xs); font-family: monospace; color: var(--text-1); }
 
