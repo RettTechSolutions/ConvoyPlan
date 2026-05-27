@@ -120,7 +120,7 @@ async def run_setup(data: SetupRequest, db: AsyncSession = Depends(get_db)):
 
     # Optional: erste Org mit Slug anlegen
     if data.org_name and data.org_slug:
-        slug = re.sub(r"[^a-z0-9-]+", "-", data.org_slug.lower().strip()).strip("-")
+        slug = re.sub(r"[^a-z0-9-]+", "", data.org_slug.lower().strip()).strip("-")[:8]
         await db.flush()          # user.id wird erst nach flush vergeben
         org = Organization(name=data.org_name, slug=slug, owner_id=user.id)
         db.add(org)

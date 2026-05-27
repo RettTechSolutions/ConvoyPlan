@@ -36,7 +36,7 @@
                     id="slug"
                     type="text"
                     bind:value={slugInput}
-                    placeholder="z.B. rettdienst-muenchen"
+                    placeholder="z.B. rdmu"
                     autocomplete="organization"
                     spellcheck="false"
                 />

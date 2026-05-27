@@ -18,11 +18,14 @@
 
 	$effect(() => {
 		if (!slugManuallyEdited && orgName) {
-			orgSlug = orgName.toLowerCase()
-				.replace(/[äöüß]/g, (c: string) => ({'ä':'a','ö':'o','ü':'u','ß':'s'}[c] ?? c))
-				.replace(/[^a-z0-9]+/g, '-')
-				.replace(/^-|-$/g, '')
-				.slice(0, 80);
+			// Generate short HiOrg-style code from initials (e.g. "Rettdienst München" → "rdmu")
+			const normalized = orgName
+				.replace(/[äöü]/g, (c: string) => ({'ä':'ae','ö':'oe','ü':'ue'}[c] ?? c))
+				.replace(/ß/g, 'ss');
+			const words = normalized.match(/[a-zA-Z0-9]+/g) ?? [];
+			let code = words.map(w => w.slice(0, 2)).join('').toLowerCase().slice(0, 8);
+			if (code.length < 2) code = normalized.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 4);
+			orgSlug = code;
 		}
 	});
 
@@ -268,15 +271,16 @@
 				<input type="text" bind:value={orgName} placeholder="z.B. Rettdienst München" />
 			</div>
 			<div class="form-group">
-				<label>URL-Code der Organisation <span class="field-hint" style="display:inline">(optional)</span></label>
+				<label>Organisations-Code <span class="field-hint" style="display:inline">(optional)</span></label>
 				<input
 					type="text"
 					bind:value={orgSlug}
-					placeholder="z.B. rettdienst-muenchen"
+					placeholder="z.B. rdmu"
 					pattern="[a-z0-9-]+"
-					oninput={() => { slugManuallyEdited = true; }}
+					maxlength="8"
+					oninput={() => { slugManuallyEdited = true; orgSlug = orgSlug.toLowerCase().replace(/[^a-z0-9-]/g, ''); }}
 				/>
-				<span class="field-hint">Nur Kleinbuchstaben, Zahlen und Bindestriche</span>
+				<span class="field-hint">4–8 Zeichen, Kleinbuchstaben + Zahlen (wie bei HiOrg)</span>
 			</div>
 			<button class="btn-primary" onclick={nextStep}>Weiter →</button>
 
