@@ -135,6 +135,12 @@ async def get_update_status(
     except (FileNotFoundError, json.JSONDecodeError):
         pass
 
+    # Fallback: SHA was baked into the image at build time via ARG GIT_SHA
+    if not deployed_sha:
+        baked = os.environ.get("GIT_SHA", "")
+        if baked and baked != "unknown":
+            deployed_sha = baked[:7]
+
     remote_sha = None
     github_reachable = False
     try:

@@ -59,7 +59,7 @@ while true; do
     SERVICES=$(docker compose "${COMPOSE_FILES[@]}" config --services 2>/dev/null | grep -v '^updater$' | tr '\n' ' ')
     if git -C "${REPO_DIR}" reset --hard origin/main && \
        git -C "${REPO_DIR}" clean -fd && \
-       docker compose "${COMPOSE_FILES[@]}" up -d --build ${SERVICES}; then
+       GIT_SHA="${REMOTE}" docker compose "${COMPOSE_FILES[@]}" up -d --build ${SERVICES}; then
       DEPLOYED=$(git -C "${REPO_DIR}" rev-parse HEAD)
       log "Updated to ${DEPLOYED:0:7}"
       mkdir -p /update_status
