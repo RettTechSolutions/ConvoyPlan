@@ -88,3 +88,6 @@ jobs:
 
       - name: Build frontend image
         run: docker build ./frontend
+
+      - name: Build updater image
+        run: docker build ./docker/updater
