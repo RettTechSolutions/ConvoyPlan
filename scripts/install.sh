@@ -188,10 +188,15 @@ JAVA_OPTS=${JAVA_OPTS}
 BACKEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/backend:latest
 FRONTEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/frontend:latest
 GRAPHHOPPER_IMAGE=ghcr.io/retttechsolutions/convoyplan/graphhopper:latest
+UPDATER_IMAGE=ghcr.io/retttechsolutions/convoyplan/updater:latest
 GITHUB_REPO=RettTechSolutions/ConvoyPlan
 # Interne Ports (Docker-Netzwerk, nicht nach außen exponiert — bei Bedarf anpassen)
 FRONTEND_PORT=3000
 BACKEND_PORT=8000
+# Auto-Updater: Pfad zu dieser Compose-Datei auf dem HOST (wird ins Updater-Image gemountet)
+STACK_FILE_PATH=${INSTALL_DIR}/docker-compose.yml
+# Docker-Compose-Projektname — muss mit dem Namen übereinstimmen, den Compose beim Start verwendet
+COMPOSE_PROJECT_NAME=convoyplan
 # Lizenzschlüssel nach dem Setup im Admin-Panel unter System → Lizenz eintragen
 # LICENSE_KEY=
 ENVEOF

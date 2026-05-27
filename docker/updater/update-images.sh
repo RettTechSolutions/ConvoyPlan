@@ -4,9 +4,9 @@
 #
 # Required: Docker socket mounted at /var/run/docker.sock
 # Required: update_status volume at /update_status
-# Required: host compose file at /stack/docker-compose.yml (bind-mount it)
+# Required: host compose file at /stack/docker-compose.yml (bind-mount it via STACK_FILE_PATH)
 # Env: COMPOSE_PROJECT_NAME (default: convoyplan)
-#      UPDATE_INTERVAL (default: 300)
+#      UPDATE_INTERVAL      (default: 300)
 set -euo pipefail
 
 INTERVAL="${UPDATE_INTERVAL:-300}"
@@ -22,6 +22,32 @@ log() {
 }
 
 mkdir -p /update_status
+
+# --- Sanity checks -----------------------------------------------------------
+
+# Verify docker compose is available
+if ! docker compose version >/dev/null 2>&1; then
+    log "FEHLER: 'docker compose' nicht verfügbar. Updater kann nicht starten."
+    exit 1
+fi
+
+# Verify compose file is a file, not a missing/empty directory
+if [ ! -f "${COMPOSE_FILE}" ]; then
+    log "FEHLER: ${COMPOSE_FILE} nicht gefunden oder ist kein reguläres File."
+    log "        Setze STACK_FILE_PATH in deiner .env auf den absoluten Pfad"
+    log "        zur docker-compose.yml auf dem HOST (z.B. /home/user/convoyplan/docker-compose.yml)."
+    log "        Danach: docker compose restart updater"
+    # Keep retrying so the container shows up as running (not crash-looping)
+    while true; do
+        sleep 60
+        if [ -f "${COMPOSE_FILE}" ]; then
+            log "Compose-Datei gefunden — starte Updater neu…"
+            exec /bin/bash /update-images.sh
+        fi
+    done
+fi
+
+# -----------------------------------------------------------------------------
 
 get_sha_from_backend() {
     local cid
@@ -43,9 +69,11 @@ do_update() {
     # Note: backend already wrote the initial log line and cleared the file
     # before creating the trigger — we just append here.
     log "Starte Image-Update…"
-    # Pull all services except updater itself
+
+    # Discover services, excluding the updater itself (to avoid self-kill)
     SERVICES=$(docker compose -p "${COMPOSE_PROJECT}" -f "${COMPOSE_FILE}" \
-        config --services 2>/dev/null | grep -v '^updater$' | tr '\n' ' ' || echo "backend frontend")
+        config --services 2>/dev/null | grep -v '^updater$' | tr '\n' ' ' \
+        || echo "backend frontend caddy graphhopper db")
 
     log "Pulling: ${SERVICES}"
     if docker compose -p "${COMPOSE_PROJECT}" -f "${COMPOSE_FILE}" pull ${SERVICES} 2>&1 | tee -a "${LOG_FILE}" && \
@@ -63,7 +91,7 @@ do_update() {
 # Initial status
 SHA=$(get_sha_from_backend)
 write_status "${SHA}"
-log "Image-updater started (project: ${COMPOSE_PROJECT}). Polling every ${INTERVAL}s, trigger check every ${TRIGGER_POLL}s."
+log "Image-updater gestartet (Projekt: ${COMPOSE_PROJECT}, Compose: ${COMPOSE_FILE}). Polling alle ${INTERVAL}s, Trigger-Check alle ${TRIGGER_POLL}s."
 
 while true; do
     # Trigger check — runs every TRIGGER_POLL seconds so the UI reacts quickly

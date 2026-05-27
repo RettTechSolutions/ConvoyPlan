@@ -98,9 +98,9 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - update_status:/update_status
-      # Mount your stack file here so the updater can do docker compose pull:
-      # Either use an absolute path or set STACK_FILE_PATH in your .env
-      - ${STACK_FILE_PATH:-/opt/convoyplan/docker-compose.yml}:/stack/docker-compose.yml:ro
+      # PFLICHT: STACK_FILE_PATH muss in .env gesetzt sein (absoluter Pfad dieser Datei auf dem HOST).
+      # Installer setzt dies automatisch. Manuell: STACK_FILE_PATH=/home/user/convoyplan/docker-compose.yml
+      - ${STACK_FILE_PATH:?STACK_FILE_PATH muss in .env gesetzt sein (absoluter Pfad dieser Compose-Datei auf dem Host)}:/stack/docker-compose.yml:ro
     depends_on:
       - backend
 
