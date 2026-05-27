@@ -296,3 +296,24 @@ async def test_vehicle_admin_can_delete():
     db = _db(vehicle, [mem])
     result = await get_vehicle_access(vehicle.id, user, db, require="delete")
     assert result is vehicle
+
+
+# ── Org-Context Guard ────────────────────────────────────────────────────────
+
+from app.api.deps import get_org_context, OrgCtx
+from app.models.organization import Organization
+
+def _org(org_id=None):
+    o = MagicMock(spec=Organization)
+    o.id = org_id or uuid.uuid4()
+    return o
+
+
+@pytest.mark.asyncio
+async def test_list_convoys_returns_only_org_convoys(monkeypatch):
+    """get_org_context muss als Dependency genutzt werden — nicht owner_id allein."""
+    from app.api.routes.convoys import router
+    # Prüfe dass get_org_context in den Dependencies der list-Route vorkommt
+    list_route = next(r for r in router.routes if getattr(r, "path", "").rstrip("/").endswith("/convoys") and "GET" in getattr(r, "methods", []))
+    dep_callables = [d.dependency for d in list_route.dependencies]
+    assert get_org_context in dep_callables, "list_convoys muss get_org_context nutzen"

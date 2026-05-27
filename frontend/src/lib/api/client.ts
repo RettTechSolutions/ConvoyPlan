@@ -3,8 +3,21 @@ function getBaseUrl(): string {
 	return '';
 }
 
+let _activeSlug: string | null = null;
+
+/** Wird vom Org-Guard-Layout gesetzt bevor API-Calls gemacht werden */
+export function setActiveSlug(slug: string | null): void {
+    _activeSlug = slug;
+}
+
 function getToken(): string | null {
 	if (typeof localStorage === 'undefined') return null;
+	// Org-scoped token hat Vorrang
+	if (_activeSlug) {
+		const orgToken = localStorage.getItem(`token__${_activeSlug}`);
+		if (orgToken) return orgToken;
+	}
+	// Fallback: globaler Superadmin-Token
 	return localStorage.getItem('token');
 }
 

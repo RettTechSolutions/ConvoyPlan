@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.config import settings
+from app.models.organization import Organization, UserOrganization
 from app.models.settings import SystemSetting
 from app.models.user import User
 from app.schemas.setup import SetupRequest, SetupStatusResponse
@@ -116,6 +117,20 @@ async def run_setup(data: SetupRequest, db: AsyncSession = Depends(get_db)):
         is_superadmin=True,
     )
     db.add(user)
+
+    # Optional: erste Org mit Slug anlegen
+    if data.org_name and data.org_slug:
+        slug = re.sub(r"[^a-z0-9-]+", "-", data.org_slug.lower().strip()).strip("-")
+        await db.flush()          # user.id wird erst nach flush vergeben
+        org = Organization(name=data.org_name, slug=slug, owner_id=user.id)
+        db.add(org)
+        await db.flush()          # org.id verfügbar
+        membership = UserOrganization(
+            user_id=user.id,
+            organization_id=org.id,
+            role="admin",
+        )
+        db.add(membership)
 
     # Persist settings
     for key, value in [

@@ -1,4 +1,5 @@
 import uuid
+from typing import Literal
 
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -9,7 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
 from app.database import get_db
-from app.models.organization import Organization, UserOrganization
+from app.models.organization import Organization, UserOrganization, _slugify
 from app.models.user import User
 from app.schemas.user import InviteUserRequest, UserResponse
 
@@ -21,13 +22,16 @@ class OrgCreate(BaseModel):
     description: str | None = None
 
 
+OrgRole = Literal["beobachter", "fahrer", "planer", "admin"]
+
+
 class OrgMemberAdd(BaseModel):
     email: str
-    role: str = "beobachter"
+    role: OrgRole = "beobachter"
 
 
 class OrgMemberRoleUpdate(BaseModel):
-    role: str
+    role: OrgRole
 
 
 class OrgMemberResponse(BaseModel):
@@ -80,7 +84,18 @@ async def create_organization(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    org = Organization(name=data.name, description=data.description, owner_id=current_user.id)
+    # Generate a unique slug from the org name
+    base = _slugify(data.name) or "org"
+    slug = base[:77]  # leave room for suffix "-99"
+    i = 2
+    while True:
+        existing_slug = await db.execute(select(Organization).where(Organization.slug == slug))
+        if existing_slug.scalar_one_or_none() is None:
+            break
+        slug = f"{base[:77]}-{i}"
+        i += 1
+
+    org = Organization(name=data.name, description=data.description, owner_id=current_user.id, slug=slug)
     db.add(org)
     await db.flush()
     membership = UserOrganization(user_id=current_user.id, organization_id=org.id, role="admin")

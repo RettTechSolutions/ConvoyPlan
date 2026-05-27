@@ -8,7 +8,8 @@
 
 	let { children } = $props();
 
-	const PUBLIC_ROUTES = ['/login', '/share', '/setup'];
+	// /o/ hat eigenes Guard-Layout; /tracking/ und /share/ sind öffentlich
+	const PUBLIC_ROUTES = ['/login', '/share', '/setup', '/tracking', '/o/'];
 	let setupChecked = $state(false);
 	let demoMode = $state(false);
 

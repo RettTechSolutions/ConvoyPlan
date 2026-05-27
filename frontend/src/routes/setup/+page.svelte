@@ -12,6 +12,19 @@
 	let email = $state('');
 	let password = $state('');
 	let passwordConfirm = $state('');
+	let orgName = $state('');
+	let orgSlug = $state('');
+	let slugManuallyEdited = $state(false);
+
+	$effect(() => {
+		if (!slugManuallyEdited && orgName) {
+			orgSlug = orgName.toLowerCase()
+				.replace(/[äöüß]/g, (c: string) => ({'ä':'a','ö':'o','ü':'u','ß':'s'}[c] ?? c))
+				.replace(/[^a-z0-9]+/g, '-')
+				.replace(/^-|-$/g, '')
+				.slice(0, 80);
+		}
+	});
 
 	// Step 2 — Server
 	let domain = $state('');
@@ -143,6 +156,8 @@
 					acme_email: acmeEmail || email,
 					cert_pem: certPem,
 					key_pem: keyPem,
+					org_name: orgName || null,
+					org_slug: orgSlug || null,
 				}),
 			});
 
@@ -247,6 +262,21 @@
 			<div class="form-group">
 				<label>Passwort bestätigen</label>
 				<input type="password" bind:value={passwordConfirm} placeholder="Passwort wiederholen" autocomplete="new-password" />
+			</div>
+			<div class="form-group">
+				<label>Organisations-Name <span class="field-hint" style="display:inline">(optional)</span></label>
+				<input type="text" bind:value={orgName} placeholder="z.B. Rettdienst München" />
+			</div>
+			<div class="form-group">
+				<label>URL-Code der Organisation <span class="field-hint" style="display:inline">(optional)</span></label>
+				<input
+					type="text"
+					bind:value={orgSlug}
+					placeholder="z.B. rettdienst-muenchen"
+					pattern="[a-z0-9-]+"
+					oninput={() => { slugManuallyEdited = true; }}
+				/>
+				<span class="field-hint">Nur Kleinbuchstaben, Zahlen und Bindestriche</span>
 			</div>
 			<button class="btn-primary" onclick={nextStep}>Weiter →</button>
 
