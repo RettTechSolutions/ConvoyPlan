@@ -19,6 +19,8 @@
   let pollInterval: ReturnType<typeof setInterval>;
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   let sse: EventSource | null = null;
+  let reconnectDelay = 5_000;          // starts at 5 s
+  const MAX_RECONNECT_DELAY = 60_000;  // caps at 60 s
 
   async function fetchStatus() {
     try {
@@ -31,10 +33,14 @@
     sse = usersApi.onlineStream();
     sse.onmessage = (e) => {
       try { onlineCount = JSON.parse(e.data).count ?? 0; } catch { /* ignore */ }
+      reconnectDelay = 5_000; // reset backoff on successful message
     };
     sse.onerror = () => {
       sse?.close();
-      reconnectTimer = setTimeout(connectSSE, 5000);
+      sse = null;
+      reconnectTimer = setTimeout(connectSSE, reconnectDelay);
+      // exponential backoff: 5 s → 10 s → 20 s → 40 s → 60 s (capped)
+      reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
     };
   }
 

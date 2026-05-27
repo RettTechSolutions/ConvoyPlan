@@ -5,15 +5,16 @@
     import maplibregl from 'maplibre-gl';
     import 'maplibre-gl/dist/maplibre-gl.css';
     import { orgStore } from '$lib/stores/org';
-    import { leistellenApi, orgsApi, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type OrgMember } from '$lib/api';
+    import { leistellenApi, orgsApi, mfaApi, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type OrgMember } from '$lib/api';
     import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
+    import QRCode from 'qrcode';
 
     // ── Slug ─────────────────────────────────────────────────────────────────
     const slug = $derived(($page.params as Record<string, string>).slug);
 
     // ── Tab ──────────────────────────────────────────────────────────────────
-    let activeTab = $state<'mitglieder' | 'leitstellen' | 'branding'>('mitglieder');
+    let activeTab = $state<'mitglieder' | 'leitstellen' | 'branding' | 'konto'>('mitglieder');
 
     // ── Auth guard ───────────────────────────────────────────────────────────
     onMount(async () => {
@@ -22,9 +23,7 @@
             goto(`/o/${s}/plan`);
             return;
         }
-        await loadMembers();
-        await loadLeitstellen();
-        await loadBranding();
+        await Promise.all([loadMembers(), loadLeitstellen(), loadBranding(), loadMfaStatus()]);
     });
 
     // ── Mitglieder ───────────────────────────────────────────────────────────
@@ -388,6 +387,68 @@
             .then(result => { brandingStore.set({ ...result }); applyBranding({ ...result }); })
             .catch(() => { brandingError = 'Logo-Upload fehlgeschlagen'; });
     }
+
+    // ── MFA (Konto-Tab) ──────────────────────────────────────────────────────
+    let mfaEnabled = $state(false);
+    let mfaSetupSecret = $state('');
+    let mfaSetupQrDataUrl = $state('');
+    let mfaSetupStep = $state<'idle' | 'setup' | 'confirm'>('idle');
+    let mfaCode = $state('');
+    let mfaWorking = $state(false);
+    let mfaError = $state('');
+    let mfaSuccess = $state('');
+
+    async function loadMfaStatus() {
+        try {
+            const s = await mfaApi.status();
+            mfaEnabled = s.mfa_enabled;
+        } catch { /* ignore */ }
+    }
+
+    async function startMfaSetup() {
+        mfaWorking = true;
+        mfaError = '';
+        try {
+            const data = await mfaApi.setup();
+            mfaSetupSecret = data.secret;
+            mfaSetupQrDataUrl = await QRCode.toDataURL(data.provisioning_uri, { width: 200, margin: 1 });
+            mfaSetupStep = 'setup';
+        } catch (e) {
+            mfaError = e instanceof Error ? e.message : 'Fehler beim Setup';
+        } finally { mfaWorking = false; }
+    }
+
+    async function confirmMfa() {
+        if (mfaCode.length < 6) return;
+        mfaWorking = true;
+        mfaError = '';
+        try {
+            await mfaApi.confirm(mfaCode);
+            mfaEnabled = true;
+            mfaSetupStep = 'idle';
+            mfaCode = '';
+            mfaSuccess = 'MFA erfolgreich aktiviert.';
+            setTimeout(() => { mfaSuccess = ''; }, 4000);
+        } catch (e) {
+            mfaError = e instanceof Error ? e.message : 'Ungültiger Code';
+        } finally { mfaWorking = false; }
+    }
+
+    async function disableMfa() {
+        if (mfaCode.length < 6) return;
+        mfaWorking = true;
+        mfaError = '';
+        try {
+            await mfaApi.disable(mfaCode);
+            mfaEnabled = false;
+            mfaSetupStep = 'idle';
+            mfaCode = '';
+            mfaSuccess = 'MFA deaktiviert.';
+            setTimeout(() => { mfaSuccess = ''; }, 4000);
+        } catch (e) {
+            mfaError = e instanceof Error ? e.message : 'Ungültiger Code';
+        } finally { mfaWorking = false; }
+    }
 </script>
 
 <div class="admin-page">
@@ -400,6 +461,7 @@
         <button class="tab" class:active={activeTab === 'mitglieder'} onclick={() => { activeTab = 'mitglieder'; loadMembers(); }}>Mitglieder</button>
         <button class="tab" class:active={activeTab === 'leitstellen'} onclick={() => (activeTab = 'leitstellen')}>Leitstellen</button>
         <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>Branding</button>
+        <button class="tab" class:active={activeTab === 'konto'} onclick={() => activeTab = 'konto'}>Konto</button>
     </div>
 
     <!-- ── Mitglieder ── -->
@@ -639,6 +701,84 @@
         </div>
     </div>
     {/if}
+
+    <!-- ── Konto ── -->
+    {#if activeTab === 'konto'}
+        <div class="section">
+            <div class="section-header">
+                <strong>Zwei-Faktor-Authentifizierung (MFA)</strong>
+            </div>
+
+            {#if mfaError}
+                <div class="error-bar">{mfaError} <button onclick={() => mfaError = ''}>✕</button></div>
+            {/if}
+            {#if mfaSuccess}
+                <div class="success-bar">{mfaSuccess}</div>
+            {/if}
+
+            {#if mfaSetupStep === 'idle'}
+                <div class="update-row" style="margin-bottom:.75rem">
+                    <span class="update-label">Status</span>
+                    {#if mfaEnabled}
+                        <span class="badge badge-ok">Aktiv ✓</span>
+                    {:else}
+                        <span class="badge badge-warn">Nicht aktiv</span>
+                    {/if}
+                </div>
+
+                {#if mfaEnabled}
+                    <p class="hint" style="margin-bottom:.75rem">MFA ist aktiv. Zum Deaktivieren bitte Code eingeben:</p>
+                    <div class="mfa-code-row">
+                        <input
+                            type="text"
+                            inputmode="numeric"
+                            maxlength="6"
+                            placeholder="000000"
+                            bind:value={mfaCode}
+                            class="mfa-input"
+                            autocomplete="one-time-code"
+                        />
+                        <button class="btn-small danger" onclick={disableMfa} disabled={mfaWorking || mfaCode.length < 6}>
+                            {mfaWorking ? '…' : 'Deaktivieren'}
+                        </button>
+                    </div>
+                {:else}
+                    <p class="hint" style="margin-bottom:.75rem">MFA schützt dein Konto mit einem zweiten Faktor (Authenticator-App).</p>
+                    <button class="btn-primary" onclick={startMfaSetup} disabled={mfaWorking}>
+                        {mfaWorking ? '…' : 'MFA einrichten'}
+                    </button>
+                {/if}
+
+            {:else if mfaSetupStep === 'setup'}
+                <p class="hint" style="margin-bottom:1rem">Scanne den QR-Code mit einer Authenticator-App (z.B. Authy, Google Authenticator) oder gib den Secret manuell ein.</p>
+                <div class="mfa-setup-qr">
+                    {#if mfaSetupQrDataUrl}
+                        <img src={mfaSetupQrDataUrl} alt="MFA QR Code" class="qr-img" />
+                    {/if}
+                    <div class="mfa-secret-box">
+                        <span class="update-label">Secret (manuell)</span>
+                        <code class="mfa-secret">{mfaSetupSecret}</code>
+                    </div>
+                </div>
+                <p class="hint" style="margin:.75rem 0 .5rem">Danach Code eingeben um MFA zu aktivieren:</p>
+                <div class="mfa-code-row">
+                    <input
+                        type="text"
+                        inputmode="numeric"
+                        maxlength="6"
+                        placeholder="000000"
+                        bind:value={mfaCode}
+                        class="mfa-input"
+                        autocomplete="one-time-code"
+                    />
+                    <button class="btn-primary" onclick={confirmMfa} disabled={mfaWorking || mfaCode.length < 6}>
+                        {mfaWorking ? '…' : 'Bestätigen'}
+                    </button>
+                    <button class="btn-small" onclick={() => { mfaSetupStep = 'idle'; mfaCode = ''; }}>Abbrechen</button>
+                </div>
+            {/if}
+        </div>
+    {/if}
 </div>
 
 <!-- ── Leitstelle Modal ── -->
@@ -812,4 +952,18 @@
     .add-role:focus { outline: none; border-color: var(--color-primary); }
     .role-select-inline { padding: .2rem .4rem; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--text-1); font-size: var(--text-xs); }
     .role-select-inline:focus { outline: none; border-color: var(--color-primary); }
+
+    /* Konto / MFA tab */
+    .update-row { display: flex; align-items: center; gap: .75rem; }
+    .update-label { font-size: var(--text-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+    .badge { display: inline-block; padding: .15rem .55rem; border-radius: 10px; font-size: var(--text-xs); font-weight: 600; }
+    .badge-ok { background: rgba(39,174,96,.15); color: #27ae60; }
+    .badge-warn { background: rgba(243,156,18,.15); color: #e67e22; }
+    .mfa-code-row { display: flex; gap: .5rem; align-items: center; }
+    .mfa-input { width: 90px; padding: .35rem .5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--text-1); font-size: var(--text-base); letter-spacing: .15em; text-align: center; font-family: monospace; }
+    .mfa-input:focus { outline: none; border-color: var(--color-primary); }
+    .mfa-setup-qr { display: flex; gap: 1.5rem; align-items: flex-start; margin-bottom: .5rem; flex-wrap: wrap; }
+    .qr-img { border: 1px solid var(--border); border-radius: 6px; background: white; padding: 4px; }
+    .mfa-secret-box { display: flex; flex-direction: column; gap: .35rem; }
+    .mfa-secret { display: block; font-family: monospace; font-size: var(--text-sm); letter-spacing: .08em; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: .35rem .6rem; word-break: break-all; }
 </style>
