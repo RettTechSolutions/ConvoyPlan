@@ -367,9 +367,13 @@ async def trigger_update(
     if os.path.exists(TRIGGER_FILE):
         raise HTTPException(409, "Update already triggered")
     os.makedirs(os.path.dirname(TRIGGER_FILE), exist_ok=True)
-    # Clear log so the UI starts with a clean slate
+    # Write initial message so the SSE terminal shows something immediately
+    # (updater may be sleeping up to INTERVAL seconds before it picks up the trigger)
     try:
-        open(LOG_FILE, "w").close()
+        os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        with open(LOG_FILE, "w") as f:
+            f.write(f"[{ts}] Manuelles Update ausgelöst — warte auf Updater…\n")
     except OSError:
         pass
     with open(TRIGGER_FILE, "w") as f:
@@ -402,14 +406,19 @@ async def stream_update_log(
 
         yield "retry: 2000\n\n"  # reconnect interval hint
 
+        # Keep the connection alive — send a comment every 20s if quiet
+        last_activity = asyncio.get_event_loop().time()
+
         while asyncio.get_event_loop().time() < deadline:
             try:
-                with open(LOG_FILE, "r") as f:
+                with open(LOG_FILE, "r", errors="replace") as f:
                     f.seek(offset)
                     chunk = f.read()
                     if chunk:
-                        offset += len(chunk.encode())
+                        offset += len(chunk.encode("utf-8", errors="replace"))
+                        last_activity = asyncio.get_event_loop().time()
                         for line in chunk.splitlines():
+                            # Send every non-empty line (skip truly blank lines)
                             if line.strip():
                                 yield f"data: {line}\n\n"
                             # Signal end when a terminal phrase appears
@@ -418,6 +427,12 @@ async def stream_update_log(
                                 return
             except FileNotFoundError:
                 pass
+
+            # Keep-alive comment if silent for > 20s (prevents proxy timeouts)
+            if asyncio.get_event_loop().time() - last_activity > 20:
+                yield ": keepalive\n\n"
+                last_activity = asyncio.get_event_loop().time()
+
             await asyncio.sleep(0.5)
 
         yield "event: done\ndata: timeout\n\n"

@@ -10,6 +10,7 @@
 set -euo pipefail
 
 INTERVAL="${UPDATE_INTERVAL:-300}"
+TRIGGER_POLL=10           # check trigger file every 10s regardless of INTERVAL
 COMPOSE_PROJECT="${COMPOSE_PROJECT_NAME:-convoyplan}"
 COMPOSE_FILE="/stack/docker-compose.yml"
 
@@ -39,14 +40,16 @@ write_status() {
 }
 
 do_update() {
-    > "${LOG_FILE}"  # clear log for fresh run
-    log "Pulling latest images from registry..."
+    # Note: backend already wrote the initial log line and cleared the file
+    # before creating the trigger — we just append here.
+    log "Starte Image-Update…"
     # Pull all services except updater itself
     SERVICES=$(docker compose -p "${COMPOSE_PROJECT}" -f "${COMPOSE_FILE}" \
         config --services 2>/dev/null | grep -v '^updater$' | tr '\n' ' ' || echo "backend frontend")
 
-    if docker compose -p "${COMPOSE_PROJECT}" -f "${COMPOSE_FILE}" pull ${SERVICES} && \
-       docker compose -p "${COMPOSE_PROJECT}" -f "${COMPOSE_FILE}" up -d --no-build ${SERVICES}; then
+    log "Pulling: ${SERVICES}"
+    if docker compose -p "${COMPOSE_PROJECT}" -f "${COMPOSE_FILE}" pull ${SERVICES} 2>&1 | tee -a "${LOG_FILE}" && \
+       docker compose -p "${COMPOSE_PROJECT}" -f "${COMPOSE_FILE}" up -d --no-build ${SERVICES} 2>&1 | tee -a "${LOG_FILE}"; then
         sleep 5
         local new_sha
         new_sha=$(get_sha_from_backend)
@@ -60,13 +63,24 @@ do_update() {
 # Initial status
 SHA=$(get_sha_from_backend)
 write_status "${SHA}"
-log "Image-updater started (project: ${COMPOSE_PROJECT}). Polling every ${INTERVAL}s."
+log "Image-updater started (project: ${COMPOSE_PROJECT}). Polling every ${INTERVAL}s, trigger check every ${TRIGGER_POLL}s."
 
 while true; do
+    # Trigger check — runs every TRIGGER_POLL seconds so the UI reacts quickly
     if [ -f /update_status/trigger ]; then
-        log "Manual trigger detected — starting update"
+        log "Trigger erkannt — starte Update"
         rm -f /update_status/trigger
         do_update
+        continue
     fi
-    sleep "${INTERVAL}"
+
+    # Sleep in short chunks so we notice a new trigger within TRIGGER_POLL seconds
+    slept=0
+    while [ "${slept}" -lt "${INTERVAL}" ]; do
+        sleep "${TRIGGER_POLL}"
+        slept=$((slept + TRIGGER_POLL))
+        if [ -f /update_status/trigger ]; then
+            break
+        fi
+    done
 done

@@ -4,6 +4,7 @@ set -euo pipefail
 REPO_DIR=/workspace
 REPO_URL="https://github.com/RettTechSolutions/ConvoyPlan.git"
 INTERVAL="${UPDATE_INTERVAL:-300}"
+TRIGGER_POLL=10   # check trigger file every 10s so the UI reacts quickly
 
 # Fail fast if token not provided
 : "${GITHUB_TOKEN:?GITHUB_TOKEN must be set}"
@@ -47,25 +48,44 @@ printf '{"deployed_sha":"%s","deployed_at":"%s"}\n' \
   "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
   > /update_status/status.json
 
-log "Updater started. Polling every ${INTERVAL}s."
+log "Updater started. Polling every ${INTERVAL}s, trigger check every ${TRIGGER_POLL}s."
+
+# Helper: sleep in short chunks, break early if trigger appears
+wait_or_trigger() {
+    local slept=0
+    while [ "${slept}" -lt "${INTERVAL}" ]; do
+        sleep "${TRIGGER_POLL}"
+        slept=$((slept + TRIGGER_POLL))
+        if [ -f /update_status/trigger ]; then
+            return 0  # trigger detected
+        fi
+    done
+    return 1  # no trigger, interval elapsed
+}
 
 while true; do
+  # Check trigger first (may have been set while we were working)
+  if [ -f /update_status/trigger ]; then
+    log "Trigger erkannt — erzwinge Update"
+    rm -f /update_status/trigger
+    DEPLOYED=""
+  fi
+
   if ! git -C "${REPO_DIR}" fetch origin main --quiet 2>&1; then
     log "fetch failed, retrying in ${INTERVAL}s"
-    sleep "${INTERVAL}"
+    wait_or_trigger && { DEPLOYED=""; continue; }
     continue
   fi
 
   REMOTE=$(git -C "${REPO_DIR}" rev-parse origin/main)
 
   if [ "${DEPLOYED}" != "${REMOTE}" ]; then
-    > "${LOG_FILE}"  # clear log for fresh run
     log "Update detected: ${DEPLOYED:0:7} → ${REMOTE:0:7}"
     # Get all services except the updater itself (to avoid killing this container)
     SERVICES=$(docker compose "${COMPOSE_FILES[@]}" config --services 2>/dev/null | grep -v '^updater$' | tr '\n' ' ')
-    if git -C "${REPO_DIR}" reset --hard origin/main && \
-       git -C "${REPO_DIR}" clean -fd && \
-       GIT_SHA="${REMOTE}" docker compose "${COMPOSE_FILES[@]}" up -d --build ${SERVICES}; then
+    if git -C "${REPO_DIR}" reset --hard origin/main 2>&1 | tee -a "${LOG_FILE}" && \
+       git -C "${REPO_DIR}" clean -fd 2>&1 | tee -a "${LOG_FILE}" && \
+       GIT_SHA="${REMOTE}" docker compose "${COMPOSE_FILES[@]}" up -d --build ${SERVICES} 2>&1 | tee -a "${LOG_FILE}"; then
       DEPLOYED=$(git -C "${REPO_DIR}" rev-parse HEAD)
       log "Updated to ${DEPLOYED:0:7}"
       mkdir -p /update_status
@@ -78,12 +98,6 @@ while true; do
     fi
   fi
 
-  if [ -f /update_status/trigger ]; then
-    log "Manual trigger detected"
-    rm -f /update_status/trigger
-    DEPLOYED=""
-    continue  # skip sleep, start update immediately
-  fi
-
-  sleep "${INTERVAL}"
+  # Sleep in short chunks; restart immediately if a manual trigger arrives
+  wait_or_trigger && { DEPLOYED=""; continue; }
 done
