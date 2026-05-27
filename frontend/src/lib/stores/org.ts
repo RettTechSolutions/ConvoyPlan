@@ -35,14 +35,17 @@ function createOrgStore() {
         },
 
         getToken(slug: string): string | null {
+            if (typeof localStorage === 'undefined') return null;
             return localStorage.getItem(`token__${slug}`);
         },
 
         setToken(slug: string, token: string): void {
+            if (typeof localStorage === 'undefined') return;
             localStorage.setItem(`token__${slug}`, token);
         },
 
         removeToken(slug: string): void {
+            if (typeof localStorage === 'undefined') return;
             localStorage.removeItem(`token__${slug}`);
         },
     };
