@@ -288,6 +288,10 @@ export const adminApi = {
     createUser: (data: AdminUserCreate) => api.post<AdminUser>('/api/admin/users', data),
     updateUser: (id: string, data: AdminUserUpdate) => api.patch<AdminUser>(`/api/admin/users/${id}`, data),
     deleteUser: (id: string) => api.delete(`/api/admin/users/${id}`),
+    addUserToOrg: (userId: string, orgId: string, role: string) =>
+        api.post(`/api/admin/users/${userId}/orgs`, { org_id: orgId, role }),
+    removeUserFromOrg: (userId: string, orgId: string) =>
+        api.delete(`/api/admin/users/${userId}/orgs/${orgId}`),
     listOrgs: () => api.get<AdminOrg[]>('/api/admin/organizations'),
     deleteOrg: (id: string) => api.delete(`/api/admin/organizations/${id}`),
     getUpdateStatus: () => api.get<UpdateStatus>('/api/admin/update-status'),

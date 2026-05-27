@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import bcrypt
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -180,6 +181,59 @@ async def get_update_status(
         "update_available": update_available,
         "github_reachable": github_reachable,
     }
+
+
+class AdminOrgAssign(BaseModel):
+    org_id: uuid.UUID
+    role: str = "beobachter"
+
+
+@router.post("/users/{user_id}/orgs", status_code=201)
+async def admin_add_user_to_org(
+    user_id: uuid.UUID,
+    data: AdminOrgAssign,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    user_result = await db.execute(select(User).where(User.id == user_id))
+    if not user_result.scalar_one_or_none():
+        raise HTTPException(404, "User not found")
+
+    org_result = await db.execute(select(Organization).where(Organization.id == data.org_id))
+    if not org_result.scalar_one_or_none():
+        raise HTTPException(404, "Organization not found")
+
+    existing = await db.execute(
+        select(UserOrganization).where(
+            UserOrganization.user_id == user_id,
+            UserOrganization.organization_id == data.org_id,
+        )
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(400, "User is already a member of this organization")
+
+    db.add(UserOrganization(user_id=user_id, organization_id=data.org_id, role=data.role))
+    await db.commit()
+    return {"status": "added"}
+
+
+@router.delete("/users/{user_id}/orgs/{org_id}", status_code=204)
+async def admin_remove_user_from_org(
+    user_id: uuid.UUID,
+    org_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    result = await db.execute(
+        select(UserOrganization).where(
+            UserOrganization.user_id == user_id,
+            UserOrganization.organization_id == org_id,
+        )
+    )
+    membership = result.scalar_one_or_none()
+    if membership:
+        await db.delete(membership)
+        await db.commit()
 
 
 @router.get("/organizations")

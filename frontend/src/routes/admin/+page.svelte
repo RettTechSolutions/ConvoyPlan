@@ -31,12 +31,20 @@
     let editUserForm = $state({ email: '', password: '' });
     let editUserError = $state('');
     let editUserSaving = $state(false);
+    let allOrgsForModal = $state<AdminOrg[]>([]);
+    let addOrgForm = $state({ org_id: '', role: 'beobachter' });
+    let addOrgWorking = $state(false);
 
-    function openEditUser(user: AdminUser) {
+    async function openEditUser(user: AdminUser) {
         editingUser = user;
         editUserForm = { email: user.email, password: '' };
         editUserError = '';
+        addOrgForm = { org_id: '', role: 'beobachter' };
         showEditUserModal = true;
+        // Load all orgs for the assignment dropdown
+        try {
+            allOrgsForModal = await adminApi.listOrgs();
+        } catch { /* ignore */ }
     }
 
     async function saveEditUser() {
@@ -47,14 +55,47 @@
             const patch: { email?: string; password?: string } = {};
             if (editUserForm.email !== editingUser.email) patch.email = editUserForm.email;
             if (editUserForm.password) patch.password = editUserForm.password;
-            if (Object.keys(patch).length === 0) { showEditUserModal = false; return; }
-            await adminApi.updateUser(editingUser.id, patch);
+            if (Object.keys(patch).length > 0) {
+                await adminApi.updateUser(editingUser.id, patch);
+            }
             showEditUserModal = false;
             await loadUsers();
         } catch (e: unknown) {
             editUserError = e instanceof Error ? e.message : 'Fehler beim Speichern';
         } finally {
             editUserSaving = false;
+        }
+    }
+
+    async function addUserToOrg() {
+        if (!editingUser || !addOrgForm.org_id) return;
+        addOrgWorking = true;
+        editUserError = '';
+        try {
+            await adminApi.addUserToOrg(editingUser.id, addOrgForm.org_id, addOrgForm.role);
+            // Refresh user list so modal reflects new membership
+            await loadUsers();
+            // Update editingUser reference from the refreshed list
+            const updated = users.find(u => u.id === editingUser!.id);
+            if (updated) editingUser = updated;
+            addOrgForm = { org_id: '', role: 'beobachter' };
+        } catch (e: unknown) {
+            editUserError = e instanceof Error ? e.message : 'Fehler beim Zuordnen';
+        } finally {
+            addOrgWorking = false;
+        }
+    }
+
+    async function removeUserFromOrg(orgId: string) {
+        if (!editingUser) return;
+        editUserError = '';
+        try {
+            await adminApi.removeUserFromOrg(editingUser.id, orgId);
+            await loadUsers();
+            const updated = users.find(u => u.id === editingUser!.id);
+            if (updated) editingUser = updated;
+        } catch (e: unknown) {
+            editUserError = e instanceof Error ? e.message : 'Fehler beim Entfernen';
         }
     }
 
@@ -1008,19 +1049,68 @@
                 {#if editUserError}
                     <div class="error-bar" style="margin-bottom:.75rem">{editUserError} <button onclick={() => (editUserError = '')}>✕</button></div>
                 {/if}
-                <div class="ls-form">
-                    <label>E-Mail
-                        <input type="email" bind:value={editUserForm.email} placeholder="E-Mail" required />
-                    </label>
-                    <label>Neues Passwort <span class="hint" style="font-weight:400">(leer lassen = nicht ändern)</span>
-                        <input type="password" bind:value={editUserForm.password} placeholder="Neues Passwort" autocomplete="new-password" />
-                    </label>
+
+                <!-- Zugangsdaten -->
+                <div class="edit-section">
+                    <p class="edit-section-title">Zugangsdaten</p>
+                    <div class="ls-form">
+                        <label>E-Mail
+                            <input type="email" bind:value={editUserForm.email} placeholder="E-Mail" required />
+                        </label>
+                        <label>Neues Passwort <span class="hint" style="font-weight:400">(leer = nicht ändern)</span>
+                            <input type="password" bind:value={editUserForm.password} placeholder="Neues Passwort" autocomplete="new-password" />
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Organisationen -->
+                <div class="edit-section">
+                    <p class="edit-section-title">Organisationen</p>
+
+                    <!-- Bestehende Mitgliedschaften -->
+                    {#if editingUser.orgs.length > 0}
+                        <div class="org-memberships">
+                            {#each editingUser.orgs as org}
+                                <div class="org-membership-row">
+                                    <span class="org-name">{org.name}</span>
+                                    <span class="tag">{org.role}</span>
+                                    <button class="btn-small danger" onclick={() => removeUserFromOrg(org.id)} title="Entfernen">✕</button>
+                                </div>
+                            {/each}
+                        </div>
+                    {:else}
+                        <p class="hint" style="margin-bottom:.5rem">Noch keiner Organisation zugeordnet.</p>
+                    {/if}
+
+                    <!-- Neue Zuordnung -->
+                    {#if allOrgsForModal.length > 0}
+                        {@const availableOrgs = allOrgsForModal.filter(o => !editingUser!.orgs.some(m => m.id === o.id))}
+                        {#if availableOrgs.length > 0}
+                            <div class="add-org-row">
+                                <select bind:value={addOrgForm.org_id} class="org-select">
+                                    <option value="">Organisation wählen…</option>
+                                    {#each availableOrgs as o}
+                                        <option value={o.id}>{o.name} ({o.slug})</option>
+                                    {/each}
+                                </select>
+                                <select bind:value={addOrgForm.role} class="role-select">
+                                    <option value="beobachter">Beobachter</option>
+                                    <option value="fahrer">Fahrer</option>
+                                    <option value="planer">Planer</option>
+                                    <option value="admin">Admin</option>
+                                </select>
+                                <button class="btn-small" onclick={addUserToOrg} disabled={addOrgWorking || !addOrgForm.org_id}>
+                                    {addOrgWorking ? '…' : '+ Zuordnen'}
+                                </button>
+                            </div>
+                        {/if}
+                    {/if}
                 </div>
             </div>
             <div class="modal-footer">
-                <button onclick={() => (showEditUserModal = false)}>Abbrechen</button>
+                <button onclick={() => (showEditUserModal = false)}>Schließen</button>
                 <button class="btn-primary" onclick={saveEditUser} disabled={editUserSaving || !editUserForm.email}>
-                    {editUserSaving ? 'Speichern…' : 'Speichern'}
+                    {editUserSaving ? 'Speichern…' : 'Zugangsdaten speichern'}
                 </button>
             </div>
         </div>
@@ -1214,4 +1304,16 @@
     .license-input-row { display: flex; gap: .4rem; align-items: center; }
     .license-input { flex: 1; padding: .45rem .65rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); font-family: monospace; }
     .license-input:focus { outline: none; border-color: var(--color-primary); }
+
+    /* Edit user modal */
+    .edit-section { margin-bottom: 1.25rem; }
+    .edit-section:last-child { margin-bottom: 0; }
+    .edit-section-title { font-size: var(--text-xs); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; margin: 0 0 .6rem; }
+    .org-memberships { display: flex; flex-direction: column; gap: .3rem; margin-bottom: .5rem; }
+    .org-membership-row { display: flex; align-items: center; gap: .5rem; padding: .3rem .5rem; background: var(--surface-2); border-radius: 4px; border: 1px solid var(--border); }
+    .org-name { flex: 1; font-size: var(--text-sm); color: var(--text-1); }
+    .add-org-row { display: flex; gap: .4rem; align-items: center; margin-top: .3rem; flex-wrap: wrap; }
+    .org-select { flex: 1; min-width: 140px; padding: .35rem .5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); }
+    .role-select { padding: .35rem .5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); }
+    .org-select:focus, .role-select:focus { outline: none; border-color: var(--color-primary); }
 </style>
