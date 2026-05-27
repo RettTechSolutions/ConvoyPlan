@@ -1,5 +1,4 @@
 import uuid
-from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -72,8 +71,10 @@ async def get_org_context(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Org context required")
 
     user = await db.get(User, token_data.user_id)
-    if not user or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid user")
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account deactivated")
 
     org = await db.get(Organization, token_data.org_id)
     if not org:
@@ -102,4 +103,7 @@ async def require_superadmin(
     user = result.scalar_one_or_none()
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    # Re-check the DB — the JWT claim could be stale if superadmin was revoked
+    if not user.is_superadmin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superadmin required")
     return user
