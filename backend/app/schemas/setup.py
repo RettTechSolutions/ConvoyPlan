@@ -20,3 +20,7 @@ class SetupRequest(BaseModel):
     # Custom cert (PEM content as strings, only when tls_mode == "custom")
     cert_pem: str = ""
     key_pem: str = ""
+
+    # Optional: erste Organisation beim Setup anlegen
+    org_name: str | None = None
+    org_slug: str | None = None
