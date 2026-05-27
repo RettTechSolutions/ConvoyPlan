@@ -14,11 +14,14 @@ branch_labels = None
 depends_on = None
 
 
+# _slugify is intentionally duplicated here from app.models.organization.
+# Alembic migrations must be self-contained and cannot import from app code
+# because the app model layer may have evolved beyond what this migration expects.
 def _slugify(text: str) -> str:
     text = text.lower()
     text = text.translate(str.maketrans("äöüß", "aous"))
     text = re.sub(r"[^a-z0-9]+", "-", text)
-    return text.strip("-")[:80]
+    return text.strip("-")[:80].strip("-")
 
 
 def upgrade() -> None:
@@ -30,7 +33,7 @@ def upgrade() -> None:
     orgs = conn.execute(sa.text("SELECT id, name FROM organizations ORDER BY created_at")).fetchall()
     seen: set[str] = set()
     for org in orgs:
-        base = _slugify(org.name) or "org"
+        base = (_slugify(org.name) or "org")[:77]  # leave room for suffix "-99"
         slug = base
         i = 2
         while slug in seen:

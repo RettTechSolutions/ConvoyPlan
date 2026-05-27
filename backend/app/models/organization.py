@@ -13,7 +13,7 @@ def _slugify(text: str) -> str:
     text = text.lower()
     text = text.translate(str.maketrans("äöüß", "aous"))
     text = re.sub(r"[^a-z0-9]+", "-", text)
-    return text.strip("-")[:80]
+    return text.strip("-")[:80].strip("-")
 
 
 class Organization(Base):
