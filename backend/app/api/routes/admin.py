@@ -14,6 +14,7 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import get_db, require_superadmin
 from app.config import settings
 from app.models.organization import Organization, UserOrganization, _slugify
+from app.models.settings import SystemSetting
 from app.models.user import User
 from app.schemas.user import AdminUserCreate, AdminUserResponse, AdminUserUpdate, AdminUserOrgInfo
 
@@ -133,6 +134,7 @@ async def delete_user(
 
 @router.get("/update-status")
 async def get_update_status(
+    db: AsyncSession = Depends(get_db),
     _: User = Depends(require_superadmin),
 ):
     deployed_sha = None
@@ -151,12 +153,19 @@ async def get_update_status(
         if baked and baked != "unknown":
             deployed_sha = baked[:7]
 
+    # GitHub token: DB setting takes priority over env var
+    github_token = settings.github_token
+    db_token = await db.execute(select(SystemSetting).where(SystemSetting.key == "github.token"))
+    db_setting = db_token.scalar_one_or_none()
+    if db_setting and db_setting.value:
+        github_token = db_setting.value
+
     remote_sha = None
     github_reachable = False
     try:
         headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
-        if settings.github_token:
-            headers["Authorization"] = f"Bearer {settings.github_token}"
+        if github_token:
+            headers["Authorization"] = f"Bearer {github_token}"
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(
                 f"https://api.github.com/repos/{settings.github_repo}/commits?sha=main&per_page=1",
@@ -181,6 +190,41 @@ async def get_update_status(
         "update_available": update_available,
         "github_reachable": github_reachable,
     }
+
+
+@router.get("/settings/github-token-set")
+async def github_token_is_set(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    """Returns whether a GitHub token is configured (DB or env), without revealing it."""
+    if settings.github_token:
+        return {"set": True, "source": "env"}
+    result = await db.execute(select(SystemSetting).where(SystemSetting.key == "github.token"))
+    setting = result.scalar_one_or_none()
+    if setting and setting.value:
+        return {"set": True, "source": "db"}
+    return {"set": False, "source": None}
+
+
+class GithubTokenUpdate(BaseModel):
+    token: str
+
+
+@router.put("/settings/github-token", status_code=204)
+async def set_github_token(
+    data: GithubTokenUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    """Store (or clear) the GitHub API token in system_settings."""
+    result = await db.execute(select(SystemSetting).where(SystemSetting.key == "github.token"))
+    setting = result.scalar_one_or_none()
+    if setting:
+        setting.value = data.token
+    else:
+        db.add(SystemSetting(key="github.token", value=data.token))
+    await db.commit()
 
 
 class AdminOrgAssign(BaseModel):

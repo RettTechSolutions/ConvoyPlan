@@ -319,6 +319,50 @@
         setTimeout(poll, 3000);
     }
 
+    // ── GitHub-Token Konfiguration ────────────────────────────────────────────
+    let githubTokenSet = $state<{ set: boolean; source: string | null } | null>(null);
+    let githubTokenInput = $state('');
+    let githubTokenSaving = $state(false);
+    let githubTokenSuccess = $state('');
+    let githubTokenError = $state('');
+    let showGithubToken = $state(false);
+
+    async function loadGithubTokenStatus() {
+        try {
+            githubTokenSet = await adminApi.getGithubTokenStatus();
+        } catch { /* ignore */ }
+    }
+
+    async function saveGithubToken() {
+        if (!githubTokenInput.trim()) return;
+        githubTokenSaving = true;
+        githubTokenError = '';
+        githubTokenSuccess = '';
+        try {
+            await adminApi.setGithubToken(githubTokenInput.trim());
+            githubTokenSet = { set: true, source: 'db' };
+            githubTokenInput = '';
+            githubTokenSuccess = 'Token gespeichert. GitHub-Check wird beim nächsten Laden aktiv.';
+            setTimeout(() => { githubTokenSuccess = ''; }, 5000);
+        } catch (e: unknown) {
+            githubTokenError = e instanceof Error ? e.message : 'Fehler beim Speichern';
+        } finally {
+            githubTokenSaving = false;
+        }
+    }
+
+    async function clearGithubToken() {
+        if (!confirm('GitHub-Token entfernen?')) return;
+        githubTokenSaving = true;
+        try {
+            await adminApi.setGithubToken('');
+            githubTokenSet = { set: false, source: null };
+            githubTokenSuccess = 'Token entfernt.';
+            setTimeout(() => { githubTokenSuccess = ''; }, 3000);
+        } catch { githubTokenError = 'Fehler beim Entfernen'; }
+        finally { githubTokenSaving = false; }
+    }
+
     // Polygon drawing state
     let polyMapContainer: HTMLDivElement | undefined;
     let polyMap: maplibregl.Map | undefined;
@@ -623,7 +667,7 @@
         <button class="tab" class:active={activeTab === 'organisationen'} onclick={() => { activeTab = 'organisationen'; loadOrgs(); }}>Organisationen</button>
         <button class="tab" class:active={activeTab === 'leitstellen'} onclick={() => (activeTab = 'leitstellen')}>Leitstellen</button>
         <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>Branding</button>
-        <button class="tab" class:active={activeTab === 'system'} onclick={() => { activeTab = 'system'; loadUpdateStatus(); loadLicenseStatus(); }}>System</button>
+        <button class="tab" class:active={activeTab === 'system'} onclick={() => { activeTab = 'system'; loadUpdateStatus(); loadLicenseStatus(); loadGithubTokenStatus(); }}>System</button>
     </div>
 
     <!-- ── Benutzer ── -->
@@ -1079,6 +1123,61 @@
             {:else}
                 <p class="hint">Status nicht verfügbar</p>
             {/if}
+        </div>
+
+        <!-- ── GitHub-Konfiguration ── -->
+        <div class="section">
+            <div class="section-header">
+                <strong>GitHub-Konfiguration</strong>
+            </div>
+
+            {#if githubTokenError}
+                <div class="error-bar">{githubTokenError} <button onclick={() => githubTokenError = ''}>✕</button></div>
+            {/if}
+            {#if githubTokenSuccess}
+                <div class="success-bar">{githubTokenSuccess}</div>
+            {/if}
+
+            <div class="update-grid" style="margin-bottom:.75rem">
+                <div class="update-row">
+                    <span class="update-label">GitHub-Token</span>
+                    {#if githubTokenSet?.set}
+                        <span class="badge badge-ok">Gesetzt ({githubTokenSet.source === 'env' ? 'Umgebungsvariable' : 'Datenbank'}) ✓</span>
+                        {#if githubTokenSet.source === 'db'}
+                            <button class="btn-small danger" onclick={clearGithubToken} disabled={githubTokenSaving}>Entfernen</button>
+                        {/if}
+                    {:else}
+                        <span class="badge badge-warn">Nicht konfiguriert</span>
+                    {/if}
+                </div>
+            </div>
+
+            <p class="hint" style="margin-bottom:.6rem">
+                Ohne GitHub-Token ist die GitHub-API auf 60 Requests/Stunde limitiert.
+                Token erstellen unter <a href="https://github.com/settings/tokens" target="_blank" rel="noopener" style="color:var(--color-primary)">github.com/settings/tokens</a>
+                (nur <code>public_repo</code> Scope nötig).
+            </p>
+
+            <div class="license-input-row">
+                <input
+                    type={showGithubToken ? 'text' : 'password'}
+                    class="license-input"
+                    placeholder={githubTokenSet?.set ? '••• Token ersetzen •••' : 'ghp_xxxxxxxxxxxx'}
+                    bind:value={githubTokenInput}
+                    onkeydown={(e) => { if (e.key === 'Enter') saveGithubToken(); }}
+                    autocomplete="off"
+                />
+                <button class="btn-small" onclick={() => showGithubToken = !showGithubToken} title="Anzeigen/Verstecken">
+                    {showGithubToken ? '🙈' : '👁'}
+                </button>
+                <button
+                    class="btn-primary"
+                    onclick={saveGithubToken}
+                    disabled={githubTokenSaving || !githubTokenInput.trim()}
+                >
+                    {githubTokenSaving ? '…' : 'Speichern'}
+                </button>
+            </div>
         </div>
     {/if}
 </div>

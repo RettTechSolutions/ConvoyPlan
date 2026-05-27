@@ -297,6 +297,8 @@ export const adminApi = {
     deleteOrg: (id: string) => api.delete(`/api/admin/organizations/${id}`),
     getUpdateStatus: () => api.get<UpdateStatus>('/api/admin/update-status'),
     triggerUpdate: () => api.post<{ status: string }>('/api/admin/trigger-update', {}),
+    getGithubTokenStatus: () => api.get<{ set: boolean; source: string | null }>('/api/admin/settings/github-token-set'),
+    setGithubToken: (token: string) => api.put<void>('/api/admin/settings/github-token', { token }),
 };
 
 export interface UpdateStatus {
