@@ -12,8 +12,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.engine.reflection import Inspector
 
-revision = "0013_vehicle_org_id"
-down_revision = "0012_org_slug"
+revision = "0013"
+down_revision = "0012"
 branch_labels = None
 depends_on = None
 
