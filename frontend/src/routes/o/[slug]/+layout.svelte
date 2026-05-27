@@ -11,7 +11,7 @@
 
     onMount(async () => {
         const slug = ($page.params as Record<string, string>).slug;
-        const isLoginPage = $page.url.pathname.endsWith('/login');
+        const isLoginPage = $page.url.pathname === `/o/${slug}/login`;
 
         // Login-Seite braucht keinen Token-Check
         if (isLoginPage) {
