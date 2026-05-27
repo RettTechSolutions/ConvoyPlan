@@ -62,6 +62,8 @@ jobs:
           push: true
           tags: ${{ steps.meta-backend.outputs.tags }}
           labels: ${{ steps.meta-backend.outputs.labels }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
 
       - name: Build and push frontend
         uses: docker/build-push-action@v5

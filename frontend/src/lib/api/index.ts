@@ -271,6 +271,16 @@ export interface AdminUserCreate {
 export interface AdminUserUpdate {
     is_active?: boolean;
     is_superadmin?: boolean;
+    email?: string;
+    password?: string;
+}
+
+export interface AdminOrg {
+    id: string;
+    name: string;
+    slug: string;
+    owner_email: string | null;
+    member_count: number;
 }
 
 export const adminApi = {
@@ -278,6 +288,8 @@ export const adminApi = {
     createUser: (data: AdminUserCreate) => api.post<AdminUser>('/api/admin/users', data),
     updateUser: (id: string, data: AdminUserUpdate) => api.patch<AdminUser>(`/api/admin/users/${id}`, data),
     deleteUser: (id: string) => api.delete(`/api/admin/users/${id}`),
+    listOrgs: () => api.get<AdminOrg[]>('/api/admin/organizations'),
+    deleteOrg: (id: string) => api.delete(`/api/admin/organizations/${id}`),
     getUpdateStatus: () => api.get<UpdateStatus>('/api/admin/update-status'),
     triggerUpdate: () => api.post<{ status: string }>('/api/admin/trigger-update', {}),
 };

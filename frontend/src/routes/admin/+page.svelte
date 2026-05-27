@@ -4,12 +4,12 @@
     import maplibregl from 'maplibre-gl';
     import 'maplibre-gl/dist/maplibre-gl.css';
     import { auth } from '$lib/stores/auth';
-    import { adminApi, leistellenApi, licenseApi, type AdminUser, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus } from '$lib/api';
+    import { adminApi, leistellenApi, licenseApi, type AdminUser, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus } from '$lib/api';
     import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
 
     // ── Tab ──────────────────────────────────────────────────────────────────
-    let activeTab = $state<'benutzer' | 'leitstellen' | 'branding' | 'system'>('benutzer');
+    let activeTab = $state<'benutzer' | 'organisationen' | 'leitstellen' | 'branding' | 'system'>('benutzer');
 
     // ── Users ────────────────────────────────────────────────────────────────
     let users = $state<AdminUser[]>([]);
@@ -24,6 +24,39 @@
         await loadLeitstellen();
         await loadBranding();
     });
+
+    // ── Edit User Modal ───────────────────────────────────────────────────────
+    let showEditUserModal = $state(false);
+    let editingUser = $state<AdminUser | null>(null);
+    let editUserForm = $state({ email: '', password: '' });
+    let editUserError = $state('');
+    let editUserSaving = $state(false);
+
+    function openEditUser(user: AdminUser) {
+        editingUser = user;
+        editUserForm = { email: user.email, password: '' };
+        editUserError = '';
+        showEditUserModal = true;
+    }
+
+    async function saveEditUser() {
+        if (!editingUser) return;
+        editUserError = '';
+        editUserSaving = true;
+        try {
+            const patch: { email?: string; password?: string } = {};
+            if (editUserForm.email !== editingUser.email) patch.email = editUserForm.email;
+            if (editUserForm.password) patch.password = editUserForm.password;
+            if (Object.keys(patch).length === 0) { showEditUserModal = false; return; }
+            await adminApi.updateUser(editingUser.id, patch);
+            showEditUserModal = false;
+            await loadUsers();
+        } catch (e: unknown) {
+            editUserError = e instanceof Error ? e.message : 'Fehler beim Speichern';
+        } finally {
+            editUserSaving = false;
+        }
+    }
 
     async function loadUsers() {
         try {
@@ -64,6 +97,28 @@
             await adminApi.deleteUser(user.id);
             await loadUsers();
         } catch { error = 'Benutzer konnte nicht gelöscht werden'; }
+    }
+
+    // ── Organisationen ───────────────────────────────────────────────────────
+    let orgs = $state<AdminOrg[]>([]);
+    let orgsLoading = $state(false);
+    let orgsError = $state('');
+
+    async function loadOrgs() {
+        orgsLoading = true;
+        orgsError = '';
+        try {
+            orgs = await adminApi.listOrgs();
+        } catch { orgsError = 'Organisationen konnten nicht geladen werden'; }
+        finally { orgsLoading = false; }
+    }
+
+    async function deleteOrg(org: AdminOrg) {
+        if (!confirm(`Organisation "${org.name}" (${org.slug}) wirklich löschen?\n\nAlle Mitglieder-Zuordnungen und Daten dieser Organisation werden entfernt.`)) return;
+        try {
+            await adminApi.deleteOrg(org.id);
+            await loadOrgs();
+        } catch { orgsError = 'Organisation konnte nicht gelöscht werden'; }
     }
 
     // ── Leitstellen ──────────────────────────────────────────────────────────
@@ -488,13 +543,10 @@
 
     <div class="tab-bar">
         <button class="tab" class:active={activeTab === 'benutzer'} onclick={() => (activeTab = 'benutzer')}>Benutzer</button>
+        <button class="tab" class:active={activeTab === 'organisationen'} onclick={() => { activeTab = 'organisationen'; loadOrgs(); }}>Organisationen</button>
         <button class="tab" class:active={activeTab === 'leitstellen'} onclick={() => (activeTab = 'leitstellen')}>Leitstellen</button>
-        <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>
-            Branding
-        </button>
-        <button class="tab" class:active={activeTab === 'system'} onclick={() => { activeTab = 'system'; loadUpdateStatus(); loadLicenseStatus(); }}>
-            System
-        </button>
+        <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>Branding</button>
+        <button class="tab" class:active={activeTab === 'system'} onclick={() => { activeTab = 'system'; loadUpdateStatus(); loadLicenseStatus(); }}>System</button>
     </div>
 
     <!-- ── Benutzer ── -->
@@ -553,11 +605,58 @@
                                         {user.is_superadmin ? 'Ja' : 'Nein'}
                                     </button>
                                 </td>
-                                <td>
-                                    <button class="btn-small danger" onclick={() => deleteUser(user)}>🗑</button>
+                                <td class="actions-cell">
+                                    <button class="btn-small" onclick={() => openEditUser(user)} title="Bearbeiten">✎</button>
+                                    <button class="btn-small danger" onclick={() => deleteUser(user)} title="Löschen">🗑</button>
                                 </td>
                             </tr>
                         {/each}
+                    </tbody>
+                </table>
+            {/if}
+        </div>
+    {/if}
+
+    <!-- ── Organisationen ── -->
+    {#if activeTab === 'organisationen'}
+        {#if orgsError}
+            <div class="error-bar">{orgsError} <button onclick={() => (orgsError = '')}>✕</button></div>
+        {/if}
+
+        <div class="section">
+            <div class="section-header">
+                <strong>Organisationen ({orgs.length})</strong>
+                <button class="btn-small" onclick={loadOrgs}>↺</button>
+            </div>
+
+            {#if orgsLoading}
+                <p class="hint">Lade…</p>
+            {:else}
+                <table class="user-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Code (Slug)</th>
+                            <th>Inhaber</th>
+                            <th>Mitglieder</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {#each orgs as org}
+                            <tr>
+                                <td>{org.name}</td>
+                                <td><code>{org.slug}</code></td>
+                                <td class="hint">{org.owner_email ?? '–'}</td>
+                                <td>{org.member_count}</td>
+                                <td class="actions-cell">
+                                    <button class="btn-small danger" onclick={() => deleteOrg(org)} title="Löschen">🗑</button>
+                                </td>
+                            </tr>
+                        {/each}
+                        {#if orgs.length === 0}
+                            <tr><td colspan="5" class="hint" style="text-align:center">Keine Organisationen vorhanden.</td></tr>
+                        {/if}
                     </tbody>
                 </table>
             {/if}
@@ -896,6 +995,37 @@
         </div>
     {/if}
 </div>
+
+<!-- ── Benutzer bearbeiten Modal ── -->
+{#if showEditUserModal && editingUser}
+    <div class="modal-backdrop" onclick={() => (showEditUserModal = false)}>
+        <div class="modal" onclick={(e) => e.stopPropagation()}>
+            <div class="modal-header">
+                <h2>Benutzer bearbeiten</h2>
+                <button onclick={() => (showEditUserModal = false)}>✕</button>
+            </div>
+            <div class="modal-body">
+                {#if editUserError}
+                    <div class="error-bar" style="margin-bottom:.75rem">{editUserError} <button onclick={() => (editUserError = '')}>✕</button></div>
+                {/if}
+                <div class="ls-form">
+                    <label>E-Mail
+                        <input type="email" bind:value={editUserForm.email} placeholder="E-Mail" required />
+                    </label>
+                    <label>Neues Passwort <span class="hint" style="font-weight:400">(leer lassen = nicht ändern)</span>
+                        <input type="password" bind:value={editUserForm.password} placeholder="Neues Passwort" autocomplete="new-password" />
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick={() => (showEditUserModal = false)}>Abbrechen</button>
+                <button class="btn-primary" onclick={saveEditUser} disabled={editUserSaving || !editUserForm.email}>
+                    {editUserSaving ? 'Speichern…' : 'Speichern'}
+                </button>
+            </div>
+        </div>
+    </div>
+{/if}
 
 <!-- ── Leitstelle Modal ── -->
 {#if showLsModal}

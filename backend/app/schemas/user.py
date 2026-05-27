@@ -32,6 +32,8 @@ class AdminUserCreate(BaseModel):
 class AdminUserUpdate(BaseModel):
     is_active: bool | None = None
     is_superadmin: bool | None = None
+    email: EmailStr | None = None
+    password: str | None = None
 
 
 class AdminUserOrgInfo(BaseModel):

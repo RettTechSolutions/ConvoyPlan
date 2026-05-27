@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_db, require_superadmin
 from app.config import settings
-from app.models.organization import UserOrganization
+from app.models.organization import Organization, UserOrganization
 from app.models.user import User
 from app.schemas.user import AdminUserCreate, AdminUserResponse, AdminUserUpdate, AdminUserOrgInfo
 
@@ -94,6 +94,15 @@ async def update_user(
         user.is_active = data.is_active
     if data.is_superadmin is not None:
         user.is_superadmin = data.is_superadmin
+    if data.email is not None:
+        conflict = await db.execute(select(User).where(User.email == data.email, User.id != user_id))
+        if conflict.scalar_one_or_none():
+            raise HTTPException(400, "Email already in use")
+        user.email = data.email
+    if data.password is not None:
+        if len(data.password) < 8:
+            raise HTTPException(400, "Password must be at least 8 characters")
+        user.hashed_password = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
     await db.commit()
     await db.refresh(user)
     orgs = [
@@ -171,6 +180,43 @@ async def get_update_status(
         "update_available": update_available,
         "github_reachable": github_reachable,
     }
+
+
+@router.get("/organizations")
+async def list_all_organizations(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    result = await db.execute(
+        select(Organization)
+        .options(selectinload(Organization.members), selectinload(Organization.owner))
+        .order_by(Organization.name)
+    )
+    orgs = result.scalars().all()
+    return [
+        {
+            "id": str(org.id),
+            "name": org.name,
+            "slug": org.slug,
+            "owner_email": org.owner.email if org.owner else None,
+            "member_count": len(org.members),
+        }
+        for org in orgs
+    ]
+
+
+@router.delete("/organizations/{org_id}", status_code=204)
+async def admin_delete_organization(
+    org_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    result = await db.execute(select(Organization).where(Organization.id == org_id))
+    org = result.scalar_one_or_none()
+    if not org:
+        raise HTTPException(404, "Organization not found")
+    await db.delete(org)
+    await db.commit()
 
 
 @router.post("/trigger-update", status_code=202)
