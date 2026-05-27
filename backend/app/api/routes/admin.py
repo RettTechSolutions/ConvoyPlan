@@ -1,6 +1,8 @@
 import asyncio
 import json
 import os
+import secrets
+import string
 import uuid
 from datetime import datetime, timezone
 
@@ -16,7 +18,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_db, require_superadmin
 from app.config import settings
-from app.models.organization import Organization, UserOrganization, _slugify
+from app.models.organization import Organization, UserOrganization
 from app.models.settings import SystemSetting
 from app.models.user import User
 from app.schemas.user import AdminUserCreate, AdminUserResponse, AdminUserUpdate, AdminUserOrgInfo
@@ -525,9 +527,6 @@ async def smtp_test(
 
 
 # ── Send password email ───────────────────────────────────────────────────────
-
-import secrets
-import string
 
 
 def _generate_password(length: int = 14) -> str:

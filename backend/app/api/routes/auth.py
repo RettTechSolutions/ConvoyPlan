@@ -14,7 +14,7 @@ from app.config import settings
 from app.database import get_db
 from app.models.organization import Organization, UserOrganization
 from app.models.user import User
-from app.schemas.user import Token, UserCreate, UserResponse
+from app.schemas.user import UserCreate, UserResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
