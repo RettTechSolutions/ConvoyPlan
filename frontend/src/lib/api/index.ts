@@ -374,3 +374,14 @@ export const leistellenApi = {
     importBoundary: (id: string, file: File) =>
         uploadFile<Leitstelle>(`/api/leitstellen/${id}/boundary`, file),
 };
+
+export interface OrgLookupResult {
+    name: string;
+    slug: string;
+}
+
+export const orgAuthApi = {
+    lookup: (slug: string) => api.get<OrgLookupResult>(`/api/auth/org-lookup?slug=${encodeURIComponent(slug)}`),
+    loginOrg: (email: string, password: string, org_slug: string) =>
+        api.post<{ access_token: string }>('/api/auth/login', { email, password, org_slug }),
+};
