@@ -6,10 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_org_context, OrgCtx
-from app.api.guards import get_convoy_access, get_vehicle_access, ROLE_ORDER
+from app.api.guards import get_convoy_access, ROLE_ORDER
 from app.database import get_db
 from app.models.convoy import Convoy, ConvoyVehicle
+from app.models.organization import UserOrganization
 from app.models.user import User
+from app.models.vehicle import Vehicle
 from app.models.waypoint import Waypoint
 from app.schemas.convoy import AddVehicleRequest, ConvoyCreate, ConvoyResponse, ConvoyUpdate
 from app.schemas.waypoint import WaypointCreate, WaypointReorderItem, WaypointResponse, WaypointUpdate
@@ -180,7 +182,17 @@ async def add_vehicle_to_convoy(
     convoy = await get_convoy_access(convoy_id, user, db, require="write")
     if convoy.organization_id != org.id:
         raise HTTPException(status_code=404, detail="Convoy not found")
-    await get_vehicle_access(data.vehicle_id, user, db, require="read")
+
+    # Verify vehicle belongs to the same org (prevent cross-org vehicle assignment)
+    member_ids = select(UserOrganization.user_id).where(UserOrganization.organization_id == org.id)
+    vehicle_result = await db.execute(
+        select(Vehicle).where(
+            Vehicle.id == data.vehicle_id,
+            Vehicle.owner_id.in_(member_ids),
+        )
+    )
+    if vehicle_result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
 
     cv = ConvoyVehicle(
         convoy_id=convoy_id,

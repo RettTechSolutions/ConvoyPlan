@@ -1,4 +1,5 @@
 import uuid
+from typing import Literal
 
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -21,13 +22,16 @@ class OrgCreate(BaseModel):
     description: str | None = None
 
 
+OrgRole = Literal["beobachter", "fahrer", "planer", "admin"]
+
+
 class OrgMemberAdd(BaseModel):
     email: str
-    role: str = "beobachter"
+    role: OrgRole = "beobachter"
 
 
 class OrgMemberRoleUpdate(BaseModel):
-    role: str
+    role: OrgRole
 
 
 class OrgMemberResponse(BaseModel):
