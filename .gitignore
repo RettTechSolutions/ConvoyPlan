@@ -63,5 +63,5 @@ logs/
 
 # Claude Code / Superpowers internal tooling
 .superpowers/
-docs/
 .remember/
+# docs/ ist tracked — enthält Specs und Design-Dokumente
