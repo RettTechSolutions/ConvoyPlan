@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_org_context, OrgCtx
 from app.database import get_db
-from app.models.organization import UserOrganization
 from app.models.vehicle import Vehicle
 from app.schemas.vehicle import VehicleCreate, VehicleResponse, VehicleUpdate
 
@@ -27,13 +26,10 @@ async def list_vehicles(
     db: AsyncSession = Depends(get_db),
 ):
     user, org, role = ctx
-    # Fahrzeuge aller Mitglieder dieser Org
-    member_ids = select(UserOrganization.user_id).where(
-        UserOrganization.organization_id == org.id
-    )
+    # Fahrzeuge direkt per org_id filtern — verhindert Leakage wenn User in mehreren Orgs ist
     result = await db.execute(
         select(Vehicle)
-        .where(Vehicle.owner_id.in_(member_ids))
+        .where(Vehicle.org_id == org.id)
         .order_by(Vehicle.order_index)
     )
     return result.scalars().all()
@@ -70,7 +66,7 @@ async def create_vehicle(
     db: AsyncSession = Depends(get_db),
 ):
     user, org, role = ctx
-    vehicle = Vehicle(**data.model_dump(), owner_id=user.id)
+    vehicle = Vehicle(**data.model_dump(), owner_id=user.id, org_id=org.id)
     db.add(vehicle)
     await db.commit()
     await db.refresh(vehicle)
@@ -78,15 +74,11 @@ async def create_vehicle(
 
 
 async def _get_org_vehicle(vehicle_id: uuid.UUID, org_id: uuid.UUID, db: AsyncSession) -> Vehicle:
-    """Fetch vehicle by ID, ensuring the owner is a member of the given org."""
+    """Fetch vehicle by ID, scoped directly to the org via org_id."""
     result = await db.execute(
         select(Vehicle).where(
             Vehicle.id == vehicle_id,
-            Vehicle.owner_id.in_(
-                select(UserOrganization.user_id).where(
-                    UserOrganization.organization_id == org_id
-                )
-            ),
+            Vehicle.org_id == org_id,
         )
     )
     vehicle = result.scalar_one_or_none()
