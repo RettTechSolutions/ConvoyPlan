@@ -14,7 +14,7 @@
 		error = '';
 		try {
 			await auth.login(email, password);
-			goto('/plan');
+			goto('/admin');
 		} catch (err: unknown) {
 			error = err instanceof Error ? err.message : 'Login fehlgeschlagen';
 		} finally {
