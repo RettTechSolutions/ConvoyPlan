@@ -5,7 +5,7 @@ from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import get_current_user, get_org_context, OrgCtx
+from app.api.deps import get_org_context, OrgCtx
 from app.api.guards import get_convoy_access, get_vehicle_access, ROLE_ORDER
 from app.database import get_db
 from app.models.convoy import Convoy, ConvoyVehicle
