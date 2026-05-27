@@ -2,13 +2,14 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
+import pyotp
 from fastapi import APIRouter, Depends, HTTPException, status
 from jose import jwt
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import require_superadmin
+from app.api.deps import get_current_user, require_superadmin
 from app.config import settings
 from app.database import get_db
 from app.models.organization import Organization, UserOrganization
@@ -17,6 +18,8 @@ from app.schemas.user import Token, UserCreate, UserResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+
+# ── Token helpers ─────────────────────────────────────────────────────────────
 
 def create_token(
     user_id: str,
@@ -40,13 +43,52 @@ def create_token(
     )
 
 
+def create_mfa_pending_token(user_id: str, org_slug: str | None = None) -> str:
+    """Short-lived token issued after password check when MFA is required.
+    The frontend uses this to call /auth/mfa/verify with the TOTP code."""
+    expire = datetime.now(timezone.utc) + timedelta(minutes=5)
+    return jwt.encode(
+        {
+            "sub": user_id,
+            "exp": expire,
+            "mfa_pending": True,
+            "org_slug": org_slug,
+        },
+        settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
+
+
+def decode_mfa_pending_token(token: str) -> dict:
+    try:
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        if not payload.get("mfa_pending"):
+            raise ValueError("Not an MFA-pending token")
+        return payload
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Ungültiger oder abgelaufener MFA-Token",
+        )
+
+
+# ── Login ─────────────────────────────────────────────────────────────────────
+
 class LoginRequest(BaseModel):
     email: str
     password: str
     org_slug: str | None = None
 
 
-@router.post("/login", response_model=Token)
+class LoginResponse(BaseModel):
+    """Login can return either a full token or an MFA challenge."""
+    access_token: str | None = None
+    token_type: str = "bearer"
+    mfa_required: bool = False
+    mfa_token: str | None = None
+
+
+@router.post("/login", response_model=LoginResponse)
 async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == data.email))
     user = result.scalar_one_or_none()
@@ -72,8 +114,13 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
         membership = mem_result.scalar_one_or_none()
         if not membership:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+
+        if user.mfa_enabled and user.mfa_secret:
+            mfa_token = create_mfa_pending_token(str(user.id), data.org_slug)
+            return LoginResponse(mfa_required=True, mfa_token=mfa_token)
+
         token = create_token(str(user.id), False, str(org.id), org.slug, membership.role)
-        return Token(access_token=token)
+        return LoginResponse(access_token=token)
 
     else:
         # ── Superadmin-Login (kein org_slug) ─────────────────────────────
@@ -83,9 +130,16 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account deactivated")
         if not user.is_superadmin:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superadmin required")
-        token = create_token(str(user.id), True)
-        return Token(access_token=token)
 
+        if user.mfa_enabled and user.mfa_secret:
+            mfa_token = create_mfa_pending_token(str(user.id))
+            return LoginResponse(mfa_required=True, mfa_token=mfa_token)
+
+        token = create_token(str(user.id), True)
+        return LoginResponse(access_token=token)
+
+
+# ── Org Lookup ────────────────────────────────────────────────────────────────
 
 @router.get("/org-lookup")
 async def org_lookup(slug: str, db: AsyncSession = Depends(get_db)):
@@ -98,6 +152,8 @@ async def org_lookup(slug: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organisation nicht gefunden")
     return {"name": org.name, "slug": org.slug}
 
+
+# ── Register ──────────────────────────────────────────────────────────────────
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register(
@@ -116,3 +172,122 @@ async def register(
     await db.commit()
     await db.refresh(user)
     return user
+
+
+# ── MFA Setup ─────────────────────────────────────────────────────────────────
+
+class MfaSetupResponse(BaseModel):
+    secret: str
+    provisioning_uri: str
+
+
+@router.post("/mfa/setup", response_model=MfaSetupResponse)
+async def mfa_setup(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate a new TOTP secret for the authenticated user.
+    The secret is stored (unconfirmed) and the provisioning URI for a QR code is returned.
+    MFA is NOT active until /mfa/confirm succeeds."""
+    secret = pyotp.random_base32()
+    current_user.mfa_secret = secret
+    current_user.mfa_enabled = False  # not active until confirmed
+    db.add(current_user)
+    await db.commit()
+
+    totp = pyotp.TOTP(secret)
+    uri = totp.provisioning_uri(name=current_user.email, issuer_name="ConvoyPlan")
+    return MfaSetupResponse(secret=secret, provisioning_uri=uri)
+
+
+class MfaConfirmRequest(BaseModel):
+    code: str
+
+
+@router.post("/mfa/confirm")
+async def mfa_confirm(
+    data: MfaConfirmRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Verify the first TOTP code to activate MFA."""
+    if not current_user.mfa_secret:
+        raise HTTPException(status_code=400, detail="MFA-Setup wurde nicht gestartet")
+    totp = pyotp.TOTP(current_user.mfa_secret)
+    if not totp.verify(data.code, valid_window=1):
+        raise HTTPException(status_code=400, detail="Ungültiger Code")
+    current_user.mfa_enabled = True
+    db.add(current_user)
+    await db.commit()
+    return {"status": "MFA aktiviert"}
+
+
+@router.post("/mfa/disable")
+async def mfa_disable(
+    data: MfaConfirmRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Disable MFA — requires current TOTP code as confirmation."""
+    if not current_user.mfa_enabled or not current_user.mfa_secret:
+        raise HTTPException(status_code=400, detail="MFA ist nicht aktiv")
+    totp = pyotp.TOTP(current_user.mfa_secret)
+    if not totp.verify(data.code, valid_window=1):
+        raise HTTPException(status_code=400, detail="Ungültiger Code")
+    current_user.mfa_enabled = False
+    current_user.mfa_secret = None
+    db.add(current_user)
+    await db.commit()
+    return {"status": "MFA deaktiviert"}
+
+
+@router.get("/mfa/status")
+async def mfa_status(current_user: User = Depends(get_current_user)):
+    """Return current MFA status for the authenticated user."""
+    return {"mfa_enabled": current_user.mfa_enabled}
+
+
+# ── MFA Verify (second login step) ───────────────────────────────────────────
+
+class MfaVerifyRequest(BaseModel):
+    mfa_token: str
+    code: str
+
+
+@router.post("/mfa/verify", response_model=LoginResponse)
+async def mfa_verify(data: MfaVerifyRequest, db: AsyncSession = Depends(get_db)):
+    """Exchange an mfa_pending token + TOTP code for a full JWT."""
+    payload = decode_mfa_pending_token(data.mfa_token)
+    user_id_str = payload.get("sub")
+    org_slug = payload.get("org_slug")
+
+    result = await db.execute(select(User).where(User.id == user_id_str))
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    if not user.mfa_secret:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="MFA nicht konfiguriert")
+
+    totp = pyotp.TOTP(user.mfa_secret)
+    if not totp.verify(data.code, valid_window=1):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Ungültiger Code")
+
+    if org_slug:
+        org_result = await db.execute(select(Organization).where(Organization.slug == org_slug))
+        org = org_result.scalar_one_or_none()
+        if not org:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        mem_result = await db.execute(
+            select(UserOrganization).where(
+                UserOrganization.user_id == user.id,
+                UserOrganization.organization_id == org.id,
+            )
+        )
+        membership = mem_result.scalar_one_or_none()
+        if not membership:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        token = create_token(str(user.id), False, str(org.id), org.slug, membership.role)
+    else:
+        token = create_token(str(user.id), True)
+
+    return LoginResponse(access_token=token)

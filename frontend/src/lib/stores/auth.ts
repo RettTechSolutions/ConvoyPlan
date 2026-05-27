@@ -27,10 +27,33 @@ function createAuthStore() {
         }
     };
 
+    /** Store a token that was already validated (e.g. after MFA verify). */
+    const setToken = (token: string) => {
+        localStorage.setItem('token', token);
+        set({ token, ...parseToken(token) });
+    };
+
+    /**
+     * Standard credential-based login.
+     * Returns `{ mfa_required: true, mfa_token }` when MFA is enabled —
+     * the caller must then call `mfaVerify()` and pass the result to `setToken()`.
+     */
     const login = async (email: string, password: string) => {
         const data = await authApi.login(email, password);
-        localStorage.setItem('token', data.access_token);
-        set({ token: data.access_token, ...parseToken(data.access_token) });
+        if (data.mfa_required && data.mfa_token) {
+            return { mfa_required: true as const, mfa_token: data.mfa_token };
+        }
+        if (data.access_token) {
+            setToken(data.access_token);
+        }
+        return { mfa_required: false as const };
+    };
+
+    const mfaVerify = async (mfa_token: string, code: string) => {
+        const data = await authApi.mfaVerify(mfa_token, code);
+        if (data.access_token) {
+            setToken(data.access_token);
+        }
     };
 
     const logout = () => {
@@ -38,7 +61,7 @@ function createAuthStore() {
         set({ token: null, is_superadmin: false });
     };
 
-    return { subscribe, init, login, logout };
+    return { subscribe, init, login, mfaVerify, setToken, logout };
 }
 
 export const auth = createAuthStore();

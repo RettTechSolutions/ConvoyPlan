@@ -14,6 +14,11 @@
     let error = $state('');
     let loading = $state(false);
 
+    // MFA step
+    let mfaRequired = $state(false);
+    let mfaToken = $state('');
+    let mfaCode = $state('');
+
     onMount(async () => {
         setActiveSlug(slug);
 
@@ -46,11 +51,36 @@
         try {
             setActiveSlug(slug);
             const data = await orgAuthApi.loginOrg(email, password, slug);
-            orgStore.setToken(slug, data.access_token);
-            orgStore.setFromToken(slug, orgName, data.access_token);
-            goto(`/o/${slug}/plan`);
+            if (data.mfa_required && data.mfa_token) {
+                mfaRequired = true;
+                mfaToken = data.mfa_token;
+                return;
+            }
+            if (data.access_token) {
+                orgStore.setToken(slug, data.access_token);
+                orgStore.setFromToken(slug, orgName, data.access_token);
+                goto(`/o/${slug}/plan`);
+            }
         } catch (e: unknown) {
             error = e instanceof Error ? e.message : 'Login fehlgeschlagen';
+        } finally {
+            loading = false;
+        }
+    }
+
+    async function handleMfa() {
+        if (mfaCode.length < 6) return;
+        loading = true;
+        error = '';
+        try {
+            const data = await orgAuthApi.mfaVerify(mfaToken, mfaCode);
+            if (data.access_token) {
+                orgStore.setToken(slug, data.access_token);
+                orgStore.setFromToken(slug, orgName, data.access_token);
+                goto(`/o/${slug}/plan`);
+            }
+        } catch (e: unknown) {
+            error = e instanceof Error ? e.message : 'Ungültiger Code';
         } finally {
             loading = false;
         }
@@ -70,22 +100,51 @@
             </div>
         {/if}
 
-        <form onsubmit={(e) => { e.preventDefault(); handleLogin(); }}>
-            <div class="field">
-                <label for="email">E-Mail</label>
-                <input id="email" type="email" bind:value={email} placeholder="E-Mail" autocomplete="email" required />
-            </div>
-            <div class="field">
-                <label for="password">Passwort</label>
-                <input id="password" type="password" bind:value={password} placeholder="Passwort" autocomplete="current-password" required />
-            </div>
-            {#if error}
-                <p class="error">{error}</p>
-            {/if}
-            <button type="submit" disabled={loading}>
-                {loading ? 'Anmelden…' : 'Anmelden'}
-            </button>
-        </form>
+        {#if !mfaRequired}
+            <form onsubmit={(e) => { e.preventDefault(); handleLogin(); }}>
+                <div class="field">
+                    <label for="email">E-Mail</label>
+                    <input id="email" type="email" bind:value={email} placeholder="E-Mail" autocomplete="email" required />
+                </div>
+                <div class="field">
+                    <label for="password">Passwort</label>
+                    <input id="password" type="password" bind:value={password} placeholder="Passwort" autocomplete="current-password" required />
+                </div>
+                {#if error}
+                    <p class="error">{error}</p>
+                {/if}
+                <button type="submit" disabled={loading}>
+                    {loading ? 'Anmelden…' : 'Anmelden'}
+                </button>
+            </form>
+        {:else}
+            <form onsubmit={(e) => { e.preventDefault(); handleMfa(); }}>
+                <p class="mfa-hint">Gib den 6-stelligen Code aus deiner Authenticator-App ein.</p>
+                <div class="field">
+                    <label for="mfa-code">Authentifizierungscode</label>
+                    <input
+                        id="mfa-code"
+                        type="text"
+                        inputmode="numeric"
+                        pattern="[0-9]*"
+                        maxlength="6"
+                        bind:value={mfaCode}
+                        required
+                        autocomplete="one-time-code"
+                        placeholder="000000"
+                    />
+                </div>
+                {#if error}
+                    <p class="error">{error}</p>
+                {/if}
+                <button type="submit" disabled={loading || mfaCode.length < 6}>
+                    {loading ? 'Prüfe…' : 'Bestätigen'}
+                </button>
+                <button type="button" class="btn-back" onclick={() => { mfaRequired = false; mfaCode = ''; error = ''; }}>
+                    ← Zurück
+                </button>
+            </form>
+        {/if}
 
         <a href="/" class="back-link">← Andere Organisation</a>
     </div>
@@ -165,10 +224,24 @@
     }
     button:hover:not(:disabled) { background: var(--color-primary-hover); }
     button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn-back {
+        background: transparent;
+        color: var(--text-2);
+        font-weight: 400;
+        font-size: var(--text-sm);
+        margin-top: .25rem;
+    }
+    .btn-back:hover:not(:disabled) { background: var(--surface-2); }
     .error {
         color: var(--color-primary);
         font-size: var(--text-sm);
         margin-bottom: .5rem;
+    }
+    .mfa-hint {
+        font-size: var(--text-sm);
+        color: var(--text-2);
+        margin-bottom: 1rem;
+        line-height: 1.4;
     }
     .back-link {
         display: block;

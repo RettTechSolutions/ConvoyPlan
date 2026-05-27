@@ -133,11 +133,27 @@ export interface StatusResponse {
 	overpass_api: ServiceCheck;
 }
 
+export interface LoginResult {
+	access_token: string | null;
+	token_type: string;
+	mfa_required: boolean;
+	mfa_token: string | null;
+}
+
 // Auth
 export const authApi = {
 	register: (email: string, password: string) => api.post('/api/auth/register', { email, password }),
 	login: (email: string, password: string) =>
-		api.post<{ access_token: string }>('/api/auth/login', { email, password }),
+		api.post<LoginResult>('/api/auth/login', { email, password }),
+	mfaVerify: (mfa_token: string, code: string) =>
+		api.post<LoginResult>('/api/auth/mfa/verify', { mfa_token, code }),
+};
+
+export const mfaApi = {
+	status: () => api.get<{ mfa_enabled: boolean }>('/api/auth/mfa/status'),
+	setup: () => api.post<{ secret: string; provisioning_uri: string }>('/api/auth/mfa/setup', {}),
+	confirm: (code: string) => api.post<{ status: string }>('/api/auth/mfa/confirm', { code }),
+	disable: (code: string) => api.post<{ status: string }>('/api/auth/mfa/disable', { code }),
 };
 
 // Vehicles
@@ -402,5 +418,7 @@ export interface OrgLookupResult {
 export const orgAuthApi = {
     lookup: (slug: string) => api.get<OrgLookupResult>(`/api/auth/org-lookup?slug=${encodeURIComponent(slug)}`),
     loginOrg: (email: string, password: string, org_slug: string) =>
-        api.post<{ access_token: string }>('/api/auth/login', { email, password, org_slug }),
+        api.post<LoginResult>('/api/auth/login', { email, password, org_slug }),
+    mfaVerify: (mfa_token: string, code: string) =>
+        api.post<LoginResult>('/api/auth/mfa/verify', { mfa_token, code }),
 };

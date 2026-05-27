@@ -13,7 +13,12 @@ INTERVAL="${UPDATE_INTERVAL:-300}"
 COMPOSE_PROJECT="${COMPOSE_PROJECT_NAME:-convoyplan}"
 COMPOSE_FILE="/stack/docker-compose.yml"
 
-log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
+LOG_FILE=/update_status/update.log
+log() {
+    local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+    echo "$msg"
+    echo "$msg" >> "${LOG_FILE}"
+}
 
 mkdir -p /update_status
 
@@ -34,6 +39,7 @@ write_status() {
 }
 
 do_update() {
+    > "${LOG_FILE}"  # clear log for fresh run
     log "Pulling latest images from registry..."
     # Pull all services except updater itself
     SERVICES=$(docker compose -p "${COMPOSE_PROJECT}" -f "${COMPOSE_FILE}" \

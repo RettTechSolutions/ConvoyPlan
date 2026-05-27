@@ -8,15 +8,39 @@
 	let error = $state('');
 	let loading = $state(false);
 
+	// MFA step
+	let mfaRequired = $state(false);
+	let mfaToken = $state('');
+	let mfaCode = $state('');
+
 	async function handleLogin(e: Event) {
 		e.preventDefault();
 		loading = true;
 		error = '';
 		try {
-			await auth.login(email, password);
-			goto('/admin');
+			const result = await auth.login(email, password);
+			if (result.mfa_required) {
+				mfaRequired = true;
+				mfaToken = result.mfa_token;
+			} else {
+				goto('/admin');
+			}
 		} catch (err: unknown) {
 			error = err instanceof Error ? err.message : 'Login fehlgeschlagen';
+		} finally {
+			loading = false;
+		}
+	}
+
+	async function handleMfa(e: Event) {
+		e.preventDefault();
+		loading = true;
+		error = '';
+		try {
+			await auth.mfaVerify(mfaToken, mfaCode);
+			goto('/admin');
+		} catch (err: unknown) {
+			error = err instanceof Error ? err.message : 'Ungültiger Code';
 		} finally {
 			loading = false;
 		}
@@ -29,22 +53,52 @@
 			<AppLogo variant="main" height={170} />
 		</div>
 
-		<form onsubmit={handleLogin}>
-			<div class="field">
-				<label for="email">E-Mail</label>
-				<input id="email" type="email" bind:value={email} required autocomplete="email" />
-			</div>
-			<div class="field">
-				<label for="password">Passwort</label>
-				<input id="password" type="password" bind:value={password} required autocomplete="current-password" />
-			</div>
-			{#if error}
-				<p class="error">{error}</p>
-			{/if}
-			<button type="submit" disabled={loading}>
-				{loading ? 'Anmelden…' : 'Anmelden'}
-			</button>
-		</form>
+		{#if !mfaRequired}
+			<form onsubmit={handleLogin}>
+				<div class="field">
+					<label for="email">E-Mail</label>
+					<input id="email" type="email" bind:value={email} required autocomplete="email" />
+				</div>
+				<div class="field">
+					<label for="password">Passwort</label>
+					<input id="password" type="password" bind:value={password} required autocomplete="current-password" />
+				</div>
+				{#if error}
+					<p class="error">{error}</p>
+				{/if}
+				<button type="submit" disabled={loading}>
+					{loading ? 'Anmelden…' : 'Anmelden'}
+				</button>
+			</form>
+		{:else}
+			<form onsubmit={handleMfa}>
+				<p class="mfa-hint">Gib den 6-stelligen Code aus deiner Authenticator-App ein.</p>
+				<div class="field">
+					<label for="mfa-code">Authentifizierungscode</label>
+					<input
+						id="mfa-code"
+						type="text"
+						inputmode="numeric"
+						pattern="[0-9]*"
+						maxlength="6"
+						bind:value={mfaCode}
+						required
+						autocomplete="one-time-code"
+						placeholder="000000"
+					/>
+				</div>
+				{#if error}
+					<p class="error">{error}</p>
+				{/if}
+				<button type="submit" disabled={loading || mfaCode.length < 6}>
+					{loading ? 'Prüfe…' : 'Bestätigen'}
+				</button>
+				<button type="button" class="btn-back" onclick={() => { mfaRequired = false; mfaCode = ''; error = ''; }}>
+					← Zurück
+				</button>
+			</form>
+		{/if}
+
 		<p class="org-hint">Organisationsmitglied? <a href="/">Hier Org-Code eingeben →</a></p>
 	</div>
 </div>
@@ -108,10 +162,24 @@
 		opacity: 0.6;
 		cursor: not-allowed;
 	}
+	.btn-back {
+		background: transparent;
+		color: var(--text-2);
+		font-weight: 400;
+		font-size: var(--text-sm);
+		margin-top: .25rem;
+	}
+	.btn-back:hover:not(:disabled) { background: var(--surface-2); }
 	.error {
 		color: var(--color-primary);
 		font-size: var(--text-sm);
 		margin-bottom: .5rem;
+	}
+	.mfa-hint {
+		font-size: var(--text-sm);
+		color: var(--text-2);
+		margin-bottom: 1rem;
+		line-height: 1.4;
 	}
 	.org-hint {
 		margin-top: 1.25rem;

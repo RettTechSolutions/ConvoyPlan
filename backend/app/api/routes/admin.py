@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import uuid
@@ -5,7 +6,9 @@ from datetime import datetime, timezone
 
 import bcrypt
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
+from jose import JWTError, jwt
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +25,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 STATUS_FILE = "/update_status/status.json"
 TRIGGER_FILE = "/update_status/trigger"
+LOG_FILE = "/update_status/update.log"
 
 
 @router.get("/users", response_model=list[AdminUserResponse])
@@ -362,6 +366,66 @@ async def trigger_update(
     if os.path.exists(TRIGGER_FILE):
         raise HTTPException(409, "Update already triggered")
     os.makedirs(os.path.dirname(TRIGGER_FILE), exist_ok=True)
+    # Clear log so the UI starts with a clean slate
+    try:
+        open(LOG_FILE, "w").close()
+    except OSError:
+        pass
     with open(TRIGGER_FILE, "w") as f:
         f.write(datetime.now(timezone.utc).isoformat())
     return {"status": "triggered"}
+
+
+@router.get("/update-log")
+async def stream_update_log(
+    token: str = Query(...),
+):
+    """SSE stream of the live updater log.
+
+    Uses a token query-param because browser EventSource cannot set headers.
+    The token must be a valid superadmin JWT.
+    """
+    # Validate token — require superadmin
+    try:
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        if not payload.get("is_superadmin"):
+            raise HTTPException(403, "Superadmin required")
+    except JWTError:
+        raise HTTPException(401, "Invalid token")
+
+    async def log_generator():
+        offset = 0
+        # Stream for at most 15 minutes
+        deadline = asyncio.get_event_loop().time() + 900
+        done_phrases = ("Update complete", "Update failed", "Deploy failed", "update failed")
+
+        yield "retry: 2000\n\n"  # reconnect interval hint
+
+        while asyncio.get_event_loop().time() < deadline:
+            try:
+                with open(LOG_FILE, "r") as f:
+                    f.seek(offset)
+                    chunk = f.read()
+                    if chunk:
+                        offset += len(chunk.encode())
+                        for line in chunk.splitlines():
+                            if line.strip():
+                                yield f"data: {line}\n\n"
+                            # Signal end when a terminal phrase appears
+                            if any(p in line for p in done_phrases):
+                                yield "event: done\ndata: \n\n"
+                                return
+            except FileNotFoundError:
+                pass
+            await asyncio.sleep(0.5)
+
+        yield "event: done\ndata: timeout\n\n"
+
+    return StreamingResponse(
+        log_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # disable Nginx/Caddy buffering
+        },
+    )

@@ -4,9 +4,10 @@
     import maplibregl from 'maplibre-gl';
     import 'maplibre-gl/dist/maplibre-gl.css';
     import { auth } from '$lib/stores/auth';
-    import { adminApi, leistellenApi, licenseApi, type AdminUser, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus } from '$lib/api';
+    import { adminApi, mfaApi, leistellenApi, licenseApi, type AdminUser, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus } from '$lib/api';
     import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
+    import QRCode from 'qrcode';
 
     // ── Tab ──────────────────────────────────────────────────────────────────
     let activeTab = $state<'benutzer' | 'organisationen' | 'leitstellen' | 'branding' | 'system'>('benutzer');
@@ -23,6 +24,7 @@
         await loadUsers();
         await loadLeitstellen();
         await loadBranding();
+        await Promise.all([loadGithubTokenStatus(), loadUpdateStatus(), loadMfaStatus()]);
     });
 
     // ── Edit User Modal ───────────────────────────────────────────────────────
@@ -267,6 +269,13 @@
     let updateError = $state('');
     let updateSuccess = $state('');
 
+    // Live log terminal
+    let updateLogLines = $state<string[]>([]);
+    let showUpdateLog = $state(false);
+    let updateLogDone = $state(false);
+    let _updateLogSource: EventSource | null = null;
+    let logContainer: HTMLDivElement | null = null;
+
     async function loadUpdateStatus() {
         updateLoading = true;
         updateError = '';
@@ -277,6 +286,54 @@
         } finally {
             updateLoading = false;
         }
+    }
+
+    function startLogStream() {
+        if (_updateLogSource) { _updateLogSource.close(); _updateLogSource = null; }
+        updateLogLines = [];
+        updateLogDone = false;
+        showUpdateLog = true;
+
+        const token = $auth.token ?? '';
+        const es = new EventSource(`/api/admin/update-log?token=${encodeURIComponent(token)}`);
+        _updateLogSource = es;
+
+        es.onmessage = (e) => {
+            updateLogLines = [...updateLogLines, e.data];
+            // auto-scroll to bottom
+            setTimeout(() => {
+                if (logContainer) logContainer.scrollTop = logContainer.scrollHeight;
+            }, 0);
+        };
+
+        es.addEventListener('done', () => {
+            updateLogDone = true;
+            es.close();
+            _updateLogSource = null;
+            // Refresh status after stream ends
+            setTimeout(async () => {
+                await loadUpdateStatus();
+                updateTriggering = false;
+                if (updateStatus && !updateStatus.update_available) {
+                    updateSuccess = `Aktualisiert auf ${updateStatus.deployed_sha?.slice(0, 7) ?? '?'}`;
+                }
+            }, 2000);
+        });
+
+        es.onerror = () => {
+            // Connection dropped (e.g. backend restarted after update)
+            updateLogLines = [...updateLogLines, '[Verbindung getrennt — Backend wird neu gestartet…]'];
+            updateLogDone = true;
+            es.close();
+            _updateLogSource = null;
+            setTimeout(async () => {
+                await loadUpdateStatus();
+                updateTriggering = false;
+                if (updateStatus && !updateStatus.update_available) {
+                    updateSuccess = `Aktualisiert auf ${updateStatus.deployed_sha?.slice(0, 7) ?? '?'}`;
+                }
+            }, 5000);
+        };
     }
 
     async function triggerUpdate() {
@@ -295,28 +352,7 @@
             updateTriggering = false;
             return;
         }
-
-        // Poll every 3s until deployed_sha changes or 3min timeout
-        const startSha = updateStatus?.deployed_sha ?? null;
-        const deadline = Date.now() + 3 * 60 * 1000;
-        const poll = async () => {
-            if (Date.now() > deadline) {
-                updateTriggering = false;
-                updateError = 'Timeout — bitte Server-Logs prüfen';
-                return;
-            }
-            try {
-                const fresh = await adminApi.getUpdateStatus();
-                updateStatus = fresh;
-                if (!fresh.update_available && fresh.deployed_sha !== startSha) {
-                    updateTriggering = false;
-                    updateSuccess = `Aktualisiert auf ${fresh.deployed_sha?.slice(0, 7) ?? '?'}`;
-                    return;
-                }
-            } catch { /* ignore transient errors during polling */ }
-            setTimeout(poll, 3000);
-        };
-        setTimeout(poll, 3000);
+        startLogStream();
     }
 
     // ── GitHub-Token Konfiguration ────────────────────────────────────────────
@@ -361,6 +397,74 @@
             setTimeout(() => { githubTokenSuccess = ''; }, 3000);
         } catch { githubTokenError = 'Fehler beim Entfernen'; }
         finally { githubTokenSaving = false; }
+    }
+
+    // ── MFA ──────────────────────────────────────────────────────────────────
+    let mfaEnabled = $state(false);
+    let mfaSetupSecret = $state('');
+    let mfaSetupQrDataUrl = $state('');
+    let mfaSetupStep = $state<'idle' | 'setup' | 'confirm'>('idle');
+    let mfaCode = $state('');
+    let mfaWorking = $state(false);
+    let mfaError = $state('');
+    let mfaSuccess = $state('');
+
+    async function loadMfaStatus() {
+        try {
+            const s = await mfaApi.status();
+            mfaEnabled = s.mfa_enabled;
+        } catch { /* ignore */ }
+    }
+
+    async function startMfaSetup() {
+        mfaWorking = true;
+        mfaError = '';
+        try {
+            const data = await mfaApi.setup();
+            mfaSetupSecret = data.secret;
+            mfaSetupQrDataUrl = await QRCode.toDataURL(data.provisioning_uri, { width: 200, margin: 1 });
+            mfaSetupStep = 'setup';
+        } catch (e: unknown) {
+            mfaError = e instanceof Error ? e.message : 'Fehler beim Setup';
+        } finally {
+            mfaWorking = false;
+        }
+    }
+
+    async function confirmMfa() {
+        if (mfaCode.length < 6) return;
+        mfaWorking = true;
+        mfaError = '';
+        try {
+            await mfaApi.confirm(mfaCode);
+            mfaEnabled = true;
+            mfaSetupStep = 'idle';
+            mfaCode = '';
+            mfaSuccess = 'MFA erfolgreich aktiviert.';
+            setTimeout(() => { mfaSuccess = ''; }, 4000);
+        } catch (e: unknown) {
+            mfaError = e instanceof Error ? e.message : 'Ungültiger Code';
+        } finally {
+            mfaWorking = false;
+        }
+    }
+
+    async function disableMfa() {
+        if (mfaCode.length < 6) return;
+        mfaWorking = true;
+        mfaError = '';
+        try {
+            await mfaApi.disable(mfaCode);
+            mfaEnabled = false;
+            mfaSetupStep = 'idle';
+            mfaCode = '';
+            mfaSuccess = 'MFA deaktiviert.';
+            setTimeout(() => { mfaSuccess = ''; }, 4000);
+        } catch (e: unknown) {
+            mfaError = e instanceof Error ? e.message : 'Ungültiger Code';
+        } finally {
+            mfaWorking = false;
+        }
     }
 
     // Polygon drawing state
@@ -1106,10 +1210,9 @@
                 <div style="margin-top: 1rem; display:flex; align-items:center; gap:.75rem; flex-wrap:wrap;">
                     {#if updateTriggering}
                         <button class="btn-primary" disabled>
-                            <span class="spinner"></span> Update wird durchgeführt…
+                            <span class="spinner"></span> Update läuft…
                         </button>
                     {:else if updateStatus.github_reachable}
-                        <!-- GitHub erreichbar: Button nur aktiv wenn Update vorhanden -->
                         <button
                             class="btn-primary"
                             disabled={!updateStatus.update_available}
@@ -1118,13 +1221,28 @@
                             Jetzt updaten
                         </button>
                     {:else}
-                        <!-- GitHub nicht erreichbar: Manuelles Auslösen immer erlaubt -->
                         <button class="btn-primary" onclick={triggerUpdate}>
                             Manuell aktualisieren
                         </button>
                         <span class="hint" style="font-size:var(--text-xs)">GitHub nicht erreichbar — zieht trotzdem neueste Images</span>
                     {/if}
+                    {#if showUpdateLog && !updateTriggering}
+                        <button class="btn-small" onclick={() => showUpdateLog = false}>Log ausblenden</button>
+                    {/if}
                 </div>
+
+                {#if showUpdateLog}
+                    <div class="update-terminal" bind:this={logContainer}>
+                        {#each updateLogLines as line}
+                            <div class="log-line">{line}</div>
+                        {/each}
+                        {#if !updateLogDone}
+                            <div class="log-cursor">▌</div>
+                        {:else}
+                            <div class="log-line log-done">─── Fertig ───</div>
+                        {/if}
+                    </div>
+                {/if}
             {:else}
                 <p class="hint">Status nicht verfügbar</p>
             {/if}
@@ -1183,6 +1301,81 @@
                     {githubTokenSaving ? '…' : 'Speichern'}
                 </button>
             </div>
+        </div>
+
+        <!-- ── Zwei-Faktor-Authentifizierung ── -->
+        <div class="section">
+            <div class="section-header">
+                <strong>Zwei-Faktor-Authentifizierung (MFA)</strong>
+            </div>
+
+            {#if mfaError}
+                <div class="error-bar">{mfaError} <button onclick={() => mfaError = ''}>✕</button></div>
+            {/if}
+            {#if mfaSuccess}
+                <div class="success-bar">{mfaSuccess}</div>
+            {/if}
+
+            {#if mfaSetupStep === 'idle'}
+                <div class="update-row" style="margin-bottom:.75rem">
+                    <span class="update-label">Status</span>
+                    {#if mfaEnabled}
+                        <span class="badge badge-ok">Aktiv ✓</span>
+                    {:else}
+                        <span class="badge badge-warn">Nicht aktiv</span>
+                    {/if}
+                </div>
+
+                {#if mfaEnabled}
+                    <p class="hint" style="margin-bottom:.75rem">MFA ist aktiv. Zum Deaktivieren bitte Code eingeben:</p>
+                    <div class="mfa-code-row">
+                        <input
+                            type="text"
+                            inputmode="numeric"
+                            maxlength="6"
+                            placeholder="000000"
+                            bind:value={mfaCode}
+                            class="mfa-input"
+                            autocomplete="one-time-code"
+                        />
+                        <button class="btn-small danger" onclick={disableMfa} disabled={mfaWorking || mfaCode.length < 6}>
+                            {mfaWorking ? '…' : 'Deaktivieren'}
+                        </button>
+                    </div>
+                {:else}
+                    <button class="btn-primary" onclick={startMfaSetup} disabled={mfaWorking}>
+                        {mfaWorking ? '…' : 'MFA einrichten'}
+                    </button>
+                {/if}
+
+            {:else if mfaSetupStep === 'setup'}
+                <p class="hint" style="margin-bottom:1rem">Scanne den QR-Code mit einer Authenticator-App (z.B. Authy, Google Authenticator) oder gib den Secret manuell ein.</p>
+                <div class="mfa-setup-qr">
+                    {#if mfaSetupQrDataUrl}
+                        <img src={mfaSetupQrDataUrl} alt="MFA QR Code" class="qr-img" />
+                    {/if}
+                    <div class="mfa-secret-box">
+                        <span class="update-label">Secret (manuell)</span>
+                        <code class="mfa-secret">{mfaSetupSecret}</code>
+                    </div>
+                </div>
+                <p class="hint" style="margin:.75rem 0 .5rem">Danach Code eingeben um MFA zu aktivieren:</p>
+                <div class="mfa-code-row">
+                    <input
+                        type="text"
+                        inputmode="numeric"
+                        maxlength="6"
+                        placeholder="000000"
+                        bind:value={mfaCode}
+                        class="mfa-input"
+                        autocomplete="one-time-code"
+                    />
+                    <button class="btn-primary" onclick={confirmMfa} disabled={mfaWorking || mfaCode.length < 6}>
+                        {mfaWorking ? '…' : 'Bestätigen'}
+                    </button>
+                    <button class="btn-small" onclick={() => { mfaSetupStep = 'idle'; mfaCode = ''; }}>Abbrechen</button>
+                </div>
+            {/if}
         </div>
     {/if}
 </div>
@@ -1496,6 +1689,30 @@
     .badge-update { background: rgba(210,120,30,.2); color: #e8a050; border: 1px solid rgba(210,120,30,.4); }
     .badge-warn { background: rgba(180,60,40,.15); color: var(--color-primary); border: 1px solid rgba(180,60,40,.3); }
     .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(255,255,255,.3); border-top-color: white; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: .3rem; }
+    .update-terminal {
+        margin-top: .75rem;
+        background: #0d1117;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        padding: .75rem 1rem;
+        font-family: 'Menlo', 'Consolas', 'Monaco', monospace;
+        font-size: 12px;
+        line-height: 1.6;
+        color: #c9d1d9;
+        max-height: 260px;
+        overflow-y: auto;
+        scroll-behavior: smooth;
+    }
+    .log-line { white-space: pre-wrap; word-break: break-all; }
+    .log-done { color: #58a6ff; margin-top: .25rem; }
+    .log-cursor { display: inline-block; color: #58a6ff; animation: blink 1s step-start infinite; }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+    .mfa-code-row { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+    .mfa-input { width: 120px; padding: .4rem .6rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); color: var(--text-1); font-size: var(--text-base); text-align: center; letter-spacing: .15em; font-family: monospace; }
+    .mfa-setup-qr { display: flex; align-items: flex-start; gap: 1.5rem; flex-wrap: wrap; margin-bottom: .5rem; }
+    .qr-img { border-radius: 6px; border: 4px solid white; }
+    .mfa-secret-box { display: flex; flex-direction: column; gap: .5rem; }
+    .mfa-secret { display: block; font-size: 13px; letter-spacing: .08em; word-break: break-all; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: .4rem .6rem; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
     .license-status-row { display: flex; align-items: center; margin-bottom: .25rem; }

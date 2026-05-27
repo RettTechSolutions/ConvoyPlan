@@ -19,7 +19,12 @@ COMPOSE_PROJECT="${COMPOSE_PROJECT_NAME:-convoyplan}"
 COMPOSE_FILES=(-p "${COMPOSE_PROJECT}" -f "${REPO_DIR}/docker-compose.yml")
 [ -f "${REPO_DIR}/docker-compose.override.yml" ] && COMPOSE_FILES+=(-f "${REPO_DIR}/docker-compose.override.yml")
 
-log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
+LOG_FILE=/update_status/update.log
+log() {
+    local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+    echo "$msg"
+    echo "$msg" >> "${LOG_FILE}"
+}
 
 # First start: clone if no git repo present
 if [ ! -d "${REPO_DIR}/.git" ]; then
@@ -54,6 +59,7 @@ while true; do
   REMOTE=$(git -C "${REPO_DIR}" rev-parse origin/main)
 
   if [ "${DEPLOYED}" != "${REMOTE}" ]; then
+    > "${LOG_FILE}"  # clear log for fresh run
     log "Update detected: ${DEPLOYED:0:7} → ${REMOTE:0:7}"
     # Get all services except the updater itself (to avoid killing this container)
     SERVICES=$(docker compose "${COMPOSE_FILES[@]}" config --services 2>/dev/null | grep -v '^updater$' | tr '\n' ' ')
