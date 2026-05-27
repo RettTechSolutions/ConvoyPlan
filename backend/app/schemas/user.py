@@ -23,11 +23,6 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
-
-
 class AdminUserCreate(BaseModel):
     email: EmailStr
     password: str
