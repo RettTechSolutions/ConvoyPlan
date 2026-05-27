@@ -5,6 +5,7 @@
     import { orgStore } from '$lib/stores/org';
     import { orgAuthApi } from '$lib/api';
     import { setActiveSlug } from '$lib/api/client';
+    import AppLogo from '$lib/components/AppLogo.svelte';
 
     const slug = $derived(($page.params as Record<string, string>).slug);
     let orgName = $state('');
@@ -56,18 +57,28 @@
     }
 </script>
 
-<div class="login-page">
-    <div class="card">
+<div class="login-container">
+    <div class="login-card">
+        <div class="login-logo">
+            <AppLogo variant="main" height={140} />
+        </div>
+
         {#if orgName}
-            <p class="org-label">Anmelden bei</p>
-            <h1>{orgName}</h1>
-        {:else}
-            <h1>Anmelden</h1>
+            <div class="org-header">
+                <p class="org-label">Anmelden bei</p>
+                <h1>{orgName}</h1>
+            </div>
         {/if}
 
         <form onsubmit={(e) => { e.preventDefault(); handleLogin(); }}>
-            <input type="email" bind:value={email} placeholder="E-Mail" autocomplete="email" />
-            <input type="password" bind:value={password} placeholder="Passwort" autocomplete="current-password" />
+            <div class="field">
+                <label for="email">E-Mail</label>
+                <input id="email" type="email" bind:value={email} placeholder="E-Mail" autocomplete="email" required />
+            </div>
+            <div class="field">
+                <label for="password">Passwort</label>
+                <input id="password" type="password" bind:value={password} placeholder="Passwort" autocomplete="current-password" required />
+            </div>
             {#if error}
                 <p class="error">{error}</p>
             {/if}
@@ -81,45 +92,91 @@
 </div>
 
 <style>
-    .login-page {
+    .login-container {
         display: flex;
         align-items: center;
         justify-content: center;
         min-height: 100vh;
-        background: var(--color-bg, #f5f5f5);
+        background: var(--bg);
     }
-    .card {
-        background: var(--color-surface, #fff);
-        border-radius: 12px;
+    .login-card {
+        background: var(--surface-1);
+        border: 1px solid var(--border);
+        border-radius: 8px;
         padding: 2.5rem;
         width: 100%;
         max-width: 380px;
-        box-shadow: 0 4px 24px rgba(0,0,0,0.08);
-        display: flex;
-        flex-direction: column;
-        gap: 1rem;
+        box-shadow: var(--shadow);
     }
-    .org-label { color: var(--color-text-muted, #666); margin: 0; font-size: 0.9rem; }
-    h1 { margin: 0; font-size: 1.5rem; }
+    .login-logo {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 1rem;
+    }
+    .org-header {
+        text-align: center;
+        margin-bottom: 1.5rem;
+    }
+    .org-label {
+        color: var(--text-muted);
+        margin: 0 0 .25rem;
+        font-size: var(--text-sm);
+        letter-spacing: .04em;
+    }
+    h1 {
+        margin: 0;
+        font-size: 1.35rem;
+        color: var(--text-1);
+    }
+    .field { margin-bottom: 1rem; }
+    label {
+        display: block;
+        font-size: var(--text-sm);
+        font-weight: 500;
+        margin-bottom: .25rem;
+        color: var(--text-2);
+    }
     input {
         width: 100%;
-        padding: 0.75rem 1rem;
-        border: 1px solid var(--color-border, #ddd);
-        border-radius: 8px;
-        font-size: 1rem;
+        padding: .5rem .75rem;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font-size: var(--text-base);
         box-sizing: border-box;
+        background: var(--surface-2);
+        color: var(--text-1);
+    }
+    input:focus {
+        outline: none;
+        border-color: var(--color-primary);
+        box-shadow: 0 0 0 3px rgba(226, 61, 40, .15);
     }
     button {
         width: 100%;
-        padding: 0.75rem;
-        background: var(--color-primary, #2563eb);
-        color: #fff;
+        padding: .6rem;
+        background: var(--color-primary);
+        color: white;
         border: none;
-        border-radius: 8px;
-        font-size: 1rem;
+        border-radius: 6px;
+        font-size: var(--text-base);
+        font-weight: 600;
         cursor: pointer;
+        margin-top: .5rem;
     }
-    button:disabled { opacity: 0.6; }
-    .error { color: #dc2626; font-size: 0.9rem; margin: 0; }
-    .back-link { color: var(--color-text-muted, #666); font-size: 0.9rem; text-align: center; }
+    button:hover:not(:disabled) { background: var(--color-primary-hover); }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .error {
+        color: var(--color-primary);
+        font-size: var(--text-sm);
+        margin-bottom: .5rem;
+    }
+    .back-link {
+        display: block;
+        text-align: center;
+        margin-top: 1.25rem;
+        color: var(--text-muted);
+        font-size: var(--text-sm);
+        text-decoration: none;
+    }
+    .back-link:hover { color: var(--text-2); }
 </style>
