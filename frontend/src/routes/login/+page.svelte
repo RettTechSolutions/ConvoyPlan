@@ -45,6 +45,7 @@
 				{loading ? 'Anmelden…' : 'Anmelden'}
 			</button>
 		</form>
+		<p class="org-hint">Organisationsmitglied? <a href="/">Hier Org-Code eingeben →</a></p>
 	</div>
 </div>
 
@@ -112,4 +113,15 @@
 		font-size: var(--text-sm);
 		margin-bottom: .5rem;
 	}
+	.org-hint {
+		margin-top: 1.25rem;
+		text-align: center;
+		font-size: var(--text-xs);
+		color: var(--text-muted);
+	}
+	.org-hint a {
+		color: var(--text-2);
+		text-decoration: underline;
+	}
+	.org-hint a:hover { color: var(--text-1); }
 </style>

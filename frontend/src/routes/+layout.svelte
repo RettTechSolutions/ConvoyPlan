@@ -9,7 +9,10 @@
 	let { children } = $props();
 
 	// /o/ hat eigenes Guard-Layout; /tracking/ und /share/ sind öffentlich
+	// Wurzelpfad '/' ist die Org-Code-Eingabe — ebenfalls öffentlich
 	const PUBLIC_ROUTES = ['/login', '/share', '/setup', '/tracking', '/o/', '/admin'];
+	const isPublicPath = (path: string) =>
+		path === '/' || PUBLIC_ROUTES.some((r) => path.startsWith(r));
 	let setupChecked = $state(false);
 	let demoMode = $state(false);
 
@@ -52,7 +55,7 @@
 
 	$effect(() => {
 		if (!setupChecked) return;
-		const isPublic = PUBLIC_ROUTES.some((r) => $page.url.pathname.startsWith(r));
+		const isPublic = isPublicPath($page.url.pathname);
 		if (!isPublic && !$auth.token) {
 			goto('/login');
 			return;
