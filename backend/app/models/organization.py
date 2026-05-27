@@ -1,3 +1,4 @@
+import re
 import uuid
 from datetime import datetime
 
@@ -7,12 +8,21 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 
+def _slugify(text: str) -> str:
+    """'Rettdienst München' → 'rettdienst-munchen'"""
+    text = text.lower()
+    text = text.translate(str.maketrans("äöüß", "aous"))
+    text = re.sub(r"[^a-z0-9]+", "-", text)
+    return text.strip("-")[:80]
+
+
 class Organization(Base):
     __tablename__ = "organizations"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(150))
     description: Mapped[str | None] = mapped_column(Text)
+    slug: Mapped[str] = mapped_column(String(80), unique=True, index=True)
     owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
