@@ -14,6 +14,8 @@
     let loading = $state(false);
 
     onMount(async () => {
+        setActiveSlug(slug);
+
         // Bereits eingeloggt? Weiterleiten
         const existing = orgStore.getToken(slug);
         if (existing) {
