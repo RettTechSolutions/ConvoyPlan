@@ -162,6 +162,42 @@
         } catch { orgsError = 'Organisation konnte nicht gelöscht werden'; }
     }
 
+    // Create org
+    let showCreateOrgModal = $state(false);
+    let createOrgForm = $state({ name: '', slug: '', slugManual: false });
+    let createOrgError = $state('');
+    let createOrgSaving = $state(false);
+
+    function autoSlug(name: string): string {
+        const norm = name
+            .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss');
+        const words = norm.match(/[a-zA-Z0-9]+/g) ?? [];
+        let code = words.map(w => w.slice(0, 2)).join('').toLowerCase().slice(0, 8);
+        if (code.length < 2) code = norm.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 4);
+        return code;
+    }
+
+    function onOrgNameInput() {
+        if (!createOrgForm.slugManual) {
+            createOrgForm.slug = autoSlug(createOrgForm.name);
+        }
+    }
+
+    async function createOrg() {
+        createOrgError = '';
+        createOrgSaving = true;
+        try {
+            await adminApi.createOrg({ name: createOrgForm.name.trim(), slug: createOrgForm.slug.trim() });
+            showCreateOrgModal = false;
+            createOrgForm = { name: '', slug: '', slugManual: false };
+            await loadOrgs();
+        } catch (e: unknown) {
+            createOrgError = e instanceof Error ? e.message : 'Fehler beim Anlegen';
+        } finally {
+            createOrgSaving = false;
+        }
+    }
+
     // ── Leitstellen ──────────────────────────────────────────────────────────
     let leitstellen = $state<Leitstelle[]>([]);
     let lsError = $state('');
@@ -667,7 +703,10 @@
         <div class="section">
             <div class="section-header">
                 <strong>Organisationen ({orgs.length})</strong>
-                <button class="btn-small" onclick={loadOrgs}>↺</button>
+                <div style="display:flex;gap:.4rem">
+                    <button class="btn-small" onclick={() => { createOrgForm = { name: '', slug: '', slugManual: false }; createOrgError = ''; showCreateOrgModal = true; }}>+ Neu</button>
+                    <button class="btn-small" onclick={loadOrgs}>↺</button>
+                </div>
             </div>
 
             {#if orgsLoading}
@@ -1111,6 +1150,56 @@
                 <button onclick={() => (showEditUserModal = false)}>Schließen</button>
                 <button class="btn-primary" onclick={saveEditUser} disabled={editUserSaving || !editUserForm.email}>
                     {editUserSaving ? 'Speichern…' : 'Zugangsdaten speichern'}
+                </button>
+            </div>
+        </div>
+    </div>
+{/if}
+
+<!-- ── Organisation anlegen Modal ── -->
+{#if showCreateOrgModal}
+    <div class="modal-backdrop" onclick={() => (showCreateOrgModal = false)}>
+        <div class="modal" style="max-width:440px" onclick={(e) => e.stopPropagation()}>
+            <div class="modal-header">
+                <h2>Organisation anlegen</h2>
+                <button onclick={() => (showCreateOrgModal = false)}>✕</button>
+            </div>
+            <div class="modal-body">
+                {#if createOrgError}
+                    <div class="error-bar" style="margin-bottom:.75rem">{createOrgError} <button onclick={() => (createOrgError = '')}>✕</button></div>
+                {/if}
+                <div class="ls-form">
+                    <label>Name *
+                        <input
+                            type="text"
+                            bind:value={createOrgForm.name}
+                            placeholder="z.B. Johanniter Peißenberg"
+                            oninput={onOrgNameInput}
+                            required
+                        />
+                    </label>
+                    <label>Code (Slug) *
+                        <input
+                            type="text"
+                            bind:value={createOrgForm.slug}
+                            placeholder="z.B. jpbg"
+                            maxlength="8"
+                            oninput={(e) => {
+                                createOrgForm.slugManual = true;
+                                createOrgForm.slug = (e.target as HTMLInputElement).value
+                                    .toLowerCase().replace(/[^a-z0-9-]/g, '');
+                            }}
+                            required
+                        />
+                        <span class="hint" style="font-weight:400;margin-top:.15rem">4–8 Zeichen, wie bei HiOrg (wird automatisch aus dem Namen generiert)</span>
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick={() => (showCreateOrgModal = false)}>Abbrechen</button>
+                <button class="btn-primary" onclick={createOrg}
+                    disabled={createOrgSaving || !createOrgForm.name.trim() || !createOrgForm.slug.trim()}>
+                    {createOrgSaving ? 'Anlegen…' : 'Organisation anlegen'}
                 </button>
             </div>
         </div>

@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_db, require_superadmin
 from app.config import settings
-from app.models.organization import Organization, UserOrganization
+from app.models.organization import Organization, UserOrganization, _slugify
 from app.models.user import User
 from app.schemas.user import AdminUserCreate, AdminUserResponse, AdminUserUpdate, AdminUserOrgInfo
 
@@ -234,6 +234,44 @@ async def admin_remove_user_from_org(
     if membership:
         await db.delete(membership)
         await db.commit()
+
+
+class AdminOrgCreate(BaseModel):
+    name: str
+    slug: str
+
+
+@router.post("/organizations", status_code=201)
+async def admin_create_organization(
+    data: AdminOrgCreate,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    slug = data.slug.strip().lower()
+    # Validate slug chars
+    import re as _re
+    slug = _re.sub(r"[^a-z0-9-]+", "", slug).strip("-")[:8]
+    if not slug:
+        raise HTTPException(400, "Invalid slug")
+
+    existing = await db.execute(select(Organization).where(Organization.slug == slug))
+    if existing.scalar_one_or_none():
+        raise HTTPException(400, "Slug already in use")
+
+    org = Organization(name=data.name.strip(), slug=slug, owner_id=current.id)
+    db.add(org)
+    await db.flush()
+    membership = UserOrganization(user_id=current.id, organization_id=org.id, role="admin")
+    db.add(membership)
+    await db.commit()
+    await db.refresh(org)
+    return {
+        "id": str(org.id),
+        "name": org.name,
+        "slug": org.slug,
+        "owner_email": current.email,
+        "member_count": 1,
+    }
 
 
 @router.get("/organizations")

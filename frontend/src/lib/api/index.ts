@@ -293,6 +293,7 @@ export const adminApi = {
     removeUserFromOrg: (userId: string, orgId: string) =>
         api.delete(`/api/admin/users/${userId}/orgs/${orgId}`),
     listOrgs: () => api.get<AdminOrg[]>('/api/admin/organizations'),
+    createOrg: (data: { name: string; slug: string }) => api.post<AdminOrg>('/api/admin/organizations', data),
     deleteOrg: (id: string) => api.delete(`/api/admin/organizations/${id}`),
     getUpdateStatus: () => api.get<UpdateStatus>('/api/admin/update-status'),
     triggerUpdate: () => api.post<{ status: string }>('/api/admin/trigger-update', {}),

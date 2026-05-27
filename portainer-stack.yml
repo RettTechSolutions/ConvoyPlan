@@ -31,6 +31,7 @@ services:
     volumes:
       - cert_uploads:/certs
       - logo_uploads:/uploads
+      - update_status:/update_status
     depends_on:
       db:
         condition: service_healthy
@@ -87,6 +88,22 @@ services:
       - frontend
       - backend
 
+  updater:
+    image: ${UPDATER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/updater:latest}
+    restart: unless-stopped
+    environment:
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-convoyplan}
+      UPDATE_INTERVAL: "${UPDATE_INTERVAL:-300}"
+    entrypoint: ["/bin/bash", "/update-images.sh"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - update_status:/update_status
+      # Mount your stack file here so the updater can do docker compose pull:
+      # Either use an absolute path or set STACK_FILE_PATH in your .env
+      - ${STACK_FILE_PATH:-/opt/convoyplan/docker-compose.yml}:/stack/docker-compose.yml:ro
+    depends_on:
+      - backend
+
 volumes:
   postgres_data:
   osm_data:
@@ -95,3 +112,4 @@ volumes:
   caddy_config:
   cert_uploads:
   logo_uploads:
+  update_status:
