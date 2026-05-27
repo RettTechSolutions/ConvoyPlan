@@ -28,7 +28,6 @@
 		<div class="login-logo">
 			<AppLogo variant="main" height={170} />
 		</div>
-		<p class="subtitle">PLAN. MOVE. CONNECT.</p>
 
 		<form onsubmit={handleLogin}>
 			<div class="field">
@@ -66,15 +65,8 @@
 		max-width: 380px;
 		box-shadow: var(--shadow);
 	}
-	.login-logo { display: flex; justify-content: center; margin-bottom: 1rem; }
+	.login-logo { display: flex; justify-content: center; margin-bottom: 1.5rem; }
 	h1 { display: none; }
-	.subtitle {
-		color: var(--text-muted);
-		margin: 0 0 1.5rem;
-		font-size: var(--text-sm);
-		letter-spacing: .08em;
-		text-align: center;
-	}
 	.field { margin-bottom: 1rem; }
 	label {
 		display: block;
