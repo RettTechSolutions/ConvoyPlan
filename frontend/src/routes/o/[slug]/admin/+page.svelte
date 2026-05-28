@@ -966,4 +966,72 @@
     .qr-img { border: 1px solid var(--border); border-radius: 6px; background: white; padding: 4px; }
     .mfa-secret-box { display: flex; flex-direction: column; gap: .35rem; }
     .mfa-secret { display: block; font-family: monospace; font-size: var(--text-sm); letter-spacing: .08em; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: .35rem .6rem; word-break: break-all; }
+
+    /* ── Mobile (≤ 768px) ───────────────────────────────────────── */
+    @media (max-width: 768px) {
+        .admin-page {
+            padding: 1rem .75rem calc(1rem + env(safe-area-inset-bottom));
+            padding-left: max(.75rem, env(safe-area-inset-left));
+            padding-right: max(.75rem, env(safe-area-inset-right));
+        }
+        .admin-header { margin-bottom: .75rem; }
+
+        /* Tabs scroll horizontally instead of squashing. */
+        .tab-bar {
+            overflow-x: auto;
+            flex-wrap: nowrap;
+            scrollbar-width: none;
+            -webkit-overflow-scrolling: touch;
+            margin: 0 -.75rem 1rem;
+            padding: .25rem .75rem 0;
+        }
+        .tab-bar::-webkit-scrollbar { display: none; }
+        .tab { flex-shrink: 0; padding: .55rem .85rem; font-size: var(--text-sm); }
+
+        .section { padding: .75rem; }
+        /* Tables get a horizontal scroller via their parent so cell layout
+           stays a real <table> and only the wide ones scroll. */
+        .section :global(table) {
+            display: block;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            max-width: 100%;
+            white-space: nowrap;
+        }
+        .section :global(table thead),
+        .section :global(table tbody) { display: table; width: 100%; }
+
+        .branding-panel {
+            padding: 1rem .75rem;
+            max-width: 100%;
+        }
+        .colors-grid { grid-template-columns: 1fr; }
+        .logo-row { gap: 1rem; }
+        .bf-actions {
+            flex-direction: column-reverse;
+            align-items: stretch;
+            gap: .5rem;
+        }
+        .bf-actions > * { width: 100%; }
+
+        /* Konto / MFA */
+        .update-row { flex-wrap: wrap; gap: .35rem .75rem; }
+        .mfa-code-row { flex-wrap: wrap; }
+        .mfa-setup-qr { gap: 1rem; }
+
+        /* Modal: edge-to-edge, footer wraps. */
+        .modal {
+            width: 100%;
+            max-width: calc(100vw - 1rem);
+            max-height: calc(100dvh - 1rem);
+        }
+        .modal-body { padding: .75rem; }
+        .modal-footer {
+            flex-wrap: wrap;
+            padding-bottom: calc(.75rem + env(safe-area-inset-bottom));
+        }
+        .modal-footer > * { flex: 1 1 auto; min-width: 0; }
+        .poly-map { height: 220px; }
+        .import-row { flex-wrap: wrap; }
+    }
 </style>
