@@ -988,18 +988,15 @@
         .tab-bar::-webkit-scrollbar { display: none; }
         .tab { flex-shrink: 0; padding: .55rem .85rem; font-size: var(--text-sm); }
 
-        .section { padding: .75rem; }
-        /* Tables get a horizontal scroller via their parent so cell layout
-           stays a real <table> and only the wide ones scroll. */
-        .section :global(table) {
-            display: block;
+        .section {
+            padding: .75rem;
+            /* Wide tables scroll within the section instead of pushing the
+               whole page sideways. Keeping the <table> as native table
+               preserves column alignment; the section becomes the scroller. */
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
-            max-width: 100%;
-            white-space: nowrap;
         }
-        .section :global(table thead),
-        .section :global(table tbody) { display: table; width: 100%; }
+        .section :global(table) { white-space: nowrap; }
 
         .branding-panel {
             padding: 1rem .75rem;
