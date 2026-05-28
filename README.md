@@ -243,7 +243,7 @@ ConvoyPlan/
 ├── RELEASING.md              # Anleitung zum Schneiden eines Releases
 ├── .env.example              # Alle Umgebungsvariablen mit Erklärungen
 ├── docker-compose.yml        # Lokales Entwicklungssetup
-└── portainer-stack.yml       # Produktivstack für Portainer
+└── stack.yml                 # Produktiv-Compose-Datei (wird vom Installer genutzt)
 ```
 
 ---
@@ -599,9 +599,9 @@ docker compose -f docker-compose.yml up -d --build
 open https://<DOMAIN>/setup
 ```
 
-### Portainer
+### Produktiv-Deployment
 
-Eine fertige Stack-Konfiguration liegt in `portainer-stack.yml`. Sie verwendet vorgefertigte Images aus der GitHub Container Registry (GHCR) statt lokaler Builds — kein `git clone` auf dem Server nötig.
+Die Produktiv-Compose-Datei liegt in `stack.yml`. Sie verwendet vorgefertigte Images aus der GitHub Container Registry (GHCR) statt lokaler Builds — kein `git clone` auf dem Server nötig. Der Installer (`install.sh`) lädt sie automatisch herunter.
 
 Pflichtfelder beim Anlegen des Stacks in Portainer:
 

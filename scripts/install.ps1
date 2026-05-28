@@ -2,8 +2,9 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$RepoRaw  = 'https://raw.githubusercontent.com/RettTechSolutions/ConvoyPlan/main'
-$StackUrl = "$RepoRaw/portainer-stack.yml"
+$RepoRaw           = 'https://raw.githubusercontent.com/RettTechSolutions/ConvoyPlan/main'
+$StackUrl          = "$RepoRaw/docker-compose.yml"
+$CaddyEntrypointUrl = "$RepoRaw/caddy/entrypoint.sh"
 
 Write-Host ''
 Write-Host '╔══════════════════════════════════════════╗' -ForegroundColor Cyan
@@ -96,20 +97,27 @@ if ((Test-Path $EnvFile)) {
             # ── UPDATE-MODUS ─────────────────────────────────────────────────
             Write-Host ''
             Write-Host '-> Fehlende Konfigurationseintraege ergaenzen...'
-            Add-EnvKeyIfMissing 'STACK_FILE_PATH'      "$InstallDir\docker-compose.yml" $EnvFile
-            Add-EnvKeyIfMissing 'COMPOSE_PROJECT_NAME' 'convoyplan'                     $EnvFile
-            Add-EnvKeyIfMissing 'UPDATER_IMAGE'        'ghcr.io/retttechsolutions/convoyplan/updater:latest'     $EnvFile
-            Add-EnvKeyIfMissing 'BACKEND_IMAGE'        'ghcr.io/retttechsolutions/convoyplan/backend:latest'     $EnvFile
-            Add-EnvKeyIfMissing 'FRONTEND_IMAGE'       'ghcr.io/retttechsolutions/convoyplan/frontend:latest'    $EnvFile
-            Add-EnvKeyIfMissing 'GRAPHHOPPER_IMAGE'    'ghcr.io/retttechsolutions/convoyplan/graphhopper:latest' $EnvFile
-            Add-EnvKeyIfMissing 'GITHUB_REPO'          'RettTechSolutions/ConvoyPlan'   $EnvFile
+            Add-EnvKeyIfMissing 'STACK_FILE_PATH'       "$InstallDir\docker-compose.yml"                          $EnvFile
+            Add-EnvKeyIfMissing 'CADDY_ENTRYPOINT_PATH' "$InstallDir\caddy\entrypoint.sh"                        $EnvFile
+            Add-EnvKeyIfMissing 'COMPOSE_PROJECT_NAME'  'convoyplan'                                             $EnvFile
+            Add-EnvKeyIfMissing 'UPDATER_IMAGE'         'ghcr.io/retttechsolutions/convoyplan/updater:latest'    $EnvFile
+            Add-EnvKeyIfMissing 'BACKEND_IMAGE'         'ghcr.io/retttechsolutions/convoyplan/backend:latest'    $EnvFile
+            Add-EnvKeyIfMissing 'FRONTEND_IMAGE'        'ghcr.io/retttechsolutions/convoyplan/frontend:latest'   $EnvFile
+            Add-EnvKeyIfMissing 'GRAPHHOPPER_IMAGE'     'ghcr.io/retttechsolutions/convoyplan/graphhopper:latest' $EnvFile
+            Add-EnvKeyIfMissing 'GITHUB_REPO'           'RettTechSolutions/ConvoyPlan'                          $EnvFile
 
             Write-Host ''
             Write-Host '-> Neueste Stack-Konfiguration herunterladen...'
+            New-Item -ItemType Directory -Force -Path (Join-Path $InstallDir 'caddy') | Out-Null
             try {
                 Invoke-WebRequest -Uri $StackUrl -OutFile (Join-Path $InstallDir 'docker-compose.yml') -UseBasicParsing
             } catch {
                 Write-Host 'FEHLER: Stack-Datei konnte nicht heruntergeladen werden.' -ForegroundColor Red; exit 1
+            }
+            try {
+                Invoke-WebRequest -Uri $CaddyEntrypointUrl -OutFile (Join-Path $InstallDir 'caddy\entrypoint.sh') -UseBasicParsing
+            } catch {
+                Write-Host 'FEHLER: Caddy-Entrypoint konnte nicht heruntergeladen werden.' -ForegroundColor Red; exit 1
             }
 
             Write-Host ''
@@ -194,7 +202,8 @@ if ((Test-Path $InstallDir) -and (Test-Path $EnvFile)) {
 }
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
-# Stack-Datei herunterladen
+New-Item -ItemType Directory -Force -Path (Join-Path $InstallDir 'caddy') | Out-Null
+
 Write-Host ''
 Write-Host '-> Stack-Konfiguration herunterladen...'
 try {
@@ -203,6 +212,11 @@ try {
     Write-Host 'FEHLER: Stack-Datei konnte nicht heruntergeladen werden.' -ForegroundColor Red
     Remove-Item -Path (Join-Path $InstallDir 'docker-compose.yml') -ErrorAction SilentlyContinue
     exit 1
+}
+try {
+    Invoke-WebRequest -Uri $CaddyEntrypointUrl -OutFile (Join-Path $InstallDir 'caddy\entrypoint.sh') -UseBasicParsing
+} catch {
+    Write-Host 'FEHLER: Caddy-Entrypoint konnte nicht heruntergeladen werden.' -ForegroundColor Red; exit 1
 }
 
 # .env schreiben
@@ -224,6 +238,7 @@ GRAPHHOPPER_IMAGE=ghcr.io/retttechsolutions/convoyplan/graphhopper:latest
 UPDATER_IMAGE=ghcr.io/retttechsolutions/convoyplan/updater:latest
 GITHUB_REPO=RettTechSolutions/ConvoyPlan
 STACK_FILE_PATH=$InstallDir\docker-compose.yml
+CADDY_ENTRYPOINT_PATH=$InstallDir\caddy\entrypoint.sh
 COMPOSE_PROJECT_NAME=convoyplan
 "@
 if ($LicenseKey)  { $EnvContent += "`nLICENSE_KEY=$LicenseKey" }
