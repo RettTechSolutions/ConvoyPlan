@@ -2167,4 +2167,76 @@
     .org-select { flex: 1; min-width: 140px; padding: .35rem .5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); }
     .role-select { padding: .35rem .5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); }
     .org-select:focus, .role-select:focus { outline: none; border-color: var(--color-primary); }
+
+    /* ── Mobile (≤ 768px) ───────────────────────────────────────── */
+    @media (max-width: 768px) {
+        .admin-page {
+            padding: 1rem .75rem calc(1rem + env(safe-area-inset-bottom));
+            padding-left: max(.75rem, env(safe-area-inset-left));
+            padding-right: max(.75rem, env(safe-area-inset-right));
+        }
+        .admin-header { margin-bottom: .75rem; }
+
+        /* Tabs scroll horizontally instead of squashing — touch-friendly. */
+        .tab-bar {
+            overflow-x: auto;
+            flex-wrap: nowrap;
+            scrollbar-width: none;
+            -webkit-overflow-scrolling: touch;
+            margin: 0 -.75rem 1rem;
+            padding: .25rem .75rem 0;
+        }
+        .tab-bar::-webkit-scrollbar { display: none; }
+        .tab { flex-shrink: 0; padding: .55rem .85rem; font-size: var(--text-sm); }
+
+        .section { padding: .75rem; }
+        /* Tables get a horizontal scroller via their parent so cell layout
+           stays a real <table> and only the wide ones scroll. */
+        .section :global(table) {
+            display: block;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            max-width: 100%;
+            white-space: nowrap;
+        }
+        .section :global(table thead),
+        .section :global(table tbody) { display: table; width: 100%; }
+
+        .branding-panel {
+            padding: 1rem .75rem;
+            max-width: 100%;
+        }
+        .colors-grid { grid-template-columns: 1fr; }
+        .logo-row { gap: 1rem; }
+        .bf-actions {
+            flex-direction: column-reverse;
+            align-items: stretch;
+            gap: .5rem;
+        }
+        .bf-actions > * { width: 100%; }
+
+        .create-actions { flex-direction: column; align-items: stretch; }
+        .create-actions > * { width: 100%; }
+
+        .update-row { flex-wrap: wrap; gap: .35rem .75rem; }
+        .update-label { width: auto; }
+        .license-input-row { flex-wrap: wrap; }
+        .license-input { min-width: 0; }
+
+        /* Modal: edge-to-edge, footer wraps. */
+        .modal {
+            width: 100%;
+            max-width: calc(100vw - 1rem);
+            max-height: calc(100dvh - 1rem);
+        }
+        .modal-body { padding: .75rem; }
+        .modal-footer {
+            flex-wrap: wrap;
+            padding-bottom: calc(.75rem + env(safe-area-inset-bottom));
+        }
+        .modal-footer > * { flex: 1 1 auto; min-width: 0; }
+
+        .et-textarea { height: 240px; font-size: 13px; }
+        .update-terminal { font-size: 11px; max-height: 200px; }
+    }
 </style>
