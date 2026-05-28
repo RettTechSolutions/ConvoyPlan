@@ -7,7 +7,7 @@ CADDY_ENTRYPOINT_URL="$REPO_RAW/caddy/entrypoint.sh"
 
 echo ""
 echo "╔══════════════════════════════════════════╗"
-echo "║      ConvoyPlan Installer v0.5           ║"
+echo "║      ConvoyPlan Installer v0.8.5         ║"
 echo "╚══════════════════════════════════════════╝"
 echo ""
 

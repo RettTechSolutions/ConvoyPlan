@@ -36,18 +36,23 @@ VITE_WS_HOST=localhost:8000
 
 | Route | Beschreibung |
 |---|---|
-| `/setup` | Ersteinrichtungs-Wizard (Superadmin + Domain + SSL) |
-| `/login` | Anmeldung |
-| `/plan` | Planungsansicht mit interaktiver Karte |
-| `/tracking` | Live-Tracking-Ansicht |
-| `/share/[token]` | Öffentliche Routenansicht ohne Login |
-| `/admin` | Superadmin-Benutzerverwaltung |
+| `/setup` | Ersteinrichtungs-Wizard (Superadmin + Erste Org + Domain + SSL) |
+| `/login` | Globale Anmeldung |
+| `/[org-code]/login` | Org-spezifische Anmeldung mit eigenem Branding |
+| `/[org-code]/plan` | Planungsansicht mit interaktiver Karte |
+| `/[org-code]/tracking` | Live-Tracking-Ansicht |
+| `/[org-code]/share/[token]` | Öffentliche Routenansicht ohne Login |
+| `/[org-code]/admin` | Org-Admin: Mitglieder, Leitstellen, Branding, System |
+| `/admin` | Superadmin: Benutzer- und Org-Verwaltung |
+
+> Alte Pfade `/plan` und `/admin` leiten automatisch auf die jeweilige org-spezifische URL um.
 
 ## Wichtige Stores
 
 | Store | Datei | Beschreibung |
 |---|---|---|
 | `auth` | `src/lib/stores/auth.ts` | JWT-Token, Login-Status, Benutzerinfo |
+| `org` | `src/lib/stores/org.ts` | Aktiver Org-Code-Slug, org-bewusster API-Client |
 | `convoy` | `src/lib/stores/convoy.ts` | Aktiver Marschverband und Wegpunkte |
 | `map` | `src/lib/stores/map.ts` | MapLibre-Instanz und Layer-Zustand |
 | `tracking` | `src/lib/stores/tracking.ts` | Live-Positionen per WebSocket |

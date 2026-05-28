@@ -8,7 +8,7 @@ $CaddyEntrypointUrl = "$RepoRaw/caddy/entrypoint.sh"
 
 Write-Host ''
 Write-Host '╔══════════════════════════════════════════╗' -ForegroundColor Cyan
-Write-Host '║      ConvoyPlan Installer v0.5           ║' -ForegroundColor Cyan
+Write-Host '║      ConvoyPlan Installer v0.8.5         ║' -ForegroundColor Cyan
 Write-Host '╚══════════════════════════════════════════╝' -ForegroundColor Cyan
 Write-Host ''
 
