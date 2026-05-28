@@ -251,7 +251,7 @@
     position: absolute;
     top: 14px;
     left: 1rem;
-    z-index: 500;
+    z-index: 150;
     display: flex;
     flex-direction: column;
     align-items: flex-start;

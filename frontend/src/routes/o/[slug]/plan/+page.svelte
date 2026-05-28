@@ -653,7 +653,7 @@
 	};
 </script>
 
-<div class="app">
+<div class="app" class:sidebar-open={sidebarOpen}>
 	<!-- ── Mobile top bar (hidden on desktop via CSS) ── -->
 	<div class="topbar">
 		<button class="hamburger" onclick={() => (sidebarOpen = !sidebarOpen)} aria-expanded={sidebarOpen} aria-controls="sidebar" aria-label="Menü">☰</button>
@@ -1671,7 +1671,19 @@
 			padding: 0 .75rem;
 			background: var(--sidebar-bg);
 			border-bottom: 1px solid var(--border);
-			z-index: 200;
+			/* Above sidebar (300) and backdrop (299) so the hamburger stays
+			   visible and tappable while the sidebar is open. */
+			z-index: 301;
+		}
+
+		/* Hide floating map overlays when the sidebar is open — they would
+		   otherwise sit on top of the sidebar (InfoPill) or look stranded
+		   along the visible edge of the map (Lage panel, route FAB). */
+		.app.sidebar-open :global(.pill-wrap),
+		.app.sidebar-open .lage-floating,
+		.app.sidebar-open .fab-route,
+		.app.sidebar-open .map-hint-bar {
+			display: none;
 		}
 		.hamburger {
 			background: rgba(255,255,255,.1);
