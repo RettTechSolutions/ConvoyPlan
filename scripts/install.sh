@@ -2,7 +2,8 @@
 set -euo pipefail
 
 REPO_RAW="https://raw.githubusercontent.com/RettTechSolutions/ConvoyPlan/main"
-STACK_URL="$REPO_RAW/stack.yml"
+STACK_URL="$REPO_RAW/docker-compose.yml"
+CADDY_ENTRYPOINT_URL="$REPO_RAW/caddy/entrypoint.sh"
 
 echo ""
 echo "╔══════════════════════════════════════════╗"
@@ -99,14 +100,14 @@ if [[ -f "$INSTALL_DIR/.env" ]] && \
 
     echo ""
     echo "→ Fehlende Konfigurationseinträge ergänzen..."
-    _patch_env "STACK_FILE_PATH"       "${INSTALL_DIR}/docker-compose.yml"
-    _patch_env "COMPOSE_PROJECT_NAME"  "convoyplan"
-    _patch_env "UPDATER_IMAGE"         "ghcr.io/retttechsolutions/convoyplan/updater:latest"
-    _patch_env "BACKEND_IMAGE"         "ghcr.io/retttechsolutions/convoyplan/backend:latest"
-    _patch_env "FRONTEND_IMAGE"        "ghcr.io/retttechsolutions/convoyplan/frontend:latest"
-    _patch_env "GRAPHHOPPER_IMAGE"     "ghcr.io/retttechsolutions/convoyplan/graphhopper:latest"
-    _patch_env "CADDY_IMAGE"           "ghcr.io/retttechsolutions/convoyplan/caddy:latest"
-    _patch_env "GITHUB_REPO"          "RettTechSolutions/ConvoyPlan"
+    _patch_env "STACK_FILE_PATH"         "${INSTALL_DIR}/docker-compose.yml"
+    _patch_env "CADDY_ENTRYPOINT_PATH"   "${INSTALL_DIR}/caddy/entrypoint.sh"
+    _patch_env "COMPOSE_PROJECT_NAME"    "convoyplan"
+    _patch_env "UPDATER_IMAGE"           "ghcr.io/retttechsolutions/convoyplan/updater:latest"
+    _patch_env "BACKEND_IMAGE"           "ghcr.io/retttechsolutions/convoyplan/backend:latest"
+    _patch_env "FRONTEND_IMAGE"          "ghcr.io/retttechsolutions/convoyplan/frontend:latest"
+    _patch_env "GRAPHHOPPER_IMAGE"       "ghcr.io/retttechsolutions/convoyplan/graphhopper:latest"
+    _patch_env "GITHUB_REPO"             "RettTechSolutions/ConvoyPlan"
 
     sudo chown -R "$(id -u):$(id -g)" "$INSTALL_DIR"
     rm -f "$INSTALL_DIR/docker-compose.yml"
@@ -115,8 +116,9 @@ if [[ -f "$INSTALL_DIR/.env" ]] && \
     echo "→ Neueste Stack-Konfiguration herunterladen..."
     curl -sSfL "$STACK_URL" -o "$INSTALL_DIR/docker-compose.yml" \
       || { echo "FEHLER: Stack-Datei konnte nicht heruntergeladen werden."; exit 1; }
-    curl -sSfL "$REPO_RAW/caddy/entrypoint.sh" -o "$INSTALL_DIR/caddy/entrypoint.sh" 2>/dev/null || true
-    chmod +x "$INSTALL_DIR/caddy/entrypoint.sh" 2>/dev/null || true
+    curl -sSfL "$CADDY_ENTRYPOINT_URL" -o "$INSTALL_DIR/caddy/entrypoint.sh" \
+      || { echo "FEHLER: Caddy-Entrypoint konnte nicht heruntergeladen werden."; exit 1; }
+    chmod +x "$INSTALL_DIR/caddy/entrypoint.sh"
 
     echo "→ Images aktualisieren..."
     docker compose --project-directory "$INSTALL_DIR" pull
@@ -227,11 +229,15 @@ sudo chown -R "$(id -u):$(id -g)" "$INSTALL_DIR"
 # Download-Ziele bereinigen (jetzt als normaler User möglich)
 rm -rf "$INSTALL_DIR/docker-compose.yml"
 
-# Stack-Datei herunterladen (Caddy-Entrypoint ist ins Image gebaut — kein Bind-Mount mehr nötig)
+mkdir -p "$INSTALL_DIR/caddy"
+
 echo ""
 echo "→ Stack-Konfiguration herunterladen..."
 curl -sSfL "$STACK_URL" -o "$INSTALL_DIR/docker-compose.yml" \
   || { echo "FEHLER: Stack-Datei konnte nicht heruntergeladen werden."; exit 1; }
+curl -sSfL "$CADDY_ENTRYPOINT_URL" -o "$INSTALL_DIR/caddy/entrypoint.sh" \
+  || { echo "FEHLER: Caddy-Entrypoint konnte nicht heruntergeladen werden."; exit 1; }
+chmod +x "$INSTALL_DIR/caddy/entrypoint.sh"
 
 # .env schreiben
 cat > "$INSTALL_DIR/.env" <<ENVEOF
@@ -249,7 +255,6 @@ JAVA_OPTS=${JAVA_OPTS}
 BACKEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/backend:latest
 FRONTEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/frontend:latest
 GRAPHHOPPER_IMAGE=ghcr.io/retttechsolutions/convoyplan/graphhopper:latest
-CADDY_IMAGE=ghcr.io/retttechsolutions/convoyplan/caddy:latest
 UPDATER_IMAGE=ghcr.io/retttechsolutions/convoyplan/updater:latest
 GITHUB_REPO=RettTechSolutions/ConvoyPlan
 # Interne Ports (Docker-Netzwerk, nicht nach außen exponiert — bei Bedarf anpassen)
@@ -257,6 +262,8 @@ FRONTEND_PORT=3000
 BACKEND_PORT=8000
 # Auto-Updater: Pfad zu dieser Compose-Datei auf dem HOST (wird ins Updater-Image gemountet)
 STACK_FILE_PATH=${INSTALL_DIR}/docker-compose.yml
+# Caddy-Entrypoint-Skript auf dem HOST (wird per Bind-Mount in den Caddy-Container geladen)
+CADDY_ENTRYPOINT_PATH=${INSTALL_DIR}/caddy/entrypoint.sh
 # Docker-Compose-Projektname — muss mit dem Namen übereinstimmen, den Compose beim Start verwendet
 COMPOSE_PROJECT_NAME=convoyplan
 # Lizenzschlüssel nach dem Setup im Admin-Panel unter System → Lizenz eintragen

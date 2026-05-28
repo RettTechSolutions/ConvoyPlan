@@ -1,33 +1,33 @@
 services:
   db:
     image: postgis/postgis:15-3.4
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: convoyplan
-      POSTGRES_PASSWORD: convoyplan
-      POSTGRES_DB: convoyplan
+      POSTGRES_USER: ${POSTGRES_USER:-convoyplan}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-convoyplan}
+      POSTGRES_DB: ${POSTGRES_DB:-convoyplan}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U convoyplan"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-convoyplan}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
   backend:
-    build:
-      context: ./backend
-      args:
-        GIT_SHA: ${GIT_SHA:-unknown}
-    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    image: ${BACKEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/backend:latest}
+    restart: unless-stopped
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${BACKEND_PORT:-8000}"
     environment:
-      DATABASE_URL: postgresql+asyncpg://convoyplan:convoyplan@db:5432/convoyplan
-      JWT_SECRET: changeme-in-production
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-convoyplan}:${POSTGRES_PASSWORD:-convoyplan}@db:5432/${POSTGRES_DB:-convoyplan}
+      JWT_SECRET: ${JWT_SECRET:-changeme-in-production}
       GRAPHHOPPER_URL: http://graphhopper:8989
+      BACKEND_PORT: ${BACKEND_PORT:-8000}
+      LICENSE_KEY: ${LICENSE_KEY:-}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GITHUB_REPO: ${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}
-      LICENSE_KEY: ${LICENSE_KEY:-}
       APP_BASE_URL: https://${DOMAIN:-localhost}
     volumes:
       - cert_uploads:/certs
@@ -37,43 +37,38 @@ services:
       db:
         condition: service_healthy
       graphhopper:
-        condition: service_healthy
+        condition: service_started
 
   graphhopper:
-    build:
-      context: ./graphhopper
-      args:
-        GH_VERSION: "9.1"
+    image: ${GRAPHHOPPER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/graphhopper:latest}
+    restart: unless-stopped
     environment:
-      # Geofabrik-URL der gewünschten Region:
-      #   Deutschland (Standard, ~4 GB): https://download.geofabrik.de/europe/germany-latest.osm.pbf
-      #   Bayern      (~1 GB):           https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf
-      #   Berlin      (~30 MB, Tests):   https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf
-      OSM_DOWNLOAD_URL: https://download.geofabrik.de/europe/germany-latest.osm.pbf
-      OSM_FILENAME: germany-latest.osm.pbf
-      JAVA_OPTS: -Xmx2g -Xms512m -XX:+UseG1GC
+      OSM_DOWNLOAD_URL: ${OSM_DOWNLOAD_URL:-https://download.geofabrik.de/europe/germany-latest.osm.pbf}
+      OSM_FILENAME: ${OSM_FILENAME:-germany-latest.osm.pbf}
+      JAVA_OPTS: ${JAVA_OPTS:--Xmx6g -Xms1g -XX:+UseG1GC}
     volumes:
-      - osm_data:/data/osm      # OSM-PBF (wird beim ersten Start automatisch geladen)
-      - gh_graph:/data/graph    # Kompilierter Graph-Cache (persistiert zwischen Neustarts)
+      - osm_data:/data/osm
+      - gh_graph:/data/graph
     ports:
-      - "8989:8989"
+      - "${GH_PORT:-8989}:8989"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8989/health"]
-      interval: 15s
+      interval: 30s
       timeout: 10s
-      retries: 40          # bis zu ~10 Minuten für erstmaligen Graph-Import
-      start_period: 30s
+      retries: 240
+      start_period: 120s
 
   frontend:
-    build:
-      context: ./frontend
+    image: ${FRONTEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/frontend:latest}
+    restart: unless-stopped
+    environment:
+      PORT: ${FRONTEND_PORT:-3000}
     depends_on:
       - backend
 
   caddy:
-    # Admin API (:2019) is NOT exposed to the host — only reachable on the internal Docker network.
-    # This is required for the backend to live-reload Caddy config via the setup wizard.
     image: caddy:2-alpine
+    restart: unless-stopped
     ports:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"
@@ -82,8 +77,10 @@ services:
       ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
       CADDY_TLS_CERT: ${CADDY_TLS_CERT:-}
       CADDY_TLS_KEY: ${CADDY_TLS_KEY:-}
+      FRONTEND_PORT: ${FRONTEND_PORT:-3000}
+      BACKEND_PORT: ${BACKEND_PORT:-8000}
     volumes:
-      - ./caddy/entrypoint.sh:/entrypoint.sh:ro
+      - ${CADDY_ENTRYPOINT_PATH:-/dev/null}:/entrypoint.sh:ro
       - caddy_data:/data
       - caddy_config:/config
       - cert_uploads:/certs:ro
@@ -93,14 +90,55 @@ services:
       - backend
 
   updater:
-    build: ./docker/updater
+    image: ${UPDATER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/updater:latest}
+    restart: unless-stopped
+    environment:
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-convoyplan}
+      UPDATE_INTERVAL: "${UPDATE_INTERVAL:-300}"
+      # STACK_FILE_PATH: absoluter HOST-Pfad zu dieser Compose-Datei.
+      # Wird vom Installer automatisch gesetzt. Fehlt er, erkennt der Updater
+      # den Pfad selbst über Docker-Labels und heilt sich eigenständig.
+      STACK_FILE_PATH: ${STACK_FILE_PATH:-}
+      # Absoluter HOST-Pfad zum Caddy-Entrypoint-Skript (caddy/entrypoint.sh).
+      # Wird vom Installer gesetzt und per Volume in den Caddy-Container gemountet.
+      CADDY_ENTRYPOINT_PATH: ${CADDY_ENTRYPOINT_PATH:-}
+      # Alle Service-Variablen werden durchgereicht, damit `docker compose up`
+      # innerhalb des Updater-Containers dieselben Werte wie beim Erststart hat.
+      POSTGRES_USER: ${POSTGRES_USER:-convoyplan}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-convoyplan}
+      POSTGRES_DB: ${POSTGRES_DB:-convoyplan}
+      DB_PORT: ${DB_PORT:-5432}
+      JWT_SECRET: ${JWT_SECRET:-changeme-in-production}
+      LICENSE_KEY: ${LICENSE_KEY:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_REPO: ${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}
+      DOMAIN: ${DOMAIN:-localhost}
+      APP_BASE_URL: https://${DOMAIN:-localhost}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
+      CADDY_TLS_CERT: ${CADDY_TLS_CERT:-}
+      CADDY_TLS_KEY: ${CADDY_TLS_KEY:-}
+      HTTP_PORT: ${HTTP_PORT:-80}
+      HTTPS_PORT: ${HTTPS_PORT:-443}
+      BACKEND_PORT: ${BACKEND_PORT:-8000}
+      FRONTEND_PORT: ${FRONTEND_PORT:-3000}
+      GH_PORT: ${GH_PORT:-8989}
+      OSM_DOWNLOAD_URL: ${OSM_DOWNLOAD_URL:-https://download.geofabrik.de/europe/germany-latest.osm.pbf}
+      OSM_FILENAME: ${OSM_FILENAME:-germany-latest.osm.pbf}
+      JAVA_OPTS: ${JAVA_OPTS:--Xmx6g -Xms1g -XX:+UseG1GC}
+      BACKEND_IMAGE: ${BACKEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/backend:latest}
+      FRONTEND_IMAGE: ${FRONTEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/frontend:latest}
+      GRAPHHOPPER_IMAGE: ${GRAPHHOPPER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/graphhopper:latest}
+      UPDATER_IMAGE: ${UPDATER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/updater:latest}
+    entrypoint: ["/bin/bash", "/update-images.sh"]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - .:/workspace
       - update_status:/update_status
-    environment:
-      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
-    restart: unless-stopped
+      # Wenn STACK_FILE_PATH gesetzt → richtige Datei gemountet.
+      # Wenn leer (Altinstallation) → /dev/null (leere Datei); Updater erkennt
+      # das und lädt die Compose-Datei selbst via Docker-Labels nach.
+      - ${STACK_FILE_PATH:-/dev/null}:/stack/docker-compose.yml:ro
+    depends_on:
+      - backend
 
 volumes:
   postgres_data:

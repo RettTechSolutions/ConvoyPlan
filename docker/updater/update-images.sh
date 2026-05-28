@@ -132,8 +132,8 @@ write_status() {
 _update_stack_file() {
     [ -z "${STACK_FILE_PATH:-}" ] && return 0
 
-    local tmp=/tmp/stack-new.yml
-    if curl -sf --max-time 15 "${REPO_RAW}/stack.yml" -o "${tmp}" && [ -s "${tmp}" ]; then
+    local tmp=/tmp/dc-new.yml
+    if curl -sf --max-time 15 "${REPO_RAW}/docker-compose.yml" -o "${tmp}" && [ -s "${tmp}" ]; then
         local self_id
         self_id=$(hostname)
         if docker cp "${self_id}:${tmp}" "${STACK_FILE_PATH}" 2>/dev/null; then
@@ -144,7 +144,7 @@ _update_stack_file() {
     else
         log "WARNUNG: Neue Stack-Datei konnte nicht heruntergeladen werden — übersprungen"
     fi
-    rm -f "${tmp}"
+    rm -f /tmp/dc-new.yml
 }
 
 do_update() {
