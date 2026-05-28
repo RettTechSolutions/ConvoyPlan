@@ -1269,7 +1269,7 @@
 
             <div class="bf-section">
                 <label class="bf-label">Betreff
-                    <input type="text" bind:value={emailTemplateForm.subject} placeholder="Deine Zugangsdaten für {app_name}" />
+                    <input type="text" bind:value={emailTemplateForm.subject} placeholder="Deine Zugangsdaten für &#123;app_name&#125;" />
                 </label>
             </div>
 
