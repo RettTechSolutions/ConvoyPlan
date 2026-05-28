@@ -17,8 +17,14 @@
 				margin: 0;
 				padding: 0;
 				font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-				/* Kill stray horizontal scroll caused by overflowing children on small viewports. */
+				/* Kill stray horizontal scroll caused by overflowing children on small viewports.
+				   `clip` is used in preference to `hidden` because on iOS Safari, `overflow-x: hidden`
+				   on the document root blocks touch-driven horizontal scrolling inside descendant
+				   containers (admin tab-bar, wide tables). `clip` clips the same way without
+				   establishing a scroll container, so inner overflow-x: auto stays interactive.
+				   Older browsers that don't know `clip` keep the `hidden` fallback. */
 				overflow-x: hidden;
+				overflow-x: clip;
 				/* Disable iOS overscroll/bounce that exposes content behind fixed bars. */
 				overscroll-behavior: none;
 			}
