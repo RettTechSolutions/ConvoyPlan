@@ -38,54 +38,51 @@ fi
 # or where /stack/docker-compose.yml is empty/a-directory (old install bug).
 
 _resolve_compose_file() {
-    # 1. If mounted file is a valid, non-empty file → use it as-is
+    # Step 1: Always ensure STACK_FILE_PATH is exported — docker compose needs it
+    # for variable interpolation when reading the compose file during pull/up,
+    # even if the file is already properly mounted.
+    if [ -z "${STACK_FILE_PATH:-}" ]; then
+        local container_id discovered
+        container_id=$(docker ps -q \
+            --filter "label=com.docker.compose.project=${COMPOSE_PROJECT}" 2>/dev/null | head -1)
+        if [ -n "${container_id}" ]; then
+            discovered=$(docker inspect "${container_id}" \
+                --format '{{index .Config.Labels "com.docker.compose.project.config_files"}}' \
+                2>/dev/null | cut -d',' -f1 | tr -d ' ')
+            if [ -n "${discovered}" ]; then
+                export STACK_FILE_PATH="${discovered}"
+                log "INFO: STACK_FILE_PATH auto-ermittelt: ${STACK_FILE_PATH}"
+            fi
+        fi
+    fi
+
+    # Step 2: If mounted file is a valid, non-empty file → done
     if [ -f "${COMPOSE_FILE}" ] && [ -s "${COMPOSE_FILE}" ]; then
         return 0
     fi
 
-    log "INFO: ${COMPOSE_FILE} fehlt oder ist leer — ermittle Pfad über Docker-Labels…"
+    log "INFO: ${COMPOSE_FILE} fehlt oder ist leer — lade Compose-Datei vom Host…"
 
-    # 2. Discover HOST path from any running container in this compose project
-    local container_id host_path
-    container_id=$(docker ps -q \
-        --filter "label=com.docker.compose.project=${COMPOSE_PROJECT}" 2>/dev/null | head -1)
-
-    if [ -z "${container_id}" ]; then
-        log "WARNUNG: Keine laufenden Container im Projekt '${COMPOSE_PROJECT}' gefunden."
-        return 1
-    fi
-
-    host_path=$(docker inspect "${container_id}" \
-        --format '{{index .Config.Labels "com.docker.compose.project.config_files"}}' \
-        2>/dev/null | cut -d',' -f1 | tr -d ' ')
-
-    if [ -z "${host_path}" ]; then
-        log "WARNUNG: Docker-Label 'com.docker.compose.project.config_files' nicht gesetzt."
-        return 1
-    fi
-
-    # Export so docker compose variable-interpolation can resolve ${STACK_FILE_PATH}
-    export STACK_FILE_PATH="${host_path}"
-    log "INFO: STACK_FILE_PATH auto-ermittelt: ${STACK_FILE_PATH}"
-
-    # 3. Copy compose file from HOST into this container via docker cp
-    local self_id
-    self_id=$(hostname)  # container ID = hostname inside container
-    if docker cp "${STACK_FILE_PATH}" "${self_id}:/stack/docker-compose.yml" 2>/dev/null; then
-        log "INFO: Compose-Datei von ${STACK_FILE_PATH} in Container kopiert."
-        return 0
-    else
-        log "WARNUNG: docker cp fehlgeschlagen — versuche Alternativmethode…"
-        # Fallback: spawn a tiny container to read the file
-        if docker run --rm -v "${STACK_FILE_PATH}:/src:ro" alpine cat /src \
-                > /tmp/docker-compose.yml 2>/dev/null && [ -s /tmp/docker-compose.yml ]; then
-            COMPOSE_FILE=/tmp/docker-compose.yml
-            log "INFO: Compose-Datei nach /tmp geladen."
+    # Step 3: Copy compose file from HOST into this container via docker cp
+    if [ -n "${STACK_FILE_PATH:-}" ]; then
+        local self_id
+        self_id=$(hostname)  # container ID = hostname inside container
+        if docker cp "${STACK_FILE_PATH}" "${self_id}:/stack/docker-compose.yml" 2>/dev/null; then
+            log "INFO: Compose-Datei von ${STACK_FILE_PATH} in Container kopiert."
             return 0
+        else
+            log "WARNUNG: docker cp fehlgeschlagen — versuche Alternativmethode…"
+            # Fallback: spawn a tiny container to read the file
+            if docker run --rm -v "${STACK_FILE_PATH}:/src:ro" alpine cat /src \
+                    > /tmp/docker-compose.yml 2>/dev/null && [ -s /tmp/docker-compose.yml ]; then
+                COMPOSE_FILE=/tmp/docker-compose.yml
+                log "INFO: Compose-Datei nach /tmp geladen."
+                return 0
+            fi
         fi
     fi
 
-    log "FEHLER: Compose-Datei konnte nicht gelesen werden."
+    log "FEHLER: Compose-Datei nicht verfügbar und STACK_FILE_PATH nicht ermittelbar."
     return 1
 }
 
