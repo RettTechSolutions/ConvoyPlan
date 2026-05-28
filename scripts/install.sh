@@ -105,6 +105,7 @@ if [[ -f "$INSTALL_DIR/.env" ]] && \
     _patch_env "BACKEND_IMAGE"         "ghcr.io/retttechsolutions/convoyplan/backend:latest"
     _patch_env "FRONTEND_IMAGE"        "ghcr.io/retttechsolutions/convoyplan/frontend:latest"
     _patch_env "GRAPHHOPPER_IMAGE"     "ghcr.io/retttechsolutions/convoyplan/graphhopper:latest"
+    _patch_env "CADDY_IMAGE"           "ghcr.io/retttechsolutions/convoyplan/caddy:latest"
     _patch_env "GITHUB_REPO"          "RettTechSolutions/ConvoyPlan"
 
     sudo chown -R "$(id -u):$(id -g)" "$INSTALL_DIR"
@@ -224,17 +225,13 @@ mkdir -p "$INSTALL_DIR"
 sudo chown -R "$(id -u):$(id -g)" "$INSTALL_DIR"
 
 # Download-Ziele bereinigen (jetzt als normaler User möglich)
-rm -rf "$INSTALL_DIR/docker-compose.yml" "$INSTALL_DIR/caddy/entrypoint.sh"
-mkdir -p "$INSTALL_DIR/caddy"
+rm -rf "$INSTALL_DIR/docker-compose.yml"
 
-# Stack-Datei und Caddy-Entrypoint herunterladen
+# Stack-Datei herunterladen (Caddy-Entrypoint ist ins Image gebaut — kein Bind-Mount mehr nötig)
 echo ""
 echo "→ Stack-Konfiguration herunterladen..."
 curl -sSfL "$STACK_URL" -o "$INSTALL_DIR/docker-compose.yml" \
   || { echo "FEHLER: Stack-Datei konnte nicht heruntergeladen werden."; exit 1; }
-curl -sSfL "$REPO_RAW/caddy/entrypoint.sh" -o "$INSTALL_DIR/caddy/entrypoint.sh" \
-  || { echo "FEHLER: Caddy-Entrypoint konnte nicht heruntergeladen werden."; exit 1; }
-chmod +x "$INSTALL_DIR/caddy/entrypoint.sh"
 
 # .env schreiben
 cat > "$INSTALL_DIR/.env" <<ENVEOF
@@ -252,6 +249,7 @@ JAVA_OPTS=${JAVA_OPTS}
 BACKEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/backend:latest
 FRONTEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/frontend:latest
 GRAPHHOPPER_IMAGE=ghcr.io/retttechsolutions/convoyplan/graphhopper:latest
+CADDY_IMAGE=ghcr.io/retttechsolutions/convoyplan/caddy:latest
 UPDATER_IMAGE=ghcr.io/retttechsolutions/convoyplan/updater:latest
 GITHUB_REPO=RettTechSolutions/ConvoyPlan
 # Interne Ports (Docker-Netzwerk, nicht nach außen exponiert — bei Bedarf anpassen)

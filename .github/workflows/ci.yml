@@ -91,3 +91,6 @@ jobs:
 
       - name: Build updater image
         run: docker build ./docker/updater
+
+      - name: Build caddy image
+        run: docker build ./caddy

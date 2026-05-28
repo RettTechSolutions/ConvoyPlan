@@ -8,7 +8,6 @@ Add mfa_secret (nullable) and mfa_enabled (bool, default false) to users.
 """
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.engine.reflection import Inspector
 
 revision = "0014"
 down_revision = "0013"
@@ -18,7 +17,7 @@ depends_on = None
 
 def upgrade() -> None:
     bind = op.get_bind()
-    inspector = Inspector.from_engine(bind)
+    inspector = sa.inspect(bind)
     existing_columns = [c["name"] for c in inspector.get_columns("users")]
 
     if "mfa_secret" not in existing_columns:
@@ -35,7 +34,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     bind = op.get_bind()
-    inspector = Inspector.from_engine(bind)
+    inspector = sa.inspect(bind)
     existing_columns = [c["name"] for c in inspector.get_columns("users")]
 
     if "mfa_enabled" in existing_columns:
