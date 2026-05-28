@@ -3,7 +3,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $RepoRaw  = 'https://raw.githubusercontent.com/RettTechSolutions/ConvoyPlan/main'
-$StackUrl = "$RepoRaw/portainer-stack.yml"
+$StackUrl = "$RepoRaw/stack.yml"
 
 Write-Host ''
 Write-Host '╔══════════════════════════════════════════╗' -ForegroundColor Cyan

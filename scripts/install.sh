@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO_RAW="https://raw.githubusercontent.com/RettTechSolutions/ConvoyPlan/main"
-STACK_URL="$REPO_RAW/portainer-stack.yml"
+STACK_URL="$REPO_RAW/stack.yml"
 
 echo ""
 echo "╔══════════════════════════════════════════╗"

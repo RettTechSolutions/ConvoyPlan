@@ -24,7 +24,7 @@ Before tagging a release, verify:
 - [ ] `frontend/package.json` — `"version"` field matches (optional but recommended).
 - [ ] Any new environment variables are documented in `.env.example`.
 - [ ] Any new Alembic migrations are committed and tested with `alembic upgrade head`.
-- [ ] The `portainer-stack.yml` image tags are updated if you use fixed tags there.
+- [ ] The `stack.yml` image tags are updated if you use fixed tags there.
 
 ---
 

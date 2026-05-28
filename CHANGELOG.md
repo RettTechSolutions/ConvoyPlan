@@ -131,7 +131,7 @@ All notable changes to ConvoyPlan are documented here.
 - **Setup atomicity** – PostgreSQL advisory lock prevents concurrent setup requests from creating duplicate superadmins.
 - **Three-tier RBAC** – superadmin / org-admin / user roles with consistent `_get_org_admin` helper used across all organisation endpoints.
 - **`system_settings` table** – migration `0008_settings` stores domain, TLS mode, and ACME email from the setup wizard.
-- **`portainer-stack.yml`** – ready-to-use Portainer stack with all services including Caddy and shared certificate volume.
+- **`stack.yml`** – production Compose file with all services including Caddy and shared certificate volume.
 - **`.env.example`** – complete reference for all production environment variables.
 
 ### Changed

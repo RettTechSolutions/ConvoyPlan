@@ -1,6 +1,6 @@
 #!/bin/bash
 # Image-based updater — no git repo needed.
-# Used by portainer-stack.yml deployments where images are pulled from GHCR.
+# Used by stack.yml deployments where images are pulled from GHCR.
 #
 # Required: Docker socket mounted at /var/run/docker.sock
 # Required: update_status volume at /update_status
@@ -102,7 +102,7 @@ if ! _resolve_compose_file; then
 fi
 
 # Ensure STACK_FILE_PATH is exported for docker compose variable interpolation
-# (needed so ${STACK_FILE_PATH} in portainer-stack.yml can be resolved)
+# (needed so ${STACK_FILE_PATH} in stack.yml can be resolved)
 if [ -z "${STACK_FILE_PATH:-}" ]; then
     export STACK_FILE_PATH="${STACK_FILE_PATH:-}"  # may still be empty for /dev/null mounts
 fi
@@ -132,8 +132,8 @@ write_status() {
 _update_stack_file() {
     [ -z "${STACK_FILE_PATH:-}" ] && return 0
 
-    local tmp=/tmp/portainer-stack-new.yml
-    if curl -sf --max-time 15 "${REPO_RAW}/portainer-stack.yml" -o "${tmp}" && [ -s "${tmp}" ]; then
+    local tmp=/tmp/stack-new.yml
+    if curl -sf --max-time 15 "${REPO_RAW}/stack.yml" -o "${tmp}" && [ -s "${tmp}" ]; then
         local self_id
         self_id=$(hostname)
         if docker cp "${self_id}:${tmp}" "${STACK_FILE_PATH}" 2>/dev/null; then
