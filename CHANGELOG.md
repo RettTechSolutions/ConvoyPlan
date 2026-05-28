@@ -8,6 +8,42 @@ All notable changes to ConvoyPlan are documented here.
 
 ---
 
+## [0.8.5] – 2026-05-28
+
+### Added
+
+- **Multi-Tenancy / Org-System** – vollständige Mandantenfähigkeit: jede Organisation erhält einen kurzen HiOrg-Code (4–8 Zeichen) als URL-Slug (`/[org-code]/`); Org-Guard-Layout schützt alle org-spezifischen Routen; org-spezifische Login-Seite mit eigenem Branding; `orgStore` mit persistentem Slug und org-bewusstem API-Client.
+- **Superadmin: Org anlegen** – Superadmins können direkt im Admin-Panel neue Organisationen erstellen und Benutzer Organisationen zuweisen; Org-Zuordnung im Benutzer-Bearbeiten-Modal.
+- **Org-Admin-Panel** – neuer Bereich `/[org-code]/admin/` mit Mitglieder-Tab (Rollen verwalten, Mitglieder einladen) und Export-Tab in der Hauptnavigation.
+- **MFA (TOTP)** – Zwei-Faktor-Authentifizierung per TOTP (z. B. Google Authenticator); Einrichtung und Verwaltung im Org-Admin-Panel; SSE-Reconnect mit exponentialem Backoff.
+- **SMTP-Service & Passwort per E-Mail** – integrierter SMTP-Dienst; Passwörter können direkt per E-Mail an Benutzer versandt werden; separate Schaltflächen „Passwort generieren" und „E-Mail senden" pro Benutzer im Admin-Panel.
+- **GitHub-Token im Superadmin-Panel** – `GITHUB_TOKEN` für authentifizierten Update-Fetch direkt in der Admin-UI konfigurierbar, kein Neustart erforderlich.
+- **Live-Update-Log-Terminal** – Echtzeit-Ausgabe des Updater-Prozesses im Browser via SSE; sofortiges Feedback nach Update-Trigger; SSE-Endpoint mit Caddy `flush_interval -1` für verlustfreies Streaming.
+- **GIT_SHA im Backend** – der aktuell installierte Commit-SHA wird beim Build eingebettet und in der Updater-Statusanzeige angezeigt.
+
+### Changed
+
+- Plan-Routen und Admin-Routen vollständig unter den Org-Scope verschoben (`/[org-code]/plan/…`, `/[org-code]/admin/`); alte Pfade `/plan` und `/admin` leiten automatisch um.
+- Startseite (`/`) ist jetzt öffentlich zugänglich; zeigt einen Org-Code-Hinweis für bestehende Benutzer.
+- Setup-Wizard Schritt „Erste Organisation" legt slug-basierte Org beim Erststart an.
+- Fahrzeug-Datenbankmodell direkt über `org_id`-Spalte an Org gebunden statt über Benutzer-Join (schnellere Queries, korrekte Isolation).
+- Org-Login-Seite und Org-Code-Startseite verwenden das jeweilige Org-Branding.
+
+### Fixed
+
+- **Updater – `STACK_FILE_PATH` nie in `.env` geschrieben** – der Updater konnte den Stack nicht neu starten, weil die Variable fehlte; wird jetzt beim Start via Docker-Labels exportiert und korrekt in die Umgebung übergeben.
+- **Updater – Self-Healing** – der Updater erkennt fehlgeschlagene Starts und fährt den Stack kontrolliert neu hoch; Installer unterstützt jetzt auch Update-Mode für bestehende Installs.
+- **install.ps1** – falsche Image-Namen und fehlende Updater-Umgebungsvariablen korrigiert; Updater-Image in Release-Workflow und CI-Build-Check aufgenommen.
+- **SSE-Streaming hinter Caddy** – `flush_interval -1` am Update-Log-Endpoint gesetzt; Terminal gibt innerhalb von 10 Sekunden nach Trigger erstes Feedback.
+- **Org-Isolation bei Fahrzeugen** – Cross-Org-Vehicle-Assignment durch Rollen-Enum-Validierung verhindert; Single-Query-Isolation wiederhergestellt.
+- **Superadmin-Panel** – `/admin` nach Multi-Tenancy-Merge wieder erreichbar; Login-Redirect-Logik korrigiert.
+- **SSR-Guards** – `orgStore` localStorage-Methoden mit SSR-Guards abgesichert.
+- Migration 0013 mit Guards gegen Teilausführung und korrigierter Revision-ID.
+- Tabellenlayout im Admin-Panel nach Spaltenänderungen korrigiert.
+- Doppelter Tagline auf der Login-Seite entfernt.
+
+---
+
 ## [0.5.3] – 2026-05-26
 
 ### Fixed
@@ -166,7 +202,8 @@ All notable changes to ConvoyPlan are documented here.
 - Capacitor configuration for Android/iOS native wrapper.
 - Docker Compose setup with GraphHopper OSM pre-download.
 
-[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.5.3...HEAD
+[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.8.5...HEAD
+[0.8.5]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.5.3...v0.8.5
 [0.5.3]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.5.0...v0.5.1
