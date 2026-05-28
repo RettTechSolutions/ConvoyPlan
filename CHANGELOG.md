@@ -6,6 +6,26 @@ All notable changes to ConvoyPlan are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Updater – Selbst-Neustart-Race-Condition behoben.** Der Updater rief intern `docker compose up -d updater` auf, um sich nach jedem Update neu zu erstellen — der orchestrierende Compose-Client wurde dabei beim eigenen Stopp gekillt, sodass der neue Container in `Created` hängen blieb (`<hex>_<project>-updater-1`). Stattdessen startet jetzt ein detachter Helper-Container (`docker:24-cli`) den Recreate, der den Tod des alten Updaters überlebt.
+- **Updater – Stack-Datei wird wieder zurückgeschrieben.** `_update_stack_file` nutzte `docker cp $self:/tmp/foo $HOST_PATH`, was im CLIENT-Dateisystem (= im Updater-Container) endete, wo der Host-Pfad nicht existiert; Schreibversuch verlief still im Sand. Schreibt jetzt direkt zum Bind-Mount `/stack/docker-compose.yml`, mit Sidecar-Container als Fallback. Der `:ro`-Flag auf dem Bind-Mount in `docker-compose.yml` wurde entfernt.
+- **Updater – pullt sich jetzt selbst.** Bisher wurden alle Service-Images außer dem Updater gepullt — neue Updater-Image-Versionen kamen so nie an. `do_update` pullt jetzt alle Services inkl. Updater; nur das Recreate des Updaters bleibt dem Helper überlassen. Damit verteilen sich zukünftige Updater-Bugfixes automatisch.
+
+### Added
+
+- **Host-Watchdog (systemd-Timer).** `scripts/install.sh` installiert einen `convoyplan-updater-watchdog.timer`, der alle 2 Minuten verwaiste Updater-Container aufräumt und einen fehlenden/abgestürzten Updater neu startet. Defense-in-Depth gegen zukünftige Self-Restart-Probleme. Wird auf Systemen ohne systemd übersprungen.
+
+### Migration
+
+Bestehende Installationen mit alter, kaputter Updater-Version können sich nicht selbst auf die fixe Version aktualisieren (der kaputte Code ist der Code, der das Update macht). Einmalig zur Recovery auf dem Host ausführen:
+
+```bash
+curl -fsSL https://convoyplan.de/install.sh | bash
+```
+
+Das ruft den Update-Modus auf: räumt verwaiste Updater-Container auf, zieht alle Images (inkl. Updater), recreatet den Stack mit der neuen Compose-Datei und installiert den systemd-Watchdog. Danach läuft alles automatisch.
+
 ---
 
 ## [0.8.5] – 2026-05-28

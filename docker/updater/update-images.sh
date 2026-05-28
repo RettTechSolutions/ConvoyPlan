@@ -187,14 +187,21 @@ _spawn_restart_helper() {
 do_update() {
     log "Starte Image-Update…"
 
-    # Discover services, excluding the updater itself (to avoid self-kill mid-update)
-    SERVICES=$(docker compose -p "${COMPOSE_PROJECT}" -f "${COMPOSE_FILE}" \
-        config --services 2>/dev/null | grep -v '^updater$' | tr '\n' ' ' \
-        || echo "backend frontend caddy graphhopper db")
+    # Pull ALL services including the updater itself, so future updater-image
+    # fixes are picked up automatically. (A pull only downloads the image into
+    # the local cache — it does NOT touch any running container, so pulling the
+    # updater here is safe and won't kill us mid-update.)
+    local all_services non_updater
+    all_services=$(docker compose -p "${COMPOSE_PROJECT}" -f "${COMPOSE_FILE}" \
+        config --services 2>/dev/null | tr '\n' ' ' \
+        || echo "backend frontend caddy graphhopper db updater")
+    # The recreate step still excludes the updater — that's done by the
+    # detached restart helper at the end, to avoid self-kill mid-orchestration.
+    non_updater=$(echo "${all_services}" | tr ' ' '\n' | grep -v '^updater$' | tr '\n' ' ')
 
-    log "Pulling: ${SERVICES}"
-    if docker compose -p "${COMPOSE_PROJECT}" -f "${COMPOSE_FILE}" pull ${SERVICES} 2>&1 | tee -a "${LOG_FILE}" && \
-       docker compose -p "${COMPOSE_PROJECT}" -f "${COMPOSE_FILE}" up -d --no-build ${SERVICES} 2>&1 | tee -a "${LOG_FILE}"; then
+    log "Pulling: ${all_services}"
+    if docker compose -p "${COMPOSE_PROJECT}" -f "${COMPOSE_FILE}" pull ${all_services} 2>&1 | tee -a "${LOG_FILE}" && \
+       docker compose -p "${COMPOSE_PROJECT}" -f "${COMPOSE_FILE}" up -d --no-build ${non_updater} 2>&1 | tee -a "${LOG_FILE}"; then
         sleep 5
         local new_sha
         new_sha=$(get_sha_from_backend)
