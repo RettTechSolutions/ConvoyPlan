@@ -3,6 +3,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, mock_open
 from httpx import AsyncClient, ASGITransport
 from app.main import app
+from app.database import get_db
 
 
 def _superadmin():
@@ -14,6 +15,21 @@ def _superadmin():
 def _make_app_with_superadmin():
     from app.api.deps import require_superadmin
     app.dependency_overrides[require_superadmin] = lambda: _superadmin()
+    return app
+
+
+def _make_app_with_superadmin_and_db():
+    from app.api.deps import require_superadmin
+    app.dependency_overrides[require_superadmin] = lambda: _superadmin()
+    db = AsyncMock()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = None
+    db.execute.return_value = result
+
+    async def _db_override():
+        yield db
+
+    app.dependency_overrides[get_db] = _db_override
     return app
 
 
@@ -31,7 +47,7 @@ def _mock_github_client(sha: str):
 
 @pytest.mark.asyncio
 async def test_get_update_status_no_status_file():
-    _make_app_with_superadmin()
+    _make_app_with_superadmin_and_db()
     with patch("builtins.open", side_effect=FileNotFoundError), \
          patch("app.api.routes.admin.httpx.AsyncClient", return_value=_mock_github_client("abc1234567890")):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -47,7 +63,7 @@ async def test_get_update_status_no_status_file():
 
 @pytest.mark.asyncio
 async def test_get_update_status_update_available():
-    _make_app_with_superadmin()
+    _make_app_with_superadmin_and_db()
     status_content = json.dumps({"deployed_sha": "aaa1111", "deployed_at": "2026-05-18T10:00:00Z"})
     with patch("builtins.open", mock_open(read_data=status_content)), \
          patch("app.api.routes.admin.httpx.AsyncClient", return_value=_mock_github_client("bbb2222abcdef")):
@@ -63,7 +79,7 @@ async def test_get_update_status_update_available():
 
 @pytest.mark.asyncio
 async def test_get_update_status_github_unreachable():
-    _make_app_with_superadmin()
+    _make_app_with_superadmin_and_db()
     import httpx as _httpx
     inner = MagicMock()
     inner.get = AsyncMock(side_effect=_httpx.ConnectError("unreachable"))

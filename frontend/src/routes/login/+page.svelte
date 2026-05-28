@@ -1,7 +1,9 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { auth } from '$lib/stores/auth';
 	import AppLogo from '$lib/components/AppLogo.svelte';
+	import { versionStore } from '$lib/stores/version.svelte';
 
 	let email = $state('');
 	let password = $state('');
@@ -31,6 +33,10 @@
 			loading = false;
 		}
 	}
+
+	onMount(() => {
+		versionStore.load();
+	});
 
 	async function handleMfa(e: Event) {
 		e.preventDefault();
@@ -100,6 +106,13 @@
 		{/if}
 
 		<p class="org-hint">Organisationsmitglied? <a href="/">Hier Org-Code eingeben →</a></p>
+		<p class="build-info">
+			{#if versionStore.data.sha}
+				v{__APP_VERSION__} · {versionStore.data.sha}
+			{:else}
+				v{__APP_VERSION__}
+			{/if}
+		</p>
 	</div>
 </div>
 
@@ -192,4 +205,11 @@
 		text-decoration: underline;
 	}
 	.org-hint a:hover { color: var(--text-1); }
+	.build-info {
+		font-size: 0.6rem;
+		color: var(--text-muted);
+		text-align: center;
+		margin-top: 1rem;
+		opacity: 0.6;
+	}
 </style>

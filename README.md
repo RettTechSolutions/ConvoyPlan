@@ -55,7 +55,10 @@
 - 🌤️ **Wetter- und Overpass-Integration** für Wetterdaten, Sperrungen und Baustellen.
 - 📱 **PWA und Capacitor-Konfiguration** für installierbare Web-App und native App-Wrapper.
 - 🎨 **Branding-System** – eigenes Logo, Farben und App-Name über den Admin-Bereich konfigurierbar.
-- 🔄 **Auto-Updater** – Docker-Container pollt das Repository und deployt neue Commits automatisch.
+- 🏢 **Multi-Tenancy** – Organisationen erhalten einen kurzen Org-Code (4–8 Zeichen) als URL-Slug (`/[org-code]/`); org-spezifische Login-Seite mit eigenem Branding; vollständige Datenisolation pro Organisation.
+- 🔒 **MFA / TOTP** – Zwei-Faktor-Authentifizierung per TOTP (z. B. Google Authenticator) einrichtbar im Org-Admin-Panel.
+- 📧 **SMTP-Dienst** – Passwörter direkt per E-Mail an Benutzer versenden; konfigurierbar im Admin-Panel ohne Neustart.
+- 🔄 **Auto-Updater** – Docker-Container pollt das Repository und deployt neue Commits automatisch; Live-Update-Log per SSE im Browser.
 - 🔑 **Lizenzmodell mit Demo-Modus** – ohne gültigen Lizenzschlüssel läuft die App im Demo-Modus (Lesezugriffe uneingeschränkt, schreibende Operationen mit HTTP 402 gesperrt); Aktivierung direkt über Admin-UI.
 
 ---
@@ -82,7 +85,10 @@
 | Marschverbände | CRUD für Konvois und zugeordnete Fahrzeuge | ✅ |
 | Teilverbände | Sub-Convoys mit Parent-Konvoi | ✅ |
 | Mandanten | Organisationen mit Mitgliederverwaltung | ✅ |
+| Multi-Tenancy | Org-Code-Slug, org-spezifische Login-Seite, Branding und Datenisolation pro Org | ✅ |
 | Rollen | Admin, Planer, Fahrer und Beobachter | ✅ |
+| MFA / TOTP | Zwei-Faktor-Authentifizierung per TOTP im Org-Admin-Panel einrichtbar | ✅ |
+| SMTP-Dienst | Passwort-E-Mails direkt aus dem Admin-Panel versenden | ✅ |
 | Freigabelink | Öffentliche Routenansicht per Share-Token | ✅ |
 | Branding | Eigenes App-Logo, Farben und Name über Admin-UI konfigurierbar | ✅ |
 | Leitstellen | Leitstellen und Kanalwechselpunkte entlang der Route | ✅ |
@@ -109,6 +115,8 @@
 | Admin-Bereich | Benutzer-, Leitstellen- und Branding-Verwaltung | ✅ |
 | Auto-Updater | Git-Polling-Container aktualisiert die Instanz automatisch bei neuem Commit | ✅ |
 | Update-Status | Admin-UI zeigt Deploy-SHA und GitHub-Stand; manueller Trigger per Button | ✅ |
+| Live-Update-Log | Echtzeit-Ausgabe des Updater-Prozesses im Browser via SSE | ✅ |
+| GitHub-Token in UI | `GITHUB_TOKEN` für Update-Fetch direkt in der Admin-UI konfigurierbar, kein Neustart | ✅ |
 | Demo-Modus | Ohne Lizenzschlüssel: Lesezugriff uneingeschränkt, Schreibzugriff gesperrt (HTTP 402) | ✅ |
 | Lizenzaktivierung | Schlüsseleingabe und Instanz-UUID im Admin-Bereich „System"; Cache-Reset ohne Neustart | ✅ |
 
@@ -208,21 +216,24 @@ ConvoyPlan/
 │   │   ├── config.py         # Backend-Konfiguration über Umgebungsvariablen
 │   │   ├── database.py       # Async-Datenbankanbindung
 │   │   └── main.py           # FastAPI-App und Router-Registrierung
-│   ├── alembic/              # Datenbankmigrationen (0001–0009)
+│   ├── alembic/              # Datenbankmigrationen (0001–0013)
 │   ├── tests/                # pytest-Tests
 │   ├── Dockerfile
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/lib/api/          # API-Client
 │   ├── src/lib/components/   # Karte, Wetter, Lagedatenpanel
-│   ├── src/lib/stores/       # Auth-, Karten-, Konvoi-, Tracking-Stores
+│   ├── src/lib/stores/       # Auth-, Karten-, Konvoi-, Tracking-, Org-Stores
 │   ├── src/routes/
-│   │   ├── setup/            # Ersteinrichtungs-Wizard (3 Schritte)
-│   │   ├── login/            # Anmeldung
-│   │   ├── plan/             # Planungsansicht mit Karte
-│   │   ├── tracking/         # Live-Tracking-Ansicht
-│   │   ├── share/            # Öffentliche Routenansicht
-│   │   └── admin/            # Benutzerverwaltung, Leitstellen, Branding, System
+│   │   ├── setup/            # Ersteinrichtungs-Wizard (5 Schritte inkl. Org-Anlage)
+│   │   ├── login/            # Globale Anmeldung
+│   │   ├── [org-code]/       # Org-Scope (alle org-spezifischen Routen)
+│   │   │   ├── login/        # Org-spezifische Anmeldung mit eigenem Branding
+│   │   │   ├── plan/         # Planungsansicht mit Karte
+│   │   │   ├── tracking/     # Live-Tracking-Ansicht
+│   │   │   ├── share/        # Öffentliche Routenansicht
+│   │   │   └── admin/        # Org-Admin: Mitglieder, Leitstellen, Branding, System
+│   │   └── admin/            # Superadmin: Benutzer- und Org-Verwaltung
 │   ├── capacitor.config.ts
 │   ├── package.json
 │   └── vite.config.ts
@@ -243,7 +254,7 @@ ConvoyPlan/
 ├── RELEASING.md              # Anleitung zum Schneiden eines Releases
 ├── .env.example              # Alle Umgebungsvariablen mit Erklärungen
 ├── docker-compose.yml        # Lokales Entwicklungssetup
-└── portainer-stack.yml       # Produktivstack für Portainer
+└── stack.yml                 # Produktiv-Compose-Datei (wird vom Installer genutzt)
 ```
 
 ---
@@ -343,12 +354,13 @@ Die Anwendung ist anschließend erreichbar unter:
 
 ### 5. Setup-Wizard ausführen
 
-Beim ersten Start leitet die Anwendung automatisch auf `http://localhost:5173/setup` weiter. Der vierstufige Wizard führt durch:
+Beim ersten Start leitet die Anwendung automatisch auf `http://localhost:5173/setup` weiter. Der fünfstufige Wizard führt durch:
 
 1. **Superadmin-Account** — E-Mail-Adresse und Passwort festlegen.
-2. **Domain und SSL** — Serverdomain (FQDN) eingeben und TLS-Modus wählen: Let's Encrypt, eigenes Zertifikat (Datei-Upload) oder internes Zertifikat für lokale Nutzung.
-3. **Branding** (optional) — App-Name, Farben und Logo an die eigene Organisation anpassen. Dieser Schritt kann übersprungen werden und ist auch später im Admin-Bereich erreichbar.
-4. **Abschluss** — Caddy wird live neu geladen; danach direkt zur Anmeldung.
+2. **Erste Organisation** — Org-Name und Org-Code (URL-Slug, 4–8 Zeichen) anlegen; dieser Slug wird Teil aller org-spezifischen URLs (`/[org-code]/plan/`, `/[org-code]/admin/`).
+3. **Domain und SSL** — Serverdomain (FQDN) eingeben und TLS-Modus wählen: Let's Encrypt, eigenes Zertifikat (Datei-Upload) oder internes Zertifikat für lokale Nutzung.
+4. **Branding** (optional) — App-Name, Farben und Logo an die eigene Organisation anpassen. Dieser Schritt kann übersprungen werden und ist auch später im Admin-Bereich erreichbar.
+5. **Abschluss** — Caddy wird live neu geladen; danach direkt zur Anmeldung unter `https://<DOMAIN>/[org-code]/login`.
 
 > Für lokale Entwicklung ohne Caddy kann der Wizard mit `localhost` als Domain und `internal` als TLS-Modus ausgeführt werden.
 
@@ -442,6 +454,8 @@ Die vollständige OpenAPI-Dokumentation wird automatisch von FastAPI bereitgeste
 |---|---|---|
 | `GET` | `/api/admin/users` | Alle Benutzer auflisten |
 | `PATCH` | `/api/admin/users/{user_id}` | Benutzer aktivieren/deaktivieren, Rolle setzen |
+| `GET/POST` | `/api/admin/organizations` | Organisationen auflisten oder anlegen |
+| `PATCH` | `/api/admin/users/{user_id}/organization` | Benutzer einer Organisation zuweisen |
 
 **Lizenz**
 
@@ -469,11 +483,15 @@ Die vollständige OpenAPI-Dokumentation wird automatisch von FastAPI bereitgeste
 | `GET` | `/api/convoys/{convoy_id}/fuel-stations` | Tankstellen entlang der Route |
 | `GET` | `/api/convoys/share/{token}` | Öffentliche Routenansicht |
 
-**Organisationen**
+**Organisationen und MFA**
 
 | Methode | Endpunkt | Beschreibung |
 |---|---|---|
 | `GET/POST/DELETE` | `/api/organizations/` | Organisationen und Mitglieder verwalten |
+| `POST` | `/api/auth/mfa/setup` | TOTP-Einrichtung starten (QR-Code generieren) |
+| `POST` | `/api/auth/mfa/confirm` | TOTP-Einrichtung bestätigen und aktivieren |
+| `POST` | `/api/auth/mfa/verify` | TOTP-Code bei Login verifizieren |
+| `DELETE` | `/api/auth/mfa` | MFA deaktivieren |
 
 **Live-Tracking**
 
@@ -502,6 +520,7 @@ User
 └── UserOrganizations
 
 Organization
+├── org_code                # Kurzer URL-Slug (4–8 Zeichen), eindeutig
 └── UserOrganizations
 
 Convoy
@@ -520,7 +539,7 @@ Leitstelle
 Wichtige fachliche Objekte:
 
 - **User**: Account für Login und Besitz von Fahrzeugen/Konvois.
-- **Organization**: Mandant für organisationsbezogene Planung und Rollen.
+- **Organization**: Mandant für organisationsbezogene Planung und Rollen; mit kurzem `org_code`-Slug als URL-Bezeichner.
 - **Vehicle**: Fahrzeug mit Funkrufname, Kennzeichen, Abmessungen, Gewicht und Kraftstoffdaten.
 - **Convoy**: Marschverband mit Start-/Zielpunkt, Marschbefehl-Feldern, Share-Token und Status.
 - **Waypoint**: Wegpunkt, Stopp, Kontrollpunkt oder technischer Halt mit Zeitplanung.
@@ -599,9 +618,9 @@ docker compose -f docker-compose.yml up -d --build
 open https://<DOMAIN>/setup
 ```
 
-### Portainer
+### Produktiv-Deployment
 
-Eine fertige Stack-Konfiguration liegt in `portainer-stack.yml`. Sie verwendet vorgefertigte Images aus der GitHub Container Registry (GHCR) statt lokaler Builds — kein `git clone` auf dem Server nötig.
+Die Produktiv-Compose-Datei liegt in `stack.yml`. Sie verwendet vorgefertigte Images aus der GitHub Container Registry (GHCR) statt lokaler Builds — kein `git clone` auf dem Server nötig. Der Installer (`install.sh`) lädt sie automatisch herunter.
 
 Pflichtfelder beim Anlegen des Stacks in Portainer:
 
@@ -672,6 +691,9 @@ Für iOS wird eine macOS-Umgebung mit Xcode benötigt.
 - ~~Import vorhandener GPX-/GeoJSON-Routen~~ ✅ (seit 0.5.0)
 - ~~CI-Pipeline für Backend-Tests, Frontend-Checks und Docker-Builds~~ ✅ (seit 0.4.0)
 - ~~Demo-Modus und Lizenzaktivierung über Admin-UI~~ ✅ (seit 0.5.1)
+- ~~Multi-Tenancy mit Org-Code-Slug und org-spezifischem Branding~~ ✅ (seit 0.8.5)
+- ~~MFA / TOTP-Zwei-Faktor-Authentifizierung~~ ✅ (seit 0.8.5)
+- ~~SMTP-Dienst für Passwort-E-Mails~~ ✅ (seit 0.8.5)
 - Benachrichtigungen bei Verzögerungen oder Abweichungen von der Route.
 - Audit-Log für Änderungen an Marschbefehlen und Konvois.
 - Offline-First-Synchronisation für mobile Nutzung.

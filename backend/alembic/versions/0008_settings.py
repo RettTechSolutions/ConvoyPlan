@@ -6,7 +6,6 @@ Create Date: 2026-05-07
 """
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.engine.reflection import Inspector
 
 revision = "0008"
 down_revision = "0007"
@@ -16,7 +15,7 @@ depends_on = None
 
 def upgrade() -> None:
     bind = op.get_bind()
-    inspector = Inspector.from_engine(bind)
+    inspector = sa.inspect(bind)
     if "system_settings" not in inspector.get_table_names():
         op.create_table(
             "system_settings",

@@ -1,5 +1,5 @@
 FROM docker:24-cli
-RUN apk add --no-cache git bash
+RUN apk add --no-cache git bash curl
 COPY update.sh /update.sh
 COPY update-images.sh /update-images.sh
 RUN chmod +x /update.sh /update-images.sh

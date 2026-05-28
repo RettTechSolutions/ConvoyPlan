@@ -13,8 +13,10 @@ from app.api.routes import (
 )
 from app.api.routes import admin as admin_router
 from app.api.routes import branding as branding_router
+from app.api.routes import email_template as email_template_router
 from app.api.routes import license as license_router
 from app.api.routes import setup as setup_router
+from app.api.routes import version as version_router
 from app.middleware.license_guard import LicenseGuardMiddleware
 
 logger = logging.getLogger(__name__)
@@ -54,7 +56,9 @@ app.include_router(admin_router.router, prefix="/api")
 app.include_router(setup_router.router, prefix="/api")
 app.include_router(leitstellen.router, prefix="/api")
 app.include_router(branding_router.router, prefix="/api")
+app.include_router(email_template_router.router, prefix="/api")
 app.include_router(license_router.router, prefix="/api")
+app.include_router(version_router.router, prefix="/api")
 
 _uploads_dir = Path("/uploads")
 try:
