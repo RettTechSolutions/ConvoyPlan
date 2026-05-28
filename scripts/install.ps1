@@ -127,10 +127,13 @@ HTTPS_PORT=443
 OSM_DOWNLOAD_URL=$OsmUrl
 OSM_FILENAME=$OsmFile
 JAVA_OPTS="-Xmx2g -Xms512m -XX:+UseG1GC"
-BACKEND_IMAGE=ghcr.io/retttechsolutions/convoyplan-backend:latest
-FRONTEND_IMAGE=ghcr.io/retttechsolutions/convoyplan-frontend:latest
-GRAPHHOPPER_IMAGE=ghcr.io/retttechsolutions/convoyplan-graphhopper:latest
+BACKEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/backend:latest
+FRONTEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/frontend:latest
+GRAPHHOPPER_IMAGE=ghcr.io/retttechsolutions/convoyplan/graphhopper:latest
+UPDATER_IMAGE=ghcr.io/retttechsolutions/convoyplan/updater:latest
 GITHUB_REPO=RettTechSolutions/ConvoyPlan
+STACK_FILE_PATH=$InstallDir\docker-compose.yml
+COMPOSE_PROJECT_NAME=convoyplan
 "@
 if ($LicenseKey)  { $EnvContent += "`nLICENSE_KEY=$LicenseKey" }
 if ($GithubToken) { $EnvContent += "`nGITHUB_TOKEN=$GithubToken" }
