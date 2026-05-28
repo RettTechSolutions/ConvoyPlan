@@ -1,8 +1,20 @@
+import { execFileSync } from 'child_process';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { SvelteKitPWA } from '@vite-pwa/sveltekit';
 import { defineConfig } from 'vite';
 
+const appVersion = (() => {
+	try {
+		return execFileSync('git', ['describe', '--tags', '--always', '--dirty'], { encoding: 'utf8' }).trim();
+	} catch {
+		return 'dev';
+	}
+})();
+
 export default defineConfig({
+	define: {
+		__APP_VERSION__: JSON.stringify(appVersion),
+	},
 	plugins: [
 		sveltekit(),
 		SvelteKitPWA({
