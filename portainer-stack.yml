@@ -28,6 +28,7 @@ services:
       LICENSE_KEY: ${LICENSE_KEY:-}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GITHUB_REPO: ${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}
+      APP_BASE_URL: https://${DOMAIN:-localhost}
     volumes:
       - cert_uploads:/certs
       - logo_uploads:/uploads
@@ -107,6 +108,7 @@ services:
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GITHUB_REPO: ${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}
       DOMAIN: ${DOMAIN:-localhost}
+      APP_BASE_URL: https://${DOMAIN:-localhost}
       ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
       CADDY_TLS_CERT: ${CADDY_TLS_CERT:-}
       CADDY_TLS_KEY: ${CADDY_TLS_KEY:-}
