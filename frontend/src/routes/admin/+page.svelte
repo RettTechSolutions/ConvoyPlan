@@ -18,6 +18,8 @@
     let error = $state('');
     let showCreateForm = $state(false);
     let newUser = $state({ email: '', password: '', is_superadmin: false });
+    let createPwVisible = $state(false);
+    let createAndEmailWorking = $state(false);
 
     onMount(async () => {
         if (!$auth.is_superadmin) { goto('/'); return; }
@@ -109,14 +111,38 @@
         finally { loading = false; }
     }
 
+    function generatePasswordForCreate() {
+        const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%&*';
+        const randomValues = crypto.getRandomValues(new Uint8Array(16));
+        newUser.password = Array.from(randomValues, v => charset[v % charset.length]).join('');
+        createPwVisible = true;
+    }
+
     async function createUser() {
         try {
             await adminApi.createUser(newUser);
             newUser = { email: '', password: '', is_superadmin: false };
+            createPwVisible = false;
             showCreateForm = false;
             await loadUsers();
         } catch (e: unknown) {
             error = e instanceof Error ? e.message : 'Fehler beim Erstellen';
+        }
+    }
+
+    async function createAndEmailUser() {
+        createAndEmailWorking = true;
+        try {
+            const created = await adminApi.createUser(newUser);
+            await adminApi.sendUserPassword(created.id);
+            newUser = { email: '', password: '', is_superadmin: false };
+            createPwVisible = false;
+            showCreateForm = false;
+            await loadUsers();
+        } catch (e: unknown) {
+            error = e instanceof Error ? e.message : 'Fehler beim Erstellen oder E-Mail-Versand';
+        } finally {
+            createAndEmailWorking = false;
         }
     }
 
@@ -888,12 +914,35 @@
             {#if showCreateForm}
                 <form class="create-form" onsubmit={(e) => { e.preventDefault(); createUser(); }}>
                     <input placeholder="E-Mail *" type="email" bind:value={newUser.email} required />
-                    <input placeholder="Passwort *" type="password" bind:value={newUser.password} required />
+                    <div class="pw-input-row">
+                        <input
+                            placeholder="Passwort *"
+                            type={createPwVisible ? 'text' : 'password'}
+                            bind:value={newUser.password}
+                            required
+                            class="pw-field"
+                        />
+                        <button type="button" class="btn-tiny" onclick={generatePasswordForCreate} title="Sicheres Passwort generieren">🔑</button>
+                        {#if newUser.password && createPwVisible}
+                            <button type="button" class="btn-tiny" onclick={() => navigator.clipboard.writeText(newUser.password)} title="Kopieren">📋</button>
+                        {/if}
+                    </div>
                     <label class="checkbox-label">
                         <input type="checkbox" bind:checked={newUser.is_superadmin} />
                         Superadmin
                     </label>
-                    <button type="submit">Anlegen</button>
+                    <div class="create-actions">
+                        <button type="submit">Anlegen</button>
+                        <button
+                            type="button"
+                            class="btn-invite"
+                            onclick={createAndEmailUser}
+                            disabled={createAndEmailWorking || !smtpConfig?.configured}
+                            title={smtpConfig?.configured ? 'Anlegen & Zugangsdaten per E-Mail senden' : 'SMTP zuerst unter System → E-Mail konfigurieren'}
+                        >
+                            {createAndEmailWorking ? '…' : 'Anlegen & ✉ Einladen'}
+                        </button>
+                    </div>
                 </form>
             {/if}
 
@@ -1808,7 +1857,13 @@
     .create-form { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1rem; padding: .75rem; background: var(--surface-2); border-radius: 6px; border: 1px solid var(--border); }
     .create-form input { padding: .5rem .75rem; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-1); color: var(--text-1); font-size: var(--text-sm); }
     .create-form input:focus { outline: none; border-color: var(--color-primary); }
-    .create-form button { align-self: flex-start; padding: .5rem 1rem; background: #6B7F4D; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: var(--text-sm); }
+    .create-form button[type="submit"] { align-self: flex-start; padding: .5rem 1rem; background: #6B7F4D; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: var(--text-sm); }
+    .pw-input-row { display: flex; align-items: center; gap: .3rem; }
+    .pw-input-row .pw-field { flex: 1; }
+    .create-actions { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+    .btn-invite { padding: .5rem 1rem; background: #3d6080; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: var(--text-sm); }
+    .btn-invite:hover:not(:disabled) { background: #4d77a0; }
+    .btn-invite:disabled { opacity: .45; cursor: not-allowed; }
     .checkbox-label { display: flex; align-items: center; gap: .4rem; font-size: var(--text-sm); color: var(--text-2); cursor: pointer; }
     .user-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
     .user-table th { text-align: left; padding: .5rem; color: var(--text-muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--border); }
