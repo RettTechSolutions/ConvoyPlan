@@ -9,6 +9,10 @@ Settings keys:
   smtp.from_email  — From address
   smtp.from_name   — From display name (default: ConvoyPlan)
   smtp.use_tls     — "true" = STARTTLS on port 587 (default), "ssl" = SSL on port 465, "false" = plaintext
+
+Template keys (stored in system_settings, editable by superadmin):
+  email.template.subject   — subject line template
+  email.template.html      — HTML body template
 """
 
 from __future__ import annotations
@@ -22,6 +26,81 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.settings import SystemSetting
+
+
+# ── Default email template ─────────────────────────────────────────────────────
+
+DEFAULT_EMAIL_TEMPLATE_SUBJECT = "Deine Zugangsdaten für {app_name}"
+
+DEFAULT_EMAIL_TEMPLATE_HTML = """<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+</head>
+<body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#f4f5f7;padding:40px 16px;">
+    <tr><td align="center">
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:520px;">
+
+        <!-- Header mit Logo -->
+        <tr>
+          <td style="background:{color_primary};border-radius:10px 10px 0 0;padding:28px 40px;text-align:center;">
+            {logo_block}
+          </td>
+        </tr>
+
+        <!-- Body -->
+        <tr>
+          <td style="background:#ffffff;padding:36px 40px;">
+            <p style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1a1a2e;">&#128272; Deine Zugangsdaten</p>
+            <p style="margin:0 0 20px;font-size:15px;color:#444;line-height:1.6;">
+              Hallo{recipient_name_greeting},<br/>
+              dein Konto f&#252;r <strong>{app_name}</strong> wurde eingerichtet (oder dein Passwort wurde zur&#252;ckgesetzt).
+            </p>
+
+            <!-- Credentials box -->
+            <table role="presentation" cellpadding="0" cellspacing="0" width="100%"
+                   style="background:#f8f9fa;border:1px solid #e0e0e8;border-radius:8px;margin-bottom:28px;">
+              <tr><td style="padding:20px 24px;">
+                <p style="margin:0 0 4px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#888;">&#128231; E-Mail</p>
+                <p style="margin:0 0 16px;font-size:15px;color:#1a1a2e;">{email}</p>
+                <p style="margin:0 0 4px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#888;">&#128273; Passwort</p>
+                <code style="font-size:20px;font-weight:700;color:{color_primary};letter-spacing:.06em;font-family:'Menlo','Consolas','Monaco',monospace;">{password}</code>
+              </td></tr>
+            </table>
+
+            <p style="margin:0 0 28px;font-size:14px;color:#666;line-height:1.5;">
+              &#9888;&#65039; Bitte &#228;ndere dein Passwort nach dem ersten Login. Bewahre deine Zugangsdaten sicher auf.
+            </p>
+
+            <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+              <tr><td align="center">
+                <a href="{login_url}"
+                   style="display:inline-block;background:{color_primary};color:#ffffff;text-decoration:none;
+                          font-size:15px;font-weight:600;padding:13px 36px;border-radius:7px;">
+                  &#128640; Jetzt anmelden &#8594;
+                </a>
+              </td></tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="background:#f0f1f3;border-radius:0 0 10px 10px;padding:20px 40px;text-align:center;">
+            <p style="margin:0;font-size:12px;color:#999;line-height:1.6;">
+              Diese E-Mail wurde automatisch von {app_name} versandt.<br/>
+              Falls du diese E-Mail nicht erwartet hast, kannst du sie ignorieren.
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>"""
 
 
 # ── SMTP config helper ────────────────────────────────────────────────────────
@@ -51,7 +130,92 @@ async def save_smtp_settings(db: AsyncSession, settings: dict[str, str]) -> None
     await db.commit()
 
 
-# ── HTML email template ───────────────────────────────────────────────────────
+# ── Branding helper ────────────────────────────────────────────────────────────
+
+async def _get_branding_settings(db: AsyncSession) -> dict[str, str]:
+    result = await db.execute(
+        select(SystemSetting).where(SystemSetting.key.like("branding.%"))
+    )
+    rows = result.scalars().all()
+    defaults = {
+        "branding.app_name": "ConvoyPlan",
+        "branding.logo_main": "",
+        "branding.color_primary": "#E23D28",
+        "branding.color_primary_hover": "#C23020",
+    }
+    stored = {r.key: r.value for r in rows}
+    return {**defaults, **stored}
+
+
+def _build_logo_block(logo_main: str, app_name: str, base_url: str = "") -> str:
+    """Return the logo HTML block for email header."""
+    if logo_main:
+        return (
+            f'<img src="{base_url}/uploads/logos/{logo_main}" '
+            f'height="50" alt="{app_name}" style="display:block;margin:0 auto;"/>'
+        )
+    return (
+        f'<span style="font-size:26px;font-weight:700;color:#ffffff;">'
+        f"{app_name}</span>"
+    )
+
+
+# ── Template rendering ─────────────────────────────────────────────────────────
+
+async def _render_password_email_async(
+    db: AsyncSession,
+    recipient_name: str,
+    email: str,
+    password: str,
+    login_url: str,
+    base_url: str = "",
+) -> tuple[str, str]:
+    """Render the password email from DB template or default. Returns (subject, html_body)."""
+    # Load branding settings
+    branding = await _get_branding_settings(db)
+    app_name = branding.get("branding.app_name", "ConvoyPlan")
+    color_primary = branding.get("branding.color_primary", "#E23D28")
+    color_primary_hover = branding.get("branding.color_primary_hover", "#C23020")
+    logo_main = branding.get("branding.logo_main", "")
+
+    # Load custom template from DB (if set)
+    result = await db.execute(
+        select(SystemSetting).where(
+            SystemSetting.key.in_(["email.template.subject", "email.template.html"])
+        )
+    )
+    rows = {r.key: r.value for r in result.scalars().all()}
+    subject_tpl = rows.get("email.template.subject") or DEFAULT_EMAIL_TEMPLATE_SUBJECT
+    html_tpl = rows.get("email.template.html") or DEFAULT_EMAIL_TEMPLATE_HTML
+
+    # Build computed fragments
+    logo_block = _build_logo_block(logo_main, app_name, base_url)
+    recipient_name_greeting = f" {recipient_name}" if recipient_name else ""
+
+    variables = {
+        "recipient_name": recipient_name,
+        "recipient_name_greeting": recipient_name_greeting,
+        "email": email,
+        "password": password,
+        "login_url": login_url,
+        "app_name": app_name,
+        "logo_block": logo_block,
+        "color_primary": color_primary,
+        "color_primary_hover": color_primary_hover,
+    }
+
+    try:
+        subject = subject_tpl.format_map(variables)
+        html_body = html_tpl.format_map(variables)
+    except (KeyError, ValueError):
+        # Fall back to default template if custom template has rendering issues
+        subject = DEFAULT_EMAIL_TEMPLATE_SUBJECT.format_map(variables)
+        html_body = DEFAULT_EMAIL_TEMPLATE_HTML.format_map(variables)
+
+    return subject, html_body
+
+
+# ── Legacy sync helper (kept for backwards compat) ─────────────────────────────
 
 def _render_password_email(
     recipient_name: str,
@@ -60,98 +224,25 @@ def _render_password_email(
     login_url: str,
     app_name: str = "ConvoyPlan",
 ) -> tuple[str, str]:
-    """Returns (subject, html_body)."""
-    subject = f"Deine Zugangsdaten für {app_name}"
-    html = f"""<!DOCTYPE html>
-<html lang="de">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{subject}</title>
-</head>
-<body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#f4f5f7;padding:40px 16px;">
-    <tr>
-      <td align="center">
-        <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:520px;">
+    """Synchronous fallback renderer using the default template.
 
-          <!-- Header -->
-          <tr>
-            <td style="background:#E23D28;border-radius:10px 10px 0 0;padding:32px 40px 28px;text-align:center;">
-              <span style="font-size:26px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;">{app_name}</span>
-            </td>
-          </tr>
-
-          <!-- Body -->
-          <tr>
-            <td style="background:#ffffff;padding:36px 40px;">
-              <p style="margin:0 0 20px;font-size:16px;color:#1a1a2e;line-height:1.5;">
-                Hallo{(' ' + recipient_name) if recipient_name else ''},
-              </p>
-              <p style="margin:0 0 24px;font-size:15px;color:#444;line-height:1.6;">
-                dein Konto für <strong>{app_name}</strong> wurde eingerichtet (oder dein Passwort wurde zurückgesetzt). Hier sind deine Zugangsdaten:
-              </p>
-
-              <!-- Credentials box -->
-              <table role="presentation" cellpadding="0" cellspacing="0" width="100%"
-                     style="background:#f8f9fa;border:1px solid #e0e0e8;border-radius:8px;margin-bottom:28px;">
-                <tr>
-                  <td style="padding:20px 24px;">
-                    <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
-                      <tr>
-                        <td style="padding-bottom:12px;">
-                          <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#888;">E-Mail</span><br/>
-                          <span style="font-size:15px;color:#1a1a2e;">{email}</span>
-                        </td>
-                      </tr>
-                      <tr>
-                        <td>
-                          <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#888;">Passwort</span><br/>
-                          <code style="font-size:18px;font-weight:700;color:#E23D28;letter-spacing:.06em;font-family:'Menlo','Consolas','Monaco',monospace;">{password}</code>
-                        </td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-              </table>
-
-              <p style="margin:0 0 28px;font-size:14px;color:#666;line-height:1.5;">
-                Bitte ändere dein Passwort nach dem ersten Login. Bewahre deine Zugangsdaten sicher auf.
-              </p>
-
-              <!-- CTA button -->
-              <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
-                <tr>
-                  <td align="center">
-                    <a href="{login_url}"
-                       style="display:inline-block;background:#E23D28;color:#ffffff;text-decoration:none;
-                              font-size:15px;font-weight:600;padding:13px 36px;border-radius:7px;
-                              letter-spacing:.01em;">
-                      Jetzt anmelden →
-                    </a>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- Footer -->
-          <tr>
-            <td style="background:#f0f1f3;border-radius:0 0 10px 10px;padding:20px 40px;text-align:center;">
-              <p style="margin:0;font-size:12px;color:#999;line-height:1.6;">
-                Diese E-Mail wurde automatisch von {app_name} versandt.<br/>
-                Falls du diese E-Mail nicht erwartet hast, kannst du sie ignorieren.
-              </p>
-            </td>
-          </tr>
-
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>"""
-    return subject, html
+    Prefer _render_password_email_async when a DB session is available.
+    """
+    subject = DEFAULT_EMAIL_TEMPLATE_SUBJECT.format(app_name=app_name)
+    logo_block = _build_logo_block("", app_name)
+    recipient_name_greeting = f" {recipient_name}" if recipient_name else ""
+    html_body = DEFAULT_EMAIL_TEMPLATE_HTML.format(
+        recipient_name=recipient_name,
+        recipient_name_greeting=recipient_name_greeting,
+        email=email,
+        password=password,
+        login_url=login_url,
+        app_name=app_name,
+        logo_block=logo_block,
+        color_primary="#E23D28",
+        color_primary_hover="#C23020",
+    )
+    return subject, html_body
 
 
 # ── Send helpers ──────────────────────────────────────────────────────────────
@@ -178,12 +269,12 @@ async def send_password_email(
     from_name = cfg.get("smtp.from_name", app_name).strip()
     use_tls = cfg.get("smtp.use_tls", "starttls").strip().lower()
 
-    subject, html_body = _render_password_email(
+    subject, html_body = await _render_password_email_async(
+        db=db,
         recipient_name=recipient_name,
         email=recipient_email,
         password=password,
         login_url=login_url,
-        app_name=app_name,
     )
 
     msg = MIMEMultipart("alternative")
