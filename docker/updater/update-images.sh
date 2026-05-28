@@ -16,6 +16,8 @@ TRIGGER_POLL=10           # check trigger file every 10s regardless of INTERVAL
 COMPOSE_PROJECT="${COMPOSE_PROJECT_NAME:-convoyplan}"
 COMPOSE_FILE="/stack/docker-compose.yml"
 
+REPO_RAW="https://raw.githubusercontent.com/RettTechSolutions/ConvoyPlan/main"
+
 LOG_FILE=/update_status/update.log
 log() {
     local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $*"
@@ -123,10 +125,32 @@ write_status() {
         "${sha}" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > /update_status/status.json
 }
 
+# ── Update the host compose file from the repo ───────────────────────────────
+# Uses docker cp to write from this container's /tmp back to the host path.
+# This ensures the stack definition stays current even without manual re-installs,
+# and that the next updater container starts with up-to-date env vars.
+_update_stack_file() {
+    [ -z "${STACK_FILE_PATH:-}" ] && return 0
+
+    local tmp=/tmp/portainer-stack-new.yml
+    if curl -sf --max-time 15 "${REPO_RAW}/portainer-stack.yml" -o "${tmp}" && [ -s "${tmp}" ]; then
+        local self_id
+        self_id=$(hostname)
+        if docker cp "${self_id}:${tmp}" "${STACK_FILE_PATH}" 2>/dev/null; then
+            log "Stack-Datei aktualisiert: ${STACK_FILE_PATH}"
+        else
+            log "WARNUNG: Stack-Datei konnte nicht auf den Host geschrieben werden (STACK_FILE_PATH=${STACK_FILE_PATH})"
+        fi
+    else
+        log "WARNUNG: Neue Stack-Datei konnte nicht heruntergeladen werden — übersprungen"
+    fi
+    rm -f "${tmp}"
+}
+
 do_update() {
     log "Starte Image-Update…"
 
-    # Discover services, excluding the updater itself (to avoid self-kill)
+    # Discover services, excluding the updater itself (to avoid self-kill mid-update)
     SERVICES=$(docker compose -p "${COMPOSE_PROJECT}" -f "${COMPOSE_FILE}" \
         config --services 2>/dev/null | grep -v '^updater$' | tr '\n' ' ' \
         || echo "backend frontend caddy graphhopper db")
@@ -139,6 +163,16 @@ do_update() {
         new_sha=$(get_sha_from_backend)
         write_status "${new_sha}"
         log "Update complete. SHA: ${new_sha:-unknown}"
+
+        # Update the host compose file so future runs use the latest stack definition
+        _update_stack_file
+
+        # Self-restart the updater so it picks up any new env vars or image from the
+        # updated compose file. docker compose up -d will start a new container and
+        # stop this one gracefully.
+        log "Starte Updater-Container neu (neue Konfiguration übernehmen)…"
+        docker compose -p "${COMPOSE_PROJECT}" -f "${COMPOSE_FILE}" up -d --no-build updater \
+            2>&1 | tee -a "${LOG_FILE}" || log "WARNUNG: Updater-Neustart fehlgeschlagen — läuft weiter"
     else
         log "Update failed — will retry on next trigger"
     fi
