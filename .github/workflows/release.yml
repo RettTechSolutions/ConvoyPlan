@@ -84,6 +84,8 @@ jobs:
           push: true
           tags: ${{ steps.meta-frontend.outputs.tags }}
           labels: ${{ steps.meta-frontend.outputs.labels }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
 
       - name: Build and push graphhopper
         uses: docker/build-push-action@v5
