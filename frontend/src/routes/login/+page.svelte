@@ -3,7 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { auth } from '$lib/stores/auth';
 	import AppLogo from '$lib/components/AppLogo.svelte';
-	import { versionStore } from '$lib/stores/version';
+	import { versionStore } from '$lib/stores/version.svelte';
 
 	let email = $state('');
 	let password = $state('');
