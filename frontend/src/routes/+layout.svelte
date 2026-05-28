@@ -5,7 +5,7 @@
 	import { auth } from '$lib/stores/auth';
 	import { brandingStore, applyBranding, type Branding } from '$lib/stores/branding';
 	import { themeStore } from '$lib/stores/theme';
-	import { versionStore } from '$lib/stores/version';
+	import { versionStore } from '$lib/stores/version.svelte';
 
 	let { children } = $props();
 
