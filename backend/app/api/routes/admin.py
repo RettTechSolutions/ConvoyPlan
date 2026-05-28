@@ -583,3 +583,23 @@ async def send_user_password(
         raise HTTPException(502, f"E-Mail konnte nicht gesendet werden: {e}")
 
     return {"status": "sent", "email": user.email}
+
+
+@router.post("/users/{user_id}/reset-password")
+async def reset_user_password(
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    """Generate a new password, update the user, and return the plaintext password
+    so the admin can communicate it manually (without sending an email)."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    new_password = _generate_password()
+    user.hashed_password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+    await db.commit()
+
+    return {"password": new_password, "email": user.email}

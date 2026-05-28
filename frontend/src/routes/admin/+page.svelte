@@ -525,9 +525,12 @@
         }
     }
 
-    // ── Send-password per user ────────────────────────────────────────────────
+    // ── Send-password / Reset-password per user ─────────────────────────────
     let sendingPasswordFor = $state<string | null>(null);
     let sendPasswordResult = $state<Record<string, 'ok' | 'error'>>({});
+    let resettingPasswordFor = $state<string | null>(null);
+    // Stores the generated plaintext password per userId for display
+    let generatedPasswords = $state<Record<string, string>>({});
 
     async function sendUserPassword(userId: string) {
         sendingPasswordFor = userId;
@@ -544,6 +547,23 @@
         } finally {
             sendingPasswordFor = null;
         }
+    }
+
+    async function resetUserPassword(userId: string) {
+        resettingPasswordFor = userId;
+        try {
+            const res = await adminApi.resetUserPassword(userId);
+            generatedPasswords = { ...generatedPasswords, [userId]: res.password };
+        } catch (e: unknown) {
+            alert('Fehler beim Zurücksetzen des Passworts.');
+        } finally {
+            resettingPasswordFor = null;
+        }
+    }
+
+    function clearGeneratedPassword(userId: string) {
+        const { [userId]: _, ...rest } = generatedPasswords;
+        generatedPasswords = rest;
     }
 
     // Polygon drawing state
@@ -919,16 +939,40 @@
                                         <button class="btn-small" onclick={() => openEditUser(user)} title="Bearbeiten">✎</button>
                                         <button
                                             class="btn-small"
+                                            onclick={() => resetUserPassword(user.id)}
+                                            disabled={resettingPasswordFor === user.id}
+                                            title="Neues Passwort generieren und anzeigen"
+                                        >
+                                            {resettingPasswordFor === user.id ? '…' : '🔑'}
+                                        </button>
+                                        <button
+                                            class="btn-small"
                                             class:success-btn={sendPasswordResult[user.id] === 'ok'}
                                             class:danger={sendPasswordResult[user.id] === 'error'}
                                             onclick={() => sendUserPassword(user.id)}
                                             disabled={sendingPasswordFor === user.id || !smtpConfig?.configured}
-                                            title={smtpConfig?.configured ? 'Passwort generieren & E-Mail senden' : 'SMTP zuerst konfigurieren'}
+                                            title={smtpConfig?.configured ? 'Neues Passwort generieren & per E-Mail senden' : 'SMTP zuerst unter Einstellungen konfigurieren'}
                                         >
                                             {sendingPasswordFor === user.id ? '…' : sendPasswordResult[user.id] === 'ok' ? '✓' : sendPasswordResult[user.id] === 'error' ? '✕' : '✉'}
                                         </button>
                                         <button class="btn-small danger" onclick={() => deleteUser(user)} title="Löschen">🗑</button>
                                     </div>
+                                    {#if generatedPasswords[user.id]}
+                                        <div class="generated-pw-box">
+                                            <span class="generated-pw-label">Neues Passwort:</span>
+                                            <code class="generated-pw">{generatedPasswords[user.id]}</code>
+                                            <button
+                                                class="btn-tiny"
+                                                onclick={() => navigator.clipboard.writeText(generatedPasswords[user.id])}
+                                                title="Kopieren"
+                                            >📋</button>
+                                            <button
+                                                class="btn-tiny"
+                                                onclick={() => clearGeneratedPassword(user.id)}
+                                                title="Schließen"
+                                            >✕</button>
+                                        </div>
+                                    {/if}
                                 </td>
                             </tr>
                         {/each}
@@ -1776,6 +1820,11 @@
     .toggle-btn.on { background: rgba(107,127,77,.3); border-color: #6B7F4D; color: #a8c070; }
     .actions-cell { white-space: nowrap; }
     .actions-cell > div { display: flex; gap: .3rem; }
+    .generated-pw-box { display: flex; align-items: center; gap: .3rem; margin-top: .3rem; padding: .3rem .4rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; flex-wrap: nowrap; }
+    .generated-pw-label { font-size: var(--text-xs); color: var(--text-muted); white-space: nowrap; }
+    .generated-pw { font-size: var(--text-xs); color: var(--text-1); user-select: all; letter-spacing: .03em; }
+    .btn-tiny { padding: .1rem .25rem; font-size: .65rem; border-radius: 3px; border: 1px solid var(--border); background: transparent; color: var(--text-2); cursor: pointer; line-height: 1; }
+    .btn-tiny:hover { background: var(--surface-1); }
     .hint { color: var(--text-muted); font-size: var(--text-sm); }
     code { background: var(--surface-2); padding: .1rem .3rem; border-radius: 3px; font-size: var(--text-xs); font-family: monospace; color: var(--text-1); }
 

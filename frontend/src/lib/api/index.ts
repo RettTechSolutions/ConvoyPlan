@@ -340,6 +340,7 @@ export const adminApi = {
     saveSmtpSettings: (data: SmtpConfig) => api.put<void>('/api/admin/settings/smtp', data),
     testSmtp: () => api.post<{ status: string }>('/api/admin/settings/smtp/test', {}),
     sendUserPassword: (userId: string) => api.post<{ status: string; email: string }>(`/api/admin/users/${userId}/send-password`, {}),
+    resetUserPassword: (userId: string) => api.post<{ password: string; email: string }>(`/api/admin/users/${userId}/reset-password`, {}),
 };
 
 export interface UpdateStatus {
