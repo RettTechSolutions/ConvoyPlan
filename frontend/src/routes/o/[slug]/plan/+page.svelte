@@ -1211,7 +1211,11 @@
 			{$themeStore === 'dark' ? '☀' : '☾'}
 			<span>{$themeStore === 'dark' ? 'Light' : 'Dark'}</span>
 		</button>
+<<<<<<< HEAD
 		<span class="app-version">{__APP_VERSION__}</span>
+=======
+		<span class="app-version">v{__APP_VERSION__}</span>
+>>>>>>> 718168bf402caeec90cb4885e8ded2f2db1119a2
 	</div>
 	</aside>
 

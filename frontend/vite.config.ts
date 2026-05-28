@@ -2,6 +2,9 @@ import { execFileSync } from 'child_process';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { SvelteKitPWA } from '@vite-pwa/sveltekit';
 import { defineConfig } from 'vite';
+import { readFileSync } from 'fs';
+
+const pkg = JSON.parse(readFileSync('package.json', 'utf-8'));
 
 const appVersion = (() => {
 	try {
@@ -13,7 +16,11 @@ const appVersion = (() => {
 
 export default defineConfig({
 	define: {
+<<<<<<< HEAD
 		__APP_VERSION__: JSON.stringify(appVersion),
+=======
+		__APP_VERSION__: JSON.stringify(pkg.version),
+>>>>>>> 718168bf402caeec90cb4885e8ded2f2db1119a2
 	},
 	plugins: [
 		sveltekit(),
