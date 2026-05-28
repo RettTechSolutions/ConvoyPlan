@@ -71,25 +71,89 @@ prompt_secret() {
 # Eingaben
 prompt "Installationsverzeichnis" "$HOME/convoyplan" INSTALL_DIR
 
-# Bestehende .env laden und als Vorauswahl anbieten
+# ── Bestehende Installation erkennen ─────────────────────────────────────────
 PREV_DOMAIN="" PREV_EMAIL="" PREV_DB_PASS="" PREV_JWT=""
 PREV_OSM_URL="" PREV_OSM_FILE="" PREV_JAVA_OPTS=""
-if [[ -f "$INSTALL_DIR/.env" ]]; then
+
+_ev() { grep -m1 "^${1}=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2- || true; }
+
+if [[ -f "$INSTALL_DIR/.env" ]] && \
+   [[ -n "$(_ev POSTGRES_PASSWORD)" ]] && \
+   [[ -n "$(_ev DOMAIN)" ]]; then
+
   echo ""
-  echo "Bestehende Konfiguration in '$INSTALL_DIR/.env' gefunden."
-  read -rp "Werte als Vorauswahl übernehmen? [J/n]: " _reuse </dev/tty || true
-  if [[ "${_reuse,,}" != "n" ]]; then
-    _ev() { grep "^${1}=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2-; }
-    PREV_DOMAIN=$(_ev DOMAIN)
-    PREV_EMAIL=$(_ev ACME_EMAIL)
-    PREV_DB_PASS=$(_ev POSTGRES_PASSWORD)
-    PREV_JWT=$(_ev JWT_SECRET)
-    PREV_OSM_URL=$(_ev OSM_DOWNLOAD_URL)
-    PREV_OSM_FILE=$(_ev OSM_FILENAME)
-    PREV_JAVA_OPTS=$(_ev JAVA_OPTS)
-    echo "✓ Bestehende Werte geladen."
+  echo "Bestehende ConvoyPlan-Installation in '$INSTALL_DIR' gefunden."
+  echo "  [J] Nur aktualisieren — Einstellungen beibehalten  (empfohlen)"
+  echo "  [n] Neu konfigurieren — Werte als Vorauswahl laden"
+  read -rp "Auswahl [J/n]: " _upd </dev/tty || true
+
+  if [[ "${_upd,,}" != "n" ]]; then
+    # ── UPDATE-MODUS: fehlende Keys ergänzen, Compose-Datei erneuern, neu starten ──
+    _patch_env() {
+      local key="$1" val="$2"
+      if ! grep -q "^${key}=" "$INSTALL_DIR/.env" 2>/dev/null; then
+        echo "${key}=${val}" >> "$INSTALL_DIR/.env"
+        echo "  + ${key} ergänzt"
+      fi
+    }
+
+    echo ""
+    echo "→ Fehlende Konfigurationseinträge ergänzen..."
+    _patch_env "STACK_FILE_PATH"       "${INSTALL_DIR}/docker-compose.yml"
+    _patch_env "COMPOSE_PROJECT_NAME"  "convoyplan"
+    _patch_env "UPDATER_IMAGE"         "ghcr.io/retttechsolutions/convoyplan/updater:latest"
+    _patch_env "BACKEND_IMAGE"         "ghcr.io/retttechsolutions/convoyplan/backend:latest"
+    _patch_env "FRONTEND_IMAGE"        "ghcr.io/retttechsolutions/convoyplan/frontend:latest"
+    _patch_env "GRAPHHOPPER_IMAGE"     "ghcr.io/retttechsolutions/convoyplan/graphhopper:latest"
+    _patch_env "GITHUB_REPO"          "RettTechSolutions/ConvoyPlan"
+
+    sudo chown -R "$(id -u):$(id -g)" "$INSTALL_DIR"
+    rm -f "$INSTALL_DIR/docker-compose.yml"
+    mkdir -p "$INSTALL_DIR/caddy"
+
+    echo "→ Neueste Stack-Konfiguration herunterladen..."
+    curl -sSfL "$STACK_URL" -o "$INSTALL_DIR/docker-compose.yml" \
+      || { echo "FEHLER: Stack-Datei konnte nicht heruntergeladen werden."; exit 1; }
+    curl -sSfL "$REPO_RAW/caddy/entrypoint.sh" -o "$INSTALL_DIR/caddy/entrypoint.sh" 2>/dev/null || true
+    chmod +x "$INSTALL_DIR/caddy/entrypoint.sh" 2>/dev/null || true
+
+    echo "→ Images aktualisieren..."
+    docker compose --project-directory "$INSTALL_DIR" pull
+
+    echo "→ ConvoyPlan neu starten..."
+    docker compose --project-directory "$INSTALL_DIR" up -d || true
+
+    CURRENT_DOMAIN="$(_ev DOMAIN)"
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════╗"
+    echo "║  ConvoyPlan wurde aktualisiert!                          ║"
+    printf "║  URL: https://%-43s║\n" "${CURRENT_DOMAIN}/"
+    echo "╚══════════════════════════════════════════════════════════╝"
+    echo ""
+    exit 0
   fi
+
+  # ── NEU-KONFIGURIEREN mit bestehenden Werten als Vorauswahl ──────────────
   echo ""
+  PREV_DOMAIN=$(_ev DOMAIN)
+  PREV_EMAIL=$(_ev ACME_EMAIL)
+  PREV_DB_PASS=$(_ev POSTGRES_PASSWORD)
+  PREV_JWT=$(_ev JWT_SECRET)
+  PREV_OSM_URL=$(_ev OSM_DOWNLOAD_URL)
+  PREV_OSM_FILE=$(_ev OSM_FILENAME)
+  PREV_JAVA_OPTS=$(_ev JAVA_OPTS)
+  echo "✓ Bestehende Werte geladen."
+  echo ""
+
+elif [[ -f "$INSTALL_DIR/.env" ]]; then
+  # Unvollständige .env — Werte als Vorauswahl laden, vollständige Konfiguration abfragen
+  PREV_DOMAIN=$(_ev DOMAIN)
+  PREV_EMAIL=$(_ev ACME_EMAIL)
+  PREV_DB_PASS=$(_ev POSTGRES_PASSWORD)
+  PREV_JWT=$(_ev JWT_SECRET)
+  PREV_OSM_URL=$(_ev OSM_DOWNLOAD_URL)
+  PREV_OSM_FILE=$(_ev OSM_FILENAME)
+  PREV_JAVA_OPTS=$(_ev JAVA_OPTS)
 fi
 
 prompt "Domain (z.B. convoy.example.com)" "${PREV_DOMAIN:-}" DOMAIN

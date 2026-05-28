@@ -4,8 +4,10 @@
 #
 # Required: Docker socket mounted at /var/run/docker.sock
 # Required: update_status volume at /update_status
-# Required: host compose file at /stack/docker-compose.yml (bind-mount it via STACK_FILE_PATH)
+# Optional: host compose file at /stack/docker-compose.yml (bind-mount via STACK_FILE_PATH)
+#           If not mounted, the updater self-discovers the path from Docker project labels.
 # Env: COMPOSE_PROJECT_NAME (default: convoyplan)
+#      STACK_FILE_PATH       (host path to docker-compose.yml — auto-detected if missing)
 #      UPDATE_INTERVAL      (default: 300)
 set -euo pipefail
 
@@ -31,20 +33,79 @@ if ! docker compose version >/dev/null 2>&1; then
     exit 1
 fi
 
-# Verify compose file is a file, not a missing/empty directory
-if [ ! -f "${COMPOSE_FILE}" ]; then
-    log "FEHLER: ${COMPOSE_FILE} nicht gefunden oder ist kein reguläres File."
-    log "        Setze STACK_FILE_PATH in deiner .env auf den absoluten Pfad"
-    log "        zur docker-compose.yml auf dem HOST (z.B. /home/user/convoyplan/docker-compose.yml)."
-    log "        Danach: docker compose restart updater"
-    # Keep retrying so the container shows up as running (not crash-looping)
+# ── Self-healing: discover STACK_FILE_PATH from Docker project labels ────────
+# This handles installations where STACK_FILE_PATH was never set in .env,
+# or where /stack/docker-compose.yml is empty/a-directory (old install bug).
+
+_resolve_compose_file() {
+    # 1. If mounted file is a valid, non-empty file → use it as-is
+    if [ -f "${COMPOSE_FILE}" ] && [ -s "${COMPOSE_FILE}" ]; then
+        return 0
+    fi
+
+    log "INFO: ${COMPOSE_FILE} fehlt oder ist leer — ermittle Pfad über Docker-Labels…"
+
+    # 2. Discover HOST path from any running container in this compose project
+    local container_id host_path
+    container_id=$(docker ps -q \
+        --filter "label=com.docker.compose.project=${COMPOSE_PROJECT}" 2>/dev/null | head -1)
+
+    if [ -z "${container_id}" ]; then
+        log "WARNUNG: Keine laufenden Container im Projekt '${COMPOSE_PROJECT}' gefunden."
+        return 1
+    fi
+
+    host_path=$(docker inspect "${container_id}" \
+        --format '{{index .Config.Labels "com.docker.compose.project.config_files"}}' \
+        2>/dev/null | cut -d',' -f1 | tr -d ' ')
+
+    if [ -z "${host_path}" ]; then
+        log "WARNUNG: Docker-Label 'com.docker.compose.project.config_files' nicht gesetzt."
+        return 1
+    fi
+
+    # Export so docker compose variable-interpolation can resolve ${STACK_FILE_PATH}
+    export STACK_FILE_PATH="${host_path}"
+    log "INFO: STACK_FILE_PATH auto-ermittelt: ${STACK_FILE_PATH}"
+
+    # 3. Copy compose file from HOST into this container via docker cp
+    local self_id
+    self_id=$(hostname)  # container ID = hostname inside container
+    if docker cp "${STACK_FILE_PATH}" "${self_id}:/stack/docker-compose.yml" 2>/dev/null; then
+        log "INFO: Compose-Datei von ${STACK_FILE_PATH} in Container kopiert."
+        return 0
+    else
+        log "WARNUNG: docker cp fehlgeschlagen — versuche Alternativmethode…"
+        # Fallback: spawn a tiny container to read the file
+        if docker run --rm -v "${STACK_FILE_PATH}:/src:ro" alpine cat /src \
+                > /tmp/docker-compose.yml 2>/dev/null && [ -s /tmp/docker-compose.yml ]; then
+            COMPOSE_FILE=/tmp/docker-compose.yml
+            log "INFO: Compose-Datei nach /tmp geladen."
+            return 0
+        fi
+    fi
+
+    log "FEHLER: Compose-Datei konnte nicht gelesen werden."
+    return 1
+}
+
+if ! _resolve_compose_file; then
+    log "FEHLER: Compose-Datei nicht verfügbar."
+    log "        Abhilfe: install.sh/install.ps1 erneut ausführen."
+    log "        Warte auf Selbstheilung (retry alle 60 s)…"
     while true; do
         sleep 60
-        if [ -f "${COMPOSE_FILE}" ]; then
-            log "Compose-Datei gefunden — starte Updater neu…"
+        if _resolve_compose_file 2>/dev/null; then
+            log "Compose-Datei jetzt verfügbar — starte Updater neu…"
             exec /bin/bash /update-images.sh
         fi
     done
+fi
+
+# Ensure STACK_FILE_PATH is exported for docker compose variable interpolation
+# (needed so ${STACK_FILE_PATH} in portainer-stack.yml can be resolved)
+if [ -z "${STACK_FILE_PATH:-}" ]; then
+    export STACK_FILE_PATH="${STACK_FILE_PATH:-}"  # may still be empty for /dev/null mounts
 fi
 
 # -----------------------------------------------------------------------------
@@ -66,8 +127,6 @@ write_status() {
 }
 
 do_update() {
-    # Note: backend already wrote the initial log line and cleared the file
-    # before creating the trigger — we just append here.
     log "Starte Image-Update…"
 
     # Discover services, excluding the updater itself (to avoid self-kill)

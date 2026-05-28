@@ -61,10 +61,96 @@ function Read-ConfirmedPassword {
 }
 
 # Eingaben
-$InstallDir  = Read-Input 'Installationsverzeichnis' (Join-Path $env:USERPROFILE 'convoyplan')
-$Domain      = Read-Input 'Domain (z.B. convoy.example.com)'
-$AcmeEmail   = Read-Input 'E-Mail fuer Lets Encrypt'
-$DbPassword  = Read-ConfirmedPassword 'Datenbankpasswort'
+$InstallDir = Read-Input 'Installationsverzeichnis' (Join-Path $env:USERPROFILE 'convoyplan')
+
+# ── Bestehende Installation erkennen ─────────────────────────────────────────
+function Get-EnvValue {
+    param([string]$Key, [string]$File)
+    $line = Get-Content $File -ErrorAction SilentlyContinue | Where-Object { $_ -match "^${Key}=" } | Select-Object -First 1
+    if ($line) { return $line.Substring($Key.Length + 1) }
+    return ''
+}
+
+function Add-EnvKeyIfMissing {
+    param([string]$Key, [string]$Value, [string]$File)
+    $existing = Get-Content $File -ErrorAction SilentlyContinue | Where-Object { $_ -match "^${Key}=" }
+    if (-not $existing) {
+        Add-Content -Path $File -Value "${Key}=${Value}"
+        Write-Host "  + ${Key} ergaenzt" -ForegroundColor DarkGray
+    }
+}
+
+$EnvFile = Join-Path $InstallDir '.env'
+if ((Test-Path $EnvFile)) {
+    $existingPw     = Get-EnvValue 'POSTGRES_PASSWORD' $EnvFile
+    $existingDomain = Get-EnvValue 'DOMAIN' $EnvFile
+
+    if ($existingPw -and $existingDomain) {
+        Write-Host ''
+        Write-Host "Bestehende ConvoyPlan-Installation in '$InstallDir' gefunden." -ForegroundColor Cyan
+        Write-Host '  [J] Nur aktualisieren - Einstellungen beibehalten  (empfohlen)' -ForegroundColor Green
+        Write-Host '  [n] Neu konfigurieren - Werte als Vorauswahl laden'
+        $updateChoice = Read-Host 'Auswahl [J/n]'
+
+        if ($updateChoice -ine 'n') {
+            # ── UPDATE-MODUS ─────────────────────────────────────────────────
+            Write-Host ''
+            Write-Host '-> Fehlende Konfigurationseintraege ergaenzen...'
+            Add-EnvKeyIfMissing 'STACK_FILE_PATH'      "$InstallDir\docker-compose.yml" $EnvFile
+            Add-EnvKeyIfMissing 'COMPOSE_PROJECT_NAME' 'convoyplan'                     $EnvFile
+            Add-EnvKeyIfMissing 'UPDATER_IMAGE'        'ghcr.io/retttechsolutions/convoyplan/updater:latest'     $EnvFile
+            Add-EnvKeyIfMissing 'BACKEND_IMAGE'        'ghcr.io/retttechsolutions/convoyplan/backend:latest'     $EnvFile
+            Add-EnvKeyIfMissing 'FRONTEND_IMAGE'       'ghcr.io/retttechsolutions/convoyplan/frontend:latest'    $EnvFile
+            Add-EnvKeyIfMissing 'GRAPHHOPPER_IMAGE'    'ghcr.io/retttechsolutions/convoyplan/graphhopper:latest' $EnvFile
+            Add-EnvKeyIfMissing 'GITHUB_REPO'          'RettTechSolutions/ConvoyPlan'   $EnvFile
+
+            Write-Host ''
+            Write-Host '-> Neueste Stack-Konfiguration herunterladen...'
+            try {
+                Invoke-WebRequest -Uri $StackUrl -OutFile (Join-Path $InstallDir 'docker-compose.yml') -UseBasicParsing
+            } catch {
+                Write-Host 'FEHLER: Stack-Datei konnte nicht heruntergeladen werden.' -ForegroundColor Red; exit 1
+            }
+
+            Write-Host ''
+            Write-Host '-> Images aktualisieren...'
+            docker compose --project-directory $InstallDir pull
+
+            Write-Host ''
+            Write-Host '-> ConvoyPlan neu starten...'
+            docker compose --project-directory $InstallDir up -d
+
+            Write-Host ''
+            Write-Host '╔══════════════════════════════════════════════════════════╗' -ForegroundColor Green
+            Write-Host '║  ConvoyPlan wurde aktualisiert!                          ║' -ForegroundColor Green
+            Write-Host ("║  URL: https://$existingDomain/").PadRight(61) + "║"      -ForegroundColor Green
+            Write-Host '╚══════════════════════════════════════════════════════════╝' -ForegroundColor Green
+            Write-Host ''
+            exit 0
+        }
+
+        # ── NEU-KONFIGURIEREN mit bestehenden Werten als Vorauswahl ─────────
+        Write-Host ''
+        Write-Host '✓ Bestehende Werte als Vorauswahl geladen.'
+        $Domain     = Read-Input 'Domain (z.B. convoy.example.com)' (Get-EnvValue 'DOMAIN' $EnvFile)
+        $AcmeEmail  = Read-Input 'E-Mail fuer Lets Encrypt'         (Get-EnvValue 'ACME_EMAIL' $EnvFile)
+        $prevPw     = Get-EnvValue 'POSTGRES_PASSWORD' $EnvFile
+        Write-Host "Datenbankpasswort [Enter = bestehendes beibehalten]: " -NoNewline
+        $s1 = Read-Host -AsSecureString
+        $typed = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
+                 [Runtime.InteropServices.Marshal]::SecureStringToBSTR($s1))
+        $DbPassword = if ($typed) { $typed } else { $prevPw }
+    } else {
+        # Unvollstaendige .env — normale Abfrage mit Vorauswahl
+        $Domain    = Read-Input 'Domain (z.B. convoy.example.com)' (Get-EnvValue 'DOMAIN' $EnvFile)
+        $AcmeEmail = Read-Input 'E-Mail fuer Lets Encrypt'         (Get-EnvValue 'ACME_EMAIL' $EnvFile)
+        $DbPassword = Read-ConfirmedPassword 'Datenbankpasswort'
+    }
+} else {
+    $Domain     = Read-Input 'Domain (z.B. convoy.example.com)'
+    $AcmeEmail  = Read-Input 'E-Mail fuer Lets Encrypt'
+    $DbPassword = Read-ConfirmedPassword 'Datenbankpasswort'
+}
 
 Write-Host ''
 Write-Host 'OSM-Region waehlen:'
@@ -90,16 +176,21 @@ switch ($OsmChoice) {
 $LicenseKey   = Read-Host 'Lizenzschluessel [Enter = Demo-Modus]'
 $GithubToken  = Read-Host 'GitHub Token fuer Auto-Updater [Enter = ueberspringen]'
 
-# JWT_SECRET generieren
-$Rng   = [Security.Cryptography.RandomNumberGenerator]::Create()
-$Bytes = New-Object byte[] 32
-$Rng.GetBytes($Bytes)
-$JwtSecret = ($Bytes | ForEach-Object { $_.ToString('x2') }) -join ''
+# JWT_SECRET: bestehenden beibehalten oder neu generieren
+$existingJwt = if (Test-Path $EnvFile) { Get-EnvValue 'JWT_SECRET' $EnvFile } else { '' }
+if ($existingJwt) {
+    $JwtSecret = $existingJwt
+} else {
+    $Rng   = [Security.Cryptography.RandomNumberGenerator]::Create()
+    $Bytes = New-Object byte[] 32
+    $Rng.GetBytes($Bytes)
+    $JwtSecret = ($Bytes | ForEach-Object { $_.ToString('x2') }) -join ''
+}
 
 # Installationsverzeichnis anlegen
-if ((Test-Path $InstallDir) -and (Test-Path (Join-Path $InstallDir '.env'))) {
-    $overwrite = Read-Host "Verzeichnis '$InstallDir' mit .env existiert. Ueberschreiben? [j/N]"
-    if ($overwrite -ine 'j') { Write-Host 'Abgebrochen.'; exit 0 }
+if ((Test-Path $InstallDir) -and (Test-Path $EnvFile)) {
+    # Konfiguration existiert — Update-Modus wurde oben bereits angeboten.
+    # Hier nur noch sicherstellen dass das Verzeichnis schreibbar ist.
 }
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 

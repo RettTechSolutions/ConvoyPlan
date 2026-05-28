@@ -94,15 +94,18 @@ services:
     environment:
       COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-convoyplan}
       UPDATE_INTERVAL: "${UPDATE_INTERVAL:-300}"
-      # PFLICHT: STACK_FILE_PATH muss in .env / Portainer-Stack-Env gesetzt sein.
-      # Der Updater braucht den HOST-Pfad sowohl für den Volume-Mount (unten)
-      # als auch zur Variablen-Auflösung, wenn er intern 'docker compose' aufruft.
-      STACK_FILE_PATH: ${STACK_FILE_PATH:?STACK_FILE_PATH muss in .env gesetzt sein (absoluter Pfad dieser Compose-Datei auf dem Host)}
+      # STACK_FILE_PATH: absoluter HOST-Pfad zu dieser Compose-Datei.
+      # Wird vom Installer automatisch gesetzt. Fehlt er, erkennt der Updater
+      # den Pfad selbst über Docker-Labels und heilt sich eigenständig.
+      STACK_FILE_PATH: ${STACK_FILE_PATH:-}
     entrypoint: ["/bin/bash", "/update-images.sh"]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - update_status:/update_status
-      - ${STACK_FILE_PATH}:/stack/docker-compose.yml:ro
+      # Wenn STACK_FILE_PATH gesetzt → richtige Datei gemountet.
+      # Wenn leer (Altinstallation) → /dev/null (leere Datei); Updater erkennt
+      # das und lädt die Compose-Datei selbst via Docker-Labels nach.
+      - ${STACK_FILE_PATH:-/dev/null}:/stack/docker-compose.yml:ro
     depends_on:
       - backend
 
