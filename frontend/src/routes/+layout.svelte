@@ -5,6 +5,7 @@
 	import { auth } from '$lib/stores/auth';
 	import { brandingStore, applyBranding, type Branding } from '$lib/stores/branding';
 	import { themeStore } from '$lib/stores/theme';
+	import { versionStore } from '$lib/stores/version';
 
 	let { children } = $props();
 
@@ -24,6 +25,8 @@
 	}
 
 	onMount(async () => {
+		// Load build version info (public, non-blocking)
+		versionStore.load();
 
 		// Raw fetch (not brandingApi) — GET /api/branding is public and needs no auth token
 		try {
@@ -87,7 +90,13 @@
 
 {@render children()}
 
-<footer class="powered-by">Powered by ConvoyPlan</footer>
+<footer class="powered-by">
+	{#if versionStore.data.sha}
+		v{__APP_VERSION__} · {versionStore.data.sha}
+	{:else}
+		v{__APP_VERSION__}
+	{/if}
+</footer>
 
 <style>
 	.powered-by {

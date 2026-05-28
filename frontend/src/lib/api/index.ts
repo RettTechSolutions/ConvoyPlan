@@ -424,6 +424,23 @@ export const licenseApi = {
     remove: () => api.delete<{ demo_mode: boolean }>('/api/license/'),
 };
 
+export interface EmailTemplate {
+    subject: string;
+    html: string;
+    is_custom: boolean;
+}
+
+export interface EmailTemplateUpdate {
+    subject: string;
+    html: string;
+}
+
+export const emailTemplateApi = {
+    get: () => api.get<EmailTemplate>('/api/admin/email-template'),
+    update: (data: EmailTemplateUpdate) => api.put<EmailTemplate>('/api/admin/email-template', data),
+    reset: () => api.post<EmailTemplate>('/api/admin/email-template/reset', {}),
+};
+
 export const leistellenApi = {
     list: () => api.get<Leitstelle[]>('/api/leitstellen/'),
     get: (id: string) => api.get<LeistelleDetail>(`/api/leitstellen/${id}`),
