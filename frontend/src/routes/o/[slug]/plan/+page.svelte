@@ -1100,7 +1100,7 @@
 							<button class="btn-export" onclick={() => navigator.clipboard.writeText(`${window.location.origin}/share/${selected?.share_token}`)}>🔗 Link kopieren</button>
 						</div>
 						<div class="section-header" style="margin-top:1rem"><strong>Live-Tracking</strong></div>
-						<a class="btn-export" href="/tracking/{selected.id}" target="_blank">🔴 Tracking-Ansicht öffnen</a>
+						<a class="btn-export" href="/o/{$page.params.slug}/tracking/{selected.id}" target="_blank">🔴 Tracking-Ansicht öffnen</a>
 						<div class="section-header" style="margin-top:1rem"><strong>Sperrungen & Baustellen</strong></div>
 						<button class="btn-export" class:active={showClosures} onclick={toggleClosures}>
 							{showClosures ? '🚧 Sperrungen ausblenden' : '🚧 Sperrungen laden'}

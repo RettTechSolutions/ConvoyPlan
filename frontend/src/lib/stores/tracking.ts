@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
 import type { VehiclePosition } from '$lib/api';
+import { getToken } from '$lib/api/client';
 
 export const livePositions = writable<Map<string, VehiclePosition>>(new Map());
 export const vehicleStatuses = writable<Map<string, string>>(new Map());
@@ -8,7 +9,7 @@ export const trackingActive = writable(false);
 let ws: WebSocket | null = null;
 
 export function connectTracking(convoyId: string) {
-	const token = localStorage.getItem('token');
+	const token = getToken();
 	if (!token) return;
 
 	// WebSocket connects through the same origin (e.g. via Caddy reverse-proxy).

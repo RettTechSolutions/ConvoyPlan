@@ -10,7 +10,7 @@ export function setActiveSlug(slug: string | null): void {
     _activeSlug = slug;
 }
 
-function getToken(): string | null {
+export function getToken(): string | null {
 	if (typeof localStorage === 'undefined') return null;
 	// Org-scoped token hat Vorrang
 	if (_activeSlug) {
