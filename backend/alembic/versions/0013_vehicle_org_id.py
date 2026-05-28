@@ -10,7 +10,6 @@ but in practice the DB is nearly empty at this stage).
 """
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.engine.reflection import Inspector
 
 revision = "0013"
 down_revision = "0012"
@@ -20,7 +19,7 @@ depends_on = None
 
 def upgrade() -> None:
     bind = op.get_bind()
-    inspector = Inspector.from_engine(bind)
+    inspector = sa.inspect(bind)
 
     existing_columns = [c["name"] for c in inspector.get_columns("vehicles")]
     if "org_id" not in existing_columns:
@@ -42,7 +41,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     bind = op.get_bind()
-    inspector = Inspector.from_engine(bind)
+    inspector = sa.inspect(bind)
 
     existing_indexes = [idx["name"] for idx in inspector.get_indexes("vehicles")]
     if "ix_vehicles_org_id" in existing_indexes:
