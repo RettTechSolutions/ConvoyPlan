@@ -126,25 +126,62 @@ write_status() {
 }
 
 # ── Update the host compose file from the repo ───────────────────────────────
-# Uses docker cp to write from this container's /tmp back to the host path.
-# This ensures the stack definition stays current even without manual re-installs,
-# and that the next updater container starts with up-to-date env vars.
+# Writes the new compose file back to the host so the stack definition stays
+# current and the next updater container starts with up-to-date env vars.
+#
+# Path 1 (preferred): /stack/docker-compose.yml is a RW bind-mount of the host
+# file — just write to it. Path 2 (fallback): spawn a sidecar container that
+# bind-mounts STACK_FILE_PATH from the host RW and pipes the new content in.
+#
+# Note: `docker cp $self:/tmp/foo $HOST_PATH` does NOT work here, because the
+# docker CLI interprets the destination in the CLIENT filesystem (= inside this
+# container), and the host path doesn't exist there.
 _update_stack_file() {
     [ -z "${STACK_FILE_PATH:-}" ] && return 0
 
     local tmp=/tmp/dc-new.yml
-    if curl -sf --max-time 15 "${REPO_RAW}/docker-compose.yml" -o "${tmp}" && [ -s "${tmp}" ]; then
-        local self_id
-        self_id=$(hostname)
-        if docker cp "${self_id}:${tmp}" "${STACK_FILE_PATH}" 2>/dev/null; then
-            log "Stack-Datei aktualisiert: ${STACK_FILE_PATH}"
-        else
-            log "WARNUNG: Stack-Datei konnte nicht auf den Host geschrieben werden (STACK_FILE_PATH=${STACK_FILE_PATH})"
-        fi
-    else
+    if ! curl -sf --max-time 15 "${REPO_RAW}/docker-compose.yml" -o "${tmp}" || [ ! -s "${tmp}" ]; then
         log "WARNUNG: Neue Stack-Datei konnte nicht heruntergeladen werden — übersprungen"
+        rm -f "${tmp}"
+        return 0
     fi
-    rm -f /tmp/dc-new.yml
+
+    if [ -w /stack/docker-compose.yml ] && cp "${tmp}" /stack/docker-compose.yml 2>/dev/null; then
+        log "Stack-Datei aktualisiert: ${STACK_FILE_PATH}"
+    elif docker run --rm -i -v "${STACK_FILE_PATH}:/dst" alpine sh -c 'cat > /dst' < "${tmp}" >/dev/null 2>&1; then
+        log "Stack-Datei aktualisiert (via Sidecar): ${STACK_FILE_PATH}"
+    else
+        log "WARNUNG: Stack-Datei konnte nicht auf den Host geschrieben werden (STACK_FILE_PATH=${STACK_FILE_PATH})"
+    fi
+    rm -f "${tmp}"
+}
+
+# ── Spawn detached helper to recreate the updater container ──────────────────
+# Runs a short-lived sidecar that waits briefly (so this container has time to
+# exit cleanly), then runs `docker compose up -d --force-recreate updater`.
+# Because the helper has its own lifecycle independent of this dying container,
+# the recreate completes successfully even though the orchestrating CLI's
+# original parent is gone.
+_spawn_restart_helper() {
+    [ -z "${STACK_FILE_PATH:-}" ] && {
+        log "WARNUNG: STACK_FILE_PATH leer — Restart-Helper benötigt Host-Pfad zur Compose-Datei"
+        return 1
+    }
+
+    # Forward the current environment so `docker compose` can interpolate all
+    # ${VAR} references in the compose file (same vars this updater has).
+    local env_file=/tmp/updater-restart-env
+    env | grep -Ev '^(_|PATH|PWD|SHLVL|HOSTNAME|HOME|OLDPWD)=' > "${env_file}"
+
+    docker run -d --rm \
+        --name "${COMPOSE_PROJECT}-updater-restart-$(date +%s)" \
+        -v /var/run/docker.sock:/var/run/docker.sock \
+        -v "${STACK_FILE_PATH}:/compose.yml:ro" \
+        --env-file "${env_file}" \
+        docker:24-cli sh -c "
+            sleep 3
+            docker compose -p '${COMPOSE_PROJECT}' -f /compose.yml up -d --no-build --force-recreate updater
+        " >/dev/null 2>&1
 }
 
 do_update() {
@@ -167,12 +204,14 @@ do_update() {
         # Update the host compose file so future runs use the latest stack definition
         _update_stack_file
 
-        # Self-restart the updater so it picks up any new env vars or image from the
-        # updated compose file. docker compose up -d will start a new container and
-        # stop this one gracefully.
+        # Self-restart the updater so it picks up any new env vars or image from
+        # the updated compose file. We CANNOT run `docker compose up -d updater`
+        # directly from this container — the orchestrating CLI is killed when
+        # `compose` stops the old (=this) container mid-sequence, leaving the new
+        # container stuck in "Created" state. Spawn a detached helper container
+        # instead; it survives this updater dying and finishes the recreate.
         log "Starte Updater-Container neu (neue Konfiguration übernehmen)…"
-        docker compose -p "${COMPOSE_PROJECT}" -f "${COMPOSE_FILE}" up -d --no-build updater \
-            2>&1 | tee -a "${LOG_FILE}" || log "WARNUNG: Updater-Neustart fehlgeschlagen — läuft weiter"
+        _spawn_restart_helper || log "WARNUNG: Restart-Helper konnte nicht gestartet werden — Updater läuft weiter"
     else
         log "Update failed — will retry on next trigger"
     fi

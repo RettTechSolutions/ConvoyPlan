@@ -136,7 +136,9 @@ services:
       # Wenn STACK_FILE_PATH gesetzt → richtige Datei gemountet.
       # Wenn leer (Altinstallation) → /dev/null (leere Datei); Updater erkennt
       # das und lädt die Compose-Datei selbst via Docker-Labels nach.
-      - ${STACK_FILE_PATH:-/dev/null}:/stack/docker-compose.yml:ro
+      # NOT read-only: Updater schreibt nach jedem Update die aktualisierte
+      # Stack-Datei zurück, damit neue Env-Vars / Image-Refs übernommen werden.
+      - ${STACK_FILE_PATH:-/dev/null}:/stack/docker-compose.yml
     depends_on:
       - backend
 
