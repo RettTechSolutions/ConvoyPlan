@@ -4,6 +4,7 @@ set -euo pipefail
 REPO_RAW="https://raw.githubusercontent.com/RettTechSolutions/ConvoyPlan/main"
 STACK_URL="$REPO_RAW/docker-compose.yml"
 CADDY_ENTRYPOINT_URL="$REPO_RAW/caddy/entrypoint.sh"
+WATCHDOG_URL="$REPO_RAW/scripts/updater-watchdog.sh"
 
 echo ""
 echo "╔══════════════════════════════════════════╗"
@@ -69,6 +70,69 @@ prompt_secret() {
   done
 }
 
+# ── Cleanup orphan hex-prefixed updater containers ───────────────────────────
+# Releases from before this fix could leave a `<hex>_convoyplan-updater-1`
+# container in Created/Exited state when the updater's self-restart raced.
+# Remove them so `docker compose up -d` starts the stack cleanly.
+_cleanup_orphan_updaters() {
+  local project="${1:-convoyplan}"
+  local orphans
+  orphans=$(docker ps -a \
+      --filter "name=^[0-9a-f]\{12\}_${project}-updater-1$" \
+      --format "{{.Names}}" 2>/dev/null || true)
+  for c in $orphans; do
+    echo "  → räume Orphan-Updater-Container ${c} auf"
+    docker rm -f "${c}" >/dev/null 2>&1 || true
+  done
+}
+
+# ── Install systemd watchdog timer ───────────────────────────────────────────
+# Belt-and-suspenders: even if the updater's in-container self-restart fails,
+# the watchdog runs on the host every ~2 min and recovers a stuck stack.
+# Silently skipped on non-systemd systems.
+_install_watchdog() {
+  local install_dir="$1"
+
+  if ! command -v systemctl &>/dev/null || ! [ -d /run/systemd/system ]; then
+    echo "  → systemd nicht erkannt — Watchdog wird übersprungen"
+    return 0
+  fi
+
+  echo "→ Self-healing-Watchdog (systemd-Timer) installieren..."
+  curl -sSfL "$WATCHDOG_URL" -o "$install_dir/updater-watchdog.sh" \
+    || { echo "  WARNUNG: Watchdog-Skript konnte nicht heruntergeladen werden — Watchdog wird übersprungen"; return 0; }
+  chmod +x "$install_dir/updater-watchdog.sh"
+
+  sudo tee /etc/systemd/system/convoyplan-updater-watchdog.service >/dev/null <<UNIT
+[Unit]
+Description=ConvoyPlan updater self-healing watchdog
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=${install_dir}/updater-watchdog.sh ${install_dir}
+UNIT
+
+  sudo tee /etc/systemd/system/convoyplan-updater-watchdog.timer >/dev/null <<UNIT
+[Unit]
+Description=Run ConvoyPlan updater watchdog every 2 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+Unit=convoyplan-updater-watchdog.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+UNIT
+
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now convoyplan-updater-watchdog.timer >/dev/null 2>&1
+  echo "  ✓ Watchdog aktiv (alle 2 Min.)"
+}
+
 # Eingaben
 prompt "Installationsverzeichnis" "$HOME/convoyplan" INSTALL_DIR
 
@@ -123,8 +187,13 @@ if [[ -f "$INSTALL_DIR/.env" ]] && \
     echo "→ Images aktualisieren..."
     docker compose --project-directory "$INSTALL_DIR" pull
 
+    echo "→ Verwaiste Updater-Container aufräumen..."
+    _cleanup_orphan_updaters "$(_ev COMPOSE_PROJECT_NAME)"
+
     echo "→ ConvoyPlan neu starten..."
     docker compose --project-directory "$INSTALL_DIR" up -d || true
+
+    _install_watchdog "$INSTALL_DIR"
 
     CURRENT_DOMAIN="$(_ev DOMAIN)"
     echo ""
@@ -278,6 +347,8 @@ docker compose --project-directory "$INSTALL_DIR" pull
 echo ""
 echo "→ ConvoyPlan starten..."
 docker compose --project-directory "$INSTALL_DIR" up -d || true
+
+_install_watchdog "$INSTALL_DIR"
 
 echo ""
 # GraphHopper-Hinweis je nach Region (max. 54 ASCII-Zeichen für saubere Box)
