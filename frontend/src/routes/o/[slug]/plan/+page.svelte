@@ -1440,7 +1440,9 @@
 
 <style>
 	:global(body) { margin: 0; font-family: system-ui, sans-serif; }
-	.app { display: flex; height: 100vh; overflow: hidden; }
+	/* 100dvh follows the iOS Safari URL bar so content (FAB, sidebar footer) stays reachable.
+	   100vh kept as a fallback for browsers without dvh support. */
+	.app { display: flex; height: 100vh; height: 100dvh; overflow: hidden; }
 
 	.sidebar { width: 340px; min-width: 280px; background: var(--sidebar-bg); color: var(--text-1); display: flex; flex-direction: column; overflow: hidden; }
 	.sidebar-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem; border-bottom: 1px solid var(--border); background: var(--sidebar-bg); }
@@ -1667,13 +1669,16 @@
 			gap: .5rem;
 			position: fixed;
 			top: 0; left: 0; right: 0;
-			height: 52px;
-			padding: 0 .75rem;
+			height: calc(52px + env(safe-area-inset-top));
+			padding-top: env(safe-area-inset-top);
+			padding-left: max(.75rem, env(safe-area-inset-left));
+			padding-right: max(.75rem, env(safe-area-inset-right));
 			background: var(--sidebar-bg);
 			border-bottom: 1px solid var(--border);
 			/* Above sidebar (300) and backdrop (299) so the hamburger stays
 			   visible and tappable while the sidebar is open. */
 			z-index: 301;
+			overflow: hidden;
 		}
 
 		/* Hide floating map overlays when the sidebar is open — they would
@@ -1701,6 +1706,9 @@
 		}
 		.topbar-name {
 			flex: 1;
+			/* min-width: 0 lets the flex item actually shrink past its text width;
+			   without it, a long convoy name would push the action buttons offscreen. */
+			min-width: 0;
 			font-size: .9rem;
 			font-weight: 600;
 			color: white;
@@ -1711,6 +1719,7 @@
 		.topbar-actions {
 			display: flex;
 			gap: .25rem;
+			flex-shrink: 0;
 		}
 		.topbar-actions .btn-map {
 			min-width: 40px;
@@ -1722,21 +1731,30 @@
 			justify-content: center;
 		}
 
-		/* Push the flex layout down to clear the fixed top bar */
+		/* Push the flex layout down to clear the fixed top bar (incl. notch). */
 		.app {
-			padding-top: 52px;
+			padding-top: calc(52px + env(safe-area-inset-top));
 			box-sizing: border-box;
 		}
 
-		/* Sidebar becomes a fixed overlay from the left */
+		/* Sidebar becomes a fixed overlay from the left.
+		   height uses dvh so the iOS Safari URL bar doesn't hide the bottom of
+		   the panel — otherwise the route button & theme/version footer would
+		   sit behind the address bar. */
 		.sidebar {
 			position: fixed;
-			top: 52px;
+			top: calc(52px + env(safe-area-inset-top));
 			left: 0;
-			bottom: 0;
+			bottom: auto;
+			height: calc(100dvh - 52px - env(safe-area-inset-top));
+			/* Cap to viewport so 88vw never produces a sub-pixel scrollbar on narrow screens. */
 			width: min(320px, 88vw);
+			min-width: 0;
+			max-width: 100vw;
 			z-index: 300;
 			overflow-y: hidden;
+			padding-bottom: env(safe-area-inset-bottom);
+			padding-left: env(safe-area-inset-left);
 			transform: translateX(-100%);
 			transition: transform .25s ease;
 		}
@@ -1753,14 +1771,15 @@
 			z-index: 299;
 		}
 
-		/* FAB route button floating over map */
+		/* FAB route button floating over map. Sits above the iOS home indicator
+		   and respects the URL bar via dvh on .app. */
 		.fab-route {
 			display: flex;
 			align-items: center;
 			gap: .4rem;
 			position: fixed;
-			bottom: 1.5rem;
-			right: 1rem;
+			bottom: calc(1.5rem + env(safe-area-inset-bottom));
+			right: calc(1rem + env(safe-area-inset-right));
 			z-index: 50;
 			padding: .7rem 1.25rem;
 			background: var(--color-primary);
