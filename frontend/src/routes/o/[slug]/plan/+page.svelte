@@ -16,6 +16,7 @@
 		type FuelAnalysis, type FuelStation, type Waypoint, type RoadPreference,
 		type KanalwechselEntry,
 	} from '$lib/api';
+	import { getToken } from '$lib/api/client';
 	import type { FeatureCollection } from 'geojson';
 	import { dndzone } from 'svelte-dnd-action';
 	import { themeStore } from '$lib/stores/theme';
@@ -723,9 +724,9 @@
 	async function downloadExport(format: 'gpx' | 'json' | 'pdf') {
 		if (!selected) return;
 		try {
-			const token = localStorage.getItem('token');
+			const token = getToken();
 			const res = await fetch(`/api/convoys/${selected.id}/export/${format}`, {
-				headers: { 'Authorization': `Bearer ${token}` },
+				headers: token ? { 'Authorization': `Bearer ${token}` } : {},
 			});
 			if (!res.ok) { error = `Export fehlgeschlagen (${res.status})`; return; }
 			const blob = await res.blob();
