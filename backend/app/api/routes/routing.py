@@ -83,10 +83,16 @@ async def _apply_import(
         raise
 
 
-async def _load_convoy(convoy_id: uuid.UUID, owner_id: uuid.UUID, db: AsyncSession) -> Convoy:
+async def _load_convoy(
+    convoy_id: uuid.UUID,
+    user: User,
+    db: AsyncSession,
+    require: Literal["read", "fahrer", "write", "delete"] = "read",
+) -> Convoy:
+    await get_convoy_access(convoy_id, user, db, require=require)
     result = await db.execute(
         select(Convoy)
-        .where(Convoy.id == convoy_id, Convoy.owner_id == owner_id)
+        .where(Convoy.id == convoy_id)
         .options(
             selectinload(Convoy.waypoints),
             selectinload(Convoy.convoy_vehicles).selectinload(ConvoyVehicle.vehicle),
@@ -168,7 +174,7 @@ async def get_route(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _load_convoy(convoy_id, current_user.id, db)
+    await _load_convoy(convoy_id, current_user, db, require="read")
     result = await db.execute(select(Route).where(Route.convoy_id == convoy_id))
     route = result.scalar_one_or_none()
     if not route:
@@ -191,7 +197,7 @@ async def calculate_route(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    convoy = await _load_convoy(convoy_id, current_user.id, db)
+    convoy = await _load_convoy(convoy_id, current_user, db, require="write")
 
     start = geo_svc.wkb_to_point(convoy.start_point)
     end = geo_svc.wkb_to_point(convoy.end_point)
@@ -316,7 +322,7 @@ async def export_gpx(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    convoy = await _load_convoy(convoy_id, current_user.id, db)
+    convoy = await _load_convoy(convoy_id, current_user, db, require="read")
     route_result = await db.execute(select(Route).where(Route.convoy_id == convoy_id))
     route = route_result.scalar_one_or_none()
     if not route:
@@ -343,7 +349,7 @@ async def export_json(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    convoy = await _load_convoy(convoy_id, current_user.id, db)
+    convoy = await _load_convoy(convoy_id, current_user, db, require="read")
     waypoints = [
         {**geo_svc.waypoint_coords(w), "name": w.name, "type": w.type, "notes": w.notes,
          "planned_arrival": w.planned_arrival.isoformat() if w.planned_arrival else None,
@@ -370,7 +376,7 @@ async def export_pdf(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    convoy = await _load_convoy(convoy_id, current_user.id, db)
+    convoy = await _load_convoy(convoy_id, current_user, db, require="read")
     route_result = await db.execute(select(Route).where(Route.convoy_id == convoy_id))
     route = route_result.scalar_one_or_none()
 
@@ -456,7 +462,7 @@ async def find_fuel_stations(
     current_user: User = Depends(get_current_user),
 ):
     """Find fuel stations near (lat, lon) – typically the recommended stop position."""
-    await _load_convoy(convoy_id, current_user.id, db)
+    await _load_convoy(convoy_id, current_user, db, require="read")
     stations = await overpass_svc.find_fuel_stations(lat, lon, radius_m)
     return stations
 
