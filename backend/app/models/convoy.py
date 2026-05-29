@@ -45,7 +45,6 @@ class Convoy(Base):
     convoy_vehicles: Mapped[list["ConvoyVehicle"]] = relationship(back_populates="convoy", cascade="all, delete-orphan", order_by="ConvoyVehicle.position")
     waypoints: Mapped[list["Waypoint"]] = relationship(back_populates="convoy", cascade="all, delete-orphan", order_by="Waypoint.order_index")
     route: Mapped["Route | None"] = relationship(back_populates="convoy", cascade="all, delete-orphan", uselist=False)
-    lage_layers: Mapped[list["LageLayer"]] = relationship(back_populates="convoy", cascade="all, delete-orphan")
     vehicle_positions: Mapped[list["VehiclePosition"]] = relationship(back_populates="convoy", cascade="all, delete-orphan")
 
 

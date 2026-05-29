@@ -93,7 +93,7 @@
 | Branding | Eigenes App-Logo, Farben und Name über Admin-UI konfigurierbar | ✅ |
 | Leitstellen | Leitstellen und Kanalwechselpunkte entlang der Route | ✅ |
 
-### 📡 Live, Lage und Export
+### 📡 Live und Export
 
 | Funktion | Beschreibung | Status |
 |---|---|---:|
@@ -101,7 +101,6 @@
 | Fahrzeugstatus | Geplant, unterwegs, angekommen oder verspätet | ✅ |
 | Wetter | Integration über Open-Meteo ohne API-Key | ✅ |
 | Sperrungen | Abfrage von OSM-Daten über Overpass API | ✅ |
-| Lagedaten | GeoJSON-Layer hochladen, anzeigen und verwalten | ✅ |
 | PDF | Marschbefehl als PDF | ✅ |
 | GPX / JSON | Export und Import für Navigation, Dokumentation und Weiterverarbeitung | ✅ |
 | PWA | Installierbare Web-App mit Tile-Caching | ✅ |
@@ -162,7 +161,7 @@ flowchart LR
 - **Caddy** terminiert TLS (Let's Encrypt oder eigenes Zertifikat), leitet `/api/*` und `/ws/*` ans Backend und alles andere ans Frontend. Die Konfiguration kann per Admin-API live neu geladen werden.
 - Das **Frontend** stellt Login, Setup-Wizard, Planung, Karte, Live-Tracking und öffentliche Freigabelinks bereit.
 - Das **Backend** bündelt Authentifizierung, Geschäftslogik, Routing-Aufbereitung, Exporte, Integrationen und die Caddy-Konfiguration.
-- **PostgreSQL mit PostGIS** speichert Nutzer, Fahrzeuge, Konvois, Geometrien, Positionen, Lagedaten und Systemeinstellungen.
+- **PostgreSQL mit PostGIS** speichert Nutzer, Fahrzeuge, Konvois, Geometrien, Positionen und Systemeinstellungen.
 - **GraphHopper** läuft selbst gehostet und verarbeitet beim ersten Start die gewählte OSM-PBF-Datei.
 
 ---
@@ -205,7 +204,6 @@ ConvoyPlan/
 │   │   │   ├── organizations.py  # Organisationen und Mitglieder
 │   │   │   ├── tracking.py   # Live-Positionen + WebSocket
 │   │   │   ├── routing.py    # GraphHopper-Routing
-│   │   │   ├── lage.py       # GeoJSON-Lagedaten
 │   │   │   ├── weather.py    # Open-Meteo-Integration
 │   │   │   ├── overpass.py   # OSM-Sperrungsabfragen
 │   │   │   ├── users.py      # Eigenes Benutzerprofil
@@ -222,7 +220,7 @@ ConvoyPlan/
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/lib/api/          # API-Client
-│   ├── src/lib/components/   # Karte, Wetter, Lagedatenpanel
+│   ├── src/lib/components/   # Karte, Wetter, UI-Bausteine
 │   ├── src/lib/stores/       # Auth-, Karten-, Konvoi-, Tracking-, Org-Stores
 │   ├── src/routes/
 │   │   ├── setup/            # Ersteinrichtungs-Wizard (5 Schritte inkl. Org-Anlage)
@@ -501,11 +499,10 @@ Die vollständige OpenAPI-Dokumentation wird automatisch von FastAPI bereitgeste
 | `PATCH` | `/api/convoys/{convoy_id}/vehicles/{vehicle_id}/status` | Fahrzeugstatus ändern |
 | `WS` | `/ws/tracking/{convoy_id}?token=...` | WebSocket für Live-Tracking |
 
-**Lage, Wetter und Overpass**
+**Wetter und Overpass**
 
 | Methode | Endpunkt | Beschreibung |
 |---|---|---|
-| `GET/POST/PUT/DELETE` | `/api/convoys/{convoy_id}/lage` | GeoJSON-Lagedaten verwalten |
 | `GET` | `/api/weather/?lat=...&lon=...` | Wetterdaten abrufen |
 | `GET` | `/api/overpass/closures?lat=...&lon=...` | Sperrungen und Baustellen abrufen |
 
@@ -529,8 +526,7 @@ Convoy
 ├── ConvoyVehicles          # Fahrzeugzuordnung inkl. Status
 ├── Waypoints               # Wegpunkte, Kontrollpunkte, technische Halte
 ├── Route                   # Liniengeometrie, Distanz, Dauer, GPX, Kanalwechsel
-├── VehiclePositions        # Live-Tracking-Positionen
-└── LageLayers              # GeoJSON-Lagedaten
+└── VehiclePositions        # Live-Tracking-Positionen
 
 Leitstelle
 └── boundary                # GeoJSON/KML-Zuständigkeitsgebiet
@@ -545,7 +541,6 @@ Wichtige fachliche Objekte:
 - **Waypoint**: Wegpunkt, Stopp, Kontrollpunkt oder technischer Halt mit Zeitplanung.
 - **Route**: Berechnete Route inklusive Geometrie, Distanz, Dauer, Exportdaten und Kanalwechseln.
 - **VehiclePosition**: Aktuelle Fahrzeugposition innerhalb eines Konvois.
-- **LageLayer**: Zusätzliche GeoJSON-Lageinformationen.
 - **Leitstelle**: Leitstelle mit GeoJSON/KML-Grenzgebiet; bestimmt Kanalwechselpunkte auf der Route.
 
 ---

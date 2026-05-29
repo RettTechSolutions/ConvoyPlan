@@ -5,16 +5,14 @@
 	import MapView from '$lib/components/MapView.svelte';
 	import LocationSearch from '$lib/components/LocationSearch.svelte';
 	import InfoPill from '$lib/components/InfoPill.svelte';
-	import LageLayerPanel from '$lib/components/LageLayerPanel.svelte';
 	import { get } from 'svelte/store';
 	import { page } from '$app/stores';
 	import { orgStore } from '$lib/stores/org';
 	import { activeConvoy, activeRoute, convoys } from '$lib/stores/convoy';
-	import { lageLayers } from '$lib/stores/lage';
 	import { mapMode } from '$lib/stores/map';
 	import {
 		convoysApi, vehiclesApi, orgsApi, overpassApi, authApi, mfaApi,
-		type Convoy, type Vehicle, type Organization, type OrgMember, type LageLayer,
+		type Convoy, type Vehicle, type Organization, type OrgMember,
 		type FuelAnalysis, type FuelStation, type Waypoint, type RoadPreference,
 		type KanalwechselEntry,
 	} from '$lib/api';
@@ -45,7 +43,7 @@
 	let closures = $state<FeatureCollection | null>(null);
 	let showClosures = $state(false);
 	let mapCenter = $state<[number, number]>([10.0, 51.5]);
-	let activeTab = $state<'convoy'|'fahrzeuge'|'wegpunkte'|'zeitplan'|'export'|'lage'|'konto'>('convoy');
+	let activeTab = $state<'convoy'|'fahrzeuge'|'wegpunkte'|'zeitplan'|'export'|'konto'>('convoy');
 	let loading = $state(false);
 	let dndWaypoints = $state<Waypoint[]>([]);
 	let dndVehicles = $state<Vehicle[]>([]);
@@ -808,7 +806,7 @@
 		{#if wizardStep === 0}
 			<!-- Primary planning tabs -->
 			<div class="tabs">
-				{#each [['convoy','Plan'],['wegpunkte','Wegpunkte'],['zeitplan','Zeitplan'],['lage','Lage'],['export','Export']] as [tab, label]}
+				{#each [['convoy','Plan'],['wegpunkte','Wegpunkte'],['zeitplan','Zeitplan'],['export','Export']] as [tab, label]}
 					<button class="tab" class:active={activeTab === tab} onclick={() => (activeTab = tab as typeof activeTab)}>{label}</button>
 				{/each}
 			</div>
@@ -1338,14 +1336,6 @@
 					</div>
 				{/if}
 
-				<!-- ── TAB: Lage ── -->
-				{#if activeTab === 'lage' && selected}
-					<LageLayerPanel
-						convoyId={selected.id}
-						onLayersChange={(layers) => lageLayers.set(layers)}
-					/>
-				{/if}
-
 			</div>
 		{:else}
 			<!-- Wizard -->
@@ -1430,19 +1420,11 @@
 			onShowClosures={toggleClosures}
 		/>
 
-		<!-- V3: Lage-Layer-Panel (floating) -->
-		{#if selected && $lageLayers.length > 0}
-			<div class="lage-floating">
-				<LageLayerPanel convoyId={selected.id} onLayersChange={(layers) => lageLayers.set(layers)} />
-			</div>
-		{/if}
-
 		<MapView
 			startPoint={selected?.start_point}
 			endPoint={selected?.end_point}
 			waypoints={selected?.waypoints ?? []}
 			routeGeojson={route?.geojson as never}
-			lageLayers={$lageLayers}
 			closuresGeojson={showClosures ? closures : null}
 			onMapClick={handleMapClick}
 			onMapMove={handleMapMove}
@@ -1770,8 +1752,6 @@
 	.map-hint-bar { position: absolute; top: 1rem; left: 50%; transform: translateX(-50%); z-index: 10; background: rgba(15,27,36,.9); color: white; padding: .5rem 1rem; border-radius: 20px; display: flex; align-items: center; gap: 1rem; font-size: .85rem; }
 	.map-hint-bar button { background: rgba(255,255,255,.2); border: none; color: white; border-radius: 12px; padding: .2rem .6rem; cursor: pointer; }
 
-	.lage-floating { position: absolute; bottom: 2rem; right: 1rem; z-index: 10; }
-
 	/* Modal */
 	.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; z-index: 100; }
 	.modal { background: white; border-radius: 8px; padding: 2rem; width: 100%; max-width: 420px; color: #333; }
@@ -1878,9 +1858,8 @@
 
 		/* Hide floating map overlays when the sidebar is open — they would
 		   otherwise sit on top of the sidebar (InfoPill) or look stranded
-		   along the visible edge of the map (Lage panel, route FAB). */
+		   along the visible edge of the map (route FAB). */
 		.app.sidebar-open :global(.pill-wrap),
-		.app.sidebar-open .lage-floating,
 		.app.sidebar-open .fab-route,
 		.app.sidebar-open .map-hint-bar {
 			display: none;

@@ -96,11 +96,6 @@ export interface OrgMember {
 	user_id: string; email: string; role: string;
 }
 
-export interface LageLayer {
-	id: string; name: string; geojson_data: Record<string, unknown>;
-	color: string; visible: boolean;
-}
-
 export interface VehiclePosition {
 	vehicle_id: string; lat: number; lon: number;
 	speed_kmh: number | null; heading: number | null; recorded_at: string;
@@ -230,17 +225,6 @@ export const orgsApi = {
 	delete: (orgId: string) => api.delete(`/api/organizations/${orgId}`),
 	inviteMember: (orgId: string, email: string, password: string) =>
 		api.post(`/api/organizations/${orgId}/members/invite`, { email, password }),
-};
-
-// V2: Lage-Layer
-export const lageApi = {
-	list: (convoyId: string) => api.get<LageLayer[]>(`/api/convoys/${convoyId}/lage`),
-	create: (convoyId: string, data: Omit<LageLayer, 'id'>) =>
-		api.post<LageLayer>(`/api/convoys/${convoyId}/lage`, data),
-	update: (convoyId: string, layerId: string, data: Partial<LageLayer>) =>
-		api.put<LageLayer>(`/api/convoys/${convoyId}/lage/${layerId}`, data),
-	delete: (convoyId: string, layerId: string) =>
-		api.delete(`/api/convoys/${convoyId}/lage/${layerId}`),
 };
 
 // V3: Wetter

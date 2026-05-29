@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import (
     auth, convoys, vehicles, routing, organizations,
-    tracking, lage, weather, overpass, status, users, leitstellen,
+    tracking, weather, overpass, status, users, leitstellen,
 )
 from app.api.routes import admin as admin_router
 from app.api.routes import branding as branding_router
@@ -47,7 +47,6 @@ app.include_router(convoys.router, prefix="/api")
 app.include_router(routing.router, prefix="/api")
 app.include_router(organizations.router, prefix="/api")
 app.include_router(tracking.router, prefix="/api")
-app.include_router(lage.router, prefix="/api")
 app.include_router(weather.router, prefix="/api")
 app.include_router(overpass.router, prefix="/api")
 app.include_router(status.router, prefix="/api")
