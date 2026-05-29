@@ -56,7 +56,6 @@ VITE_WS_HOST=localhost:8000
 | `convoy` | `src/lib/stores/convoy.ts` | Aktiver Marschverband und Wegpunkte |
 | `map` | `src/lib/stores/map.ts` | MapLibre-Instanz und Layer-Zustand |
 | `tracking` | `src/lib/stores/tracking.ts` | Live-Positionen per WebSocket |
-| `lage` | `src/lib/stores/lage.ts` | GeoJSON-Lagedaten |
 
 ## Produktions-Build
 

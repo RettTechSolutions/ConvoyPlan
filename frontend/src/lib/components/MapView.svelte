@@ -4,7 +4,7 @@
 	import 'maplibre-gl/dist/maplibre-gl.css';
 	import { get } from 'svelte/store';
 	import { mapMode } from '$lib/stores/map';
-	import type { Waypoint, LageLayer, VehiclePosition } from '$lib/api';
+	import type { Waypoint, VehiclePosition } from '$lib/api';
 	import type { Geometry, FeatureCollection } from 'geojson';
 
 	interface Props {
@@ -13,7 +13,6 @@
 		waypoints?: Waypoint[];
 		routeGeojson?: Geometry | null;
 		livePositions?: Map<string, VehiclePosition>;
-		lageLayers?: LageLayer[];
 		closuresGeojson?: FeatureCollection | null;
 		onMapClick?: (lat: number, lon: number) => void;
 		onMapMove?: (lat: number, lon: number) => void;
@@ -27,7 +26,6 @@
 		waypoints = [],
 		routeGeojson = null,
 		livePositions = new Map(),
-		lageLayers = [],
 		closuresGeojson = null,
 		onMapClick,
 		onMapMove,
@@ -227,28 +225,6 @@
 	});
 
 	// Lage layers (dynamic sources)
-	let lageSourceIds: string[] = [];
-	$effect(() => {
-		if (!ready) return;
-		// Remove old lage sources/layers
-		lageSourceIds.forEach((id) => {
-			if (map.getLayer(id + '-line')) map.removeLayer(id + '-line');
-			if (map.getLayer(id + '-fill')) map.removeLayer(id + '-fill');
-			if (map.getLayer(id + '-circle')) map.removeLayer(id + '-circle');
-			if (map.getSource(id)) map.removeSource(id);
-		});
-		lageSourceIds = [];
-
-		lageLayers.filter((l) => l.visible).forEach((layer) => {
-			const sid = `lage-${layer.id}`;
-			lageSourceIds.push(sid);
-			map.addSource(sid, { type: 'geojson', data: layer.geojson_data as unknown as FeatureCollection });
-			map.addLayer({ id: sid + '-line', type: 'line', source: sid, paint: { 'line-color': layer.color, 'line-width': 2 } });
-			map.addLayer({ id: sid + '-fill', type: 'fill', source: sid, filter: ['==', '$type', 'Polygon'], paint: { 'fill-color': layer.color, 'fill-opacity': 0.2 } });
-			map.addLayer({ id: sid + '-circle', type: 'circle', source: sid, filter: ['==', '$type', 'Point'], paint: { 'circle-color': layer.color, 'circle-radius': 6 } });
-		});
-	});
-
 	// Closures layer
 	$effect(() => {
 		if (!ready) return;
