@@ -827,10 +827,7 @@
 					<div class="section">
 						<div class="section-header" style="margin-top:0">
 							<span>Marschverband</span>
-							<div style="display:flex;gap:.35rem">
-								<button class="btn-small" onclick={() => (showShareLinkModal = true)} title="Live-Tracking-Link erstellen">🔗 Teilen</button>
-								<button class="btn-small" onclick={openEditConvoyForm}>✎ Bearbeiten</button>
-							</div>
+							<button class="btn-small" onclick={openEditConvoyForm}>✎ Bearbeiten</button>
 						</div>
 						<p><strong>Organisation:</strong> {selected.organization ?? '–'}</p>
 						<p><strong>Startzeit:</strong> {selected.start_time ? new Date(selected.start_time).toLocaleString('de-DE') : '–'}</p>
@@ -1298,7 +1295,10 @@
 							<button class="btn-export" onclick={() => navigator.clipboard.writeText(`${window.location.origin}/share/${selected?.share_token}`)}>🔗 Link kopieren</button>
 						</div>
 						<div class="section-header" style="margin-top:1rem"><strong>Live-Tracking</strong></div>
-						<a class="btn-export" href="/o/{$page.params.slug}/tracking/{selected.id}" target="_blank">🔴 Tracking-Ansicht öffnen</a>
+						<div class="export-grid">
+							<a class="btn-export" href="/o/{$page.params.slug}/tracking/{selected.id}" target="_blank">🔴 Tracking-Ansicht öffnen</a>
+							<button class="btn-export" onclick={() => (showShareLinkModal = true)}>🔗 Öffentlich teilen (QR / Passwort)</button>
+						</div>
 						<div class="section-header" style="margin-top:1rem"><strong>Sperrungen & Baustellen</strong></div>
 						<button class="btn-export" class:active={showClosures} onclick={toggleClosures}>
 							{showClosures ? '🚧 Sperrungen ausblenden' : '🚧 Sperrungen laden'}
