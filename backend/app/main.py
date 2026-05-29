@@ -16,6 +16,8 @@ from app.api.routes import branding as branding_router
 from app.api.routes import email_template as email_template_router
 from app.api.routes import license as license_router
 from app.api.routes import setup as setup_router
+from app.api.routes import share_links as share_links_router
+from app.api.routes import track as track_router
 from app.api.routes import version as version_router
 from app.middleware.license_guard import LicenseGuardMiddleware
 
@@ -57,6 +59,9 @@ app.include_router(leitstellen.router, prefix="/api")
 app.include_router(branding_router.router, prefix="/api")
 app.include_router(email_template_router.router, prefix="/api")
 app.include_router(license_router.router, prefix="/api")
+app.include_router(share_links_router.router, prefix="/api")
+app.include_router(track_router.router, prefix="/api")
+app.include_router(track_router.ws_router, prefix="/api")
 app.include_router(version_router.router, prefix="/api")
 
 _uploads_dir = Path("/uploads")

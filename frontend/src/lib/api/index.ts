@@ -257,6 +257,86 @@ export const shareApi = {
 	}>(`/api/convoys/share/${token}`),
 };
 
+// ── Public tracking share-links ──────────────────────────────────────────────
+
+export type ShareLinkPasswordMode = 'none' | 'generate' | 'set';
+
+export interface ShareLink {
+	id: string;
+	slug: string;
+	scope: string;
+	requires_password: boolean;
+	created_at: string;
+	last_accessed_at: string | null;
+	access_count: number;
+	revoked: boolean;
+	url: string;
+}
+
+export interface ShareLinkCreated extends ShareLink {
+	password_plain: string | null;
+}
+
+export const shareLinksApi = {
+	list: (convoyId: string) =>
+		api.get<ShareLink[]>(`/api/convoys/${convoyId}/share-links`),
+	create: (convoyId: string, body: { password_mode: ShareLinkPasswordMode; password?: string | null }) =>
+		api.post<ShareLinkCreated>(`/api/convoys/${convoyId}/share-links`, body),
+	revoke: (convoyId: string, linkId: string) =>
+		api.delete(`/api/convoys/${convoyId}/share-links/${linkId}`),
+};
+
+export interface TrackVehicle {
+	id: string; name: string; callsign: string | null;
+	sonderfunktion: string | null; vehicle_status: string | null; position: number;
+}
+export interface TrackPosition {
+	vehicle_id: string; lat: number; lon: number;
+	speed_kmh: number | null; heading: number | null; recorded_at: string;
+}
+export interface TrackWaypointPublic {
+	name: string; type: string;
+	lat: number | null; lon: number | null;
+	planned_arrival: string | null; planned_departure: string | null;
+	halt_purpose: string | null;
+}
+export interface TrackPayload {
+	name: string; organization: string | null; start_time: string | null;
+	waypoints: TrackWaypointPublic[]; geojson: Geometry | null;
+	vehicles: TrackVehicle[]; positions: TrackPosition[];
+}
+export interface TrackGate { requires_password: true; convoy_name: string; }
+
+async function trackRequest<T>(path: string, init: RequestInit = {}, sessionToken?: string): Promise<T> {
+	const baseUrl = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
+	const headers: Record<string, string> = {
+		'Content-Type': 'application/json',
+		...(init.headers as Record<string, string>),
+	};
+	if (sessionToken) headers['X-Track-Token'] = sessionToken;
+	const res = await fetch(`${baseUrl}${path}`, { ...init, headers });
+	if (!res.ok) {
+		const err = await res.json().catch(() => ({ detail: res.statusText }));
+		throw new Error(err.detail ?? 'Request failed');
+	}
+	if (res.status === 204) return undefined as T;
+	return res.json();
+}
+
+export const trackApi = {
+	get: (slug: string, sessionToken?: string) =>
+		trackRequest<TrackPayload | TrackGate>(`/api/track/${slug}`, {}, sessionToken),
+	auth: (slug: string, password: string) =>
+		trackRequest<{ token: string }>(`/api/track/${slug}/auth`, {
+			method: 'POST',
+			body: JSON.stringify({ password }),
+		}),
+};
+
+export function isTrackGate(payload: TrackPayload | TrackGate): payload is TrackGate {
+	return (payload as TrackGate).requires_password === true;
+}
+
 export interface AdminUser {
     id: string;
     email: string;

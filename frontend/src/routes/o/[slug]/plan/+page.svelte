@@ -5,6 +5,7 @@
 	import MapView from '$lib/components/MapView.svelte';
 	import LocationSearch from '$lib/components/LocationSearch.svelte';
 	import InfoPill from '$lib/components/InfoPill.svelte';
+	import ShareLinkModal from '$lib/components/ShareLinkModal.svelte';
 	import { get } from 'svelte/store';
 	import { page } from '$app/stores';
 	import { orgStore } from '$lib/stores/org';
@@ -106,6 +107,7 @@
 	let showEditConvoyForm = $state(false);
 	let editConvoy = $state({ name:'', organization:'', organization_id:'', start_time:'', speed_urban_kmh:40, speed_rural_kmh:65, road_preference:'schnell' as RoadPreference, spacing_urban_m:15, spacing_rural_m:50, spacing_motorway_m:100 });
 	let showBefehlModal = $state(false);
+	let showShareLinkModal = $state(false);
 	let showSubConvoyForm = $state(false);
 	let newVehicle = $state({ name:'', callsign:'', license_plate:'', height_cm:'', weight_kg:'', length_cm:'', convoy_role:'', tank_capacity_l:'', fuel_consumption_l100km:'', current_fuel_l:'' });
 	let editingVehicleId = $state<string | null>(null);
@@ -825,7 +827,10 @@
 					<div class="section">
 						<div class="section-header" style="margin-top:0">
 							<span>Marschverband</span>
-							<button class="btn-small" onclick={openEditConvoyForm}>✎ Bearbeiten</button>
+							<div style="display:flex;gap:.35rem">
+								<button class="btn-small" onclick={() => (showShareLinkModal = true)} title="Live-Tracking-Link erstellen">🔗 Teilen</button>
+								<button class="btn-small" onclick={openEditConvoyForm}>✎ Bearbeiten</button>
+							</div>
 						</div>
 						<p><strong>Organisation:</strong> {selected.organization ?? '–'}</p>
 						<p><strong>Startzeit:</strong> {selected.start_time ? new Date(selected.start_time).toLocaleString('de-DE') : '–'}</p>
@@ -1573,6 +1578,10 @@
 			</form>
 		</div>
 	</div>
+{/if}
+
+{#if showShareLinkModal && selected}
+	<ShareLinkModal convoyId={selected.id} onClose={() => (showShareLinkModal = false)} />
 {/if}
 
 <!-- ── Modal: Marschverband bearbeiten ──────────────────────────── -->

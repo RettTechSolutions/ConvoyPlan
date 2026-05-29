@@ -9,9 +9,9 @@
 
 	let { children } = $props();
 
-	// /o/ hat eigenes Guard-Layout; /share/ ist öffentlich (Token-basiert)
+	// /o/ hat eigenes Guard-Layout; /share/ und /track/ sind öffentlich (Token-/Slug-basiert)
 	// Wurzelpfad '/' ist die Org-Code-Eingabe — ebenfalls öffentlich
-	const PUBLIC_ROUTES = ['/login', '/share', '/setup', '/o/', '/admin'];
+	const PUBLIC_ROUTES = ['/login', '/share', '/track', '/setup', '/o/', '/admin'];
 	const isPublicPath = (path: string) =>
 		path === '/' || PUBLIC_ROUTES.some((r) => path.startsWith(r));
 	let setupChecked = $state(false);

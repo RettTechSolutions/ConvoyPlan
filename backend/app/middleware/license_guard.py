@@ -37,6 +37,8 @@ _EXEMPT_PREFIXES = (
     "/api/auth/login",
     "/api/license/",
     "/api/setup",
+    "/api/track/",
+    "/api/ws/track/",
     "/uploads",
     "/docs",
     "/openapi.json",

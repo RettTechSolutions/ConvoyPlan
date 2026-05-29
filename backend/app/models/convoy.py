@@ -46,6 +46,7 @@ class Convoy(Base):
     waypoints: Mapped[list["Waypoint"]] = relationship(back_populates="convoy", cascade="all, delete-orphan", order_by="Waypoint.order_index")
     route: Mapped["Route | None"] = relationship(back_populates="convoy", cascade="all, delete-orphan", uselist=False)
     vehicle_positions: Mapped[list["VehiclePosition"]] = relationship(back_populates="convoy", cascade="all, delete-orphan")
+    share_links: Mapped[list["ConvoyShareLink"]] = relationship(back_populates="convoy", cascade="all, delete-orphan")
 
 
 class ConvoyVehicle(Base):
