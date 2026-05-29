@@ -14,7 +14,14 @@ from app.config import settings
 from app.database import get_db
 from app.models.organization import Organization, UserOrganization
 from app.models.user import User
-from app.schemas.user import UserCreate, UserResponse
+from app.schemas.user import (
+    PasswordChangeRequest,
+    PasswordResetRequest,
+    UserCreate,
+    UserResponse,
+)
+from app.services.email import send_password_email
+from app.services.password import generate_password
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -172,6 +179,88 @@ async def register(
     await db.commit()
     await db.refresh(user)
     return user
+
+
+# ── Password change (self-service) ────────────────────────────────────────────
+
+
+@router.post("/password")
+async def change_password(
+    data: PasswordChangeRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Authenticated user changes their own password (current password required)."""
+    if not bcrypt.checkpw(data.current_password.encode(), current_user.hashed_password.encode()):
+        await asyncio.sleep(0.2)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Aktuelles Passwort falsch")
+    if len(data.new_password) < 8:
+        raise HTTPException(status_code=400, detail="Neues Passwort muss mindestens 8 Zeichen lang sein")
+    current_user.hashed_password = bcrypt.hashpw(data.new_password.encode(), bcrypt.gensalt()).decode()
+    db.add(current_user)
+    await db.commit()
+    return {"status": "ok"}
+
+
+# ── Password reset request (forgot password) ──────────────────────────────────
+
+
+@router.post("/password-reset", status_code=status.HTTP_202_ACCEPTED)
+async def request_password_reset(
+    data: PasswordResetRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Public endpoint: generate a new password and email it to the user.
+
+    Always returns 202 to avoid account enumeration. SMTP/lookup failures are
+    swallowed; the response time is normalised to make timing-attacks harder."""
+    response = {"status": "accepted"}
+
+    result = await db.execute(select(User).where(User.email == data.email))
+    user = result.scalar_one_or_none()
+
+    # When org_slug is provided, only act if the user is a member of that org.
+    org_for_link: Organization | None = None
+    if data.org_slug:
+        org_result = await db.execute(select(Organization).where(Organization.slug == data.org_slug))
+        org_for_link = org_result.scalar_one_or_none()
+        if user and org_for_link:
+            mem_result = await db.execute(
+                select(UserOrganization).where(
+                    UserOrganization.user_id == user.id,
+                    UserOrganization.organization_id == org_for_link.id,
+                )
+            )
+            if mem_result.scalar_one_or_none() is None:
+                user = None
+
+    if user and user.is_active:
+        new_password = generate_password()
+        user.hashed_password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+        await db.commit()
+
+        base_url = settings.app_base_url.rstrip("/")
+        if org_for_link:
+            login_url = f"{base_url}/o/{org_for_link.slug}/login"
+        else:
+            login_url = f"{base_url}/login"
+
+        try:
+            await send_password_email(
+                db=db,
+                recipient_email=user.email,
+                recipient_name="",
+                password=new_password,
+                login_url=login_url,
+            )
+        except Exception:
+            # Don't leak SMTP errors — caller cannot distinguish "no account"
+            # from "email server broken" by design.
+            pass
+
+    # Constant-ish response time (matches /auth/org-lookup pattern)
+    await asyncio.sleep(0.3)
+    return response
 
 
 # ── MFA Setup ─────────────────────────────────────────────────────────────────

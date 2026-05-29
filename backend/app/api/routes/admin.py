@@ -1,8 +1,6 @@
 import asyncio
 import json
 import os
-import secrets
-import string
 import uuid
 from datetime import datetime, timezone
 
@@ -23,6 +21,7 @@ from app.models.settings import SystemSetting
 from app.models.user import User
 from app.schemas.user import AdminUserCreate, AdminUserResponse, AdminUserUpdate, AdminUserOrgInfo
 from app.services.email import save_smtp_settings, send_password_email, test_smtp_connection
+from app.services.password import generate_password
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -54,6 +53,7 @@ async def list_users(
             email=u.email,
             is_active=u.is_active,
             is_superadmin=u.is_superadmin,
+            mfa_enabled=u.mfa_enabled,
             created_at=u.created_at,
             orgs=orgs,
         ))
@@ -78,7 +78,8 @@ async def create_user(
     await db.commit()
     await db.refresh(user)
     return AdminUserResponse(id=user.id, email=user.email, is_active=user.is_active,
-                             is_superadmin=user.is_superadmin, created_at=user.created_at, orgs=[])
+                             is_superadmin=user.is_superadmin, mfa_enabled=user.mfa_enabled,
+                             created_at=user.created_at, orgs=[])
 
 
 @router.patch("/users/{user_id}", response_model=AdminUserResponse)
@@ -120,7 +121,8 @@ async def update_user(
         if m.organization is not None
     ]
     return AdminUserResponse(id=user.id, email=user.email, is_active=user.is_active,
-                             is_superadmin=user.is_superadmin, created_at=user.created_at, orgs=orgs)
+                             is_superadmin=user.is_superadmin, mfa_enabled=user.mfa_enabled,
+                             created_at=user.created_at, orgs=orgs)
 
 
 @router.delete("/users/{user_id}", status_code=204)
@@ -529,18 +531,6 @@ async def smtp_test(
 # ── Send password email ───────────────────────────────────────────────────────
 
 
-def _generate_password(length: int = 14) -> str:
-    alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
-    while True:
-        pwd = "".join(secrets.choice(alphabet) for _ in range(length))
-        # Ensure at least one of each class
-        if (any(c.islower() for c in pwd)
-                and any(c.isupper() for c in pwd)
-                and any(c.isdigit() for c in pwd)
-                and any(c in "!@#$%^&*" for c in pwd)):
-            return pwd
-
-
 @router.post("/users/{user_id}/send-password", status_code=202)
 async def send_user_password(
     user_id: uuid.UUID,
@@ -557,7 +547,7 @@ async def send_user_password(
     if not user:
         raise HTTPException(404, "User not found")
 
-    new_password = _generate_password()
+    new_password = generate_password()
     user.hashed_password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
     await db.commit()
 
@@ -598,8 +588,26 @@ async def reset_user_password(
     if not user:
         raise HTTPException(404, "User not found")
 
-    new_password = _generate_password()
+    new_password = generate_password()
     user.hashed_password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
     await db.commit()
 
     return {"password": new_password, "email": user.email}
+
+
+@router.post("/users/{user_id}/reset-mfa")
+async def reset_user_mfa(
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    """Clear MFA secret and disable MFA so a locked-out user can log in again."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    user.mfa_enabled = False
+    user.mfa_secret = None
+    await db.commit()
+    return {"status": "reset"}

@@ -13,7 +13,7 @@
 	import { lageLayers } from '$lib/stores/lage';
 	import { mapMode } from '$lib/stores/map';
 	import {
-		convoysApi, vehiclesApi, orgsApi, overpassApi,
+		convoysApi, vehiclesApi, orgsApi, overpassApi, authApi, mfaApi,
 		type Convoy, type Vehicle, type Organization, type OrgMember, type LageLayer,
 		type FuelAnalysis, type FuelStation, type Waypoint, type RoadPreference,
 		type KanalwechselEntry,
@@ -21,6 +21,7 @@
 	import type { FeatureCollection } from 'geojson';
 	import { dndzone } from 'svelte-dnd-action';
 	import { themeStore } from '$lib/stores/theme';
+	import QRCode from 'qrcode';
 
 	// ── State ──────────────────────────────────────────────────────────
 	let allVehicles = $state<Vehicle[]>([]);
@@ -44,7 +45,7 @@
 	let closures = $state<FeatureCollection | null>(null);
 	let showClosures = $state(false);
 	let mapCenter = $state<[number, number]>([10.0, 51.5]);
-	let activeTab = $state<'convoy'|'fahrzeuge'|'wegpunkte'|'zeitplan'|'export'|'lage'>('convoy');
+	let activeTab = $state<'convoy'|'fahrzeuge'|'wegpunkte'|'zeitplan'|'export'|'lage'|'konto'>('convoy');
 	let loading = $state(false);
 	let dndWaypoints = $state<Waypoint[]>([]);
 	let dndVehicles = $state<Vehicle[]>([]);
@@ -118,6 +119,108 @@
 
 	function defaultConvoyForm() {
 		return { name:'', organization:'', organization_id:'', start_time:'', speed_urban_kmh:40, speed_rural_kmh:65, road_preference:'schnell' as RoadPreference, spacing_urban_m:15, spacing_rural_m:50, spacing_motorway_m:100, lage:'', auftrag:'', marschform:'geschlossener_verband', ablaufpunkt:'', ablaufzeit:'', ablaufführer:'', versorgung:'', funkgruppe:'', anlagen:'' };
+	}
+
+	// ── Konto-Tab (Passwort & MFA) ─────────────────────────────────
+	let pwForm = $state({ current: '', next: '', confirm: '' });
+	let pwWorking = $state(false);
+	let pwError = $state('');
+	let pwSuccess = $state('');
+
+	async function changePassword() {
+		pwError = '';
+		pwSuccess = '';
+		if (!pwForm.current || !pwForm.next || !pwForm.confirm) {
+			pwError = 'Bitte alle Felder ausfüllen';
+			return;
+		}
+		if (pwForm.next !== pwForm.confirm) {
+			pwError = 'Die neuen Passwörter stimmen nicht überein';
+			return;
+		}
+		if (pwForm.next.length < 8) {
+			pwError = 'Neues Passwort muss mindestens 8 Zeichen lang sein';
+			return;
+		}
+		pwWorking = true;
+		try {
+			await authApi.changePassword(pwForm.current, pwForm.next);
+			pwForm = { current: '', next: '', confirm: '' };
+			pwSuccess = 'Passwort geändert.';
+			setTimeout(() => { pwSuccess = ''; }, 4000);
+		} catch (e: unknown) {
+			pwError = e instanceof Error ? e.message : 'Fehler beim Ändern';
+		} finally {
+			pwWorking = false;
+		}
+	}
+
+	let mfaEnabled = $state(false);
+	let mfaSetupSecret = $state('');
+	let mfaSetupQrDataUrl = $state('');
+	let mfaSetupStep = $state<'idle' | 'setup' | 'confirm'>('idle');
+	let mfaCode = $state('');
+	let mfaWorking = $state(false);
+	let mfaError = $state('');
+	let mfaSuccess = $state('');
+	let mfaLoaded = $state(false);
+
+	async function loadMfaStatus() {
+		try {
+			const s = await mfaApi.status();
+			mfaEnabled = s.mfa_enabled;
+			mfaLoaded = true;
+		} catch { /* ignore */ }
+	}
+
+	async function startMfaSetup() {
+		mfaWorking = true;
+		mfaError = '';
+		try {
+			const data = await mfaApi.setup();
+			mfaSetupSecret = data.secret;
+			mfaSetupQrDataUrl = await QRCode.toDataURL(data.provisioning_uri, { width: 200, margin: 1 });
+			mfaSetupStep = 'setup';
+		} catch (e: unknown) {
+			mfaError = e instanceof Error ? e.message : 'Fehler beim Setup';
+		} finally { mfaWorking = false; }
+	}
+
+	async function confirmMfa() {
+		if (mfaCode.length < 6) return;
+		mfaWorking = true;
+		mfaError = '';
+		try {
+			await mfaApi.confirm(mfaCode);
+			mfaEnabled = true;
+			mfaSetupStep = 'idle';
+			mfaCode = '';
+			mfaSuccess = 'MFA erfolgreich aktiviert.';
+			setTimeout(() => { mfaSuccess = ''; }, 4000);
+		} catch (e: unknown) {
+			mfaError = e instanceof Error ? e.message : 'Ungültiger Code';
+		} finally { mfaWorking = false; }
+	}
+
+	async function disableMfa() {
+		if (mfaCode.length < 6) return;
+		mfaWorking = true;
+		mfaError = '';
+		try {
+			await mfaApi.disable(mfaCode);
+			mfaEnabled = false;
+			mfaSetupStep = 'idle';
+			mfaCode = '';
+			mfaSuccess = 'MFA deaktiviert.';
+			setTimeout(() => { mfaSuccess = ''; }, 4000);
+		} catch (e: unknown) {
+			mfaError = e instanceof Error ? e.message : 'Ungültiger Code';
+		} finally { mfaWorking = false; }
+	}
+
+	function openKontoTab() {
+		activeTab = 'konto';
+		if (!mfaLoaded) loadMfaStatus();
 	}
 
 	// ── Init ──────────────────────────────────────────────────────────
@@ -712,9 +815,8 @@
 			<!-- Verwaltung tabs -->
 			<div class="tabs tabs-verwaltung">
 				<span class="tabs-section-label">Verwaltung</span>
-				{#each [['fahrzeuge','Fahrzeuge']] as [tab, label]}
-					<button class="tab" class:active={activeTab === tab} onclick={() => (activeTab = tab as typeof activeTab)}>{label}</button>
-				{/each}
+				<button class="tab" class:active={activeTab === 'fahrzeuge'} onclick={() => (activeTab = 'fahrzeuge')}>Fahrzeuge</button>
+				<button class="tab" class:active={activeTab === 'konto'} onclick={openKontoTab}>Konto</button>
 			</div>
 
 			<div class="tab-content">
@@ -983,6 +1085,98 @@
 								{/each}
 							</ol>
 							<p class="hint" style="margin-top:.4rem">Position 1 = Spitzenführer, letztes Fahrzeug = Schließender</p>
+						{/if}
+					</div>
+				{/if}
+
+				<!-- ── TAB: Konto ── -->
+				{#if activeTab === 'konto'}
+					<div class="section">
+						<div class="section-header" style="margin-top:0">
+							<strong>Passwort ändern</strong>
+						</div>
+						{#if pwError}
+							<p class="error-bar">{pwError}</p>
+						{/if}
+						{#if pwSuccess}
+							<p class="success-bar">{pwSuccess}</p>
+						{/if}
+						<form class="inline-form" onsubmit={(e) => { e.preventDefault(); changePassword(); }}>
+							<input type="password" placeholder="Aktuelles Passwort" autocomplete="current-password" bind:value={pwForm.current} required />
+							<input type="password" placeholder="Neues Passwort (min. 8 Zeichen)" autocomplete="new-password" bind:value={pwForm.next} required minlength="8" />
+							<input type="password" placeholder="Neues Passwort bestätigen" autocomplete="new-password" bind:value={pwForm.confirm} required minlength="8" />
+							<button type="submit" disabled={pwWorking}>{pwWorking ? '…' : 'Passwort ändern'}</button>
+						</form>
+					</div>
+
+					<div class="section">
+						<div class="section-header">
+							<strong>Zwei-Faktor-Authentifizierung (MFA)</strong>
+						</div>
+						{#if mfaError}
+							<p class="error-bar">{mfaError}</p>
+						{/if}
+						{#if mfaSuccess}
+							<p class="success-bar">{mfaSuccess}</p>
+						{/if}
+
+						{#if mfaSetupStep === 'idle'}
+							<p>
+								<strong>Status:</strong>
+								{#if mfaEnabled}
+									<span class="tag fuel-tag">Aktiv ✓</span>
+								{:else}
+									<span class="tag">Nicht aktiv</span>
+								{/if}
+							</p>
+
+							{#if mfaEnabled}
+								<p class="hint">MFA ist aktiv. Zum Deaktivieren bitte aktuellen Code aus deiner Authenticator-App eingeben:</p>
+								<div class="inline-form" style="flex-direction:row;gap:.4rem;align-items:center">
+									<input
+										type="text"
+										inputmode="numeric"
+										maxlength="6"
+										placeholder="000000"
+										bind:value={mfaCode}
+										autocomplete="one-time-code"
+										style="flex:1;letter-spacing:.2em;text-align:center"
+									/>
+									<button class="btn-small danger" onclick={disableMfa} disabled={mfaWorking || mfaCode.length < 6}>
+										{mfaWorking ? '…' : 'Deaktivieren'}
+									</button>
+								</div>
+							{:else}
+								<p class="hint">MFA schützt dein Konto mit einem zweiten Faktor (Authenticator-App wie Authy, Google Authenticator).</p>
+								<button onclick={startMfaSetup} disabled={mfaWorking}>
+									{mfaWorking ? '…' : 'MFA einrichten'}
+								</button>
+							{/if}
+
+						{:else if mfaSetupStep === 'setup'}
+							<p class="hint">Scanne den QR-Code mit einer Authenticator-App oder gib den Secret manuell ein.</p>
+							{#if mfaSetupQrDataUrl}
+								<img src={mfaSetupQrDataUrl} alt="MFA QR Code" style="display:block;margin:.5rem auto;background:#fff;padding:.5rem;border-radius:6px" />
+							{/if}
+							<p style="word-break:break-all;font-family:monospace;font-size:var(--text-xs);background:var(--surface-2);padding:.5rem;border-radius:4px">
+								{mfaSetupSecret}
+							</p>
+							<p class="hint">Danach Code eingeben um MFA zu aktivieren:</p>
+							<div class="inline-form" style="flex-direction:row;gap:.4rem;align-items:center">
+								<input
+									type="text"
+									inputmode="numeric"
+									maxlength="6"
+									placeholder="000000"
+									bind:value={mfaCode}
+									autocomplete="one-time-code"
+									style="flex:1;letter-spacing:.2em;text-align:center"
+								/>
+								<button onclick={confirmMfa} disabled={mfaWorking || mfaCode.length < 6}>
+									{mfaWorking ? '…' : 'Bestätigen'}
+								</button>
+								<button class="btn-small" onclick={() => { mfaSetupStep = 'idle'; mfaCode = ''; }}>Abbrechen</button>
+							</div>
 						{/if}
 					</div>
 				{/if}
@@ -1566,6 +1760,7 @@
 
 	.error-bar { background: var(--color-primary-hover); color: white; padding: .4rem .75rem; font-size: .8rem; margin: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; flex-shrink: 0; word-break: break-word; }
 	.error-bar button { background: none; border: none; color: white; cursor: pointer; font-size: 1rem; flex-shrink: 0; line-height: 1; padding: 0; }
+	.success-bar { background: rgba(39,174,96,.25); color: #a9dfbf; padding: .4rem .75rem; font-size: .8rem; margin: 0 0 .5rem 0; border-radius: 4px; }
 
 	.map-area { flex: 1; position: relative; }
 	/* Desktop defaults — these elements exist in DOM but are hidden */

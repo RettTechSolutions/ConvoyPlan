@@ -168,6 +168,21 @@
         } catch { error = 'Benutzer konnte nicht gelöscht werden'; }
     }
 
+    let resettingMfaFor = $state<string | null>(null);
+
+    async function resetUserMfa(user: AdminUser) {
+        if (!confirm(`MFA für ${user.email} zurücksetzen?\n\nDer Benutzer kann sich danach wieder ohne MFA anmelden.`)) return;
+        resettingMfaFor = user.id;
+        try {
+            await adminApi.resetUserMfa(user.id);
+            await loadUsers();
+        } catch (e: unknown) {
+            error = e instanceof Error ? e.message : 'MFA konnte nicht zurückgesetzt werden';
+        } finally {
+            resettingMfaFor = null;
+        }
+    }
+
     // ── Organisationen ───────────────────────────────────────────────────────
     let orgs = $state<AdminOrg[]>([]);
     let orgsLoading = $state(false);
@@ -1020,6 +1035,7 @@
                             <th>Organisationen</th>
                             <th>Aktiv</th>
                             <th>Superadmin</th>
+                            <th>MFA</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -1047,9 +1063,26 @@
                                         {user.is_superadmin ? 'Ja' : 'Nein'}
                                     </button>
                                 </td>
+                                <td>
+                                    {#if user.mfa_enabled}
+                                        <span class="mfa-on" title="MFA aktiv">Aktiv</span>
+                                    {:else}
+                                        <span class="hint">—</span>
+                                    {/if}
+                                </td>
                                 <td class="actions-cell">
                                     <div>
                                         <button class="btn-small" onclick={() => openEditUser(user)} title="Bearbeiten">✎</button>
+                                        {#if user.mfa_enabled}
+                                            <button
+                                                class="btn-small"
+                                                onclick={() => resetUserMfa(user)}
+                                                disabled={resettingMfaFor === user.id}
+                                                title="MFA zurücksetzen — Benutzer kann sich danach wieder ohne MFA anmelden"
+                                            >
+                                                {resettingMfaFor === user.id ? '…' : '🔓'}
+                                            </button>
+                                        {/if}
                                         <button
                                             class="btn-small"
                                             onclick={() => resetUserPassword(user.id)}
@@ -2011,6 +2044,7 @@
     .user-table tr.inactive td { opacity: .45; }
     .orgs-cell { display: flex; flex-wrap: wrap; gap: .25rem; align-items: center; min-height: 1.4rem; }
     .tag { display: inline-block; padding: .1rem .35rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 3px; font-size: var(--text-xs); color: var(--text-2); }
+    .mfa-on { display: inline-block; padding: .1rem .4rem; background: rgba(39,174,96,.18); color: #2c9c4e; border: 1px solid rgba(39,174,96,.35); border-radius: 3px; font-size: var(--text-xs); font-weight: 600; }
     .toggle-btn { padding: .2rem .5rem; border-radius: 3px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); font-size: var(--text-xs); cursor: pointer; }
     .toggle-btn.on { background: rgba(107,127,77,.3); border-color: #6B7F4D; color: #a8c070; }
     .actions-cell { white-space: nowrap; }

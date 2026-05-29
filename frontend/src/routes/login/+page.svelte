@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { auth } from '$lib/stores/auth';
+	import { authApi } from '$lib/api';
 	import AppLogo from '$lib/components/AppLogo.svelte';
 	import { versionStore } from '$lib/stores/version.svelte';
 
@@ -14,6 +15,33 @@
 	let mfaRequired = $state(false);
 	let mfaToken = $state('');
 	let mfaCode = $state('');
+
+	// Passwort-vergessen
+	let forgotOpen = $state(false);
+	let forgotEmail = $state('');
+	let forgotWorking = $state(false);
+	let forgotMessage = $state('');
+
+	async function handleForgot(e: Event) {
+		e.preventDefault();
+		if (!forgotEmail) return;
+		forgotWorking = true;
+		forgotMessage = '';
+		try {
+			await authApi.requestPasswordReset(forgotEmail);
+		} catch {
+			// Antwort wird absichtlich nicht ausgewertet — 202 selbst bei unbekanntem Konto.
+		} finally {
+			forgotWorking = false;
+			forgotMessage = 'Falls ein Konto mit dieser E-Mail existiert, wurde ein neues Passwort verschickt.';
+		}
+	}
+
+	function openForgot() {
+		forgotOpen = true;
+		forgotEmail = email;
+		forgotMessage = '';
+	}
 
 	async function handleLogin(e: Event) {
 		e.preventDefault();
@@ -59,7 +87,7 @@
 			<AppLogo variant="main" height={170} />
 		</div>
 
-		{#if !mfaRequired}
+		{#if !mfaRequired && !forgotOpen}
 			<form onsubmit={handleLogin}>
 				<div class="field">
 					<label for="email">E-Mail</label>
@@ -74,6 +102,24 @@
 				{/if}
 				<button type="submit" disabled={loading}>
 					{loading ? 'Anmelden…' : 'Anmelden'}
+				</button>
+				<button type="button" class="btn-link" onclick={openForgot}>Passwort vergessen?</button>
+			</form>
+		{:else if forgotOpen}
+			<form onsubmit={handleForgot}>
+				<p class="mfa-hint">Wir senden dir ein neues Passwort an deine E-Mail.</p>
+				<div class="field">
+					<label for="forgot-email">E-Mail</label>
+					<input id="forgot-email" type="email" bind:value={forgotEmail} required autocomplete="email" />
+				</div>
+				{#if forgotMessage}
+					<p class="info">{forgotMessage}</p>
+				{/if}
+				<button type="submit" disabled={forgotWorking || !forgotEmail}>
+					{forgotWorking ? 'Sende…' : 'Neues Passwort anfordern'}
+				</button>
+				<button type="button" class="btn-back" onclick={() => { forgotOpen = false; forgotMessage = ''; }}>
+					← Zurück zum Login
 				</button>
 			</form>
 		{:else}
@@ -183,6 +229,24 @@
 		margin-top: .25rem;
 	}
 	.btn-back:hover:not(:disabled) { background: var(--surface-2); }
+	.btn-link {
+		background: transparent;
+		color: var(--text-2);
+		font-weight: 400;
+		font-size: var(--text-sm);
+		margin-top: .5rem;
+		text-decoration: underline;
+	}
+	.btn-link:hover:not(:disabled) { color: var(--text-1); }
+	.info {
+		background: var(--surface-2);
+		color: var(--text-1);
+		padding: .5rem .75rem;
+		border-radius: 6px;
+		font-size: var(--text-sm);
+		margin-bottom: .5rem;
+		line-height: 1.4;
+	}
 	.error {
 		color: var(--color-primary);
 		font-size: var(--text-sm);

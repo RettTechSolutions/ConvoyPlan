@@ -47,6 +47,7 @@ class AdminUserResponse(BaseModel):
     email: str
     is_active: bool
     is_superadmin: bool
+    mfa_enabled: bool = False
     created_at: datetime
     orgs: list[AdminUserOrgInfo] = []
 
@@ -56,3 +57,13 @@ class AdminUserResponse(BaseModel):
 class InviteUserRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+    org_slug: str | None = None

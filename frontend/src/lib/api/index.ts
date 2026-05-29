@@ -147,6 +147,10 @@ export const authApi = {
 		api.post<LoginResult>('/api/auth/login', { email, password }),
 	mfaVerify: (mfa_token: string, code: string) =>
 		api.post<LoginResult>('/api/auth/mfa/verify', { mfa_token, code }),
+	changePassword: (current_password: string, new_password: string) =>
+		api.post<{ status: string }>('/api/auth/password', { current_password, new_password }),
+	requestPasswordReset: (email: string, org_slug?: string) =>
+		api.post<{ status: string }>('/api/auth/password-reset', { email, org_slug }),
 };
 
 export const mfaApi = {
@@ -274,6 +278,7 @@ export interface AdminUser {
     email: string;
     is_active: boolean;
     is_superadmin: boolean;
+    mfa_enabled: boolean;
     created_at: string;
     orgs: { id: string; name: string; role: string }[];
 }
@@ -341,6 +346,7 @@ export const adminApi = {
     testSmtp: () => api.post<{ status: string }>('/api/admin/settings/smtp/test', {}),
     sendUserPassword: (userId: string) => api.post<{ status: string; email: string }>(`/api/admin/users/${userId}/send-password`, {}),
     resetUserPassword: (userId: string) => api.post<{ password: string; email: string }>(`/api/admin/users/${userId}/reset-password`, {}),
+    resetUserMfa: (userId: string) => api.post<{ status: string }>(`/api/admin/users/${userId}/reset-mfa`, {}),
 };
 
 export interface UpdateStatus {
@@ -464,4 +470,6 @@ export const orgAuthApi = {
         api.post<LoginResult>('/api/auth/login', { email, password, org_slug }),
     mfaVerify: (mfa_token: string, code: string) =>
         api.post<LoginResult>('/api/auth/mfa/verify', { mfa_token, code }),
+    requestPasswordReset: (email: string, org_slug: string) =>
+        api.post<{ status: string }>('/api/auth/password-reset', { email, org_slug }),
 };
