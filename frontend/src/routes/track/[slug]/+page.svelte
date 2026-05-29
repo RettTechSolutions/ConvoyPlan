@@ -197,8 +197,8 @@
 
 <style>
 	:global(body) { margin: 0; font-family: system-ui, sans-serif; }
-	.track-app { display: flex; height: 100vh; }
-	.track-sidebar { width: 320px; background: var(--sidebar-bg); color: var(--text-1); padding: 1.25rem; overflow-y: auto; }
+	.track-app { display: flex; height: 100vh; height: 100dvh; }
+	.track-sidebar { width: 320px; background: var(--sidebar-bg); color: var(--text-1); padding: 1.25rem; overflow-y: auto; box-sizing: border-box; flex-shrink: 0; }
 	.track-header { display: flex; align-items: center; gap: .5rem; margin-bottom: .75rem; }
 	.track-header h1 { margin: 0; font-size: var(--text-base); font-weight: 700; }
 	.convoy-info { margin-bottom: .75rem; border-bottom: 1px solid var(--border); padding-bottom: .75rem; }
@@ -222,5 +222,20 @@
 
 	.muted { color: var(--text-muted); font-size: var(--text-sm); }
 	.error { color: var(--color-primary); font-size: var(--text-sm); margin-top: .5rem; }
-	.track-map { flex: 1; }
+	.track-map { flex: 1; min-height: 0; min-width: 0; }
+
+	@media (max-width: 768px) {
+		.track-app { flex-direction: column; }
+		.track-map { flex: 1 1 auto; min-height: 55vh; order: 1; }
+		.track-sidebar {
+			width: 100%;
+			max-height: 45vh;
+			padding: .75rem 1rem;
+			order: 2;
+			border-top: 1px solid var(--border);
+		}
+		.track-header { margin-bottom: .5rem; }
+		.convoy-info { margin-bottom: .5rem; padding-bottom: .5rem; }
+		section { margin-top: .75rem; }
+	}
 </style>
