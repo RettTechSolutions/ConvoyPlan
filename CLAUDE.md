@@ -6,7 +6,7 @@ Dieses Projekt besteht aus zwei Git-Repositories:
 
 | Repo | Pfad | Zweck |
 |---|---|---|
-| **ConvoyPlan** (dieses Repo) | `/Users/working_chris/github/MarschPlan` | App (Backend, Frontend, Docker) |
+| **ConvoyPlan** (dieses Repo) | `/Users/working_chris/github/ConvoyPlan` | App (Backend, Frontend, Docker) |
 | **convoyplan-website** | `/Users/working_chris/github/convoyplan-website` | Marketingsite (Astro, SFTP-Deploy) |
 
 ## Installer-Scripts
@@ -29,5 +29,5 @@ Nur wenn sich Repo-Name, Branch oder Dateipfad ändern: `public/.htaccess` im We
 
 ## Deployment
 
-- **App (ConvoyPlan):** Docker Compose / Portainer auf `s-lx04-docker` (192.168.178.18)
-- **Website (convoyplan-website):** Statisches Astro-Build, Deploy per SFTP
+- **App (ConvoyPlan):** Docker Compose  auf `web.convoyplan.de`
+- **Website (convoyplan-website):** Statisches Astro-Build, Deploy per SFTP auf `convoyplan.de`
