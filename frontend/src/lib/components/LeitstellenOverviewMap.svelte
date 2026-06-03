@@ -67,7 +67,7 @@
                 if (!p) return;
                 const org = p.org_name ? ` · ${p.org_name}` : '';
                 const html = `<strong>${p.name}</strong><br>Anrufgruppe: ${p.anrufgruppe}${org}`;
-                if (!popup) popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 6 });
+                if (!popup) popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 6, className: 'ls-popup' });
                 popup.setLngLat(e.lngLat).setHTML(html).addTo(map!);
             });
             map!.on('mouseleave', 'ls-fill', () => { map!.getCanvas().style.cursor = ''; popup?.remove(); });
@@ -83,4 +83,17 @@
 
 <style>
     .ls-overview { width: 100%; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+    :global(.ls-popup .maplibregl-popup-content) {
+        background: #1e2a3a;
+        color: #e5e7eb;
+        font-size: .78rem;
+        line-height: 1.3;
+        padding: .4rem .6rem;
+        border-radius: 6px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, .45);
+    }
+    :global(.ls-popup .maplibregl-popup-tip) {
+        border-top-color: #1e2a3a;
+        border-bottom-color: #1e2a3a;
+    }
 </style>
