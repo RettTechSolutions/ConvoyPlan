@@ -102,8 +102,14 @@
 
 	function stopTransmitting() {
 		if (geoWatcher !== null) { navigator.geolocation.clearWatch(geoWatcher); geoWatcher = null; }
+		const wasTransmitting = transmitting;
 		transmitting = false;
 		manualMode = false;
+		// End the GPS sharing: remove our own position so we no longer show as LIVE
+		// and the marker disappears (suppress=false → we may re-start immediately).
+		if (wasTransmitting && myVehicleId) {
+			trackingApi.clearVehiclePosition(convoyId, myVehicleId, false).catch(() => {});
+		}
 	}
 
 	function handleMapTap(lat: number, lon: number) {
