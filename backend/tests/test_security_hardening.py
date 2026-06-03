@@ -170,7 +170,9 @@ class _MockClient:
 
 
 def _suffix_for(password: str) -> str:
-    return hashlib.sha1(password.encode()).hexdigest().upper()[5:]
+    # Mirrors the HIBP k-anonymity digest in app.services.password; SHA-1 is
+    # required by the API and not a security hash (usedforsecurity=False).
+    return hashlib.sha1(password.encode(), usedforsecurity=False).hexdigest().upper()[5:]
 
 
 @pytest.mark.asyncio
