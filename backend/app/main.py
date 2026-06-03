@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import logging
 import os
 import secrets
@@ -119,35 +121,42 @@ app = FastAPI(
 )
 
 
-def _docs_key_from_request(request: Request) -> str | None:
-    """Pull a supplied docs key from query string, cookie or header (in order)."""
-    return (
-        request.query_params.get("key")
-        or request.cookies.get(_DOCS_COOKIE)
-        or request.headers.get("x-api-key")
-    )
+def _docs_cookie_token() -> str:
+    """Server-side HMAC of the docs key. Stored in the cookie instead of the
+    key itself, so the secret is never persisted client-side in clear text
+    while still letting the server verify possession (the token is bound to
+    JWT_SECRET and cannot be forged)."""
+    return hmac.new(
+        settings.jwt_secret.encode(), settings.docs_api_key.encode(), hashlib.sha256
+    ).hexdigest()
 
 
 def _guard_docs(request: Request) -> bool:
     """Authorise a docs request. Returns True if the key came from the query
     string (so the caller should persist it in a cookie). Raises 401 when a key
-    is configured but the request did not supply a matching one."""
+    is configured but the request did not supply a matching credential."""
     expected = settings.docs_api_key
     if not expected:
         return False  # unprotected (dev convenience)
-    supplied = _docs_key_from_request(request)
-    if not supplied or not secrets.compare_digest(supplied, expected):
-        raise HTTPException(
-            status_code=401,
-            detail="Docs-Zugriff erfordert einen gültigen API-Key (z. B. /docs?key=…).",
-        )
-    return request.query_params.get("key") == supplied
+    # Raw key via query string or header → valid; remember via cookie if it
+    # came from the query string so the browser can load the assets afterwards.
+    raw = request.query_params.get("key") or request.headers.get("x-api-key")
+    if raw and secrets.compare_digest(raw, expected):
+        return request.query_params.get("key") == raw
+    # Previously authorised browser session: signed cookie (HMAC, not the key).
+    cookie = request.cookies.get(_DOCS_COOKIE)
+    if cookie and secrets.compare_digest(cookie, _docs_cookie_token()):
+        return False
+    raise HTTPException(
+        status_code=401,
+        detail="Docs-Zugriff erfordert einen gültigen API-Key (z. B. /docs?key=…).",
+    )
 
 
 def _set_docs_cookie(response, request: Request) -> None:
     response.set_cookie(
         _DOCS_COOKIE,
-        settings.docs_api_key,
+        _docs_cookie_token(),
         max_age=8 * 3600,
         httponly=True,
         samesite="lax",
