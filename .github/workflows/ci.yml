@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+# Least privilege: jobs only read the repo. No job needs write access to
+# contents, packages, deployments, etc. Overrides the permissive default
+# GITHUB_TOKEN scopes (CodeQL: "Workflow does not contain permissions").
+permissions:
+  contents: read
+
 jobs:
   backend-lint-test:
     name: Backend – Lint & Tests

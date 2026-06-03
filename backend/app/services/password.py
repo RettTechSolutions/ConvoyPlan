@@ -46,7 +46,10 @@ async def assert_password_not_breached(password: str) -> None:
     """
     if not settings.password_breach_check_enabled:
         return
-    digest = hashlib.sha1(password.encode("utf-8")).hexdigest().upper()  # noqa: S324 (k-anonymity, not for storage)
+    # SHA-1 is mandated by the HIBP range API (k-anonymity), not used to store
+    # or protect the password. usedforsecurity=False marks it as a non-security
+    # digest for the runtime and static analysers (CodeQL/bandit S324).
+    digest = hashlib.sha1(password.encode("utf-8"), usedforsecurity=False).hexdigest().upper()
     prefix, suffix = digest[:5], digest[5:]
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
