@@ -140,16 +140,24 @@ async def update_vehicle_status(
 async def clear_vehicle_position(
     convoy_id: uuid.UUID,
     vehicle_id: uuid.UUID,
+    suppress: bool = True,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Admin: GPS-Freigabe eines Fahrzeugs zurücksetzen.
+    """GPS-Freigabe eines Fahrzeugs beenden.
 
     Löscht die gespeicherte Position und sendet ein ``position_cleared``-Event,
-    damit verbundene Clients den Marker entfernen und die sendende App das
-    GPS-Senden beendet.
+    damit verbundene Clients den Marker entfernen.
+
+    Wird sowohl vom Admin ("GPS-Freigaben" zurücksetzen) als auch vom Fahrer
+    beim Stoppen des eigenen Sendens genutzt – daher Fahrer-Berechtigung.
+
+    ``suppress``: kurzzeitig verspätete Positions-Ticks des Fahrzeugs verwerfen.
+    Beim Admin-Reset ``True`` (der fremde Fahrer sendet evtl. noch), beim
+    Selbst-Stopp ``False`` (der Fahrer hat bereits gestoppt und darf sofort
+    wieder starten).
     """
-    await get_convoy_access(convoy_id, current_user, db, require="delete")
+    await get_convoy_access(convoy_id, current_user, db, require="fahrer")
     await db.execute(
         delete(VehiclePosition).where(
             VehiclePosition.convoy_id == convoy_id,
@@ -158,7 +166,8 @@ async def clear_vehicle_position(
     )
     await db.commit()
 
-    tracking_manager.mark_cleared(str(convoy_id), str(vehicle_id))
+    if suppress:
+        tracking_manager.mark_cleared(str(convoy_id), str(vehicle_id))
     await tracking_manager.broadcast(str(convoy_id), {
         "type": "position_cleared",
         "vehicle_id": str(vehicle_id),
