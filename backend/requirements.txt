@@ -3,7 +3,7 @@ uvicorn[standard]==0.30.6
 sqlalchemy[asyncio]==2.0.35
 asyncpg==0.29.0
 alembic==1.13.3
-geoalchemy2==0.15.2
+geoalchemy2==0.20.0
 pydantic[email]==2.9.2
 pydantic-settings==2.5.2
 python-jose[cryptography]==3.3.0
