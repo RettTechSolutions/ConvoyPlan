@@ -21,6 +21,25 @@ class Settings(BaseSettings):
     # Brute-force protection for authentication endpoints. Disabled in tests.
     rate_limit_enabled: bool = True
 
+    # Check new passwords against the Have I Been Pwned k-anonymity range API.
+    # Fails open (allows the password) if the service is unreachable, so it is
+    # safe in offline/air-gapped deployments. Disabled in tests.
+    password_breach_check_enabled: bool = True
+
+    # Comma-separated list of allowed CORS origins, or "*". When unset in
+    # production the app falls back to its own origin (see main.py); "*" in
+    # development only.
+    cors_origins: str = ""
+
+    # Fernet key (urlsafe-base64, 32 bytes) used to encrypt MFA secrets at rest.
+    # When empty, a key is derived deterministically from jwt_secret.
+    mfa_encryption_key: str = ""
+
+    # Data retention (DSGVO Art. 5(1)(e)). Run by the `retention` cron container.
+    retention_enabled: bool = True
+    retention_positions_hours: int = 24      # live positions older than this are purged
+    retention_audit_days: int = 365          # audit-log entries older than this are purged
+    retention_share_links_days: int = 30     # revoked share links older than this are purged
     # Interactive API docs (Swagger UI at /docs, ReDoc at /redoc, schema at
     # /openapi.json). Always available in development environments. In
     # production they are disabled by default so the API surface is not exposed

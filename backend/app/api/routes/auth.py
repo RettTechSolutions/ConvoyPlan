@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, require_superadmin
+from app.api.deps import TokenData, get_current_user, get_token_data, require_superadmin
 from app.config import settings
 from app.database import get_db
 from app.models.organization import Organization, UserOrganization
@@ -21,8 +21,9 @@ from app.schemas.user import (
     UserResponse,
 )
 from app.services import audit
+from app.services.crypto import decrypt_secret, encrypt_secret
 from app.services.email import send_password_email
-from app.services.password import generate_password, validate_password
+from app.services.password import assert_password_not_breached, generate_password, validate_password
 from app.services.rate_limit import rate_limit, register_failure
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -36,6 +37,7 @@ def create_token(
     org_id: str | None = None,
     org_slug: str | None = None,
     role: str | None = None,
+    token_version: int = 0,
 ) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expire_minutes)
     return jwt.encode(
@@ -46,6 +48,7 @@ def create_token(
             "org_id": org_id,
             "org_slug": org_slug,
             "role": role,
+            "tv": token_version,
         },
         settings.jwt_secret,
         algorithm=settings.jwt_algorithm,
@@ -133,7 +136,7 @@ async def login(data: LoginRequest, request: Request, db: AsyncSession = Depends
                 mfa_token = create_mfa_pending_token(str(user.id), data.org_slug)
                 return LoginResponse(mfa_required=True, mfa_token=mfa_token)
 
-            token = create_token(str(user.id), False, str(org.id), org.slug, membership.role)
+            token = create_token(str(user.id), False, str(org.id), org.slug, membership.role, user.token_version)
             await audit.record(
                 db, audit.LOGIN_SUCCESS, request=request, actor_id=user.id,
                 actor_email=user.email, org_id=org.id, detail={"scope": "org"},
@@ -153,7 +156,7 @@ async def login(data: LoginRequest, request: Request, db: AsyncSession = Depends
                 mfa_token = create_mfa_pending_token(str(user.id))
                 return LoginResponse(mfa_required=True, mfa_token=mfa_token)
 
-            token = create_token(str(user.id), True)
+            token = create_token(str(user.id), True, token_version=user.token_version)
             await audit.record(
                 db, audit.LOGIN_SUCCESS, request=request, actor_id=user.id,
                 actor_email=user.email, detail={"scope": "superadmin"},
@@ -196,6 +199,7 @@ async def register(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
     validate_password(data.password)
+    await assert_password_not_breached(data.password)
     user = User(
         email=data.email,
         hashed_password=bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode(),
@@ -214,21 +218,32 @@ async def change_password(
     data: PasswordChangeRequest,
     request: Request,
     current_user: User = Depends(get_current_user),
+    token_data: TokenData = Depends(get_token_data),
     db: AsyncSession = Depends(get_db),
 ):
-    """Authenticated user changes their own password (current password required)."""
+    """Authenticated user changes their own password (current password required).
+
+    Bumps the token version to revoke any other active sessions and returns a
+    fresh token so the current client stays logged in."""
     if not bcrypt.checkpw(data.current_password.encode(), current_user.hashed_password.encode()):
         await asyncio.sleep(0.2)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Aktuelles Passwort falsch")
     validate_password(data.new_password)
+    await assert_password_not_breached(data.new_password)
     current_user.hashed_password = bcrypt.hashpw(data.new_password.encode(), bcrypt.gensalt()).decode()
+    current_user.token_version += 1
     db.add(current_user)
     await db.commit()
     await audit.record(
         db, audit.PASSWORD_CHANGED, request=request, actor_id=current_user.id,
         actor_email=current_user.email,
     )
-    return {"status": "ok"}
+    new_token = create_token(
+        str(current_user.id), token_data.is_superadmin,
+        str(token_data.org_id) if token_data.org_id else None,
+        token_data.org_slug, token_data.role, current_user.token_version,
+    )
+    return {"status": "ok", "access_token": new_token}
 
 
 # ── Password reset request (forgot password) ──────────────────────────────────
@@ -271,6 +286,7 @@ async def request_password_reset(
     if user and user.is_active:
         new_password = generate_password()
         user.hashed_password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+        user.token_version += 1  # revoke existing sessions
         await db.commit()
         await audit.record(
             db, audit.PASSWORD_RESET_REQUESTED, request=request, actor_id=user.id,
@@ -317,7 +333,7 @@ async def mfa_setup(
     The secret is stored (unconfirmed) and the provisioning URI for a QR code is returned.
     MFA is NOT active until /mfa/confirm succeeds."""
     secret = pyotp.random_base32()
-    current_user.mfa_secret = secret
+    current_user.mfa_secret = encrypt_secret(secret)
     current_user.mfa_enabled = False  # not active until confirmed
     db.add(current_user)
     await db.commit()
@@ -341,7 +357,7 @@ async def mfa_confirm(
     """Verify the first TOTP code to activate MFA."""
     if not current_user.mfa_secret:
         raise HTTPException(status_code=400, detail="MFA-Setup wurde nicht gestartet")
-    totp = pyotp.TOTP(current_user.mfa_secret)
+    totp = pyotp.TOTP(decrypt_secret(current_user.mfa_secret))
     if not totp.verify(data.code, valid_window=1):
         raise HTTPException(status_code=400, detail="Ungültiger Code")
     current_user.mfa_enabled = True
@@ -364,7 +380,7 @@ async def mfa_disable(
     """Disable MFA — requires current TOTP code as confirmation."""
     if not current_user.mfa_enabled or not current_user.mfa_secret:
         raise HTTPException(status_code=400, detail="MFA ist nicht aktiv")
-    totp = pyotp.TOTP(current_user.mfa_secret)
+    totp = pyotp.TOTP(decrypt_secret(current_user.mfa_secret))
     if not totp.verify(data.code, valid_window=1):
         raise HTTPException(status_code=400, detail="Ungültiger Code")
     current_user.mfa_enabled = False
@@ -409,7 +425,7 @@ async def mfa_verify(data: MfaVerifyRequest, request: Request, db: AsyncSession 
     if not user.mfa_secret:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="MFA nicht konfiguriert")
 
-    totp = pyotp.TOTP(user.mfa_secret)
+    totp = pyotp.TOTP(decrypt_secret(user.mfa_secret))
     if not totp.verify(data.code, valid_window=1):
         register_failure(request, "mfa-verify")
         await audit.record(
@@ -432,13 +448,13 @@ async def mfa_verify(data: MfaVerifyRequest, request: Request, db: AsyncSession 
         membership = mem_result.scalar_one_or_none()
         if not membership:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-        token = create_token(str(user.id), False, str(org.id), org.slug, membership.role)
+        token = create_token(str(user.id), False, str(org.id), org.slug, membership.role, user.token_version)
         await audit.record(
             db, audit.LOGIN_SUCCESS, request=request, actor_id=user.id,
             actor_email=user.email, org_id=org.id, detail={"scope": "org", "mfa": True},
         )
     else:
-        token = create_token(str(user.id), True)
+        token = create_token(str(user.id), True, token_version=user.token_version)
         await audit.record(
             db, audit.LOGIN_SUCCESS, request=request, actor_id=user.id,
             actor_email=user.email, detail={"scope": "superadmin", "mfa": True},

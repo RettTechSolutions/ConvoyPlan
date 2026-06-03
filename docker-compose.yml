@@ -24,6 +24,10 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-convoyplan}:${POSTGRES_PASSWORD:-convoyplan}@db:5432/${POSTGRES_DB:-convoyplan}
       JWT_SECRET: ${JWT_SECRET:-changeme-in-production}
       APP_ENV: ${APP_ENV:-production}
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:-}
+      CSP_ENFORCE: ${CSP_ENFORCE:-false}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      PASSWORD_BREACH_CHECK_ENABLED: ${PASSWORD_BREACH_CHECK_ENABLED:-true}
       GRAPHHOPPER_URL: http://graphhopper:8989
       BACKEND_PORT: ${BACKEND_PORT:-8000}
       LICENSE_KEY: ${LICENSE_KEY:-}
@@ -39,6 +43,22 @@ services:
         condition: service_healthy
       graphhopper:
         condition: service_started
+
+  retention:
+    image: ${BACKEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/backend:latest}
+    restart: unless-stopped
+    # Periodic data-retention purge (DSGVO Art. 5(1)(e)). Reuses the backend image.
+    command: sh -c "while true; do python -m app.jobs.retention || true; sleep ${RETENTION_INTERVAL:-3600}; done"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-convoyplan}:${POSTGRES_PASSWORD:-convoyplan}@db:5432/${POSTGRES_DB:-convoyplan}
+      APP_ENV: ${APP_ENV:-production}
+      RETENTION_ENABLED: ${RETENTION_ENABLED:-true}
+      RETENTION_POSITIONS_HOURS: ${RETENTION_POSITIONS_HOURS:-24}
+      RETENTION_AUDIT_DAYS: ${RETENTION_AUDIT_DAYS:-365}
+      RETENTION_SHARE_LINKS_DAYS: ${RETENTION_SHARE_LINKS_DAYS:-30}
+    depends_on:
+      db:
+        condition: service_healthy
 
   graphhopper:
     image: ${GRAPHHOPPER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/graphhopper:latest}
@@ -78,6 +98,7 @@ services:
       ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
       CADDY_TLS_CERT: ${CADDY_TLS_CERT:-}
       CADDY_TLS_KEY: ${CADDY_TLS_KEY:-}
+      CSP_ENFORCE: ${CSP_ENFORCE:-false}
       FRONTEND_PORT: ${FRONTEND_PORT:-3000}
       BACKEND_PORT: ${BACKEND_PORT:-8000}
     volumes:

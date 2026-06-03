@@ -32,7 +32,7 @@ Nur wenn sich Repo-Name, Branch oder Dateipfad ändern: `public/.htaccess` im We
 
 ## Deployment
 
-- **App (ConvoyPlan):** Docker Compose  auf `web.convoyplan.de`
+- **App (ConvoyPlan):** Produktiv auf **`web.convoyplan.de`** (extern erreichbar). Docker Compose.
 - **Website (convoyplan-website):** Statisches Astro-Build, Deploy per SFTP auf `convoyplan.de`
 
 ### API-Docs (Swagger/OpenAPI)
