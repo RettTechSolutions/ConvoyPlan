@@ -240,6 +240,7 @@ async def calculate_route(
         route_data.get("road_class_details", []),
         convoy.speed_urban_kmh,
         convoy.speed_rural_kmh,
+        max_speed_details=route_data.get("max_speed_details", []),
     )
 
     # Persist route

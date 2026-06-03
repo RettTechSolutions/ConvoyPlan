@@ -51,3 +51,27 @@ def test_convoy_duration_fallback():
     d = convoy_duration_s(65_000, [], [], speed_urban_kmh=40, speed_rural_kmh=65)
     # avg = 0.7*65 + 0.3*40 = 57.5 km/h → 65/57.5 h ≈ 4061 s
     assert 4000 < d < 4120
+
+
+def test_convoy_duration_max_speed_urban():
+    from app.services.routing import convoy_duration_s
+    # Segment with max_speed=50 → urban, overrides road_class=primary (which would be rural)
+    coords = [[10.0, 48.0], [10.0, 48.09]]  # ~10 km
+    road_class = [[0, 1, "primary"]]  # would be rural without max_speed
+    max_speed = [[0, 1, 50]]          # ≤ 50 → innerorts
+    d = convoy_duration_s(10_000, coords, road_class, speed_urban_kmh=40, speed_rural_kmh=65,
+                          max_speed_details=max_speed)
+    # Should be classified as urban: ~10 km / 40 km/h ≈ 900 s
+    assert 840 < d < 960
+
+
+def test_convoy_duration_max_speed_rural():
+    from app.services.routing import convoy_duration_s
+    # Segment with max_speed=100 → rural
+    coords = [[10.0, 48.0], [10.0, 48.09]]  # ~10 km
+    road_class = [[0, 1, "residential"]]  # would be urban without max_speed
+    max_speed = [[0, 1, 100]]             # > 50 → außerorts
+    d = convoy_duration_s(10_000, coords, road_class, speed_urban_kmh=40, speed_rural_kmh=65,
+                          max_speed_details=max_speed)
+    # Should be classified as rural: ~10 km / 65 km/h ≈ 554 s
+    assert 500 < d < 610
