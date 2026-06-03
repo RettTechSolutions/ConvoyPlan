@@ -108,11 +108,15 @@ async def _compute_kanalwechsel(
     db: AsyncSession,
     route_line,  # shapely LineString
     distance_m: int,
+    org_id: uuid.UUID | None = None,
 ) -> list[dict]:
     from app.models.leitstelle import Leitstelle
     from geoalchemy2.shape import from_shape
+    from sqlalchemy import or_
     route_geom = from_shape(route_line, srid=4326)
 
+    # Nur global sichtbare Leitstellen sowie die eigenen der jeweiligen
+    # Organisation berücksichtigen.
     rows = await db.execute(
         select(
             Leitstelle.id,
@@ -127,6 +131,7 @@ async def _compute_kanalwechsel(
         )
         .where(
             Leitstelle.geometry.isnot(None),
+            or_(Leitstelle.org_id.is_(None), Leitstelle.org_id == org_id),
             func.ST_Intersects(route_geom, Leitstelle.geometry),
         )
     )
@@ -292,7 +297,7 @@ async def calculate_route(
         await db.commit()
 
     # Kanalwechsel computation
-    kanalwechsel = await _compute_kanalwechsel(db, line, route_data["distance_m"])
+    kanalwechsel = await _compute_kanalwechsel(db, line, route_data["distance_m"], convoy.organization_id)
     route.kanalwechsel = kanalwechsel
     await db.commit()
 
