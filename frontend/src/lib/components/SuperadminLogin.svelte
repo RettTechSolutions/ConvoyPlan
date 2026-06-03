@@ -1,10 +1,9 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
 	import { auth } from '$lib/stores/auth';
 	import { authApi } from '$lib/api';
 	import AppLogo from '$lib/components/AppLogo.svelte';
-	import { versionStore } from '$lib/stores/version.svelte';
+
+	let { onsuccess }: { onsuccess: () => void } = $props();
 
 	let email = $state('');
 	let password = $state('');
@@ -53,7 +52,7 @@
 				mfaRequired = true;
 				mfaToken = result.mfa_token;
 			} else {
-				goto('/admin');
+				onsuccess();
 			}
 		} catch (err: unknown) {
 			error = err instanceof Error ? err.message : 'Login fehlgeschlagen';
@@ -62,17 +61,13 @@
 		}
 	}
 
-	onMount(() => {
-		versionStore.load();
-	});
-
 	async function handleMfa(e: Event) {
 		e.preventDefault();
 		loading = true;
 		error = '';
 		try {
 			await auth.mfaVerify(mfaToken, mfaCode);
-			goto('/admin');
+			onsuccess();
 		} catch (err: unknown) {
 			error = err instanceof Error ? err.message : 'Ungültiger Code';
 		} finally {
@@ -152,13 +147,6 @@
 		{/if}
 
 		<p class="org-hint">Organisationsmitglied? <a href="/">Hier Org-Code eingeben →</a></p>
-		<p class="build-info">
-			{#if versionStore.data.sha}
-				v{__APP_VERSION__} · {versionStore.data.sha}
-			{:else}
-				v{__APP_VERSION__}
-			{/if}
-		</p>
 	</div>
 </div>
 
@@ -180,7 +168,6 @@
 		box-shadow: var(--shadow);
 	}
 	.login-logo { display: flex; justify-content: center; margin-bottom: 1.5rem; }
-	h1 { display: none; }
 	.field { margin-bottom: 1rem; }
 	label {
 		display: block;
@@ -269,11 +256,4 @@
 		text-decoration: underline;
 	}
 	.org-hint a:hover { color: var(--text-1); }
-	.build-info {
-		font-size: 0.6rem;
-		color: var(--text-muted);
-		text-align: center;
-		margin-top: 1rem;
-		opacity: 0.6;
-	}
 </style>

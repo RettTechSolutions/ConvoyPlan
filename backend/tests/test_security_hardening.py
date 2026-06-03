@@ -1,0 +1,135 @@
+"""Tests for the security-hardening additions: password policy, JWT-secret
+fail-closed check, and the in-process auth rate limiter."""
+
+import pytest
+from fastapi import HTTPException
+
+from app import main
+from app.config import settings
+from app.services import rate_limit as rl
+from app.services.password import generate_password, validate_password
+
+
+# ── Password policy ────────────────────────────────────────────────────────────
+
+def test_validate_password_rejects_too_short():
+    with pytest.raises(HTTPException) as exc:
+        validate_password("Ab1xyz")
+    assert exc.value.status_code == 400
+
+
+def test_validate_password_rejects_no_digit():
+    with pytest.raises(HTTPException):
+        validate_password("abcdefghijk")  # letters only, >= 10 chars
+
+
+def test_validate_password_rejects_no_letter():
+    with pytest.raises(HTTPException):
+        validate_password("1234567890")
+
+
+def test_validate_password_accepts_compliant():
+    validate_password("abcdef1ghij")  # 11 chars, letters + digit
+
+
+def test_generated_password_satisfies_policy():
+    validate_password(generate_password())
+
+
+# ── JWT secret fail-closed ──────────────────────────────────────────────────────
+
+def test_verify_security_config_rejects_default_in_production(monkeypatch):
+    monkeypatch.setattr(settings, "app_env", "production")
+    monkeypatch.setattr(settings, "jwt_secret", "changeme-in-production")
+    with pytest.raises(RuntimeError):
+        main._verify_security_config()
+
+
+def test_verify_security_config_rejects_short_secret(monkeypatch):
+    monkeypatch.setattr(settings, "app_env", "production")
+    monkeypatch.setattr(settings, "jwt_secret", "too-short")
+    with pytest.raises(RuntimeError):
+        main._verify_security_config()
+
+
+def test_verify_security_config_accepts_strong_secret(monkeypatch):
+    monkeypatch.setattr(settings, "app_env", "production")
+    monkeypatch.setattr(settings, "jwt_secret", "a" * 40)
+    main._verify_security_config()  # must not raise
+
+
+def test_verify_security_config_relaxed_in_development(monkeypatch):
+    monkeypatch.setattr(settings, "app_env", "development")
+    monkeypatch.setattr(settings, "jwt_secret", "changeme-in-production")
+    main._verify_security_config()  # must not raise
+
+
+# ── Rate limiter ─────────────────────────────────────────────────────────────────
+
+class _Req:
+    def __init__(self, ip: str):
+        self.headers: dict[str, str] = {}
+        self.client = type("C", (), {"host": ip})()
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_blocks_after_threshold(monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_enabled", True)
+    rl.reset()
+    dep = rl.rate_limit("login", max_attempts=2, window_seconds=60)
+    req = _Req("203.0.113.5")
+
+    await dep(req)  # no recorded failures yet → allowed
+    rl.register_failure(req, "login")
+    rl.register_failure(req, "login")
+
+    with pytest.raises(HTTPException) as exc:
+        await dep(req)
+    assert exc.value.status_code == 429
+    assert "Retry-After" in exc.value.headers
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_isolated_per_ip(monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_enabled", True)
+    rl.reset()
+    dep = rl.rate_limit("login", max_attempts=1, window_seconds=60)
+    bad = _Req("198.51.100.1")
+    good = _Req("198.51.100.2")
+
+    rl.register_failure(bad, "login")
+    with pytest.raises(HTTPException):
+        await dep(bad)
+    await dep(good)  # different IP is unaffected
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_count_attempts_mode(monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_enabled", True)
+    rl.reset()
+    dep = rl.rate_limit("password-reset", max_attempts=2, window_seconds=60, count_attempts=True)
+    req = _Req("203.0.113.9")
+
+    await dep(req)
+    await dep(req)
+    with pytest.raises(HTTPException) as exc:
+        await dep(req)
+    assert exc.value.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_disabled_is_noop(monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_enabled", False)
+    rl.reset()
+    dep = rl.rate_limit("login", max_attempts=1, window_seconds=60)
+    req = _Req("203.0.113.10")
+    rl.register_failure(req, "login")
+    rl.register_failure(req, "login")
+    await dep(req)  # disabled → never blocks
+
+
+def test_client_ip_prefers_forwarded_for():
+    from app.services.audit import client_ip
+    req = _Req("10.0.0.1")
+    req.headers = {"x-forwarded-for": "1.2.3.4, 10.0.0.1"}
+    assert client_ip(req) == "1.2.3.4"

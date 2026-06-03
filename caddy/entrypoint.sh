@@ -50,6 +50,20 @@ cat > /tmp/Caddyfile << CADDYEOF
 $SITE_ADDRESS {
     $TLS_DIRECTIVE
 
+    # ── Security headers (ISO 27001 A.8.26) ──────────────────────────────
+    # HSTS is ignored by browsers over plain HTTP, so it is safe to send
+    # unconditionally. A Content-Security-Policy is intentionally NOT set
+    # here: it must be tuned per deployment (map tiles, GraphHopper, weather
+    # and Overpass origins) and tested, otherwise it breaks the map UI.
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "geolocation=(self), microphone=(), camera=()"
+        -Server
+    }
+
     # SSE endpoint — must flush every chunk immediately, no buffering
     handle /api/admin/update-log {
         reverse_proxy backend:$BACKEND_PORT {

@@ -455,7 +455,7 @@
 					Let's Encrypt-Zertifikate werden in wenigen Sekunden ausgestellt.
 				</p>
 			{/if}
-			<button class="btn-primary" onclick={() => goto('/login')}>Zum Login →</button>
+			<button class="btn-primary" onclick={() => goto('/admin')}>Zum Login →</button>
 		{/if}
 	</div>
 </div>

@@ -11,7 +11,8 @@
 
 	// /o/ hat eigenes Guard-Layout; /share/ und /track/ sind öffentlich (Token-/Slug-basiert)
 	// Wurzelpfad '/' ist die Org-Code-Eingabe — ebenfalls öffentlich
-	const PUBLIC_ROUTES = ['/login', '/share', '/track', '/setup', '/o/', '/admin'];
+	// /admin ist self-gated (zeigt selbst die Anmeldung) — daher öffentlich erreichbar.
+	const PUBLIC_ROUTES = ['/share', '/track', '/setup', '/o/', '/admin'];
 	const isPublicPath = (path: string) =>
 		path === '/' || PUBLIC_ROUTES.some((r) => path.startsWith(r));
 	let setupChecked = $state(false);
@@ -60,7 +61,7 @@
 		if (!setupChecked) return;
 		const isPublic = isPublicPath($page.url.pathname);
 		if (!isPublic && !$auth.token) {
-			goto('/login');
+			goto('/admin');
 			return;
 		}
 		if ($auth.token && !isPublic) {

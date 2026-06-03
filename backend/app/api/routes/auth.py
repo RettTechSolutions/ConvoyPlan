@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 import bcrypt
 import pyotp
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from jose import jwt
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -20,8 +20,10 @@ from app.schemas.user import (
     UserCreate,
     UserResponse,
 )
+from app.services import audit
 from app.services.email import send_password_email
-from app.services.password import generate_password
+from app.services.password import generate_password, validate_password
+from app.services.rate_limit import rate_limit, register_failure
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -95,55 +97,77 @@ class LoginResponse(BaseModel):
     mfa_token: str | None = None
 
 
-@router.post("/login", response_model=LoginResponse)
-async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.email == data.email))
-    user = result.scalar_one_or_none()
+@router.post(
+    "/login",
+    response_model=LoginResponse,
+    dependencies=[Depends(rate_limit("login", max_attempts=10, window_seconds=300))],
+)
+async def login(data: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    try:
+        result = await db.execute(select(User).where(User.email == data.email))
+        user = result.scalar_one_or_none()
 
-    if data.org_slug:
-        # ── Org-scoped login ──────────────────────────────────────────────
-        org_result = await db.execute(
-            select(Organization).where(Organization.slug == data.org_slug)
-        )
-        org = org_result.scalar_one_or_none()
-        if not org:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-        if not user or not bcrypt.checkpw(data.password.encode(), user.hashed_password.encode()):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-        if not user.is_active:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account deactivated")
-        mem_result = await db.execute(
-            select(UserOrganization).where(
-                UserOrganization.user_id == user.id,
-                UserOrganization.organization_id == org.id,
+        if data.org_slug:
+            # ── Org-scoped login ──────────────────────────────────────────────
+            org_result = await db.execute(
+                select(Organization).where(Organization.slug == data.org_slug)
             )
-        )
-        membership = mem_result.scalar_one_or_none()
-        if not membership:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+            org = org_result.scalar_one_or_none()
+            if not org:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+            if not user or not bcrypt.checkpw(data.password.encode(), user.hashed_password.encode()):
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+            if not user.is_active:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account deactivated")
+            mem_result = await db.execute(
+                select(UserOrganization).where(
+                    UserOrganization.user_id == user.id,
+                    UserOrganization.organization_id == org.id,
+                )
+            )
+            membership = mem_result.scalar_one_or_none()
+            if not membership:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
-        if user.mfa_enabled and user.mfa_secret:
-            mfa_token = create_mfa_pending_token(str(user.id), data.org_slug)
-            return LoginResponse(mfa_required=True, mfa_token=mfa_token)
+            if user.mfa_enabled and user.mfa_secret:
+                mfa_token = create_mfa_pending_token(str(user.id), data.org_slug)
+                return LoginResponse(mfa_required=True, mfa_token=mfa_token)
 
-        token = create_token(str(user.id), False, str(org.id), org.slug, membership.role)
-        return LoginResponse(access_token=token)
+            token = create_token(str(user.id), False, str(org.id), org.slug, membership.role)
+            await audit.record(
+                db, audit.LOGIN_SUCCESS, request=request, actor_id=user.id,
+                actor_email=user.email, org_id=org.id, detail={"scope": "org"},
+            )
+            return LoginResponse(access_token=token)
 
-    else:
-        # ── Superadmin-Login (kein org_slug) ─────────────────────────────
-        if not user or not bcrypt.checkpw(data.password.encode(), user.hashed_password.encode()):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-        if not user.is_active:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account deactivated")
-        if not user.is_superadmin:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superadmin required")
+        else:
+            # ── Superadmin-Login (kein org_slug) ─────────────────────────────
+            if not user or not bcrypt.checkpw(data.password.encode(), user.hashed_password.encode()):
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+            if not user.is_active:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account deactivated")
+            if not user.is_superadmin:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superadmin required")
 
-        if user.mfa_enabled and user.mfa_secret:
-            mfa_token = create_mfa_pending_token(str(user.id))
-            return LoginResponse(mfa_required=True, mfa_token=mfa_token)
+            if user.mfa_enabled and user.mfa_secret:
+                mfa_token = create_mfa_pending_token(str(user.id))
+                return LoginResponse(mfa_required=True, mfa_token=mfa_token)
 
-        token = create_token(str(user.id), True)
-        return LoginResponse(access_token=token)
+            token = create_token(str(user.id), True)
+            await audit.record(
+                db, audit.LOGIN_SUCCESS, request=request, actor_id=user.id,
+                actor_email=user.email, detail={"scope": "superadmin"},
+            )
+            return LoginResponse(access_token=token)
+
+    except HTTPException as exc:
+        if exc.status_code in (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN):
+            register_failure(request, "login")
+            await audit.record(
+                db, audit.LOGIN_FAILURE, request=request, actor_email=data.email,
+                detail={"reason": exc.detail, "org_slug": data.org_slug},
+            )
+        raise
 
 
 # ── Org Lookup ────────────────────────────────────────────────────────────────
@@ -171,6 +195,7 @@ async def register(
     existing = await db.execute(select(User).where(User.email == data.email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
+    validate_password(data.password)
     user = User(
         email=data.email,
         hashed_password=bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode(),
@@ -187,6 +212,7 @@ async def register(
 @router.post("/password")
 async def change_password(
     data: PasswordChangeRequest,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -194,20 +220,28 @@ async def change_password(
     if not bcrypt.checkpw(data.current_password.encode(), current_user.hashed_password.encode()):
         await asyncio.sleep(0.2)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Aktuelles Passwort falsch")
-    if len(data.new_password) < 8:
-        raise HTTPException(status_code=400, detail="Neues Passwort muss mindestens 8 Zeichen lang sein")
+    validate_password(data.new_password)
     current_user.hashed_password = bcrypt.hashpw(data.new_password.encode(), bcrypt.gensalt()).decode()
     db.add(current_user)
     await db.commit()
+    await audit.record(
+        db, audit.PASSWORD_CHANGED, request=request, actor_id=current_user.id,
+        actor_email=current_user.email,
+    )
     return {"status": "ok"}
 
 
 # ── Password reset request (forgot password) ──────────────────────────────────
 
 
-@router.post("/password-reset", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/password-reset",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(rate_limit("password-reset", max_attempts=5, window_seconds=900, count_attempts=True))],
+)
 async def request_password_reset(
     data: PasswordResetRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Public endpoint: generate a new password and email it to the user.
@@ -238,6 +272,10 @@ async def request_password_reset(
         new_password = generate_password()
         user.hashed_password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
         await db.commit()
+        await audit.record(
+            db, audit.PASSWORD_RESET_REQUESTED, request=request, actor_id=user.id,
+            actor_email=user.email,
+        )
 
         base_url = settings.app_base_url.rstrip("/")
         if org_for_link:
@@ -296,6 +334,7 @@ class MfaConfirmRequest(BaseModel):
 @router.post("/mfa/confirm")
 async def mfa_confirm(
     data: MfaConfirmRequest,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -308,12 +347,17 @@ async def mfa_confirm(
     current_user.mfa_enabled = True
     db.add(current_user)
     await db.commit()
+    await audit.record(
+        db, audit.MFA_ENABLED, request=request, actor_id=current_user.id,
+        actor_email=current_user.email,
+    )
     return {"status": "MFA aktiviert"}
 
 
 @router.post("/mfa/disable")
 async def mfa_disable(
     data: MfaConfirmRequest,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -327,6 +371,10 @@ async def mfa_disable(
     current_user.mfa_secret = None
     db.add(current_user)
     await db.commit()
+    await audit.record(
+        db, audit.MFA_DISABLED, request=request, actor_id=current_user.id,
+        actor_email=current_user.email,
+    )
     return {"status": "MFA deaktiviert"}
 
 
@@ -343,8 +391,12 @@ class MfaVerifyRequest(BaseModel):
     code: str
 
 
-@router.post("/mfa/verify", response_model=LoginResponse)
-async def mfa_verify(data: MfaVerifyRequest, db: AsyncSession = Depends(get_db)):
+@router.post(
+    "/mfa/verify",
+    response_model=LoginResponse,
+    dependencies=[Depends(rate_limit("mfa-verify", max_attempts=10, window_seconds=300))],
+)
+async def mfa_verify(data: MfaVerifyRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """Exchange an mfa_pending token + TOTP code for a full JWT."""
     payload = decode_mfa_pending_token(data.mfa_token)
     user_id_str = payload.get("sub")
@@ -359,6 +411,11 @@ async def mfa_verify(data: MfaVerifyRequest, db: AsyncSession = Depends(get_db))
 
     totp = pyotp.TOTP(user.mfa_secret)
     if not totp.verify(data.code, valid_window=1):
+        register_failure(request, "mfa-verify")
+        await audit.record(
+            db, audit.LOGIN_FAILURE, request=request, actor_id=user.id,
+            actor_email=user.email, detail={"reason": "invalid_mfa_code"},
+        )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Ungültiger Code")
 
     if org_slug:
@@ -376,7 +433,15 @@ async def mfa_verify(data: MfaVerifyRequest, db: AsyncSession = Depends(get_db))
         if not membership:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
         token = create_token(str(user.id), False, str(org.id), org.slug, membership.role)
+        await audit.record(
+            db, audit.LOGIN_SUCCESS, request=request, actor_id=user.id,
+            actor_email=user.email, org_id=org.id, detail={"scope": "org", "mfa": True},
+        )
     else:
         token = create_token(str(user.id), True)
+        await audit.record(
+            db, audit.LOGIN_SUCCESS, request=request, actor_id=user.id,
+            actor_email=user.email, detail={"scope": "superadmin", "mfa": True},
+        )
 
     return LoginResponse(access_token=token)
