@@ -37,9 +37,14 @@ Nur wenn sich Repo-Name, Branch oder Dateipfad ändern: `public/.htaccess` im We
 
 ### API-Docs (Swagger/OpenAPI)
 
-`/docs`, `/redoc` und `/openapi.json` sind in Produktion **standardmäßig deaktiviert** (404),
-damit die API-Oberfläche nicht öffentlich offenliegt. Da `web.convoyplan.de` extern erreichbar
-ist, bewusst aktivieren mit `ENABLE_DOCS=true` in der Umgebung (Docker Compose/Portainer) —
-idealerweise hinter Reverse-Proxy-Auth oder IP-Beschränkung. Siehe `backend/app/config.py`
-(`enable_docs`) und `backend/app/main.py`.
+`/docs`, `/redoc` und `/openapi.json` sind in Produktion **standardmäßig deaktiviert** (404).
+Da `web.convoyplan.de` extern erreichbar ist, werden sie **bevorzugt per API-Key** abgesichert
+statt offen aktiviert:
 
+- **`DOCS_API_KEY=<geheim>`** (empfohlen): Docs sind erreichbar, aber geschützt. Aufruf einmalig
+  über `https://web.convoyplan.de/docs?key=<geheim>` — der Key wird in einem HttpOnly-Cookie
+  gemerkt, danach laden `/docs`, `/redoc` und `/openapi.json` nahtlos. Programmatischer Zugriff
+  via Header `X-API-Key: <geheim>`.
+- **`ENABLE_DOCS=true`**: Docs offen erreichbar (ohne Key) — nur für Dev/intern.
+
+Siehe `backend/app/config.py` (`docs_api_key`, `enable_docs`) und `backend/app/main.py`.
