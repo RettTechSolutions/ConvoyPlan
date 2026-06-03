@@ -29,5 +29,14 @@ Nur wenn sich Repo-Name, Branch oder Dateipfad ändern: `public/.htaccess` im We
 
 ## Deployment
 
-- **App (ConvoyPlan):** Docker Compose / Portainer auf `s-lx04-docker` (192.168.178.18)
+- **App (ConvoyPlan):** Produktiv auf **`web.convoyplan.de`** (extern erreichbar). Docker Compose / Portainer.
+  - _Hinweis:_ Früher lief die App intern auf `s-lx04-docker` (192.168.178.18) — das ist **nicht mehr aktuell**.
 - **Website (convoyplan-website):** Statisches Astro-Build, Deploy per SFTP
+
+### API-Docs (Swagger/OpenAPI)
+
+`/docs`, `/redoc` und `/openapi.json` sind in Produktion **standardmäßig deaktiviert** (404),
+damit die API-Oberfläche nicht öffentlich offenliegt. Da `web.convoyplan.de` extern erreichbar
+ist, bewusst aktivieren mit `ENABLE_DOCS=true` in der Umgebung (Docker Compose/Portainer) —
+idealerweise hinter Reverse-Proxy-Auth oder IP-Beschränkung. Siehe `backend/app/config.py`
+(`enable_docs`) und `backend/app/main.py`.
