@@ -8,7 +8,6 @@ GET /api/version  — no auth required
 from __future__ import annotations
 
 import os
-import re
 import time
 
 import httpx
