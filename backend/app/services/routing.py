@@ -9,6 +9,7 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 URBAN_ROAD_CLASSES = {"residential", "living_street", "service"}
+URBAN_SPEED_THRESHOLD_KMH = 50  # posted limit ≤ this → innerorts
 
 _PRIORITY_RULES = {
     "schnell": [],
@@ -41,24 +42,53 @@ def convoy_duration_s(
     road_class_details: list,
     speed_urban_kmh: int,
     speed_rural_kmh: int,
+    max_speed_details: list | None = None,
 ) -> int:
-    """Calculate convoy travel time using actual road class distribution."""
-    # Guard against zero speeds to prevent division by zero
+    """Calculate convoy travel time using posted speed limits (preferred) or road class."""
     speed_urban_kmh = max(1, speed_urban_kmh)
     speed_rural_kmh = max(1, speed_rural_kmh)
 
-    if road_class_details and coords:
+    n_coords = len(coords)
+    has_details = (road_class_details or max_speed_details) and n_coords >= 2
+
+    if has_details:
+        # Build per-segment urban flag (None = unknown) for each coord-pair index.
+        n_segs = n_coords - 1
+        is_urban: list[bool | None] = [None] * n_segs
+
+        # First pass: road_class (coarse baseline)
+        for from_i, to_i, rc in (road_class_details or []):
+            urban = rc.lower() in URBAN_ROAD_CLASSES
+            for i in range(from_i, min(to_i, n_segs)):
+                is_urban[i] = urban
+
+        # Second pass: max_speed overrides (accurate innerorts/außerorts detection)
+        for from_i, to_i, ms in (max_speed_details or []):
+            if ms is not None:
+                urban = ms <= URBAN_SPEED_THRESHOLD_KMH
+                for i in range(from_i, min(to_i, n_segs)):
+                    is_urban[i] = urban
+
         urban_dist = 0.0
         nonurban_dist = 0.0
-        for from_i, to_i, rc in road_class_details:
-            d = _segment_dist_m(coords, from_i, to_i)
-            if rc.lower() in URBAN_ROAD_CLASSES:
+        unknown_dist = 0.0
+        for i in range(n_segs):
+            d = _haversine_m(coords[i][0], coords[i][1], coords[i + 1][0], coords[i + 1][1])
+            flag = is_urban[i]
+            if flag is True:
                 urban_dist += d
-            else:
+            elif flag is False:
                 nonurban_dist += d
+            else:
+                unknown_dist += d
+
+        # Distribute unknown segments with the 30/70 urban/rural fallback split
+        urban_dist += 0.3 * unknown_dist
+        nonurban_dist += 0.7 * unknown_dist
+
         h = urban_dist / 1000 / speed_urban_kmh + nonurban_dist / 1000 / speed_rural_kmh
     else:
-        # Fallback: fixed 70/30 split
+        # No geometry details — fixed 70/30 split
         avg_speed = 0.7 * speed_rural_kmh + 0.3 * speed_urban_kmh
         h = distance_m / 1000 / avg_speed
     return max(1, int(h * 3600))
@@ -75,7 +105,7 @@ async def calculate_route(
         "profile": "car",
         "instructions": False,
         "points_encoded": False,
-        "details": ["road_class"],
+        "details": ["road_class", "max_speed"],
     }
 
     if road_preference not in _PRIORITY_RULES:
@@ -114,4 +144,5 @@ async def calculate_route(
         "duration_s": int(path["time"] / 1000),
         "geometry": path["points"],
         "road_class_details": path.get("details", {}).get("road_class", []),
+        "max_speed_details": path.get("details", {}).get("max_speed", []),
     }
