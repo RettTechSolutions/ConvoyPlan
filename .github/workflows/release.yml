@@ -68,7 +68,7 @@ jobs:
             type=raw,value=latest
 
       - name: Build and push backend
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./backend
           push: true
@@ -78,7 +78,7 @@ jobs:
             GIT_SHA=${{ github.sha }}
 
       - name: Build and push frontend
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./frontend
           push: true
@@ -88,7 +88,7 @@ jobs:
             GIT_SHA=${{ github.sha }}
 
       - name: Build and push graphhopper
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./graphhopper
           push: true
@@ -96,7 +96,7 @@ jobs:
           labels: ${{ steps.meta-graphhopper.outputs.labels }}
 
       - name: Build and push updater
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./docker/updater
           push: true
