@@ -124,7 +124,7 @@ async def preview_email_template(
         db=db,
         recipient_name="Max Mustermann",
         email="max.mustermann@example.com",
-        password="Abc12345!",
+        password="ExamplePassw0rd!",
         login_url="https://convoyplan.example.com/login",
     )
     _subject, rendered_html = html
