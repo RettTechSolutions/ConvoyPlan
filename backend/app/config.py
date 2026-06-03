@@ -40,6 +40,12 @@ class Settings(BaseSettings):
     retention_positions_hours: int = 24      # live positions older than this are purged
     retention_audit_days: int = 365          # audit-log entries older than this are purged
     retention_share_links_days: int = 30     # revoked share links older than this are purged
+    # Interactive API docs (Swagger UI at /docs, ReDoc at /redoc, schema at
+    # /openapi.json). Always available in development environments. In
+    # production they are disabled by default so the API surface is not exposed
+    # publicly; set ENABLE_DOCS=true to opt back in (e.g. behind reverse-proxy
+    # auth or on an internal network).
+    enable_docs: bool = False
 
     class Config:
         env_file = ".env"
