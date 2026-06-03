@@ -1,5 +1,4 @@
 import logging
-import os
 import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -206,8 +205,32 @@ if _docs_enabled:
             _set_docs_cookie(resp, request)
         return resp
 
-_origins_env = os.environ.get("CORS_ORIGINS", "*")
-_allow_origins = [o.strip() for o in _origins_env.split(",")] if _origins_env != "*" else ["*"]
+def _resolve_cors_origins() -> list[str]:
+    """Determine the allowed CORS origins.
+
+    - explicit `CORS_ORIGINS` (comma list or "*") always wins;
+    - otherwise in production we lock down to the app's own origin
+      (frontend and API are same-origin behind Caddy, so this never breaks
+      the UI while refusing a wildcard);
+    - otherwise (development) we allow "*".
+    """
+    raw = settings.cors_origins.strip()
+    if raw:
+        if raw == "*":
+            if settings.app_env.lower() not in _DEV_ENVS:
+                logger.warning(
+                    "CORS_ORIGINS='*' in production is discouraged — set an explicit "
+                    "origin allowlist."
+                )
+            return ["*"]
+        return [o.strip() for o in raw.split(",") if o.strip()]
+    if settings.app_env.lower() in _DEV_ENVS:
+        return ["*"]
+    # Production default: the app's own origin.
+    return [settings.app_base_url.rstrip("/")]
+
+
+_allow_origins = _resolve_cors_origins()
 
 app.add_middleware(LicenseGuardMiddleware)
 app.add_middleware(
