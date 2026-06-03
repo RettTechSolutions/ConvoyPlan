@@ -47,6 +47,13 @@ class Settings(BaseSettings):
     # auth or on an internal network).
     enable_docs: bool = False
 
+    # Optional API key that protects the interactive docs. When set, the docs
+    # are served (no ENABLE_DOCS needed) but require the key: open
+    # /docs?key=<value> once (the key is remembered in an HttpOnly cookie), or
+    # send it as the X-API-Key header. Recommended when the host is reachable
+    # externally. Leave empty to serve the docs unprotected (dev convenience).
+    docs_api_key: str = ""
+
     class Config:
         env_file = ".env"
 

@@ -18,10 +18,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -29,7 +29,7 @@ jobs:
 
       - name: Docker metadata – backend
         id: meta-backend
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}/backend
           tags: |
@@ -39,7 +39,7 @@ jobs:
 
       - name: Docker metadata – frontend
         id: meta-frontend
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}/frontend
           tags: |
@@ -49,7 +49,7 @@ jobs:
 
       - name: Docker metadata – graphhopper
         id: meta-graphhopper
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}/graphhopper
           tags: |
@@ -59,7 +59,7 @@ jobs:
 
       - name: Docker metadata – updater
         id: meta-updater
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}/updater
           tags: |
@@ -68,7 +68,7 @@ jobs:
             type=raw,value=latest
 
       - name: Build and push backend
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./backend
           push: true
@@ -78,7 +78,7 @@ jobs:
             GIT_SHA=${{ github.sha }}
 
       - name: Build and push frontend
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./frontend
           push: true
@@ -88,7 +88,7 @@ jobs:
             GIT_SHA=${{ github.sha }}
 
       - name: Build and push graphhopper
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./graphhopper
           push: true
@@ -96,7 +96,7 @@ jobs:
           labels: ${{ steps.meta-graphhopper.outputs.labels }}
 
       - name: Build and push updater
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./docker/updater
           push: true
@@ -110,7 +110,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
