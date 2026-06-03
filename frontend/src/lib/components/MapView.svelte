@@ -18,6 +18,10 @@
 		onMapMove?: (lat: number, lon: number) => void;
 		/** When true, every map click fires onMapClick regardless of mapMode */
 		clickEnabled?: boolean;
+		/** Vehicle to zoom to once on selection (e.g. the user's own vehicle) */
+		focusVehicleId?: string | null;
+		/** Optional vehicle id → display name map for live marker labels */
+		vehicleNames?: Map<string, string>;
 	}
 
 	let {
@@ -30,6 +34,8 @@
 		onMapClick,
 		onMapMove,
 		clickEnabled = false,
+		focusVehicleId = null,
+		vehicleNames = new Map(),
 	}: Props = $props();
 
 	let mapContainer: HTMLDivElement;
@@ -115,17 +121,44 @@
 		return { type: 'FeatureCollection', features: [] };
 	}
 
-	function makeMarker(color: string, size = 20): maplibregl.Marker {
+	// Small "flag" label that floats above a marker without shifting its anchor.
+	function labelEl(text: string): HTMLSpanElement {
+		const tag = document.createElement('span');
+		tag.textContent = text;
+		tag.style.cssText =
+			'position:absolute;left:50%;bottom:calc(100% + 5px);transform:translateX(-50%);' +
+			'background:rgba(15,27,36,.85);color:#fff;padding:1px 6px;border-radius:4px;' +
+			'font:600 11px/1.4 system-ui,sans-serif;white-space:nowrap;pointer-events:none;' +
+			'box-shadow:0 1px 3px rgba(0,0,0,.4)';
+		return tag;
+	}
+
+	function makeMarker(color: string, size = 20, label?: string): maplibregl.Marker {
 		const el = document.createElement('div');
-		el.style.cssText = `width:${size}px;height:${size}px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.4);cursor:pointer`;
+		el.style.cssText = `position:relative;width:${size}px;height:${size}px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.4);cursor:pointer`;
+		if (label) el.appendChild(labelEl(label));
 		return new maplibregl.Marker({ element: el });
 	}
 
-	function makeArrowMarker(heading: number): maplibregl.Marker {
+	function makeArrowMarker(heading: number, label?: string): maplibregl.Marker {
 		const el = document.createElement('div');
-		el.textContent = '➤';
-		el.style.cssText = `font-size:22px;transform:rotate(${heading}deg);cursor:pointer;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5))`;
+		el.style.cssText = 'position:relative;cursor:pointer';
+		const arrow = document.createElement('div');
+		arrow.textContent = '➤';
+		arrow.style.cssText = `font-size:22px;transform:rotate(${heading}deg);filter:drop-shadow(0 2px 3px rgba(0,0,0,.5))`;
+		el.appendChild(arrow);
+		if (label) el.appendChild(labelEl(label));
 		return new maplibregl.Marker({ element: el });
+	}
+
+	function flyToPosition(pos: VehiclePosition) {
+		map.flyTo({ center: [pos.lon, pos.lat], zoom: 15, duration: 800 });
+	}
+
+	/** Recenter the map on a vehicle's latest live position (used by the recenter button). */
+	export function recenterOnVehicle(vehicleId: string) {
+		const pos = livePositions.get(vehicleId);
+		if (map && pos) flyToPosition(pos);
 	}
 
 	// Start marker
@@ -134,7 +167,7 @@
 		startMarker?.remove();
 		startMarker = null;
 		if (startPoint) {
-			startMarker = makeMarker('#27ae60').setLngLat([startPoint.lon, startPoint.lat]).addTo(map);
+			startMarker = makeMarker('#27ae60', 20, 'Start').setLngLat([startPoint.lon, startPoint.lat]).addTo(map);
 		}
 	});
 
@@ -144,7 +177,7 @@
 		endMarker?.remove();
 		endMarker = null;
 		if (endPoint) {
-			endMarker = makeMarker('#e74c3c').setLngLat([endPoint.lon, endPoint.lat]).addTo(map);
+			endMarker = makeMarker('#e74c3c', 20, 'Ziel').setLngLat([endPoint.lon, endPoint.lat]).addTo(map);
 		}
 	});
 
@@ -160,7 +193,7 @@
 			.filter((w) => w.lat && w.lon)
 			.map((w) => {
 				const color = typeColors[w.type] ?? '#3498db';
-				return makeMarker(color, 16)
+				return makeMarker(color, 16, w.name)
 					.setLngLat([w.lon!, w.lat!])
 					.setPopup(
 						new maplibregl.Popup({ offset: 12 }).setHTML(
@@ -206,9 +239,10 @@
 			if (trackingMarkers.has(vehicleId)) {
 				trackingMarkers.get(vehicleId)!.setLngLat([pos.lon, pos.lat]);
 			} else {
+				const label = vehicleNames.get(vehicleId);
 				const m = pos.heading != null
-					? makeArrowMarker(pos.heading)
-					: makeMarker('#f1c40f', 18);
+					? makeArrowMarker(pos.heading, label)
+					: makeMarker('#f1c40f', 18, label);
 				m.setLngLat([pos.lon, pos.lat])
 					.setPopup(new maplibregl.Popup().setHTML(
 						`<strong>${vehicleId.slice(0, 8)}…</strong><br>` +
@@ -222,6 +256,19 @@
 		trackingMarkers.forEach((m, id) => {
 			if (!seen.has(id)) { m.remove(); trackingMarkers.delete(id); }
 		});
+	});
+
+	// Zoom once to the focused vehicle as soon as a position is available for it.
+	// The user can pan freely afterwards; re-focusing only happens via recenterOnVehicle().
+	let focusedVehicle: string | null = null;
+	$effect(() => {
+		if (!map) return;
+		if (!focusVehicleId) { focusedVehicle = null; return; }
+		const pos = livePositions.get(focusVehicleId);
+		if (pos && focusedVehicle !== focusVehicleId) {
+			focusedVehicle = focusVehicleId;
+			flyToPosition(pos);
+		}
 	});
 
 	// Lage layers (dynamic sources)

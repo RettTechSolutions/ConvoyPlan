@@ -18,8 +18,22 @@
 	let geoWatcher: number | null = null;
 	let mapCenter = $state<[number, number]>([10.0, 51.5]);
 	let error = $state('');
+	let mapView = $state<ReturnType<typeof MapView>>();
 
 	const isSecure = typeof window !== 'undefined' && window.isSecureContext;
+
+	// vehicle id → label for live markers on the map
+	let vehicleNames = $derived(
+		new Map((convoy?.convoy_vehicles ?? []).map((cv) => [cv.vehicle.id, cv.vehicle.callsign || cv.vehicle.name]))
+	);
+
+	// Vehicles still available to pick: a vehicle that is already being transmitted
+	// (live) is considered "taken" and hidden — except the one I picked myself.
+	let availableVehicles = $derived(
+		(convoy?.convoy_vehicles ?? []).filter(
+			(cv) => cv.vehicle.id === myVehicleId || !$livePositions.has(cv.vehicle.id)
+		)
+	);
 
 	const STATUS_LABELS: Record<string, string> = { planned: 'Geplant', en_route: 'Unterwegs', arrived: 'Angekommen', delayed: 'Verspätung' };
 	const STATUS_COLORS: Record<string, string> = { planned: '#95a5a6', en_route: '#3498db', arrived: '#27ae60', delayed: '#E23D28' };
@@ -54,8 +68,12 @@
 		}
 		transmitting = true;
 		manualMode = false;
+		// Clear a possibly lingering watch so we never accumulate watchers.
+		if (geoWatcher !== null) { navigator.geolocation.clearWatch(geoWatcher); geoWatcher = null; }
 		geoWatcher = navigator.geolocation.watchPosition(
 			(pos) => {
+				// Guard against a queued callback firing after the user pressed stop.
+				if (!transmitting) return;
 				error = '';
 				const { latitude: lat, longitude: lon, speed, heading } = pos.coords;
 				sendPosition(convoyId, myVehicleId, lat, lon, speed ? speed * 3.6 : undefined, heading ?? undefined);
@@ -136,7 +154,7 @@
 			<div class="position-label">Meine Position</div>
 			<select bind:value={myVehicleId} disabled={transmitting}>
 				<option value="">Fahrzeug wählen…</option>
-				{#each (convoy?.convoy_vehicles ?? []) as cv}
+				{#each availableVehicles as cv}
 					<option value={cv.vehicle.id}>{cv.vehicle.name}{cv.vehicle.callsign ? ` (${cv.vehicle.callsign})` : ''}</option>
 				{/each}
 			</select>
@@ -217,12 +235,20 @@
 		{#if manualMode && transmitting}
 			<div class="map-hint-bar">Tippe auf die Karte um Position zu senden</div>
 		{/if}
+		{#if myVehicleId && $livePositions.has(myVehicleId)}
+			<button class="recenter-btn" onclick={() => mapView?.recenterOnVehicle(myVehicleId)} title="Zurück zu meinem Fahrzeug">
+				🎯 Mein Fahrzeug
+			</button>
+		{/if}
 		<MapView
+			bind:this={mapView}
 			startPoint={convoy?.start_point}
 			endPoint={convoy?.end_point}
 			waypoints={convoy?.waypoints ?? []}
 			routeGeojson={routeGeojson}
 			livePositions={$livePositions}
+			vehicleNames={vehicleNames}
+			focusVehicleId={myVehicleId || null}
 			clickEnabled={manualMode && transmitting}
 			onMapClick={handleMapTap}
 			onMapMove={(lat, lon) => (mapCenter = [lat, lon])}
@@ -294,6 +320,10 @@
 	.map-area { flex: 1; position: relative; }
 	.map-area.cursor-crosshair :global(.maplibregl-canvas) { cursor: crosshair; }
 	.map-hint-bar { position: absolute; top: 1rem; left: 50%; transform: translateX(-50%); z-index: 10; background: rgba(15,27,36,.9); color: white; padding: .5rem 1.2rem; border-radius: 20px; font-size: var(--text-sm); pointer-events: none; white-space: nowrap; }
+
+	/* Recenter-to-my-vehicle button */
+	.recenter-btn { position: absolute; right: 1rem; bottom: 1.5rem; z-index: 10; display: flex; align-items: center; gap: .4rem; background: var(--color-primary); color: white; border: none; padding: .55rem .9rem; border-radius: 22px; font-size: var(--text-sm); font-weight: 600; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+	.recenter-btn:hover { background: var(--color-primary-hover); }
 
 	/* Mobile topbar */
 	.topbar { display: none; }
