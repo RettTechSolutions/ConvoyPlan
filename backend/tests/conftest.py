@@ -32,3 +32,13 @@ def disable_rate_limiting():
     yield
     settings.rate_limit_enabled = previous
     rate_limit.reset()
+
+
+@pytest.fixture(autouse=True)
+def disable_breach_check():
+    """Disable the HIBP breach check by default so tests never hit the network.
+    Tests for the check itself re-enable it and mock httpx."""
+    previous = settings.password_breach_check_enabled
+    settings.password_breach_check_enabled = False
+    yield
+    settings.password_breach_check_enabled = previous

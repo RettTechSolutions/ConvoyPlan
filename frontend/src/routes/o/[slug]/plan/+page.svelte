@@ -139,13 +139,19 @@
 			pwError = 'Die neuen Passwörter stimmen nicht überein';
 			return;
 		}
-		if (pwForm.next.length < 8) {
-			pwError = 'Neues Passwort muss mindestens 8 Zeichen lang sein';
+		if (pwForm.next.length < 10) {
+			pwError = 'Neues Passwort muss mindestens 10 Zeichen lang sein';
 			return;
 		}
 		pwWorking = true;
 		try {
-			await authApi.changePassword(pwForm.current, pwForm.next);
+			const res = await authApi.changePassword(pwForm.current, pwForm.next);
+			// Backend rotates the token version on password change; keep this
+			// session valid by storing the freshly issued token.
+			if (res.access_token) {
+				const slug = ($page.params as Record<string, string>).slug;
+				orgStore.setToken(slug, res.access_token);
+			}
 			pwForm = { current: '', next: '', confirm: '' };
 			pwSuccess = 'Passwort geändert.';
 			setTimeout(() => { pwSuccess = ''; }, 4000);

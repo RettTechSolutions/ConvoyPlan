@@ -27,6 +27,17 @@ class TokenData(BaseModel):
     org_slug: str | None = None
     role: str | None = None
     is_superadmin: bool = False
+    token_version: int = 0
+
+
+def _ensure_token_current(token_data: TokenData, user: User) -> None:
+    """Reject tokens whose version is older than the user's current one (T6)."""
+    if token_data.token_version != user.token_version:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Sitzung abgelaufen — bitte erneut anmelden",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 
 def _decode_token(token: str) -> TokenData:
@@ -47,6 +58,7 @@ def _decode_token(token: str) -> TokenData:
             org_slug=payload.get("org_slug"),
             role=payload.get("role"),
             is_superadmin=bool(payload.get("is_superadmin", False)),
+            token_version=int(payload.get("tv", 0)),
         )
     except (JWTError, ValueError):
         raise credentials_exception
@@ -66,6 +78,7 @@ async def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account deactivated")
+    _ensure_token_current(token_data, user)
     return user
 
 
@@ -121,6 +134,7 @@ async def get_org_context(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account deactivated")
+    _ensure_token_current(token_data, user)
 
     org = await db.get(Organization, token_data.org_id)
     if not org:
@@ -152,4 +166,5 @@ async def require_superadmin(
     # Re-check the DB — the JWT claim could be stale if superadmin was revoked
     if not user.is_superadmin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superadmin required")
+    _ensure_token_current(token_data, user)
     return user

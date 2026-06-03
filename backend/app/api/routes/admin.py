@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from jose import JWTError, jwt
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -18,15 +18,18 @@ from app.api.deps import get_db, require_superadmin
 from app.config import settings
 from app.models.api_key import ApiKey
 from app.models.audit_log import AuditLog
+from app.models.convoy import Convoy
 from app.models.organization import Organization, UserOrganization
 from app.models.settings import SystemSetting
+from app.models.share_link import ConvoyShareLink
 from app.models.user import User
 from app.schemas.api_key import ApiKeyCreate, ApiKeyCreatedResponse, ApiKeyResponse
+from app.models.vehicle import Vehicle
 from app.schemas.user import AdminUserCreate, AdminUserResponse, AdminUserUpdate, AdminUserOrgInfo
 from app.services import api_key as api_key_svc
 from app.services import audit
 from app.services.email import save_smtp_settings, send_password_email, test_smtp_connection
-from app.services.password import generate_password, validate_password
+from app.services.password import assert_password_not_breached, generate_password, validate_password
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -76,6 +79,7 @@ async def create_user(
     if existing.scalar_one_or_none():
         raise HTTPException(400, "Email already registered")
     validate_password(data.password)
+    await assert_password_not_breached(data.password)
     user = User(
         email=data.email,
         hashed_password=bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode(),
@@ -124,7 +128,9 @@ async def update_user(
         user.email = data.email
     if data.password is not None:
         validate_password(data.password)
+        await assert_password_not_breached(data.password)
         user.hashed_password = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
+        user.token_version += 1  # revoke the user's existing sessions
     await db.commit()
     await db.refresh(user)
     await audit.record(
@@ -666,6 +672,7 @@ async def send_user_password(
 
     new_password = generate_password()
     user.hashed_password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+    user.token_version += 1  # revoke the user's existing sessions
     await db.commit()
 
     # Pick login URL: first org login page if member, else superadmin login
@@ -707,6 +714,7 @@ async def reset_user_password(
 
     new_password = generate_password()
     user.hashed_password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+    user.token_version += 1  # revoke the user's existing sessions
     await db.commit()
 
     return {"password": new_password, "email": user.email}
@@ -726,6 +734,7 @@ async def reset_user_mfa(
 
     user.mfa_enabled = False
     user.mfa_secret = None
+    user.token_version += 1  # revoke the user's existing sessions
     await db.commit()
     return {"status": "reset"}
 
@@ -768,3 +777,124 @@ async def list_audit_log(
         )
         for r in rows
     ]
+
+
+# ── Betroffenenrechte (DSGVO Art. 15 / 17) ──────────────────────────────────────
+
+
+@router.get("/users/{user_id}/export")
+async def export_user_data(
+    user_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    """Export all personal data held about a user as a JSON bundle (Art. 15).
+    Secrets (password hash, MFA secret, tokens) are deliberately omitted."""
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.org_memberships).selectinload(UserOrganization.organization))
+        .where(User.id == user_id)
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    vehicles = (await db.execute(select(Vehicle).where(Vehicle.owner_id == user_id))).scalars().all()
+    convoys = (await db.execute(select(Convoy).where(Convoy.owner_id == user_id))).scalars().all()
+    share_links = (
+        await db.execute(select(ConvoyShareLink).where(ConvoyShareLink.created_by_id == user_id))
+    ).scalars().all()
+    audit_rows = (
+        await db.execute(
+            select(AuditLog).where(AuditLog.actor_id == user_id).order_by(AuditLog.created_at.desc())
+        )
+    ).scalars().all()
+
+    bundle = {
+        "exported_at": datetime.now(timezone.utc),
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "is_active": user.is_active,
+            "is_superadmin": user.is_superadmin,
+            "mfa_enabled": user.mfa_enabled,
+            "created_at": user.created_at,
+        },
+        "organizations": [
+            {"org_id": m.organization.id, "name": m.organization.name, "role": m.role}
+            for m in user.org_memberships if m.organization is not None
+        ],
+        "vehicles": [
+            {
+                "id": v.id, "name": v.name, "callsign": v.callsign,
+                "license_plate": v.license_plate, "convoy_role": v.convoy_role,
+                "height_cm": v.height_cm, "weight_kg": v.weight_kg, "length_cm": v.length_cm,
+                "org_id": v.org_id,
+            }
+            for v in vehicles
+        ],
+        "convoys": [
+            {
+                "id": c.id, "name": c.name, "organization": c.organization,
+                "organization_id": c.organization_id, "status": c.status,
+                "start_time": c.start_time, "created_at": c.created_at,
+            }
+            for c in convoys
+        ],
+        "share_links_created": [
+            {
+                "id": s.id, "convoy_id": s.convoy_id, "slug": s.slug, "scope": s.scope,
+                "created_at": s.created_at, "last_accessed_at": s.last_accessed_at,
+                "access_count": s.access_count, "revoked": s.revoked,
+            }
+            for s in share_links
+        ],
+        "audit_log": [
+            {
+                "id": a.id, "created_at": a.created_at, "action": a.action,
+                "target_type": a.target_type, "target_id": a.target_id,
+                "ip": a.ip, "detail": a.detail,
+            }
+            for a in audit_rows
+        ],
+    }
+
+    await audit.record(
+        db, "user.data_exported", request=request, actor_id=current.id,
+        actor_email=current.email, target_type="user", target_id=user_id,
+    )
+    return bundle
+
+
+@router.delete("/users/{user_id}/data", status_code=204)
+async def erase_user_data(
+    user_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    """Erase a user (Art. 17): delete the user + cascaded data, but *pseudonymise*
+    the append-only audit trail instead of deleting it (security evidence is kept
+    under the retention policy; see docs/iso-t5-retention-plan.md)."""
+    if user_id == current.id:
+        raise HTTPException(400, "Cannot erase yourself")
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    # Pseudonymise the user's audit entries (keep actor_id reference + actions).
+    await db.execute(
+        update(AuditLog)
+        .where(AuditLog.actor_id == user_id)
+        .values(actor_email=None, ip=None, user_agent=None)
+    )
+    await db.delete(user)
+    await db.commit()
+
+    await audit.record(
+        db, "user.data_erased", request=request, actor_id=current.id,
+        actor_email=current.email, target_type="user", target_id=user_id,
+        detail={"audit_pseudonymized": True},
+    )
