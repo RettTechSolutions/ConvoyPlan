@@ -7,9 +7,10 @@ from app.models.route import Route
 from app.models.vehicle_position import VehiclePosition
 from app.models.share_link import ConvoyShareLink
 from app.models.audit_log import AuditLog
+from app.models.api_key import ApiKey
 
 __all__ = [
     "User", "Vehicle", "Organization", "UserOrganization",
     "Convoy", "ConvoyVehicle", "Waypoint", "Route",
-    "VehiclePosition", "ConvoyShareLink", "AuditLog",
+    "VehiclePosition", "ConvoyShareLink", "AuditLog", "ApiKey",
 ]
