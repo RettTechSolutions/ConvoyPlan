@@ -5,6 +5,8 @@
 interface VersionData {
     sha: string | null;
     version: string | null;
+    latest: string | null;
+    update_available: boolean;
 }
 
 interface VersionStore {
@@ -14,7 +16,7 @@ interface VersionStore {
 }
 
 function createVersionStore(): VersionStore {
-    let data = $state<VersionData>({ sha: null, version: null });
+    let data = $state<VersionData>({ sha: null, version: null, latest: null, update_available: false });
     let loaded = $state(false);
 
     async function load(): Promise<void> {
@@ -22,8 +24,13 @@ function createVersionStore(): VersionStore {
         try {
             const resp = await fetch('/api/version');
             if (resp.ok) {
-                const json = await resp.json() as VersionData;
-                data = { sha: json.sha ?? null, version: json.version ?? null };
+                const json = await resp.json() as Partial<VersionData>;
+                data = {
+                    sha: json.sha ?? null,
+                    version: json.version ?? null,
+                    latest: json.latest ?? null,
+                    update_available: json.update_available ?? false,
+                };
             }
         } catch {
             // silently ignore — version info is non-critical

@@ -21,6 +21,7 @@
 	import type { FeatureCollection } from 'geojson';
 	import { dndzone } from 'svelte-dnd-action';
 	import { themeStore } from '$lib/stores/theme';
+	import { versionStore } from '$lib/stores/version.svelte';
 	import QRCode from 'qrcode';
 
 	// ── State ──────────────────────────────────────────────────────────
@@ -1407,7 +1408,18 @@
 			{$themeStore === 'dark' ? '☀' : '☾'}
 			<span>{$themeStore === 'dark' ? 'Light' : 'Dark'}</span>
 		</button>
-		<span class="app-version">v{__APP_VERSION__}</span>
+		<span class="app-version">
+			v{__APP_VERSION__}
+			{#if versionStore.data.update_available}
+				<a
+					class="update-hint"
+					href="https://github.com/RettTechSolutions/ConvoyPlan/releases/latest"
+					target="_blank"
+					rel="noopener noreferrer"
+					title="Neue Version {versionStore.data.latest} verfügbar"
+				>· Update verfügbar</a>
+			{/if}
+		</span>
 	</div>
 	</aside>
 
@@ -2005,4 +2017,6 @@
 	.theme-toggle { display: flex; align-items: center; gap: .4rem; background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--text-2); font-size: var(--text-sm); padding: .25rem .5rem; cursor: pointer; }
 	.theme-toggle:hover { background: var(--surface-2); }
 	.app-version { font-size: var(--text-xs); color: var(--text-muted); }
+	.app-version .update-hint { color: #f59e0b; font-weight: 600; text-decoration: none; }
+	.app-version .update-hint:hover { text-decoration: underline; }
 </style>

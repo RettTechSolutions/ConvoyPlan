@@ -5,7 +5,10 @@ import { readFileSync } from 'fs';
 
 const pkg = JSON.parse(readFileSync('package.json', 'utf-8'));
 const gitSha = process.env.GIT_SHA?.slice(0, 7);
-const appVersion = gitSha ? `${pkg.version}+${gitSha}` : pkg.version;
+// APP_VERSION is injected at image build time from the git tag (see Dockerfile
+// / release workflow); fall back to package.json for local dev builds.
+const baseVersion = (process.env.APP_VERSION?.trim() || pkg.version).replace(/^v/, '');
+const appVersion = gitSha ? `${baseVersion}+${gitSha}` : baseVersion;
 
 export default defineConfig({
 	define: {

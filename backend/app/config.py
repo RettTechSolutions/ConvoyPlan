@@ -10,6 +10,18 @@ class Settings(BaseSettings):
     caddy_admin_url: str = "http://caddy:2019"
     github_token: str = ""
     github_repo: str = "RettTechSolutions/ConvoyPlan"
+
+    # Human-readable build version, injected at image build time from the git
+    # tag (ARG/ENV APP_VERSION, e.g. "0.9.0" or "0.9.0-3-g37b9dad" for builds
+    # ahead of the last tag). Falls back to a dev placeholder for local runs.
+    app_version: str = "0.0.0-dev"
+
+    # Periodically check the GitHub releases API for a newer version so the UI
+    # can show an "update available" hint. Fails open (no hint) when GitHub is
+    # unreachable, so it is safe in offline/air-gapped deployments. Disabled in
+    # tests so the version endpoint never hits the network.
+    update_check_enabled: bool = True
+
     license_key: str = ""
     app_base_url: str = "https://convoyplan.example.com"
 
