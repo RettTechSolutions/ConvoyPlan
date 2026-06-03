@@ -235,11 +235,18 @@
 		{#if manualMode && transmitting}
 			<div class="map-hint-bar">Tippe auf die Karte um Position zu senden</div>
 		{/if}
-		{#if myVehicleId && $livePositions.has(myVehicleId)}
-			<button class="recenter-btn" onclick={() => mapView?.recenterOnVehicle(myVehicleId)} title="Zurück zu meinem Fahrzeug">
-				🎯 Mein Fahrzeug
-			</button>
-		{/if}
+		<div class="map-controls">
+			{#if routeGeojson}
+				<button class="map-ctrl-btn" onclick={() => mapView?.showRoute()} title="Gesamte Route anzeigen">
+					🗺️ Route
+				</button>
+			{/if}
+			{#if myVehicleId && $livePositions.has(myVehicleId)}
+				<button class="map-ctrl-btn" onclick={() => mapView?.recenterOnVehicle(myVehicleId)} title="Zurück zu meinem Fahrzeug">
+					🎯 Mein Fahrzeug
+				</button>
+			{/if}
+		</div>
 		<MapView
 			bind:this={mapView}
 			startPoint={convoy?.start_point}
@@ -321,9 +328,10 @@
 	.map-area.cursor-crosshair :global(.maplibregl-canvas) { cursor: crosshair; }
 	.map-hint-bar { position: absolute; top: 1rem; left: 50%; transform: translateX(-50%); z-index: 10; background: rgba(15,27,36,.9); color: white; padding: .5rem 1.2rem; border-radius: 20px; font-size: var(--text-sm); pointer-events: none; white-space: nowrap; }
 
-	/* Recenter-to-my-vehicle button */
-	.recenter-btn { position: absolute; right: 1rem; bottom: 1.5rem; z-index: 10; display: flex; align-items: center; gap: .4rem; background: var(--color-primary); color: white; border: none; padding: .55rem .9rem; border-radius: 22px; font-size: var(--text-sm); font-weight: 600; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
-	.recenter-btn:hover { background: var(--color-primary-hover); }
+	/* Map control buttons (Route / Mein Fahrzeug) */
+	.map-controls { position: absolute; right: .75rem; bottom: calc(.75rem + env(safe-area-inset-bottom, 0px)); z-index: 10; display: flex; flex-direction: column; align-items: flex-end; gap: .5rem; max-width: calc(100% - 1.5rem); }
+	.map-ctrl-btn { display: flex; align-items: center; gap: .4rem; background: var(--color-primary); color: white; border: none; padding: .55rem .9rem; border-radius: 22px; font-size: var(--text-sm); font-weight: 600; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.35); white-space: nowrap; }
+	.map-ctrl-btn:hover { background: var(--color-primary-hover); }
 
 	/* Mobile topbar */
 	.topbar { display: none; }
