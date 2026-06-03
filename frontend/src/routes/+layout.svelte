@@ -92,11 +92,7 @@
 {@render children()}
 
 <footer class="powered-by">
-	{#if versionStore.data.sha}
-		v{__APP_VERSION__} · {versionStore.data.sha}
-	{:else}
-		v{__APP_VERSION__}
-	{/if}
+	v{__APP_VERSION__}
 	{#if versionStore.data.update_available}
 		· <a
 			class="update-hint"
