@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
 from jose import jwt, JWTError
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -128,6 +128,35 @@ async def update_vehicle_status(
         "type": "status_update",
         "vehicle_id": str(vehicle_id),
         "vehicle_status": data.vehicle_status,
+    })
+    return {"status": "ok"}
+
+
+@router.delete("/convoys/{convoy_id}/vehicles/{vehicle_id}/position")
+async def clear_vehicle_position(
+    convoy_id: uuid.UUID,
+    vehicle_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Admin: GPS-Freigabe eines Fahrzeugs zurücksetzen.
+
+    Löscht die gespeicherte Position und sendet ein ``position_cleared``-Event,
+    damit verbundene Clients den Marker entfernen und die sendende App das
+    GPS-Senden beendet.
+    """
+    await get_convoy_access(convoy_id, current_user, db, require="delete")
+    await db.execute(
+        delete(VehiclePosition).where(
+            VehiclePosition.convoy_id == convoy_id,
+            VehiclePosition.vehicle_id == vehicle_id,
+        )
+    )
+    await db.commit()
+
+    await tracking_manager.broadcast(str(convoy_id), {
+        "type": "position_cleared",
+        "vehicle_id": str(vehicle_id),
     })
     return {"status": "ok"}
 

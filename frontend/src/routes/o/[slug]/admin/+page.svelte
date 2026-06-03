@@ -5,7 +5,7 @@
     import maplibregl from 'maplibre-gl';
     import 'maplibre-gl/dist/maplibre-gl.css';
     import { orgStore } from '$lib/stores/org';
-    import { leistellenApi, orgsApi, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type OrgMember } from '$lib/api';
+    import { leistellenApi, orgsApi, convoysApi, trackingApi, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type OrgMember } from '$lib/api';
     import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
 
@@ -13,7 +13,7 @@
     const slug = $derived(($page.params as Record<string, string>).slug);
 
     // ── Tab ──────────────────────────────────────────────────────────────────
-    let activeTab = $state<'mitglieder' | 'leitstellen' | 'branding'>('mitglieder');
+    let activeTab = $state<'mitglieder' | 'leitstellen' | 'gps' | 'branding'>('mitglieder');
 
     // ── Auth guard ───────────────────────────────────────────────────────────
     onMount(async () => {
@@ -265,6 +265,61 @@
         } catch { lsError = 'Leitstelle konnte nicht gelöscht werden'; }
     }
 
+    // ── GPS-Freigaben ────────────────────────────────────────────────────────
+    interface GpsShare { convoyId: string; convoyName: string; vehicleId: string; vehicleName: string; recordedAt: string; }
+    let gpsShares = $state<GpsShare[]>([]);
+    let gpsLoading = $state(false);
+    let gpsError = $state('');
+
+    async function loadGpsShares() {
+        gpsLoading = true;
+        gpsError = '';
+        try {
+            const convoys = await convoysApi.list();
+            const lists = await Promise.all(
+                convoys.map(async (c) => {
+                    const positions = await trackingApi.getPositions(c.id);
+                    if (positions.length === 0) return [] as GpsShare[];
+                    const nameById = new Map(
+                        c.convoy_vehicles.map((cv) => [
+                            cv.vehicle.id,
+                            cv.vehicle.callsign ? `${cv.vehicle.name} (${cv.vehicle.callsign})` : cv.vehicle.name,
+                        ])
+                    );
+                    return positions.map((p) => ({
+                        convoyId: c.id,
+                        convoyName: c.name,
+                        vehicleId: p.vehicle_id,
+                        vehicleName: nameById.get(p.vehicle_id) ?? p.vehicle_id.slice(0, 8),
+                        recordedAt: p.recorded_at,
+                    }));
+                })
+            );
+            gpsShares = lists.flat().sort(
+                (a, b) => a.convoyName.localeCompare(b.convoyName) || a.vehicleName.localeCompare(b.vehicleName)
+            );
+        } catch {
+            gpsError = 'GPS-Freigaben konnten nicht geladen werden';
+        } finally {
+            gpsLoading = false;
+        }
+    }
+
+    async function resetGps(share: GpsShare) {
+        if (!confirm(`GPS-Freigabe von „${share.vehicleName}" im Verband „${share.convoyName}" zurücksetzen?`)) return;
+        try {
+            await trackingApi.clearVehiclePosition(share.convoyId, share.vehicleId);
+            gpsShares = gpsShares.filter((s) => !(s.convoyId === share.convoyId && s.vehicleId === share.vehicleId));
+        } catch {
+            gpsError = 'GPS-Freigabe konnte nicht zurückgesetzt werden';
+        }
+    }
+
+    function formatTimestamp(iso: string): string {
+        const d = new Date(iso);
+        return d.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    }
+
     // ── Branding ──────────────────────────────────────────────────────────────
     let brandingForm = $state<BrandingUpdate>({
         app_name: BRANDING_DEFAULTS.app_name,
@@ -398,6 +453,7 @@
     <div class="tab-bar">
         <button class="tab" class:active={activeTab === 'mitglieder'} onclick={() => { activeTab = 'mitglieder'; loadMembers(); }}>Mitglieder</button>
         <button class="tab" class:active={activeTab === 'leitstellen'} onclick={() => (activeTab = 'leitstellen')}>Leitstellen</button>
+        <button class="tab" class:active={activeTab === 'gps'} onclick={() => { activeTab = 'gps'; loadGpsShares(); }}>GPS-Freigaben</button>
         <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>Branding</button>
     </div>
 
@@ -529,6 +585,55 @@
                     {/if}
                 </tbody>
             </table>
+        </div>
+    {/if}
+
+    <!-- ── GPS-Freigaben ── -->
+    {#if activeTab === 'gps'}
+        {#if gpsError}
+            <div class="error-bar">{gpsError} <button onclick={() => (gpsError = '')}>✕</button></div>
+        {/if}
+
+        <div class="section">
+            <div class="section-header">
+                <strong>Aktive GPS-Freigaben ({gpsShares.length})</strong>
+                <button class="btn-small" onclick={loadGpsShares}>↺</button>
+            </div>
+
+            <p class="hint" style="margin:0 0 .75rem">
+                Fahrzeuge, die aktuell ihre Position senden. „Zurücksetzen" löscht die Position und
+                beendet die GPS-Freigabe – die sendende App stoppt automatisch.
+            </p>
+
+            {#if gpsLoading}
+                <p class="hint">Lade…</p>
+            {:else}
+                <table class="user-table">
+                    <thead>
+                        <tr>
+                            <th>Verband</th>
+                            <th>Fahrzeug</th>
+                            <th>Letztes Update</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {#each gpsShares as s (s.convoyId + s.vehicleId)}
+                            <tr>
+                                <td>{s.convoyName}</td>
+                                <td>{s.vehicleName}</td>
+                                <td>{formatTimestamp(s.recordedAt)}</td>
+                                <td class="actions-cell">
+                                    <button class="btn-small danger" onclick={() => resetGps(s)}>GPS zurücksetzen</button>
+                                </td>
+                            </tr>
+                        {/each}
+                        {#if gpsShares.length === 0}
+                            <tr><td colspan="4" class="hint" style="text-align:center">Keine aktiven GPS-Freigaben.</td></tr>
+                        {/if}
+                    </tbody>
+                </table>
+            {/if}
         </div>
     {/if}
 
