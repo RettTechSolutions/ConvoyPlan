@@ -1,4 +1,4 @@
-import { api, uploadFile } from './client';
+import { api, uploadFile, getToken } from './client';
 import type { Geometry } from 'geojson';
 
 export interface Point { lat: number; lon: number }
@@ -239,8 +239,14 @@ export const statusApi = {
 };
 
 // V3: Online Users (SSE)
+// Passes the JWT as a query param (EventSource cannot set headers) so the
+// backend can dedupe by user — reloads/extra tabs don't inflate the count.
 export const usersApi = {
-	onlineStream: (): EventSource => new EventSource(`/api/users/online`),
+	onlineStream: (): EventSource => {
+		const token = getToken();
+		const qs = token ? `?token=${encodeURIComponent(token)}` : '';
+		return new EventSource(`/api/users/online${qs}`);
+	},
 };
 
 // V3: Sperrungen
