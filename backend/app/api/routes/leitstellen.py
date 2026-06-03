@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from geoalchemy2.shape import from_shape, to_shape
 from shapely.geometry import shape, mapping, Polygon
+from shapely.ops import unary_union
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -156,24 +157,45 @@ async def import_boundary(
     return _to_detail_response(ls)
 
 
+def _geom_from_obj(obj):
+    """Extract a Polygon/MultiPolygon shape from a GeoJSON Feature or geometry."""
+    if not isinstance(obj, dict):
+        return None
+    if obj.get("type") == "Feature":
+        obj = obj.get("geometry") or {}
+    if not isinstance(obj, dict) or obj.get("type") not in ("Polygon", "MultiPolygon"):
+        return None
+    try:
+        return shape(obj)
+    except Exception:
+        return None
+
+
 def _parse_geojson(content: bytes):
     try:
         data = json.loads(content)
     except Exception:
         return None
-    if data.get("type") == "FeatureCollection":
-        features = data.get("features", [])
-        if not features:
-            return None
-        data = features[0]
-    if data.get("type") == "Feature":
-        data = data.get("geometry", {})
-    if data.get("type") not in ("Polygon", "MultiPolygon"):
+    geoms = []
+    if isinstance(data, dict) and data.get("type") == "FeatureCollection":
+        for feat in data.get("features", []):
+            g = _geom_from_obj(feat)
+            if g is not None and not g.is_empty:
+                geoms.append(g)
+    else:
+        g = _geom_from_obj(data)
+        if g is not None and not g.is_empty:
+            geoms.append(g)
+    if not geoms:
         return None
+    if len(geoms) == 1:
+        return geoms[0]
+    # Mehrere Flächen (z.B. ausgewählte Landkreise) zu einem Gebiet verschmelzen,
+    # damit innere Grenzen verschwinden (wichtig für die Kanalwechsel-Berechnung).
     try:
-        return shape(data)
+        return unary_union(geoms)
     except Exception:
-        return None
+        return geoms[0]
 
 
 def _parse_kml(content: bytes):

@@ -4,6 +4,7 @@
     import { page } from '$app/stores';
     import maplibregl from 'maplibre-gl';
     import 'maplibre-gl/dist/maplibre-gl.css';
+    import { loadDistricts, DISTRICTS_ATTRIBUTION, type DistrictFeature } from '$lib/geo/districts';
     import { orgStore } from '$lib/stores/org';
     import { leistellenApi, orgsApi, convoysApi, trackingApi, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type OrgMember } from '$lib/api';
     import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
@@ -101,6 +102,10 @@
     let polyMap: maplibregl.Map | undefined;
     let polygonCoords = $state<[number, number][]>([]);
     let drawingMode = $state(false);
+    // Landkreis-Auswahl
+    let districtMode = $state(false);
+    let selectedDistricts = $state<string[]>([]);
+    let districtsByCode: Record<string, DistrictFeature> = {};
 
     async function loadLeitstellen() {
         try {
@@ -113,6 +118,8 @@
         lsForm = { name: '', anrufgruppe: '', zusatz_kanaele: [] };
         polygonCoords = [];
         drawingMode = false;
+        districtMode = false;
+        selectedDistricts = [];
         showLsModal = true;
         initPolyMap();
     }
@@ -127,6 +134,8 @@
             };
             polygonCoords = [];
             drawingMode = false;
+            districtMode = false;
+            selectedDistricts = [];
             showLsModal = true;
             initPolyMap(editingLs.geometry_geojson);
         } catch { lsError = 'Leitstelle konnte nicht geladen werden'; }
@@ -191,11 +200,22 @@
     }
 
     $effect(() => {
-        // Reactive re-wiring of map handlers when drawingMode changes
+        // Reactive re-wiring of map handlers when drawing/district mode changes
         const drawing = drawingMode;
+        const picking = districtMode;
         if (!polyMap) return;
 
         const clickHandler = (e: maplibregl.MapMouseEvent) => {
+            if (picking) {
+                const feats = polyMap!.queryRenderedFeatures(e.point, { layers: ['districts-fill'] });
+                const code = feats[0]?.properties?.krs_code as string | undefined;
+                if (!code) return;
+                selectedDistricts = selectedDistricts.includes(code)
+                    ? selectedDistricts.filter((c) => c !== code)
+                    : [...selectedDistricts, code];
+                updateDistrictSelected();
+                return;
+            }
             if (!drawing) return;
             polygonCoords = [...polygonCoords, [e.lngLat.lng, e.lngLat.lat]];
             updatePolySource();
@@ -220,8 +240,60 @@
     function resetPolygon() {
         polygonCoords = [];
         drawingMode = false;
+        selectedDistricts = [];
+        updateDistrictSelected();
         const src = polyMap?.getSource('draft') as maplibregl.GeoJSONSource | undefined;
         src?.setData({ type: 'FeatureCollection', features: [] });
+    }
+
+    // ── Landkreis-Auswahl (Kreisgrenzen) ───────────────────────────────────────
+    function districtSelectedFilter(): maplibregl.FilterSpecification {
+        return ['in', ['get', 'krs_code'], ['literal', selectedDistricts]] as maplibregl.FilterSpecification;
+    }
+
+    function setDistrictPickVisible(visible: boolean) {
+        if (!polyMap) return;
+        const v = visible ? 'visible' : 'none';
+        for (const id of ['districts-fill', 'districts-line']) {
+            if (polyMap.getLayer(id)) polyMap.setLayoutProperty(id, 'visibility', v);
+        }
+        const canvas = polyMap.getCanvas();
+        if (canvas) canvas.style.cursor = visible ? 'pointer' : '';
+    }
+
+    function updateDistrictSelected() {
+        if (polyMap?.getLayer('districts-selected')) {
+            polyMap.setFilter('districts-selected', districtSelectedFilter());
+        }
+    }
+
+    function ensureDistrictLayers(fc: GeoJSON.FeatureCollection) {
+        if (!polyMap || polyMap.getSource('districts')) return;
+        const before = polyMap.getLayer('draft-fill') ? 'draft-fill' : undefined;
+        polyMap.addSource('districts', { type: 'geojson', data: fc });
+        polyMap.addLayer({ id: 'districts-fill', type: 'fill', source: 'districts', paint: { 'fill-color': '#3b82f6', 'fill-opacity': 0.06 } }, before);
+        polyMap.addLayer({ id: 'districts-line', type: 'line', source: 'districts', paint: { 'line-color': '#3b82f6', 'line-width': 1, 'line-opacity': 0.5 } }, before);
+        polyMap.addLayer({ id: 'districts-selected', type: 'fill', source: 'districts', filter: districtSelectedFilter(), paint: { 'fill-color': '#e74c3c', 'fill-opacity': 0.35 } }, before);
+    }
+
+    async function toggleDistrictMode() {
+        if (districtMode) {
+            districtMode = false;
+            setDistrictPickVisible(false);
+            return;
+        }
+        try {
+            const { fc, byCode } = await loadDistricts();
+            districtsByCode = byCode;
+            ensureDistrictLayers(fc);
+        } catch (e: unknown) {
+            lsError = e instanceof Error ? e.message : 'Landkreis-Daten konnten nicht geladen werden';
+            return;
+        }
+        drawingMode = false;
+        districtMode = true;
+        updateDistrictSelected();
+        setDistrictPickVisible(true);
     }
 
     function addZusatzKanal() {
@@ -241,13 +313,22 @@
             } else {
                 saved = await leistellenApi.create(lsForm);
             }
-            // Upload drawn polygon if present
-            if (!drawingMode && polygonCoords.length >= 3) {
+            // Upload boundary: ausgewählte Landkreise (werden serverseitig verschmolzen)
+            // oder gezeichnetes Polygon.
+            let boundaryFile: File | null = null;
+            if (selectedDistricts.length > 0) {
+                const features = selectedDistricts.map((c) => districtsByCode[c]).filter(Boolean);
+                const fc = { type: 'FeatureCollection', features };
+                const blob = new Blob([JSON.stringify(fc)], { type: 'application/json' });
+                boundaryFile = new File([blob], 'districts.geojson', { type: 'application/json' });
+            } else if (!drawingMode && polygonCoords.length >= 3) {
                 const closed: [number, number][] = [...polygonCoords, polygonCoords[0]];
                 const geo = { type: 'Feature', geometry: { type: 'Polygon', coordinates: [closed] }, properties: {} };
                 const blob = new Blob([JSON.stringify(geo)], { type: 'application/json' });
-                const file = new File([blob], 'polygon.geojson', { type: 'application/json' });
-                await leistellenApi.importBoundary(saved.id, file);
+                boundaryFile = new File([blob], 'polygon.geojson', { type: 'application/json' });
+            }
+            if (boundaryFile) {
+                await leistellenApi.importBoundary(saved.id, boundaryFile);
             }
             showLsModal = false;
             polyMap?.remove(); polyMap = undefined;
@@ -784,13 +865,25 @@
                             <button
                                 class="btn-small"
                                 class:active={drawingMode}
-                                onclick={() => { drawingMode = !drawingMode; }}
+                                onclick={() => { drawingMode = !drawingMode; if (drawingMode) { districtMode = false; setDistrictPickVisible(false); } }}
                             >
                                 {drawingMode ? '✓ Zeichnen aktiv (Doppelklick = fertig)' : '✏ Polygon zeichnen'}
+                            </button>
+                            <button
+                                class="btn-small"
+                                class:active={districtMode}
+                                onclick={toggleDistrictMode}
+                            >
+                                {districtMode ? '✓ Landkreis-Auswahl aktiv' : '🗺 Landkreis wählen'}
                             </button>
                             <button class="btn-small" onclick={resetPolygon}>↺ Zurücksetzen</button>
                         </div>
                         <div class="poly-map" bind:this={polyMapContainer}></div>
+                        {#if districtMode}
+                            <p class="poly-hint">
+                                Landkreis anklicken zum Hinzufügen/Entfernen{selectedDistricts.length ? ` · ${selectedDistricts.length} ausgewählt` : ''} · Grenzen: {DISTRICTS_ATTRIBUTION}
+                            </p>
+                        {/if}
                         {#if editingLs}
                             <div class="import-row">
                                 <label class="btn-small file-label">
@@ -878,8 +971,9 @@
     .zusatz-row { display: flex; gap: .4rem; align-items: center; }
     .zusatz-row input { flex: 1; padding: .25rem .5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); }
     .map-section { display: flex; flex-direction: column; gap: .4rem; font-size: var(--text-sm); font-weight: 600; color: var(--text-2); }
-    .poly-controls { display: flex; gap: .4rem; font-weight: 400; }
+    .poly-controls { display: flex; gap: .4rem; font-weight: 400; flex-wrap: wrap; }
     .poly-map { height: 280px; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); }
+    .poly-hint { margin: .35rem 0 0; font-size: .72rem; font-weight: 400; color: var(--text-1); opacity: .65; }
     .import-row { display: flex; gap: .5rem; align-items: center; font-weight: 400; }
     .file-label { cursor: pointer; }
 
