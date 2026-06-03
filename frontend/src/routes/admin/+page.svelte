@@ -125,6 +125,43 @@
         }
     }
 
+    // ── DSGVO Betroffenenrechte (Art. 15 / 17) ─────────────────────────────────
+    let dsgvoWorking = $state(false);
+
+    async function exportUserData(user: AdminUser) {
+        dsgvoWorking = true;
+        editUserError = '';
+        try {
+            const bundle = await adminApi.exportUserData(user.id);
+            const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `convoyplan-export-${user.email}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (e: unknown) {
+            editUserError = e instanceof Error ? e.message : 'Export fehlgeschlagen';
+        } finally {
+            dsgvoWorking = false;
+        }
+    }
+
+    async function eraseUserData(user: AdminUser) {
+        if (!confirm(`Wirklich ALLE Daten von ${user.email} unwiderruflich löschen?\n\nDer Audit-Trail wird aus Sicherheitsgründen pseudonymisiert beibehalten.`)) return;
+        dsgvoWorking = true;
+        editUserError = '';
+        try {
+            await adminApi.eraseUserData(user.id);
+            showEditUserModal = false;
+            await loadUsers();
+        } catch (e: unknown) {
+            editUserError = e instanceof Error ? e.message : 'Löschung fehlgeschlagen';
+        } finally {
+            dsgvoWorking = false;
+        }
+    }
+
     async function loadUsers() {
         try {
             loading = true;
@@ -1894,6 +1931,23 @@
                         {/if}
                     {/if}
                 </div>
+
+                <!-- Datenschutz (DSGVO) -->
+                <div class="edit-section">
+                    <p class="edit-section-title">Datenschutz (DSGVO)</p>
+                    <div class="dsgvo-actions">
+                        <button class="btn-small" onclick={() => exportUserData(editingUser!)} disabled={dsgvoWorking}>
+                            ⬇ Daten exportieren
+                        </button>
+                        <button class="btn-small danger" onclick={() => eraseUserData(editingUser!)} disabled={dsgvoWorking}>
+                            🗑 Daten löschen (Art. 17)
+                        </button>
+                    </div>
+                    <p class="hint" style="margin-top:.4rem">
+                        Export = alle gespeicherten Daten als JSON (Art. 15). Löschen entfernt den
+                        Benutzer samt abhängiger Daten; der Audit-Trail wird pseudonymisiert beibehalten.
+                    </p>
+                </div>
             </div>
             <div class="modal-footer">
                 <button onclick={() => (showEditUserModal = false)}>Schließen</button>
@@ -2095,6 +2149,7 @@
     .btn-tiny { padding: .1rem .25rem; font-size: .65rem; border-radius: 3px; border: 1px solid var(--border); background: transparent; color: var(--text-2); cursor: pointer; line-height: 1; }
     .btn-tiny:hover { background: var(--surface-1); }
     .hint { color: var(--text-muted); font-size: var(--text-sm); }
+    .dsgvo-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
     code { background: var(--surface-2); padding: .1rem .3rem; border-radius: 3px; font-size: var(--text-xs); font-family: monospace; color: var(--text-1); }
 
     .btn-small { padding: .2rem .5rem; font-size: var(--text-xs); border-radius: 3px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); cursor: pointer; }

@@ -411,6 +411,8 @@ export const adminApi = {
     sendUserPassword: (userId: string) => api.post<{ status: string; email: string }>(`/api/admin/users/${userId}/send-password`, {}),
     resetUserPassword: (userId: string) => api.post<{ password: string; email: string }>(`/api/admin/users/${userId}/reset-password`, {}),
     resetUserMfa: (userId: string) => api.post<{ status: string }>(`/api/admin/users/${userId}/reset-mfa`, {}),
+    exportUserData: (userId: string) => api.get<Record<string, unknown>>(`/api/admin/users/${userId}/export`),
+    eraseUserData: (userId: string) => api.delete(`/api/admin/users/${userId}/data`),
 };
 
 export interface UpdateStatus {
