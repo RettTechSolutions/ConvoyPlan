@@ -23,6 +23,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-convoyplan}:${POSTGRES_PASSWORD:-convoyplan}@db:5432/${POSTGRES_DB:-convoyplan}
       JWT_SECRET: ${JWT_SECRET:-changeme-in-production}
+      APP_ENV: ${APP_ENV:-production}
       GRAPHHOPPER_URL: http://graphhopper:8989
       BACKEND_PORT: ${BACKEND_PORT:-8000}
       LICENSE_KEY: ${LICENSE_KEY:-}
@@ -109,6 +110,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-convoyplan}
       DB_PORT: ${DB_PORT:-5432}
       JWT_SECRET: ${JWT_SECRET:-changeme-in-production}
+      APP_ENV: ${APP_ENV:-production}
       LICENSE_KEY: ${LICENSE_KEY:-}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GITHUB_REPO: ${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}

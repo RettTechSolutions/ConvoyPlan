@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,6 +7,7 @@ from app.config import settings
 from app.database import get_db
 from app.middleware.license_guard import reset_license_cache
 from app.models.user import User
+from app.services import audit
 from app.services.instance import get_or_create_instance_id, get_saved_license_key, save_license_key
 from app.services.license import validate_license
 
@@ -58,8 +59,9 @@ class LicenseActivateRequest(BaseModel):
 @router.post("/activate")
 async def activate_license(
     data: LicenseActivateRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_superadmin),
+    current: User = Depends(require_superadmin),
 ):
     """Validate and store a license key. Resets the middleware cache."""
     instance_id = await get_or_create_instance_id(db)
@@ -70,6 +72,10 @@ async def activate_license(
 
     await save_license_key(db, data.license_key.strip())
     reset_license_cache()
+    await audit.record(
+        db, audit.LICENSE_ACTIVATED, request=request, actor_id=current.id,
+        actor_email=current.email, detail={"license_id": info.license_id, "customer": info.customer},
+    )
 
     return {
         "valid": True,

@@ -13,6 +13,14 @@ class Settings(BaseSettings):
     license_key: str = ""
     app_base_url: str = "https://convoyplan.example.com"
 
+    # Deployment environment. In "production" the app refuses to start with an
+    # insecure JWT secret (fail-closed). Set APP_ENV=development to relax this
+    # for local work; tests bypass the check (lifespan is not triggered there).
+    app_env: str = "production"
+
+    # Brute-force protection for authentication endpoints. Disabled in tests.
+    rate_limit_enabled: bool = True
+
     class Config:
         env_file = ".env"
 

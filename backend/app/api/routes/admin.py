@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 import bcrypt
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from jose import JWTError, jwt
 from pydantic import BaseModel
@@ -16,12 +16,14 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_db, require_superadmin
 from app.config import settings
+from app.models.audit_log import AuditLog
 from app.models.organization import Organization, UserOrganization
 from app.models.settings import SystemSetting
 from app.models.user import User
 from app.schemas.user import AdminUserCreate, AdminUserResponse, AdminUserUpdate, AdminUserOrgInfo
+from app.services import audit
 from app.services.email import save_smtp_settings, send_password_email, test_smtp_connection
-from app.services.password import generate_password
+from app.services.password import generate_password, validate_password
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -63,12 +65,14 @@ async def list_users(
 @router.post("/users", response_model=AdminUserResponse, status_code=201)
 async def create_user(
     data: AdminUserCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_superadmin),
+    current: User = Depends(require_superadmin),
 ):
     existing = await db.execute(select(User).where(User.email == data.email))
     if existing.scalar_one_or_none():
         raise HTTPException(400, "Email already registered")
+    validate_password(data.password)
     user = User(
         email=data.email,
         hashed_password=bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode(),
@@ -77,6 +81,11 @@ async def create_user(
     db.add(user)
     await db.commit()
     await db.refresh(user)
+    await audit.record(
+        db, audit.USER_CREATED, request=request, actor_id=current.id,
+        actor_email=current.email, target_type="user", target_id=user.id,
+        detail={"email": user.email, "is_superadmin": user.is_superadmin},
+    )
     return AdminUserResponse(id=user.id, email=user.email, is_active=user.is_active,
                              is_superadmin=user.is_superadmin, mfa_enabled=user.mfa_enabled,
                              created_at=user.created_at, orgs=[])
@@ -86,6 +95,7 @@ async def create_user(
 async def update_user(
     user_id: uuid.UUID,
     data: AdminUserUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current: User = Depends(require_superadmin),
 ):
@@ -110,11 +120,15 @@ async def update_user(
             raise HTTPException(400, "Email already in use")
         user.email = data.email
     if data.password is not None:
-        if len(data.password) < 8:
-            raise HTTPException(400, "Password must be at least 8 characters")
+        validate_password(data.password)
         user.hashed_password = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
     await db.commit()
     await db.refresh(user)
+    await audit.record(
+        db, audit.USER_UPDATED, request=request, actor_id=current.id,
+        actor_email=current.email, target_type="user", target_id=user.id,
+        detail=data.model_dump(exclude_unset=True, exclude={"password"}),
+    )
     orgs = [
         AdminUserOrgInfo(id=m.organization.id, name=m.organization.name, role=m.role)
         for m in user.org_memberships
@@ -128,6 +142,7 @@ async def update_user(
 @router.delete("/users/{user_id}", status_code=204)
 async def delete_user(
     user_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current: User = Depends(require_superadmin),
 ):
@@ -137,8 +152,14 @@ async def delete_user(
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(404, "User not found")
+    deleted_email = user.email
     await db.delete(user)
     await db.commit()
+    await audit.record(
+        db, audit.USER_DELETED, request=request, actor_id=current.id,
+        actor_email=current.email, target_type="user", target_id=user_id,
+        detail={"email": deleted_email},
+    )
 
 
 @router.get("/update-status")
@@ -297,6 +318,7 @@ class AdminOrgCreate(BaseModel):
 @router.post("/organizations", status_code=201)
 async def admin_create_organization(
     data: AdminOrgCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current: User = Depends(require_superadmin),
 ):
@@ -318,6 +340,11 @@ async def admin_create_organization(
     db.add(membership)
     await db.commit()
     await db.refresh(org)
+    await audit.record(
+        db, audit.ORG_CREATED, request=request, actor_id=current.id,
+        actor_email=current.email, org_id=org.id, target_type="organization",
+        target_id=org.id, detail={"name": org.name, "slug": org.slug},
+    )
     return {
         "id": str(org.id),
         "name": org.name,
@@ -353,15 +380,22 @@ async def list_all_organizations(
 @router.delete("/organizations/{org_id}", status_code=204)
 async def admin_delete_organization(
     org_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_superadmin),
+    current: User = Depends(require_superadmin),
 ):
     result = await db.execute(select(Organization).where(Organization.id == org_id))
     org = result.scalar_one_or_none()
     if not org:
         raise HTTPException(404, "Organization not found")
+    deleted = {"name": org.name, "slug": org.slug}
     await db.delete(org)
     await db.commit()
+    await audit.record(
+        db, audit.ORG_DELETED, request=request, actor_id=current.id,
+        actor_email=current.email, org_id=org_id, target_type="organization",
+        target_id=org_id, detail=deleted,
+    )
 
 
 @router.post("/trigger-update", status_code=202)
@@ -611,3 +645,43 @@ async def reset_user_mfa(
     user.mfa_secret = None
     await db.commit()
     return {"status": "reset"}
+
+
+# ── Audit log ─────────────────────────────────────────────────────────────────
+
+
+class AuditLogEntry(BaseModel):
+    id: uuid.UUID
+    created_at: datetime
+    action: str
+    actor_email: str | None
+    org_id: uuid.UUID | None
+    target_type: str | None
+    target_id: str | None
+    ip: str | None
+    detail: dict | None
+
+
+@router.get("/audit-log", response_model=list[AuditLogEntry])
+async def list_audit_log(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+    action: str | None = Query(None, description="Filter by action, e.g. auth.login.failure"),
+    limit: int = Query(100, ge=1, le=500),
+):
+    """Return the most recent audit-log entries (newest first), superadmin only."""
+    stmt = select(AuditLog).order_by(AuditLog.created_at.desc()).limit(limit)
+    if action:
+        stmt = select(AuditLog).where(AuditLog.action == action).order_by(
+            AuditLog.created_at.desc()
+        ).limit(limit)
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+    return [
+        AuditLogEntry(
+            id=r.id, created_at=r.created_at, action=r.action, actor_email=r.actor_email,
+            org_id=r.org_id, target_type=r.target_type, target_id=r.target_id,
+            ip=r.ip, detail=r.detail,
+        )
+        for r in rows
+    ]

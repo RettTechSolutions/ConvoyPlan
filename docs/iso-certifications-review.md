@@ -136,20 +136,20 @@ Folgendes ist bereits umgesetzt und zahlt direkt auf 27001/27701 ein:
 
 | # | Lücke | Control (ISO 27001 Anhang A / 27701) | Empfohlene Änderung | Aufwand |
 |---|---|---|---|---|
-| T1 | **Kein Audit-Log** (bereits auf Roadmap). Login-Events, Admin-Aktionen, Änderungen an Konvois/Marschbefehlen werden nicht protokolliert. | A.8.15 Logging, A.5.28 Beweissicherung, 27701 Betroffenenrechte | Append-only Audit-Log (Tabelle): Wer, Was, Wann, Quell-IP. Mindestens für Login (Erfolg/Fehlschlag), MFA-Änderung, Benutzer-/Org-CRUD, Lizenz-/Branding-Änderung, Share-Link-Erstellung. | Mittel |
-| T2 | **Kein Brute-Force-Schutz / Rate-Limiting** auf `/auth/login`, `/auth/mfa/verify`, `/password-reset`. Kein Account-Lockout. | A.8.5 Sichere Authentisierung | Rate-Limiting (z. B. `slowapi`) pro IP + pro Account; exponentielles Backoff / temporärer Lockout nach n Fehlversuchen. | Quick Win |
-| T3 | **`JWT_SECRET`-Default `changeme-in-production`** kann unbemerkt in Produktion laufen. | A.8.24 Kryptografie, A.5.17 | Fail-Closed: App verweigert Start in Prod-Modus, wenn Secret = Default oder < 32 Byte Entropie. Setup-Wizard generiert starkes Secret. | Quick Win |
-| T4 | **Fehlende Security-Header** in Caddy (HSTS, CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy). | A.8.26 Anwendungssicherheit | Header-Block im Caddyfile-Template ergänzen. | Quick Win |
+| T1 ✅ | **Audit-Log** — *umgesetzt.* | A.8.15 Logging, A.5.28 Beweissicherung, 27701 Betroffenenrechte | Append-only `audit_logs`-Tabelle (Migration 0018) + Service `audit.record()`. Erfasst Login (Erfolg/Fehlschlag), MFA-Änderung, Passwortänderung/-Reset, Benutzer-/Org-CRUD, Lizenzaktivierung inkl. Akteur, Ziel, IP, User-Agent. Lesbar über `GET /api/admin/audit-log`. Offen: Konvoi-/Marschbefehl-Änderungen, Share-Link-Erstellung. | Mittel |
+| T2 ✅ | **Brute-Force-Schutz / Rate-Limiting** — *umgesetzt.* | A.8.5 Sichere Authentisierung | In-Process-Limiter (`services/rate_limit.py`) auf Login, MFA-Verify, Password-Reset (HTTP 429 + `Retry-After`). Offen: persistenter/geteilter Store (Redis) für Multi-Replica, echtes Account-Lockout. | Quick Win |
+| T3 ✅ | **`JWT_SECRET`-Default** — *umgesetzt.* | A.8.24 Kryptografie, A.5.17 | Fail-Closed: Backend verweigert Start im Produktionsmodus, wenn Secret = Default/leer oder < 32 Zeichen (`APP_ENV=development` relaxt). | Quick Win |
+| T4 ✅ | **Security-Header** — *teilweise umgesetzt.* | A.8.26 Anwendungssicherheit | HSTS, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy im Caddyfile ergänzt. Offen: **CSP** (bewusst noch nicht gesetzt — muss pro Deployment für Kartentiles/GraphHopper/Wetter getunt und getestet werden). | Quick Win |
 | T5 | **Keine dokumentierte Lösch-/Aufbewahrungsfrist** für Standort- und Log-Daten; kein automatischer Purge. | DSGVO Art. 5(1)(e), 27701 7.4.7/8.4 | Retention-Policy + Cron/Background-Job, der `vehicle_positions` und künftige Audit-Logs nach definierter Frist löscht. Konfigurierbar pro Org. | Mittel |
 | T5b | **Datenexport / „Recht auf Auskunft & Löschung"** pro Betroffenem nicht als Funktion vorhanden. | 27701 7.3 Betroffenenrechte, DSGVO Art. 15/17 | Admin-Funktion: alle Daten eines Benutzers exportieren bzw. vollständig löschen. | Mittel |
 | T6 | **JWT-Lebensdauer 7 Tage, keine Revocation.** Verlorene/kompromittierte Tokens bleiben gültig. | A.5.18 Zugriffsrechte, A.8.5 | Kürzere Access-Token-TTL + Refresh-Token; Server-seitige Denylist / `token_version`-Claim, der bei Passwortänderung/Logout invalidiert. | Mittel |
 | T7 | **MFA-Secret (`mfa_secret`) im Klartext in DB.** | A.8.24, A.8.11 Datenmaskierung | Verschlüsselt at-rest speichern (z. B. Fernet/AES mit separatem Key aus Secrets-Management). | Mittel |
-| T8 | **Schwache Passwort-Policy**: nur `len ≥ 8` bei Self-Service-Change; bei `/register` keine sichtbare Mindestprüfung. | A.5.17 Authentisierungs­informationen | Zentrale Policy (Länge, Komplexität, Abgleich gegen Breach-Listen z. B. HIBP-k-Anonymity). Konsistent in register/change/reset. | Quick Win |
+| T8 ✅ | **Passwort-Policy** — *umgesetzt.* | A.5.17 Authentisierungs­informationen | Zentrale `validate_password()` (min. 10 Zeichen, Buchstaben + Ziffern), konsistent in Registrierung, Passwortänderung und Admin-Benutzerverwaltung. Offen: Abgleich gegen Breach-Listen (HIBP-k-Anonymity). | Quick Win |
 | T9 | **CORS-Default `*`** mit (korrekt) deaktivierten Credentials — in Prod sollte eine Allowlist erzwungen werden. | A.8.26 | In Prod harte Origin-Allowlist verlangen; `*` nur in Dev. | Quick Win |
 | T10 | **Keine SCA / automatisierte Schwachstellen­überwachung.** Versionen sind gepinnt, aber kein Dependabot/Trivy, kein dokumentierter Patch-Prozess. | A.8.8 Technisches Schwachstellen­management | Dependabot + `pip-audit`/Trivy in CI; Container-Image-Scan; dokumentierter Patch-SLA. | Quick Win |
 | T11 | **Backup/Restore nicht dokumentiert/erzwungen** (DB + `/uploads`). | A.8.13 Backup, ISO 22301 | Backup-Strategie + regelmäßiger Restore-Test dokumentieren; ggf. Backup-Hook im Docker-Setup. | Mittel |
 | T12 | **Kein Verschlüsselungs­nachweis at-rest** für DB/Uploads (hängt vom Deployment ab). | A.8.24 | Volume-/DB-Verschlüsselung dokumentieren oder bereitstellen. | Mittel |
-| T13 | **Keine `security.txt` / Vulnerability-Disclosure-Policy.** | A.5.5 / A.6.8 | `/.well-known/security.txt` + SECURITY.md mit Meldekanal. | Quick Win |
+| T13 ✅ | **`security.txt` / Vulnerability-Disclosure** — *umgesetzt.* | A.5.5 / A.6.8 | `/.well-known/security.txt` + `SECURITY.md` mit Meldekanal. | Quick Win |
 
 ### 6.3 Organisatorische Lücken (der Großteil von ISO 27001 ist *kein* Code)
 
@@ -169,14 +169,22 @@ Diese Punkte sind für die Zertifizierung mindestens so wichtig wie der Code:
 
 ## 7. Empfohlene erste Schritte (Quick Wins im Code)
 
-Diese Punkte verbessern die Sicherheitslage sofort und sind Voraussetzung für mehrere 27001-Controls — unabhängig davon, wann das formale Audit startet:
+Diese Punkte verbessern die Sicherheitslage sofort und sind Voraussetzung für mehrere 27001-Controls — unabhängig davon, wann das formale Audit startet.
 
-1. **T2** Rate-Limiting/Lockout auf Auth-Endpunkten.
-2. **T3** Fail-Closed bei Default-`JWT_SECRET`.
-3. **T4** Security-Header im Caddyfile.
-4. **T8** Einheitliche Passwort-Policy + Breach-Check.
-5. **T1** Audit-Log (bereits auf der Roadmap) — größter Hebel für die Zertifizierung.
-6. **T10** Dependabot/`pip-audit` in CI.
-7. **T13** `security.txt` + Vulnerability-Disclosure.
+**Bereits umgesetzt** (siehe CHANGELOG):
+
+1. ✅ **T1** Audit-Log — größter Hebel für die Zertifizierung.
+2. ✅ **T2** Rate-Limiting auf Auth-Endpunkten.
+3. ✅ **T3** Fail-Closed bei Default-`JWT_SECRET`.
+4. ✅ **T4** Security-Header im Caddyfile (ohne CSP).
+5. ✅ **T8** Einheitliche Passwort-Policy.
+6. ✅ **T13** `security.txt` + Vulnerability-Disclosure.
+
+**Als Nächstes empfohlen:**
+
+7. **T10** Dependabot/`pip-audit`/Trivy in CI.
+8. **T4 (Rest)** CSP pro Deployment tunen und aktivieren.
+9. **T2 (Rest)** Account-Lockout + geteilter Rate-Limit-Store für Multi-Replica.
+10. **T5** Retention/Löschkonzept für Standort- und Audit-Daten.
 
 > Hinweis: Eine Zertifizierung wird **nicht** durch Code allein erreicht — sie verlangt ein gelebtes Managementsystem (Abschnitt 6.3). Die Code-Maßnahmen sind notwendige, aber nicht hinreichende Bausteine.

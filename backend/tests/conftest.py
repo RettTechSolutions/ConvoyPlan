@@ -10,6 +10,8 @@ This fixture does NOT affect any production code path.
 """
 import pytest
 import app.middleware.license_guard as _lgm
+from app.config import settings
+from app.services import rate_limit
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -17,3 +19,16 @@ def bypass_license_for_tests():
     _lgm._license_valid = True
     yield
     _lgm._license_valid = None
+
+
+@pytest.fixture(autouse=True)
+def disable_rate_limiting():
+    """Rate limiting is keyed by client IP and persists across requests; disable
+    it by default so unrelated auth tests don't interfere with each other.
+    Tests that exercise the limiter re-enable it explicitly."""
+    previous = settings.rate_limit_enabled
+    settings.rate_limit_enabled = False
+    rate_limit.reset()
+    yield
+    settings.rate_limit_enabled = previous
+    rate_limit.reset()

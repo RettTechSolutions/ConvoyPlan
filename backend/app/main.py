@@ -19,13 +19,35 @@ from app.api.routes import setup as setup_router
 from app.api.routes import share_links as share_links_router
 from app.api.routes import track as track_router
 from app.api.routes import version as version_router
+from app.config import settings
 from app.middleware.license_guard import LicenseGuardMiddleware
 
 logger = logging.getLogger(__name__)
 
+_INSECURE_JWT_SECRETS = {"", "changeme-in-production", "change-me-generate-a-real-secret"}
+_DEV_ENVS = {"dev", "development", "local", "test", "testing"}
+
+
+def _verify_security_config() -> None:
+    """Fail-closed: refuse to start in production with a weak JWT secret.
+
+    Generate a strong value with `openssl rand -hex 32` and set JWT_SECRET.
+    Relax for local work with APP_ENV=development.
+    """
+    if settings.app_env.lower() in _DEV_ENVS:
+        return
+    secret = settings.jwt_secret
+    if secret in _INSECURE_JWT_SECRETS or len(secret) < 32:
+        raise RuntimeError(
+            "Insecure JWT_SECRET in production: set a strong secret of at least "
+            "32 characters (e.g. `openssl rand -hex 32`) via the JWT_SECRET "
+            "environment variable, or set APP_ENV=development for local use."
+        )
+
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
+    _verify_security_config()
     yield
 
 

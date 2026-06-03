@@ -6,9 +6,10 @@ from app.models.waypoint import Waypoint
 from app.models.route import Route
 from app.models.vehicle_position import VehiclePosition
 from app.models.share_link import ConvoyShareLink
+from app.models.audit_log import AuditLog
 
 __all__ = [
     "User", "Vehicle", "Organization", "UserOrganization",
     "Convoy", "ConvoyVehicle", "Waypoint", "Route",
-    "VehiclePosition", "ConvoyShareLink",
+    "VehiclePosition", "ConvoyShareLink", "AuditLog",
 ]
