@@ -17,4 +17,4 @@ fpdf2==2.8.1
 pyotp==2.9.0
 aiosmtplib==3.0.2
 pytest>=8.0
-pytest-asyncio>=0.23
+pytest-asyncio>=1.4.0
