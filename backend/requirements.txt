@@ -16,5 +16,5 @@ gpxpy==1.6.2
 fpdf2==2.8.7
 pyotp==2.9.0
 aiosmtplib==3.0.2
-pytest>=8.0
+pytest>=9.0.3
 pytest-asyncio>=1.4.0
