@@ -14,6 +14,8 @@ All notable changes to ConvoyPlan are documented here.
 
 ### Added
 
+- **Backup-/Restore-Skripte.** `scripts/backup.sh` (PostgreSQL-Dump + Upload-/TLS-Volumes + Prüfsummen + Retention) und `scripts/restore.sh`; dokumentiert in `docs/backup-restore.md` inkl. Verschlüsselung-at-rest-Leitfaden (LUKS/Cloud-Volumes, Backup-Verschlüsselung, Schlüsselverwaltung).
+- **Content-Security-Policy.** MapLibre-/OpenStreetMap-taugliche CSP in beiden Caddyfile-Quellen (Env-Modus + Setup-Wizard), zusätzlich zu den bestehenden Security-Headern. Standardmäßig **Report-Only** (bricht die Karten-UI nicht); per `CSP_ENFORCE=true` erzwingbar.
 - **Security-Audit-Log.** Append-only Protokoll sicherheitsrelevanter Ereignisse (Login-Erfolg/-Fehlschlag, MFA-Aktivierung/-Deaktivierung, Passwortänderung/-Reset, Benutzer-/Org-Anlage und -Löschung, Lizenzaktivierung) inkl. Akteur, Ziel, IP und User-Agent. Einsehbar für Superadmins unter `GET /api/admin/audit-log` (Filter nach Aktion). Neue Migration `0018`.
 - **Brute-Force-Schutz.** In-Process-Rate-Limiting auf `/api/auth/login`, `/api/auth/mfa/verify` und `/api/auth/password-reset` (HTTP 429 mit `Retry-After`). Login/MFA zählen nur Fehlversuche, sodass erfolgreiche Logins nicht bestraft werden.
 - **Einheitliche Passwort-Policy + Breach-Check.** Mindestens 10 Zeichen sowie Buchstaben und Ziffern; zusätzlich Abgleich gegen die Have-Ich-Been-Pwned-Range-API (k-Anonymity, fail-open bei fehlender Netzanbindung). Konsistent in Registrierung, Passwortänderung und Admin-Benutzerverwaltung. Abschaltbar über `PASSWORD_BREACH_CHECK_ENABLED=false`.

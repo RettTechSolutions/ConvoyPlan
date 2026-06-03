@@ -25,6 +25,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-changeme-in-production}
       APP_ENV: ${APP_ENV:-production}
       MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:-}
+      CSP_ENFORCE: ${CSP_ENFORCE:-false}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       PASSWORD_BREACH_CHECK_ENABLED: ${PASSWORD_BREACH_CHECK_ENABLED:-true}
       GRAPHHOPPER_URL: http://graphhopper:8989
@@ -97,6 +98,7 @@ services:
       ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
       CADDY_TLS_CERT: ${CADDY_TLS_CERT:-}
       CADDY_TLS_KEY: ${CADDY_TLS_KEY:-}
+      CSP_ENFORCE: ${CSP_ENFORCE:-false}
       FRONTEND_PORT: ${FRONTEND_PORT:-3000}
       BACKEND_PORT: ${BACKEND_PORT:-8000}
     volumes:

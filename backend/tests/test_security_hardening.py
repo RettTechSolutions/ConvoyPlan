@@ -273,3 +273,25 @@ def test_ensure_token_current_rejects_stale():
 
 def test_ensure_token_current_allows_match():
     deps._ensure_token_current(MagicMock(token_version=3), MagicMock(token_version=3))
+
+
+# ── CSP / Caddyfile security headers (T4) ─────────────────────────────────────────
+
+from app.api.routes.setup import _generate_caddyfile  # noqa: E402
+
+
+def test_setup_caddyfile_has_security_headers_report_only():
+    cf = _generate_caddyfile("convoy.example.de", "auto", "a@b.de")
+    assert "Strict-Transport-Security" in cf
+    assert "X-Content-Type-Options" in cf
+    # Report-Only by default so the CSP can never break the map UI.
+    assert "Content-Security-Policy-Report-Only" in cf
+    assert "tile.openstreetmap.org" in cf
+    assert "wss://convoy.example.de" in cf
+
+
+def test_setup_caddyfile_csp_enforce_toggle(monkeypatch):
+    monkeypatch.setenv("CSP_ENFORCE", "true")
+    cf = _generate_caddyfile("x.de", "internal", "a@b.de")
+    assert "Content-Security-Policy-Report-Only" not in cf
+    assert 'Content-Security-Policy "' in cf

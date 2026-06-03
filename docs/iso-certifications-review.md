@@ -139,7 +139,7 @@ Folgendes ist bereits umgesetzt und zahlt direkt auf 27001/27701 ein:
 | T1 ✅ | **Audit-Log** — *umgesetzt.* | A.8.15 Logging, A.5.28 Beweissicherung, 27701 Betroffenenrechte | Append-only `audit_logs`-Tabelle (Migration 0018) + Service `audit.record()`. Erfasst Login (Erfolg/Fehlschlag), MFA-Änderung, Passwortänderung/-Reset, Benutzer-/Org-CRUD, Lizenzaktivierung inkl. Akteur, Ziel, IP, User-Agent. Lesbar über `GET /api/admin/audit-log`. Offen: Konvoi-/Marschbefehl-Änderungen, Share-Link-Erstellung. | Mittel |
 | T2 ✅ | **Brute-Force-Schutz / Rate-Limiting** — *umgesetzt.* | A.8.5 Sichere Authentisierung | In-Process-Limiter (`services/rate_limit.py`) auf Login, MFA-Verify, Password-Reset (HTTP 429 + `Retry-After`). Offen: persistenter/geteilter Store (Redis) für Multi-Replica, echtes Account-Lockout. | Quick Win |
 | T3 ✅ | **`JWT_SECRET`-Default** — *umgesetzt.* | A.8.24 Kryptografie, A.5.17 | Fail-Closed: Backend verweigert Start im Produktionsmodus, wenn Secret = Default/leer oder < 32 Zeichen (`APP_ENV=development` relaxt). | Quick Win |
-| T4 ✅ | **Security-Header** — *teilweise umgesetzt.* | A.8.26 Anwendungssicherheit | HSTS, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy im Caddyfile ergänzt. Offen: **CSP** (bewusst noch nicht gesetzt — muss pro Deployment für Kartentiles/GraphHopper/Wetter getunt und getestet werden). | Quick Win |
+| T4 ✅ | **Security-Header + CSP** — *umgesetzt.* | A.8.26 Anwendungssicherheit | HSTS, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy + **Content-Security-Policy** (MapLibre/OSM-tauglich) in beiden Caddyfile-Quellen (`entrypoint.sh` + Setup-Wizard). CSP standardmäßig **Report-Only** (bricht die UI nicht), per `CSP_ENFORCE=true` erzwingbar. | Quick Win |
 | T5 ✅ | **Retention/Löschkonzept** — *umgesetzt.* | DSGVO Art. 5(1)(e), 27701 7.4.7/8.4 | `services/retention.py` + Cron-Container `retention` purgt Positionen (>24 h), Audit-Logs (>365 Tage) und widerrufene Share-Links (>30 Tage); Fristen via `RETENTION_*` konfigurierbar, jeder Lauf erzeugt einen Audit-Eintrag. Offen: org-spezifische Fristen, einsatzbezogene Positions-Löschung. | Mittel |
 | T5b ✅ | **Betroffenenrechte** — *umgesetzt.* | 27701 7.3, DSGVO Art. 15/17 | `GET /api/admin/users/{id}/export` (JSON-Bündel ohne Geheimnisse) und `DELETE /api/admin/users/{id}/data` (Löschung + Cascade, Audit-Trail wird **pseudonymisiert** statt gelöscht). | Mittel |
 | T6 ✅ | **JWT-Revocation** — *umgesetzt.* | A.5.18 Zugriffsrechte, A.8.5 | `token_version`-Claim (`tv`) im JWT, geprüft gegen `users.token_version`. Bei Passwortänderung, Passwort-Reset (Self/Admin) und MFA-Reset wird die Version erhöht → alle bestehenden Tokens der Person werden ungültig. Self-Change erhält ein frisches Token zurück. Offen: kurzlebige Access- + Refresh-Token-Rotation. | Mittel |
@@ -147,8 +147,8 @@ Folgendes ist bereits umgesetzt und zahlt direkt auf 27001/27701 ein:
 | T8 ✅ | **Passwort-Policy + Breach-Check** — *umgesetzt.* | A.5.17 Authentisierungs­informationen | Zentrale `validate_password()` (min. 10 Zeichen, Buchstaben + Ziffern) plus `assert_password_not_breached()` (HIBP-k-Anonymity, fail-open offline) — konsistent in Registrierung, Passwortänderung und Admin-Benutzerverwaltung. | Quick Win |
 | T9 ✅ | **CORS-Lockdown** — *umgesetzt.* | A.8.26 | In Produktion fällt CORS auf die eigene App-Origin zurück (kein `*` mehr); explizite Allowlist via `CORS_ORIGINS`; `*` nur in Dev bzw. bei expliziter Konfiguration (mit Warnung). | Quick Win |
 | T10 ✅ | **SCA / Schwachstellen­überwachung** — *umgesetzt (erste Stufe).* | A.8.8 Technisches Schwachstellen­management | `.github/dependabot.yml` (pip/npm/actions/docker) + CI-Job `dependency-audit` (`pip-audit` + `npm audit`), zunächst **advisory** (`continue-on-error`). Offen: blockierend schalten nach Triage des Backlogs, Container-Image-Scan (Trivy), dokumentierter Patch-SLA. | Quick Win |
-| T11 | **Backup/Restore nicht dokumentiert/erzwungen** (DB + `/uploads`). | A.8.13 Backup, ISO 22301 | Backup-Strategie + regelmäßiger Restore-Test dokumentieren; ggf. Backup-Hook im Docker-Setup. | Mittel |
-| T12 | **Kein Verschlüsselungs­nachweis at-rest** für DB/Uploads (hängt vom Deployment ab). | A.8.24 | Volume-/DB-Verschlüsselung dokumentieren oder bereitstellen. | Mittel |
+| T11 ✅ | **Backup/Restore** — *umgesetzt.* | A.8.13 Backup, ISO 22301 | `scripts/backup.sh` (pg_dump + Uploads + TLS-Volume, Checksums, Retention) und `scripts/restore.sh`; dokumentiert in `docs/backup-restore.md` inkl. Cron- und Restore-Test-Empfehlung. | Mittel |
+| T12 ✅ | **Verschlüsselung at-rest** — *dokumentiert.* | A.8.24 | `docs/backup-restore.md` §4: LUKS/Cloud-Volume-Verschlüsselung, DB-Optionen, Backup-Verschlüsselung (`age`/`gpg`), Schlüsselverwaltung. MFA-Secrets sind bereits app-seitig verschlüsselt (T7). | Mittel |
 | T13 ✅ | **`security.txt` / Vulnerability-Disclosure** — *umgesetzt.* | A.5.5 / A.6.8 | `/.well-known/security.txt` + `SECURITY.md` mit Meldekanal. | Quick Win |
 
 ### 6.3 Organisatorische Lücken (der Großteil von ISO 27001 ist *kein* Code)
@@ -186,13 +186,14 @@ Diese Punkte verbessern die Sicherheitslage sofort und sind Voraussetzung für m
 
 10. ✅ **T6** JWT-Revocation (`token_version`).
 11. ✅ **T7** MFA-Secret verschlüsselt at-rest.
+12. ✅ **T4** CSP (Report-Only, erzwingbar) + Security-Header in beiden Caddyfile-Quellen.
+13. ✅ **T11/T12** Backup/Restore-Skripte + Verschlüsselungs-at-rest-Doku.
 
 **Als Nächstes empfohlen:**
 
-12. **T4 (Rest)** CSP pro Deployment tunen und aktivieren.
-13. **T2 (Rest)** Account-Lockout + geteilter Rate-Limit-Store für Multi-Replica.
-14. **T10 (Rest)** `dependency-audit` blockierend schalten + Trivy-Image-Scan.
-15. **T6 (Rest)** kurzlebige Access- + Refresh-Token-Rotation.
-16. **T11/T12** Backup-/Restore-Strategie + Verschlüsselung at-rest dokumentieren.
+14. **CSP enforcen:** nach Verifikation `CSP_ENFORCE=true` setzen.
+15. **T2 (Rest)** Account-Lockout + geteilter Rate-Limit-Store für Multi-Replica.
+16. **T10 (Rest)** `dependency-audit` blockierend schalten + Trivy-Image-Scan.
+17. **T6 (Rest)** kurzlebige Access- + Refresh-Token-Rotation.
 
 > Hinweis: Eine Zertifizierung wird **nicht** durch Code allein erreicht — sie verlangt ein gelebtes Managementsystem (Abschnitt 6.3). Die Code-Maßnahmen sind notwendige, aber nicht hinreichende Bausteine.
