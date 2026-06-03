@@ -27,6 +27,43 @@ logger = logging.getLogger(__name__)
 _INSECURE_JWT_SECRETS = {"", "changeme-in-production", "change-me-generate-a-real-secret"}
 _DEV_ENVS = {"dev", "development", "local", "test", "testing"}
 
+_API_DESCRIPTION = """
+REST-API für **ConvoyPlan** — Planung, Routing und Live-Tracking von Marschkolonnen.
+
+Die meisten Endpunkte sind organisationsbezogen und erfordern einen
+**Bearer-Token** (JWT), den du über `POST /api/auth/login` erhältst. Klicke in
+Swagger UI oben rechts auf **Authorize** und füge den Token ein, um die
+geschützten Endpunkte direkt auszuprobieren.
+
+Ohne gültigen Lizenzschlüssel läuft die API im **Demo-Modus**: lesende Zugriffe
+(GET) sind erlaubt, schreibende Zugriffe (POST/PUT/PATCH/DELETE) auf geschützte
+Endpunkte antworten mit HTTP `402`.
+""".strip()
+
+# Tag-Metadaten: liefert Swagger/ReDoc saubere, gruppierte Abschnitte mit
+# Beschreibungen. Die Reihenfolge hier bestimmt die Reihenfolge in der UI.
+_TAGS_METADATA = [
+    {"name": "auth", "description": "Login, MFA (TOTP), Passwortverwaltung und Token-Ausgabe."},
+    {"name": "setup", "description": "Erstmalige Einrichtung der Instanz (Admin-Konto, Basisdaten)."},
+    {"name": "license", "description": "Lizenzschlüssel hinterlegen, prüfen und Demo-Status abfragen."},
+    {"name": "organizations", "description": "Organisationen (Mandanten) verwalten und Mitgliedschaften pflegen."},
+    {"name": "users", "description": "Benutzerkonten innerhalb einer Organisation verwalten."},
+    {"name": "convoys", "description": "Marschkolonnen anlegen, bearbeiten, Fahrzeuge und Wegpunkte zuordnen."},
+    {"name": "vehicles", "description": "Fahrzeugstammdaten der Organisation verwalten."},
+    {"name": "routing", "description": "Routen berechnen und optimieren (GraphHopper-Anbindung)."},
+    {"name": "tracking", "description": "GPS-Positionen erfassen und abrufen."},
+    {"name": "track", "description": "Live-Tracking inkl. WebSocket-Stream für Echtzeit-Updates."},
+    {"name": "share-links", "description": "Öffentliche Freigabe-Links für Kolonnen erstellen und verwalten."},
+    {"name": "leitstellen", "description": "Leitstellen/Dispositionszentren verwalten."},
+    {"name": "weather", "description": "Wetterdaten entlang der Route abrufen."},
+    {"name": "overpass", "description": "OpenStreetMap-/Overpass-Abfragen für Kartendaten."},
+    {"name": "branding", "description": "Organisationsspezifisches Branding (Logo, Farben) anpassen."},
+    {"name": "email-template", "description": "E-Mail-Vorlagen verwalten (Admin)."},
+    {"name": "admin", "description": "Administrative Endpunkte für Superadmins."},
+    {"name": "status", "description": "System- und Gesundheitsstatus der Instanz."},
+    {"name": "version", "description": "Versions- und Build-Informationen."},
+]
+
 
 def _verify_security_config() -> None:
     """Fail-closed: refuse to start in production with a weak JWT secret.
@@ -51,7 +88,22 @@ async def _lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="ConvoyPlan API", version="0.5.0", lifespan=_lifespan)
+# Interactive docs are always on in development; in production they require an
+# explicit opt-in (ENABLE_DOCS=true) so the API surface is not exposed publicly.
+_docs_enabled = settings.enable_docs or settings.app_env.lower() in _DEV_ENVS
+
+app = FastAPI(
+    title="ConvoyPlan API",
+    version="0.5.0",
+    description=_API_DESCRIPTION,
+    openapi_tags=_TAGS_METADATA,
+    contact={"name": "RettTech Solutions", "url": "https://convoyplan.de"},
+    license_info={"name": "Proprietär — RettTech Solutions"},
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
+    lifespan=_lifespan,
+)
 
 _origins_env = os.environ.get("CORS_ORIGINS", "*")
 _allow_origins = [o.strip() for o in _origins_env.split(",")] if _origins_env != "*" else ["*"]
