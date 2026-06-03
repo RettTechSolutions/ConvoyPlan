@@ -19,6 +19,7 @@ def _user(email="test@example.com", pw="secret", superadmin=False):
     u.is_superadmin = superadmin
     u.mfa_enabled = False
     u.mfa_secret = None
+    u.token_version = 0
     u.hashed_password = bcrypt.hashpw(pw.encode(), bcrypt.gensalt()).decode()
     return u
 

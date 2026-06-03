@@ -32,6 +32,8 @@ All notable changes to ConvoyPlan are documented here.
 
 ### Security
 
+- **JWT-Revocation (Sitzungsentzug).** Tokens tragen eine `token_version`, die gegen den DB-Stand geprüft wird. Bei Passwortänderung, Passwort-Reset (Self & Admin) und MFA-Reset wird die Version erhöht — alle bestehenden Tokens der betroffenen Person werden dadurch ungültig. Die Selbstbedienungs-Passwortänderung erhält automatisch ein frisches Token, bleibt also eingeloggt.
+- **MFA-Secret verschlüsselt at-rest.** TOTP-Secrets werden mit Fernet verschlüsselt gespeichert (Schlüssel aus `MFA_ENCRYPTION_KEY` oder aus `JWT_SECRET` abgeleitet). Bestehende Klartext-Secrets bleiben lesbar und werden bei der nächsten MFA-Einrichtung verschlüsselt.
 - **Fail-Closed bei unsicherem `JWT_SECRET`.** Im Produktionsmodus (`APP_ENV=production`, Default) verweigert das Backend den Start, wenn `JWT_SECRET` leer, der Platzhalter-Default oder kürzer als 32 Zeichen ist. Für lokale Entwicklung mit `APP_ENV=development` deaktivierbar. Von den Installern generierte Secrets (`openssl rand -hex 32`) erfüllen die Anforderung bereits.
 - **CORS-Lockdown in Produktion.** Statt `*` fällt CORS in Produktion auf die eigene App-Origin (`APP_BASE_URL`) zurück; eine explizite Allowlist ist über `CORS_ORIGINS` setzbar. `*` nur in Entwicklung bzw. bei expliziter Konfiguration (mit Warnung).
 

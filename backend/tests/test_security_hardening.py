@@ -1,6 +1,9 @@
 """Tests for the security-hardening additions: password policy, JWT-secret
 fail-closed check, and the in-process auth rate limiter."""
 
+import uuid
+from unittest.mock import MagicMock
+
 import pytest
 from fastapi import HTTPException
 
@@ -231,3 +234,42 @@ def test_cors_explicit_wildcard_allowed(monkeypatch):
     monkeypatch.setattr(settings, "cors_origins", "*")
     monkeypatch.setattr(settings, "app_env", "production")
     assert main._resolve_cors_origins() == ["*"]
+
+
+# ── MFA secret encryption (T7) ────────────────────────────────────────────────────
+
+from app.services import crypto  # noqa: E402
+
+
+def test_encrypt_decrypt_roundtrip():
+    secret = "JBSWY3DPEHPK3PXP"
+    token = crypto.encrypt_secret(secret)
+    assert token != secret
+    assert crypto.decrypt_secret(token) == secret
+
+
+def test_decrypt_legacy_plaintext_passthrough():
+    # A non-Fernet value is treated as a legacy plaintext secret and returned as-is.
+    assert crypto.decrypt_secret("JBSWY3DPEHPK3PXP") == "JBSWY3DPEHPK3PXP"
+
+
+# ── Token versioning / JWT revocation (T6) ────────────────────────────────────────
+
+from app.api import deps  # noqa: E402
+from app.api.routes.auth import create_token  # noqa: E402
+
+
+def test_token_carries_version_and_parses():
+    sub = str(uuid.uuid4())
+    td = deps.get_token_data(create_token(sub, False, token_version=7))
+    assert td.token_version == 7
+
+
+def test_ensure_token_current_rejects_stale():
+    with pytest.raises(HTTPException) as exc:
+        deps._ensure_token_current(MagicMock(token_version=1), MagicMock(token_version=2))
+    assert exc.value.status_code == 401
+
+
+def test_ensure_token_current_allows_match():
+    deps._ensure_token_current(MagicMock(token_version=3), MagicMock(token_version=3))

@@ -24,6 +24,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-convoyplan}:${POSTGRES_PASSWORD:-convoyplan}@db:5432/${POSTGRES_DB:-convoyplan}
       JWT_SECRET: ${JWT_SECRET:-changeme-in-production}
       APP_ENV: ${APP_ENV:-production}
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       PASSWORD_BREACH_CHECK_ENABLED: ${PASSWORD_BREACH_CHECK_ENABLED:-true}
       GRAPHHOPPER_URL: http://graphhopper:8989

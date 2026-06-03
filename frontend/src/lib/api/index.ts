@@ -143,7 +143,7 @@ export const authApi = {
 	mfaVerify: (mfa_token: string, code: string) =>
 		api.post<LoginResult>('/api/auth/mfa/verify', { mfa_token, code }),
 	changePassword: (current_password: string, new_password: string) =>
-		api.post<{ status: string }>('/api/auth/password', { current_password, new_password }),
+		api.post<{ status: string; access_token?: string }>('/api/auth/password', { current_password, new_password }),
 	requestPasswordReset: (email: string, org_slug?: string) =>
 		api.post<{ status: string }>('/api/auth/password-reset', { email, org_slug }),
 };

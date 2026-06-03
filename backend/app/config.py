@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     # development only.
     cors_origins: str = ""
 
+    # Fernet key (urlsafe-base64, 32 bytes) used to encrypt MFA secrets at rest.
+    # When empty, a key is derived deterministically from jwt_secret.
+    mfa_encryption_key: str = ""
+
     # Data retention (DSGVO Art. 5(1)(e)). Run by the `retention` cron container.
     retention_enabled: bool = True
     retention_positions_hours: int = 24      # live positions older than this are purged

@@ -127,6 +127,7 @@ async def update_user(
         validate_password(data.password)
         await assert_password_not_breached(data.password)
         user.hashed_password = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
+        user.token_version += 1  # revoke the user's existing sessions
     await db.commit()
     await db.refresh(user)
     await audit.record(
@@ -588,6 +589,7 @@ async def send_user_password(
 
     new_password = generate_password()
     user.hashed_password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+    user.token_version += 1  # revoke the user's existing sessions
     await db.commit()
 
     # Pick login URL: first org login page if member, else superadmin login
@@ -629,6 +631,7 @@ async def reset_user_password(
 
     new_password = generate_password()
     user.hashed_password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+    user.token_version += 1  # revoke the user's existing sessions
     await db.commit()
 
     return {"password": new_password, "email": user.email}
@@ -648,6 +651,7 @@ async def reset_user_mfa(
 
     user.mfa_enabled = False
     user.mfa_secret = None
+    user.token_version += 1  # revoke the user's existing sessions
     await db.commit()
     return {"status": "reset"}
 
