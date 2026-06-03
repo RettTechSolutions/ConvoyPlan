@@ -34,3 +34,17 @@ Nur wenn sich Repo-Name, Branch oder Dateipfad ändern: `public/.htaccess` im We
 
 - **App (ConvoyPlan):** Docker Compose  auf `web.convoyplan.de`
 - **Website (convoyplan-website):** Statisches Astro-Build, Deploy per SFTP auf `convoyplan.de`
+
+### API-Docs (Swagger/OpenAPI)
+
+`/docs`, `/redoc` und `/openapi.json` sind in Produktion **standardmäßig deaktiviert** (404).
+Da `web.convoyplan.de` extern erreichbar ist, werden sie **bevorzugt per API-Key** abgesichert
+statt offen aktiviert:
+
+- **`DOCS_API_KEY=<geheim>`** (empfohlen): Docs sind erreichbar, aber geschützt. Aufruf einmalig
+  über `https://web.convoyplan.de/docs?key=<geheim>` — der Key wird in einem HttpOnly-Cookie
+  gemerkt, danach laden `/docs`, `/redoc` und `/openapi.json` nahtlos. Programmatischer Zugriff
+  via Header `X-API-Key: <geheim>`.
+- **`ENABLE_DOCS=true`**: Docs offen erreichbar (ohne Key) — nur für Dev/intern.
+
+Siehe `backend/app/config.py` (`docs_api_key`, `enable_docs`) und `backend/app/main.py`.

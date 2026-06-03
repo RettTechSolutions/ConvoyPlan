@@ -1,10 +1,13 @@
 import logging
 import os
+import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import (
@@ -88,10 +91,20 @@ async def _lifespan(_app: FastAPI):
     yield
 
 
-# Interactive docs are always on in development; in production they require an
-# explicit opt-in (ENABLE_DOCS=true) so the API surface is not exposed publicly.
-_docs_enabled = settings.enable_docs or settings.app_env.lower() in _DEV_ENVS
+# Interactive docs are always on in development. In production they are off by
+# default so the API surface is not exposed publicly; enable them either openly
+# via ENABLE_DOCS=true or — preferred for externally reachable hosts —
+# protected by setting DOCS_API_KEY (which implies the docs are served).
+_DOCS_COOKIE = "convoyplan_docs_key"
+_OPENAPI_URL = "/openapi.json"
+_docs_enabled = (
+    settings.enable_docs
+    or bool(settings.docs_api_key)
+    or settings.app_env.lower() in _DEV_ENVS
+)
 
+# We render the docs ourselves (see _docs/_redoc/_openapi below) so they can be
+# gated behind DOCS_API_KEY, so the built-in routes are always disabled here.
 app = FastAPI(
     title="ConvoyPlan API",
     version="0.5.0",
@@ -99,11 +112,74 @@ app = FastAPI(
     openapi_tags=_TAGS_METADATA,
     contact={"name": "RettTech Solutions", "url": "https://convoyplan.de"},
     license_info={"name": "Proprietär — RettTech Solutions"},
-    docs_url="/docs" if _docs_enabled else None,
-    redoc_url="/redoc" if _docs_enabled else None,
-    openapi_url="/openapi.json" if _docs_enabled else None,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
     lifespan=_lifespan,
 )
+
+
+def _docs_key_from_request(request: Request) -> str | None:
+    """Pull a supplied docs key from query string, cookie or header (in order)."""
+    return (
+        request.query_params.get("key")
+        or request.cookies.get(_DOCS_COOKIE)
+        or request.headers.get("x-api-key")
+    )
+
+
+def _guard_docs(request: Request) -> bool:
+    """Authorise a docs request. Returns True if the key came from the query
+    string (so the caller should persist it in a cookie). Raises 401 when a key
+    is configured but the request did not supply a matching one."""
+    expected = settings.docs_api_key
+    if not expected:
+        return False  # unprotected (dev convenience)
+    supplied = _docs_key_from_request(request)
+    if not supplied or not secrets.compare_digest(supplied, expected):
+        raise HTTPException(
+            status_code=401,
+            detail="Docs-Zugriff erfordert einen gültigen API-Key (z. B. /docs?key=…).",
+        )
+    return request.query_params.get("key") == supplied
+
+
+def _set_docs_cookie(response, request: Request) -> None:
+    response.set_cookie(
+        _DOCS_COOKIE,
+        settings.docs_api_key,
+        max_age=8 * 3600,
+        httponly=True,
+        samesite="lax",
+        secure=request.url.scheme == "https",
+    )
+
+
+if _docs_enabled:
+
+    @app.get("/openapi.json", include_in_schema=False)
+    async def _openapi(request: Request):
+        from_query = _guard_docs(request)
+        resp = JSONResponse(app.openapi())
+        if from_query:
+            _set_docs_cookie(resp, request)
+        return resp
+
+    @app.get("/docs", include_in_schema=False)
+    async def _docs(request: Request) -> HTMLResponse:
+        from_query = _guard_docs(request)
+        resp = get_swagger_ui_html(openapi_url=_OPENAPI_URL, title="ConvoyPlan API — Swagger UI")
+        if from_query:
+            _set_docs_cookie(resp, request)
+        return resp
+
+    @app.get("/redoc", include_in_schema=False)
+    async def _redoc(request: Request) -> HTMLResponse:
+        from_query = _guard_docs(request)
+        resp = get_redoc_html(openapi_url=_OPENAPI_URL, title="ConvoyPlan API — ReDoc")
+        if from_query:
+            _set_docs_cookie(resp, request)
+        return resp
 
 _origins_env = os.environ.get("CORS_ORIGINS", "*")
 _allow_origins = [o.strip() for o in _origins_env.split(",")] if _origins_env != "*" else ["*"]
