@@ -1,13 +1,21 @@
 """Password helpers shared by self-service reset and admin user management."""
 
+import hashlib
+import logging
 import secrets
 import string
 
+import httpx
 from fastapi import HTTPException, status
 
-# Central password policy (ISO 27001 A.5.17). Kept deliberately simple and
-# offline; a breach-list (HIBP k-anonymity) check is tracked as a follow-up.
+from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+# Central password policy (ISO 27001 A.5.17).
 MIN_PASSWORD_LENGTH = 10
+
+_HIBP_RANGE_URL = "https://api.pwnedpasswords.com/range/{prefix}"
 
 
 def validate_password(password: str) -> None:
@@ -26,6 +34,37 @@ def validate_password(password: str) -> None:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Passwort muss Buchstaben und Ziffern enthalten",
         )
+
+
+async def assert_password_not_breached(password: str) -> None:
+    """Reject passwords found in the Have I Been Pwned breach corpus.
+
+    Uses the k-anonymity range API: only the first 5 chars of the SHA-1 hash
+    leave the server, never the password itself. Fails open — if the service
+    is unreachable (offline/air-gapped deployment) the password is allowed and
+    a warning is logged, so this never blocks legitimate password changes.
+    """
+    if not settings.password_breach_check_enabled:
+        return
+    digest = hashlib.sha1(password.encode("utf-8")).hexdigest().upper()  # noqa: S324 (k-anonymity, not for storage)
+    prefix, suffix = digest[:5], digest[5:]
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(_HIBP_RANGE_URL.format(prefix=prefix))
+        if not resp.is_success:
+            logger.warning("HIBP breach check unavailable (HTTP %s) — failing open", resp.status_code)
+            return
+        for line in resp.text.splitlines():
+            hash_suffix, _, _count = line.partition(":")
+            if hash_suffix.strip().upper() == suffix:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Dieses Passwort ist in bekannten Datenlecks aufgetaucht. Bitte ein anderes wählen.",
+                )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.warning("HIBP breach check failed — failing open", exc_info=True)
 
 
 def generate_password(length: int = 14) -> str:

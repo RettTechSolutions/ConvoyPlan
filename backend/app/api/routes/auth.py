@@ -22,7 +22,7 @@ from app.schemas.user import (
 )
 from app.services import audit
 from app.services.email import send_password_email
-from app.services.password import generate_password, validate_password
+from app.services.password import assert_password_not_breached, generate_password, validate_password
 from app.services.rate_limit import rate_limit, register_failure
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -196,6 +196,7 @@ async def register(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
     validate_password(data.password)
+    await assert_password_not_breached(data.password)
     user = User(
         email=data.email,
         hashed_password=bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode(),
@@ -221,6 +222,7 @@ async def change_password(
         await asyncio.sleep(0.2)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Aktuelles Passwort falsch")
     validate_password(data.new_password)
+    await assert_password_not_breached(data.new_password)
     current_user.hashed_password = bcrypt.hashpw(data.new_password.encode(), bcrypt.gensalt()).decode()
     db.add(current_user)
     await db.commit()

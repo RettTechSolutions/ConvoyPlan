@@ -133,3 +133,101 @@ def test_client_ip_prefers_forwarded_for():
     req = _Req("10.0.0.1")
     req.headers = {"x-forwarded-for": "1.2.3.4, 10.0.0.1"}
     assert client_ip(req) == "1.2.3.4"
+
+
+# ── HIBP breach check (T8) ───────────────────────────────────────────────────────
+
+import hashlib  # noqa: E402
+
+from app.services import password as pw  # noqa: E402
+
+
+class _MockResp:
+    def __init__(self, text="", success=True, status_code=200):
+        self.text = text
+        self.is_success = success
+        self.status_code = status_code
+
+
+class _MockClient:
+    def __init__(self, resp=None, exc=None):
+        self._resp = resp
+        self._exc = exc
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_a):
+        return False
+
+    async def get(self, _url):
+        if self._exc:
+            raise self._exc
+        return self._resp
+
+
+def _suffix_for(password: str) -> str:
+    return hashlib.sha1(password.encode()).hexdigest().upper()[5:]
+
+
+@pytest.mark.asyncio
+async def test_breach_check_rejects_pwned_password(monkeypatch):
+    monkeypatch.setattr(settings, "password_breach_check_enabled", True)
+    pwd = "password123"
+    body = f"{_suffix_for(pwd)}:42\r\nAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:1"
+    monkeypatch.setattr(pw.httpx, "AsyncClient", lambda *a, **k: _MockClient(_MockResp(body)))
+    with pytest.raises(HTTPException) as exc:
+        await pw.assert_password_not_breached(pwd)
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_breach_check_allows_clean_password(monkeypatch):
+    monkeypatch.setattr(settings, "password_breach_check_enabled", True)
+    body = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:1\r\nBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB:2"
+    monkeypatch.setattr(pw.httpx, "AsyncClient", lambda *a, **k: _MockClient(_MockResp(body)))
+    await pw.assert_password_not_breached("a-very-unique-passphrase-9999")  # must not raise
+
+
+@pytest.mark.asyncio
+async def test_breach_check_fails_open_on_network_error(monkeypatch):
+    monkeypatch.setattr(settings, "password_breach_check_enabled", True)
+    monkeypatch.setattr(pw.httpx, "AsyncClient", lambda *a, **k: _MockClient(exc=RuntimeError("offline")))
+    await pw.assert_password_not_breached("password123")  # network down → allowed
+
+
+@pytest.mark.asyncio
+async def test_breach_check_disabled_skips_network(monkeypatch):
+    monkeypatch.setattr(settings, "password_breach_check_enabled", False)
+
+    def _boom(*_a, **_k):
+        raise AssertionError("network must not be called when disabled")
+
+    monkeypatch.setattr(pw.httpx, "AsyncClient", _boom)
+    await pw.assert_password_not_breached("password123")  # disabled → no call
+
+
+# ── CORS origin resolution (T9) ──────────────────────────────────────────────────
+
+def test_cors_explicit_list(monkeypatch):
+    monkeypatch.setattr(settings, "cors_origins", "https://a.example, https://b.example")
+    assert main._resolve_cors_origins() == ["https://a.example", "https://b.example"]
+
+
+def test_cors_production_defaults_to_own_origin(monkeypatch):
+    monkeypatch.setattr(settings, "cors_origins", "")
+    monkeypatch.setattr(settings, "app_env", "production")
+    monkeypatch.setattr(settings, "app_base_url", "https://convoy.example.de/")
+    assert main._resolve_cors_origins() == ["https://convoy.example.de"]
+
+
+def test_cors_development_allows_wildcard(monkeypatch):
+    monkeypatch.setattr(settings, "cors_origins", "")
+    monkeypatch.setattr(settings, "app_env", "development")
+    assert main._resolve_cors_origins() == ["*"]
+
+
+def test_cors_explicit_wildcard_allowed(monkeypatch):
+    monkeypatch.setattr(settings, "cors_origins", "*")
+    monkeypatch.setattr(settings, "app_env", "production")
+    assert main._resolve_cors_origins() == ["*"]

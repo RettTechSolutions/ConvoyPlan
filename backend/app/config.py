@@ -21,6 +21,16 @@ class Settings(BaseSettings):
     # Brute-force protection for authentication endpoints. Disabled in tests.
     rate_limit_enabled: bool = True
 
+    # Check new passwords against the Have I Been Pwned k-anonymity range API.
+    # Fails open (allows the password) if the service is unreachable, so it is
+    # safe in offline/air-gapped deployments. Disabled in tests.
+    password_breach_check_enabled: bool = True
+
+    # Comma-separated list of allowed CORS origins, or "*". When unset in
+    # production the app falls back to its own origin (see main.py); "*" in
+    # development only.
+    cors_origins: str = ""
+
     class Config:
         env_file = ".env"
 

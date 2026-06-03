@@ -16,7 +16,9 @@ All notable changes to ConvoyPlan are documented here.
 
 - **Security-Audit-Log.** Append-only Protokoll sicherheitsrelevanter Ereignisse (Login-Erfolg/-Fehlschlag, MFA-Aktivierung/-Deaktivierung, Passwortänderung/-Reset, Benutzer-/Org-Anlage und -Löschung, Lizenzaktivierung) inkl. Akteur, Ziel, IP und User-Agent. Einsehbar für Superadmins unter `GET /api/admin/audit-log` (Filter nach Aktion). Neue Migration `0018`.
 - **Brute-Force-Schutz.** In-Process-Rate-Limiting auf `/api/auth/login`, `/api/auth/mfa/verify` und `/api/auth/password-reset` (HTTP 429 mit `Retry-After`). Login/MFA zählen nur Fehlversuche, sodass erfolgreiche Logins nicht bestraft werden.
-- **Einheitliche Passwort-Policy.** Mindestens 10 Zeichen sowie Buchstaben und Ziffern — konsistent in Registrierung, Passwortänderung und Admin-Benutzerverwaltung.
+- **Einheitliche Passwort-Policy + Breach-Check.** Mindestens 10 Zeichen sowie Buchstaben und Ziffern; zusätzlich Abgleich gegen die Have-Ich-Been-Pwned-Range-API (k-Anonymity, fail-open bei fehlender Netzanbindung). Konsistent in Registrierung, Passwortänderung und Admin-Benutzerverwaltung. Abschaltbar über `PASSWORD_BREACH_CHECK_ENABLED=false`.
+- **Dependency-Scanning.** `.github/dependabot.yml` (pip/npm/GitHub-Actions/Docker) sowie ein CI-Job `dependency-audit` (`pip-audit` + `npm audit`), zunächst advisory.
+- **Detailplan Retention & Betroffenenrechte.** `docs/iso-t5-retention-plan.md` (T5/T5b).
 - **Security-Header (Caddy).** `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` und `Permissions-Policy` werden ausgeliefert; `Server`-Header entfernt.
 - **`security.txt` & `SECURITY.md`.** Vulnerability-Disclosure-Kontakt unter `/.well-known/security.txt`.
 - **ISO-Zertifizierungs-Bewertung.** `docs/iso-certifications-review.md` mit Normen-Priorisierung und code-gestützter Gap-Analyse.
@@ -29,6 +31,7 @@ All notable changes to ConvoyPlan are documented here.
 ### Security
 
 - **Fail-Closed bei unsicherem `JWT_SECRET`.** Im Produktionsmodus (`APP_ENV=production`, Default) verweigert das Backend den Start, wenn `JWT_SECRET` leer, der Platzhalter-Default oder kürzer als 32 Zeichen ist. Für lokale Entwicklung mit `APP_ENV=development` deaktivierbar. Von den Installern generierte Secrets (`openssl rand -hex 32`) erfüllen die Anforderung bereits.
+- **CORS-Lockdown in Produktion.** Statt `*` fällt CORS in Produktion auf die eigene App-Origin (`APP_BASE_URL`) zurück; eine explizite Allowlist ist über `CORS_ORIGINS` setzbar. `*` nur in Entwicklung bzw. bei expliziter Konfiguration (mit Warnung).
 
 ### Migration
 

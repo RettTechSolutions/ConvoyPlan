@@ -23,7 +23,7 @@ from app.models.user import User
 from app.schemas.user import AdminUserCreate, AdminUserResponse, AdminUserUpdate, AdminUserOrgInfo
 from app.services import audit
 from app.services.email import save_smtp_settings, send_password_email, test_smtp_connection
-from app.services.password import generate_password, validate_password
+from app.services.password import assert_password_not_breached, generate_password, validate_password
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -73,6 +73,7 @@ async def create_user(
     if existing.scalar_one_or_none():
         raise HTTPException(400, "Email already registered")
     validate_password(data.password)
+    await assert_password_not_breached(data.password)
     user = User(
         email=data.email,
         hashed_password=bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode(),
@@ -121,6 +122,7 @@ async def update_user(
         user.email = data.email
     if data.password is not None:
         validate_password(data.password)
+        await assert_password_not_breached(data.password)
         user.hashed_password = bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode()
     await db.commit()
     await db.refresh(user)
