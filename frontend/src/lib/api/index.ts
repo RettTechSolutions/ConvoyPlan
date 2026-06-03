@@ -368,6 +368,29 @@ export interface AdminOrg {
     member_count: number;
 }
 
+export interface ApiKey {
+    id: string;
+    organization_id: string;
+    name: string;
+    prefix: string;
+    role: string;
+    created_at: string;
+    last_used_at: string | null;
+    expires_at: string | null;
+    revoked: boolean;
+}
+
+export interface ApiKeyCreated extends ApiKey {
+    /** Plaintext key — shown exactly once on creation. */
+    key: string;
+}
+
+export interface ApiKeyCreate {
+    name: string;
+    role: string;
+    expires_at?: string | null;
+}
+
 export interface SmtpConfig {
     host: string;
     port: number;
@@ -401,6 +424,11 @@ export const adminApi = {
     listOrgs: () => api.get<AdminOrg[]>('/api/admin/organizations'),
     createOrg: (data: { name: string; slug: string }) => api.post<AdminOrg>('/api/admin/organizations', data),
     deleteOrg: (id: string) => api.delete(`/api/admin/organizations/${id}`),
+    listApiKeys: (orgId: string) => api.get<ApiKey[]>(`/api/admin/organizations/${orgId}/api-keys`),
+    createApiKey: (orgId: string, data: ApiKeyCreate) =>
+        api.post<ApiKeyCreated>(`/api/admin/organizations/${orgId}/api-keys`, data),
+    revokeApiKey: (orgId: string, keyId: string) =>
+        api.delete(`/api/admin/organizations/${orgId}/api-keys/${keyId}`),
     getUpdateStatus: () => api.get<UpdateStatus>('/api/admin/update-status'),
     triggerUpdate: () => api.post<{ status: string }>('/api/admin/trigger-update', {}),
     getGithubTokenStatus: () => api.get<{ set: boolean; source: string | null }>('/api/admin/settings/github-token-set'),

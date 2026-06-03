@@ -3,7 +3,7 @@
     import maplibregl from 'maplibre-gl';
     import 'maplibre-gl/dist/maplibre-gl.css';
     import { auth } from '$lib/stores/auth';
-    import { adminApi, mfaApi, leistellenApi, licenseApi, emailTemplateApi, type AdminUser, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type EmailTemplate } from '$lib/api';
+    import { adminApi, mfaApi, leistellenApi, licenseApi, emailTemplateApi, type AdminUser, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type EmailTemplate, type ApiKey, type ApiKeyCreated } from '$lib/api';
     import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
     import SuperadminLogin from '$lib/components/SuperadminLogin.svelte';
@@ -15,7 +15,7 @@
     let authed = $state(false);
 
     // ── Tab ──────────────────────────────────────────────────────────────────
-    let activeTab = $state<'benutzer' | 'organisationen' | 'leitstellen' | 'branding' | 'system'>('benutzer');
+    let activeTab = $state<'benutzer' | 'organisationen' | 'api-keys' | 'leitstellen' | 'branding' | 'system'>('benutzer');
 
     // ── Users ────────────────────────────────────────────────────────────────
     let users = $state<AdminUser[]>([]);
@@ -261,6 +261,82 @@
         } finally {
             createOrgSaving = false;
         }
+    }
+
+    // ── API-Keys ───────────────────────────────────────────────────────────────
+    let apiKeyOrgs = $state<AdminOrg[]>([]);
+    let apiKeyOrgId = $state('');
+    let apiKeys = $state<ApiKey[]>([]);
+    let apiKeysLoading = $state(false);
+    let apiKeysError = $state('');
+    let newApiKeyForm = $state({ name: '', role: 'beobachter', expires_at: '' });
+    let creatingApiKey = $state(false);
+    let createdApiKey = $state<ApiKeyCreated | null>(null);
+
+    async function loadApiKeyOrgs() {
+        apiKeysError = '';
+        try {
+            apiKeyOrgs = await adminApi.listOrgs();
+            if (!apiKeyOrgId && apiKeyOrgs.length > 0) {
+                apiKeyOrgId = apiKeyOrgs[0].id;
+            }
+            if (apiKeyOrgId) await loadApiKeys();
+        } catch { apiKeysError = 'Organisationen konnten nicht geladen werden'; }
+    }
+
+    async function loadApiKeys() {
+        if (!apiKeyOrgId) { apiKeys = []; return; }
+        apiKeysLoading = true;
+        apiKeysError = '';
+        try {
+            apiKeys = await adminApi.listApiKeys(apiKeyOrgId);
+        } catch { apiKeysError = 'API-Keys konnten nicht geladen werden'; }
+        finally { apiKeysLoading = false; }
+    }
+
+    function onApiKeyOrgChange() {
+        createdApiKey = null;
+        loadApiKeys();
+    }
+
+    async function createApiKey() {
+        if (!apiKeyOrgId || !newApiKeyForm.name.trim()) return;
+        creatingApiKey = true;
+        apiKeysError = '';
+        createdApiKey = null;
+        try {
+            const expires_at = newApiKeyForm.expires_at
+                ? new Date(newApiKeyForm.expires_at).toISOString()
+                : null;
+            createdApiKey = await adminApi.createApiKey(apiKeyOrgId, {
+                name: newApiKeyForm.name.trim(),
+                role: newApiKeyForm.role,
+                expires_at,
+            });
+            newApiKeyForm = { name: '', role: 'beobachter', expires_at: '' };
+            await loadApiKeys();
+        } catch (e: unknown) {
+            apiKeysError = e instanceof Error ? e.message : 'API-Key konnte nicht erstellt werden';
+        } finally {
+            creatingApiKey = false;
+        }
+    }
+
+    async function revokeApiKey(key: ApiKey) {
+        if (!confirm(`API-Key "${key.name}" (cvp_${key.prefix}…) widerrufen?\n\nSysteme, die diesen Key nutzen, verlieren sofort den Zugriff.`)) return;
+        try {
+            await adminApi.revokeApiKey(apiKeyOrgId, key.id);
+            await loadApiKeys();
+        } catch { apiKeysError = 'API-Key konnte nicht widerrufen werden'; }
+    }
+
+    async function copyApiKey(value: string) {
+        try { await navigator.clipboard.writeText(value); } catch { /* clipboard unavailable */ }
+    }
+
+    function fmtDate(d: string | null): string {
+        if (!d) return '–';
+        return new Date(d).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' });
     }
 
     // ── Leitstellen ──────────────────────────────────────────────────────────
@@ -999,6 +1075,7 @@
     <div class="tab-bar">
         <button class="tab" class:active={activeTab === 'benutzer'} onclick={() => (activeTab = 'benutzer')}>Benutzer</button>
         <button class="tab" class:active={activeTab === 'organisationen'} onclick={() => { activeTab = 'organisationen'; loadOrgs(); }}>Organisationen</button>
+        <button class="tab" class:active={activeTab === 'api-keys'} onclick={() => { activeTab = 'api-keys'; loadApiKeyOrgs(); }}>API-Keys</button>
         <button class="tab" class:active={activeTab === 'leitstellen'} onclick={() => (activeTab = 'leitstellen')}>Leitstellen</button>
         <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>Branding</button>
         <button class="tab" class:active={activeTab === 'system'} onclick={() => { activeTab = 'system'; loadUpdateStatus(); loadLicenseStatus(); loadGithubTokenStatus(); }}>System</button>
@@ -1199,6 +1276,110 @@
                         {/if}
                     </tbody>
                 </table>
+            {/if}
+        </div>
+    {/if}
+
+    <!-- ── API-Keys ── -->
+    {#if activeTab === 'api-keys'}
+        {#if apiKeysError}
+            <div class="error-bar">{apiKeysError} <button onclick={() => (apiKeysError = '')}>✕</button></div>
+        {/if}
+
+        <div class="section">
+            <div class="section-header">
+                <strong>API-Keys</strong>
+                <button class="btn-small" onclick={loadApiKeys} disabled={!apiKeyOrgId}>↺</button>
+            </div>
+            <p class="hint" style="margin:.2rem 0 .8rem">
+                API-Keys erlauben Fremdsystemen den programmatischen Zugriff auf die Daten <em>einer</em>
+                Organisation. Der Key wird per Header <code>X-API-Key</code> gesendet und besitzt die hier
+                gewählte Rolle. Der Klartext wird nur einmal bei der Erstellung angezeigt.
+            </p>
+
+            <div class="form-row" style="margin-bottom:1rem">
+                <label>Organisation
+                    <select bind:value={apiKeyOrgId} onchange={onApiKeyOrgChange}>
+                        {#each apiKeyOrgs as org}
+                            <option value={org.id}>{org.name} ({org.slug})</option>
+                        {/each}
+                    </select>
+                </label>
+            </div>
+
+            {#if createdApiKey}
+                <div class="key-reveal">
+                    <strong>Neuer API-Key — jetzt kopieren, er wird nur einmal angezeigt:</strong>
+                    <div class="key-reveal-row">
+                        <code>{createdApiKey.key}</code>
+                        <button class="btn-small" onclick={() => copyApiKey(createdApiKey!.key)}>Kopieren</button>
+                        <button class="btn-small" onclick={() => (createdApiKey = null)}>Schließen</button>
+                    </div>
+                </div>
+            {/if}
+
+            {#if apiKeyOrgId}
+                <div class="form-row" style="align-items:flex-end;flex-wrap:wrap;gap:.6rem">
+                    <label style="flex:1;min-width:180px">Name / Verwendungszweck
+                        <input type="text" bind:value={newApiKeyForm.name} placeholder="z. B. Leitstellen-Anbindung" />
+                    </label>
+                    <label>Rolle
+                        <select bind:value={newApiKeyForm.role}>
+                            <option value="beobachter">Beobachter (nur lesen)</option>
+                            <option value="fahrer">Fahrer</option>
+                            <option value="planer">Planer (schreiben)</option>
+                            <option value="admin">Admin (voll)</option>
+                        </select>
+                    </label>
+                    <label>Ablauf (optional)
+                        <input type="date" bind:value={newApiKeyForm.expires_at} />
+                    </label>
+                    <button class="btn-primary" onclick={createApiKey} disabled={creatingApiKey || !newApiKeyForm.name.trim()}>
+                        {creatingApiKey ? 'Erstelle…' : '+ Key erstellen'}
+                    </button>
+                </div>
+
+                {#if apiKeysLoading}
+                    <p class="hint">Lade…</p>
+                {:else}
+                    <table class="user-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Key</th>
+                                <th>Rolle</th>
+                                <th>Erstellt</th>
+                                <th>Zuletzt genutzt</th>
+                                <th>Ablauf</th>
+                                <th>Status</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {#each apiKeys as key}
+                                <tr style:opacity={key.revoked ? 0.5 : 1}>
+                                    <td>{key.name}</td>
+                                    <td><code>cvp_{key.prefix}…</code></td>
+                                    <td>{key.role}</td>
+                                    <td class="hint">{fmtDate(key.created_at)}</td>
+                                    <td class="hint">{fmtDate(key.last_used_at)}</td>
+                                    <td class="hint">{fmtDate(key.expires_at)}</td>
+                                    <td>{key.revoked ? '⛔ widerrufen' : '✓ aktiv'}</td>
+                                    <td class="actions-cell">
+                                        {#if !key.revoked}
+                                            <div><button class="btn-small danger" onclick={() => revokeApiKey(key)} title="Widerrufen">🗑</button></div>
+                                        {/if}
+                                    </td>
+                                </tr>
+                            {/each}
+                            {#if apiKeys.length === 0}
+                                <tr><td colspan="8" class="hint" style="text-align:center">Noch keine API-Keys für diese Organisation.</td></tr>
+                            {/if}
+                        </tbody>
+                    </table>
+                {/if}
+            {:else}
+                <p class="hint">Keine Organisationen vorhanden — zuerst eine Organisation anlegen.</p>
             {/if}
         </div>
     {/if}
@@ -2107,6 +2288,14 @@
     .btn-danger-small { padding: .2rem .6rem; font-size: var(--text-xs); border-radius: 3px; border: 1px solid #e74c3c; background: transparent; color: #e74c3c; cursor: pointer; }
     .btn-danger-small:hover:not(:disabled) { background: #e74c3c; color: white; }
     .btn-danger-small:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* API-Keys */
+    .form-row { display: flex; gap: 1rem; align-items: center; }
+    .form-row label { display: flex; flex-direction: column; gap: .25rem; font-size: var(--text-xs); color: var(--text-muted); }
+    .form-row input, .form-row select { padding: .4rem .5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); }
+    .key-reveal { background: var(--surface-2); border: 1px solid var(--color-primary); border-radius: 6px; padding: .75rem; margin-bottom: 1rem; font-size: var(--text-sm); }
+    .key-reveal-row { display: flex; align-items: center; gap: .5rem; margin-top: .5rem; flex-wrap: wrap; }
+    .key-reveal-row code { word-break: break-all; flex: 1; min-width: 200px; }
 
     /* Modal */
     .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 100; }

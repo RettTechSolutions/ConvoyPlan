@@ -26,6 +26,8 @@ USER_DELETED = "admin.user.deleted"
 USER_UPDATED = "admin.user.updated"
 ORG_CREATED = "admin.org.created"
 ORG_DELETED = "admin.org.deleted"
+API_KEY_CREATED = "admin.api_key.created"
+API_KEY_REVOKED = "admin.api_key.revoked"
 LICENSE_ACTIVATED = "license.activated"
 
 

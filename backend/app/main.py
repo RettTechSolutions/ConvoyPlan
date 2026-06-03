@@ -35,6 +35,11 @@ Die meisten Endpunkte sind organisationsbezogen und erfordern einen
 Swagger UI oben rechts auf **Authorize** und füge den Token ein, um die
 geschützten Endpunkte direkt auszuprobieren.
 
+Alternativ akzeptieren organisationsbezogene Endpunkte einen **API-Key** per
+Header `X-API-Key`. API-Keys werden im Superadmin-Portal je Organisation
+erstellt, besitzen eine feste Rolle und sind für den programmatischen Zugriff
+durch Fremdsysteme gedacht.
+
 Ohne gültigen Lizenzschlüssel läuft die API im **Demo-Modus**: lesende Zugriffe
 (GET) sind erlaubt, schreibende Zugriffe (POST/PUT/PATCH/DELETE) auf geschützte
 Endpunkte antworten mit HTTP `402`.
