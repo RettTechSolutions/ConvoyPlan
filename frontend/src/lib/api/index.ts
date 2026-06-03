@@ -500,16 +500,32 @@ export interface ZusatzKanal {
     kanal: string;
 }
 
+export type LeitstelleStatus = 'global' | 'local' | 'pending' | 'rejected';
+
 export interface Leitstelle {
     id: string;
     name: string;
     anrufgruppe: string;
     zusatz_kanaele: ZusatzKanal[];
     has_geometry: boolean;
+    district_codes: string[];
+    org_id: string | null;
+    org_name: string | null;
+    status: LeitstelleStatus;
+    proposed_by_org_id: string | null;
+    proposed_by_org_name: string | null;
+    review_note: string | null;
 }
 
 export interface LeistelleDetail extends Leitstelle {
     geometry_geojson: object | null;
+}
+
+export interface LeitstellePayload {
+    name: string;
+    anrufgruppe: string;
+    zusatz_kanaele: ZusatzKanal[];
+    district_codes?: string[] | null;
 }
 
 export interface LicenseStatus {
@@ -553,13 +569,30 @@ export const emailTemplateApi = {
 export const leistellenApi = {
     list: () => api.get<Leitstelle[]>('/api/leitstellen/'),
     get: (id: string) => api.get<LeistelleDetail>(`/api/leitstellen/${id}`),
-    create: (data: { name: string; anrufgruppe: string; zusatz_kanaele: ZusatzKanal[] }) =>
+    geojson: () => api.get<GeoJSON.FeatureCollection>('/api/leitstellen/geojson'),
+    create: (data: LeitstellePayload) =>
         api.post<Leitstelle>('/api/leitstellen/', data),
-    update: (id: string, data: { name?: string; anrufgruppe?: string; zusatz_kanaele?: ZusatzKanal[] }) =>
+    update: (id: string, data: Partial<LeitstellePayload>) =>
         api.put<Leitstelle>(`/api/leitstellen/${id}`, data),
     delete: (id: string) => api.delete(`/api/leitstellen/${id}`),
+    approve: (id: string) => api.post<Leitstelle>(`/api/leitstellen/${id}/approve`, {}),
+    reject: (id: string, note?: string) => api.post<Leitstelle>(`/api/leitstellen/${id}/reject`, { note: note ?? null }),
     importBoundary: (id: string, file: File) =>
         uploadFile<Leitstelle>(`/api/leitstellen/${id}/boundary`, file),
+};
+
+export const orgLeistellenApi = {
+    list: () => api.get<Leitstelle[]>('/api/org/leitstellen/'),
+    get: (id: string) => api.get<LeistelleDetail>(`/api/org/leitstellen/${id}`),
+    geojson: () => api.get<GeoJSON.FeatureCollection>('/api/org/leitstellen/geojson'),
+    create: (data: LeitstellePayload) =>
+        api.post<Leitstelle>('/api/org/leitstellen/', data),
+    update: (id: string, data: Partial<LeitstellePayload>) =>
+        api.put<Leitstelle>(`/api/org/leitstellen/${id}`, data),
+    delete: (id: string) => api.delete(`/api/org/leitstellen/${id}`),
+    submit: (id: string) => api.post<Leitstelle>(`/api/org/leitstellen/${id}/submit`, {}),
+    importBoundary: (id: string, file: File) =>
+        uploadFile<Leitstelle>(`/api/org/leitstellen/${id}/boundary`, file),
 };
 
 export interface OrgLookupResult {

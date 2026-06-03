@@ -1,8 +1,7 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import maplibregl from 'maplibre-gl';
-    import 'maplibre-gl/dist/maplibre-gl.css';
-    import { loadDistricts, DISTRICTS_ATTRIBUTION, type DistrictFeature } from '$lib/geo/districts';
+    import LeitstelleAreaPicker, { type AreaSelection } from '$lib/components/LeitstelleAreaPicker.svelte';
+    import LeitstellenOverviewMap from '$lib/components/LeitstellenOverviewMap.svelte';
     import { auth } from '$lib/stores/auth';
     import { adminApi, mfaApi, leistellenApi, licenseApi, emailTemplateApi, type AdminUser, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type EmailTemplate, type ApiKey, type ApiKeyCreated } from '$lib/api';
     import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
@@ -743,31 +742,40 @@
         generatedPasswords = rest;
     }
 
-    // Polygon drawing state
-    let polyMapContainer: HTMLDivElement | undefined;
-    let polyMap: maplibregl.Map | undefined;
-    let polygonCoords = $state<[number, number][]>([]);
-    let drawingMode = $state(false);
-    // Landkreis-Auswahl
-    let districtMode = $state(false);
-    let selectedDistricts = $state<string[]>([]);
-    let districtsByCode: Record<string, DistrictFeature> = {};
+    // ── Leitstellen: Gebiets-Picker & Übersicht ─────────────────────────────────
+    let areaSel = $state<AreaSelection | null>(null);
+    let areaPickerKey = $state(0);
+    let editingGeo = $state<GeoJSON.Geometry | null>(null);
+    let lsGeojson = $state<GeoJSON.FeatureCollection | null>(null);
+
+    // Vorschläge (pending) zur Freigabe und bereits vergebene Kreise.
+    let pendingLs = $derived(leitstellen.filter((l) => l.status === 'pending'));
+    let takenCodes = $derived(
+        leitstellen.filter((l) => l.id !== editingLs?.id).flatMap((l) => l.district_codes ?? [])
+    );
+    let takenOwnerByCode = $derived.by(() => {
+        const m: Record<string, string> = {};
+        for (const l of leitstellen) {
+            if (l.id === editingLs?.id) continue;
+            for (const c of l.district_codes ?? []) m[c] = l.name;
+        }
+        return m;
+    });
 
     async function loadLeitstellen() {
         try {
             leitstellen = await leistellenApi.list();
+            lsGeojson = await leistellenApi.geojson();
         } catch { lsError = 'Leitstellen konnten nicht geladen werden'; }
     }
 
     function openCreateLs() {
         editingLs = null;
         lsForm = { name: '', anrufgruppe: '', zusatz_kanaele: [] };
-        polygonCoords = [];
-        drawingMode = false;
-        districtMode = false;
-        selectedDistricts = [];
+        areaSel = null;
+        editingGeo = null;
+        areaPickerKey++;
         showLsModal = true;
-        initPolyMap();
     }
 
     async function openEditLs(ls: Leitstelle) {
@@ -778,169 +786,11 @@
                 anrufgruppe: editingLs.anrufgruppe,
                 zusatz_kanaele: [...editingLs.zusatz_kanaele],
             };
-            polygonCoords = [];
-            drawingMode = false;
-            districtMode = false;
-            selectedDistricts = [];
+            areaSel = null;
+            editingGeo = (editingLs.geometry_geojson as GeoJSON.Geometry) ?? null;
+            areaPickerKey++;
             showLsModal = true;
-            initPolyMap(editingLs.geometry_geojson);
         } catch { lsError = 'Leitstelle konnte nicht geladen werden'; }
-    }
-
-    function initPolyMap(existingGeo?: object | null) {
-        setTimeout(() => {
-            if (!polyMapContainer) return;
-            if (polyMap) { polyMap.remove(); polyMap = undefined; }
-
-            polyMap = new maplibregl.Map({
-                container: polyMapContainer,
-                style: {
-                    version: 8,
-                    sources: { osm: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, attribution: '© OpenStreetMap' } },
-                    layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
-                },
-                center: [10.5, 48.5],
-                zoom: 6,
-            });
-
-            polyMap.on('load', () => {
-                polyMap!.addSource('draft', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-                polyMap!.addLayer({ id: 'draft-fill', type: 'fill', source: 'draft', paint: { 'fill-color': '#e74c3c', 'fill-opacity': 0.2 } });
-                polyMap!.addLayer({ id: 'draft-line', type: 'line', source: 'draft', paint: { 'line-color': '#e74c3c', 'line-width': 2 } });
-
-                if (existingGeo) {
-                    updatePolySource(existingGeo as GeoJSON.Geometry);
-                    const coords = (existingGeo as { coordinates?: [number, number][][] }).coordinates?.[0] ?? [];
-                    if (coords.length) {
-                        const lons = coords.map((c: [number, number]) => c[0]);
-                        const lats = coords.map((c: [number, number]) => c[1]);
-                        polyMap!.fitBounds(
-                            [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
-                            { padding: 40 }
-                        );
-                    }
-                }
-
-            });
-        }, 100);
-    }
-
-    function updatePolySource(existingGeo?: GeoJSON.Geometry) {
-        if (!polyMap) return;
-        const src = polyMap.getSource('draft') as maplibregl.GeoJSONSource | undefined;
-        if (!src) return;
-
-        if (existingGeo) {
-            src.setData({ type: 'Feature', geometry: existingGeo, properties: {} } as GeoJSON.Feature);
-            return;
-        }
-        if (polygonCoords.length < 2) {
-            src.setData({ type: 'FeatureCollection', features: [] });
-            return;
-        }
-        if (drawingMode) {
-            src.setData({ type: 'Feature', geometry: { type: 'LineString', coordinates: polygonCoords }, properties: {} } as GeoJSON.Feature);
-        } else {
-            const closed: [number, number][] = [...polygonCoords, polygonCoords[0]];
-            src.setData({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [closed] }, properties: {} } as GeoJSON.Feature);
-        }
-    }
-
-    $effect(() => {
-        // Reactive re-wiring of map handlers when drawing/district mode changes
-        const drawing = drawingMode;
-        const picking = districtMode;
-        if (!polyMap) return;
-
-        const clickHandler = (e: maplibregl.MapMouseEvent) => {
-            if (picking) {
-                const feats = polyMap!.queryRenderedFeatures(e.point, { layers: ['districts-fill'] });
-                const code = feats[0]?.properties?.krs_code as string | undefined;
-                if (!code) return;
-                selectedDistricts = selectedDistricts.includes(code)
-                    ? selectedDistricts.filter((c) => c !== code)
-                    : [...selectedDistricts, code];
-                updateDistrictSelected();
-                return;
-            }
-            if (!drawing) return;
-            polygonCoords = [...polygonCoords, [e.lngLat.lng, e.lngLat.lat]];
-            updatePolySource();
-        };
-
-        const dblClickHandler = (e: maplibregl.MapMouseEvent) => {
-            if (!drawing || polygonCoords.length < 3) return;
-            e.preventDefault();
-            drawingMode = false;
-            updatePolySource();
-        };
-
-        polyMap.on('click', clickHandler);
-        polyMap.on('dblclick', dblClickHandler);
-
-        return () => {
-            polyMap?.off('click', clickHandler);
-            polyMap?.off('dblclick', dblClickHandler);
-        };
-    });
-
-    function resetPolygon() {
-        polygonCoords = [];
-        drawingMode = false;
-        selectedDistricts = [];
-        updateDistrictSelected();
-        const src = polyMap?.getSource('draft') as maplibregl.GeoJSONSource | undefined;
-        src?.setData({ type: 'FeatureCollection', features: [] });
-    }
-
-    // ── Landkreis-Auswahl (Kreisgrenzen) ───────────────────────────────────────
-    function districtSelectedFilter(): maplibregl.FilterSpecification {
-        return ['in', ['get', 'krs_code'], ['literal', selectedDistricts]] as maplibregl.FilterSpecification;
-    }
-
-    function setDistrictPickVisible(visible: boolean) {
-        if (!polyMap) return;
-        const v = visible ? 'visible' : 'none';
-        for (const id of ['districts-fill', 'districts-line']) {
-            if (polyMap.getLayer(id)) polyMap.setLayoutProperty(id, 'visibility', v);
-        }
-        const canvas = polyMap.getCanvas();
-        if (canvas) canvas.style.cursor = visible ? 'pointer' : '';
-    }
-
-    function updateDistrictSelected() {
-        if (polyMap?.getLayer('districts-selected')) {
-            polyMap.setFilter('districts-selected', districtSelectedFilter());
-        }
-    }
-
-    function ensureDistrictLayers(fc: GeoJSON.FeatureCollection) {
-        if (!polyMap || polyMap.getSource('districts')) return;
-        const before = polyMap.getLayer('draft-fill') ? 'draft-fill' : undefined;
-        polyMap.addSource('districts', { type: 'geojson', data: fc });
-        polyMap.addLayer({ id: 'districts-fill', type: 'fill', source: 'districts', paint: { 'fill-color': '#3b82f6', 'fill-opacity': 0.06 } }, before);
-        polyMap.addLayer({ id: 'districts-line', type: 'line', source: 'districts', paint: { 'line-color': '#3b82f6', 'line-width': 1, 'line-opacity': 0.5 } }, before);
-        polyMap.addLayer({ id: 'districts-selected', type: 'fill', source: 'districts', filter: districtSelectedFilter(), paint: { 'fill-color': '#e74c3c', 'fill-opacity': 0.35 } }, before);
-    }
-
-    async function toggleDistrictMode() {
-        if (districtMode) {
-            districtMode = false;
-            setDistrictPickVisible(false);
-            return;
-        }
-        try {
-            const { fc, byCode } = await loadDistricts();
-            districtsByCode = byCode;
-            ensureDistrictLayers(fc);
-        } catch (e: unknown) {
-            lsError = e instanceof Error ? e.message : 'Landkreis-Daten konnten nicht geladen werden';
-            return;
-        }
-        drawingMode = false;
-        districtMode = true;
-        updateDistrictSelected();
-        setDistrictPickVisible(true);
     }
 
     function addZusatzKanal() {
@@ -954,34 +804,37 @@
     async function saveLs() {
         if (!lsForm.name || !lsForm.anrufgruppe) return;
         try {
-            let saved: Leitstelle;
-            if (editingLs) {
-                saved = await leistellenApi.update(editingLs.id, lsForm);
-            } else {
-                saved = await leistellenApi.create(lsForm);
-            }
-            // Upload boundary: ausgewählte Landkreise (werden serverseitig verschmolzen)
-            // oder gezeichnetes Polygon.
-            let boundaryFile: File | null = null;
-            if (selectedDistricts.length > 0) {
-                const features = selectedDistricts.map((c) => districtsByCode[c]).filter(Boolean);
-                const fc = { type: 'FeatureCollection', features };
-                const blob = new Blob([JSON.stringify(fc)], { type: 'application/json' });
-                boundaryFile = new File([blob], 'districts.geojson', { type: 'application/json' });
-            } else if (!drawingMode && polygonCoords.length >= 3) {
-                const closed: [number, number][] = [...polygonCoords, polygonCoords[0]];
-                const geo = { type: 'Feature', geometry: { type: 'Polygon', coordinates: [closed] }, properties: {} };
-                const blob = new Blob([JSON.stringify(geo)], { type: 'application/json' });
-                boundaryFile = new File([blob], 'polygon.geojson', { type: 'application/json' });
-            }
-            if (boundaryFile) {
-                await leistellenApi.importBoundary(saved.id, boundaryFile);
+            const payload = { ...lsForm, district_codes: areaSel ? areaSel.districtCodes : undefined };
+            const saved = editingLs
+                ? await leistellenApi.update(editingLs.id, payload)
+                : await leistellenApi.create(payload);
+            if (areaSel?.boundaryFile) {
+                await leistellenApi.importBoundary(saved.id, areaSel.boundaryFile);
             }
             showLsModal = false;
-            polyMap?.remove(); polyMap = undefined;
             await loadLeitstellen();
         } catch (e: unknown) {
             lsError = e instanceof Error ? e.message : 'Fehler beim Speichern';
+        }
+    }
+
+    async function approveLs(ls: Leitstelle) {
+        try {
+            await leistellenApi.approve(ls.id);
+            await loadLeitstellen();
+        } catch (e: unknown) {
+            lsError = e instanceof Error ? e.message : 'Fehler bei der Freigabe';
+        }
+    }
+
+    async function rejectLs(ls: Leitstelle) {
+        const note = prompt(`Vorschlag „${ls.name}" ablehnen. Optionaler Grund (für die Organisation sichtbar):`);
+        if (note === null) return;
+        try {
+            await leistellenApi.reject(ls.id, note || undefined);
+            await loadLeitstellen();
+        } catch (e: unknown) {
+            lsError = e instanceof Error ? e.message : 'Fehler beim Ablehnen';
         }
     }
 
@@ -1508,6 +1361,42 @@
             <div class="error-bar">{lsError} <button onclick={() => (lsError = '')}>✕</button></div>
         {/if}
 
+        {#if lsGeojson && lsGeojson.features.length > 0}
+            <div class="section">
+                <div class="section-header"><strong>Übersicht</strong></div>
+                <LeitstellenOverviewMap geojson={lsGeojson} />
+                <p class="hint" style="margin:.4rem 0 0">Blau = global · Rot = org-eigen/Vorschlag</p>
+            </div>
+        {/if}
+
+        {#if pendingLs.length > 0}
+            <div class="section">
+                <div class="section-header"><strong>Vorschläge zur Freigabe ({pendingLs.length})</strong></div>
+                <table class="user-table">
+                    <thead>
+                        <tr><th>Name</th><th>Anrufgruppe</th><th>Vorgeschlagen von</th><th>Grenzen</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        {#each pendingLs as ls}
+                            <tr>
+                                <td>{ls.name}</td>
+                                <td><code>{ls.anrufgruppe}</code></td>
+                                <td>{ls.proposed_by_org_name ?? ls.org_name ?? '–'}</td>
+                                <td>{ls.has_geometry ? '✓' : '✗'}</td>
+                                <td class="actions-cell">
+                                    <div>
+                                        <button class="btn-small primary" onclick={() => approveLs(ls)}>✓ Freigeben</button>
+                                        <button class="btn-small danger" onclick={() => rejectLs(ls)}>✕ Ablehnen</button>
+                                        <button class="btn-small" onclick={() => openEditLs(ls)}>✎ Bearbeiten</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        {/each}
+                    </tbody>
+                </table>
+            </div>
+        {/if}
+
         <div class="section">
             <div class="section-header">
                 <strong>Leitstellen ({leitstellen.length})</strong>
@@ -1521,6 +1410,8 @@
                     <tr>
                         <th>Name</th>
                         <th>Anrufgruppe</th>
+                        <th>Status</th>
+                        <th>Organisation</th>
                         <th>Zusatzkanäle</th>
                         <th>Grenzen</th>
                         {#if $auth.is_superadmin}<th></th>{/if}
@@ -1531,6 +1422,8 @@
                         <tr>
                             <td>{ls.name}</td>
                             <td><code>{ls.anrufgruppe}</code></td>
+                            <td><span class="ls-badge ls-{ls.status}">{ls.status === 'global' ? 'Global' : ls.status === 'local' ? 'Lokal' : ls.status === 'pending' ? 'Vorschlag' : 'Abgelehnt'}</span></td>
+                            <td>{ls.org_name ?? ls.proposed_by_org_name ?? '–'}</td>
                             <td>{ls.zusatz_kanaele.length > 0 ? ls.zusatz_kanaele.length : '–'}</td>
                             <td>{ls.has_geometry ? '✓' : '✗'}</td>
                             {#if $auth.is_superadmin}
@@ -1542,7 +1435,7 @@
                         </tr>
                     {/each}
                     {#if leitstellen.length === 0}
-                        <tr><td colspan="5" class="hint" style="text-align:center">Noch keine Leitstellen erfasst.</td></tr>
+                        <tr><td colspan="7" class="hint" style="text-align:center">Noch keine Leitstellen erfasst.</td></tr>
                     {/if}
                 </tbody>
             </table>
@@ -2273,11 +2166,11 @@
 
 <!-- ── Leitstelle Modal ── -->
 {#if showLsModal}
-    <div class="modal-backdrop" onclick={() => { showLsModal = false; polyMap?.remove(); polyMap = undefined; }}>
+    <div class="modal-backdrop" onclick={() => { showLsModal = false; }}>
         <div class="modal" onclick={(e) => e.stopPropagation()}>
             <div class="modal-header">
                 <h2>{editingLs ? 'Leitstelle bearbeiten' : 'Neue Leitstelle'}</h2>
-                <button onclick={() => { showLsModal = false; polyMap?.remove(); polyMap = undefined; }}>✕</button>
+                <button onclick={() => { showLsModal = false; }}>✕</button>
             </div>
 
             <div class="modal-body">
@@ -2305,29 +2198,14 @@
 
                     <div class="map-section">
                         <strong>Zuständigkeitsgebiet</strong>
-                        <div class="poly-controls">
-                            <button
-                                class="btn-small"
-                                class:active={drawingMode}
-                                onclick={() => { drawingMode = !drawingMode; if (drawingMode) { districtMode = false; setDistrictPickVisible(false); } }}
-                            >
-                                {drawingMode ? '✓ Zeichnen aktiv (Doppelklick = fertig)' : '✏ Polygon zeichnen'}
-                            </button>
-                            <button
-                                class="btn-small"
-                                class:active={districtMode}
-                                onclick={toggleDistrictMode}
-                            >
-                                {districtMode ? '✓ Landkreis-Auswahl aktiv' : '🗺 Landkreis wählen'}
-                            </button>
-                            <button class="btn-small" onclick={resetPolygon}>↺ Zurücksetzen</button>
-                        </div>
-                        <div class="poly-map" bind:this={polyMapContainer}></div>
-                        {#if districtMode}
-                            <p class="poly-hint">
-                                Landkreis anklicken zum Hinzufügen/Entfernen{selectedDistricts.length ? ` · ${selectedDistricts.length} ausgewählt` : ''} · Grenzen: {DISTRICTS_ATTRIBUTION}
-                            </p>
-                        {/if}
+                        {#key areaPickerKey}
+                            <LeitstelleAreaPicker
+                                initialGeo={editingGeo}
+                                takenCodes={takenCodes}
+                                takenOwnerByCode={takenOwnerByCode}
+                                onchange={(s) => (areaSel = s)}
+                            />
+                        {/key}
                         {#if editingLs}
                             <div class="import-row">
                                 <label class="btn-small file-label">
@@ -2342,9 +2220,9 @@
                                             if (!file || !editingLs) return;
                                             await leistellenApi.importBoundary(editingLs.id, file);
                                             editingLs = await leistellenApi.get(editingLs.id);
-                                            if (editingLs.geometry_geojson) {
-                                                updatePolySource(editingLs.geometry_geojson as GeoJSON.Geometry);
-                                            }
+                                            editingGeo = (editingLs.geometry_geojson as GeoJSON.Geometry) ?? null;
+                                            areaSel = null;
+                                            areaPickerKey++;
                                             input.value = '';
                                             await loadLeitstellen();
                                         }}
@@ -2357,7 +2235,7 @@
             </div>
 
             <div class="modal-footer">
-                <button onclick={() => { showLsModal = false; polyMap?.remove(); polyMap = undefined; }}>Abbrechen</button>
+                <button onclick={() => { showLsModal = false; }}>Abbrechen</button>
                 <button class="btn-primary" onclick={saveLs} disabled={!lsForm.name || !lsForm.anrufgruppe}>Speichern</button>
             </div>
         </div>
@@ -2430,6 +2308,12 @@
     .btn-small:hover { background: var(--surface-1); }
     .btn-small.danger { border-color: var(--color-primary); color: var(--color-primary); }
     .btn-small.active { background: #e74c3c; color: white; border-color: #e74c3c; }
+    .btn-small.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+    .ls-badge { display: inline-block; padding: .05rem .4rem; border-radius: 10px; font-size: var(--text-xs); font-weight: 600; }
+    .ls-badge.ls-global { background: #1e3a8a; color: #bfdbfe; }
+    .ls-badge.ls-local { background: #334155; color: #cbd5e1; }
+    .ls-badge.ls-pending { background: #78350f; color: #fde68a; }
+    .ls-badge.ls-rejected { background: #7f1d1d; color: #fecaca; }
     .btn-primary { padding: .5rem 1rem; background: var(--color-primary); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: var(--text-sm); }
     .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
     .btn-primary:hover:not(:disabled) { background: var(--color-primary-hover); }
@@ -2464,9 +2348,6 @@
     .zusatz-row { display: flex; gap: .4rem; align-items: center; }
     .zusatz-row input { flex: 1; padding: .25rem .5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); }
     .map-section { display: flex; flex-direction: column; gap: .4rem; font-size: var(--text-sm); font-weight: 600; color: var(--text-2); }
-    .poly-controls { display: flex; gap: .4rem; font-weight: 400; flex-wrap: wrap; }
-    .poly-map { height: 280px; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); }
-    .poly-hint { margin: .35rem 0 0; font-size: .72rem; font-weight: 400; color: var(--text-1); opacity: .65; }
     .import-row { display: flex; gap: .5rem; align-items: center; font-weight: 400; }
     .file-label { cursor: pointer; }
 
