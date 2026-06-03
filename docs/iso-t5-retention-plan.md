@@ -1,7 +1,7 @@
 # Plan: T5 Retention/Löschkonzept & T5b Betroffenenrechte
 
 > Bezug: `docs/iso-certifications-review.md` (T5, T5b) · ISO/IEC 27701, DSGVO Art. 5(1)(e), 15, 17, 30, 32
-> Status: **Planungsentwurf** — Umsetzung erst nach Klärung der offenen Fragen (§7).
+> Status: **Umgesetzt** (Phasen 1–3). Defaults bestätigt: Positionen 24 h, Audit 365 Tage, Share-Links 30 Tage; Auslösung per Cron-Container; Audit-Pseudonymisierung bei Löschung. Offen: Phase 4 (Admin-UI-Buttons) und org-spezifische Fristen.
 
 Dieses Dokument beschreibt, wie ConvoyPlan (a) personenbezogene Daten nach definierten Fristen automatisch löscht und (b) Betroffenenrechte (Auskunft/Export und Löschung) technisch umsetzt.
 

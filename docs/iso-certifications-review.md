@@ -140,8 +140,8 @@ Folgendes ist bereits umgesetzt und zahlt direkt auf 27001/27701 ein:
 | T2 ✅ | **Brute-Force-Schutz / Rate-Limiting** — *umgesetzt.* | A.8.5 Sichere Authentisierung | In-Process-Limiter (`services/rate_limit.py`) auf Login, MFA-Verify, Password-Reset (HTTP 429 + `Retry-After`). Offen: persistenter/geteilter Store (Redis) für Multi-Replica, echtes Account-Lockout. | Quick Win |
 | T3 ✅ | **`JWT_SECRET`-Default** — *umgesetzt.* | A.8.24 Kryptografie, A.5.17 | Fail-Closed: Backend verweigert Start im Produktionsmodus, wenn Secret = Default/leer oder < 32 Zeichen (`APP_ENV=development` relaxt). | Quick Win |
 | T4 ✅ | **Security-Header** — *teilweise umgesetzt.* | A.8.26 Anwendungssicherheit | HSTS, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, Permissions-Policy im Caddyfile ergänzt. Offen: **CSP** (bewusst noch nicht gesetzt — muss pro Deployment für Kartentiles/GraphHopper/Wetter getunt und getestet werden). | Quick Win |
-| T5 | **Keine dokumentierte Lösch-/Aufbewahrungsfrist** für Standort- und Log-Daten; kein automatischer Purge. | DSGVO Art. 5(1)(e), 27701 7.4.7/8.4 | Retention-Policy + Cron/Background-Job, der `vehicle_positions` und künftige Audit-Logs nach definierter Frist löscht. Konfigurierbar pro Org. | Mittel |
-| T5b | **Datenexport / „Recht auf Auskunft & Löschung"** pro Betroffenem nicht als Funktion vorhanden. | 27701 7.3 Betroffenenrechte, DSGVO Art. 15/17 | Admin-Funktion: alle Daten eines Benutzers exportieren bzw. vollständig löschen. | Mittel |
+| T5 ✅ | **Retention/Löschkonzept** — *umgesetzt.* | DSGVO Art. 5(1)(e), 27701 7.4.7/8.4 | `services/retention.py` + Cron-Container `retention` purgt Positionen (>24 h), Audit-Logs (>365 Tage) und widerrufene Share-Links (>30 Tage); Fristen via `RETENTION_*` konfigurierbar, jeder Lauf erzeugt einen Audit-Eintrag. Offen: org-spezifische Fristen, einsatzbezogene Positions-Löschung. | Mittel |
+| T5b ✅ | **Betroffenenrechte** — *umgesetzt.* | 27701 7.3, DSGVO Art. 15/17 | `GET /api/admin/users/{id}/export` (JSON-Bündel ohne Geheimnisse) und `DELETE /api/admin/users/{id}/data` (Löschung + Cascade, Audit-Trail wird **pseudonymisiert** statt gelöscht). | Mittel |
 | T6 | **JWT-Lebensdauer 7 Tage, keine Revocation.** Verlorene/kompromittierte Tokens bleiben gültig. | A.5.18 Zugriffsrechte, A.8.5 | Kürzere Access-Token-TTL + Refresh-Token; Server-seitige Denylist / `token_version`-Claim, der bei Passwortänderung/Logout invalidiert. | Mittel |
 | T7 | **MFA-Secret (`mfa_secret`) im Klartext in DB.** | A.8.24, A.8.11 Datenmaskierung | Verschlüsselt at-rest speichern (z. B. Fernet/AES mit separatem Key aus Secrets-Management). | Mittel |
 | T8 ✅ | **Passwort-Policy + Breach-Check** — *umgesetzt.* | A.5.17 Authentisierungs­informationen | Zentrale `validate_password()` (min. 10 Zeichen, Buchstaben + Ziffern) plus `assert_password_not_breached()` (HIBP-k-Anonymity, fail-open offline) — konsistent in Registrierung, Passwortänderung und Admin-Benutzerverwaltung. | Quick Win |
@@ -182,11 +182,14 @@ Diese Punkte verbessern die Sicherheitslage sofort und sind Voraussetzung für m
 7. ✅ **T9** CORS-Lockdown in Produktion.
 8. ✅ **T10** Dependabot + `pip-audit`/`npm audit` in CI (advisory).
 
+9. ✅ **T5 / T5b** Retention/Löschkonzept + Betroffenenrechte — Detailplan in [`docs/iso-t5-retention-plan.md`](iso-t5-retention-plan.md).
+
 **Als Nächstes empfohlen:**
 
-9. **T5 / T5b** Retention/Löschkonzept + Betroffenenrechte — siehe Detailplan in [`docs/iso-t5-retention-plan.md`](iso-t5-retention-plan.md).
 10. **T4 (Rest)** CSP pro Deployment tunen und aktivieren.
-11. **T2 (Rest)** Account-Lockout + geteilter Rate-Limit-Store für Multi-Replica.
-12. **T10 (Rest)** `dependency-audit` blockierend schalten + Trivy-Image-Scan.
+11. **T6** JWT-Revocation / Refresh-Token.
+12. **T7** MFA-Secret verschlüsselt at-rest.
+13. **T2 (Rest)** Account-Lockout + geteilter Rate-Limit-Store für Multi-Replica.
+14. **T10 (Rest)** `dependency-audit` blockierend schalten + Trivy-Image-Scan.
 
 > Hinweis: Eine Zertifizierung wird **nicht** durch Code allein erreicht — sie verlangt ein gelebtes Managementsystem (Abschnitt 6.3). Die Code-Maßnahmen sind notwendige, aber nicht hinreichende Bausteine.

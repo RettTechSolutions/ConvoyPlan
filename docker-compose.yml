@@ -42,6 +42,22 @@ services:
       graphhopper:
         condition: service_started
 
+  retention:
+    image: ${BACKEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/backend:latest}
+    restart: unless-stopped
+    # Periodic data-retention purge (DSGVO Art. 5(1)(e)). Reuses the backend image.
+    command: sh -c "while true; do python -m app.jobs.retention || true; sleep ${RETENTION_INTERVAL:-3600}; done"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-convoyplan}:${POSTGRES_PASSWORD:-convoyplan}@db:5432/${POSTGRES_DB:-convoyplan}
+      APP_ENV: ${APP_ENV:-production}
+      RETENTION_ENABLED: ${RETENTION_ENABLED:-true}
+      RETENTION_POSITIONS_HOURS: ${RETENTION_POSITIONS_HOURS:-24}
+      RETENTION_AUDIT_DAYS: ${RETENTION_AUDIT_DAYS:-365}
+      RETENTION_SHARE_LINKS_DAYS: ${RETENTION_SHARE_LINKS_DAYS:-30}
+    depends_on:
+      db:
+        condition: service_healthy
+
   graphhopper:
     image: ${GRAPHHOPPER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/graphhopper:latest}
     restart: unless-stopped

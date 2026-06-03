@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     # development only.
     cors_origins: str = ""
 
+    # Data retention (DSGVO Art. 5(1)(e)). Run by the `retention` cron container.
+    retention_enabled: bool = True
+    retention_positions_hours: int = 24      # live positions older than this are purged
+    retention_audit_days: int = 365          # audit-log entries older than this are purged
+    retention_share_links_days: int = 30     # revoked share links older than this are purged
+
     class Config:
         env_file = ".env"
 
