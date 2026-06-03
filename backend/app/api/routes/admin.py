@@ -16,14 +16,17 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_db, require_superadmin
 from app.config import settings
+from app.models.api_key import ApiKey
 from app.models.audit_log import AuditLog
 from app.models.convoy import Convoy
 from app.models.organization import Organization, UserOrganization
 from app.models.settings import SystemSetting
 from app.models.share_link import ConvoyShareLink
 from app.models.user import User
+from app.schemas.api_key import ApiKeyCreate, ApiKeyCreatedResponse, ApiKeyResponse
 from app.models.vehicle import Vehicle
 from app.schemas.user import AdminUserCreate, AdminUserResponse, AdminUserUpdate, AdminUserOrgInfo
+from app.services import api_key as api_key_svc
 from app.services import audit
 from app.services.email import save_smtp_settings, send_password_email, test_smtp_connection
 from app.services.password import assert_password_not_breached, generate_password, validate_password
@@ -402,6 +405,86 @@ async def admin_delete_organization(
         actor_email=current.email, org_id=org_id, target_type="organization",
         target_id=org_id, detail=deleted,
     )
+
+
+# ── Organization-scoped API keys ───────────────────────────────────────────────
+
+@router.get("/organizations/{org_id}/api-keys", response_model=list[ApiKeyResponse])
+async def list_api_keys(
+    org_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    org = await db.get(Organization, org_id)
+    if not org:
+        raise HTTPException(404, "Organization not found")
+    result = await db.execute(
+        select(ApiKey).where(ApiKey.organization_id == org_id).order_by(ApiKey.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+@router.post(
+    "/organizations/{org_id}/api-keys",
+    response_model=ApiKeyCreatedResponse,
+    status_code=201,
+)
+async def create_api_key(
+    org_id: uuid.UUID,
+    data: ApiKeyCreate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    org = await db.get(Organization, org_id)
+    if not org:
+        raise HTTPException(404, "Organization not found")
+
+    name = data.name.strip()
+    if not name:
+        raise HTTPException(400, "Name darf nicht leer sein")
+
+    generated = api_key_svc.generate_key()
+    api_key = ApiKey(
+        organization_id=org_id,
+        name=name,
+        prefix=generated.prefix,
+        key_hash=generated.key_hash,
+        role=data.role,
+        created_by_id=current.id,
+        expires_at=data.expires_at,
+    )
+    db.add(api_key)
+    await db.commit()
+    await db.refresh(api_key)
+    await audit.record(
+        db, audit.API_KEY_CREATED, request=request, actor_id=current.id,
+        actor_email=current.email, org_id=org_id, target_type="api_key",
+        target_id=api_key.id, detail={"name": name, "role": data.role, "prefix": generated.prefix},
+    )
+    base = ApiKeyResponse.model_validate(api_key)
+    return ApiKeyCreatedResponse(**base.model_dump(), key=generated.full_key)
+
+
+@router.delete("/organizations/{org_id}/api-keys/{key_id}", status_code=204)
+async def revoke_api_key(
+    org_id: uuid.UUID,
+    key_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    api_key = await db.get(ApiKey, key_id)
+    if not api_key or api_key.organization_id != org_id:
+        raise HTTPException(404, "API key not found")
+    if not api_key.revoked:
+        api_key.revoked = True
+        await db.commit()
+        await audit.record(
+            db, audit.API_KEY_REVOKED, request=request, actor_id=current.id,
+            actor_email=current.email, org_id=org_id, target_type="api_key",
+            target_id=key_id, detail={"name": api_key.name, "prefix": api_key.prefix},
+        )
 
 
 @router.post("/trigger-update", status_code=202)

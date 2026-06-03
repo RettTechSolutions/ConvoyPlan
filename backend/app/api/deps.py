@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import APIKeyHeader, OAuth2PasswordBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -11,8 +11,14 @@ from app.config import settings
 from app.database import get_db
 from app.models.organization import Organization, UserOrganization
 from app.models.user import User
+from app.services import api_key as api_key_svc
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+# Optional variants for endpoints that accept either a bearer token or an
+# organization-scoped API key. auto_error=False so a missing one is not fatal
+# on its own — get_org_context decides based on which credential is present.
+oauth2_optional = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 class TokenData(BaseModel):
@@ -34,7 +40,7 @@ def _ensure_token_current(token_data: TokenData, user: User) -> None:
         )
 
 
-def get_token_data(token: str = Depends(oauth2_scheme)) -> TokenData:
+def _decode_token(token: str) -> TokenData:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -58,6 +64,10 @@ def get_token_data(token: str = Depends(oauth2_scheme)) -> TokenData:
         raise credentials_exception
 
 
+def get_token_data(token: str = Depends(oauth2_scheme)) -> TokenData:
+    return _decode_token(token)
+
+
 async def get_current_user(
     token_data: TokenData = Depends(get_token_data),
     db: AsyncSession = Depends(get_db),
@@ -76,10 +86,46 @@ async def get_current_user(
 OrgCtx = tuple[User, Organization, str]
 
 
+async def _api_key_org_context(raw_key: str, db: AsyncSession) -> OrgCtx:
+    """Resolve an organization-scoped API key into an OrgCtx.
+
+    The key acts within its organization with the configured role; the
+    organization's owner is used as the acting user so existing ownership
+    logic (e.g. owner_id on created resources) keeps working."""
+    key = await api_key_svc.resolve_key(db, raw_key)
+    if key is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Ungültiger, widerrufener oder abgelaufener API-Key",
+        )
+    org = await db.get(Organization, key.organization_id)
+    if not org:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organisation nicht gefunden")
+    user = await db.get(User, org.owner_id)
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Organisation hat keinen aktiven Eigentümer",
+        )
+    return user, org, key.role
+
+
 async def get_org_context(
-    token_data: TokenData = Depends(get_token_data),
+    token: str | None = Depends(oauth2_optional),
+    raw_api_key: str | None = Depends(api_key_header),
     db: AsyncSession = Depends(get_db),
 ) -> OrgCtx:
+    # Organization-scoped API key takes precedence when supplied.
+    if raw_api_key:
+        return await _api_key_org_context(raw_api_key, db)
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    token_data = _decode_token(token)
     if not token_data.org_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Org context required")
 
