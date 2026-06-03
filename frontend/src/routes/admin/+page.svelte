@@ -2,6 +2,7 @@
     import { onMount } from 'svelte';
     import LeitstelleAreaPicker, { type AreaSelection } from '$lib/components/LeitstelleAreaPicker.svelte';
     import LeitstellenOverviewMap from '$lib/components/LeitstellenOverviewMap.svelte';
+    import LeitstellenTable from '$lib/components/LeitstellenTable.svelte';
     import { auth } from '$lib/stores/auth';
     import { adminApi, mfaApi, leistellenApi, licenseApi, emailTemplateApi, type AdminUser, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type EmailTemplate, type ApiKey, type ApiKeyCreated } from '$lib/api';
     import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
@@ -1405,40 +1406,16 @@
                 {/if}
             </div>
 
-            <table class="user-table">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Anrufgruppe</th>
-                        <th>Status</th>
-                        <th>Organisation</th>
-                        <th>Zusatzkanäle</th>
-                        <th>Grenzen</th>
-                        {#if $auth.is_superadmin}<th></th>{/if}
-                    </tr>
-                </thead>
-                <tbody>
-                    {#each leitstellen as ls}
-                        <tr>
-                            <td>{ls.name}</td>
-                            <td><code>{ls.anrufgruppe}</code></td>
-                            <td><span class="ls-badge ls-{ls.status}">{ls.status === 'global' ? 'Global' : ls.status === 'local' ? 'Lokal' : ls.status === 'pending' ? 'Vorschlag' : 'Abgelehnt'}</span></td>
-                            <td>{ls.org_name ?? ls.proposed_by_org_name ?? '–'}</td>
-                            <td>{ls.zusatz_kanaele.length > 0 ? ls.zusatz_kanaele.length : '–'}</td>
-                            <td>{ls.has_geometry ? '✓' : '✗'}</td>
-                            {#if $auth.is_superadmin}
-                                <td class="actions-cell">
-                                    <div><button class="btn-small" onclick={() => openEditLs(ls)}>✎</button>
-                                    <button class="btn-small danger" onclick={() => deleteLs(ls)}>✕</button></div>
-                                </td>
-                            {/if}
-                        </tr>
-                    {/each}
-                    {#if leitstellen.length === 0}
-                        <tr><td colspan="7" class="hint" style="text-align:center">Noch keine Leitstellen erfasst.</td></tr>
+            <LeitstellenTable items={leitstellen} showOrg>
+                {#snippet actions(ls)}
+                    {#if $auth.is_superadmin}
+                        <div>
+                            <button class="btn-small" onclick={() => openEditLs(ls)}>✎</button>
+                            <button class="btn-small danger" onclick={() => deleteLs(ls)}>✕</button>
+                        </div>
                     {/if}
-                </tbody>
-            </table>
+                {/snippet}
+            </LeitstellenTable>
         </div>
     {/if}
 
@@ -2309,11 +2286,6 @@
     .btn-small.danger { border-color: var(--color-primary); color: var(--color-primary); }
     .btn-small.active { background: #e74c3c; color: white; border-color: #e74c3c; }
     .btn-small.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
-    .ls-badge { display: inline-block; padding: .05rem .4rem; border-radius: 10px; font-size: var(--text-xs); font-weight: 600; }
-    .ls-badge.ls-global { background: #1e3a8a; color: #bfdbfe; }
-    .ls-badge.ls-local { background: #334155; color: #cbd5e1; }
-    .ls-badge.ls-pending { background: #78350f; color: #fde68a; }
-    .ls-badge.ls-rejected { background: #7f1d1d; color: #fecaca; }
     .btn-primary { padding: .5rem 1rem; background: var(--color-primary); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: var(--text-sm); }
     .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
     .btn-primary:hover:not(:disabled) { background: var(--color-primary-hover); }
