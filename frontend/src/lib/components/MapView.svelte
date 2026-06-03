@@ -63,9 +63,12 @@
 			},
 			center: [10.0, 51.5],
 			zoom: 6,
+			attributionControl: false,
 		});
 
 		map.addControl(new maplibregl.NavigationControl());
+		// Attribution to the left so the bottom-right stays free for map control buttons.
+		map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left');
 
 		map.on('click', (e) => {
 			const mode = get(mapMode);
@@ -121,28 +124,37 @@
 		return { type: 'FeatureCollection', features: [] };
 	}
 
-	// Small "flag" label that floats above a marker without shifting its anchor.
-	function labelEl(text: string): HTMLSpanElement {
-		const tag = document.createElement('span');
-		tag.textContent = text;
-		tag.style.cssText =
-			'position:absolute;left:50%;bottom:calc(100% + 5px);transform:translateX(-50%);' +
+	// A small "flag" that floats above the marker, connected to it by a short stem.
+	// It is absolutely positioned, so it does NOT shift the marker's anchor — the
+	// dot stays exactly on its coordinate (MapLibre gives the marker element
+	// position:absolute, which is the positioning context for this child).
+	function labelEl(text: string): HTMLDivElement {
+		const wrap = document.createElement('div');
+		wrap.style.cssText =
+			'position:absolute;left:50%;bottom:100%;transform:translateX(-50%);' +
+			'display:flex;flex-direction:column;align-items:center;pointer-events:none';
+		const bubble = document.createElement('span');
+		bubble.textContent = text;
+		bubble.style.cssText =
 			'background:rgba(15,27,36,.85);color:#fff;padding:1px 6px;border-radius:4px;' +
-			'font:600 11px/1.4 system-ui,sans-serif;white-space:nowrap;pointer-events:none;' +
-			'box-shadow:0 1px 3px rgba(0,0,0,.4)';
-		return tag;
+			'font:600 11px/1.4 system-ui,sans-serif;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.4)';
+		const stem = document.createElement('div');
+		stem.style.cssText = 'width:2px;height:7px;background:rgba(15,27,36,.85)';
+		wrap.appendChild(bubble);
+		wrap.appendChild(stem);
+		return wrap;
 	}
 
 	function makeMarker(color: string, size = 20, label?: string): maplibregl.Marker {
 		const el = document.createElement('div');
-		el.style.cssText = `position:relative;width:${size}px;height:${size}px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.4);cursor:pointer`;
+		el.style.cssText = `width:${size}px;height:${size}px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.4);cursor:pointer`;
 		if (label) el.appendChild(labelEl(label));
 		return new maplibregl.Marker({ element: el });
 	}
 
 	function makeArrowMarker(heading: number, label?: string): maplibregl.Marker {
 		const el = document.createElement('div');
-		el.style.cssText = 'position:relative;cursor:pointer';
+		el.style.cssText = 'cursor:pointer';
 		const arrow = document.createElement('div');
 		arrow.textContent = '➤';
 		arrow.style.cssText = `font-size:22px;transform:rotate(${heading}deg);filter:drop-shadow(0 2px 3px rgba(0,0,0,.5))`;
@@ -159,6 +171,26 @@
 	export function recenterOnVehicle(vehicleId: string) {
 		const pos = livePositions.get(vehicleId);
 		if (map && pos) flyToPosition(pos);
+	}
+
+	function fitRoute(duration = 800) {
+		if (!map || !routeGeojson) return;
+		const coords: number[][] =
+			routeGeojson.type === 'LineString' ? routeGeojson.coordinates as number[][]
+			: routeGeojson.type === 'MultiLineString' ? (routeGeojson.coordinates as number[][][]).flat()
+			: [];
+		if (coords.length < 2) return;
+		const lons = coords.map(c => c[0]);
+		const lats = coords.map(c => c[1]);
+		map.fitBounds(
+			[[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+			{ padding: 60, duration }
+		);
+	}
+
+	/** Fit the whole route into view again (used by the "Route" button). */
+	export function showRoute() {
+		fitRoute();
 	}
 
 	// Start marker
@@ -214,20 +246,7 @@
 				? { type: 'Feature', geometry: routeGeojson, properties: {} }
 				: empty()
 		);
-		if (routeGeojson) {
-			const coords: number[][] =
-				routeGeojson.type === 'LineString' ? routeGeojson.coordinates as number[][]
-				: routeGeojson.type === 'MultiLineString' ? (routeGeojson.coordinates as number[][][]).flat()
-				: [];
-			if (coords.length > 1) {
-				const lons = coords.map(c => c[0]);
-				const lats = coords.map(c => c[1]);
-				map.fitBounds(
-					[[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
-					{ padding: 60, duration: 800 }
-				);
-			}
-		}
+		fitRoute();
 	});
 
 	// Live tracking markers
