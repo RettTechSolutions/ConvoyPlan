@@ -1,9 +1,8 @@
-import hashlib
-import hmac
 import logging
 import os
 import secrets
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -11,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from jose import JWTError, jwt
 
 from app.api.routes import (
     auth, convoys, vehicles, routing, organizations,
@@ -121,20 +121,31 @@ app = FastAPI(
 )
 
 
-def _docs_cookie_token() -> str:
-    """Server-side HMAC of the docs key. Stored in the cookie instead of the
-    key itself, so the secret is never persisted client-side in clear text
-    while still letting the server verify possession (the token is bound to
-    JWT_SECRET and cannot be forged)."""
-    return hmac.new(
-        settings.jwt_secret.encode(), settings.docs_api_key.encode(), hashlib.sha256
-    ).hexdigest()
+_DOCS_COOKIE_TTL = timedelta(hours=8)
+
+
+def _issue_docs_cookie() -> str:
+    """Mint a short-lived, signed session token for the docs UI. It marks the
+    browser as authorised after a successful key check — the API key itself is
+    never stored client-side, only this server-signed (JWT_SECRET) claim."""
+    expire = datetime.now(timezone.utc) + _DOCS_COOKIE_TTL
+    return jwt.encode(
+        {"docs": True, "exp": expire}, settings.jwt_secret, algorithm=settings.jwt_algorithm
+    )
+
+
+def _docs_cookie_valid(token: str) -> bool:
+    try:
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    except JWTError:
+        return False
+    return bool(payload.get("docs"))
 
 
 def _guard_docs(request: Request) -> bool:
     """Authorise a docs request. Returns True if the key came from the query
-    string (so the caller should persist it in a cookie). Raises 401 when a key
-    is configured but the request did not supply a matching credential."""
+    string (so the caller should persist a session cookie). Raises 401 when a
+    key is configured but the request did not supply a matching credential."""
     expected = settings.docs_api_key
     if not expected:
         return False  # unprotected (dev convenience)
@@ -143,9 +154,9 @@ def _guard_docs(request: Request) -> bool:
     raw = request.query_params.get("key") or request.headers.get("x-api-key")
     if raw and secrets.compare_digest(raw, expected):
         return request.query_params.get("key") == raw
-    # Previously authorised browser session: signed cookie (HMAC, not the key).
+    # Previously authorised browser session: signed, expiring token cookie.
     cookie = request.cookies.get(_DOCS_COOKIE)
-    if cookie and secrets.compare_digest(cookie, _docs_cookie_token()):
+    if cookie and _docs_cookie_valid(cookie):
         return False
     raise HTTPException(
         status_code=401,
@@ -156,8 +167,8 @@ def _guard_docs(request: Request) -> bool:
 def _set_docs_cookie(response, request: Request) -> None:
     response.set_cookie(
         _DOCS_COOKIE,
-        _docs_cookie_token(),
-        max_age=8 * 3600,
+        _issue_docs_cookie(),
+        max_age=int(_DOCS_COOKIE_TTL.total_seconds()),
         httponly=True,
         samesite="lax",
         secure=request.url.scheme == "https",
