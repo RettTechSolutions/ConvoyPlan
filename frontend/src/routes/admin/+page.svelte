@@ -1,13 +1,18 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { goto } from '$app/navigation';
     import maplibregl from 'maplibre-gl';
     import 'maplibre-gl/dist/maplibre-gl.css';
     import { auth } from '$lib/stores/auth';
     import { adminApi, mfaApi, leistellenApi, licenseApi, emailTemplateApi, type AdminUser, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type EmailTemplate } from '$lib/api';
     import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
+    import SuperadminLogin from '$lib/components/SuperadminLogin.svelte';
     import QRCode from 'qrcode';
+
+    // ── Auth gate ──────────────────────────────────────────────────────────────
+    // /admin is self-gated: when not logged in as a superadmin we render the
+    // login form inline and only load the portal once authenticated.
+    let authed = $state(false);
 
     // ── Tab ──────────────────────────────────────────────────────────────────
     let activeTab = $state<'benutzer' | 'organisationen' | 'leitstellen' | 'branding' | 'system'>('benutzer');
@@ -22,12 +27,29 @@
     let createAndEmailWorking = $state(false);
 
     onMount(async () => {
-        if (!$auth.is_superadmin) { goto('/'); return; }
+        if ($auth.is_superadmin) {
+            authed = true;
+            await initPortal();
+        }
+    });
+
+    /** Load all portal data — called on mount (if already authed) and after login. */
+    async function initPortal() {
         await loadUsers();
         await loadLeitstellen();
         await loadBranding();
         await Promise.all([loadGithubTokenStatus(), loadUpdateStatus(), loadMfaStatus(), loadSmtpSettings(), loadEmailTemplate()]);
-    });
+    }
+
+    async function handleAuthenticated() {
+        authed = true;
+        await initPortal();
+    }
+
+    function logout() {
+        auth.logout();
+        authed = false;
+    }
 
     // ── Edit User Modal ───────────────────────────────────────────────────────
     let showEditUserModal = $state(false);
@@ -964,10 +986,14 @@
     }
 </script>
 
+{#if authed}
 <div class="admin-page">
     <div class="admin-header">
         <h1>Admin</h1>
-        <a href="/plan" class="back-link">← Plan</a>
+        <div class="header-actions">
+            <a href="/plan" class="back-link">← Plan</a>
+            <button class="logout-btn" onclick={logout}>Abmelden</button>
+        </div>
     </div>
 
     <div class="tab-bar">
@@ -2009,6 +2035,9 @@
         </div>
     </div>
 {/if}
+{:else}
+    <SuperadminLogin onsuccess={handleAuthenticated} />
+{/if}
 
 <style>
     :global(body) { margin: 0; font-family: system-ui, sans-serif; background: var(--bg); color: var(--text-1); }
@@ -2017,6 +2046,17 @@
     h1 { margin: 0; font-size: var(--text-lg); }
     .back-link { color: var(--text-2); font-size: var(--text-sm); text-decoration: none; }
     .back-link:hover { color: var(--text-1); }
+    .header-actions { display: flex; align-items: center; gap: 1rem; }
+    .logout-btn {
+        padding: .4rem .8rem;
+        background: var(--surface-2);
+        color: var(--text-1);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font-size: var(--text-sm);
+        cursor: pointer;
+    }
+    .logout-btn:hover { background: var(--surface-1); border-color: var(--color-primary); color: var(--color-primary); }
 
     .tab-bar { display: flex; gap: .25rem; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem; padding: .25rem .25rem 0; }
     .tab { padding: .5rem 1rem; background: none; border: none; cursor: pointer; font-size: var(--text-sm); color: var(--text-2); border-radius: 4px 4px 0 0; margin-bottom: -1px; }

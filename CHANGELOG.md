@@ -22,6 +22,10 @@ All notable changes to ConvoyPlan are documented here.
 - **ISO-Zertifizierungs-Bewertung.** `docs/iso-certifications-review.md` mit Normen-Priorisierung und code-gestützter Gap-Analyse.
 - **Host-Watchdog (systemd-Timer).** `scripts/install.sh` installiert einen `convoyplan-updater-watchdog.timer`, der alle 2 Minuten verwaiste Updater-Container aufräumt und einen fehlenden/abgestürzten Updater neu startet. Defense-in-Depth gegen zukünftige Self-Restart-Probleme. Wird auf Systemen ohne systemd übersprungen.
 
+### Changed
+
+- **Superadmin-Login in `/admin` integriert.** Die separate Route `/login` wurde entfernt; `/admin` ist jetzt self-gated: nicht angemeldete Aufrufe zeigen direkt die Anmeldemaske (inkl. MFA und Passwort-vergessen) und leiten nach erfolgreichem Login ohne Umweg ins Portal durch. Im Superadmin-Portal gibt es jetzt einen **Abmelden**-Button.
+
 ### Security
 
 - **Fail-Closed bei unsicherem `JWT_SECRET`.** Im Produktionsmodus (`APP_ENV=production`, Default) verweigert das Backend den Start, wenn `JWT_SECRET` leer, der Platzhalter-Default oder kürzer als 32 Zeichen ist. Für lokale Entwicklung mit `APP_ENV=development` deaktivierbar. Von den Installern generierte Secrets (`openssl rand -hex 32`) erfüllen die Anforderung bereits.
