@@ -1,6 +1,9 @@
 """Tests for the security-hardening additions: password policy, JWT-secret
 fail-closed check, and the in-process auth rate limiter."""
 
+import uuid
+from unittest.mock import MagicMock
+
 import pytest
 from fastapi import HTTPException
 
@@ -133,3 +136,162 @@ def test_client_ip_prefers_forwarded_for():
     req = _Req("10.0.0.1")
     req.headers = {"x-forwarded-for": "1.2.3.4, 10.0.0.1"}
     assert client_ip(req) == "1.2.3.4"
+
+
+# ── HIBP breach check (T8) ───────────────────────────────────────────────────────
+
+import hashlib  # noqa: E402
+
+from app.services import password as pw  # noqa: E402
+
+
+class _MockResp:
+    def __init__(self, text="", success=True, status_code=200):
+        self.text = text
+        self.is_success = success
+        self.status_code = status_code
+
+
+class _MockClient:
+    def __init__(self, resp=None, exc=None):
+        self._resp = resp
+        self._exc = exc
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_a):
+        return False
+
+    async def get(self, _url):
+        if self._exc:
+            raise self._exc
+        return self._resp
+
+
+def _suffix_for(password: str) -> str:
+    return hashlib.sha1(password.encode()).hexdigest().upper()[5:]
+
+
+@pytest.mark.asyncio
+async def test_breach_check_rejects_pwned_password(monkeypatch):
+    monkeypatch.setattr(settings, "password_breach_check_enabled", True)
+    pwd = "password123"
+    body = f"{_suffix_for(pwd)}:42\r\nAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:1"
+    monkeypatch.setattr(pw.httpx, "AsyncClient", lambda *a, **k: _MockClient(_MockResp(body)))
+    with pytest.raises(HTTPException) as exc:
+        await pw.assert_password_not_breached(pwd)
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_breach_check_allows_clean_password(monkeypatch):
+    monkeypatch.setattr(settings, "password_breach_check_enabled", True)
+    body = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:1\r\nBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB:2"
+    monkeypatch.setattr(pw.httpx, "AsyncClient", lambda *a, **k: _MockClient(_MockResp(body)))
+    await pw.assert_password_not_breached("a-very-unique-passphrase-9999")  # must not raise
+
+
+@pytest.mark.asyncio
+async def test_breach_check_fails_open_on_network_error(monkeypatch):
+    monkeypatch.setattr(settings, "password_breach_check_enabled", True)
+    monkeypatch.setattr(pw.httpx, "AsyncClient", lambda *a, **k: _MockClient(exc=RuntimeError("offline")))
+    await pw.assert_password_not_breached("password123")  # network down → allowed
+
+
+@pytest.mark.asyncio
+async def test_breach_check_disabled_skips_network(monkeypatch):
+    monkeypatch.setattr(settings, "password_breach_check_enabled", False)
+
+    def _boom(*_a, **_k):
+        raise AssertionError("network must not be called when disabled")
+
+    monkeypatch.setattr(pw.httpx, "AsyncClient", _boom)
+    await pw.assert_password_not_breached("password123")  # disabled → no call
+
+
+# ── CORS origin resolution (T9) ──────────────────────────────────────────────────
+
+def test_cors_explicit_list(monkeypatch):
+    monkeypatch.setattr(settings, "cors_origins", "https://a.example, https://b.example")
+    assert main._resolve_cors_origins() == ["https://a.example", "https://b.example"]
+
+
+def test_cors_production_defaults_to_own_origin(monkeypatch):
+    monkeypatch.setattr(settings, "cors_origins", "")
+    monkeypatch.setattr(settings, "app_env", "production")
+    monkeypatch.setattr(settings, "app_base_url", "https://convoy.example.de/")
+    assert main._resolve_cors_origins() == ["https://convoy.example.de"]
+
+
+def test_cors_development_allows_wildcard(monkeypatch):
+    monkeypatch.setattr(settings, "cors_origins", "")
+    monkeypatch.setattr(settings, "app_env", "development")
+    assert main._resolve_cors_origins() == ["*"]
+
+
+def test_cors_explicit_wildcard_allowed(monkeypatch):
+    monkeypatch.setattr(settings, "cors_origins", "*")
+    monkeypatch.setattr(settings, "app_env", "production")
+    assert main._resolve_cors_origins() == ["*"]
+
+
+# ── MFA secret encryption (T7) ────────────────────────────────────────────────────
+
+from app.services import crypto  # noqa: E402
+
+
+def test_encrypt_decrypt_roundtrip():
+    secret = "JBSWY3DPEHPK3PXP"
+    token = crypto.encrypt_secret(secret)
+    assert token != secret
+    assert crypto.decrypt_secret(token) == secret
+
+
+def test_decrypt_legacy_plaintext_passthrough():
+    # A non-Fernet value is treated as a legacy plaintext secret and returned as-is.
+    assert crypto.decrypt_secret("JBSWY3DPEHPK3PXP") == "JBSWY3DPEHPK3PXP"
+
+
+# ── Token versioning / JWT revocation (T6) ────────────────────────────────────────
+
+from app.api import deps  # noqa: E402
+from app.api.routes.auth import create_token  # noqa: E402
+
+
+def test_token_carries_version_and_parses():
+    sub = str(uuid.uuid4())
+    td = deps.get_token_data(create_token(sub, False, token_version=7))
+    assert td.token_version == 7
+
+
+def test_ensure_token_current_rejects_stale():
+    with pytest.raises(HTTPException) as exc:
+        deps._ensure_token_current(MagicMock(token_version=1), MagicMock(token_version=2))
+    assert exc.value.status_code == 401
+
+
+def test_ensure_token_current_allows_match():
+    deps._ensure_token_current(MagicMock(token_version=3), MagicMock(token_version=3))
+
+
+# ── CSP / Caddyfile security headers (T4) ─────────────────────────────────────────
+
+from app.api.routes.setup import _generate_caddyfile  # noqa: E402
+
+
+def test_setup_caddyfile_has_security_headers_report_only():
+    cf = _generate_caddyfile("convoy.example.de", "auto", "a@b.de")
+    assert "Strict-Transport-Security" in cf
+    assert "X-Content-Type-Options" in cf
+    # Report-Only by default so the CSP can never break the map UI.
+    assert "Content-Security-Policy-Report-Only" in cf
+    assert "tile.openstreetmap.org" in cf
+    assert "wss://convoy.example.de" in cf
+
+
+def test_setup_caddyfile_csp_enforce_toggle(monkeypatch):
+    monkeypatch.setenv("CSP_ENFORCE", "true")
+    cf = _generate_caddyfile("x.de", "internal", "a@b.de")
+    assert "Content-Security-Policy-Report-Only" not in cf
+    assert 'Content-Security-Policy "' in cf

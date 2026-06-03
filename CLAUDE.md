@@ -6,8 +6,11 @@ Dieses Projekt besteht aus zwei Git-Repositories:
 
 | Repo | Pfad | Zweck |
 |---|---|---|
-| **ConvoyPlan** (dieses Repo) | `/Users/working_chris/github/MarschPlan` | App (Backend, Frontend, Docker) |
-| **convoyplan-website** | `/Users/working_chris/github/convoyplan-website` | Marketingsite (Astro, SFTP-Deploy) |
+| **ConvoyPlan** (dieses Repo) | `[/Users/working_chris/github/ConvoyPlan](https://github.com/RettTechSolutions/ConvoyPlan)` | App (Backend, Frontend, Docker) |
+| **convoyplan-website** | `[/Users/working_chris/github/convoyplan-website](https://github.com/RettTechSolutions/convoyplan-website)` | Marketingsite (Astro, SFTP-Deploy) |
+| **convoyplan-Lizenzmanager** | `[/Users/working_chris/github/convoyplan-website](https://github.com/RettTechSolutions/ConvoyPlan-Lizenzmanager)` | Lizenztool zur Lizenz Erstellung anhand der UUID die während der Installation generiert wird  |
+| **convoyplan-Documentation** | `[/Users/working_chris/github/convoyplan-website](https://github.com/RettTechSolutions/ConvoyPlan-Documentation)` | Umfassende Dokumentation mit Wiki |
+
 
 ## Installer-Scripts
 
@@ -29,9 +32,8 @@ Nur wenn sich Repo-Name, Branch oder Dateipfad ändern: `public/.htaccess` im We
 
 ## Deployment
 
-- **App (ConvoyPlan):** Produktiv auf **`web.convoyplan.de`** (extern erreichbar). Docker Compose / Portainer.
-  - _Hinweis:_ Früher lief die App intern auf `s-lx04-docker` (192.168.178.18) — das ist **nicht mehr aktuell**.
-- **Website (convoyplan-website):** Statisches Astro-Build, Deploy per SFTP
+- **App (ConvoyPlan):** Produktiv auf **`web.convoyplan.de`** (extern erreichbar). Docker Compose.
+- **Website (convoyplan-website):** Statisches Astro-Build, Deploy per SFTP auf `convoyplan.de`
 
 ### API-Docs (Swagger/OpenAPI)
 
@@ -40,3 +42,4 @@ damit die API-Oberfläche nicht öffentlich offenliegt. Da `web.convoyplan.de` e
 ist, bewusst aktivieren mit `ENABLE_DOCS=true` in der Umgebung (Docker Compose/Portainer) —
 idealerweise hinter Reverse-Proxy-Auth oder IP-Beschränkung. Siehe `backend/app/config.py`
 (`enable_docs`) und `backend/app/main.py`.
+

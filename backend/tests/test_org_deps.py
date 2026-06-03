@@ -60,6 +60,7 @@ async def test_get_org_context_success():
     user = MagicMock(spec=User)
     user.id = user_id
     user.is_active = True
+    user.token_version = 0
 
     org = MagicMock(spec=Organization)
     org.id = org_id
@@ -92,7 +93,7 @@ async def test_get_org_context_not_member_raises():
     org_id = uuid.uuid4()
     token_data = TokenData(user_id=user_id, org_id=org_id, org_slug="test", role="planer")
 
-    user = MagicMock(spec=User); user.id = user_id; user.is_active = True
+    user = MagicMock(spec=User); user.id = user_id; user.is_active = True; user.token_version = 0
     org = MagicMock(spec=Organization); org.id = org_id
 
     db = AsyncMock()

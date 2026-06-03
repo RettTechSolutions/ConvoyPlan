@@ -41,6 +41,14 @@ case "$DOMAIN" in
         ;;
 esac
 
+# Content-Security-Policy. Report-Only by default (safe); CSP_ENFORCE=true enforces.
+CSP_VALUE="default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; img-src 'self' data: blob: https://tile.openstreetmap.org; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:; font-src 'self' data:; connect-src 'self' https://tile.openstreetmap.org https://nominatim.openstreetmap.org ws://$DOMAIN wss://$DOMAIN"
+if [ "${CSP_ENFORCE:-false}" = "true" ]; then
+    CSP_HEADER="Content-Security-Policy"
+else
+    CSP_HEADER="Content-Security-Policy-Report-Only"
+fi
+
 cat > /tmp/Caddyfile << CADDYEOF
 {
     admin 0.0.0.0:2019
@@ -51,16 +59,15 @@ $SITE_ADDRESS {
     $TLS_DIRECTIVE
 
     # ── Security headers (ISO 27001 A.8.26) ──────────────────────────────
-    # HSTS is ignored by browsers over plain HTTP, so it is safe to send
-    # unconditionally. A Content-Security-Policy is intentionally NOT set
-    # here: it must be tuned per deployment (map tiles, GraphHopper, weather
-    # and Overpass origins) and tested, otherwise it breaks the map UI.
+    # The Content-Security-Policy ships in Report-Only mode by default so it
+    # cannot break the map UI; set CSP_ENFORCE=true to enforce it once verified.
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains"
         X-Content-Type-Options "nosniff"
         X-Frame-Options "SAMEORIGIN"
         Referrer-Policy "strict-origin-when-cross-origin"
         Permissions-Policy "geolocation=(self), microphone=(), camera=()"
+        $CSP_HEADER "$CSP_VALUE"
         -Server
     }
 

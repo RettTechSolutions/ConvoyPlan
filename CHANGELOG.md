@@ -14,9 +14,15 @@ All notable changes to ConvoyPlan are documented here.
 
 ### Added
 
+- **Backup-/Restore-Skripte.** `scripts/backup.sh` (PostgreSQL-Dump + Upload-/TLS-Volumes + Prüfsummen + Retention) und `scripts/restore.sh`; dokumentiert in `docs/backup-restore.md` inkl. Verschlüsselung-at-rest-Leitfaden (LUKS/Cloud-Volumes, Backup-Verschlüsselung, Schlüsselverwaltung).
+- **Content-Security-Policy.** MapLibre-/OpenStreetMap-taugliche CSP in beiden Caddyfile-Quellen (Env-Modus + Setup-Wizard), zusätzlich zu den bestehenden Security-Headern. Standardmäßig **Report-Only** (bricht die Karten-UI nicht); per `CSP_ENFORCE=true` erzwingbar.
 - **Security-Audit-Log.** Append-only Protokoll sicherheitsrelevanter Ereignisse (Login-Erfolg/-Fehlschlag, MFA-Aktivierung/-Deaktivierung, Passwortänderung/-Reset, Benutzer-/Org-Anlage und -Löschung, Lizenzaktivierung) inkl. Akteur, Ziel, IP und User-Agent. Einsehbar für Superadmins unter `GET /api/admin/audit-log` (Filter nach Aktion). Neue Migration `0018`.
 - **Brute-Force-Schutz.** In-Process-Rate-Limiting auf `/api/auth/login`, `/api/auth/mfa/verify` und `/api/auth/password-reset` (HTTP 429 mit `Retry-After`). Login/MFA zählen nur Fehlversuche, sodass erfolgreiche Logins nicht bestraft werden.
-- **Einheitliche Passwort-Policy.** Mindestens 10 Zeichen sowie Buchstaben und Ziffern — konsistent in Registrierung, Passwortänderung und Admin-Benutzerverwaltung.
+- **Einheitliche Passwort-Policy + Breach-Check.** Mindestens 10 Zeichen sowie Buchstaben und Ziffern; zusätzlich Abgleich gegen die Have-Ich-Been-Pwned-Range-API (k-Anonymity, fail-open bei fehlender Netzanbindung). Konsistent in Registrierung, Passwortänderung und Admin-Benutzerverwaltung. Abschaltbar über `PASSWORD_BREACH_CHECK_ENABLED=false`.
+- **Dependency-Scanning.** `.github/dependabot.yml` (pip/npm/GitHub-Actions/Docker) sowie ein CI-Job `dependency-audit` (`pip-audit` + `npm audit`), zunächst advisory.
+- **Datenaufbewahrung (Retention).** Neuer `retention`-Container purgt periodisch Live-Positionen (>24 h), Audit-Log-Einträge (>365 Tage) und widerrufene Share-Links (>30 Tage); Fristen über `RETENTION_*` konfigurierbar, jeder Lauf wird im Audit-Log vermerkt (`services/retention.py`, `app.jobs.retention`).
+- **Betroffenenrechte (DSGVO Art. 15/17).** `GET /api/admin/users/{id}/export` liefert alle personenbezogenen Daten als JSON (ohne Geheimnisse); `DELETE /api/admin/users/{id}/data` löscht den Benutzer samt abhängiger Daten und **pseudonymisiert** den Audit-Trail (statt ihn zu löschen). Im Admin-Portal (Benutzer bearbeiten → „Datenschutz") als Buttons **Daten exportieren** / **Daten löschen** verfügbar.
+- **Detailplan Retention & Betroffenenrechte.** `docs/iso-t5-retention-plan.md` (T5/T5b).
 - **Security-Header (Caddy).** `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` und `Permissions-Policy` werden ausgeliefert; `Server`-Header entfernt.
 - **`security.txt` & `SECURITY.md`.** Vulnerability-Disclosure-Kontakt unter `/.well-known/security.txt`.
 - **ISO-Zertifizierungs-Bewertung.** `docs/iso-certifications-review.md` mit Normen-Priorisierung und code-gestützter Gap-Analyse.
@@ -28,7 +34,10 @@ All notable changes to ConvoyPlan are documented here.
 
 ### Security
 
+- **JWT-Revocation (Sitzungsentzug).** Tokens tragen eine `token_version`, die gegen den DB-Stand geprüft wird. Bei Passwortänderung, Passwort-Reset (Self & Admin) und MFA-Reset wird die Version erhöht — alle bestehenden Tokens der betroffenen Person werden dadurch ungültig. Die Selbstbedienungs-Passwortänderung erhält automatisch ein frisches Token, bleibt also eingeloggt.
+- **MFA-Secret verschlüsselt at-rest.** TOTP-Secrets werden mit Fernet verschlüsselt gespeichert (Schlüssel aus `MFA_ENCRYPTION_KEY` oder aus `JWT_SECRET` abgeleitet). Bestehende Klartext-Secrets bleiben lesbar und werden bei der nächsten MFA-Einrichtung verschlüsselt.
 - **Fail-Closed bei unsicherem `JWT_SECRET`.** Im Produktionsmodus (`APP_ENV=production`, Default) verweigert das Backend den Start, wenn `JWT_SECRET` leer, der Platzhalter-Default oder kürzer als 32 Zeichen ist. Für lokale Entwicklung mit `APP_ENV=development` deaktivierbar. Von den Installern generierte Secrets (`openssl rand -hex 32`) erfüllen die Anforderung bereits.
+- **CORS-Lockdown in Produktion.** Statt `*` fällt CORS in Produktion auf die eigene App-Origin (`APP_BASE_URL`) zurück; eine explizite Allowlist ist über `CORS_ORIGINS` setzbar. `*` nur in Entwicklung bzw. bei expliziter Konfiguration (mit Warnung).
 
 ### Migration
 
