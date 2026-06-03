@@ -113,7 +113,7 @@ _docs_enabled = (
 # gated behind DOCS_API_KEY, so the built-in routes are always disabled here.
 app = FastAPI(
     title="ConvoyPlan API",
-    version="0.5.0",
+    version=settings.app_version,
     description=_API_DESCRIPTION,
     openapi_tags=_TAGS_METADATA,
     contact={"name": "RettTech Solutions", "url": "https://convoyplan.de"},
@@ -273,4 +273,4 @@ if _uploads_dir.is_dir():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "version": "0.5.0"}
+    return {"status": "ok", "version": settings.app_version}

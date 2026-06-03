@@ -42,3 +42,13 @@ def disable_breach_check():
     settings.password_breach_check_enabled = False
     yield
     settings.password_breach_check_enabled = previous
+
+
+@pytest.fixture(autouse=True)
+def disable_update_check():
+    """Disable the GitHub release update check so the /api/version endpoint
+    never hits the network during tests."""
+    previous = settings.update_check_enabled
+    settings.update_check_enabled = False
+    yield
+    settings.update_check_enabled = previous

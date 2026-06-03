@@ -5,7 +5,8 @@ COPY package*.json ./
 RUN npm ci
 COPY . .
 ARG GIT_SHA=""
-RUN GIT_SHA="$GIT_SHA" npm run build
+ARG APP_VERSION=""
+RUN GIT_SHA="$GIT_SHA" APP_VERSION="$APP_VERSION" npm run build
 
 FROM node:26-alpine AS runner
 

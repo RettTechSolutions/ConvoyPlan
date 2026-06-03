@@ -97,6 +97,15 @@
 	{:else}
 		v{__APP_VERSION__}
 	{/if}
+	{#if versionStore.data.update_available}
+		· <a
+			class="update-hint"
+			href="https://github.com/RettTechSolutions/ConvoyPlan/releases/latest"
+			target="_blank"
+			rel="noopener noreferrer"
+			title="Neue Version {versionStore.data.latest} verfügbar"
+		>Update verfügbar</a>
+	{/if}
 </footer>
 
 <style>
@@ -110,6 +119,16 @@
 		pointer-events: none;
 		z-index: 1;
 		user-select: none;
+	}
+
+	.powered-by .update-hint {
+		pointer-events: auto;
+		color: #f59e0b;
+		font-weight: 600;
+		text-decoration: none;
+	}
+	.powered-by .update-hint:hover {
+		text-decoration: underline;
 	}
 
 	.demo-banner {
