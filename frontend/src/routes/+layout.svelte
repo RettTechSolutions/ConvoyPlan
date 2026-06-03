@@ -6,6 +6,7 @@
 	import { brandingStore, applyBranding, type Branding } from '$lib/stores/branding';
 	import { themeStore } from '$lib/stores/theme';
 	import { versionStore } from '$lib/stores/version.svelte';
+	import InstallPrompt from '$lib/components/InstallPrompt.svelte';
 
 	let { children } = $props();
 
@@ -90,6 +91,8 @@
 {/if}
 
 {@render children()}
+
+<InstallPrompt />
 
 <footer class="powered-by">
 	v{__APP_VERSION__}
