@@ -1,4 +1,5 @@
 import logging
+import os
 import re
 from pathlib import Path
 
@@ -26,6 +27,38 @@ async def _superadmin_exists(db: AsyncSession) -> bool:
     return result.scalar_one_or_none() is not None
 
 
+def _security_header_block(domain: str) -> str:
+    """Caddy `header` block: hardening headers + a Content-Security-Policy.
+
+    The CSP is shipped in *Report-Only* mode by default (it cannot break the
+    UI — browsers only report violations). Set `CSP_ENFORCE=true` to switch to
+    an enforcing policy once it has been verified for the deployment.
+    """
+    csp = (
+        "default-src 'self'; base-uri 'self'; object-src 'none'; "
+        "frame-ancestors 'self'; "
+        "img-src 'self' data: blob: https://tile.openstreetmap.org; "
+        "style-src 'self' 'unsafe-inline'; script-src 'self'; "
+        "worker-src 'self' blob:; font-src 'self' data:; "
+        "connect-src 'self' https://tile.openstreetmap.org "
+        f"https://nominatim.openstreetmap.org ws://{domain} wss://{domain}"
+    )
+    csp_header = (
+        "Content-Security-Policy"
+        if os.environ.get("CSP_ENFORCE", "false").lower() == "true"
+        else "Content-Security-Policy-Report-Only"
+    )
+    return f"""header {{
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "geolocation=(self), microphone=(), camera=()"
+        {csp_header} "{csp}"
+        -Server
+    }}"""
+
+
 def _generate_caddyfile(domain: str, tls_mode: str, acme_email: str) -> str:
     if tls_mode == "custom":
         tls_directive = "tls /certs/cert.pem /certs/key.pem"
@@ -34,6 +67,8 @@ def _generate_caddyfile(domain: str, tls_mode: str, acme_email: str) -> str:
     else:
         tls_directive = ""  # auto Let's Encrypt
 
+    header_block = _security_header_block(domain)
+
     return f"""{{
     admin 0.0.0.0:2019
     email {acme_email}
@@ -41,6 +76,8 @@ def _generate_caddyfile(domain: str, tls_mode: str, acme_email: str) -> str:
 
 {domain} {{
     {tls_directive}
+
+    {header_block}
 
     # SSE live-log endpoint — flush every chunk immediately
     handle /api/admin/update-log {{

@@ -143,7 +143,7 @@ export const authApi = {
 	mfaVerify: (mfa_token: string, code: string) =>
 		api.post<LoginResult>('/api/auth/mfa/verify', { mfa_token, code }),
 	changePassword: (current_password: string, new_password: string) =>
-		api.post<{ status: string }>('/api/auth/password', { current_password, new_password }),
+		api.post<{ status: string; access_token?: string }>('/api/auth/password', { current_password, new_password }),
 	requestPasswordReset: (email: string, org_slug?: string) =>
 		api.post<{ status: string }>('/api/auth/password-reset', { email, org_slug }),
 };
@@ -411,6 +411,8 @@ export const adminApi = {
     sendUserPassword: (userId: string) => api.post<{ status: string; email: string }>(`/api/admin/users/${userId}/send-password`, {}),
     resetUserPassword: (userId: string) => api.post<{ password: string; email: string }>(`/api/admin/users/${userId}/reset-password`, {}),
     resetUserMfa: (userId: string) => api.post<{ status: string }>(`/api/admin/users/${userId}/reset-mfa`, {}),
+    exportUserData: (userId: string) => api.get<Record<string, unknown>>(`/api/admin/users/${userId}/export`),
+    eraseUserData: (userId: string) => api.delete(`/api/admin/users/${userId}/data`),
 };
 
 export interface UpdateStatus {
