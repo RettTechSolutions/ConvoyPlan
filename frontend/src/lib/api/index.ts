@@ -208,6 +208,9 @@ export const trackingApi = {
 		api.post(`/api/convoys/${convoyId}/positions`, data),
 	updateVehicleStatus: (convoyId: string, vehicleId: string, vehicle_status: string) =>
 		api.patch(`/api/convoys/${convoyId}/vehicles/${vehicleId}/status`, { vehicle_status }),
+	/** Admin: GPS-Freigabe eines Fahrzeugs zurücksetzen (Position löschen). */
+	clearVehiclePosition: (convoyId: string, vehicleId: string) =>
+		api.delete(`/api/convoys/${convoyId}/vehicles/${vehicleId}/position`),
 };
 
 // V2: Organizations

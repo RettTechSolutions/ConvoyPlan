@@ -5,6 +5,8 @@ import { getToken } from '$lib/api/client';
 export const livePositions = writable<Map<string, VehiclePosition>>(new Map());
 export const vehicleStatuses = writable<Map<string, string>>(new Map());
 export const trackingActive = writable(false);
+/** Vehicle id whose GPS sharing was just reset by an admin (signal for the sender to stop). */
+export const gpsRevoked = writable<string | null>(null);
 
 let ws: WebSocket | null = null;
 
@@ -25,6 +27,12 @@ export function connectTracking(convoyId: string) {
 				m.set(data.vehicle_id, data.vehicle_status!);
 				return new Map(m);
 			});
+		} else if (data.type === 'position_cleared') {
+			livePositions.update((m) => {
+				m.delete(data.vehicle_id);
+				return new Map(m);
+			});
+			gpsRevoked.set(data.vehicle_id);
 		} else {
 			livePositions.update((m) => {
 				m.set(data.vehicle_id, data);

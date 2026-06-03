@@ -4,7 +4,7 @@
 	import MapView from '$lib/components/MapView.svelte';
 	import AppLogo from '$lib/components/AppLogo.svelte';
 	import { convoysApi, trackingApi, type Convoy, type VehiclePosition, type RouteResult } from '$lib/api';
-	import { livePositions, vehicleStatuses, connectTracking, disconnectTracking, sendPosition, trackingActive } from '$lib/stores/tracking';
+	import { livePositions, vehicleStatuses, connectTracking, disconnectTracking, sendPosition, trackingActive, gpsRevoked } from '$lib/stores/tracking';
 
 	const convoyId = $page.params.convoy_id!;
 
@@ -34,6 +34,16 @@
 			(cv) => cv.vehicle.id === myVehicleId || !$livePositions.has(cv.vehicle.id)
 		)
 	);
+
+	// An admin reset the GPS sharing for my vehicle → stop transmitting locally.
+	$effect(() => {
+		const revoked = $gpsRevoked;
+		if (revoked && revoked === myVehicleId && transmitting) {
+			stopTransmitting();
+			error = 'Die GPS-Freigabe wurde von einem Admin zurückgesetzt.';
+		}
+		if (revoked) gpsRevoked.set(null);
+	});
 
 	const STATUS_LABELS: Record<string, string> = { planned: 'Geplant', en_route: 'Unterwegs', arrived: 'Angekommen', delayed: 'Verspätung' };
 	const STATUS_COLORS: Record<string, string> = { planned: '#95a5a6', en_route: '#3498db', arrived: '#27ae60', delayed: '#E23D28' };
