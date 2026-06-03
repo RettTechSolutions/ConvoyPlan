@@ -275,7 +275,7 @@
 
 <style>
 	:global(body) { margin: 0; font-family: system-ui, sans-serif; }
-	.app { display: flex; height: 100vh; overflow: hidden; }
+	.app { display: flex; height: 100vh; height: 100dvh; overflow: hidden; }
 
 	/* Sidebar */
 	.sidebar { width: 320px; min-width: 280px; background: var(--sidebar-bg); color: var(--text-1); display: flex; flex-direction: column; overflow: hidden; }
