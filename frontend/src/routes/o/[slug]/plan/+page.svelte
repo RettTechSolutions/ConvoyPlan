@@ -22,6 +22,8 @@
 	import { dndzone } from 'svelte-dnd-action';
 	import { themeStore } from '$lib/stores/theme';
 	import { versionStore } from '$lib/stores/version.svelte';
+	import { pwaStore } from '$lib/stores/pwa';
+	import InstallButton from '$lib/components/InstallButton.svelte';
 	import QRCode from 'qrcode';
 
 	// ── State ──────────────────────────────────────────────────────────
@@ -233,6 +235,7 @@
 
 	// ── Init ──────────────────────────────────────────────────────────
 	onMount(async () => {
+		pwaStore.init();
 		await loadData();
 	});
 
@@ -1408,6 +1411,7 @@
 			{$themeStore === 'dark' ? '☀' : '☾'}
 			<span>{$themeStore === 'dark' ? 'Light' : 'Dark'}</span>
 		</button>
+		<InstallButton />
 		<span class="app-version">
 			v{__APP_VERSION__}
 			{#if versionStore.data.update_available}

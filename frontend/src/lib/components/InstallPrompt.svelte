@@ -1,76 +1,26 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { pwaStore, canShowInstall } from '$lib/stores/pwa';
 
-	const DISMISSED_KEY = 'pwa-install-dismissed';
-	// Show prompt again after 30 days if dismissed
-	const DISMISS_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-
-	let deferredPrompt: BeforeInstallPromptEvent | null = null;
-	let visible = $state(false);
+	let showIOSHint = $state(false);
 	let installing = $state(false);
 
-	// Browsers that support beforeinstallprompt (Chrome/Edge/Android)
-	let nativePromptAvailable = $state(false);
-	// iOS Safari: no beforeinstallprompt, show manual instructions instead
-	let isIOS = $state(false);
-	let showIOSHint = $state(false);
-
-	function isDismissedRecently(): boolean {
-		try {
-			const raw = localStorage.getItem(DISMISSED_KEY);
-			if (!raw) return false;
-			return Date.now() - parseInt(raw, 10) < DISMISS_TTL_MS;
-		} catch {
-			return false;
-		}
-	}
-
-	function dismiss() {
-		try {
-			localStorage.setItem(DISMISSED_KEY, String(Date.now()));
-		} catch {}
-		visible = false;
-		showIOSHint = false;
-	}
-
 	onMount(() => {
-		// Already installed as PWA → never show
-		if (window.matchMedia('(display-mode: standalone)').matches) return;
-		if (isDismissedRecently()) return;
-
-		const ua = navigator.userAgent;
-		const ios = /iphone|ipad|ipod/i.test(ua) && !(window as any).MSStream;
-
-		if (ios) {
-			isIOS = true;
-			// Slight delay so it doesn't flash immediately on load
-			setTimeout(() => { visible = true; }, 3000);
-			return;
-		}
-
-		const handler = (e: Event) => {
-			e.preventDefault();
-			deferredPrompt = e as BeforeInstallPromptEvent;
-			nativePromptAvailable = true;
-			setTimeout(() => { visible = true; }, 3000);
-		};
-		window.addEventListener('beforeinstallprompt', handler);
-		return () => window.removeEventListener('beforeinstallprompt', handler);
+		pwaStore.init();
+		// Show banner after 3s if not dismissed
+		setTimeout(() => {
+			if ($canShowInstall && !$pwaStore.dismissed) visible = true;
+		}, 3000);
 	});
 
+	let visible = $state(false);
+
 	async function install() {
-		if (!deferredPrompt) return;
 		installing = true;
 		try {
-			deferredPrompt.prompt();
-			const { outcome } = await deferredPrompt.userChoice;
-			if (outcome === 'accepted') {
-				visible = false;
-			} else {
-				dismiss();
-			}
+			await pwaStore.install();
+			visible = false;
 		} finally {
-			deferredPrompt = null;
 			installing = false;
 		}
 	}
@@ -78,9 +28,15 @@
 	function openIOSHint() {
 		showIOSHint = true;
 	}
+
+	function dismiss() {
+		pwaStore.dismiss();
+		visible = false;
+		showIOSHint = false;
+	}
 </script>
 
-{#if visible}
+{#if visible && !$pwaStore.dismissed}
 	<div class="install-banner" role="complementary" aria-label="App installieren">
 		<div class="install-content">
 			<img src="/icons/icon-192.png" alt="" class="install-icon" aria-hidden="true" />
@@ -90,11 +46,11 @@
 			</div>
 		</div>
 		<div class="install-actions">
-			{#if nativePromptAvailable}
+			{#if $pwaStore.deferredPrompt}
 				<button class="btn-install" onclick={install} disabled={installing}>
 					{installing ? 'Installiere…' : 'Installieren'}
 				</button>
-			{:else if isIOS}
+			{:else if $pwaStore.isIOS}
 				<button class="btn-install" onclick={openIOSHint}>Anleitung</button>
 			{/if}
 			<button class="btn-dismiss" onclick={dismiss} aria-label="Schließen">✕</button>
@@ -164,14 +120,8 @@
 		font-size: 0.875rem;
 	}
 
-	.install-text strong {
-		font-size: 0.9rem;
-	}
-
-	.install-text span {
-		font-size: 0.75rem;
-		color: var(--text-2, rgba(255,255,255,.55));
-	}
+	.install-text strong { font-size: 0.9rem; }
+	.install-text span { font-size: 0.75rem; color: var(--text-2, rgba(255,255,255,.55)); }
 
 	.install-actions {
 		display: flex;
@@ -193,14 +143,8 @@
 		white-space: nowrap;
 	}
 
-	.btn-install:hover:not(:disabled) {
-		background: var(--color-primary-hover, #C23020);
-	}
-
-	.btn-install:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
-	}
+	.btn-install:hover:not(:disabled) { background: var(--color-primary-hover, #C23020); }
+	.btn-install:disabled { opacity: 0.6; cursor: not-allowed; }
 
 	.btn-dismiss {
 		background: transparent;
@@ -214,11 +158,8 @@
 		transition: color 0.15s;
 	}
 
-	.btn-dismiss:hover {
-		color: var(--text-1, #e8edf2);
-	}
+	.btn-dismiss:hover { color: var(--text-1, #e8edf2); }
 
-	/* iOS overlay */
 	.ios-overlay {
 		position: fixed;
 		inset: 0;
@@ -241,23 +182,9 @@
 		position: relative;
 	}
 
-	.ios-hint strong {
-		display: block;
-		font-size: 1rem;
-		margin-bottom: 0.75rem;
-	}
-
-	.ios-hint ol {
-		margin: 0;
-		padding-left: 1.25rem;
-		font-size: 0.875rem;
-		line-height: 1.7;
-		color: var(--text-2, rgba(255,255,255,.8));
-	}
-
-	.ios-icon {
-		font-style: normal;
-	}
+	.ios-hint strong { display: block; font-size: 1rem; margin-bottom: 0.75rem; }
+	.ios-hint ol { margin: 0; padding-left: 1.25rem; font-size: 0.875rem; line-height: 1.7; color: var(--text-2, rgba(255,255,255,.8)); }
+	.ios-icon { font-style: normal; }
 
 	.ios-close {
 		position: absolute;
