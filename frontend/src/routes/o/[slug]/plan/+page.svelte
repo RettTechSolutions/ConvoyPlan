@@ -1753,7 +1753,7 @@
 	.wp-quick-form input, .wp-quick-form select { padding: .3rem .4rem; border: 1px solid var(--border); border-radius: 3px; background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); }
 
 	.schedule-table { width: 100%; border-collapse: collapse; font-size: .8rem; }
-	.schedule-table th, .schedule-table td { padding: .3rem .4rem; text-align: left; border-bottom: 1px solid var(--border); }
+	.schedule-table th, .schedule-table td { padding: .3rem .4rem; text-align: left; border-bottom: 1px solid var(--border); color: var(--text-1); }
 	.schedule-table th { color: var(--text-muted); font-weight: 600; }
 
 	.inline-form { display: flex; flex-direction: column; gap: .35rem; margin-bottom: .5rem; }
@@ -2008,10 +2008,11 @@
 	}
 
 	.kw-section { margin-top: .75rem; }
-	.kw-table td code { background: #f0f4f8; padding: .1rem .3rem; border-radius: 3px; font-size: .8rem; }
+	.kw-table td code { background: var(--surface-2); color: var(--text-1); padding: .1rem .3rem; border-radius: 3px; font-size: .8rem; }
 	.kw-befehl-table { width: 100%; border-collapse: collapse; font-size: .82rem; margin-top: .3rem; }
-	.kw-befehl-table th, .kw-befehl-table td { padding: .3rem .5rem; border: 1px solid #ddd; text-align: left; }
-	.kw-befehl-table th { background: var(--color-bg); }
+	.kw-befehl-table th, .kw-befehl-table td { padding: .3rem .5rem; border: 1px solid var(--border); text-align: left; color: var(--text-1); }
+	.kw-befehl-table th { background: var(--surface-2); color: var(--text-muted); }
+	.kw-befehl-table td code { background: var(--surface-2); color: var(--text-1); padding: .1rem .3rem; border-radius: 3px; }
 
 	.sidebar-footer { flex-shrink: 0; border-top: 1px solid var(--border); padding: .75rem 1rem; display: flex; align-items: center; justify-content: space-between; }
 	.theme-toggle { display: flex; align-items: center; gap: .4rem; background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--text-2); font-size: var(--text-sm); padding: .25rem .5rem; cursor: pointer; }
