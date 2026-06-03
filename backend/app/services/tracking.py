@@ -1,3 +1,4 @@
+import time
 from collections import defaultdict
 
 from fastapi import WebSocket
@@ -6,8 +7,14 @@ from fastapi import WebSocket
 class TrackingManager:
     """In-process WebSocket connection manager for live vehicle tracking."""
 
+    # After an admin clears a position, ignore late position updates for the same
+    # vehicle for this many seconds. Covers the driver's in-flight GPS tick that is
+    # sent before its app receives the position_cleared event and stops.
+    _CLEAR_SUPPRESS_S = 8.0
+
     def __init__(self):
         self._connections: dict[str, list[WebSocket]] = defaultdict(list)
+        self._cleared: dict[tuple[str, str], float] = {}
 
     async def connect(self, convoy_id: str, ws: WebSocket):
         await ws.accept()
@@ -18,6 +25,19 @@ class TrackingManager:
             self._connections[convoy_id].remove(ws)
         except ValueError:
             pass
+
+    def mark_cleared(self, convoy_id: str, vehicle_id: str) -> None:
+        """Remember that a vehicle's GPS sharing was just reset by an admin."""
+        self._cleared[(convoy_id, vehicle_id)] = time.monotonic()
+
+    def is_recently_cleared(self, convoy_id: str, vehicle_id: str) -> bool:
+        ts = self._cleared.get((convoy_id, vehicle_id))
+        if ts is None:
+            return False
+        if time.monotonic() - ts > self._CLEAR_SUPPRESS_S:
+            self._cleared.pop((convoy_id, vehicle_id), None)
+            return False
+        return True
 
     async def broadcast(self, convoy_id: str, data: dict):
         dead: list[WebSocket] = []

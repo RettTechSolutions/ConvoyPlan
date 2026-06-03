@@ -67,6 +67,10 @@ async def update_position(
     current_user: User = Depends(get_current_user),
 ):
     await get_convoy_access(convoy_id, current_user, db, require="fahrer")
+    # An admin just reset this vehicle's sharing — drop the late in-flight tick so
+    # it can't re-create the position the admin removed.
+    if tracking_manager.is_recently_cleared(str(convoy_id), str(data.vehicle_id)):
+        return {"status": "suppressed"}
     stmt = (
         pg_insert(VehiclePosition)
         .values(
@@ -154,6 +158,7 @@ async def clear_vehicle_position(
     )
     await db.commit()
 
+    tracking_manager.mark_cleared(str(convoy_id), str(vehicle_id))
     await tracking_manager.broadcast(str(convoy_id), {
         "type": "position_cleared",
         "vehicle_id": str(vehicle_id),
@@ -198,6 +203,9 @@ async def tracking_ws(
         while True:
             data = await ws.receive_json()
             # Client kann Positionen über WS schicken
+            # Verworfen, falls ein Admin die Freigabe gerade zurückgesetzt hat.
+            if tracking_manager.is_recently_cleared(convoy_id, str(data.get("vehicle_id"))):
+                continue
             async with AsyncSessionLocal() as db:
                 try:
                     await get_convoy_access(uuid.UUID(convoy_id), user, db, require="fahrer")
