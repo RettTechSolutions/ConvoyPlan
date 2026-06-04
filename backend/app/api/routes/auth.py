@@ -347,7 +347,10 @@ class MfaConfirmRequest(BaseModel):
     code: str
 
 
-@router.post("/mfa/confirm")
+@router.post(
+    "/mfa/confirm",
+    dependencies=[Depends(rate_limit("mfa-confirm", max_attempts=10, window_seconds=300))],
+)
 async def mfa_confirm(
     data: MfaConfirmRequest,
     request: Request,
@@ -370,7 +373,10 @@ async def mfa_confirm(
     return {"status": "MFA aktiviert"}
 
 
-@router.post("/mfa/disable")
+@router.post(
+    "/mfa/disable",
+    dependencies=[Depends(rate_limit("mfa-disable", max_attempts=10, window_seconds=300))],
+)
 async def mfa_disable(
     data: MfaConfirmRequest,
     request: Request,
