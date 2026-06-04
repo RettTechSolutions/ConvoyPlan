@@ -17,6 +17,7 @@ Template keys (stored in system_settings, editable by superadmin):
 
 from __future__ import annotations
 
+import html as _html
 import ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -149,14 +150,15 @@ async def _get_branding_settings(db: AsyncSession) -> dict[str, str]:
 
 def _build_logo_block(logo_main: str, app_name: str, base_url: str = "") -> str:
     """Return the logo HTML block for email header."""
+    safe_name = _html.escape(app_name)
     if logo_main:
         return (
             f'<img src="{base_url}/uploads/logos/{logo_main}" '
-            f'height="50" alt="{app_name}" style="display:block;margin:0 auto;"/>'
+            f'height="50" alt="{safe_name}" style="display:block;margin:0 auto;"/>'
         )
     return (
         f'<span style="font-size:26px;font-weight:700;color:#ffffff;">'
-        f"{app_name}</span>"
+        f"{safe_name}</span>"
     )
 
 
@@ -190,27 +192,33 @@ async def _render_password_email_async(
 
     # Build computed fragments
     logo_block = _build_logo_block(logo_main, app_name, base_url)
-    recipient_name_greeting = f" {recipient_name}" if recipient_name else ""
+    recipient_name_greeting = (
+        f" {_html.escape(recipient_name)}" if recipient_name else ""
+    )
 
-    variables = {
-        "recipient_name": recipient_name,
+    # HTML-escaped variables for the body template. logo_block is intentional HTML;
+    # color values go into CSS style attributes and must not be double-escaped.
+    html_vars = {
+        "recipient_name": _html.escape(recipient_name),
         "recipient_name_greeting": recipient_name_greeting,
-        "email": email,
-        "password": password,
-        "login_url": login_url,
-        "app_name": app_name,
+        "email": _html.escape(email),
+        "password": _html.escape(password),
+        "login_url": _html.escape(login_url),
+        "app_name": _html.escape(app_name),
         "logo_block": logo_block,
         "color_primary": color_primary,
         "color_primary_hover": color_primary_hover,
     }
+    # Subject is plain text — use raw (unescaped) values so &amp; never appears.
+    plain_vars = {**html_vars, "app_name": app_name}
 
     try:
-        subject = subject_tpl.format_map(variables)
-        html_body = html_tpl.format_map(variables)
+        subject = subject_tpl.format_map(plain_vars)
+        html_body = html_tpl.format_map(html_vars)
     except (KeyError, ValueError):
         # Fall back to default template if custom template has rendering issues
-        subject = DEFAULT_EMAIL_TEMPLATE_SUBJECT.format_map(variables)
-        html_body = DEFAULT_EMAIL_TEMPLATE_HTML.format_map(variables)
+        subject = DEFAULT_EMAIL_TEMPLATE_SUBJECT.format_map(plain_vars)
+        html_body = DEFAULT_EMAIL_TEMPLATE_HTML.format_map(html_vars)
 
     return subject, html_body
 
@@ -230,14 +238,16 @@ def _render_password_email(
     """
     subject = DEFAULT_EMAIL_TEMPLATE_SUBJECT.format(app_name=app_name)
     logo_block = _build_logo_block("", app_name)
-    recipient_name_greeting = f" {recipient_name}" if recipient_name else ""
+    recipient_name_greeting = (
+        f" {_html.escape(recipient_name)}" if recipient_name else ""
+    )
     html_body = DEFAULT_EMAIL_TEMPLATE_HTML.format(
-        recipient_name=recipient_name,
+        recipient_name=_html.escape(recipient_name),
         recipient_name_greeting=recipient_name_greeting,
-        email=email,
-        password=password,
-        login_url=login_url,
-        app_name=app_name,
+        email=_html.escape(email),
+        password=_html.escape(password),
+        login_url=_html.escape(login_url),
+        app_name=_html.escape(app_name),
         logo_block=logo_block,
         color_primary="#E23D28",
         color_primary_hover="#C23020",
