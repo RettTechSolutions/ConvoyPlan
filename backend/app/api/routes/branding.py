@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import re as _re
+import xml.etree.ElementTree as _ET
 from pathlib import Path
 from typing import Literal
 
@@ -14,6 +16,27 @@ from app.schemas.branding import BrandingResponse, BrandingUpdate
 
 router = APIRouter(prefix="/branding", tags=["branding"])
 logger = logging.getLogger(__name__)
+
+_PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+_JPEG_MAGIC = b"\xff\xd8\xff"
+_SVG_DANGEROUS = _re.compile(r"<\s*script|javascript\s*:", _re.IGNORECASE)
+
+
+def _validate_image_content(content: bytes, ext: str) -> None:
+    if ext in {".png"} and not content[:8] == _PNG_MAGIC:
+        raise HTTPException(400, "File content does not match PNG format")
+    if ext in {".jpg", ".jpeg"} and not content[:3] == _JPEG_MAGIC:
+        raise HTTPException(400, "File content does not match JPEG format")
+    if ext == ".svg":
+        try:
+            root = _ET.fromstring(content.decode("utf-8", errors="replace"))
+        except _ET.ParseError:
+            raise HTTPException(400, "SVG file is not valid XML")
+        if not root.tag.lower().endswith("}svg") and root.tag.lower() != "svg":
+            raise HTTPException(400, "SVG file must have an <svg> root element")
+        if _SVG_DANGEROUS.search(content.decode("utf-8", errors="replace")):
+            raise HTTPException(400, "SVG file contains disallowed content (script or javascript:)")
+
 
 # Keep in sync with alembic/versions/0011_branding_defaults.py _DEFAULTS
 BRANDING_DEFAULTS: dict[str, str] = {
@@ -113,6 +136,7 @@ async def upload_logo(
     ext = Path(file.filename or "").suffix.lower()
     if ext not in {".png", ".jpg", ".jpeg", ".svg"}:
         raise HTTPException(status_code=400, detail="Invalid file type (PNG, JPG, SVG only)")
+    _validate_image_content(content, ext)
     LOGOS_DIR.mkdir(parents=True, exist_ok=True)
     filename = f"{slot}{ext}"
     loop = asyncio.get_event_loop()
