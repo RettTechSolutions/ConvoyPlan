@@ -342,10 +342,11 @@ async def export_gpx(
     ]
     gpx_content = export_svc.build_gpx(convoy.name, waypoints, coords)
 
+    safe_name = convoy.name.translate(str.maketrans("", "", '"\r\n;\\'))
     return PlainTextResponse(
         content=gpx_content,
         media_type="application/gpx+xml",
-        headers={"Content-Disposition": f'attachment; filename="{convoy.name}.gpx"'},
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}.gpx"'},
     )
 
 
@@ -368,11 +369,12 @@ async def export_json(
          "license_plate": cv.vehicle.license_plate, "position": cv.position}
         for cv in convoy.convoy_vehicles
     ]
+    safe_name = convoy.name.translate(str.maketrans("", "", '"\r\n;\\'))
     json_content = export_svc.build_json_export(convoy, waypoints, vehicles)
     return PlainTextResponse(
         content=json_content,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{convoy.name}.json"'},
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}.json"'},
     )
 
 
@@ -416,7 +418,8 @@ async def export_pdf(
 
     kanalwechsel = route.kanalwechsel if route else None
     pdf_bytes = pdf_svc.generate_marschbefehl(convoy, waypoints, vehicles, route, kanalwechsel)
-    filename = f"Marschbefehl_{convoy.name.replace(' ', '_')}.pdf"
+    safe_name = convoy.name.translate(str.maketrans("", "", '"\r\n;\\'))
+    filename = f"Marschbefehl_{safe_name.replace(' ', '_')}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -461,9 +464,9 @@ async def import_geojson(
 @router.get("/{convoy_id}/fuel-stations")
 async def find_fuel_stations(
     convoy_id: uuid.UUID,
-    lat: float,
-    lon: float,
-    radius_m: int = 3000,
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+    radius_m: int = Query(3000, ge=100, le=10000),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
