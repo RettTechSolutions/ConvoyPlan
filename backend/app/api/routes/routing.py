@@ -434,6 +434,8 @@ async def import_gpx(
 ):
     await get_convoy_access(convoy_id, current_user, db, require="write")
     content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (max 5 MB)")
     try:
         result = importer_svc.parse_gpx(content)
     except ValueError as exc:
@@ -451,6 +453,8 @@ async def import_geojson(
 ):
     await get_convoy_access(convoy_id, current_user, db, require="write")
     content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (max 5 MB)")
     try:
         result = importer_svc.parse_geojson(content)
     except ValueError as exc:
