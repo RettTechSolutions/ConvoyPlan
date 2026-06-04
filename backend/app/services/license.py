@@ -11,7 +11,7 @@ otherwise an attacker could substitute their own key.
 import base64
 import json
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -36,14 +36,15 @@ class LicenseInfo:
     def expired(self) -> bool:
         if not self.expires:
             return True
+        today_utc = datetime.now(timezone.utc).date()
         # ISO date string (YYYY-MM-DD) — preferred format
         try:
-            return date.fromisoformat(self.expires) < date.today()
+            return date.fromisoformat(self.expires) < today_utc
         except ValueError:
             pass
         # Unix timestamp — "exp" field in JWT convention
         try:
-            return datetime.utcfromtimestamp(int(self.expires)).date() < date.today()
+            return datetime.fromtimestamp(int(self.expires), tz=timezone.utc).date() < today_utc
         except (ValueError, OSError, OverflowError):
             pass
         return True  # unknown format → treat as expired
