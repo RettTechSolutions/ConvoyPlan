@@ -17,6 +17,7 @@ Template keys (stored in system_settings, editable by superadmin):
 
 from __future__ import annotations
 
+import html
 import ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -149,14 +150,15 @@ async def _get_branding_settings(db: AsyncSession) -> dict[str, str]:
 
 def _build_logo_block(logo_main: str, app_name: str, base_url: str = "") -> str:
     """Return the logo HTML block for email header."""
+    safe_name = html.escape(app_name)
     if logo_main:
         return (
             f'<img src="{base_url}/uploads/logos/{logo_main}" '
-            f'height="50" alt="{app_name}" style="display:block;margin:0 auto;"/>'
+            f'height="50" alt="{safe_name}" style="display:block;margin:0 auto;"/>'
         )
     return (
         f'<span style="font-size:26px;font-weight:700;color:#ffffff;">'
-        f"{app_name}</span>"
+        f"{safe_name}</span>"
     )
 
 
@@ -190,13 +192,16 @@ async def _render_password_email_async(
 
     # Build computed fragments
     logo_block = _build_logo_block(logo_main, app_name, base_url)
-    recipient_name_greeting = f" {recipient_name}" if recipient_name else ""
+    # HTML-escape user-controlled values to prevent HTML injection when a
+    # custom template is used or a user sets a malicious display name.
+    safe_name = html.escape(recipient_name)
+    recipient_name_greeting = f" {safe_name}" if recipient_name else ""
 
     variables = {
-        "recipient_name": recipient_name,
+        "recipient_name": safe_name,
         "recipient_name_greeting": recipient_name_greeting,
-        "email": email,
-        "password": password,
+        "email": html.escape(email),
+        "password": html.escape(password),
         "login_url": login_url,
         "app_name": app_name,
         "logo_block": logo_block,
@@ -230,12 +235,13 @@ def _render_password_email(
     """
     subject = DEFAULT_EMAIL_TEMPLATE_SUBJECT.format(app_name=app_name)
     logo_block = _build_logo_block("", app_name)
-    recipient_name_greeting = f" {recipient_name}" if recipient_name else ""
+    safe_name = html.escape(recipient_name)
+    recipient_name_greeting = f" {safe_name}" if recipient_name else ""
     html_body = DEFAULT_EMAIL_TEMPLATE_HTML.format(
-        recipient_name=recipient_name,
+        recipient_name=safe_name,
         recipient_name_greeting=recipient_name_greeting,
-        email=email,
-        password=password,
+        email=html.escape(email),
+        password=html.escape(password),
         login_url=login_url,
         app_name=app_name,
         logo_block=logo_block,
