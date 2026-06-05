@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     # externally. Leave empty to serve the docs unprotected (dev convenience).
     docs_api_key: str = ""
 
+    # Switch the Caddy Content-Security-Policy from Report-Only to enforcing.
+    # Verify the map/routing/tracking features first; set CSP_ENFORCE=true only
+    # once no violations are reported.
+    csp_enforce: bool = False
+
     class Config:
         env_file = ".env"
 

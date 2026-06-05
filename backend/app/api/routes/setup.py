@@ -1,5 +1,4 @@
 import logging
-import os
 import re
 from pathlib import Path
 
@@ -45,7 +44,7 @@ def _security_header_block(domain: str) -> str:
     )
     csp_header = (
         "Content-Security-Policy"
-        if os.environ.get("CSP_ENFORCE", "false").lower() == "true"
+        if settings.csp_enforce
         else "Content-Security-Policy-Report-Only"
     )
     return f"""header {{

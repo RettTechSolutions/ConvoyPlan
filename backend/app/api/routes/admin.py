@@ -8,7 +8,7 @@ import bcrypt
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from jose import JWTError, jwt
+import jwt
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -522,7 +522,7 @@ async def stream_update_log(
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
         if not payload.get("is_superadmin"):
             raise HTTPException(403, "Superadmin required")
-    except JWTError:
+    except jwt.PyJWTError:
         raise HTTPException(401, "Invalid token")
 
     async def log_generator():

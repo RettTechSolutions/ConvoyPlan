@@ -2,7 +2,7 @@ import uuid
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import APIKeyHeader, OAuth2PasswordBearer
-from jose import JWTError, jwt
+import jwt
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -60,7 +60,7 @@ def _decode_token(token: str) -> TokenData:
             is_superadmin=bool(payload.get("is_superadmin", False)),
             token_version=int(payload.get("tv", 0)),
         )
-    except (JWTError, ValueError):
+    except (jwt.PyJWTError, ValueError):
         raise credentials_exception
 
 

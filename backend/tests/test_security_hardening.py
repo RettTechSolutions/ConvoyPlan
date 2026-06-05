@@ -293,7 +293,8 @@ def test_setup_caddyfile_has_security_headers_report_only():
 
 
 def test_setup_caddyfile_csp_enforce_toggle(monkeypatch):
-    monkeypatch.setenv("CSP_ENFORCE", "true")
+    from app.config import settings as _settings
+    monkeypatch.setattr(_settings, "csp_enforce", True)
     cf = _generate_caddyfile("x.de", "internal", "a@b.de")
     assert "Content-Security-Policy-Report-Only" not in cf
     assert 'Content-Security-Policy "' in cf

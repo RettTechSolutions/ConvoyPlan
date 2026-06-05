@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from jose import JWTError, jwt
+import jwt
 
 from app.api.routes import (
     auth, convoys, vehicles, routing, organizations,
@@ -142,7 +142,7 @@ def _issue_docs_cookie() -> str:
 def _docs_cookie_valid(token: str) -> bool:
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-    except JWTError:
+    except jwt.PyJWTError:
         return False
     return bool(payload.get("docs"))
 
