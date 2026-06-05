@@ -17,6 +17,7 @@ Template keys (stored in system_settings, editable by superadmin):
 
 from __future__ import annotations
 
+import html
 import ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -149,14 +150,16 @@ async def _get_branding_settings(db: AsyncSession) -> dict[str, str]:
 
 def _build_logo_block(logo_main: str, app_name: str, base_url: str = "") -> str:
     """Return the logo HTML block for email header."""
+    safe_name = html.escape(app_name)
     if logo_main:
+        safe_logo = html.escape(logo_main)
         return (
-            f'<img src="{base_url}/uploads/logos/{logo_main}" '
-            f'height="50" alt="{app_name}" style="display:block;margin:0 auto;"/>'
+            f'<img src="{base_url}/uploads/logos/{safe_logo}" '
+            f'height="50" alt="{safe_name}" style="display:block;margin:0 auto;"/>'
         )
     return (
         f'<span style="font-size:26px;font-weight:700;color:#ffffff;">'
-        f"{app_name}</span>"
+        f"{safe_name}</span>"
     )
 
 
@@ -192,7 +195,8 @@ async def _render_password_email_async(
     logo_block = _build_logo_block(logo_main, app_name, base_url)
     recipient_name_greeting = f" {recipient_name}" if recipient_name else ""
 
-    variables = {
+    # Plain-text variables for the subject line (no HTML escaping needed)
+    text_variables = {
         "recipient_name": recipient_name,
         "recipient_name_greeting": recipient_name_greeting,
         "email": email,
@@ -203,14 +207,27 @@ async def _render_password_email_async(
         "color_primary": color_primary,
         "color_primary_hover": color_primary_hover,
     }
+    # HTML-safe variables for the HTML body: escape user-controlled text values
+    # so that special characters in names, emails, or passwords cannot inject HTML.
+    # logo_block, color_primary* are already safe (HTML/CSS built internally).
+    html_variables = {
+        **text_variables,
+        "recipient_name": html.escape(recipient_name),
+        "recipient_name_greeting": (
+            f" {html.escape(recipient_name)}" if recipient_name else ""
+        ),
+        "email": html.escape(email),
+        "password": html.escape(password),
+        "app_name": html.escape(app_name),
+    }
 
     try:
-        subject = subject_tpl.format_map(variables)
-        html_body = html_tpl.format_map(variables)
+        subject = subject_tpl.format_map(text_variables)
+        html_body = html_tpl.format_map(html_variables)
     except (KeyError, ValueError):
         # Fall back to default template if custom template has rendering issues
-        subject = DEFAULT_EMAIL_TEMPLATE_SUBJECT.format_map(variables)
-        html_body = DEFAULT_EMAIL_TEMPLATE_HTML.format_map(variables)
+        subject = DEFAULT_EMAIL_TEMPLATE_SUBJECT.format_map(text_variables)
+        html_body = DEFAULT_EMAIL_TEMPLATE_HTML.format_map(html_variables)
 
     return subject, html_body
 
