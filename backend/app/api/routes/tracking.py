@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
 from jose import jwt, JWTError
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select, delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,8 +25,8 @@ router = APIRouter(tags=["tracking"])
 
 class PositionUpdate(BaseModel):
     vehicle_id: uuid.UUID
-    lat: float
-    lon: float
+    lat: float = Field(..., ge=-90, le=90)
+    lon: float = Field(..., ge=-180, le=180)
     speed_kmh: float | None = None
     heading: float | None = None
 
@@ -210,10 +210,13 @@ async def tracking_ws(
     await tracking_manager.connect(convoy_id, ws)
     try:
         while True:
-            data = await ws.receive_json()
-            # Client kann Positionen über WS schicken
+            raw = await ws.receive_json()
+            try:
+                pos = PositionUpdate.model_validate(raw)
+            except Exception:
+                continue
             # Verworfen, falls ein Admin die Freigabe gerade zurückgesetzt hat.
-            if tracking_manager.is_recently_cleared(convoy_id, str(data.get("vehicle_id"))):
+            if tracking_manager.is_recently_cleared(convoy_id, str(pos.vehicle_id)):
                 continue
             async with AsyncSessionLocal() as db:
                 try:
@@ -225,20 +228,20 @@ async def tracking_ws(
                     pg_insert(VehiclePosition)
                     .values(
                         convoy_id=uuid.UUID(convoy_id),
-                        vehicle_id=uuid.UUID(data["vehicle_id"]),
-                        lat=data["lat"],
-                        lon=data["lon"],
-                        speed_kmh=data.get("speed_kmh"),
-                        heading=data.get("heading"),
+                        vehicle_id=pos.vehicle_id,
+                        lat=pos.lat,
+                        lon=pos.lon,
+                        speed_kmh=pos.speed_kmh,
+                        heading=pos.heading,
                         recorded_at=datetime.now(timezone.utc),
                     )
                     .on_conflict_do_update(
                         index_elements=["convoy_id", "vehicle_id"],
                         set_={
-                            "lat": data["lat"],
-                            "lon": data["lon"],
-                            "speed_kmh": data.get("speed_kmh"),
-                            "heading": data.get("heading"),
+                            "lat": pos.lat,
+                            "lon": pos.lon,
+                            "speed_kmh": pos.speed_kmh,
+                            "heading": pos.heading,
                             "recorded_at": datetime.now(timezone.utc),
                         },
                     )
@@ -246,7 +249,7 @@ async def tracking_ws(
                 await db.execute(stmt)
                 await db.commit()
 
-            await tracking_manager.broadcast(convoy_id, {**data, "type": "position"})
+            await tracking_manager.broadcast(convoy_id, {**raw, "type": "position"})
     except WebSocketDisconnect:
         pass
     except Exception as exc:

@@ -463,7 +463,7 @@ async def find_fuel_stations(
     convoy_id: uuid.UUID,
     lat: float,
     lon: float,
-    radius_m: int = 3000,
+    radius_m: int = Query(3000, ge=1, le=100_000),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
