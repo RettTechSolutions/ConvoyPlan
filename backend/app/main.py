@@ -9,7 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import PyJWTError as JWTError
 
 from app.api.routes import (
     auth, convoys, vehicles, routing, organizations,
@@ -238,8 +239,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_allow_origins,
     allow_credentials=_allow_origins != ["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["DELETE", "GET", "OPTIONS", "PATCH", "POST", "PUT"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key"],
 )
 
 app.include_router(auth.router, prefix="/api")
