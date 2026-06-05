@@ -13,5 +13,5 @@ async def get_closures(
 ):
     try:
         return await overpass_svc.get_closures(lat, lon, radius_m)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Sperrungsdaten nicht verfügbar: {exc}")
+    except Exception:
+        raise HTTPException(status_code=502, detail="Sperrungsdaten nicht verfügbar")
