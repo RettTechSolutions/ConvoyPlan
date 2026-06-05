@@ -434,6 +434,8 @@ async def import_gpx(
 ):
     await get_convoy_access(convoy_id, current_user, db, require="write")
     content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (max 5 MB)")
     try:
         result = importer_svc.parse_gpx(content)
     except ValueError as exc:
@@ -451,6 +453,8 @@ async def import_geojson(
 ):
     await get_convoy_access(convoy_id, current_user, db, require="write")
     content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (max 5 MB)")
     try:
         result = importer_svc.parse_geojson(content)
     except ValueError as exc:
@@ -461,9 +465,9 @@ async def import_geojson(
 @router.get("/{convoy_id}/fuel-stations")
 async def find_fuel_stations(
     convoy_id: uuid.UUID,
-    lat: float,
-    lon: float,
-    radius_m: int = 3000,
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+    radius_m: int = Query(3000, ge=100, le=50000),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
