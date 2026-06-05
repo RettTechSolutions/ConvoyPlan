@@ -10,13 +10,14 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Header, HTTPException, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import AsyncSessionLocal, get_db
 from app.models.convoy import Convoy, ConvoyVehicle
+from app.services.rate_limit import rate_limit, register_failure
 from app.models.route import Route
 from app.models.share_link import ConvoyShareLink
 from app.models.vehicle_position import VehiclePosition
@@ -149,17 +150,23 @@ async def get_track(
     return payload
 
 
-@router.post("/{slug}/auth", response_model=TrackAuthResponse)
+@router.post(
+    "/{slug}/auth",
+    response_model=TrackAuthResponse,
+    dependencies=[Depends(rate_limit("track-auth", max_attempts=10, window_seconds=300))],
+)
 async def auth_track(
     slug: str,
     data: TrackAuthRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     link = await _load_link(slug, db)
     if link.password_hash is None:
         raise HTTPException(status_code=400, detail="Dieser Link ist nicht passwortgeschützt")
     if not share_links_svc.verify_password(data.password, link.password_hash):
-        await asyncio.sleep(0.5)  # mild brute-force friction
+        register_failure(request, "track-auth")
+        await asyncio.sleep(0.5)  # additional friction between rate-limit windows
         raise HTTPException(status_code=401, detail="Falsches Passwort")
     return TrackAuthResponse(token=share_links_svc.issue_session_token(slug))
 
