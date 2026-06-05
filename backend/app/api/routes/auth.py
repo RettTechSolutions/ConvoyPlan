@@ -28,6 +28,23 @@ from app.services.rate_limit import rate_limit, register_failure
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+# Pre-computed at startup; used by _checkpw to ensure bcrypt always runs even
+# when the queried account does not exist, preventing user-enumeration via
+# response-time differences (CWE-208 Observable Timing Discrepancy).
+_DUMMY_HASH: str = bcrypt.hashpw(b"dummy-timing-sentinel", bcrypt.gensalt()).decode()
+
+
+def _checkpw(password: str, user: "User | None") -> bool:
+    """Always run bcrypt regardless of whether *user* exists.
+
+    Short-circuiting `not user or not bcrypt.checkpw(...)` would skip the
+    expensive hash comparison for nonexistent accounts, leaking account
+    existence via timing.  Returns True only when the user exists AND the
+    password matches the stored hash."""
+    candidate_hash = user.hashed_password if user is not None else _DUMMY_HASH
+    matches = bcrypt.checkpw(password.encode(), candidate_hash.encode())
+    return user is not None and matches
+
 
 # ── Token helpers ─────────────────────────────────────────────────────────────
 
@@ -118,7 +135,7 @@ async def login(data: LoginRequest, request: Request, db: AsyncSession = Depends
             org = org_result.scalar_one_or_none()
             if not org:
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-            if not user or not bcrypt.checkpw(data.password.encode(), user.hashed_password.encode()):
+            if not _checkpw(data.password, user):
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
             if not user.is_active:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account deactivated")
@@ -145,7 +162,7 @@ async def login(data: LoginRequest, request: Request, db: AsyncSession = Depends
 
         else:
             # ── Superadmin-Login (kein org_slug) ─────────────────────────────
-            if not user or not bcrypt.checkpw(data.password.encode(), user.hashed_password.encode()):
+            if not _checkpw(data.password, user):
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
             if not user.is_active:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account deactivated")
