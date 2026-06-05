@@ -13,4 +13,4 @@ async def get_weather(
     try:
         return await weather_svc.get_weather(lat, lon)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Wetterdaten nicht verfügbar: {exc}")
+        raise HTTPException(status_code=502, detail="Wetterdaten nicht verfügbar")

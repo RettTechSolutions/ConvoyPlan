@@ -694,7 +694,7 @@ async def send_user_password(
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
-        raise HTTPException(502, f"E-Mail konnte nicht gesendet werden: {e}")
+        raise HTTPException(502, "E-Mail konnte nicht gesendet werden")
 
     return {"status": "sent", "email": user.email}
 
