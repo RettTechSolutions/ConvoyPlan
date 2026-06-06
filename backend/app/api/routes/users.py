@@ -4,7 +4,8 @@ import uuid
 
 from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
-from jose import JWTError, jwt
+import jwt
+from jwt import PyJWTError as JWTError
 
 from app.config import settings
 

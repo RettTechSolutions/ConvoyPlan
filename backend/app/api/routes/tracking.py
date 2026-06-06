@@ -3,8 +3,9 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
-from jose import jwt, JWTError
-from pydantic import BaseModel
+import jwt
+from jwt import PyJWTError as JWTError
+from pydantic import BaseModel, Field
 from sqlalchemy import select, delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,8 +26,8 @@ router = APIRouter(tags=["tracking"])
 
 class PositionUpdate(BaseModel):
     vehicle_id: uuid.UUID
-    lat: float
-    lon: float
+    lat: float = Field(..., ge=-90, le=90)
+    lon: float = Field(..., ge=-180, le=180)
     speed_kmh: float | None = None
     heading: float | None = None
 
@@ -214,6 +215,12 @@ async def tracking_ws(
             # Client kann Positionen über WS schicken
             # Verworfen, falls ein Admin die Freigabe gerade zurückgesetzt hat.
             if tracking_manager.is_recently_cleared(convoy_id, str(data.get("vehicle_id"))):
+                continue
+            raw_lat = data.get("lat")
+            raw_lon = data.get("lon")
+            if not (isinstance(raw_lat, (int, float)) and -90 <= raw_lat <= 90):
+                continue
+            if not (isinstance(raw_lon, (int, float)) and -180 <= raw_lon <= 180):
                 continue
             async with AsyncSessionLocal() as db:
                 try:

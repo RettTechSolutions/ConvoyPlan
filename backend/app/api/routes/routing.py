@@ -1,7 +1,10 @@
 import json as _json
+import logging
 import uuid
 from datetime import timezone
 from typing import Literal
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, File, Query, UploadFile
 from fastapi.responses import PlainTextResponse, Response
@@ -29,6 +32,8 @@ from app.services import overpass as overpass_svc
 from app.services import importer as importer_svc
 
 router = APIRouter(prefix="/convoys", tags=["routing"])
+
+_MAX_IMPORT_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
 async def _apply_import(
@@ -231,7 +236,8 @@ async def calculate_route(
             road_preference=convoy.road_preference,
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Routing failed: {exc}")
+        logger.error("Routing calculation failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Routing failed")
 
     coords = route_data["geometry"].get("coordinates", [])
     convoy_duration_s = routing_svc.convoy_duration_s(
@@ -342,10 +348,11 @@ async def export_gpx(
     ]
     gpx_content = export_svc.build_gpx(convoy.name, waypoints, coords)
 
+    safe_name = convoy.name.replace('"', '').replace('\r', '').replace('\n', '')
     return PlainTextResponse(
         content=gpx_content,
         media_type="application/gpx+xml",
-        headers={"Content-Disposition": f'attachment; filename="{convoy.name}.gpx"'},
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}.gpx"'},
     )
 
 
@@ -369,10 +376,11 @@ async def export_json(
         for cv in convoy.convoy_vehicles
     ]
     json_content = export_svc.build_json_export(convoy, waypoints, vehicles)
+    safe_name = convoy.name.replace('"', '').replace('\r', '').replace('\n', '')
     return PlainTextResponse(
         content=json_content,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{convoy.name}.json"'},
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}.json"'},
     )
 
 
@@ -416,7 +424,8 @@ async def export_pdf(
 
     kanalwechsel = route.kanalwechsel if route else None
     pdf_bytes = pdf_svc.generate_marschbefehl(convoy, waypoints, vehicles, route, kanalwechsel)
-    filename = f"Marschbefehl_{convoy.name.replace(' ', '_')}.pdf"
+    safe_name = convoy.name.replace('"', '').replace('\r', '').replace('\n', '').replace(' ', '_')
+    filename = f"Marschbefehl_{safe_name}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -433,7 +442,9 @@ async def import_gpx(
     current_user: User = Depends(get_current_user),
 ):
     await get_convoy_access(convoy_id, current_user, db, require="write")
-    content = await file.read()
+    content = await file.read(_MAX_IMPORT_BYTES + 1)
+    if len(content) > _MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail="Datei zu groß (max 10 MB)")
     try:
         result = importer_svc.parse_gpx(content)
     except ValueError as exc:
@@ -450,7 +461,9 @@ async def import_geojson(
     current_user: User = Depends(get_current_user),
 ):
     await get_convoy_access(convoy_id, current_user, db, require="write")
-    content = await file.read()
+    content = await file.read(_MAX_IMPORT_BYTES + 1)
+    if len(content) > _MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail="Datei zu groß (max 10 MB)")
     try:
         result = importer_svc.parse_geojson(content)
     except ValueError as exc:
