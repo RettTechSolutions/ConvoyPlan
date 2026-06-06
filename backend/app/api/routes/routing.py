@@ -1,4 +1,5 @@
 import json as _json
+import logging
 import uuid
 from datetime import timezone
 from typing import Literal
@@ -28,6 +29,7 @@ from app.services import fuel as fuel_svc
 from app.services import overpass as overpass_svc
 from app.services import importer as importer_svc
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/convoys", tags=["routing"])
 
 
@@ -231,7 +233,8 @@ async def calculate_route(
             road_preference=convoy.road_preference,
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Routing failed: {exc}")
+        logger.error("Route calculation failed for convoy %s: %s", convoy_id, exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Routing service temporarily unavailable")
 
     coords = route_data["geometry"].get("coordinates", [])
     convoy_duration_s = routing_svc.convoy_duration_s(
