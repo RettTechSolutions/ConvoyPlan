@@ -5,8 +5,6 @@ import uuid
 from datetime import timezone
 from typing import Literal
 
-logger = logging.getLogger(__name__)
-
 from fastapi import APIRouter, Depends, HTTPException, File, Query, UploadFile
 from fastapi.responses import PlainTextResponse, Response
 from shapely.geometry import LineString
@@ -32,6 +30,7 @@ from app.services import fuel as fuel_svc
 from app.services import overpass as overpass_svc
 from app.services import importer as importer_svc
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/convoys", tags=["routing"])
 
 _CRLF_RE = re.compile(r'[\r\n"\\]')
