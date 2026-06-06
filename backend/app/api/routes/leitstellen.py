@@ -1,6 +1,7 @@
 import json
 import uuid
-import xml.etree.ElementTree as ET
+
+import defusedxml.ElementTree as ET
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from geoalchemy2.shape import from_shape, to_shape
