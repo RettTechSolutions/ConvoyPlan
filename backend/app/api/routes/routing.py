@@ -1,7 +1,11 @@
 import json as _json
+import logging
+import re
 import uuid
 from datetime import timezone
 from typing import Literal
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, File, Query, UploadFile
 from fastapi.responses import PlainTextResponse, Response
@@ -29,6 +33,14 @@ from app.services import overpass as overpass_svc
 from app.services import importer as importer_svc
 
 router = APIRouter(prefix="/convoys", tags=["routing"])
+
+_CRLF_RE = re.compile(r'[\r\n"\\]')
+
+
+def _safe_filename(name: str, ext: str) -> str:
+    """Strip CRLF and quote chars to prevent CWE-113 header injection."""
+    safe = _CRLF_RE.sub("", name)[:100]
+    return f"{safe}{ext}"
 
 
 async def _apply_import(
@@ -231,7 +243,8 @@ async def calculate_route(
             road_preference=convoy.road_preference,
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Routing failed: {exc}")
+        logger.error("Routing service error: %s", exc)
+        raise HTTPException(status_code=502, detail="Routing-Dienst nicht verfügbar")
 
     coords = route_data["geometry"].get("coordinates", [])
     convoy_duration_s = routing_svc.convoy_duration_s(
@@ -345,7 +358,7 @@ async def export_gpx(
     return PlainTextResponse(
         content=gpx_content,
         media_type="application/gpx+xml",
-        headers={"Content-Disposition": f'attachment; filename="{convoy.name}.gpx"'},
+        headers={"Content-Disposition": f'attachment; filename="{_safe_filename(convoy.name, ".gpx")}"'},
     )
 
 
@@ -372,7 +385,7 @@ async def export_json(
     return PlainTextResponse(
         content=json_content,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{convoy.name}.json"'},
+        headers={"Content-Disposition": f'attachment; filename="{_safe_filename(convoy.name, ".json")}"'},
     )
 
 
@@ -416,7 +429,7 @@ async def export_pdf(
 
     kanalwechsel = route.kanalwechsel if route else None
     pdf_bytes = pdf_svc.generate_marschbefehl(convoy, waypoints, vehicles, route, kanalwechsel)
-    filename = f"Marschbefehl_{convoy.name.replace(' ', '_')}.pdf"
+    filename = _safe_filename(f"Marschbefehl_{convoy.name.replace(' ', '_')}", ".pdf")
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
