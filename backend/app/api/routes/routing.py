@@ -30,6 +30,13 @@ from app.services import importer as importer_svc
 
 router = APIRouter(prefix="/convoys", tags=["routing"])
 
+_UNSAFE_FILENAME_RE = __import__("re").compile(r'[\x00-\x1f"\\]')
+
+
+def _safe_filename(name: str) -> str:
+    """Strip characters that could break a quoted Content-Disposition filename."""
+    return _UNSAFE_FILENAME_RE.sub("_", name)
+
 
 async def _apply_import(
     convoy_id: uuid.UUID,
@@ -345,7 +352,7 @@ async def export_gpx(
     return PlainTextResponse(
         content=gpx_content,
         media_type="application/gpx+xml",
-        headers={"Content-Disposition": f'attachment; filename="{convoy.name}.gpx"'},
+        headers={"Content-Disposition": f'attachment; filename="{_safe_filename(convoy.name)}.gpx"'},
     )
 
 
@@ -372,7 +379,7 @@ async def export_json(
     return PlainTextResponse(
         content=json_content,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{convoy.name}.json"'},
+        headers={"Content-Disposition": f'attachment; filename="{_safe_filename(convoy.name)}.json"'},
     )
 
 
@@ -416,7 +423,7 @@ async def export_pdf(
 
     kanalwechsel = route.kanalwechsel if route else None
     pdf_bytes = pdf_svc.generate_marschbefehl(convoy, waypoints, vehicles, route, kanalwechsel)
-    filename = f"Marschbefehl_{convoy.name.replace(' ', '_')}.pdf"
+    filename = f"Marschbefehl_{_safe_filename(convoy.name).replace(' ', '_')}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -434,6 +441,8 @@ async def import_gpx(
 ):
     await get_convoy_access(convoy_id, current_user, db, require="write")
     content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
     try:
         result = importer_svc.parse_gpx(content)
     except ValueError as exc:
@@ -451,6 +460,8 @@ async def import_geojson(
 ):
     await get_convoy_access(convoy_id, current_user, db, require="write")
     content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
     try:
         result = importer_svc.parse_geojson(content)
     except ValueError as exc:
