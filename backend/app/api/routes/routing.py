@@ -1,4 +1,5 @@
 import json as _json
+import re
 import uuid
 from datetime import timezone
 from typing import Literal
@@ -29,6 +30,13 @@ from app.services import overpass as overpass_svc
 from app.services import importer as importer_svc
 
 router = APIRouter(prefix="/convoys", tags=["routing"])
+
+_UNSAFE_FILENAME_RE = re.compile(r'[^\w\-. ]')
+
+
+def _safe_filename(name: str) -> str:
+    """Replace characters that are unsafe inside a quoted Content-Disposition filename."""
+    return _UNSAFE_FILENAME_RE.sub('_', name)
 
 
 async def _apply_import(
@@ -345,7 +353,7 @@ async def export_gpx(
     return PlainTextResponse(
         content=gpx_content,
         media_type="application/gpx+xml",
-        headers={"Content-Disposition": f'attachment; filename="{convoy.name}.gpx"'},
+        headers={"Content-Disposition": f'attachment; filename="{_safe_filename(convoy.name)}.gpx"'},
     )
 
 
@@ -372,7 +380,7 @@ async def export_json(
     return PlainTextResponse(
         content=json_content,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{convoy.name}.json"'},
+        headers={"Content-Disposition": f'attachment; filename="{_safe_filename(convoy.name)}.json"'},
     )
 
 
@@ -416,7 +424,7 @@ async def export_pdf(
 
     kanalwechsel = route.kanalwechsel if route else None
     pdf_bytes = pdf_svc.generate_marschbefehl(convoy, waypoints, vehicles, route, kanalwechsel)
-    filename = f"Marschbefehl_{convoy.name.replace(' ', '_')}.pdf"
+    filename = f"Marschbefehl_{_safe_filename(convoy.name)}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -463,7 +471,7 @@ async def find_fuel_stations(
     convoy_id: uuid.UUID,
     lat: float,
     lon: float,
-    radius_m: int = 3000,
+    radius_m: int = Query(3000, ge=100, le=50000),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
