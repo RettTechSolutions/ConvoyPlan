@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
-from jose import jwt, JWTError
+import jwt
 from pydantic import BaseModel
 from sqlalchemy import select, delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -187,7 +187,7 @@ async def tracking_ws(
         if not user_id:
             await ws.close(code=4001)
             return
-    except JWTError:
+    except jwt.PyJWTError:
         await ws.close(code=4001)
         return
 
@@ -215,6 +215,14 @@ async def tracking_ws(
             # Verworfen, falls ein Admin die Freigabe gerade zurückgesetzt hat.
             if tracking_manager.is_recently_cleared(convoy_id, str(data.get("vehicle_id"))):
                 continue
+            lat = data.get("lat")
+            lon = data.get("lon")
+            if not isinstance(lat, (int, float)) or not (-90 <= lat <= 90):
+                await ws.close(code=4400)
+                return
+            if not isinstance(lon, (int, float)) or not (-180 <= lon <= 180):
+                await ws.close(code=4400)
+                return
             async with AsyncSessionLocal() as db:
                 try:
                     await get_convoy_access(uuid.UUID(convoy_id), user, db, require="fahrer")
@@ -226,8 +234,8 @@ async def tracking_ws(
                     .values(
                         convoy_id=uuid.UUID(convoy_id),
                         vehicle_id=uuid.UUID(data["vehicle_id"]),
-                        lat=data["lat"],
-                        lon=data["lon"],
+                        lat=lat,
+                        lon=lon,
                         speed_kmh=data.get("speed_kmh"),
                         heading=data.get("heading"),
                         recorded_at=datetime.now(timezone.utc),
@@ -235,8 +243,8 @@ async def tracking_ws(
                     .on_conflict_do_update(
                         index_elements=["convoy_id", "vehicle_id"],
                         set_={
-                            "lat": data["lat"],
-                            "lon": data["lon"],
+                            "lat": lat,
+                            "lon": lon,
                             "speed_kmh": data.get("speed_kmh"),
                             "heading": data.get("heading"),
                             "recorded_at": datetime.now(timezone.utc),

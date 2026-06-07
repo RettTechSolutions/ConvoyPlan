@@ -1,7 +1,19 @@
 import json as _json
+import logging
+import re
 import uuid
 from datetime import timezone
 from typing import Literal
+
+logger = logging.getLogger(__name__)
+
+_MAX_IMPORT_BYTES = 10 * 1024 * 1024  # 10 MiB
+
+
+def _safe_filename(name: str) -> str:
+    """Strip characters that could inject headers or corrupt Content-Disposition."""
+    sanitized = re.sub(r'[^\w\s\-.]', '', name)
+    return sanitized[:100] or "export"
 
 from fastapi import APIRouter, Depends, HTTPException, File, Query, UploadFile
 from fastapi.responses import PlainTextResponse, Response
@@ -231,7 +243,8 @@ async def calculate_route(
             road_preference=convoy.road_preference,
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Routing failed: {exc}")
+        logger.error("Routing service error: %s", exc)
+        raise HTTPException(status_code=502, detail="Routing service unavailable")
 
     coords = route_data["geometry"].get("coordinates", [])
     convoy_duration_s = routing_svc.convoy_duration_s(
@@ -345,7 +358,7 @@ async def export_gpx(
     return PlainTextResponse(
         content=gpx_content,
         media_type="application/gpx+xml",
-        headers={"Content-Disposition": f'attachment; filename="{convoy.name}.gpx"'},
+        headers={"Content-Disposition": f'attachment; filename="{_safe_filename(convoy.name)}.gpx"'},
     )
 
 
@@ -372,7 +385,7 @@ async def export_json(
     return PlainTextResponse(
         content=json_content,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{convoy.name}.json"'},
+        headers={"Content-Disposition": f'attachment; filename="{_safe_filename(convoy.name)}.json"'},
     )
 
 
@@ -416,7 +429,7 @@ async def export_pdf(
 
     kanalwechsel = route.kanalwechsel if route else None
     pdf_bytes = pdf_svc.generate_marschbefehl(convoy, waypoints, vehicles, route, kanalwechsel)
-    filename = f"Marschbefehl_{convoy.name.replace(' ', '_')}.pdf"
+    filename = f"Marschbefehl_{_safe_filename(convoy.name)}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -433,7 +446,9 @@ async def import_gpx(
     current_user: User = Depends(get_current_user),
 ):
     await get_convoy_access(convoy_id, current_user, db, require="write")
-    content = await file.read()
+    content = await file.read(_MAX_IMPORT_BYTES + 1)
+    if len(content) > _MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
     try:
         result = importer_svc.parse_gpx(content)
     except ValueError as exc:
@@ -450,7 +465,9 @@ async def import_geojson(
     current_user: User = Depends(get_current_user),
 ):
     await get_convoy_access(convoy_id, current_user, db, require="write")
-    content = await file.read()
+    content = await file.read(_MAX_IMPORT_BYTES + 1)
+    if len(content) > _MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
     try:
         result = importer_svc.parse_geojson(content)
     except ValueError as exc:
