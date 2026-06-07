@@ -31,6 +31,10 @@ from app.services import importer as importer_svc
 router = APIRouter(prefix="/convoys", tags=["routing"])
 
 
+def _safe_filename(name: str) -> str:
+    return "".join(c for c in name if c not in ('"', "\r", "\n", "/", "\\"))
+
+
 async def _apply_import(
     convoy_id: uuid.UUID,
     result: importer_svc.ImportResult,
@@ -231,7 +235,7 @@ async def calculate_route(
             road_preference=convoy.road_preference,
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Routing failed: {exc}")
+        raise HTTPException(status_code=502, detail="Routing service unavailable")
 
     coords = route_data["geometry"].get("coordinates", [])
     convoy_duration_s = routing_svc.convoy_duration_s(
@@ -345,7 +349,7 @@ async def export_gpx(
     return PlainTextResponse(
         content=gpx_content,
         media_type="application/gpx+xml",
-        headers={"Content-Disposition": f'attachment; filename="{convoy.name}.gpx"'},
+        headers={"Content-Disposition": f'attachment; filename="{_safe_filename(convoy.name)}.gpx"'},
     )
 
 
@@ -372,7 +376,7 @@ async def export_json(
     return PlainTextResponse(
         content=json_content,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{convoy.name}.json"'},
+        headers={"Content-Disposition": f'attachment; filename="{_safe_filename(convoy.name)}.json"'},
     )
 
 
@@ -416,7 +420,7 @@ async def export_pdf(
 
     kanalwechsel = route.kanalwechsel if route else None
     pdf_bytes = pdf_svc.generate_marschbefehl(convoy, waypoints, vehicles, route, kanalwechsel)
-    filename = f"Marschbefehl_{convoy.name.replace(' ', '_')}.pdf"
+    filename = f"Marschbefehl_{_safe_filename(convoy.name).replace(' ', '_')}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",

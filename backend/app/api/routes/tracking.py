@@ -4,7 +4,8 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
 from jose import jwt, JWTError
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from typing import Literal
 from sqlalchemy import select, delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,14 +26,14 @@ router = APIRouter(tags=["tracking"])
 
 class PositionUpdate(BaseModel):
     vehicle_id: uuid.UUID
-    lat: float
-    lon: float
-    speed_kmh: float | None = None
-    heading: float | None = None
+    lat: float = Field(..., ge=-90, le=90)
+    lon: float = Field(..., ge=-180, le=180)
+    speed_kmh: float | None = Field(default=None, ge=0, le=500)
+    heading: float | None = Field(default=None, ge=0, le=360)
 
 
 class VehicleStatusUpdate(BaseModel):
-    vehicle_status: str  # planned | en_route | arrived | delayed
+    vehicle_status: Literal["planned", "en_route", "arrived", "delayed"]
 
 
 @router.get("/convoys/{convoy_id}/positions")
@@ -211,6 +212,14 @@ async def tracking_ws(
     try:
         while True:
             data = await ws.receive_json()
+            # Validate GPS bounds before any DB write (CWE-20).
+            try:
+                lat = float(data["lat"])
+                lon = float(data["lon"])
+                if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+                    continue
+            except (KeyError, TypeError, ValueError):
+                continue
             # Client kann Positionen über WS schicken
             # Verworfen, falls ein Admin die Freigabe gerade zurückgesetzt hat.
             if tracking_manager.is_recently_cleared(convoy_id, str(data.get("vehicle_id"))):
