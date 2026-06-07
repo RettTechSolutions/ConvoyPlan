@@ -13,6 +13,7 @@ from app.database import get_db
 from app.models.organization import Organization, UserOrganization, _slugify
 from app.models.user import User
 from app.schemas.user import InviteUserRequest, UserResponse
+from app.services.password import assert_password_not_breached, validate_password
 
 router = APIRouter(prefix="/organizations", tags=["organizations"])
 
@@ -240,6 +241,9 @@ async def invite_member(
     existing = await db.execute(select(User).where(User.email == data.email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
+
+    validate_password(data.password)
+    await assert_password_not_breached(data.password)
 
     user = User(
         email=data.email,
