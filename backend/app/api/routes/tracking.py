@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
-from jose import jwt, JWTError
+import jwt
 from pydantic import BaseModel
 from sqlalchemy import select, delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -187,7 +187,7 @@ async def tracking_ws(
         if not user_id:
             await ws.close(code=4001)
             return
-    except JWTError:
+    except jwt.PyJWTError:
         await ws.close(code=4001)
         return
 

@@ -5,7 +5,7 @@ import string
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
-from jose import JWTError, jwt
+import jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -63,7 +63,7 @@ def decode_session_token(token: str) -> str | None:
     """Return the slug if the token is a valid share-link session token, else None."""
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-    except JWTError:
+    except jwt.PyJWTError:
         return None
     if payload.get("kind") != SESSION_TOKEN_KIND:
         return None
