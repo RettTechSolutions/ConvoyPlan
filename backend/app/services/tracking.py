@@ -39,6 +39,14 @@ class TrackingManager:
             return False
         return True
 
+    async def revoke_connections(self, convoy_id: str) -> None:
+        """Close all active WebSocket connections for a convoy when its share link is revoked."""
+        for ws in list(self._connections.pop(convoy_id, [])):
+            try:
+                await ws.close(code=4403)
+            except Exception:
+                pass
+
     async def broadcast(self, convoy_id: str, data: dict):
         dead: list[WebSocket] = []
         for ws in list(self._connections.get(convoy_id, [])):
