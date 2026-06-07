@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
 from jose import jwt, JWTError
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select, delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,10 +25,10 @@ router = APIRouter(tags=["tracking"])
 
 class PositionUpdate(BaseModel):
     vehicle_id: uuid.UUID
-    lat: float
-    lon: float
+    lat: float = Field(..., ge=-90, le=90)
+    lon: float = Field(..., ge=-180, le=180)
     speed_kmh: float | None = None
-    heading: float | None = None
+    heading: float | None = Field(default=None, ge=0, le=360)
 
 
 class VehicleStatusUpdate(BaseModel):

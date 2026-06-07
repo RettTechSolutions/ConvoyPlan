@@ -28,6 +28,10 @@ from app.services.rate_limit import rate_limit, register_failure
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+# Pre-computed dummy hash — used to ensure bcrypt always runs even for unknown
+# e-mail addresses, preventing a login timing oracle (CWE-208).
+_DUMMY_HASH = bcrypt.hashpw(b"dummy", bcrypt.gensalt())
+
 
 # ── Token helpers ─────────────────────────────────────────────────────────────
 
@@ -118,7 +122,8 @@ async def login(data: LoginRequest, request: Request, db: AsyncSession = Depends
             org = org_result.scalar_one_or_none()
             if not org:
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-            if not user or not bcrypt.checkpw(data.password.encode(), user.hashed_password.encode()):
+            candidate_hash = user.hashed_password.encode() if user else _DUMMY_HASH
+            if not bcrypt.checkpw(data.password.encode(), candidate_hash) or not user:
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
             if not user.is_active:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account deactivated")
@@ -145,7 +150,8 @@ async def login(data: LoginRequest, request: Request, db: AsyncSession = Depends
 
         else:
             # ── Superadmin-Login (kein org_slug) ─────────────────────────────
-            if not user or not bcrypt.checkpw(data.password.encode(), user.hashed_password.encode()):
+            candidate_hash = user.hashed_password.encode() if user else _DUMMY_HASH
+            if not bcrypt.checkpw(data.password.encode(), candidate_hash) or not user:
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
             if not user.is_active:
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account deactivated")

@@ -108,4 +108,4 @@ def validate_license(license_key: str, instance_id: str = "") -> LicenseInfo:
     except InvalidSignature:
         return LicenseInfo(valid=False, error="Invalid license signature")
     except Exception as e:
-        return LicenseInfo(valid=False, error=f"License validation error: {e}")
+        return LicenseInfo(valid=False, error="License validation error")
