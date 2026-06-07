@@ -8,7 +8,8 @@ import bcrypt
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import PyJWTError as JWTError
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -691,10 +692,10 @@ async def send_user_password(
             password=new_password,
             login_url=login_url,
         )
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    except Exception as e:
-        raise HTTPException(502, f"E-Mail konnte nicht gesendet werden: {e}")
+    except ValueError:
+        raise HTTPException(400, "E-Mail-Konfiguration ungültig")
+    except Exception:
+        raise HTTPException(502, "E-Mail konnte nicht gesendet werden")
 
     return {"status": "sent", "email": user.email}
 

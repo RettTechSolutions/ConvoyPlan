@@ -337,4 +337,4 @@ async def test_smtp_connection(db: AsyncSession) -> dict:
                 await client.login(username, password_smtp)
         return {"ok": True, "error": None}
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return {"ok": False, "error": "SMTP-Verbindungstest fehlgeschlagen"}
