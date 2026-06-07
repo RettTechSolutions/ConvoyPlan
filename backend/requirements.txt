@@ -10,7 +10,7 @@ asyncpg==0.31.0
 geoalchemy2==0.20.0
 alembic==1.18.4
 pydantic[email]==2.13.4
-python-jose[cryptography]==3.5.0
+PyJWT[cryptography]==2.10.1
 pydantic-settings==2.14.1
 cryptography==48.0.0
 shapely==2.1.2

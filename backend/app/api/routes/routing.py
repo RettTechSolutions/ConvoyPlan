@@ -231,7 +231,7 @@ async def calculate_route(
             road_preference=convoy.road_preference,
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Routing failed: {exc}")
+        raise HTTPException(status_code=502, detail="Routenberechnung fehlgeschlagen")
 
     coords = route_data["geometry"].get("coordinates", [])
     convoy_duration_s = routing_svc.convoy_duration_s(
@@ -424,6 +424,9 @@ async def export_pdf(
     )
 
 
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
 @router.post("/{convoy_id}/import/gpx")
 async def import_gpx(
     convoy_id: uuid.UUID,
@@ -433,7 +436,9 @@ async def import_gpx(
     current_user: User = Depends(get_current_user),
 ):
     await get_convoy_access(convoy_id, current_user, db, require="write")
-    content = await file.read()
+    content = await file.read(_MAX_UPLOAD_BYTES + 1)
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
     try:
         result = importer_svc.parse_gpx(content)
     except ValueError as exc:
@@ -450,7 +455,9 @@ async def import_geojson(
     current_user: User = Depends(get_current_user),
 ):
     await get_convoy_access(convoy_id, current_user, db, require="write")
-    content = await file.read()
+    content = await file.read(_MAX_UPLOAD_BYTES + 1)
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
     try:
         result = importer_svc.parse_geojson(content)
     except ValueError as exc:
@@ -463,7 +470,7 @@ async def find_fuel_stations(
     convoy_id: uuid.UUID,
     lat: float,
     lon: float,
-    radius_m: int = 3000,
+    radius_m: int = Query(3000, ge=100, le=25000),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

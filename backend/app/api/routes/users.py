@@ -4,7 +4,7 @@ import uuid
 
 from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
-from jose import JWTError, jwt
+import jwt
 
 from app.config import settings
 
@@ -31,7 +31,7 @@ def _identity(token: str | None) -> str:
             sub = payload.get("sub")
             if sub:
                 return f"user:{sub}"
-        except JWTError:
+        except jwt.PyJWTError:
             pass
     return f"anon:{uuid.uuid4()}"
 

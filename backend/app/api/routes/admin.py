@@ -8,7 +8,7 @@ import bcrypt
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from jose import JWTError, jwt
+import jwt
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -522,7 +522,7 @@ async def stream_update_log(
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
         if not payload.get("is_superadmin"):
             raise HTTPException(403, "Superadmin required")
-    except JWTError:
+    except jwt.PyJWTError:
         raise HTTPException(401, "Invalid token")
 
     async def log_generator():
@@ -694,7 +694,7 @@ async def send_user_password(
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
-        raise HTTPException(502, f"E-Mail konnte nicht gesendet werden: {e}")
+        raise HTTPException(502, "E-Mail konnte nicht gesendet werden")
 
     return {"status": "sent", "email": user.email}
 

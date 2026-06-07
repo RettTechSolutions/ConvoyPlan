@@ -79,7 +79,7 @@ async def test_org_login_success():
 
     assert r.status_code == 200
     token = r.json()["access_token"]
-    from jose import jwt
+    import jwt
     from app.config import settings
     payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
     assert payload["org_slug"] == "test-org"
@@ -143,7 +143,7 @@ async def test_superadmin_login_without_org_slug():
         app.dependency_overrides.pop(get_db, None)
 
     assert r.status_code == 200
-    from jose import jwt
+    import jwt
     from app.config import settings
     payload = jwt.decode(r.json()["access_token"], settings.jwt_secret, algorithms=[settings.jwt_algorithm])
     assert payload["is_superadmin"] is True
