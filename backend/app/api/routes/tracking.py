@@ -1,6 +1,7 @@
 import logging
 import uuid
 from datetime import datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
 from jose import jwt, JWTError
@@ -32,7 +33,7 @@ class PositionUpdate(BaseModel):
 
 
 class VehicleStatusUpdate(BaseModel):
-    vehicle_status: str  # planned | en_route | arrived | delayed
+    vehicle_status: Literal["planned", "en_route", "arrived", "delayed"]
 
 
 @router.get("/convoys/{convoy_id}/positions")
