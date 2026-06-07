@@ -111,8 +111,10 @@ async def upload_logo(
     if len(content) > 2 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large (max 2 MB)")
     ext = Path(file.filename or "").suffix.lower()
-    if ext not in {".png", ".jpg", ".jpeg", ".svg"}:
-        raise HTTPException(status_code=400, detail="Invalid file type (PNG, JPG, SVG only)")
+    if ext not in {".png", ".jpg", ".jpeg"}:
+        # SVG is intentionally excluded: StaticFiles serves it as image/svg+xml,
+        # which causes browsers to execute any embedded scripts (stored XSS).
+        raise HTTPException(status_code=400, detail="Invalid file type (PNG or JPG only)")
     LOGOS_DIR.mkdir(parents=True, exist_ok=True)
     filename = f"{slot}{ext}"
     loop = asyncio.get_event_loop()
