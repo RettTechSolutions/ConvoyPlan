@@ -230,8 +230,8 @@ async def calculate_route(
             vehicle_params or None,
             road_preference=convoy.road_preference,
         )
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Routing failed: {exc}")
+    except Exception:
+        raise HTTPException(status_code=502, detail="Routing nicht verfügbar")
 
     coords = route_data["geometry"].get("coordinates", [])
     convoy_duration_s = routing_svc.convoy_duration_s(
@@ -434,6 +434,8 @@ async def import_gpx(
 ):
     await get_convoy_access(convoy_id, current_user, db, require="write")
     content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
     try:
         result = importer_svc.parse_gpx(content)
     except ValueError as exc:
@@ -451,6 +453,8 @@ async def import_geojson(
 ):
     await get_convoy_access(convoy_id, current_user, db, require="write")
     content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
     try:
         result = importer_svc.parse_geojson(content)
     except ValueError as exc:
