@@ -1,7 +1,16 @@
+import logging
 import json as _json
+import re
 import uuid
 from datetime import timezone
 from typing import Literal
+
+logger = logging.getLogger(__name__)
+
+
+def _safe_filename(name: str) -> str:
+    """Strip characters that would break a Content-Disposition filename= value."""
+    return re.sub(r'[\r\n\x00-\x1f"\\]', "_", name)
 
 from fastapi import APIRouter, Depends, HTTPException, File, Query, UploadFile
 from fastapi.responses import PlainTextResponse, Response
@@ -231,7 +240,8 @@ async def calculate_route(
             road_preference=convoy.road_preference,
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Routing failed: {exc}")
+        logger.warning("Route calculation failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Routing failed")
 
     coords = route_data["geometry"].get("coordinates", [])
     convoy_duration_s = routing_svc.convoy_duration_s(
@@ -345,7 +355,7 @@ async def export_gpx(
     return PlainTextResponse(
         content=gpx_content,
         media_type="application/gpx+xml",
-        headers={"Content-Disposition": f'attachment; filename="{convoy.name}.gpx"'},
+        headers={"Content-Disposition": f'attachment; filename="{_safe_filename(convoy.name)}.gpx"'},
     )
 
 
@@ -372,7 +382,7 @@ async def export_json(
     return PlainTextResponse(
         content=json_content,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{convoy.name}.json"'},
+        headers={"Content-Disposition": f'attachment; filename="{_safe_filename(convoy.name)}.json"'},
     )
 
 
@@ -416,7 +426,7 @@ async def export_pdf(
 
     kanalwechsel = route.kanalwechsel if route else None
     pdf_bytes = pdf_svc.generate_marschbefehl(convoy, waypoints, vehicles, route, kanalwechsel)
-    filename = f"Marschbefehl_{convoy.name.replace(' ', '_')}.pdf"
+    filename = f"Marschbefehl_{_safe_filename(convoy.name.replace(' ', '_'))}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
