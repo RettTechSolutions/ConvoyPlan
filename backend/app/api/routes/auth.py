@@ -332,6 +332,11 @@ async def mfa_setup(
     """Generate a new TOTP secret for the authenticated user.
     The secret is stored (unconfirmed) and the provisioning URI for a QR code is returned.
     MFA is NOT active until /mfa/confirm succeeds."""
+    if current_user.mfa_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="MFA ist bereits aktiv. Bitte zuerst MFA deaktivieren (/auth/mfa/disable).",
+        )
     secret = pyotp.random_base32()
     current_user.mfa_secret = encrypt_secret(secret)
     current_user.mfa_enabled = False  # not active until confirmed
