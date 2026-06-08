@@ -11,7 +11,7 @@ geoalchemy2==0.20.0
 alembic==1.18.4
 pydantic[email]==2.13.4
 # PyJWT replaces python-jose (CVE-2024-33663, CVE-2024-33664 — algorithm confusion).
-PyJWT==2.10.1
+PyJWT==2.13.0
 defusedxml==0.7.1
 pydantic-settings==2.14.1
 cryptography==48.0.0

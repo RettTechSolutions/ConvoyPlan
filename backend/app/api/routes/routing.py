@@ -230,7 +230,7 @@ async def calculate_route(
             vehicle_params or None,
             road_preference=convoy.road_preference,
         )
-    except Exception as exc:
+    except Exception:
         raise HTTPException(status_code=502, detail="Routing service temporarily unavailable")
 
     coords = route_data["geometry"].get("coordinates", [])
