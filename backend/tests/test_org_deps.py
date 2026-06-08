@@ -10,7 +10,7 @@ from app.models.user import User
 
 def _make_token(user_id, org_id=None, org_slug=None, role=None, is_superadmin=False):
     from datetime import datetime, timedelta, timezone
-    from jose import jwt
+    import jwt
     from app.config import settings
     expire = datetime.now(timezone.utc) + timedelta(minutes=60)
     payload = {

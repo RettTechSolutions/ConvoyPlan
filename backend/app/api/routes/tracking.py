@@ -3,7 +3,8 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
-from jose import jwt, JWTError
+import jwt
+from jwt.exceptions import PyJWTError as JWTError
 from pydantic import BaseModel
 from sqlalchemy import select, delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
