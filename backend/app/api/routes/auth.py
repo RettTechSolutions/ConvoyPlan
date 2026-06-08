@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 import bcrypt
 import pyotp
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from jose import jwt
+import jwt as _jwt
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,7 +40,7 @@ def create_token(
     token_version: int = 0,
 ) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expire_minutes)
-    return jwt.encode(
+    return _jwt.encode(
         {
             "sub": user_id,
             "exp": expire,
@@ -59,7 +59,7 @@ def create_mfa_pending_token(user_id: str, org_slug: str | None = None) -> str:
     """Short-lived token issued after password check when MFA is required.
     The frontend uses this to call /auth/mfa/verify with the TOTP code."""
     expire = datetime.now(timezone.utc) + timedelta(minutes=5)
-    return jwt.encode(
+    return _jwt.encode(
         {
             "sub": user_id,
             "exp": expire,
@@ -73,7 +73,7 @@ def create_mfa_pending_token(user_id: str, org_slug: str | None = None) -> str:
 
 def decode_mfa_pending_token(token: str) -> dict:
     try:
-        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        payload = _jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
         if not payload.get("mfa_pending"):
             raise ValueError("Not an MFA-pending token")
         return payload

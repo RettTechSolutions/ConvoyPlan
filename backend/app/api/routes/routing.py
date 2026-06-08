@@ -231,7 +231,7 @@ async def calculate_route(
             road_preference=convoy.road_preference,
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Routing failed: {exc}")
+        raise HTTPException(status_code=502, detail="Routing service temporarily unavailable")
 
     coords = route_data["geometry"].get("coordinates", [])
     convoy_duration_s = routing_svc.convoy_duration_s(
