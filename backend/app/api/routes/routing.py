@@ -1,4 +1,5 @@
 import json as _json
+import re
 import uuid
 from datetime import timezone
 from typing import Literal
@@ -29,6 +30,14 @@ from app.services import overpass as overpass_svc
 from app.services import importer as importer_svc
 
 router = APIRouter(prefix="/convoys", tags=["routing"])
+
+_UNSAFE_FILENAME_CHARS = re.compile(r'[\x00-\x1f\x7f"\\]')
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+def _safe_filename(name: str) -> str:
+    """Strip control characters and quote/backslash from a Content-Disposition filename."""
+    return _UNSAFE_FILENAME_CHARS.sub("_", name)
 
 
 async def _apply_import(
@@ -230,8 +239,8 @@ async def calculate_route(
             vehicle_params or None,
             road_preference=convoy.road_preference,
         )
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Routing failed: {exc}")
+    except Exception:
+        raise HTTPException(status_code=502, detail="Routing service temporarily unavailable")
 
     coords = route_data["geometry"].get("coordinates", [])
     convoy_duration_s = routing_svc.convoy_duration_s(
@@ -345,7 +354,7 @@ async def export_gpx(
     return PlainTextResponse(
         content=gpx_content,
         media_type="application/gpx+xml",
-        headers={"Content-Disposition": f'attachment; filename="{convoy.name}.gpx"'},
+        headers={"Content-Disposition": f'attachment; filename="{_safe_filename(convoy.name)}.gpx"'},
     )
 
 
@@ -372,7 +381,7 @@ async def export_json(
     return PlainTextResponse(
         content=json_content,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{convoy.name}.json"'},
+        headers={"Content-Disposition": f'attachment; filename="{_safe_filename(convoy.name)}.json"'},
     )
 
 
@@ -416,7 +425,7 @@ async def export_pdf(
 
     kanalwechsel = route.kanalwechsel if route else None
     pdf_bytes = pdf_svc.generate_marschbefehl(convoy, waypoints, vehicles, route, kanalwechsel)
-    filename = f"Marschbefehl_{convoy.name.replace(' ', '_')}.pdf"
+    filename = f"Marschbefehl_{_safe_filename(convoy.name.replace(' ', '_'))}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -433,7 +442,9 @@ async def import_gpx(
     current_user: User = Depends(get_current_user),
 ):
     await get_convoy_access(convoy_id, current_user, db, require="write")
-    content = await file.read()
+    content = await file.read(_MAX_UPLOAD_BYTES + 1)
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
     try:
         result = importer_svc.parse_gpx(content)
     except ValueError as exc:
@@ -450,7 +461,9 @@ async def import_geojson(
     current_user: User = Depends(get_current_user),
 ):
     await get_convoy_access(convoy_id, current_user, db, require="write")
-    content = await file.read()
+    content = await file.read(_MAX_UPLOAD_BYTES + 1)
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
     try:
         result = importer_svc.parse_geojson(content)
     except ValueError as exc:
@@ -463,7 +476,7 @@ async def find_fuel_stations(
     convoy_id: uuid.UUID,
     lat: float,
     lon: float,
-    radius_m: int = 3000,
+    radius_m: int = Query(3000, ge=100, le=50000),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

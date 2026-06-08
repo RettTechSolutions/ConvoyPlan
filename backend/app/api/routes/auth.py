@@ -2,9 +2,9 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
+import jwt
 import pyotp
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from jose import jwt
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
