@@ -95,6 +95,10 @@ def _safe_filename(name: str) -> str:
     return _UNSAFE_FILENAME_RE.sub("_", name)
 
 
+def _safe_filename(name: str) -> str:
+    return "".join(c for c in name if c not in ('"', "\r", "\n", "/", "\\"))
+
+
 async def _apply_import(
     convoy_id: uuid.UUID,
     result: importer_svc.ImportResult,
