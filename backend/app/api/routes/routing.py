@@ -87,6 +87,13 @@ def _safe_filename(name: str, ext: str) -> str:
     safe = _CRLF_RE.sub("", name)[:100]
     return f"{safe}{ext}"
 
+_UNSAFE_FILENAME_RE = __import__("re").compile(r'[\x00-\x1f"\\]')
+
+
+def _safe_filename(name: str) -> str:
+    """Strip characters that could break a quoted Content-Disposition filename."""
+    return _UNSAFE_FILENAME_RE.sub("_", name)
+
 
 async def _apply_import(
     convoy_id: uuid.UUID,
