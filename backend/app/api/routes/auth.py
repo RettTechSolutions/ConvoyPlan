@@ -2,10 +2,12 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
+import jwt
 import pyotp
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+import jwt as _jwt
 from jose import jwt
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,7 +25,12 @@ from app.schemas.user import (
 from app.services import audit
 from app.services.crypto import decrypt_secret, encrypt_secret
 from app.services.email import send_password_email
-from app.services.password import assert_password_not_breached, generate_password, validate_password
+from app.services.password import (
+    MAX_PASSWORD_LENGTH,
+    assert_password_not_breached,
+    generate_password,
+    validate_password,
+)
 from app.services.rate_limit import rate_limit, register_failure
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -40,7 +47,7 @@ def create_token(
     token_version: int = 0,
 ) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expire_minutes)
-    return jwt.encode(
+    return _jwt.encode(
         {
             "sub": user_id,
             "exp": expire,
@@ -59,7 +66,7 @@ def create_mfa_pending_token(user_id: str, org_slug: str | None = None) -> str:
     """Short-lived token issued after password check when MFA is required.
     The frontend uses this to call /auth/mfa/verify with the TOTP code."""
     expire = datetime.now(timezone.utc) + timedelta(minutes=5)
-    return jwt.encode(
+    return _jwt.encode(
         {
             "sub": user_id,
             "exp": expire,
@@ -73,7 +80,7 @@ def create_mfa_pending_token(user_id: str, org_slug: str | None = None) -> str:
 
 def decode_mfa_pending_token(token: str) -> dict:
     try:
-        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        payload = _jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
         if not payload.get("mfa_pending"):
             raise ValueError("Not an MFA-pending token")
         return payload
@@ -88,7 +95,7 @@ def decode_mfa_pending_token(token: str) -> dict:
 
 class LoginRequest(BaseModel):
     email: str
-    password: str
+    password: str = Field(max_length=MAX_PASSWORD_LENGTH)
     org_slug: str | None = None
 
 
@@ -324,7 +331,11 @@ class MfaSetupResponse(BaseModel):
     provisioning_uri: str
 
 
-@router.post("/mfa/setup", response_model=MfaSetupResponse)
+@router.post(
+    "/mfa/setup",
+    response_model=MfaSetupResponse,
+    dependencies=[Depends(rate_limit("mfa-setup", max_attempts=10, window_seconds=300))],
+)
 async def mfa_setup(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -347,7 +358,10 @@ class MfaConfirmRequest(BaseModel):
     code: str
 
 
-@router.post("/mfa/confirm")
+@router.post(
+    "/mfa/confirm",
+    dependencies=[Depends(rate_limit("mfa-confirm", max_attempts=10, window_seconds=300))],
+)
 async def mfa_confirm(
     data: MfaConfirmRequest,
     request: Request,
@@ -370,7 +384,10 @@ async def mfa_confirm(
     return {"status": "MFA aktiviert"}
 
 
-@router.post("/mfa/disable")
+@router.post(
+    "/mfa/disable",
+    dependencies=[Depends(rate_limit("mfa-disable", max_attempts=10, window_seconds=300))],
+)
 async def mfa_disable(
     data: MfaConfirmRequest,
     request: Request,
