@@ -33,6 +33,7 @@ def _identity(token: str | None) -> str:
             if sub:
                 return f"user:{sub}"
         except InvalidTokenError:
+            # Invalid/expired/malformed token: treat this connection as anonymous.
             pass
     return f"anon:{uuid.uuid4()}"
 
