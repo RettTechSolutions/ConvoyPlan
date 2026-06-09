@@ -3,6 +3,7 @@ import uuid
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import APIKeyHeader, OAuth2PasswordBearer
+from jwt.exceptions import PyJWTError as JWTError
 from jwt.exceptions import PyJWTError
 import jwt as _jwt
 from jwt.exceptions import InvalidTokenError

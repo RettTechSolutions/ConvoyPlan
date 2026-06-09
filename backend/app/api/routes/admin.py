@@ -9,6 +9,8 @@ import bcrypt
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+import jwt
+from jwt.exceptions import PyJWTError as JWTError
 import jwt as _jwt
 from jwt.exceptions import InvalidTokenError
 from pydantic import BaseModel

@@ -57,6 +57,13 @@ def _safe_filename(name: str) -> str:
 
 _MAX_IMPORT_BYTES = 5 * 1024 * 1024  # 5 MB hard cap for GPX/GeoJSON uploads
 
+_CTRL = str.maketrans("", "", "".join(chr(i) for i in range(32)) + '"\\')
+
+
+def _safe_filename(name: str) -> str:
+    """Strip control characters and quote-related chars from filenames used in headers."""
+    return name.translate(_CTRL)
+
 
 async def _apply_import(
     convoy_id: uuid.UUID,
