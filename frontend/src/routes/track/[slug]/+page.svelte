@@ -3,6 +3,7 @@
 	import { page } from '$app/stores';
 	import MapView from '$lib/components/MapView.svelte';
 	import AppLogo from '$lib/components/AppLogo.svelte';
+	import TrackingPwaHead from '$lib/components/TrackingPwaHead.svelte';
 	import {
 		trackApi, isTrackGate,
 		type TrackPayload, type TrackGate, type TrackPosition, type VehiclePosition,
@@ -160,6 +161,13 @@
 	onDestroy(() => { ws?.close(); });
 </script>
 
+<TrackingPwaHead />
+
+<div class="track-app">
+	<aside class="track-sidebar">
+		<div class="track-header">
+			<AppLogo width={160} />
+			<h1>ConvoyPlan</h1>
 <div class="app">
 	<!-- Mobile top bar -->
 	<div class="topbar">
