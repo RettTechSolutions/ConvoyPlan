@@ -1,7 +1,9 @@
 import uuid
 
+import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import APIKeyHeader, OAuth2PasswordBearer
+from jwt.exceptions import PyJWTError
 import jwt as _jwt
 from jwt.exceptions import InvalidTokenError
 from pydantic import BaseModel
@@ -61,6 +63,7 @@ def _decode_token(token: str) -> TokenData:
             is_superadmin=bool(payload.get("is_superadmin", False)),
             token_version=int(payload.get("tv", 0)),
         )
+    except (PyJWTError, ValueError):
     except (InvalidTokenError, ValueError):
         raise credentials_exception
 
