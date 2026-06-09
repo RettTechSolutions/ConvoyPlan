@@ -15,7 +15,7 @@ from app.models.organization import Organization, UserOrganization
 from app.models.settings import SystemSetting
 from app.models.user import User
 from app.schemas.setup import SetupRequest, SetupStatusResponse
-from app.services.password import validate_password
+from app.services.password import assert_password_not_breached, validate_password
 
 router = APIRouter(prefix="/setup", tags=["setup"])
 logger = logging.getLogger(__name__)
@@ -154,6 +154,7 @@ async def run_setup(data: SetupRequest, db: AsyncSession = Depends(get_db)):
         raise HTTPException(400, "cert_pem and key_pem are required for custom TLS")
 
     validate_password(data.password)
+    await assert_password_not_breached(data.password)
 
     # Create superadmin
     user = User(
