@@ -32,6 +32,8 @@ def _identity(token: str | None) -> str:
             if sub:
                 return f"user:{sub}"
         except jwt.PyJWTError:
+            # Invalid/expired token: intentionally treat this connection as anonymous.
+            # Fall through to the anonymous identity return below.
             pass
     return f"anon:{uuid.uuid4()}"
 
