@@ -135,7 +135,8 @@ async def calculate_route(
                 detail = resp.json().get("message", resp.text)
             except Exception:
                 detail = resp.text
-            raise ValueError(f"GraphHopper {resp.status_code}: {detail}")
+            logger.warning("GraphHopper routing error (%s): %s", resp.status_code, detail)
+            raise ValueError(f"Routing service error ({resp.status_code})")
         data = resp.json()
 
     path = data["paths"][0]

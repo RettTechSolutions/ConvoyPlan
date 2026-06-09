@@ -1,7 +1,17 @@
+import logging
 import json as _json
+import logging
+import re
 import uuid
 from datetime import timezone
 from typing import Literal
+
+logger = logging.getLogger(__name__)
+
+
+def _safe_filename(name: str) -> str:
+    """Strip characters that would break a Content-Disposition filename= value."""
+    return re.sub(r'[\r\n\x00-\x1f"\\]', "_", name)
 
 from fastapi import APIRouter, Depends, HTTPException, File, Query, UploadFile
 from fastapi.responses import PlainTextResponse, Response
@@ -28,7 +38,61 @@ from app.services import fuel as fuel_svc
 from app.services import overpass as overpass_svc
 from app.services import importer as importer_svc
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/convoys", tags=["routing"])
+logger = logging.getLogger(__name__)
+
+_MAX_IMPORT_BYTES = 10 * 1024 * 1024  # 10 MB — guard against DoS via huge uploads
+
+
+def _safe_filename(name: str) -> str:
+    """Return a filename-safe version of *name* for Content-Disposition headers.
+
+    Strips characters that would break the quoted-string syntax defined in
+    RFC 6266 (double-quotes, backslashes, CRLF) and replaces everything outside
+    printable ASCII word characters with underscores.
+    """
+    safe = re.sub(r'[^\w\s\-.]', '_', name).strip()
+    return safe or "export"
+
+_UNSAFE_FILENAME_CHARS = re.compile(r'[\x00-\x1f\x7f"\\]')
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+def _safe_filename(name: str) -> str:
+    """Strip control characters and quote/backslash from a Content-Disposition filename."""
+    return _UNSAFE_FILENAME_CHARS.sub("_", name)
+
+_MAX_IMPORT_BYTES = 5 * 1024 * 1024  # 5 MB hard cap for GPX/GeoJSON uploads
+
+_CTRL = str.maketrans("", "", "".join(chr(i) for i in range(32)) + '"\\')
+
+
+def _safe_filename(name: str) -> str:
+    """Strip control characters and quote-related chars from filenames used in headers."""
+    return name.translate(_CTRL)
+
+_UNSAFE_FILENAME_RE = re.compile(r'[^\w\-. ]')
+
+
+def _safe_filename(name: str) -> str:
+    """Replace characters that are unsafe inside a quoted Content-Disposition filename."""
+    return _UNSAFE_FILENAME_RE.sub('_', name)
+
+_CRLF_RE = re.compile(r'[\r\n"\\]')
+
+
+def _safe_filename(name: str, ext: str) -> str:
+    """Strip CRLF and quote chars to prevent CWE-113 header injection."""
+    safe = _CRLF_RE.sub("", name)[:100]
+    return f"{safe}{ext}"
+
+_UNSAFE_FILENAME_RE = __import__("re").compile(r'[\x00-\x1f"\\]')
+
+
+def _safe_filename(name: str) -> str:
+    """Strip characters that could break a quoted Content-Disposition filename."""
+    return _UNSAFE_FILENAME_RE.sub("_", name)
 
 
 async def _apply_import(
@@ -231,7 +295,8 @@ async def calculate_route(
             road_preference=convoy.road_preference,
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Routing failed: {exc}")
+        logger.error("Routing service error for convoy %s: %s", convoy_id, exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Routing-Dienst nicht verfügbar")
 
     coords = route_data["geometry"].get("coordinates", [])
     convoy_duration_s = routing_svc.convoy_duration_s(
@@ -346,7 +411,7 @@ async def export_gpx(
     return PlainTextResponse(
         content=gpx_content,
         media_type="application/gpx+xml",
-        headers={"Content-Disposition": f'attachment; filename="{safe_name}.gpx"'},
+        headers={"Content-Disposition": f'attachment; filename="{_safe_filename(convoy.name)}.gpx"'},
     )
 
 
@@ -374,7 +439,7 @@ async def export_json(
     return PlainTextResponse(
         content=json_content,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{safe_name}.json"'},
+        headers={"Content-Disposition": f'attachment; filename="{_safe_filename(convoy.name)}.json"'},
     )
 
 
@@ -418,8 +483,7 @@ async def export_pdf(
 
     kanalwechsel = route.kanalwechsel if route else None
     pdf_bytes = pdf_svc.generate_marschbefehl(convoy, waypoints, vehicles, route, kanalwechsel)
-    safe_name = convoy.name.translate(str.maketrans("", "", '"\r\n;\\'))
-    filename = f"Marschbefehl_{safe_name.replace(' ', '_')}.pdf"
+    filename = f"Marschbefehl_{_safe_filename(convoy.name.replace(' ', '_'))}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -436,7 +500,9 @@ async def import_gpx(
     current_user: User = Depends(get_current_user),
 ):
     await get_convoy_access(convoy_id, current_user, db, require="write")
-    content = await file.read()
+    content = await file.read(_MAX_UPLOAD_BYTES + 1)
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
     try:
         result = importer_svc.parse_gpx(content)
     except ValueError as exc:
@@ -453,7 +519,9 @@ async def import_geojson(
     current_user: User = Depends(get_current_user),
 ):
     await get_convoy_access(convoy_id, current_user, db, require="write")
-    content = await file.read()
+    content = await file.read(_MAX_UPLOAD_BYTES + 1)
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
     try:
         result = importer_svc.parse_geojson(content)
     except ValueError as exc:
@@ -464,13 +532,17 @@ async def import_geojson(
 @router.get("/{convoy_id}/fuel-stations")
 async def find_fuel_stations(
     convoy_id: uuid.UUID,
-    lat: float = Query(..., ge=-90, le=90),
-    lon: float = Query(..., ge=-180, le=180),
-    radius_m: int = Query(3000, ge=100, le=10000),
+    lat: float,
+    lon: float,
+    radius_m: int = Query(3000, ge=100, le=50000),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Find fuel stations near (lat, lon) – typically the recommended stop position."""
+    if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+        raise HTTPException(status_code=422, detail="Invalid coordinates")
+    if not (100 <= radius_m <= 50_000):
+        raise HTTPException(status_code=422, detail="radius_m must be between 100 and 50000")
     await _load_convoy(convoy_id, current_user, db, require="read")
     stations = await overpass_svc.find_fuel_stations(lat, lon, radius_m)
     return stations
