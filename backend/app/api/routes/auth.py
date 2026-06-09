@@ -5,7 +5,8 @@ import bcrypt
 import pyotp
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 import jwt as _jwt
-from pydantic import BaseModel
+from jose import jwt
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,7 +24,12 @@ from app.schemas.user import (
 from app.services import audit
 from app.services.crypto import decrypt_secret, encrypt_secret
 from app.services.email import send_password_email
-from app.services.password import assert_password_not_breached, generate_password, validate_password
+from app.services.password import (
+    MAX_PASSWORD_LENGTH,
+    assert_password_not_breached,
+    generate_password,
+    validate_password,
+)
 from app.services.rate_limit import rate_limit, register_failure
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -88,7 +94,7 @@ def decode_mfa_pending_token(token: str) -> dict:
 
 class LoginRequest(BaseModel):
     email: str
-    password: str
+    password: str = Field(max_length=MAX_PASSWORD_LENGTH)
     org_slug: str | None = None
 
 
