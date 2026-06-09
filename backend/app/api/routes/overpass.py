@@ -5,7 +5,6 @@ from fastapi import APIRouter, HTTPException, Query
 from app.services import overpass as overpass_svc
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter(prefix="/overpass", tags=["overpass"])
 
 
@@ -19,4 +18,5 @@ async def get_closures(
         return await overpass_svc.get_closures(lat, lon, radius_m)
     except Exception as exc:
         logger.warning("Overpass query failed: %s", exc)
+        logger.error("Overpass closures fetch failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail="Sperrungsdaten nicht verfügbar")

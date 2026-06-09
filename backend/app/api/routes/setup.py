@@ -15,6 +15,7 @@ from app.models.organization import Organization, UserOrganization
 from app.models.settings import SystemSetting
 from app.models.user import User
 from app.schemas.setup import SetupRequest, SetupStatusResponse
+from app.services.password import assert_password_not_breached, validate_password
 
 router = APIRouter(prefix="/setup", tags=["setup"])
 logger = logging.getLogger(__name__)
@@ -152,8 +153,8 @@ async def run_setup(data: SetupRequest, db: AsyncSession = Depends(get_db)):
     if data.tls_mode == "custom" and (not data.cert_pem or not data.key_pem):
         raise HTTPException(400, "cert_pem and key_pem are required for custom TLS")
 
-    if len(data.password) < 8:
-        raise HTTPException(400, "Password must be at least 8 characters")
+    validate_password(data.password)
+    await assert_password_not_breached(data.password)
 
     # Create superadmin
     user = User(

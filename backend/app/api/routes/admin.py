@@ -11,7 +11,10 @@ import bcrypt
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import PyJWTError as JWTError
+import jwt as _jwt
+from jwt.exceptions import InvalidTokenError
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +36,8 @@ from app.services import api_key as api_key_svc
 from app.services import audit
 from app.services.email import save_smtp_settings, send_password_email, test_smtp_connection
 from app.services.password import assert_password_not_breached, generate_password, validate_password
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -522,10 +527,10 @@ async def stream_update_log(
     """
     # Validate token — require superadmin
     try:
-        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        payload = _jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
         if not payload.get("is_superadmin"):
             raise HTTPException(403, "Superadmin required")
-    except JWTError:
+    except InvalidTokenError:
         raise HTTPException(401, "Invalid token")
 
     async def log_generator():
@@ -698,6 +703,7 @@ async def send_user_password(
         raise HTTPException(400, str(e))
     except Exception as e:
         logger.warning("Failed to send password email: %s", e)
+        logger.error("Failed to send password e-mail to user %s: %s", user.id, e)
         raise HTTPException(502, "E-Mail konnte nicht gesendet werden")
 
     return {"status": "sent", "email": user.email}

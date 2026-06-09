@@ -1,5 +1,6 @@
 import logging
 import json as _json
+import logging
 import re
 import uuid
 from datetime import timezone
@@ -37,7 +38,39 @@ from app.services import fuel as fuel_svc
 from app.services import overpass as overpass_svc
 from app.services import importer as importer_svc
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/convoys", tags=["routing"])
+logger = logging.getLogger(__name__)
+
+_MAX_IMPORT_BYTES = 10 * 1024 * 1024  # 10 MB — guard against DoS via huge uploads
+
+
+def _safe_filename(name: str) -> str:
+    """Return a filename-safe version of *name* for Content-Disposition headers.
+
+    Strips characters that would break the quoted-string syntax defined in
+    RFC 6266 (double-quotes, backslashes, CRLF) and replaces everything outside
+    printable ASCII word characters with underscores.
+    """
+    safe = re.sub(r'[^\w\s\-.]', '_', name).strip()
+    return safe or "export"
+
+_UNSAFE_FILENAME_CHARS = re.compile(r'[\x00-\x1f\x7f"\\]')
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+def _safe_filename(name: str) -> str:
+    """Strip control characters and quote/backslash from a Content-Disposition filename."""
+    return _UNSAFE_FILENAME_CHARS.sub("_", name)
+
+_MAX_IMPORT_BYTES = 5 * 1024 * 1024  # 5 MB hard cap for GPX/GeoJSON uploads
+
+_CTRL = str.maketrans("", "", "".join(chr(i) for i in range(32)) + '"\\')
+
+
+def _safe_filename(name: str) -> str:
+    """Strip control characters and quote-related chars from filenames used in headers."""
+    return name.translate(_CTRL)
 
 
 async def _apply_import(
@@ -240,8 +273,8 @@ async def calculate_route(
             road_preference=convoy.road_preference,
         )
     except Exception as exc:
-        logger.warning("Route calculation failed: %s", exc)
-        raise HTTPException(status_code=502, detail="Routing failed")
+        logger.error("Routing service error for convoy %s: %s", convoy_id, exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Routing-Dienst nicht verfügbar")
 
     coords = route_data["geometry"].get("coordinates", [])
     convoy_duration_s = routing_svc.convoy_duration_s(
@@ -443,7 +476,9 @@ async def import_gpx(
     current_user: User = Depends(get_current_user),
 ):
     await get_convoy_access(convoy_id, current_user, db, require="write")
-    content = await file.read()
+    content = await file.read(_MAX_UPLOAD_BYTES + 1)
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
     try:
         result = importer_svc.parse_gpx(content)
     except ValueError as exc:
@@ -460,7 +495,9 @@ async def import_geojson(
     current_user: User = Depends(get_current_user),
 ):
     await get_convoy_access(convoy_id, current_user, db, require="write")
-    content = await file.read()
+    content = await file.read(_MAX_UPLOAD_BYTES + 1)
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
     try:
         result = importer_svc.parse_geojson(content)
     except ValueError as exc:
@@ -473,7 +510,7 @@ async def find_fuel_stations(
     convoy_id: uuid.UUID,
     lat: float,
     lon: float,
-    radius_m: int = 3000,
+    radius_m: int = Query(3000, ge=100, le=50000),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
