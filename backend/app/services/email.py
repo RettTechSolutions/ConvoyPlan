@@ -157,7 +157,7 @@ def _build_logo_block(logo_main: str, app_name: str, base_url: str = "") -> str:
     if logo_main:
         safe_logo = html.escape(logo_main)
         return (
-            f'<img src="{base_url}/uploads/logos/{logo_main}" '
+            f'<img src="{base_url}/uploads/logos/{safe_logo}" '
             f'height="50" alt="{safe_name}" style="display:block;margin:0 auto;"/>'
         )
     return (
@@ -201,7 +201,7 @@ async def _render_password_email_async(
     safe_name = html.escape(recipient_name)
     recipient_name_greeting = f" {safe_name}" if recipient_name else ""
 
-    variables = {
+    html_vars = {
         "recipient_name": safe_name,
         "recipient_name_greeting": recipient_name_greeting,
         "email": html.escape(email),

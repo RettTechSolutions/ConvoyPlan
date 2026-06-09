@@ -32,7 +32,6 @@ from app.schemas.share_link import (
 )
 from app.services import geometry as geo_svc
 from app.services import share_links as share_links_svc
-from app.services.rate_limit import rate_limit, register_failure
 from app.services.tracking import tracking_manager
 
 logger = logging.getLogger(__name__)
