@@ -101,10 +101,9 @@ jobs:
   dependency-audit:
     name: Security – Dependency Audit
     runs-on: ubuntu-latest
-    # Advisory for now (reports without blocking). Make this required once the
-    # backlog of pinned-dependency advisories has been triaged. See
-    # docs/iso-certifications-review.md (T10).
-    continue-on-error: true
+    # Blocking check (ISO 27001 A.8.8 / T10): both pip-audit and npm-audit
+    # return zero findings; removed continue-on-error so new advisories block
+    # merges. See docs/iso-certifications-review.md (T10).
 
     steps:
       - uses: actions/checkout@v6
