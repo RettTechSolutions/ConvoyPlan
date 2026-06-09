@@ -95,6 +95,7 @@ services:
       - "${HTTPS_PORT:-443}:443"
     environment:
       DOMAIN: ${DOMAIN:-localhost}
+      TRACKING_DOMAIN: ${TRACKING_DOMAIN:-}
       ACME_EMAIL: ${ACME_EMAIL:-admin@example.com}
       CADDY_TLS_CERT: ${CADDY_TLS_CERT:-}
       CADDY_TLS_KEY: ${CADDY_TLS_KEY:-}

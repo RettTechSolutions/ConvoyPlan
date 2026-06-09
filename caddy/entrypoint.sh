@@ -12,6 +12,11 @@ DOMAIN="${DOMAIN:-localhost}"
 ACME_EMAIL="${ACME_EMAIL:-admin@example.com}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 BACKEND_PORT="${BACKEND_PORT:-8000}"
+# Optionale eigene Subdomain für die Tracking-App (z. B. tracking.convoyplan.de).
+# Wenn gesetzt, wird ein zusätzlicher Site-Block erzeugt, der den Wurzelpfad "/"
+# intern auf "/track" umschreibt — die Subdomain zeigt also direkt den
+# Tracking-ID-Abfrage-Screen, ohne dass sich die URL ändert.
+TRACKING_DOMAIN="${TRACKING_DOMAIN:-}"
 
 if [ -n "$CADDY_TLS_CERT" ] && [ -n "$CADDY_TLS_KEY" ]; then
     TLS_DIRECTIVE="tls $CADDY_TLS_CERT $CADDY_TLS_KEY"
@@ -28,6 +33,16 @@ case "$DOMAIN" in
         exit 1
         ;;
 esac
+
+# Same validation for the optional tracking subdomain.
+if [ -n "$TRACKING_DOMAIN" ]; then
+    case "$TRACKING_DOMAIN" in
+        *[!a-zA-Z0-9._-]*)
+            echo "[caddy] ERROR: TRACKING_DOMAIN contains invalid characters: $TRACKING_DOMAIN" >&2
+            exit 1
+            ;;
+    esac
+fi
 
 # For bare IP addresses Caddy would attempt ACME (which fails for private IPs).
 # Force plain HTTP by prefixing with http:// when DOMAIN is an IPv4 address.
@@ -90,6 +105,61 @@ $SITE_ADDRESS {
     }
 }
 CADDYEOF
+
+# ── Optionaler Tracking-Subdomain-Block ──────────────────────────────────
+# Eigener Origin für die Tracking-App. "/" wird intern auf "/track"
+# umgeschrieben, alle weiteren Pfade (/track/{id}, /api/*, /ws/*, Assets)
+# laufen unverändert durch. TLS spiegelt den Haupt-Block — bei eigenem
+# Zertifikat muss dieses die Subdomain abdecken (Wildcard oder SAN), sonst
+# ACME für die Subdomain nutzen (CADDY_TLS_CERT/KEY leer lassen).
+if [ -n "$TRACKING_DOMAIN" ]; then
+    case "$DOMAIN" in
+        [0-9]*.[0-9]*.[0-9]*.[0-9]*)
+            echo "[caddy] WARN: TRACKING_DOMAIN wird bei IP-DOMAIN ignoriert" >&2
+            ;;
+        *)
+            TRACKING_CSP_VALUE="default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; img-src 'self' data: blob: https://tile.openstreetmap.org; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:; font-src 'self' data:; connect-src 'self' https://tile.openstreetmap.org https://nominatim.openstreetmap.org ws://$TRACKING_DOMAIN wss://$TRACKING_DOMAIN"
+            cat >> /tmp/Caddyfile << CADDYEOF
+
+$TRACKING_DOMAIN {
+    $TLS_DIRECTIVE
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "geolocation=(self), microphone=(), camera=()"
+        $CSP_HEADER "$TRACKING_CSP_VALUE"
+        -Server
+    }
+
+    # Wurzelpfad zeigt direkt den Tracking-ID-Abfrage-Screen
+    @root path /
+    rewrite @root /track
+
+    handle /api/admin/update-log {
+        reverse_proxy backend:$BACKEND_PORT {
+            flush_interval -1
+        }
+    }
+    handle /api/* {
+        reverse_proxy backend:$BACKEND_PORT
+    }
+    handle /ws/* {
+        reverse_proxy backend:$BACKEND_PORT {
+            flush_interval -1
+        }
+    }
+    handle {
+        reverse_proxy frontend:$FRONTEND_PORT
+    }
+}
+CADDYEOF
+            echo "[caddy] Tracking-Subdomain aktiv: $TRACKING_DOMAIN -> /track"
+            ;;
+    esac
+fi
 
 echo "[caddy] Starting with domain: $DOMAIN (env-var mode)"
 exec caddy run --config /tmp/Caddyfile --adapter caddyfile
