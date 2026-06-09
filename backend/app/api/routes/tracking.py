@@ -3,7 +3,8 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
-from jose import jwt, JWTError
+import jwt as _jwt
+from jwt.exceptions import InvalidTokenError
 from pydantic import BaseModel
 from sqlalchemy import select, delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -182,12 +183,12 @@ async def tracking_ws(
     token: str = Query(...),
 ):
     try:
-        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        payload = _jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
         user_id = payload.get("sub")
         if not user_id:
             await ws.close(code=4001)
             return
-    except JWTError:
+    except InvalidTokenError:
         await ws.close(code=4001)
         return
 
