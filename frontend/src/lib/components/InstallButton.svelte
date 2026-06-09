@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { pwaStore, canShowInstall } from '$lib/stores/pwa';
 
-	let showIOSHint = $state(false);
+	let showHint = $state(false);
 	let installing = $state(false);
 
 	async function handleClick() {
 		if ($pwaStore.isIOS) {
-			showIOSHint = true;
+			showHint = true;
 			return;
 		}
 		if ($pwaStore.deferredPrompt) {
@@ -16,15 +16,23 @@
 			} finally {
 				installing = false;
 			}
+			return;
 		}
+		// No native prompt available — show manual instructions
+		showHint = true;
 	}
 
 	function closeHint() {
-		showIOSHint = false;
+		showHint = false;
+	}
+
+	$derived: {
+		// If native prompt becomes available after mount, close manual hint
+		if ($pwaStore.deferredPrompt && showHint) showHint = false;
 	}
 </script>
 
-{#if $canShowInstall && !$pwaStore.isStandalone}
+{#if $canShowInstall}
 	<button
 		class="install-btn"
 		onclick={handleClick}
@@ -32,28 +40,29 @@
 		title="Als App installieren"
 		aria-label="Als App installieren"
 	>
-		{#if installing}
-			⏳
-		{:else}
-			⊕
-		{/if}
+		{installing ? '⏳' : '⊕'}
 		<span>App</span>
 	</button>
 {/if}
 
-{#if showIOSHint}
+{#if showHint}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="ios-overlay" onclick={closeHint}>
-		<div class="ios-hint" onclick={(e) => e.stopPropagation()}>
-			<button class="ios-close" onclick={closeHint} aria-label="Schließen">✕</button>
-			<strong>Auf dem iPhone / iPad installieren</strong>
-			<ol>
-				<li>Tippe auf das <span>⬆️</span> <strong>Teilen</strong>-Symbol in Safari</li>
-				<li>Wähle <strong>„Zum Home-Bildschirm"</strong></li>
-				<li>Tippe auf <strong>„Hinzufügen"</strong></li>
-			</ol>
+	<div class="hint-overlay" onclick={closeHint}>
+		<div class="hint-box" onclick={(e) => e.stopPropagation()}>
+			<button class="hint-close" onclick={closeHint} aria-label="Schließen">✕</button>
+			{#if $pwaStore.isIOS}
+				<strong>Auf dem iPhone / iPad installieren</strong>
+				<ol>
+					<li>Tippe auf das <strong>⬆️ Teilen</strong>-Symbol in Safari</li>
+					<li>Wähle <strong>„Zum Home-Bildschirm"</strong></li>
+					<li>Tippe auf <strong>„Hinzufügen"</strong></li>
+				</ol>
+			{:else}
+				<strong>Als App installieren</strong>
+				<p>Klicke in der Adressleiste deines Browsers auf das <strong>Install</strong>-Symbol (⊕ oder ↓) oder öffne das Browser-Menü und wähle <strong>„App installieren"</strong> bzw. <strong>„Zum Startbildschirm hinzufügen"</strong>.</p>
+			{/if}
 		</div>
-		<div class="ios-arrow" aria-hidden="true"></div>
+		<div class="hint-arrow" aria-hidden="true"></div>
 	</div>
 {/if}
 
@@ -80,7 +89,7 @@
 
 	.install-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-	.ios-overlay {
+	.hint-overlay {
 		position: fixed;
 		inset: 0;
 		z-index: 9001;
@@ -91,7 +100,7 @@
 		padding-bottom: 4rem;
 	}
 
-	.ios-hint {
+	.hint-box {
 		background: var(--surface-1, #1e2d3d);
 		border: 1px solid var(--border, rgba(255,255,255,.12));
 		border-radius: 1rem;
@@ -102,10 +111,17 @@
 		position: relative;
 	}
 
-	.ios-hint strong { display: block; font-size: 1rem; margin-bottom: 0.75rem; }
-	.ios-hint ol { margin: 0; padding-left: 1.25rem; font-size: 0.875rem; line-height: 1.7; color: var(--text-2, rgba(255,255,255,.8)); }
+	.hint-box strong { display: block; font-size: 1rem; margin-bottom: 0.75rem; }
+	.hint-box ol, .hint-box p {
+		margin: 0;
+		padding-left: 1.25rem;
+		font-size: 0.875rem;
+		line-height: 1.7;
+		color: var(--text-2, rgba(255,255,255,.8));
+	}
+	.hint-box p { padding-left: 0; }
 
-	.ios-close {
+	.hint-close {
 		position: absolute;
 		top: 0.75rem;
 		right: 0.75rem;
@@ -118,7 +134,7 @@
 		line-height: 1;
 	}
 
-	.ios-arrow {
+	.hint-arrow {
 		width: 0;
 		height: 0;
 		border-left: 0.75rem solid transparent;

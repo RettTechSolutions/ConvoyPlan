@@ -92,7 +92,11 @@
 
 {@render children()}
 
-<InstallPrompt />
+<!-- Auf /track-Seiten greift die eigenständige Tracking-App-Installation
+     (eigenes Manifest + eigene Install-CTA), daher hier kein generischer Banner. -->
+{#if !$page.url.pathname.startsWith('/track')}
+	<InstallPrompt />
+{/if}
 
 <footer class="powered-by">
 	v{__APP_VERSION__}

@@ -10,9 +10,13 @@ RUN GIT_SHA="$GIT_SHA" APP_VERSION="$APP_VERSION" npm run build
 
 FROM node:26-alpine AS runner
 
+# Run as the built-in unprivileged 'node' user (UID 1000).
+RUN mkdir -p /app && chown node:node /app
 WORKDIR /app
-COPY --from=builder /app/build ./build
-COPY --from=builder /app/package*.json ./
+USER node
+
+COPY --from=builder --chown=node:node /app/build ./build
+COPY --from=builder --chown=node:node /app/package*.json ./
 RUN npm ci --omit=dev
 
 ENV NODE_ENV=production
