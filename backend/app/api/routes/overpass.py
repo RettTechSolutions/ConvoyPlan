@@ -17,5 +17,6 @@ async def get_closures(
     try:
         return await overpass_svc.get_closures(lat, lon, radius_m)
     except Exception as exc:
+        logger.warning("Overpass query failed: %s", exc)
         logger.error("Overpass closures fetch failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail="Sperrungsdaten nicht verfügbar")

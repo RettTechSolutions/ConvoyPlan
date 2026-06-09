@@ -5,6 +5,8 @@ import os
 import uuid
 from datetime import datetime, timezone
 
+logger = logging.getLogger(__name__)
+
 import bcrypt
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -700,6 +702,7 @@ async def send_user_password(
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
+        logger.warning("Failed to send password email: %s", e)
         logger.error("Failed to send password e-mail to user %s: %s", user.id, e)
         raise HTTPException(502, "E-Mail konnte nicht gesendet werden")
 

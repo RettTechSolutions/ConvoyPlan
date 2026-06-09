@@ -1,9 +1,17 @@
+import logging
 import json as _json
 import logging
 import re
 import uuid
 from datetime import timezone
 from typing import Literal
+
+logger = logging.getLogger(__name__)
+
+
+def _safe_filename(name: str) -> str:
+    """Strip characters that would break a Content-Disposition filename= value."""
+    return re.sub(r'[\r\n\x00-\x1f"\\]', "_", name)
 
 from fastapi import APIRouter, Depends, HTTPException, File, Query, UploadFile
 from fastapi.responses import PlainTextResponse, Response
