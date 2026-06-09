@@ -238,10 +238,13 @@ async def tracking_ws(
     await tracking_manager.connect(convoy_id, ws)
     try:
         while True:
-            data = await ws.receive_json()
-            # Client kann Positionen über WS schicken
+            raw = await ws.receive_json()
+            try:
+                pos = PositionUpdate.model_validate(raw)
+            except Exception:
+                continue
             # Verworfen, falls ein Admin die Freigabe gerade zurückgesetzt hat.
-            if tracking_manager.is_recently_cleared(convoy_id, str(data.get("vehicle_id"))):
+            if tracking_manager.is_recently_cleared(convoy_id, str(pos.vehicle_id)):
                 continue
             try:
                 lat_ws = float(data["lat"])
