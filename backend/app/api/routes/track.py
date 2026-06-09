@@ -32,6 +32,7 @@ from app.schemas.share_link import (
 )
 from app.services import geometry as geo_svc
 from app.services import share_links as share_links_svc
+from app.services.rate_limit import rate_limit, register_failure
 from app.services.tracking import tracking_manager
 
 logger = logging.getLogger(__name__)
@@ -153,7 +154,7 @@ async def get_track(
 @router.post(
     "/{slug}/auth",
     response_model=TrackAuthResponse,
-    dependencies=[Depends(rate_limit("track-auth", max_attempts=10, window_seconds=300))],
+    dependencies=[Depends(rate_limit("track-auth", max_attempts=5, window_seconds=300))],
 )
 async def auth_track(
     slug: str,
@@ -166,7 +167,7 @@ async def auth_track(
         raise HTTPException(status_code=400, detail="Dieser Link ist nicht passwortgeschützt")
     if not share_links_svc.verify_password(data.password, link.password_hash):
         register_failure(request, "track-auth")
-        await asyncio.sleep(0.5)  # additional friction between rate-limit windows
+        await asyncio.sleep(0.5)  # mild brute-force friction
         raise HTTPException(status_code=401, detail="Falsches Passwort")
     return TrackAuthResponse(token=share_links_svc.issue_session_token(slug))
 
