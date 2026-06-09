@@ -1,6 +1,6 @@
 import json
 import uuid
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from geoalchemy2.shape import from_shape, to_shape
@@ -251,9 +251,12 @@ def _apply_update(ls: Leitstelle, data: LeistelleUpdate) -> None:
         ls.district_codes = data.district_codes
 
 
+_MAX_BOUNDARY_BYTES = 5 * 1024 * 1024  # 5 MB hard cap for KML/GeoJSON uploads
+
+
 async def _read_boundary_file(file: UploadFile):
-    content = await file.read()
-    if len(content) > 5 * 1024 * 1024:
+    content = await file.read(_MAX_BOUNDARY_BYTES + 1)
+    if len(content) > _MAX_BOUNDARY_BYTES:
         raise HTTPException(status_code=413, detail="File too large (max 5 MB)")
     filename = (file.filename or "").lower()
     poly = _parse_kml(content) if filename.endswith(".kml") else _parse_geojson(content)
