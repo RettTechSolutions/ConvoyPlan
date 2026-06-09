@@ -1,6 +1,6 @@
 {
 	"id": "/track",
-	"name": "ConvoyPlan Tracking",
+	"name": "Convoy Tracking",
 	"short_name": "Tracking",
 	"description": "Live-Tracking eines Marschverbands über die Tracking-ID",
 	"lang": "de",

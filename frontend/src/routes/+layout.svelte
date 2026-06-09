@@ -79,6 +79,21 @@
 <svelte:head>
 	<title>{$brandingStore.app_name}</title>
 	<link rel="icon" type="image/png" href={$themeStore === 'light' ? '/logo/dark/Logo_Favicon.png' : '/logo/light/Logo_Favicon.png'} />
+	<!--
+		Haupt-App-Manifest (ConvoyPlan) — bindet eine eigenständige, installierbare PWA an,
+		getrennt von der „Convoy Tracking"-App. Auf /track-Seiten wird stattdessen das
+		Tracking-Manifest via TrackingPwaHead eingebunden, daher hier ausschließen, damit
+		nicht zwei Manifeste gleichzeitig aktiv sind.
+	-->
+	{#if !$page.url.pathname.startsWith('/track')}
+		<link rel="manifest" href="/app.webmanifest" />
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-title" content="ConvoyPlan" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+		<meta name="theme-color" content="#0f1419" />
+		<link rel="apple-touch-icon" href="/icons/icon-192.png" />
+	{/if}
 </svelte:head>
 
 {#if demoMode}
