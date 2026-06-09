@@ -16,6 +16,7 @@ from app.schemas.share_link import (
     ShareLinkResponse,
 )
 from app.services import share_links as share_links_svc
+from app.services.tracking import tracking_manager
 
 router = APIRouter(prefix="/convoys", tags=["share-links"])
 
@@ -110,6 +111,8 @@ async def revoke_share_link(
     link = result.scalar_one_or_none()
     if not link:
         raise HTTPException(status_code=404, detail="Share-Link nicht gefunden")
+    convoy_id = str(link.convoy_id)
     link.revoked = True
     await db.commit()
+    await tracking_manager.revoke_connections(convoy_id)
     return None

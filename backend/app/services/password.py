@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 
 # Central password policy (ISO 27001 A.5.17).
 MIN_PASSWORD_LENGTH = 10
+# bcrypt silently truncates at 72 bytes; cap early to prevent pre-hashing DoS
+# on the login path (bcrypt.checkpw with an unbounded caller-supplied string).
+MAX_PASSWORD_LENGTH = 1024
 
 _HIBP_RANGE_URL = "https://api.pwnedpasswords.com/range/{prefix}"
 
@@ -21,9 +24,14 @@ _HIBP_RANGE_URL = "https://api.pwnedpasswords.com/range/{prefix}"
 def validate_password(password: str) -> None:
     """Raise HTTP 400 if the password does not meet the policy.
 
-    Requires at least MIN_PASSWORD_LENGTH characters and a mix of letters and
-    digits. Call this for every user-supplied password (register / change /
-    admin-set)."""
+    Requires at least MIN_PASSWORD_LENGTH and at most MAX_PASSWORD_LENGTH characters
+    and a mix of letters and digits. Call this for every user-supplied password
+    (register / change / admin-set)."""
+    if len(password) > MAX_PASSWORD_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Passwort darf maximal {MAX_PASSWORD_LENGTH} Zeichen lang sein",
+        )
     if len(password) < MIN_PASSWORD_LENGTH:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
