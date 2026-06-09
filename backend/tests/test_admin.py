@@ -119,3 +119,17 @@ async def test_trigger_update_409_when_already_triggered():
             r = await client.post("/api/admin/trigger-update")
     assert r.status_code == 409
     app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_trigger_update_503_when_volume_not_writable():
+    # A non-writable /update_status volume (e.g. root-owned, predating the
+    # non-root backend) must yield a clear 503 instead of a bare 500.
+    _make_app_with_superadmin()
+    with patch("os.path.exists", return_value=False), \
+         patch("os.makedirs"), \
+         patch("builtins.open", side_effect=PermissionError("read-only")):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            r = await client.post("/api/admin/trigger-update")
+    assert r.status_code == 503
+    app.dependency_overrides.clear()
