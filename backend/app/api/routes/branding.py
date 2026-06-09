@@ -158,7 +158,7 @@ async def upload_logo(
         raise HTTPException(status_code=400, detail="File content does not match the declared type")
     LOGOS_DIR.mkdir(parents=True, exist_ok=True)
     filename = f"{slot}{ext}"
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, (LOGOS_DIR / filename).write_bytes, content)
     await _upsert(db, f"branding.logo_{slot}", filename)
     await db.commit()
