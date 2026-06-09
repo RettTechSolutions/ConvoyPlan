@@ -34,18 +34,24 @@ VITE_WS_HOST=localhost:8000
 
 ## Routen
 
+Org-spezifische Routen liegen unter dem Scope `/o/[slug]/`, wobei `[slug]` der
+Org-Code der Organisation ist (4–8 Zeichen, beim Setup bzw. im Superadmin-Panel
+vergeben).
+
 | Route | Beschreibung |
 |---|---|
-| `/setup` | Ersteinrichtungs-Wizard (Superadmin + Erste Org + Domain + SSL) |
-| `/login` | Globale Anmeldung |
-| `/[org-code]/login` | Org-spezifische Anmeldung mit eigenem Branding |
-| `/[org-code]/plan` | Planungsansicht mit interaktiver Karte |
-| `/[org-code]/tracking` | Live-Tracking-Ansicht |
-| `/[org-code]/share/[token]` | Öffentliche Routenansicht ohne Login |
-| `/[org-code]/admin` | Org-Admin: Mitglieder, Leitstellen, Branding, System |
-| `/admin` | Superadmin: Benutzer- und Org-Verwaltung |
+| `/setup` | Ersteinrichtungs-Wizard (Superadmin + erste Org + Domain + SSL + Branding) |
+| `/admin` | Superadmin-Portal — self-gated: zeigt bei fehlender Anmeldung direkt die Login-Maske (inkl. MFA und Passwort-vergessen) |
+| `/o/[slug]/login` | Org-spezifische Anmeldung mit eigenem Branding |
+| `/o/[slug]/plan` | Planungsansicht mit interaktiver Karte |
+| `/o/[slug]/tracking` | Live-Tracking-Übersicht der Organisation |
+| `/o/[slug]/tracking/[convoy_id]` | Live-Tracking eines einzelnen Konvois |
+| `/o/[slug]/admin` | Org-Admin: Mitglieder, Leitstellen, Branding, System |
+| `/track/[slug]` | Eigenständige Fahrer-Tracking-PWA („Convoy Tracking") — Position teilen per Tracking-ID/-Link |
+| `/share/[token]` | Öffentliche Routenansicht ohne Login |
 
-> Alte Pfade `/plan` und `/admin` leiten automatisch auf die jeweilige org-spezifische URL um.
+> Die separate globale `/login`-Route wurde entfernt; die Superadmin-Anmeldung
+> ist in `/admin` integriert. Das alte `/plan` leitet auf die Startseite um.
 
 ## Wichtige Stores
 
@@ -56,6 +62,7 @@ VITE_WS_HOST=localhost:8000
 | `convoy` | `src/lib/stores/convoy.ts` | Aktiver Marschverband und Wegpunkte |
 | `map` | `src/lib/stores/map.ts` | MapLibre-Instanz und Layer-Zustand |
 | `tracking` | `src/lib/stores/tracking.ts` | Live-Positionen per WebSocket |
+| `branding` | `src/lib/stores/branding.ts` | App-Name, Farben und Logo der aktiven Org |
 
 ## Produktions-Build
 

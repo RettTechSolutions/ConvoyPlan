@@ -55,11 +55,16 @@
 - 🌤️ **Wetter- und Overpass-Integration** für Wetterdaten, Sperrungen und Baustellen.
 - 📱 **PWA und Capacitor-Konfiguration** für installierbare Web-App und native App-Wrapper.
 - 🎨 **Branding-System** – eigenes Logo, Farben und App-Name über den Admin-Bereich konfigurierbar.
-- 🏢 **Multi-Tenancy** – Organisationen erhalten einen kurzen Org-Code (4–8 Zeichen) als URL-Slug (`/[org-code]/`); org-spezifische Login-Seite mit eigenem Branding; vollständige Datenisolation pro Organisation.
+- 🏢 **Multi-Tenancy** – Organisationen erhalten einen kurzen Org-Code (4–8 Zeichen) als URL-Slug unter dem Scope `/o/[slug]/`; org-spezifische Login-Seite mit eigenem Branding; vollständige Datenisolation pro Organisation.
 - 🔒 **MFA / TOTP** – Zwei-Faktor-Authentifizierung per TOTP (z. B. Google Authenticator) einrichtbar im Org-Admin-Panel.
 - 📧 **SMTP-Dienst** – Passwörter direkt per E-Mail an Benutzer versenden; konfigurierbar im Admin-Panel ohne Neustart.
 - 🔄 **Auto-Updater** – Docker-Container pollt das Repository und deployt neue Commits automatisch; Live-Update-Log per SSE im Browser.
 - 🔑 **Lizenzmodell mit Demo-Modus** – ohne gültigen Lizenzschlüssel läuft die App im Demo-Modus (Lesezugriffe uneingeschränkt, schreibende Operationen mit HTTP 402 gesperrt); Aktivierung direkt über Admin-UI.
+- 🛡️ **Security-Härtung** – Brute-Force-Schutz (Rate-Limiting), einheitliche Passwort-Policy mit Have-I-Been-Pwned-Breach-Check, JWT-Revocation (Sitzungsentzug), MFA-Secrets verschlüsselt at-rest, CORS-Lockdown, Content-Security-Policy und Security-Header über Caddy.
+- 📝 **Security-Audit-Log** – append-only Protokoll sicherheitsrelevanter Ereignisse (Logins, MFA, Passwortänderungen, Benutzer-/Org-Anlage, Lizenzaktivierung) inkl. Akteur, Ziel, IP und User-Agent.
+- 🗂️ **DSGVO-Werkzeuge** – Datenexport (Art. 15) und Löschung mit pseudonymisiertem Audit-Trail (Art. 17) im Admin-Portal; automatische Datenaufbewahrung (Retention-Container) für Live-Positionen, Audit-Log und widerrufene Share-Links.
+- 💾 **Backup & Restore** – Skripte für PostgreSQL-Dump plus Upload-/TLS-Volumes inkl. Prüfsummen, Retention und Restore; dokumentierter Verschlüsselung-at-rest-Leitfaden.
+- 📞 **Org-fähige Leitstellen** – globale (superadmin-gepflegte) und org-eigene Leitstellen mit Vorschlags- und Freigabe-Workflow, Übersichtskarte und Landkreis-Auswahl für Zuständigkeitsgebiete.
 
 ---
 
@@ -92,6 +97,8 @@
 | Freigabelink | Öffentliche Routenansicht per Share-Token | ✅ |
 | Branding | Eigenes App-Logo, Farben und Name über Admin-UI konfigurierbar | ✅ |
 | Leitstellen | Leitstellen und Kanalwechselpunkte entlang der Route | ✅ |
+| Org-Leitstellen | Org-eigene Leitstellen mit Vorschlags-/Freigabe-Workflow, Übersichtskarte und Landkreis-Auswahl | ✅ |
+| API-Schlüssel | Org-gebundene API-Keys für programmatischen Zugriff (Admin-Panel) | ✅ |
 
 ### 📡 Live und Export
 
@@ -118,6 +125,25 @@
 | GitHub-Token in UI | `GITHUB_TOKEN` für Update-Fetch direkt in der Admin-UI konfigurierbar, kein Neustart | ✅ |
 | Demo-Modus | Ohne Lizenzschlüssel: Lesezugriff uneingeschränkt, Schreibzugriff gesperrt (HTTP 402) | ✅ |
 | Lizenzaktivierung | Schlüsseleingabe und Instanz-UUID im Admin-Bereich „System"; Cache-Reset ohne Neustart | ✅ |
+| Backup / Restore | `scripts/backup.sh` und `scripts/restore.sh` für DB-Dump und Volumes inkl. Prüfsummen und Retention | ✅ |
+| Host-Watchdog | systemd-Timer räumt verwaiste Updater-Container auf und startet abgestürzte Updater neu | ✅ |
+
+### 🔐 Sicherheit und Datenschutz
+
+| Funktion | Beschreibung | Status |
+|---|---|---:|
+| Brute-Force-Schutz | Rate-Limiting auf Login, MFA-Verify und Passwort-Reset (HTTP 429) | ✅ |
+| Passwort-Policy | Mind. 10 Zeichen mit Buchstaben + Ziffern, Abgleich gegen Have-I-Been-Pwned | ✅ |
+| JWT-Revocation | `token_version` entzieht alle Tokens bei Passwort-/MFA-Reset | ✅ |
+| MFA at-rest | TOTP-Secrets mit Fernet verschlüsselt gespeichert | ✅ |
+| CORS-Lockdown | In Produktion auf die eigene App-Origin beschränkt | ✅ |
+| CSP & Security-Header | Content-Security-Policy (Report-Only/Enforce) plus HSTS, X-Content-Type-Options u. a. über Caddy | ✅ |
+| Audit-Log | Append-only Protokoll sicherheitsrelevanter Ereignisse für Superadmins | ✅ |
+| Datenexport (DSGVO Art. 15) | `GET /api/admin/users/{id}/export` liefert alle personenbezogenen Daten als JSON | ✅ |
+| Datenlöschung (DSGVO Art. 17) | Löscht den Benutzer und pseudonymisiert den Audit-Trail | ✅ |
+| Retention | `retention`-Container purgt Live-Positionen, Audit-Log und Share-Links nach Frist | ✅ |
+| security.txt | Vulnerability-Disclosure-Kontakt unter `/.well-known/security.txt` | ✅ |
+| Dependency-Scanning | Dependabot + CI-Job (`pip-audit`, `npm audit`) | ✅ |
 
 ---
 
@@ -146,6 +172,7 @@ flowchart LR
     GH[GraphHopper]
     EXT[Open-Meteo / Overpass]
     Updater[Updater Container\ngit-poll auto-deploy]
+    Retention[Retention Container\nperiodischer Daten-Purge]
 
     Browser -->|HTTPS / WSS| Caddy
     Caddy -->|/api /ws| API
@@ -154,6 +181,7 @@ flowchart LR
     API --> GH
     API --> EXT
     API -->|Caddy Admin API :2019| Caddy
+    Retention --> DB
     Updater -->|docker compose up --build| API
     Updater -->|HTTPS| GH[GitHub]
 ```
@@ -194,12 +222,17 @@ ConvoyPlan/
 ├── backend/
 │   ├── app/
 │   │   ├── api/routes/       # REST- und WebSocket-Endpunkte
-│   │   │   ├── auth.py       # Registrierung, Login
+│   │   │   ├── auth.py       # Registrierung, Login, MFA, Passwort-Reset
 │   │   │   ├── setup.py      # Ersteinrichtungs-Wizard (Status + Ausführen)
-│   │   │   ├── admin.py      # Superadmin-Benutzerverwaltung
-│   │   │   ├── leitstellen.py  # Leitstellen und Kanalwechsel
+│   │   │   ├── admin.py      # Superadmin: Benutzer, Orgs, API-Keys, Audit-Log, DSGVO
+│   │   │   ├── leitstellen.py  # Globale Leitstellen und Kanalwechsel
+│   │   │   ├── org_leitstellen.py  # Org-eigene Leitstellen + Vorschlags-Workflow
 │   │   │   ├── branding.py   # Branding-Konfiguration und Logo-Upload
+│   │   │   ├── email_template.py  # E-Mail-Vorlagen (SMTP-Versand)
+│   │   │   ├── license.py    # Lizenzstatus, Aktivierung, Instanz-UUID
 │   │   │   ├── convoys.py    # Marschverbände, Waypoints, Export
+│   │   │   ├── share_links.py  # Widerrufbare Freigabelinks pro Konvoi
+│   │   │   ├── track.py      # Eigenständige Tracking-App (REST + WebSocket)
 │   │   │   ├── vehicles.py   # Fahrzeugverwaltung
 │   │   │   ├── organizations.py  # Organisationen und Mitglieder
 │   │   │   ├── tracking.py   # Live-Positionen + WebSocket
@@ -207,31 +240,34 @@ ConvoyPlan/
 │   │   │   ├── weather.py    # Open-Meteo-Integration
 │   │   │   ├── overpass.py   # OSM-Sperrungsabfragen
 │   │   │   ├── users.py      # Eigenes Benutzerprofil
+│   │   │   ├── version.py    # Versions- und Build-Informationen
 │   │   │   └── status.py     # Systemstatus
 │   │   ├── models/           # SQLAlchemy-Modelle
 │   │   ├── schemas/          # Pydantic-Schemas
-│   │   ├── services/         # Routing, Zeitplan, Export, Wetter, Tracking
+│   │   ├── services/         # Routing, Zeitplan, Export, Wetter, Tracking, Retention
+│   │   ├── jobs/             # Hintergrundjobs (z. B. Retention-Purge)
 │   │   ├── config.py         # Backend-Konfiguration über Umgebungsvariablen
 │   │   ├── database.py       # Async-Datenbankanbindung
 │   │   └── main.py           # FastAPI-App und Router-Registrierung
-│   ├── alembic/              # Datenbankmigrationen (0001–0013)
+│   ├── alembic/              # Datenbankmigrationen (0001–0022)
 │   ├── tests/                # pytest-Tests
 │   ├── Dockerfile
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/lib/api/          # API-Client
-│   ├── src/lib/components/   # Karte, Wetter, UI-Bausteine
-│   ├── src/lib/stores/       # Auth-, Karten-, Konvoi-, Tracking-, Org-Stores
+│   ├── src/lib/components/   # Karte, Wetter, Leitstellen-Tabelle/-Karte, UI-Bausteine
+│   ├── src/lib/stores/       # Auth-, Karten-, Konvoi-, Tracking-, Org-, Branding-Stores
 │   ├── src/routes/
 │   │   ├── setup/            # Ersteinrichtungs-Wizard (5 Schritte inkl. Org-Anlage)
-│   │   ├── login/            # Globale Anmeldung
-│   │   ├── [org-code]/       # Org-Scope (alle org-spezifischen Routen)
+│   │   ├── admin/            # Superadmin (self-gated): Benutzer, Orgs, API-Keys, Leitstellen, Branding, System
+│   │   ├── o/[slug]/         # Org-Scope (alle org-spezifischen Routen)
 │   │   │   ├── login/        # Org-spezifische Anmeldung mit eigenem Branding
 │   │   │   ├── plan/         # Planungsansicht mit Karte
-│   │   │   ├── tracking/     # Live-Tracking-Ansicht
-│   │   │   ├── share/        # Öffentliche Routenansicht
+│   │   │   ├── tracking/     # Live-Tracking-Ansicht (Übersicht + je Konvoi)
 │   │   │   └── admin/        # Org-Admin: Mitglieder, Leitstellen, Branding, System
-│   │   └── admin/            # Superadmin: Benutzer- und Org-Verwaltung
+│   │   ├── track/[slug]/     # Eigenständige Fahrer-Tracking-PWA („Convoy Tracking")
+│   │   └── share/[token]/    # Öffentliche Routenansicht ohne Login
+│   ├── static/geo/           # Offline-Landkreisgrenzen (GeoJSON) für Leitstellengebiete
 │   ├── capacitor.config.ts
 │   ├── package.json
 │   └── vite.config.ts
@@ -242,14 +278,24 @@ ConvoyPlan/
 │   ├── Dockerfile
 │   ├── entrypoint.sh         # OSM-Download und GraphHopper-Start
 │   └── config.yml
-├── .github/workflows/
-│   ├── ci.yml                # Tests + Typecheck + Docker-Build bei Push/PR
-│   └── release.yml           # Docker-Images zu GHCR + GitHub Release bei Tag
+├── .github/
+│   ├── workflows/
+│   │   ├── ci.yml            # Tests + Typecheck + Docker-Build + Dependency-Audit
+│   │   └── release.yml       # Docker-Images zu GHCR + GitHub Release bei Tag
+│   └── dependabot.yml        # Dependency-Updates (pip/npm/Actions/Docker)
+├── docs/                     # Backup/Restore, Retention- und ISO-Dokumentation
 ├── .hooks/pre-commit         # Lokaler Pre-Commit-Hook (ruff + svelte-check)
-├── scripts/install-hooks.sh  # Installiert .hooks/ in .git/hooks/
+├── scripts/
+│   ├── install.sh            # Linux-Installer (+ systemd-Watchdog)
+│   ├── install.ps1           # Windows-Installer
+│   ├── backup.sh             # PostgreSQL-Dump + Volumes + Prüfsummen + Retention
+│   ├── restore.sh            # Wiederherstellung aus Backup
+│   ├── updater-watchdog.sh   # Räumt verwaiste Updater-Container auf
+│   └── install-hooks.sh      # Installiert .hooks/ in .git/hooks/
 ├── logo/                     # Logo-, Favicon- und Design-Assets
 ├── CHANGELOG.md              # Versionshistorie
 ├── RELEASING.md              # Anleitung zum Schneiden eines Releases
+├── SECURITY.md               # Vulnerability-Disclosure-Richtlinie
 ├── .env.example              # Alle Umgebungsvariablen mit Erklärungen
 ├── docker-compose.yml        # Lokales Entwicklungssetup
 └── stack.yml                 # Produktiv-Compose-Datei (wird vom Installer genutzt)
@@ -355,10 +401,10 @@ Die Anwendung ist anschließend erreichbar unter:
 Beim ersten Start leitet die Anwendung automatisch auf `http://localhost:5173/setup` weiter. Der fünfstufige Wizard führt durch:
 
 1. **Superadmin-Account** — E-Mail-Adresse und Passwort festlegen.
-2. **Erste Organisation** — Org-Name und Org-Code (URL-Slug, 4–8 Zeichen) anlegen; dieser Slug wird Teil aller org-spezifischen URLs (`/[org-code]/plan/`, `/[org-code]/admin/`).
+2. **Erste Organisation** — Org-Name und Org-Code (URL-Slug, 4–8 Zeichen) anlegen; dieser Slug wird Teil aller org-spezifischen URLs (`/o/[slug]/plan/`, `/o/[slug]/admin/`).
 3. **Domain und SSL** — Serverdomain (FQDN) eingeben und TLS-Modus wählen: Let's Encrypt, eigenes Zertifikat (Datei-Upload) oder internes Zertifikat für lokale Nutzung.
 4. **Branding** (optional) — App-Name, Farben und Logo an die eigene Organisation anpassen. Dieser Schritt kann übersprungen werden und ist auch später im Admin-Bereich erreichbar.
-5. **Abschluss** — Caddy wird live neu geladen; danach direkt zur Anmeldung unter `https://<DOMAIN>/[org-code]/login`.
+5. **Abschluss** — Caddy wird live neu geladen; danach direkt zur Anmeldung unter `https://<DOMAIN>/o/[slug]/login`.
 
 > Für lokale Entwicklung ohne Caddy kann der Wizard mit `localhost` als Domain und `internal` als TLS-Modus ausgeführt werden.
 
@@ -381,11 +427,28 @@ Eine vollständige Vorlage liegt in `.env.example`. Die wichtigsten Variablen:
 | Variable | Standard | Beschreibung |
 |---|---|---|
 | `DATABASE_URL` | *(aus POSTGRES_\* zusammengesetzt)* | PostgreSQL/PostGIS-Verbindung |
-| `JWT_SECRET` | `changeme-in-production` | Signaturschlüssel für JWTs – zwingend ersetzen (`openssl rand -hex 32`) |
+| `APP_ENV` | `production` | `production` erzwingt einen starken `JWT_SECRET` (Fail-Closed); `development` lockert die Prüfung für lokale Arbeit |
+| `JWT_SECRET` | *(kein sicherer Default)* | Signaturschlüssel für JWTs – in Produktion zwingend ≥ 32 Zeichen (`openssl rand -hex 32`); sonst startet das Backend nicht |
 | `JWT_ALGORITHM` | `HS256` | JWT-Algorithmus |
 | `JWT_EXPIRE_MINUTES` | `10080` | Token-Ablaufzeit in Minuten (7 Tage) |
 | `GRAPHHOPPER_URL` | `http://graphhopper:8989` | URL der Routing-Engine |
-| `CORS_ORIGINS` | `*` | Erlaubte CORS-Origins; in Produktion auf die eigene Domain einschränken |
+| `APP_BASE_URL` | `https://convoyplan.example.com` | Öffentliche App-Origin (Fallback für CORS in Produktion) |
+| `CORS_ORIGINS` | *(leer)* | Komma-getrennte Allowlist oder `*`; leer = App-Origin aus `APP_BASE_URL`. `*` nur in Entwicklung |
+
+### Sicherheit und Datenschutz
+
+| Variable | Standard | Beschreibung |
+|---|---|---|
+| `MFA_ENCRYPTION_KEY` | *(aus `JWT_SECRET` abgeleitet)* | Fernet-Schlüssel zur Verschlüsselung der TOTP-Secrets at-rest. Rotation von `JWT_SECRET` macht ohne eigenen Schlüssel bestehende MFA-Secrets unlesbar |
+| `PASSWORD_BREACH_CHECK_ENABLED` | `true` | Abgleich neuer Passwörter gegen Have-I-Been-Pwned (k-Anonymity, fail-open). Für Air-Gapped-Setups auf `false` |
+| `CSP_ENFORCE` | `false` | Content-Security-Policy erzwingen (Default: Report-Only, bricht die UI nicht) |
+| `RETENTION_ENABLED` | `true` | Periodisches Purgen alter Daten durch den `retention`-Container |
+| `RETENTION_INTERVAL` | `3600` | Sekunden zwischen den Purge-Läufen |
+| `RETENTION_POSITIONS_HOURS` | `24` | Live-Positionen älter als dieser Wert werden gelöscht |
+| `RETENTION_AUDIT_DAYS` | `365` | Audit-Log-Einträge älter als dieser Wert werden gelöscht |
+| `RETENTION_SHARE_LINKS_DAYS` | `30` | Widerrufene Share-Links älter als dieser Wert werden gelöscht |
+| `BACKUP_DIR` | `./backups` | Zielverzeichnis für `scripts/backup.sh` |
+| `BACKUP_RETENTION_DAYS` | `30` | Aufbewahrungsdauer der Backups |
 
 ### SSL / Caddy
 
@@ -450,10 +513,26 @@ Die vollständige OpenAPI-Dokumentation wird automatisch von FastAPI bereitgeste
 
 | Methode | Endpunkt | Beschreibung |
 |---|---|---|
-| `GET` | `/api/admin/users` | Alle Benutzer auflisten |
-| `PATCH` | `/api/admin/users/{user_id}` | Benutzer aktivieren/deaktivieren, Rolle setzen |
+| `GET/POST` | `/api/admin/users` | Benutzer auflisten oder anlegen |
+| `PATCH/DELETE` | `/api/admin/users/{user_id}` | Benutzer aktivieren/deaktivieren, Rolle setzen, löschen |
 | `GET/POST` | `/api/admin/organizations` | Organisationen auflisten oder anlegen |
-| `PATCH` | `/api/admin/users/{user_id}/organization` | Benutzer einer Organisation zuweisen |
+| `POST/DELETE` | `/api/admin/users/{user_id}/orgs` | Benutzer einer Organisation zuweisen oder entfernen |
+| `GET/POST/DELETE` | `/api/admin/organizations/{org_id}/api-keys` | Org-gebundene API-Schlüssel verwalten |
+| `POST` | `/api/admin/trigger-update` | Auto-Update manuell anstoßen |
+| `GET` | `/api/admin/update-status` / `/api/admin/update-log` | Deploy-Stand bzw. Live-Update-Log (SSE) |
+| `GET/PUT` | `/api/admin/settings/smtp` | SMTP-Konfiguration lesen/setzen |
+
+**Sicherheit und Datenschutz**
+
+| Methode | Endpunkt | Beschreibung |
+|---|---|---|
+| `POST` | `/api/auth/password` | Eigenes Passwort ändern (frisches Token) |
+| `POST` | `/api/auth/password-reset` | Passwort-Reset anstoßen |
+| `POST` | `/api/admin/users/{user_id}/reset-password` | Passwort als Superadmin zurücksetzen |
+| `POST` | `/api/admin/users/{user_id}/reset-mfa` | MFA eines Benutzers zurücksetzen |
+| `GET` | `/api/admin/audit-log` | Security-Audit-Log (Filter nach Aktion) |
+| `GET` | `/api/admin/users/{user_id}/export` | Personenbezogene Daten exportieren (DSGVO Art. 15) |
+| `DELETE` | `/api/admin/users/{user_id}/data` | Benutzerdaten löschen, Audit-Trail pseudonymisieren (Art. 17) |
 
 **Lizenz**
 
@@ -499,12 +578,36 @@ Die vollständige OpenAPI-Dokumentation wird automatisch von FastAPI bereitgeste
 | `PATCH` | `/api/convoys/{convoy_id}/vehicles/{vehicle_id}/status` | Fahrzeugstatus ändern |
 | `WS` | `/ws/tracking/{convoy_id}?token=...` | WebSocket für Live-Tracking |
 
+**Leitstellen**
+
+| Methode | Endpunkt | Beschreibung |
+|---|---|---|
+| `GET/POST/PUT/DELETE` | `/api/leitstellen/` | Globale (superadmin-gepflegte) Leitstellen verwalten |
+| `GET/POST/PUT/DELETE` | `/api/org/leitstellen/` | Org-eigene Leitstellen verwalten |
+| `POST` | `/api/org/leitstellen/{id}/submit` | Org-Leitstelle als globalen Vorschlag einreichen |
+| `GET` | `/api/org/leitstellen/geojson` | Sichtbare Leitstellengebiete als GeoJSON (Übersichtskarte) |
+
+**Freigabelinks und Tracking-App**
+
+| Methode | Endpunkt | Beschreibung |
+|---|---|---|
+| `GET/POST/DELETE` | `/api/convoys/{convoy_id}/share-links` | Widerrufbare Freigabelinks pro Konvoi |
+| `GET/POST` | `/api/track/{slug}` | Öffentliche Tracking-App: Status abrufen / Position senden |
+| `WS` | `/api/ws/track/{slug}` | WebSocket der Tracking-App |
+
 **Wetter und Overpass**
 
 | Methode | Endpunkt | Beschreibung |
 |---|---|---|
 | `GET` | `/api/weather/?lat=...&lon=...` | Wetterdaten abrufen |
 | `GET` | `/api/overpass/closures?lat=...&lon=...` | Sperrungen und Baustellen abrufen |
+
+**System**
+
+| Methode | Endpunkt | Beschreibung |
+|---|---|---|
+| `GET` | `/api/version` | Build-Version, Commit-SHA und Update-Hinweis |
+| `GET` | `/health` | Healthcheck mit Versionsangabe |
 
 ---
 
@@ -672,11 +775,14 @@ Für iOS wird eine macOS-Umgebung mit Xcode benötigt.
 
 ## Sicherheitshinweise
 
-- Der Standardwert `changeme-in-production` für `JWT_SECRET` ist nur für lokale Entwicklung gedacht.
+- In Produktion (`APP_ENV=production`, Default) verweigert das Backend den Start, wenn `JWT_SECRET` leer, der Platzhalter oder kürzer als 32 Zeichen ist (Fail-Closed). Mit `openssl rand -hex 32` erzeugen — die Installer tun das automatisch.
 - Die Datenbankzugänge in `docker-compose.yml` sind Entwicklungs-Defaults und nicht produktionsgeeignet.
 - Die Caddy-Admin-API läuft auf Port `:2019` und ist nur im Docker-Netzwerk intern erreichbar — der Port wird nicht nach außen exponiert.
-- Live-Tracking verarbeitet Standortdaten. Für reale Einsätze sollten Zugriff, Aufbewahrung, Protokollierung und Löschung organisatorisch geregelt werden.
-- Öffentliche Share-Links sind ohne Login abrufbar — Tokens sollten wie vertrauliche Links behandelt werden.
+- Caddy liefert Security-Header (HSTS, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`) und eine Content-Security-Policy aus; die CSP ist standardmäßig Report-Only und per `CSP_ENFORCE=true` erzwingbar.
+- TOTP-Secrets werden Fernet-verschlüsselt at-rest gespeichert; Passwort-/MFA-Reset entziehen über die `token_version` alle bestehenden JWTs.
+- Live-Tracking verarbeitet Standortdaten. Aufbewahrung wird über den `retention`-Container geregelt (Standard: Positionen 24 h, Audit-Log 365 Tage, widerrufene Share-Links 30 Tage).
+- Öffentliche Share-Links sind ohne Login abrufbar — Tokens sollten wie vertrauliche Links behandelt und bei Bedarf widerrufen werden.
+- Sicherheitsrelevante Ereignisse werden im Audit-Log protokolliert; Sicherheitslücken bitte gemäß [`SECURITY.md`](SECURITY.md) bzw. `/.well-known/security.txt` melden.
 - Im Demo-Modus (kein gültiger `LICENSE_KEY`) sind alle schreibenden API-Operationen (POST/PUT/PATCH/DELETE) mit HTTP 402 gesperrt. Der Demo-Modus ist für Tests geeignet, nicht für Einsatzbetrieb.
 
 ---
@@ -689,8 +795,13 @@ Für iOS wird eine macOS-Umgebung mit Xcode benötigt.
 - ~~Multi-Tenancy mit Org-Code-Slug und org-spezifischem Branding~~ ✅ (seit 0.8.5)
 - ~~MFA / TOTP-Zwei-Faktor-Authentifizierung~~ ✅ (seit 0.8.5)
 - ~~SMTP-Dienst für Passwort-E-Mails~~ ✅ (seit 0.8.5)
+- ~~Security-Härtung (Brute-Force-Schutz, Passwort-Policy, JWT-Revocation, CSP)~~ ✅ (seit 1.0.0)
+- ~~Security-Audit-Log sicherheitsrelevanter Ereignisse~~ ✅ (seit 1.0.0)
+- ~~DSGVO-Werkzeuge (Datenexport/-löschung) und Datenaufbewahrung~~ ✅ (seit 1.0.0)
+- ~~Backup-/Restore-Skripte~~ ✅ (seit 1.0.0)
+- ~~Org-eigene Leitstellen mit Vorschlags-Workflow~~ ✅ (seit 1.0.0)
 - Benachrichtigungen bei Verzögerungen oder Abweichungen von der Route.
-- Audit-Log für Änderungen an Marschbefehlen und Konvois.
+- Audit-Log für fachliche Änderungen an Marschbefehlen und Konvois.
 - Offline-First-Synchronisation für mobile Nutzung.
 - Erweiterte Einsatzdokumentation und Einsatznachbereitung.
 
