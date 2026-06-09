@@ -15,6 +15,7 @@ from app.schemas.share_link import (
     ShareLinkCreated,
     ShareLinkResponse,
 )
+from app.services import audit
 from app.services import share_links as share_links_svc
 from app.services.tracking import tracking_manager
 
@@ -66,7 +67,7 @@ async def create_share_link(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await get_convoy_access(convoy_id, current_user, db, require="write")
+    convoy = await get_convoy_access(convoy_id, current_user, db, require="write")
 
     plain_password: str | None = None
     if data.password_mode == "generate":
@@ -90,6 +91,14 @@ async def create_share_link(
     await db.commit()
     await db.refresh(link)
 
+    await audit.record(
+        db, audit.SHARE_LINK_CREATED, request=request, actor_id=current_user.id,
+        actor_email=current_user.email, org_id=convoy.organization_id,
+        target_type="convoy", target_id=convoy_id,
+        detail={"slug": link.slug, "scope": link.scope,
+                "requires_password": link.password_hash is not None},
+    )
+
     base = _to_response(link, request)
     return ShareLinkCreated(**base.model_dump(), password_plain=plain_password)
 
@@ -98,10 +107,11 @@ async def create_share_link(
 async def revoke_share_link(
     convoy_id: uuid.UUID,
     link_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await get_convoy_access(convoy_id, current_user, db, require="write")
+    convoy = await get_convoy_access(convoy_id, current_user, db, require="write")
     result = await db.execute(
         select(ConvoyShareLink).where(
             ConvoyShareLink.id == link_id,
@@ -111,8 +121,16 @@ async def revoke_share_link(
     link = result.scalar_one_or_none()
     if not link:
         raise HTTPException(status_code=404, detail="Share-Link nicht gefunden")
+    slug = link.slug
     convoy_id = str(link.convoy_id)
     link.revoked = True
     await db.commit()
+
+    await audit.record(
+        db, audit.SHARE_LINK_REVOKED, request=request, actor_id=current_user.id,
+        actor_email=current_user.email, org_id=convoy.organization_id,
+        target_type="convoy", target_id=convoy_id, detail={"slug": slug},
+    )
+
     await tracking_manager.revoke_connections(convoy_id)
     return None
