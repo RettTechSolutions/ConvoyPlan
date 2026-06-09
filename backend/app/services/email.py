@@ -211,14 +211,16 @@ async def _render_password_email_async(
         "color_primary": color_primary,
         "color_primary_hover": color_primary_hover,
     }
+    # Subject is plain text — use raw (unescaped) values so &amp; never appears.
+    plain_vars = {**html_vars, "app_name": app_name}
 
     try:
-        subject = subject_tpl.format_map(variables)
-        html_body = html_tpl.format_map(variables)
+        subject = subject_tpl.format_map(plain_vars)
+        html_body = html_tpl.format_map(html_vars)
     except (KeyError, ValueError):
         # Fall back to default template if custom template has rendering issues
-        subject = DEFAULT_EMAIL_TEMPLATE_SUBJECT.format_map(variables)
-        html_body = DEFAULT_EMAIL_TEMPLATE_HTML.format_map(variables)
+        subject = DEFAULT_EMAIL_TEMPLATE_SUBJECT.format_map(plain_vars)
+        html_body = DEFAULT_EMAIL_TEMPLATE_HTML.format_map(html_vars)
 
     return subject, html_body
 
