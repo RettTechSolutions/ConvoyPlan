@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 import xml.etree.ElementTree as _ET
 from pathlib import Path
 from typing import Literal
@@ -66,6 +67,26 @@ BRANDING_DEFAULTS: dict[str, str] = {
 }
 
 LOGOS_DIR = Path("/uploads/logos")
+
+# PNG magic: \x89 P N G \r \n \x1a \n
+_MAGIC_PNG = b"\x89PNG\r\n\x1a\n"
+# JPEG magic: SOI marker \xff \xd8 \xff
+_MAGIC_JPEG = b"\xff\xd8\xff"
+# SVG: reject any embedded scripts or event-handler attributes.
+_SVG_ACTIVE_CONTENT = re.compile(
+    rb"<script|javascript:|on(?:load|error|click|mouse\w+|key\w+|submit|focus|blur)\s*=",
+    re.IGNORECASE,
+)
+
+
+def _validate_image_content(content: bytes, ext: str) -> None:
+    """Raise HTTP 400 if the bytes do not match the declared extension or contain active content."""
+    if ext == ".png" and not content.startswith(_MAGIC_PNG):
+        raise HTTPException(status_code=400, detail="File content does not match declared type (expected PNG)")
+    if ext in {".jpg", ".jpeg"} and not content.startswith(_MAGIC_JPEG):
+        raise HTTPException(status_code=400, detail="File content does not match declared type (expected JPEG)")
+    if ext == ".svg" and _SVG_ACTIVE_CONTENT.search(content):
+        raise HTTPException(status_code=400, detail="SVG files must not contain scripts or event handlers")
 
 
 async def _get_branding_response(db: AsyncSession) -> BrandingResponse:
@@ -158,7 +179,7 @@ async def upload_logo(
         raise HTTPException(status_code=400, detail="File content does not match the declared type")
     LOGOS_DIR.mkdir(parents=True, exist_ok=True)
     filename = f"{slot}{ext}"
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, (LOGOS_DIR / filename).write_bytes, content)
     await _upsert(db, f"branding.logo_{slot}", filename)
     await db.commit()

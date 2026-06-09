@@ -3,8 +3,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
-from jose import jwt, JWTError
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 import jwt as _jwt
 from jwt.exceptions import InvalidTokenError
 
@@ -32,6 +31,20 @@ class PositionUpdate(BaseModel):
     lon: float = Field(..., ge=-180, le=180)
     speed_kmh: float | None = Field(None, ge=0)
     heading: float | None = Field(None, ge=0, lt=360)
+
+    @field_validator("lat")
+    @classmethod
+    def validate_lat(cls, v: float) -> float:
+        if not -90 <= v <= 90:
+            raise ValueError("Latitude must be between -90 and 90")
+        return v
+
+    @field_validator("lon")
+    @classmethod
+    def validate_lon(cls, v: float) -> float:
+        if not -180 <= v <= 180:
+            raise ValueError("Longitude must be between -180 and 180")
+        return v
 
 
 _VALID_VEHICLE_STATUSES = {"planned", "en_route", "arrived", "delayed"}
@@ -224,14 +237,12 @@ async def tracking_ws(
     try:
         while True:
             raw = await ws.receive_json()
-            # Client kann Positionen über WS schicken; Pydantic validiert Typen und Bounds.
             try:
-                update = PositionUpdate.model_validate(raw)
-            except ValidationError:
-                logger.warning("Invalid position payload from convoy %s, dropping", convoy_id)
+                pos = PositionUpdate.model_validate(raw)
+            except Exception:
                 continue
             # Verworfen, falls ein Admin die Freigabe gerade zurückgesetzt hat.
-            if tracking_manager.is_recently_cleared(convoy_id, str(update.vehicle_id)):
+            if tracking_manager.is_recently_cleared(convoy_id, str(pos.vehicle_id)):
                 continue
             async with AsyncSessionLocal() as db:
                 try:
@@ -239,29 +250,24 @@ async def tracking_ws(
                 except HTTPException:
                     await ws.close(code=4403)
                     return
-                lat = float(data["lat"])
-                lon = float(data["lon"])
-                if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
-                    logger.warning("WS position out of bounds: lat=%s lon=%s", lat, lon)
-                    continue
                 stmt = (
                     pg_insert(VehiclePosition)
                     .values(
                         convoy_id=uuid.UUID(convoy_id),
-                        vehicle_id=uuid.UUID(data["vehicle_id"]),
-                        lat=lat,
-                        lon=lon,
-                        speed_kmh=data.get("speed_kmh"),
-                        heading=data.get("heading"),
+                        vehicle_id=pos.vehicle_id,
+                        lat=pos.lat,
+                        lon=pos.lon,
+                        speed_kmh=pos.speed_kmh,
+                        heading=pos.heading,
                         recorded_at=datetime.now(timezone.utc),
                     )
                     .on_conflict_do_update(
                         index_elements=["convoy_id", "vehicle_id"],
                         set_={
-                            "lat": lat,
-                            "lon": lon,
-                            "speed_kmh": data.get("speed_kmh"),
-                            "heading": data.get("heading"),
+                            "lat": pos.lat,
+                            "lon": pos.lon,
+                            "speed_kmh": pos.speed_kmh,
+                            "heading": pos.heading,
                             "recorded_at": datetime.now(timezone.utc),
                         },
                     )
@@ -271,11 +277,11 @@ async def tracking_ws(
 
             await tracking_manager.broadcast(convoy_id, {
                 "type": "position",
-                "vehicle_id": str(update.vehicle_id),
-                "lat": update.lat,
-                "lon": update.lon,
-                "speed_kmh": update.speed_kmh,
-                "heading": update.heading,
+                "vehicle_id": str(pos.vehicle_id),
+                "lat": pos.lat,
+                "lon": pos.lon,
+                "speed_kmh": pos.speed_kmh,
+                "heading": pos.heading,
             })
     except WebSocketDisconnect:
         pass

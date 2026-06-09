@@ -30,8 +30,13 @@ from app.services import fuel as fuel_svc
 from app.services import overpass as overpass_svc
 from app.services import importer as importer_svc
 
-router = APIRouter(prefix="/convoys", tags=["routing"])
 logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/convoys", tags=["routing"])
+
+
+def _safe_filename(name: str) -> str:
+    """Strip characters that would break a Content-Disposition filename= value."""
+    return re.sub(r'[\r\n\x00-\x1f"\\]', "_", name)
 
 _MAX_IMPORT_BYTES = 10 * 1024 * 1024  # 10 MB — guard against DoS via huge uploads
 
@@ -55,6 +60,39 @@ def _safe_filename(name: str) -> str:
     return _UNSAFE_FILENAME_CHARS.sub("_", name)
 
 _MAX_IMPORT_BYTES = 5 * 1024 * 1024  # 5 MB hard cap for GPX/GeoJSON uploads
+
+_CTRL = str.maketrans("", "", "".join(chr(i) for i in range(32)) + '"\\')
+
+
+def _safe_filename(name: str) -> str:
+    """Strip control characters and quote-related chars from filenames used in headers."""
+    return name.translate(_CTRL)
+
+_UNSAFE_FILENAME_RE = re.compile(r'[^\w\-. ]')
+
+
+def _safe_filename(name: str) -> str:
+    """Replace characters that are unsafe inside a quoted Content-Disposition filename."""
+    return _UNSAFE_FILENAME_RE.sub('_', name)
+
+_CRLF_RE = re.compile(r'[\r\n"\\]')
+
+
+def _safe_filename(name: str, ext: str) -> str:
+    """Strip CRLF and quote chars to prevent CWE-113 header injection."""
+    safe = _CRLF_RE.sub("", name)[:100]
+    return f"{safe}{ext}"
+
+_UNSAFE_FILENAME_RE = __import__("re").compile(r'[\x00-\x1f"\\]')
+
+
+def _safe_filename(name: str) -> str:
+    """Strip characters that could break a quoted Content-Disposition filename."""
+    return _UNSAFE_FILENAME_RE.sub("_", name)
+
+
+def _safe_filename(name: str) -> str:
+    return "".join(c for c in name if c not in ('"', "\r", "\n", "/", "\\"))
 
 
 async def _apply_import(
@@ -451,6 +489,9 @@ async def export_pdf(
     )
 
 
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
 @router.post("/{convoy_id}/import/gpx")
 async def import_gpx(
     convoy_id: uuid.UUID,
@@ -499,6 +540,10 @@ async def find_fuel_stations(
     current_user: User = Depends(get_current_user),
 ):
     """Find fuel stations near (lat, lon) – typically the recommended stop position."""
+    if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+        raise HTTPException(status_code=422, detail="Invalid coordinates")
+    if not (100 <= radius_m <= 50_000):
+        raise HTTPException(status_code=422, detail="radius_m must be between 100 and 50000")
     await _load_convoy(convoy_id, current_user, db, require="read")
     stations = await overpass_svc.find_fuel_stations(lat, lon, radius_m)
     return stations

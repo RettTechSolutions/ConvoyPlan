@@ -10,7 +10,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 import jwt as _jwt
-from jwt.exceptions import InvalidTokenError
+from jwt.exceptions import PyJWTError as JWTError, InvalidTokenError
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -515,18 +515,32 @@ async def trigger_update(
 @router.get("/update-log")
 async def stream_update_log(
     token: str = Query(...),
+    db: AsyncSession = Depends(get_db),
 ):
     """SSE stream of the live updater log.
 
     Uses a token query-param because browser EventSource cannot set headers.
     The token must be a valid superadmin JWT.
     """
-    # Validate token — require superadmin
+    # Validate token — require superadmin.  Re-check the DB so a revoked or
+    # demoted admin cannot keep streaming after token_version is bumped or the
+    # is_superadmin flag is cleared.
     try:
         payload = _jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
         if not payload.get("is_superadmin"):
             raise HTTPException(403, "Superadmin required")
-    except InvalidTokenError:
+        user_id_str = payload.get("sub")
+        if not user_id_str:
+            raise HTTPException(401, "Invalid token")
+        db_result = await db.execute(select(User).where(User.id == user_id_str))
+        db_user = db_result.scalar_one_or_none()
+        if not db_user or not db_user.is_active:
+            raise HTTPException(401, "Invalid token")
+        if not db_user.is_superadmin:
+            raise HTTPException(403, "Superadmin required")
+        if int(payload.get("tv", 0)) != db_user.token_version:
+            raise HTTPException(401, "Session expired — please log in again")
+    except (JWTError, InvalidTokenError):
         raise HTTPException(401, "Invalid token")
 
     async def log_generator():
@@ -696,8 +710,10 @@ async def send_user_password(
             login_url=login_url,
         )
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        logger.warning("Password email validation error: %s", e)
+        raise HTTPException(400, "E-Mail-Konfiguration ungültig")
     except Exception as e:
+        logger.warning("Failed to send password email: %s", e)
         logger.error("Failed to send password e-mail to user %s: %s", user.id, e)
         raise HTTPException(502, "E-Mail konnte nicht gesendet werden")
 
