@@ -495,6 +495,9 @@ async def export_pdf(
     )
 
 
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
 @router.post("/{convoy_id}/import/gpx")
 async def import_gpx(
     convoy_id: uuid.UUID,
