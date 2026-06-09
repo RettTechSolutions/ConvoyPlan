@@ -1,0 +1,57 @@
+name: Auto-merge
+
+# Aktiviert GitHubs nativen Auto-Merge (Squash) für Pull Requests, die das
+# Label "auto-merge" tragen. GitHub führt den Merge dann automatisch aus,
+# sobald ALLE in der Branch-Protection / im Ruleset geforderten Status-Checks
+# grün sind. Schlägt ein Check fehl, bleibt der PR offen.
+#
+# Dependabot-PRs erhalten das Label "auto-merge" automatisch und werden somit
+# nach grünen Checks ebenfalls automatisch gemergt.
+#
+# Voraussetzungen (einmalig in den Repo-Settings, siehe
+# .github/repo-setup-checklist.md):
+#   1. Settings → General → "Allow auto-merge" aktivieren.
+#   2. Ruleset aus .github/rulesets/main.json importieren (Required Checks).
+#   3. Label "auto-merge" anlegen.
+#
+# Hinweis zur Sicherheit: Wir nutzen pull_request_target und checken bewusst
+# KEINEN PR-Code aus. Der Job ruft ausschließlich die GitHub-API auf, daher
+# ist die Verwendung des schreibenden Tokens hier unkritisch. pull_request_target
+# läuft zudem im Kontext des Basis-Repos und hat damit auch bei Dependabot-PRs
+# die nötigen Schreibrechte.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, labeled, synchronize]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  enable-auto-merge:
+    name: Enable auto-merge (squash)
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.pull_request.draft == false &&
+      (contains(github.event.pull_request.labels.*.name, 'auto-merge') ||
+       github.actor == 'dependabot[bot]')
+    steps:
+      - name: Label Dependabot PR with auto-merge
+        if: >-
+          github.actor == 'dependabot[bot]' &&
+          !contains(github.event.pull_request.labels.*.name, 'auto-merge')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr edit "$PR_URL" --add-label "auto-merge"
+
+      - name: Enable native auto-merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --squash "$PR_URL"
