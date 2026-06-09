@@ -1,6 +1,10 @@
+import logging
+
 from fastapi import APIRouter, HTTPException, Query
 
 from app.services import weather as weather_svc
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/weather", tags=["weather"])
 
@@ -13,4 +17,5 @@ async def get_weather(
     try:
         return await weather_svc.get_weather(lat, lon)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Wetterdaten nicht verfügbar: {exc}")
+        logger.warning("Weather service failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Wetterdaten nicht verfügbar")
