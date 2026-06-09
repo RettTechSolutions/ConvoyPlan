@@ -17,6 +17,7 @@ from sqlalchemy.orm import selectinload
 
 from app.database import AsyncSessionLocal, get_db
 from app.models.convoy import Convoy, ConvoyVehicle
+from app.services.rate_limit import rate_limit, register_failure
 from app.models.route import Route
 from app.models.share_link import ConvoyShareLink
 from app.models.vehicle_position import VehiclePosition
