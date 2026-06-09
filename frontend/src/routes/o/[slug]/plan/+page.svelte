@@ -255,6 +255,27 @@
 		activeConvoy.set(c);
 		route = null;
 		activeRoute.set(null);
+		fuelStations = [];
+		showFuelStations = false;
+		loadStoredRoute(c.id);
+	}
+
+	// Load a previously calculated route from the backend so it survives
+	// page reloads / app restarts. Each calculated route is persisted server-side.
+	async function loadStoredRoute(convoyId: string) {
+		try {
+			const r = await convoysApi.getRoute(convoyId);
+			// Guard against a slow response after the user switched convoys
+			if (!r || !r.geojson || get(activeConvoy)?.id !== convoyId) return;
+			route = {
+				geojson: r.geojson,
+				distance_m: r.distance_m,
+				duration_s: r.duration_s,
+				fuel_analysis: r.fuel_analysis,
+				kanalwechsel: r.kanalwechsel ?? [],
+			};
+			activeRoute.set(r);
+		} catch { /* no stored route yet */ }
 	}
 
 	async function refreshConvoy() {

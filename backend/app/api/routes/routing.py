@@ -243,12 +243,25 @@ async def get_route(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _load_convoy(convoy_id, current_user, db, require="read")
+    convoy = await _load_convoy(convoy_id, current_user, db, require="read")
     result = await db.execute(select(Route).where(Route.convoy_id == convoy_id))
     route = result.scalar_one_or_none()
     if not route:
         return None
     geojson = geo_svc.linestring_to_geojson(route.geometry)
+
+    # Recompute the fuel/duration analysis so a reloaded route shows the same
+    # warnings (Tankstopp, technische Halte) as right after calculation.
+    fuel_analysis = None
+    if route.distance_m is not None:
+        route_coords = geojson["coordinates"] if geojson else []
+        fuel_analysis = fuel_svc.analyse_fuel(
+            convoy.convoy_vehicles,
+            route.distance_m,
+            route_coords,
+            route_duration_s=route.duration_s or 0,
+        )
+
     return RouteResponse(
         id=route.id,
         convoy_id=convoy_id,
@@ -256,6 +269,7 @@ async def get_route(
         duration_s=route.duration_s,
         routing_params=route.routing_params,
         geojson=geojson,
+        fuel_analysis=fuel_analysis,
         kanalwechsel=route.kanalwechsel or [],
     )
 
