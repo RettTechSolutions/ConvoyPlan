@@ -5,8 +5,8 @@ import string
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
-import jwt
-from jwt.exceptions import PyJWTError as JWTError
+import jwt as _jwt
+from jwt.exceptions import InvalidTokenError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -53,7 +53,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 def issue_session_token(slug: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(hours=SESSION_TOKEN_TTL_HOURS)
-    return jwt.encode(
+    return _jwt.encode(
         {"sub": slug, "kind": SESSION_TOKEN_KIND, "exp": expire},
         settings.jwt_secret,
         algorithm=settings.jwt_algorithm,
@@ -63,8 +63,8 @@ def issue_session_token(slug: str) -> str:
 def decode_session_token(token: str) -> str | None:
     """Return the slug if the token is a valid share-link session token, else None."""
     try:
-        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-    except JWTError:
+        payload = _jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    except InvalidTokenError:
         return None
     if payload.get("kind") != SESSION_TOKEN_KIND:
         return None
