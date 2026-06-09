@@ -85,7 +85,5 @@ function createPWAStore() {
 
 export const pwaStore = createPWAStore();
 
-// true when we should show any install UI
-export const canShowInstall = derived(pwaStore, $s =>
-	!$s.isStandalone && ($s.deferredPrompt !== null || $s.isIOS)
-);
+// Show install UI whenever not already running as standalone PWA
+export const canShowInstall = derived(pwaStore, $s => !$s.isStandalone);
