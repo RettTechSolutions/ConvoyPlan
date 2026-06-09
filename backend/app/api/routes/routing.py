@@ -537,6 +537,10 @@ async def find_fuel_stations(
     current_user: User = Depends(get_current_user),
 ):
     """Find fuel stations near (lat, lon) – typically the recommended stop position."""
+    if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+        raise HTTPException(status_code=422, detail="Invalid coordinates")
+    if not (100 <= radius_m <= 50_000):
+        raise HTTPException(status_code=422, detail="radius_m must be between 100 and 50000")
     await _load_convoy(convoy_id, current_user, db, require="read")
     stations = await overpass_svc.find_fuel_stations(lat, lon, radius_m)
     return stations
