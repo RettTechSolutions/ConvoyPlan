@@ -72,6 +72,13 @@ def _safe_filename(name: str) -> str:
     """Strip control characters and quote-related chars from filenames used in headers."""
     return name.translate(_CTRL)
 
+_UNSAFE_FILENAME_RE = re.compile(r'[^\w\-. ]')
+
+
+def _safe_filename(name: str) -> str:
+    """Replace characters that are unsafe inside a quoted Content-Disposition filename."""
+    return _UNSAFE_FILENAME_RE.sub('_', name)
+
 
 async def _apply_import(
     convoy_id: uuid.UUID,
