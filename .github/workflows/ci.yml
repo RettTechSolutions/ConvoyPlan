@@ -125,3 +125,42 @@ jobs:
 
       - name: npm audit (frontend)
         run: cd frontend && npm audit --omit=dev --audit-level=high
+
+  container-scan:
+    name: Security – Container Image Scan
+    runs-on: ubuntu-latest
+    # Trivy scans the built images for OS-/library-level vulnerabilities
+    # (ISO 27001 A.8.8 / T10). Fails on HIGH/CRITICAL findings that have a fix
+    # available (ignore-unfixed), so unpatchable upstream issues don't block
+    # merges while actionable ones do. See docs/iso-certifications-review.md.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: backend
+            context: ./backend
+          - name: frontend
+            context: ./frontend
+          - name: updater
+            context: ./docker/updater
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Build ${{ matrix.name }} image
+        run: docker build -t convoyplan-${{ matrix.name }}:scan ${{ matrix.context }}
+
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin
+
+      - name: Scan ${{ matrix.name }} image (Trivy)
+        run: |
+          trivy image \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --vuln-type os,library \
+            --exit-code 1 \
+            --no-progress \
+            convoyplan-${{ matrix.name }}:scan

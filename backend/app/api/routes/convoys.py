@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -14,6 +14,7 @@ from app.models.vehicle import Vehicle
 from app.models.waypoint import Waypoint
 from app.schemas.convoy import AddVehicleRequest, ConvoyCreate, ConvoyResponse, ConvoyUpdate
 from app.schemas.waypoint import WaypointCreate, WaypointReorderItem, WaypointResponse, WaypointUpdate
+from app.services import audit
 from app.services import geometry as geo_svc
 
 router = APIRouter(prefix="/convoys", tags=["convoys"])
@@ -90,6 +91,7 @@ async def list_convoys(
 @router.post("/", response_model=ConvoyResponse, status_code=status.HTTP_201_CREATED)
 async def create_convoy(
     data: ConvoyCreate,
+    request: Request,
     ctx: OrgCtx = Depends(get_org_context),
     db: AsyncSession = Depends(get_db),
 ):
@@ -106,6 +108,12 @@ async def create_convoy(
         convoy.end_point = geo_svc.point_to_wkt(data.end_point.lat, data.end_point.lon)
     db.add(convoy)
     await db.commit()
+
+    await audit.record(
+        db, audit.CONVOY_CREATED, request=request, actor_id=user.id,
+        actor_email=user.email, org_id=org.id, target_type="convoy",
+        target_id=convoy.id, detail={"name": convoy.name},
+    )
 
     result = await db.execute(_convoy_query_for_org(org.id).where(Convoy.id == convoy.id))
     return _serialize_convoy(result.scalar_one())
@@ -133,6 +141,7 @@ async def get_convoy(
 async def update_convoy(
     convoy_id: uuid.UUID,
     data: ConvoyUpdate,
+    request: Request,
     ctx: OrgCtx = Depends(get_org_context),
     db: AsyncSession = Depends(get_db),
 ):
@@ -150,6 +159,17 @@ async def update_convoy(
         convoy.end_point = geo_svc.point_to_wkt(data.end_point.lat, data.end_point.lon)
     await db.commit()
 
+    changed = sorted(update_data.keys())
+    if data.start_point:
+        changed.append("start_point")
+    if data.end_point:
+        changed.append("end_point")
+    await audit.record(
+        db, audit.CONVOY_UPDATED, request=request, actor_id=user.id,
+        actor_email=user.email, org_id=org.id, target_type="convoy",
+        target_id=convoy_id, detail={"name": convoy.name, "changed": changed},
+    )
+
     result = await db.execute(_convoy_query_for_org(org.id).where(Convoy.id == convoy_id))
     return _serialize_convoy(result.scalar_one())
 
@@ -157,6 +177,7 @@ async def update_convoy(
 @router.delete("/{convoy_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_convoy(
     convoy_id: uuid.UUID,
+    request: Request,
     ctx: OrgCtx = Depends(get_org_context),
     db: AsyncSession = Depends(get_db),
 ):
@@ -164,8 +185,15 @@ async def delete_convoy(
     convoy = await get_convoy_access(convoy_id, user, db, require="delete")
     if convoy.organization_id != org.id:
         raise HTTPException(status_code=404, detail="Convoy not found")
+    convoy_name = convoy.name
     await db.delete(convoy)
     await db.commit()
+
+    await audit.record(
+        db, audit.CONVOY_DELETED, request=request, actor_id=user.id,
+        actor_email=user.email, org_id=org.id, target_type="convoy",
+        target_id=convoy_id, detail={"name": convoy_name},
+    )
 
 
 # --- Vehicle assignment ---
@@ -375,6 +403,7 @@ async def list_sub_convoys(
 async def create_sub_convoy(
     convoy_id: uuid.UUID,
     data: ConvoyCreate,
+    request: Request,
     ctx: OrgCtx = Depends(get_org_context),
     db: AsyncSession = Depends(get_db),
 ):
@@ -390,6 +419,12 @@ async def create_sub_convoy(
         sub.end_point = geo_svc.point_to_wkt(data.end_point.lat, data.end_point.lon)
     db.add(sub)
     await db.commit()
+
+    await audit.record(
+        db, audit.CONVOY_CREATED, request=request, actor_id=user.id,
+        actor_email=user.email, org_id=org.id, target_type="convoy",
+        target_id=sub.id, detail={"name": sub.name, "parent_convoy_id": str(convoy_id)},
+    )
 
     result = await db.execute(_convoy_query_for_org(org.id).where(Convoy.id == sub.id))
     return _serialize_convoy(result.scalar_one())

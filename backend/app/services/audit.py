@@ -29,6 +29,11 @@ ORG_DELETED = "admin.org.deleted"
 API_KEY_CREATED = "admin.api_key.created"
 API_KEY_REVOKED = "admin.api_key.revoked"
 LICENSE_ACTIVATED = "license.activated"
+CONVOY_CREATED = "convoy.created"
+CONVOY_UPDATED = "convoy.updated"
+CONVOY_DELETED = "convoy.deleted"
+SHARE_LINK_CREATED = "convoy.share_link.created"
+SHARE_LINK_REVOKED = "convoy.share_link.revoked"
 
 
 def client_ip(request: Request | None) -> str | None:
