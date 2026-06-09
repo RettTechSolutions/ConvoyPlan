@@ -18,6 +18,7 @@ Template keys (stored in system_settings, editable by superadmin):
 from __future__ import annotations
 
 import html
+import logging
 import ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -27,6 +28,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.settings import SystemSetting
+
+logger = logging.getLogger(__name__)
 
 
 # ── Default email template ─────────────────────────────────────────────────────
@@ -343,4 +346,5 @@ async def test_smtp_connection(db: AsyncSession) -> dict:
                 await client.login(username, password_smtp)
         return {"ok": True, "error": None}
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        logger.error("SMTP connection test failed: %s", exc)
+        return {"ok": False, "error": "SMTP connection failed"}
