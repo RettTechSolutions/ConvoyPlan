@@ -43,6 +43,12 @@ DEPLOYED=$(git -C "${REPO_DIR}" rev-parse HEAD)
 
 # Write initial status so the UI shows something on first load
 mkdir -p /update_status
+# The backend runs as non-root (appuser, uid 1001 — see backend/Dockerfile) and
+# must be able to create the trigger file in this shared volume. The updater
+# runs as root, so it owns the volume by default; hand it to the backend user.
+# `-R` also repairs pre-existing root-owned volumes from before the backend was
+# switched to non-root, so manual updates keep working after the upgrade.
+chown -R 1001:1001 /update_status 2>/dev/null || true
 printf '{"deployed_sha":"%s","deployed_at":"%s"}\n' \
   "${DEPLOYED}" \
   "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \

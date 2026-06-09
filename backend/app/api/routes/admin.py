@@ -497,7 +497,6 @@ async def trigger_update(
 ):
     if os.path.exists(TRIGGER_FILE):
         raise HTTPException(409, "Update already triggered")
-    os.makedirs(os.path.dirname(TRIGGER_FILE), exist_ok=True)
     # Write initial message so the SSE terminal shows something immediately
     # (updater may be sleeping up to INTERVAL seconds before it picks up the trigger)
     try:
@@ -507,8 +506,23 @@ async def trigger_update(
             f.write(f"[{ts}] Manuelles Update ausgelöst — warte auf Updater…\n")
     except OSError:
         pass
-    with open(TRIGGER_FILE, "w") as f:
-        f.write(datetime.now(timezone.utc).isoformat())
+    # The backend runs as a non-root user; the shared /update_status volume is
+    # owned by the updater. If the volume is not writable (e.g. an old, root-owned
+    # volume that predates the non-root switch), surface a clear error instead of
+    # a bare 500 — the updater chowns the volume to the backend user on its next
+    # cycle, which heals this automatically.
+    try:
+        os.makedirs(os.path.dirname(TRIGGER_FILE), exist_ok=True)
+        with open(TRIGGER_FILE, "w") as f:
+            f.write(datetime.now(timezone.utc).isoformat())
+    except OSError as exc:
+        logger.error("Cannot write update trigger file %s: %s", TRIGGER_FILE, exc)
+        raise HTTPException(
+            503,
+            "Update konnte nicht ausgelöst werden: Das Update-Volume ist nicht "
+            "beschreibbar. Der Updater repariert die Rechte automatisch beim "
+            "nächsten Lauf — bitte in wenigen Minuten erneut versuchen.",
+        ) from exc
     return {"status": "triggered"}
 
 
