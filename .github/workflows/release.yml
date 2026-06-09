@@ -80,11 +80,40 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest
 
+      # Base-Images stammen alle von Docker Hub und sind gelegentlich von
+      # transienten Registry-Timeouts betroffen ("i/o timeout" beim Auflösen
+      # der Manifest-Metadaten). Wir ziehen sie deshalb vorab mit Retry +
+      # exponentiellem Backoff. build-push-action nutzt per Default pull: false,
+      # daher greift BuildKit anschließend auf das lokal gecachte Image zu und
+      # muss die Registry für diesen Schritt nicht erneut kontaktieren.
+      - name: Pre-pull base images (resilient gegen Registry-Timeouts)
+        run: |
+          images=(
+            "python:3.14-slim"
+            "node:26-alpine"
+            "eclipse-temurin:21-jre-alpine"
+            "docker:24-cli"
+          )
+          for image in "${images[@]}"; do
+            n=0
+            until docker pull "$image"; do
+              n=$((n + 1))
+              if [ "$n" -ge 5 ]; then
+                echo "::error::Konnte $image nach $n Versuchen nicht ziehen"
+                exit 1
+              fi
+              delay=$((2 ** n))
+              echo "Pull von $image fehlgeschlagen (Versuch $n). Neuer Versuch in ${delay}s…"
+              sleep "$delay"
+            done
+          done
+
       - name: Build and push backend
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
         with:
           context: ./backend
           push: true
+          pull: false   # vorab gezogenes Base-Image aus dem lokalen Cache nutzen
           tags: ${{ steps.meta-backend.outputs.tags }}
           labels: ${{ steps.meta-backend.outputs.labels }}
           build-args: |
@@ -96,6 +125,7 @@ jobs:
         with:
           context: ./frontend
           push: true
+          pull: false   # vorab gezogenes Base-Image aus dem lokalen Cache nutzen
           tags: ${{ steps.meta-frontend.outputs.tags }}
           labels: ${{ steps.meta-frontend.outputs.labels }}
           build-args: |
@@ -107,6 +137,7 @@ jobs:
         with:
           context: ./graphhopper
           push: true
+          pull: false   # vorab gezogenes Base-Image aus dem lokalen Cache nutzen
           tags: ${{ steps.meta-graphhopper.outputs.tags }}
           labels: ${{ steps.meta-graphhopper.outputs.labels }}
 
@@ -115,6 +146,7 @@ jobs:
         with:
           context: ./docker/updater
           push: true
+          pull: false   # vorab gezogenes Base-Image aus dem lokalen Cache nutzen
           tags: ${{ steps.meta-updater.outputs.tags }}
           labels: ${{ steps.meta-updater.outputs.labels }}
 
