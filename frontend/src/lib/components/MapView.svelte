@@ -20,6 +20,10 @@
 		clickEnabled?: boolean;
 		/** Vehicle to zoom to once on selection (e.g. the user's own vehicle) */
 		focusVehicleId?: string | null;
+		/** Vehicle to continuously keep centered ("follow" lock). null = no follow. */
+		followVehicleId?: string | null;
+		/** Called when the follow lock is released by a manual map pan. */
+		onFollowEnd?: () => void;
 		/** Optional vehicle id → display name map for live marker labels */
 		vehicleNames?: Map<string, string>;
 	}
@@ -35,8 +39,13 @@
 		onMapMove,
 		clickEnabled = false,
 		focusVehicleId = null,
+		followVehicleId = null,
+		onFollowEnd,
 		vehicleNames = new Map(),
 	}: Props = $props();
+
+	/** Zoom level the map locks to when following a vehicle. */
+	const FOLLOW_ZOOM = 15;
 
 	let mapContainer: HTMLDivElement;
 	let map: maplibregl.Map;
@@ -85,6 +94,13 @@
 		map.on('moveend', () => {
 			const c = map.getCenter();
 			onMapMove?.(c.lat, c.lng);
+		});
+
+		// A manual pan releases the follow lock. `dragstart` only fires for real
+		// user gestures (originalEvent set); our own easeTo/flyTo do not trigger it,
+		// and wheel/pinch zoom keeps the lock active.
+		map.on('dragstart', (e) => {
+			if (e.originalEvent && followVehicleId) onFollowEnd?.();
 		});
 
 		map.on('load', () => {
@@ -167,12 +183,6 @@
 		map.flyTo({ center: [pos.lon, pos.lat], zoom: 15, duration: 800 });
 	}
 
-	/** Recenter the map on a vehicle's latest live position (used by the recenter button). */
-	export function recenterOnVehicle(vehicleId: string) {
-		const pos = livePositions.get(vehicleId);
-		if (map && pos) flyToPosition(pos);
-	}
-
 	function fitRoute(duration = 800) {
 		if (!map || !routeGeojson) return;
 		const coords: number[][] =
@@ -250,6 +260,7 @@
 	});
 
 	// Live tracking markers
+	let following: string | null = null;
 	$effect(() => {
 		if (!map) return;
 		const seen = new Set<string>();
@@ -275,6 +286,23 @@
 		trackingMarkers.forEach((m, id) => {
 			if (!seen.has(id)) { m.remove(); trackingMarkers.delete(id); }
 		});
+
+		// Follow lock: keep the followed vehicle centered as new positions arrive.
+		// Locking on (following changed) zooms in once; afterwards we only re-center,
+		// preserving whatever zoom the user has chosen meanwhile.
+		if (followVehicleId) {
+			const pos = livePositions.get(followVehicleId);
+			if (pos) {
+				if (following !== followVehicleId) {
+					following = followVehicleId;
+					map.flyTo({ center: [pos.lon, pos.lat], zoom: FOLLOW_ZOOM, duration: 800 });
+				} else {
+					map.easeTo({ center: [pos.lon, pos.lat], duration: 600 });
+				}
+			}
+		} else {
+			following = null;
+		}
 	});
 
 	// Zoom once to the focused vehicle as soon as a position is available for it.

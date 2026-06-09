@@ -19,6 +19,8 @@
 	let mapCenter = $state<[number, number]>([10.0, 51.5]);
 	let error = $state('');
 	let mapView = $state<ReturnType<typeof MapView>>();
+	// When true, the map stays locked/centered on my vehicle as it moves.
+	let followMyVehicle = $state(false);
 
 	const isSecure = typeof window !== 'undefined' && window.isSecureContext;
 
@@ -43,6 +45,13 @@
 			error = 'Die GPS-Freigabe wurde von einem Admin zurückgesetzt.';
 		}
 		if (revoked) gpsRevoked.set(null);
+	});
+
+	// Release the follow lock if my vehicle is deselected or stops sending positions.
+	$effect(() => {
+		if (followMyVehicle && (!myVehicleId || !$livePositions.has(myVehicleId))) {
+			followMyVehicle = false;
+		}
 	});
 
 	const STATUS_LABELS: Record<string, string> = { planned: 'Geplant', en_route: 'Unterwegs', arrived: 'Angekommen', delayed: 'Verspätung' };
@@ -258,8 +267,13 @@
 				</button>
 			{/if}
 			{#if myVehicleId && $livePositions.has(myVehicleId)}
-				<button class="map-ctrl-btn" onclick={() => mapView?.recenterOnVehicle(myVehicleId)} title="Zurück zu meinem Fahrzeug">
-					🎯 Mein Fahrzeug
+				<button
+					class="map-ctrl-btn"
+					class:active={followMyVehicle}
+					onclick={() => (followMyVehicle = !followMyVehicle)}
+					title={followMyVehicle ? 'Folgen beenden' : 'Karte auf mein Fahrzeug locken'}
+				>
+					{followMyVehicle ? '🔒 Folgt Fahrzeug' : '🎯 Mein Fahrzeug'}
 				</button>
 			{/if}
 		</div>
@@ -272,6 +286,8 @@
 			livePositions={$livePositions}
 			vehicleNames={vehicleNames}
 			focusVehicleId={myVehicleId || null}
+			followVehicleId={followMyVehicle ? myVehicleId : null}
+			onFollowEnd={() => (followMyVehicle = false)}
 			clickEnabled={manualMode && transmitting}
 			onMapClick={handleMapTap}
 			onMapMove={(lat, lon) => (mapCenter = [lat, lon])}
@@ -348,6 +364,8 @@
 	.map-controls { position: absolute; right: .75rem; bottom: calc(.75rem + env(safe-area-inset-bottom, 0px)); z-index: 10; display: flex; flex-direction: column; align-items: flex-end; gap: .5rem; max-width: calc(100% - 1.5rem); }
 	.map-ctrl-btn { display: flex; align-items: center; gap: .4rem; background: var(--color-primary); color: white; border: none; padding: .55rem .9rem; border-radius: 22px; font-size: var(--text-sm); font-weight: 600; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.35); white-space: nowrap; }
 	.map-ctrl-btn:hover { background: var(--color-primary-hover); }
+	.map-ctrl-btn.active { background: #27ae60; }
+	.map-ctrl-btn.active:hover { background: #229954; }
 
 	/* Mobile topbar */
 	.topbar { display: none; }
