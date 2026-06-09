@@ -9,7 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from jose import JWTError, jwt
+import jwt as _jwt
+from jwt.exceptions import InvalidTokenError
 
 from app.api.routes import (
     auth, convoys, vehicles, routing, organizations,
@@ -90,6 +91,14 @@ def _verify_security_config() -> None:
             "32 characters (e.g. `openssl rand -hex 32`) via the JWT_SECRET "
             "environment variable, or set APP_ENV=development for local use."
         )
+    if not settings.mfa_encryption_key.strip():
+        logger.warning(
+            "MFA_ENCRYPTION_KEY is not set. MFA secrets are encrypted using a key "
+            "derived from JWT_SECRET, which means rotating JWT_SECRET will invalidate "
+            "all existing MFA enrolments. Set MFA_ENCRYPTION_KEY to an independent "
+            "Fernet key (generate with: python -c \"from cryptography.fernet import Fernet; "
+            "print(Fernet.generate_key().decode())\") to decouple the two secrets."
+        )
 
 
 @asynccontextmanager
@@ -134,15 +143,15 @@ def _issue_docs_cookie() -> str:
     browser as authorised after a successful key check — the API key itself is
     never stored client-side, only this server-signed (JWT_SECRET) claim."""
     expire = datetime.now(timezone.utc) + _DOCS_COOKIE_TTL
-    return jwt.encode(
+    return _jwt.encode(
         {"docs": True, "exp": expire}, settings.jwt_secret, algorithm=settings.jwt_algorithm
     )
 
 
 def _docs_cookie_valid(token: str) -> bool:
     try:
-        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-    except JWTError:
+        payload = _jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    except InvalidTokenError:
         return False
     return bool(payload.get("docs"))
 
