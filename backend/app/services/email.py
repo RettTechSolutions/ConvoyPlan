@@ -155,6 +155,7 @@ def _build_logo_block(logo_main: str, app_name: str, base_url: str = "") -> str:
     """Return the logo HTML block for email header."""
     safe_name = html.escape(app_name)
     if logo_main:
+        safe_logo = html.escape(logo_main)
         return (
             f'<img src="{base_url}/uploads/logos/{logo_main}" '
             f'height="50" alt="{safe_name}" style="display:block;margin:0 auto;"/>'
