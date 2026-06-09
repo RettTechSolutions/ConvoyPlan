@@ -1,7 +1,10 @@
+import logging
 import time
 from collections import defaultdict
 
 from fastapi import WebSocket
+
+logger = logging.getLogger(__name__)
 
 
 class TrackingManager:
@@ -45,7 +48,11 @@ class TrackingManager:
             try:
                 await ws.close(code=4403)
             except Exception:
-                pass
+                logger.debug(
+                    "Ignoring WebSocket close failure during revoke_connections for convoy_id=%s",
+                    convoy_id,
+                    exc_info=True,
+                )
 
     async def broadcast(self, convoy_id: str, data: dict):
         dead: list[WebSocket] = []
