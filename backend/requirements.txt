@@ -20,6 +20,7 @@ python-multipart==0.0.30
 bcrypt==5.0.0
 httpx==0.28.1
 gpxpy==1.6.2
+defusedxml==0.7.1
 fpdf2==2.8.7
 pyotp==2.9.0
 aiosmtplib==5.1.1
