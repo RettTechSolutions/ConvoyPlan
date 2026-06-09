@@ -91,6 +91,14 @@ def _verify_security_config() -> None:
             "32 characters (e.g. `openssl rand -hex 32`) via the JWT_SECRET "
             "environment variable, or set APP_ENV=development for local use."
         )
+    if not settings.mfa_encryption_key.strip():
+        logger.warning(
+            "MFA_ENCRYPTION_KEY is not set. MFA secrets are encrypted using a key "
+            "derived from JWT_SECRET, which means rotating JWT_SECRET will invalidate "
+            "all existing MFA enrolments. Set MFA_ENCRYPTION_KEY to an independent "
+            "Fernet key (generate with: python -c \"from cryptography.fernet import Fernet; "
+            "print(Fernet.generate_key().decode())\") to decouple the two secrets."
+        )
 
 
 @asynccontextmanager
