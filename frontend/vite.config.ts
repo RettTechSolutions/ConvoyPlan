@@ -21,18 +21,21 @@ export default defineConfig({
 	plugins: [
 		sveltekit(),
 		SvelteKitPWA({
-			manifest: {
-				name: 'ConvoyPlan',
-				short_name: 'ConvoyPlan',
-				description: 'Marschverbandsplanung für BOS',
-				theme_color: '#1a2744',
-				background_color: '#1a2744',
-				display: 'standalone',
-				icons: [
-					{ src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-					{ src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
-				],
-			},
+			// Manifest bewusst abgeschaltet: Das Plugin würde sonst ein drittes
+			// Manifest (Name "ConvoyPlan", scope "/") generieren UND dessen
+			// <link rel="manifest"> auf JEDER Route automatisch in den <head>
+			// injizieren — auch auf /track. Dieses scope-"/"-Manifest umschließt
+			// den /track-Bereich und kollidiert mit der eigenständigen
+			// Tracking-App, sodass sich Haupt-App und Tracking-App beim
+			// Installieren gegenseitig überschreiben.
+			//
+			// Stattdessen sind die beiden handgepflegten statischen Manifeste die
+			// alleinige Quelle der Wahrheit — pro Route umgeschaltet:
+			//   - static/app.webmanifest      (id/scope "/")     → ConvoyPlan
+			//   - static/tracking.webmanifest (id/scope "/track") → Convoy Tracking
+			// (siehe +layout.svelte und TrackingPwaHead.svelte).
+			// Das Plugin erzeugt/registriert hier nur noch den Service Worker.
+			manifest: false,
 			workbox: {
 				globPatterns: ['**/*.{js,css,html,svg,ico}'],
 				globIgnores: ['logo/**', 'icons/**'],
