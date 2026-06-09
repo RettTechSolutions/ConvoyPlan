@@ -407,6 +407,7 @@ async def export_gpx(
     ]
     gpx_content = export_svc.build_gpx(convoy.name, waypoints, coords)
 
+    safe_name = convoy.name.translate(str.maketrans("", "", '"\r\n;\\'))
     return PlainTextResponse(
         content=gpx_content,
         media_type="application/gpx+xml",
@@ -433,6 +434,7 @@ async def export_json(
          "license_plate": cv.vehicle.license_plate, "position": cv.position}
         for cv in convoy.convoy_vehicles
     ]
+    safe_name = convoy.name.translate(str.maketrans("", "", '"\r\n;\\'))
     json_content = export_svc.build_json_export(convoy, waypoints, vehicles)
     return PlainTextResponse(
         content=json_content,
