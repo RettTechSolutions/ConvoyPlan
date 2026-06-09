@@ -148,6 +148,14 @@ async def upload_logo(
     if ext not in {".png", ".jpg", ".jpeg", ".svg"}:
         raise HTTPException(status_code=400, detail="Invalid file type (PNG, JPG, SVG only)")
     _validate_image_content(content, ext)
+    # Verify magic bytes so a renamed executable cannot bypass the extension check.
+    _MAGIC: dict[str, list[bytes]] = {
+        ".png": [b"\x89PNG"],
+        ".jpg": [b"\xff\xd8\xff"],
+        ".jpeg": [b"\xff\xd8\xff"],
+    }
+    if ext in _MAGIC and not any(content.startswith(sig) for sig in _MAGIC[ext]):
+        raise HTTPException(status_code=400, detail="File content does not match the declared type")
     LOGOS_DIR.mkdir(parents=True, exist_ok=True)
     filename = f"{slot}{ext}"
     loop = asyncio.get_event_loop()
