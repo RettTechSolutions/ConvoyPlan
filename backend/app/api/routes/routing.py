@@ -1,4 +1,6 @@
 import json as _json
+import logging
+import re
 import uuid
 from datetime import timezone
 from typing import Literal
@@ -29,6 +31,20 @@ from app.services import overpass as overpass_svc
 from app.services import importer as importer_svc
 
 router = APIRouter(prefix="/convoys", tags=["routing"])
+logger = logging.getLogger(__name__)
+
+_MAX_IMPORT_BYTES = 10 * 1024 * 1024  # 10 MB — guard against DoS via huge uploads
+
+
+def _safe_filename(name: str) -> str:
+    """Return a filename-safe version of *name* for Content-Disposition headers.
+
+    Strips characters that would break the quoted-string syntax defined in
+    RFC 6266 (double-quotes, backslashes, CRLF) and replaces everything outside
+    printable ASCII word characters with underscores.
+    """
+    safe = re.sub(r'[^\w\s\-.]', '_', name).strip()
+    return safe or "export"
 
 
 async def _apply_import(
@@ -231,7 +247,8 @@ async def calculate_route(
             road_preference=convoy.road_preference,
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Routing failed: {exc}")
+        logger.error("Routing service error for convoy %s: %s", convoy_id, exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Routing-Dienst nicht verfügbar")
 
     coords = route_data["geometry"].get("coordinates", [])
     convoy_duration_s = routing_svc.convoy_duration_s(
@@ -345,7 +362,7 @@ async def export_gpx(
     return PlainTextResponse(
         content=gpx_content,
         media_type="application/gpx+xml",
-        headers={"Content-Disposition": f'attachment; filename="{convoy.name}.gpx"'},
+        headers={"Content-Disposition": f'attachment; filename="{_safe_filename(convoy.name)}.gpx"'},
     )
 
 
@@ -372,7 +389,7 @@ async def export_json(
     return PlainTextResponse(
         content=json_content,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{convoy.name}.json"'},
+        headers={"Content-Disposition": f'attachment; filename="{_safe_filename(convoy.name)}.json"'},
     )
 
 
@@ -416,7 +433,7 @@ async def export_pdf(
 
     kanalwechsel = route.kanalwechsel if route else None
     pdf_bytes = pdf_svc.generate_marschbefehl(convoy, waypoints, vehicles, route, kanalwechsel)
-    filename = f"Marschbefehl_{convoy.name.replace(' ', '_')}.pdf"
+    filename = f"Marschbefehl_{_safe_filename(convoy.name)}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -434,6 +451,8 @@ async def import_gpx(
 ):
     await get_convoy_access(convoy_id, current_user, db, require="write")
     content = await file.read()
+    if len(content) > _MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
     try:
         result = importer_svc.parse_gpx(content)
     except ValueError as exc:
@@ -451,6 +470,8 @@ async def import_geojson(
 ):
     await get_convoy_access(convoy_id, current_user, db, require="write")
     content = await file.read()
+    if len(content) > _MAX_IMPORT_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB)")
     try:
         result = importer_svc.parse_geojson(content)
     except ValueError as exc:
