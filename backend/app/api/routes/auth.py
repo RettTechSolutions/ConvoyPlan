@@ -331,7 +331,11 @@ class MfaSetupResponse(BaseModel):
     provisioning_uri: str
 
 
-@router.post("/mfa/setup", response_model=MfaSetupResponse)
+@router.post(
+    "/mfa/setup",
+    response_model=MfaSetupResponse,
+    dependencies=[Depends(rate_limit("mfa-setup", max_attempts=10, window_seconds=300))],
+)
 async def mfa_setup(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
