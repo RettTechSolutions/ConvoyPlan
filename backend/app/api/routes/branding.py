@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import re
+import xml.etree.ElementTree as _ET
 from pathlib import Path
 from typing import Literal
 
@@ -14,6 +16,39 @@ from app.schemas.branding import BrandingResponse, BrandingUpdate
 
 router = APIRouter(prefix="/branding", tags=["branding"])
 logger = logging.getLogger(__name__)
+
+_PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+_JPEG_MAGIC = b"\xff\xd8\xff"
+# SVG elements and attribute patterns that enable XSS
+_SVG_BLOCKED_TAGS = {"script", "foreignobject"}
+
+
+def _validate_image_content(content: bytes, ext: str) -> None:
+    if ext == ".png" and not content[:8] == _PNG_MAGIC:
+        raise HTTPException(400, "File content does not match PNG format")
+    if ext in {".jpg", ".jpeg"} and not content[:3] == _JPEG_MAGIC:
+        raise HTTPException(400, "File content does not match JPEG format")
+    if ext == ".svg":
+        try:
+            root = _ET.fromstring(content.decode("utf-8", errors="replace"))
+        except _ET.ParseError:
+            raise HTTPException(400, "SVG file is not valid XML")
+        local_root = root.tag.split("}")[-1].lower() if "}" in root.tag else root.tag.lower()
+        if local_root != "svg":
+            raise HTTPException(400, "SVG file must have an <svg> root element")
+        for elem in root.iter():
+            local_tag = elem.tag.split("}")[-1].lower() if "}" in elem.tag else elem.tag.lower()
+            if local_tag in _SVG_BLOCKED_TAGS:
+                raise HTTPException(400, f"SVG contains disallowed element: <{local_tag}>")
+            for attr in elem.attrib:
+                local_attr = attr.split("}")[-1].lower() if "}" in attr else attr.lower()
+                if local_attr.startswith("on"):
+                    raise HTTPException(400, f"SVG contains disallowed event handler: {local_attr}")
+                val = elem.attrib[attr].strip().lower()
+                if local_attr in {"href", "src", "xlink:href", "action"} and val.startswith(
+                    ("javascript:", "data:")
+                ):
+                    raise HTTPException(400, "SVG contains disallowed URI scheme")
 
 # Keep in sync with alembic/versions/0011_branding_defaults.py _DEFAULTS
 BRANDING_DEFAULTS: dict[str, str] = {
@@ -32,6 +67,26 @@ BRANDING_DEFAULTS: dict[str, str] = {
 }
 
 LOGOS_DIR = Path("/uploads/logos")
+
+# PNG magic: \x89 P N G \r \n \x1a \n
+_MAGIC_PNG = b"\x89PNG\r\n\x1a\n"
+# JPEG magic: SOI marker \xff \xd8 \xff
+_MAGIC_JPEG = b"\xff\xd8\xff"
+# SVG: reject any embedded scripts or event-handler attributes.
+_SVG_ACTIVE_CONTENT = re.compile(
+    rb"<script|javascript:|on(?:load|error|click|mouse\w+|key\w+|submit|focus|blur)\s*=",
+    re.IGNORECASE,
+)
+
+
+def _validate_image_content(content: bytes, ext: str) -> None:
+    """Raise HTTP 400 if the bytes do not match the declared extension or contain active content."""
+    if ext == ".png" and not content.startswith(_MAGIC_PNG):
+        raise HTTPException(status_code=400, detail="File content does not match declared type (expected PNG)")
+    if ext in {".jpg", ".jpeg"} and not content.startswith(_MAGIC_JPEG):
+        raise HTTPException(status_code=400, detail="File content does not match declared type (expected JPEG)")
+    if ext == ".svg" and _SVG_ACTIVE_CONTENT.search(content):
+        raise HTTPException(status_code=400, detail="SVG files must not contain scripts or event handlers")
 
 
 async def _get_branding_response(db: AsyncSession) -> BrandingResponse:
@@ -111,11 +166,20 @@ async def upload_logo(
     if len(content) > 2 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large (max 2 MB)")
     ext = Path(file.filename or "").suffix.lower()
-    if ext not in {".png", ".jpg", ".jpeg"}:
-        raise HTTPException(status_code=400, detail="Invalid file type (PNG/JPG only)")
+    if ext not in {".png", ".jpg", ".jpeg", ".svg"}:
+        raise HTTPException(status_code=400, detail="Invalid file type (PNG, JPG, SVG only)")
+    _validate_image_content(content, ext)
+    # Verify magic bytes so a renamed executable cannot bypass the extension check.
+    _MAGIC: dict[str, list[bytes]] = {
+        ".png": [b"\x89PNG"],
+        ".jpg": [b"\xff\xd8\xff"],
+        ".jpeg": [b"\xff\xd8\xff"],
+    }
+    if ext in _MAGIC and not any(content.startswith(sig) for sig in _MAGIC[ext]):
+        raise HTTPException(status_code=400, detail="File content does not match the declared type")
     LOGOS_DIR.mkdir(parents=True, exist_ok=True)
     filename = f"{slot}{ext}"
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, (LOGOS_DIR / filename).write_bytes, content)
     await _upsert(db, f"branding.logo_{slot}", filename)
     await db.commit()

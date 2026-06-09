@@ -1,15 +1,15 @@
 import uuid
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class VehicleCreate(BaseModel):
     name: str
     callsign: str | None = None
     license_plate: str | None = None
-    height_cm: int | None = None
-    weight_kg: int | None = None
-    length_cm: int | None = None
+    height_cm: int | None = Field(default=None, ge=0, le=1000)
+    weight_kg: int | None = Field(default=None, ge=0, le=100_000)
+    length_cm: int | None = Field(default=None, ge=0, le=5000)
     convoy_role: str | None = None
     tank_capacity_l: float | None = None
     fuel_consumption_l100km: float | None = None
