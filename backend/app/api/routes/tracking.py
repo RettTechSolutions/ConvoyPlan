@@ -5,6 +5,9 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
 from jose import jwt, JWTError
 from pydantic import BaseModel, field_validator
+import jwt as _jwt
+from jwt.exceptions import InvalidTokenError
+
 from sqlalchemy import select, delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,8 +48,18 @@ class PositionUpdate(BaseModel):
         return v
 
 
+_VALID_VEHICLE_STATUSES = {"planned", "en_route", "arrived", "delayed"}
+
+
 class VehicleStatusUpdate(BaseModel):
-    vehicle_status: str  # planned | en_route | arrived | delayed
+    vehicle_status: str
+
+    @field_validator("vehicle_status")
+    @classmethod
+    def _check_status(cls, v: str) -> str:
+        if v not in _VALID_VEHICLE_STATUSES:
+            raise ValueError(f"vehicle_status must be one of {sorted(_VALID_VEHICLE_STATUSES)}")
+        return v
 
 
 @router.get("/convoys/{convoy_id}/positions")
@@ -196,12 +209,12 @@ async def tracking_ws(
     token: str = Query(...),
 ):
     try:
-        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        payload = _jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
         user_id = payload.get("sub")
         if not user_id:
             await ws.close(code=4001)
             return
-    except JWTError:
+    except InvalidTokenError:
         await ws.close(code=4001)
         return
 
@@ -210,7 +223,7 @@ async def tracking_ws(
             convoy_uuid = uuid.UUID(convoy_id)
             user_result = await db.execute(select(User).where(User.id == user_id))
             user = user_result.scalar_one_or_none()
-            if not user:
+            if not user or not user.is_active:
                 await ws.close(code=4401)
                 return
             await get_convoy_access(convoy_uuid, user, db, require="read")
@@ -235,13 +248,18 @@ async def tracking_ws(
                 except HTTPException:
                     await ws.close(code=4403)
                     return
+                lat = float(data["lat"])
+                lon = float(data["lon"])
+                if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+                    logger.warning("WS position out of bounds: lat=%s lon=%s", lat, lon)
+                    continue
                 stmt = (
                     pg_insert(VehiclePosition)
                     .values(
                         convoy_id=uuid.UUID(convoy_id),
                         vehicle_id=uuid.UUID(data["vehicle_id"]),
-                        lat=data["lat"],
-                        lon=data["lon"],
+                        lat=lat,
+                        lon=lon,
                         speed_kmh=data.get("speed_kmh"),
                         heading=data.get("heading"),
                         recorded_at=datetime.now(timezone.utc),
@@ -249,8 +267,8 @@ async def tracking_ws(
                     .on_conflict_do_update(
                         index_elements=["convoy_id", "vehicle_id"],
                         set_={
-                            "lat": data["lat"],
-                            "lon": data["lon"],
+                            "lat": lat,
+                            "lon": lon,
                             "speed_kmh": data.get("speed_kmh"),
                             "heading": data.get("heading"),
                             "recorded_at": datetime.now(timezone.utc),
