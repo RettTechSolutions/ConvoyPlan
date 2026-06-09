@@ -1,4 +1,5 @@
 import json as _json
+import logging
 import re
 import uuid
 from datetime import timezone
@@ -30,6 +31,20 @@ from app.services import overpass as overpass_svc
 from app.services import importer as importer_svc
 
 router = APIRouter(prefix="/convoys", tags=["routing"])
+logger = logging.getLogger(__name__)
+
+_MAX_IMPORT_BYTES = 10 * 1024 * 1024  # 10 MB — guard against DoS via huge uploads
+
+
+def _safe_filename(name: str) -> str:
+    """Return a filename-safe version of *name* for Content-Disposition headers.
+
+    Strips characters that would break the quoted-string syntax defined in
+    RFC 6266 (double-quotes, backslashes, CRLF) and replaces everything outside
+    printable ASCII word characters with underscores.
+    """
+    safe = re.sub(r'[^\w\s\-.]', '_', name).strip()
+    return safe or "export"
 
 _UNSAFE_FILENAME_CHARS = re.compile(r'[\x00-\x1f\x7f"\\]')
 _MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
@@ -239,8 +254,9 @@ async def calculate_route(
             vehicle_params or None,
             road_preference=convoy.road_preference,
         )
-    except Exception:
-        raise HTTPException(status_code=502, detail="Routing service temporarily unavailable")
+    except Exception as exc:
+        logger.error("Routing service error for convoy %s: %s", convoy_id, exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Routing-Dienst nicht verfügbar")
 
     coords = route_data["geometry"].get("coordinates", [])
     convoy_duration_s = routing_svc.convoy_duration_s(
