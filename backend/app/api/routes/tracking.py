@@ -1,11 +1,9 @@
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
-from jose import jwt, JWTError
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 import jwt as _jwt
 from jwt.exceptions import InvalidTokenError
 
@@ -246,58 +244,30 @@ async def tracking_ws(
             # Verworfen, falls ein Admin die Freigabe gerade zurückgesetzt hat.
             if tracking_manager.is_recently_cleared(convoy_id, str(pos.vehicle_id)):
                 continue
-            try:
-                lat_ws = float(data["lat"])
-                lon_ws = float(data["lon"])
-            except (KeyError, TypeError, ValueError):
-                continue
-            if not (-90 <= lat_ws <= 90) or not (-180 <= lon_ws <= 180):
-                continue
-            speed_ws = data.get("speed_kmh")
-            heading_ws = data.get("heading")
-            if speed_ws is not None:
-                try:
-                    speed_ws = float(speed_ws)
-                    if speed_ws < 0 or speed_ws > 500:
-                        speed_ws = None
-                except (TypeError, ValueError):
-                    speed_ws = None
-            if heading_ws is not None:
-                try:
-                    heading_ws = float(heading_ws)
-                    if not (0 <= heading_ws <= 360):
-                        heading_ws = None
-                except (TypeError, ValueError):
-                    heading_ws = None
             async with AsyncSessionLocal() as db:
                 try:
                     await get_convoy_access(uuid.UUID(convoy_id), user, db, require="fahrer")
                 except HTTPException:
                     await ws.close(code=4403)
                     return
-                lat = float(data["lat"])
-                lon = float(data["lon"])
-                if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
-                    logger.warning("WS position out of bounds: lat=%s lon=%s", lat, lon)
-                    continue
                 stmt = (
                     pg_insert(VehiclePosition)
                     .values(
                         convoy_id=uuid.UUID(convoy_id),
-                        vehicle_id=uuid.UUID(data["vehicle_id"]),
-                        lat=lat,
-                        lon=lon,
-                        speed_kmh=data.get("speed_kmh"),
-                        heading=data.get("heading"),
+                        vehicle_id=pos.vehicle_id,
+                        lat=pos.lat,
+                        lon=pos.lon,
+                        speed_kmh=pos.speed_kmh,
+                        heading=pos.heading,
                         recorded_at=datetime.now(timezone.utc),
                     )
                     .on_conflict_do_update(
                         index_elements=["convoy_id", "vehicle_id"],
                         set_={
-                            "lat": lat,
-                            "lon": lon,
-                            "speed_kmh": data.get("speed_kmh"),
-                            "heading": data.get("heading"),
+                            "lat": pos.lat,
+                            "lon": pos.lon,
+                            "speed_kmh": pos.speed_kmh,
+                            "heading": pos.heading,
                             "recorded_at": datetime.now(timezone.utc),
                         },
                     )
@@ -307,11 +277,11 @@ async def tracking_ws(
 
             await tracking_manager.broadcast(convoy_id, {
                 "type": "position",
-                "vehicle_id": data.get("vehicle_id"),
-                "lat": lat_ws,
-                "lon": lon_ws,
-                "speed_kmh": speed_ws,
-                "heading": heading_ws,
+                "vehicle_id": str(pos.vehicle_id),
+                "lat": pos.lat,
+                "lon": pos.lon,
+                "speed_kmh": pos.speed_kmh,
+                "heading": pos.heading,
             })
     except WebSocketDisconnect:
         pass

@@ -5,16 +5,12 @@ import os
 import uuid
 from datetime import datetime, timezone
 
-logger = logging.getLogger(__name__)
-
 import bcrypt
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-import jwt
-from jwt.exceptions import PyJWTError as JWTError
 import jwt as _jwt
-from jwt.exceptions import InvalidTokenError
+from jwt.exceptions import PyJWTError as JWTError, InvalidTokenError
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -544,8 +540,7 @@ async def stream_update_log(
             raise HTTPException(403, "Superadmin required")
         if int(payload.get("tv", 0)) != db_user.token_version:
             raise HTTPException(401, "Session expired — please log in again")
-    except JWTError:
-    except InvalidTokenError:
+    except (JWTError, InvalidTokenError):
         raise HTTPException(401, "Invalid token")
 
     async def log_generator():

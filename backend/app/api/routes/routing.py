@@ -1,17 +1,9 @@
-import logging
 import json as _json
 import logging
 import re
 import uuid
 from datetime import timezone
 from typing import Literal
-
-logger = logging.getLogger(__name__)
-
-
-def _safe_filename(name: str) -> str:
-    """Strip characters that would break a Content-Disposition filename= value."""
-    return re.sub(r'[\r\n\x00-\x1f"\\]', "_", name)
 
 from fastapi import APIRouter, Depends, HTTPException, File, Query, UploadFile
 from fastapi.responses import PlainTextResponse, Response
@@ -40,7 +32,11 @@ from app.services import importer as importer_svc
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/convoys", tags=["routing"])
-logger = logging.getLogger(__name__)
+
+
+def _safe_filename(name: str) -> str:
+    """Strip characters that would break a Content-Disposition filename= value."""
+    return re.sub(r'[\r\n\x00-\x1f"\\]', "_", name)
 
 _MAX_IMPORT_BYTES = 10 * 1024 * 1024  # 10 MB — guard against DoS via huge uploads
 
@@ -411,7 +407,6 @@ async def export_gpx(
     ]
     gpx_content = export_svc.build_gpx(convoy.name, waypoints, coords)
 
-    safe_name = convoy.name.translate(str.maketrans("", "", '"\r\n;\\'))
     return PlainTextResponse(
         content=gpx_content,
         media_type="application/gpx+xml",
@@ -438,7 +433,6 @@ async def export_json(
          "license_plate": cv.vehicle.license_plate, "position": cv.position}
         for cv in convoy.convoy_vehicles
     ]
-    safe_name = convoy.name.translate(str.maketrans("", "", '"\r\n;\\'))
     json_content = export_svc.build_json_export(convoy, waypoints, vehicles)
     return PlainTextResponse(
         content=json_content,

@@ -163,11 +163,6 @@
 
 <TrackingPwaHead />
 
-<div class="track-app">
-	<aside class="track-sidebar">
-		<div class="track-header">
-			<AppLogo width={160} />
-			<h1>ConvoyPlan</h1>
 <div class="app">
 	<!-- Mobile top bar -->
 	<div class="topbar">
