@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     github_repo: str = "RettTechSolutions/ConvoyPlan"
 
     # Human-readable build version, injected at image build time from the git
-    # tag (ARG/ENV APP_VERSION, e.g. "0.9.0" or "0.9.0-3-g37b9dad" for builds
+    # tag (ARG/ENV APP_VERSION, e.g. "1.0.0" or "1.0.0-3-g37b9dad" for builds
     # ahead of the last tag). Falls back to a dev placeholder for local runs.
     app_version: str = "0.0.0-dev"
 

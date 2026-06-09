@@ -6,6 +6,19 @@ All notable changes to ConvoyPlan are documented here.
 
 ## [Unreleased]
 
+---
+
+## [1.0.0] – 2026-06-09
+
+Erste stabile Veröffentlichung für die breite Verteilung. Diese Version bündelt
+die seit 0.8.5 hinzugekommene Sicherheits- und Datenschutz-Härtung
+(Audit-Log, Brute-Force-Schutz, Passwort-Policy mit Breach-Check,
+JWT-Revocation, MFA-Verschlüsselung at-rest, CSP, Security-Header,
+CORS-Lockdown), das org-fähige Leitstellen- und Vorschlags-System, die
+DSGVO-Funktionen (Datenexport/-löschung, Retention-Container,
+Backup/Restore-Skripte) sowie zahlreiche Updater- und Stabilitäts-Fixes zu
+einem produktionsreifen Stand.
+
 ### Fixed
 
 - **Updater – Selbst-Neustart-Race-Condition behoben.** Der Updater rief intern `docker compose up -d updater` auf, um sich nach jedem Update neu zu erstellen — der orchestrierende Compose-Client wurde dabei beim eigenen Stopp gekillt, sodass der neue Container in `Created` hängen blieb (`<hex>_<project>-updater-1`). Stattdessen startet jetzt ein detachter Helper-Container (`docker:24-cli`) den Recreate, der den Tod des alten Updaters überlebt.
@@ -250,7 +263,8 @@ Das ruft den Update-Modus auf: räumt verwaiste Updater-Container auf, zieht all
 - Capacitor configuration for Android/iOS native wrapper.
 - Docker Compose setup with GraphHopper OSM pre-download.
 
-[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.8.5...HEAD
+[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.8.5...v1.0.0
 [0.8.5]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.5.3...v0.8.5
 [0.5.3]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.5.1...v0.5.2

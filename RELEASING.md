@@ -19,9 +19,9 @@ ConvoyPlan follows [Semantic Versioning](https://semver.org/):
 Before tagging a release, verify:
 
 - [ ] All CI checks pass on `main` (`ci.yml`: backend tests, frontend type check, Docker build).
-- [ ] `CHANGELOG.md` is updated under `[Unreleased]` with all notable changes.
-- [ ] `backend/app/main.py` — `version=` string matches the new version.
-- [ ] `frontend/package.json` — `"version"` field matches (optional but recommended).
+- [ ] `CHANGELOG.md` — the `[Unreleased]` block has been moved to a new `[X.Y.Z]` section and the comparison links at the bottom are updated.
+- [ ] `backend` version — injected automatically at build time from the git tag via `APP_VERSION` (`backend/app/config.py: app_version`); no manual edit needed.
+- [ ] `frontend/package.json` — `"version"` field matches the new version (also update `frontend/package-lock.json`).
 - [ ] Any new environment variables are documented in `.env.example`.
 - [ ] Any new Alembic migrations are committed and tested with `alembic upgrade head`.
 - [ ] The `stack.yml` image tags are updated if you use fixed tags there.
