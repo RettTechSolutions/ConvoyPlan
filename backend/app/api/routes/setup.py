@@ -5,6 +5,8 @@ from pathlib import Path
 
 import bcrypt
 import httpx
+from cryptography import x509
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +17,7 @@ from app.models.organization import Organization, UserOrganization
 from app.models.settings import SystemSetting
 from app.models.user import User
 from app.schemas.setup import SetupRequest, SetupStatusResponse
+from app.services.password import assert_password_not_breached, validate_password
 
 router = APIRouter(prefix="/setup", tags=["setup"])
 logger = logging.getLogger(__name__)
@@ -152,8 +155,20 @@ async def run_setup(data: SetupRequest, db: AsyncSession = Depends(get_db)):
     if data.tls_mode == "custom" and (not data.cert_pem or not data.key_pem):
         raise HTTPException(400, "cert_pem and key_pem are required for custom TLS")
 
+    if data.tls_mode == "custom" and data.cert_pem and data.key_pem:
+        try:
+            x509.load_pem_x509_certificate(data.cert_pem.encode())
+        except Exception:
+            raise HTTPException(400, "Invalid certificate PEM format")
+        try:
+            load_pem_private_key(data.key_pem.encode(), password=None)
+        except Exception:
+            raise HTTPException(400, "Invalid private key PEM format")
+
     if len(data.password) < 8:
         raise HTTPException(400, "Password must be at least 8 characters")
+    validate_password(data.password)
+    await assert_password_not_breached(data.password)
 
     # Create superadmin
     user = User(
