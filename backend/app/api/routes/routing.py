@@ -79,6 +79,14 @@ def _safe_filename(name: str) -> str:
     """Replace characters that are unsafe inside a quoted Content-Disposition filename."""
     return _UNSAFE_FILENAME_RE.sub('_', name)
 
+_CRLF_RE = re.compile(r'[\r\n"\\]')
+
+
+def _safe_filename(name: str, ext: str) -> str:
+    """Strip CRLF and quote chars to prevent CWE-113 header injection."""
+    safe = _CRLF_RE.sub("", name)[:100]
+    return f"{safe}{ext}"
+
 
 async def _apply_import(
     convoy_id: uuid.UUID,

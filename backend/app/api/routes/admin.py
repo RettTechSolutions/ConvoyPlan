@@ -700,7 +700,8 @@ async def send_user_password(
             login_url=login_url,
         )
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        logger.warning("Password email validation error: %s", e)
+        raise HTTPException(400, "E-Mail-Konfiguration ungültig")
     except Exception as e:
         logger.warning("Failed to send password email: %s", e)
         logger.error("Failed to send password e-mail to user %s: %s", user.id, e)
