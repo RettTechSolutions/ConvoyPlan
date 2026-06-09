@@ -4,7 +4,8 @@ import uuid
 
 from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
-import jwt
+import jwt as _jwt
+from jwt.exceptions import InvalidTokenError
 
 from app.config import settings
 
@@ -27,13 +28,12 @@ def _identity(token: str | None) -> str:
     fall back to a random per-connection id."""
     if token:
         try:
-            payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+            payload = _jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
             sub = payload.get("sub")
             if sub:
                 return f"user:{sub}"
-        except jwt.PyJWTError:
-            # Invalid/expired token: intentionally treat this connection as anonymous.
-            # Fall through to the anonymous identity return below.
+        except InvalidTokenError:
+            # Invalid/expired/malformed token: treat this connection as anonymous.
             pass
     return f"anon:{uuid.uuid4()}"
 
