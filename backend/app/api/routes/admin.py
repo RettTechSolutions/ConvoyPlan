@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
@@ -31,6 +32,8 @@ from app.services import api_key as api_key_svc
 from app.services import audit
 from app.services.email import save_smtp_settings, send_password_email, test_smtp_connection
 from app.services.password import assert_password_not_breached, generate_password, validate_password
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -695,7 +698,8 @@ async def send_user_password(
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
-        raise HTTPException(502, f"E-Mail konnte nicht gesendet werden: {e}")
+        logger.error("Failed to send password e-mail to user %s: %s", user.id, e)
+        raise HTTPException(502, "E-Mail konnte nicht gesendet werden")
 
     return {"status": "sent", "email": user.email}
 
