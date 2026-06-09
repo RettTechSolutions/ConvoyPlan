@@ -30,6 +30,7 @@ from app.services import fuel as fuel_svc
 from app.services import overpass as overpass_svc
 from app.services import importer as importer_svc
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/convoys", tags=["routing"])
 logger = logging.getLogger(__name__)
 
