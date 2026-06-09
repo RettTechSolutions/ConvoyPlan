@@ -1,6 +1,7 @@
 import logging
 import uuid
 from datetime import datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
 from jose import jwt, JWTError
@@ -28,10 +29,10 @@ router = APIRouter(tags=["tracking"])
 
 class PositionUpdate(BaseModel):
     vehicle_id: uuid.UUID
-    lat: float
-    lon: float
-    speed_kmh: float | None = None
-    heading: float | None = None
+    lat: float = Field(..., ge=-90, le=90)
+    lon: float = Field(..., ge=-180, le=180)
+    speed_kmh: float | None = Field(None, ge=0)
+    heading: float | None = Field(None, ge=0, lt=360)
 
     @field_validator("lat")
     @classmethod
