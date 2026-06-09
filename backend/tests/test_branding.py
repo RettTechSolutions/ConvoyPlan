@@ -104,3 +104,73 @@ async def test_upload_logo_rejects_bad_extension():
         await upload_logo(slot="main", file=mock_file, db=db, current_user=admin)
     assert exc.value.status_code == 400
     assert "Invalid file type" in exc.value.detail
+
+
+# ── SVG sanitisation (_validate_image_content) ───────────────────────────────
+
+def test_svg_rejects_script_tag():
+    from app.api.routes.branding import _validate_image_content
+    from fastapi import HTTPException
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+    with pytest.raises(HTTPException):
+        _validate_image_content(svg, ".svg")
+
+
+def test_svg_rejects_foreignobject():
+    from app.api.routes.branding import _validate_image_content
+    from fastapi import HTTPException
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg"><foreignObject><body xmlns="http://www.w3.org/1999/xhtml"><script>alert(1)</script></body></foreignObject></svg>'
+    with pytest.raises(HTTPException):
+        _validate_image_content(svg, ".svg")
+
+
+def test_svg_rejects_javascript_href():
+    from app.api.routes.branding import _validate_image_content
+    from fastapi import HTTPException
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg"><a href="javascript:alert(1)"><text>click</text></a></svg>'
+    with pytest.raises(HTTPException):
+        _validate_image_content(svg, ".svg")
+
+
+def test_svg_rejects_data_uri_in_href():
+    from app.api.routes.branding import _validate_image_content
+    from fastapi import HTTPException
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg"><image href="data:text/html,<script>alert(1)</script>" /></svg>'
+    with pytest.raises(HTTPException):
+        _validate_image_content(svg, ".svg")
+
+
+def test_svg_rejects_event_handler_not_in_regex():
+    from app.api.routes.branding import _validate_image_content
+    from fastapi import HTTPException
+    # ondragstart is not in the regex pattern but must be caught by XML parsing
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg"><rect ondragstart="alert(1)" /></svg>'
+    with pytest.raises(HTTPException):
+        _validate_image_content(svg, ".svg")
+
+
+def test_svg_rejects_non_svg_root():
+    from app.api.routes.branding import _validate_image_content
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException):
+        _validate_image_content(b'<html><body>not svg</body></html>', ".svg")
+
+
+def test_svg_accepts_clean_file():
+    from app.api.routes.branding import _validate_image_content
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="40" fill="red" /></svg>'
+    _validate_image_content(svg, ".svg")  # must not raise
+
+
+def test_png_rejects_wrong_magic():
+    from app.api.routes.branding import _validate_image_content
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException):
+        _validate_image_content(b"not a png", ".png")
+
+
+def test_jpeg_rejects_wrong_magic():
+    from app.api.routes.branding import _validate_image_content
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException):
+        _validate_image_content(b"not a jpeg", ".jpg")
