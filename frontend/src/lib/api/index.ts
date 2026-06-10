@@ -138,6 +138,13 @@ export interface LoginResult {
 }
 
 // Auth
+export interface DemoSessionResult {
+    access_token: string;
+    token_type: string;
+    org_slug: string;
+    expires_at: string;
+}
+
 export const authApi = {
 	register: (email: string, password: string) => api.post('/api/auth/register', { email, password }),
 	login: (email: string, password: string) =>
@@ -148,6 +155,7 @@ export const authApi = {
 		api.post<{ status: string; access_token?: string }>('/api/auth/password', { current_password, new_password }),
 	requestPasswordReset: (email: string, org_slug?: string) =>
 		api.post<{ status: string }>('/api/auth/password-reset', { email, org_slug }),
+	createDemoSession: () => api.post<DemoSessionResult>('/api/auth/demo-session', {}),
 };
 
 export const mfaApi = {

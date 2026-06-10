@@ -545,3 +545,80 @@ async def mfa_verify(data: MfaVerifyRequest, request: Request, db: AsyncSession 
         )
 
     return LoginResponse(access_token=token)
+
+
+# ── Demo session ──────────────────────────────────────────────────────────────
+
+class DemoSessionResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    org_slug: str
+    expires_at: str  # ISO-8601 UTC
+
+
+@router.post(
+    "/demo-session",
+    response_model=DemoSessionResponse,
+    dependencies=[Depends(rate_limit("demo", max_attempts=10, window_seconds=3600, count_attempts=True))],
+)
+async def create_demo_session(request: Request, db: AsyncSession = Depends(get_db)):
+    """Create an ephemeral demo organisation + user and return a short-lived token.
+
+    Requires DEMO_ENABLED=true in the environment. The session is deleted by the
+    retention job after DEMO_SESSION_HOURS (default 24)."""
+    if not settings.demo_enabled:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Demo nicht verfügbar")
+
+    import secrets as _secrets
+
+    # Find a unique slug (collision extremely unlikely but retry to be safe)
+    slug = None
+    for _ in range(5):
+        candidate = "demo-" + _secrets.token_hex(3)  # e.g. demo-a3f9c2
+        existing = await db.execute(select(Organization).where(Organization.slug == candidate))
+        if not existing.scalar_one_or_none():
+            slug = candidate
+            break
+    if not slug:
+        raise HTTPException(status_code=500, detail="Demo-Sitzung konnte nicht erstellt werden")
+
+    uid = uuid.uuid4()
+    email = f"demo-{uid.hex}@demo.local"
+    password = _secrets.token_urlsafe(24)
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+    demo_user = User(id=uid, email=email, hashed_password=hashed, is_demo=True)
+    db.add(demo_user)
+    await db.flush()
+
+    demo_org = Organization(name=f"Demo {slug[-6:].upper()}", slug=slug, owner_id=demo_user.id, is_demo=True)
+    db.add(demo_org)
+    await db.flush()
+
+    db.add(UserOrganization(user_id=demo_user.id, organization_id=demo_org.id, role="planer"))
+    await db.commit()
+
+    expire = datetime.now(timezone.utc) + timedelta(hours=settings.demo_session_hours)
+    token = _jwt.encode(
+        {
+            "sub": str(demo_user.id),
+            "exp": expire,
+            "typ": "access",
+            "is_superadmin": False,
+            "org_id": str(demo_org.id),
+            "org_slug": slug,
+            "role": "planer",
+            "tv": 0,
+            "is_demo": True,
+        },
+        settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
+
+    await audit.record(
+        db, "demo.session.created", request=request,
+        actor_id=demo_user.id, actor_email=email, org_id=demo_org.id,
+        detail={"slug": slug, "expires_at": expire.isoformat()},
+    )
+
+    return DemoSessionResponse(access_token=token, org_slug=slug, expires_at=expire.isoformat())

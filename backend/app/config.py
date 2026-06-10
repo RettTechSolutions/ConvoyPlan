@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     # When empty, a key is derived deterministically from jwt_secret.
     mfa_encryption_key: str = ""
 
+    # Ephemeral demo sessions. Set DEMO_ENABLED=true to expose the public endpoint.
+    demo_enabled: bool = False
+    demo_session_hours: int = 24  # how long a demo org + user lives before retention deletes it
+
     # Data retention (DSGVO Art. 5(1)(e)). Run by the `retention` cron container.
     retention_enabled: bool = True
     retention_positions_hours: int = 24      # live positions older than this are purged

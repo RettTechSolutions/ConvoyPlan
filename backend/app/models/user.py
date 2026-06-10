@@ -21,6 +21,7 @@ class User(Base):
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Bumped to revoke all of a user's existing JWTs (T6).
     token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     vehicles: Mapped[list["Vehicle"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     convoys: Mapped[list["Convoy"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
