@@ -4,16 +4,13 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
 from pydantic import BaseModel, Field, field_validator
-import jwt as _jwt
-from jwt.exceptions import InvalidTokenError
 
 from sqlalchemy import select, delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import decode_stream_token, get_current_user
 from app.api.guards import get_convoy_access
-from app.config import settings
 from app.database import get_db, AsyncSessionLocal
 from app.models.convoy import ConvoyVehicle
 from app.models.user import User
@@ -208,21 +205,21 @@ async def tracking_ws(
     token: str = Query(...),
 ):
     try:
-        payload = _jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-        user_id = payload.get("sub")
-        if not user_id:
-            await ws.close(code=4001)
-            return
-    except InvalidTokenError:
+        token_data = decode_stream_token(token)
+    except HTTPException:
         await ws.close(code=4001)
         return
 
     async with AsyncSessionLocal() as db:
         try:
             convoy_uuid = uuid.UUID(convoy_id)
-            user_result = await db.execute(select(User).where(User.id == user_id))
+            user_result = await db.execute(select(User).where(User.id == token_data.user_id))
             user = user_result.scalar_one_or_none()
             if not user or not user.is_active:
+                await ws.close(code=4401)
+                return
+            # Reject stale sessions (token_version bumped by password change/reset).
+            if token_data.token_version != user.token_version:
                 await ws.close(code=4401)
                 return
             await get_convoy_access(convoy_uuid, user, db, require="read")

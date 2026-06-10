@@ -4,6 +4,7 @@
     import LeitstellenOverviewMap from '$lib/components/LeitstellenOverviewMap.svelte';
     import LeitstellenTable from '$lib/components/LeitstellenTable.svelte';
     import { auth } from '$lib/stores/auth';
+    import { getStreamTicket } from '$lib/api/client';
     import { adminApi, mfaApi, leistellenApi, licenseApi, emailTemplateApi, type AdminUser, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type EmailTemplate, type ApiKey, type ApiKeyCreated } from '$lib/api';
     import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
@@ -465,14 +466,21 @@
         }
     }
 
-    function startLogStream() {
+    async function startLogStream() {
         if (_updateLogSource) { _updateLogSource.close(); _updateLogSource = null; }
         updateLogLines = [];
         updateLogDone = false;
         showUpdateLog = true;
 
-        const token = $auth.token ?? '';
-        const es = new EventSource(`/api/admin/update-log?token=${encodeURIComponent(token)}`);
+        // SSE cannot send an Authorization header — use a short-lived stream
+        // ticket instead of the long-lived superadmin token in the URL.
+        const ticket = await getStreamTicket();
+        if (!ticket) {
+            updateLogLines = ['[Authentifizierung fehlgeschlagen — bitte neu anmelden]'];
+            updateLogDone = true;
+            return;
+        }
+        const es = new EventSource(`/api/admin/update-log?token=${encodeURIComponent(ticket)}`);
         _updateLogSource = es;
 
         es.onmessage = (e) => {
@@ -1028,6 +1036,8 @@
             const blob = await resp.blob();
             const url = URL.createObjectURL(blob);
             window.open(url, '_blank', 'noopener');
+            // Release the object URL once the new tab has had time to load it.
+            setTimeout(() => URL.revokeObjectURL(url), 60_000);
         } catch (e: unknown) {
             emailTemplateError = e instanceof Error ? e.message : 'Vorschau fehlgeschlagen';
         }

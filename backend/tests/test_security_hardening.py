@@ -258,7 +258,11 @@ def test_decrypt_legacy_plaintext_passthrough():
 # ── Token versioning / JWT revocation (T6) ────────────────────────────────────────
 
 from app.api import deps  # noqa: E402
-from app.api.routes.auth import create_mfa_pending_token, create_token  # noqa: E402
+from app.api.routes.auth import (  # noqa: E402
+    create_mfa_pending_token,
+    create_stream_ticket,
+    create_token,
+)
 
 
 def test_token_carries_version_and_parses():
@@ -301,6 +305,32 @@ def test_legacy_token_without_typ_still_accepted():
     )
     td = deps.get_token_data(legacy)  # must not raise
     assert td.token_version == 0
+
+
+# ── Stream tickets (SSE/WS query-param auth) ──────────────────────────────────────
+
+def test_stream_ticket_rejected_by_regular_api():
+    """A stream ticket (typ=stream) must NOT be usable as a normal access token."""
+    td = deps.get_token_data(create_token(str(uuid.uuid4()), False, token_version=3))
+    ticket = create_stream_ticket(td)
+    with pytest.raises(HTTPException) as exc:
+        deps.get_token_data(ticket)
+    assert exc.value.status_code == 401
+
+
+def test_stream_ticket_accepted_by_stream_decoder():
+    td = deps.get_token_data(create_token(str(uuid.uuid4()), False, token_version=3))
+    ticket = create_stream_ticket(td)
+    out = deps.decode_stream_token(ticket)
+    assert out.user_id == td.user_id
+    assert out.token_version == 3
+
+
+def test_mfa_pending_rejected_by_stream_decoder():
+    """The streaming paths (WS/SSE) must also reject mfa_pending tokens (K1)."""
+    pending = create_mfa_pending_token(str(uuid.uuid4()))
+    with pytest.raises(HTTPException):
+        deps.decode_stream_token(pending)
 
 
 # ── E-mail template SSTI guard (M3) ───────────────────────────────────────────────

@@ -161,6 +161,21 @@
 		return wrap;
 	}
 
+	/**
+	 * Build popup content via the DOM (textContent) instead of setHTML so that
+	 * user-controlled values (waypoint names, halt purpose, …) can never inject
+	 * markup. Used on public share/track pages → must stay XSS-safe.
+	 */
+	function popupNode(title: string, subtitle: string): HTMLDivElement {
+		const div = document.createElement('div');
+		const strong = document.createElement('strong');
+		strong.textContent = title;
+		div.appendChild(strong);
+		div.appendChild(document.createElement('br'));
+		div.appendChild(document.createTextNode(subtitle));
+		return div;
+	}
+
 	function makeMarker(color: string, size = 20, label?: string): maplibregl.Marker {
 		const el = document.createElement('div');
 		el.style.cssText = `width:${size}px;height:${size}px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.4);cursor:pointer`;
@@ -238,8 +253,8 @@
 				return makeMarker(color, 16, w.name)
 					.setLngLat([w.lon!, w.lat!])
 					.setPopup(
-						new maplibregl.Popup({ offset: 12 }).setHTML(
-							`<strong>${w.name}</strong><br>${w.type}${w.halt_purpose ? ` – ${w.halt_purpose}` : ''}`
+						new maplibregl.Popup({ offset: 12 }).setDOMContent(
+							popupNode(w.name, `${w.type}${w.halt_purpose ? ` – ${w.halt_purpose}` : ''}`)
 						)
 					)
 					.addTo(map);
@@ -274,9 +289,8 @@
 					? makeArrowMarker(pos.heading, label)
 					: makeMarker('#f1c40f', 18, label);
 				m.setLngLat([pos.lon, pos.lat])
-					.setPopup(new maplibregl.Popup().setHTML(
-						`<strong>${vehicleId.slice(0, 8)}…</strong><br>` +
-						`${pos.speed_kmh?.toFixed(0) ?? '–'} km/h`
+					.setPopup(new maplibregl.Popup().setDOMContent(
+						popupNode(`${vehicleId.slice(0, 8)}…`, `${pos.speed_kmh?.toFixed(0) ?? '–'} km/h`)
 					))
 					.addTo(map);
 				trackingMarkers.set(vehicleId, m);

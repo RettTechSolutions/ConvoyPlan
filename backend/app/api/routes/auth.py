@@ -81,6 +81,32 @@ def create_token(
     )
 
 
+def create_stream_ticket(token_data: TokenData) -> str:
+    """Short-lived (60 s) stream-scoped ticket for SSE/WebSocket connections.
+
+    EventSource/WebSocket cannot set an Authorization header, so the client
+    exchanges its bearer token for this ticket and passes it in the URL instead
+    of the long-lived access token. typ=stream means every normal API endpoint
+    rejects it (see deps._decode_token), so even if it ends up in a proxy log
+    or the browser history it cannot be replayed for API calls and expires
+    within a minute."""
+    expire = datetime.now(timezone.utc) + timedelta(seconds=60)
+    return _jwt.encode(
+        {
+            "sub": str(token_data.user_id),
+            "exp": expire,
+            "typ": "stream",
+            "is_superadmin": token_data.is_superadmin,
+            "org_id": str(token_data.org_id) if token_data.org_id else None,
+            "org_slug": token_data.org_slug,
+            "role": token_data.role,
+            "tv": token_data.token_version,
+        },
+        settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
+
+
 def create_mfa_pending_token(user_id: str, org_slug: str | None = None) -> str:
     """Short-lived token issued after password check when MFA is required.
     The frontend uses this to call /auth/mfa/verify with the TOTP code."""
@@ -270,6 +296,23 @@ async def change_password(
         token_data.org_slug, token_data.role, current_user.token_version,
     )
     return {"status": "ok", "access_token": new_token}
+
+
+# ── Stream ticket (SSE / WebSocket auth) ───────────────────────────────────────
+
+
+@router.post("/stream-ticket")
+async def stream_ticket(
+    token_data: TokenData = Depends(get_token_data),
+    current_user: User = Depends(get_current_user),
+):
+    """Exchange the bearer token for a short-lived stream ticket.
+
+    EventSource/WebSocket cannot send an Authorization header, so the client
+    uses this ticket in the connection URL instead of its long-lived access
+    token. get_current_user guarantees the session is still active and the
+    token version is current before a ticket is issued."""
+    return {"ticket": create_stream_ticket(token_data)}
 
 
 # ── Password reset request (forgot password) ──────────────────────────────────
