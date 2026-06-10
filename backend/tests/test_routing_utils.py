@@ -75,3 +75,29 @@ def test_convoy_duration_max_speed_rural():
                           max_speed_details=max_speed)
     # Should be classified as rural: ~10 km / 65 km/h ≈ 554 s
     assert 500 < d < 610
+
+
+def test_convoy_duration_max_speed_string_values():
+    from app.services.routing import convoy_duration_s
+    # GraphHopper may return string designations like "DE:urban"/"DE:rural"
+    # instead of numeric limits — must not raise (caused 500s in production).
+    coords = [[10.0, 48.0], [10.0, 48.09]]  # ~10 km
+    road_class = [[0, 1, "primary"]]
+    max_speed = [[0, 1, "DE:urban"]]
+    d = convoy_duration_s(10_000, coords, road_class, speed_urban_kmh=40, speed_rural_kmh=65,
+                          max_speed_details=max_speed)
+    # "DE:urban" → innerorts: ~10 km / 40 km/h ≈ 900 s
+    assert 840 < d < 960
+
+
+def test_road_preference_modes_and_legacy_mapping():
+    from app.services.routing import _LEGACY_PREFERENCES, _PRIORITY_RULES
+    # Exactly the three supported modes
+    assert set(_PRIORITY_RULES) == {"standard", "schnell", "kuerzeste"}
+    # Legacy values from existing convoys must map onto a supported mode
+    for legacy, target in _LEGACY_PREFERENCES.items():
+        assert target in _PRIORITY_RULES, f"{legacy} maps to unknown mode {target}"
+    # "schnell" and "kuerzeste" carry no priority rules (default/shortest weighting)
+    assert _PRIORITY_RULES["schnell"] == []
+    assert _PRIORITY_RULES["kuerzeste"] == []
+    assert len(_PRIORITY_RULES["standard"]) > 0

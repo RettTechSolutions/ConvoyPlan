@@ -11,37 +11,42 @@ logger = logging.getLogger(__name__)
 URBAN_ROAD_CLASSES = {"residential", "living_street", "service"}
 URBAN_SPEED_THRESHOLD_KMH = 50  # posted limit ≤ this → innerorts
 
-_PRIORITY_RULES = {
+# Three simple modes:
+#   standard  — avoids built-up areas where possible and prefers the
+#               best-developed road available (Autobahn/B-Straße before
+#               Kreisstraße before Ortsdurchfahrt)
+#   schnell   — fastest route, GraphHopper default weighting
+#   kuerzeste — shortest route by distance
+# Legacy values from older convoys are mapped onto the new modes.
+_LEGACY_PREFERENCES = {
+    "bundesstrasse": "standard",
+    "landstrasse": "standard",
+}
+
+_PRIORITY_RULES: dict[str, list[dict[str, str]]] = {
     "schnell": [],
-    "bundesstrasse": [
-        # Avoid motorways — convoys need exits and shouldn't use Autobahn.
-        {"if": "road_class == MOTORWAY", "multiply_by": "0.3"},
-        # Mild penalty for Kreisstraßen — PRIMARY/SECONDARY preferred, but TERTIARY
-        # must stay usable as connectors between B-road segments.
-        {"if": "road_class == TERTIARY", "multiply_by": "0.7"},
-        # Strongly discourage unclassified and track roads — they are convoy-
-        # unsuitable and must be more expensive than any penalised main road,
-        # otherwise the router uses them as cheap workarounds.
-        {"if": "road_class == UNCLASSIFIED", "multiply_by": "0.15"},
-        {"if": "road_class == TRACK", "multiply_by": "0.01"},
+    "kuerzeste": [],
+    "standard": [
+        # Prefer well-developed roads: mild penalty for Kreisstraßen so
+        # PRIMARY/SECONDARY win when roughly comparable, but TERTIARY stays
+        # usable as a connector.
+        {"if": "road_class == TERTIARY", "multiply_by": "0.6"},
+        # Avoid built-up areas: penalise residential streets, but not so hard
+        # that the router detours via unclassified/track roads instead — many
+        # B roads pass through town centres tagged residential in OSM.
+        {"if": "road_class == RESIDENTIAL || road_class == LIVING_STREET", "multiply_by": "0.3"},
+        # Convoy-unsuitable road classes must always be more expensive than
+        # any penalised main road, otherwise they become cheap workarounds.
+        {"if": "road_class == UNCLASSIFIED", "multiply_by": "0.25"},
         {"if": "road_class == SERVICE", "multiply_by": "0.1"},
-        # Moderate residential penalty: discourage village back-streets but do NOT
-        # block entirely — many B roads pass through town centres tagged residential.
-        # A 0.1× penalty causes the router to detour via unclassified/track roads,
-        # which is far worse for a convoy.
-        {"if": "road_class == RESIDENTIAL || road_class == LIVING_STREET", "multiply_by": "0.5"},
-    ],
-    "landstrasse": [
-        # Avoid motorways and trunk roads.
-        {"if": "road_class == MOTORWAY || road_class == TRUNK", "multiply_by": "0.05"},
-        # Track roads are not suitable for convoy movement.
-        {"if": "road_class == TRACK", "multiply_by": "0.05"},
-        # Moderate residential penalty — rural routes sometimes pass through village
-        # centres; don't block entirely.
-        {"if": "road_class == RESIDENTIAL || road_class == LIVING_STREET", "multiply_by": "0.5"},
-        {"if": "road_class == SERVICE", "multiply_by": "0.2"},
+        {"if": "road_class == TRACK", "multiply_by": "0.01"},
     ],
 }
+
+# Cost per km added to the edge weight ("kuerzeste" mode). GraphHopper's
+# default is ~70; a high value makes distance dominate travel time so the
+# route approximates the shortest path without using footpath-grade roads.
+_SHORTEST_DISTANCE_INFLUENCE = 300
 
 
 def _haversine_m(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
@@ -146,9 +151,11 @@ async def calculate_route(
         "details": ["road_class", "max_speed"],
     }
 
+    road_preference = _LEGACY_PREFERENCES.get(road_preference, road_preference)
     if road_preference not in _PRIORITY_RULES:
         logger.warning("Unknown road_preference %r, falling back to 'schnell'", road_preference)
-    priority_rules = list(_PRIORITY_RULES.get(road_preference, []))
+        road_preference = "schnell"
+    priority_rules = list(_PRIORITY_RULES[road_preference])
 
     custom_model: dict[str, Any] = {}
     if vehicle_params and "max_height_m" in vehicle_params:
@@ -158,6 +165,9 @@ async def calculate_route(
         ]
     elif priority_rules:
         custom_model["priority"] = priority_rules
+
+    if road_preference == "kuerzeste":
+        custom_model["distance_influence"] = _SHORTEST_DISTANCE_INFLUENCE
 
     if custom_model:
         payload["custom_model"] = custom_model

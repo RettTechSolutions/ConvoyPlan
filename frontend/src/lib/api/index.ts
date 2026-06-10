@@ -3,7 +3,9 @@ import type { Geometry } from 'geojson';
 
 export interface Point { lat: number; lon: number }
 
-export type RoadPreference = 'schnell' | 'bundesstrasse' | 'landstrasse';
+// 'bundesstrasse' / 'landstrasse' are legacy values still present on older
+// convoys; the backend maps them to 'standard'.
+export type RoadPreference = 'standard' | 'schnell' | 'kuerzeste' | 'bundesstrasse' | 'landstrasse';
 
 export interface Vehicle {
 	id: string; name: string; callsign: string | null; license_plate: string | null;
