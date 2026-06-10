@@ -61,6 +61,18 @@
 	let sidebarOpen = $state(false);
 	let error = $state('');
 
+	// Demo session info decoded from JWT payload (null for regular sessions)
+	const demoSession = $derived.by(() => {
+		const slug = ($page.params as Record<string, string>).slug;
+		const token = orgStore.getToken(slug);
+		if (!token) return null;
+		try {
+			const payload = JSON.parse(atob(token.split('.')[1]));
+			if (!payload.is_demo) return null;
+			return { expiresAt: new Date(payload.exp * 1000) };
+		} catch { return null; }
+	});
+
 	// Theme toggle
 	function toggleTheme() {
 	    themeStore.toggle();
@@ -843,6 +855,13 @@
 				<button class="logout-btn" onclick={logout} title="Abmelden">✕</button>
 			</div>
 		</div>
+
+		{#if demoSession}
+			<div class="demo-banner">
+				<span>Demo-Sitzung · Läuft ab {demoSession.expiresAt.toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })} Uhr</span>
+				<a href="/" class="demo-banner-link">Registrieren →</a>
+			</div>
+		{/if}
 
 		<!-- Convoy-Selektor -->
 		<div class="convoy-selector">
@@ -1711,6 +1730,9 @@
 .admin-link { font-size: var(--text-xs); color: var(--text-muted); text-decoration: none; white-space: nowrap; }
 .admin-link:hover { color: var(--text-2); }
 
+	.demo-banner { display: flex; justify-content: space-between; align-items: center; padding: .4rem 1rem; background: #78350f; color: #fef3c7; font-size: var(--text-sm); gap: .5rem; }
+	.demo-banner-link { color: #fde68a; font-weight: 600; white-space: nowrap; text-decoration: none; }
+	.demo-banner-link:hover { text-decoration: underline; }
 	.convoy-selector { display: flex; gap: .5rem; padding: .75rem 1rem; border-bottom: 1px solid var(--border); }
 .convoy-selector select { flex: 1; padding: .5rem; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); }
 

@@ -12,7 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.audit_log import AuditLog
+from app.models.organization import Organization
 from app.models.share_link import ConvoyShareLink
+from app.models.user import User
 from app.models.vehicle_position import VehiclePosition
 from app.services import audit
 
@@ -50,6 +52,36 @@ async def purge_expired_share_links(db: AsyncSession, grace_days: int) -> int:
     return result.rowcount or 0
 
 
+async def purge_demo_sessions(db: AsyncSession, max_age_hours: int) -> int:
+    """Delete ephemeral demo orgs and their owners that have passed the TTL.
+
+    Order matters: convoys must be deleted before their org (FK with SET NULL
+    would orphan them), org before its owner_user (FK with NO ACTION)."""
+    from sqlalchemy import select as _select
+    from app.models.convoy import Convoy
+
+    cutoff = _cutoff(hours=max_age_hours)
+    rows = (await db.execute(
+        _select(Organization.id, Organization.owner_id)
+        .where(Organization.is_demo.is_(True), Organization.created_at < cutoff)
+    )).all()
+    if not rows:
+        return 0
+
+    org_ids = [r.id for r in rows]
+    user_ids = [r.owner_id for r in rows]
+
+    # Convoys have organization_id FK with SET NULL — delete them explicitly so
+    # demo data is fully removed instead of becoming orphaned.
+    await db.execute(delete(Convoy).where(Convoy.organization_id.in_(org_ids)))
+    # Deleting the org cascades UserOrganization memberships.
+    await db.execute(delete(Organization).where(Organization.id.in_(org_ids)))
+    # Deleting the user cascades their vehicles and any remaining memberships.
+    await db.execute(delete(User).where(User.id.in_(user_ids)))
+
+    return len(org_ids)
+
+
 async def run_all(db: AsyncSession) -> dict[str, int]:
     """Run every retention purge, commit, and record an audit entry if anything
     was deleted. Returns the per-category deletion counts."""
@@ -57,6 +89,7 @@ async def run_all(db: AsyncSession) -> dict[str, int]:
         "positions": await purge_stale_positions(db, settings.retention_positions_hours),
         "audit_logs": await purge_old_audit_logs(db, settings.retention_audit_days),
         "share_links": await purge_expired_share_links(db, settings.retention_share_links_days),
+        "demo_sessions": await purge_demo_sessions(db, settings.demo_session_hours) if settings.demo_enabled else 0,
     }
     await db.commit()
     if any(counts.values()):
