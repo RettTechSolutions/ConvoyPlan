@@ -16,7 +16,7 @@ PyJWT==2.13.0
 pydantic-settings==2.14.1
 cryptography==48.0.1
 shapely==2.1.2
-python-multipart==0.0.30
+python-multipart==0.0.32
 bcrypt==5.0.0
 httpx==0.28.1
 gpxpy==1.6.2
