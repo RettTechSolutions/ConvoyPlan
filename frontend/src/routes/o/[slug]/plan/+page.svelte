@@ -18,7 +18,7 @@
 		type KanalwechselEntry,
 	} from '$lib/api';
 	import { getToken } from '$lib/api/client';
-	import type { FeatureCollection } from 'geojson';
+	import type { FeatureCollection, Geometry } from 'geojson';
 	import { dndzone } from 'svelte-dnd-action';
 	import { themeStore } from '$lib/stores/theme';
 	import { versionStore } from '$lib/stores/version.svelte';
@@ -31,7 +31,11 @@
 	let convoyList = $state<Convoy[]>([]);
 	let organizations = $state<Organization[]>([]);
 	let selected = $state<Convoy | null>(null);
-	let route = $state<{ geojson: unknown; distance_m: number | null; duration_s: number | null; fuel_analysis: FuelAnalysis | null; kanalwechsel: KanalwechselEntry[] } | null>(null);
+	// Route geojson is tracked in its own $state so Svelte 5 can reliably detect
+	// changes on every recalculation (avoids issues with the `unknown` type not
+	// being deeply proxied, which prevented the map from updating on re-clicks).
+	let routeGeojson = $state<Geometry | null>(null);
+	let route = $state<{ distance_m: number | null; duration_s: number | null; fuel_analysis: FuelAnalysis | null; kanalwechsel: KanalwechselEntry[] } | null>(null);
 	let fuelStations = $state<FuelStation[]>([]);
 	let showFuelStations = $state(false);
 	let fuelStationsLoading = $state(false);
@@ -254,6 +258,7 @@
 		selected = c;
 		activeConvoy.set(c);
 		route = null;
+		routeGeojson = null;
 		activeRoute.set(null);
 		fuelStations = [];
 		showFuelStations = false;
@@ -267,8 +272,8 @@
 			const r = await convoysApi.getRoute(convoyId);
 			// Guard against a slow response after the user switched convoys
 			if (!r || !r.geojson || get(activeConvoy)?.id !== convoyId) return;
+			routeGeojson = r.geojson;
 			route = {
-				geojson: r.geojson,
 				distance_m: r.distance_m,
 				duration_s: r.duration_s,
 				fuel_analysis: r.fuel_analysis,
@@ -569,7 +574,8 @@
 		loading = true; error = '';
 		try {
 			const r = await convoysApi.calculateRoute(selected.id);
-			route = { geojson: r.geojson, distance_m: r.distance_m, duration_s: r.duration_s, fuel_analysis: r.fuel_analysis, kanalwechsel: r.kanalwechsel ?? [] };
+			routeGeojson = r.geojson;
+			route = { distance_m: r.distance_m, duration_s: r.duration_s, fuel_analysis: r.fuel_analysis, kanalwechsel: r.kanalwechsel ?? [] };
 			fuelStations = [];
 			showFuelStations = false;
 			activeRoute.set(r);
@@ -1479,7 +1485,7 @@
 			startPoint={selected?.start_point}
 			endPoint={selected?.end_point}
 			waypoints={selected?.waypoints ?? []}
-			routeGeojson={route?.geojson as never}
+			routeGeojson={routeGeojson}
 			closuresGeojson={showClosures ? closures : null}
 			onMapClick={handleMapClick}
 			onMapMove={handleMapMove}
