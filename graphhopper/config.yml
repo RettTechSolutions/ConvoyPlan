@@ -9,6 +9,11 @@ graphhopper:
   datareader.file: /data/osm/germany-latest.osm.pbf
   graph.location: /data/graph
 
+  # Vom Backend benötigte Encoded Values: road_class + max_speed (Routen-Details
+  # für die Fahrzeitberechnung, Custom Model der Straßenpräferenzen) und
+  # max_height (Höhenbeschränkung der Fahrzeuge).
+  graph.encoded_values: car_access, car_average_speed, road_class, max_speed, max_height
+
   profiles:
     - name: car
       vehicle: car

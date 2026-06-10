@@ -43,6 +43,28 @@ else
 fi
 
 # â”€â”€ GraphHopper-Konfiguration generieren â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# road_class + max_speed: vom Backend als Routen-Details angefragt (Fahrzeit-
+# Berechnung innerorts/außerorts) und im Custom Model der Straßenpräferenzen
+# verwendet. max_height: Höhenbeschränkung aus den Fahrzeugdaten.
+# Fehlen diese Encoded Values im Graph, lehnt GraphHopper jede Routing-Anfrage
+# ab und calculate-route schlägt fehl.
+ENCODED_VALUES="car_access, car_average_speed, road_class, max_speed, max_height"
+
+# Encoded Values sind Teil des kompilierten Graphen. Ändern sie sich, muss der
+# Graph aus der OSM-Datei neu gebaut werden, sonst startet GraphHopper nicht
+# bzw. lehnt Anfragen ab. Fingerprint-Datei im Graph-Verzeichnis vergleichen.
+FINGERPRINT_FILE="$GRAPH_DIR/.encoded_values"
+if [ -n "$(ls -A "$GRAPH_DIR" 2>/dev/null | grep -v '^\.encoded_values$')" ]; then
+    if [ "$(cat "$FINGERPRINT_FILE" 2>/dev/null)" != "$ENCODED_VALUES" ]; then
+        echo "================================================================"
+        echo "  Encoded Values haben sich geändert – Routing-Graph wird"
+        echo "  aus den OSM-Daten neu gebaut (kann mehrere Minuten dauern)."
+        echo "================================================================"
+        rm -rf "$GRAPH_DIR"/* "$FINGERPRINT_FILE"
+    fi
+fi
+printf '%s' "$ENCODED_VALUES" > "$FINGERPRINT_FILE"
+
 CONFIG_FILE="/tmp/graphhopper-config.yml"
 cat > "$CONFIG_FILE" << CONF
 graphhopper:
@@ -56,7 +78,7 @@ graphhopper:
     - pedestrian
     - platform
 
-  graph.encoded_values: car_access, car_average_speed
+  graph.encoded_values: $ENCODED_VALUES
 
   profiles:
     - name: car

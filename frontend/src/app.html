@@ -74,7 +74,10 @@
 		</style>
 		%sveltekit.head%
 	</head>
-	<body data-sveltekit-preload-data="hover">
+	<!-- preload "tap" statt "hover": Hover-Preloads laden CSS/JS von Routen, die
+	     nie besucht werden, und erzeugen "resource was preloaded but not used"-
+	     Warnungen in der Konsole. Bei "tap" wird erst bei pointerdown geladen. -->
+	<body data-sveltekit-preload-data="tap">
 		<div style="display: contents">%sveltekit.body%</div>
 	</body>
 </html>

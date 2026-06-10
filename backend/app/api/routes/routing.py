@@ -261,11 +261,20 @@ async def calculate_route(
             vehicle_params or None,
             road_preference=convoy.road_preference,
         )
+    except ValueError as exc:
+        # GraphHopper hat geantwortet, aber die Anfrage abgelehnt (z. B. Punkt
+        # außerhalb der Kartendaten, fehlende Encoded Values) — Meldung
+        # durchreichen, damit der Fehler im Frontend diagnostizierbar ist.
+        logger.error("Routing rejected for convoy %s: %s", convoy_id, exc)
+        raise HTTPException(status_code=502, detail=f"Routing fehlgeschlagen: {exc}")
     except Exception as exc:
         logger.error("Routing service error for convoy %s: %s", convoy_id, exc, exc_info=True)
         raise HTTPException(status_code=502, detail="Routing-Dienst nicht verfügbar")
 
     coords = route_data["geometry"].get("coordinates", [])
+    if len(coords) < 2:
+        logger.error("Routing returned invalid geometry for convoy %s (%d coords)", convoy_id, len(coords))
+        raise HTTPException(status_code=502, detail="Routing-Dienst lieferte keine gültige Routengeometrie")
     try:
         convoy_duration_s = routing_svc.convoy_duration_s(
             route_data["distance_m"],
