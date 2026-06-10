@@ -1606,7 +1606,7 @@
 				<label>Straßenpräferenz
 					<select bind:value={newConvoy.road_preference}>
 						<option value="schnell">Schnellste Route (Autobahn erlaubt)</option>
-						<option value="bundesstrasse">Bundesstraßen bevorzugt (meidet Wohngebiete)</option>
+						<option value="bundesstrasse">Bundesstraßen bevorzugt (meidet Kreisstr. &amp; Wohngebiete)</option>
 						<option value="landstrasse">Landstraßen (meidet Autobahn &amp; Wohngebiete)</option>
 					</select>
 				</label>
@@ -1651,7 +1651,7 @@
 				<label>Straßenpräferenz
 					<select bind:value={editConvoy.road_preference}>
 						<option value="schnell">Schnellste Route (Autobahn erlaubt)</option>
-						<option value="bundesstrasse">Bundesstraßen bevorzugt (meidet Wohngebiete)</option>
+						<option value="bundesstrasse">Bundesstraßen bevorzugt (meidet Kreisstr. &amp; Wohngebiete)</option>
 						<option value="landstrasse">Landstraßen (meidet Autobahn &amp; Wohngebiete)</option>
 					</select>
 				</label>

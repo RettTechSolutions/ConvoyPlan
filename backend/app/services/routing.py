@@ -15,12 +15,15 @@ _PRIORITY_RULES = {
     "schnell": [],
     "bundesstrasse": [
         {"if": "road_class == MOTORWAY", "multiply_by": "0.3"},
-        # Avoid village streets — convoys should not cut through 30 km/h zones.
-        {"if": "road_class == RESIDENTIAL || road_class == LIVING_STREET", "multiply_by": "0.2"},
+        # Prefer PRIMARY/SECONDARY (Bundesstraße/Staatsstraße) over Kreisstraßen —
+        # TERTIARY roads are often narrower and less suitable for convoy movement.
+        {"if": "road_class == TERTIARY", "multiply_by": "0.5"},
+        # Avoid village streets and living zones entirely.
+        {"if": "road_class == RESIDENTIAL || road_class == LIVING_STREET", "multiply_by": "0.1"},
     ],
     "landstrasse": [
         {"if": "road_class == MOTORWAY || road_class == TRUNK", "multiply_by": "0.05"},
-        # Avoid village streets — convoys should not cut through 30 km/h zones.
+        # Avoid village streets and living zones entirely.
         {"if": "road_class == RESIDENTIAL || road_class == LIVING_STREET", "multiply_by": "0.1"},
     ],
 }
