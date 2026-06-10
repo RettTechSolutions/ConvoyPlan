@@ -16,8 +16,6 @@ TRIGGER_POLL=10           # check trigger file every 10s regardless of INTERVAL
 COMPOSE_PROJECT="${COMPOSE_PROJECT_NAME:-convoyplan}"
 COMPOSE_FILE="/stack/docker-compose.yml"
 
-REPO_RAW="https://raw.githubusercontent.com/RettTechSolutions/ConvoyPlan/main"
-
 LOG_FILE=/update_status/update.log
 log() {
     local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $*"
@@ -142,12 +140,37 @@ write_status() {
 # Note: `docker cp $self:/tmp/foo $HOST_PATH` does NOT work here, because the
 # docker CLI interprets the destination in the CLIENT filesystem (= inside this
 # container), and the host path doesn't exist there.
+# Resolve the latest *published release tag* (e.g. v1.0.1). The stack file is
+# only ever fetched from a tagged release, never from a moving branch — so a
+# push to `main` can no longer rewrite the compose file (which the updater
+# executes with the Docker socket) on every customer instance.
+_latest_release_tag() {
+    local repo="${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}"
+    {
+        if [ -n "${GITHUB_TOKEN:-}" ]; then
+            curl -sf --max-time 15 -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                "https://api.github.com/repos/${repo}/releases/latest" 2>/dev/null
+        else
+            curl -sf --max-time 15 \
+                "https://api.github.com/repos/${repo}/releases/latest" 2>/dev/null
+        fi
+    } | grep -m1 '"tag_name"' | cut -d'"' -f4
+}
+
 _update_stack_file() {
     [ -z "${STACK_FILE_PATH:-}" ] && return 0
 
+    local repo="${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}"
+    local tag
+    tag="$(_latest_release_tag)"
+    if [ -z "${tag}" ]; then
+        log "WARNUNG: neuesten Release-Tag nicht ermittelbar — Stack-Datei nicht aktualisiert"
+        return 0
+    fi
+
     local tmp=/tmp/dc-new.yml
-    if ! curl -sf --max-time 15 "${REPO_RAW}/docker-compose.yml" -o "${tmp}" || [ ! -s "${tmp}" ]; then
-        log "WARNUNG: Neue Stack-Datei konnte nicht heruntergeladen werden — übersprungen"
+    if ! curl -sf --max-time 15 "https://raw.githubusercontent.com/${repo}/${tag}/docker-compose.yml" -o "${tmp}" || [ ! -s "${tmp}" ]; then
+        log "WARNUNG: Stack-Datei (Release ${tag}) konnte nicht heruntergeladen werden — übersprungen"
         rm -f "${tmp}"
         return 0
     fi
@@ -176,8 +199,10 @@ _spawn_restart_helper() {
 
     # Forward the current environment so `docker compose` can interpolate all
     # ${VAR} references in the compose file (same vars this updater has).
+    # Write with a restrictive umask and delete it right after `docker run` has
+    # read it, to minimise the window in which secrets sit on disk.
     local env_file=/tmp/updater-restart-env
-    env | grep -Ev '^(_|PATH|PWD|SHLVL|HOSTNAME|HOME|OLDPWD)=' > "${env_file}"
+    ( umask 077; env | grep -Ev '^(_|PATH|PWD|SHLVL|HOSTNAME|HOME|OLDPWD)=' > "${env_file}" )
 
     docker run -d --rm \
         --name "${COMPOSE_PROJECT}-updater-restart-$(date +%s)" \
@@ -188,6 +213,9 @@ _spawn_restart_helper() {
             sleep 3
             docker compose -p '${COMPOSE_PROJECT}' -f /compose.yml up -d --no-build --force-recreate updater
         " >/dev/null 2>&1
+
+    # The CLI has already loaded --env-file into the container config by now.
+    rm -f "${env_file}"
 }
 
 do_update() {

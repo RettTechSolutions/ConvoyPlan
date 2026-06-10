@@ -25,7 +25,7 @@ PROJECT="${PROJECT:-$(basename "${STACK_DIR}")}"
 # Clean up orphan hex-prefixed updater containers in Created state.
 # Pattern: <12-hex>_<project>-updater-1 (Docker's rename-during-recreate format)
 orphans=$(docker ps -a \
-    --filter "name=^[0-9a-f]\{12\}_${PROJECT}-updater-1$" \
+    --filter "name=^[0-9a-f]{12}_${PROJECT}-updater-1$" \
     --filter "status=created" \
     --format "{{.Names}}" 2>/dev/null || true)
 for c in ${orphans}; do
@@ -36,7 +36,7 @@ done
 # Also clean up orphan containers in "exited" state with the same hex pattern —
 # leftovers from previous broken self-restart attempts.
 exited_orphans=$(docker ps -a \
-    --filter "name=^[0-9a-f]\{12\}_${PROJECT}-updater-1$" \
+    --filter "name=^[0-9a-f]{12}_${PROJECT}-updater-1$" \
     --filter "status=exited" \
     --format "{{.Names}}" 2>/dev/null || true)
 for c in ${exited_orphans}; do
