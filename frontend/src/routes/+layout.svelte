@@ -6,6 +6,7 @@
 	import { brandingStore, applyBranding, type Branding } from '$lib/stores/branding';
 	import { themeStore } from '$lib/stores/theme';
 	import { versionStore } from '$lib/stores/version.svelte';
+	import { printConsoleBanner } from '$lib/console-banner';
 	import InstallPrompt from '$lib/components/InstallPrompt.svelte';
 
 	let { children } = $props();
@@ -27,6 +28,8 @@
 	}
 
 	onMount(async () => {
+		printConsoleBanner();
+
 		// Load build version info (public, non-blocking)
 		versionStore.load();
 
