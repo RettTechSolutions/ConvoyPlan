@@ -69,12 +69,28 @@ def convoy_duration_s(
             for i in range(from_i, min(to_i, n_segs)):
                 is_urban[i] = urban
 
-        # Second pass: max_speed overrides (accurate innerorts/außerorts detection)
+        # Second pass: max_speed overrides (accurate innerorts/außerorts detection).
+        # GraphHopper may return numeric values (e.g. 50) or country-specific
+        # string designations (e.g. "DE:urban", "DE:rural") — handle both.
         for from_i, to_i, ms in (max_speed_details or []):
-            if ms is not None:
+            if ms is None:
+                continue
+            if isinstance(ms, str):
+                try:
+                    ms_val = float(ms)
+                    urban = ms_val <= URBAN_SPEED_THRESHOLD_KMH
+                except ValueError:
+                    low = ms.lower()
+                    if any(k in low for k in ("urban", "living_street", "walk")):
+                        urban = True
+                    elif any(k in low for k in ("rural", "motorway", "trunk")):
+                        urban = False
+                    else:
+                        continue
+            else:
                 urban = ms <= URBAN_SPEED_THRESHOLD_KMH
-                for i in range(from_i, min(to_i, n_segs)):
-                    is_urban[i] = urban
+            for i in range(from_i, min(to_i, n_segs)):
+                is_urban[i] = urban
 
         urban_dist = 0.0
         nonurban_dist = 0.0
