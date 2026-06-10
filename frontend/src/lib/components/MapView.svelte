@@ -53,7 +53,15 @@
 	let startMarker: maplibregl.Marker | null = null;
 	let endMarker: maplibregl.Marker | null = null;
 	let waypointMarkers: maplibregl.Marker[] = [];
-	let trackingMarkers = new Map<string, maplibregl.Marker>();
+
+	/** A live vehicle marker plus the bits we need to update it in place. */
+	interface LiveMarker {
+		marker: maplibregl.Marker;
+		arrow: HTMLDivElement | null;
+		hasHeading: boolean;
+		label: string | undefined;
+	}
+	let trackingMarkers = new Map<string, LiveMarker>();
 
 	onMount(() => {
 		map = new maplibregl.Map({
@@ -183,15 +191,29 @@
 		return new maplibregl.Marker({ element: el });
 	}
 
-	function makeArrowMarker(heading: number, label?: string): maplibregl.Marker {
-		const el = document.createElement('div');
-		el.style.cssText = 'cursor:pointer';
-		const arrow = document.createElement('div');
-		arrow.textContent = '➤';
-		arrow.style.cssText = `font-size:22px;transform:rotate(${heading}deg);filter:drop-shadow(0 2px 3px rgba(0,0,0,.5))`;
-		el.appendChild(arrow);
+	/**
+	 * Build a live vehicle marker: a rotatable arrow when a heading is known,
+	 * otherwise a dot, plus an optional label flag. The inner arrow element is
+	 * returned so the rotation can be updated in place on later positions; the
+	 * marker is only rebuilt when its kind (arrow vs dot) or label changes.
+	 */
+	function makeLiveMarker(pos: VehiclePosition, label?: string): LiveMarker {
+		const hasHeading = pos.heading != null;
+		let arrow: HTMLDivElement | null = null;
+		let el: HTMLDivElement;
+		if (hasHeading) {
+			el = document.createElement('div');
+			el.style.cssText = 'cursor:pointer';
+			arrow = document.createElement('div');
+			arrow.textContent = '➤';
+			arrow.style.cssText = `font-size:22px;transform:rotate(${pos.heading}deg);filter:drop-shadow(0 2px 3px rgba(0,0,0,.5))`;
+			el.appendChild(arrow);
+		} else {
+			el = document.createElement('div');
+			el.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#f1c40f;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.4);cursor:pointer';
+		}
 		if (label) el.appendChild(labelEl(label));
-		return new maplibregl.Marker({ element: el });
+		return { marker: new maplibregl.Marker({ element: el }), arrow, hasHeading, label };
 	}
 
 	function flyToPosition(pos: VehiclePosition) {
@@ -281,24 +303,31 @@
 		const seen = new Set<string>();
 		livePositions.forEach((pos, vehicleId) => {
 			seen.add(vehicleId);
-			if (trackingMarkers.has(vehicleId)) {
-				trackingMarkers.get(vehicleId)!.setLngLat([pos.lon, pos.lat]);
+			const label = vehicleNames.get(vehicleId);
+			const hasHeading = pos.heading != null;
+			const existing = trackingMarkers.get(vehicleId);
+			// Reuse the marker when its kind and label are unchanged — just move it
+			// and update the heading rotation. Rebuild when the kind flips (a dot
+			// gains a heading) or the label arrives (the convoy names often load
+			// after the first position on a fresh page load / reconnect).
+			if (existing && existing.hasHeading === hasHeading && existing.label === label) {
+				existing.marker.setLngLat([pos.lon, pos.lat]);
+				if (hasHeading && existing.arrow) existing.arrow.style.transform = `rotate(${pos.heading}deg)`;
 			} else {
-				const label = vehicleNames.get(vehicleId);
-				const m = pos.heading != null
-					? makeArrowMarker(pos.heading, label)
-					: makeMarker('#f1c40f', 18, label);
-				m.setLngLat([pos.lon, pos.lat])
-					.setPopup(new maplibregl.Popup().setDOMContent(
-						popupNode(`${vehicleId.slice(0, 8)}…`, `${pos.speed_kmh?.toFixed(0) ?? '–'} km/h`)
-					))
-					.addTo(map);
-				trackingMarkers.set(vehicleId, m);
-			}
+	      existing?.marker.remove();
+	      const lm = makeLiveMarker(pos, label);
+	      lm.marker
+		      .setLngLat([pos.lon, pos.lat])
+		      .setPopup(new maplibregl.Popup().setDOMContent(
+			      popupNode(`${vehicleId.slice(0, 8)}…`, `${pos.speed_kmh?.toFixed(0) ?? '–'} km/h`)
+          ))
+		      .addTo(map);
+	      trackingMarkers.set(vehicleId, lm);
+      }
 		});
 		// Remove stale markers
-		trackingMarkers.forEach((m, id) => {
-			if (!seen.has(id)) { m.remove(); trackingMarkers.delete(id); }
+		trackingMarkers.forEach((lm, id) => {
+			if (!seen.has(id)) { lm.marker.remove(); trackingMarkers.delete(id); }
 		});
 
 		// Follow lock: keep the followed vehicle centered as new positions arrive.

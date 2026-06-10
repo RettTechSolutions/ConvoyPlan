@@ -166,6 +166,7 @@ jobs:
             --severity HIGH,CRITICAL \
             --ignore-unfixed \
             --vuln-type os,library \
+            --ignorefile .trivyignore \
             --exit-code 1 \
             --no-progress \
             convoyplan-${{ matrix.name }}:scan
