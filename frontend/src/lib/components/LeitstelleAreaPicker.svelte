@@ -203,11 +203,17 @@
             const code = f.properties?.krs_code as string;
             const name = f.properties?.krs_name as string;
             const owner = takenOwnerByCode[code];
-            const html = owner
-                ? `<strong>${name}</strong><br>bereits vergeben an: ${owner}`
-                : `<strong>${name}</strong>`;
+            // Build via DOM/textContent — owner (Leitstellenname) is free text.
+            const node = document.createElement('div');
+            const strong = document.createElement('strong');
+            strong.textContent = name ?? '';
+            node.appendChild(strong);
+            if (owner) {
+                node.appendChild(document.createElement('br'));
+                node.appendChild(document.createTextNode(`bereits vergeben an: ${owner}`));
+            }
             if (!popup) popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 6, className: 'ls-popup' });
-            popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
+            popup.setLngLat(e.lngLat).setDOMContent(node).addTo(map);
         };
 
         map.on('click', clickHandler);

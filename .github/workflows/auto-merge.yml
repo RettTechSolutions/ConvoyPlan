@@ -41,16 +41,34 @@ jobs:
       (contains(github.event.pull_request.labels.*.name, 'auto-merge') ||
        github.actor == 'dependabot[bot]')
     steps:
+      # For Dependabot PRs, determine the semver update type so we can auto-merge
+      # only low-risk patch/minor bumps. Major bumps (potential breaking changes)
+      # are left open for a human to review.
+      - name: Fetch Dependabot metadata
+        id: meta
+        if: github.actor == 'dependabot[bot]'
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Label Dependabot PR with auto-merge
         if: >-
           github.actor == 'dependabot[bot]' &&
+          (steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+           steps.meta.outputs.update-type == 'version-update:semver-minor') &&
           !contains(github.event.pull_request.labels.*.name, 'auto-merge')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: gh pr edit "$PR_URL" --add-label "auto-merge"
 
+      # Enable native auto-merge for manually-labelled PRs (any) and for
+      # Dependabot patch/minor updates. Dependabot major bumps fall through.
       - name: Enable native auto-merge
+        if: >-
+          github.actor != 'dependabot[bot]' ||
+          steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+          steps.meta.outputs.update-type == 'version-update:semver-minor'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}

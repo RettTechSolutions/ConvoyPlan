@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import html
 import logging
+import re
 import ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -168,6 +169,23 @@ def _build_logo_block(logo_main: str, app_name: str, base_url: str = "") -> str:
 
 # ── Template rendering ─────────────────────────────────────────────────────────
 
+_PLACEHOLDER_RE = re.compile(r"\{(\w+)\}")
+
+
+def _safe_format(template: str, values: dict[str, str]) -> str:
+    """Substitute ``{key}`` placeholders without Python format-string power.
+
+    ``str.format_map`` allows attribute/index access (e.g.
+    ``{login_url.__class__.__init__.__globals__}``) which, on a
+    superadmin-editable template, is a server-side template injection vector
+    (CWE-1336). This only replaces bare ``{word}`` tokens for known keys and
+    leaves anything else (including ``{x.attr}``) untouched.
+    """
+    return _PLACEHOLDER_RE.sub(
+        lambda m: str(values.get(m.group(1), m.group(0))), template
+    )
+
+
 async def _render_password_email_async(
     db: AsyncSession,
     recipient_name: str,
@@ -215,13 +233,8 @@ async def _render_password_email_async(
     # Subject is plain text — use raw (unescaped) values so &amp; never appears.
     plain_vars = {**html_vars, "app_name": app_name}
 
-    try:
-        subject = subject_tpl.format_map(plain_vars)
-        html_body = html_tpl.format_map(html_vars)
-    except (KeyError, ValueError):
-        # Fall back to default template if custom template has rendering issues
-        subject = DEFAULT_EMAIL_TEMPLATE_SUBJECT.format_map(plain_vars)
-        html_body = DEFAULT_EMAIL_TEMPLATE_HTML.format_map(html_vars)
+    subject = _safe_format(subject_tpl, plain_vars)
+    html_body = _safe_format(html_tpl, html_vars)
 
     return subject, html_body
 

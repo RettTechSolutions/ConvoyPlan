@@ -41,7 +41,7 @@ def _ensure_token_current(token_data: TokenData, user: User) -> None:
         )
 
 
-def _decode_token(token: str) -> TokenData:
+def _decode_token(token: str, *, allow_stream: bool = False) -> TokenData:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -51,6 +51,16 @@ def _decode_token(token: str) -> TokenData:
         payload = _jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
         user_id_str: str | None = payload.get("sub")
         if user_id_str is None:
+            raise credentials_exception
+        # Reject half-authenticated MFA-pending tokens and any unexpected token
+        # type. mfa_pending tokens are issued after the password step but before
+        # TOTP; they must NOT grant access. Stream tickets (typ=stream) are only
+        # accepted on the SSE/WebSocket paths, never on normal API endpoints.
+        if payload.get("mfa_pending"):
+            raise credentials_exception
+        token_type = payload.get("typ")
+        allowed_types = ("access", "stream") if allow_stream else ("access",)
+        if token_type is not None and token_type not in allowed_types:
             raise credentials_exception
         raw_org_id = payload.get("org_id")
         return TokenData(
@@ -67,6 +77,16 @@ def _decode_token(token: str) -> TokenData:
 
 def get_token_data(token: str = Depends(oauth2_scheme)) -> TokenData:
     return _decode_token(token)
+
+
+def decode_stream_token(token: str) -> TokenData:
+    """Decode a token passed via an SSE/WebSocket query parameter.
+
+    EventSource/WebSocket cannot send an Authorization header, so clients pass
+    a credential in the URL. Accepts a normal access token, a legacy token
+    (no typ) or a short-lived stream ticket (typ=stream), but rejects
+    mfa_pending tokens so the MFA second factor is enforced here too (K1)."""
+    return _decode_token(token, allow_stream=True)
 
 
 async def get_current_user(

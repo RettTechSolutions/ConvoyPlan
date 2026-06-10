@@ -9,14 +9,12 @@ import bcrypt
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-import jwt as _jwt
-from jwt.exceptions import PyJWTError as JWTError, InvalidTokenError
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import get_db, require_superadmin
+from app.api.deps import decode_stream_token, get_db, require_superadmin
 from app.config import settings
 from app.models.api_key import ApiKey
 from app.models.audit_log import AuditLog
@@ -539,23 +537,20 @@ async def stream_update_log(
     # Validate token — require superadmin.  Re-check the DB so a revoked or
     # demoted admin cannot keep streaming after token_version is bumped or the
     # is_superadmin flag is cleared.
-    try:
-        payload = _jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-        if not payload.get("is_superadmin"):
-            raise HTTPException(403, "Superadmin required")
-        user_id_str = payload.get("sub")
-        if not user_id_str:
-            raise HTTPException(401, "Invalid token")
-        db_result = await db.execute(select(User).where(User.id == user_id_str))
-        db_user = db_result.scalar_one_or_none()
-        if not db_user or not db_user.is_active:
-            raise HTTPException(401, "Invalid token")
-        if not db_user.is_superadmin:
-            raise HTTPException(403, "Superadmin required")
-        if int(payload.get("tv", 0)) != db_user.token_version:
-            raise HTTPException(401, "Session expired — please log in again")
-    except (JWTError, InvalidTokenError):
+    # decode_stream_token rejects mfa_pending tokens and accepts a short-lived
+    # stream ticket; the DB re-check below still ensures the account is active,
+    # is (still) superadmin and the token version is current.
+    token_data = decode_stream_token(token)
+    if not token_data.is_superadmin:
+        raise HTTPException(403, "Superadmin required")
+    db_result = await db.execute(select(User).where(User.id == token_data.user_id))
+    db_user = db_result.scalar_one_or_none()
+    if not db_user or not db_user.is_active:
         raise HTTPException(401, "Invalid token")
+    if not db_user.is_superadmin:
+        raise HTTPException(403, "Superadmin required")
+    if token_data.token_version != db_user.token_version:
+        raise HTTPException(401, "Session expired — please log in again")
 
     async def log_generator():
         offset = 0

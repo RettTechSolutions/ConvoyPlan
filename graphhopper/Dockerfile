@@ -2,7 +2,7 @@
 # Lädt beim ersten Start automatisch OSM-Kartendaten herunter.
 # Konfigurierbar über Umgebungsvariablen (siehe docker-compose.yml).
 
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:25-jre-alpine
 
 ARG GH_VERSION=9.1
 

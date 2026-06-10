@@ -26,10 +26,11 @@
 		showHint = false;
 	}
 
-	$derived: {
-		// If native prompt becomes available after mount, close manual hint
+	$effect(() => {
+		// If native prompt becomes available after mount, close manual hint.
+		// `$derived:` is a no-op labeled statement in runes mode — use $effect.
 		if ($pwaStore.deferredPrompt && showHint) showHint = false;
-	}
+	});
 </script>
 
 {#if $canShowInstall}

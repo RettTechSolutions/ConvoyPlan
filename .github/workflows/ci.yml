@@ -95,6 +95,9 @@ jobs:
       - name: Build frontend image
         run: docker build ./frontend
 
+      - name: Build graphhopper image
+        run: docker build ./graphhopper
+
       - name: Build updater image
         run: docker build ./docker/updater
 
@@ -141,6 +144,8 @@ jobs:
             context: ./backend
           - name: frontend
             context: ./frontend
+          - name: graphhopper
+            context: ./graphhopper
           - name: updater
             context: ./docker/updater
 

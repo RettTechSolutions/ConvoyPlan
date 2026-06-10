@@ -44,3 +44,17 @@ updates:
     labels:
       - "dependencies"
       - "docker"
+  - package-ecosystem: "docker"
+    directory: "/graphhopper"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "docker"
+  - package-ecosystem: "docker"
+    directory: "/docker/updater"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "docker"
