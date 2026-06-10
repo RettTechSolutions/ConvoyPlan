@@ -333,6 +333,21 @@
 		showEditConvoyForm = true;
 	}
 
+	async function deleteConvoy() {
+		if (!selected) return;
+		if (!confirm(`Marschverband „${selected.name}" wirklich löschen? Alle Wegpunkte, Fahrzeuge und die Route werden unwiderruflich entfernt.`)) return;
+		try {
+			await convoysApi.delete(selected.id);
+			convoyList = convoyList.filter(c => c.id !== selected!.id);
+			selected = convoyList[0] ?? null;
+			activeConvoy.set(selected);
+			showEditConvoyForm = false;
+			route = null;
+			routeGeojson = null;
+			activeRoute.set(null);
+		} catch { error = 'Marschverband konnte nicht gelöscht werden'; }
+	}
+
 	async function saveConvoyEdit() {
 		if (!selected) return;
 		try {
@@ -1674,6 +1689,7 @@
 				<label>Fahrzeugabstand Außerorts (m)<input type="number" bind:value={editConvoy.spacing_rural_m} min="10" max="500" /></label>
 				<label>Fahrzeugabstand Autobahn (m)<input type="number" bind:value={editConvoy.spacing_motorway_m} min="10" max="500" /></label>
 				<div class="modal-actions">
+					<button type="button" class="btn-danger" onclick={deleteConvoy}>Löschen</button>
 					<button type="button" onclick={() => (showEditConvoyForm = false)}>Abbrechen</button>
 					<button type="submit" class="btn-primary">Speichern</button>
 				</div>
@@ -1826,7 +1842,9 @@
 	.modal h2 { margin: 0 0 1.25rem; }
 	.modal label { display: flex; flex-direction: column; gap: .25rem; margin-bottom: .75rem; font-size: .85rem; font-weight: 600; }
 	.modal input, .modal select { padding: .5rem; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem; }
-	.modal-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: 1rem; }
+	.modal-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: 1rem; flex-wrap: wrap; }
+	.modal-actions .btn-danger { background: #b91c1c; color: white; border-color: #b91c1c; margin-right: auto; }
+	.modal-actions .btn-danger:hover { background: #991b1b; }
 	.modal-actions button { padding: .5rem 1rem; border-radius: 4px; cursor: pointer; border: 1px solid #ccc; }
 	.modal-actions .btn-primary { background: #0F1B24; color: white; border-color: #0F1B24; }
 	.modal { max-height: 90vh; overflow-y: auto; }
