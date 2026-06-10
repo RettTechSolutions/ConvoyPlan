@@ -30,7 +30,7 @@ async def test_run_all_returns_counts_and_audits(monkeypatch):
 
     counts = await retention.run_all(db)
 
-    assert counts == {"positions": 3, "audit_logs": 0, "share_links": 2}
+    assert counts == {"positions": 3, "audit_logs": 0, "share_links": 2, "demo_sessions": 0}
     db.commit.assert_awaited()
     # an audit entry is written because something was deleted
     assert recorded and recorded[0][0] == "retention.purge"
@@ -50,7 +50,7 @@ async def test_run_all_skips_audit_when_nothing_deleted(monkeypatch):
     monkeypatch.setattr("app.services.retention.audit.record", _spy)
 
     counts = await retention.run_all(db)
-    assert counts == {"positions": 0, "audit_logs": 0, "share_links": 0}
+    assert counts == {"positions": 0, "audit_logs": 0, "share_links": 0, "demo_sessions": 0}
     assert recorded == []  # nothing deleted → no audit entry
 
 
