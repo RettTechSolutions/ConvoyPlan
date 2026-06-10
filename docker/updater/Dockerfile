@@ -1,4 +1,4 @@
-FROM docker:24-cli
+FROM docker:cli
 RUN apk add --no-cache git bash curl
 COPY update.sh /update.sh
 COPY update-images.sh /update-images.sh
