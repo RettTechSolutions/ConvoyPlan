@@ -266,14 +266,24 @@ async def calculate_route(
         raise HTTPException(status_code=502, detail="Routing-Dienst nicht verfügbar")
 
     coords = route_data["geometry"].get("coordinates", [])
-    convoy_duration_s = routing_svc.convoy_duration_s(
-        route_data["distance_m"],
-        coords,
-        route_data.get("road_class_details", []),
-        convoy.speed_urban_kmh,
-        convoy.speed_rural_kmh,
-        max_speed_details=route_data.get("max_speed_details", []),
-    )
+    try:
+        convoy_duration_s = routing_svc.convoy_duration_s(
+            route_data["distance_m"],
+            coords,
+            route_data.get("road_class_details", []),
+            convoy.speed_urban_kmh,
+            convoy.speed_rural_kmh,
+            max_speed_details=route_data.get("max_speed_details", []),
+        )
+    except Exception as exc:
+        logger.warning("Duration calculation failed, falling back: %s", exc)
+        convoy_duration_s = routing_svc.convoy_duration_s(
+            route_data["distance_m"],
+            coords,
+            route_data.get("road_class_details", []),
+            convoy.speed_urban_kmh,
+            convoy.speed_rural_kmh,
+        )
 
     # Persist route
     line = LineString(coords)

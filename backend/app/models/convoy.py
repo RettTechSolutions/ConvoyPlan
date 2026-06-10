@@ -21,7 +21,7 @@ class Convoy(Base):
     end_point = mapped_column(Geometry("POINT", srid=4326))
     speed_urban_kmh: Mapped[int] = mapped_column(Integer, default=40)
     speed_rural_kmh: Mapped[int] = mapped_column(Integer, default=65)
-    road_preference: Mapped[str] = mapped_column(String(20), default="schnell")
+    road_preference: Mapped[str] = mapped_column(String(20), default="standard")
     spacing_urban_m: Mapped[int] = mapped_column(Integer, default=15)
     spacing_rural_m: Mapped[int] = mapped_column(Integer, default=50)
     spacing_motorway_m: Mapped[int] = mapped_column(Integer, default=100)

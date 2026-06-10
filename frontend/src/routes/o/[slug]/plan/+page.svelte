@@ -108,7 +108,7 @@
 	let showVehicleForm = $state(false);
 	let showConvoyForm = $state(false);
 	let showEditConvoyForm = $state(false);
-	let editConvoy = $state({ name:'', organization:'', organization_id:'', start_time:'', speed_urban_kmh:40, speed_rural_kmh:65, road_preference:'schnell' as RoadPreference, spacing_urban_m:15, spacing_rural_m:50, spacing_motorway_m:100 });
+	let editConvoy = $state({ name:'', organization:'', organization_id:'', start_time:'', speed_urban_kmh:40, speed_rural_kmh:65, road_preference:'standard' as RoadPreference, spacing_urban_m:15, spacing_rural_m:50, spacing_motorway_m:100 });
 	let showBefehlModal = $state(false);
 	let showShareLinkModal = $state(false);
 	let showSubConvoyForm = $state(false);
@@ -122,7 +122,7 @@
 	let wizardWpName = $state('');
 
 	function defaultConvoyForm() {
-		return { name:'', organization:'', organization_id:'', start_time:'', speed_urban_kmh:40, speed_rural_kmh:65, road_preference:'schnell' as RoadPreference, spacing_urban_m:15, spacing_rural_m:50, spacing_motorway_m:100, lage:'', auftrag:'', marschform:'geschlossener_verband', ablaufpunkt:'', ablaufzeit:'', ablaufführer:'', versorgung:'', funkgruppe:'', anlagen:'' };
+		return { name:'', organization:'', organization_id:'', start_time:'', speed_urban_kmh:40, speed_rural_kmh:65, road_preference:'standard' as RoadPreference, spacing_urban_m:15, spacing_rural_m:50, spacing_motorway_m:100, lage:'', auftrag:'', marschform:'geschlossener_verband', ablaufpunkt:'', ablaufzeit:'', ablaufführer:'', versorgung:'', funkgruppe:'', anlagen:'' };
 	}
 
 	// ── Konto-Tab (Passwort & MFA) ─────────────────────────────────
@@ -576,30 +576,36 @@
 			await refreshConvoy();
 			activeTab = 'zeitplan';
 
-			// Auto-search fuel stations if a stop is recommended
+			// Fuel stations and closures use the public Overpass API which can be
+			// very slow — run them in the background AFTER releasing the loading
+			// state, otherwise the calculate button stays disabled for up to a
+			// minute and appears broken.
 			if (r.fuel_analysis?.fuel_stop_needed && r.fuel_analysis.fuel_stop_position) {
-				fuelStationsLoading = true;
 				activeTab = 'convoy';
-				try {
-					const { lat, lon } = r.fuel_analysis.fuel_stop_position;
-					fuelStations = await convoysApi.findFuelStations(selected.id, lat, lon, 8000);
-					showFuelStations = fuelStations.length > 0;
-				} catch { /* non-critical */ }
-				finally { fuelStationsLoading = false; }
+				void loadFuelStationsInBackground(selected.id, r.fuel_analysis.fuel_stop_position);
 			}
-
-			// Auto-load closures along the route start area
 			if (selected?.start_point) {
-				try {
-					closures = await overpassApi.getClosures(
-						selected.start_point.lat, selected.start_point.lon, 25000
-					) as unknown as FeatureCollection;
-					showClosures = closures.features.length > 0;
-				} catch { /* closures optional */ }
+				void loadClosuresInBackground(selected.start_point.lat, selected.start_point.lon);
 			}
 		} catch (e: unknown) {
 			error = e instanceof Error ? e.message : 'Routing fehlgeschlagen';
 		} finally { loading = false; }
+	}
+
+	async function loadFuelStationsInBackground(convoyId: string, pos: { lat: number; lon: number }) {
+		fuelStationsLoading = true;
+		try {
+			fuelStations = await convoysApi.findFuelStations(convoyId, pos.lat, pos.lon, 8000);
+			showFuelStations = fuelStations.length > 0;
+		} catch { /* non-critical */ }
+		finally { fuelStationsLoading = false; }
+	}
+
+	async function loadClosuresInBackground(lat: number, lon: number) {
+		try {
+			closures = await overpassApi.getClosures(lat, lon, 25000) as unknown as FeatureCollection;
+			showClosures = closures.features.length > 0;
+		} catch { /* closures optional */ }
 	}
 
 	// ── Fuel stations ────────────────────────────────────────────────
@@ -862,7 +868,7 @@
 						</div>
 						<p><strong>Organisation:</strong> {selected.organization ?? '–'}</p>
 						<p><strong>Startzeit:</strong> {selected.start_time ? new Date(selected.start_time).toLocaleString('de-DE') : '–'}</p>
-						<p><strong>Tempo:</strong> {selected.speed_urban_kmh} km/h (innerorts) / {selected.speed_rural_kmh} km/h (außerorts) · {{ schnell: 'Autobahn', bundesstrasse: 'Bundesstr.', landstrasse: 'Landstr.' }[selected.road_preference] ?? selected.road_preference}</p>
+						<p><strong>Tempo:</strong> {selected.speed_urban_kmh} km/h (innerorts) / {selected.speed_rural_kmh} km/h (außerorts) · {{ standard: 'Standard', schnell: 'Schnellste', kuerzeste: 'Kürzeste', bundesstrasse: 'Standard (veraltet)', landstrasse: 'Standard (veraltet)' }[selected.road_preference] ?? selected.road_preference}</p>
 						<p><strong>Abstände:</strong> {selected.spacing_urban_m} m / {selected.spacing_rural_m} m / {selected.spacing_motorway_m} m (i/a/BAB)</p>
 						{#if selected.marschform}<p><strong>Marschform:</strong> {({ geschlossener_verband:'Geschlossener Verband', einzelgruppen:'Einzelgruppen', individuell:'Individuelle Anreise' })[selected.marschform] ?? selected.marschform}</p>{/if}
 						{#if selected.ablaufpunkt}<p><strong>Ablaufpunkt:</strong> {selected.ablaufpunkt}</p>{/if}
@@ -1605,9 +1611,9 @@
 				<label>Geschw. außerorts (km/h)<input type="number" bind:value={newConvoy.speed_rural_kmh} min="30" max="100" /></label>
 				<label>Straßenpräferenz
 					<select bind:value={newConvoy.road_preference}>
-						<option value="schnell">Schnellste Route (Autobahn erlaubt)</option>
-						<option value="bundesstrasse">Bundesstraßen bevorzugt (meidet Kreisstr. &amp; Wohngebiete)</option>
-						<option value="landstrasse">Landstraßen (meidet Autobahn &amp; Wohngebiete)</option>
+						<option value="standard">Standard (meidet Ortschaften, gut ausgebaute Straßen)</option>
+						<option value="schnell">Schnellste Route</option>
+						<option value="kuerzeste">Kürzeste Route</option>
 					</select>
 				</label>
 				<label>Fahrzeugabstand Innerorts (m)<input type="number" bind:value={newConvoy.spacing_urban_m} min="5" max="200" /></label>
@@ -1650,9 +1656,12 @@
 				<label>Geschw. außerorts (km/h)<input type="number" bind:value={editConvoy.speed_rural_kmh} min="30" max="100" /></label>
 				<label>Straßenpräferenz
 					<select bind:value={editConvoy.road_preference}>
-						<option value="schnell">Schnellste Route (Autobahn erlaubt)</option>
-						<option value="bundesstrasse">Bundesstraßen bevorzugt (meidet Kreisstr. &amp; Wohngebiete)</option>
-						<option value="landstrasse">Landstraßen (meidet Autobahn &amp; Wohngebiete)</option>
+						<option value="standard">Standard (meidet Ortschaften, gut ausgebaute Straßen)</option>
+						<option value="schnell">Schnellste Route</option>
+						<option value="kuerzeste">Kürzeste Route</option>
+						{#if editConvoy.road_preference === 'bundesstrasse' || editConvoy.road_preference === 'landstrasse'}
+							<option value={editConvoy.road_preference}>Veraltet — bitte neu wählen</option>
+						{/if}
 					</select>
 				</label>
 				<label>Fahrzeugabstand Innerorts (m)<input type="number" bind:value={editConvoy.spacing_urban_m} min="5" max="200" /></label>
