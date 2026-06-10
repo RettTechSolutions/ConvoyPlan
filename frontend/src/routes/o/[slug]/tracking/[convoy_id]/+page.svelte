@@ -21,6 +21,14 @@
 	let mapView = $state<ReturnType<typeof MapView>>();
 	// When true, the map stays locked/centered on my vehicle as it moves.
 	let followMyVehicle = $state(false);
+	// Screen Wake Lock so the display stays on while tracking is open.
+	let wakeLock: WakeLockSentinel | null = null;
+
+	// Persist the active assignment per convoy so a page reload resumes it.
+	const SESSION_KEY = `cp-tracking-session-${convoyId}`;
+	// Capture the saved session synchronously at init, before the persistence
+	// effect (which clears it while not transmitting) can run.
+	const savedSessionRaw = typeof localStorage !== 'undefined' ? localStorage.getItem(SESSION_KEY) : null;
 
 	const isSecure = typeof window !== 'undefined' && window.isSecureContext;
 
@@ -58,6 +66,8 @@
 	const STATUS_COLORS: Record<string, string> = { planned: '#95a5a6', en_route: '#3498db', arrived: '#27ae60', delayed: '#E23D28' };
 
 	onMount(async () => {
+		requestWakeLock();
+		document.addEventListener('visibilitychange', handleVisibility);
 		try {
 			[convoy] = await Promise.all([
 				convoysApi.get(convoyId),
@@ -67,6 +77,7 @@
 				}),
 			]);
 			connectTracking(convoyId);
+			restoreSession();
 		} catch {
 			error = 'Marschverband konnte nicht geladen werden';
 		}
@@ -74,8 +85,57 @@
 
 	onDestroy(() => {
 		disconnectTracking();
-		stopTransmitting();
+		// Reload-safe stop: end the GPS watch but keep the saved session so a
+		// page reload can resume; an explicit "stop" button press clears it.
+		if (geoWatcher !== null) { navigator.geolocation.clearWatch(geoWatcher); geoWatcher = null; }
+		releaseWakeLock();
+		document.removeEventListener('visibilitychange', handleVisibility);
 	});
+
+	// Restore a previously active assignment after a reload. If the saved vehicle
+	// is still part of the convoy, re-select it and resume transmitting.
+	function restoreSession() {
+		try {
+			if (!savedSessionRaw) return;
+			const saved = JSON.parse(savedSessionRaw) as { vehicleId: string };
+			const known = (convoy?.convoy_vehicles ?? []).some((cv) => cv.vehicle.id === saved.vehicleId);
+			if (!known) { localStorage.removeItem(SESSION_KEY); return; }
+			myVehicleId = saved.vehicleId;
+			startTransmitting();
+		} catch {
+			localStorage.removeItem(SESSION_KEY);
+		}
+	}
+
+	// Persist the active assignment while transmitting; clear it once stopped.
+	$effect(() => {
+		if (typeof localStorage === 'undefined') return;
+		if (transmitting && myVehicleId) {
+			localStorage.setItem(SESSION_KEY, JSON.stringify({ vehicleId: myVehicleId }));
+		} else {
+			localStorage.removeItem(SESSION_KEY);
+		}
+	});
+
+	// Keep the screen awake while the tracking view is open. The lock is dropped
+	// automatically when the tab is hidden, so we re-acquire it on return.
+	async function requestWakeLock() {
+		try {
+			if ('wakeLock' in navigator) {
+				wakeLock = await navigator.wakeLock.request('screen');
+				wakeLock.addEventListener('release', () => { wakeLock = null; });
+			}
+		} catch { /* denied or unsupported – non-critical */ }
+	}
+
+	function releaseWakeLock() {
+		wakeLock?.release().catch(() => {});
+		wakeLock = null;
+	}
+
+	function handleVisibility() {
+		if (document.visibilityState === 'visible' && wakeLock === null) requestWakeLock();
+	}
 
 	function startTransmitting() {
 		if (!myVehicleId) { error = 'Bitte zuerst ein Fahrzeug auswählen'; return; }
