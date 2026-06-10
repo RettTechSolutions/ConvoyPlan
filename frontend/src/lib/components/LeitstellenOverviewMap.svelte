@@ -66,9 +66,15 @@
                 const p = f.properties as Record<string, string> | undefined;
                 if (!p) return;
                 const org = p.org_name ? ` · ${p.org_name}` : '';
-                const html = `<strong>${p.name}</strong><br>Anrufgruppe: ${p.anrufgruppe}${org}`;
+                // Build via DOM/textContent — org/Leitstellen names are free text.
+                const node = document.createElement('div');
+                const strong = document.createElement('strong');
+                strong.textContent = p.name ?? '';
+                node.appendChild(strong);
+                node.appendChild(document.createElement('br'));
+                node.appendChild(document.createTextNode(`Anrufgruppe: ${p.anrufgruppe ?? ''}${org}`));
                 if (!popup) popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 6, className: 'ls-popup' });
-                popup.setLngLat(e.lngLat).setHTML(html).addTo(map!);
+                popup.setLngLat(e.lngLat).setDOMContent(node).addTo(map!);
             });
             map!.on('mouseleave', 'ls-fill', () => { map!.getCanvas().style.cursor = ''; popup?.remove(); });
         });

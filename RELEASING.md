@@ -59,6 +59,11 @@ git tag v0.5.0
 git push origin main --tags
 ```
 
+> **Note:** Releases are strictly tag-driven. Merging to `main` (including
+> auto-merged Dependabot PRs) does **not** build `:latest` or deploy anything —
+> only pushing a `v*.*.*` tag (or a manual `workflow_dispatch`) does. This keeps
+> dependency updates from flowing straight onto production instances unreviewed.
+
 ### What happens automatically
 
 The `release.yml` workflow triggers on the `v*.*.*` tag and:

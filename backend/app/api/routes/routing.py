@@ -1,3 +1,4 @@
+import asyncio
 import json as _json
 import logging
 import re
@@ -34,65 +35,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/convoys", tags=["routing"])
 
 
-def _safe_filename(name: str) -> str:
-    """Strip characters that would break a Content-Disposition filename= value."""
-    return re.sub(r'[\r\n\x00-\x1f"\\]', "_", name)
-
-_MAX_IMPORT_BYTES = 10 * 1024 * 1024  # 10 MB — guard against DoS via huge uploads
+# Strip control characters (CWE-113 header injection), quote/backslash and path
+# separators that would break a quoted Content-Disposition filename (RFC 6266).
+_UNSAFE_FILENAME_RE = re.compile(r'[\x00-\x1f\x7f"\\/]')
 
 
 def _safe_filename(name: str) -> str:
-    """Return a filename-safe version of *name* for Content-Disposition headers.
-
-    Strips characters that would break the quoted-string syntax defined in
-    RFC 6266 (double-quotes, backslashes, CRLF) and replaces everything outside
-    printable ASCII word characters with underscores.
-    """
-    safe = re.sub(r'[^\w\s\-.]', '_', name).strip()
-    return safe or "export"
-
-_UNSAFE_FILENAME_CHARS = re.compile(r'[\x00-\x1f\x7f"\\]')
-_MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
-
-
-def _safe_filename(name: str) -> str:
-    """Strip control characters and quote/backslash from a Content-Disposition filename."""
-    return _UNSAFE_FILENAME_CHARS.sub("_", name)
-
-_MAX_IMPORT_BYTES = 5 * 1024 * 1024  # 5 MB hard cap for GPX/GeoJSON uploads
-
-_CTRL = str.maketrans("", "", "".join(chr(i) for i in range(32)) + '"\\')
-
-
-def _safe_filename(name: str) -> str:
-    """Strip control characters and quote-related chars from filenames used in headers."""
-    return name.translate(_CTRL)
-
-_UNSAFE_FILENAME_RE = re.compile(r'[^\w\-. ]')
-
-
-def _safe_filename(name: str) -> str:
-    """Replace characters that are unsafe inside a quoted Content-Disposition filename."""
-    return _UNSAFE_FILENAME_RE.sub('_', name)
-
-_CRLF_RE = re.compile(r'[\r\n"\\]')
-
-
-def _safe_filename(name: str, ext: str) -> str:
-    """Strip CRLF and quote chars to prevent CWE-113 header injection."""
-    safe = _CRLF_RE.sub("", name)[:100]
-    return f"{safe}{ext}"
-
-_UNSAFE_FILENAME_RE = __import__("re").compile(r'[\x00-\x1f"\\]')
-
-
-def _safe_filename(name: str) -> str:
-    """Strip characters that could break a quoted Content-Disposition filename."""
+    """Return a header-safe version of *name* for Content-Disposition filenames."""
     return _UNSAFE_FILENAME_RE.sub("_", name)
 
 
-def _safe_filename(name: str) -> str:
-    return "".join(c for c in name if c not in ('"', "\r", "\n", "/", "\\"))
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB — guard against DoS via huge uploads
 
 
 async def _apply_import(
@@ -494,16 +447,19 @@ async def export_pdf(
     ]
 
     kanalwechsel = route.kanalwechsel if route else None
-    pdf_bytes = pdf_svc.generate_marschbefehl(convoy, waypoints, vehicles, route, kanalwechsel)
+    # PDF generation (FPDF, font loading, many tables) is CPU-bound and
+    # blocking — run it in the default thread pool so it does not stall the
+    # event loop for concurrent requests.
+    loop = asyncio.get_running_loop()
+    pdf_bytes = await loop.run_in_executor(
+        None, pdf_svc.generate_marschbefehl, convoy, waypoints, vehicles, route, kanalwechsel
+    )
     filename = f"Marschbefehl_{_safe_filename(convoy.name.replace(' ', '_'))}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
-
-
-_MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
 @router.post("/{convoy_id}/import/gpx")

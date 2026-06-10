@@ -22,7 +22,13 @@ FE_FILES=$(echo "$STAGED" | grep -E '^frontend/src/.*\.(svelte|ts)$' || true)
 if [ -n "$FE_FILES" ]; then
     if [ -f "frontend/node_modules/.bin/svelte-check" ]; then
         echo "[pre-commit] svelte-check"
-        (cd frontend && npm run check 2>&1 | tail -5)
+        # Capture the exit code explicitly — piping to `tail` would mask a
+        # non-zero status (the pipe returns tail's code, always 0).
+        if ! check_output=$(cd frontend && npm run check 2>&1); then
+            echo "$check_output" | tail -20
+            echo "[pre-commit] svelte-check found errors — commit aborted" >&2
+            exit 1
+        fi
     else
         echo "[pre-commit] svelte-check not found – run: cd frontend && npm install"
     fi

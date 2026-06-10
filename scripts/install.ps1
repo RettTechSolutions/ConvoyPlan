@@ -169,20 +169,30 @@ Write-Host '  4) Eigene URL eingeben'
 $OsmChoice = Read-Host 'Auswahl [1]'
 if (-not $OsmChoice) { $OsmChoice = '1' }
 
+# JAVA_OPTS scale with the region's PBF size — must match install.sh, otherwise
+# the Germany default OOMs on a 2 GB heap during the graph import.
 switch ($OsmChoice) {
     '1' { $OsmUrl  = 'https://download.geofabrik.de/europe/germany-latest.osm.pbf'
-          $OsmFile = 'germany-latest.osm.pbf' }
+          $OsmFile = 'germany-latest.osm.pbf'
+          $JavaOpts = '-Xmx6g -Xms1g -XX:+UseG1GC' }
     '2' { $OsmUrl  = 'https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf'
-          $OsmFile = 'bayern-latest.osm.pbf' }
+          $OsmFile = 'bayern-latest.osm.pbf'
+          $JavaOpts = '-Xmx3g -Xms512m -XX:+UseG1GC' }
     '3' { $OsmUrl  = 'https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf'
-          $OsmFile = 'berlin-latest.osm.pbf' }
+          $OsmFile = 'berlin-latest.osm.pbf'
+          $JavaOpts = '-Xmx1g -Xms256m -XX:+UseG1GC' }
     '4' { $OsmUrl  = Read-Input 'OSM-Download-URL'
-          $OsmFile = [IO.Path]::GetFileName($OsmUrl) }
+          $OsmFile = [IO.Path]::GetFileName($OsmUrl)
+          $JavaOpts = '-Xmx4g -Xms1g -XX:+UseG1GC' }
     default { Write-Host "FEHLER: Ungueltige Auswahl '$OsmChoice'." -ForegroundColor Red; exit 1 }
 }
 
 $LicenseKey   = Read-Host 'Lizenzschluessel [Enter = Demo-Modus]'
-$GithubToken  = Read-Host 'GitHub Token fuer Auto-Updater [Enter = ueberspringen]'
+# Read the token without echoing it to the screen / PSReadline history. It still
+# has to be written to .env in clear (the updater needs it) — use a fine-grained
+# PAT with minimal scope (read:packages).
+$GithubTokenSecure = Read-Host 'GitHub Token fuer Auto-Updater [Enter = ueberspringen]' -AsSecureString
+$GithubToken = [System.Net.NetworkCredential]::new('', $GithubTokenSecure).Password
 
 # JWT_SECRET: bestehenden beibehalten oder neu generieren
 $existingJwt = if (Test-Path $EnvFile) { Get-EnvValue 'JWT_SECRET' $EnvFile } else { '' }
@@ -231,7 +241,7 @@ HTTP_PORT=80
 HTTPS_PORT=443
 OSM_DOWNLOAD_URL=$OsmUrl
 OSM_FILENAME=$OsmFile
-JAVA_OPTS="-Xmx2g -Xms512m -XX:+UseG1GC"
+JAVA_OPTS="$JavaOpts"
 BACKEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/backend:latest
 FRONTEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/frontend:latest
 GRAPHHOPPER_IMAGE=ghcr.io/retttechsolutions/convoyplan/graphhopper:latest
@@ -244,7 +254,11 @@ COMPOSE_PROJECT_NAME=convoyplan
 if ($LicenseKey)  { $EnvContent += "`nLICENSE_KEY=$LicenseKey" }
 if ($GithubToken) { $EnvContent += "`nGITHUB_TOKEN=$GithubToken" }
 
-Set-Content -Path (Join-Path $InstallDir '.env') -Value $EnvContent -Encoding UTF8
+# Write UTF-8 WITHOUT BOM — Windows PowerShell 5.1's `Set-Content -Encoding UTF8`
+# prepends a BOM, which makes Docker Compose read the first line as
+# "﻿POSTGRES_USER" and silently fall back to defaults.
+$Utf8NoBom = New-Object System.Text.UTF8Encoding $false
+[System.IO.File]::WriteAllText((Join-Path $InstallDir '.env'), $EnvContent, $Utf8NoBom)
 
 # Stack starten
 Write-Host ''

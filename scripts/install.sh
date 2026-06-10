@@ -78,7 +78,7 @@ _cleanup_orphan_updaters() {
   local project="${1:-convoyplan}"
   local orphans
   orphans=$(docker ps -a \
-      --filter "name=^[0-9a-f]\{12\}_${project}-updater-1$" \
+      --filter "name=^[0-9a-f]{12}_${project}-updater-1$" \
       --format "{{.Names}}" 2>/dev/null || true)
   for c in $orphans; do
     echo "  → räume Orphan-Updater-Container ${c} auf"
@@ -111,7 +111,7 @@ Requires=docker.service
 
 [Service]
 Type=oneshot
-ExecStart=${install_dir}/updater-watchdog.sh ${install_dir}
+ExecStart="${install_dir}/updater-watchdog.sh" "${install_dir}"
 UNIT
 
   sudo tee /etc/systemd/system/convoyplan-updater-watchdog.timer >/dev/null <<UNIT
@@ -135,6 +135,20 @@ UNIT
 
 # Eingaben
 prompt "Installationsverzeichnis" "$HOME/convoyplan" INSTALL_DIR
+
+# Validate before any `sudo chown -R "$INSTALL_DIR"` runs: require an absolute
+# path and refuse the filesystem root / critical system directories so a typo or
+# empty value can never recursively re-own the host.
+case "$INSTALL_DIR" in
+  /*) : ;;
+  *) echo "FEHLER: Installationsverzeichnis muss ein absoluter Pfad sein." >&2; exit 1 ;;
+esac
+case "$INSTALL_DIR" in
+  "/" | "/usr" | "/usr/"* | "/etc" | "/etc/"* | "/bin" | "/sbin" | "/lib" | "/lib/"* \
+  | "/var" | "/var/"* | "/boot" | "/dev" | "/proc" | "/sys" | "/home" | "/root")
+    echo "FEHLER: Ungültiges Installationsverzeichnis '$INSTALL_DIR' — bitte einen dedizierten Pfad wählen (z. B. \$HOME/convoyplan)." >&2
+    exit 1 ;;
+esac
 
 # ── Bestehende Installation erkennen ─────────────────────────────────────────
 PREV_DOMAIN="" PREV_EMAIL="" PREV_DB_PASS="" PREV_JWT=""
@@ -308,7 +322,8 @@ curl -sSfL "$CADDY_ENTRYPOINT_URL" -o "$INSTALL_DIR/caddy/entrypoint.sh" \
   || { echo "FEHLER: Caddy-Entrypoint konnte nicht heruntergeladen werden."; exit 1; }
 chmod +x "$INSTALL_DIR/caddy/entrypoint.sh"
 
-# .env schreiben
+# .env schreiben — restriktive Rechte, da DB-Passwort und JWT_SECRET enthalten.
+( umask 077; : > "$INSTALL_DIR/.env" )
 cat > "$INSTALL_DIR/.env" <<ENVEOF
 POSTGRES_USER=convoyplan
 POSTGRES_PASSWORD=${DB_PASSWORD}
@@ -320,7 +335,7 @@ HTTP_PORT=80
 HTTPS_PORT=443
 OSM_DOWNLOAD_URL=${OSM_URL}
 OSM_FILENAME=${OSM_FILE}
-JAVA_OPTS=${JAVA_OPTS}
+JAVA_OPTS="${JAVA_OPTS}"
 BACKEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/backend:latest
 FRONTEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/frontend:latest
 GRAPHHOPPER_IMAGE=ghcr.io/retttechsolutions/convoyplan/graphhopper:latest
@@ -338,6 +353,7 @@ COMPOSE_PROJECT_NAME=convoyplan
 # Lizenzschlüssel nach dem Setup im Admin-Panel unter System → Lizenz eintragen
 # LICENSE_KEY=
 ENVEOF
+chmod 600 "$INSTALL_DIR/.env"
 
 # Stack starten
 echo ""

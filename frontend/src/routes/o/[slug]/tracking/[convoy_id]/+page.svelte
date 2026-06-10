@@ -197,7 +197,14 @@
 		return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 	}
 
-	$derived: activeTab = convoy?.waypoints.some(w => w.planned_arrival) ? activeTab : 'fahrzeuge';
+	// Fall back to the vehicles tab whenever the schedule tab is hidden (no
+	// waypoints with a planned arrival). `$derived:` is not a rune in runes mode
+	// — a real $effect is needed for this to react to convoy changes.
+	$effect(() => {
+		if (activeTab === 'zeitplan' && !convoy?.waypoints.some(w => w.planned_arrival)) {
+			activeTab = 'fahrzeuge';
+		}
+	});
 </script>
 
 <div class="app">

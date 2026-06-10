@@ -2,12 +2,10 @@ import asyncio
 import json
 import uuid
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
-import jwt as _jwt
-from jwt.exceptions import InvalidTokenError
 
-from app.config import settings
+from app.api.deps import decode_stream_token
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -28,12 +26,10 @@ def _identity(token: str | None) -> str:
     fall back to a random per-connection id."""
     if token:
         try:
-            payload = _jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-            sub = payload.get("sub")
-            if sub:
-                return f"user:{sub}"
-        except InvalidTokenError:
-            # Invalid/expired/malformed token: treat this connection as anonymous.
+            td = decode_stream_token(token)
+            return f"user:{td.user_id}"
+        except HTTPException:
+            # Invalid/expired/mfa_pending token: treat this connection as anonymous.
             pass
     return f"anon:{uuid.uuid4()}"
 

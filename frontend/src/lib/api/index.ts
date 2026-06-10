@@ -1,4 +1,4 @@
-import { api, uploadFile, getToken } from './client';
+import { api, uploadFile, getStreamTicket } from './client';
 import type { Geometry } from 'geojson';
 
 export interface Point { lat: number; lon: number }
@@ -242,12 +242,13 @@ export const statusApi = {
 };
 
 // V3: Online Users (SSE)
-// Passes the JWT as a query param (EventSource cannot set headers) so the
-// backend can dedupe by user — reloads/extra tabs don't inflate the count.
+// Passes a short-lived stream ticket as a query param (EventSource cannot set
+// headers) so the backend can dedupe by user — reloads/extra tabs don't inflate
+// the count — without exposing the long-lived access token in the URL.
 export const usersApi = {
-	onlineStream: (): EventSource => {
-		const token = getToken();
-		const qs = token ? `?token=${encodeURIComponent(token)}` : '';
+	onlineStream: async (): Promise<EventSource> => {
+		const ticket = await getStreamTicket();
+		const qs = ticket ? `?token=${encodeURIComponent(ticket)}` : '';
 		return new EventSource(`/api/users/online${qs}`);
 	},
 };

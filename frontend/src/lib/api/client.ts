@@ -21,6 +21,28 @@ export function getToken(): string | null {
 	return localStorage.getItem('token');
 }
 
+/**
+ * Exchange the bearer token for a short-lived (60 s) stream ticket usable in
+ * SSE/WebSocket URLs, which cannot carry an Authorization header. Avoids
+ * putting the long-lived access token in the URL (proxy logs / history).
+ * Returns null if not authenticated or the request fails.
+ */
+export async function getStreamTicket(): Promise<string | null> {
+	const token = getToken();
+	if (!token) return null;
+	try {
+		const res = await fetch(`${getBaseUrl()}/api/auth/stream-ticket`, {
+			method: 'POST',
+			headers: { Authorization: `Bearer ${token}` },
+		});
+		if (!res.ok) return null;
+		const data = await res.json().catch(() => null);
+		return data?.ticket ?? null;
+	} catch {
+		return null;
+	}
+}
+
 async function request<T>(
 	path: string,
 	options: RequestInit = {}

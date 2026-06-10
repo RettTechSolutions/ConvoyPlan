@@ -4,7 +4,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-convoyplan}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-convoyplan}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set (see .env.example)}
       POSTGRES_DB: ${POSTGRES_DB:-convoyplan}
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -21,7 +21,7 @@ services:
     restart: unless-stopped
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${BACKEND_PORT:-8000}"
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-convoyplan}:${POSTGRES_PASSWORD:-convoyplan}@db:5432/${POSTGRES_DB:-convoyplan}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-convoyplan}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set (see .env.example)}@db:5432/${POSTGRES_DB:-convoyplan}
       JWT_SECRET: ${JWT_SECRET:-changeme-in-production}
       APP_ENV: ${APP_ENV:-production}
       MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:-}
@@ -50,7 +50,7 @@ services:
     # Periodic data-retention purge (DSGVO Art. 5(1)(e)). Reuses the backend image.
     command: sh -c "while true; do python -m app.jobs.retention || true; sleep ${RETENTION_INTERVAL:-3600}; done"
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-convoyplan}:${POSTGRES_PASSWORD:-convoyplan}@db:5432/${POSTGRES_DB:-convoyplan}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-convoyplan}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set (see .env.example)}@db:5432/${POSTGRES_DB:-convoyplan}
       APP_ENV: ${APP_ENV:-production}
       RETENTION_ENABLED: ${RETENTION_ENABLED:-true}
       RETENTION_POSITIONS_HOURS: ${RETENTION_POSITIONS_HOURS:-24}
@@ -102,7 +102,9 @@ services:
       FRONTEND_PORT: ${FRONTEND_PORT:-3000}
       BACKEND_PORT: ${BACKEND_PORT:-8000}
     volumes:
-      - ${CADDY_ENTRYPOINT_PATH:-/dev/null}:/entrypoint.sh:ro
+      # Default to the repo-relative entrypoint so a plain `git clone` + `docker
+      # compose up` works; the installer overrides this with an absolute path.
+      - ${CADDY_ENTRYPOINT_PATH:-./caddy/entrypoint.sh}:/entrypoint.sh:ro
       - caddy_data:/data
       - caddy_config:/config
       - cert_uploads:/certs:ro
@@ -127,7 +129,7 @@ services:
       # Alle Service-Variablen werden durchgereicht, damit `docker compose up`
       # innerhalb des Updater-Containers dieselben Werte wie beim Erststart hat.
       POSTGRES_USER: ${POSTGRES_USER:-convoyplan}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-convoyplan}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set (see .env.example)}
       POSTGRES_DB: ${POSTGRES_DB:-convoyplan}
       DB_PORT: ${DB_PORT:-5432}
       JWT_SECRET: ${JWT_SECRET:-changeme-in-production}

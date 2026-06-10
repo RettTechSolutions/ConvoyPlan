@@ -21,6 +21,7 @@
   let sse: EventSource | null = null;
   let reconnectDelay = 5_000;          // starts at 5 s
   const MAX_RECONNECT_DELAY = 60_000;  // caps at 60 s
+  let destroyed = false;
 
   async function fetchStatus() {
     try {
@@ -28,16 +29,20 @@
     } catch { /* ignore */ }
   }
 
-  function connectSSE() {
-    if (sse) { sse.close(); }
-    sse = usersApi.onlineStream();
-    sse.onmessage = (e) => {
+  async function connectSSE() {
+    if (sse) { sse.close(); sse = null; }
+    // onlineStream is async (fetches a short-lived stream ticket first).
+    const es = await usersApi.onlineStream();
+    if (destroyed) { es.close(); return; } // component went away while awaiting
+    sse = es;
+    es.onmessage = (e) => {
       try { onlineCount = JSON.parse(e.data).count ?? 0; } catch { /* ignore */ }
       reconnectDelay = 5_000; // reset backoff on successful message
     };
-    sse.onerror = () => {
-      sse?.close();
-      sse = null;
+    es.onerror = () => {
+      es.close();
+      if (sse === es) sse = null;
+      if (destroyed) return;
       reconnectTimer = setTimeout(connectSSE, reconnectDelay);
       // exponential backoff: 5 s → 10 s → 20 s → 40 s → 60 s (capped)
       reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
@@ -65,6 +70,7 @@
   });
 
   onDestroy(() => {
+    destroyed = true;
     clearInterval(pollInterval);
     clearTimeout(reconnectTimer);
     sse?.close();
