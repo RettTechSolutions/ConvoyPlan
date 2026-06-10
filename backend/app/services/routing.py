@@ -14,10 +14,14 @@ URBAN_SPEED_THRESHOLD_KMH = 50  # posted limit ≤ this → innerorts
 _PRIORITY_RULES = {
     "schnell": [],
     "bundesstrasse": [
-        {"if": "road_class == MOTORWAY", "multiply_by": "0.3"}
+        {"if": "road_class == MOTORWAY", "multiply_by": "0.3"},
+        # Avoid village streets — convoys should not cut through 30 km/h zones.
+        {"if": "road_class == RESIDENTIAL || road_class == LIVING_STREET", "multiply_by": "0.2"},
     ],
     "landstrasse": [
-        {"if": "road_class == MOTORWAY || road_class == TRUNK", "multiply_by": "0.05"}
+        {"if": "road_class == MOTORWAY || road_class == TRUNK", "multiply_by": "0.05"},
+        # Avoid village streets — convoys should not cut through 30 km/h zones.
+        {"if": "road_class == RESIDENTIAL || road_class == LIVING_STREET", "multiply_by": "0.1"},
     ],
 }
 
