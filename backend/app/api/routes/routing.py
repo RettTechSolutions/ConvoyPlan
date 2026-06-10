@@ -165,7 +165,13 @@ async def _compute_kanalwechsel(
         else:
             continue
 
-        for lon, lat in pts:
+        for pt in pts:
+            # PostGIS kann leere Geometrien liefern (POINT EMPTY → coordinates: [])
+            # wenn Route und Leitstellen-Grenze sich nur tangential berühren —
+            # überspringen statt am Entpacken zu scheitern. Z-Koordinaten ignorieren.
+            if not pt or len(pt) < 2:
+                continue
+            lon, lat = pt[0], pt[1]
             frac_res = await db.execute(
                 select(
                     func.ST_LineLocatePoint(
@@ -348,8 +354,14 @@ async def calculate_route(
             wp.order_index = new_idx
         await db.commit()
 
-    # Kanalwechsel computation
-    kanalwechsel = await _compute_kanalwechsel(db, line, route_data["distance_m"], convoy.organization_id)
+    # Kanalwechsel computation — Zusatzinfo, darf die Routenberechnung nie
+    # scheitern lassen (z. B. bei unerwarteten Leitstellen-Geometrien).
+    try:
+        kanalwechsel = await _compute_kanalwechsel(db, line, route_data["distance_m"], convoy.organization_id)
+    except Exception:
+        logger.exception("Kanalwechsel computation failed for convoy %s", convoy_id)
+        await db.rollback()
+        kanalwechsel = []
     route.kanalwechsel = kanalwechsel
     await db.commit()
 
