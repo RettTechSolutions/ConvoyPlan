@@ -14,10 +14,17 @@ URBAN_SPEED_THRESHOLD_KMH = 50  # posted limit ≤ this → innerorts
 _PRIORITY_RULES = {
     "schnell": [],
     "bundesstrasse": [
-        {"if": "road_class == MOTORWAY", "multiply_by": "0.3"}
+        {"if": "road_class == MOTORWAY", "multiply_by": "0.3"},
+        # Prefer PRIMARY/SECONDARY (Bundesstraße/Staatsstraße) over Kreisstraßen —
+        # TERTIARY roads are often narrower and less suitable for convoy movement.
+        {"if": "road_class == TERTIARY", "multiply_by": "0.5"},
+        # Avoid village streets and living zones entirely.
+        {"if": "road_class == RESIDENTIAL || road_class == LIVING_STREET", "multiply_by": "0.1"},
     ],
     "landstrasse": [
-        {"if": "road_class == MOTORWAY || road_class == TRUNK", "multiply_by": "0.05"}
+        {"if": "road_class == MOTORWAY || road_class == TRUNK", "multiply_by": "0.05"},
+        # Avoid village streets and living zones entirely.
+        {"if": "road_class == RESIDENTIAL || road_class == LIVING_STREET", "multiply_by": "0.1"},
     ],
 }
 

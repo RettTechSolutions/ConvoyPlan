@@ -1606,8 +1606,8 @@
 				<label>Straßenpräferenz
 					<select bind:value={newConvoy.road_preference}>
 						<option value="schnell">Schnellste Route (Autobahn erlaubt)</option>
-						<option value="bundesstrasse">Bundesstraßen bevorzugt</option>
-						<option value="landstrasse">Nur Landstraßen</option>
+						<option value="bundesstrasse">Bundesstraßen bevorzugt (meidet Kreisstr. &amp; Wohngebiete)</option>
+						<option value="landstrasse">Landstraßen (meidet Autobahn &amp; Wohngebiete)</option>
 					</select>
 				</label>
 				<label>Fahrzeugabstand Innerorts (m)<input type="number" bind:value={newConvoy.spacing_urban_m} min="5" max="200" /></label>
@@ -1651,8 +1651,8 @@
 				<label>Straßenpräferenz
 					<select bind:value={editConvoy.road_preference}>
 						<option value="schnell">Schnellste Route (Autobahn erlaubt)</option>
-						<option value="bundesstrasse">Bundesstraßen bevorzugt</option>
-						<option value="landstrasse">Nur Landstraßen</option>
+						<option value="bundesstrasse">Bundesstraßen bevorzugt (meidet Kreisstr. &amp; Wohngebiete)</option>
+						<option value="landstrasse">Landstraßen (meidet Autobahn &amp; Wohngebiete)</option>
 					</select>
 				</label>
 				<label>Fahrzeugabstand Innerorts (m)<input type="number" bind:value={editConvoy.spacing_urban_m} min="5" max="200" /></label>
