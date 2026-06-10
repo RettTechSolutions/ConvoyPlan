@@ -14,17 +14,32 @@ URBAN_SPEED_THRESHOLD_KMH = 50  # posted limit ≤ this → innerorts
 _PRIORITY_RULES = {
     "schnell": [],
     "bundesstrasse": [
+        # Avoid motorways — convoys need exits and shouldn't use Autobahn.
         {"if": "road_class == MOTORWAY", "multiply_by": "0.3"},
-        # Prefer PRIMARY/SECONDARY (Bundesstraße/Staatsstraße) over Kreisstraßen —
-        # TERTIARY roads are often narrower and less suitable for convoy movement.
-        {"if": "road_class == TERTIARY", "multiply_by": "0.5"},
-        # Avoid village streets and living zones entirely.
-        {"if": "road_class == RESIDENTIAL || road_class == LIVING_STREET", "multiply_by": "0.1"},
+        # Mild penalty for Kreisstraßen — PRIMARY/SECONDARY preferred, but TERTIARY
+        # must stay usable as connectors between B-road segments.
+        {"if": "road_class == TERTIARY", "multiply_by": "0.7"},
+        # Strongly discourage unclassified and track roads — they are convoy-
+        # unsuitable and must be more expensive than any penalised main road,
+        # otherwise the router uses them as cheap workarounds.
+        {"if": "road_class == UNCLASSIFIED", "multiply_by": "0.15"},
+        {"if": "road_class == TRACK", "multiply_by": "0.01"},
+        {"if": "road_class == SERVICE", "multiply_by": "0.1"},
+        # Moderate residential penalty: discourage village back-streets but do NOT
+        # block entirely — many B roads pass through town centres tagged residential.
+        # A 0.1× penalty causes the router to detour via unclassified/track roads,
+        # which is far worse for a convoy.
+        {"if": "road_class == RESIDENTIAL || road_class == LIVING_STREET", "multiply_by": "0.5"},
     ],
     "landstrasse": [
+        # Avoid motorways and trunk roads.
         {"if": "road_class == MOTORWAY || road_class == TRUNK", "multiply_by": "0.05"},
-        # Avoid village streets and living zones entirely.
-        {"if": "road_class == RESIDENTIAL || road_class == LIVING_STREET", "multiply_by": "0.1"},
+        # Track roads are not suitable for convoy movement.
+        {"if": "road_class == TRACK", "multiply_by": "0.05"},
+        # Moderate residential penalty — rural routes sometimes pass through village
+        # centres; don't block entirely.
+        {"if": "road_class == RESIDENTIAL || road_class == LIVING_STREET", "multiply_by": "0.5"},
+        {"if": "road_class == SERVICE", "multiply_by": "0.2"},
     ],
 }
 
