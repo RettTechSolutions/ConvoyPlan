@@ -426,7 +426,6 @@ async def admin_update_organization(
         "slug": org.slug,
         "owner_id": str(org.owner_id),
         "owner_email": new_owner.email,
-        "member_count": len(org.members) if org.members is not None else 0,
     }
 
 
