@@ -1,0 +1,27 @@
+# Trivy ignore file — documented suppressions (ISO 27001 A.8.8 / T10)
+#
+# The convoyplan-updater image is built FROM docker:cli and bundles the
+# docker-buildx and docker-compose CLI plugins. The vulnerabilities below live
+# in those upstream-bundled plugin binaries (vendored containerd / moby / Go),
+# not in our code, and cannot be patched by us without a fixed upstream
+# docker:cli release. The updater container only runs our own trusted update
+# scripts (git pull + `docker compose pull/up`); it does not parse untrusted
+# MIME input, expose the moby authorization plugin API, or rely on
+# runAsNonRoot — so none of these are exploitable here (VEX: not_affected).
+#
+# Re-evaluate once a patched docker:cli base image is available and drop the
+# entries the bump resolves. Review by: 2026-09-10.
+
+# containerd user ID handling bypass allows runAsNonRoot evasion.
+# Bundled in docker-buildx/compose; the updater does not use runAsNonRoot.
+# Fixed upstream in containerd 2.2.4.
+CVE-2026-46680
+
+# Moby authorization bypass. Bundled docker engine libs; the updater image
+# ships only the docker CLI — no dockerd / authz plugin endpoint is exposed.
+# Fixed upstream in docker/moby 29.3.1.
+CVE-2026-34040
+
+# Go stdlib MIME header DoS (net/textproto). The updater parses no untrusted
+# MIME input. Fixed upstream in Go 1.25.11 / 1.26.4.
+CVE-2026-42504
