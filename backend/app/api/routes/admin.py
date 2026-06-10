@@ -388,6 +388,48 @@ async def list_all_organizations(
     ]
 
 
+class AdminOrgUpdate(BaseModel):
+    owner_id: uuid.UUID
+
+
+@router.patch("/organizations/{org_id}", status_code=200)
+async def admin_update_organization(
+    org_id: uuid.UUID,
+    data: AdminOrgUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    result = await db.execute(
+        select(Organization).where(Organization.id == org_id).options(selectinload(Organization.owner))
+    )
+    org = result.scalar_one_or_none()
+    if not org:
+        raise HTTPException(404, "Organization not found")
+
+    new_owner = await db.get(User, data.owner_id)
+    if not new_owner:
+        raise HTTPException(404, "User not found")
+
+    org.owner_id = data.owner_id
+    await db.commit()
+    await db.refresh(org)
+    await audit.record(
+        db, "admin.org.updated",
+        request=request, actor_id=current.id, actor_email=current.email,
+        org_id=org.id, target_type="organization", target_id=org.id,
+        detail={"owner_id": str(data.owner_id), "owner_email": new_owner.email},
+    )
+    return {
+        "id": str(org.id),
+        "name": org.name,
+        "slug": org.slug,
+        "owner_id": str(org.owner_id),
+        "owner_email": new_owner.email,
+        "member_count": len(org.members) if org.members is not None else 0,
+    }
+
+
 @router.delete("/organizations/{org_id}", status_code=204)
 async def admin_delete_organization(
     org_id: uuid.UUID,

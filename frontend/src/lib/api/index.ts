@@ -376,6 +376,7 @@ export interface AdminOrg {
     id: string;
     name: string;
     slug: string;
+    owner_id: string | null;
     owner_email: string | null;
     member_count: number;
 }
@@ -435,6 +436,7 @@ export const adminApi = {
         api.delete(`/api/admin/users/${userId}/orgs/${orgId}`),
     listOrgs: () => api.get<AdminOrg[]>('/api/admin/organizations'),
     createOrg: (data: { name: string; slug: string }) => api.post<AdminOrg>('/api/admin/organizations', data),
+    updateOrg: (id: string, data: { owner_id: string }) => api.patch<AdminOrg>(`/api/admin/organizations/${id}`, data),
     deleteOrg: (id: string) => api.delete(`/api/admin/organizations/${id}`),
     listApiKeys: (orgId: string) => api.get<ApiKey[]>(`/api/admin/organizations/${orgId}/api-keys`),
     createApiKey: (orgId: string, data: ApiKeyCreate) =>

@@ -253,7 +253,7 @@
         orgsLoading = true;
         orgsError = '';
         try {
-            orgs = await adminApi.listOrgs();
+            [orgs, users] = await Promise.all([adminApi.listOrgs(), users.length ? Promise.resolve(users) : adminApi.listUsers()]);
         } catch { orgsError = 'Organisationen konnten nicht geladen werden'; }
         finally { orgsLoading = false; }
     }
@@ -264,6 +264,32 @@
             await adminApi.deleteOrg(org.id);
             await loadOrgs();
         } catch { orgsError = 'Organisation konnte nicht gelöscht werden'; }
+    }
+
+    // Edit org owner
+    let showEditOrgModal = $state(false);
+    let editingOrg = $state<AdminOrg | null>(null);
+    let editOrgOwnerId = $state('');
+    let editOrgError = $state('');
+    let editOrgSaving = $state(false);
+
+    function openEditOrgModal(org: AdminOrg) {
+        editingOrg = org;
+        editOrgOwnerId = org.owner_id ?? '';
+        editOrgError = '';
+        showEditOrgModal = true;
+    }
+
+    async function saveOrgOwner() {
+        if (!editingOrg || !editOrgOwnerId) return;
+        editOrgSaving = true;
+        editOrgError = '';
+        try {
+            await adminApi.updateOrg(editingOrg.id, { owner_id: editOrgOwnerId });
+            showEditOrgModal = false;
+            await loadOrgs();
+        } catch { editOrgError = 'Inhaber konnte nicht gesetzt werden'; }
+        finally { editOrgSaving = false; }
     }
 
     // Create org
@@ -1249,7 +1275,10 @@
                                 <td class="hint">{org.owner_email ?? '–'}</td>
                                 <td>{org.member_count}</td>
                                 <td class="actions-cell">
-                                    <div><button class="btn-small danger" onclick={() => deleteOrg(org)} title="Löschen">🗑</button></div>
+                                    <div>
+                                        <button class="btn-small" onclick={() => openEditOrgModal(org)} title="Inhaber ändern">✎</button>
+                                        <button class="btn-small danger" onclick={() => deleteOrg(org)} title="Löschen">🗑</button>
+                                    </div>
                                 </td>
                             </tr>
                         {/each}
@@ -2145,6 +2174,41 @@
                 <button class="btn-primary" onclick={createOrg}
                     disabled={createOrgSaving || !createOrgForm.name.trim() || !createOrgForm.slug.trim()}>
                     {createOrgSaving ? 'Anlegen…' : 'Organisation anlegen'}
+                </button>
+            </div>
+        </div>
+    </div>
+{/if}
+
+<!-- ── Edit Org Owner Modal ── -->
+{#if showEditOrgModal && editingOrg}
+    <div class="modal-backdrop" onclick={() => (showEditOrgModal = false)}>
+        <div class="modal" style="max-width:440px" onclick={(e) => e.stopPropagation()}>
+            <div class="modal-header">
+                <h2>Inhaber ändern</h2>
+                <button onclick={() => (showEditOrgModal = false)}>✕</button>
+            </div>
+            <div class="modal-body">
+                <p class="hint" style="margin-bottom:.75rem">Organisation: <strong>{editingOrg.name}</strong></p>
+                {#if editOrgError}
+                    <div class="error-bar" style="margin-bottom:.75rem">{editOrgError} <button onclick={() => (editOrgError = '')}>✕</button></div>
+                {/if}
+                <div class="ls-form">
+                    <label>Neuer Inhaber *
+                        <select bind:value={editOrgOwnerId}>
+                            <option value="">– Benutzer wählen –</option>
+                            {#each users as u}
+                                <option value={u.id}>{u.email}</option>
+                            {/each}
+                        </select>
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick={() => (showEditOrgModal = false)}>Abbrechen</button>
+                <button class="btn-primary" onclick={saveOrgOwner}
+                    disabled={editOrgSaving || !editOrgOwnerId}>
+                    {editOrgSaving ? 'Speichern…' : 'Speichern'}
                 </button>
             </div>
         </div>
