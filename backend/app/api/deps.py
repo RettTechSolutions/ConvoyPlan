@@ -52,6 +52,14 @@ def _decode_token(token: str) -> TokenData:
         user_id_str: str | None = payload.get("sub")
         if user_id_str is None:
             raise credentials_exception
+        # Reject half-authenticated MFA-pending tokens and any non-access token
+        # type. mfa_pending tokens are issued after the password step but before
+        # TOTP; they must NOT grant access to get_current_user endpoints.
+        if payload.get("mfa_pending"):
+            raise credentials_exception
+        token_type = payload.get("typ")
+        if token_type is not None and token_type != "access":
+            raise credentials_exception
         raw_org_id = payload.get("org_id")
         return TokenData(
             user_id=uuid.UUID(user_id_str),

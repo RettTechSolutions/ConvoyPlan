@@ -30,11 +30,23 @@ async def get_convoy_access(
     user: User,
     db: AsyncSession,
     require: Literal["read", "fahrer", "write", "delete"] = "read",
+    role: str | None = None,
 ) -> Convoy:
     result = await db.execute(select(Convoy).where(Convoy.id == convoy_id))
     convoy = result.scalar_one_or_none()
     if not convoy:
         raise HTTPException(404, "Convoy not found")
+
+    required_role = _REQUIRED_ROLE[require]
+
+    # When an effective role is supplied (org context / API key), it is the
+    # source of truth and MUST be enforced even when the acting user owns the
+    # convoy. Otherwise an API key (which acts as the org owner) would bypass
+    # its configured role on owner-owned convoys (privilege escalation).
+    if role is not None:
+        if ROLE_ORDER.get(role, -1) < ROLE_ORDER[required_role]:
+            raise HTTPException(403, f"Insufficient role: requires {required_role}")
+        return convoy
 
     if convoy.owner_id == user.id:
         return convoy
@@ -52,7 +64,6 @@ async def get_convoy_access(
     if not membership:
         raise HTTPException(403, "Not a member of this organisation")
 
-    required_role = _REQUIRED_ROLE[require]
     if ROLE_ORDER.get(membership.role, -1) < ROLE_ORDER[required_role]:
         raise HTTPException(403, f"Insufficient role: requires {required_role}")
 

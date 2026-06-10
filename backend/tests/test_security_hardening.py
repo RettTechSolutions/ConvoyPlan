@@ -258,13 +258,68 @@ def test_decrypt_legacy_plaintext_passthrough():
 # ── Token versioning / JWT revocation (T6) ────────────────────────────────────────
 
 from app.api import deps  # noqa: E402
-from app.api.routes.auth import create_token  # noqa: E402
+from app.api.routes.auth import create_mfa_pending_token, create_token  # noqa: E402
 
 
 def test_token_carries_version_and_parses():
     sub = str(uuid.uuid4())
     td = deps.get_token_data(create_token(sub, False, token_version=7))
     assert td.token_version == 7
+
+
+# ── MFA-pending token must never grant access (K1) ────────────────────────────────
+
+def test_mfa_pending_token_rejected_as_access_token():
+    """A token issued after the password step but before TOTP must NOT be
+    accepted by get_token_data / get_current_user (CWE-287 MFA bypass)."""
+    pending = create_mfa_pending_token(str(uuid.uuid4()), org_slug="acme")
+    with pytest.raises(HTTPException) as exc:
+        deps.get_token_data(pending)
+    assert exc.value.status_code == 401
+
+
+def test_access_token_carries_typ_access():
+    import jwt as _jwt
+    payload = _jwt.decode(
+        create_token(str(uuid.uuid4()), False),
+        settings.jwt_secret,
+        algorithms=[settings.jwt_algorithm],
+    )
+    assert payload.get("typ") == "access"
+
+
+def test_legacy_token_without_typ_still_accepted():
+    """Tokens issued before the typ claim existed (no typ, no mfa_pending) must
+    keep working so the fix does not log every active user out."""
+    import jwt as _jwt
+    from datetime import datetime, timedelta, timezone
+
+    legacy = _jwt.encode(
+        {"sub": str(uuid.uuid4()), "exp": datetime.now(timezone.utc) + timedelta(minutes=5)},
+        settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
+    td = deps.get_token_data(legacy)  # must not raise
+    assert td.token_version == 0
+
+
+# ── E-mail template SSTI guard (M3) ───────────────────────────────────────────────
+
+from app.services.email import _safe_format  # noqa: E402
+
+
+def test_safe_format_substitutes_known_keys():
+    assert _safe_format("Hallo {name}, code {n}", {"name": "Bob", "n": "7"}) == "Hallo Bob, code 7"
+
+
+def test_safe_format_leaves_unknown_keys_untouched():
+    assert _safe_format("Hi {missing}", {"name": "Bob"}) == "Hi {missing}"
+
+
+def test_safe_format_blocks_attribute_access():
+    """{login_url.__class__...} must be left literal, never evaluated (SSTI)."""
+    out = _safe_format("{login_url.__class__.__init__.__globals__}", {"login_url": "http://x"})
+    assert out == "{login_url.__class__.__init__.__globals__}"
 
 
 def test_ensure_token_current_rejects_stale():

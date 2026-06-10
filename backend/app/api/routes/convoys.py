@@ -9,7 +9,6 @@ from app.api.deps import get_org_context, OrgCtx
 from app.api.guards import get_convoy_access, ROLE_ORDER
 from app.database import get_db
 from app.models.convoy import Convoy, ConvoyVehicle
-from app.models.organization import UserOrganization
 from app.models.vehicle import Vehicle
 from app.models.waypoint import Waypoint
 from app.schemas.convoy import AddVehicleRequest, ConvoyCreate, ConvoyResponse, ConvoyUpdate
@@ -146,7 +145,7 @@ async def update_convoy(
     db: AsyncSession = Depends(get_db),
 ):
     user, org, role = ctx
-    convoy = await get_convoy_access(convoy_id, user, db, require="write")
+    convoy = await get_convoy_access(convoy_id, user, db, require="write", role=role)
     if convoy.organization_id != org.id:
         raise HTTPException(status_code=404, detail="Convoy not found")
 
@@ -182,7 +181,7 @@ async def delete_convoy(
     db: AsyncSession = Depends(get_db),
 ):
     user, org, role = ctx
-    convoy = await get_convoy_access(convoy_id, user, db, require="delete")
+    convoy = await get_convoy_access(convoy_id, user, db, require="delete", role=role)
     if convoy.organization_id != org.id:
         raise HTTPException(status_code=404, detail="Convoy not found")
     convoy_name = convoy.name
@@ -206,16 +205,17 @@ async def add_vehicle_to_convoy(
     db: AsyncSession = Depends(get_db),
 ):
     user, org, role = ctx
-    convoy = await get_convoy_access(convoy_id, user, db, require="write")
+    convoy = await get_convoy_access(convoy_id, user, db, require="write", role=role)
     if convoy.organization_id != org.id:
         raise HTTPException(status_code=404, detail="Convoy not found")
 
-    # Verify vehicle belongs to the same org (prevent cross-org vehicle assignment)
-    member_ids = select(UserOrganization.user_id).where(UserOrganization.organization_id == org.id)
+    # Verify vehicle belongs to the same org (prevent cross-org vehicle
+    # assignment). Scope directly via org_id — consistent with vehicles.py and
+    # robust when a user is a member of multiple organisations.
     vehicle_result = await db.execute(
         select(Vehicle).where(
             Vehicle.id == data.vehicle_id,
-            Vehicle.owner_id.in_(member_ids),
+            Vehicle.org_id == org.id,
         )
     )
     if vehicle_result.scalar_one_or_none() is None:
@@ -241,7 +241,7 @@ async def remove_vehicle_from_convoy(
     db: AsyncSession = Depends(get_db),
 ):
     user, org, role = ctx
-    convoy = await get_convoy_access(convoy_id, user, db, require="write")
+    convoy = await get_convoy_access(convoy_id, user, db, require="write", role=role)
     if convoy.organization_id != org.id:
         raise HTTPException(status_code=404, detail="Convoy not found")
     await db.execute(
@@ -262,7 +262,7 @@ async def list_waypoints(
     db: AsyncSession = Depends(get_db),
 ):
     user, org, role = ctx
-    convoy = await get_convoy_access(convoy_id, user, db, require="read")
+    convoy = await get_convoy_access(convoy_id, user, db, require="read", role=role)
     if convoy.organization_id != org.id:
         raise HTTPException(status_code=404, detail="Convoy not found")
     result = await db.execute(
@@ -280,7 +280,7 @@ async def create_waypoint(
     db: AsyncSession = Depends(get_db),
 ):
     user, org, role = ctx
-    convoy = await get_convoy_access(convoy_id, user, db, require="write")
+    convoy = await get_convoy_access(convoy_id, user, db, require="write", role=role)
     if convoy.organization_id != org.id:
         raise HTTPException(status_code=404, detail="Convoy not found")
     wp_data = data.model_dump(exclude={"lat", "lon"})
@@ -301,7 +301,7 @@ async def update_waypoint(
     db: AsyncSession = Depends(get_db),
 ):
     user, org, role = ctx
-    convoy = await get_convoy_access(convoy_id, user, db, require="write")
+    convoy = await get_convoy_access(convoy_id, user, db, require="write", role=role)
     if convoy.organization_id != org.id:
         raise HTTPException(status_code=404, detail="Convoy not found")
     result = await db.execute(
@@ -328,7 +328,7 @@ async def delete_waypoint(
     db: AsyncSession = Depends(get_db),
 ):
     user, org, role = ctx
-    convoy = await get_convoy_access(convoy_id, user, db, require="write")
+    convoy = await get_convoy_access(convoy_id, user, db, require="write", role=role)
     if convoy.organization_id != org.id:
         raise HTTPException(status_code=404, detail="Convoy not found")
     result = await db.execute(
@@ -349,7 +349,7 @@ async def reorder_waypoints(
     db: AsyncSession = Depends(get_db),
 ):
     user, org, role = ctx
-    convoy = await get_convoy_access(convoy_id, user, db, require="write")
+    convoy = await get_convoy_access(convoy_id, user, db, require="write", role=role)
     if convoy.organization_id != org.id:
         raise HTTPException(status_code=404, detail="Convoy not found")
     if len({i.order_index for i in items}) != len(items):
@@ -390,7 +390,7 @@ async def list_sub_convoys(
     db: AsyncSession = Depends(get_db),
 ):
     user, org, role = ctx
-    convoy = await get_convoy_access(convoy_id, user, db, require="read")
+    convoy = await get_convoy_access(convoy_id, user, db, require="read", role=role)
     if convoy.organization_id != org.id:
         raise HTTPException(status_code=404, detail="Convoy not found")
     result = await db.execute(
@@ -408,7 +408,7 @@ async def create_sub_convoy(
     db: AsyncSession = Depends(get_db),
 ):
     user, org, role = ctx
-    convoy = await get_convoy_access(convoy_id, user, db, require="write")
+    convoy = await get_convoy_access(convoy_id, user, db, require="write", role=role)
     if convoy.organization_id != org.id:
         raise HTTPException(status_code=404, detail="Convoy not found")
     convoy_data = data.model_dump(exclude={"start_point", "end_point", "organization_id"})

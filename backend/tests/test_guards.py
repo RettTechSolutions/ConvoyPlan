@@ -203,6 +203,43 @@ async def test_admin_can_delete():
     assert result is convoy
 
 
+# --- explicit-role enforcement (H1: API-key role must apply on owner fast-path) ---
+
+@pytest.mark.asyncio
+async def test_supplied_role_enforced_on_owned_convoy():
+    """When an effective role is supplied (org context / API key), it must be
+    enforced even when the acting user OWNS the convoy. Otherwise a beobachter
+    API key (which acts as the org owner) escalates to write/delete."""
+    from app.api.guards import get_convoy_access
+    user = _user()
+    convoy = _convoy(owner_id=user.id)  # user owns it → would hit the fast-path
+    db = _db(convoy)
+    with pytest.raises(HTTPException) as exc:
+        await get_convoy_access(convoy.id, user, db, require="write", role="beobachter")
+    assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_supplied_role_allows_when_sufficient_on_owned_convoy():
+    from app.api.guards import get_convoy_access
+    user = _user()
+    convoy = _convoy(owner_id=user.id)
+    db = _db(convoy)
+    result = await get_convoy_access(convoy.id, user, db, require="write", role="planer")
+    assert result is convoy
+
+
+@pytest.mark.asyncio
+async def test_supplied_role_blocks_delete_for_planer_owner():
+    from app.api.guards import get_convoy_access
+    user = _user()
+    convoy = _convoy(owner_id=user.id)
+    db = _db(convoy)
+    with pytest.raises(HTTPException) as exc:
+        await get_convoy_access(convoy.id, user, db, require="delete", role="planer")
+    assert exc.value.status_code == 403
+
+
 # --- vehicle access tests ---
 
 @pytest.mark.asyncio

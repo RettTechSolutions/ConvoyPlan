@@ -66,6 +66,10 @@ def create_token(
         {
             "sub": user_id,
             "exp": expire,
+            # Explicit token type so a half-authenticated mfa_pending token can
+            # never be mistaken for a full access token (CWE-287). _decode_token
+            # rejects anything that is not "access".
+            "typ": "access",
             "is_superadmin": is_superadmin,
             "org_id": org_id,
             "org_slug": org_slug,

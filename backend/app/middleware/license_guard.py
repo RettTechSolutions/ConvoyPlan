@@ -22,6 +22,7 @@ Exempt paths (always allowed regardless of method):
   - /docs, /redoc, /openapi.json
 """
 import asyncio
+import time
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -46,6 +47,10 @@ _EXEMPT_PREFIXES = (
 )
 
 _license_valid: bool | None = None
+_license_checked_at: float = 0.0
+# Re-validate at most hourly so a license that expires at a date boundary while
+# the (long-lived) container runs is picked up without a restart.
+_LICENSE_TTL_SECONDS = 3600
 _lock: asyncio.Lock | None = None
 
 
@@ -57,17 +62,25 @@ def _get_lock() -> asyncio.Lock:
 
 
 def reset_license_cache() -> None:
-    global _license_valid
+    global _license_valid, _license_checked_at
     _license_valid = None
+    _license_checked_at = 0.0
+
+
+def _cache_fresh() -> bool:
+    return (
+        _license_valid is not None
+        and (time.monotonic() - _license_checked_at) < _LICENSE_TTL_SECONDS
+    )
 
 
 async def _check_license() -> bool:
-    global _license_valid
-    if _license_valid is not None:
+    global _license_valid, _license_checked_at
+    if _cache_fresh():
         return _license_valid
 
     async with _get_lock():
-        if _license_valid is not None:
+        if _cache_fresh():
             return _license_valid
 
         license_key = settings.license_key
@@ -86,6 +99,7 @@ async def _check_license() -> bool:
             instance_id = ""
 
         _license_valid = validate_license(license_key, instance_id).valid
+        _license_checked_at = time.monotonic()
 
     return _license_valid
 
