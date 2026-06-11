@@ -4,7 +4,7 @@ import logging
 import re
 import uuid
 from datetime import timezone
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, File, Query, UploadFile
 from fastapi.responses import PlainTextResponse, Response
@@ -267,11 +267,37 @@ async def calculate_route(
     if not start or not end:
         raise HTTPException(status_code=400, detail="Convoy start/end point not set")
 
-    points = [start]
-    for wp in sorted(convoy.waypoints, key=lambda w: w.order_index):
+    # Load any previously stored route up front. Its geometry lets us order the
+    # waypoints by their real position along the route before re-routing. The
+    # frontend appends recommended Technische Halte / Tankstopps to the END of
+    # the waypoint list (highest order_index), even though they physically lie
+    # in the middle of the route. Without re-ordering, the router would visit
+    # them last and detour back and forth — the reported ~700 km jump on
+    # recalculation. Projecting onto the prior route fixes the order so the new
+    # route stays clean.
+    existing_route = (
+        await db.execute(select(Route).where(Route.convoy_id == convoy_id))
+    ).scalar_one_or_none()
+    prev_coords: list = []
+    if existing_route is not None and existing_route.geometry is not None:
+        prev_line = geo_svc.linestring_to_geojson(existing_route.geometry)
+        prev_coords = (prev_line or {}).get("coordinates", []) if prev_line else []
+
+    positioned: list[tuple[Any, dict]] = []
+    for wp in convoy.waypoints:
         coords = geo_svc.waypoint_coords(wp)
-        if coords["lat"] and coords["lon"]:
-            points.append({"lat": coords["lat"], "lon": coords["lon"]})
+        if coords["lat"] is not None and coords["lon"] is not None:
+            positioned.append((wp, coords))
+
+    if prev_coords and len(positioned) > 1:
+        positioned.sort(
+            key=lambda pc: fuel_svc.project_onto_route(prev_coords, pc[1]["lat"], pc[1]["lon"])
+        )
+    else:
+        positioned.sort(key=lambda pc: pc[0].order_index)
+
+    points = [start]
+    points.extend({"lat": c["lat"], "lon": c["lon"]} for _, c in positioned)
     points.append(end)
 
     # Determine worst-case vehicle constraints
@@ -327,8 +353,7 @@ async def calculate_route(
 
     # Persist route
     line = LineString(coords)
-    existing = await db.execute(select(Route).where(Route.convoy_id == convoy_id))
-    route = existing.scalar_one_or_none()
+    route = existing_route
     if route:
         route.geometry = from_shape(line, srid=4326)
         route.distance_m = route_data["distance_m"]
@@ -453,7 +478,8 @@ async def export_json(
     ]
     vehicles = [
         {"name": cv.vehicle.name, "callsign": cv.vehicle.callsign,
-         "license_plate": cv.vehicle.license_plate, "position": cv.position}
+         "license_plate": cv.vehicle.license_plate, "position": cv.position,
+         "propulsion": getattr(cv.vehicle, "propulsion", "combustion")}
         for cv in convoy.convoy_vehicles
     ]
     json_content = export_svc.build_json_export(convoy, waypoints, vehicles)

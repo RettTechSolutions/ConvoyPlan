@@ -119,3 +119,8 @@ class UpdateVehicleInConvoyRequest(BaseModel):
     position: int | None = None
     sonderfunktion: str | None = None
     mobile_phone: str | None = None
+
+
+class ConvoyVehicleReorderItem(BaseModel):
+    vehicle_id: uuid.UUID
+    position: int

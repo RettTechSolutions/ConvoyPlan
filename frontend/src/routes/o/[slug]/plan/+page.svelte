@@ -15,8 +15,12 @@
 		convoysApi, vehiclesApi, orgsApi, overpassApi, authApi, mfaApi,
 		type Convoy, type Vehicle, type Organization, type OrgMember,
 		type FuelAnalysis, type FuelStation, type Waypoint, type RoadPreference,
-		type KanalwechselEntry,
+		type KanalwechselEntry, type ConvoyVehicleItem,
 	} from '$lib/api';
+
+	// svelte-dnd-action keys items by a top-level `id`; ConvoyVehicleItem has none,
+	// so we attach the vehicle id for the march-order drag list.
+	type DndConvoyVehicle = ConvoyVehicleItem & { id: string };
 	import { getToken } from '$lib/api/client';
 	import type { FeatureCollection, Geometry } from 'geojson';
 	import { dndzone } from 'svelte-dnd-action';
@@ -58,6 +62,7 @@
 	let loading = $state(false);
 	let dndWaypoints = $state<Waypoint[]>([]);
 	let dndVehicles = $state<Vehicle[]>([]);
+	let dndConvoyVehicles = $state<DndConvoyVehicle[]>([]);
 	let editingWpId = $state<string | null>(null);
 	let editWpForm = $state({ name: '', type: 'waypoint', hold_duration_min: 0, halt_purpose: '', notes: '' });
 	let sidebarOpen = $state(false);
@@ -133,9 +138,12 @@
 	let showBefehlModal = $state(false);
 	let showShareLinkModal = $state(false);
 	let showSubConvoyForm = $state(false);
-	let newVehicle = $state({ name:'', callsign:'', license_plate:'', height_cm:'', weight_kg:'', length_cm:'', convoy_role:'', tank_capacity_l:'', fuel_consumption_l100km:'', current_fuel_l:'' });
+	function emptyVehicleForm() {
+		return { name:'', callsign:'', license_plate:'', height_cm:'', weight_kg:'', length_cm:'', convoy_role:'', propulsion:'combustion', tank_capacity_l:'', fuel_consumption_l100km:'', current_fuel_l:'', battery_capacity_kwh:'', consumption_kwh_100km:'', current_charge_kwh:'' };
+	}
+	let newVehicle = $state(emptyVehicleForm());
 	let editingVehicleId = $state<string | null>(null);
-	let editVehicleForm = $state({ name:'', callsign:'', license_plate:'', height_cm:'', weight_kg:'', length_cm:'', convoy_role:'', tank_capacity_l:'', fuel_consumption_l100km:'', current_fuel_l:'' });
+	let editVehicleForm = $state(emptyVehicleForm());
 	let newConvoy = $state(defaultConvoyForm());
 	let newWpForm = $state({ name:'', type:'waypoint', hold_duration_min:0, halt_purpose:'' });
 	let pendingWpClick = $state(false);
@@ -395,25 +403,73 @@
 	}
 
 	// ── Vehicles ─────────────────────────────────────────────────────
+	let vehicleFormError = $state('');
+	let addToConvoyOnCreate = $state(true);
+
+	// Validate the realistic ranges the backend also enforces, but with a clear
+	// German message instead of a raw 422. Height especially had no lower bound
+	// and accepted nonsense values silently.
+	function validateVehicleForm(form: { height_cm: string; weight_kg: string; length_cm: string }): string | null {
+		const checks: [string, string, number, number, string][] = [
+			['height_cm', 'Fahrzeughöhe', 100, 450, 'cm'],
+			['weight_kg', 'Gewicht', 100, 100000, 'kg'],
+			['length_cm', 'Länge', 100, 3000, 'cm'],
+		];
+		for (const [key, label, min, max, unit] of checks) {
+			const raw = (form as Record<string, string>)[key];
+			if (raw === '' || raw == null) continue;
+			const n = Number(raw);
+			if (Number.isNaN(n) || n < min || n > max) {
+				return `${label} muss zwischen ${min} und ${max} ${unit} liegen.`;
+			}
+		}
+		return null;
+	}
+
 	async function createVehicle() {
+		vehicleFormError = '';
+		const validationError = validateVehicleForm(newVehicle);
+		if (validationError) { vehicleFormError = validationError; return; }
 		try {
-			const v = await vehiclesApi.create({
-				...newVehicle,
-				height_cm: newVehicle.height_cm ? Number(newVehicle.height_cm) : undefined,
-				weight_kg: newVehicle.weight_kg ? Number(newVehicle.weight_kg) : undefined,
-				length_cm: newVehicle.length_cm ? Number(newVehicle.length_cm) : undefined,
-				tank_capacity_l: newVehicle.tank_capacity_l ? Number(newVehicle.tank_capacity_l) : undefined,
-				fuel_consumption_l100km: newVehicle.fuel_consumption_l100km ? Number(newVehicle.fuel_consumption_l100km) : undefined,
-				current_fuel_l: newVehicle.current_fuel_l ? Number(newVehicle.current_fuel_l) : undefined,
-			} as never);
+			const v = await vehiclesApi.create(vehiclePayload(newVehicle) as never);
 			allVehicles = [...allVehicles, v];
 			dndVehicles = [...allVehicles];
-			newVehicle = { name:'', callsign:'', license_plate:'', height_cm:'', weight_kg:'', length_cm:'', convoy_role:'', tank_capacity_l:'', fuel_consumption_l100km:'', current_fuel_l:'' };
+			// Optionally drop the new vehicle straight into the active convoy's
+			// march order — a convenience requested in the feedback.
+			if (addToConvoyOnCreate && selected && !assignedIds.has(v.id)) {
+				await addVehicleToConvoy(v.id);
+			}
+			newVehicle = emptyVehicleForm();
 			showVehicleForm = false;
-		} catch { error = 'Fahrzeug konnte nicht erstellt werden'; }
+			error = '';
+		} catch (e: unknown) { vehicleFormError = e instanceof Error ? e.message : 'Fahrzeug konnte nicht erstellt werden'; }
+	}
+
+	// Build the API payload from a form, converting numeric strings and clearing
+	// the energy fields that don't apply to the chosen propulsion type.
+	function vehiclePayload(form: ReturnType<typeof emptyVehicleForm>) {
+		const num = (s: string) => (s !== '' && s != null ? Number(s) : null);
+		const electric = form.propulsion === 'electric';
+		return {
+			name: form.name,
+			callsign: form.callsign,
+			license_plate: form.license_plate,
+			height_cm: num(form.height_cm),
+			weight_kg: num(form.weight_kg),
+			length_cm: num(form.length_cm),
+			convoy_role: form.convoy_role,
+			propulsion: form.propulsion,
+			tank_capacity_l: electric ? null : num(form.tank_capacity_l),
+			fuel_consumption_l100km: electric ? null : num(form.fuel_consumption_l100km),
+			current_fuel_l: electric ? null : num(form.current_fuel_l),
+			battery_capacity_kwh: electric ? num(form.battery_capacity_kwh) : null,
+			consumption_kwh_100km: electric ? num(form.consumption_kwh_100km) : null,
+			current_charge_kwh: electric ? num(form.current_charge_kwh) : null,
+		};
 	}
 
 	function startEditVehicle(v: Vehicle) {
+		vehicleFormError = '';
 		editingVehicleId = v.id;
 		editVehicleForm = {
 			name: v.name,
@@ -423,28 +479,28 @@
 			weight_kg: v.weight_kg != null ? String(v.weight_kg) : '',
 			length_cm: v.length_cm != null ? String(v.length_cm) : '',
 			convoy_role: v.convoy_role ?? '',
+			propulsion: v.propulsion ?? 'combustion',
 			tank_capacity_l: v.tank_capacity_l != null ? String(v.tank_capacity_l) : '',
 			fuel_consumption_l100km: v.fuel_consumption_l100km != null ? String(v.fuel_consumption_l100km) : '',
 			current_fuel_l: v.current_fuel_l != null ? String(v.current_fuel_l) : '',
+			battery_capacity_kwh: v.battery_capacity_kwh != null ? String(v.battery_capacity_kwh) : '',
+			consumption_kwh_100km: v.consumption_kwh_100km != null ? String(v.consumption_kwh_100km) : '',
+			current_charge_kwh: v.current_charge_kwh != null ? String(v.current_charge_kwh) : '',
 		};
 	}
 
 	async function saveEditVehicle() {
 		if (!editingVehicleId) return;
+		vehicleFormError = '';
+		const validationError = validateVehicleForm(editVehicleForm);
+		if (validationError) { vehicleFormError = validationError; return; }
 		try {
-			const updated = await vehiclesApi.update(editingVehicleId, {
-				...editVehicleForm,
-				height_cm: editVehicleForm.height_cm ? Number(editVehicleForm.height_cm) : null,
-				weight_kg: editVehicleForm.weight_kg ? Number(editVehicleForm.weight_kg) : null,
-				length_cm: editVehicleForm.length_cm ? Number(editVehicleForm.length_cm) : null,
-				tank_capacity_l: editVehicleForm.tank_capacity_l ? Number(editVehicleForm.tank_capacity_l) : null,
-				fuel_consumption_l100km: editVehicleForm.fuel_consumption_l100km ? Number(editVehicleForm.fuel_consumption_l100km) : null,
-				current_fuel_l: editVehicleForm.current_fuel_l ? Number(editVehicleForm.current_fuel_l) : null,
-			} as never);
+			const updated = await vehiclesApi.update(editingVehicleId, vehiclePayload(editVehicleForm) as never);
 			allVehicles = allVehicles.map(v => v.id === editingVehicleId ? updated : v);
 			dndVehicles = [...allVehicles];
 			editingVehicleId = null;
-		} catch { error = 'Fahrzeug konnte nicht gespeichert werden'; }
+			error = '';
+		} catch (e: unknown) { vehicleFormError = e instanceof Error ? e.message : 'Fahrzeug konnte nicht gespeichert werden'; }
 	}
 
 	let vehicleSonderfunktion = $state<Record<string, string>>({});
@@ -558,6 +614,31 @@
 		}
 	}
 
+	// March order (Marschfolge) drag & drop — analogous to the waypoint list.
+	function handleConvoyVehicleDndConsider(e: CustomEvent) {
+		dndConvoyVehicles = e.detail.items;
+	}
+
+	async function handleConvoyVehicleDndFinalize(e: CustomEvent) {
+		if (!selected) return;
+		const prev = dndConvoyVehicles;
+		const reordered = (e.detail.items as DndConvoyVehicle[]).map((cv, i) => ({ ...cv, position: i }));
+		dndConvoyVehicles = reordered;
+		selected = { ...selected, convoy_vehicles: reordered };
+		activeConvoy.set(selected);
+		try {
+			await convoysApi.reorderVehicles(
+				selected.id,
+				reordered.map((cv) => ({ vehicle_id: cv.vehicle.id, position: cv.position })),
+			);
+		} catch {
+			dndConvoyVehicles = prev;
+			selected = { ...selected!, convoy_vehicles: prev };
+			activeConvoy.set(selected!);
+			error = 'Reihenfolge konnte nicht gespeichert werden';
+		}
+	}
+
 	function handleDndConsider(e: CustomEvent) {
     dndWaypoints = e.detail.items;
   }
@@ -606,6 +687,27 @@
       await refreshConvoy();
     } catch {
       error = 'Wegpunkt konnte nicht gespeichert werden';
+    }
+  }
+
+  // Move a waypoint by typing an address instead of clicking the map.
+  async function setWaypointFromAddress(wpId: string, lat: number, lon: number) {
+    try {
+      await convoysApi.updateWaypoint(selected!.id, wpId, { lat, lon });
+      await refreshConvoy();
+    } catch {
+      error = 'Adresse konnte nicht übernommen werden';
+    }
+  }
+
+  // Set start or end point by typing an address (alternative to map click).
+  async function setEndpointFromAddress(which: 'start' | 'end', lat: number, lon: number) {
+    if (!selected) return;
+    try {
+      await convoysApi.update(selected.id, which === 'start' ? { start_point: { lat, lon } } : { end_point: { lat, lon } });
+      await refreshConvoy();
+    } catch {
+      error = which === 'start' ? 'Startpunkt konnte nicht gesetzt werden' : 'Zielpunkt konnte nicht gesetzt werden';
     }
   }
 
@@ -762,6 +864,22 @@
 	let befehlForm = $state({ marschform:'', ablaufpunkt:'', ablaufzeit:'', ablaufführer:'', lage:'', auftrag:'', versorgung:'', funkgruppe:'', anlagen:'' });
 	let befehlSaving = $state(false);
 	let befehlSaved = $state(false);
+	let befehlError = $state('');
+
+	function nowLocalDatetime(): string {
+		const d = new Date();
+		// Trim to the local "YYYY-MM-DDTHH:mm" datetime-local format.
+		return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+	}
+
+	function openBefehlModal() {
+		befehlError = '';
+		// Suggest the current date/time as Ablaufzeit when none is set yet, so the
+		// field isn't left empty (a marching order without an Ablaufzeit makes the
+		// schedule meaningless).
+		if (!befehlForm.ablaufzeit) befehlForm.ablaufzeit = nowLocalDatetime();
+		showBefehlModal = true;
+	}
 
 	$effect(() => {
 		if (selected) {
@@ -779,8 +897,22 @@
 		}
 	});
 
-	async function saveBefehlForm() {
-		if (!selected) return;
+	// Mandatory fields for a usable marching order — without them whole sections
+	// would be blank in the generated document.
+	function validateBefehlForm(): string | null {
+		const missing: string[] = [];
+		if (!befehlForm.lage.trim()) missing.push('Lage');
+		if (!befehlForm.auftrag.trim()) missing.push('Auftrag');
+		if (!befehlForm.ablaufpunkt.trim()) missing.push('Ablaufpunkt');
+		if (!befehlForm.ablaufzeit) missing.push('Ablaufzeit');
+		return missing.length ? `Bitte ausfüllen: ${missing.join(', ')}` : null;
+	}
+
+	async function saveBefehlForm(): Promise<boolean> {
+		if (!selected) return false;
+		befehlError = '';
+		const validationError = validateBefehlForm();
+		if (validationError) { befehlError = validationError; return false; }
 		befehlSaving = true;
 		befehlSaved = false;
 		try {
@@ -798,13 +930,17 @@
 			await refreshConvoy();
 			befehlSaved = true;
 			setTimeout(() => (befehlSaved = false), 2000);
-		} catch { error = 'Speichern fehlgeschlagen'; }
+			return true;
+		} catch { befehlError = 'Speichern fehlgeschlagen'; return false; }
 		finally { befehlSaving = false; }
 	}
 
 	$effect(() => {
     if (selected) {
       dndWaypoints = [...selected.waypoints].sort((a, b) => a.order_index - b.order_index);
+      dndConvoyVehicles = [...selected.convoy_vehicles]
+        .sort((a, b) => a.position - b.position)
+        .map((cv) => ({ ...cv, id: cv.vehicle.id }));
     }
   });
 	async function downloadExport(format: 'gpx' | 'json' | 'pdf') {
@@ -939,6 +1075,15 @@
 						<button class="btn-map" class:active={$mapMode === 'set-end'} onclick={() => mapMode.set($mapMode === 'set-end' ? 'idle' : 'set-end')}>🏁 Ziel</button>
 						<button class="btn-map" class:active={$mapMode === 'add-waypoint'} onclick={() => mapMode.set($mapMode === 'add-waypoint' ? 'idle' : 'add-waypoint')}>➕ Wegpunkt</button>
 					</div>
+					<details class="address-entry">
+						<summary>⌨ Start/Ziel per Adresse eingeben</summary>
+						<div class="address-entry-body">
+							<span class="field-label">Startpunkt</span>
+							<LocationSearch placeholder="Startadresse suchen…" onSelect={(lat, lon) => setEndpointFromAddress('start', lat, lon)} />
+							<span class="field-label">Zielpunkt</span>
+							<LocationSearch placeholder="Zieladresse suchen…" onSelect={(lat, lon) => setEndpointFromAddress('end', lat, lon)} />
+						</div>
+					</details>
 					{#if $mapMode === 'add-waypoint'}
 						<div class="wp-quick-form">
 							<input placeholder="Name" bind:value={newWpForm.name} />
@@ -957,7 +1102,9 @@
 									<option value="other">Sonstiges</option>
 								</select>
 							{/if}
-							<input type="number" placeholder="Haltezeit (min)" bind:value={newWpForm.hold_duration_min} min="0" />
+							<label class="field-label">Haltezeit in Minuten
+								<span class="input-unit"><input type="number" placeholder="z.B. 15" bind:value={newWpForm.hold_duration_min} min="0" /><span class="unit">Min.</span></span>
+							</label>
 							<p class="hint">Jetzt auf Karte klicken ↗</p>
 						</div>
 					{/if}
@@ -968,10 +1115,11 @@
 						{#if route}
 							<p class="route-info">{((route.distance_m ?? 0) / 1000).toFixed(1)} km · {formatDuration(route.duration_s)}</p>
 							{#if route.fuel_analysis?.fuel_stop_needed && !fuelStopExists}
+								{@const evStop = route.fuel_analysis.limiting_propulsion === 'electric'}
 								<div class="fuel-warning">
-									<p class="fuel-rec-title">⛽ Tankstopp empfohlen</p>
+									<p class="fuel-rec-title">{evStop ? '🔌 Ladestopp empfohlen' : '⛽ Tankstopp empfohlen'}</p>
 									<p class="fuel-detail">
-										<strong>{route.fuel_analysis.limiting_vehicle}</strong> erreicht das Ziel nicht ohne Tanken:
+										<strong>{route.fuel_analysis.limiting_vehicle}</strong> erreicht das Ziel nicht ohne {evStop ? 'Nachladen' : 'Tanken'}:
 										Reichweite <strong>{route.fuel_analysis.min_range_km} km</strong>,
 										Routenlänge <strong>{route.fuel_analysis.route_distance_km} km</strong>.
 									</p>
@@ -1082,17 +1230,36 @@
 						</div>
 						{#if showVehicleForm}
 							<form class="inline-form" onsubmit={(e) => { e.preventDefault(); createVehicle(); }}>
+								{#if vehicleFormError}<p class="error-bar">{vehicleFormError}</p>{/if}
 								<input placeholder="Name *" bind:value={newVehicle.name} required />
 								<input placeholder="Funkrufname" bind:value={newVehicle.callsign} />
 								<input placeholder="Kennzeichen" bind:value={newVehicle.license_plate} />
-								<input placeholder="Höhe (cm)" type="number" bind:value={newVehicle.height_cm} />
-								<input placeholder="Gewicht (kg)" type="number" bind:value={newVehicle.weight_kg} />
-								<input placeholder="Länge (cm)" type="number" bind:value={newVehicle.length_cm} />
+								<input placeholder="Höhe in cm (z.B. 320)" type="number" min="100" max="450" bind:value={newVehicle.height_cm} />
+								<input placeholder="Gewicht (kg)" type="number" min="100" max="100000" bind:value={newVehicle.weight_kg} />
+								<input placeholder="Länge (cm)" type="number" min="100" max="3000" bind:value={newVehicle.length_cm} />
 								<input placeholder="Funktion im Konvoi" bind:value={newVehicle.convoy_role} />
 								<hr style="border-color:rgba(255,255,255,.15);margin:.2rem 0" />
-								<input placeholder="Tankvolumen (Liter)" type="number" step="0.1" min="0" bind:value={newVehicle.tank_capacity_l} />
-								<input placeholder="Verbrauch (l/100 km)" type="number" step="0.1" min="0" bind:value={newVehicle.fuel_consumption_l100km} />
-								<input placeholder="Aktueller Füllstand (Liter)" type="number" step="0.1" min="0" bind:value={newVehicle.current_fuel_l} />
+								<label class="field-label">Antriebsart
+									<select bind:value={newVehicle.propulsion}>
+										<option value="combustion">⛽ Verbrenner</option>
+										<option value="electric">🔋 Elektro</option>
+									</select>
+								</label>
+								{#if newVehicle.propulsion === 'electric'}
+									<input placeholder="Akkukapazität (kWh)" type="number" step="0.1" min="0" bind:value={newVehicle.battery_capacity_kwh} />
+									<input placeholder="Verbrauch (kWh/100 km)" type="number" step="0.1" min="0" bind:value={newVehicle.consumption_kwh_100km} />
+									<input placeholder="Aktueller Ladestand (kWh)" type="number" step="0.1" min="0" bind:value={newVehicle.current_charge_kwh} />
+								{:else}
+									<input placeholder="Tankvolumen (Liter)" type="number" step="0.1" min="0" bind:value={newVehicle.tank_capacity_l} />
+									<input placeholder="Verbrauch (l/100 km)" type="number" step="0.1" min="0" bind:value={newVehicle.fuel_consumption_l100km} />
+									<input placeholder="Aktueller Füllstand (Liter)" type="number" step="0.1" min="0" bind:value={newVehicle.current_fuel_l} />
+								{/if}
+								{#if selected}
+									<label class="checkbox-row">
+										<input type="checkbox" bind:checked={addToConvoyOnCreate} />
+										Direkt zur Marschfolge von „{selected.name}" hinzufügen
+									</label>
+								{/if}
 								<button type="submit">Speichern</button>
 							</form>
 						{/if}
@@ -1106,17 +1273,30 @@
 								<li class="vehicle-item" style="flex-direction:column;align-items:stretch;gap:.3rem">
 									{#if editingVehicleId === v.id}
 										<form class="inline-form" onsubmit={(e) => { e.preventDefault(); saveEditVehicle(); }}>
+											{#if vehicleFormError}<p class="error-bar">{vehicleFormError}</p>{/if}
 											<input placeholder="Name *" bind:value={editVehicleForm.name} required />
 											<input placeholder="Funkrufname" bind:value={editVehicleForm.callsign} />
 											<input placeholder="Kennzeichen" bind:value={editVehicleForm.license_plate} />
-											<input placeholder="Höhe (cm)" type="number" bind:value={editVehicleForm.height_cm} />
+											<input placeholder="Höhe in cm (z.B. 320)" type="number" min="100" max="450" bind:value={editVehicleForm.height_cm} />
 											<input placeholder="Gewicht (kg)" type="number" bind:value={editVehicleForm.weight_kg} />
 											<input placeholder="Länge (cm)" type="number" bind:value={editVehicleForm.length_cm} />
 											<input placeholder="Funktion im Konvoi" bind:value={editVehicleForm.convoy_role} />
 											<hr style="border-color:rgba(255,255,255,.15);margin:.2rem 0" />
-											<input placeholder="Tankvolumen (Liter)" type="number" step="0.1" min="0" bind:value={editVehicleForm.tank_capacity_l} />
-											<input placeholder="Verbrauch (l/100 km)" type="number" step="0.1" min="0" bind:value={editVehicleForm.fuel_consumption_l100km} />
-											<input placeholder="Aktueller Füllstand (Liter)" type="number" step="0.1" min="0" bind:value={editVehicleForm.current_fuel_l} />
+											<label class="field-label">Antriebsart
+												<select bind:value={editVehicleForm.propulsion}>
+													<option value="combustion">⛽ Verbrenner</option>
+													<option value="electric">🔋 Elektro</option>
+												</select>
+											</label>
+											{#if editVehicleForm.propulsion === 'electric'}
+												<input placeholder="Akkukapazität (kWh)" type="number" step="0.1" min="0" bind:value={editVehicleForm.battery_capacity_kwh} />
+												<input placeholder="Verbrauch (kWh/100 km)" type="number" step="0.1" min="0" bind:value={editVehicleForm.consumption_kwh_100km} />
+												<input placeholder="Aktueller Ladestand (kWh)" type="number" step="0.1" min="0" bind:value={editVehicleForm.current_charge_kwh} />
+											{:else}
+												<input placeholder="Tankvolumen (Liter)" type="number" step="0.1" min="0" bind:value={editVehicleForm.tank_capacity_l} />
+												<input placeholder="Verbrauch (l/100 km)" type="number" step="0.1" min="0" bind:value={editVehicleForm.fuel_consumption_l100km} />
+												<input placeholder="Aktueller Füllstand (Liter)" type="number" step="0.1" min="0" bind:value={editVehicleForm.current_fuel_l} />
+											{/if}
 											<div style="display:flex;gap:.4rem">
 												<button type="submit" style="flex:1">Speichern</button>
 												<button type="button" class="btn-small danger" onclick={() => editingVehicleId = null}>Abbrechen</button>
@@ -1128,8 +1308,9 @@
 												<strong>{v.name}</strong>
 												{#if v.callsign}<span class="tag">{v.callsign}</span>{/if}
 												{#if v.license_plate}<span class="tag">{v.license_plate}</span>{/if}
+												{#if v.propulsion === 'electric'}<span class="tag ev-tag" title="Elektrofahrzeug">🔋 E</span>{/if}
 												{#if v.range_km != null}
-													<span class="tag" class:fuel-tag={!v.range_uses_defaults} class:fuel-tag-default={v.range_uses_defaults} title={v.range_uses_defaults ? 'Reichweite basiert auf Standardwerten (7,5 l/100km, 70 l)' : ''}>⛽ {v.range_uses_defaults ? '~' : ''}{v.range_km} km</span>
+													<span class="tag" class:fuel-tag={!v.range_uses_defaults} class:fuel-tag-default={v.range_uses_defaults} title={v.range_uses_defaults ? (v.propulsion === 'electric' ? 'Reichweite basiert auf Standardwerten (20 kWh/100km, 60 kWh)' : 'Reichweite basiert auf Standardwerten (7,5 l/100km, 70 l)') : ''}>{v.propulsion === 'electric' ? '🔌' : '⛽'} {v.range_uses_defaults ? '~' : ''}{v.range_km} km</span>
 												{/if}
 											</div>
 											<div style="display:flex;gap:.3rem;align-items:center">
@@ -1159,11 +1340,17 @@
 						</ul>
 						{#if selected?.convoy_vehicles.length}
 							<div class="section-header" style="margin-top:.75rem"><strong>Im Verband (Marschfolge)</strong></div>
-							<ol class="vehicle-list">
-								{#each selected.convoy_vehicles as cv}
+							<ul
+								class="vehicle-list"
+								use:dndzone={{ items: dndConvoyVehicles, flipDurationMs: 200 }}
+								onconsider={handleConvoyVehicleDndConsider}
+								onfinalize={handleConvoyVehicleDndFinalize}
+							>
+								{#each dndConvoyVehicles as cv, i (cv.vehicle.id)}
 									<li class="vehicle-item convoy-vehicle-row">
 										<div class="veh-left">
-											<span class="veh-pos">{cv.position + 1}.</span>
+											<span class="drag-handle" title="Ziehen zum Umsortieren">⠿</span>
+											<span class="veh-pos">{i + 1}.</span>
 											<div>
 												<span>{cv.vehicle.name}</span>
 												{#if cv.vehicle.callsign}<span class="tag">{cv.vehicle.callsign}</span>{/if}
@@ -1175,14 +1362,23 @@
 										<span class="status-dot" style="background:{STATUS_COLORS[cv.vehicle_status] ?? '#95a5a6'}" title={STATUS_LABELS[cv.vehicle_status] ?? cv.vehicle_status}></span>
 									</li>
 								{/each}
-							</ol>
-							<p class="hint" style="margin-top:.4rem">Position 1 = Spitzenführer, letztes Fahrzeug = Schließender</p>
+							</ul>
+							<p class="hint" style="margin-top:.4rem">Ziehen zum Umsortieren · Position 1 = Spitzenführer, letztes Fahrzeug = Schließender</p>
 						{/if}
 					</div>
 				{/if}
 
 				<!-- ── TAB: Konto ── -->
 				{#if activeTab === 'konto'}
+					{#if demoSession}
+						<div class="section">
+							<div class="demo-restrict-note">
+								🔒 In der Demo sind Passwortänderung und Zwei-Faktor-Authentifizierung deaktiviert,
+								da der Zugang von mehreren Personen geteilt wird.
+								<a href="https://convoyplan.de/#kontakt" target="_blank" rel="noopener">Vollversion anfragen →</a>
+							</div>
+						</div>
+					{:else}
 					<div class="section">
 						<div class="section-header" style="margin-top:0">
 							<strong>Passwort ändern</strong>
@@ -1271,6 +1467,7 @@
 							</div>
 						{/if}
 					</div>
+					{/if}
 				{/if}
 
 				<!-- ── TAB: Wegpunkte ── -->
@@ -1321,8 +1518,14 @@
 													<option value="other">Sonstiges</option>
 												</select>
 											{/if}
-											<input type="number" bind:value={editWpForm.hold_duration_min} min="0" placeholder="Haltezeit (min)" />
+											<label class="field-label">Haltezeit in Minuten
+												<span class="input-unit"><input type="number" bind:value={editWpForm.hold_duration_min} min="0" placeholder="z.B. 15" /><span class="unit">Min.</span></span>
+											</label>
 											<input bind:value={editWpForm.notes} placeholder="Notiz (optional)" />
+											<div class="wp-address-search">
+												<span class="field-label" style="margin-bottom:.2rem">Position per Adresse ändern</span>
+												<LocationSearch placeholder="Adresse eingeben…" onSelect={(lat, lon) => setWaypointFromAddress(wp.id, lat, lon)} />
+											</div>
 											<div class="wp-edit-actions">
 												<button class="btn-small" onclick={() => saveWp(wp.id)}>Speichern</button>
 												<button class="btn-small" onclick={() => (editingWpId = null)}>Abbrechen</button>
@@ -1382,7 +1585,7 @@
 						<div class="export-grid">
 							<button class="btn-export" onclick={() => downloadExport('gpx')}>📍 GPX herunterladen</button>
 							<button class="btn-export" onclick={() => downloadExport('json')}>📄 JSON herunterladen</button>
-							<button class="btn-export" onclick={() => (showBefehlModal = true)}>📋 Marschbefehl</button>
+							<button class="btn-export" onclick={openBefehlModal}>📋 Marschbefehl</button>
 							<button class="btn-export" onclick={() => navigator.clipboard.writeText(`${window.location.origin}/share/${selected?.share_token}`)}>🔗 Link kopieren</button>
 						</div>
 						<div class="section-header" style="margin-top:1rem"><strong>Live-Tracking</strong></div>
@@ -1556,9 +1759,24 @@
 			</div>
 
 			<div class="befehl-modal-body">
-				<!-- Marschbewegung -->
+				{#if befehlError}<p class="error-bar">{befehlError}</p>{/if}
+				<p class="befehl-hint">Gegliedert nach dem 5-Punkte-Befehl. Pflichtfelder sind mit <span class="req-mark">*</span> markiert.</p>
+
+				<!-- 1. Lage -->
 				<div class="befehl-section">
-					<div class="befehl-section-title">Marschbewegung</div>
+					<div class="befehl-section-title">1. Lage <span class="req-mark">*</span></div>
+					<textarea class="befehl-textarea" class:field-invalid={befehlError && !befehlForm.lage.trim()} rows="4" placeholder="Lagebeschreibung – Eigene und feindliche/gegnerische Kräfte, Lage der Bevölkerung, zivile Behörden…" bind:value={befehlForm.lage}></textarea>
+				</div>
+
+				<!-- 2. Auftrag -->
+				<div class="befehl-section">
+					<div class="befehl-section-title">2. Auftrag <span class="req-mark">*</span></div>
+					<textarea class="befehl-textarea" class:field-invalid={befehlError && !befehlForm.auftrag.trim()} rows="4" placeholder="Aufgabe des Verbandes – Wer, Was, Wann, Wo, Warum…" bind:value={befehlForm.auftrag}></textarea>
+				</div>
+
+				<!-- 3. Durchführung -->
+				<div class="befehl-section">
+					<div class="befehl-section-title">3. Durchführung</div>
 					<div class="befehl-row">
 						<label class="bf-label">
 							Marschform
@@ -1570,19 +1788,14 @@
 							</select>
 						</label>
 					</div>
-				</div>
-
-				<!-- Ablaufpunkt -->
-				<div class="befehl-section">
-					<div class="befehl-section-title">Ablaufpunkt</div>
 					<div class="befehl-row befehl-row-3">
 						<label class="bf-label">
-							Ablaufpunkt (Ort)
-							<input type="text" placeholder="z.B. Parkplatz Messehalle Nord" bind:value={befehlForm.ablaufpunkt} />
+							Ablaufpunkt (Ort) <span class="req-mark">*</span>
+							<input type="text" class:field-invalid={befehlError && !befehlForm.ablaufpunkt.trim()} placeholder="z.B. Parkplatz Messehalle Nord" bind:value={befehlForm.ablaufpunkt} />
 						</label>
 						<label class="bf-label">
-							Ablaufzeit
-							<input type="datetime-local" bind:value={befehlForm.ablaufzeit} />
+							Ablaufzeit <span class="req-mark">*</span>
+							<input type="datetime-local" class:field-invalid={befehlError && !befehlForm.ablaufzeit} bind:value={befehlForm.ablaufzeit} />
 						</label>
 						<label class="bf-label">
 							Ablaufführer
@@ -1591,9 +1804,15 @@
 					</div>
 				</div>
 
-				<!-- Führung & Verbindung -->
+				<!-- 4. Versorgung -->
 				<div class="befehl-section">
-					<div class="befehl-section-title">Führung & Verbindung</div>
+					<div class="befehl-section-title">4. Versorgung</div>
+					<textarea class="befehl-textarea" rows="3" placeholder="Verpflegung, Betriebsstoff, Instandsetzung, sanitätsdienstliche Versorgung…" bind:value={befehlForm.versorgung}></textarea>
+				</div>
+
+				<!-- 5. Führung und Verbindung -->
+				<div class="befehl-section">
+					<div class="befehl-section-title">5. Führung und Verbindung</div>
 					<div class="befehl-row">
 						<label class="bf-label">
 							Funkgruppe
@@ -1619,24 +1838,6 @@
 					{/if}
 				</div>
 
-				<!-- 1. Lage -->
-				<div class="befehl-section">
-					<div class="befehl-section-title">1. Lage</div>
-					<textarea class="befehl-textarea" rows="4" placeholder="Lagebeschreibung – Eigene und feindliche/gegnerische Kräfte, Lage der Bevölkerung, zivile Behörden…" bind:value={befehlForm.lage}></textarea>
-				</div>
-
-				<!-- 2. Auftrag -->
-				<div class="befehl-section">
-					<div class="befehl-section-title">2. Auftrag</div>
-					<textarea class="befehl-textarea" rows="4" placeholder="Aufgabe des Verbandes – Wer, Was, Wann, Wo, Warum…" bind:value={befehlForm.auftrag}></textarea>
-				</div>
-
-				<!-- 4. Versorgung -->
-				<div class="befehl-section">
-					<div class="befehl-section-title">4. Versorgung</div>
-					<textarea class="befehl-textarea" rows="3" placeholder="Verpflegung, Betriebsstoff, Instandsetzung, sanitätsdienstliche Versorgung…" bind:value={befehlForm.versorgung}></textarea>
-				</div>
-
 				<!-- 6. Anlagen -->
 				<div class="befehl-section">
 					<div class="befehl-section-title">6. Anlagen</div>
@@ -1646,10 +1847,10 @@
 
 			<div class="befehl-modal-footer">
 				<button class="modal-btn-secondary" onclick={() => (showBefehlModal = false)}>Abbrechen</button>
-				<button class="modal-btn-primary" onclick={async () => { await saveBefehlForm(); if (!error) showBefehlModal = false; }} disabled={befehlSaving}>
+				<button class="modal-btn-primary" onclick={async () => { if (await saveBefehlForm()) showBefehlModal = false; }} disabled={befehlSaving}>
 					{befehlSaved ? '✓ Gespeichert' : befehlSaving ? 'Speichert…' : 'Speichern & Schließen'}
 				</button>
-				<button class="modal-btn-export" onclick={async () => { await saveBefehlForm(); if (!error) downloadExport('pdf'); }} disabled={befehlSaving}>
+				<button class="modal-btn-export" onclick={async () => { if (await saveBefehlForm()) downloadExport('pdf'); }} disabled={befehlSaving}>
 					🖨 Speichern & PDF
 				</button>
 			</div>
@@ -2129,4 +2330,24 @@
 	.app-version { font-size: var(--text-xs); color: var(--text-muted); }
 	.app-version .update-hint { color: #f59e0b; font-weight: 600; text-decoration: none; }
 	.app-version .update-hint:hover { text-decoration: underline; }
+
+	/* ── Feedback-driven additions ──────────────────────────────────── */
+	.field-label { display: block; font-size: var(--text-xs); color: var(--text-muted); margin-bottom: .15rem; }
+	.input-unit { display: flex; align-items: center; gap: .35rem; }
+	.input-unit input { flex: 1; min-width: 0; }
+	.input-unit .unit { font-size: var(--text-xs); color: var(--text-muted); white-space: nowrap; }
+	.checkbox-row { display: flex; align-items: center; gap: .45rem; font-size: var(--text-sm); color: var(--text-2); cursor: pointer; }
+	.checkbox-row input { width: auto; flex: 0 0 auto; }
+	.drag-handle { cursor: grab; color: var(--text-muted); font-size: 1rem; line-height: 1; flex-shrink: 0; user-select: none; }
+	.wp-address-search { margin-top: .35rem; }
+	.address-entry { margin: .4rem 0; font-size: var(--text-sm); }
+	.address-entry summary { cursor: pointer; color: var(--text-2); padding: .25rem 0; }
+	.address-entry-body { padding-top: .4rem; }
+	.befehl-hint { font-size: var(--text-sm); color: var(--text-muted); margin: 0 0 .5rem; }
+	.req-mark { color: #E23D28; font-weight: 700; }
+	.field-invalid { border-color: #E23D28 !important; outline: 1px solid #E23D28; }
+	.demo-restrict-note { font-size: var(--text-sm); color: var(--text-2); background: var(--surface-2); border-radius: 6px; padding: .75rem; line-height: 1.5; }
+	.demo-restrict-note a { color: var(--accent, #3498db); font-weight: 600; text-decoration: none; display: inline-block; margin-top: .35rem; }
+	.demo-restrict-note a:hover { text-decoration: underline; }
+	.ev-tag { background: #16a34a; color: #fff; }
 </style>

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -33,7 +34,39 @@ from app.services.password import (
 )
 from app.services.rate_limit import rate_limit, register_failure
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# Strong references to in-flight fire-and-forget email tasks so the event loop
+# doesn't garbage-collect them mid-send (see _dispatch_reset_email).
+_BG_EMAIL_TASKS: set[asyncio.Task] = set()
+
+
+def _dispatch_reset_email(email: str, password: str, login_url: str) -> None:
+    """Send the reset email outside the request/response cycle.
+
+    The SMTP handshake + relay can take several seconds; awaiting it inside the
+    request is what made reset links feel slow to arrive. We fire-and-forget
+    with a fresh DB session (the request session is closed once the response is
+    returned) and swallow errors — the caller already received its 202."""
+    async def _run() -> None:
+        from app.database import AsyncSessionLocal
+        try:
+            async with AsyncSessionLocal() as bg_db:
+                await send_password_email(
+                    db=bg_db,
+                    recipient_email=email,
+                    recipient_name="",
+                    password=password,
+                    login_url=login_url,
+                )
+        except Exception:
+            logger.warning("Password-reset email dispatch failed", exc_info=True)
+
+    task = asyncio.create_task(_run())
+    _BG_EMAIL_TASKS.add(task)
+    task.add_done_callback(_BG_EMAIL_TASKS.discard)
 
 # Pre-computed at startup; used by _checkpw to ensure bcrypt always runs even
 # when the queried account does not exist, preventing user-enumeration via
@@ -267,6 +300,19 @@ async def register(
 # ── Password change (self-service) ────────────────────────────────────────────
 
 
+def _reject_demo_user(current_user: "User") -> None:
+    """Block account-security actions for ephemeral demo accounts.
+
+    Demo sessions are shared, throwaway logins. Allowing a password change or
+    MFA enrolment would let one visitor lock out everyone else who uses the
+    same demo account (reported as a security concern)."""
+    if getattr(current_user, "is_demo", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="In der Demo nicht verfügbar. Bitte eine Vollversion anfragen.",
+        )
+
+
 @router.post("/password")
 async def change_password(
     data: PasswordChangeRequest,
@@ -279,6 +325,7 @@ async def change_password(
 
     Bumps the token version to revoke any other active sessions and returns a
     fresh token so the current client stays logged in."""
+    _reject_demo_user(current_user)
     if not bcrypt.checkpw(data.current_password.encode(), current_user.hashed_password.encode()):
         await asyncio.sleep(0.2)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Aktuelles Passwort falsch")
@@ -370,18 +417,10 @@ async def request_password_reset(
         else:
             login_url = f"{base_url}/login"
 
-        try:
-            await send_password_email(
-                db=db,
-                recipient_email=user.email,
-                recipient_name="",
-                password=new_password,
-                login_url=login_url,
-            )
-        except Exception:
-            # Don't leak SMTP errors — caller cannot distinguish "no account"
-            # from "email server broken" by design.
-            pass
+        # Dispatch the email in the background so the response isn't blocked by
+        # the SMTP round-trip. Errors are swallowed there — the caller cannot
+        # distinguish "no account" from "email server broken" by design.
+        _dispatch_reset_email(user.email, new_password, login_url)
 
     # Constant-ish response time (matches /auth/org-lookup pattern)
     await asyncio.sleep(0.3)
@@ -407,6 +446,7 @@ async def mfa_setup(
     """Generate a new TOTP secret for the authenticated user.
     The secret is stored (unconfirmed) and the provisioning URI for a QR code is returned.
     MFA is NOT active until /mfa/confirm succeeds."""
+    _reject_demo_user(current_user)
     if current_user.mfa_enabled:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -438,6 +478,7 @@ async def mfa_confirm(
     db: AsyncSession = Depends(get_db),
 ):
     """Verify the first TOTP code to activate MFA."""
+    _reject_demo_user(current_user)
     if not current_user.mfa_secret:
         raise HTTPException(status_code=400, detail="MFA-Setup wurde nicht gestartet")
     totp = pyotp.TOTP(decrypt_secret(current_user.mfa_secret))
