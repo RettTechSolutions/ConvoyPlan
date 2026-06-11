@@ -3,14 +3,14 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import bcrypt
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -314,6 +314,84 @@ async def update_demo_settings(
         source="db",
         env_enabled=settings.demo_enabled,
         session_hours=settings.demo_session_hours,
+    )
+
+
+class DemoSessionInfo(BaseModel):
+    id: uuid.UUID
+    name: str
+    slug: str
+    created_at: datetime
+    expires_at: datetime
+    convoy_count: int
+
+
+@router.get("/demo-sessions", response_model=list[DemoSessionInfo])
+async def list_demo_sessions(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    """All currently open demo sessions (one ephemeral org per session)."""
+    result = await db.execute(
+        select(Organization)
+        .where(Organization.is_demo.is_(True))
+        .order_by(Organization.created_at.desc())
+    )
+    orgs = result.scalars().all()
+    if not orgs:
+        return []
+
+    counts_result = await db.execute(
+        select(Convoy.organization_id, func.count(Convoy.id))
+        .where(Convoy.organization_id.in_([o.id for o in orgs]))
+        .group_by(Convoy.organization_id)
+    )
+    convoy_counts = dict(counts_result.all())
+
+    ttl = timedelta(hours=settings.demo_session_hours)
+    return [
+        DemoSessionInfo(
+            id=o.id,
+            name=o.name,
+            slug=o.slug,
+            created_at=o.created_at,
+            expires_at=o.created_at + ttl,
+            convoy_count=convoy_counts.get(o.id, 0),
+        )
+        for o in orgs
+    ]
+
+
+@router.delete("/demo-sessions/{org_id}", status_code=204)
+async def terminate_demo_session(
+    org_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    """End a demo session immediately: delete its convoys, org and demo user.
+
+    Same deletion order as the retention purge — convoys before the org
+    (FK SET NULL would orphan them), org before its owner user."""
+    result = await db.execute(
+        select(Organization).where(Organization.id == org_id, Organization.is_demo.is_(True))
+    )
+    org = result.scalar_one_or_none()
+    if not org:
+        raise HTTPException(404, "Demo-Sitzung nicht gefunden")
+
+    detail = {"name": org.name, "slug": org.slug}
+    owner_id = org.owner_id
+    await db.execute(delete(Convoy).where(Convoy.organization_id == org_id))
+    await db.execute(delete(Organization).where(Organization.id == org_id))
+    # Guard on is_demo so a (mis)assigned regular account can never be deleted here.
+    await db.execute(delete(User).where(User.id == owner_id, User.is_demo.is_(True)))
+    await db.commit()
+
+    await audit.record(
+        db, "admin.demo_session.terminated", request=request, actor_id=current.id,
+        actor_email=current.email, org_id=org_id, target_type="organization",
+        target_id=org_id, detail=detail,
     )
 
 

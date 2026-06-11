@@ -458,6 +458,8 @@ export const adminApi = {
     setGithubToken: (token: string) => api.put<void>('/api/admin/settings/github-token', { token }),
     getDemoSettings: () => api.get<DemoSettings>('/api/admin/settings/demo'),
     setDemoEnabled: (enabled: boolean) => api.put<DemoSettings>('/api/admin/settings/demo', { enabled }),
+    listDemoSessions: () => api.get<DemoSessionInfo[]>('/api/admin/demo-sessions'),
+    endDemoSession: (orgId: string) => api.delete(`/api/admin/demo-sessions/${orgId}`),
     getSmtpSettings: () => api.get<SmtpConfigResponse>('/api/admin/settings/smtp'),
     saveSmtpSettings: (data: SmtpConfig) => api.put<void>('/api/admin/settings/smtp', data),
     testSmtp: () => api.post<{ status: string }>('/api/admin/settings/smtp/test', {}),
@@ -481,6 +483,15 @@ export interface DemoSettings {
     source: 'db' | 'env';
     env_enabled: boolean;
     session_hours: number;
+}
+
+export interface DemoSessionInfo {
+    id: string;
+    name: string;
+    slug: string;
+    created_at: string;
+    expires_at: string;
+    convoy_count: number;
 }
 
 export interface BrandingData {

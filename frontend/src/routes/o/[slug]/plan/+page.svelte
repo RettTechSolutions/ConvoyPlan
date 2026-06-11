@@ -859,7 +859,7 @@
 		{#if demoSession}
 			<div class="demo-banner">
 				<span>Demo-Sitzung · Läuft ab {demoSession.expiresAt.toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })} Uhr</span>
-				<a href="/" class="demo-banner-link">Registrieren →</a>
+				<a href="https://convoyplan.de/#kontakt" target="_blank" rel="noopener" class="demo-banner-link">Vollversion anfragen →</a>
 			</div>
 		{/if}
 
