@@ -3,14 +3,14 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import bcrypt
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-from sqlalchemy import select, update
+from pydantic import BaseModel, Field
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -28,6 +28,7 @@ from app.models.vehicle import Vehicle
 from app.schemas.user import AdminUserCreate, AdminUserResponse, AdminUserUpdate, AdminUserOrgInfo
 from app.services import api_key as api_key_svc
 from app.services import audit
+from app.services import demo as demo_svc
 from app.services.email import save_smtp_settings, send_password_email, test_smtp_connection
 from app.services.password import assert_password_not_breached, generate_password, validate_password
 
@@ -63,6 +64,7 @@ async def list_users(
             email=u.email,
             is_active=u.is_active,
             is_superadmin=u.is_superadmin,
+            is_demo=u.is_demo,
             mfa_enabled=u.mfa_enabled,
             created_at=u.created_at,
             orgs=orgs,
@@ -146,7 +148,8 @@ async def update_user(
         if m.organization is not None
     ]
     return AdminUserResponse(id=user.id, email=user.email, is_active=user.is_active,
-                             is_superadmin=user.is_superadmin, mfa_enabled=user.mfa_enabled,
+                             is_superadmin=user.is_superadmin, is_demo=user.is_demo,
+                             mfa_enabled=user.mfa_enabled,
                              created_at=user.created_at, orgs=orgs)
 
 
@@ -268,6 +271,183 @@ async def set_github_token(
     await db.commit()
 
 
+# ── Demo-Modus ────────────────────────────────────────────────────────────────
+
+
+class DemoSettingsResponse(BaseModel):
+    enabled: bool            # effective state (DB setting wins, env is fallback)
+    source: str              # "db" | "env"
+    env_enabled: bool        # value of the DEMO_ENABLED env var
+    session_hours: int
+
+
+class DemoSettingsUpdate(BaseModel):
+    enabled: bool
+    session_hours: int | None = Field(
+        None, ge=demo_svc.MIN_SESSION_HOURS, le=demo_svc.MAX_SESSION_HOURS,
+        description="Laufzeit neuer Demo-Sitzungen in Stunden",
+    )
+
+
+@router.get("/settings/demo", response_model=DemoSettingsResponse)
+async def get_demo_settings(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    db_value = await demo_svc.get_demo_enabled_setting(db)
+    return DemoSettingsResponse(
+        enabled=db_value == "true" if db_value is not None else settings.demo_enabled,
+        source="db" if db_value is not None else "env",
+        env_enabled=settings.demo_enabled,
+        session_hours=await demo_svc.get_demo_session_hours(db),
+    )
+
+
+@router.put("/settings/demo", response_model=DemoSettingsResponse)
+async def update_demo_settings(
+    data: DemoSettingsUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    if data.session_hours is not None:
+        await demo_svc.set_demo_session_hours(db, data.session_hours)
+    await demo_svc.set_demo_enabled(db, data.enabled)
+    await audit.record(
+        db, "admin.settings.demo_updated", request=request, actor_id=current.id,
+        actor_email=current.email,
+        detail={"enabled": data.enabled, "session_hours": data.session_hours},
+    )
+    return DemoSettingsResponse(
+        enabled=data.enabled,
+        source="db",
+        env_enabled=settings.demo_enabled,
+        session_hours=await demo_svc.get_demo_session_hours(db),
+    )
+
+
+class DemoSessionInfo(BaseModel):
+    id: uuid.UUID
+    name: str
+    slug: str
+    created_at: datetime
+    expires_at: datetime
+    convoy_count: int
+
+
+@router.get("/demo-sessions", response_model=list[DemoSessionInfo])
+async def list_demo_sessions(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    """All currently open demo sessions (one ephemeral org per session)."""
+    result = await db.execute(
+        select(Organization)
+        .where(Organization.is_demo.is_(True))
+        .order_by(Organization.created_at.desc())
+    )
+    orgs = result.scalars().all()
+    if not orgs:
+        return []
+
+    counts_result = await db.execute(
+        select(Convoy.organization_id, func.count(Convoy.id))
+        .where(Convoy.organization_id.in_([o.id for o in orgs]))
+        .group_by(Convoy.organization_id)
+    )
+    convoy_counts = dict(counts_result.all())
+
+    fallback_hours = await demo_svc.get_demo_session_hours(db)
+    return [
+        DemoSessionInfo(
+            id=o.id,
+            name=o.name,
+            slug=o.slug,
+            created_at=o.created_at,
+            expires_at=demo_svc.effective_expiry(o, fallback_hours),
+            convoy_count=convoy_counts.get(o.id, 0),
+        )
+        for o in orgs
+    ]
+
+
+class DemoExtendRequest(BaseModel):
+    hours: int = Field(24, ge=1, le=demo_svc.MAX_SESSION_HOURS)
+
+
+@router.post("/demo-sessions/{org_id}/extend", response_model=DemoSessionInfo)
+async def extend_demo_session(
+    org_id: uuid.UUID,
+    data: DemoExtendRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    """Extend a demo session: pushes the expiry *hours* beyond its current
+    expiry (or beyond now, if it would otherwise already be in the past)."""
+    result = await db.execute(
+        select(Organization).where(Organization.id == org_id, Organization.is_demo.is_(True))
+    )
+    org = result.scalar_one_or_none()
+    if not org:
+        raise HTTPException(404, "Demo-Sitzung nicht gefunden")
+
+    fallback_hours = await demo_svc.get_demo_session_hours(db)
+    now = datetime.now(timezone.utc)
+    base = max(demo_svc.effective_expiry(org, fallback_hours), now)
+    org.demo_expires_at = base + timedelta(hours=data.hours)
+    await db.commit()
+    await db.refresh(org)
+
+    await audit.record(
+        db, "admin.demo_session.extended", request=request, actor_id=current.id,
+        actor_email=current.email, org_id=org.id, target_type="organization",
+        target_id=org.id,
+        detail={"slug": org.slug, "hours": data.hours, "expires_at": org.demo_expires_at.isoformat()},
+    )
+
+    convoy_count = (await db.execute(
+        select(func.count(Convoy.id)).where(Convoy.organization_id == org.id)
+    )).scalar_one()
+    return DemoSessionInfo(
+        id=org.id, name=org.name, slug=org.slug, created_at=org.created_at,
+        expires_at=org.demo_expires_at, convoy_count=convoy_count,
+    )
+
+
+@router.delete("/demo-sessions/{org_id}", status_code=204)
+async def terminate_demo_session(
+    org_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    """End a demo session immediately: delete its convoys, org and demo user.
+
+    Same deletion order as the retention purge — convoys before the org
+    (FK SET NULL would orphan them), org before its owner user."""
+    result = await db.execute(
+        select(Organization).where(Organization.id == org_id, Organization.is_demo.is_(True))
+    )
+    org = result.scalar_one_or_none()
+    if not org:
+        raise HTTPException(404, "Demo-Sitzung nicht gefunden")
+
+    detail = {"name": org.name, "slug": org.slug}
+    owner_id = org.owner_id
+    await db.execute(delete(Convoy).where(Convoy.organization_id == org_id))
+    await db.execute(delete(Organization).where(Organization.id == org_id))
+    # Guard on is_demo so a (mis)assigned regular account can never be deleted here.
+    await db.execute(delete(User).where(User.id == owner_id, User.is_demo.is_(True)))
+    await db.commit()
+
+    await audit.record(
+        db, "admin.demo_session.terminated", request=request, actor_id=current.id,
+        actor_email=current.email, org_id=org_id, target_type="organization",
+        target_id=org_id, detail=detail,
+    )
+
+
 class AdminOrgAssign(BaseModel):
     org_id: uuid.UUID
     role: str = "beobachter"
@@ -383,6 +563,7 @@ async def list_all_organizations(
             "slug": org.slug,
             "owner_email": org.owner.email if org.owner else None,
             "member_count": len(org.members),
+            "is_demo": org.is_demo,
         }
         for org in orgs
     ]

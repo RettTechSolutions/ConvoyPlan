@@ -61,6 +61,21 @@
 	let sidebarOpen = $state(false);
 	let error = $state('');
 
+	// Demo flag decoded from the JWT payload (null for regular sessions). The
+	// displayed expiry comes from the server (demoExpiresAt) — the superadmin
+	// can extend a session, so the token's exp claim is only a ceiling.
+	const demoSession = $derived.by(() => {
+		const slug = ($page.params as Record<string, string>).slug;
+		const token = orgStore.getToken(slug);
+		if (!token) return null;
+		try {
+			const payload = JSON.parse(atob(token.split('.')[1]));
+			if (!payload.is_demo) return null;
+			return { isDemo: true };
+		} catch { return null; }
+	});
+	let demoExpiresAt = $state<Date | null>(null);
+
 	// Theme toggle
 	function toggleTheme() {
 	    themeStore.toggle();
@@ -241,6 +256,12 @@
 	onMount(async () => {
 		pwaStore.init();
 		await loadData();
+		if (demoSession) {
+			try {
+				const info = await authApi.demoSessionInfo();
+				demoExpiresAt = new Date(info.expires_at);
+			} catch { /* Banner zeigt dann keine Ablaufzeit */ }
+		}
 	});
 
 	async function loadData() {
@@ -843,6 +864,13 @@
 				<button class="logout-btn" onclick={logout} title="Abmelden">✕</button>
 			</div>
 		</div>
+
+		{#if demoSession}
+			<div class="demo-banner">
+				<span>Demo-Sitzung{#if demoExpiresAt}&nbsp;· Läuft ab {demoExpiresAt.toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })} Uhr{/if}</span>
+				<a href="https://convoyplan.de/#kontakt" target="_blank" rel="noopener" class="demo-banner-link">Vollversion anfragen →</a>
+			</div>
+		{/if}
 
 		<!-- Convoy-Selektor -->
 		<div class="convoy-selector">
@@ -1711,6 +1739,9 @@
 .admin-link { font-size: var(--text-xs); color: var(--text-muted); text-decoration: none; white-space: nowrap; }
 .admin-link:hover { color: var(--text-2); }
 
+	.demo-banner { display: flex; justify-content: space-between; align-items: center; padding: .4rem 1rem; background: #78350f; color: #fef3c7; font-size: var(--text-sm); gap: .5rem; }
+	.demo-banner-link { color: #fde68a; font-weight: 600; white-space: nowrap; text-decoration: none; }
+	.demo-banner-link:hover { text-decoration: underline; }
 	.convoy-selector { display: flex; gap: .5rem; padding: .75rem 1rem; border-bottom: 1px solid var(--border); }
 .convoy-selector select { flex: 1; padding: .5rem; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); }
 

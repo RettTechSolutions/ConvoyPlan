@@ -205,8 +205,8 @@
 			el = document.createElement('div');
 			el.style.cssText = 'cursor:pointer';
 			arrow = document.createElement('div');
-			arrow.textContent = '➤';
-			arrow.style.cssText = `font-size:22px;transform:rotate(${pos.heading}deg);filter:drop-shadow(0 2px 3px rgba(0,0,0,.5))`;
+			arrow.style.cssText = `width:38px;height:38px;transform:rotate(${pos.heading}deg);filter:drop-shadow(0 2px 4px rgba(0,0,0,.55));`;
+			arrow.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 38 38" width="38" height="38"><polygon points="19,4 31,32 19,25 7,32" fill="#e74c3c" stroke="white" stroke-width="2.5" stroke-linejoin="round"/></svg>`;
 			el.appendChild(arrow);
 		} else {
 			el = document.createElement('div');
