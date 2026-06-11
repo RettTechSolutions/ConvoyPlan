@@ -24,6 +24,8 @@
 	import { versionStore } from '$lib/stores/version.svelte';
 	import { pwaStore } from '$lib/stores/pwa';
 	import InstallButton from '$lib/components/InstallButton.svelte';
+	import OnboardingTutorial from '$lib/components/OnboardingTutorial.svelte';
+	import { tutorialStore } from '$lib/stores/tutorial';
 	import QRCode from 'qrcode';
 
 	// ── State ──────────────────────────────────────────────────────────
@@ -262,6 +264,9 @@
 				demoExpiresAt = new Date(info.expires_at);
 			} catch { /* Banner zeigt dann keine Ablaufzeit */ }
 		}
+		// Erstbesucher (Org wie Demo) durch alle Bereiche führen.
+		const slug = ($page.params as Record<string, string>).slug;
+		tutorialStore.openIfFirstVisit(slug);
 	});
 
 	async function loadData() {
@@ -1487,6 +1492,10 @@
 			{$themeStore === 'dark' ? '☀' : '☾'}
 			<span>{$themeStore === 'dark' ? 'Light' : 'Dark'}</span>
 		</button>
+		<button class="theme-toggle" onclick={() => tutorialStore.open()} aria-label="Tutorial starten" title="Tutorial / Hilfe">
+			?
+			<span>Hilfe</span>
+		</button>
 		<InstallButton />
 		<span class="app-version">
 			v{__APP_VERSION__}
@@ -1680,6 +1689,17 @@
 
 {#if showShareLinkModal && selected}
 	<ShareLinkModal convoyId={selected.id} onClose={() => (showShareLinkModal = false)} />
+{/if}
+
+<!-- ── Onboarding-Tutorial für Erstbesucher (Org & Demo) ──────────── -->
+{#if $tutorialStore}
+	<OnboardingTutorial
+		slug={($page.params as Record<string, string>).slug}
+		orgName={$orgStore?.org_name ?? ''}
+		isDemo={!!demoSession}
+		isAdmin={$orgStore?.user_role === 'admin'}
+		onNavigate={(tab) => { if (wizardStep === 0) activeTab = tab; }}
+	/>
 {/if}
 
 <!-- ── Modal: Marschverband bearbeiten ──────────────────────────── -->
