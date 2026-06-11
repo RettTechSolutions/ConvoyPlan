@@ -47,6 +47,7 @@ class AdminUserResponse(BaseModel):
     email: str
     is_active: bool
     is_superadmin: bool
+    is_demo: bool = False
     mfa_enabled: bool = False
     created_at: datetime
     orgs: list[AdminUserOrgInfo] = []
