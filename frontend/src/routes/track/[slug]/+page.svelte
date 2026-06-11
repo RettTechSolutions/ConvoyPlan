@@ -9,6 +9,7 @@
 		type TrackPayload, type TrackGate, type TrackPosition, type VehiclePosition,
 		type Waypoint,
 	} from '$lib/api';
+	import { STATUS_LABELS, STATUS_COLORS, statusColor } from '$lib/tracking/status';
 
 	const slug = $derived($page.params.slug!);
 
@@ -30,12 +31,13 @@
 	let ws: WebSocket | null = null;
 	let mapView = $state<ReturnType<typeof MapView>>();
 
-	const STATUS_LABELS: Record<string, string> = { planned: 'Geplant', en_route: 'Unterwegs', arrived: 'Angekommen', delayed: 'Verspätung' };
-	const STATUS_COLORS: Record<string, string> = { planned: '#95a5a6', en_route: '#3498db', arrived: '#27ae60', delayed: '#E23D28' };
-
 	// vehicle id → label for live markers on the map
 	let vehicleNames = $derived(
 		new Map((data?.vehicles ?? []).map((v) => [v.id, v.callsign || v.name]))
+	);
+	// vehicle id → status color so the map markers reflect the current status.
+	let vehicleColors = $derived(
+		new Map((data?.vehicles ?? []).map((v) => [v.id, statusColor(statusOf(v))]))
 	);
 
 	// Only offer the schedule tab when at least one waypoint has a planned time.
@@ -286,6 +288,7 @@
 				routeGeojson={data.geojson}
 				livePositions={livePositions}
 				vehicleNames={vehicleNames}
+				vehicleColors={vehicleColors}
 			/>
 		{/if}
 	</main>

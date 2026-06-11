@@ -55,7 +55,15 @@ class ConvoyVehicle(Base):
     convoy_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("convoys.id"), primary_key=True)
     vehicle_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("vehicles.id"), primary_key=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
-    vehicle_status: Mapped[str] = mapped_column(String(30), default="planned")  # planned/en_route/arrived/delayed
+    # planned | en_route | arrived | technical_halt | breakdown
+    vehicle_status: Mapped[str] = mapped_column(String(30), default="planned")
+    # Sub-level for the active status:
+    #   technical_halt → standard | dringend | sehr_dringend (Dringlichkeit)
+    #   breakdown      → total | limited (Totalausfall vs. eingeschränkte Weiterfahrt)
+    status_level: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Optional free-text note for the status (e.g. "Bio-Pause", "Reifenschaden").
+    status_note: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    status_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     sonderfunktion: Mapped[str | None] = mapped_column(String(50), nullable=True)  # spitzenführer|schließender|sanitaet|ablaufführer
     mobile_phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
 

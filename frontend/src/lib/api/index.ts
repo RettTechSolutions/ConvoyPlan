@@ -54,6 +54,7 @@ export interface Waypoint {
 
 export interface ConvoyVehicleItem {
 	vehicle: Vehicle; position: number; vehicle_status: string;
+	status_level: string | null; status_note: string | null; status_changed_at: string | null;
 	sonderfunktion: string | null; mobile_phone: string | null;
 }
 
@@ -218,8 +219,18 @@ export const trackingApi = {
 	getPositions: (convoyId: string) => api.get<VehiclePosition[]>(`/api/convoys/${convoyId}/positions`),
 	updatePosition: (convoyId: string, data: Omit<VehiclePosition, 'recorded_at'>) =>
 		api.post(`/api/convoys/${convoyId}/positions`, data),
-	updateVehicleStatus: (convoyId: string, vehicleId: string, vehicle_status: string) =>
-		api.patch(`/api/convoys/${convoyId}/vehicles/${vehicleId}/status`, { vehicle_status }),
+	updateVehicleStatus: (
+		convoyId: string,
+		vehicleId: string,
+		vehicle_status: string,
+		status_level: string | null = null,
+		status_note: string | null = null,
+	) =>
+		api.patch(`/api/convoys/${convoyId}/vehicles/${vehicleId}/status`, {
+			vehicle_status,
+			status_level,
+			status_note,
+		}),
 	/** GPS-Freigabe eines Fahrzeugs beenden (Position löschen). suppress=false beim Selbst-Stopp. */
 	clearVehiclePosition: (convoyId: string, vehicleId: string, suppress = true) =>
 		api.delete(`/api/convoys/${convoyId}/vehicles/${vehicleId}/position?suppress=${suppress}`),

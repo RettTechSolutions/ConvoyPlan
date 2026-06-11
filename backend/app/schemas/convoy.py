@@ -67,6 +67,9 @@ class ConvoyVehicleItem(BaseModel):
     vehicle: VehicleResponse
     position: int
     vehicle_status: str = "planned"
+    status_level: str | None = None
+    status_note: str | None = None
+    status_changed_at: datetime | None = None
     sonderfunktion: str | None = None
     mobile_phone: str | None = None
 
