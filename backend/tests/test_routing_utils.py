@@ -90,6 +90,74 @@ def test_convoy_duration_max_speed_string_values():
     assert 840 < d < 960
 
 
+def test_out_of_bounds_message_start_end_waypoint():
+    from app.api.routes.routing import _out_of_bounds_message
+    # 4 Punkte: Start (0), Wegpunkt 1, Wegpunkt 2, Ziel (3)
+    assert _out_of_bounds_message(0, 4).startswith("Der Startpunkt liegt")
+    assert _out_of_bounds_message(3, 4).startswith("Das Ziel liegt")
+    assert _out_of_bounds_message(2, 4).startswith("Wegpunkt 2 liegt")
+    # Unbekannter Index → generische Formulierung
+    assert _out_of_bounds_message(None, 4).startswith("Mindestens ein Punkt liegt")
+    # Alle Varianten erwähnen die Deutschland-Beschränkung
+    assert "Deutschland" in _out_of_bounds_message(0, 4)
+
+
+async def _post_route(monkeypatch, status_code, message):
+    """Mini-Helper: GraphHopper-Antwort stubben und calculate_route aufrufen."""
+    import httpx
+    from app.services import routing as routing_svc
+
+    class _Resp:
+        def __init__(self):
+            self.status_code = status_code
+            self.is_success = status_code < 400
+            self.text = message
+
+        def json(self):
+            return {"message": message}
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, *a, **k):
+            return _Resp()
+
+    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+    points = [{"lat": 47.0, "lon": 7.4}, {"lat": 52.5, "lon": 13.4}]
+    return await routing_svc.calculate_route(points)
+
+
+def test_graphhopper_out_of_bounds_raises_dedicated_error(monkeypatch):
+    import asyncio
+    from app.services.routing import RoutingOutOfBoundsError
+    msg = ("Point 2 is out of range: 46.95001700076665,7.450333656995923, "
+           "the bounds are: 5.8630797,47.2691729,15.0419319,55.0815)")
+    try:
+        asyncio.run(_post_route(monkeypatch, 400, msg))
+        assert False, "expected RoutingOutOfBoundsError"
+    except RoutingOutOfBoundsError as exc:
+        assert exc.point_index == 2
+
+
+def test_graphhopper_other_error_stays_valueerror(monkeypatch):
+    import asyncio
+    from app.services.routing import RoutingOutOfBoundsError
+    try:
+        asyncio.run(_post_route(monkeypatch, 400, "Something else went wrong"))
+        assert False, "expected ValueError"
+    except RoutingOutOfBoundsError:
+        assert False, "should not be treated as out-of-bounds"
+    except ValueError as exc:
+        assert "Routing service error" in str(exc)
+
+
 def test_road_preference_modes_and_legacy_mapping():
     from app.services.routing import _LEGACY_PREFERENCES, _PRIORITY_RULES
     # Exactly the three supported modes
