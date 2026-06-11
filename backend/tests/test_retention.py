@@ -19,7 +19,8 @@ async def test_run_all_returns_counts_and_audits(monkeypatch):
     r_pos = MagicMock(); r_pos.rowcount = 3
     r_audit = MagicMock(); r_audit.rowcount = 0
     r_links = MagicMock(); r_links.rowcount = 2
-    db.execute.side_effect = [r_pos, r_audit, r_links]
+    r_demo = MagicMock(); r_demo.all.return_value = []  # no expired demo orgs
+    db.execute.side_effect = [r_pos, r_audit, r_links, r_demo]
 
     recorded = []
 
@@ -40,7 +41,9 @@ async def test_run_all_returns_counts_and_audits(monkeypatch):
 @pytest.mark.asyncio
 async def test_run_all_skips_audit_when_nothing_deleted(monkeypatch):
     db = AsyncMock()
-    db.execute.side_effect = [MagicMock(rowcount=0) for _ in range(3)]
+    results = [MagicMock(rowcount=0) for _ in range(3)]
+    r_demo = MagicMock(); r_demo.all.return_value = []
+    db.execute.side_effect = results + [r_demo]
 
     recorded = []
 

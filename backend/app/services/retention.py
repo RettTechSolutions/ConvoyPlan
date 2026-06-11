@@ -89,7 +89,10 @@ async def run_all(db: AsyncSession) -> dict[str, int]:
         "positions": await purge_stale_positions(db, settings.retention_positions_hours),
         "audit_logs": await purge_old_audit_logs(db, settings.retention_audit_days),
         "share_links": await purge_expired_share_links(db, settings.retention_share_links_days),
-        "demo_sessions": await purge_demo_sessions(db, settings.demo_session_hours) if settings.demo_enabled else 0,
+        # Always purge expired demo sessions — the demo mode can be toggled at
+        # runtime (admin panel), so gating on the env flag would leave demo orgs
+        # behind after the mode is switched off.
+        "demo_sessions": await purge_demo_sessions(db, settings.demo_session_hours),
     }
     await db.commit()
     if any(counts.values()):

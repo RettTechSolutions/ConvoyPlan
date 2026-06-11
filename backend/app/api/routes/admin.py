@@ -28,6 +28,7 @@ from app.models.vehicle import Vehicle
 from app.schemas.user import AdminUserCreate, AdminUserResponse, AdminUserUpdate, AdminUserOrgInfo
 from app.services import api_key as api_key_svc
 from app.services import audit
+from app.services import demo as demo_svc
 from app.services.email import save_smtp_settings, send_password_email, test_smtp_connection
 from app.services.password import assert_password_not_breached, generate_password, validate_password
 
@@ -266,6 +267,54 @@ async def set_github_token(
     else:
         db.add(SystemSetting(key="github.token", value=data.token))
     await db.commit()
+
+
+# ── Demo-Modus ────────────────────────────────────────────────────────────────
+
+
+class DemoSettingsResponse(BaseModel):
+    enabled: bool            # effective state (DB setting wins, env is fallback)
+    source: str              # "db" | "env"
+    env_enabled: bool        # value of the DEMO_ENABLED env var
+    session_hours: int
+
+
+class DemoSettingsUpdate(BaseModel):
+    enabled: bool
+
+
+@router.get("/settings/demo", response_model=DemoSettingsResponse)
+async def get_demo_settings(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    db_value = await demo_svc.get_demo_enabled_setting(db)
+    return DemoSettingsResponse(
+        enabled=db_value == "true" if db_value is not None else settings.demo_enabled,
+        source="db" if db_value is not None else "env",
+        env_enabled=settings.demo_enabled,
+        session_hours=settings.demo_session_hours,
+    )
+
+
+@router.put("/settings/demo", response_model=DemoSettingsResponse)
+async def update_demo_settings(
+    data: DemoSettingsUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    await demo_svc.set_demo_enabled(db, data.enabled)
+    await audit.record(
+        db, "admin.settings.demo_updated", request=request, actor_id=current.id,
+        actor_email=current.email, detail={"enabled": data.enabled},
+    )
+    return DemoSettingsResponse(
+        enabled=data.enabled,
+        source="db",
+        env_enabled=settings.demo_enabled,
+        session_hours=settings.demo_session_hours,
+    )
 
 
 class AdminOrgAssign(BaseModel):

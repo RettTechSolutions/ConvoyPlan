@@ -156,6 +156,7 @@ export const authApi = {
 	requestPasswordReset: (email: string, org_slug?: string) =>
 		api.post<{ status: string }>('/api/auth/password-reset', { email, org_slug }),
 	createDemoSession: () => api.post<DemoSessionResult>('/api/auth/demo-session', {}),
+	demoStatus: () => api.get<{ enabled: boolean; session_hours: number }>('/api/auth/demo-status'),
 };
 
 export const mfaApi = {
@@ -455,6 +456,8 @@ export const adminApi = {
     triggerUpdate: () => api.post<{ status: string }>('/api/admin/trigger-update', {}),
     getGithubTokenStatus: () => api.get<{ set: boolean; source: string | null }>('/api/admin/settings/github-token-set'),
     setGithubToken: (token: string) => api.put<void>('/api/admin/settings/github-token', { token }),
+    getDemoSettings: () => api.get<DemoSettings>('/api/admin/settings/demo'),
+    setDemoEnabled: (enabled: boolean) => api.put<DemoSettings>('/api/admin/settings/demo', { enabled }),
     getSmtpSettings: () => api.get<SmtpConfigResponse>('/api/admin/settings/smtp'),
     saveSmtpSettings: (data: SmtpConfig) => api.put<void>('/api/admin/settings/smtp', data),
     testSmtp: () => api.post<{ status: string }>('/api/admin/settings/smtp/test', {}),
@@ -471,6 +474,13 @@ export interface UpdateStatus {
     remote_sha: string | null;
     update_available: boolean;
     github_reachable: boolean;
+}
+
+export interface DemoSettings {
+    enabled: boolean;
+    source: 'db' | 'env';
+    env_enabled: boolean;
+    session_hours: number;
 }
 
 export interface BrandingData {

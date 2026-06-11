@@ -22,6 +22,7 @@ from app.schemas.user import (
     UserResponse,
 )
 from app.services import audit
+from app.services import demo as demo_svc
 from app.services.crypto import decrypt_secret, encrypt_secret
 from app.services.email import send_password_email
 from app.services.password import (
@@ -557,6 +558,16 @@ class DemoSessionResponse(BaseModel):
     expires_at: str  # ISO-8601 UTC
 
 
+@router.get("/demo-status")
+async def demo_status(db: AsyncSession = Depends(get_db)):
+    """Public: whether demo sessions are currently available, so the landing page
+    only shows the demo button when the superadmin has enabled the demo mode."""
+    return {
+        "enabled": await demo_svc.is_demo_enabled(db),
+        "session_hours": settings.demo_session_hours,
+    }
+
+
 @router.post(
     "/demo-session",
     response_model=DemoSessionResponse,
@@ -565,9 +576,10 @@ class DemoSessionResponse(BaseModel):
 async def create_demo_session(request: Request, db: AsyncSession = Depends(get_db)):
     """Create an ephemeral demo organisation + user and return a short-lived token.
 
-    Requires DEMO_ENABLED=true in the environment. The session is deleted by the
-    retention job after DEMO_SESSION_HOURS (default 24)."""
-    if not settings.demo_enabled:
+    Requires the demo mode to be enabled (admin-panel toggle; the DEMO_ENABLED
+    env var is the fallback). The session is deleted by the retention job after
+    DEMO_SESSION_HOURS (default 24)."""
+    if not await demo_svc.is_demo_enabled(db):
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Demo nicht verfügbar")
 
     import secrets as _secrets
