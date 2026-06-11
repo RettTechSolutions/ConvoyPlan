@@ -9,7 +9,10 @@
 		type TrackPayload, type TrackGate, type TrackPosition, type VehiclePosition,
 		type Waypoint,
 	} from '$lib/api';
-	import { STATUS_LABELS, STATUS_COLORS, statusColor } from '$lib/tracking/status';
+	import {
+		STATUS_LABELS, STATUS_COLORS, STATUS_ICONS, HALT_LEVEL_LABELS, BREAKDOWN_LEVEL_LABELS,
+		statusColor, statusLabel,
+	} from '$lib/tracking/status';
 
 	const slug = $derived($page.params.slug!);
 
@@ -30,6 +33,28 @@
 	let liveStatuses = $state<Map<string, string>>(new Map());
 	let ws: WebSocket | null = null;
 	let mapView = $state<ReturnType<typeof MapView>>();
+
+	// ── Driver mode (scope === 'driver'): pick a vehicle & send GPS/status ──
+	const isSecure = typeof window !== 'undefined' && window.isSecureContext;
+	let isDriver = $derived(data?.scope === 'driver');
+	let myVehicleId = $state('');
+	let transmitting = $state(false);
+	let manualMode = $state(false);
+	let geoWatcher: number | null = null;
+	let driverError = $state('');
+	let pendingStatus = $state<'technical_halt' | 'breakdown' | null>(null);
+	let pendingNote = $state('');
+	let wakeLock: WakeLockSentinel | null = null;
+	const SESSION_KEY = $derived(`cp-track-driver-${slug}`);
+
+	// Vehicles still free to pick (a vehicle already LIVE is "taken" — except mine).
+	let availableVehicles = $derived(
+		(data?.vehicles ?? []).filter((v) => v.id === myVehicleId || !livePositions.has(v.id))
+	);
+	let myStatus = $derived.by(() => {
+		const v = (data?.vehicles ?? []).find((x) => x.id === myVehicleId);
+		return v ? statusOf(v) : 'planned';
+	});
 
 	// vehicle id → label for live markers on the map
 	let vehicleNames = $derived(
@@ -80,6 +105,7 @@
 				livePositions = initial;
 				liveStatuses = new Map();
 				connectWs(token);
+				restoreDriverSession();
 			}
 		} catch (e) {
 			error = (e as Error).message || 'Tracking-Link nicht erreichbar.';
@@ -159,8 +185,110 @@
 		return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 	}
 
+	// ── Driver actions ──────────────────────────────────────────────────────
+	function wsReady(): boolean {
+		return ws?.readyState === WebSocket.OPEN;
+	}
+
+	function sendDriverPosition(lat: number, lon: number, speedKmh?: number, heading?: number) {
+		if (!wsReady() || !myVehicleId) return;
+		ws!.send(JSON.stringify({ vehicle_id: myVehicleId, lat, lon, speed_kmh: speedKmh, heading }));
+		// Optimistic local marker so the driver sees themselves immediately.
+		const next = new Map(livePositions);
+		next.set(myVehicleId, { vehicle_id: myVehicleId, lat, lon, speed_kmh: speedKmh ?? null, heading: heading ?? null, recorded_at: new Date().toISOString() });
+		livePositions = next;
+	}
+
+	function startTransmitting() {
+		if (!myVehicleId) { driverError = 'Bitte zuerst ein Fahrzeug auswählen'; return; }
+		driverError = '';
+		try { sessionStorage.setItem(SESSION_KEY, myVehicleId); } catch { /* ignore */ }
+		requestWakeLock();
+		if (!isSecure) { manualMode = true; transmitting = true; return; }
+		transmitting = true;
+		manualMode = false;
+		if (geoWatcher !== null) { navigator.geolocation.clearWatch(geoWatcher); geoWatcher = null; }
+		geoWatcher = navigator.geolocation.watchPosition(
+			(pos) => {
+				if (!transmitting) return;
+				driverError = '';
+				const { latitude, longitude, speed, heading } = pos.coords;
+				sendDriverPosition(latitude, longitude, speed ? speed * 3.6 : undefined, heading ?? undefined);
+			},
+			(e) => {
+				if (e.code === e.PERMISSION_DENIED) { manualMode = true; driverError = ''; }
+				else driverError = `GPS-Fehler: ${e.message}`;
+			},
+			{ enableHighAccuracy: true, maximumAge: 5000 }
+		);
+	}
+
+	function stopTransmitting() {
+		if (geoWatcher !== null) { navigator.geolocation.clearWatch(geoWatcher); geoWatcher = null; }
+		transmitting = false;
+		manualMode = false;
+		releaseWakeLock();
+		try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
+	}
+
+	function handleMapTap(lat: number, lon: number) {
+		if (!transmitting || !manualMode || !myVehicleId) return;
+		sendDriverPosition(lat, lon);
+	}
+
+	function sendDriverStatus(status: string, level: string | null = null, note: string | null = null) {
+		if (!wsReady() || !myVehicleId) { driverError = 'Keine Verbindung – Status nicht gesendet'; return; }
+		ws!.send(JSON.stringify({ type: 'status', vehicle_id: myVehicleId, vehicle_status: status, status_level: level, status_note: note }));
+		// Optimistic local update.
+		const next = new Map(liveStatuses);
+		next.set(myVehicleId, status);
+		liveStatuses = next;
+		pendingStatus = null;
+		pendingNote = '';
+	}
+
+	function chooseStatus(status: string) {
+		if (!myVehicleId) { driverError = 'Bitte zuerst ein Fahrzeug auswählen'; return; }
+		if (status === 'technical_halt' || status === 'breakdown') {
+			pendingStatus = pendingStatus === status ? null : status;
+			pendingNote = '';
+			return;
+		}
+		sendDriverStatus(status);
+	}
+
+	function confirmPending(level: string) {
+		if (pendingStatus) sendDriverStatus(pendingStatus, level, pendingNote.trim() || null);
+	}
+
+	async function requestWakeLock() {
+		try {
+			if ('wakeLock' in navigator) {
+				wakeLock = await navigator.wakeLock.request('screen');
+				wakeLock.addEventListener('release', () => { wakeLock = null; });
+			}
+		} catch { /* non-critical */ }
+	}
+	function releaseWakeLock() { wakeLock?.release().catch(() => {}); wakeLock = null; }
+
+	// Resume a previously picked vehicle after a reload (driver links only).
+	function restoreDriverSession() {
+		if (!isDriver) return;
+		try {
+			const saved = sessionStorage.getItem(SESSION_KEY);
+			if (saved && (data?.vehicles ?? []).some((v) => v.id === saved)) {
+				myVehicleId = saved;
+				startTransmitting();
+			}
+		} catch { /* ignore */ }
+	}
+
 	onMount(load);
-	onDestroy(() => { ws?.close(); });
+	onDestroy(() => {
+		if (geoWatcher !== null) navigator.geolocation.clearWatch(geoWatcher);
+		releaseWakeLock();
+		ws?.close();
+	});
 </script>
 
 <TrackingPwaHead />
@@ -221,6 +349,63 @@
 				</div>
 			{/if}
 
+			{#if isDriver}
+				<!-- Driver link: pick a vehicle and send position / status without login -->
+				<div class="driver-block">
+					<div class="info-label">Meine Position (Fahrer)</div>
+					{#if driverError}<p class="error-text">{driverError}</p>{/if}
+					<select bind:value={myVehicleId} disabled={transmitting}>
+						<option value="">Fahrzeug wählen…</option>
+						{#each availableVehicles as v}
+							<option value={v.id}>{v.name}{v.callsign ? ` (${v.callsign})` : ''}</option>
+						{/each}
+					</select>
+					{#if !transmitting}
+						{#if !isSecure}<p class="hint">GPS benötigt HTTPS – Position kann per Karten-Tippen gesetzt werden.</p>{/if}
+						<button class="btn-primary" onclick={startTransmitting} disabled={!myVehicleId}>
+							{isSecure ? '📡 GPS senden' : '📍 Manuell setzen'}
+						</button>
+					{:else}
+						<p class="hint hint-active">{manualMode ? 'Tippe auf die Karte, um deine Position zu setzen' : 'GPS aktiv – Position wird übertragen'}</p>
+						<button class="btn-stop" onclick={stopTransmitting}>⏹ Senden stoppen</button>
+					{/if}
+
+					{#if myVehicleId}
+						<div class="status-grid">
+							{#each ['planned', 'en_route', 'arrived'] as st}
+								<button class="status-btn" class:active={myStatus === st} style="--c:{statusColor(st)}" onclick={() => chooseStatus(st)}>
+									<span class="sb-icon">{STATUS_ICONS[st]}</span>{STATUS_LABELS[st]}
+								</button>
+							{/each}
+							<button class="status-btn wide" class:active={myStatus === 'technical_halt'} class:expanded={pendingStatus === 'technical_halt'} style="--c:{statusColor('technical_halt')}" onclick={() => chooseStatus('technical_halt')}>
+								<span class="sb-icon">{STATUS_ICONS.technical_halt}</span>Technischen Halt anfordern
+							</button>
+							{#if pendingStatus === 'technical_halt'}
+								<div class="sub-panel">
+									<div class="sub-label">Dringlichkeit wählen</div>
+									{#each Object.entries(HALT_LEVEL_LABELS) as [val, label]}
+										<button class="sub-btn lvl-{val}" onclick={() => confirmPending(val)}>{label}</button>
+									{/each}
+									<input class="note-input" placeholder="Grund (optional)" bind:value={pendingNote} maxlength="200" />
+								</div>
+							{/if}
+							<button class="status-btn wide" class:active={myStatus === 'breakdown'} class:expanded={pendingStatus === 'breakdown'} style="--c:{statusColor('breakdown')}" onclick={() => chooseStatus('breakdown')}>
+								<span class="sb-icon">{STATUS_ICONS.breakdown}</span>Ausfall / Technische Störung
+							</button>
+							{#if pendingStatus === 'breakdown'}
+								<div class="sub-panel">
+									<div class="sub-label">Schweregrad wählen</div>
+									{#each Object.entries(BREAKDOWN_LEVEL_LABELS) as [val, label]}
+										<button class="sub-btn break-{val}" onclick={() => confirmPending(val)}>{label}</button>
+									{/each}
+									<input class="note-input" placeholder="Beschreibung (optional)" bind:value={pendingNote} maxlength="200" />
+								</div>
+							{/if}
+						</div>
+					{/if}
+				</div>
+			{/if}
+
 			<!-- Tabs -->
 			<div class="tabs">
 				<button class="tab" class:active={activeTab === 'fahrzeuge'} onclick={() => (activeTab = 'fahrzeuge')}>Fahrzeuge</button>
@@ -273,7 +458,7 @@
 	</aside>
 
 	<!-- Map -->
-	<main class="map-area">
+	<main class="map-area" class:cursor-crosshair={isDriver && manualMode && transmitting}>
 		{#if data}
 			<div class="map-controls">
 				{#if data.geojson}
@@ -282,6 +467,9 @@
 					</button>
 				{/if}
 			</div>
+			{#if isDriver && manualMode && transmitting}
+				<div class="map-hint-bar">Tippe auf die Karte, um deine Position zu senden</div>
+			{/if}
 			<MapView
 				bind:this={mapView}
 				waypoints={data.waypoints as unknown as Waypoint[]}
@@ -289,6 +477,8 @@
 				livePositions={livePositions}
 				vehicleNames={vehicleNames}
 				vehicleColors={vehicleColors}
+				clickEnabled={isDriver && manualMode && transmitting}
+				onMapClick={handleMapTap}
 			/>
 		{/if}
 	</main>
@@ -325,6 +515,29 @@
 	.btn-primary { width: 100%; padding: .5rem 1rem; background: var(--color-primary); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: var(--text-sm); }
 	.btn-primary:disabled { opacity: .5; cursor: not-allowed; }
 	.btn-primary:hover:not(:disabled) { background: var(--color-primary-hover); }
+	.btn-stop { width: 100%; padding: .5rem 1rem; background: rgba(226,61,40,.3); border: 1px solid var(--color-primary); color: var(--text-1); border-radius: 6px; font-weight: 600; cursor: pointer; font-size: var(--text-sm); }
+
+	/* Driver block (driver-scope share links) */
+	.driver-block { padding: .75rem 1rem; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: .5rem; flex-shrink: 0; }
+	.driver-block select { width: 100%; padding: .5rem; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); }
+	.driver-block select:disabled { opacity: .6; }
+	.hint.hint-active { color: #f1c40f; font-style: normal; }
+	.status-grid { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .25rem; }
+	.status-btn { flex: 1 1 calc(33% - .5rem); display: flex; flex-direction: column; align-items: center; gap: .25rem; padding: .55rem .4rem; background: var(--surface-2); color: var(--text-1); border: 2px solid var(--border); border-radius: 8px; cursor: pointer; font-size: var(--text-xs); font-weight: 600; text-align: center; }
+	.status-btn.wide { flex-basis: 100%; flex-direction: row; justify-content: center; font-size: var(--text-sm); }
+	.status-btn .sb-icon { color: var(--c); font-size: 1.05rem; }
+	.status-btn:hover { border-color: var(--c); }
+	.status-btn.active { border-color: var(--c); box-shadow: inset 0 0 0 1px var(--c); }
+	.sub-panel { flex-basis: 100%; display: flex; flex-direction: column; gap: .4rem; padding: .6rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; }
+	.sub-label { font-size: var(--text-xs); color: var(--text-muted); }
+	.sub-btn { padding: .5rem; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: var(--text-sm); color: #1a1a1a; }
+	.sub-btn.lvl-standard { background: #f7dc6f; }
+	.sub-btn.lvl-dringend { background: #f1c40f; }
+	.sub-btn.lvl-sehr_dringend { background: #e67e22; color: #fff; }
+	.sub-btn.break-limited { background: #e67e22; color: #fff; }
+	.sub-btn.break-total { background: #E23D28; color: #fff; }
+	.note-input { padding: .45rem .5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); }
+	.map-hint-bar { position: absolute; top: 1rem; left: 50%; transform: translateX(-50%); z-index: 10; background: rgba(15,27,36,.9); color: white; padding: .5rem 1.2rem; border-radius: 20px; font-size: var(--text-sm); pointer-events: none; white-space: nowrap; }
 
 	.hint { font-size: var(--text-xs); color: var(--text-muted); font-style: italic; margin: 0; line-height: 1.4; }
 
@@ -354,6 +567,7 @@
 
 	/* Map */
 	.map-area { flex: 1; position: relative; }
+	.map-area.cursor-crosshair :global(.maplibregl-canvas) { cursor: crosshair; }
 
 	/* Map control buttons (Route) */
 	.map-controls { position: absolute; right: .75rem; bottom: calc(.75rem + env(safe-area-inset-bottom, 0px)); z-index: 10; display: flex; flex-direction: column; align-items: flex-end; gap: .5rem; max-width: calc(100% - 1.5rem); }

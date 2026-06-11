@@ -293,6 +293,8 @@ export const shareApi = {
 // ── Public tracking share-links ──────────────────────────────────────────────
 
 export type ShareLinkPasswordMode = 'none' | 'generate' | 'set';
+/** Link capability: read-only viewer or a driver that may send GPS / status. */
+export type ShareLinkScope = 'track' | 'driver';
 
 export interface ShareLink {
 	id: string;
@@ -313,7 +315,7 @@ export interface ShareLinkCreated extends ShareLink {
 export const shareLinksApi = {
 	list: (convoyId: string) =>
 		api.get<ShareLink[]>(`/api/convoys/${convoyId}/share-links`),
-	create: (convoyId: string, body: { password_mode: ShareLinkPasswordMode; password?: string | null }) =>
+	create: (convoyId: string, body: { password_mode: ShareLinkPasswordMode; password?: string | null; scope?: ShareLinkScope }) =>
 		api.post<ShareLinkCreated>(`/api/convoys/${convoyId}/share-links`, body),
 	revoke: (convoyId: string, linkId: string) =>
 		api.delete(`/api/convoys/${convoyId}/share-links/${linkId}`),
@@ -335,6 +337,7 @@ export interface TrackWaypointPublic {
 }
 export interface TrackPayload {
 	name: string; organization: string | null; start_time: string | null;
+	scope: ShareLinkScope;
 	waypoints: TrackWaypointPublic[]; geojson: Geometry | null;
 	vehicles: TrackVehicle[]; positions: TrackPosition[];
 }

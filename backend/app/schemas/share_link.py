@@ -8,6 +8,9 @@ from pydantic import BaseModel, Field, model_validator
 class ShareLinkCreate(BaseModel):
     password_mode: Literal["none", "generate", "set"]
     password: str | None = None
+    # "track" = read-only viewer link; "driver" = link holder may also pick a
+    # vehicle and send its GPS position / status without logging in.
+    scope: Literal["track", "driver"] = "track"
 
     @model_validator(mode="after")
     def _check_password(self) -> "ShareLinkCreate":
@@ -80,6 +83,8 @@ class TrackPublic(BaseModel):
     name: str
     organization: str | None = None
     start_time: datetime | None = None
+    # "track" (viewer) or "driver" (may send GPS / status).
+    scope: str = "track"
     waypoints: list[TrackWaypoint]
     geojson: dict | None = None
     vehicles: list[TrackVehicle]

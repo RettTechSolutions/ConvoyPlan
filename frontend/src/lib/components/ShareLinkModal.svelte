@@ -6,6 +6,7 @@
 		type ShareLink,
 		type ShareLinkCreated,
 		type ShareLinkPasswordMode,
+		type ShareLinkScope,
 	} from '$lib/api';
 
 	let { convoyId, onClose }: { convoyId: string; onClose: () => void } = $props();
@@ -15,6 +16,7 @@
 	let error = $state('');
 	let busy = $state(false);
 
+	let scope = $state<ShareLinkScope>('track');
 	let passwordMode = $state<ShareLinkPasswordMode>('none');
 	let passwordInput = $state('');
 
@@ -41,12 +43,14 @@
 			const body = {
 				password_mode: passwordMode,
 				password: passwordMode === 'set' ? passwordInput : null,
+				scope,
 			};
 			const created = await shareLinksApi.create(convoyId, body);
 			lastCreated = created;
 			lastQrDataUrl = await QRCode.toDataURL(created.url, { width: 240, margin: 1 });
 			passwordInput = '';
 			passwordMode = 'none';
+			scope = 'track';
 			await load();
 		} catch (e) {
 			error = (e as Error).message;
@@ -104,6 +108,19 @@
 
 			<section class="sl-create">
 				<h3>Neuen Tracking-Link erstellen</h3>
+				<div class="sl-radios sl-scope">
+					<label>
+						<input type="radio" name="scope" value="track" bind:group={scope} />
+						<span><strong>Nur ansehen</strong> – Empfänger sehen den Verband live (Viewer)</span>
+					</label>
+					<label>
+						<input type="radio" name="scope" value="driver" bind:group={scope} />
+						<span><strong>Fahrer</strong> – Empfänger können ohne Login ein Fahrzeug wählen und Position/Status senden</span>
+					</label>
+				</div>
+				{#if scope === 'driver'}
+					<p class="sl-warn">⚠ Jeder mit diesem Link kann für ein beliebiges Fahrzeug Position und Status senden. Für Fahrer-Links wird ein Passwort empfohlen.</p>
+				{/if}
 				<div class="sl-radios">
 					<label>
 						<input type="radio" name="pwmode" value="none" bind:group={passwordMode} />
@@ -172,6 +189,7 @@
 						<thead>
 							<tr>
 								<th>Slug</th>
+								<th>Typ</th>
 								<th>PW</th>
 								<th>Erstellt</th>
 								<th>Letzter Zugriff</th>
@@ -184,6 +202,11 @@
 							{#each links as link}
 								<tr class:revoked={link.revoked}>
 									<td><code>{link.slug}</code></td>
+									<td>
+										<span class="sl-badge" class:driver={link.scope === 'driver'}>
+											{link.scope === 'driver' ? '🚗 Fahrer' : '👁 Viewer'}
+										</span>
+									</td>
 									<td>{link.requires_password ? '🔒' : '—'}</td>
 									<td>{fmtDate(link.created_at)}</td>
 									<td>{fmtDate(link.last_accessed_at)}</td>
@@ -232,6 +255,12 @@
 
 	.sl-radios { display: flex; flex-direction: column; gap: .35rem; margin-bottom: .75rem; }
 	.sl-radios label { display: flex; align-items: center; gap: .5rem; font-size: .9rem; }
+	.sl-scope { margin-bottom: .5rem; }
+	.sl-scope label { align-items: flex-start; }
+	.sl-scope input { margin-top: .2rem; }
+	.sl-warn { background: #fff7ed; border: 1px solid #fdba74; color: #9a3412; border-radius: 6px; padding: .5rem .75rem; font-size: .82rem; margin: 0 0 .75rem; }
+	.sl-badge { display: inline-block; padding: .1rem .4rem; border-radius: 999px; font-size: .72rem; font-weight: 600; background: #eef2f7; color: #334; white-space: nowrap; }
+	.sl-badge.driver { background: #fef3c7; color: #92400e; }
 
 	.sl-input { padding: .5rem .65rem; border-radius: 5px; border: 1.5px solid #ccc; background: white; color: #111; font-size: .9rem; font-family: inherit; width: 100%; box-sizing: border-box; }
 	.sl-input:focus { outline: none; border-color: #0F1B24; }

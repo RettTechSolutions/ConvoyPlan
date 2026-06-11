@@ -16,6 +16,7 @@ from app.models.convoy import ConvoyVehicle
 from app.models.user import User
 from app.models.vehicle import Vehicle
 from app.models.vehicle_position import VehiclePosition
+from app.services import vehicle_status as vs
 from app.services.tracking import tracking_manager
 
 logger = logging.getLogger(__name__)
@@ -63,8 +64,8 @@ class VehicleStatusUpdate(BaseModel):
     @field_validator("vehicle_status")
     @classmethod
     def _check_status(cls, v: str) -> str:
-        if v not in _VALID_VEHICLE_STATUSES:
-            raise ValueError(f"vehicle_status must be one of {sorted(_VALID_VEHICLE_STATUSES)}")
+        if v not in vs.VALID_VEHICLE_STATUSES:
+            raise ValueError(f"vehicle_status must be one of {sorted(vs.VALID_VEHICLE_STATUSES)}")
         return v
 
     @model_validator(mode="after")

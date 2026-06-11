@@ -84,7 +84,7 @@ async def create_share_link(
         convoy_id=convoy_id,
         slug=slug,
         password_hash=password_hash,
-        scope="track",
+        scope=data.scope,
         created_by_id=current_user.id,
     )
     db.add(link)
