@@ -51,6 +51,17 @@ async def test_garbage_db_value_falls_back_to_env(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_session_hours_db_overrides_env(monkeypatch):
+    monkeypatch.setattr("app.services.demo.settings.demo_session_hours", 24)
+    assert await demo.get_demo_session_hours(_db_returning("72")) == 72
+    assert await demo.get_demo_session_hours(_db_returning(None)) == 24
+    # invalid or out-of-bounds values fall back to env
+    assert await demo.get_demo_session_hours(_db_returning("banana")) == 24
+    assert await demo.get_demo_session_hours(_db_returning("0")) == 24
+    assert await demo.get_demo_session_hours(_db_returning("99999")) == 24
+
+
+@pytest.mark.asyncio
 async def test_set_demo_enabled_upserts():
     db = _db_returning(None)
     await demo.set_demo_enabled(db, True)

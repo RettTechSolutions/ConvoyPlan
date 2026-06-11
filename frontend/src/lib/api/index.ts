@@ -157,6 +157,7 @@ export const authApi = {
 		api.post<{ status: string }>('/api/auth/password-reset', { email, org_slug }),
 	createDemoSession: () => api.post<DemoSessionResult>('/api/auth/demo-session', {}),
 	demoStatus: () => api.get<{ enabled: boolean; session_hours: number }>('/api/auth/demo-status'),
+	demoSessionInfo: () => api.get<{ expires_at: string }>('/api/auth/demo-session/info'),
 };
 
 export const mfaApi = {
@@ -459,9 +460,12 @@ export const adminApi = {
     getGithubTokenStatus: () => api.get<{ set: boolean; source: string | null }>('/api/admin/settings/github-token-set'),
     setGithubToken: (token: string) => api.put<void>('/api/admin/settings/github-token', { token }),
     getDemoSettings: () => api.get<DemoSettings>('/api/admin/settings/demo'),
-    setDemoEnabled: (enabled: boolean) => api.put<DemoSettings>('/api/admin/settings/demo', { enabled }),
+    saveDemoSettings: (enabled: boolean, session_hours?: number) =>
+        api.put<DemoSettings>('/api/admin/settings/demo', { enabled, session_hours }),
     listDemoSessions: () => api.get<DemoSessionInfo[]>('/api/admin/demo-sessions'),
     endDemoSession: (orgId: string) => api.delete(`/api/admin/demo-sessions/${orgId}`),
+    extendDemoSession: (orgId: string, hours = 24) =>
+        api.post<DemoSessionInfo>(`/api/admin/demo-sessions/${orgId}/extend`, { hours }),
     getSmtpSettings: () => api.get<SmtpConfigResponse>('/api/admin/settings/smtp'),
     saveSmtpSettings: (data: SmtpConfig) => api.put<void>('/api/admin/settings/smtp', data),
     testSmtp: () => api.post<{ status: string }>('/api/admin/settings/smtp/test', {}),

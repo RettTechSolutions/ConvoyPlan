@@ -580,6 +580,7 @@
     async function loadDemoSettings() {
         try {
             demoSettings = await adminApi.getDemoSettings();
+            demoHoursInput = demoSettings.session_hours;
         } catch { /* Abschnitt zeigt dann "Status nicht verfügbar" */ }
         try {
             demoSessions = await adminApi.listDemoSessions();
@@ -609,7 +610,7 @@
         demoSettingsError = '';
         demoSettingsSuccess = '';
         try {
-            demoSettings = await adminApi.setDemoEnabled(!demoSettings.enabled);
+            demoSettings = await adminApi.saveDemoSettings(!demoSettings.enabled);
             demoSettingsSuccess = demoSettings.enabled
                 ? 'Demo-Modus aktiviert — der Demo-Button erscheint auf der Startseite.'
                 : 'Demo-Modus deaktiviert.';
@@ -618,6 +619,46 @@
             demoSettingsError = e instanceof Error ? e.message : 'Fehler beim Speichern';
         } finally {
             demoSaving = false;
+        }
+    }
+
+    let demoHoursInput = $state(24);
+    let demoHoursSaving = $state(false);
+
+    async function saveDemoHours() {
+        if (!demoSettings) return;
+        const hours = Math.round(demoHoursInput);
+        if (!Number.isFinite(hours) || hours < 1 || hours > 720) {
+            demoSettingsError = 'Laufzeit muss zwischen 1 und 720 Stunden liegen.';
+            return;
+        }
+        demoHoursSaving = true;
+        demoSettingsError = '';
+        demoSettingsSuccess = '';
+        try {
+            demoSettings = await adminApi.saveDemoSettings(demoSettings.enabled, hours);
+            demoHoursInput = demoSettings.session_hours;
+            demoSettingsSuccess = `Laufzeit gespeichert — neue Demo-Sitzungen laufen ${hours} Stunden.`;
+            setTimeout(() => { demoSettingsSuccess = ''; }, 5000);
+        } catch (e) {
+            demoSettingsError = e instanceof Error ? e.message : 'Fehler beim Speichern';
+        } finally {
+            demoHoursSaving = false;
+        }
+    }
+
+    let extendingDemoSession = $state<string | null>(null);
+
+    async function extendDemoSession(session: DemoSessionInfo) {
+        extendingDemoSession = session.id;
+        demoSettingsError = '';
+        try {
+            const updated = await adminApi.extendDemoSession(session.id, 24);
+            demoSessions = demoSessions.map(s => s.id === updated.id ? updated : s);
+        } catch (e) {
+            demoSettingsError = e instanceof Error ? e.message : 'Fehler beim Verlängern der Demo-Sitzung';
+        } finally {
+            extendingDemoSession = null;
         }
     }
 
@@ -1990,13 +2031,34 @@
                     {demoSettings.session_hours} Stunden automatisch gelöscht wird (max. 10 Demo-Starts pro Stunde pro IP).
                 </p>
 
-                <button
-                    class={demoSettings.enabled ? 'btn-small danger' : 'btn-primary'}
-                    onclick={toggleDemo}
-                    disabled={demoSaving}
-                >
-                    {demoSaving ? '…' : demoSettings.enabled ? 'Demo-Modus deaktivieren' : 'Demo-Modus aktivieren'}
-                </button>
+                <div style="display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; margin-bottom:.75rem">
+                    <button
+                        class={demoSettings.enabled ? 'btn-small danger' : 'btn-primary'}
+                        onclick={toggleDemo}
+                        disabled={demoSaving}
+                    >
+                        {demoSaving ? '…' : demoSettings.enabled ? 'Demo-Modus deaktivieren' : 'Demo-Modus aktivieren'}
+                    </button>
+                    <span class="update-label" style="margin-left:.5rem">Laufzeit</span>
+                    <input
+                        type="number"
+                        min="1"
+                        max="720"
+                        bind:value={demoHoursInput}
+                        style="width:5rem; padding:.35rem .5rem; border:1px solid var(--border); border-radius:6px; background:var(--surface-2); color:var(--text-1)"
+                    />
+                    <span class="hint">Stunden</span>
+                    <button
+                        class="btn-small"
+                        onclick={saveDemoHours}
+                        disabled={demoHoursSaving || demoHoursInput === demoSettings.session_hours}
+                    >
+                        {demoHoursSaving ? '…' : 'Speichern'}
+                    </button>
+                </div>
+                <p class="hint" style="margin-bottom:.6rem; font-size:var(--text-xs)">
+                    Gilt für neue Demo-Sitzungen. Bestehende Sitzungen behalten ihr Ablaufdatum — einzeln verlängerbar über „+24 h".
+                </p>
 
                 <div class="section-header" style="margin-top:1.25rem">
                     <strong>Offene Demo-Sitzungen ({demoSessions.length})</strong>
@@ -2026,6 +2088,14 @@
                                     <td>{session.convoy_count}</td>
                                     <td class="actions-cell">
                                         <div>
+                                            <button
+                                                class="btn-small"
+                                                onclick={() => extendDemoSession(session)}
+                                                disabled={extendingDemoSession === session.id}
+                                                title="Ablauf um 24 Stunden verlängern"
+                                            >
+                                                {extendingDemoSession === session.id ? '…' : '+24 h'}
+                                            </button>
                                             <button
                                                 class="btn-small danger"
                                                 onclick={() => endDemoSession(session)}
