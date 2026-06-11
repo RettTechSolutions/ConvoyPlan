@@ -188,6 +188,8 @@ export const convoysApi = {
 		api.post(`/api/convoys/${id}/vehicles`, { vehicle_id: vehicleId, position, sonderfunktion, mobile_phone }),
 	removeVehicle: (id: string, vehicleId: string) =>
 		api.delete(`/api/convoys/${id}/vehicles/${vehicleId}`),
+	reorderVehicles: (id: string, items: { vehicle_id: string; position: number }[]) =>
+		api.patch<Convoy>(`/api/convoys/${id}/vehicles/reorder`, items),
 	createWaypoint: (id: string, data: Record<string, unknown>) =>
 		api.post<Waypoint>(`/api/convoys/${id}/waypoints`, data),
 	updateWaypoint: (id: string, wpId: string, data: Record<string, unknown>) =>

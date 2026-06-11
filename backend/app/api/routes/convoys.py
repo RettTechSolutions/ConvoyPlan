@@ -11,7 +11,13 @@ from app.database import get_db
 from app.models.convoy import Convoy, ConvoyVehicle
 from app.models.vehicle import Vehicle
 from app.models.waypoint import Waypoint
-from app.schemas.convoy import AddVehicleRequest, ConvoyCreate, ConvoyResponse, ConvoyUpdate
+from app.schemas.convoy import (
+    AddVehicleRequest,
+    ConvoyCreate,
+    ConvoyResponse,
+    ConvoyUpdate,
+    ConvoyVehicleReorderItem,
+)
 from app.schemas.waypoint import WaypointCreate, WaypointReorderItem, WaypointResponse, WaypointUpdate
 from app.services import audit
 from app.services import geometry as geo_svc
@@ -221,10 +227,23 @@ async def add_vehicle_to_convoy(
     if vehicle_result.scalar_one_or_none() is None:
         raise HTTPException(status_code=404, detail="Vehicle not found")
 
+    # Determine the march position server-side instead of trusting the client.
+    # The frontend used to send `convoy_vehicles.length`, which leaves a gap
+    # (and never reclaims position 0) once an earlier vehicle is removed — the
+    # reported "kein Fahrzeug kann mehr Position 1 einnehmen" bug. Appending at
+    # max(position)+1 keeps the order gap-free and intuitive.
+    existing_result = await db.execute(
+        select(ConvoyVehicle).where(ConvoyVehicle.convoy_id == convoy_id)
+    )
+    existing_cvs = existing_result.scalars().all()
+    if any(cv.vehicle_id == data.vehicle_id for cv in existing_cvs):
+        raise HTTPException(status_code=409, detail="Vehicle already in convoy")
+    next_position = max((cv.position for cv in existing_cvs), default=-1) + 1
+
     cv = ConvoyVehicle(
         convoy_id=convoy_id,
         vehicle_id=data.vehicle_id,
-        position=data.position,
+        position=next_position,
         sonderfunktion=data.sonderfunktion,
         mobile_phone=data.mobile_phone,
     )
@@ -250,7 +269,57 @@ async def remove_vehicle_from_convoy(
             ConvoyVehicle.vehicle_id == vehicle_id,
         )
     )
+    await db.flush()
+
+    # Re-compact the remaining positions to 0..n-1 so no gap is left behind
+    # (otherwise position 0 / "1." stays permanently vacant after removing the
+    # first vehicle).
+    remaining_result = await db.execute(
+        select(ConvoyVehicle)
+        .where(ConvoyVehicle.convoy_id == convoy_id)
+        .order_by(ConvoyVehicle.position)
+    )
+    for idx, cv in enumerate(remaining_result.scalars().all()):
+        cv.position = idx
     await db.commit()
+
+
+@router.patch("/{convoy_id}/vehicles/reorder", response_model=ConvoyResponse)
+async def reorder_convoy_vehicles(
+    convoy_id: uuid.UUID,
+    items: list[ConvoyVehicleReorderItem],
+    ctx: OrgCtx = Depends(get_org_context),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reorder the march sequence (Marschfolge) of vehicles in a convoy."""
+    user, org, role = ctx
+    convoy = await get_convoy_access(convoy_id, user, db, require="write", role=role)
+    if convoy.organization_id != org.id:
+        raise HTTPException(status_code=404, detail="Convoy not found")
+
+    result = await db.execute(
+        select(ConvoyVehicle).where(ConvoyVehicle.convoy_id == convoy_id)
+    )
+    by_vehicle = {cv.vehicle_id: cv for cv in result.scalars().all()}
+
+    if len(items) != len(by_vehicle):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Expected {len(by_vehicle)} vehicles, got {len(items)}",
+        )
+    if len({i.vehicle_id for i in items}) != len(items):
+        raise HTTPException(status_code=400, detail="Duplicate vehicle_id values in request")
+    if len({i.position for i in items}) != len(items):
+        raise HTTPException(status_code=400, detail="Duplicate position values in request")
+    if any(i.vehicle_id not in by_vehicle for i in items):
+        raise HTTPException(status_code=400, detail="Unknown vehicle_id in request")
+
+    for item in items:
+        by_vehicle[item.vehicle_id].position = item.position
+    await db.commit()
+
+    refreshed = await db.execute(_convoy_query_for_org(org.id).where(Convoy.id == convoy_id))
+    return _serialize_convoy(refreshed.scalar_one())
 
 
 # --- Waypoints ---
