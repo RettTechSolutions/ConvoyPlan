@@ -138,9 +138,12 @@
 	let showBefehlModal = $state(false);
 	let showShareLinkModal = $state(false);
 	let showSubConvoyForm = $state(false);
-	let newVehicle = $state({ name:'', callsign:'', license_plate:'', height_cm:'', weight_kg:'', length_cm:'', convoy_role:'', tank_capacity_l:'', fuel_consumption_l100km:'', current_fuel_l:'' });
+	function emptyVehicleForm() {
+		return { name:'', callsign:'', license_plate:'', height_cm:'', weight_kg:'', length_cm:'', convoy_role:'', propulsion:'combustion', tank_capacity_l:'', fuel_consumption_l100km:'', current_fuel_l:'', battery_capacity_kwh:'', consumption_kwh_100km:'', current_charge_kwh:'' };
+	}
+	let newVehicle = $state(emptyVehicleForm());
 	let editingVehicleId = $state<string | null>(null);
-	let editVehicleForm = $state({ name:'', callsign:'', license_plate:'', height_cm:'', weight_kg:'', length_cm:'', convoy_role:'', tank_capacity_l:'', fuel_consumption_l100km:'', current_fuel_l:'' });
+	let editVehicleForm = $state(emptyVehicleForm());
 	let newConvoy = $state(defaultConvoyForm());
 	let newWpForm = $state({ name:'', type:'waypoint', hold_duration_min:0, halt_purpose:'' });
 	let pendingWpClick = $state(false);
@@ -428,15 +431,7 @@
 		const validationError = validateVehicleForm(newVehicle);
 		if (validationError) { vehicleFormError = validationError; return; }
 		try {
-			const v = await vehiclesApi.create({
-				...newVehicle,
-				height_cm: newVehicle.height_cm ? Number(newVehicle.height_cm) : undefined,
-				weight_kg: newVehicle.weight_kg ? Number(newVehicle.weight_kg) : undefined,
-				length_cm: newVehicle.length_cm ? Number(newVehicle.length_cm) : undefined,
-				tank_capacity_l: newVehicle.tank_capacity_l ? Number(newVehicle.tank_capacity_l) : undefined,
-				fuel_consumption_l100km: newVehicle.fuel_consumption_l100km ? Number(newVehicle.fuel_consumption_l100km) : undefined,
-				current_fuel_l: newVehicle.current_fuel_l ? Number(newVehicle.current_fuel_l) : undefined,
-			} as never);
+			const v = await vehiclesApi.create(vehiclePayload(newVehicle) as never);
 			allVehicles = [...allVehicles, v];
 			dndVehicles = [...allVehicles];
 			// Optionally drop the new vehicle straight into the active convoy's
@@ -444,10 +439,33 @@
 			if (addToConvoyOnCreate && selected && !assignedIds.has(v.id)) {
 				await addVehicleToConvoy(v.id);
 			}
-			newVehicle = { name:'', callsign:'', license_plate:'', height_cm:'', weight_kg:'', length_cm:'', convoy_role:'', tank_capacity_l:'', fuel_consumption_l100km:'', current_fuel_l:'' };
+			newVehicle = emptyVehicleForm();
 			showVehicleForm = false;
 			error = '';
 		} catch (e: unknown) { vehicleFormError = e instanceof Error ? e.message : 'Fahrzeug konnte nicht erstellt werden'; }
+	}
+
+	// Build the API payload from a form, converting numeric strings and clearing
+	// the energy fields that don't apply to the chosen propulsion type.
+	function vehiclePayload(form: ReturnType<typeof emptyVehicleForm>) {
+		const num = (s: string) => (s !== '' && s != null ? Number(s) : null);
+		const electric = form.propulsion === 'electric';
+		return {
+			name: form.name,
+			callsign: form.callsign,
+			license_plate: form.license_plate,
+			height_cm: num(form.height_cm),
+			weight_kg: num(form.weight_kg),
+			length_cm: num(form.length_cm),
+			convoy_role: form.convoy_role,
+			propulsion: form.propulsion,
+			tank_capacity_l: electric ? null : num(form.tank_capacity_l),
+			fuel_consumption_l100km: electric ? null : num(form.fuel_consumption_l100km),
+			current_fuel_l: electric ? null : num(form.current_fuel_l),
+			battery_capacity_kwh: electric ? num(form.battery_capacity_kwh) : null,
+			consumption_kwh_100km: electric ? num(form.consumption_kwh_100km) : null,
+			current_charge_kwh: electric ? num(form.current_charge_kwh) : null,
+		};
 	}
 
 	function startEditVehicle(v: Vehicle) {
@@ -461,9 +479,13 @@
 			weight_kg: v.weight_kg != null ? String(v.weight_kg) : '',
 			length_cm: v.length_cm != null ? String(v.length_cm) : '',
 			convoy_role: v.convoy_role ?? '',
+			propulsion: v.propulsion ?? 'combustion',
 			tank_capacity_l: v.tank_capacity_l != null ? String(v.tank_capacity_l) : '',
 			fuel_consumption_l100km: v.fuel_consumption_l100km != null ? String(v.fuel_consumption_l100km) : '',
 			current_fuel_l: v.current_fuel_l != null ? String(v.current_fuel_l) : '',
+			battery_capacity_kwh: v.battery_capacity_kwh != null ? String(v.battery_capacity_kwh) : '',
+			consumption_kwh_100km: v.consumption_kwh_100km != null ? String(v.consumption_kwh_100km) : '',
+			current_charge_kwh: v.current_charge_kwh != null ? String(v.current_charge_kwh) : '',
 		};
 	}
 
@@ -473,15 +495,7 @@
 		const validationError = validateVehicleForm(editVehicleForm);
 		if (validationError) { vehicleFormError = validationError; return; }
 		try {
-			const updated = await vehiclesApi.update(editingVehicleId, {
-				...editVehicleForm,
-				height_cm: editVehicleForm.height_cm ? Number(editVehicleForm.height_cm) : null,
-				weight_kg: editVehicleForm.weight_kg ? Number(editVehicleForm.weight_kg) : null,
-				length_cm: editVehicleForm.length_cm ? Number(editVehicleForm.length_cm) : null,
-				tank_capacity_l: editVehicleForm.tank_capacity_l ? Number(editVehicleForm.tank_capacity_l) : null,
-				fuel_consumption_l100km: editVehicleForm.fuel_consumption_l100km ? Number(editVehicleForm.fuel_consumption_l100km) : null,
-				current_fuel_l: editVehicleForm.current_fuel_l ? Number(editVehicleForm.current_fuel_l) : null,
-			} as never);
+			const updated = await vehiclesApi.update(editingVehicleId, vehiclePayload(editVehicleForm) as never);
 			allVehicles = allVehicles.map(v => v.id === editingVehicleId ? updated : v);
 			dndVehicles = [...allVehicles];
 			editingVehicleId = null;
@@ -1101,10 +1115,11 @@
 						{#if route}
 							<p class="route-info">{((route.distance_m ?? 0) / 1000).toFixed(1)} km · {formatDuration(route.duration_s)}</p>
 							{#if route.fuel_analysis?.fuel_stop_needed && !fuelStopExists}
+								{@const evStop = route.fuel_analysis.limiting_propulsion === 'electric'}
 								<div class="fuel-warning">
-									<p class="fuel-rec-title">⛽ Tankstopp empfohlen</p>
+									<p class="fuel-rec-title">{evStop ? '🔌 Ladestopp empfohlen' : '⛽ Tankstopp empfohlen'}</p>
 									<p class="fuel-detail">
-										<strong>{route.fuel_analysis.limiting_vehicle}</strong> erreicht das Ziel nicht ohne Tanken:
+										<strong>{route.fuel_analysis.limiting_vehicle}</strong> erreicht das Ziel nicht ohne {evStop ? 'Nachladen' : 'Tanken'}:
 										Reichweite <strong>{route.fuel_analysis.min_range_km} km</strong>,
 										Routenlänge <strong>{route.fuel_analysis.route_distance_km} km</strong>.
 									</p>
@@ -1224,9 +1239,21 @@
 								<input placeholder="Länge (cm)" type="number" min="100" max="3000" bind:value={newVehicle.length_cm} />
 								<input placeholder="Funktion im Konvoi" bind:value={newVehicle.convoy_role} />
 								<hr style="border-color:rgba(255,255,255,.15);margin:.2rem 0" />
-								<input placeholder="Tankvolumen (Liter)" type="number" step="0.1" min="0" bind:value={newVehicle.tank_capacity_l} />
-								<input placeholder="Verbrauch (l/100 km)" type="number" step="0.1" min="0" bind:value={newVehicle.fuel_consumption_l100km} />
-								<input placeholder="Aktueller Füllstand (Liter)" type="number" step="0.1" min="0" bind:value={newVehicle.current_fuel_l} />
+								<label class="field-label">Antriebsart
+									<select bind:value={newVehicle.propulsion}>
+										<option value="combustion">⛽ Verbrenner</option>
+										<option value="electric">🔋 Elektro</option>
+									</select>
+								</label>
+								{#if newVehicle.propulsion === 'electric'}
+									<input placeholder="Akkukapazität (kWh)" type="number" step="0.1" min="0" bind:value={newVehicle.battery_capacity_kwh} />
+									<input placeholder="Verbrauch (kWh/100 km)" type="number" step="0.1" min="0" bind:value={newVehicle.consumption_kwh_100km} />
+									<input placeholder="Aktueller Ladestand (kWh)" type="number" step="0.1" min="0" bind:value={newVehicle.current_charge_kwh} />
+								{:else}
+									<input placeholder="Tankvolumen (Liter)" type="number" step="0.1" min="0" bind:value={newVehicle.tank_capacity_l} />
+									<input placeholder="Verbrauch (l/100 km)" type="number" step="0.1" min="0" bind:value={newVehicle.fuel_consumption_l100km} />
+									<input placeholder="Aktueller Füllstand (Liter)" type="number" step="0.1" min="0" bind:value={newVehicle.current_fuel_l} />
+								{/if}
 								{#if selected}
 									<label class="checkbox-row">
 										<input type="checkbox" bind:checked={addToConvoyOnCreate} />
@@ -1255,9 +1282,21 @@
 											<input placeholder="Länge (cm)" type="number" bind:value={editVehicleForm.length_cm} />
 											<input placeholder="Funktion im Konvoi" bind:value={editVehicleForm.convoy_role} />
 											<hr style="border-color:rgba(255,255,255,.15);margin:.2rem 0" />
-											<input placeholder="Tankvolumen (Liter)" type="number" step="0.1" min="0" bind:value={editVehicleForm.tank_capacity_l} />
-											<input placeholder="Verbrauch (l/100 km)" type="number" step="0.1" min="0" bind:value={editVehicleForm.fuel_consumption_l100km} />
-											<input placeholder="Aktueller Füllstand (Liter)" type="number" step="0.1" min="0" bind:value={editVehicleForm.current_fuel_l} />
+											<label class="field-label">Antriebsart
+												<select bind:value={editVehicleForm.propulsion}>
+													<option value="combustion">⛽ Verbrenner</option>
+													<option value="electric">🔋 Elektro</option>
+												</select>
+											</label>
+											{#if editVehicleForm.propulsion === 'electric'}
+												<input placeholder="Akkukapazität (kWh)" type="number" step="0.1" min="0" bind:value={editVehicleForm.battery_capacity_kwh} />
+												<input placeholder="Verbrauch (kWh/100 km)" type="number" step="0.1" min="0" bind:value={editVehicleForm.consumption_kwh_100km} />
+												<input placeholder="Aktueller Ladestand (kWh)" type="number" step="0.1" min="0" bind:value={editVehicleForm.current_charge_kwh} />
+											{:else}
+												<input placeholder="Tankvolumen (Liter)" type="number" step="0.1" min="0" bind:value={editVehicleForm.tank_capacity_l} />
+												<input placeholder="Verbrauch (l/100 km)" type="number" step="0.1" min="0" bind:value={editVehicleForm.fuel_consumption_l100km} />
+												<input placeholder="Aktueller Füllstand (Liter)" type="number" step="0.1" min="0" bind:value={editVehicleForm.current_fuel_l} />
+											{/if}
 											<div style="display:flex;gap:.4rem">
 												<button type="submit" style="flex:1">Speichern</button>
 												<button type="button" class="btn-small danger" onclick={() => editingVehicleId = null}>Abbrechen</button>
@@ -1269,8 +1308,9 @@
 												<strong>{v.name}</strong>
 												{#if v.callsign}<span class="tag">{v.callsign}</span>{/if}
 												{#if v.license_plate}<span class="tag">{v.license_plate}</span>{/if}
+												{#if v.propulsion === 'electric'}<span class="tag ev-tag" title="Elektrofahrzeug">🔋 E</span>{/if}
 												{#if v.range_km != null}
-													<span class="tag" class:fuel-tag={!v.range_uses_defaults} class:fuel-tag-default={v.range_uses_defaults} title={v.range_uses_defaults ? 'Reichweite basiert auf Standardwerten (7,5 l/100km, 70 l)' : ''}>⛽ {v.range_uses_defaults ? '~' : ''}{v.range_km} km</span>
+													<span class="tag" class:fuel-tag={!v.range_uses_defaults} class:fuel-tag-default={v.range_uses_defaults} title={v.range_uses_defaults ? (v.propulsion === 'electric' ? 'Reichweite basiert auf Standardwerten (20 kWh/100km, 60 kWh)' : 'Reichweite basiert auf Standardwerten (7,5 l/100km, 70 l)') : ''}>{v.propulsion === 'electric' ? '🔌' : '⛽'} {v.range_uses_defaults ? '~' : ''}{v.range_km} km</span>
 												{/if}
 											</div>
 											<div style="display:flex;gap:.3rem;align-items:center">
@@ -2309,4 +2349,5 @@
 	.demo-restrict-note { font-size: var(--text-sm); color: var(--text-2); background: var(--surface-2); border-radius: 6px; padding: .75rem; line-height: 1.5; }
 	.demo-restrict-note a { color: var(--accent, #3498db); font-weight: 600; text-decoration: none; display: inline-block; margin-top: .35rem; }
 	.demo-restrict-note a:hover { text-decoration: underline; }
+	.ev-tag { background: #16a34a; color: #fff; }
 </style>

@@ -60,6 +60,9 @@ def interpolate_along_route(coords: list[list[float]], target_m: float) -> dict[
 
 DEFAULT_CONSUMPTION_L100KM = 7.5
 DEFAULT_TANK_L = 70.0
+# E-Fahrzeug-Standardwerte (mittlerer Verbrauch / Akkukapazität)
+DEFAULT_CONSUMPTION_KWH_100KM = 20.0
+DEFAULT_BATTERY_KWH = 60.0
 TECH_STOP_MINUTES_PER_3_VEHICLES = 15
 
 # Technischer Halt rules (THW/Johanniter/DRK standard)
@@ -141,16 +144,23 @@ def analyse_fuel(
     ranges = []
     for cv in convoy_vehicles:
         v = cv.vehicle
-        fuel = v.current_fuel_l if v.current_fuel_l is not None else v.tank_capacity_l
-        cons = v.fuel_consumption_l100km
+        electric = getattr(v, "propulsion", "combustion") == "electric"
+        if electric:
+            energy = v.current_charge_kwh if v.current_charge_kwh is not None else v.battery_capacity_kwh
+            cons = v.consumption_kwh_100km
+            default_energy, default_cons = DEFAULT_BATTERY_KWH, DEFAULT_CONSUMPTION_KWH_100KM
+        else:
+            energy = v.current_fuel_l if v.current_fuel_l is not None else v.tank_capacity_l
+            cons = v.fuel_consumption_l100km
+            default_energy, default_cons = DEFAULT_TANK_L, DEFAULT_CONSUMPTION_L100KM
 
-        if fuel and cons and cons > 0:
-            range_km = round((fuel / cons) * 100, 1)
+        if energy and cons and cons > 0:
+            range_km = round((energy / cons) * 100, 1)
             using_defaults = False
         else:
-            eff_fuel = fuel if fuel else DEFAULT_TANK_L
-            eff_cons = cons if (cons and cons > 0) else DEFAULT_CONSUMPTION_L100KM
-            range_km = round((eff_fuel / eff_cons) * 100, 1)
+            eff_energy = energy if energy else default_energy
+            eff_cons = cons if (cons and cons > 0) else default_cons
+            range_km = round((eff_energy / eff_cons) * 100, 1)
             using_defaults = True
 
         ranges.append({
@@ -158,6 +168,7 @@ def analyse_fuel(
             "callsign": v.callsign,
             "range_km": range_km,
             "using_defaults": using_defaults,
+            "propulsion": "electric" if electric else "combustion",
         })
 
     base = {
@@ -201,6 +212,9 @@ def analyse_fuel(
         "fuel_stop_km": stop_km,
         "fuel_stop_position": stop_pos,
         "limiting_vehicle": limiting_label,
+        # Antriebsart des limitierenden Fahrzeugs, damit das Frontend zwischen
+        # „Tankstopp" und „Ladestopp" unterscheiden kann.
+        "limiting_propulsion": limiting.get("propulsion", "combustion"),
         "has_default_values": default_count > 0,
         "vehicles_without_data": default_count,
         "recommended_stop_duration_min": stop_duration,

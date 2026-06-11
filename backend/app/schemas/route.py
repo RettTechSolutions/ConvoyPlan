@@ -14,6 +14,7 @@ class VehicleRangeInfo(BaseModel):
     callsign: str | None
     range_km: float
     using_defaults: bool = False
+    propulsion: str = "combustion"
 
 
 class DurationHalt(BaseModel):
@@ -31,6 +32,7 @@ class FuelAnalysis(BaseModel):
     fuel_stop_km: float | None
     fuel_stop_position: FuelStopPosition | None
     limiting_vehicle: str | None
+    limiting_propulsion: str = "combustion"
     has_default_values: bool = False
     vehicles_without_data: int = 0
     recommended_stop_duration_min: int | None = None

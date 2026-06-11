@@ -50,6 +50,17 @@ export function printConsoleBanner(): void {
 	}
 	console.groupEnd();
 
+	// ── Easter Egg: Dankeschön ──────────────────────────────────────────
+	// Kleines verstecktes Dankeschön für die Tester & Unterstützer, das nur
+	// neugierige Webentwickler in der Konsole finden.
+	console.log(
+		'\n%c☕ %cDanke, David!%c\nFür dein ausführliches Feedback, dein Auge fürs Detail\nund die Unterstützung beim Feinschliff von ConvoyPlan.\n%c— made with ❤ by the ConvoyPlan-Team',
+		'font-size:1.2em;',
+		'color:#E23D28; font-weight:bold; font-size:1.1em;',
+		'color:inherit;',
+		'color:#888; font-style:italic;'
+	);
+
 	// Backend-Infos asynchron nachreichen, sobald verfügbar (non-blocking)
 	fetch('/api/version')
 		.then((r) => (r.ok ? r.json() : null))

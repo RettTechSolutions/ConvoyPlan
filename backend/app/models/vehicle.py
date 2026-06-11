@@ -17,10 +17,16 @@ class Vehicle(Base):
     weight_kg: Mapped[int | None] = mapped_column(Integer)
     length_cm: Mapped[int | None] = mapped_column(Integer)
     convoy_role: Mapped[str | None] = mapped_column(String(50))
-    # Kraftstoff
+    # Antriebsart: "combustion" (Verbrenner) oder "electric" (E-Fahrzeug)
+    propulsion: Mapped[str] = mapped_column(String(20), default="combustion", server_default="combustion")
+    # Kraftstoff (Verbrenner)
     tank_capacity_l: Mapped[float | None] = mapped_column(Float, nullable=True)
     fuel_consumption_l100km: Mapped[float | None] = mapped_column(Float, nullable=True)
     current_fuel_l: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Akku (E-Fahrzeug)
+    battery_capacity_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
+    consumption_kwh_100km: Mapped[float | None] = mapped_column(Float, nullable=True)
+    current_charge_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
     order_index: Mapped[int] = mapped_column(Integer, default=0)
     owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     # Direct org scoping — prevents vehicles from leaking across orgs when a user is member of multiple orgs

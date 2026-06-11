@@ -478,7 +478,8 @@ async def export_json(
     ]
     vehicles = [
         {"name": cv.vehicle.name, "callsign": cv.vehicle.callsign,
-         "license_plate": cv.vehicle.license_plate, "position": cv.position}
+         "license_plate": cv.vehicle.license_plate, "position": cv.position,
+         "propulsion": getattr(cv.vehicle, "propulsion", "combustion")}
         for cv in convoy.convoy_vehicles
     ]
     json_content = export_svc.build_json_export(convoy, waypoints, vehicles)

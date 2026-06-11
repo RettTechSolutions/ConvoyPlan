@@ -7,15 +7,19 @@ export interface Point { lat: number; lon: number }
 // convoys; the backend maps them to 'standard'.
 export type RoadPreference = 'standard' | 'schnell' | 'kuerzeste' | 'bundesstrasse' | 'landstrasse';
 
+export type Propulsion = 'combustion' | 'electric';
+
 export interface Vehicle {
 	id: string; name: string; callsign: string | null; license_plate: string | null;
 	height_cm: number | null; weight_kg: number | null; length_cm: number | null; convoy_role: string | null;
-	tank_capacity_l: number | null; fuel_consumption_l100km: number | null;
-	current_fuel_l: number | null; order_index: number; range_km: number | null; range_uses_defaults: boolean;
+	propulsion: Propulsion;
+	tank_capacity_l: number | null; fuel_consumption_l100km: number | null; current_fuel_l: number | null;
+	battery_capacity_kwh: number | null; consumption_kwh_100km: number | null; current_charge_kwh: number | null;
+	order_index: number; range_km: number | null; range_uses_defaults: boolean;
 }
 
 export interface FuelStopPosition { lat: number; lon: number; }
-export interface VehicleRangeInfo { name: string; callsign: string | null; range_km: number; using_defaults: boolean; }
+export interface VehicleRangeInfo { name: string; callsign: string | null; range_km: number; using_defaults: boolean; propulsion?: Propulsion; }
 export interface DurationHalt {
 	stop_km: number;
 	stop_position: FuelStopPosition | null;
@@ -30,6 +34,7 @@ export interface FuelAnalysis {
 	fuel_stop_km: number | null;
 	fuel_stop_position: FuelStopPosition | null;
 	limiting_vehicle: string | null;
+	limiting_propulsion?: Propulsion;
 	has_default_values: boolean;
 	vehicles_without_data: number;
 	recommended_stop_duration_min: number | null;
