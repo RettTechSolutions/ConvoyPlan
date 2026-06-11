@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from sqlalchemy import select, delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -14,6 +14,7 @@ from app.api.guards import get_convoy_access
 from app.database import get_db, AsyncSessionLocal
 from app.models.convoy import ConvoyVehicle
 from app.models.user import User
+from app.models.vehicle import Vehicle
 from app.models.vehicle_position import VehiclePosition
 from app.services.tracking import tracking_manager
 
@@ -44,11 +45,20 @@ class PositionUpdate(BaseModel):
         return v
 
 
-_VALID_VEHICLE_STATUSES = {"planned", "en_route", "arrived", "delayed"}
+_VALID_VEHICLE_STATUSES = {"planned", "en_route", "arrived", "technical_halt", "breakdown"}
+# Allowed sub-levels per status. Statuses not listed must not carry a level.
+_VALID_STATUS_LEVELS = {
+    "technical_halt": {"standard", "dringend", "sehr_dringend"},
+    "breakdown": {"total", "limited"},
+}
+# Statuses that trigger an in-app alert to the convoy leadership / all clients.
+_ALERT_STATUSES = {"technical_halt", "breakdown"}
 
 
 class VehicleStatusUpdate(BaseModel):
     vehicle_status: str
+    status_level: str | None = None
+    status_note: str | None = Field(None, max_length=200)
 
     @field_validator("vehicle_status")
     @classmethod
@@ -56,6 +66,16 @@ class VehicleStatusUpdate(BaseModel):
         if v not in _VALID_VEHICLE_STATUSES:
             raise ValueError(f"vehicle_status must be one of {sorted(_VALID_VEHICLE_STATUSES)}")
         return v
+
+    @model_validator(mode="after")
+    def _check_level(self) -> "VehicleStatusUpdate":
+        allowed = _VALID_STATUS_LEVELS.get(self.vehicle_status)
+        if allowed is None:
+            # Status without sub-levels — drop any stray level.
+            self.status_level = None
+        elif self.status_level is not None and self.status_level not in allowed:
+            raise ValueError(f"status_level for {self.vehicle_status} must be one of {sorted(allowed)}")
+        return self
 
 
 @router.get("/convoys/{convoy_id}/positions")
@@ -149,13 +169,36 @@ async def update_vehicle_status(
     if not cv:
         raise HTTPException(status_code=404, detail="Fahrzeug nicht im Verband")
     cv.vehicle_status = data.vehicle_status
+    cv.status_level = data.status_level
+    cv.status_note = data.status_note
+    cv.status_changed_at = datetime.now(timezone.utc)
     await db.commit()
 
     await tracking_manager.broadcast(str(convoy_id), {
         "type": "status_update",
         "vehicle_id": str(vehicle_id),
         "vehicle_status": data.vehicle_status,
+        "status_level": data.status_level,
+        "status_note": data.status_note,
     })
+
+    # Technische Halte und Ausfälle lösen einen In-App-Alarm aus, damit die
+    # Konvoiführung (und bei Ausfall alle) sofort informiert sind.
+    if data.vehicle_status in _ALERT_STATUSES:
+        # Klartext-Bezeichnung des anfordernden Fahrzeugs für die Meldung.
+        vehicle = await db.get(Vehicle, vehicle_id)
+        vehicle_label = None
+        if vehicle:
+            vehicle_label = vehicle.callsign or vehicle.name
+        await tracking_manager.broadcast(str(convoy_id), {
+            "type": "alert",
+            "alert_type": data.vehicle_status,
+            "vehicle_id": str(vehicle_id),
+            "vehicle_label": vehicle_label,
+            "level": data.status_level,
+            "note": data.status_note,
+            "ts": cv.status_changed_at.isoformat(),
+        })
     return {"status": "ok"}
 
 

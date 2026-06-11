@@ -26,6 +26,10 @@
 		onFollowEnd?: () => void;
 		/** Optional vehicle id → display name map for live marker labels */
 		vehicleNames?: Map<string, string>;
+		/** Optional vehicle id → marker color (status color). Defaults to red. */
+		vehicleColors?: Map<string, string>;
+		/** Heading-up: rotate the map so the followed vehicle's heading points up. */
+		headingUp?: boolean;
 	}
 
 	let {
@@ -42,7 +46,11 @@
 		followVehicleId = null,
 		onFollowEnd,
 		vehicleNames = new Map(),
+		vehicleColors = new Map(),
+		headingUp = false,
 	}: Props = $props();
+
+	const DEFAULT_MARKER_COLOR = '#e74c3c';
 
 	/** Zoom level the map locks to when following a vehicle. */
 	const FOLLOW_ZOOM = 15;
@@ -58,10 +66,25 @@
 	interface LiveMarker {
 		marker: maplibregl.Marker;
 		arrow: HTMLDivElement | null;
+		svg: SVGPolygonElement | null;
 		hasHeading: boolean;
+		heading: number;
 		label: string | undefined;
+		color: string;
 	}
 	let trackingMarkers = new Map<string, LiveMarker>();
+
+	/**
+	 * Rotate an arrow marker so it points along the vehicle's true heading,
+	 * compensating for the current map bearing — i.e. the arrow always shows the
+	 * real driving direction even when the map itself is rotated. The label flag
+	 * stays screen-upright because only the inner arrow element is rotated.
+	 */
+	function applyArrowRotation(lm: LiveMarker) {
+		if (!lm.arrow || !lm.hasHeading) return;
+		const bearing = map ? map.getBearing() : 0;
+		lm.arrow.style.transform = `rotate(${lm.heading - bearing}deg)`;
+	}
 
 	onMount(() => {
 		map = new maplibregl.Map({
@@ -103,6 +126,9 @@
 			const c = map.getCenter();
 			onMapMove?.(c.lat, c.lng);
 		});
+
+		// Keep arrow markers pointing along the true heading while the map rotates.
+		map.on('rotate', () => trackingMarkers.forEach(applyArrowRotation));
 
 		// A manual pan releases the follow lock. `dragstart` only fires for real
 		// user gestures (originalEvent set); our own easeTo/flyTo do not trigger it,
@@ -197,23 +223,28 @@
 	 * returned so the rotation can be updated in place on later positions; the
 	 * marker is only rebuilt when its kind (arrow vs dot) or label changes.
 	 */
-	function makeLiveMarker(pos: VehiclePosition, label?: string): LiveMarker {
+	function makeLiveMarker(pos: VehiclePosition, label?: string, color = DEFAULT_MARKER_COLOR): LiveMarker {
 		const hasHeading = pos.heading != null;
+		const heading = pos.heading ?? 0;
 		let arrow: HTMLDivElement | null = null;
+		let svg: SVGPolygonElement | null = null;
 		let el: HTMLDivElement;
 		if (hasHeading) {
 			el = document.createElement('div');
 			el.style.cssText = 'cursor:pointer';
 			arrow = document.createElement('div');
-			arrow.style.cssText = `width:38px;height:38px;transform:rotate(${pos.heading}deg);filter:drop-shadow(0 2px 4px rgba(0,0,0,.55));`;
-			arrow.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 38 38" width="38" height="38"><polygon points="19,4 31,32 19,25 7,32" fill="#e74c3c" stroke="white" stroke-width="2.5" stroke-linejoin="round"/></svg>`;
+			arrow.style.cssText = `width:38px;height:38px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.55));`;
+			arrow.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 38 38" width="38" height="38"><polygon points="19,4 31,32 19,25 7,32" fill="${color}" stroke="white" stroke-width="2.5" stroke-linejoin="round"/></svg>`;
+			svg = arrow.querySelector('polygon');
 			el.appendChild(arrow);
 		} else {
 			el = document.createElement('div');
-			el.style.cssText = 'width:18px;height:18px;border-radius:50%;background:#f1c40f;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.4);cursor:pointer';
+			el.style.cssText = `width:18px;height:18px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.4);cursor:pointer`;
 		}
 		if (label) el.appendChild(labelEl(label));
-		return { marker: new maplibregl.Marker({ element: el }), arrow, hasHeading, label };
+		const lm: LiveMarker = { marker: new maplibregl.Marker({ element: el }), arrow, svg, hasHeading, heading, label, color };
+		applyArrowRotation(lm);
+		return lm;
 	}
 
 	function flyToPosition(pos: VehiclePosition) {
@@ -238,6 +269,11 @@
 	/** Fit the whole route into view again (used by the "Route" button). */
 	export function showRoute() {
 		fitRoute();
+	}
+
+	/** Reset the map orientation to north-up (and level). */
+	export function resetNorth() {
+		map?.easeTo({ bearing: 0, pitch: 0, duration: 400 });
 	}
 
 	// Start marker
@@ -304,22 +340,31 @@
 		livePositions.forEach((pos, vehicleId) => {
 			seen.add(vehicleId);
 			const label = vehicleNames.get(vehicleId);
+			const color = vehicleColors.get(vehicleId) ?? DEFAULT_MARKER_COLOR;
 			const hasHeading = pos.heading != null;
 			const existing = trackingMarkers.get(vehicleId);
-			// Reuse the marker when its kind and label are unchanged — just move it
-			// and update the heading rotation. Rebuild when the kind flips (a dot
-			// gains a heading) or the label arrives (the convoy names often load
+			// Reuse the marker when its kind and label are unchanged — just move it,
+			// recolor it and update the heading rotation. Rebuild when the kind flips
+			// (a dot gains a heading) or the label arrives (the convoy names often load
 			// after the first position on a fresh page load / reconnect).
 			if (existing && existing.hasHeading === hasHeading && existing.label === label) {
 				existing.marker.setLngLat([pos.lon, pos.lat]);
-				if (hasHeading && existing.arrow) existing.arrow.style.transform = `rotate(${pos.heading}deg)`;
+				if (existing.color !== color) {
+					existing.color = color;
+					if (existing.svg) existing.svg.setAttribute('fill', color);
+					else existing.marker.getElement().style.background = color;
+				}
+				if (hasHeading) {
+					existing.heading = pos.heading ?? existing.heading;
+					applyArrowRotation(existing);
+				}
 			} else {
 	      existing?.marker.remove();
-	      const lm = makeLiveMarker(pos, label);
+	      const lm = makeLiveMarker(pos, label, color);
 	      lm.marker
 		      .setLngLat([pos.lon, pos.lat])
 		      .setPopup(new maplibregl.Popup().setDOMContent(
-			      popupNode(`${vehicleId.slice(0, 8)}…`, `${pos.speed_kmh?.toFixed(0) ?? '–'} km/h`)
+			      popupNode(label ?? `${vehicleId.slice(0, 8)}…`, `${pos.speed_kmh?.toFixed(0) ?? '–'} km/h`)
           ))
 		      .addTo(map);
 	      trackingMarkers.set(vehicleId, lm);
@@ -332,20 +377,30 @@
 
 		// Follow lock: keep the followed vehicle centered as new positions arrive.
 		// Locking on (following changed) zooms in once; afterwards we only re-center,
-		// preserving whatever zoom the user has chosen meanwhile.
+		// preserving whatever zoom the user has chosen meanwhile. In heading-up mode
+		// the map bearing tracks the vehicle heading so the route ahead points up.
 		if (followVehicleId) {
 			const pos = livePositions.get(followVehicleId);
 			if (pos) {
+				const bearing = headingUp && pos.heading != null ? pos.heading : undefined;
 				if (following !== followVehicleId) {
 					following = followVehicleId;
-					map.flyTo({ center: [pos.lon, pos.lat], zoom: FOLLOW_ZOOM, duration: 800 });
+					map.flyTo({ center: [pos.lon, pos.lat], zoom: FOLLOW_ZOOM, bearing, duration: 800 });
 				} else {
-					map.easeTo({ center: [pos.lon, pos.lat], duration: 600 });
+					map.easeTo({ center: [pos.lon, pos.lat], bearing, duration: 600 });
 				}
 			}
 		} else {
 			following = null;
 		}
+	});
+
+	// Leaving heading-up mode snaps the map back to north so it isn't left tilted.
+	let prevHeadingUp = false;
+	$effect(() => {
+		if (!map) return;
+		if (prevHeadingUp && !headingUp) map.easeTo({ bearing: 0, duration: 400 });
+		prevHeadingUp = headingUp;
 	});
 
 	// Zoom once to the focused vehicle as soon as a position is available for it.

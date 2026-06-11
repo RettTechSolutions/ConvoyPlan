@@ -6,6 +6,14 @@ All notable changes to ConvoyPlan are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- **Live-Tracking: überarbeitete Fahrzeug-Stati & eigener „Status"-Reiter.** Die Kurz-Stati zur Kommunikation zwischen Fahrzeugen und Konvoiführung liegen jetzt in einem eigenen Reiter „Status" (neben „Fahrzeuge" und „Zeitplan"). Neue Statuswerte mit fester Farbcodierung: **Geplant** (grau, Standard), **Unterwegs** (blau – wird automatisch gesetzt, sobald ein Fahrzeug gewählt wird bzw. sendet), **Angekommen** (grün – automatisch beim Eintreffen im Zielradius oder manuell), **Technischer Halt** (gelb – mit Dringlichkeit Standard/Dringend/Sehr dringend) und **Ausfall/Technische Störung** (rot – Stufen „Totalausfall, sofort halten" und „eingeschränkt, in Sicherheit fahren"). Die Fahrzeug-Kennzeichnung in der Liste bleibt erhalten, spiegelt aber die neuen Status-Farben wider; auch die Kartenmarker färben sich entsprechend. Migration `0025`.
+- **In-App-Alarm bei Technischem Halt & Ausfall.** Fordert ein Fahrzeug einen technischen Halt an oder meldet einen Ausfall, erhalten alle verbundenen Tracking-Clients (insb. die Konvoiführung) sofort einen Alarm-Banner mit Fahrzeug, Dringlichkeit/Schweregrad und optionalem Grund – inklusive Signalton und Vibration. Im „Status"-Reiter werden die Meldungen gesammelt und können quittiert werden.
+- **Drehbare Karte & Fahrtrichtungs-Pfeile.** Die Karte lässt sich frei drehen; ein „Norden"-Knopf richtet sie wieder nach Norden aus, „Fahrtrichtung" dreht die Karte beim Verfolgen des eigenen Fahrzeugs in Fahrtrichtung (Heading-up). Die Fahrzeug-Pfeile zeigen jetzt die echte Fahrtrichtung – auch bei gedrehter Karte – statt fest an einer Himmelsrichtung zu kleben.
+- **Zeitplan mit Verspätungs-Prognose.** Der Zeitplan-Reiter schätzt aus der Position des vordersten Fahrzeugs entlang der Route die aktuelle Verspätung des Konvois und zeigt je Wegpunkt eine Live-Prognose (pünktlich / +X Min / Vorsprung).
+- **Querformat & einklappbares Seitenmenü.** Auf Handys und Tablets greift der einklappbare Menü-Modus jetzt auch im Querformat; zusätzlich lässt sich das Seitenmenü auf Desktop/Tablet zu einer schmalen Leiste einklappen, um die Karte zu maximieren.
+
 ---
 
 ## [1.0.0] – 2026-06-09
