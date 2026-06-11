@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -20,6 +21,7 @@ from app.models.convoy import Convoy, ConvoyVehicle
 from app.services.rate_limit import rate_limit, register_failure
 from app.models.route import Route
 from app.models.share_link import ConvoyShareLink
+from app.models.vehicle import Vehicle
 from app.models.vehicle_position import VehiclePosition
 from app.schemas.share_link import (
     TrackAuthRequest,
@@ -32,6 +34,7 @@ from app.schemas.share_link import (
 )
 from app.services import geometry as geo_svc
 from app.services import share_links as share_links_svc
+from app.services import vehicle_status as vs
 from app.services.tracking import tracking_manager
 
 logger = logging.getLogger(__name__)
@@ -61,7 +64,7 @@ async def _bump_access(db: AsyncSession, link_id: uuid.UUID) -> None:
     await db.commit()
 
 
-async def _build_payload(convoy_id: uuid.UUID, db: AsyncSession) -> TrackPublic:
+async def _build_payload(convoy_id: uuid.UUID, db: AsyncSession, scope: str = "track") -> TrackPublic:
     convoy_result = await db.execute(
         select(Convoy)
         .where(Convoy.id == convoy_id)
@@ -121,6 +124,7 @@ async def _build_payload(convoy_id: uuid.UUID, db: AsyncSession) -> TrackPublic:
         name=convoy.name,
         organization=convoy.organization,
         start_time=convoy.start_time,
+        scope=scope,
         waypoints=waypoints,
         geojson=geo_svc.linestring_to_geojson(route.geometry) if route else None,
         vehicles=vehicles,
@@ -145,7 +149,7 @@ async def get_track(
             convoy_name = convoy_result.scalar_one_or_none() or ""
             return TrackGate(requires_password=True, convoy_name=convoy_name)
 
-    payload = await _build_payload(link.convoy_id, db)
+    payload = await _build_payload(link.convoy_id, db, scope=link.scope)
     await _bump_access(db, link.id)
     return payload
 
@@ -171,6 +175,103 @@ async def auth_track(
     return TrackAuthResponse(token=share_links_svc.issue_session_token(slug))
 
 
+async def _ingest_driver_position(convoy_uuid: uuid.UUID, msg: dict) -> None:
+    """Persist + broadcast a position sent by a "driver" share-link holder.
+
+    Authorization happens at connect time (slug + scope + optional password);
+    the vehicle must belong to the convoy. On the first movement a vehicle that
+    is still "planned" is auto-advanced to "en_route", mirroring the authed app.
+    """
+    try:
+        vehicle_id = uuid.UUID(str(msg.get("vehicle_id")))
+        lat = float(msg["lat"])
+        lon = float(msg["lon"])
+    except (KeyError, TypeError, ValueError):
+        return
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return
+    speed = msg.get("speed_kmh")
+    heading = msg.get("heading")
+    speed = float(speed) if isinstance(speed, (int, float)) else None
+    heading = float(heading) if isinstance(heading, (int, float)) else None
+    if heading is not None and not (0 <= heading < 360):
+        heading = None
+
+    async with AsyncSessionLocal() as db:
+        cv = await db.get(ConvoyVehicle, (convoy_uuid, vehicle_id))
+        if cv is None:
+            return  # vehicle is not part of this convoy → ignore
+        stmt = (
+            pg_insert(VehiclePosition)
+            .values(
+                convoy_id=convoy_uuid, vehicle_id=vehicle_id, lat=lat, lon=lon,
+                speed_kmh=speed, heading=heading, recorded_at=datetime.now(timezone.utc),
+            )
+            .on_conflict_do_update(
+                index_elements=["convoy_id", "vehicle_id"],
+                set_={"lat": lat, "lon": lon, "speed_kmh": speed, "heading": heading,
+                      "recorded_at": datetime.now(timezone.utc)},
+            )
+        )
+        await db.execute(stmt)
+        auto_status = None
+        if cv.vehicle_status == "planned":
+            cv.vehicle_status = "en_route"
+            cv.status_changed_at = datetime.now(timezone.utc)
+            auto_status = "en_route"
+        await db.commit()
+
+    await tracking_manager.broadcast(str(convoy_uuid), {
+        "type": "position", "vehicle_id": str(vehicle_id),
+        "lat": lat, "lon": lon, "speed_kmh": speed, "heading": heading,
+    })
+    if auto_status:
+        await tracking_manager.broadcast(str(convoy_uuid), {
+            "type": "status_update", "vehicle_id": str(vehicle_id),
+            "vehicle_status": auto_status, "status_level": None, "status_note": None,
+        })
+
+
+async def _ingest_driver_status(convoy_uuid: uuid.UUID, msg: dict) -> None:
+    """Persist + broadcast a status change sent by a "driver" share-link holder."""
+    try:
+        vehicle_id = uuid.UUID(str(msg.get("vehicle_id")))
+        status = str(msg["vehicle_status"])
+    except (KeyError, TypeError, ValueError):
+        return
+    if status not in vs.VALID_VEHICLE_STATUSES:
+        return
+    try:
+        level = vs.normalize_level(status, msg.get("status_level"))
+    except ValueError:
+        return
+    note = msg.get("status_note")
+    note = str(note)[:200] if isinstance(note, str) and note.strip() else None
+
+    async with AsyncSessionLocal() as db:
+        cv = await db.get(ConvoyVehicle, (convoy_uuid, vehicle_id))
+        if cv is None:
+            return
+        cv.vehicle_status = status
+        cv.status_level = level
+        cv.status_note = note
+        cv.status_changed_at = datetime.now(timezone.utc)
+        await db.commit()
+        ts = cv.status_changed_at.isoformat()
+        vehicle = await db.get(Vehicle, vehicle_id)
+        vehicle_label = (vehicle.callsign or vehicle.name) if vehicle else None
+
+    await tracking_manager.broadcast(str(convoy_uuid), {
+        "type": "status_update", "vehicle_id": str(vehicle_id),
+        "vehicle_status": status, "status_level": level, "status_note": note,
+    })
+    if status in vs.ALERT_STATUSES:
+        await tracking_manager.broadcast(str(convoy_uuid), {
+            "type": "alert", "alert_type": status, "vehicle_id": str(vehicle_id),
+            "vehicle_label": vehicle_label, "level": level, "note": note, "ts": ts,
+        })
+
+
 @ws_router.websocket("/{slug}")
 async def track_ws(slug: str, ws: WebSocket, token: str | None = Query(default=None)):
     async with AsyncSessionLocal() as db:
@@ -187,12 +288,20 @@ async def track_ws(slug: str, ws: WebSocket, token: str | None = Query(default=N
                 await ws.close(code=4001)
                 return
         convoy_id = str(link.convoy_id)
+        convoy_uuid = link.convoy_id
+        is_driver = link.scope == "driver"
 
     await tracking_manager.connect(convoy_id, ws)
     try:
         while True:
-            # Read-only: drain any incoming frames (heartbeats etc.) and discard.
-            await ws.receive_text()
+            raw = await ws.receive_json()
+            # Viewer links are read-only — drained frames (heartbeats) are ignored.
+            if not is_driver or not isinstance(raw, dict):
+                continue
+            if raw.get("type") == "status":
+                await _ingest_driver_status(convoy_uuid, raw)
+            else:
+                await _ingest_driver_position(convoy_uuid, raw)
     except WebSocketDisconnect:
         pass
     except Exception as exc:

@@ -16,6 +16,7 @@ from app.models.convoy import ConvoyVehicle
 from app.models.user import User
 from app.models.vehicle import Vehicle
 from app.models.vehicle_position import VehiclePosition
+from app.services import vehicle_status as vs
 from app.services.tracking import tracking_manager
 
 logger = logging.getLogger(__name__)
@@ -45,16 +46,6 @@ class PositionUpdate(BaseModel):
         return v
 
 
-_VALID_VEHICLE_STATUSES = {"planned", "en_route", "arrived", "technical_halt", "breakdown"}
-# Allowed sub-levels per status. Statuses not listed must not carry a level.
-_VALID_STATUS_LEVELS = {
-    "technical_halt": {"standard", "dringend", "sehr_dringend"},
-    "breakdown": {"total", "limited"},
-}
-# Statuses that trigger an in-app alert to the convoy leadership / all clients.
-_ALERT_STATUSES = {"technical_halt", "breakdown"}
-
-
 class VehicleStatusUpdate(BaseModel):
     vehicle_status: str
     status_level: str | None = None
@@ -63,18 +54,13 @@ class VehicleStatusUpdate(BaseModel):
     @field_validator("vehicle_status")
     @classmethod
     def _check_status(cls, v: str) -> str:
-        if v not in _VALID_VEHICLE_STATUSES:
-            raise ValueError(f"vehicle_status must be one of {sorted(_VALID_VEHICLE_STATUSES)}")
+        if v not in vs.VALID_VEHICLE_STATUSES:
+            raise ValueError(f"vehicle_status must be one of {sorted(vs.VALID_VEHICLE_STATUSES)}")
         return v
 
     @model_validator(mode="after")
     def _check_level(self) -> "VehicleStatusUpdate":
-        allowed = _VALID_STATUS_LEVELS.get(self.vehicle_status)
-        if allowed is None:
-            # Status without sub-levels — drop any stray level.
-            self.status_level = None
-        elif self.status_level is not None and self.status_level not in allowed:
-            raise ValueError(f"status_level for {self.vehicle_status} must be one of {sorted(allowed)}")
+        self.status_level = vs.normalize_level(self.vehicle_status, self.status_level)
         return self
 
 
@@ -184,7 +170,7 @@ async def update_vehicle_status(
 
     # Technische Halte und Ausfälle lösen einen In-App-Alarm aus, damit die
     # Konvoiführung (und bei Ausfall alle) sofort informiert sind.
-    if data.vehicle_status in _ALERT_STATUSES:
+    if data.vehicle_status in vs.ALERT_STATUSES:
         # Klartext-Bezeichnung des anfordernden Fahrzeugs für die Meldung.
         vehicle = await db.get(Vehicle, vehicle_id)
         vehicle_label = None
