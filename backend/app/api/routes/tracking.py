@@ -46,6 +46,16 @@ class PositionUpdate(BaseModel):
         return v
 
 
+_VALID_VEHICLE_STATUSES = {"planned", "en_route", "arrived", "technical_halt", "breakdown"}
+# Allowed sub-levels per status. Statuses not listed must not carry a level.
+_VALID_STATUS_LEVELS = {
+    "technical_halt": {"standard", "dringend", "sehr_dringend"},
+    "breakdown": {"total", "limited"},
+}
+# Statuses that trigger an in-app alert to the convoy leadership / all clients.
+_ALERT_STATUSES = {"technical_halt", "breakdown"}
+
+
 class VehicleStatusUpdate(BaseModel):
     vehicle_status: str
     status_level: str | None = None
@@ -60,7 +70,12 @@ class VehicleStatusUpdate(BaseModel):
 
     @model_validator(mode="after")
     def _check_level(self) -> "VehicleStatusUpdate":
-        self.status_level = vs.normalize_level(self.vehicle_status, self.status_level)
+        allowed = _VALID_STATUS_LEVELS.get(self.vehicle_status)
+        if allowed is None:
+            # Status without sub-levels — drop any stray level.
+            self.status_level = None
+        elif self.status_level is not None and self.status_level not in allowed:
+            raise ValueError(f"status_level for {self.vehicle_status} must be one of {sorted(allowed)}")
         return self
 
 
@@ -170,7 +185,7 @@ async def update_vehicle_status(
 
     # Technische Halte und Ausfälle lösen einen In-App-Alarm aus, damit die
     # Konvoiführung (und bei Ausfall alle) sofort informiert sind.
-    if data.vehicle_status in vs.ALERT_STATUSES:
+    if data.vehicle_status in _ALERT_STATUSES:
         # Klartext-Bezeichnung des anfordernden Fahrzeugs für die Meldung.
         vehicle = await db.get(Vehicle, vehicle_id)
         vehicle_label = None
