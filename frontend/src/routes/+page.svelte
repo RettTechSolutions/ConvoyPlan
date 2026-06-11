@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { onMount } from 'svelte';
     import { goto } from '$app/navigation';
     import { orgAuthApi, authApi } from '$lib/api';
     import { orgStore } from '$lib/stores/org';
@@ -9,6 +10,18 @@
     let loading = $state(false);
     let demoLoading = $state(false);
     let demoError = $state('');
+    let demoAvailable = $state(false);
+    let demoHours = $state(24);
+
+    onMount(async () => {
+        try {
+            const status = await authApi.demoStatus();
+            demoAvailable = status.enabled;
+            demoHours = status.session_hours;
+        } catch {
+            // Backend nicht erreichbar — Demo-Bereich bleibt ausgeblendet
+        }
+    });
 
     async function handleSubmit() {
         const slug = slugInput.trim().toLowerCase();
@@ -66,17 +79,19 @@
             </button>
         </form>
 
-        <div class="demo-divider">
-            <span>oder</span>
-        </div>
+        {#if demoAvailable}
+            <div class="demo-divider">
+                <span>oder</span>
+            </div>
 
-        <button class="demo-btn" onclick={startDemo} disabled={demoLoading}>
-            {demoLoading ? 'Starte Demo…' : '▶ Demo ausprobieren'}
-        </button>
-        {#if demoError}
-            <p class="error" style="margin-top:.5rem">{demoError}</p>
+            <button class="demo-btn" onclick={startDemo} disabled={demoLoading}>
+                {demoLoading ? 'Starte Demo…' : '▶ Demo ausprobieren'}
+            </button>
+            {#if demoError}
+                <p class="error" style="margin-top:.5rem">{demoError}</p>
+            {/if}
+            <p class="demo-hint">Eigene temporäre Umgebung · Keine Registrierung · {demoHours} Stunden</p>
         {/if}
-        <p class="demo-hint">Eigene temporäre Umgebung · Keine Registrierung · 24 Stunden</p>
     </div>
 </div>
 

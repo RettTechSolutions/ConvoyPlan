@@ -5,7 +5,7 @@
     import LeitstellenTable from '$lib/components/LeitstellenTable.svelte';
     import { auth } from '$lib/stores/auth';
     import { getStreamTicket } from '$lib/api/client';
-    import { adminApi, mfaApi, leistellenApi, licenseApi, emailTemplateApi, type AdminUser, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type EmailTemplate, type ApiKey, type ApiKeyCreated } from '$lib/api';
+    import { adminApi, mfaApi, leistellenApi, licenseApi, emailTemplateApi, type AdminUser, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type EmailTemplate, type ApiKey, type ApiKeyCreated, type DemoSettings } from '$lib/api';
     import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
     import SuperadminLogin from '$lib/components/SuperadminLogin.svelte';
@@ -40,7 +40,7 @@
         await loadUsers();
         await loadLeitstellen();
         await loadBranding();
-        await Promise.all([loadGithubTokenStatus(), loadUpdateStatus(), loadMfaStatus(), loadSmtpSettings(), loadEmailTemplate()]);
+        await Promise.all([loadGithubTokenStatus(), loadUpdateStatus(), loadMfaStatus(), loadSmtpSettings(), loadEmailTemplate(), loadDemoSettings()]);
     }
 
     async function handleAuthenticated() {
@@ -566,6 +566,36 @@
         startLogStream();
     }
 
+    // ── Demo-Modus ────────────────────────────────────────────────────────────
+    let demoSettings = $state<DemoSettings | null>(null);
+    let demoSaving = $state(false);
+    let demoSettingsError = $state('');
+    let demoSettingsSuccess = $state('');
+
+    async function loadDemoSettings() {
+        try {
+            demoSettings = await adminApi.getDemoSettings();
+        } catch { /* Abschnitt zeigt dann "Status nicht verfügbar" */ }
+    }
+
+    async function toggleDemo() {
+        if (!demoSettings) return;
+        demoSaving = true;
+        demoSettingsError = '';
+        demoSettingsSuccess = '';
+        try {
+            demoSettings = await adminApi.setDemoEnabled(!demoSettings.enabled);
+            demoSettingsSuccess = demoSettings.enabled
+                ? 'Demo-Modus aktiviert — der Demo-Button erscheint auf der Startseite.'
+                : 'Demo-Modus deaktiviert.';
+            setTimeout(() => { demoSettingsSuccess = ''; }, 5000);
+        } catch (e) {
+            demoSettingsError = e instanceof Error ? e.message : 'Fehler beim Speichern';
+        } finally {
+            demoSaving = false;
+        }
+    }
+
     // ── GitHub-Token Konfiguration ────────────────────────────────────────────
     let githubTokenSet = $state<{ set: boolean; source: string | null } | null>(null);
     let githubTokenInput = $state('');
@@ -1086,7 +1116,7 @@
         <button class="tab" class:active={activeTab === 'api-keys'} onclick={() => { activeTab = 'api-keys'; loadApiKeyOrgs(); }}>API-Keys</button>
         <button class="tab" class:active={activeTab === 'leitstellen'} onclick={() => (activeTab = 'leitstellen')}>Leitstellen</button>
         <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>Branding</button>
-        <button class="tab" class:active={activeTab === 'system'} onclick={() => { activeTab = 'system'; loadUpdateStatus(); loadLicenseStatus(); loadGithubTokenStatus(); }}>System</button>
+        <button class="tab" class:active={activeTab === 'system'} onclick={() => { activeTab = 'system'; loadUpdateStatus(); loadLicenseStatus(); loadGithubTokenStatus(); loadDemoSettings(); }}>System</button>
     </div>
 
     <!-- ── Benutzer ── -->
@@ -1892,6 +1922,49 @@
                     {githubTokenSaving ? '…' : 'Speichern'}
                 </button>
             </div>
+        </div>
+
+        <!-- ── Demo-Modus ── -->
+        <div class="section">
+            <div class="section-header">
+                <strong>Demo-Modus</strong>
+            </div>
+
+            {#if demoSettingsError}
+                <div class="error-bar">{demoSettingsError} <button onclick={() => demoSettingsError = ''}>✕</button></div>
+            {/if}
+            {#if demoSettingsSuccess}
+                <div class="success-bar">{demoSettingsSuccess}</div>
+            {/if}
+
+            {#if demoSettings}
+                <div class="update-grid" style="margin-bottom:.75rem">
+                    <div class="update-row">
+                        <span class="update-label">Status</span>
+                        {#if demoSettings.enabled}
+                            <span class="badge badge-ok">Aktiv ({demoSettings.source === 'env' ? 'Umgebungsvariable' : 'Datenbank'}) ✓</span>
+                        {:else}
+                            <span class="badge badge-warn">Deaktiviert</span>
+                        {/if}
+                    </div>
+                </div>
+
+                <p class="hint" style="margin-bottom:.6rem">
+                    Bei aktivem Demo-Modus erscheint auf der Startseite ein „Demo ausprobieren"-Button.
+                    Besucher erhalten ohne Registrierung eine eigene temporäre Organisation, die nach
+                    {demoSettings.session_hours} Stunden automatisch gelöscht wird (max. 10 Demo-Starts pro Stunde pro IP).
+                </p>
+
+                <button
+                    class={demoSettings.enabled ? 'btn-small danger' : 'btn-primary'}
+                    onclick={toggleDemo}
+                    disabled={demoSaving}
+                >
+                    {demoSaving ? '…' : demoSettings.enabled ? 'Demo-Modus deaktivieren' : 'Demo-Modus aktivieren'}
+                </button>
+            {:else}
+                <p class="hint">Status nicht verfügbar</p>
+            {/if}
         </div>
 
         <!-- ── Zwei-Faktor-Authentifizierung ── -->

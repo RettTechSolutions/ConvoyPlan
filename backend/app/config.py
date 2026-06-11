@@ -47,7 +47,9 @@ class Settings(BaseSettings):
     # When empty, a key is derived deterministically from jwt_secret.
     mfa_encryption_key: str = ""
 
-    # Ephemeral demo sessions. Set DEMO_ENABLED=true to expose the public endpoint.
+    # Ephemeral demo sessions. The superadmin toggle in the admin panel (stored
+    # in system_settings under "demo.enabled") takes priority; DEMO_ENABLED is
+    # the fallback when no DB setting exists.
     demo_enabled: bool = False
     demo_session_hours: int = 24  # how long a demo org + user lives before retention deletes it
 
