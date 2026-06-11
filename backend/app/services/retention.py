@@ -17,6 +17,7 @@ from app.models.share_link import ConvoyShareLink
 from app.models.user import User
 from app.models.vehicle_position import VehiclePosition
 from app.services import audit
+from app.services import demo as demo_svc
 
 logger = logging.getLogger(__name__)
 
@@ -53,17 +54,27 @@ async def purge_expired_share_links(db: AsyncSession, grace_days: int) -> int:
 
 
 async def purge_demo_sessions(db: AsyncSession, max_age_hours: int) -> int:
-    """Delete ephemeral demo orgs and their owners that have passed the TTL.
+    """Delete ephemeral demo orgs and their owners that have expired.
+
+    A session expires at demo_expires_at (settable/extendable by the superadmin);
+    legacy rows without that column value fall back to created_at + TTL.
 
     Order matters: convoys must be deleted before their org (FK with SET NULL
     would orphan them), org before its owner_user (FK with NO ACTION)."""
-    from sqlalchemy import select as _select
+    from sqlalchemy import or_, select as _select
     from app.models.convoy import Convoy
 
+    now = datetime.now(timezone.utc)
     cutoff = _cutoff(hours=max_age_hours)
     rows = (await db.execute(
         _select(Organization.id, Organization.owner_id)
-        .where(Organization.is_demo.is_(True), Organization.created_at < cutoff)
+        .where(
+            Organization.is_demo.is_(True),
+            or_(
+                Organization.demo_expires_at < now,
+                Organization.demo_expires_at.is_(None) & (Organization.created_at < cutoff),
+            ),
+        )
     )).all()
     if not rows:
         return 0
@@ -89,7 +100,11 @@ async def run_all(db: AsyncSession) -> dict[str, int]:
         "positions": await purge_stale_positions(db, settings.retention_positions_hours),
         "audit_logs": await purge_old_audit_logs(db, settings.retention_audit_days),
         "share_links": await purge_expired_share_links(db, settings.retention_share_links_days),
-        "demo_sessions": await purge_demo_sessions(db, settings.demo_session_hours) if settings.demo_enabled else 0,
+        # Always purge expired demo sessions — the demo mode can be toggled at
+        # runtime (admin panel), so gating on the env flag would leave demo orgs
+        # behind after the mode is switched off. The hours act only as fallback
+        # TTL for legacy rows without demo_expires_at.
+        "demo_sessions": await purge_demo_sessions(db, await demo_svc.get_demo_session_hours(db)),
     }
     await db.commit()
     if any(counts.values()):

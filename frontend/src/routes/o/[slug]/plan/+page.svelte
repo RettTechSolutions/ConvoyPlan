@@ -61,7 +61,9 @@
 	let sidebarOpen = $state(false);
 	let error = $state('');
 
-	// Demo session info decoded from JWT payload (null for regular sessions)
+	// Demo flag decoded from the JWT payload (null for regular sessions). The
+	// displayed expiry comes from the server (demoExpiresAt) — the superadmin
+	// can extend a session, so the token's exp claim is only a ceiling.
 	const demoSession = $derived.by(() => {
 		const slug = ($page.params as Record<string, string>).slug;
 		const token = orgStore.getToken(slug);
@@ -69,9 +71,10 @@
 		try {
 			const payload = JSON.parse(atob(token.split('.')[1]));
 			if (!payload.is_demo) return null;
-			return { expiresAt: new Date(payload.exp * 1000) };
+			return { isDemo: true };
 		} catch { return null; }
 	});
+	let demoExpiresAt = $state<Date | null>(null);
 
 	// Theme toggle
 	function toggleTheme() {
@@ -253,6 +256,12 @@
 	onMount(async () => {
 		pwaStore.init();
 		await loadData();
+		if (demoSession) {
+			try {
+				const info = await authApi.demoSessionInfo();
+				demoExpiresAt = new Date(info.expires_at);
+			} catch { /* Banner zeigt dann keine Ablaufzeit */ }
+		}
 	});
 
 	async function loadData() {
@@ -858,8 +867,8 @@
 
 		{#if demoSession}
 			<div class="demo-banner">
-				<span>Demo-Sitzung · Läuft ab {demoSession.expiresAt.toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })} Uhr</span>
-				<a href="/" class="demo-banner-link">Registrieren →</a>
+				<span>Demo-Sitzung{#if demoExpiresAt}&nbsp;· Läuft ab {demoExpiresAt.toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })} Uhr{/if}</span>
+				<a href="https://convoyplan.de/#kontakt" target="_blank" rel="noopener" class="demo-banner-link">Vollversion anfragen →</a>
 			</div>
 		{/if}
 

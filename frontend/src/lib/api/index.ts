@@ -156,6 +156,8 @@ export const authApi = {
 	requestPasswordReset: (email: string, org_slug?: string) =>
 		api.post<{ status: string }>('/api/auth/password-reset', { email, org_slug }),
 	createDemoSession: () => api.post<DemoSessionResult>('/api/auth/demo-session', {}),
+	demoStatus: () => api.get<{ enabled: boolean; session_hours: number }>('/api/auth/demo-status'),
+	demoSessionInfo: () => api.get<{ expires_at: string }>('/api/auth/demo-session/info'),
 };
 
 export const mfaApi = {
@@ -362,6 +364,7 @@ export interface AdminUser {
     email: string;
     is_active: boolean;
     is_superadmin: boolean;
+    is_demo: boolean;
     mfa_enabled: boolean;
     created_at: string;
     orgs: { id: string; name: string; role: string }[];
@@ -387,6 +390,7 @@ export interface AdminOrg {
     owner_id: string | null;
     owner_email: string | null;
     member_count: number;
+    is_demo: boolean;
 }
 
 export interface ApiKey {
@@ -455,6 +459,13 @@ export const adminApi = {
     triggerUpdate: () => api.post<{ status: string }>('/api/admin/trigger-update', {}),
     getGithubTokenStatus: () => api.get<{ set: boolean; source: string | null }>('/api/admin/settings/github-token-set'),
     setGithubToken: (token: string) => api.put<void>('/api/admin/settings/github-token', { token }),
+    getDemoSettings: () => api.get<DemoSettings>('/api/admin/settings/demo'),
+    saveDemoSettings: (enabled: boolean, session_hours?: number) =>
+        api.put<DemoSettings>('/api/admin/settings/demo', { enabled, session_hours }),
+    listDemoSessions: () => api.get<DemoSessionInfo[]>('/api/admin/demo-sessions'),
+    endDemoSession: (orgId: string) => api.delete(`/api/admin/demo-sessions/${orgId}`),
+    extendDemoSession: (orgId: string, hours = 24) =>
+        api.post<DemoSessionInfo>(`/api/admin/demo-sessions/${orgId}/extend`, { hours }),
     getSmtpSettings: () => api.get<SmtpConfigResponse>('/api/admin/settings/smtp'),
     saveSmtpSettings: (data: SmtpConfig) => api.put<void>('/api/admin/settings/smtp', data),
     testSmtp: () => api.post<{ status: string }>('/api/admin/settings/smtp/test', {}),
@@ -471,6 +482,22 @@ export interface UpdateStatus {
     remote_sha: string | null;
     update_available: boolean;
     github_reachable: boolean;
+}
+
+export interface DemoSettings {
+    enabled: boolean;
+    source: 'db' | 'env';
+    env_enabled: boolean;
+    session_hours: number;
+}
+
+export interface DemoSessionInfo {
+    id: string;
+    name: string;
+    slug: string;
+    created_at: string;
+    expires_at: string;
+    convoy_count: number;
 }
 
 export interface BrandingData {
