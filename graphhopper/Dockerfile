@@ -6,7 +6,7 @@ FROM eclipse-temurin:25-jre-alpine
 
 ARG GH_VERSION=9.1
 
-RUN apk add --no-cache curl
+RUN apk upgrade --no-cache && apk add --no-cache curl
 
 WORKDIR /graphhopper
 
