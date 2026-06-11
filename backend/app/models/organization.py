@@ -26,6 +26,10 @@ class Organization(Base):
     owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Demo sessions only: when the retention job deletes the org. Extendable by
+    # the superadmin; NULL for regular orgs (and legacy demo rows → fallback
+    # created_at + demo session TTL).
+    demo_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     owner: Mapped["User"] = relationship(foreign_keys=[owner_id])
     members: Mapped[list["UserOrganization"]] = relationship(back_populates="organization", cascade="all, delete-orphan")

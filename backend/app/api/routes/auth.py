@@ -564,8 +564,24 @@ async def demo_status(db: AsyncSession = Depends(get_db)):
     only shows the demo button when the superadmin has enabled the demo mode."""
     return {
         "enabled": await demo_svc.is_demo_enabled(db),
-        "session_hours": settings.demo_session_hours,
+        "session_hours": await demo_svc.get_demo_session_hours(db),
     }
+
+
+@router.get("/demo-session/info")
+async def demo_session_info(
+    token_data: TokenData = Depends(get_token_data),
+    db: AsyncSession = Depends(get_db),
+):
+    """Current expiry of the caller's demo session (the superadmin may have
+    extended it, so the JWT payload is not authoritative)."""
+    if not token_data.org_id:
+        raise HTTPException(status_code=404, detail="Keine Demo-Sitzung")
+    org = await db.get(Organization, token_data.org_id)
+    if not org or not org.is_demo:
+        raise HTTPException(status_code=404, detail="Keine Demo-Sitzung")
+    hours = await demo_svc.get_demo_session_hours(db)
+    return {"expires_at": demo_svc.effective_expiry(org, hours).isoformat()}
 
 
 @router.post(
@@ -577,8 +593,8 @@ async def create_demo_session(request: Request, db: AsyncSession = Depends(get_d
     """Create an ephemeral demo organisation + user and return a short-lived token.
 
     Requires the demo mode to be enabled (admin-panel toggle; the DEMO_ENABLED
-    env var is the fallback). The session is deleted by the retention job after
-    DEMO_SESSION_HOURS (default 24)."""
+    env var is the fallback). The session is deleted by the retention job once
+    its expiry (admin-configurable lifetime, extendable per session) passes."""
     if not await demo_svc.is_demo_enabled(db):
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Demo nicht verfügbar")
 
@@ -604,18 +620,28 @@ async def create_demo_session(request: Request, db: AsyncSession = Depends(get_d
     db.add(demo_user)
     await db.flush()
 
-    demo_org = Organization(name=f"Demo {slug[-6:].upper()}", slug=slug, owner_id=demo_user.id, is_demo=True)
+    session_hours = await demo_svc.get_demo_session_hours(db)
+    expire = datetime.now(timezone.utc) + timedelta(hours=session_hours)
+    demo_org = Organization(
+        name=f"Demo {slug[-6:].upper()}", slug=slug, owner_id=demo_user.id,
+        is_demo=True, demo_expires_at=expire,
+    )
     db.add(demo_org)
     await db.flush()
 
     db.add(UserOrganization(user_id=demo_user.id, organization_id=demo_org.id, role="planer"))
     await db.commit()
 
-    expire = datetime.now(timezone.utc) + timedelta(hours=settings.demo_session_hours)
+    # The JWT gets a generous ceiling so an admin-extended session keeps working;
+    # the real cutoff is enforced server-side — the retention job deletes the
+    # demo user at demo_expires_at and every request re-checks the DB.
+    token_expire = datetime.now(timezone.utc) + timedelta(
+        hours=max(session_hours, demo_svc.MAX_SESSION_HOURS)
+    )
     token = _jwt.encode(
         {
             "sub": str(demo_user.id),
-            "exp": expire,
+            "exp": token_expire,
             "typ": "access",
             "is_superadmin": False,
             "org_id": str(demo_org.id),
