@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import re
-import xml.etree.ElementTree as _ET
+import defusedxml.ElementTree as _ET
 from pathlib import Path
 from typing import Literal
 
