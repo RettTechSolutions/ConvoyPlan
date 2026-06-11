@@ -1,4 +1,5 @@
 import logging
+import re
 from math import asin, cos, radians, sin, sqrt
 from typing import Any
 
@@ -7,6 +8,23 @@ import httpx
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+class RoutingOutOfBoundsError(ValueError):
+    """A start-, waypoint- or end point lies outside the loaded map area.
+
+    GraphHopper hält aus Ressourcengründen nur die deutschen OSM-Daten vor.
+    Liegt ein Punkt außerhalb dieser Bounding-Box, lehnt GraphHopper die
+    Anfrage mit „Point N is out of bounds/range" ab. Wir fangen das ab, um im
+    Frontend eine verständliche Meldung statt der rohen Koordinaten zu zeigen.
+
+    ``point_index`` ist der 0-basierte Index aus der GraphHopper-Meldung
+    (0 = Start, letzter = Ziel, dazwischen = Wegpunkte) — soweit ermittelbar.
+    """
+
+    def __init__(self, point_index: int | None = None) -> None:
+        self.point_index = point_index
+        super().__init__("Point outside covered map area")
 
 URBAN_ROAD_CLASSES = {"residential", "living_street", "service"}
 URBAN_SPEED_THRESHOLD_KMH = 50  # posted limit ≤ this → innerorts
@@ -184,7 +202,15 @@ async def calculate_route(
             except Exception:
                 detail = resp.text
             logger.warning("GraphHopper routing error (%s): %s", resp.status_code, detail)
-            raise ValueError(f"Routing service error ({resp.status_code}): {str(detail)[:300]}")
+            msg = str(detail)
+            lower = msg.lower()
+            # Punkt außerhalb der geladenen Kartendaten (aktuell nur Deutschland)
+            # — GraphHopper: „Point N is out of bounds/range" bzw. „Cannot find
+            # point N". Dedizierter Fehler für eine verständliche Frontend-Meldung.
+            if "out of bounds" in lower or "out of range" in lower or "cannot find point" in lower:
+                m = re.search(r"point\s+(\d+)", lower)
+                raise RoutingOutOfBoundsError(int(m.group(1)) if m else None)
+            raise ValueError(f"Routing service error ({resp.status_code}): {msg[:300]}")
         data = resp.json()
 
     path = data["paths"][0]

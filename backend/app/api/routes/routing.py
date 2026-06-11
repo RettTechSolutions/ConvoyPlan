@@ -48,6 +48,27 @@ def _safe_filename(name: str) -> str:
 _MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB — guard against DoS via huge uploads
 
 
+def _out_of_bounds_message(point_index: int | None, total_points: int) -> str:
+    """Verständliche Meldung für einen Punkt außerhalb der Kartendaten.
+
+    Die Punktliste ist [Start, *Wegpunkte, Ziel] — der GraphHopper-Index lässt
+    sich daher auf Start/Ziel/Wegpunkt abbilden.
+    """
+    if point_index == 0:
+        label = "Der Startpunkt liegt"
+    elif point_index is not None and point_index == total_points - 1:
+        label = "Das Ziel liegt"
+    elif point_index is not None and 0 < point_index < total_points - 1:
+        label = f"Wegpunkt {point_index} liegt"
+    else:
+        label = "Mindestens ein Punkt liegt"
+    return (
+        f"{label} außerhalb des abgedeckten Kartenbereichs. "
+        "Die Routenberechnung ist aktuell auf Deutschland beschränkt — "
+        "bitte Start, Ziel und alle Wegpunkte innerhalb Deutschlands wählen."
+    )
+
+
 async def _apply_import(
     convoy_id: uuid.UUID,
     result: importer_svc.ImportResult,
@@ -267,6 +288,10 @@ async def calculate_route(
             vehicle_params or None,
             road_preference=convoy.road_preference,
         )
+    except routing_svc.RoutingOutOfBoundsError as exc:
+        # Punkt außerhalb der geladenen Kartendaten (aktuell nur Deutschland).
+        logger.warning("Routing point out of bounds for convoy %s: %s", convoy_id, exc)
+        raise HTTPException(status_code=422, detail=_out_of_bounds_message(exc.point_index, len(points)))
     except ValueError as exc:
         # GraphHopper hat geantwortet, aber die Anfrage abgelehnt (z. B. Punkt
         # außerhalb der Kartendaten, fehlende Encoded Values) — Meldung
