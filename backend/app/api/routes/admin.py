@@ -9,7 +9,7 @@ import bcrypt
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -64,6 +64,7 @@ async def list_users(
             email=u.email,
             is_active=u.is_active,
             is_superadmin=u.is_superadmin,
+            is_demo=u.is_demo,
             mfa_enabled=u.mfa_enabled,
             created_at=u.created_at,
             orgs=orgs,
@@ -147,7 +148,8 @@ async def update_user(
         if m.organization is not None
     ]
     return AdminUserResponse(id=user.id, email=user.email, is_active=user.is_active,
-                             is_superadmin=user.is_superadmin, mfa_enabled=user.mfa_enabled,
+                             is_superadmin=user.is_superadmin, is_demo=user.is_demo,
+                             mfa_enabled=user.mfa_enabled,
                              created_at=user.created_at, orgs=orgs)
 
 
@@ -281,6 +283,10 @@ class DemoSettingsResponse(BaseModel):
 
 class DemoSettingsUpdate(BaseModel):
     enabled: bool
+    session_hours: int | None = Field(
+        None, ge=demo_svc.MIN_SESSION_HOURS, le=demo_svc.MAX_SESSION_HOURS,
+        description="Laufzeit neuer Demo-Sitzungen in Stunden",
+    )
 
 
 @router.get("/settings/demo", response_model=DemoSettingsResponse)
@@ -293,7 +299,7 @@ async def get_demo_settings(
         enabled=db_value == "true" if db_value is not None else settings.demo_enabled,
         source="db" if db_value is not None else "env",
         env_enabled=settings.demo_enabled,
-        session_hours=settings.demo_session_hours,
+        session_hours=await demo_svc.get_demo_session_hours(db),
     )
 
 
@@ -304,16 +310,19 @@ async def update_demo_settings(
     db: AsyncSession = Depends(get_db),
     current: User = Depends(require_superadmin),
 ):
+    if data.session_hours is not None:
+        await demo_svc.set_demo_session_hours(db, data.session_hours)
     await demo_svc.set_demo_enabled(db, data.enabled)
     await audit.record(
         db, "admin.settings.demo_updated", request=request, actor_id=current.id,
-        actor_email=current.email, detail={"enabled": data.enabled},
+        actor_email=current.email,
+        detail={"enabled": data.enabled, "session_hours": data.session_hours},
     )
     return DemoSettingsResponse(
         enabled=data.enabled,
         source="db",
         env_enabled=settings.demo_enabled,
-        session_hours=settings.demo_session_hours,
+        session_hours=await demo_svc.get_demo_session_hours(db),
     )
 
 
@@ -348,18 +357,62 @@ async def list_demo_sessions(
     )
     convoy_counts = dict(counts_result.all())
 
-    ttl = timedelta(hours=settings.demo_session_hours)
+    fallback_hours = await demo_svc.get_demo_session_hours(db)
     return [
         DemoSessionInfo(
             id=o.id,
             name=o.name,
             slug=o.slug,
             created_at=o.created_at,
-            expires_at=o.created_at + ttl,
+            expires_at=demo_svc.effective_expiry(o, fallback_hours),
             convoy_count=convoy_counts.get(o.id, 0),
         )
         for o in orgs
     ]
+
+
+class DemoExtendRequest(BaseModel):
+    hours: int = Field(24, ge=1, le=demo_svc.MAX_SESSION_HOURS)
+
+
+@router.post("/demo-sessions/{org_id}/extend", response_model=DemoSessionInfo)
+async def extend_demo_session(
+    org_id: uuid.UUID,
+    data: DemoExtendRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    """Extend a demo session: pushes the expiry *hours* beyond its current
+    expiry (or beyond now, if it would otherwise already be in the past)."""
+    result = await db.execute(
+        select(Organization).where(Organization.id == org_id, Organization.is_demo.is_(True))
+    )
+    org = result.scalar_one_or_none()
+    if not org:
+        raise HTTPException(404, "Demo-Sitzung nicht gefunden")
+
+    fallback_hours = await demo_svc.get_demo_session_hours(db)
+    now = datetime.now(timezone.utc)
+    base = max(demo_svc.effective_expiry(org, fallback_hours), now)
+    org.demo_expires_at = base + timedelta(hours=data.hours)
+    await db.commit()
+    await db.refresh(org)
+
+    await audit.record(
+        db, "admin.demo_session.extended", request=request, actor_id=current.id,
+        actor_email=current.email, org_id=org.id, target_type="organization",
+        target_id=org.id,
+        detail={"slug": org.slug, "hours": data.hours, "expires_at": org.demo_expires_at.isoformat()},
+    )
+
+    convoy_count = (await db.execute(
+        select(func.count(Convoy.id)).where(Convoy.organization_id == org.id)
+    )).scalar_one()
+    return DemoSessionInfo(
+        id=org.id, name=org.name, slug=org.slug, created_at=org.created_at,
+        expires_at=org.demo_expires_at, convoy_count=convoy_count,
+    )
 
 
 @router.delete("/demo-sessions/{org_id}", status_code=204)
@@ -510,6 +563,7 @@ async def list_all_organizations(
             "slug": org.slug,
             "owner_email": org.owner.email if org.owner else None,
             "member_count": len(org.members),
+            "is_demo": org.is_demo,
         }
         for org in orgs
     ]

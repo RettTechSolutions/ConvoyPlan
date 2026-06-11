@@ -21,6 +21,9 @@
 
     // ── Users ────────────────────────────────────────────────────────────────
     let users = $state<AdminUser[]>([]);
+    // Reguläre Benutzer zuerst, Demo-Sitzungen als abgesetzte Gruppe darunter
+    const sortedUsers = $derived([...users.filter(u => !u.is_demo), ...users.filter(u => u.is_demo)]);
+    const demoUserCount = $derived(users.filter(u => u.is_demo).length);
     let loading = $state(true);
     let error = $state('');
     let showCreateForm = $state(false);
@@ -246,6 +249,8 @@
 
     // ── Organisationen ───────────────────────────────────────────────────────
     let orgs = $state<AdminOrg[]>([]);
+    const sortedOrgs = $derived([...orgs.filter(o => !o.is_demo), ...orgs.filter(o => o.is_demo)]);
+    const demoOrgCount = $derived(orgs.filter(o => o.is_demo).length);
     let orgsLoading = $state(false);
     let orgsError = $state('');
 
@@ -575,6 +580,7 @@
     async function loadDemoSettings() {
         try {
             demoSettings = await adminApi.getDemoSettings();
+            demoHoursInput = demoSettings.session_hours;
         } catch { /* Abschnitt zeigt dann "Status nicht verfügbar" */ }
         try {
             demoSessions = await adminApi.listDemoSessions();
@@ -604,7 +610,7 @@
         demoSettingsError = '';
         demoSettingsSuccess = '';
         try {
-            demoSettings = await adminApi.setDemoEnabled(!demoSettings.enabled);
+            demoSettings = await adminApi.saveDemoSettings(!demoSettings.enabled);
             demoSettingsSuccess = demoSettings.enabled
                 ? 'Demo-Modus aktiviert — der Demo-Button erscheint auf der Startseite.'
                 : 'Demo-Modus deaktiviert.';
@@ -613,6 +619,46 @@
             demoSettingsError = e instanceof Error ? e.message : 'Fehler beim Speichern';
         } finally {
             demoSaving = false;
+        }
+    }
+
+    let demoHoursInput = $state(24);
+    let demoHoursSaving = $state(false);
+
+    async function saveDemoHours() {
+        if (!demoSettings) return;
+        const hours = Math.round(demoHoursInput);
+        if (!Number.isFinite(hours) || hours < 1 || hours > 720) {
+            demoSettingsError = 'Laufzeit muss zwischen 1 und 720 Stunden liegen.';
+            return;
+        }
+        demoHoursSaving = true;
+        demoSettingsError = '';
+        demoSettingsSuccess = '';
+        try {
+            demoSettings = await adminApi.saveDemoSettings(demoSettings.enabled, hours);
+            demoHoursInput = demoSettings.session_hours;
+            demoSettingsSuccess = `Laufzeit gespeichert — neue Demo-Sitzungen laufen ${hours} Stunden.`;
+            setTimeout(() => { demoSettingsSuccess = ''; }, 5000);
+        } catch (e) {
+            demoSettingsError = e instanceof Error ? e.message : 'Fehler beim Speichern';
+        } finally {
+            demoHoursSaving = false;
+        }
+    }
+
+    let extendingDemoSession = $state<string | null>(null);
+
+    async function extendDemoSession(session: DemoSessionInfo) {
+        extendingDemoSession = session.id;
+        demoSettingsError = '';
+        try {
+            const updated = await adminApi.extendDemoSession(session.id, 24);
+            demoSessions = demoSessions.map(s => s.id === updated.id ? updated : s);
+        } catch (e) {
+            demoSettingsError = e instanceof Error ? e.message : 'Fehler beim Verlängern der Demo-Sitzung';
+        } finally {
+            extendingDemoSession = null;
         }
     }
 
@@ -1147,7 +1193,7 @@
 
         <div class="section">
             <div class="section-header">
-                <strong>Benutzer ({users.length})</strong>
+                <strong>Benutzer ({users.length - demoUserCount}{demoUserCount > 0 ? ` + ${demoUserCount} Demo` : ''})</strong>
                 <button class="btn-small" onclick={() => (showCreateForm = !showCreateForm)}>+ Neu</button>
             </div>
 
@@ -1201,8 +1247,13 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {#each users as user}
-                            <tr class:inactive={!user.is_active}>
+                        {#each sortedUsers as user, i}
+                            {#if user.is_demo && (i === 0 || !sortedUsers[i - 1].is_demo)}
+                                <tr class="group-divider-row">
+                                    <td colspan="6">▶ Demo-Sitzungen ({demoUserCount}) — temporär, werden automatisch gelöscht</td>
+                                </tr>
+                            {/if}
+                            <tr class:inactive={!user.is_active} class:demo-row={user.is_demo}>
                                 <td>{user.email}</td>
                                 <td>
                                     <div class="orgs-cell">
@@ -1297,7 +1348,7 @@
 
         <div class="section">
             <div class="section-header">
-                <strong>Organisationen ({orgs.length})</strong>
+                <strong>Organisationen ({orgs.length - demoOrgCount}{demoOrgCount > 0 ? ` + ${demoOrgCount} Demo` : ''})</strong>
                 <div style="display:flex;gap:.4rem">
                     <button class="btn-small" onclick={() => { createOrgForm = { name: '', slug: '', slugManual: false }; createOrgError = ''; showCreateOrgModal = true; }}>+ Neu</button>
                     <button class="btn-small" onclick={loadOrgs}>↺</button>
@@ -1318,8 +1369,13 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {#each orgs as org}
-                            <tr>
+                        {#each sortedOrgs as org, i}
+                            {#if org.is_demo && (i === 0 || !sortedOrgs[i - 1].is_demo)}
+                                <tr class="group-divider-row">
+                                    <td colspan="5">▶ Demo-Sitzungen ({demoOrgCount}) — temporär, werden automatisch gelöscht</td>
+                                </tr>
+                            {/if}
+                            <tr class:demo-row={org.is_demo}>
                                 <td>{org.name}</td>
                                 <td><code>{org.slug}</code></td>
                                 <td class="hint">{org.owner_email ?? '–'}</td>
@@ -1975,13 +2031,34 @@
                     {demoSettings.session_hours} Stunden automatisch gelöscht wird (max. 10 Demo-Starts pro Stunde pro IP).
                 </p>
 
-                <button
-                    class={demoSettings.enabled ? 'btn-small danger' : 'btn-primary'}
-                    onclick={toggleDemo}
-                    disabled={demoSaving}
-                >
-                    {demoSaving ? '…' : demoSettings.enabled ? 'Demo-Modus deaktivieren' : 'Demo-Modus aktivieren'}
-                </button>
+                <div style="display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; margin-bottom:.75rem">
+                    <button
+                        class={demoSettings.enabled ? 'btn-small danger' : 'btn-primary'}
+                        onclick={toggleDemo}
+                        disabled={demoSaving}
+                    >
+                        {demoSaving ? '…' : demoSettings.enabled ? 'Demo-Modus deaktivieren' : 'Demo-Modus aktivieren'}
+                    </button>
+                    <span class="update-label" style="margin-left:.5rem">Laufzeit</span>
+                    <input
+                        type="number"
+                        min="1"
+                        max="720"
+                        bind:value={demoHoursInput}
+                        style="width:5rem; padding:.35rem .5rem; border:1px solid var(--border); border-radius:6px; background:var(--surface-2); color:var(--text-1)"
+                    />
+                    <span class="hint">Stunden</span>
+                    <button
+                        class="btn-small"
+                        onclick={saveDemoHours}
+                        disabled={demoHoursSaving || demoHoursInput === demoSettings.session_hours}
+                    >
+                        {demoHoursSaving ? '…' : 'Speichern'}
+                    </button>
+                </div>
+                <p class="hint" style="margin-bottom:.6rem; font-size:var(--text-xs)">
+                    Gilt für neue Demo-Sitzungen. Bestehende Sitzungen behalten ihr Ablaufdatum — einzeln verlängerbar über „+24 h".
+                </p>
 
                 <div class="section-header" style="margin-top:1.25rem">
                     <strong>Offene Demo-Sitzungen ({demoSessions.length})</strong>
@@ -2011,6 +2088,14 @@
                                     <td>{session.convoy_count}</td>
                                     <td class="actions-cell">
                                         <div>
+                                            <button
+                                                class="btn-small"
+                                                onclick={() => extendDemoSession(session)}
+                                                disabled={extendingDemoSession === session.id}
+                                                title="Ablauf um 24 Stunden verlängern"
+                                            >
+                                                {extendingDemoSession === session.id ? '…' : '+24 h'}
+                                            </button>
                                             <button
                                                 class="btn-small danger"
                                                 onclick={() => endDemoSession(session)}
@@ -2476,6 +2561,18 @@
     .user-table th { text-align: left; padding: .5rem; color: var(--text-muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--border); }
     .user-table td { padding: .5rem; border-bottom: 1px solid var(--border); vertical-align: middle; color: var(--text-2); }
     .user-table tr.inactive td { opacity: .45; }
+    .user-table tr.group-divider-row td {
+        padding: .6rem .5rem .35rem;
+        color: #d97706;
+        font-size: var(--text-xs);
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        font-weight: 600;
+        border-bottom: 1px solid color-mix(in srgb, #d97706 35%, transparent);
+        background: color-mix(in srgb, #d97706 6%, transparent);
+    }
+    .user-table tr.demo-row td { background: color-mix(in srgb, #d97706 4%, transparent); }
+    .user-table tr.demo-row td:first-child { border-left: 2px solid color-mix(in srgb, #d97706 50%, transparent); }
     .orgs-cell { display: flex; flex-wrap: wrap; gap: .25rem; align-items: center; min-height: 1.4rem; }
     .tag { display: inline-block; padding: .1rem .35rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 3px; font-size: var(--text-xs); color: var(--text-2); }
     .mfa-on { display: inline-block; padding: .1rem .4rem; background: rgba(39,174,96,.18); color: #2c9c4e; border: 1px solid rgba(39,174,96,.35); border-radius: 3px; font-size: var(--text-xs); font-weight: 600; }
