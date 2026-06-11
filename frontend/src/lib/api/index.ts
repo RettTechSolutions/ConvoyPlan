@@ -363,6 +363,7 @@ export interface AdminUser {
     email: string;
     is_active: boolean;
     is_superadmin: boolean;
+    is_demo: boolean;
     mfa_enabled: boolean;
     created_at: string;
     orgs: { id: string; name: string; role: string }[];
@@ -388,6 +389,7 @@ export interface AdminOrg {
     owner_id: string | null;
     owner_email: string | null;
     member_count: number;
+    is_demo: boolean;
 }
 
 export interface ApiKey {

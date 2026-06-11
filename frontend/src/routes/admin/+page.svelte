@@ -21,6 +21,9 @@
 
     // ── Users ────────────────────────────────────────────────────────────────
     let users = $state<AdminUser[]>([]);
+    // Reguläre Benutzer zuerst, Demo-Sitzungen als abgesetzte Gruppe darunter
+    const sortedUsers = $derived([...users.filter(u => !u.is_demo), ...users.filter(u => u.is_demo)]);
+    const demoUserCount = $derived(users.filter(u => u.is_demo).length);
     let loading = $state(true);
     let error = $state('');
     let showCreateForm = $state(false);
@@ -246,6 +249,8 @@
 
     // ── Organisationen ───────────────────────────────────────────────────────
     let orgs = $state<AdminOrg[]>([]);
+    const sortedOrgs = $derived([...orgs.filter(o => !o.is_demo), ...orgs.filter(o => o.is_demo)]);
+    const demoOrgCount = $derived(orgs.filter(o => o.is_demo).length);
     let orgsLoading = $state(false);
     let orgsError = $state('');
 
@@ -1147,7 +1152,7 @@
 
         <div class="section">
             <div class="section-header">
-                <strong>Benutzer ({users.length})</strong>
+                <strong>Benutzer ({users.length - demoUserCount}{demoUserCount > 0 ? ` + ${demoUserCount} Demo` : ''})</strong>
                 <button class="btn-small" onclick={() => (showCreateForm = !showCreateForm)}>+ Neu</button>
             </div>
 
@@ -1201,8 +1206,13 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {#each users as user}
-                            <tr class:inactive={!user.is_active}>
+                        {#each sortedUsers as user, i}
+                            {#if user.is_demo && (i === 0 || !sortedUsers[i - 1].is_demo)}
+                                <tr class="group-divider-row">
+                                    <td colspan="6">▶ Demo-Sitzungen ({demoUserCount}) — temporär, werden automatisch gelöscht</td>
+                                </tr>
+                            {/if}
+                            <tr class:inactive={!user.is_active} class:demo-row={user.is_demo}>
                                 <td>{user.email}</td>
                                 <td>
                                     <div class="orgs-cell">
@@ -1297,7 +1307,7 @@
 
         <div class="section">
             <div class="section-header">
-                <strong>Organisationen ({orgs.length})</strong>
+                <strong>Organisationen ({orgs.length - demoOrgCount}{demoOrgCount > 0 ? ` + ${demoOrgCount} Demo` : ''})</strong>
                 <div style="display:flex;gap:.4rem">
                     <button class="btn-small" onclick={() => { createOrgForm = { name: '', slug: '', slugManual: false }; createOrgError = ''; showCreateOrgModal = true; }}>+ Neu</button>
                     <button class="btn-small" onclick={loadOrgs}>↺</button>
@@ -1318,8 +1328,13 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {#each orgs as org}
-                            <tr>
+                        {#each sortedOrgs as org, i}
+                            {#if org.is_demo && (i === 0 || !sortedOrgs[i - 1].is_demo)}
+                                <tr class="group-divider-row">
+                                    <td colspan="5">▶ Demo-Sitzungen ({demoOrgCount}) — temporär, werden automatisch gelöscht</td>
+                                </tr>
+                            {/if}
+                            <tr class:demo-row={org.is_demo}>
                                 <td>{org.name}</td>
                                 <td><code>{org.slug}</code></td>
                                 <td class="hint">{org.owner_email ?? '–'}</td>
@@ -2476,6 +2491,18 @@
     .user-table th { text-align: left; padding: .5rem; color: var(--text-muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--border); }
     .user-table td { padding: .5rem; border-bottom: 1px solid var(--border); vertical-align: middle; color: var(--text-2); }
     .user-table tr.inactive td { opacity: .45; }
+    .user-table tr.group-divider-row td {
+        padding: .6rem .5rem .35rem;
+        color: #d97706;
+        font-size: var(--text-xs);
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        font-weight: 600;
+        border-bottom: 1px solid color-mix(in srgb, #d97706 35%, transparent);
+        background: color-mix(in srgb, #d97706 6%, transparent);
+    }
+    .user-table tr.demo-row td { background: color-mix(in srgb, #d97706 4%, transparent); }
+    .user-table tr.demo-row td:first-child { border-left: 2px solid color-mix(in srgb, #d97706 50%, transparent); }
     .orgs-cell { display: flex; flex-wrap: wrap; gap: .25rem; align-items: center; min-height: 1.4rem; }
     .tag { display: inline-block; padding: .1rem .35rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 3px; font-size: var(--text-xs); color: var(--text-2); }
     .mfa-on { display: inline-block; padding: .1rem .4rem; background: rgba(39,174,96,.18); color: #2c9c4e; border: 1px solid rgba(39,174,96,.35); border-radius: 3px; font-size: var(--text-xs); font-weight: 600; }

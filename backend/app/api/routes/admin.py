@@ -64,6 +64,7 @@ async def list_users(
             email=u.email,
             is_active=u.is_active,
             is_superadmin=u.is_superadmin,
+            is_demo=u.is_demo,
             mfa_enabled=u.mfa_enabled,
             created_at=u.created_at,
             orgs=orgs,
@@ -147,7 +148,8 @@ async def update_user(
         if m.organization is not None
     ]
     return AdminUserResponse(id=user.id, email=user.email, is_active=user.is_active,
-                             is_superadmin=user.is_superadmin, mfa_enabled=user.mfa_enabled,
+                             is_superadmin=user.is_superadmin, is_demo=user.is_demo,
+                             mfa_enabled=user.mfa_enabled,
                              created_at=user.created_at, orgs=orgs)
 
 
@@ -510,6 +512,7 @@ async def list_all_organizations(
             "slug": org.slug,
             "owner_email": org.owner.email if org.owner else None,
             "member_count": len(org.members),
+            "is_demo": org.is_demo,
         }
         for org in orgs
     ]
