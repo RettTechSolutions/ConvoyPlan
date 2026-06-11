@@ -1,8 +1,14 @@
-"""Tests for the runtime demo-mode toggle (admin panel > env var fallback)."""
+"""Tests for the runtime demo-mode toggle (admin panel > env var fallback)
+and the superadmin demo-session management endpoints."""
+
+import uuid
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 from unittest.mock import AsyncMock, MagicMock
 
+from app.api.deps import get_db, require_superadmin
+from app.main import app
 from app.services import demo
 
 
@@ -56,3 +62,57 @@ async def test_set_demo_enabled_upserts():
     await demo.set_demo_enabled(db, False)
     db.add.assert_not_called()
     db.commit.assert_awaited()
+
+
+# ── Demo-session management (superadmin) ─────────────────────────────────────
+
+
+def _superadmin():
+    u = MagicMock()
+    u.id = uuid.uuid4()
+    u.is_superadmin = True
+    u.email = "admin@example.com"
+    return u
+
+
+@pytest.mark.asyncio
+async def test_terminate_demo_session_404_when_missing():
+    app.dependency_overrides[require_superadmin] = _superadmin
+
+    db = AsyncMock()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = None
+    db.execute.return_value = result
+
+    async def _db():
+        yield db
+    app.dependency_overrides[get_db] = _db
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.delete(f"/api/admin/demo-sessions/{uuid.uuid4()}")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_list_demo_sessions_empty():
+    app.dependency_overrides[require_superadmin] = _superadmin
+
+    db = AsyncMock()
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = []
+    db.execute.return_value = result
+
+    async def _db():
+        yield db
+    app.dependency_overrides[get_db] = _db
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get("/api/admin/demo-sessions")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert resp.status_code == 200
+    assert resp.json() == []

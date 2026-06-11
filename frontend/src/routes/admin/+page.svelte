@@ -5,7 +5,7 @@
     import LeitstellenTable from '$lib/components/LeitstellenTable.svelte';
     import { auth } from '$lib/stores/auth';
     import { getStreamTicket } from '$lib/api/client';
-    import { adminApi, mfaApi, leistellenApi, licenseApi, emailTemplateApi, type AdminUser, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type EmailTemplate, type ApiKey, type ApiKeyCreated, type DemoSettings } from '$lib/api';
+    import { adminApi, mfaApi, leistellenApi, licenseApi, emailTemplateApi, type AdminUser, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type EmailTemplate, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoSessionInfo } from '$lib/api';
     import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
     import SuperadminLogin from '$lib/components/SuperadminLogin.svelte';
@@ -576,6 +576,26 @@
         try {
             demoSettings = await adminApi.getDemoSettings();
         } catch { /* Abschnitt zeigt dann "Status nicht verfügbar" */ }
+        try {
+            demoSessions = await adminApi.listDemoSessions();
+        } catch { demoSessions = []; }
+    }
+
+    let demoSessions = $state<DemoSessionInfo[]>([]);
+    let endingDemoSession = $state<string | null>(null);
+
+    async function endDemoSession(session: DemoSessionInfo) {
+        if (!confirm(`Demo-Sitzung „${session.name}" (${session.slug}) sofort beenden? Alle Daten der Sitzung werden gelöscht.`)) return;
+        endingDemoSession = session.id;
+        demoSettingsError = '';
+        try {
+            await adminApi.endDemoSession(session.id);
+            demoSessions = demoSessions.filter(s => s.id !== session.id);
+        } catch (e) {
+            demoSettingsError = e instanceof Error ? e.message : 'Fehler beim Beenden der Demo-Sitzung';
+        } finally {
+            endingDemoSession = null;
+        }
     }
 
     async function toggleDemo() {
@@ -1962,6 +1982,50 @@
                 >
                     {demoSaving ? '…' : demoSettings.enabled ? 'Demo-Modus deaktivieren' : 'Demo-Modus aktivieren'}
                 </button>
+
+                <div class="section-header" style="margin-top:1.25rem">
+                    <strong>Offene Demo-Sitzungen ({demoSessions.length})</strong>
+                    <button class="btn-small" onclick={loadDemoSettings} title="Aktualisieren">⟳</button>
+                </div>
+                {#if demoSessions.length === 0}
+                    <p class="hint">Keine offenen Demo-Sitzungen.</p>
+                {:else}
+                    <table class="user-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Code (Slug)</th>
+                                <th>Gestartet</th>
+                                <th>Läuft ab</th>
+                                <th>Marschverbände</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {#each demoSessions as session}
+                                <tr>
+                                    <td>{session.name}</td>
+                                    <td><code>{session.slug}</code></td>
+                                    <td class="hint">{new Date(session.created_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</td>
+                                    <td class="hint">{new Date(session.expires_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</td>
+                                    <td>{session.convoy_count}</td>
+                                    <td class="actions-cell">
+                                        <div>
+                                            <button
+                                                class="btn-small danger"
+                                                onclick={() => endDemoSession(session)}
+                                                disabled={endingDemoSession === session.id}
+                                                title="Sitzung beenden und Daten löschen"
+                                            >
+                                                {endingDemoSession === session.id ? '…' : '✕ Beenden'}
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {/each}
+                        </tbody>
+                    </table>
+                {/if}
             {:else}
                 <p class="hint">Status nicht verfügbar</p>
             {/if}
