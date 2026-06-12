@@ -1265,7 +1265,7 @@
 						{/if}
 						<ul
 							class="vehicle-list"
-							use:dndzone={{ items: dndVehicles, flipDurationMs: 200 }}
+							use:dndzone={{ items: dndVehicles, flipDurationMs: 200, type: 'my-vehicles' }}
 							onconsider={handleVehicleDndConsider}
 							onfinalize={handleVehicleDndFinalize}
 						>
@@ -1342,7 +1342,7 @@
 							<div class="section-header" style="margin-top:.75rem"><strong>Im Verband (Marschfolge)</strong></div>
 							<ul
 								class="vehicle-list"
-								use:dndzone={{ items: dndConvoyVehicles, flipDurationMs: 200 }}
+								use:dndzone={{ items: dndConvoyVehicles, flipDurationMs: 200, type: 'march-order' }}
 								onconsider={handleConvoyVehicleDndConsider}
 								onfinalize={handleConvoyVehicleDndFinalize}
 							>
@@ -1484,7 +1484,7 @@
 						{/if}
 						<ul
 							class="wp-list"
-							use:dndzone={{ items: dndWaypoints, flipDurationMs: 200 }}
+							use:dndzone={{ items: dndWaypoints, flipDurationMs: 200, type: 'waypoints' }}
 							onconsider={handleDndConsider}
 							onfinalize={handleDndFinalize}
 						>
