@@ -1362,7 +1362,7 @@
 								onconsider={handleConvoyVehicleDndConsider}
 								onfinalize={handleConvoyVehicleDndFinalize}
 							>
-								{#each dndConvoyVehicles as cv, i (cv.vehicle.id)}
+								{#each dndConvoyVehicles as cv, i (cv.id)}
 									<li class="vehicle-item convoy-vehicle-row">
 										<div class="veh-left">
 											<span class="drag-handle" title="Ziehen zum Umsortieren">⠿</span>
