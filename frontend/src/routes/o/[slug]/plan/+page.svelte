@@ -288,9 +288,24 @@
 		} catch { error = 'Fehler beim Laden'; }
 	}
 
+	// svelte-dnd-action keys march-order items by a stable top-level `id`.
+	// ConvoyVehicleItem has none, so we stamp the vehicle id onto each row *once*
+	// when convoy data arrives from the backend. Doing it here (rather than
+	// re-mapping to fresh objects inside the $effect on every state change) keeps
+	// the object identities stable across rebuilds — without that, dnd-action's
+	// flip animation breaks and rows overlap / disappear while reordering.
+	function withVehicleIds(c: Convoy): Convoy {
+		for (const cv of c.convoy_vehicles) {
+			if ((cv as Partial<DndConvoyVehicle>).id === undefined) {
+				(cv as DndConvoyVehicle).id = cv.vehicle.id;
+			}
+		}
+		return c;
+	}
+
 	function selectConvoy(c: Convoy) {
-		selected = c;
-		activeConvoy.set(c);
+		selected = withVehicleIds(c);
+		activeConvoy.set(selected);
 		route = null;
 		routeGeojson = null;
 		activeRoute.set(null);
@@ -319,7 +334,7 @@
 
 	async function refreshConvoy() {
 		if (!selected) return;
-		selected = await convoysApi.get(selected.id);
+		selected = withVehicleIds(await convoysApi.get(selected.id));
 		convoyList = convoyList.map(c => c.id === selected!.id ? selected! : c);
 		convoys.set(convoyList);
 		activeConvoy.set(selected);
@@ -373,7 +388,7 @@
 		try {
 			await convoysApi.delete(selected.id);
 			convoyList = convoyList.filter(c => c.id !== selected!.id);
-			selected = convoyList[0] ?? null;
+			selected = convoyList[0] ? withVehicleIds(convoyList[0]) : null;
 			activeConvoy.set(selected);
 			showEditConvoyForm = false;
 			route = null;
@@ -938,9 +953,10 @@
 	$effect(() => {
     if (selected) {
       dndWaypoints = [...selected.waypoints].sort((a, b) => a.order_index - b.order_index);
-      dndConvoyVehicles = [...selected.convoy_vehicles]
-        .sort((a, b) => a.position - b.position)
-        .map((cv) => ({ ...cv, id: cv.vehicle.id }));
+      // No re-mapping here: the rows already carry a stable `id` (see
+      // withVehicleIds), so sorting preserves object identity for dnd-action.
+      dndConvoyVehicles = [...(selected.convoy_vehicles as DndConvoyVehicle[])]
+        .sort((a, b) => a.position - b.position);
     }
   });
 	async function downloadExport(format: 'gpx' | 'json' | 'pdf') {
