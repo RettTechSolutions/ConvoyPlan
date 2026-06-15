@@ -24,7 +24,8 @@
 		"vite": "^8.0.16"
 	},
 	"overrides": {
-		"cookie": "^0.7.2"
+		"cookie": "^0.7.2",
+		"esbuild": "^0.28.1"
 	},
 	"dependencies": {
 		"@types/qrcode": "^1.5.6",
