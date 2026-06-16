@@ -45,10 +45,12 @@ export default defineConfig({
 						// Cache map tiles as they are viewed so the map keeps rendering
 						// offline (poor signal). StaleWhileRevalidate serves the cached
 						// tile immediately and falls back to it when the network fails.
-						// A roomier budget covers a longer route corridor offline.
+						// The budget is large enough to hold a whole route corridor that
+						// is proactively prefetched (see lib/tracking/tileCache.ts) plus
+						// the tiles viewed around it, without evicting the route again.
 						urlPattern: /^https:\/\/tile\.openstreetmap\.org\/.*/,
 						handler: 'StaleWhileRevalidate',
-						options: { cacheName: 'osm-tiles', expiration: { maxEntries: 1500, maxAgeSeconds: 60 * 60 * 24 * 14 } },
+						options: { cacheName: 'osm-tiles', expiration: { maxEntries: 4000, maxAgeSeconds: 60 * 60 * 24 * 30 } },
 					},
 				],
 			},

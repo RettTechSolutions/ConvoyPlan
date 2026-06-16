@@ -14,6 +14,7 @@
 		statusColor, statusLabel, levelLabel, type HaltLevel, type BreakdownLevel,
 	} from '$lib/tracking/status';
 	import { routeCoords, estimateDelay, haversine } from '$lib/tracking/eta';
+	import { prefetchRouteTiles } from '$lib/tracking/tileCache';
 
 	const convoyId = $page.params.convoy_id!;
 
@@ -388,6 +389,16 @@
 	});
 
 	let hasSchedule = $derived(!!convoy?.waypoints.some(w => w.planned_arrival));
+
+	// Once the route is known, proactively warm the OSM tile cache along the whole
+	// route corridor (while online) so the map and route stay visible offline even
+	// in areas the driver hasn't panned to yet.
+	$effect(() => {
+		const geo = routeGeojson;
+		if (!geo) return;
+		const coords = routeCoords(geo);
+		if (coords.length) prefetchRouteTiles(coords, convoyId);
+	});
 
 	// --- In-app alert notification (sound + vibration) --------------------
 	let lastAlertCount = 0;
