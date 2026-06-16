@@ -25,7 +25,10 @@
 	},
 	"overrides": {
 		"cookie": "^0.7.2",
-		"esbuild": "^0.28.1"
+		"esbuild": "^0.28.1",
+		"vite-plugin-pwa": {
+			"vite": "^7.3.5"
+		}
 	},
 	"dependencies": {
 		"@types/qrcode": "^1.5.6",
