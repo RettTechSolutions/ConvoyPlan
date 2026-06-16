@@ -46,6 +46,71 @@
 	// Screen Wake Lock so the display stays on while tracking is open.
 	let wakeLock: WakeLockSentinel | null = null;
 
+	// --- Connectivity / offline handling -----------------------------------
+	// Coarse browser signal (navigator.onLine).
+	let netOnline = $state(true);
+	// Becomes true once the live WebSocket has connected at least once, so we
+	// don't flag the brief initial connect as "offline".
+	let everConnected = $state(false);
+	$effect(() => { if ($trackingActive) everConnected = true; });
+	// True while actively tracking but the server is currently unreachable —
+	// either no network at all, or the live WebSocket dropped (poor signal).
+	// The GPS marker keeps moving on the cached map; positions are simply not
+	// transmitted until we are back online.
+	let offline = $derived(transmitting && (!netOnline || (everConnected && !$trackingActive)));
+	// Transient "back online" confirmation toast.
+	let backOnline = $state(false);
+	let backOnlineTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function handleNet() { netOnline = navigator.onLine; }
+
+	// Fullscreen: let the map use the entire screen on mobile browsers that
+	// support the Fullscreen API (Android/desktop/iPad). On iOS Safari the API
+	// is unavailable — there the standalone "Zum Home-Bildschirm" PWA gives the
+	// same full-screen experience, so the button is simply hidden.
+	const fullscreenSupported = typeof document !== 'undefined' && !!document.fullscreenEnabled;
+	let isFullscreen = $state(false);
+	function handleFullscreenChange() { isFullscreen = !!document.fullscreenElement; }
+	function toggleFullscreen() {
+		if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
+		else document.exitFullscreen?.().catch(() => {});
+	}
+
+	// Announce the offline → online transition (vibration + in-app toast, plus a
+	// system notification when already granted) so the driver knows transmission
+	// resumed without staring at the screen.
+	let wasOffline = false;
+	$effect(() => {
+		const off = offline;
+		if (wasOffline && !off) announceBackOnline();
+		wasOffline = off;
+	});
+
+	function announceBackOnline() {
+		backOnline = true;
+		try { navigator.vibrate?.(120); } catch { /* unsupported */ }
+		try {
+			if ('Notification' in window && Notification.permission === 'granted') {
+				new Notification('Wieder online', { body: 'Deine Position wird wieder übertragen.' });
+			}
+		} catch { /* ignore */ }
+		if (backOnlineTimer) clearTimeout(backOnlineTimer);
+		backOnlineTimer = setTimeout(() => (backOnline = false), 4000);
+	}
+
+	// Mirror my own position into the live map locally so the marker keeps moving
+	// on the (cached) map even while offline — independent of the server echo
+	// that normally delivers positions back over the WebSocket.
+	function recordMyPosition(lat: number, lon: number, speedKmh?: number, heading?: number) {
+		if (!myVehicleId) return;
+		const mine: VehiclePosition = {
+			vehicle_id: myVehicleId, lat, lon,
+			speed_kmh: speedKmh ?? null, heading: heading ?? null,
+			recorded_at: new Date().toISOString(),
+		};
+		livePositions.update((m) => { m.set(myVehicleId, mine); return new Map(m); });
+	}
+
 	// Persist the active assignment per convoy so a page reload resumes it.
 	const SESSION_KEY = `cp-tracking-session-${convoyId}`;
 	// Capture the saved session synchronously at init, before the persistence
@@ -109,6 +174,10 @@
 	onMount(async () => {
 		requestWakeLock();
 		document.addEventListener('visibilitychange', handleVisibility);
+		netOnline = navigator.onLine;
+		window.addEventListener('online', handleNet);
+		window.addEventListener('offline', handleNet);
+		document.addEventListener('fullscreenchange', handleFullscreenChange);
 		try {
 			[convoy] = await Promise.all([
 				convoysApi.get(convoyId),
@@ -135,6 +204,10 @@
 		if (geoWatcher !== null) { navigator.geolocation.clearWatch(geoWatcher); geoWatcher = null; }
 		releaseWakeLock();
 		document.removeEventListener('visibilitychange', handleVisibility);
+		window.removeEventListener('online', handleNet);
+		window.removeEventListener('offline', handleNet);
+		document.removeEventListener('fullscreenchange', handleFullscreenChange);
+		if (backOnlineTimer) { clearTimeout(backOnlineTimer); backOnlineTimer = null; }
 	});
 
 	// Restore a previously active assignment after a reload. If the saved vehicle
@@ -203,7 +276,11 @@
 				if (!transmitting) return;
 				error = '';
 				const { latitude: lat, longitude: lon, speed, heading } = pos.coords;
-				sendPosition(convoyId, myVehicleId, lat, lon, speed ? speed * 3.6 : undefined, heading ?? undefined);
+				const speedKmh = speed ? speed * 3.6 : undefined;
+				// Always render my own marker locally so it keeps moving on the
+				// cached map even when the network/WebSocket is down.
+				recordMyPosition(lat, lon, speedKmh, heading ?? undefined);
+				sendPosition(convoyId, myVehicleId, lat, lon, speedKmh, heading ?? undefined);
 				maybeAutoArrive(lat, lon);
 			},
 			(e) => {
@@ -225,13 +302,16 @@
 		manualMode = false;
 		// End the GPS sharing: remove our own position so we no longer show as LIVE
 		// and the marker disappears (suppress=false → we may re-start immediately).
+		// Drop the locally mirrored marker right away so it vanishes even offline.
 		if (wasTransmitting && myVehicleId) {
+			livePositions.update((m) => { m.delete(myVehicleId); return new Map(m); });
 			trackingApi.clearVehiclePosition(convoyId, myVehicleId, false).catch(() => {});
 		}
 	}
 
 	function handleMapTap(lat: number, lon: number) {
 		if (!transmitting || !manualMode || !myVehicleId) return;
+		recordMyPosition(lat, lon);
 		sendPosition(convoyId, myVehicleId, lat, lon, undefined, undefined);
 		maybeAutoArrive(lat, lon);
 	}
@@ -595,10 +675,29 @@
 			<div class="map-hint-bar">Tippe auf die Karte um Position zu senden</div>
 		{/if}
 
+		<!-- Connectivity banner: offline (poor signal) / back-online toast -->
+		{#if offline}
+			<div class="net-banner offline" role="status">
+				<span class="nb-icon">📡</span>
+				<div class="nb-text">
+					<strong>Du bist offline</strong>
+					<span>Deine Position wird auf der Karte angezeigt, aber nicht übertragen.</span>
+				</div>
+			</div>
+		{:else if backOnline}
+			<div class="net-banner online" role="status">
+				<span class="nb-icon">✓</span>
+				<div class="nb-text">
+					<strong>Wieder online</strong>
+					<span>Deine Position wird wieder übertragen.</span>
+				</div>
+			</div>
+		{/if}
+
 		<!-- In-app alert banner (TH / Ausfall) -->
 		{#if activeAlerts.length > 0}
 			{@const a = activeAlerts[0]}
-			<div class="alert-banner" class:breakdown={a.alert_type === 'breakdown'}>
+			<div class="alert-banner" class:breakdown={a.alert_type === 'breakdown'} class:with-net={offline || backOnline}>
 				<span class="ab-icon">{STATUS_ICONS[a.alert_type]}</span>
 				<div class="ab-text">
 					<strong>{a.vehicle_label ?? 'Fahrzeug'}</strong>
@@ -611,6 +710,11 @@
 		{/if}
 
 		<div class="map-controls">
+			{#if fullscreenSupported}
+				<button class="map-ctrl-btn" class:active={isFullscreen} onclick={toggleFullscreen} title={isFullscreen ? 'Vollbild verlassen' : 'Vollbild – gesamten Bildschirm nutzen'}>
+					{isFullscreen ? '🔳 Vollbild aus' : '⛶ Vollbild'}
+				</button>
+			{/if}
 			{#if routeGeojson}
 				<button class="map-ctrl-btn" onclick={() => mapView?.showRoute()} title="Gesamte Route anzeigen">
 					🗺️ Route
@@ -789,6 +893,18 @@
 	@keyframes alert-in { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 	@keyframes flash { from { box-shadow: 0 4px 16px rgba(0,0,0,.4); } to { box-shadow: 0 0 0 4px rgba(226,61,40,.5), 0 4px 16px rgba(0,0,0,.4); } }
 
+	/* Connectivity banner (offline / back-online) */
+	.net-banner { position: absolute; top: .75rem; left: 50%; transform: translateX(-50%); z-index: 19; display: flex; align-items: center; gap: .55rem; max-width: min(560px, calc(100% - 1.5rem)); padding: .55rem .8rem; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.4); animation: alert-in .25s ease; }
+	.net-banner.offline { background: #4a5568; color: #fff; }
+	.net-banner.online { background: #27ae60; color: #fff; }
+	.nb-icon { font-size: 1.2rem; flex-shrink: 0; }
+	.net-banner.offline .nb-icon { animation: pulse 1.5s infinite; }
+	.nb-text { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
+	.nb-text strong { font-size: var(--text-sm); }
+	.nb-text span { font-size: var(--text-xs); opacity: .9; }
+	/* When a connectivity banner is visible, nudge the alert banner below it. */
+	.alert-banner.with-net { top: calc(.75rem + 3.6rem); }
+
 	/* Mobile topbar */
 	.topbar { display: none; }
 	.sidebar-backdrop { display: none; }
@@ -814,6 +930,27 @@
 		.collapse-btn { display: none; }
 		.sidebar-backdrop { display: block; position: fixed; inset: 0; top: 48px; background: rgba(0,0,0,.4); z-index: 39; border: none; cursor: pointer; }
 		.map-area { flex: 1; }
+		.net-banner { top: calc(48px + .5rem); }
 		.alert-banner { top: calc(48px + .5rem); }
+		.alert-banner.with-net { top: calc(48px + .5rem + 3.6rem); }
+	}
+
+	/* Short landscape (phones held sideways): the stacked map control buttons
+	   can exceed the limited height. Keep them compact, lift them above the iOS
+	   home indicator, and let the column scroll so every button stays reachable
+	   instead of being clipped behind the browser/system UI. */
+	@media (orientation: landscape) and (max-height: 600px) {
+		.map-controls {
+			gap: .35rem;
+			right: calc(.5rem + env(safe-area-inset-right, 0px));
+			bottom: calc(.5rem + env(safe-area-inset-bottom, 0px));
+			/* Cap the height and scroll instead of stretching the container, so it
+			   never overlays (and steals taps from) the native zoom control above. */
+			max-height: calc(100% - 48px - 1rem);
+			overflow-y: auto;
+			scrollbar-width: none;
+		}
+		.map-controls::-webkit-scrollbar { display: none; }
+		.map-ctrl-btn { padding: .4rem .7rem; font-size: var(--text-xs); }
 	}
 </style>

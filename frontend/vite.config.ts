@@ -42,9 +42,13 @@ export default defineConfig({
 				maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
 				runtimeCaching: [
 					{
+						// Cache map tiles as they are viewed so the map keeps rendering
+						// offline (poor signal). StaleWhileRevalidate serves the cached
+						// tile immediately and falls back to it when the network fails.
+						// A roomier budget covers a longer route corridor offline.
 						urlPattern: /^https:\/\/tile\.openstreetmap\.org\/.*/,
 						handler: 'StaleWhileRevalidate',
-						options: { cacheName: 'osm-tiles', expiration: { maxEntries: 500, maxAgeSeconds: 60 * 60 * 24 * 7 } },
+						options: { cacheName: 'osm-tiles', expiration: { maxEntries: 1500, maxAgeSeconds: 60 * 60 * 24 * 14 } },
 					},
 				],
 			},
