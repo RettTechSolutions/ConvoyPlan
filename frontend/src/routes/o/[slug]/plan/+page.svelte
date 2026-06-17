@@ -1739,10 +1739,24 @@
 		</button>
 		{#if $mapMode !== 'idle'}
 			<div class="map-hint-bar">
-				{#if $mapMode === 'set-start'}Start setzen – auf Karte klicken{/if}
-				{#if $mapMode === 'set-end'}Ziel setzen – auf Karte klicken{/if}
-				{#if $mapMode === 'add-waypoint'}Wegpunkt setzen – auf Karte klicken{/if}
-				<button onclick={() => mapMode.set('idle')}>Abbrechen</button>
+				<div class="map-hint-row">
+					<span class="map-hint-text">
+						{#if $mapMode === 'set-start'}Start setzen – auf Karte klicken oder Adresse eingeben{/if}
+						{#if $mapMode === 'set-end'}Ziel setzen – auf Karte klicken oder Adresse eingeben{/if}
+						{#if $mapMode === 'add-waypoint'}Wegpunkt setzen – auf Karte klicken oder Adresse eingeben{/if}
+					</span>
+					<button onclick={() => mapMode.set('idle')}>Abbrechen</button>
+				</div>
+				<div class="map-hint-search">
+					<!-- Re-key per mode so the input clears between Start → Ziel → Wegpunkt
+					     instead of carrying the previous address text over. -->
+					{#key $mapMode}
+						<LocationSearch
+							placeholder="Adresse eingeben…"
+							onSelect={(lat, lon) => handleMapClick(lat, lon)}
+						/>
+					{/key}
+				</div>
 			</div>
 		{/if}
 
@@ -2101,8 +2115,13 @@
 	.topbar { display: none; }
 	.sidebar-backdrop { display: none; }
 	.fab-route { display: none; }
-	.map-hint-bar { position: absolute; top: 1rem; left: 50%; transform: translateX(-50%); z-index: 10; background: rgba(15,27,36,.9); color: white; padding: .5rem 1rem; border-radius: 20px; display: flex; align-items: center; gap: 1rem; font-size: .85rem; }
-	.map-hint-bar button { background: rgba(255,255,255,.2); border: none; color: white; border-radius: 12px; padding: .2rem .6rem; cursor: pointer; }
+	.map-hint-bar { position: absolute; top: 1rem; left: 50%; transform: translateX(-50%); z-index: 10; background: rgba(15,27,36,.92); color: white; padding: .55rem .85rem; border-radius: 16px; display: flex; flex-direction: column; gap: .45rem; font-size: .85rem; width: min(420px, calc(100% - 2rem)); box-sizing: border-box; box-shadow: 0 4px 16px rgba(0,0,0,.35); }
+	.map-hint-row { display: flex; align-items: center; gap: .75rem; }
+	.map-hint-text { flex: 1; line-height: 1.3; }
+	.map-hint-bar button { background: rgba(255,255,255,.2); border: none; color: white; border-radius: 12px; padding: .25rem .7rem; cursor: pointer; flex-shrink: 0; }
+	/* The address search input already styles itself for a dark surface; drop its
+	   default bottom margin so it sits flush inside the compact hint bar. */
+	.map-hint-search :global(.search-wrap) { margin-bottom: 0; }
 
 	/* Modal */
 	.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; z-index: 100; }

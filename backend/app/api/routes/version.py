@@ -31,17 +31,39 @@ class VersionResponse(BaseModel):
     update_available: bool       # True when latest is newer than version
 
 
-def _normalize(v: str | None) -> tuple[int, ...] | None:
-    """Parse a version string into a comparable tuple, ignoring a leading 'v',
-    build metadata ("+sha") and pre-release suffixes ("-3-gabc")."""
+class ChangelogResponse(BaseModel):
+    version: str | None          # release version the notes belong to, e.g. "1.0.0"
+    name: str | None             # release title on GitHub
+    body: str | None             # release notes (markdown)
+    html_url: str | None         # link to the release on GitHub
+    published_at: str | None     # ISO timestamp of the release
+
+
+# Cache the changelog lookup per version so repeated page loads after a version
+# bump don't hammer the GitHub API.
+_changelog_cache: dict[str, tuple[float, ChangelogResponse]] = {}
+
+
+def _core_str(v: str | None) -> str | None:
+    """Return the bare "x.y.z" core of a version, dropping a leading 'v', build
+    metadata ("+sha") and pre-release/describe suffixes ("-3-gabc")."""
     if not v:
         return None
-    core = v.lstrip("vV").split("+")[0].split("-")[0]
+    core = v.lstrip("vV").split("+")[0].split("-")[0].strip()
     parts = core.split(".")
     if not parts or not parts[0].isdigit():
         return None
+    return core
+
+
+def _normalize(v: str | None) -> tuple[int, ...] | None:
+    """Parse a version string into a comparable tuple, ignoring a leading 'v',
+    build metadata ("+sha") and pre-release suffixes ("-3-gabc")."""
+    core = _core_str(v)
+    if not core:
+        return None
     try:
-        return tuple(int(p) for p in parts)
+        return tuple(int(p) for p in core.split("."))
     except ValueError:
         return None
 
@@ -101,3 +123,63 @@ async def get_version() -> VersionResponse:
         latest=latest,
         update_available=update_available,
     )
+
+
+async def _fetch_release(core: str) -> ChangelogResponse | None:
+    """Fetch the GitHub release matching version core "x.y.z". Tries the
+    'v'-prefixed tag first, then the bare tag. Fails open (None) so offline
+    deployments behave gracefully."""
+    if not settings.update_check_enabled:
+        return None
+
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    if settings.github_token:
+        headers["Authorization"] = f"Bearer {settings.github_token}"
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            for tag in (f"v{core}", core):
+                resp = await client.get(
+                    f"https://api.github.com/repos/{settings.github_repo}/releases/tags/{tag}",
+                    headers=headers,
+                )
+                if resp.is_success:
+                    data = resp.json()
+                    return ChangelogResponse(
+                        version=core,
+                        name=data.get("name") or data.get("tag_name"),
+                        body=data.get("body"),
+                        html_url=data.get("html_url"),
+                        published_at=data.get("published_at"),
+                    )
+    except Exception:
+        pass
+    return None
+
+
+@router.get("/changelog", response_model=ChangelogResponse)
+async def get_changelog() -> ChangelogResponse:
+    """Release notes for the currently running version, sourced live from the
+    GitHub releases API. Used by the client to show a one-time "what's new"
+    dialog after a version upgrade. Cached per version."""
+    version = settings.app_version or None
+    core = _core_str(version)
+    empty = ChangelogResponse(
+        version=core, name=None, body=None, html_url=None, published_at=None
+    )
+    if not core:
+        return empty
+
+    now = time.monotonic()
+    cached = _changelog_cache.get(core)
+    if cached and now - cached[0] < _LATEST_TTL:
+        return cached[1]
+
+    result = await _fetch_release(core) or empty
+    # Cache successful lookups; on failure keep a short-lived empty so a flaky
+    # network doesn't trigger a request storm but we still retry within the hour.
+    _changelog_cache[core] = (now, result)
+    return result
