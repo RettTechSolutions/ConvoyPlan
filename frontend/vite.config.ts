@@ -50,7 +50,7 @@ export default defineConfig({
 						// the tiles viewed around it, without evicting the route again.
 						urlPattern: /^https:\/\/tile\.openstreetmap\.org\/.*/,
 						handler: 'StaleWhileRevalidate',
-						options: { cacheName: 'osm-tiles', expiration: { maxEntries: 4000, maxAgeSeconds: 60 * 60 * 24 * 30 } },
+						options: { cacheName: 'osm-tiles', expiration: { maxEntries: 9000, maxAgeSeconds: 60 * 60 * 24 * 30 } },
 					},
 				],
 			},

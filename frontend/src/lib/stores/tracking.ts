@@ -34,6 +34,15 @@ let alertSeq = 0;
 let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let watchdogTimer: ReturnType<typeof setInterval> | null = null;
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+// Timestamp (ms) of the last frame received from the server. Drives the
+// application-level heartbeat: on flaky mobile signal the TCP socket stays
+// "OPEN" (half-open) for a long time, so neither a 'close' event nor
+// readyState reveal the drop. By pinging the server every few seconds and
+// expecting any reply, we detect the dead link within HEARTBEAT_TIMEOUT_MS
+// instead of waiting minutes for the OS-level timeout — that is what makes the
+// "Du bist offline" banner appear promptly.
+let lastMessageAt = 0;
 // Bumped on every (re)connect/disconnect so in-flight async connects and pending
 // reconnect timers from a superseded connection can detect they are stale and
 // bail out — prevents parallel sockets and runaway reconnect loops.
@@ -52,6 +61,10 @@ let onlineHandlerAttached = false;
 const RECONNECT_DELAY_MS = 3000;
 const WATCHDOG_INTERVAL_MS = 5000;
 const OPEN_TIMEOUT_MS = 10000;
+// Heartbeat: ping this often, and consider the link dead when no frame at all
+// (position echo, status, or pong) has arrived within the timeout.
+const HEARTBEAT_INTERVAL_MS = 3000;
+const HEARTBEAT_TIMEOUT_MS = 7000;
 
 export async function connectTracking(convoyId: string) {
 	// Fresh, user-initiated connect → drop any alerts carried over from a
@@ -60,6 +73,7 @@ export async function connectTracking(convoyId: string) {
 	desiredConvoyId = convoyId;
 	ensureOnlineHandler();
 	ensureWatchdog();
+	ensureHeartbeat();
 	await openSocket(convoyId);
 }
 
@@ -105,6 +119,8 @@ async function openSocket(convoyId: string) {
 	}, OPEN_TIMEOUT_MS);
 
 	socket.onmessage = (event) => {
+		// Any frame proves the link is alive → feed the heartbeat.
+		lastMessageAt = Date.now();
 		const data = JSON.parse(event.data) as VehiclePosition & {
 			type?: string;
 			vehicle_status?: string;
@@ -116,7 +132,10 @@ async function openSocket(convoyId: string) {
 			note?: string | null;
 			ts?: string;
 		};
-		if (data.type === 'status_update') {
+		if (data.type === 'pong') {
+			// Heartbeat reply — the timestamp above is all we need.
+			return;
+		} else if (data.type === 'status_update') {
 			vehicleStatuses.update((m) => {
 				m.set(data.vehicle_id, {
 					status: data.vehicle_status!,
@@ -153,7 +172,7 @@ async function openSocket(convoyId: string) {
 		}
 	};
 
-	socket.onopen = () => { clearTimeout(openTimer); trackingActive.set(true); };
+	socket.onopen = () => { clearTimeout(openTimer); lastMessageAt = Date.now(); trackingActive.set(true); };
 	socket.onerror = () => trackingActive.set(false);
 	socket.onclose = () => {
 		clearTimeout(openTimer);
@@ -188,6 +207,30 @@ function ensureWatchdog() {
 	}, WATCHDOG_INTERVAL_MS);
 }
 
+// Application-level heartbeat. Sends a ping on the open socket and, more
+// importantly, declares the link dead when no frame has been received within
+// HEARTBEAT_TIMEOUT_MS — the only reliable way to notice a silently dropped
+// mobile connection quickly (readyState stays OPEN on a half-open socket).
+function ensureHeartbeat() {
+	if (heartbeatTimer) return;
+	heartbeatTimer = setInterval(() => {
+		if (!desiredConvoyId) return;
+		const socket = ws;
+		if (socket && socket.readyState === WebSocket.OPEN) {
+			try { socket.send(JSON.stringify({ type: 'ping' })); } catch { /* ignore */ }
+			// No reply within the timeout → treat as offline and force a reconnect.
+			if (lastMessageAt && Date.now() - lastMessageAt > HEARTBEAT_TIMEOUT_MS) {
+				trackingActive.set(false);
+				const convoyId = desiredConvoyId;
+				socket.onclose = null;
+				try { socket.close(); } catch { /* ignore */ }
+				if (ws === socket) ws = null;
+				scheduleReconnect(convoyId);
+			}
+		}
+	}, HEARTBEAT_INTERVAL_MS);
+}
+
 // Reconnect immediately when the OS reports connectivity is back, rather than
 // waiting for the next timer tick.
 function ensureOnlineHandler() {
@@ -207,6 +250,7 @@ export function disconnectTracking() {
 	desiredConvoyId = null;
 	if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
 	if (watchdogTimer) { clearInterval(watchdogTimer); watchdogTimer = null; }
+	if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
 	if (onlineHandlerAttached && typeof window !== 'undefined') {
 		window.removeEventListener('online', handleOnline);
 		onlineHandlerAttached = false;

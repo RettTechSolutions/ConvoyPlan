@@ -278,6 +278,12 @@ async def tracking_ws(
     try:
         while True:
             raw = await ws.receive_json()
+            # Application-level heartbeat: the client pings every few seconds so
+            # it can detect a silently dropped (half-open) mobile connection
+            # quickly. Reply with a pong and skip position handling.
+            if isinstance(raw, dict) and raw.get("type") == "ping":
+                await ws.send_json({"type": "pong"})
+                continue
             try:
                 pos = PositionUpdate.model_validate(raw)
             except Exception:
