@@ -8,6 +8,7 @@
 	import { versionStore } from '$lib/stores/version.svelte';
 	import { printConsoleBanner } from '$lib/console-banner';
 	import InstallPrompt from '$lib/components/InstallPrompt.svelte';
+	import ChangelogModal from '$lib/components/ChangelogModal.svelte';
 
 	let { children } = $props();
 
@@ -115,6 +116,9 @@
 {#if !$page.url.pathname.startsWith('/track')}
 	<InstallPrompt />
 {/if}
+
+<!-- One-time "what's new" dialog after a version upgrade (self-gates per route). -->
+<ChangelogModal />
 
 <footer class="powered-by">
 	v{__APP_VERSION__}
