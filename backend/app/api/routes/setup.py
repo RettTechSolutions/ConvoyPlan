@@ -44,7 +44,8 @@ def _security_header_block(domain: str) -> str:
         "style-src 'self' 'unsafe-inline'; script-src 'self'; "
         "worker-src 'self' blob:; font-src 'self' data:; "
         "connect-src 'self' https://tile.openstreetmap.org "
-        f"https://nominatim.openstreetmap.org ws://{domain} wss://{domain}"
+        "https://nominatim.openstreetmap.org https://photon.komoot.io "
+        f"ws://{domain} wss://{domain}"
     )
     csp_header = (
         "Content-Security-Policy"
