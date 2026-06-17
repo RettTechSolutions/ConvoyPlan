@@ -480,6 +480,9 @@ export const adminApi = {
     triggerUpdate: () => api.post<{ status: string }>('/api/admin/trigger-update', {}),
     getGithubTokenStatus: () => api.get<{ set: boolean; source: string | null }>('/api/admin/settings/github-token-set'),
     setGithubToken: (token: string) => api.put<void>('/api/admin/settings/github-token', { token }),
+    getUpdateChannel: () => api.get<UpdateChannel>('/api/admin/settings/update-channel'),
+    setUpdateChannel: (channel: 'stable' | 'beta') =>
+        api.put<void>('/api/admin/settings/update-channel', { channel }),
     getDemoSettings: () => api.get<DemoSettings>('/api/admin/settings/demo'),
     saveDemoSettings: (enabled: boolean, session_hours?: number) =>
         api.put<DemoSettings>('/api/admin/settings/demo', { enabled, session_hours }),
@@ -503,6 +506,15 @@ export interface UpdateStatus {
     remote_sha: string | null;
     update_available: boolean;
     github_reachable: boolean;
+    channel: 'stable' | 'beta';
+    latest_release: string | null;   // tag of the latest release (stable channel)
+    no_release: boolean;             // stable channel but repo has no release yet
+}
+
+export interface UpdateChannel {
+    channel: 'stable' | 'beta';
+    source: 'db' | 'env';
+    env_channel: 'stable' | 'beta';
 }
 
 export interface DemoSettings {

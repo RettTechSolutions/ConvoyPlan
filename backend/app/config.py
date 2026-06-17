@@ -22,6 +22,13 @@ class Settings(BaseSettings):
     # tests so the version endpoint never hits the network.
     update_check_enabled: bool = True
 
+    # Release channel for the self-updater. "stable" only deploys published
+    # GitHub *releases* (so a normal push to main no longer triggers an update);
+    # "beta" tracks every commit on the main branch (the previous behaviour).
+    # The admin-panel toggle (system_settings: "update.channel") takes priority;
+    # this env value is only the fallback when no DB setting exists.
+    update_channel: str = "stable"
+
     license_key: str = ""
     app_base_url: str = "https://convoyplan.example.com"
 

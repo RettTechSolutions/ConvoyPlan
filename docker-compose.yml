@@ -33,6 +33,7 @@ services:
       LICENSE_KEY: ${LICENSE_KEY:-}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GITHUB_REPO: ${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}
+      UPDATE_CHANNEL: ${UPDATE_CHANNEL:-stable}
       APP_BASE_URL: https://${DOMAIN:-localhost}
     volumes:
       - cert_uploads:/certs
