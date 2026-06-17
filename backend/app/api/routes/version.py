@@ -7,6 +7,7 @@ GET /api/version  — no auth required
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 
@@ -15,6 +16,8 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/version", tags=["version"])
 
@@ -156,7 +159,10 @@ async def _fetch_release(core: str) -> ChangelogResponse | None:
                         published_at=data.get("published_at"),
                     )
     except Exception:
-        pass
+        # Fail open: the changelog is a nice-to-have, so a GitHub outage or
+        # network error must never surface to the client. Log at debug for
+        # troubleshooting and fall through to None.
+        logger.debug("Changelog lookup for %s failed", core, exc_info=True)
     return None
 
 
