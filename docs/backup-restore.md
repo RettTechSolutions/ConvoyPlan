@@ -107,4 +107,4 @@ Die CSP wird standardmäßig im **Report-Only**-Modus ausgeliefert (bricht die K
 2. Stack neu starten (`docker compose up -d caddy backend`).
 3. Karte, Routing, Live-Tracking und Geocoding-Suche im Browser prüfen; bei Verstößen in der Konsole die betroffenen Quellen in der Policy ergänzen (`caddy/entrypoint.sh` bzw. `setup.py::_security_header_block`).
 
-Die Policy erlaubt out-of-the-box `tile.openstreetmap.org` (Karten), `nominatim.openstreetmap.org` (Suche), MapLibre-Worker (`blob:`) und Same-Origin-WebSockets.
+Die Policy erlaubt out-of-the-box `tile.openstreetmap.org` (Karten), `nominatim.openstreetmap.org` und `photon.komoot.io` (Adress-Suche/Geocoding), MapLibre-Worker (`blob:`) und Same-Origin-WebSockets.

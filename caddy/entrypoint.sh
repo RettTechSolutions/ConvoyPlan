@@ -42,7 +42,7 @@ case "$DOMAIN" in
 esac
 
 # Content-Security-Policy. Report-Only by default (safe); CSP_ENFORCE=true enforces.
-CSP_VALUE="default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; img-src 'self' data: blob: https://tile.openstreetmap.org; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:; font-src 'self' data:; connect-src 'self' https://tile.openstreetmap.org https://nominatim.openstreetmap.org ws://$DOMAIN wss://$DOMAIN"
+CSP_VALUE="default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; img-src 'self' data: blob: https://tile.openstreetmap.org; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:; font-src 'self' data:; connect-src 'self' https://tile.openstreetmap.org https://nominatim.openstreetmap.org https://photon.komoot.io ws://$DOMAIN wss://$DOMAIN"
 if [ "${CSP_ENFORCE:-false}" = "true" ]; then
     CSP_HEADER="Content-Security-Policy"
 else
