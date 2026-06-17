@@ -68,8 +68,10 @@ def _write_channel_file(channel: str) -> None:
         os.makedirs(os.path.dirname(CHANNEL_FILE), exist_ok=True)
         with open(CHANNEL_FILE, "w") as f:
             f.write(channel)
-    except OSError:
-        pass
+    except OSError as exc:
+        # Best-effort: a non-writable volume must not break the request. Log so
+        # the cause is visible if the updater later ignores the channel switch.
+        logger.warning("Cannot write channel file %s (channel=%s): %s", CHANNEL_FILE, channel, exc)
 
 
 @router.get("/users", response_model=list[AdminUserResponse])
