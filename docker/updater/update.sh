@@ -3,8 +3,10 @@ set -euo pipefail
 
 REPO_DIR=/workspace
 REPO_URL="https://github.com/RettTechSolutions/ConvoyPlan.git"
+GITHUB_REPO="${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}"
 INTERVAL="${UPDATE_INTERVAL:-300}"
 TRIGGER_POLL=10   # check trigger file every 10s so the UI reacts quickly
+CHANNEL_FILE=/update_status/channel   # written by the backend: "stable" | "beta"
 
 # Fail fast if token not provided
 : "${GITHUB_TOKEN:?GITHUB_TOKEN must be set}"
@@ -25,6 +27,32 @@ log() {
     local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $*"
     echo "$msg"
     echo "$msg" >> "${LOG_FILE}"
+}
+
+# Read the release channel chosen in the admin panel (default: stable).
+read_channel() {
+    local ch="stable"
+    if [ -f "${CHANNEL_FILE}" ]; then
+        ch="$(tr -d '[:space:]' < "${CHANNEL_FILE}" 2>/dev/null || echo stable)"
+    fi
+    case "${ch}" in
+        beta) echo "beta" ;;
+        *)    echo "stable" ;;
+    esac
+}
+
+# Resolve the tag of the latest *published* GitHub release (e.g. v1.2.3).
+# Empty output means no release exists (or GitHub was unreachable).
+latest_release_tag() {
+    {
+        if [ -n "${GITHUB_TOKEN:-}" ]; then
+            curl -sf --max-time 15 -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" 2>/dev/null
+        else
+            curl -sf --max-time 15 \
+                "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" 2>/dev/null
+        fi
+    } | grep -m1 '"tag_name"' | cut -d'"' -f4
 }
 
 # First start: clone if no git repo present
@@ -77,19 +105,45 @@ while true; do
     DEPLOYED=""
   fi
 
-  if ! git -C "${REPO_DIR}" fetch origin main --quiet 2>&1; then
-    log "fetch failed, retrying in ${INTERVAL}s"
-    wait_or_trigger && { DEPLOYED=""; continue; }
-    continue
+  CHANNEL="$(read_channel)"
+
+  if [ "${CHANNEL}" = "beta" ]; then
+    # Beta: track every commit on main (the historical behaviour).
+    if ! git -C "${REPO_DIR}" fetch origin main --quiet 2>&1; then
+      log "fetch failed, retrying in ${INTERVAL}s"
+      wait_or_trigger && { DEPLOYED=""; continue; }
+      continue
+    fi
+    REMOTE=$(git -C "${REPO_DIR}" rev-parse origin/main)
+    TARGET_DESC="main"
+  else
+    # Stable: only deploy the latest published release, so a normal push to
+    # main does not trigger an update.
+    TAG="$(latest_release_tag)"
+    if [ -z "${TAG}" ]; then
+      log "Channel 'stable': kein Release gefunden — überspringe (warte auf erstes Release)."
+      wait_or_trigger && { DEPLOYED=""; continue; }
+      continue
+    fi
+    if ! git -C "${REPO_DIR}" fetch origin --tags --force --quiet 2>&1; then
+      log "tag fetch failed, retrying in ${INTERVAL}s"
+      wait_or_trigger && { DEPLOYED=""; continue; }
+      continue
+    fi
+    REMOTE=$(git -C "${REPO_DIR}" rev-parse "refs/tags/${TAG}^{commit}" 2>/dev/null || echo "")
+    if [ -z "${REMOTE}" ]; then
+      log "Release-Tag ${TAG} nach fetch nicht auflösbar — überspringe."
+      wait_or_trigger && { DEPLOYED=""; continue; }
+      continue
+    fi
+    TARGET_DESC="Release ${TAG}"
   fi
 
-  REMOTE=$(git -C "${REPO_DIR}" rev-parse origin/main)
-
   if [ "${DEPLOYED}" != "${REMOTE}" ]; then
-    log "Update detected: ${DEPLOYED:0:7} → ${REMOTE:0:7}"
+    log "Update detected (${CHANNEL}): ${DEPLOYED:0:7} → ${TARGET_DESC} ${REMOTE:0:7}"
     # Get all services except the updater itself (to avoid killing this container)
     SERVICES=$(docker compose "${COMPOSE_FILES[@]}" config --services 2>/dev/null | grep -v '^updater$' | tr '\n' ' ')
-    if git -C "${REPO_DIR}" reset --hard origin/main 2>&1 | tee -a "${LOG_FILE}" && \
+    if git -C "${REPO_DIR}" reset --hard "${REMOTE}" 2>&1 | tee -a "${LOG_FILE}" && \
        git -C "${REPO_DIR}" clean -fd 2>&1 | tee -a "${LOG_FILE}" && \
        GIT_SHA="${REMOTE}" docker compose "${COMPOSE_FILES[@]}" up -d --build ${SERVICES} 2>&1 | tee -a "${LOG_FILE}"; then
       DEPLOYED=$(git -C "${REPO_DIR}" rev-parse HEAD)

@@ -43,7 +43,7 @@
         await loadUsers();
         await loadLeitstellen();
         await loadBranding();
-        await Promise.all([loadGithubTokenStatus(), loadUpdateStatus(), loadMfaStatus(), loadSmtpSettings(), loadEmailTemplate(), loadDemoSettings()]);
+        await Promise.all([loadGithubTokenStatus(), loadUpdateStatus(), loadUpdateChannel(), loadMfaStatus(), loadSmtpSettings(), loadEmailTemplate(), loadDemoSettings()]);
     }
 
     async function handleAuthenticated() {
@@ -478,12 +478,40 @@
     let updateError = $state('');
     let updateSuccess = $state('');
 
+    // Release channel (stable / beta)
+    let updateChannel = $state<import('$lib/api').UpdateChannel | null>(null);
+    let channelSaving = $state(false);
+
     // Live log terminal
     let updateLogLines = $state<string[]>([]);
     let showUpdateLog = $state(false);
     let updateLogDone = $state(false);
     let _updateLogSource: EventSource | null = null;
     let logContainer: HTMLDivElement | null = null;
+
+    async function loadUpdateChannel() {
+        try {
+            updateChannel = await adminApi.getUpdateChannel();
+        } catch {
+            updateChannel = null;
+        }
+    }
+
+    async function setChannel(channel: 'stable' | 'beta') {
+        if (channelSaving || updateChannel?.channel === channel) return;
+        channelSaving = true;
+        updateError = '';
+        try {
+            await adminApi.setUpdateChannel(channel);
+            await loadUpdateChannel();
+            // Re-evaluate update availability against the newly selected channel.
+            await loadUpdateStatus();
+        } catch (e: unknown) {
+            updateError = e instanceof Error ? e.message : 'Kanal konnte nicht gespeichert werden';
+        } finally {
+            channelSaving = false;
+        }
+    }
 
     async function loadUpdateStatus() {
         updateLoading = true;
@@ -1182,7 +1210,7 @@
         <button class="tab" class:active={activeTab === 'api-keys'} onclick={() => { activeTab = 'api-keys'; loadApiKeyOrgs(); }}>API-Keys</button>
         <button class="tab" class:active={activeTab === 'leitstellen'} onclick={() => (activeTab = 'leitstellen')}>Leitstellen</button>
         <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>Branding</button>
-        <button class="tab" class:active={activeTab === 'system'} onclick={() => { activeTab = 'system'; loadUpdateStatus(); loadLicenseStatus(); loadGithubTokenStatus(); loadDemoSettings(); }}>System</button>
+        <button class="tab" class:active={activeTab === 'system'} onclick={() => { activeTab = 'system'; loadUpdateStatus(); loadUpdateChannel(); loadLicenseStatus(); loadGithubTokenStatus(); loadDemoSettings(); }}>System</button>
     </div>
 
     <!-- ── Benutzer ── -->
@@ -1873,6 +1901,33 @@
                 <div class="success-bar">{updateSuccess}</div>
             {/if}
 
+            {#if updateChannel}
+                <div class="update-row" style="margin-bottom:.75rem; flex-wrap:wrap;">
+                    <span class="update-label">Update-Kanal</span>
+                    <div class="channel-toggle">
+                        <button
+                            class="channel-btn"
+                            class:active={updateChannel.channel === 'stable'}
+                            disabled={channelSaving}
+                            onclick={() => setChannel('stable')}
+                        >Stable</button>
+                        <button
+                            class="channel-btn"
+                            class:active={updateChannel.channel === 'beta'}
+                            disabled={channelSaving}
+                            onclick={() => setChannel('beta')}
+                        >Beta</button>
+                    </div>
+                </div>
+                <p class="hint" style="margin:-.25rem 0 1rem;">
+                    {#if updateChannel.channel === 'stable'}
+                        <strong>Stable:</strong> Updates nur bei veröffentlichten GitHub-Releases — einzelne Commits auf <code>main</code> lösen kein Update aus.
+                    {:else}
+                        <strong>Beta:</strong> Jeder Commit auf <code>main</code> wird automatisch installiert (für Tests/Vorab-Versionen).
+                    {/if}
+                </p>
+            {/if}
+
             {#if updateLoading}
                 <p class="hint">Lade Status…</p>
             {:else if updateStatus}
@@ -1885,17 +1940,28 @@
                         {/if}
                     </div>
                     <div class="update-row">
-                        <span class="update-label">GitHub (main)</span>
-                        {#if updateStatus.github_reachable}
-                            <code>{updateStatus.remote_sha?.slice(0, 7) ?? '—'}</code>
+                        {#if updateStatus.channel === 'beta'}
+                            <span class="update-label">GitHub (main)</span>
                         {:else}
+                            <span class="update-label">Neuestes Release</span>
+                        {/if}
+                        {#if !updateStatus.github_reachable}
                             <span class="hint">nicht erreichbar</span>
+                        {:else if updateStatus.no_release}
+                            <span class="hint">noch kein Release veröffentlicht</span>
+                        {:else}
+                            {#if updateStatus.latest_release}
+                                <code>{updateStatus.latest_release}</code>
+                            {/if}
+                            <code>{updateStatus.remote_sha?.slice(0, 7) ?? '—'}</code>
                         {/if}
                     </div>
                     <div class="update-row">
                         <span class="update-label">Status</span>
                         {#if !updateStatus.github_reachable}
                             <span class="badge badge-warn">GitHub nicht erreichbar</span>
+                        {:else if updateStatus.no_release}
+                            <span class="badge badge-ok">Kein Release — aktuell ✓</span>
                         {:else if updateStatus.update_available}
                             <span class="badge badge-update">Update verfügbar ↑</span>
                         {:else}
@@ -2654,6 +2720,11 @@
     .update-grid { display: flex; flex-direction: column; gap: .6rem; }
     .update-row { display: flex; align-items: center; gap: .75rem; font-size: var(--text-sm); }
     .update-label { width: 130px; color: var(--text-muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; flex-shrink: 0; }
+    .channel-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 5px; overflow: hidden; }
+    .channel-btn { padding: .3rem .9rem; font-size: var(--text-sm); background: var(--surface-2); color: var(--text-2); border: none; cursor: pointer; }
+    .channel-btn + .channel-btn { border-left: 1px solid var(--border); }
+    .channel-btn.active { background: var(--color-primary); color: #fff; }
+    .channel-btn:disabled { opacity: .6; cursor: default; }
     .badge { display: inline-block; padding: .15rem .5rem; border-radius: 3px; font-size: var(--text-xs); font-weight: 600; }
     .badge-ok { background: rgba(107,127,77,.2); color: #a8c070; border: 1px solid rgba(107,127,77,.4); }
     .badge-update { background: rgba(210,120,30,.2); color: #e8a050; border: 1px solid rgba(210,120,30,.4); }
