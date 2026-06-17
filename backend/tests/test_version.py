@@ -39,3 +39,31 @@ def test_update_available_comparison():
     assert norm("0.9.1") > norm("0.9.0")
     assert norm("0.10.0") > norm("0.9.9")
     assert not norm("0.9.0") > norm("0.9.0")
+
+
+def test_core_str_strips_metadata():
+    core = version_module._core_str
+    assert core("1.0.0") == "1.0.0"
+    assert core("v1.0.0") == "1.0.0"
+    assert core("1.0.0+abc1234") == "1.0.0"
+    assert core("1.0.0-3-gabc1234") == "1.0.0"
+    assert core("0.0.0-dev") == "0.0.0"
+    assert core("unknown") is None
+    assert core(None) is None
+
+
+@pytest.mark.asyncio
+async def test_changelog_endpoint_returns_version_core(monkeypatch):
+    """With the update check disabled (autouse fixture) the changelog endpoint
+    reports the running version core and no notes, instead of hitting GitHub."""
+    # Clear the per-version cache so this test isn't served a stale entry.
+    version_module._changelog_cache.clear()
+    monkeypatch.setattr(settings, "app_version", "1.2.3-5-gdeadbee")
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/api/version/changelog")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["version"] == "1.2.3"        # core only, no commit suffix
+    assert body["body"] is None              # network disabled in tests

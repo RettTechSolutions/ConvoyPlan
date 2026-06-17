@@ -952,16 +952,24 @@
 	   instead of being clipped behind the browser/system UI. */
 	@media (orientation: landscape) and (max-height: 600px) {
 		.map-controls {
-			gap: .35rem;
+			/* Use the wide landscape space: lay the controls out as a horizontal
+			   row that wraps, anchored bottom-right, instead of a tall column that
+			   clips on short screens. This keeps the buttons at a comfortable,
+			   readable size rather than shrinking them to fit a single column. */
+			flex-direction: row;
+			flex-wrap: wrap;
+			justify-content: flex-end;
+			gap: .4rem;
 			right: calc(.5rem + env(safe-area-inset-right, 0px));
 			bottom: calc(.5rem + env(safe-area-inset-bottom, 0px));
-			/* Cap the height and scroll instead of stretching the container, so it
-			   never overlays (and steals taps from) the native zoom control above. */
+			/* Leave room for the native zoom control (top-right) and attribution. */
+			max-width: calc(100% - 4rem);
 			max-height: calc(100% - 48px - 1rem);
 			overflow-y: auto;
 			scrollbar-width: none;
 		}
 		.map-controls::-webkit-scrollbar { display: none; }
-		.map-ctrl-btn { padding: .4rem .7rem; font-size: var(--text-xs); }
+		/* Keep a finger-friendly, legible target — don't shrink to tiny text. */
+		.map-ctrl-btn { padding: .5rem .85rem; font-size: var(--text-sm); min-height: 40px; }
 	}
 </style>

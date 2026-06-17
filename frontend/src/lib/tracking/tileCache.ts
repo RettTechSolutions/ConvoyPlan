@@ -7,17 +7,31 @@
 // warms the tile cache along the whole route corridor while still online, so
 // the route stays visible offline.
 //
+// Why write the Cache Storage directly instead of relying on the Service
+// Worker interception: on the very first visit the SW is installed but does
+// not yet *control* the page, so plain `fetch()` calls would NOT be routed
+// through the SW and would never be cached — exactly when warming matters most
+// (a freshly opened tracking link before any reload). Writing into the same
+// named cache ('osm-tiles') guarantees the corridor is cached immediately and
+// the SW's StaleWhileRevalidate then serves from that very cache.
+//
 // Politeness: the tile set is bounded and requests are throttled in small
-// batches so we don't hammer the public OSM tile servers.
+// batches so we don't hammer the public OSM tile servers, and tiles already in
+// the cache are skipped so re-runs are cheap.
 
 const TILE_HOST = 'https://tile.openstreetmap.org';
-// Overview first (always shows the full route), then the common driving zooms.
+// Must match the runtime cache name configured in vite.config.ts so the Service
+// Worker serves the tiles we pre-warm here.
+const CACHE_NAME = 'osm-tiles';
+// Overview first (always shows the full route), then the common driving zooms
+// up to the follow zoom (15) and one step closer (16) for junction detail.
 // Processed in order; once the cap is hit we stop, so the overview is preferred.
-const ZOOMS = [12, 13, 14, 15];
+const ZOOMS = [12, 13, 14, 15, 16];
 // Tiles around each route point → covers the corridor width, not just the line.
 const BUFFER = 1; // 3×3 tiles per point
 // Hard cap on prefetched tiles (OSM politeness + Service-Worker cache budget).
-const MAX_TILES = 2500;
+// Generous enough to hold a long route corridor across all the zooms above.
+const MAX_TILES = 8000;
 const BATCH = 6; // concurrent requests per batch
 const BATCH_DELAY_MS = 120;
 
@@ -63,12 +77,34 @@ export async function prefetchRouteTiles(coords: number[][], key: string): Promi
 	}
 
 	const urls = [...tiles].map((t) => `${TILE_HOST}/${t}.png`);
+
+	// Prefer the Cache Storage API so warming works even before the Service
+	// Worker controls the page; fall back to a plain fetch (SW interception)
+	// when the Cache API is unavailable.
+	let cache: Cache | null = null;
+	try {
+		if (typeof caches !== 'undefined') cache = await caches.open(CACHE_NAME);
+	} catch {
+		cache = null;
+	}
+
+	async function warmOne(url: string): Promise<void> {
+		try {
+			// Skip tiles already present so re-runs and re-renders stay cheap.
+			if (cache && (await cache.match(url))) return;
+			// OSM sends `Access-Control-Allow-Origin: *`, so a CORS fetch yields a
+			// readable response the map can reuse (no opaque-response pitfalls).
+			const resp = await fetch(url, { mode: 'cors' });
+			if (cache && resp.ok) await cache.put(url, resp.clone());
+		} catch {
+			/* ignore individual tile failures */
+		}
+	}
+
 	for (let i = 0; i < urls.length; i += BATCH) {
 		// Stop early if connectivity drops mid-prefetch.
 		if (typeof navigator !== 'undefined' && navigator.onLine === false) break;
-		await Promise.all(
-			urls.slice(i, i + BATCH).map((u) => fetch(u).then(() => {}).catch(() => {}))
-		);
+		await Promise.all(urls.slice(i, i + BATCH).map(warmOne));
 		await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
 	}
 }
