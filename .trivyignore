@@ -17,6 +17,16 @@
 # Fixed upstream in containerd 2.2.4.
 CVE-2026-46680
 
+# containerd v2 CVEs affecting docker-buildx (v2.2.4) and docker-compose
+# (v2.2.3) CLI plugins bundled in docker:cli. All three are fixed upstream in
+# containerd 2.2.5 / 2.1.9; a docker:cli release picking up those versions
+# will resolve them. The updater container only runs our own trusted update
+# scripts and does not expose any containerd API surface (VEX: not_affected).
+# Re-evaluate when a patched docker:cli image is released. Review by: 2026-09-21.
+CVE-2026-53488
+CVE-2026-53489
+CVE-2026-53492
+
 # Moby authorization bypass. Bundled docker engine libs; the updater image
 # ships only the docker CLI — no dockerd / authz plugin endpoint is exposed.
 # Fixed upstream in docker/moby 29.3.1.
@@ -66,3 +76,16 @@ CVE-2024-13009
 # SnakeYAML Constructor deserialization RCE. GraphHopper parses only its own
 # baked-in config.yml (trusted, ships in our image) — no untrusted YAML input.
 CVE-2022-1471
+
+# ─────────────────────────────────────────────────────────────────────────────
+# convoyplan-frontend: undici bundled inside Node.js 26 (node:26-alpine base
+# image). undici is Node.js's built-in HTTP client (used by the native fetch()
+# API) and cannot be updated independently of Node.js itself. A patched version
+# is available in undici 6.27.0 / 7.28.0 / 8.5.0 — will be included in a
+# future node:26-alpine image. Review by: 2026-09-21.
+#
+# CVE-2026-12151: undici 6.26.0 — unbounded memory growth via WebSocket client
+# (DoS). The frontend container runs the SvelteKit Node.js SSR server, which
+# serves HTTP responses and never initiates outgoing WebSocket connections via
+# undici (VEX: not_affected).
+CVE-2026-12151
