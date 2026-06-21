@@ -28,7 +28,8 @@
 		"esbuild": "^0.28.1",
 		"vite-plugin-pwa": {
 			"vite": "^7.3.5"
-		}
+		},
+		"@babel/core": "^7.29.7"
 	},
 	"dependencies": {
 		"@types/qrcode": "^1.5.6",
