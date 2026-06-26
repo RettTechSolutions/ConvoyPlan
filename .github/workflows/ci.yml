@@ -60,7 +60,7 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://convoyplan:convoyplan@localhost:5432/convoyplan
           JWT_SECRET: ci-test-secret-do-not-use
           GRAPHHOPPER_URL: http://localhost:8989
-          LICENSE_KEY: eyJpZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsImN1c3RvbWVyIjoiQ0kgVGVzdGluZyIsImVtYWlsIjoiY2lAY29udm95cGxhbi5pbnRlcm5hbCIsImlzc3VlZCI6IjIwMjYtMDUtMTkiLCJleHBpcmVzIjoiMjAzNi0wNS0xNiIsIm1heF91c2VycyI6NTB9.gwjDBgCYQ2XEsw90sw2RMwiVmtXCmdO6r8Lxpjrf5kugOexOFXDzIrXmoh7yfTu4MWX8hcOlE4-xw766WqeJBQ
+          LICENSE_KEY: ${{ secrets.CI_LICENSE_KEY }}
         run: cd backend && pytest tests/ -v --tb=short
 
   frontend-check:
