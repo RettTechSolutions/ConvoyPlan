@@ -43,13 +43,15 @@ CVE-2026-42504
 CVE-2026-27145
 
 # golang.org/x/crypto SSH server/client vulnerabilities (authenticated
-# client loops, keyscan DoS, etc.). Bundled in docker CLI Go binaries; the
-# updater does not act as or connect to an SSH server — Git access goes over
-# HTTPS. Fixed upstream in golang.org/x/crypto 0.52.0.
+# client loops, keyscan DoS, ssh/agent key restrictions bypass, etc.).
+# Bundled in docker CLI Go binaries; the updater does not act as or connect
+# to an SSH server or SSH agent — Git access goes over HTTPS.
+# Fixed upstream in golang.org/x/crypto 0.52.0.
 CVE-2026-39827
 CVE-2026-39828
 CVE-2026-39829
 CVE-2026-39830
+CVE-2026-39832
 CVE-2026-39835
 CVE-2026-42508
 CVE-2026-46595

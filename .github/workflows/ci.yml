@@ -33,7 +33,7 @@ jobs:
           - 5432:5432
 
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
@@ -60,7 +60,7 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://convoyplan:convoyplan@localhost:5432/convoyplan
           JWT_SECRET: ci-test-secret-do-not-use
           GRAPHHOPPER_URL: http://localhost:8989
-          LICENSE_KEY: eyJpZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsImN1c3RvbWVyIjoiQ0kgVGVzdGluZyIsImVtYWlsIjoiY2lAY29udm95cGxhbi5pbnRlcm5hbCIsImlzc3VlZCI6IjIwMjYtMDUtMTkiLCJleHBpcmVzIjoiMjAzNi0wNS0xNiIsIm1heF91c2VycyI6NTB9.gwjDBgCYQ2XEsw90sw2RMwiVmtXCmdO6r8Lxpjrf5kugOexOFXDzIrXmoh7yfTu4MWX8hcOlE4-xw766WqeJBQ
+          LICENSE_KEY: ${{ secrets.CI_LICENSE_KEY }}
         run: cd backend && pytest tests/ -v --tb=short
 
   frontend-check:
@@ -68,7 +68,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
@@ -87,7 +87,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Build backend image
         run: docker build ./backend
@@ -109,7 +109,7 @@ jobs:
     # merges. See docs/iso-certifications-review.md (T10).
 
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
@@ -150,7 +150,7 @@ jobs:
             context: ./docker/updater
 
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Build ${{ matrix.name }} image
         run: docker build -t convoyplan-${{ matrix.name }}:scan ${{ matrix.context }}
