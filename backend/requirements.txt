@@ -28,5 +28,5 @@ pyotp==2.10.0
 # aiosmtplib 5.1.2 fixes GHSA-vxj7-4xrp-5vr4: discard buffered server data
 # before STARTTLS handshake (response-injection attack prevention).
 aiosmtplib==5.1.2
-pytest>=9.1.0
+pytest>=9.1.1
 pytest-asyncio>=1.4.0
