@@ -16,7 +16,7 @@ alembic==1.18.4
 pydantic[email]==2.13.4
 # PyJWT replaces python-jose (CVE-2024-33663, CVE-2024-33664 — algorithm confusion / sig bypass).
 PyJWT==2.13.0
-pydantic-settings==2.14.1
+pydantic-settings==2.14.2
 cryptography==49.0.0
 shapely==2.1.2
 python-multipart==0.0.32
@@ -25,6 +25,8 @@ httpx==0.28.1
 gpxpy==1.6.2
 fpdf2==2.8.7
 pyotp==2.10.0
-aiosmtplib==5.1.1
+# aiosmtplib 5.1.2 fixes GHSA-vxj7-4xrp-5vr4: discard buffered server data
+# before STARTTLS handshake (response-injection attack prevention).
+aiosmtplib==5.1.2
 pytest>=9.1.0
 pytest-asyncio>=1.4.0

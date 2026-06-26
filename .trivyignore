@@ -17,6 +17,15 @@
 # Fixed upstream in containerd 2.2.4.
 CVE-2026-46680
 
+# containerd OCI-spec violations allowing container escapes / privilege bypass
+# (three related bugs). Bundled in docker-buildx and docker-compose plugins.
+# The updater runs `docker compose pull/up` against trusted, operator-provided
+# images only; it does not manage untrusted workloads that trigger these paths.
+# Fixed upstream in containerd 2.2.5.
+CVE-2026-53488
+CVE-2026-53489
+CVE-2026-53492
+
 # Moby authorization bypass. Bundled docker engine libs; the updater image
 # ships only the docker CLI — no dockerd / authz plugin endpoint is exposed.
 # Fixed upstream in docker/moby 29.3.1.
@@ -25,6 +34,38 @@ CVE-2026-34040
 # Go stdlib MIME header DoS (net/textproto). The updater parses no untrusted
 # MIME input. Fixed upstream in Go 1.25.11 / 1.26.4.
 CVE-2026-42504
+
+# Go stdlib x509 wildcard hostname verification bypass (VerifyHostname accepted
+# wildcards for non-leaf certificates). Bundled in docker CLI Go binary. MITM
+# requires network-level interposition between the updater and Docker Hub /
+# GitHub; the updater runs inside the operator's trusted Docker network.
+# Fixed upstream in Go 1.26.4.
+CVE-2026-27145
+
+# golang.org/x/crypto SSH server/client vulnerabilities (authenticated
+# client loops, keyscan DoS, etc.). Bundled in docker CLI Go binaries; the
+# updater does not act as or connect to an SSH server — Git access goes over
+# HTTPS. Fixed upstream in golang.org/x/crypto 0.52.0.
+CVE-2026-39827
+CVE-2026-39828
+CVE-2026-39829
+CVE-2026-39830
+CVE-2026-39835
+CVE-2026-42508
+CVE-2026-46595
+CVE-2026-46597
+
+# golang.org/x/net HTML-parsing DoS / redirect bugs. Bundled in docker CLI
+# Go binaries; the updater sends only structured API requests to Docker
+# registry and GitHub — no untrusted HTML is parsed or rendered.
+# Fixed upstream in golang.org/x/net 0.53.0–0.55.0.
+CVE-2026-25680
+CVE-2026-25681
+CVE-2026-27136
+CVE-2026-33814
+CVE-2026-39821
+CVE-2026-42502
+CVE-2026-42506
 
 # ─────────────────────────────────────────────────────────────────────────────
 # convoyplan-graphhopper: vulnerabilities bundled inside the upstream
@@ -66,3 +107,24 @@ CVE-2024-13009
 # SnakeYAML Constructor deserialization RCE. GraphHopper parses only its own
 # baked-in config.yml (trusted, ships in our image) — no untrusted YAML input.
 CVE-2022-1471
+
+# jackson-databind PolymorphicTypeValidator bypasses (generic type parameters
+# and array subtype allowlist). GraphHopper uses Jackson to parse its own
+# config and routing requests from our trusted backend only — no polymorphic
+# deserialization of untrusted external data occurs. Fixed in jackson-databind
+# 2.18.8; requires a GraphHopper JAR release that pulls the patched jackson.
+CVE-2026-54512
+CVE-2026-54513
+
+# ─────────────────────────────────────────────────────────────────────────────
+# convoyplan-frontend: vulnerability in the undici package bundled inside
+# Node.js 26 (not an npm-installed dependency — Trivy reads Node's internal
+# package.json for its built-in fetch implementation). Cannot be patched via
+# npm overrides; requires a node:26-alpine image update that ships Node.js
+# with undici >=6.27.0. The frontend container only calls our own backend API
+# on the same Docker network — it does not fetch from attacker-controlled URLs.
+# Re-evaluate once a patched node:26-alpine is available. Review by: 2026-09-10.
+
+# undici Denial-of-Service via unbounded response memory allocation.
+# Fixed upstream in undici 6.27.0 (bundled with a future Node.js 26.x release).
+CVE-2026-12151
