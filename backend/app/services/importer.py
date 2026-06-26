@@ -2,6 +2,8 @@ import json
 import math
 from dataclasses import dataclass
 
+import defusedxml
+import defusedxml.ElementTree as _safe_et
 import gpxpy
 import gpxpy.gpx
 
@@ -28,6 +30,16 @@ class ImportResult:
 
 
 def parse_gpx(content: bytes) -> ImportResult:
+    # Block XML entity expansion attacks (billion-laughs) before gpxpy sees the
+    # content. gpxpy uses stdlib xml.etree.ElementTree which does not prevent
+    # internal entity expansion; defusedxml raises on any DTD or entity decl.
+    try:
+        _safe_et.fromstring(content)
+    except defusedxml.DefusedXmlException as exc:
+        raise ValueError(f"GPX file contains unsafe XML: {exc}") from exc
+    except Exception:
+        pass  # other parse errors are reported more clearly by gpxpy below
+
     try:
         gpx = gpxpy.parse(content.decode("utf-8"))
     except (gpxpy.gpx.GPXException, UnicodeDecodeError, ValueError) as e:
