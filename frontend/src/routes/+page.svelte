@@ -4,6 +4,7 @@
     import { orgAuthApi, authApi } from '$lib/api';
     import { orgStore } from '$lib/stores/org';
     import AppLogo from '$lib/components/AppLogo.svelte';
+    import LegalFooter from '$lib/components/LegalFooter.svelte';
 
     let slugInput = $state('');
     let error = $state('');
@@ -92,6 +93,8 @@
             {/if}
             <p class="demo-hint">Eigene temporäre Umgebung · Keine Registrierung · {demoHours} Stunden</p>
         {/if}
+
+        <LegalFooter />
     </div>
 </div>
 

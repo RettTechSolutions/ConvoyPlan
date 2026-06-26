@@ -6,6 +6,7 @@
     import { orgAuthApi } from '$lib/api';
     import { setActiveSlug } from '$lib/api/client';
     import AppLogo from '$lib/components/AppLogo.svelte';
+    import LegalFooter from '$lib/components/LegalFooter.svelte';
 
     const slug = $derived(($page.params as Record<string, string>).slug);
     let orgName = $state('');
@@ -191,6 +192,8 @@
         {/if}
 
         <a href="/" class="back-link">← Andere Organisation</a>
+
+        <LegalFooter />
     </div>
 </div>
 
