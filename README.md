@@ -121,6 +121,7 @@
 | Admin-Bereich | Benutzer-, Leitstellen- und Branding-Verwaltung | ✅ |
 | Auto-Updater | Git-Polling-Container aktualisiert die Instanz automatisch bei neuem Commit | ✅ |
 | Update-Status | Admin-UI zeigt Deploy-SHA und GitHub-Stand; manueller Trigger per Button | ✅ |
+| Update-Kanal | Umschaltbar zwischen „Stable" (nur veröffentlichte Releases) und „Beta" (jeder Commit auf `main`) im Admin-Bereich | ✅ |
 | Live-Update-Log | Echtzeit-Ausgabe des Updater-Prozesses im Browser via SSE | ✅ |
 | GitHub-Token in UI | `GITHUB_TOKEN` für Update-Fetch direkt in der Admin-UI konfigurierbar, kein Neustart | ✅ |
 | Demo-Modus | Ohne Lizenzschlüssel: Lesezugriff uneingeschränkt, Schreibzugriff gesperrt (HTTP 402) | ✅ |
@@ -249,7 +250,7 @@ ConvoyPlan/
 │   │   ├── config.py         # Backend-Konfiguration über Umgebungsvariablen
 │   │   ├── database.py       # Async-Datenbankanbindung
 │   │   └── main.py           # FastAPI-App und Router-Registrierung
-│   ├── alembic/              # Datenbankmigrationen (0001–0022)
+│   ├── alembic/              # Datenbankmigrationen (0001–0026)
 │   ├── tests/                # pytest-Tests
 │   ├── Dockerfile
 │   └── requirements.txt
@@ -291,14 +292,14 @@ ConvoyPlan/
 │   ├── backup.sh             # PostgreSQL-Dump + Volumes + Prüfsummen + Retention
 │   ├── restore.sh            # Wiederherstellung aus Backup
 │   ├── updater-watchdog.sh   # Räumt verwaiste Updater-Container auf
+│   ├── deploy.sh             # Einmalige Server-Migration / Notfall-Deploy
 │   └── install-hooks.sh      # Installiert .hooks/ in .git/hooks/
 ├── logo/                     # Logo-, Favicon- und Design-Assets
 ├── CHANGELOG.md              # Versionshistorie
 ├── RELEASING.md              # Anleitung zum Schneiden eines Releases
 ├── SECURITY.md               # Vulnerability-Disclosure-Richtlinie
 ├── .env.example              # Alle Umgebungsvariablen mit Erklärungen
-├── docker-compose.yml        # Lokales Entwicklungssetup
-└── stack.yml                 # Produktiv-Compose-Datei (wird vom Installer genutzt)
+└── docker-compose.yml        # Compose-Datei für Entwicklung und Produktion (wird vom Installer genutzt)
 ```
 
 ---
@@ -478,6 +479,7 @@ Domain und Zertifikat werden beim ersten Start über den Setup-Wizard in der Dat
 | `LICENSE_KEY` | Lizenzschlüssel (ausgestellt von ConvoyPlan). Ohne gültigen Schlüssel läuft die App im Demo-Modus. Alternativ zur Env-Variable auch über den Admin-Bereich eintragbar (wird dann in der DB gespeichert). |
 | `GITHUB_TOKEN` | GitHub PAT mit `repo`-Leseberechtigung (Classic Token: `repo`-Scope). Benötigt für den Auto-Updater-Container, um das GitHub-Repository zu pollen und neue Commits zu erkennen. |
 | `GITHUB_REPO` | Repository das der Auto-Updater überwacht. Standard: `RettTechSolutions/ConvoyPlan`. Bei Fork auf das eigene Repository anpassen. |
+| `UPDATE_CHANNEL` | Update-Kanal-Fallback. `stable` (Standard, empfohlen) deployt nur veröffentlichte GitHub-Releases; `beta` verfolgt jeden Commit auf `main`. Der Schalter im Admin-Bereich (Admin → Software-Update) überschreibt diesen Wert. |
 
 ### Frontend (lokale Entwicklung)
 
@@ -494,6 +496,8 @@ Die vollständige OpenAPI-Dokumentation wird automatisch von FastAPI bereitgeste
 
 - **Swagger UI:** <http://localhost:8000/docs>
 - **OpenAPI JSON:** <http://localhost:8000/openapi.json>
+
+> **Produktion:** `/docs`, `/redoc` und `/openapi.json` sind standardmäßig deaktiviert (404). Mit `DOCS_API_KEY=<geheim>` lassen sie sich per API-Key absichern (Aufruf einmalig über `/docs?key=<geheim>`, danach via HttpOnly-Cookie bzw. Header `X-API-Key`); mit `ENABLE_DOCS=true` werden sie offen freigegeben (nur für Dev/intern).
 
 **Ersteinrichtung**
 
@@ -520,6 +524,7 @@ Die vollständige OpenAPI-Dokumentation wird automatisch von FastAPI bereitgeste
 | `GET/POST/DELETE` | `/api/admin/organizations/{org_id}/api-keys` | Org-gebundene API-Schlüssel verwalten |
 | `POST` | `/api/admin/trigger-update` | Auto-Update manuell anstoßen |
 | `GET` | `/api/admin/update-status` / `/api/admin/update-log` | Deploy-Stand bzw. Live-Update-Log (SSE) |
+| `GET/PUT` | `/api/admin/settings/update-channel` | Update-Kanal (Stable/Beta) lesen/setzen |
 | `GET/PUT` | `/api/admin/settings/smtp` | SMTP-Konfiguration lesen/setzen |
 
 **Sicherheit und Datenschutz**
@@ -607,6 +612,7 @@ Die vollständige OpenAPI-Dokumentation wird automatisch von FastAPI bereitgeste
 | Methode | Endpunkt | Beschreibung |
 |---|---|---|
 | `GET` | `/api/version` | Build-Version, Commit-SHA und Update-Hinweis |
+| `GET` | `/api/version/changelog` | Release-Notes der laufenden Version (aus GitHub-Release, gecacht) |
 | `GET` | `/health` | Healthcheck mit Versionsangabe |
 
 ---
@@ -718,7 +724,7 @@ open https://<DOMAIN>/setup
 
 ### Produktiv-Deployment
 
-Die Produktiv-Compose-Datei liegt in `stack.yml`. Sie verwendet vorgefertigte Images aus der GitHub Container Registry (GHCR) statt lokaler Builds — kein `git clone` auf dem Server nötig. Der Installer (`install.sh`) lädt sie automatisch herunter.
+Für die Produktion wird dieselbe `docker-compose.yml` verwendet. Sie kann vorgefertigte Images aus der GitHub Container Registry (GHCR) statt lokaler Builds nutzen — kein `git clone` auf dem Server nötig. Der Installer (`install.sh`) lädt die Compose-Datei automatisch von GitHub herunter.
 
 Pflichtfelder beim Anlegen des Stacks in Portainer:
 
