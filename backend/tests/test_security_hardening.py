@@ -132,10 +132,25 @@ async def test_rate_limit_disabled_is_noop(monkeypatch):
 
 
 def test_client_ip_prefers_forwarded_for():
+    """XFF is preferred over the direct connection address (Caddy's Docker IP).
+    When Caddy adds a single entry there is exactly one IP in the chain."""
+    from app.services.audit import client_ip
+    req = _Req("10.0.0.1")       # 10.0.0.1 = Caddy container's Docker IP
+    req.headers = {"x-forwarded-for": "1.2.3.4"}   # single entry appended by Caddy
+    assert client_ip(req) == "1.2.3.4"
+
+
+def test_client_ip_reads_rightmost_xff_to_prevent_spoofing():
+    """The rightmost XFF entry is used so a client cannot bypass rate limiting
+    by injecting a forged leftmost entry before the IP Caddy appends.
+
+    Chain:  X-Forwarded-For: <client-forged>, <real-ip-appended-by-Caddy>
+    Only the rightmost (Caddy-controlled) value is trusted."""
     from app.services.audit import client_ip
     req = _Req("10.0.0.1")
-    req.headers = {"x-forwarded-for": "1.2.3.4, 10.0.0.1"}
-    assert client_ip(req) == "1.2.3.4"
+    # Attacker sent X-Forwarded-For: 5.5.5.5; Caddy appended the real IP 1.2.3.4
+    req.headers = {"x-forwarded-for": "5.5.5.5, 1.2.3.4"}
+    assert client_ip(req) == "1.2.3.4"   # Caddy's value, not the forged one
 
 
 # ── HIBP breach check (T8) ───────────────────────────────────────────────────────
