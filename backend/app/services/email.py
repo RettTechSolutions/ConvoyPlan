@@ -28,6 +28,7 @@ import aiosmtplib
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings as _app_settings
 from app.models.settings import SystemSetting
 
 logger = logging.getLogger(__name__)
@@ -212,8 +213,10 @@ async def _render_password_email_async(
     subject_tpl = rows.get("email.template.subject") or DEFAULT_EMAIL_TEMPLATE_SUBJECT
     html_tpl = rows.get("email.template.html") or DEFAULT_EMAIL_TEMPLATE_HTML
 
-    # Build computed fragments
-    logo_block = _build_logo_block(logo_main, app_name, base_url)
+    # Build computed fragments. Resolve base_url so logo src is absolute: email
+    # clients cannot follow relative URLs (there is no page URL to resolve against).
+    effective_base_url = base_url or _app_settings.app_base_url.rstrip("/")
+    logo_block = _build_logo_block(logo_main, app_name, effective_base_url)
     # HTML-escape user-controlled values to prevent HTML injection when a
     # custom template is used or a user sets a malicious display name.
     safe_name = html.escape(recipient_name)
