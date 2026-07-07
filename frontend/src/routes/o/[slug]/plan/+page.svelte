@@ -748,9 +748,7 @@
 				activeTab = 'convoy';
 				void loadFuelStationsInBackground(selected.id, r.fuel_analysis.fuel_stop_position);
 			}
-			if (selected?.start_point) {
-				void loadClosuresInBackground(selected.start_point.lat, selected.start_point.lon);
-			}
+			void loadClosuresInBackground();
 		} catch (e: unknown) {
 			error = e instanceof Error ? e.message : 'Routing fehlgeschlagen';
 		} finally { loading = false; }
@@ -765,9 +763,29 @@
 		finally { fuelStationsLoading = false; }
 	}
 
-	async function loadClosuresInBackground(lat: number, lon: number) {
+	// Route-Koordinaten für die Sperrungsabfrage entlang des Korridors
+	function routeCoordinates(): number[][] | null {
+		const g = routeGeojson;
+		if (!g) return null;
+		if (g.type === 'LineString') return g.coordinates as number[][];
+		if (g.type === 'MultiLineString') return (g.coordinates as number[][][]).flat();
+		return null;
+	}
+
+	async function fetchClosures(): Promise<FeatureCollection> {
+		const coords = routeCoordinates();
+		if (coords && coords.length >= 2) {
+			// Entlang der gesamten Route suchen, nicht nur um den Startpunkt
+			return await overpassApi.getClosuresForRoute(coords) as unknown as FeatureCollection;
+		}
+		const lat = selected?.start_point?.lat ?? mapCenter[0];
+		const lon = selected?.start_point?.lon ?? mapCenter[1];
+		return await overpassApi.getClosures(lat, lon, 25000) as unknown as FeatureCollection;
+	}
+
+	async function loadClosuresInBackground() {
 		try {
-			closures = await overpassApi.getClosures(lat, lon, 25000) as unknown as FeatureCollection;
+			closures = await fetchClosures();
 			showClosures = closures.features.length > 0;
 		} catch { /* closures optional */ }
 	}
@@ -848,10 +866,9 @@
 	async function toggleClosures() {
 		if (closures && showClosures) { showClosures = false; return; }
 		showClosures = false;
+		error = '';
 		try {
-			const lat = selected?.start_point?.lat ?? mapCenter[0];
-			const lon = selected?.start_point?.lon ?? mapCenter[1];
-			closures = await overpassApi.getClosures(lat, lon) as unknown as FeatureCollection;
+			closures = await fetchClosures();
 			showClosures = true;
 		} catch { error = 'Sperrungsdaten nicht verfügbar'; }
 	}
