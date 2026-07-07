@@ -248,6 +248,7 @@ async def get_update_status(
     latest_release = None     # tag of the latest release (stable channel only)
     github_reachable = False
     no_release = False        # stable channel but the repo has no release yet
+    ahead_of_release = False  # deployed build is NEWER than the latest release
     try:
         headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
         if github_token:
@@ -294,11 +295,35 @@ async def get_update_status(
                             sha = commit.json().get("sha")
                             if sha:
                                 remote_sha = sha[:7]
+
+                        # SHA-Ungleichheit allein kennt keine Richtung: Eine
+                        # Instanz, die vorher im Beta-Kanal lief, ist NEUER als
+                        # das letzte Release — das ist kein verfügbares Update
+                        # (und erst recht kein Grund für ein automatisches
+                        # Downgrade). Die Compare-API liefert die Ancestry:
+                        # "ahead" = deployed enthält das Release und mehr.
+                        if (
+                            remote_sha
+                            and deployed_sha
+                            and deployed_sha[:7] != remote_sha[:7]
+                        ):
+                            cmp_resp = await client.get(
+                                f"https://api.github.com/repos/{settings.github_repo}"
+                                f"/compare/{latest_release}...{deployed_sha[:7]}",
+                                headers=headers,
+                            )
+                            if cmp_resp.is_success:
+                                cmp_status = (cmp_resp.json() or {}).get("status")
+                                if cmp_status in ("ahead", "identical"):
+                                    ahead_of_release = True
     except Exception:
         pass
 
     update_available = bool(
-        deployed_sha and remote_sha and deployed_sha[:7] != remote_sha[:7]
+        deployed_sha
+        and remote_sha
+        and deployed_sha[:7] != remote_sha[:7]
+        and not ahead_of_release
     )
 
     return {
@@ -310,6 +335,7 @@ async def get_update_status(
         "channel": channel,
         "latest_release": latest_release,
         "no_release": no_release,
+        "ahead_of_release": ahead_of_release,
     }
 
 

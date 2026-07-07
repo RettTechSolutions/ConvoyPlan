@@ -1962,6 +1962,9 @@
                             <span class="badge badge-warn">GitHub nicht erreichbar</span>
                         {:else if updateStatus.no_release}
                             <span class="badge badge-ok">Kein Release — aktuell ✓</span>
+                        {:else if updateStatus.ahead_of_release}
+                            <span class="badge badge-ok">Neuer als letztes Release (Beta-Stand) ✓</span>
+                            <span class="hint">Kein automatisches Downgrade — Stable greift wieder, sobald ein neueres Release erscheint. „Jetzt updaten" setzt bewusst auf das Release zurück.</span>
                         {:else if updateStatus.update_available}
                             <span class="badge badge-update">Update verfügbar ↑</span>
                         {:else}
