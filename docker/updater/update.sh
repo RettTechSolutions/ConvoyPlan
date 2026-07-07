@@ -43,6 +43,8 @@ read_channel() {
 
 # Resolve the tag of the latest *published* GitHub release (e.g. v1.2.3).
 # Empty output means no release exists (or GitHub was unreachable).
+# `|| true`: under `set -euo pipefail` a curl failure or a grep without match
+# would otherwise kill the whole updater (container restart loop).
 latest_release_tag() {
     {
         if [ -n "${GITHUB_TOKEN:-}" ]; then
@@ -52,7 +54,7 @@ latest_release_tag() {
             curl -sf --max-time 15 \
                 "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" 2>/dev/null
         fi
-    } | grep -m1 '"tag_name"' | cut -d'"' -f4
+    } | grep -m1 '"tag_name"' | cut -d'"' -f4 || true
 }
 
 # First start: clone if no git repo present
