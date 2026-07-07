@@ -95,7 +95,9 @@
 		<meta name="mobile-web-app-capable" content="yes" />
 		<meta name="apple-mobile-web-app-title" content="ConvoyPlan" />
 		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-		<meta name="theme-color" content="#0f1419" />
+		<!-- Muss zu --bg (app.html) passen, damit Safari Statusleiste/Toolbar
+		     in der App-Hintergrundfarbe einfärbt statt schwarz/weiß. -->
+		<meta name="theme-color" content={$themeStore === 'light' ? '#f0f2f5' : '#0f1419'} />
 		<link rel="apple-touch-icon" href="/icons/icon-192.png" />
 	{/if}
 </svelte:head>
