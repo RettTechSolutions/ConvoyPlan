@@ -175,19 +175,23 @@ _apply_channel_images() {
     export UPDATER_IMAGE="$(_retag "${UPDATER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/updater:latest}" "${tag}")"
 }
 
-# Current commit SHA of main (beta channel target). Empty = GitHub unreachable.
-_main_head_sha() {
+# Beta-Kanal-Ziel: Commit-SHA des letzten ERFOLGREICHEN :beta-Image-Builds.
+# Bewusst NICHT der main-HEAD — der bewegt sich schon beim Merge, die Images
+# existieren aber erst, wenn der beta-images-Workflow (~10-15 min) durch ist.
+# Mit dem HEAD als Ziel würde der Updater alte :beta-Images ziehen und den
+# neuen Stand fälschlich als deployt verbuchen.
+# Leer = GitHub nicht erreichbar oder noch kein erfolgreicher Build.
+_beta_built_sha() {
     local repo="${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}"
+    local url="https://api.github.com/repos/${repo}/actions/workflows/beta-images.yml/runs?branch=main&status=success&per_page=1&exclude_pull_requests=true"
     {
         if [ -n "${GITHUB_TOKEN:-}" ]; then
-            curl -sf --max-time 15 -H "Accept: application/vnd.github.sha" \
-                -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-                "https://api.github.com/repos/${repo}/commits/main" 2>/dev/null
+            curl -sf --max-time 15 -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                "${url}" 2>/dev/null
         else
-            curl -sf --max-time 15 -H "Accept: application/vnd.github.sha" \
-                "https://api.github.com/repos/${repo}/commits/main" 2>/dev/null
+            curl -sf --max-time 15 "${url}" 2>/dev/null
         fi
-    } || true
+    } | grep -m1 '"head_sha"' | cut -d'"' -f4 || true
 }
 
 # Resolve the latest *published release tag* (e.g. v1.0.1). On the stable
@@ -369,7 +373,7 @@ _current_target() {
     local ch ref
     ch="$(read_channel)"
     if [ "${ch}" = "beta" ]; then
-        ref="$(_main_head_sha)"
+        ref="$(_beta_built_sha)"
     else
         ref="$(_latest_release_tag)"
     fi
