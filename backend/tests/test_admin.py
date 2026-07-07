@@ -35,9 +35,9 @@ def _make_app_with_superadmin_and_db():
 
 def _mock_github_client(*, latest_tag=None, latest_status=200, commit_sha=None, main_sha=None):
     """Mock httpx.AsyncClient for the update-status endpoint, dispatching by URL:
-      - releases/latest  -> {"tag_name": latest_tag}  (status: latest_status)
-      - commits/<tag>     -> {"sha": commit_sha}       (stable channel)
-      - commits?sha=main  -> [{"sha": main_sha}]       (beta channel)
+      - releases/latest                    -> {"tag_name": latest_tag}  (status: latest_status)
+      - commits/<tag>                      -> {"sha": commit_sha}       (stable channel)
+      - actions/workflows/beta-images.yml  -> last successful :beta build (beta channel)
     """
     async def _get(url, **kwargs):
         resp = MagicMock()
@@ -49,10 +49,12 @@ def _mock_github_client(*, latest_tag=None, latest_status=200, commit_sha=None, 
             resp.status_code = 200
             resp.is_success = True
             resp.json.return_value = {"sha": commit_sha}
-        else:  # commits?sha=main&per_page=1 (beta)
+        else:  # actions/workflows/beta-images.yml/runs?…status=success (beta)
             resp.status_code = 200
             resp.is_success = True
-            resp.json.return_value = [{"sha": main_sha}]
+            resp.json.return_value = {
+                "workflow_runs": [{"head_sha": main_sha}] if main_sha else []
+            }
         return resp
 
     inner = MagicMock()
@@ -123,7 +125,9 @@ async def test_get_update_status_stable_no_release():
 
 @pytest.mark.asyncio
 async def test_get_update_status_beta_channel_tracks_main():
-    # Beta channel compares against the tip of main (every commit).
+    # Beta channel compares against the commit of the last *successful*
+    # :beta image build — not the tip of main, which moves at merge time
+    # while the images only exist once the beta-images workflow finished.
     _make_app_with_superadmin_and_db()
     status_content = json.dumps({"deployed_sha": "aaa1111", "deployed_at": "2026-05-18T10:00:00Z"})
     with patch("builtins.open", mock_open(read_data=status_content)), \
@@ -138,6 +142,28 @@ async def test_get_update_status_beta_channel_tracks_main():
     assert data["channel"] == "beta"
     assert data["remote_sha"] == "ccc3333"
     assert data["update_available"] is True
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_get_update_status_beta_channel_no_successful_build():
+    # Beta channel, but no :beta build has succeeded yet (e.g. workflow still
+    # running right after a merge): no remote_sha, no false "update available".
+    _make_app_with_superadmin_and_db()
+    status_content = json.dumps({"deployed_sha": "aaa1111", "deployed_at": "2026-05-18T10:00:00Z"})
+    with patch("builtins.open", mock_open(read_data=status_content)), \
+         patch("os.makedirs"), \
+         patch("app.api.routes.admin.settings.update_channel", "beta"), \
+         patch("app.api.routes.admin.httpx.AsyncClient",
+               return_value=_mock_github_client(main_sha=None)):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            r = await client.get("/api/admin/update-status")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["channel"] == "beta"
+    assert data["remote_sha"] is None
+    assert data["update_available"] is False
+    assert data["github_reachable"] is True
     app.dependency_overrides.clear()
 
 

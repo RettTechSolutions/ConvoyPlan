@@ -254,15 +254,23 @@ async def get_update_status(
             headers["Authorization"] = f"Bearer {github_token}"
         async with httpx.AsyncClient(timeout=10.0) as client:
             if channel == "beta":
+                # Update-Ziel ist NICHT der main-HEAD, sondern der Commit des
+                # letzten ERFOLGREICHEN :beta-Image-Builds: Der HEAD bewegt
+                # sich schon beim Merge, die Images existieren aber erst,
+                # wenn der beta-images-Workflow (~10-15 min) durch ist.
+                # Sonst zeigt die UI minutenlang "Update verfügbar", obwohl
+                # es noch nichts zu ziehen gibt.
                 resp = await client.get(
-                    f"https://api.github.com/repos/{settings.github_repo}/commits?sha=main&per_page=1",
+                    f"https://api.github.com/repos/{settings.github_repo}"
+                    "/actions/workflows/beta-images.yml/runs"
+                    "?branch=main&status=success&per_page=1&exclude_pull_requests=true",
                     headers=headers,
                 )
                 if resp.is_success:
-                    commits = resp.json()
-                    if commits and isinstance(commits, list):
-                        remote_sha = commits[0]["sha"][:7]
                     github_reachable = True
+                    runs = (resp.json() or {}).get("workflow_runs") or []
+                    if runs and runs[0].get("head_sha"):
+                        remote_sha = runs[0]["head_sha"][:7]
             else:
                 rel = await client.get(
                     f"https://api.github.com/repos/{settings.github_repo}/releases/latest",

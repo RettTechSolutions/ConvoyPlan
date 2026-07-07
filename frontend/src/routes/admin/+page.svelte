@@ -1923,7 +1923,7 @@
                     {#if updateChannel.channel === 'stable'}
                         <strong>Stable:</strong> Updates nur bei veröffentlichten GitHub-Releases — einzelne Commits auf <code>main</code> lösen kein Update aus.
                     {:else}
-                        <strong>Beta:</strong> Jeder Commit auf <code>main</code> wird automatisch installiert (für Tests/Vorab-Versionen).
+                        <strong>Beta:</strong> Jeder Commit auf <code>main</code> wird automatisch installiert, sobald seine Beta-Images gebaut sind (ca. 10–15 Min. nach dem Merge; für Tests/Vorab-Versionen).
                     {/if}
                 </p>
             {/if}
@@ -1941,7 +1941,7 @@
                     </div>
                     <div class="update-row">
                         {#if updateStatus.channel === 'beta'}
-                            <span class="update-label">GitHub (main)</span>
+                            <span class="update-label">Letzter Beta-Build</span>
                         {:else}
                             <span class="update-label">Neuestes Release</span>
                         {/if}
