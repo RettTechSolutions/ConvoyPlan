@@ -287,6 +287,12 @@ export const usersApi = {
 export const overpassApi = {
 	getClosures: (lat: number, lon: number, radiusM = 15000) =>
 		api.get<Record<string, unknown>>(`/api/overpass/closures?lat=${lat}&lon=${lon}&radius_m=${radiusM}`),
+	// Sperrungen im Korridor entlang der Route (coordinates: GeoJSON [lon, lat])
+	getClosuresForRoute: (coordinates: number[][], corridorM = 2000) =>
+		api.post<Record<string, unknown>>('/api/overpass/closures/route', {
+			coordinates,
+			corridor_m: corridorM,
+		}),
 };
 
 // Public share
