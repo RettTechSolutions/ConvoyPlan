@@ -70,6 +70,8 @@ async def list_users(
         out.append(AdminUserResponse(
             id=u.id,
             email=u.email,
+            first_name=u.first_name,
+            last_name=u.last_name,
             is_active=u.is_active,
             is_superadmin=u.is_superadmin,
             is_demo=u.is_demo,
@@ -94,6 +96,8 @@ async def create_user(
     await assert_password_not_breached(data.password)
     user = User(
         email=data.email,
+        first_name=data.first_name,
+        last_name=data.last_name,
         hashed_password=bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode(),
         is_superadmin=data.is_superadmin,
     )
@@ -103,9 +107,12 @@ async def create_user(
     await audit.record(
         db, audit.USER_CREATED, request=request, actor_id=current.id,
         actor_email=current.email, target_type="user", target_id=user.id,
-        detail={"email": user.email, "is_superadmin": user.is_superadmin},
+        detail={"email": user.email, "name": user.full_name or None,
+                "is_superadmin": user.is_superadmin},
     )
-    return AdminUserResponse(id=user.id, email=user.email, is_active=user.is_active,
+    return AdminUserResponse(id=user.id, email=user.email,
+                             first_name=user.first_name, last_name=user.last_name,
+                             is_active=user.is_active,
                              is_superadmin=user.is_superadmin, mfa_enabled=user.mfa_enabled,
                              created_at=user.created_at, orgs=[])
 
@@ -133,6 +140,12 @@ async def update_user(
         user.is_active = data.is_active
     if data.is_superadmin is not None:
         user.is_superadmin = data.is_superadmin
+    # Names are nullable: only fields explicitly present in the PATCH are
+    # applied, so sending an empty string clears while omitting keeps the value.
+    if "first_name" in data.model_fields_set:
+        user.first_name = data.first_name
+    if "last_name" in data.model_fields_set:
+        user.last_name = data.last_name
     if data.email is not None:
         conflict = await db.execute(select(User).where(User.email == data.email, User.id != user_id))
         if conflict.scalar_one_or_none():
@@ -155,7 +168,9 @@ async def update_user(
         for m in user.org_memberships
         if m.organization is not None
     ]
-    return AdminUserResponse(id=user.id, email=user.email, is_active=user.is_active,
+    return AdminUserResponse(id=user.id, email=user.email,
+                             first_name=user.first_name, last_name=user.last_name,
+                             is_active=user.is_active,
                              is_superadmin=user.is_superadmin, is_demo=user.is_demo,
                              mfa_enabled=user.mfa_enabled,
                              created_at=user.created_at, orgs=orgs)
@@ -1000,7 +1015,7 @@ async def send_user_password(
         await send_password_email(
             db=db,
             recipient_email=user.email,
-            recipient_name="",
+            recipient_name=user.full_name,
             password=new_password,
             login_url=login_url,
         )
@@ -1132,6 +1147,8 @@ async def export_user_data(
         "user": {
             "id": user.id,
             "email": user.email,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
             "is_active": user.is_active,
             "is_superadmin": user.is_superadmin,
             "mfa_enabled": user.mfa_enabled,

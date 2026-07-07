@@ -38,6 +38,8 @@ class OrgMemberRoleUpdate(BaseModel):
 class OrgMemberResponse(BaseModel):
     user_id: uuid.UUID
     email: str
+    first_name: str | None = None
+    last_name: str | None = None
     role: str
 
 
@@ -178,7 +180,9 @@ async def list_members(
         user_result = await db.execute(select(User).where(User.id == m.user_id))
         user = user_result.scalar_one_or_none()
         if user:
-            out.append(OrgMemberResponse(user_id=m.user_id, email=user.email, role=m.role))
+            out.append(OrgMemberResponse(user_id=m.user_id, email=user.email,
+                                         first_name=user.first_name, last_name=user.last_name,
+                                         role=m.role))
     return out
 
 
@@ -248,6 +252,8 @@ async def invite_member(
 
     user = User(
         email=data.email,
+        first_name=data.first_name,
+        last_name=data.last_name,
         hashed_password=bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode(),
     )
     db.add(user)

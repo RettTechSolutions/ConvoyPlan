@@ -43,7 +43,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 _BG_EMAIL_TASKS: set[asyncio.Task] = set()
 
 
-def _dispatch_reset_email(email: str, password: str, login_url: str) -> None:
+def _dispatch_reset_email(email: str, password: str, login_url: str, recipient_name: str = "") -> None:
     """Send the reset email outside the request/response cycle.
 
     The SMTP handshake + relay can take several seconds; awaiting it inside the
@@ -57,7 +57,7 @@ def _dispatch_reset_email(email: str, password: str, login_url: str) -> None:
                 await send_password_email(
                     db=bg_db,
                     recipient_email=email,
-                    recipient_name="",
+                    recipient_name=recipient_name,
                     password=password,
                     login_url=login_url,
                 )
@@ -420,7 +420,7 @@ async def request_password_reset(
         # Dispatch the email in the background so the response isn't blocked by
         # the SMTP round-trip. Errors are swallowed there — the caller cannot
         # distinguish "no account" from "email server broken" by design.
-        _dispatch_reset_email(user.email, new_password, login_url)
+        _dispatch_reset_email(user.email, new_password, login_url, recipient_name=user.full_name)
 
     # Constant-ish response time (matches /auth/org-lookup pattern)
     await asyncio.sleep(0.3)

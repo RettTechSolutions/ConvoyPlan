@@ -102,6 +102,7 @@ export interface Organization {
 
 export interface OrgMember {
 	user_id: string; email: string; role: string;
+	first_name: string | null; last_name: string | null;
 }
 
 export interface VehiclePosition {
@@ -256,8 +257,10 @@ export const orgsApi = {
 	removeMember: (orgId: string, userId: string) =>
 		api.delete(`/api/organizations/${orgId}/members/${userId}`),
 	delete: (orgId: string) => api.delete(`/api/organizations/${orgId}`),
-	inviteMember: (orgId: string, email: string, password: string) =>
-		api.post(`/api/organizations/${orgId}/members/invite`, { email, password }),
+	inviteMember: (orgId: string, email: string, password: string, firstName?: string, lastName?: string) =>
+		api.post(`/api/organizations/${orgId}/members/invite`, {
+			email, password, first_name: firstName || undefined, last_name: lastName || undefined,
+		}),
 };
 
 // V3: Wetter
@@ -383,6 +386,8 @@ export function isTrackGate(payload: TrackPayload | TrackGate): payload is Track
 export interface AdminUser {
     id: string;
     email: string;
+    first_name: string | null;
+    last_name: string | null;
     is_active: boolean;
     is_superadmin: boolean;
     is_demo: boolean;
@@ -394,6 +399,8 @@ export interface AdminUser {
 export interface AdminUserCreate {
     email: string;
     password: string;
+    first_name?: string;
+    last_name?: string;
     is_superadmin?: boolean;
 }
 
@@ -402,6 +409,8 @@ export interface AdminUserUpdate {
     is_superadmin?: boolean;
     email?: string;
     password?: string;
+    first_name?: string;
+    last_name?: string;
 }
 
 export interface AdminOrg {

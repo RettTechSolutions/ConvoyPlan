@@ -27,7 +27,7 @@
     let loading = $state(true);
     let error = $state('');
     let showCreateForm = $state(false);
-    let newUser = $state({ email: '', password: '', is_superadmin: false });
+    let newUser = $state({ email: '', first_name: '', last_name: '', password: '', is_superadmin: false });
     let createPwVisible = $state(false);
     let createAndEmailWorking = $state(false);
 
@@ -59,7 +59,7 @@
     // ── Edit User Modal ───────────────────────────────────────────────────────
     let showEditUserModal = $state(false);
     let editingUser = $state<AdminUser | null>(null);
-    let editUserForm = $state({ email: '', password: '' });
+    let editUserForm = $state({ email: '', first_name: '', last_name: '', password: '' });
     let editUserError = $state('');
     let editUserSaving = $state(false);
     let allOrgsForModal = $state<AdminOrg[]>([]);
@@ -68,7 +68,7 @@
 
     async function openEditUser(user: AdminUser) {
         editingUser = user;
-        editUserForm = { email: user.email, password: '' };
+        editUserForm = { email: user.email, first_name: user.first_name ?? '', last_name: user.last_name ?? '', password: '' };
         editUserError = '';
         addOrgForm = { org_id: '', role: 'beobachter' };
         showEditUserModal = true;
@@ -83,8 +83,10 @@
         editUserError = '';
         editUserSaving = true;
         try {
-            const patch: { email?: string; password?: string } = {};
+            const patch: { email?: string; password?: string; first_name?: string; last_name?: string } = {};
             if (editUserForm.email !== editingUser.email) patch.email = editUserForm.email;
+            if (editUserForm.first_name.trim() !== (editingUser.first_name ?? '')) patch.first_name = editUserForm.first_name.trim();
+            if (editUserForm.last_name.trim() !== (editingUser.last_name ?? '')) patch.last_name = editUserForm.last_name.trim();
             if (editUserForm.password) patch.password = editUserForm.password;
             if (Object.keys(patch).length > 0) {
                 await adminApi.updateUser(editingUser.id, patch);
@@ -182,12 +184,16 @@
         createPwVisible = true;
     }
 
+    function resetCreateForm() {
+        newUser = { email: '', first_name: '', last_name: '', password: '', is_superadmin: false };
+        createPwVisible = false;
+        showCreateForm = false;
+    }
+
     async function createUser() {
         try {
             await adminApi.createUser(newUser);
-            newUser = { email: '', password: '', is_superadmin: false };
-            createPwVisible = false;
-            showCreateForm = false;
+            resetCreateForm();
             await loadUsers();
         } catch (e: unknown) {
             error = e instanceof Error ? e.message : 'Fehler beim Erstellen';
@@ -199,9 +205,7 @@
         try {
             const created = await adminApi.createUser(newUser);
             await adminApi.sendUserPassword(created.id);
-            newUser = { email: '', password: '', is_superadmin: false };
-            createPwVisible = false;
-            showCreateForm = false;
+            resetCreateForm();
             await loadUsers();
         } catch (e: unknown) {
             error = e instanceof Error ? e.message : 'Fehler beim Erstellen oder E-Mail-Versand';
@@ -1253,6 +1257,10 @@
 
             {#if showCreateForm}
                 <form class="create-form" onsubmit={(e) => { e.preventDefault(); createUser(); }}>
+                    <div class="name-input-row">
+                        <input placeholder="Vorname" type="text" bind:value={newUser.first_name} autocomplete="off" />
+                        <input placeholder="Nachname" type="text" bind:value={newUser.last_name} autocomplete="off" />
+                    </div>
                     <input placeholder="E-Mail *" type="email" bind:value={newUser.email} required />
                     <div class="pw-input-row">
                         <input
@@ -1292,6 +1300,7 @@
                 <table class="user-table">
                     <thead>
                         <tr>
+                            <th>Name</th>
                             <th>E-Mail</th>
                             <th>Organisationen</th>
                             <th>Aktiv</th>
@@ -1304,10 +1313,17 @@
                         {#each sortedUsers as user, i}
                             {#if user.is_demo && (i === 0 || !sortedUsers[i - 1].is_demo)}
                                 <tr class="group-divider-row">
-                                    <td colspan="6">▶ Demo-Sitzungen ({demoUserCount}) — temporär, werden automatisch gelöscht</td>
+                                    <td colspan="7">▶ Demo-Sitzungen ({demoUserCount}) — temporär, werden automatisch gelöscht</td>
                                 </tr>
                             {/if}
                             <tr class:inactive={!user.is_active} class:demo-row={user.is_demo}>
+                                <td>
+                                    {#if user.first_name || user.last_name}
+                                        {[user.first_name, user.last_name].filter(Boolean).join(' ')}
+                                    {:else}
+                                        <span class="hint">—</span>
+                                    {/if}
+                                </td>
                                 <td>{user.email}</td>
                                 <td>
                                     <div class="orgs-cell">
@@ -2394,6 +2410,14 @@
                 <div class="edit-section">
                     <p class="edit-section-title">Zugangsdaten</p>
                     <div class="ls-form">
+                        <div class="name-input-row">
+                            <label style="flex:1">Vorname
+                                <input type="text" bind:value={editUserForm.first_name} placeholder="Vorname" />
+                            </label>
+                            <label style="flex:1">Nachname
+                                <input type="text" bind:value={editUserForm.last_name} placeholder="Nachname" />
+                            </label>
+                        </div>
                         <label>E-Mail
                             <input type="email" bind:value={editUserForm.email} placeholder="E-Mail" required />
                         </label>
@@ -2674,6 +2698,8 @@
     .create-form button[type="submit"] { align-self: flex-start; padding: .5rem 1rem; background: #6B7F4D; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: var(--text-sm); }
     .pw-input-row { display: flex; align-items: center; gap: .3rem; }
     .pw-input-row .pw-field { flex: 1; }
+    .name-input-row { display: flex; gap: .5rem; }
+    .name-input-row input { flex: 1; min-width: 0; }
     .create-actions { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
     .btn-invite { padding: .5rem 1rem; background: #3d6080; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: var(--text-sm); }
     .btn-invite:hover:not(:disabled) { background: #4d77a0; }
