@@ -1,0 +1,148 @@
+name: Beta Images
+
+# Baut auf jedem Push auf main alle Docker-Images mit dem Tag :beta und pusht
+# sie nach GHCR. Damit funktioniert der Update-Kanal "Beta" (Admin-Panel) auch
+# bei image-basierten Installationen: Der Updater zieht im Beta-Kanal die
+# :beta-Images statt :latest und folgt so jedem Commit auf main.
+#
+# Sicherheit: Jeder Commit auf main ist durch die Merge Queue gegen den
+# aktuellen main getestet (Required Checks) — :beta enthält also nie
+# ungeprüften Code. :latest bleibt davon unberührt und wird weiterhin
+# ausschließlich vom Release-Workflow (Tag vX.Y.Z) gebaut.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+# Serialisieren statt canceln: Bei schnellen Merge-Wellen laufen die Builds
+# nacheinander, jeder Stand ist in sich konsistent (kein Mix aus alten und
+# neuen :beta-Images durch einen mittendrin abgebrochenen Lauf).
+concurrency:
+  group: beta-images
+  cancel-in-progress: false
+
+jobs:
+  build-and-push:
+    name: Build & push :beta images
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0   # volle Historie + Tags für `git describe`
+
+      - name: Determine app version
+        id: appver
+        run: |
+          version="$(git describe --tags --always 2>/dev/null | sed 's/^v//')"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Resolved APP_VERSION=${version}"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # metadata-action normalisiert den Repo-Namen auf Kleinbuchstaben
+      # (GHCR-Pflicht) — deshalb nicht einfach ${{ github.repository }}:beta.
+      - name: Docker metadata – backend
+        id: meta-backend
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ghcr.io/${{ github.repository }}/backend
+          tags: type=raw,value=beta
+
+      - name: Docker metadata – frontend
+        id: meta-frontend
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ghcr.io/${{ github.repository }}/frontend
+          tags: type=raw,value=beta
+
+      - name: Docker metadata – graphhopper
+        id: meta-graphhopper
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ghcr.io/${{ github.repository }}/graphhopper
+          tags: type=raw,value=beta
+
+      - name: Docker metadata – updater
+        id: meta-updater
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ghcr.io/${{ github.repository }}/updater
+          tags: type=raw,value=beta
+
+      # Base-Images stammen alle von Docker Hub und sind gelegentlich von
+      # transienten Registry-Timeouts betroffen — vorab ziehen mit Retry
+      # (gleiche Logik wie release.yml).
+      - name: Pre-pull base images (resilient gegen Registry-Timeouts)
+        run: |
+          images=(
+            "python:3.14-slim"
+            "node:26-alpine"
+            "eclipse-temurin:25-jre-alpine"
+            "docker:cli"
+          )
+          for image in "${images[@]}"; do
+            n=0
+            until docker pull "$image"; do
+              n=$((n + 1))
+              if [ "$n" -ge 5 ]; then
+                echo "::error::Konnte $image nach $n Versuchen nicht ziehen"
+                exit 1
+              fi
+              delay=$((2 ** n))
+              echo "Pull von $image fehlgeschlagen (Versuch $n). Neuer Versuch in ${delay}s…"
+              sleep "$delay"
+            done
+          done
+
+      - name: Build and push backend
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: ./backend
+          push: true
+          pull: false   # vorab gezogenes Base-Image aus dem lokalen Cache nutzen
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            APP_VERSION=${{ steps.appver.outputs.version }}
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: ./frontend
+          push: true
+          pull: false   # vorab gezogenes Base-Image aus dem lokalen Cache nutzen
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            APP_VERSION=${{ steps.appver.outputs.version }}
+
+      - name: Build and push graphhopper
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: ./graphhopper
+          push: true
+          pull: false   # vorab gezogenes Base-Image aus dem lokalen Cache nutzen
+          tags: ${{ steps.meta-graphhopper.outputs.tags }}
+          labels: ${{ steps.meta-graphhopper.outputs.labels }}
+
+      - name: Build and push updater
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: ./docker/updater
+          push: true
+          pull: false   # vorab gezogenes Base-Image aus dem lokalen Cache nutzen
+          tags: ${{ steps.meta-updater.outputs.tags }}
+          labels: ${{ steps.meta-updater.outputs.labels }}

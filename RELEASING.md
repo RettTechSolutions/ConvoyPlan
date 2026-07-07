@@ -69,6 +69,11 @@ git push origin main --tags
 > `auto-release.yml` automatically tags the next **patch** version and
 > dispatches the release workflow. Human merges never trigger this — but any
 > unreleased commits already sitting on `main` ship with that patch release.
+>
+> **Beta channel:** every push to `main` additionally builds `:beta` images
+> (`beta-images.yml`). These are only pulled by instances whose admin
+> explicitly switched the update channel to "Beta" — `:latest` and the stable
+> channel remain strictly release-tag-driven.
 
 ### What happens automatically
 

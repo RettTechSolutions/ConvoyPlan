@@ -140,10 +140,61 @@ write_status() {
 # Note: `docker cp $self:/tmp/foo $HOST_PATH` does NOT work here, because the
 # docker CLI interprets the destination in the CLIENT filesystem (= inside this
 # container), and the host path doesn't exist there.
-# Resolve the latest *published release tag* (e.g. v1.0.1). The stack file is
-# only ever fetched from a tagged release, never from a moving branch — so a
-# push to `main` can no longer rewrite the compose file (which the updater
-# executes with the Docker socket) on every customer instance.
+# ── Release-Kanal (stable | beta) ─────────────────────────────────────────────
+# Der Backend-Admin-Bereich schreibt den gewählten Kanal in eine geteilte Datei.
+#   stable → deployt nur veröffentlichte Releases (Images :latest)
+#   beta   → deployt jeden Commit auf main (Images :beta, gebaut von
+#            .github/workflows/beta-images.yml auf jedem main-Push)
+CHANNEL_FILE=/update_status/channel
+
+read_channel() {
+    local ch="stable"
+    if [ -f "${CHANNEL_FILE}" ]; then
+        ch="$(tr -d '[:space:]' < "${CHANNEL_FILE}" 2>/dev/null || echo stable)"
+    fi
+    case "${ch}" in
+        beta) echo "beta" ;;
+        *)    echo "stable" ;;
+    esac
+}
+
+# Rewrite an image ref to the given tag (…:latest ⇄ …:beta).
+_retag() {
+    echo "${1%:*}:${2}"
+}
+
+# Export the *_IMAGE vars that docker-compose interpolates, so pull/up use the
+# active channel's image tag. The exported values are also forwarded to the
+# restart helper via its env-file, so a recreated updater keeps the channel.
+_apply_channel_images() {
+    local tag="latest"
+    [ "$(read_channel)" = "beta" ] && tag="beta"
+    export BACKEND_IMAGE="$(_retag "${BACKEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/backend:latest}" "${tag}")"
+    export FRONTEND_IMAGE="$(_retag "${FRONTEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/frontend:latest}" "${tag}")"
+    export GRAPHHOPPER_IMAGE="$(_retag "${GRAPHHOPPER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/graphhopper:latest}" "${tag}")"
+    export UPDATER_IMAGE="$(_retag "${UPDATER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/updater:latest}" "${tag}")"
+}
+
+# Current commit SHA of main (beta channel target). Empty = GitHub unreachable.
+_main_head_sha() {
+    local repo="${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}"
+    {
+        if [ -n "${GITHUB_TOKEN:-}" ]; then
+            curl -sf --max-time 15 -H "Accept: application/vnd.github.sha" \
+                -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                "https://api.github.com/repos/${repo}/commits/main" 2>/dev/null
+        else
+            curl -sf --max-time 15 -H "Accept: application/vnd.github.sha" \
+                "https://api.github.com/repos/${repo}/commits/main" 2>/dev/null
+        fi
+    } || true
+}
+
+# Resolve the latest *published release tag* (e.g. v1.0.1). On the stable
+# channel the stack file is only ever fetched from a tagged release, never
+# from a moving branch — so a push to `main` cannot rewrite the compose file
+# (which the updater executes with the Docker socket) on customer instances.
+# Only an explicit opt-in to the beta channel tracks main instead.
 _latest_release_tag() {
     local repo="${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}"
     # `|| true`: Bei GitHub-Ausfall (curl-Fehler) oder fehlendem Release (grep
@@ -169,16 +220,21 @@ _update_stack_file() {
     [ -z "${STACK_FILE_PATH:-}" ] && return 0
 
     local repo="${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}"
-    local tag
-    tag="$(_latest_release_tag)"
-    if [ -z "${tag}" ]; then
-        log "WARNUNG: neuesten Release-Tag nicht ermittelbar — Stack-Datei nicht aktualisiert"
-        return 0
+    # Stable: Compose-Datei vom Release-Tag. Beta: von main (explizites Opt-in).
+    local ref
+    if [ "$(read_channel)" = "beta" ]; then
+        ref="main"
+    else
+        ref="$(_latest_release_tag)"
+        if [ -z "${ref}" ]; then
+            log "WARNUNG: neuesten Release-Tag nicht ermittelbar — Stack-Datei nicht aktualisiert"
+            return 0
+        fi
     fi
 
     local tmp=/tmp/dc-new.yml
-    if ! curl -sf --max-time 15 "https://raw.githubusercontent.com/${repo}/${tag}/docker-compose.yml" -o "${tmp}" || [ ! -s "${tmp}" ]; then
-        log "WARNUNG: Stack-Datei (Release ${tag}) konnte nicht heruntergeladen werden — übersprungen"
+    if ! curl -sf --max-time 15 "https://raw.githubusercontent.com/${repo}/${ref}/docker-compose.yml" -o "${tmp}" || [ ! -s "${tmp}" ]; then
+        log "WARNUNG: Stack-Datei (${ref}) konnte nicht heruntergeladen werden — übersprungen"
         rm -f "${tmp}"
         return 0
     fi
@@ -235,13 +291,17 @@ _spawn_restart_helper() {
 }
 
 do_update() {
-    log "Starte Image-Update…"
+    log "Starte Image-Update (Kanal: $(read_channel))…"
+
+    # Image-Tags des aktiven Kanals exportieren (:latest bzw. :beta), damit
+    # docker compose pull/up die richtigen Refs interpoliert.
+    _apply_channel_images
 
     # Updater-Image-ID vor dem Pull merken: Der Restart-Helper am Ende läuft
     # nur, wenn sich das Updater-Image oder die Stack-Datei wirklich geändert
     # hat — sonst würde sich der Updater bei jedem Durchlauf selbst neu starten.
     local updater_image updater_id_before updater_id_after
-    updater_image="${UPDATER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/updater:latest}"
+    updater_image="${UPDATER_IMAGE}"
     updater_id_before=$(docker image inspect "${updater_image}" --format '{{.Id}}' 2>/dev/null || echo "")
 
     # Pull ALL services including the updater itself, so future updater-image
@@ -292,34 +352,53 @@ do_update() {
 # Initial status
 SHA=$(get_sha_from_backend)
 write_status "${SHA}"
-log "Image-updater gestartet (Projekt: ${COMPOSE_PROJECT}, Compose: ${COMPOSE_FILE}). Release-Check alle ${INTERVAL}s, Trigger-Check alle ${TRIGGER_POLL}s."
+log "Image-updater gestartet (Projekt: ${COMPOSE_PROJECT}, Compose: ${COMPOSE_FILE}, Kanal: $(read_channel)). Ziel-Check alle ${INTERVAL}s, Trigger-Check alle ${TRIGGER_POLL}s."
 
 # ── Periodischer Auto-Update-Check ────────────────────────────────────────────
-# :latest wird ausschließlich vom Release-Workflow (Tag vX.Y.Z) gebaut. Ein
-# Vergleich des neuesten Release-Tags mit dem zuletzt deployten Tag genügt
-# daher als Update-Signal — so entfallen periodische Registry-Pulls (Docker-Hub-
-# Rate-Limits!) und es wird nur bei einem echten neuen Release gezogen.
-LAST_TAG_FILE=/update_status/last_release_tag
+# Update-Signal ist der Vergleich des Kanal-Ziels mit dem zuletzt deployten
+# Stand — so entfallen periodische Registry-Pulls (Docker-Hub-Rate-Limits!)
+# und es wird nur bei einer echten Änderung gezogen:
+#   stable → neuester Release-Tag   (:latest wird nur vom Release-Workflow gebaut)
+#   beta   → HEAD-Commit von main   (:beta wird bei jedem main-Push gebaut)
+# Gespeichert wird "<kanal> <ref>" — dadurch löst auch ein Kanalwechsel im
+# Admin-Panel beim nächsten Check automatisch ein Update auf das neue Ziel aus.
+LAST_DEPLOYED_FILE=/update_status/last_deployed
 
-_remember_release_tag() {
-    local tag
-    tag="$(_latest_release_tag)"
-    [ -n "${tag}" ] && echo "${tag}" > "${LAST_TAG_FILE}"
+# Echoes "stable <tag>" or "beta <sha>"; empty when GitHub is unreachable.
+_current_target() {
+    local ch ref
+    ch="$(read_channel)"
+    if [ "${ch}" = "beta" ]; then
+        ref="$(_main_head_sha)"
+    else
+        ref="$(_latest_release_tag)"
+    fi
+    if [ -n "${ref}" ]; then
+        echo "${ch} ${ref}"
+    fi
 }
 
-check_release_and_update() {
-    local tag last
-    tag="$(_latest_release_tag)"
-    if [ -z "${tag}" ]; then
+_remember_target() {
+    local target
+    target="$(_current_target)"
+    if [ -n "${target}" ]; then
+        echo "${target}" > "${LAST_DEPLOYED_FILE}"
+    fi
+}
+
+check_target_and_update() {
+    local target last
+    target="$(_current_target)"
+    if [ -z "${target}" ]; then
         return 0   # GitHub nicht erreichbar oder noch kein Release — später erneut
     fi
-    last="$(cat "${LAST_TAG_FILE}" 2>/dev/null || true)"
-    if [ "${tag}" = "${last}" ]; then
+    last="$(cat "${LAST_DEPLOYED_FILE}" 2>/dev/null || true)"
+    if [ "${target}" = "${last}" ]; then
         return 0   # nichts Neues
     fi
-    log "Neues Release erkannt: ${tag} (zuletzt deployt: ${last:-unbekannt}) — starte automatisches Update"
+    log "Neues Update-Ziel: ${target} (zuletzt deployt: ${last:-unbekannt}) — starte automatisches Update"
     if do_update; then
-        echo "${tag}" > "${LAST_TAG_FILE}"
+        echo "${target}" > "${LAST_DEPLOYED_FILE}"
     fi
 }
 
@@ -329,13 +408,13 @@ while true; do
         log "Trigger erkannt — starte Update"
         rm -f /update_status/trigger
         if do_update; then
-            _remember_release_tag
+            _remember_target
         fi
         continue
     fi
 
-    # Automatic update when a new release has been published
-    check_release_and_update
+    # Automatic update when the channel's target (release tag / main HEAD) moved
+    check_target_and_update
 
     # Sleep in short chunks so we notice a new trigger within TRIGGER_POLL seconds
     slept=0
