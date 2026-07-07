@@ -33,19 +33,24 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # Tag erstellen und pushen
-  actions: write    # release.yml per workflow_dispatch starten
-
-# Nur der jüngste Lauf überlebt: Jeder weitere Dependabot-Merge während des
-# Debounce bricht den laufenden Check ab und startet die Wartezeit neu.
-concurrency:
-  group: auto-release
-  cancel-in-progress: true
+  contents: write        # Tag erstellen und pushen
+  actions: write         # release.yml per workflow_dispatch starten
+  pull-requests: read    # gh pr list (Queue-Check); expliziter permissions-Block ersetzt die Defaults
 
 jobs:
   release-when-queue-drained:
     name: Release nach Dependabot-Welle
     runs-on: ubuntu-latest
+    # Nur der jüngste Dependabot-Lauf überlebt: Jeder weitere Dependabot-Merge
+    # während des Debounce bricht den laufenden Check ab und startet die
+    # Wartezeit neu. Bewusst auf JOB-Ebene statt Workflow-Ebene: Die
+    # Workflow-concurrency greift VOR der if-Bedingung — ein menschlicher
+    # Merge während des Debounce würde dann den wartenden Release-Lauf
+    # canceln und selbst skippen (Release fiele stillschweigend aus).
+    # Übersprungene Jobs betreten die Job-concurrency-Gruppe dagegen nie.
+    concurrency:
+      group: auto-release
+      cancel-in-progress: true
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event.head_commit.author.username == 'dependabot[bot]' ||
