@@ -7,6 +7,8 @@ GITHUB_REPO="${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}"
 INTERVAL="${UPDATE_INTERVAL:-300}"
 TRIGGER_POLL=10   # check trigger file every 10s so the UI reacts quickly
 CHANNEL_FILE=/update_status/channel   # written by the backend: "stable" | "beta"
+MODE_FILE=/update_status/mode         # written by the backend: "auto" | "notify"
+LAST_NOTIFIED_FILE=/update_status/last_notified
 
 # Fail fast if token not provided
 : "${GITHUB_TOKEN:?GITHUB_TOKEN must be set}"
@@ -38,6 +40,21 @@ read_channel() {
     case "${ch}" in
         beta) echo "beta" ;;
         *)    echo "stable" ;;
+    esac
+}
+
+# Read the update mode chosen in the admin panel (default: auto).
+#   auto   → install available updates automatically
+#   notify → no automatic install; the backend emails the superadmins and the
+#            update only runs via the manual trigger ("Jetzt updaten").
+read_mode() {
+    local m="auto"
+    if [ -f "${MODE_FILE}" ]; then
+        m="$(tr -d '[:space:]' < "${MODE_FILE}" 2>/dev/null || echo auto)"
+    fi
+    case "${m}" in
+        notify) echo "notify" ;;
+        *)      echo "auto" ;;
     esac
 }
 
@@ -149,6 +166,15 @@ while true; do
   if [ "${CHANNEL}" = "stable" ] && [ -n "${DEPLOYED}" ] && [ "${DEPLOYED}" != "${REMOTE}" ] && \
      git -C "${REPO_DIR}" merge-base --is-ancestor "${REMOTE}" "${DEPLOYED}" 2>/dev/null; then
     log "Deployter Stand ${DEPLOYED:0:7} ist bereits ${TARGET_DESC} oder neuer — kein automatisches Downgrade."
+  elif [ "$(read_mode)" = "notify" ] && [ -n "${DEPLOYED}" ] && [ "${DEPLOYED}" != "${REMOTE}" ]; then
+    # Modus "notify": nicht installieren — nur einmal pro Ziel loggen. Die
+    # E-Mail an die Superadmins verschickt das Backend; der manuelle Trigger
+    # (leert DEPLOYED) installiert weiterhin.
+    NOTIFIED="$(cat "${LAST_NOTIFIED_FILE}" 2>/dev/null || true)"
+    if [ "${CHANNEL} ${REMOTE}" != "${NOTIFIED}" ]; then
+      log "Update verfügbar (${TARGET_DESC} ${REMOTE:0:7}) — Modus 'notify': keine automatische Installation (manuell über das Admin-Panel updaten)."
+      echo "${CHANNEL} ${REMOTE}" > "${LAST_NOTIFIED_FILE}"
+    fi
   elif [ "${DEPLOYED}" != "${REMOTE}" ]; then
     log "Update detected (${CHANNEL}): ${DEPLOYED:0:7} → ${TARGET_DESC} ${REMOTE:0:7}"
     # Get all services except the updater itself (to avoid killing this container)
