@@ -998,7 +998,7 @@
 	<div class="topbar">
 		<button class="hamburger" onclick={() => (sidebarOpen = !sidebarOpen)} aria-expanded={sidebarOpen} aria-controls="sidebar" aria-label="Menü">☰</button>
 		<span class="topbar-name">{selected?.name ?? 'ConvoyPlan'}</span>
-		<div class="topbar-actions">
+		<div class="topbar-actions" data-tour="map-actions-mobile">
 			<button class="btn-map" class:active={$mapMode === 'set-start'} onclick={() => mapMode.set($mapMode === 'set-start' ? 'idle' : 'set-start')} aria-label="Startpunkt setzen">📍</button>
 			<button class="btn-map" class:active={$mapMode === 'set-end'} onclick={() => mapMode.set($mapMode === 'set-end' ? 'idle' : 'set-end')} aria-label="Zielpunkt setzen">🏁</button>
 			<button class="btn-map" class:active={$mapMode === 'add-waypoint'} onclick={() => mapMode.set($mapMode === 'add-waypoint' ? 'idle' : 'add-waypoint')} aria-label="Wegpunkt hinzufügen">➕</button>
@@ -1016,21 +1016,21 @@
 			<div class="logo-wrap"><AppLogo width={null} /></div>
 			<div style="display:flex;align-items:center;gap:.5rem">
 				{#if $orgStore?.user_role === 'admin'}
-					<a href="/o/{($page.params as Record<string, string>).slug}/admin" class="admin-link">⚙ Admin</a>
+					<a href="/o/{($page.params as Record<string, string>).slug}/admin" class="admin-link" data-tour="admin-link">⚙ Admin</a>
 				{/if}
 				<button class="logout-btn" onclick={logout} title="Abmelden">✕</button>
 			</div>
 		</div>
 
 		{#if demoSession}
-			<div class="demo-banner">
+			<div class="demo-banner" data-tour="demo-banner">
 				<span>Demo-Sitzung{#if demoExpiresAt}&nbsp;· Läuft ab {demoExpiresAt.toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })} Uhr{/if}</span>
 				<a href="https://convoyplan.de/#kontakt" target="_blank" rel="noopener" class="demo-banner-link">Vollversion anfragen →</a>
 			</div>
 		{/if}
 
 		<!-- Convoy-Selektor -->
-		<div class="convoy-selector">
+		<div class="convoy-selector" data-tour="convoy-selector">
 			<select onchange={(e) => { const c = convoyList.find(x => x.id === (e.target as HTMLSelectElement).value); if (c) selectConvoy(c); }}>
 				{#if convoyList.length === 0}<option value="">Kein Marschverband</option>{/if}
 				{#each convoyList as c}
@@ -1067,7 +1067,7 @@
 
 				<!-- ── TAB: Plan ── -->
 				{#if activeTab === 'convoy' && selected}
-					<div class="section">
+					<div class="section" data-tour="plan-params">
 						<div class="section-header" style="margin-top:0">
 							<span>Marschverband</span>
 							<button class="btn-small" onclick={openEditConvoyForm}>✎ Bearbeiten</button>
@@ -1086,7 +1086,7 @@
 							<p class="tag-pill">Teilverband</p>
 						{/if}
 					</div>
-					<div class="map-actions">
+					<div class="map-actions" data-tour="map-actions">
 						<button class="btn-map" class:active={$mapMode === 'set-start'} onclick={() => mapMode.set($mapMode === 'set-start' ? 'idle' : 'set-start')}>📍 Start</button>
 						<button class="btn-map" class:active={$mapMode === 'set-end'} onclick={() => mapMode.set($mapMode === 'set-end' ? 'idle' : 'set-end')}>🏁 Ziel</button>
 						<button class="btn-map" class:active={$mapMode === 'add-waypoint'} onclick={() => mapMode.set($mapMode === 'add-waypoint' ? 'idle' : 'add-waypoint')}>➕ Wegpunkt</button>
@@ -1124,7 +1124,7 @@
 							<p class="hint">Jetzt auf Karte klicken ↗</p>
 						</div>
 					{/if}
-					<div class="route-actions">
+					<div class="route-actions" data-tour="route-actions">
 						<button class="btn-primary" onclick={calculateRoute} disabled={loading}>
 							{loading ? 'Berechne…' : '🗺 Route berechnen'}
 						</button>
@@ -1240,7 +1240,7 @@
 				<!-- ── TAB: Fahrzeuge ── -->
 				{#if activeTab === 'fahrzeuge'}
 					<div class="section">
-						<div class="section-header">
+						<div class="section-header" data-tour="vehicles">
 							<strong>Meine Fahrzeuge</strong>
 							<button class="btn-small" onclick={() => (showVehicleForm = !showVehicleForm)}>+ Neu</button>
 						</div>
@@ -1387,7 +1387,7 @@
 				<!-- ── TAB: Konto ── -->
 				{#if activeTab === 'konto'}
 					{#if demoSession}
-						<div class="section">
+						<div class="section" data-tour="konto">
 							<div class="demo-restrict-note">
 								🔒 In der Demo sind Passwortänderung und Zwei-Faktor-Authentifizierung deaktiviert,
 								da der Zugang von mehreren Personen geteilt wird.
@@ -1395,7 +1395,7 @@
 							</div>
 						</div>
 					{:else}
-					<div class="section">
+					<div class="section" data-tour="konto">
 						<div class="section-header" style="margin-top:0">
 							<strong>Passwort ändern</strong>
 						</div>
@@ -1489,7 +1489,7 @@
 				<!-- ── TAB: Wegpunkte ── -->
 				{#if activeTab === 'wegpunkte' && selected}
 					<div class="section">
-						<div class="section-header">
+						<div class="section-header" data-tour="waypoints">
 							<strong>Wegpunkte</strong>
 							<button class="btn-small" class:active={$mapMode === 'add-waypoint'} onclick={() => mapMode.set($mapMode === 'add-waypoint' ? 'idle' : 'add-waypoint')}>
 								+ Karte
@@ -1556,7 +1556,7 @@
 
 				<!-- ── TAB: Zeitplan ── -->
 				{#if activeTab === 'zeitplan' && selected}
-					<div class="section">
+					<div class="section" data-tour="schedule">
 						<strong>Zeitplan</strong>
 						{#if selected.waypoints.some(w => w.planned_arrival)}
 							<table class="schedule-table">
@@ -1598,16 +1598,18 @@
 				{#if activeTab === 'export' && selected}
 					<div class="section">
 						<strong>Exportieren</strong>
-						<div class="export-grid">
+						<div class="export-grid" data-tour="export">
 							<button class="btn-export" onclick={() => downloadExport('gpx')}>📍 GPX herunterladen</button>
 							<button class="btn-export" onclick={() => downloadExport('json')}>📄 JSON herunterladen</button>
 							<button class="btn-export" onclick={openBefehlModal}>📋 Marschbefehl</button>
 							<button class="btn-export" onclick={() => navigator.clipboard.writeText(`${window.location.origin}/share/${selected?.share_token}`)}>🔗 Link kopieren</button>
 						</div>
-						<div class="section-header" style="margin-top:1rem"><strong>Live-Tracking</strong></div>
-						<div class="export-grid">
-							<a class="btn-export" href="/o/{$page.params.slug}/tracking/{selected.id}" target="_blank">🔴 Tracking-Ansicht öffnen</a>
-							<button class="btn-export" onclick={() => (showShareLinkModal = true)}>🔗 Öffentlich teilen (QR / Passwort)</button>
+						<div data-tour="tracking">
+							<div class="section-header" style="margin-top:1rem"><strong>Live-Tracking</strong></div>
+							<div class="export-grid">
+								<a class="btn-export" href="/o/{$page.params.slug}/tracking/{selected.id}" target="_blank">🔴 Tracking-Ansicht öffnen</a>
+								<button class="btn-export" onclick={() => (showShareLinkModal = true)}>🔗 Öffentlich teilen (QR / Passwort)</button>
+							</div>
 						</div>
 						<div class="section-header" style="margin-top:1rem"><strong>Sperrungen & Baustellen</strong></div>
 						<button class="btn-export" class:active={showClosures} onclick={toggleClosures}>
@@ -1706,7 +1708,7 @@
 				{/if}
 			</div>
 		{/if}
-	<div class="sidebar-footer">
+	<div class="sidebar-footer" data-tour="sidebar-footer">
 		<button class="theme-toggle" onclick={toggleTheme} aria-label="Theme umschalten">
 			{$themeStore === 'dark' ? '☀' : '☾'}
 			<span>{$themeStore === 'dark' ? 'Light' : 'Dark'}</span>
@@ -1930,6 +1932,7 @@
 		isDemo={!!demoSession}
 		isAdmin={$orgStore?.user_role === 'admin'}
 		onNavigate={(tab) => { if (wizardStep === 0) activeTab = tab; }}
+		onSidebar={(open) => (sidebarOpen = open)}
 	/>
 {/if}
 
