@@ -1,0 +1,109 @@
+name: Auto-Release
+
+# Schneidet automatisch ein Patch-Release, sobald eine Dependabot-Welle
+# vollständig abgearbeitet ist:
+#
+#   Dependabot öffnet PRs → auto-merge.yml aktiviert "Merge when ready"
+#   (patch/minor) → die Merge Queue arbeitet die PRs seriell von unten nach
+#   oben ab (Branch-Update + Checks übernimmt die Queue) → jeder Merge pusht
+#   auf main und startet diesen Workflow → sobald KEIN Dependabot-PR mehr auf
+#   den Merge wartet, wird der nächste Patch-Tag (vX.Y.Z+1) erstellt und
+#   release.yml auf diesem Tag gestartet (baut Images, veröffentlicht das
+#   GitHub-Release, das die Kunden-Updater dann automatisch ausrollen).
+#
+# Absicherungen:
+#   - Läuft nur, wenn der auslösende Commit ein Dependabot-Merge ist — ein
+#     normaler Feature-Merge löst NIE ein automatisches Release aus.
+#   - concurrency + Debounce: Bei einer Welle von Merges überlebt nur der
+#     jeweils letzte Lauf; erst wenn 3 Minuten nach dem letzten Merge kein
+#     Dependabot-PR mehr in der Queue/auf Auto-Merge wartet, wird released.
+#   - Major-Bumps haben kein Auto-Merge aktiv und blockieren das Release nicht.
+#
+# Hinweis: Der Tag wird mit dem GITHUB_TOKEN gepusht. GitHub startet für
+# Events, die der GITHUB_TOKEN selbst auslöst, KEINE weiteren Workflows
+# (Rekursionsschutz) — deshalb wird release.yml anschließend explizit per
+# workflow_dispatch auf dem neuen Tag gestartet (das ist die dokumentierte
+# Ausnahme vom Rekursionsschutz).
+
+on:
+  push:
+    branches: [main]
+  # Manueller Anstoß: prüft dieselben Bedingungen und released, wenn nichts
+  # mehr aussteht.
+  workflow_dispatch:
+
+permissions:
+  contents: write   # Tag erstellen und pushen
+  actions: write    # release.yml per workflow_dispatch starten
+
+# Nur der jüngste Lauf überlebt: Jeder weitere Dependabot-Merge während des
+# Debounce bricht den laufenden Check ab und startet die Wartezeit neu.
+concurrency:
+  group: auto-release
+  cancel-in-progress: true
+
+jobs:
+  release-when-queue-drained:
+    name: Release nach Dependabot-Welle
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.head_commit.author.username == 'dependabot[bot]' ||
+      startsWith(github.event.head_commit.message, 'build(deps')
+    steps:
+      - name: Debounce — weitere Merges der Welle abwarten
+        if: github.event_name == 'push'
+        run: sleep 180
+
+      - name: Prüfen, ob noch Dependabot-PRs auf den Merge warten
+        id: queue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Zählt offene Dependabot-PRs mit aktivem Auto-Merge (= in der Queue
+          # oder auf grüne Checks wartend). Major-Bumps ohne Auto-Merge zählen
+          # bewusst nicht — sie bleiben zur manuellen Review offen.
+          pending=$(gh pr list --repo "$GITHUB_REPOSITORY" \
+            --author 'app/dependabot' --state open \
+            --json number,autoMergeRequest \
+            --jq '[.[] | select(.autoMergeRequest != null)] | length')
+          echo "pending=${pending}" >> "$GITHUB_OUTPUT"
+          if [ "${pending}" != "0" ]; then
+            echo "Noch ${pending} Dependabot-PR(s) in der Queue — Release wird vom letzten Merge ausgelöst."
+          fi
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        if: steps.queue.outputs.pending == '0'
+        with:
+          fetch-depth: 0   # volle Historie + Tags für Versionsermittlung
+
+      - name: Nächsten Patch-Tag erstellen und Release starten
+        if: steps.queue.outputs.pending == '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git fetch --tags --force --quiet
+
+          last=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+          if [ -z "${last}" ]; then
+            echo "::error::Kein bestehender Release-Tag gefunden — erstes Release bitte manuell schneiden."
+            exit 1
+          fi
+
+          if [ "$(git rev-parse "${last}^{commit}")" = "$(git rev-parse HEAD)" ]; then
+            echo "HEAD ist bereits als ${last} released — nichts zu tun."
+            exit 0
+          fi
+
+          IFS=. read -r major minor patch <<< "${last#v}"
+          next="v${major}.${minor}.$((patch + 1))"
+
+          echo "Erstelle Release-Tag ${next} (Vorgänger: ${last})"
+          git tag "${next}" HEAD
+          git push origin "${next}"
+
+          # Expliziter Dispatch, weil der Tag-Push mit dem GITHUB_TOKEN keinen
+          # Workflow-Lauf auslöst (Rekursionsschutz, s. Kopfkommentar).
+          gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "${next}"
+          echo "Release-Workflow für ${next} gestartet."

@@ -146,6 +146,9 @@ write_status() {
 # executes with the Docker socket) on every customer instance.
 _latest_release_tag() {
     local repo="${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}"
+    # `|| true`: Bei GitHub-Ausfall (curl-Fehler) oder fehlendem Release (grep
+    # ohne Treffer) darf der Pipeline-Fehlschlag das Skript unter
+    # `set -euo pipefail` nicht beenden — leere Ausgabe heißt "unbekannt".
     {
         if [ -n "${GITHUB_TOKEN:-}" ]; then
             curl -sf --max-time 15 -H "Authorization: Bearer ${GITHUB_TOKEN}" \
@@ -154,10 +157,15 @@ _latest_release_tag() {
             curl -sf --max-time 15 \
                 "https://api.github.com/repos/${repo}/releases/latest" 2>/dev/null
         fi
-    } | grep -m1 '"tag_name"' | cut -d'"' -f4
+    } | grep -m1 '"tag_name"' | cut -d'"' -f4 || true
 }
 
+# Set to 1 by _update_stack_file when the host compose file actually changed —
+# do_update uses this to decide whether the updater container must restart.
+STACK_FILE_CHANGED=0
+
 _update_stack_file() {
+    STACK_FILE_CHANGED=0
     [ -z "${STACK_FILE_PATH:-}" ] && return 0
 
     local repo="${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}"
@@ -175,10 +183,18 @@ _update_stack_file() {
         return 0
     fi
 
+    # Inhaltsgleich? Dann nichts schreiben und keinen Updater-Neustart auslösen.
+    if cmp -s "${tmp}" "${COMPOSE_FILE}" 2>/dev/null; then
+        rm -f "${tmp}"
+        return 0
+    fi
+
     if [ -w /stack/docker-compose.yml ] && cp "${tmp}" /stack/docker-compose.yml 2>/dev/null; then
         log "Stack-Datei aktualisiert: ${STACK_FILE_PATH}"
+        STACK_FILE_CHANGED=1
     elif docker run --rm -i -v "${STACK_FILE_PATH}:/dst" alpine sh -c 'cat > /dst' < "${tmp}" >/dev/null 2>&1; then
         log "Stack-Datei aktualisiert (via Sidecar): ${STACK_FILE_PATH}"
+        STACK_FILE_CHANGED=1
     else
         log "WARNUNG: Stack-Datei konnte nicht auf den Host geschrieben werden (STACK_FILE_PATH=${STACK_FILE_PATH})"
     fi
@@ -221,6 +237,13 @@ _spawn_restart_helper() {
 do_update() {
     log "Starte Image-Update…"
 
+    # Updater-Image-ID vor dem Pull merken: Der Restart-Helper am Ende läuft
+    # nur, wenn sich das Updater-Image oder die Stack-Datei wirklich geändert
+    # hat — sonst würde sich der Updater bei jedem Durchlauf selbst neu starten.
+    local updater_image updater_id_before updater_id_after
+    updater_image="${UPDATER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/updater:latest}"
+    updater_id_before=$(docker image inspect "${updater_image}" --format '{{.Id}}' 2>/dev/null || echo "")
+
     # Pull ALL services including the updater itself, so future updater-image
     # fixes are picked up automatically. (A pull only downloads the image into
     # the local cache — it does NOT touch any running container, so pulling the
@@ -251,26 +274,68 @@ do_update() {
         # `compose` stops the old (=this) container mid-sequence, leaving the new
         # container stuck in "Created" state. Spawn a detached helper container
         # instead; it survives this updater dying and finishes the recreate.
-        log "Starte Updater-Container neu (neue Konfiguration übernehmen)…"
-        _spawn_restart_helper || log "WARNUNG: Restart-Helper konnte nicht gestartet werden — Updater läuft weiter"
+        updater_id_after=$(docker image inspect "${updater_image}" --format '{{.Id}}' 2>/dev/null || echo "")
+        if [ "${STACK_FILE_CHANGED}" = "1" ] || \
+           { [ -n "${updater_id_after}" ] && [ "${updater_id_before}" != "${updater_id_after}" ]; }; then
+            log "Starte Updater-Container neu (neue Konfiguration übernehmen)…"
+            _spawn_restart_helper || log "WARNUNG: Restart-Helper konnte nicht gestartet werden — Updater läuft weiter"
+        else
+            log "Updater-Image und Stack-Datei unverändert — kein Updater-Neustart nötig."
+        fi
+        return 0
     else
         log "Update failed — will retry on next trigger"
+        return 1
     fi
 }
 
 # Initial status
 SHA=$(get_sha_from_backend)
 write_status "${SHA}"
-log "Image-updater gestartet (Projekt: ${COMPOSE_PROJECT}, Compose: ${COMPOSE_FILE}). Polling alle ${INTERVAL}s, Trigger-Check alle ${TRIGGER_POLL}s."
+log "Image-updater gestartet (Projekt: ${COMPOSE_PROJECT}, Compose: ${COMPOSE_FILE}). Release-Check alle ${INTERVAL}s, Trigger-Check alle ${TRIGGER_POLL}s."
+
+# ── Periodischer Auto-Update-Check ────────────────────────────────────────────
+# :latest wird ausschließlich vom Release-Workflow (Tag vX.Y.Z) gebaut. Ein
+# Vergleich des neuesten Release-Tags mit dem zuletzt deployten Tag genügt
+# daher als Update-Signal — so entfallen periodische Registry-Pulls (Docker-Hub-
+# Rate-Limits!) und es wird nur bei einem echten neuen Release gezogen.
+LAST_TAG_FILE=/update_status/last_release_tag
+
+_remember_release_tag() {
+    local tag
+    tag="$(_latest_release_tag)"
+    [ -n "${tag}" ] && echo "${tag}" > "${LAST_TAG_FILE}"
+}
+
+check_release_and_update() {
+    local tag last
+    tag="$(_latest_release_tag)"
+    if [ -z "${tag}" ]; then
+        return 0   # GitHub nicht erreichbar oder noch kein Release — später erneut
+    fi
+    last="$(cat "${LAST_TAG_FILE}" 2>/dev/null || true)"
+    if [ "${tag}" = "${last}" ]; then
+        return 0   # nichts Neues
+    fi
+    log "Neues Release erkannt: ${tag} (zuletzt deployt: ${last:-unbekannt}) — starte automatisches Update"
+    if do_update; then
+        echo "${tag}" > "${LAST_TAG_FILE}"
+    fi
+}
 
 while true; do
     # Trigger check — runs every TRIGGER_POLL seconds so the UI reacts quickly
     if [ -f /update_status/trigger ]; then
         log "Trigger erkannt — starte Update"
         rm -f /update_status/trigger
-        do_update
+        if do_update; then
+            _remember_release_tag
+        fi
         continue
     fi
+
+    # Automatic update when a new release has been published
+    check_release_and_update
 
     # Sleep in short chunks so we notice a new trigger within TRIGGER_POLL seconds
     slept=0

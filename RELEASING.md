@@ -59,10 +59,16 @@ git tag v0.5.0
 git push origin main --tags
 ```
 
-> **Note:** Releases are strictly tag-driven. Merging to `main` (including
-> auto-merged Dependabot PRs) does **not** build `:latest` or deploy anything —
-> only pushing a `v*.*.*` tag (or a manual `workflow_dispatch`) does. This keeps
-> dependency updates from flowing straight onto production instances unreviewed.
+> **Note:** Releases are strictly tag-driven. Merging to `main` does **not**
+> build `:latest` or deploy anything — only pushing a `v*.*.*` tag (or a manual
+> `workflow_dispatch`) does. This keeps changes from flowing straight onto
+> production instances unreviewed.
+>
+> **Exception — Dependabot waves:** once the merge queue has drained a batch of
+> auto-merged Dependabot PRs (patch/minor only, all CI checks green),
+> `auto-release.yml` automatically tags the next **patch** version and
+> dispatches the release workflow. Human merges never trigger this — but any
+> unreleased commits already sitting on `main` ship with that patch release.
 
 ### What happens automatically
 

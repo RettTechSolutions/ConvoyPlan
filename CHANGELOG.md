@@ -6,6 +6,15 @@ All notable changes to ConvoyPlan are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Auto-Updater installiert neue Releases jetzt wirklich automatisch.** Der image-basierte Updater (`update-images.sh`, Standard bei Installationen über `install.sh`) reagierte bisher nur auf den manuellen „Jetzt aktualisieren"-Trigger aus dem Admin-Bereich — die UI zeigte zwar „Update verfügbar", installiert wurde von selbst aber nie. Der Updater prüft jetzt alle `UPDATE_INTERVAL` Sekunden (Standard: 300) das neueste veröffentlichte GitHub-Release und zieht bei einem neuen Tag automatisch die Images und startet die Dienste neu. Zusätzlich startet sich der Updater-Container nur noch dann selbst neu, wenn sich sein Image oder die Stack-Datei tatsächlich geändert hat (vorher: nach jedem Update).
+- **Updater-Absturz bei GitHub-Ausfall behoben.** War die GitHub-API nicht erreichbar (oder existierte noch kein Release), beendete ein Pipeline-Fehler unter `set -euo pipefail` das komplette Updater-Skript — der Container geriet in eine Restart-Schleife. Betroffen waren beide Varianten (`update.sh` und `update-images.sh`); die Release-Abfrage schlägt jetzt sauber fehl und versucht es im nächsten Intervall erneut.
+
+### Changed
+
+- **Dependabot-PRs laufen jetzt durch eine Merge Queue und lösen automatisch ein Patch-Release aus.** Bisher blockierten sich gleichzeitige Dependabot-PRs gegenseitig: Nach jedem Merge war der nächste PR „behind" und musste von Hand aktualisiert werden. Das Ruleset erzwingt jetzt GitHubs native Merge Queue — PRs werden seriell von unten nach oben abgearbeitet (temporärer Merge-Branch mit aktuellem `main` → Checks → Squash-Merge → nächster PR), ganz ohne manuelles „Update branch". Sobald die Welle abgearbeitet ist, erstellt der neue Workflow `auto-release.yml` automatisch den nächsten Patch-Tag und stößt den Release-Build an (nur bei Dependabot-Merges; menschliche Merges bleiben Tag-getrieben). Einmalige Admin-Aktion nötig: Ruleset aus `.github/rulesets/main.json` neu importieren (siehe `.github/repo-setup-checklist.md`).
+
 ### Added
 
 - **Update-Kanal „Stable" / „Beta" im Admin-Bereich.** Unter Admin → Software-Update lässt sich jetzt der Update-Kanal umschalten. **Stable** (Standard) meldet und installiert nur **veröffentlichte GitHub-Releases** – ein einzelner Commit auf `main` löst kein Update mehr aus und wird auch nicht mehr fälschlich als „Update verfügbar" angezeigt. **Beta** verfolgt weiterhin jeden Commit auf `main` (für Tests/Vorab-Versionen, v. a. bei quellbasierten Installationen). Die Statusanzeige vergleicht im Stable-Kanal gegen das neueste Release (Tag + Commit) statt gegen die Spitze von `main`; gibt es noch kein Release, wird das sauber als „noch kein Release veröffentlicht" ausgewiesen. Der gewählte Kanal wird in `system_settings` (`update.channel`) gespeichert, an den Updater-Container gereicht und ist per `UPDATE_CHANNEL` als Fallback vorkonfigurierbar (neue Endpunkte `GET`/`PUT /api/admin/settings/update-channel`).

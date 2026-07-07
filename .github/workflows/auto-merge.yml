@@ -1,17 +1,23 @@
 name: Auto-merge
 
-# Aktiviert GitHubs nativen Auto-Merge (Squash) für Pull Requests, die das
-# Label "auto-merge" tragen. GitHub führt den Merge dann automatisch aus,
-# sobald ALLE in der Branch-Protection / im Ruleset geforderten Status-Checks
-# grün sind. Schlägt ein Check fehl, bleibt der PR offen.
+# Aktiviert GitHubs nativen Auto-Merge ("Merge when ready") für Pull Requests,
+# die das Label "auto-merge" tragen. Da das Ruleset eine MERGE QUEUE erzwingt,
+# landet der PR damit automatisch in der Queue, sobald seine eigenen Checks
+# grün sind. Die Queue arbeitet die Einträge dann seriell (älteste zuerst) ab:
+# temporären Merge-Branch mit aktuellem main bauen → Required Checks darauf
+# laufen lassen → mergen → nächster Eintrag. Ein "Update branch" von Hand ist
+# damit nie mehr nötig, auch wenn sich main laufend ändert.
 #
 # Dependabot-PRs erhalten das Label "auto-merge" automatisch und werden somit
-# nach grünen Checks ebenfalls automatisch gemergt.
+# nach grünen Checks ebenfalls automatisch gemergt (nur patch/minor — major
+# bleibt zur manuellen Review offen). Nach dem Abarbeiten einer Dependabot-
+# Welle schneidet auto-release.yml automatisch ein Patch-Release.
 #
 # Voraussetzungen (einmalig in den Repo-Settings, siehe
 # .github/repo-setup-checklist.md):
 #   1. Settings → General → "Allow auto-merge" aktivieren.
-#   2. Ruleset aus .github/rulesets/main.json importieren (Required Checks).
+#   2. Ruleset aus .github/rulesets/main.json importieren (Required Checks +
+#      Merge Queue).
 #   3. Label "auto-merge" anlegen.
 #
 # Hinweis zur Sicherheit: Wir nutzen pull_request_target und checken bewusst
@@ -64,6 +70,10 @@ jobs:
 
       # Enable native auto-merge for manually-labelled PRs (any) and for
       # Dependabot patch/minor updates. Dependabot major bumps fall through.
+      # With a merge queue required on main, "auto merge" means "add to the
+      # queue when ready". Newer gh versions handle that transparently; older
+      # ones reject an explicit merge method when a queue is active, hence the
+      # method-less fallback.
       - name: Enable native auto-merge
         if: >-
           github.actor != 'dependabot[bot]' ||
@@ -72,4 +82,4 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
-        run: gh pr merge --auto --squash "$PR_URL"
+        run: gh pr merge --auto --squash "$PR_URL" || gh pr merge --auto "$PR_URL"

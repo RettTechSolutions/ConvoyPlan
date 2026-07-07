@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Merge Queue: GitHub baut temporäre Merge-Branches (PR + aktueller main) und
+  # verlangt die Required Checks darauf. Ohne diesen Trigger würden Einträge in
+  # der Queue endlos auf ihre Checks warten.
+  merge_group:
 
 # Least privilege: jobs only read the repo. No job needs write access to
 # contents, packages, deployments, etc. Overrides the permissive default
