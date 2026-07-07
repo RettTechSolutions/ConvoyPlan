@@ -33,10 +33,12 @@ def _make_app_with_superadmin_and_db():
     return app
 
 
-def _mock_github_client(*, latest_tag=None, latest_status=200, commit_sha=None, main_sha=None):
+def _mock_github_client(*, latest_tag=None, latest_status=200, commit_sha=None, main_sha=None,
+                        compare_status="behind"):
     """Mock httpx.AsyncClient for the update-status endpoint, dispatching by URL:
       - releases/latest                    -> {"tag_name": latest_tag}  (status: latest_status)
       - commits/<tag>                      -> {"sha": commit_sha}       (stable channel)
+      - compare/<tag>...<sha>              -> {"status": compare_status} (stable ancestry check)
       - actions/workflows/beta-images.yml  -> last successful :beta build (beta channel)
     """
     async def _get(url, **kwargs):
@@ -45,6 +47,10 @@ def _mock_github_client(*, latest_tag=None, latest_status=200, commit_sha=None, 
             resp.status_code = latest_status
             resp.is_success = 200 <= latest_status < 300
             resp.json.return_value = {"tag_name": latest_tag}
+        elif "/compare/" in url:
+            resp.status_code = 200
+            resp.is_success = True
+            resp.json.return_value = {"status": compare_status}
         elif "/commits/" in url:
             resp.status_code = 200
             resp.is_success = True
@@ -101,6 +107,28 @@ async def test_get_update_status_update_available():
     assert data["deployed_sha"] == "aaa1111"
     assert data["remote_sha"] == "bbb2222"
     assert data["update_available"] is True
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_get_update_status_stable_deployed_ahead_of_release():
+    # Instance previously ran on the beta channel and is now AHEAD of the
+    # latest release: no "update available" (that would be a downgrade).
+    _make_app_with_superadmin_and_db()
+    status_content = json.dumps({"deployed_sha": "fff9999", "deployed_at": "2026-07-07T11:33:49Z"})
+    with patch("builtins.open", mock_open(read_data=status_content)), \
+         patch("os.makedirs"), \
+         patch("app.api.routes.admin.httpx.AsyncClient",
+               return_value=_mock_github_client(latest_tag="v1.0.1", commit_sha="c7694f4abcdef",
+                                                compare_status="ahead")):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            r = await client.get("/api/admin/update-status")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["deployed_sha"] == "fff9999"
+    assert data["remote_sha"] == "c7694f4"
+    assert data["ahead_of_release"] is True
+    assert data["update_available"] is False
     app.dependency_overrides.clear()
 
 

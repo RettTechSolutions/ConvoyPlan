@@ -194,6 +194,21 @@ _beta_built_sha() {
     } | grep -m1 '"head_sha"' | cut -d'"' -f4 || true
 }
 
+# Ancestry zweier Refs laut GitHub-Compare-API: ahead|behind|identical|diverged.
+# "ahead" = head enthält base und ist weiter. Leer = nicht ermittelbar.
+_compare_status() {
+    local repo="${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}"
+    local url="https://api.github.com/repos/${repo}/compare/${1}...${2}?per_page=1"
+    {
+        if [ -n "${GITHUB_TOKEN:-}" ]; then
+            curl -sf --max-time 15 -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                "${url}" 2>/dev/null
+        else
+            curl -sf --max-time 15 "${url}" 2>/dev/null
+        fi
+    } | grep -m1 '"status"' | cut -d'"' -f4 || true
+}
+
 # Resolve the latest *published release tag* (e.g. v1.0.1). On the stable
 # channel the stack file is only ever fetched from a tagged release, never
 # from a moving branch — so a push to `main` cannot rewrite the compose file
@@ -391,7 +406,7 @@ _remember_target() {
 }
 
 check_target_and_update() {
-    local target last
+    local target last ch ref
     target="$(_current_target)"
     if [ -z "${target}" ]; then
         return 0   # GitHub nicht erreichbar oder noch kein Release — später erneut
@@ -400,6 +415,28 @@ check_target_and_update() {
     if [ "${target}" = "${last}" ]; then
         return 0   # nichts Neues
     fi
+
+    # Kein automatisches DOWNGRADE im Stable-Kanal: Lief die Instanz vorher im
+    # Beta-Kanal, ist der installierte Stand NEUER als das letzte Release —
+    # automatisch aufs ältere Release zurückzugehen wäre riskant (bereits
+    # angewendete DB-Migrationen!). Stable greift dann erst wieder, wenn das
+    # nächste Release den installierten Stand überholt. Der manuelle Trigger
+    # ("Jetzt updaten") erzwingt das Downgrade weiterhin bewusst.
+    ch="${target%% *}"
+    ref="${target#* }"
+    if [ "${ch}" = "stable" ]; then
+        local deployed cmp
+        deployed="$(get_sha_from_backend)"
+        if [ -n "${deployed}" ]; then
+            cmp="$(_compare_status "${ref}" "${deployed}")"
+            if [ "${cmp}" = "ahead" ] || [ "${cmp}" = "identical" ]; then
+                log "Installierter Stand (${deployed:0:7}) ist bereits ${ref} oder neuer (${cmp}) — kein automatisches Downgrade."
+                echo "${target}" > "${LAST_DEPLOYED_FILE}"
+                return 0
+            fi
+        fi
+    fi
+
     log "Neues Update-Ziel: ${target} (zuletzt deployt: ${last:-unbekannt}) — starte automatisches Update"
     if do_update; then
         echo "${target}" > "${LAST_DEPLOYED_FILE}"

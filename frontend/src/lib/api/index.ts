@@ -509,6 +509,7 @@ export interface UpdateStatus {
     channel: 'stable' | 'beta';
     latest_release: string | null;   // tag of the latest release (stable channel)
     no_release: boolean;             // stable channel but repo has no release yet
+    ahead_of_release: boolean;       // deployed build is newer than the latest release (ex-beta)
 }
 
 export interface UpdateChannel {

@@ -141,7 +141,15 @@ while true; do
     TARGET_DESC="Release ${TAG}"
   fi
 
-  if [ "${DEPLOYED}" != "${REMOTE}" ]; then
+  # Kein automatisches DOWNGRADE im Stable-Kanal: Lief die Instanz vorher im
+  # Beta-Kanal, ist der deployte Stand neuer als das letzte Release — dann
+  # erst wieder aktualisieren, wenn ein Release den Stand überholt (bereits
+  # angewendete DB-Migrationen!). Der manuelle Trigger leert DEPLOYED und
+  # erzwingt das Downgrade weiterhin bewusst.
+  if [ "${CHANNEL}" = "stable" ] && [ -n "${DEPLOYED}" ] && [ "${DEPLOYED}" != "${REMOTE}" ] && \
+     git -C "${REPO_DIR}" merge-base --is-ancestor "${REMOTE}" "${DEPLOYED}" 2>/dev/null; then
+    log "Deployter Stand ${DEPLOYED:0:7} ist bereits ${TARGET_DESC} oder neuer — kein automatisches Downgrade."
+  elif [ "${DEPLOYED}" != "${REMOTE}" ]; then
     log "Update detected (${CHANNEL}): ${DEPLOYED:0:7} → ${TARGET_DESC} ${REMOTE:0:7}"
     # Get all services except the updater itself (to avoid killing this container)
     SERVICES=$(docker compose "${COMPOSE_FILES[@]}" config --services 2>/dev/null | grep -v '^updater$' | tr '\n' ' ')
