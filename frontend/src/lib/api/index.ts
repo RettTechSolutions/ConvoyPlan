@@ -86,6 +86,8 @@ export interface KanalwechselEntry {
 	leitstelle_id: string;
 	leitstelle_name: string;
 	anrufgruppe: string;
+	/** "anmelden" = Eintritt ins Leitstellen-Gebiet, "abmelden" = Austritt (fehlt bei alten Routen). */
+	typ?: 'anmelden' | 'abmelden';
 }
 
 export interface RouteResult {

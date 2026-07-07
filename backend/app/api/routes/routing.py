@@ -142,15 +142,38 @@ async def _load_convoy(
     return convoy
 
 
+# Glättungs-Parameter für die Kanalwechsel-Berechnung: Routen pendeln an
+# Gebietsgrenzen (z. B. Autobahn entlang einer Landkreisgrenze) oft mehrfach
+# über die Grenze. Lücken bis KW_MERGE_GAP_KM innerhalb derselben Leitstelle
+# gelten daher als durchgehende Abdeckung; Aufenthalte unter
+# KW_MIN_PRESENCE_KM mitten auf der Route als Geometrie-Rauschen.
+KW_MERGE_GAP_KM = 5.0
+KW_MIN_PRESENCE_KM = 1.0
+KW_EDGE_KM = 0.2
+
+
 async def _compute_kanalwechsel(
     db: AsyncSession,
     route_line,  # shapely LineString
     distance_m: int,
     org_id: uuid.UUID | None = None,
 ) -> list[dict]:
+    """Bestimmt An- und Abmeldepunkte bei Leitstellen entlang der Route.
+
+    Für jede Leitstelle werden die Routenabschnitte ermittelt, die in ihrem
+    Zuständigkeitsgebiet liegen. Der erste Eintritt ins Gebiet ergibt den
+    Anmeldepunkt, der letzte Austritt den Abmeldepunkt — pendelt die Route an
+    einer Gebietsgrenze mehrfach hin und her, bleibt der Verband im
+    Grenzbereich bei beiden Leitstellen angemeldet statt ständig zu wechseln.
+    """
     from app.models.leitstelle import Leitstelle
     from geoalchemy2.shape import from_shape
+    from shapely.geometry import Point
     from sqlalchemy import or_
+
+    total_km = (distance_m or 0) / 1000
+    if total_km <= 0:
+        return []
     route_geom = from_shape(route_line, srid=4326)
 
     # Nur global sichtbare Leitstellen sowie die eigenen der jeweiligen
@@ -162,10 +185,10 @@ async def _compute_kanalwechsel(
             Leitstelle.anrufgruppe,
             func.ST_AsGeoJSON(
                 func.ST_CollectionExtract(
-                    func.ST_Intersection(route_geom, func.ST_Boundary(Leitstelle.geometry)),
-                    1,  # 1 = extract Points only
+                    func.ST_Intersection(route_geom, Leitstelle.geometry),
+                    2,  # 2 = nur LineStrings (Routenabschnitte im Gebiet)
                 )
-            ).label("crossing_geojson"),
+            ).label("covered_geojson"),
         )
         .where(
             Leitstelle.geometry.isnot(None),
@@ -176,44 +199,68 @@ async def _compute_kanalwechsel(
 
     entries: list[dict] = []
     for row in rows.all():
-        if not row.crossing_geojson:
+        if not row.covered_geojson:
             continue
-        crossing = _json.loads(row.crossing_geojson)
-        if crossing["type"] == "Point":
-            pts: list[list[float]] = [crossing["coordinates"]]
-        elif crossing["type"] == "MultiPoint":
-            pts = crossing["coordinates"]
+        covered = _json.loads(row.covered_geojson)
+        if covered["type"] == "LineString":
+            segments: list[list[list[float]]] = [covered["coordinates"]]
+        elif covered["type"] == "MultiLineString":
+            segments = covered["coordinates"]
         else:
             continue
 
-        for pt in pts:
-            # PostGIS kann leere Geometrien liefern (POINT EMPTY → coordinates: [])
-            # wenn Route und Leitstellen-Grenze sich nur tangential berühren —
-            # überspringen statt am Entpacken zu scheitern. Z-Koordinaten ignorieren.
-            if not pt or len(pt) < 2:
+        # Jeden Abschnitt auf ein km-Intervall entlang der Route abbilden.
+        # PostGIS kann leere Geometrien liefern (LINESTRING EMPTY →
+        # coordinates: []) wenn sich Route und Gebiet nur tangential berühren —
+        # überspringen statt am Entpacken zu scheitern. Z-Koordinaten ignorieren.
+        intervals: list[list[float]] = []
+        for seg in segments:
+            pts = [p for p in seg if p and len(p) >= 2]
+            if len(pts) < 2:
                 continue
-            lon, lat = pt[0], pt[1]
-            frac_res = await db.execute(
-                select(
-                    func.ST_LineLocatePoint(
-                        route_geom,
-                        func.ST_SetSRID(func.ST_MakePoint(lon, lat), 4326),
-                    )
-                )
-            )
-            frac = frac_res.scalar()
-            if frac is None:
-                continue
-            entries.append({
-                "km": round((distance_m / 1000) * frac, 1),
-                "lat": round(lat, 6),
-                "lon": round(lon, 6),
-                "leitstelle_id": str(row.id),
-                "leitstelle_name": row.name,
-                "anrufgruppe": row.anrufgruppe,
-            })
+            fracs = [
+                route_line.project(Point(p[0], p[1]), normalized=True)
+                for p in (pts[0], pts[-1])
+            ]
+            km_a, km_b = sorted(f * total_km for f in fracs)
+            intervals.append([km_a, km_b])
+        if not intervals:
+            continue
 
-    entries.sort(key=lambda x: x["km"])
+        # Nahe beieinanderliegende Abschnitte zusammenfassen (Grenz-Pendelei).
+        intervals.sort()
+        merged = [intervals[0]]
+        for start, end in intervals[1:]:
+            if start - merged[-1][1] <= KW_MERGE_GAP_KM:
+                merged[-1][1] = max(merged[-1][1], end)
+            else:
+                merged.append([start, end])
+
+        for start, end in merged:
+            touches_start = start <= KW_EDGE_KM
+            touches_end = end >= total_km - KW_EDGE_KM
+            if end - start < KW_MIN_PRESENCE_KM and not (touches_start or touches_end):
+                continue
+            if touches_start:
+                start = 0.0
+            points = [("anmelden", start)]
+            if not touches_end:  # am Ziel wird nicht mehr abgemeldet
+                points.append(("abmelden", end))
+            for typ, km in points:
+                pt = route_line.interpolate(km / total_km, normalized=True)
+                entries.append({
+                    "km": round(km, 1),
+                    "lat": round(pt.y, 6),
+                    "lon": round(pt.x, 6),
+                    "leitstelle_id": str(row.id),
+                    "leitstelle_name": row.name,
+                    "anrufgruppe": row.anrufgruppe,
+                    "typ": typ,
+                })
+
+    # Bei gleichem km zuerst bei der alten Leitstelle abmelden, dann bei der
+    # neuen anmelden ("abmelden" < "anmelden" sortiert das bereits richtig).
+    entries.sort(key=lambda x: (x["km"], x["typ"]))
     return entries
 
 

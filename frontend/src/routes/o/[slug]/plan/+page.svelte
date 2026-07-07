@@ -1578,11 +1578,12 @@
 							<div class="kw-section">
 								<strong>Kanalwechsel</strong>
 								<table class="schedule-table kw-table">
-									<thead><tr><th>km</th><th>Leitstelle</th><th>Anrufgruppe</th></tr></thead>
+									<thead><tr><th>km</th><th>Aktion</th><th>Leitstelle</th><th>Anrufgruppe</th></tr></thead>
 									<tbody>
 										{#each route.kanalwechsel as kw}
 											<tr>
 												<td>{kw.km.toFixed(1)}</td>
+												<td><span class="kw-typ" class:abmelden={kw.typ === 'abmelden'}>{kw.typ === 'abmelden' ? 'Abmelden' : 'Anmelden'}</span></td>
 												<td>📡 {kw.leitstelle_name}</td>
 												<td><code>{kw.anrufgruppe}</code></td>
 											</tr>
@@ -1855,11 +1856,12 @@
 						<div class="befehl-row">
 							<label>Kanalwechsel</label>
 							<table class="kw-befehl-table">
-								<thead><tr><th>km</th><th>Leitstelle</th><th>Anrufgruppe</th></tr></thead>
+								<thead><tr><th>km</th><th>Aktion</th><th>Leitstelle</th><th>Anrufgruppe</th></tr></thead>
 								<tbody>
 									{#each route.kanalwechsel as kw}
 										<tr>
 											<td>{kw.km.toFixed(1)}</td>
+											<td><span class="kw-typ" class:abmelden={kw.typ === 'abmelden'}>{kw.typ === 'abmelden' ? 'Abmelden' : 'Anmelden'}</span></td>
 											<td>📡 {kw.leitstelle_name}</td>
 											<td><code>{kw.anrufgruppe}</code></td>
 										</tr>
@@ -2357,6 +2359,8 @@
 
 	.kw-section { margin-top: .75rem; }
 	.kw-table td code { background: var(--surface-2); color: var(--text-1); padding: .1rem .3rem; border-radius: 3px; font-size: .8rem; }
+	.kw-typ { display: inline-block; padding: .05rem .35rem; border-radius: 3px; font-size: var(--text-xs); background: rgba(39,174,96,.35); color: #a9dfbf; }
+	.kw-typ.abmelden { background: rgba(230,126,34,.35); color: #f0c9a6; }
 	.kw-befehl-table { width: 100%; border-collapse: collapse; font-size: .82rem; margin-top: .3rem; }
 	.kw-befehl-table th, .kw-befehl-table td { padding: .3rem .5rem; border: 1px solid var(--border); text-align: left; color: var(--text-1); }
 	.kw-befehl-table th { background: var(--surface-2); color: var(--text-muted); }
