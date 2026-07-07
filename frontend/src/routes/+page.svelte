@@ -103,7 +103,12 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        /* 100dvh statt 100vh: auf iOS entspricht 100vh der Höhe bei eingeklappter
+           Toolbar — die Karte würde sonst außermittig sitzen. Safe-Area-Insets als
+           Padding, damit der Hintergrund bis unter Statusleiste/Toolbar reicht. */
         min-height: 100vh;
+        min-height: 100dvh;
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         background: var(--bg);
     }
     .login-card {

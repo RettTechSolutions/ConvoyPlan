@@ -17,6 +17,10 @@
 				margin: 0;
 				padding: 0;
 				font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+				/* iOS Safari füllt die Flächen hinter Statusleiste/Toolbar (Safe Areas,
+				   Overscroll) mit der html/body-Hintergrundfarbe. Ohne diese Angabe
+				   erscheinen dort schwarze bzw. weiße Streifen statt des App-Hintergrunds. */
+				background: var(--bg);
 				/* Kill stray horizontal scroll caused by overflowing children on small viewports.
 				   `clip` is used in preference to `hidden` because on iOS Safari, `overflow-x: hidden`
 				   on the document root blocks touch-driven horizontal scrolling inside descendant
