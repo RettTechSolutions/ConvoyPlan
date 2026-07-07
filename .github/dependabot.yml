@@ -9,6 +9,7 @@ updates:
     labels:
       - "dependencies"
       - "backend"
+      - "auto-merge"
 
   # Frontend npm dependencies
   - package-ecosystem: "npm"
@@ -19,6 +20,7 @@ updates:
     labels:
       - "dependencies"
       - "frontend"
+      - "auto-merge"
 
   # GitHub Actions workflow dependencies
   - package-ecosystem: "github-actions"
@@ -28,6 +30,7 @@ updates:
     labels:
       - "dependencies"
       - "ci"
+      - "auto-merge"
 
   # Docker base images
   - package-ecosystem: "docker"
@@ -37,6 +40,7 @@ updates:
     labels:
       - "dependencies"
       - "docker"
+      - "auto-merge"
   - package-ecosystem: "docker"
     directory: "/frontend"
     schedule:
@@ -44,6 +48,7 @@ updates:
     labels:
       - "dependencies"
       - "docker"
+      - "auto-merge"
   - package-ecosystem: "docker"
     directory: "/graphhopper"
     schedule:
@@ -51,6 +56,7 @@ updates:
     labels:
       - "dependencies"
       - "docker"
+      - "auto-merge"
   - package-ecosystem: "docker"
     directory: "/docker/updater"
     schedule:
@@ -58,3 +64,4 @@ updates:
     labels:
       - "dependencies"
       - "docker"
+      - "auto-merge"
