@@ -32,7 +32,7 @@
     let membersError = $state('');
     let addMemberForm = $state({ email: '', role: 'beobachter' });
     let addMemberWorking = $state(false);
-    let inviteForm = $state({ email: '', password: '', role: 'beobachter' });
+    let inviteForm = $state({ email: '', first_name: '', last_name: '', password: '', role: 'beobachter' });
     let inviteWorking = $state(false);
     let showInviteForm = $state(false);
 
@@ -62,14 +62,14 @@
         inviteWorking = true;
         membersError = '';
         try {
-            await orgsApi.inviteMember($orgStore.org_id, inviteForm.email, inviteForm.password);
+            await orgsApi.inviteMember($orgStore.org_id, inviteForm.email, inviteForm.password, inviteForm.first_name, inviteForm.last_name);
             // After invite, also set the role if not default
             if (inviteForm.role !== 'beobachter') {
                 const fresh = await orgsApi.listMembers($orgStore.org_id);
                 const invited = fresh.find(m => m.email === inviteForm.email);
                 if (invited) await orgsApi.updateMemberRole($orgStore.org_id, invited.user_id, inviteForm.role);
             }
-            inviteForm = { email: '', password: '', role: 'beobachter' };
+            inviteForm = { email: '', first_name: '', last_name: '', password: '', role: 'beobachter' };
             showInviteForm = false;
             await loadMembers();
         } catch (e: unknown) {
@@ -404,6 +404,8 @@
                 <div class="invite-section">
                     <p class="invite-label">Neuen Benutzer einladen (Konto wird angelegt)</p>
                     <div class="invite-row">
+                        <input type="text" placeholder="Vorname" bind:value={inviteForm.first_name} />
+                        <input type="text" placeholder="Nachname" bind:value={inviteForm.last_name} />
                         <input type="email" placeholder="E-Mail *" bind:value={inviteForm.email} />
                         <input type="password" placeholder="Passwort *" bind:value={inviteForm.password} autocomplete="new-password" />
                         <select bind:value={inviteForm.role}>
@@ -440,6 +442,7 @@
                 <table class="user-table">
                     <thead>
                         <tr>
+                            <th>Name</th>
                             <th>E-Mail</th>
                             <th>Rolle</th>
                             <th></th>
@@ -448,6 +451,13 @@
                     <tbody>
                         {#each members as m}
                             <tr>
+                                <td>
+                                    {#if m.first_name || m.last_name}
+                                        {[m.first_name, m.last_name].filter(Boolean).join(' ')}
+                                    {:else}
+                                        <span class="hint">—</span>
+                                    {/if}
+                                </td>
                                 <td>{m.email}</td>
                                 <td>
                                     <select class="role-select-inline" value={m.role}
@@ -464,7 +474,7 @@
                             </tr>
                         {/each}
                         {#if members.length === 0}
-                            <tr><td colspan="3" class="hint" style="text-align:center">Noch keine Mitglieder.</td></tr>
+                            <tr><td colspan="4" class="hint" style="text-align:center">Noch keine Mitglieder.</td></tr>
                         {/if}
                     </tbody>
                 </table>
