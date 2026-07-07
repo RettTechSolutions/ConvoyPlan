@@ -1812,7 +1812,7 @@
 					<div class="befehl-section-title">3. Durchführung</div>
 					<div class="befehl-row">
 						<label class="bf-label">
-							Marschform
+							<span class="bf-label-text">Marschform</span>
 							<select bind:value={befehlForm.marschform}>
 								<option value="">– nicht angegeben –</option>
 								<option value="geschlossener_verband">Geschlossener Gesamtverband</option>
@@ -1823,15 +1823,15 @@
 					</div>
 					<div class="befehl-row befehl-row-3">
 						<label class="bf-label">
-							Ablaufpunkt (Ort) <span class="req-mark">*</span>
+							<span class="bf-label-text">Ablaufpunkt (Ort) <span class="req-mark">*</span></span>
 							<input type="text" class:field-invalid={befehlError && !befehlForm.ablaufpunkt.trim()} placeholder="z.B. Parkplatz Messehalle Nord" bind:value={befehlForm.ablaufpunkt} />
 						</label>
 						<label class="bf-label">
-							Ablaufzeit <span class="req-mark">*</span>
+							<span class="bf-label-text">Ablaufzeit <span class="req-mark">*</span></span>
 							<input type="datetime-local" class:field-invalid={befehlError && !befehlForm.ablaufzeit} bind:value={befehlForm.ablaufzeit} />
 						</label>
 						<label class="bf-label">
-							Ablaufführer
+							<span class="bf-label-text">Ablaufführer</span>
 							<input type="text" placeholder="Name / Rufname" bind:value={befehlForm.ablaufführer} />
 						</label>
 					</div>
@@ -1848,13 +1848,13 @@
 					<div class="befehl-section-title">5. Führung und Verbindung</div>
 					<div class="befehl-row">
 						<label class="bf-label">
-							Funkgruppe
+							<span class="bf-label-text">Funkgruppe</span>
 							<input type="text" placeholder="z.B. KatS Bayern 1" bind:value={befehlForm.funkgruppe} />
 						</label>
 					</div>
 					{#if route?.kanalwechsel?.length}
-						<div class="befehl-row">
-							<label>Kanalwechsel</label>
+						<div class="kw-befehl-block">
+							<span class="bf-label-text kw-befehl-caption">Kanalwechsel</span>
 							<table class="kw-befehl-table">
 								<thead><tr><th>km</th><th>Aktion</th><th>Leitstelle</th><th>Anrufgruppe</th></tr></thead>
 								<tbody>
@@ -2029,28 +2029,38 @@
 	.btn-small.active { background: var(--color-primary); }
 
 	.export-grid { display: flex; flex-direction: column; gap: .4rem; margin-top: .4rem; }
-	/* Marschbefehl Modal */
+	/* Marschbefehl Modal — Selektoren mit .modal-Prefix, damit sie die späteren
+	   generischen .modal-Regeln (max-width 420px, padding 2rem, label-Margins)
+	   sicher überschreiben. */
 	.befehl-backdrop { align-items: flex-start; padding: 2rem 1rem; overflow-y: auto; }
-	.befehl-modal { background: white; color: #1a1a1a; border-radius: 10px; width: 100%; max-width: 720px; margin: auto; display: flex; flex-direction: column; max-height: 90vh; box-shadow: 0 12px 48px rgba(0,0,0,.45); }
-	.befehl-modal-header { display: flex; align-items: center; gap: .75rem; padding: 1.25rem 1.5rem; border-bottom: 2px solid #0F1B24; background: #0F1B24; border-radius: 10px 10px 0 0; flex-shrink: 0; }
+	.modal.befehl-modal { background: white; color: #1a1a1a; border-radius: 10px; width: 100%; max-width: 720px; margin: auto; padding: 0; display: flex; flex-direction: column; max-height: 90vh; overflow: hidden; box-shadow: 0 12px 48px rgba(0,0,0,.45); }
+	.befehl-modal-header { display: flex; align-items: center; gap: .75rem; padding: 1.1rem 1.5rem; background: #0F1B24; flex-shrink: 0; }
 	.befehl-modal-header h2 { margin: 0; font-size: 1.15rem; color: white; }
-	.befehl-convoy-name { flex: 1; font-size: .85rem; color: rgba(255,255,255,.55); }
-	.modal-close { background: none; border: none; color: rgba(255,255,255,.55); cursor: pointer; font-size: 1.1rem; padding: 0; line-height: 1; }
+	.befehl-convoy-name { flex: 1; font-size: .85rem; color: rgba(255,255,255,.65); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.modal-close { background: none; border: none; color: rgba(255,255,255,.55); cursor: pointer; font-size: 1.1rem; padding: .25rem; line-height: 1; }
 	.modal-close:hover { color: white; }
-	.befehl-modal-body { flex: 1; overflow-y: auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 1.4rem; }
+	.befehl-modal-body { flex: 1; overflow-y: auto; padding: 1.25rem 1.5rem 1.5rem; display: flex; flex-direction: column; gap: 1.5rem; }
 	.befehl-section { display: flex; flex-direction: column; gap: .6rem; }
-	.befehl-section-title { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; color: #0F1B24; border-bottom: 2px solid #0F1B24; padding-bottom: .3rem; }
-	.befehl-row { display: flex; gap: .75rem; flex-wrap: wrap; }
-	.befehl-row-3 > * { flex: 1; min-width: 140px; }
+	.befehl-section-title { font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #0F1B24; border-bottom: 2px solid #0F1B24; padding-bottom: .35rem; }
+	.befehl-row { display: flex; gap: .75rem 1rem; flex-wrap: wrap; }
+	.befehl-row-3 > * { flex: 1; min-width: 170px; }
 	.befehl-row > * { flex: 1; }
-	.bf-label { display: flex; flex-direction: column; gap: .3rem; font-size: .8rem; font-weight: 600; color: #333; }
-	.bf-label input, .bf-label select { padding: .5rem .65rem; border-radius: 5px; border: 1.5px solid #ccc; background: white; color: #111; font-size: .9rem; font-family: inherit; }
-	.bf-label input:focus, .bf-label select:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(226,61,40,.12); }
-	.bf-label input::placeholder { color: #aaa; }
+	.modal.befehl-modal .bf-label { display: flex; flex-direction: column; gap: .3rem; margin-bottom: 0; font-size: .8rem; font-weight: 600; color: #333; }
+	.bf-label-text { display: block; }
+	.modal.befehl-modal .bf-label input, .modal.befehl-modal .bf-label select { padding: .5rem .65rem; border-radius: 5px; border: 1.5px solid #ccc; background: white; color: #111; font-size: .9rem; font-family: inherit; width: 100%; box-sizing: border-box; }
+	.modal.befehl-modal .bf-label input:focus, .modal.befehl-modal .bf-label select:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(226,61,40,.12); }
+	.modal.befehl-modal .bf-label input::placeholder { color: #aaa; }
 	.befehl-textarea { padding: .55rem .7rem; border-radius: 5px; border: 1.5px solid #ccc; background: white; color: #111; font-size: .9rem; font-family: inherit; resize: vertical; width: 100%; box-sizing: border-box; line-height: 1.5; }
 	.befehl-textarea:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(226,61,40,.12); }
 	.befehl-textarea::placeholder { color: #aaa; }
-	.befehl-modal-footer { display: flex; justify-content: flex-end; gap: .6rem; padding: 1rem 1.5rem; border-top: 1px solid #e5e5e5; flex-shrink: 0; flex-wrap: wrap; background: #f8f9fa; border-radius: 0 0 10px 10px; }
+	.befehl-modal-footer { display: flex; align-items: center; gap: .6rem; padding: 1rem 1.5rem; border-top: 1px solid #e5e5e5; flex-shrink: 0; background: #f8f9fa; }
+	.befehl-modal-footer .modal-btn-secondary { margin-right: auto; }
+	@media (max-width: 560px) {
+		.befehl-backdrop { padding: .75rem .5rem; }
+		.befehl-modal-footer { flex-direction: column-reverse; }
+		.befehl-modal-footer button { width: 100%; }
+		.befehl-modal-footer .modal-btn-secondary { margin-right: 0; }
+	}
 	.modal-btn-secondary { padding: .55rem 1.1rem; border-radius: 5px; border: 1.5px solid #ccc; background: white; color: #555; cursor: pointer; font-size: .88rem; }
 	.modal-btn-secondary:hover { background: #f0f0f0; }
 	.modal-btn-primary { padding: .55rem 1.1rem; border-radius: 5px; border: none; background: #0F1B24; color: white; cursor: pointer; font-size: .88rem; font-weight: 600; }
@@ -2361,10 +2371,15 @@
 	.kw-table td code { background: var(--surface-2); color: var(--text-1); padding: .1rem .3rem; border-radius: 3px; font-size: .8rem; }
 	.kw-typ { display: inline-block; padding: .05rem .35rem; border-radius: 3px; font-size: var(--text-xs); background: rgba(39,174,96,.35); color: #a9dfbf; }
 	.kw-typ.abmelden { background: rgba(230,126,34,.35); color: #f0c9a6; }
+	/* Kanalwechsel-Tabelle im (immer hellen) Marschbefehl-Modal — keine Theme-Variablen. */
+	.kw-befehl-block { display: flex; flex-direction: column; gap: .3rem; }
+	.kw-befehl-caption { font-size: .8rem; font-weight: 600; color: #333; }
 	.kw-befehl-table { width: 100%; border-collapse: collapse; font-size: .82rem; margin-top: .3rem; }
-	.kw-befehl-table th, .kw-befehl-table td { padding: .3rem .5rem; border: 1px solid var(--border); text-align: left; color: var(--text-1); }
-	.kw-befehl-table th { background: var(--surface-2); color: var(--text-muted); }
-	.kw-befehl-table td code { background: var(--surface-2); color: var(--text-1); padding: .1rem .3rem; border-radius: 3px; }
+	.kw-befehl-table th, .kw-befehl-table td { padding: .35rem .55rem; border: 1px solid #ddd; text-align: left; color: #222; }
+	.kw-befehl-table th { background: #eef0f4; color: #555; font-weight: 600; }
+	.kw-befehl-table td code { background: #eef0f4; color: #222; padding: .1rem .3rem; border-radius: 3px; }
+	.kw-befehl-table .kw-typ { font-size: .72rem; background: #d9efe3; color: #1e7e4f; }
+	.kw-befehl-table .kw-typ.abmelden { background: #fbe6d4; color: #b35c12; }
 
 	.sidebar-footer { flex-shrink: 0; border-top: 1px solid var(--border); padding: .75rem 1rem; display: flex; align-items: center; justify-content: space-between; }
 	.theme-toggle { display: flex; align-items: center; gap: .4rem; background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--text-2); font-size: var(--text-sm); padding: .25rem .5rem; cursor: pointer; }
@@ -2385,7 +2400,8 @@
 	.address-entry { margin: .4rem 0; font-size: var(--text-sm); }
 	.address-entry summary { cursor: pointer; color: var(--text-2); padding: .25rem 0; }
 	.address-entry-body { padding-top: .4rem; }
-	.befehl-hint { font-size: var(--text-sm); color: var(--text-muted); margin: 0 0 .5rem; }
+	/* Fixe Farben: das Modal ist immer hell, Theme-Variablen (Dark Mode) wären hier unsichtbar. */
+	.befehl-hint { font-size: .82rem; color: #666; margin: 0; }
 	.req-mark { color: #E23D28; font-weight: 700; }
 	.field-invalid { border-color: #E23D28 !important; outline: 1px solid #E23D28; }
 	.demo-restrict-note { font-size: var(--text-sm); color: var(--text-2); background: var(--surface-2); border-radius: 6px; padding: .75rem; line-height: 1.5; }
