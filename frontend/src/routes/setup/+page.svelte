@@ -462,7 +462,9 @@
 
 <style>
 	:global(body) { margin: 0; font-family: system-ui, sans-serif; background: #0F1B24; color: white; }
-	.setup-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+	/* 100dvh + Safe-Area-Padding: mittig im sichtbaren Viewport, Hintergrund
+	   reicht bis unter Statusleiste/Toolbar (siehe app.html). */
+	.setup-page { min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: calc(1rem + env(safe-area-inset-top)) calc(1rem + env(safe-area-inset-right)) calc(1rem + env(safe-area-inset-bottom)) calc(1rem + env(safe-area-inset-left)); }
 	.setup-card { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); border-radius: 12px; padding: 2rem; width: 100%; max-width: 440px; }
 	.logo-area { display: flex; justify-content: center; margin-bottom: 1.5rem; }
 

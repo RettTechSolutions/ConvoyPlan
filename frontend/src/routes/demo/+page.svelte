@@ -49,7 +49,11 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        /* 100dvh + Safe-Area-Padding: mittig im sichtbaren Viewport, Hintergrund
+           reicht bis unter Statusleiste/Toolbar (siehe app.html). */
         min-height: 100vh;
+        min-height: 100dvh;
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         background: var(--bg);
     }
     .demo-card {
