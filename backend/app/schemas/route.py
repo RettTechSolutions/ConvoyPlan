@@ -1,5 +1,5 @@
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -48,6 +48,9 @@ class KanalwechselEntry(BaseModel):
     leitstelle_id: str
     leitstelle_name: str
     anrufgruppe: str
+    # "anmelden" = Eintritt ins Leitstellen-Gebiet, "abmelden" = Austritt.
+    # Default für Routen, die vor Einführung des Feldes berechnet wurden.
+    typ: Literal["anmelden", "abmelden"] = "anmelden"
 
 
 class RouteResponse(BaseModel):
