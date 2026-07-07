@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import secrets
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -113,9 +113,12 @@ async def _lifespan(_app: FastAPI):
     try:
         yield
     finally:
+        # Sauberes Herunterfahren: Task abbrechen und auf sein Ende warten.
+        # CancelledError ist dabei der Normalfall; gather liefert ihn (statt
+        # ihn zu werfen), sodass der Shutdown nie an ihm scheitert.
         notify_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await notify_task
+        outcome = await asyncio.gather(notify_task, return_exceptions=True)
+        logger.debug("Update-Notify-Task beendet: %r", outcome)
 
 
 # Interactive docs are always on in development. In production they are off by

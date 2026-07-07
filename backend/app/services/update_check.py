@@ -117,8 +117,12 @@ def read_deployed() -> tuple[str | None, str | None]:
             data = json.load(f)
             deployed_sha = data.get("deployed_sha")
             deployed_at = data.get("deployed_at")
-    except (FileNotFoundError, json.JSONDecodeError):
+    except FileNotFoundError:
+        # Normal direkt nach der Installation: der Updater hat noch keinen
+        # Status geschrieben — Fallback auf den eingebauten GIT_SHA unten.
         pass
+    except json.JSONDecodeError as exc:
+        logger.debug("Status-Datei %s enthält kein gültiges JSON (%s) — Fallback auf GIT_SHA", STATUS_FILE, exc)
 
     if not deployed_sha:
         baked = os.environ.get("GIT_SHA", "")
@@ -216,8 +220,11 @@ async def fetch_update_state(db: AsyncSession) -> dict:
                                 cmp_status = (cmp_resp.json() or {}).get("status")
                                 if cmp_status in ("ahead", "identical"):
                                     ahead_of_release = True
-    except Exception:
-        pass
+    except Exception as exc:
+        # Fail open: GitHub-Ausfälle oder Netzwerkfehler dürfen den Status-
+        # Endpoint nie brechen — github_reachable bleibt dann False und die
+        # UI zeigt "GitHub nicht erreichbar" statt eines Fehlers.
+        logger.debug("Update-Status-Abfrage fehlgeschlagen: %s", exc)
 
     update_available = bool(
         deployed_sha
