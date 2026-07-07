@@ -1,12 +1,10 @@
 import asyncio
-import json
 import logging
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -28,6 +26,17 @@ from app.models.vehicle import Vehicle
 from app.schemas.user import AdminUserCreate, AdminUserResponse, AdminUserUpdate, AdminUserOrgInfo
 from app.services import api_key as api_key_svc
 from app.services import audit
+from app.services.update_check import (
+    VALID_CHANNELS,
+    VALID_MODES,
+    env_channel as _env_channel,
+    env_mode as _env_mode,
+    fetch_update_state,
+    resolve_channel as _resolve_channel,
+    resolve_mode as _resolve_mode,
+    write_channel_file as _write_channel_file,
+    write_mode_file as _write_mode_file,
+)
 from app.services import demo as demo_svc
 from app.services.email import save_smtp_settings, send_password_email, test_smtp_connection
 from app.services.password import assert_password_not_breached, generate_password, validate_password
@@ -36,42 +45,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
-STATUS_FILE = "/update_status/status.json"
 TRIGGER_FILE = "/update_status/trigger"
 LOG_FILE = "/update_status/update.log"
-# Shared with the updater container: the backend writes the selected release
-# channel here so the (DB-less) updater knows whether to track main commits
-# ("beta") or only published releases ("stable").
-CHANNEL_FILE = "/update_status/channel"
-VALID_CHANNELS = ("stable", "beta")
-
-
-def _env_channel() -> str:
-    """The fallback channel from configuration, sanitised to a valid value."""
-    return settings.update_channel if settings.update_channel in VALID_CHANNELS else "stable"
-
-
-async def _resolve_channel(db: AsyncSession) -> tuple[str, str]:
-    """Return (channel, source) — the DB setting wins over the env fallback."""
-    result = await db.execute(select(SystemSetting).where(SystemSetting.key == "update.channel"))
-    setting = result.scalar_one_or_none()
-    if setting and setting.value in VALID_CHANNELS:
-        return setting.value, "db"
-    return _env_channel(), "env"
-
-
-def _write_channel_file(channel: str) -> None:
-    """Persist the effective channel to the shared volume so the updater can
-    read it. Best-effort: a non-writable volume must never break the request
-    (the updater repairs the volume permissions on its next cycle)."""
-    try:
-        os.makedirs(os.path.dirname(CHANNEL_FILE), exist_ok=True)
-        with open(CHANNEL_FILE, "w") as f:
-            f.write(channel)
-    except OSError as exc:
-        # Best-effort: a non-writable volume must not break the request. Log so
-        # the cause is visible if the updater later ignores the channel switch.
-        logger.warning("Cannot write channel file %s (channel=%s): %s", CHANNEL_FILE, channel, exc)
 
 
 @router.get("/users", response_model=list[AdminUserResponse])
@@ -214,129 +189,12 @@ async def get_update_status(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_superadmin),
 ):
-    deployed_sha = None
-    deployed_at = None
-    try:
-        with open(STATUS_FILE) as f:
-            data = json.load(f)
-            deployed_sha = data.get("deployed_sha")
-            deployed_at = data.get("deployed_at")
-    except (FileNotFoundError, json.JSONDecodeError):
-        pass
+    """Update-Status für den aktiven Kanal (Anzeige im Admin-Panel).
 
-    # Fallback: SHA was baked into the image at build time via ARG GIT_SHA
-    if not deployed_sha:
-        baked = os.environ.get("GIT_SHA", "")
-        if baked and baked != "unknown":
-            deployed_sha = baked[:7]
-
-    # GitHub token: DB setting takes priority over env var
-    github_token = settings.github_token
-    db_token = await db.execute(select(SystemSetting).where(SystemSetting.key == "github.token"))
-    db_setting = db_token.scalar_one_or_none()
-    if db_setting and db_setting.value:
-        github_token = db_setting.value
-
-    # Release channel decides what "up to date" means: in "stable" we compare
-    # against the latest published GitHub *release*; in "beta" against the tip
-    # of main (every commit). Keep the shared channel file in sync so the
-    # updater container deploys the matching ref.
-    channel, _ = await _resolve_channel(db)
-    _write_channel_file(channel)
-
-    remote_sha = None
-    latest_release = None     # tag of the latest release (stable channel only)
-    github_reachable = False
-    no_release = False        # stable channel but the repo has no release yet
-    ahead_of_release = False  # deployed build is NEWER than the latest release
-    try:
-        headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
-        if github_token:
-            headers["Authorization"] = f"Bearer {github_token}"
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            if channel == "beta":
-                # Update-Ziel ist NICHT der main-HEAD, sondern der Commit des
-                # letzten ERFOLGREICHEN :beta-Image-Builds: Der HEAD bewegt
-                # sich schon beim Merge, die Images existieren aber erst,
-                # wenn der beta-images-Workflow (~10-15 min) durch ist.
-                # Sonst zeigt die UI minutenlang "Update verfügbar", obwohl
-                # es noch nichts zu ziehen gibt.
-                resp = await client.get(
-                    f"https://api.github.com/repos/{settings.github_repo}"
-                    "/actions/workflows/beta-images.yml/runs"
-                    "?branch=main&status=success&per_page=1&exclude_pull_requests=true",
-                    headers=headers,
-                )
-                if resp.is_success:
-                    github_reachable = True
-                    runs = (resp.json() or {}).get("workflow_runs") or []
-                    if runs and runs[0].get("head_sha"):
-                        remote_sha = runs[0]["head_sha"][:7]
-            else:
-                rel = await client.get(
-                    f"https://api.github.com/repos/{settings.github_repo}/releases/latest",
-                    headers=headers,
-                )
-                if rel.status_code == 404:
-                    # GitHub is reachable, the repo simply has no release yet.
-                    github_reachable = True
-                    no_release = True
-                elif rel.is_success:
-                    github_reachable = True
-                    latest_release = rel.json().get("tag_name")
-                    if latest_release:
-                        # Resolve the tag to its commit SHA so the comparison
-                        # against deployed_sha is apples-to-apples.
-                        commit = await client.get(
-                            f"https://api.github.com/repos/{settings.github_repo}/commits/{latest_release}",
-                            headers=headers,
-                        )
-                        if commit.is_success:
-                            sha = commit.json().get("sha")
-                            if sha:
-                                remote_sha = sha[:7]
-
-                        # SHA-Ungleichheit allein kennt keine Richtung: Eine
-                        # Instanz, die vorher im Beta-Kanal lief, ist NEUER als
-                        # das letzte Release — das ist kein verfügbares Update
-                        # (und erst recht kein Grund für ein automatisches
-                        # Downgrade). Die Compare-API liefert die Ancestry:
-                        # "ahead" = deployed enthält das Release und mehr.
-                        if (
-                            remote_sha
-                            and deployed_sha
-                            and deployed_sha[:7] != remote_sha[:7]
-                        ):
-                            cmp_resp = await client.get(
-                                f"https://api.github.com/repos/{settings.github_repo}"
-                                f"/compare/{latest_release}...{deployed_sha[:7]}",
-                                headers=headers,
-                            )
-                            if cmp_resp.is_success:
-                                cmp_status = (cmp_resp.json() or {}).get("status")
-                                if cmp_status in ("ahead", "identical"):
-                                    ahead_of_release = True
-    except Exception:
-        pass
-
-    update_available = bool(
-        deployed_sha
-        and remote_sha
-        and deployed_sha[:7] != remote_sha[:7]
-        and not ahead_of_release
-    )
-
-    return {
-        "deployed_sha": deployed_sha,
-        "deployed_at": deployed_at,
-        "remote_sha": remote_sha,
-        "update_available": update_available,
-        "github_reachable": github_reachable,
-        "channel": channel,
-        "latest_release": latest_release,
-        "no_release": no_release,
-        "ahead_of_release": ahead_of_release,
-    }
+    Die eigentliche Logik lebt in app.services.update_check, damit der
+    Update-Benachrichtigungs-Task exakt dieselbe Bewertung nutzt.
+    """
+    return await fetch_update_state(db)
 
 
 @router.get("/settings/github-token-set")
@@ -422,6 +280,58 @@ async def set_update_channel(
     await audit.record(
         db, "admin.settings.update_channel_changed", request=request, actor_id=current.id,
         detail={"channel": data.channel},
+    )
+
+
+# ── Update-Modus (auto / notify) ─────────────────────────────────────────────
+
+
+class UpdateModeResponse(BaseModel):
+    mode: str                # effective mode ("auto" | "notify")
+    source: str              # "db" | "env" — where the effective value comes from
+    env_mode: str            # the UPDATE_MODE env fallback
+
+
+class UpdateModeUpdate(BaseModel):
+    mode: str = Field(..., description="Update mode: 'auto' (install automatically) or 'notify' (email superadmins only)")
+
+
+@router.get("/settings/update-mode", response_model=UpdateModeResponse)
+async def get_update_mode(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    mode, source = await _resolve_mode(db)
+    # Keep the shared file in sync on read too, so the updater picks up the
+    # current value even if it was only ever set via the env var.
+    _write_mode_file(mode)
+    return UpdateModeResponse(mode=mode, source=source, env_mode=_env_mode())
+
+
+@router.put("/settings/update-mode", status_code=204)
+async def set_update_mode(
+    data: UpdateModeUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    """Store the update mode in system_settings and mirror it to the shared
+    volume: 'auto' lets the updater install channel updates by itself,
+    'notify' disables automatic installs — superadmins get an email instead
+    and update manually via the admin panel."""
+    if data.mode not in VALID_MODES:
+        raise HTTPException(422, "mode must be 'auto' or 'notify'")
+    result = await db.execute(select(SystemSetting).where(SystemSetting.key == "update.mode"))
+    setting = result.scalar_one_or_none()
+    if setting:
+        setting.value = data.mode
+    else:
+        db.add(SystemSetting(key="update.mode", value=data.mode))
+    await db.commit()
+    _write_mode_file(data.mode)
+    await audit.record(
+        db, "admin.settings.update_mode_changed", request=request, actor_id=current.id,
+        detail={"mode": data.mode},
     )
 
 

@@ -34,6 +34,8 @@ services:
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GITHUB_REPO: ${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}
       UPDATE_CHANNEL: ${UPDATE_CHANNEL:-stable}
+      UPDATE_MODE: ${UPDATE_MODE:-auto}
+      UPDATE_NOTIFY_INTERVAL: ${UPDATE_NOTIFY_INTERVAL:-1800}
       APP_BASE_URL: https://${DOMAIN:-localhost}
     volumes:
       - cert_uploads:/certs

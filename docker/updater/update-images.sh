@@ -158,6 +158,25 @@ read_channel() {
     esac
 }
 
+# ── Update-Modus (auto | notify) ──────────────────────────────────────────────
+# Vom Backend geschrieben (Admin → Software-Update):
+#   auto   → verfügbare Updates werden automatisch installiert (Standard)
+#   notify → KEINE automatische Installation; das Backend benachrichtigt die
+#            Superadmins per E-Mail, installiert wird nur über den manuellen
+#            Trigger ("Jetzt updaten").
+MODE_FILE=/update_status/mode
+
+read_mode() {
+    local m="auto"
+    if [ -f "${MODE_FILE}" ]; then
+        m="$(tr -d '[:space:]' < "${MODE_FILE}" 2>/dev/null || echo auto)"
+    fi
+    case "${m}" in
+        notify) echo "notify" ;;
+        *)      echo "auto" ;;
+    esac
+}
+
 # Rewrite an image ref to the given tag (…:latest ⇄ …:beta).
 _retag() {
     echo "${1%:*}:${2}"
@@ -382,6 +401,7 @@ log "Image-updater gestartet (Projekt: ${COMPOSE_PROJECT}, Compose: ${COMPOSE_FI
 # Gespeichert wird "<kanal> <ref>" — dadurch löst auch ein Kanalwechsel im
 # Admin-Panel beim nächsten Check automatisch ein Update auf das neue Ziel aus.
 LAST_DEPLOYED_FILE=/update_status/last_deployed
+LAST_NOTIFIED_FILE=/update_status/last_notified
 
 # Echoes "stable <tag>" or "beta <sha>"; empty when GitHub is unreachable.
 _current_target() {
@@ -435,6 +455,19 @@ check_target_and_update() {
                 return 0
             fi
         fi
+    fi
+
+    # Modus "notify": nicht installieren — nur einmal pro Ziel loggen. Die
+    # E-Mail an die Superadmins verschickt das Backend; installiert wird
+    # ausschließlich über den manuellen Trigger.
+    if [ "$(read_mode)" = "notify" ]; then
+        local notified
+        notified="$(cat "${LAST_NOTIFIED_FILE}" 2>/dev/null || true)"
+        if [ "${target}" != "${notified}" ]; then
+            log "Update verfügbar: ${target} — Modus 'notify': keine automatische Installation (manuell über das Admin-Panel updaten)."
+            echo "${target}" > "${LAST_NOTIFIED_FILE}"
+        fi
+        return 0
     fi
 
     log "Neues Update-Ziel: ${target} (zuletzt deployt: ${last:-unbekannt}) — starte automatisches Update"

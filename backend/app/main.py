@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import secrets
 from contextlib import asynccontextmanager
@@ -104,7 +105,20 @@ def _verify_security_config() -> None:
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     _verify_security_config()
-    yield
+    # Update-Benachrichtigung (Modus "notify"): prüft periodisch, ob im
+    # aktiven Kanal ein Update verfügbar ist, und mailt die Superadmins.
+    # Schläft vor dem ersten Check, belastet den Start also nicht.
+    from app.services.update_notify import update_notify_loop
+    notify_task = asyncio.create_task(update_notify_loop())
+    try:
+        yield
+    finally:
+        # Sauberes Herunterfahren: Task abbrechen und auf sein Ende warten.
+        # CancelledError ist dabei der Normalfall; gather liefert ihn (statt
+        # ihn zu werfen), sodass der Shutdown nie an ihm scheitert.
+        notify_task.cancel()
+        outcome = await asyncio.gather(notify_task, return_exceptions=True)
+        logger.debug("Update-Notify-Task beendet: %r", outcome)
 
 
 # Interactive docs are always on in development. In production they are off by

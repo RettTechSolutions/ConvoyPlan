@@ -275,48 +275,14 @@ def _render_password_email(
 
 # ── Send helpers ──────────────────────────────────────────────────────────────
 
-async def send_password_email(
-    db: AsyncSession,
-    recipient_email: str,
-    recipient_name: str,
-    password: str,
-    login_url: str,
-    app_name: str = "ConvoyPlan",
-) -> None:
-    """Send a welcome/password-reset email via configured SMTP."""
-    cfg = await _get_smtp_settings(db)
-
-    host = cfg.get("smtp.host", "").strip()
-    if not host:
-        raise ValueError("SMTP nicht konfiguriert — bitte Host in den Systemeinstellungen hinterlegen")
-
-    port = int(cfg.get("smtp.port", "587"))
-    username = cfg.get("smtp.username", "").strip()
-    password_smtp = cfg.get("smtp.password", "").strip()
-    from_email = cfg.get("smtp.from_email", "").strip() or username
-    from_name = cfg.get("smtp.from_name", app_name).strip()
-    use_tls = cfg.get("smtp.use_tls", "starttls").strip().lower()
-
-    subject, html_body = await _render_password_email_async(
-        db=db,
-        recipient_name=recipient_name,
-        email=recipient_email,
-        password=password,
-        login_url=login_url,
-    )
-
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = f"{from_name} <{from_email}>" if from_name else from_email
-    msg["To"] = recipient_email
-    msg.attach(MIMEText(html_body, "html", "utf-8"))
-
+def _smtp_connect_kwargs(cfg: dict[str, str], timeout: int = 15) -> dict:
+    """aiosmtplib connection kwargs from stored SMTP settings (TLS mode etc.)."""
     smtp_kwargs: dict = {
-        "hostname": host,
-        "port": port,
-        "timeout": 15,
+        "hostname": cfg.get("smtp.host", "").strip(),
+        "port": int(cfg.get("smtp.port", "587")),
+        "timeout": timeout,
     }
-
+    use_tls = cfg.get("smtp.use_tls", "starttls").strip().lower()
     if use_tls == "ssl":
         # Direct SSL (port 465)
         smtp_kwargs["use_tls"] = True
@@ -329,11 +295,67 @@ async def send_password_email(
         smtp_kwargs["use_tls"] = False
         smtp_kwargs["start_tls"] = True
         smtp_kwargs["tls_context"] = ssl.create_default_context()
+    return smtp_kwargs
 
-    async with aiosmtplib.SMTP(**smtp_kwargs) as client:
+
+async def _send_html_email(
+    db: AsyncSession,
+    recipient_email: str,
+    subject: str,
+    html_body: str,
+    app_name: str = "ConvoyPlan",
+) -> None:
+    """Send an HTML email via the configured SMTP server."""
+    cfg = await _get_smtp_settings(db)
+
+    host = cfg.get("smtp.host", "").strip()
+    if not host:
+        raise ValueError("SMTP nicht konfiguriert — bitte Host in den Systemeinstellungen hinterlegen")
+
+    username = cfg.get("smtp.username", "").strip()
+    password_smtp = cfg.get("smtp.password", "").strip()
+    from_email = cfg.get("smtp.from_email", "").strip() or username
+    from_name = cfg.get("smtp.from_name", app_name).strip()
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = f"{from_name} <{from_email}>" if from_name else from_email
+    msg["To"] = recipient_email
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+    async with aiosmtplib.SMTP(**_smtp_connect_kwargs(cfg)) as client:
         if username and password_smtp:
             await client.login(username, password_smtp)
         await client.send_message(msg)
+
+
+async def send_password_email(
+    db: AsyncSession,
+    recipient_email: str,
+    recipient_name: str,
+    password: str,
+    login_url: str,
+    app_name: str = "ConvoyPlan",
+) -> None:
+    """Send a welcome/password-reset email via configured SMTP."""
+    subject, html_body = await _render_password_email_async(
+        db=db,
+        recipient_name=recipient_name,
+        email=recipient_email,
+        password=password,
+        login_url=login_url,
+    )
+    await _send_html_email(db, recipient_email, subject, html_body, app_name=app_name)
+
+
+async def send_update_notification(
+    db: AsyncSession,
+    recipient_email: str,
+    subject: str,
+    html_body: str,
+) -> None:
+    """Send an update-available notification to an admin via configured SMTP."""
+    await _send_html_email(db, recipient_email, subject, html_body)
 
 
 async def test_smtp_connection(db: AsyncSession) -> dict:
@@ -342,25 +364,11 @@ async def test_smtp_connection(db: AsyncSession) -> dict:
     host = cfg.get("smtp.host", "").strip()
     if not host:
         return {"ok": False, "error": "Kein SMTP-Host konfiguriert"}
-    port = int(cfg.get("smtp.port", "587"))
-    use_tls = cfg.get("smtp.use_tls", "starttls").strip().lower()
     username = cfg.get("smtp.username", "").strip()
     password_smtp = cfg.get("smtp.password", "").strip()
 
     try:
-        smtp_kwargs: dict = {"hostname": host, "port": port, "timeout": 10}
-        if use_tls == "ssl":
-            smtp_kwargs["use_tls"] = True
-            smtp_kwargs["tls_context"] = ssl.create_default_context()
-        elif use_tls in ("false", "none", "plain"):
-            smtp_kwargs["use_tls"] = False
-            smtp_kwargs["start_tls"] = False
-        else:
-            smtp_kwargs["use_tls"] = False
-            smtp_kwargs["start_tls"] = True
-            smtp_kwargs["tls_context"] = ssl.create_default_context()
-
-        async with aiosmtplib.SMTP(**smtp_kwargs) as client:
+        async with aiosmtplib.SMTP(**_smtp_connect_kwargs(cfg, timeout=10)) as client:
             if username and password_smtp:
                 await client.login(username, password_smtp)
         return {"ok": True, "error": None}

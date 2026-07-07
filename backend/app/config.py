@@ -29,6 +29,16 @@ class Settings(BaseSettings):
     # this env value is only the fallback when no DB setting exists.
     update_channel: str = "stable"
 
+    # Update mode for the self-updater. "auto" installs channel updates
+    # automatically; "notify" disables automatic installs and emails the
+    # superadmins instead (they update manually via the admin panel).
+    # The admin-panel toggle (system_settings: "update.mode") takes priority;
+    # this env value is only the fallback when no DB setting exists.
+    update_mode: str = "auto"
+    # How often the backend checks whether an update notification is due
+    # (seconds). Only relevant while the mode is "notify".
+    update_notify_interval: int = 1800
+
     license_key: str = ""
     app_base_url: str = "https://convoyplan.example.com"
 

@@ -77,7 +77,7 @@ async def test_get_update_status_no_status_file():
     _make_app_with_superadmin_and_db()
     with patch("builtins.open", side_effect=FileNotFoundError), \
          patch("os.makedirs"), \
-         patch("app.api.routes.admin.httpx.AsyncClient",
+         patch("app.services.update_check.httpx.AsyncClient",
                return_value=_mock_github_client(latest_tag="v1.0.0", commit_sha="abc1234567890")):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             r = await client.get("/api/admin/update-status")
@@ -98,7 +98,7 @@ async def test_get_update_status_update_available():
     status_content = json.dumps({"deployed_sha": "aaa1111", "deployed_at": "2026-05-18T10:00:00Z"})
     with patch("builtins.open", mock_open(read_data=status_content)), \
          patch("os.makedirs"), \
-         patch("app.api.routes.admin.httpx.AsyncClient",
+         patch("app.services.update_check.httpx.AsyncClient",
                return_value=_mock_github_client(latest_tag="v1.1.0", commit_sha="bbb2222abcdef")):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             r = await client.get("/api/admin/update-status")
@@ -118,7 +118,7 @@ async def test_get_update_status_stable_deployed_ahead_of_release():
     status_content = json.dumps({"deployed_sha": "fff9999", "deployed_at": "2026-07-07T11:33:49Z"})
     with patch("builtins.open", mock_open(read_data=status_content)), \
          patch("os.makedirs"), \
-         patch("app.api.routes.admin.httpx.AsyncClient",
+         patch("app.services.update_check.httpx.AsyncClient",
                return_value=_mock_github_client(latest_tag="v1.0.1", commit_sha="c7694f4abcdef",
                                                 compare_status="ahead")):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -138,7 +138,7 @@ async def test_get_update_status_stable_no_release():
     _make_app_with_superadmin_and_db()
     with patch("builtins.open", side_effect=FileNotFoundError), \
          patch("os.makedirs"), \
-         patch("app.api.routes.admin.httpx.AsyncClient",
+         patch("app.services.update_check.httpx.AsyncClient",
                return_value=_mock_github_client(latest_status=404)):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             r = await client.get("/api/admin/update-status")
@@ -160,8 +160,8 @@ async def test_get_update_status_beta_channel_tracks_main():
     status_content = json.dumps({"deployed_sha": "aaa1111", "deployed_at": "2026-05-18T10:00:00Z"})
     with patch("builtins.open", mock_open(read_data=status_content)), \
          patch("os.makedirs"), \
-         patch("app.api.routes.admin.settings.update_channel", "beta"), \
-         patch("app.api.routes.admin.httpx.AsyncClient",
+         patch("app.services.update_check.settings.update_channel", "beta"), \
+         patch("app.services.update_check.httpx.AsyncClient",
                return_value=_mock_github_client(main_sha="ccc3333abcdef")):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             r = await client.get("/api/admin/update-status")
@@ -181,8 +181,8 @@ async def test_get_update_status_beta_channel_no_successful_build():
     status_content = json.dumps({"deployed_sha": "aaa1111", "deployed_at": "2026-05-18T10:00:00Z"})
     with patch("builtins.open", mock_open(read_data=status_content)), \
          patch("os.makedirs"), \
-         patch("app.api.routes.admin.settings.update_channel", "beta"), \
-         patch("app.api.routes.admin.httpx.AsyncClient",
+         patch("app.services.update_check.settings.update_channel", "beta"), \
+         patch("app.services.update_check.httpx.AsyncClient",
                return_value=_mock_github_client(main_sha=None)):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             r = await client.get("/api/admin/update-status")
@@ -206,7 +206,7 @@ async def test_get_update_status_github_unreachable():
     ctx.__aexit__ = AsyncMock(return_value=False)
     with patch("builtins.open", side_effect=FileNotFoundError), \
          patch("os.makedirs"), \
-         patch("app.api.routes.admin.httpx.AsyncClient", return_value=ctx):
+         patch("app.services.update_check.httpx.AsyncClient", return_value=ctx):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             r = await client.get("/api/admin/update-status")
     assert r.status_code == 200
@@ -290,3 +290,137 @@ async def test_trigger_update_503_when_volume_not_writable():
             r = await client.post("/api/admin/trigger-update")
     assert r.status_code == 503
     app.dependency_overrides.clear()
+
+
+# ── Update-Modus (auto / notify) ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_get_update_mode_default_env():
+    _make_app_with_superadmin_and_db()
+    with patch("os.makedirs"), patch("builtins.open", mock_open()):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            r = await client.get("/api/admin/settings/update-mode")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["mode"] == "auto"
+    assert data["source"] == "env"
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_set_update_mode_persists_and_writes_file():
+    _make_app_with_superadmin_and_db()
+    m = mock_open()
+    with patch("os.makedirs"), patch("builtins.open", m), \
+         patch("app.api.routes.admin.audit.record", new=AsyncMock()):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            r = await client.put("/api/admin/settings/update-mode", json={"mode": "notify"})
+    assert r.status_code == 204
+    # The effective mode is mirrored to the shared volume for the updater.
+    m().write.assert_any_call("notify")
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_set_update_mode_rejects_invalid():
+    _make_app_with_superadmin_and_db()
+    with patch("os.makedirs"), patch("builtins.open", mock_open()), \
+         patch("app.api.routes.admin.audit.record", new=AsyncMock()):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            r = await client.put("/api/admin/settings/update-mode", json={"mode": "yolo"})
+    assert r.status_code == 422
+    app.dependency_overrides.clear()
+
+
+# ── Update-Benachrichtigung (Modus "notify") ──────────────────────────────────
+
+
+def _notify_db(last_notified=None, superadmin_emails=("admin@example.com",)):
+    """Mock AsyncSession for check_and_notify_once: resolve_mode → last-notified
+    lookup → superadmin query, in call order."""
+    db = AsyncMock()
+
+    mode_result = MagicMock()
+    mode_setting = MagicMock()
+    mode_setting.value = "notify"
+    mode_result.scalar_one_or_none.return_value = mode_setting
+
+    notified_result = MagicMock()
+    if last_notified is None:
+        notified_result.scalar_one_or_none.return_value = None
+    else:
+        setting = MagicMock()
+        setting.value = last_notified
+        notified_result.scalar_one_or_none.return_value = setting
+
+    admins_result = MagicMock()
+    users = []
+    for mail in superadmin_emails:
+        u = MagicMock()
+        u.email = mail
+        users.append(u)
+    admins_result.scalars.return_value.all.return_value = users
+
+    db.execute.side_effect = [mode_result, notified_result, admins_result]
+    return db
+
+
+@pytest.mark.asyncio
+async def test_check_and_notify_sends_email_once_per_target():
+    from app.services.update_notify import check_and_notify_once
+
+    state = {
+        "update_available": True,
+        "remote_sha": "bbb2222",
+        "channel": "stable",
+        "latest_release": "v1.1.0",
+        "deployed_sha": "aaa1111",
+    }
+    send = AsyncMock()
+    db = _notify_db()
+    with patch("app.services.update_notify.fetch_update_state", new=AsyncMock(return_value=state)), \
+         patch("app.services.update_notify.send_update_notification", new=send):
+        sent = await check_and_notify_once(db)
+    assert sent is True
+    send.assert_awaited_once()
+    assert send.await_args.args[1] == "admin@example.com"
+    # Merker für das Ziel wird gespeichert (genau eine Mail pro Ziel)
+    added = db.add.call_args.args[0]
+    assert added.key == "update.last_notified_target"
+    assert added.value == "stable:bbb2222"
+
+
+@pytest.mark.asyncio
+async def test_check_and_notify_skips_already_notified_target():
+    from app.services.update_notify import check_and_notify_once
+
+    state = {
+        "update_available": True,
+        "remote_sha": "bbb2222",
+        "channel": "stable",
+        "latest_release": "v1.1.0",
+        "deployed_sha": "aaa1111",
+    }
+    send = AsyncMock()
+    db = _notify_db(last_notified="stable:bbb2222")
+    with patch("app.services.update_notify.fetch_update_state", new=AsyncMock(return_value=state)), \
+         patch("app.services.update_notify.send_update_notification", new=send):
+        sent = await check_and_notify_once(db)
+    assert sent is False
+    send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_check_and_notify_noop_when_mode_auto():
+    from app.services.update_notify import check_and_notify_once
+
+    db = AsyncMock()
+    mode_result = MagicMock()
+    mode_result.scalar_one_or_none.return_value = None  # kein DB-Setting → env "auto"
+    db.execute.return_value = mode_result
+    fetch = AsyncMock()
+    with patch("app.services.update_notify.fetch_update_state", new=fetch):
+        sent = await check_and_notify_once(db)
+    assert sent is False
+    fetch.assert_not_awaited()

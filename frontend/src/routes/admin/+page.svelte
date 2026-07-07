@@ -43,7 +43,7 @@
         await loadUsers();
         await loadLeitstellen();
         await loadBranding();
-        await Promise.all([loadGithubTokenStatus(), loadUpdateStatus(), loadUpdateChannel(), loadMfaStatus(), loadSmtpSettings(), loadEmailTemplate(), loadDemoSettings()]);
+        await Promise.all([loadGithubTokenStatus(), loadUpdateStatus(), loadUpdateChannel(), loadUpdateMode(), loadMfaStatus(), loadSmtpSettings(), loadEmailTemplate(), loadDemoSettings()]);
     }
 
     async function handleAuthenticated() {
@@ -482,6 +482,10 @@
     let updateChannel = $state<import('$lib/api').UpdateChannel | null>(null);
     let channelSaving = $state(false);
 
+    // Update mode (auto / notify)
+    let updateMode = $state<import('$lib/api').UpdateMode | null>(null);
+    let modeSaving = $state(false);
+
     // Live log terminal
     let updateLogLines = $state<string[]>([]);
     let showUpdateLog = $state(false);
@@ -510,6 +514,28 @@
             updateError = e instanceof Error ? e.message : 'Kanal konnte nicht gespeichert werden';
         } finally {
             channelSaving = false;
+        }
+    }
+
+    async function loadUpdateMode() {
+        try {
+            updateMode = await adminApi.getUpdateMode();
+        } catch {
+            updateMode = null;
+        }
+    }
+
+    async function setMode(mode: 'auto' | 'notify') {
+        if (modeSaving || updateMode?.mode === mode) return;
+        modeSaving = true;
+        updateError = '';
+        try {
+            await adminApi.setUpdateMode(mode);
+            await loadUpdateMode();
+        } catch (e: unknown) {
+            updateError = e instanceof Error ? e.message : 'Update-Modus konnte nicht gespeichert werden';
+        } finally {
+            modeSaving = false;
         }
     }
 
@@ -1210,7 +1236,7 @@
         <button class="tab" class:active={activeTab === 'api-keys'} onclick={() => { activeTab = 'api-keys'; loadApiKeyOrgs(); }}>API-Keys</button>
         <button class="tab" class:active={activeTab === 'leitstellen'} onclick={() => (activeTab = 'leitstellen')}>Leitstellen</button>
         <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>Branding</button>
-        <button class="tab" class:active={activeTab === 'system'} onclick={() => { activeTab = 'system'; loadUpdateStatus(); loadUpdateChannel(); loadLicenseStatus(); loadGithubTokenStatus(); loadDemoSettings(); }}>System</button>
+        <button class="tab" class:active={activeTab === 'system'} onclick={() => { activeTab = 'system'; loadUpdateStatus(); loadUpdateChannel(); loadUpdateMode(); loadLicenseStatus(); loadGithubTokenStatus(); loadDemoSettings(); }}>System</button>
     </div>
 
     <!-- ── Benutzer ── -->
@@ -1923,7 +1949,34 @@
                     {#if updateChannel.channel === 'stable'}
                         <strong>Stable:</strong> Updates nur bei veröffentlichten GitHub-Releases — einzelne Commits auf <code>main</code> lösen kein Update aus.
                     {:else}
-                        <strong>Beta:</strong> Jeder Commit auf <code>main</code> wird automatisch installiert, sobald seine Beta-Images gebaut sind (ca. 10–15 Min. nach dem Merge; für Tests/Vorab-Versionen).
+                        <strong>Beta:</strong> Jeder Commit auf <code>main</code> wird installiert, sobald seine Beta-Images gebaut sind (ca. 10–15 Min. nach dem Merge; für Tests/Vorab-Versionen).
+                    {/if}
+                </p>
+            {/if}
+
+            {#if updateMode}
+                <div class="update-row" style="margin-bottom:.75rem; flex-wrap:wrap;">
+                    <span class="update-label">Update-Modus</span>
+                    <div class="channel-toggle">
+                        <button
+                            class="channel-btn"
+                            class:active={updateMode.mode === 'auto'}
+                            disabled={modeSaving}
+                            onclick={() => setMode('auto')}
+                        >Automatisch</button>
+                        <button
+                            class="channel-btn"
+                            class:active={updateMode.mode === 'notify'}
+                            disabled={modeSaving}
+                            onclick={() => setMode('notify')}
+                        >Benachrichtigen</button>
+                    </div>
+                </div>
+                <p class="hint" style="margin:-.25rem 0 1rem;">
+                    {#if updateMode.mode === 'auto'}
+                        <strong>Automatisch:</strong> Verfügbare Updates im gewählten Kanal werden ohne weiteres Zutun installiert.
+                    {:else}
+                        <strong>Benachrichtigen:</strong> Es wird nichts automatisch installiert. Alle Superadmins erhalten eine E-Mail, sobald im gewählten Kanal ein Update verfügbar ist (SMTP muss konfiguriert sein) — installiert wird über „Jetzt updaten".
                     {/if}
                 </p>
             {/if}

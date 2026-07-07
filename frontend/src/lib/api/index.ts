@@ -483,6 +483,9 @@ export const adminApi = {
     getUpdateChannel: () => api.get<UpdateChannel>('/api/admin/settings/update-channel'),
     setUpdateChannel: (channel: 'stable' | 'beta') =>
         api.put<void>('/api/admin/settings/update-channel', { channel }),
+    getUpdateMode: () => api.get<UpdateMode>('/api/admin/settings/update-mode'),
+    setUpdateMode: (mode: 'auto' | 'notify') =>
+        api.put<void>('/api/admin/settings/update-mode', { mode }),
     getDemoSettings: () => api.get<DemoSettings>('/api/admin/settings/demo'),
     saveDemoSettings: (enabled: boolean, session_hours?: number) =>
         api.put<DemoSettings>('/api/admin/settings/demo', { enabled, session_hours }),
@@ -516,6 +519,12 @@ export interface UpdateChannel {
     channel: 'stable' | 'beta';
     source: 'db' | 'env';
     env_channel: 'stable' | 'beta';
+}
+
+export interface UpdateMode {
+    mode: 'auto' | 'notify';
+    source: 'db' | 'env';
+    env_mode: 'auto' | 'notify';
 }
 
 export interface DemoSettings {
