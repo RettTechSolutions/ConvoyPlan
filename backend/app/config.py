@@ -89,6 +89,16 @@ class Settings(BaseSettings):
     # auth or on an internal network).
     enable_docs: bool = False
 
+    # Zusätzliche offene Verkehrsdaten-Feeds (Baustellen/Sperrungen) im
+    # MobiData-BW-/CIFS-GeoJSON-Format. Kommaseparierte Liste von URLs, damit
+    # weitere Regionen ohne Code-Änderung ergänzt werden können. Diese Feeds
+    # sind lizenzfrei/self-service (kein API-Key). Standard: Baden-Württemberg.
+    # Leeren String setzen, um die Quelle zu deaktivieren.
+    opendata_traffic_enabled: bool = True
+    opendata_traffic_feeds: str = (
+        "https://api.mobidata-bw.de/datasets/traffic/roadworks/roadworks_geojson.json"
+    )
+
     # Optional API key that protects the interactive docs. When set, the docs
     # are served (no ENABLE_DOCS needed) but require the key: open
     # /docs?key=<value> once (the key is remembered in an HttpOnly cookie), or
