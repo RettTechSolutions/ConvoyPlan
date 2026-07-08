@@ -50,21 +50,22 @@
 - 📍 **Wegpunkte, Kontrollpunkte und technische Halte** inklusive Haltezeiten und Zweck wie Tanken, Pause oder Wartung.
 - ⏱️ **Automatische Zeitplanung** anhand von Startzeit, Marschgeschwindigkeiten und Halten.
 - 📄 **Marschbefehl-PDF** sowie GPX- und JSON-Export für Weitergabe und Nachbearbeitung.
-- 📡 **Live-Tracking per WebSocket** mit Browser-Geolocation und Fahrzeugstatus.
+- 📡 **Live-Tracking per WebSocket** mit Browser-Geolocation und Fahrzeugstatus. Projiziert sendende Fahrzeuge auf die Route und meldet mit Ton/Vibration, sobald die Spitze des Verbands einen Wegpunkt oder Leitstellenwechsel erreicht – inkl. Fortschrittszähler, bis der gesamte Verband durch ist.
 - 🔐 **Organisations- und Rollenmodell** für Admins, Planer, Fahrer und Beobachter.
-- 🌤️ **Wetter- und Overpass-Integration** für Wetterdaten, Sperrungen und Baustellen.
+- 🌤️ **Wetter- und Verkehrsdaten-Integration** – Wetter über Open-Meteo sowie Sperrungen und Baustellen aus zwei Quellen: OpenStreetMap/Overpass und der offiziellen Autobahn-API (autobahn.api.bund.dev); fällt eine Quelle aus, liefert die andere weiter Ergebnisse.
 - 📱 **PWA und Capacitor-Konfiguration** für installierbare Web-App und native App-Wrapper.
 - 🎨 **Branding-System** – eigenes Logo, Farben und App-Name über den Admin-Bereich konfigurierbar.
 - 🏢 **Multi-Tenancy** – Organisationen erhalten einen kurzen Org-Code (4–8 Zeichen) als URL-Slug unter dem Scope `/o/[slug]/`; org-spezifische Login-Seite mit eigenem Branding; vollständige Datenisolation pro Organisation.
 - 🔒 **MFA / TOTP** – Zwei-Faktor-Authentifizierung per TOTP (z. B. Google Authenticator) einrichtbar im Org-Admin-Panel.
 - 📧 **SMTP-Dienst** – Passwörter direkt per E-Mail an Benutzer versenden; konfigurierbar im Admin-Panel ohne Neustart.
-- 🔄 **Auto-Updater** – Docker-Container pollt das Repository und deployt neue Commits automatisch; Live-Update-Log per SSE im Browser.
+- 🔄 **Auto-Updater** – Docker-Container pollt das Repository und deployt neue Commits automatisch; Live-Update-Log per SSE im Browser. Update-Modus „Automatisch" (Standard) oder „Benachrichtigen" (nur E-Mail an Superadmins statt Auto-Install) sowie funktionierender Beta-Kanal auch bei image-basierten Standard-Installationen.
 - 🔑 **Lizenzmodell mit Demo-Modus** – ohne gültigen Lizenzschlüssel läuft die App im Demo-Modus (Lesezugriffe uneingeschränkt, schreibende Operationen mit HTTP 402 gesperrt); Aktivierung direkt über Admin-UI.
 - 🛡️ **Security-Härtung** – Brute-Force-Schutz (Rate-Limiting), einheitliche Passwort-Policy mit Have-I-Been-Pwned-Breach-Check, JWT-Revocation (Sitzungsentzug), MFA-Secrets verschlüsselt at-rest, CORS-Lockdown, Content-Security-Policy und Security-Header über Caddy.
 - 📝 **Security-Audit-Log** – append-only Protokoll sicherheitsrelevanter Ereignisse (Logins, MFA, Passwortänderungen, Benutzer-/Org-Anlage, Lizenzaktivierung) inkl. Akteur, Ziel, IP und User-Agent.
 - 🗂️ **DSGVO-Werkzeuge** – Datenexport (Art. 15) und Löschung mit pseudonymisiertem Audit-Trail (Art. 17) im Admin-Portal; automatische Datenaufbewahrung (Retention-Container) für Live-Positionen, Audit-Log und widerrufene Share-Links.
 - 💾 **Backup & Restore** – Skripte für PostgreSQL-Dump plus Upload-/TLS-Volumes inkl. Prüfsummen, Retention und Restore; dokumentierter Verschlüsselung-at-rest-Leitfaden.
-- 📞 **Org-fähige Leitstellen** – globale (superadmin-gepflegte) und org-eigene Leitstellen mit Vorschlags- und Freigabe-Workflow, Übersichtskarte und Landkreis-Auswahl für Zuständigkeitsgebiete.
+- 📞 **Org-fähige Leitstellen** – globale (superadmin-gepflegte) und org-eigene Leitstellen mit Vorschlags- und Freigabe-Workflow, Übersichtskarte und Landkreis-Auswahl für Zuständigkeitsgebiete. Sequenzielle Kanalwechsel-Kette mit „Convoy Anmeldung" am Start sowie Zusatzkanälen (weitere Funkgruppen) je Leitstelle in Zeitplan, Marschbefehl-Formular und PDF.
+- 🧭 **Geführte Onboarding-Tour** – Spotlight-Tour direkt in der App, die reale Bedienelemente hervorhebt statt zentrierter Erklär-Dialoge.
 
 ---
 
@@ -86,6 +87,7 @@
 | Funktion | Beschreibung | Status |
 |---|---|---:|
 | Login | Registrierung und JWT-basierte Authentifizierung | ✅ |
+| Onboarding-Tour | Geführte Spotlight-Tour hebt reale Bedienelemente direkt in der App hervor | ✅ |
 | Fahrzeuge | CRUD für Einsatzfahrzeuge und Konvoirollen | ✅ |
 | Marschverbände | CRUD für Konvois und zugeordnete Fahrzeuge | ✅ |
 | Teilverbände | Sub-Convoys mit Parent-Konvoi | ✅ |
@@ -107,7 +109,7 @@
 | Live-Tracking | Positionsupdates per REST und WebSocket | ✅ |
 | Fahrzeugstatus | Geplant, unterwegs, angekommen oder verspätet | ✅ |
 | Wetter | Integration über Open-Meteo ohne API-Key | ✅ |
-| Sperrungen | Abfrage von OSM-Daten über Overpass API | ✅ |
+| Sperrungen | Sperrungen und Baustellen aus Overpass API und Autobahn-API (bund.dev), entlang der gesamten Route | ✅ |
 | PDF | Marschbefehl als PDF | ✅ |
 | GPX / JSON | Export und Import für Navigation, Dokumentation und Weiterverarbeitung | ✅ |
 | PWA | Installierbare Web-App mit Tile-Caching | ✅ |
@@ -118,10 +120,11 @@
 | Funktion | Beschreibung | Status |
 |---|---|---:|
 | Setup-Wizard | Ersteinrichtung per Browser ohne SSH-Zugang (4 Schritte inkl. Branding) | ✅ |
-| Admin-Bereich | Benutzer-, Leitstellen- und Branding-Verwaltung | ✅ |
+| Admin-Bereich | Benutzer- (inkl. optionalem Vor-/Nachname), Leitstellen- und Branding-Verwaltung | ✅ |
 | Auto-Updater | Git-Polling-Container aktualisiert die Instanz automatisch bei neuem Commit | ✅ |
 | Update-Status | Admin-UI zeigt Deploy-SHA und GitHub-Stand; manueller Trigger per Button | ✅ |
-| Update-Kanal | Umschaltbar zwischen „Stable" (nur veröffentlichte Releases) und „Beta" (jeder Commit auf `main`) im Admin-Bereich | ✅ |
+| Update-Kanal | Umschaltbar zwischen „Stable" (nur veröffentlichte Releases) und „Beta" (jeder Commit auf `main`, auch bei image-basierten Installationen) im Admin-Bereich | ✅ |
+| Update-Modus | „Automatisch" installiert Updates selbstständig; „Benachrichtigen" verschickt nur eine E-Mail an Superadmins, Installation erfolgt manuell; optionale Bestätigungs-Mail nach automatischer Installation | ✅ |
 | Live-Update-Log | Echtzeit-Ausgabe des Updater-Prozesses im Browser via SSE | ✅ |
 | GitHub-Token in UI | `GITHUB_TOKEN` für Update-Fetch direkt in der Admin-UI konfigurierbar, kein Neustart | ✅ |
 | Demo-Modus | Ohne Lizenzschlüssel: Lesezugriff uneingeschränkt, Schreibzugriff gesperrt (HTTP 402) | ✅ |
@@ -171,7 +174,7 @@ flowchart LR
     API[FastAPI Backend]
     DB[(PostgreSQL + PostGIS)]
     GH[GraphHopper]
-    EXT[Open-Meteo / Overpass]
+    EXT[Open-Meteo / Overpass / Autobahn-API]
     Updater[Updater Container\ngit-poll auto-deploy]
     Retention[Retention Container\nperiodischer Daten-Purge]
 
@@ -210,7 +213,7 @@ flowchart LR
 | Routing | GraphHopper 9.1 |
 | Geodaten | GeoAlchemy2, Shapely, GeoJSON |
 | Exporte | GPXPy, fpdf2, JSON |
-| Externe Daten | Open-Meteo, OpenStreetMap Overpass API |
+| Externe Daten | Open-Meteo, OpenStreetMap Overpass API, Autobahn-API (autobahn.api.bund.dev) |
 | Reverse Proxy / TLS | Caddy 2 (Let's Encrypt, eigenes Zertifikat, intern) |
 | Infrastruktur | Docker Compose, Portainer Stack |
 
@@ -239,13 +242,13 @@ ConvoyPlan/
 │   │   │   ├── tracking.py   # Live-Positionen + WebSocket
 │   │   │   ├── routing.py    # GraphHopper-Routing
 │   │   │   ├── weather.py    # Open-Meteo-Integration
-│   │   │   ├── overpass.py   # OSM-Sperrungsabfragen
+│   │   │   ├── overpass.py   # Sperrungsabfragen (Overpass + Autobahn-API), Punkt und Routenkorridor
 │   │   │   ├── users.py      # Eigenes Benutzerprofil
 │   │   │   ├── version.py    # Versions- und Build-Informationen
 │   │   │   └── status.py     # Systemstatus
 │   │   ├── models/           # SQLAlchemy-Modelle
 │   │   ├── schemas/          # Pydantic-Schemas
-│   │   ├── services/         # Routing, Zeitplan, Export, Wetter, Tracking, Retention
+│   │   ├── services/         # Routing, Zeitplan, Export, Wetter, Overpass/Autobahn/Traffic, Tracking, Retention
 │   │   ├── jobs/             # Hintergrundjobs (z. B. Retention-Purge)
 │   │   ├── config.py         # Backend-Konfiguration über Umgebungsvariablen
 │   │   ├── database.py       # Async-Datenbankanbindung
@@ -479,7 +482,10 @@ Domain und Zertifikat werden beim ersten Start über den Setup-Wizard in der Dat
 | `LICENSE_KEY` | Lizenzschlüssel (ausgestellt von ConvoyPlan). Ohne gültigen Schlüssel läuft die App im Demo-Modus. Alternativ zur Env-Variable auch über den Admin-Bereich eintragbar (wird dann in der DB gespeichert). |
 | `GITHUB_TOKEN` | GitHub PAT mit `repo`-Leseberechtigung (Classic Token: `repo`-Scope). Benötigt für den Auto-Updater-Container, um das GitHub-Repository zu pollen und neue Commits zu erkennen. |
 | `GITHUB_REPO` | Repository das der Auto-Updater überwacht. Standard: `RettTechSolutions/ConvoyPlan`. Bei Fork auf das eigene Repository anpassen. |
-| `UPDATE_CHANNEL` | Update-Kanal-Fallback. `stable` (Standard, empfohlen) deployt nur veröffentlichte GitHub-Releases; `beta` verfolgt jeden Commit auf `main`. Der Schalter im Admin-Bereich (Admin → Software-Update) überschreibt diesen Wert. |
+| `UPDATE_CHANNEL` | Update-Kanal-Fallback. `stable` (Standard, empfohlen) deployt nur veröffentlichte GitHub-Releases; `beta` verfolgt jeden Commit auf `main` (auch bei image-basierten Standard-Installationen, über eigens gebaute `:beta`-Images). Der Schalter im Admin-Bereich (Admin → Software-Update) überschreibt diesen Wert. |
+| `UPDATE_MODE` | Update-Modus-Fallback. `auto` (Standard) installiert verfügbare Updates im gewählten Kanal automatisch; `notify` installiert nicht automatisch, sondern benachrichtigt Superadmins per E-Mail. Der Schalter im Admin-Bereich (Admin → Software-Update) überschreibt diesen Wert. |
+| `UPDATE_NOTIFY_ON_AUTO` | Nur im Modus `auto` relevant. `true` schickt zusätzlich eine E-Mail an alle aktiven Superadmins, nachdem ein Update automatisch installiert wurde (Standard: `false`). |
+| `UPDATE_NOTIFY_INTERVAL` | Prüfintervall in Sekunden, wie oft eine fällige Update-Benachrichtigung geprüft wird (Modus `notify` sowie `UPDATE_NOTIFY_ON_AUTO`; Standard: `1800`). |
 
 ### Frontend (lokale Entwicklung)
 
@@ -525,6 +531,7 @@ Die vollständige OpenAPI-Dokumentation wird automatisch von FastAPI bereitgeste
 | `POST` | `/api/admin/trigger-update` | Auto-Update manuell anstoßen |
 | `GET` | `/api/admin/update-status` / `/api/admin/update-log` | Deploy-Stand bzw. Live-Update-Log (SSE) |
 | `GET/PUT` | `/api/admin/settings/update-channel` | Update-Kanal (Stable/Beta) lesen/setzen |
+| `GET/PUT` | `/api/admin/settings/update-mode` | Update-Modus (Automatisch/Benachrichtigen), inkl. `notify_on_auto`, lesen/setzen |
 | `GET/PUT` | `/api/admin/settings/smtp` | SMTP-Konfiguration lesen/setzen |
 
 **Sicherheit und Datenschutz**
@@ -605,7 +612,8 @@ Die vollständige OpenAPI-Dokumentation wird automatisch von FastAPI bereitgeste
 | Methode | Endpunkt | Beschreibung |
 |---|---|---|
 | `GET` | `/api/weather/?lat=...&lon=...` | Wetterdaten abrufen |
-| `GET` | `/api/overpass/closures?lat=...&lon=...` | Sperrungen und Baustellen abrufen |
+| `GET` | `/api/overpass/closures?lat=...&lon=...` | Sperrungen und Baustellen im Radius um einen Punkt abrufen (Overpass + Autobahn-API) |
+| `POST` | `/api/overpass/closures/route` | Sperrungen und Baustellen im Korridor entlang einer Routen-Geometrie abrufen (Overpass + Autobahn-API) |
 
 **System**
 
