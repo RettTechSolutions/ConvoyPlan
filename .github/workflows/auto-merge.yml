@@ -25,6 +25,18 @@ name: Auto-merge
 # ist die Verwendung des schreibenden Tokens hier unkritisch. pull_request_target
 # läuft zudem im Kontext des Basis-Repos und hat damit auch bei Dependabot-PRs
 # die nötigen Schreibrechte.
+#
+# WICHTIG (Merge Queue!): Der eingebaute GITHUB_TOKEN kann Auto-Merge zwar
+# *aktivieren*, aber GitHub lässt ihn einen PR NICHT in eine Merge Queue
+# einreihen ("the built-in GITHUB_TOKEN cannot add pull requests to the
+# queue"). Für Dependabot-PRs sieht es dann so aus, als würde nichts passieren:
+# Auto-Merge ist an, die Checks sind grün — der PR landet aber nie in der Queue
+# und bleibt offen. Deshalb MUSS der Merge-Schritt mit einem eigenen Token
+# laufen (Fine-grained PAT oder GitHub-App-Token) mit den Rechten
+# "Contents: write" + "Pull requests: write". Siehe Secret MERGE_QUEUE_TOKEN
+# und .github/repo-setup-checklist.md. Fehlt das Secret, fällt der Workflow auf
+# GITHUB_TOKEN zurück (Auto-Merge wird aktiviert, der PR wird aber nicht
+# eingereiht) — das erklärt genau den bisherigen Zustand.
 
 on:
   pull_request_target:
@@ -74,12 +86,24 @@ jobs:
       # queue when ready". Newer gh versions handle that transparently; older
       # ones reject an explicit merge method when a queue is active, hence the
       # method-less fallback.
+      #
+      # Token: MERGE_QUEUE_TOKEN (PAT/App-Token) ist Pflicht, damit der PR
+      # tatsächlich in die Merge Queue eingereiht wird — der eingebaute
+      # GITHUB_TOKEN kann das nicht (siehe Kopf-Kommentar). Ohne das Secret
+      # greift der Fallback auf GITHUB_TOKEN; Auto-Merge wird dann zwar
+      # aktiviert, der PR wandert aber nicht in die Queue. HAS_MQ_TOKEN spiegelt
+      # nur wider, OB das Secret gesetzt ist (true/false) — es leakt keinen Wert.
       - name: Enable native auto-merge
         if: >-
           github.actor != 'dependabot[bot]' ||
           steps.meta.outputs.update-type == 'version-update:semver-patch' ||
           steps.meta.outputs.update-type == 'version-update:semver-minor'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.MERGE_QUEUE_TOKEN || secrets.GITHUB_TOKEN }}
+          HAS_MQ_TOKEN: ${{ secrets.MERGE_QUEUE_TOKEN != '' }}
           PR_URL: ${{ github.event.pull_request.html_url }}
-        run: gh pr merge --auto --squash "$PR_URL" || gh pr merge --auto "$PR_URL"
+        run: |
+          if [ "$HAS_MQ_TOKEN" != "true" ]; then
+            echo "::warning::MERGE_QUEUE_TOKEN ist nicht gesetzt — der eingebaute GITHUB_TOKEN kann den PR NICHT in die Merge Queue einreihen. Auto-Merge wird aktiviert, der PR bleibt aber offen. Siehe .github/repo-setup-checklist.md."
+          fi
+          gh pr merge --auto --squash "$PR_URL" || gh pr merge --auto "$PR_URL"

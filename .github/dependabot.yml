@@ -1,4 +1,10 @@
 version: 2
+# Labels: nur Labels verwenden, die im Repo tatsächlich existieren, sonst
+# postet Dependabot auf jedem PR einen Fehlerkommentar ("labels could not be
+# found") und der Label-Schritt schlägt teilweise fehl. "dependencies" und
+# "auto-merge" existieren; Bereichs-Labels (backend/frontend/ci/docker) waren
+# nicht angelegt und wurden daher entfernt. Wer sie nutzen möchte, legt sie
+# vorher unter Issues/PRs → Labels an und trägt sie hier wieder ein.
 updates:
   # Backend Python dependencies
   - package-ecosystem: "pip"
@@ -8,7 +14,6 @@ updates:
     open-pull-requests-limit: 10
     labels:
       - "dependencies"
-      - "backend"
       - "auto-merge"
 
   # Frontend npm dependencies
@@ -19,7 +24,6 @@ updates:
     open-pull-requests-limit: 10
     labels:
       - "dependencies"
-      - "frontend"
       - "auto-merge"
 
   # GitHub Actions workflow dependencies
@@ -29,7 +33,6 @@ updates:
       interval: "weekly"
     labels:
       - "dependencies"
-      - "ci"
       - "auto-merge"
 
   # Docker base images
@@ -39,7 +42,6 @@ updates:
       interval: "weekly"
     labels:
       - "dependencies"
-      - "docker"
       - "auto-merge"
   - package-ecosystem: "docker"
     directory: "/frontend"
@@ -47,7 +49,6 @@ updates:
       interval: "weekly"
     labels:
       - "dependencies"
-      - "docker"
       - "auto-merge"
   - package-ecosystem: "docker"
     directory: "/graphhopper"
@@ -55,7 +56,6 @@ updates:
       interval: "weekly"
     labels:
       - "dependencies"
-      - "docker"
       - "auto-merge"
   - package-ecosystem: "docker"
     directory: "/docker/updater"
@@ -63,5 +63,4 @@ updates:
       interval: "weekly"
     labels:
       - "dependencies"
-      - "docker"
       - "auto-merge"
