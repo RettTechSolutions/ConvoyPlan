@@ -888,6 +888,14 @@
 		if (typ === 'convoy_anmeldung') return 'Convoy Anmeldung';
 		return 'Anmelden';
 	}
+	// Zusatzkanäle der Leitstelle: per Tap/Klick auf die Zeile aufklappbar
+	// (funktioniert auf Touch-Geräten, wo es kein Hover gibt). Nur bei
+	// Anmelde-Einträgen relevant. Separater Zustand je Tabelle.
+	let kwExpanded = $state<number | null>(null);
+	let kwBefehlExpanded = $state<number | null>(null);
+	function kwHasZusatz(kw: KanalwechselEntry): boolean {
+		return !!kw.zusatz_kanaele?.length && kw.typ !== 'abmelden';
+	}
 	function logout() {
 		const slug = ($page.params as Record<string, string>).slug;
 		orgStore.removeToken(slug);
@@ -1602,13 +1610,26 @@
 								<table class="schedule-table kw-table">
 									<thead><tr><th>km</th><th>Aktion</th><th>Leitstelle</th><th>Anrufgruppe</th></tr></thead>
 									<tbody>
-										{#each route.kanalwechsel as kw}
-											<tr>
+										{#each route.kanalwechsel as kw, i}
+											<tr
+												class:kw-clickable={kwHasZusatz(kw)}
+												onclick={() => { if (kwHasZusatz(kw)) kwExpanded = kwExpanded === i ? null : i; }}
+											>
 												<td>{kw.km.toFixed(1)}</td>
 												<td><span class="kw-typ" class:abmelden={kw.typ === 'abmelden'} class:convoy={kw.typ === 'convoy_anmeldung'}>{kwAktion(kw.typ)}</span></td>
-												<td>📡 {kw.leitstelle_name}</td>
+												<td>📡 {kw.leitstelle_name}{#if kwHasZusatz(kw)}<span class="kw-chevron" class:open={kwExpanded === i}>▸</span>{/if}</td>
 												<td><code>{kw.anrufgruppe}</code></td>
 											</tr>
+											{#if kwExpanded === i && kwHasZusatz(kw)}
+												<tr class="kw-detail">
+													<td colspan="4">
+														<span class="kw-detail-label">Zusatzkanäle:</span>
+														{#each kw.zusatz_kanaele ?? [] as zk}
+															<span class="kw-zk">{zk.name || 'Kanal'} <code>{zk.kanal}</code></span>
+														{/each}
+													</td>
+												</tr>
+											{/if}
 										{/each}
 									</tbody>
 								</table>
@@ -1880,13 +1901,26 @@
 							<table class="kw-befehl-table">
 								<thead><tr><th>km</th><th>Aktion</th><th>Leitstelle</th><th>Anrufgruppe</th></tr></thead>
 								<tbody>
-									{#each route.kanalwechsel as kw}
-										<tr>
+									{#each route.kanalwechsel as kw, i}
+										<tr
+											class:kw-clickable={kwHasZusatz(kw)}
+											onclick={() => { if (kwHasZusatz(kw)) kwBefehlExpanded = kwBefehlExpanded === i ? null : i; }}
+										>
 											<td>{kw.km.toFixed(1)}</td>
 											<td><span class="kw-typ" class:abmelden={kw.typ === 'abmelden'} class:convoy={kw.typ === 'convoy_anmeldung'}>{kwAktion(kw.typ)}</span></td>
-											<td>📡 {kw.leitstelle_name}</td>
+											<td>📡 {kw.leitstelle_name}{#if kwHasZusatz(kw)}<span class="kw-chevron" class:open={kwBefehlExpanded === i}>▸</span>{/if}</td>
 											<td><code>{kw.anrufgruppe}</code></td>
 										</tr>
+										{#if kwBefehlExpanded === i && kwHasZusatz(kw)}
+											<tr class="kw-detail">
+												<td colspan="4">
+													<span class="kw-detail-label">Zusatzkanäle:</span>
+													{#each kw.zusatz_kanaele ?? [] as zk}
+														<span class="kw-zk">{zk.name || 'Kanal'} <code>{zk.kanal}</code></span>
+													{/each}
+												</td>
+											</tr>
+										{/if}
 									{/each}
 								</tbody>
 							</table>
@@ -2394,6 +2428,14 @@
 	.kw-typ { display: inline-block; padding: .05rem .35rem; border-radius: 3px; font-size: var(--text-xs); background: rgba(39,174,96,.35); color: #a9dfbf; }
 	.kw-typ.abmelden { background: rgba(230,126,34,.35); color: #f0c9a6; }
 	.kw-typ.convoy { background: rgba(52,152,219,.35); color: #aed6f1; }
+	tr.kw-clickable { cursor: pointer; }
+	tr.kw-clickable:hover td { background: var(--surface-2); }
+	.kw-chevron { display: inline-block; margin-left: .35rem; color: var(--text-muted); font-size: .75rem; transition: transform .15s ease; }
+	.kw-chevron.open { transform: rotate(90deg); }
+	tr.kw-detail td { font-size: var(--text-xs); color: var(--text-2); padding-top: .2rem; padding-bottom: .5rem; }
+	.kw-detail-label { color: var(--text-muted); margin-right: .35rem; }
+	.kw-zk { display: inline-block; margin-right: .6rem; white-space: nowrap; }
+	.kw-zk code { background: var(--surface-2); color: var(--text-1); padding: .1rem .3rem; border-radius: 3px; }
 	/* Kanalwechsel-Tabelle im (immer hellen) Marschbefehl-Modal — keine Theme-Variablen. */
 	.kw-befehl-block { display: flex; flex-direction: column; gap: .3rem; }
 	.kw-befehl-caption { font-size: .8rem; font-weight: 600; color: #333; }
@@ -2404,6 +2446,11 @@
 	.kw-befehl-table .kw-typ { font-size: .72rem; background: #d9efe3; color: #1e7e4f; }
 	.kw-befehl-table .kw-typ.abmelden { background: #fbe6d4; color: #b35c12; }
 	.kw-befehl-table .kw-typ.convoy { background: #d8e9f7; color: #1c5d8f; }
+	.kw-befehl-table tr.kw-clickable:hover td { background: #f4f6f9; }
+	.kw-befehl-table .kw-chevron { color: #888; }
+	.kw-befehl-table tr.kw-detail td { color: #444; }
+	.kw-befehl-table .kw-detail-label { color: #777; }
+	.kw-befehl-table .kw-zk code { background: #eef0f4; color: #222; }
 
 	.sidebar-footer { flex-shrink: 0; border-top: 1px solid var(--border); padding: .75rem 1rem; display: flex; align-items: center; justify-content: space-between; }
 	.theme-toggle { display: flex; align-items: center; gap: .4rem; background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--text-2); font-size: var(--text-sm); padding: .25rem .5rem; cursor: pointer; }

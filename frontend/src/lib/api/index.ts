@@ -92,6 +92,8 @@ export interface KanalwechselEntry {
 	 * der alten (fehlt bei alten Routen).
 	 */
 	typ?: 'anmelden' | 'abmelden' | 'convoy_anmeldung';
+	/** Weitere hinterlegte Funkgruppen der Leitstelle. */
+	zusatz_kanaele?: { name?: string; kanal?: string }[];
 }
 
 export interface RouteResult {
@@ -361,6 +363,8 @@ export interface TrackPayload {
 	name: string; organization: string | null; start_time: string | null;
 	scope: ShareLinkScope;
 	waypoints: TrackWaypointPublic[]; geojson: Geometry | null;
+	distance_m: number | null;
+	kanalwechsel?: KanalwechselEntry[];
 	vehicles: TrackVehicle[]; positions: TrackPosition[];
 }
 export interface TrackGate { requires_password: true; convoy_name: string; }
