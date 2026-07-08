@@ -30,8 +30,6 @@ from app.config import settings
 from app.services.autobahn import _feature_points, _near_route
 from app.services.overpass import _haversine_m, _sample_route
 
-_XSI_TYPE = "{http://www.w3.org/2001/XMLSchema-instance}type"
-
 _HEADERS = {"Accept": "application/json", "User-Agent": "ConvoyPlan/1.0"}
 
 # Offene Feeds ändern sich nicht sekündlich — 5 min Cache.
