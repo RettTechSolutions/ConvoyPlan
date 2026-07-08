@@ -10,7 +10,9 @@ es pro Format einen kleinen Adapter:
 - ``datex2``     — DATEX II v2 (europäischer XML-Standard), z. B. Länder-Feeds
                    aus der mobilithek für bundesweite Abdeckung abseits der
                    Autobahn. Per mTLS geschützte Feeds (mobilithek-Broker) nutzen
-                   ``settings.opendata_traffic_client_cert`` (PEM).
+                   ``settings.opendata_traffic_client_cert`` (eigenes Client-
+                   Zertifikat) und ``settings.opendata_traffic_ca_cert`` (private
+                   Broker-CA zum Verifizieren des Servers).
 
 Weitere Regionen lassen sich über ``settings.opendata_traffic_feeds`` ergänzen:
 je Eintrag ``format|url`` (oder nur ``url`` → Standard ``mobidata_bw``). Jeder
@@ -319,7 +321,14 @@ async def _fetch_all_features() -> list[dict]:
         cert = settings.opendata_traffic_client_cert or None
         if cert and not os.path.exists(cert):
             cert = None
-        async with httpx.AsyncClient(timeout=40.0, headers=_HEADERS, cert=cert) as client:
+        # Vertrauenskette des Brokers (mobilithek nutzt eine private M2M-CA);
+        # ohne sie schlägt die TLS-Verifikation fehl. Fällt auf den öffentlichen
+        # Trust-Store zurück, wenn keine CA-Datei hinterlegt/vorhanden ist.
+        ca = settings.opendata_traffic_ca_cert or None
+        verify = ca if ca and os.path.exists(ca) else True
+        async with httpx.AsyncClient(
+            timeout=40.0, headers=_HEADERS, cert=cert, verify=verify
+        ) as client:
             results = await asyncio.gather(*[_fetch_feed(client, f, u) for f, u in datex])
         for res in results:
             features.extend(res)
