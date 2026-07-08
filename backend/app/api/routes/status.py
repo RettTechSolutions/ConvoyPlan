@@ -51,6 +51,7 @@ async def service_status(db: AsyncSession = Depends(get_db)):
     overpass_check, autobahn_check = await asyncio.gather(
         overpass_svc.probe(), autobahn_svc.probe()
     )
+    flow_cfg = await traffic_flow_svc.resolve_config(db)
 
     return {
         "checked_at": datetime.now(timezone.utc).isoformat(),
@@ -61,5 +62,5 @@ async def service_status(db: AsyncSession = Depends(get_db)):
         "weather_api": weather_svc.last_check(),
         "overpass_api": overpass_check,
         "autobahn_api": autobahn_check,
-        "traffic_flow": {"provider": traffic_flow_svc.configured_provider()},
+        "traffic_flow": {"provider": flow_cfg.provider},
     }

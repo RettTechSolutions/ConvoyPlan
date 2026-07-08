@@ -518,6 +518,9 @@ export const adminApi = {
     triggerUpdate: () => api.post<{ status: string }>('/api/admin/trigger-update', {}),
     getGithubTokenStatus: () => api.get<{ set: boolean; source: string | null }>('/api/admin/settings/github-token-set'),
     setGithubToken: (token: string) => api.put<void>('/api/admin/settings/github-token', { token }),
+    getTrafficKeys: () => api.get<TrafficKeysResponse>('/api/admin/settings/traffic-keys'),
+    setTrafficKeys: (data: { here_key?: string; tomtom_key?: string; provider?: string }) =>
+        api.put<void>('/api/admin/settings/traffic-keys', data),
     getUpdateChannel: () => api.get<UpdateChannel>('/api/admin/settings/update-channel'),
     setUpdateChannel: (channel: 'stable' | 'beta') =>
         api.put<void>('/api/admin/settings/update-channel', { channel }),
@@ -558,6 +561,17 @@ export interface UpdateChannel {
     channel: 'stable' | 'beta';
     source: 'db' | 'env';
     env_channel: 'stable' | 'beta';
+}
+
+export interface TrafficKeyState {
+    set: boolean;
+    source: 'db' | 'env' | null;
+}
+export interface TrafficKeysResponse {
+    here: TrafficKeyState;
+    tomtom: TrafficKeyState;
+    provider: string | null;
+    forced: string;
 }
 
 export interface UpdateMode {

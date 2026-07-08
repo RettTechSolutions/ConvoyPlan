@@ -29,9 +29,13 @@ class RouteFlowRequest(BaseModel):
 
 
 @router.get("/flow/status")
-async def flow_status(_: User = Depends(get_current_user)):
+async def flow_status(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
     """Welcher Live-Verkehrslage-Anbieter konfiguriert ist (oder keiner)."""
-    return {"provider": flow_svc.configured_provider()}
+    cfg = await flow_svc.resolve_config(db)
+    return {"provider": cfg.provider}
 
 
 @router.get("/flow")
@@ -39,11 +43,13 @@ async def get_flow(
     lat: float = Query(..., ge=-90, le=90),
     lon: float = Query(..., ge=-180, le=180),
     radius_m: int = Query(3000, ge=100, le=20000),
+    db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
     """Live-Verkehrslage im Umkreis (leer, wenn kein Anbieter-Key gesetzt)."""
     try:
-        return await flow_svc.flow_around(lat, lon, radius_m)
+        cfg = await flow_svc.resolve_config(db)
+        return await flow_svc.flow_around(lat, lon, cfg, radius_m)
     except Exception as exc:
         logger.error("Traffic flow fetch failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail="Verkehrslage nicht verfügbar")
@@ -58,7 +64,8 @@ async def get_flow_for_route(
     """Live-Verkehrslage im Korridor entlang der Route (leer ohne Anbieter-Key)."""
     coords = [(c[0], c[1]) for c in body.coordinates]
     try:
-        return await flow_svc.flow_along_route(coords, body.corridor_m)
+        cfg = await flow_svc.resolve_config(db)
+        return await flow_svc.flow_along_route(coords, cfg, body.corridor_m)
     except Exception as exc:
         logger.error("Traffic flow route fetch failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail="Verkehrslage nicht verfügbar")
