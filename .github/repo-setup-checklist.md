@@ -70,8 +70,18 @@ Empfohlen, gleich mit anhaken:
 ## 4. Merge-Queue-Token hinterlegen (`MERGE_QUEUE_TOKEN`) — Pflicht für Auto-Merge
 
 > **Ohne diesen Schritt wandern Dependabot-PRs NICHT in die Merge Queue** — sie
-> bleiben mit aktiviertem Auto-Merge und grünen Checks offen liegen. Genau das
-> war die Ursache, warum „der Dependabot-Auto-Merge nicht funktioniert".
+> bleiben mit aktiviertem Auto-Merge und grünen Checks offen liegen. Das war
+> (zusammen mit der Merge-Methode, siehe Hinweis unten) die Ursache, warum
+> „der Dependabot-Auto-Merge nicht funktioniert".
+>
+> **Zweite Ursache (im Workflow bereits behoben):** `gh pr merge --auto --squash`
+> verwirft unter einer Merge Queue das `--squash` und aktiviert Auto-Merge mit
+> der Repo-Default-Methode (meist MERGE). Da die Queue nur **SQUASH** erlaubt,
+> wird ein MERGE-Auto-Merge nicht eingereiht. `auto-merge.yml` aktiviert
+> Auto-Merge deshalb jetzt per GraphQL fest mit `mergeMethod: SQUASH`. Damit das
+> auch bei manuellen Merges konsistent ist, sollte unter **Settings → General →
+> Pull Requests** die **Standard-Merge-Methode auf „Squash" stehen** und
+> „Merge commits" deaktiviert sein.
 
 GitHub lässt den **eingebauten `GITHUB_TOKEN` einen PR nicht in eine Merge Queue
 einreihen** (offizielle Einschränkung: *„the built-in GITHUB_TOKEN cannot add
