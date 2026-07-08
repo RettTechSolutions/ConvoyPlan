@@ -10,6 +10,7 @@ import asyncio
 import logging
 
 from app.services import autobahn as autobahn_svc
+from app.services import opendata_traffic as opendata_svc
 from app.services import overpass as overpass_svc
 
 logger = logging.getLogger(__name__)
@@ -19,59 +20,60 @@ class AllSourcesFailedError(RuntimeError):
     """Keine der Verkehrsdatenquellen war erreichbar."""
 
 
-def _merge(overpass_fc: dict | None, autobahn_features: list[dict] | None) -> dict:
-    features: list[dict] = []
-    if overpass_fc:
-        for f in overpass_fc.get("features", []):
-            f.setdefault("properties", {}).setdefault("source", "overpass")
-            features.append(f)
-    if autobahn_features:
-        features.extend(autobahn_features)
-    return {"type": "FeatureCollection", "features": features}
+def _overpass_features(overpass_fc: dict | None) -> list[dict]:
+    features = []
+    for f in (overpass_fc or {}).get("features", []):
+        f.setdefault("properties", {}).setdefault("source", "overpass")
+        features.append(f)
+    return features
 
 
 async def get_closures(lat: float, lon: float, radius_m: int = 15000) -> dict:
     """Vereinte Sperrungen im Radius um (lat, lon) aus allen Quellen."""
-    overpass_fc, autobahn_features = await _gather(
-        overpass_svc.get_closures(lat, lon, radius_m),
-        autobahn_svc.features_around(lat, lon, radius_m),
+    overpass_fc, extra_features = await _gather(
+        ("overpass", overpass_svc.get_closures(lat, lon, radius_m)),
+        ("autobahn", autobahn_svc.features_around(lat, lon, radius_m)),
+        ("opendata", opendata_svc.features_around(lat, lon, radius_m)),
     )
-    return _merge(overpass_fc, autobahn_features)
+    return {"type": "FeatureCollection", "features": _overpass_features(overpass_fc) + extra_features}
 
 
 async def get_closures_along_route(
     coordinates: list[tuple[float, float]], corridor_m: int = 2000
 ) -> dict:
     """Vereinte Sperrungen im Korridor entlang der Route ([(lon, lat), ...])."""
-    overpass_fc, autobahn_features = await _gather(
-        overpass_svc.get_closures_along_route(coordinates, corridor_m),
-        autobahn_svc.features_along_route(coordinates, corridor_m),
+    overpass_fc, extra_features = await _gather(
+        ("overpass", overpass_svc.get_closures_along_route(coordinates, corridor_m)),
+        ("autobahn", autobahn_svc.features_along_route(coordinates, corridor_m)),
+        ("opendata", opendata_svc.features_along_route(coordinates, corridor_m)),
     )
-    return _merge(overpass_fc, autobahn_features)
+    return {"type": "FeatureCollection", "features": _overpass_features(overpass_fc) + extra_features}
 
 
-async def _gather(overpass_coro, autobahn_coro) -> tuple[dict | None, list[dict] | None]:
-    """Beide Quellen nebenläufig abfragen; Einzelausfälle tolerieren.
+async def _gather(overpass_src, *feature_srcs) -> tuple[dict | None, list[dict]]:
+    """Alle Quellen nebenläufig abfragen; Einzelausfälle tolerieren.
 
-    Erst wenn beide Quellen scheitern, wird :class:`AllSourcesFailedError`
-    ausgelöst.
+    ``overpass_src`` liefert eine FeatureCollection, die übrigen liefern jeweils
+    eine Feature-Liste. Erst wenn **alle** Quellen scheitern, wird
+    :class:`AllSourcesFailedError` ausgelöst.
     """
-    overpass_res, autobahn_res = await asyncio.gather(
-        overpass_coro, autobahn_coro, return_exceptions=True
-    )
+    names = [overpass_src[0]] + [s[0] for s in feature_srcs]
+    coros = [overpass_src[1]] + [s[1] for s in feature_srcs]
+    results = await asyncio.gather(*coros, return_exceptions=True)
 
+    ok_any = False
     overpass_fc: dict | None = None
-    if isinstance(overpass_res, Exception):
-        logger.warning("Overpass-Verkehrsdaten nicht verfügbar: %s", overpass_res)
-    else:
-        overpass_fc = overpass_res
+    extra_features: list[dict] = []
+    for name, res in zip(names, results):
+        if isinstance(res, Exception):
+            logger.warning("Verkehrsdatenquelle '%s' nicht verfügbar: %s", name, res)
+            continue
+        ok_any = True
+        if name == "overpass":
+            overpass_fc = res
+        elif res:
+            extra_features.extend(res)
 
-    autobahn_features: list[dict] | None = None
-    if isinstance(autobahn_res, Exception):
-        logger.warning("Autobahn-Verkehrsdaten nicht verfügbar: %s", autobahn_res)
-    else:
-        autobahn_features = autobahn_res
-
-    if overpass_fc is None and autobahn_features is None:
+    if not ok_any:
         raise AllSourcesFailedError("Keine Verkehrsdatenquelle erreichbar")
-    return overpass_fc, autobahn_features
+    return overpass_fc, extra_features
