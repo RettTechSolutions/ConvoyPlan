@@ -14,6 +14,8 @@
 		routeGeojson?: Geometry | null;
 		livePositions?: Map<string, VehiclePosition>;
 		closuresGeojson?: FeatureCollection | null;
+		/** Live-Verkehrslage (HERE/TomTom): LineStrings mit jamFactor 0–10. */
+		flowGeojson?: FeatureCollection | null;
 		onMapClick?: (lat: number, lon: number) => void;
 		onMapMove?: (lat: number, lon: number) => void;
 		/** When true, every map click fires onMapClick regardless of mapMode */
@@ -39,6 +41,7 @@
 		routeGeojson = null,
 		livePositions = new Map(),
 		closuresGeojson = null,
+		flowGeojson = null,
 		onMapClick,
 		onMapMove,
 		clickEnabled = false,
@@ -138,6 +141,25 @@
 		});
 
 		map.on('load', () => {
+			// Live-Verkehrslage (Flow) — zuunterst, damit Route und Sperrungen
+			// darüber sichtbar bleiben. Ampelfarbe nach jamFactor (0 = frei,
+			// 10 = Stillstand); nur befüllt, wenn ein Anbieter-Key gesetzt ist.
+			map.addSource('flow', { type: 'geojson', data: empty() });
+			map.addLayer({
+				id: 'flow-line',
+				type: 'line',
+				source: 'flow',
+				layout: { 'line-join': 'round', 'line-cap': 'round' },
+				paint: {
+					'line-color': [
+						'interpolate', ['linear'], ['to-number', ['get', 'jamFactor'], 0],
+						0, '#2ecc71', 3, '#f1c40f', 6, '#e67e22', 10, '#c0392b',
+					],
+					'line-width': 6,
+					'line-opacity': 0.7,
+				},
+			});
+
 			// Route layer
 			map.addSource('route', { type: 'geojson', data: empty() });
 			map.addLayer({
@@ -445,6 +467,14 @@
 		const src = map.getSource('closures') as maplibregl.GeoJSONSource | undefined;
 		if (!src) return;
 		src.setData((closuresGeojson as FeatureCollection) ?? empty());
+	});
+
+	// Live-Verkehrslage layer
+	$effect(() => {
+		if (!ready) return;
+		const src = map.getSource('flow') as maplibregl.GeoJSONSource | undefined;
+		if (!src) return;
+		src.setData((flowGeojson as FeatureCollection) ?? empty());
 	});
 </script>
 
