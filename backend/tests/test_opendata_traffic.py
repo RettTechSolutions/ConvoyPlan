@@ -250,6 +250,37 @@ def test_parse_datex2_closure_from_management():
     assert r2["properties"]["title"] == "Sperrung"      # ohne Kommentar/Straße
 
 
+async def test_datex2_client_uses_cert_and_ca(monkeypatch, tmp_path):
+    """Der DATEX-II-Client bekommt Client-Zertifikat und CA-Kette (verify)."""
+    cert = tmp_path / "client.pem"
+    cert.write_text("x")
+    ca = tmp_path / "ca.pem"
+    ca.write_text("y")
+    monkeypatch.setattr(settings, "opendata_traffic_feeds", "datex2|https://land/x.xml")
+    monkeypatch.setattr(settings, "opendata_traffic_client_cert", str(cert))
+    monkeypatch.setattr(settings, "opendata_traffic_ca_cert", str(ca))
+
+    seen = {}
+
+    class _Client:
+        def __init__(self, *a, **k):
+            seen.update(k)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *e):
+            return False
+
+        async def get(self, url):
+            return httpx.Response(200, content=_DATEX2_XML, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(od.httpx, "AsyncClient", _Client)
+    await od._get_features()
+    assert seen.get("cert") == str(cert)
+    assert seen.get("verify") == str(ca)
+
+
 async def test_datex2_feed_filters_expired(monkeypatch):
     monkeypatch.setattr(settings, "opendata_traffic_feeds", "datex2|https://land/x.xml")
 
