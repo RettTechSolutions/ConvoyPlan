@@ -36,6 +36,7 @@ services:
       UPDATE_CHANNEL: ${UPDATE_CHANNEL:-stable}
       UPDATE_MODE: ${UPDATE_MODE:-auto}
       UPDATE_NOTIFY_INTERVAL: ${UPDATE_NOTIFY_INTERVAL:-1800}
+      UPDATE_NOTIFY_ON_AUTO: ${UPDATE_NOTIFY_ON_AUTO:-false}
       APP_BASE_URL: https://${DOMAIN:-localhost}
     volumes:
       - cert_uploads:/certs

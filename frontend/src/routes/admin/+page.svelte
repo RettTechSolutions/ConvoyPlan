@@ -543,6 +543,20 @@
         }
     }
 
+    async function setNotifyOnAuto(enabled: boolean) {
+        if (modeSaving || !updateMode) return;
+        modeSaving = true;
+        updateError = '';
+        try {
+            await adminApi.setUpdateMode(updateMode.mode, enabled);
+            await loadUpdateMode();
+        } catch (e: unknown) {
+            updateError = e instanceof Error ? e.message : 'Einstellung konnte nicht gespeichert werden';
+        } finally {
+            modeSaving = false;
+        }
+    }
+
     async function loadUpdateStatus() {
         updateLoading = true;
         updateError = '';
@@ -1995,6 +2009,17 @@
                         <strong>Benachrichtigen:</strong> Es wird nichts automatisch installiert. Alle Superadmins erhalten eine E-Mail, sobald im gewählten Kanal ein Update verfügbar ist (SMTP muss konfiguriert sein) — installiert wird über „Jetzt updaten".
                     {/if}
                 </p>
+                {#if updateMode.mode === 'auto'}
+                    <label class="hint" style="margin:-.5rem 0 1rem; display:flex; align-items:center; gap:.5rem; cursor:pointer;">
+                        <input
+                            type="checkbox"
+                            checked={updateMode.notify_on_auto}
+                            disabled={modeSaving}
+                            onchange={(e) => setNotifyOnAuto(e.currentTarget.checked)}
+                        />
+                        Nach automatischen Updates alle Superadmins per E-Mail informieren (SMTP muss konfiguriert sein)
+                    </label>
+                {/if}
             {/if}
 
             {#if updateLoading}
