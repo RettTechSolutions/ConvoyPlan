@@ -84,6 +84,21 @@ def write_mode_file(mode: str) -> None:
     _write_shared_file(MODE_FILE, mode)
 
 
+async def resolve_notify_on_auto(db: AsyncSession) -> tuple[bool, str]:
+    """Optionale Erfolgs-Benachrichtigung im Modus "auto": (enabled, source).
+
+    True → nach einer automatisch installierten Aktualisierung erhalten die
+    Superadmins eine E-Mail. Das DB-Setting gewinnt über den Env-Fallback.
+    """
+    result = await db.execute(
+        select(SystemSetting).where(SystemSetting.key == "update.notify_on_auto")
+    )
+    setting = result.scalar_one_or_none()
+    if setting and setting.value in ("true", "false"):
+        return setting.value == "true", "db"
+    return settings.update_notify_on_auto, "env"
+
+
 def _write_shared_file(path: str, value: str) -> None:
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)

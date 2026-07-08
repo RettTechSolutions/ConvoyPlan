@@ -34,6 +34,7 @@ from app.services.update_check import (
     fetch_update_state,
     resolve_channel as _resolve_channel,
     resolve_mode as _resolve_mode,
+    resolve_notify_on_auto as _resolve_notify_on_auto,
     write_channel_file as _write_channel_file,
     write_mode_file as _write_mode_file,
 )
@@ -305,10 +306,15 @@ class UpdateModeResponse(BaseModel):
     mode: str                # effective mode ("auto" | "notify")
     source: str              # "db" | "env" — where the effective value comes from
     env_mode: str            # the UPDATE_MODE env fallback
+    notify_on_auto: bool     # email superadmins after automatic installs (mode "auto")
 
 
 class UpdateModeUpdate(BaseModel):
     mode: str = Field(..., description="Update mode: 'auto' (install automatically) or 'notify' (email superadmins only)")
+    notify_on_auto: bool | None = Field(
+        None,
+        description="Optional: also email superadmins after an automatic install (mode 'auto'). Omit to keep the current value.",
+    )
 
 
 @router.get("/settings/update-mode", response_model=UpdateModeResponse)
@@ -317,10 +323,13 @@ async def get_update_mode(
     _: User = Depends(require_superadmin),
 ):
     mode, source = await _resolve_mode(db)
+    notify_on_auto, _src = await _resolve_notify_on_auto(db)
     # Keep the shared file in sync on read too, so the updater picks up the
     # current value even if it was only ever set via the env var.
     _write_mode_file(mode)
-    return UpdateModeResponse(mode=mode, source=source, env_mode=_env_mode())
+    return UpdateModeResponse(
+        mode=mode, source=source, env_mode=_env_mode(), notify_on_auto=notify_on_auto
+    )
 
 
 @router.put("/settings/update-mode", status_code=204)
@@ -333,7 +342,8 @@ async def set_update_mode(
     """Store the update mode in system_settings and mirror it to the shared
     volume: 'auto' lets the updater install channel updates by itself,
     'notify' disables automatic installs — superadmins get an email instead
-    and update manually via the admin panel."""
+    and update manually via the admin panel. The optional notify_on_auto flag
+    additionally emails the superadmins AFTER an automatic install."""
     if data.mode not in VALID_MODES:
         raise HTTPException(422, "mode must be 'auto' or 'notify'")
     result = await db.execute(select(SystemSetting).where(SystemSetting.key == "update.mode"))
@@ -342,11 +352,26 @@ async def set_update_mode(
         setting.value = data.mode
     else:
         db.add(SystemSetting(key="update.mode", value=data.mode))
+
+    if data.notify_on_auto is not None:
+        value = "true" if data.notify_on_auto else "false"
+        result = await db.execute(
+            select(SystemSetting).where(SystemSetting.key == "update.notify_on_auto")
+        )
+        flag = result.scalar_one_or_none()
+        if flag:
+            flag.value = value
+        else:
+            db.add(SystemSetting(key="update.notify_on_auto", value=value))
+
     await db.commit()
     _write_mode_file(data.mode)
+    detail: dict = {"mode": data.mode}
+    if data.notify_on_auto is not None:
+        detail["notify_on_auto"] = data.notify_on_auto
     await audit.record(
         db, "admin.settings.update_mode_changed", request=request, actor_id=current.id,
-        detail={"mode": data.mode},
+        detail=detail,
     )
 
 
