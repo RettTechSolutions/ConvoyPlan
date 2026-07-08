@@ -89,17 +89,23 @@ class Settings(BaseSettings):
     # auth or on an internal network).
     enable_docs: bool = False
 
-    # Offene, lizenzfreie Verkehrsdaten-Feeds (Baustellen/Sperrungen). Diese
-    # Feeds sind self-service (kein API-Key, keine Registrierung). Jeder Eintrag
-    # ist "format|url" (oder nur "url" → Standardformat "mobidata_bw"); mehrere
-    # Einträge kommasepariert. Unterstützte Formate: "mobidata_bw" (CIFS-Stil,
-    # Baden-Württemberg) und "berlin_viz" (Berliner VIZ). Weitere Regionen lassen
-    # sich hier ergänzen. Leeren String setzen, um die Quelle zu deaktivieren.
+    # Offene, lizenzfreie Verkehrsdaten-Feeds (Baustellen/Sperrungen). Jeder
+    # Eintrag ist "format|url" (oder nur "url" → Standardformat "mobidata_bw");
+    # mehrere Einträge kommasepariert. Unterstützte Formate:
+    #   - "mobidata_bw"  MobiData-BW-/CIFS-GeoJSON (Baden-Württemberg)
+    #   - "berlin_viz"   Berliner Verkehrsinformationszentrale (GeoJSON)
+    #   - "datex2"       DATEX II v2 (europäischer Standard) — z. B. Länder-Feeds
+    #                    aus der mobilithek für bundesweite Abdeckung.
+    # Weitere Regionen lassen sich hier ergänzen. Leeren String → deaktiviert.
     opendata_traffic_enabled: bool = True
     opendata_traffic_feeds: str = (
         "mobidata_bw|https://api.mobidata-bw.de/datasets/traffic/roadworks/roadworks_geojson.json,"
         "berlin_viz|https://api.viz.berlin.de/daten/baustellen_sperrungen_viz.json"
     )
+    # Client-Zertifikat (PEM mit Zertifikat + privatem Schlüssel) für DATEX-II-
+    # Feeds, die per mTLS geschützt sind — insbesondere der mobilithek-Broker.
+    # Pfad zur PEM-Datei; nur nötig für zugangsbeschränkte "datex2"-Feeds.
+    opendata_traffic_client_cert: str = ""
 
     # Live-Verkehrslage (Fließgeschwindigkeit/Stau) von kommerziellen Anbietern.
     # Vollständig vorbereitet, aber inaktiv, solange kein Key gesetzt ist —
