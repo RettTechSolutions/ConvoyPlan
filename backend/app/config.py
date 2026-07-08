@@ -89,14 +89,16 @@ class Settings(BaseSettings):
     # auth or on an internal network).
     enable_docs: bool = False
 
-    # Zusätzliche offene Verkehrsdaten-Feeds (Baustellen/Sperrungen) im
-    # MobiData-BW-/CIFS-GeoJSON-Format. Kommaseparierte Liste von URLs, damit
-    # weitere Regionen ohne Code-Änderung ergänzt werden können. Diese Feeds
-    # sind lizenzfrei/self-service (kein API-Key). Standard: Baden-Württemberg.
-    # Leeren String setzen, um die Quelle zu deaktivieren.
+    # Offene, lizenzfreie Verkehrsdaten-Feeds (Baustellen/Sperrungen). Diese
+    # Feeds sind self-service (kein API-Key, keine Registrierung). Jeder Eintrag
+    # ist "format|url" (oder nur "url" → Standardformat "mobidata_bw"); mehrere
+    # Einträge kommasepariert. Unterstützte Formate: "mobidata_bw" (CIFS-Stil,
+    # Baden-Württemberg) und "berlin_viz" (Berliner VIZ). Weitere Regionen lassen
+    # sich hier ergänzen. Leeren String setzen, um die Quelle zu deaktivieren.
     opendata_traffic_enabled: bool = True
     opendata_traffic_feeds: str = (
-        "https://api.mobidata-bw.de/datasets/traffic/roadworks/roadworks_geojson.json"
+        "mobidata_bw|https://api.mobidata-bw.de/datasets/traffic/roadworks/roadworks_geojson.json,"
+        "berlin_viz|https://api.viz.berlin.de/daten/baustellen_sperrungen_viz.json"
     )
 
     # Live-Verkehrslage (Fließgeschwindigkeit/Stau) von kommerziellen Anbietern.
