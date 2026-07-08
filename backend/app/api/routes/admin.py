@@ -39,6 +39,7 @@ from app.services.update_check import (
     write_mode_file as _write_mode_file,
 )
 from app.services import demo as demo_svc
+from app.services import traffic_flow as traffic_flow_svc
 from app.services.email import save_smtp_settings, send_password_email, test_smtp_connection
 from app.services.password import assert_password_not_breached, generate_password, validate_password
 
@@ -246,6 +247,92 @@ async def set_github_token(
     else:
         db.add(SystemSetting(key="github.token", value=data.token))
     await db.commit()
+
+
+# ── Live-Verkehrslage (HERE / TomTom) ───────────────────────────────────────
+
+
+class TrafficKeyState(BaseModel):
+    set: bool
+    source: str | None  # "db" | "env" | None
+
+
+class TrafficKeysResponse(BaseModel):
+    here: TrafficKeyState
+    tomtom: TrafficKeyState
+    provider: str | None      # aktuell wirksamer Anbieter (oder None)
+    forced: str               # erzwungener Anbieter ("", "here", "tomtom")
+
+
+class TrafficKeysUpdate(BaseModel):
+    # Optionale Felder: nur gesetzte werden aktualisiert. Leerer String löscht.
+    here_key: str | None = None
+    tomtom_key: str | None = None
+    provider: str | None = Field(None, description="'', 'here' oder 'tomtom'")
+
+
+async def _get_setting(db: AsyncSession, key: str) -> str | None:
+    row = (await db.execute(select(SystemSetting).where(SystemSetting.key == key))).scalar_one_or_none()
+    return row.value if row is not None else None
+
+
+async def _set_setting(db: AsyncSession, key: str, value: str) -> None:
+    row = (await db.execute(select(SystemSetting).where(SystemSetting.key == key))).scalar_one_or_none()
+    if row:
+        row.value = value
+    else:
+        db.add(SystemSetting(key=key, value=value))
+
+
+def _key_state(db_value: str | None, env_value: str) -> TrafficKeyState:
+    if db_value:
+        return TrafficKeyState(set=True, source="db")
+    if env_value:
+        return TrafficKeyState(set=True, source="env")
+    return TrafficKeyState(set=False, source=None)
+
+
+@router.get("/settings/traffic-keys", response_model=TrafficKeysResponse)
+async def get_traffic_keys(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    """Konfigurationsstatus der Verkehrslage-Keys (ohne die Werte preiszugeben)."""
+    cfg = await traffic_flow_svc.resolve_config(db)
+    here_db = await _get_setting(db, traffic_flow_svc.KEY_HERE)
+    tomtom_db = await _get_setting(db, traffic_flow_svc.KEY_TOMTOM)
+    return TrafficKeysResponse(
+        here=_key_state(here_db, settings.here_traffic_api_key),
+        tomtom=_key_state(tomtom_db, settings.tomtom_traffic_api_key),
+        provider=cfg.provider,
+        forced=cfg.forced or "",
+    )
+
+
+@router.put("/settings/traffic-keys", status_code=204)
+async def set_traffic_keys(
+    data: TrafficKeysUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    """HERE-/TomTom-Keys und Anbieterwahl in system_settings ablegen.
+
+    Nur übergebene Felder werden geändert; ein leerer String löscht den Wert
+    (DB-Eintrag hat Vorrang vor der ENV-Konfiguration).
+    """
+    if data.provider is not None and data.provider not in ("", "here", "tomtom"):
+        raise HTTPException(status_code=422, detail="provider muss '', 'here' oder 'tomtom' sein")
+    if data.here_key is not None:
+        await _set_setting(db, traffic_flow_svc.KEY_HERE, data.here_key.strip())
+    if data.tomtom_key is not None:
+        await _set_setting(db, traffic_flow_svc.KEY_TOMTOM, data.tomtom_key.strip())
+    if data.provider is not None:
+        await _set_setting(db, traffic_flow_svc.KEY_PROVIDER, data.provider.strip())
+    await db.commit()
+    await audit.record(
+        db, "admin.settings.traffic_keys_changed", request=request, actor_id=current.id,
+    )
 
 
 # ── Update-Channel (stable / beta) ──────────────────────────────────────────

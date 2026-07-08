@@ -43,7 +43,7 @@
         await loadUsers();
         await loadLeitstellen();
         await loadBranding();
-        await Promise.all([loadGithubTokenStatus(), loadUpdateStatus(), loadUpdateChannel(), loadUpdateMode(), loadMfaStatus(), loadSmtpSettings(), loadEmailTemplate(), loadDemoSettings()]);
+        await Promise.all([loadGithubTokenStatus(), loadTrafficKeys(), loadUpdateStatus(), loadUpdateChannel(), loadUpdateMode(), loadMfaStatus(), loadSmtpSettings(), loadEmailTemplate(), loadDemoSettings()]);
     }
 
     async function handleAuthenticated() {
@@ -776,6 +776,58 @@
             setTimeout(() => { githubTokenSuccess = ''; }, 3000);
         } catch { githubTokenError = 'Fehler beim Entfernen'; }
         finally { githubTokenSaving = false; }
+    }
+
+    // ── Live-Verkehrslage (HERE / TomTom) ─────────────────────────────────────
+    let trafficKeys = $state<import('$lib/api').TrafficKeysResponse | null>(null);
+    let hereKeyInput = $state('');
+    let tomtomKeyInput = $state('');
+    let trafficProviderInput = $state('');
+    let trafficSaving = $state(false);
+    let trafficSuccess = $state('');
+    let trafficError = $state('');
+
+    async function loadTrafficKeys() {
+        try {
+            trafficKeys = await adminApi.getTrafficKeys();
+            trafficProviderInput = trafficKeys.forced ?? '';
+        } catch { /* ignore */ }
+    }
+
+    async function saveTrafficKeys() {
+        trafficSaving = true;
+        trafficError = '';
+        trafficSuccess = '';
+        try {
+            const payload: { here_key?: string; tomtom_key?: string; provider?: string } = {
+                provider: trafficProviderInput,
+            };
+            // Leere Eingabefelder lassen den bestehenden Key unverändert.
+            if (hereKeyInput.trim()) payload.here_key = hereKeyInput.trim();
+            if (tomtomKeyInput.trim()) payload.tomtom_key = tomtomKeyInput.trim();
+            await adminApi.setTrafficKeys(payload);
+            hereKeyInput = '';
+            tomtomKeyInput = '';
+            await loadTrafficKeys();
+            trafficSuccess = 'Gespeichert. Verkehrslage ist beim nächsten Routen-Laden aktiv.';
+            setTimeout(() => { trafficSuccess = ''; }, 5000);
+        } catch (e: unknown) {
+            trafficError = e instanceof Error ? e.message : 'Fehler beim Speichern';
+        } finally {
+            trafficSaving = false;
+        }
+    }
+
+    async function clearTrafficKey(which: 'here' | 'tomtom') {
+        if (!confirm(`${which === 'here' ? 'HERE' : 'TomTom'}-Key entfernen?`)) return;
+        trafficSaving = true;
+        try {
+            await adminApi.setTrafficKeys(which === 'here' ? { here_key: '' } : { tomtom_key: '' });
+            await loadTrafficKeys();
+            trafficSuccess = 'Key entfernt.';
+            setTimeout(() => { trafficSuccess = ''; }, 3000);
+        } catch { trafficError = 'Fehler beim Entfernen'; }
+        finally { trafficSaving = false; }
     }
 
     // ── MFA ──────────────────────────────────────────────────────────────────
@@ -2159,6 +2211,100 @@
                     disabled={githubTokenSaving || !githubTokenInput.trim()}
                 >
                     {githubTokenSaving ? '…' : 'Speichern'}
+                </button>
+            </div>
+        </div>
+
+        <!-- ── Live-Verkehrslage (HERE / TomTom) ── -->
+        <div class="section">
+            <div class="section-header">
+                <strong>Live-Verkehrslage (Stau)</strong>
+            </div>
+
+            {#if trafficError}
+                <div class="error-bar">{trafficError} <button onclick={() => trafficError = ''}>✕</button></div>
+            {/if}
+            {#if trafficSuccess}
+                <div class="success-bar">{trafficSuccess}</div>
+            {/if}
+
+            <p class="hint" style="margin-bottom:.6rem">
+                Optional. Ohne Key ist die Verkehrslage aus; sobald ein Key hinterlegt ist,
+                lässt sich die Echtzeit-Verkehrslage (grün→rot) entlang der Route einblenden –
+                bundesweit. Kostenlose Kontingente:
+                <a href="https://platform.here.com/" target="_blank" rel="noopener" style="color:var(--color-primary)">HERE</a>
+                (250k Anfragen/Monat) oder
+                <a href="https://developer.tomtom.com/" target="_blank" rel="noopener" style="color:var(--color-primary)">TomTom</a>.
+                Hinweis: Die Anzeige dieser Daten auf der OSM-Karte kann lizenzpflichtig sein –
+                bitte die Nutzungsbedingungen des Anbieters prüfen.
+            </p>
+
+            {#if trafficKeys}
+                <div class="update-grid" style="margin-bottom:.75rem">
+                    <div class="update-row">
+                        <span class="update-label">HERE-Key</span>
+                        {#if trafficKeys.here.set}
+                            <span class="badge badge-ok">Gesetzt ({trafficKeys.here.source === 'env' ? 'Umgebungsvariable' : 'Datenbank'}) ✓</span>
+                            {#if trafficKeys.here.source === 'db'}
+                                <button class="btn-small danger" onclick={() => clearTrafficKey('here')} disabled={trafficSaving}>Entfernen</button>
+                            {/if}
+                        {:else}
+                            <span class="badge badge-warn">Nicht konfiguriert</span>
+                        {/if}
+                    </div>
+                    <div class="update-row">
+                        <span class="update-label">TomTom-Key</span>
+                        {#if trafficKeys.tomtom.set}
+                            <span class="badge badge-ok">Gesetzt ({trafficKeys.tomtom.source === 'env' ? 'Umgebungsvariable' : 'Datenbank'}) ✓</span>
+                            {#if trafficKeys.tomtom.source === 'db'}
+                                <button class="btn-small danger" onclick={() => clearTrafficKey('tomtom')} disabled={trafficSaving}>Entfernen</button>
+                            {/if}
+                        {:else}
+                            <span class="badge badge-warn">Nicht konfiguriert</span>
+                        {/if}
+                    </div>
+                    <div class="update-row">
+                        <span class="update-label">Aktiver Anbieter</span>
+                        {#if trafficKeys.provider}
+                            <span class="badge badge-ok">{trafficKeys.provider.toUpperCase()}</span>
+                        {:else}
+                            <span class="badge badge-warn">Keiner (kein Key)</span>
+                        {/if}
+                    </div>
+                </div>
+            {/if}
+
+            <label class="hint" style="display:block;margin-bottom:.25rem">HERE-API-Key</label>
+            <div class="license-input-row" style="margin-bottom:.5rem">
+                <input
+                    type="password"
+                    class="license-input"
+                    placeholder={trafficKeys?.here.set ? '••• Key ersetzen •••' : 'HERE apiKey'}
+                    bind:value={hereKeyInput}
+                    autocomplete="off"
+                />
+            </div>
+
+            <label class="hint" style="display:block;margin-bottom:.25rem">TomTom-API-Key</label>
+            <div class="license-input-row" style="margin-bottom:.5rem">
+                <input
+                    type="password"
+                    class="license-input"
+                    placeholder={trafficKeys?.tomtom.set ? '••• Key ersetzen •••' : 'TomTom key'}
+                    bind:value={tomtomKeyInput}
+                    autocomplete="off"
+                />
+            </div>
+
+            <label class="hint" style="display:block;margin-bottom:.25rem">Bevorzugter Anbieter (bei zwei Keys)</label>
+            <div class="license-input-row">
+                <select class="license-input" bind:value={trafficProviderInput}>
+                    <option value="">Automatisch (HERE bevorzugt)</option>
+                    <option value="here">HERE</option>
+                    <option value="tomtom">TomTom</option>
+                </select>
+                <button class="btn-primary" onclick={saveTrafficKeys} disabled={trafficSaving}>
+                    {trafficSaving ? '…' : 'Speichern'}
                 </button>
             </div>
         </div>

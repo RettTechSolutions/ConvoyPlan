@@ -2,40 +2,32 @@
 import httpx
 import pytest
 
-from app.config import settings
 from app.services import traffic_flow as tf
-
-
-@pytest.fixture(autouse=True)
-def _reset_keys(monkeypatch):
-    monkeypatch.setattr(settings, "here_traffic_api_key", "")
-    monkeypatch.setattr(settings, "tomtom_traffic_api_key", "")
-    monkeypatch.setattr(settings, "traffic_flow_provider", "")
-    yield
+from app.services.traffic_flow import FlowConfig
 
 
 # ── Anbieterauswahl / Gating ─────────────────────────────────────────
 
 
 def test_no_provider_when_no_key():
-    assert tf.configured_provider() is None
+    assert FlowConfig().provider is None
 
 
-def test_here_preferred_when_both_set(monkeypatch):
-    monkeypatch.setattr(settings, "here_traffic_api_key", "H")
-    monkeypatch.setattr(settings, "tomtom_traffic_api_key", "T")
-    assert tf.configured_provider() == "here"
+def test_here_preferred_when_both_set():
+    assert FlowConfig(here_key="H", tomtom_key="T").provider == "here"
 
 
-def test_forced_provider(monkeypatch):
-    monkeypatch.setattr(settings, "here_traffic_api_key", "H")
-    monkeypatch.setattr(settings, "tomtom_traffic_api_key", "T")
-    monkeypatch.setattr(settings, "traffic_flow_provider", "tomtom")
-    assert tf.configured_provider() == "tomtom"
+def test_forced_provider():
+    assert FlowConfig(here_key="H", tomtom_key="T", forced="tomtom").provider == "tomtom"
+
+
+def test_forced_provider_ignored_without_key():
+    # tomtom erzwungen, aber nur HERE-Key vorhanden → fällt auf HERE zurück
+    assert FlowConfig(here_key="H", forced="tomtom").provider == "here"
 
 
 async def test_flow_empty_without_key():
-    result = await tf.flow_along_route([(11.0, 48.0), (11.1, 48.1)])
+    result = await tf.flow_along_route([(11.0, 48.0), (11.1, 48.1)], FlowConfig())
     assert result == {"type": "FeatureCollection", "features": []}
 
 
@@ -84,7 +76,6 @@ class _Client:
 
 
 async def test_here_flow_along_route(monkeypatch):
-    monkeypatch.setattr(settings, "here_traffic_api_key", "H")
     _Client.payload = {"results": [{
         "location": {"shape": {"links": [
             {"points": [{"lat": 48.05, "lng": 11.05}, {"lat": 48.06, "lng": 11.06}]}
@@ -94,7 +85,7 @@ async def test_here_flow_along_route(monkeypatch):
     monkeypatch.setattr(tf.httpx, "AsyncClient", _Client)
     # Route führt durch (11.05, 48.05) → Feature liegt im Korridor
     route = [(11.0, 48.0), (11.05, 48.05), (11.1, 48.1)]
-    result = await tf.flow_along_route(route, corridor_m=3000)
+    result = await tf.flow_along_route(route, FlowConfig(here_key="H"), corridor_m=3000)
     assert result["features"], "erwartet Verkehrslage-Features im Korridor"
     assert result["features"][0]["properties"]["source"] == "here"
     assert result["features"][0]["properties"]["jamFactor"] == 8.0
@@ -123,7 +114,6 @@ def test_tomtom_road_closure_max_jam():
 
 
 async def test_tomtom_flow_along_route(monkeypatch):
-    monkeypatch.setattr(settings, "tomtom_traffic_api_key", "T")
     _Client.payload = {"flowSegmentData": {
         "frc": "FRC2", "currentSpeed": 10, "freeFlowSpeed": 50, "roadClosure": False,
         "coordinates": {"coordinate": [
@@ -131,7 +121,39 @@ async def test_tomtom_flow_along_route(monkeypatch):
     }}
     monkeypatch.setattr(tf.httpx, "AsyncClient", _Client)
     route = [(11.0, 48.0), (11.05, 48.05), (11.1, 48.1)]
-    result = await tf.flow_along_route(route, corridor_m=3000)
+    result = await tf.flow_along_route(route, FlowConfig(tomtom_key="T"), corridor_m=3000)
     assert result["features"]
     assert result["features"][0]["properties"]["source"] == "tomtom"
     assert result["features"][0]["properties"]["jamFactor"] == 8.0  # (1-10/50)*10
+
+
+# ── Konfigurationsauflösung (DB überschreibt ENV) ────────────────────
+
+
+async def test_resolve_config_db_overrides_env(monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "here_traffic_api_key", "ENV_HERE")
+
+    store = {tf.KEY_HERE: "DB_HERE"}
+
+    class _FakeRow:
+        def __init__(self, value):
+            self.value = value
+
+    class _Result:
+        def __init__(self, value):
+            self._value = value
+
+        def scalar_one_or_none(self):
+            return _FakeRow(self._value) if self._value is not None else None
+
+    class _DB:
+        async def execute(self, stmt):
+            # Schlüssel aus der WHERE-Klausel herausziehen
+            key = stmt.compile().params.get("key_1")
+            return _Result(store.get(key))
+
+    cfg = await tf.resolve_config(_DB())
+    assert cfg.here_key == "DB_HERE"      # DB gewinnt
+    assert cfg.provider == "here"
