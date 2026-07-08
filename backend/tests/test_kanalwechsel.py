@@ -19,6 +19,18 @@ def test_kanalwechsel_entry_schema():
     assert entry.typ == "abmelden"
 
 
+def test_kanalwechsel_entry_accepts_convoy_anmeldung():
+    from app.schemas.route import KanalwechselEntry
+    entry = KanalwechselEntry(
+        km=0.0, lat=48.0, lon=11.0,
+        leitstelle_id=str(uuid.uuid4()),
+        leitstelle_name="ILS München",
+        anrufgruppe="25",
+        typ="convoy_anmeldung",
+    )
+    assert entry.typ == "convoy_anmeldung"
+
+
 def test_kanalwechsel_entry_typ_defaults_to_anmelden():
     """Vor Einführung des typ-Feldes gespeicherte Routen müssen weiterhin
     validieren — der Default ist "anmelden"."""
@@ -83,8 +95,9 @@ LINE = LineString([(11.0, 48.0), (12.0, 48.0)])
 
 @pytest.mark.asyncio
 async def test_compute_kanalwechsel_simple_transition():
-    """Ein sauberer Gebietswechsel ergibt Anmelden (Start), Abmelden (alte
-    Leitstelle) und Anmelden (neue Leitstelle) — kein Abmelden am Ziel."""
+    """Sauberer Gebietswechsel: Convoy-Anmeldung am Start, dann erst
+    Abmelden bei der alten, danach Anmelden bei der neuen Leitstelle —
+    kein Abmelden am Ziel."""
     from app.api.routes.routing import _compute_kanalwechsel
 
     rows = [
@@ -94,7 +107,7 @@ async def test_compute_kanalwechsel_simple_transition():
     entries = await _compute_kanalwechsel(FakeDB(rows), LINE, distance_m=100_000)
 
     assert [(e["km"], e["typ"], e["leitstelle_name"]) for e in entries] == [
-        (0.0, "anmelden", "ILS München"),
+        (0.0, "convoy_anmeldung", "ILS München"),
         (40.0, "abmelden", "ILS München"),
         (40.0, "anmelden", "ILS FFB"),
     ]
@@ -103,10 +116,10 @@ async def test_compute_kanalwechsel_simple_transition():
 
 
 @pytest.mark.asyncio
-async def test_compute_kanalwechsel_merges_boundary_zigzag():
-    """Pendelt die Route an einer Gebietsgrenze mehrfach hin und her (z. B.
-    Autobahn entlang einer Landkreisgrenze), darf pro Leitstelle nur ein
-    Anmelde- und ein Abmeldepunkt entstehen — nicht ein Eintrag pro Kreuzung."""
+async def test_compute_kanalwechsel_abmelden_vor_anmelden_bei_ueberlappung():
+    """Pendelt die Route an einer Gebietsgrenze hin und her (überlappende
+    Abdeckung), liegt die Übergabe in der Mitte des gemeinsamen Korridors —
+    erst Abmelden bei der alten, dann Anmelden bei der neuen Leitstelle."""
     from app.api.routes.routing import _compute_kanalwechsel
 
     rows = [
@@ -121,10 +134,51 @@ async def test_compute_kanalwechsel_merges_boundary_zigzag():
     ]
     entries = await _compute_kanalwechsel(FakeDB(rows), LINE, distance_m=100_000)
 
+    # Überlappung München/FFB: km 13,6–19,0 → Übergabe bei km 16,3
     assert [(e["km"], e["typ"], e["leitstelle_name"]) for e in entries] == [
-        (0.0, "anmelden", "ILS München"),
-        (13.6, "anmelden", "ILS FFB"),
-        (19.0, "abmelden", "ILS München"),
+        (0.0, "convoy_anmeldung", "ILS München"),
+        (16.3, "abmelden", "ILS München"),
+        (16.3, "anmelden", "ILS FFB"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_compute_kanalwechsel_luecke_ohne_abdeckung():
+    """Liegt zwischen zwei Gebieten ein unabgedeckter Abschnitt, wird am
+    Gebietsende abgemeldet und erst am nächsten Gebietsanfang angemeldet."""
+    from app.api.routes.routing import _compute_kanalwechsel
+
+    rows = [
+        _row("ILS A", "10", '{"type":"LineString","coordinates":[[11.0,48.0],[11.3,48.0]]}'),
+        _row("ILS B", "20", '{"type":"LineString","coordinates":[[11.6,48.0],[12.0,48.0]]}'),
+    ]
+    entries = await _compute_kanalwechsel(FakeDB(rows), LINE, distance_m=100_000)
+
+    assert [(e["km"], e["typ"], e["leitstelle_name"]) for e in entries] == [
+        (0.0, "convoy_anmeldung", "ILS A"),
+        (30.0, "abmelden", "ILS A"),
+        (60.0, "anmelden", "ILS B"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_compute_kanalwechsel_enklave():
+    """Durchquert die Route eine Enklave, wird dort an- und wieder
+    zurückgewechselt — die Kette bleibt sequenziell."""
+    from app.api.routes.routing import _compute_kanalwechsel
+
+    rows = [
+        _row("ILS Umland", "10", '{"type":"LineString","coordinates":[[11.0,48.0],[12.0,48.0]]}'),
+        _row("ILS Enklave", "20", '{"type":"LineString","coordinates":[[11.42,48.0],[11.44,48.0]]}'),
+    ]
+    entries = await _compute_kanalwechsel(FakeDB(rows), LINE, distance_m=100_000)
+
+    assert [(e["km"], e["typ"], e["leitstelle_name"]) for e in entries] == [
+        (0.0, "convoy_anmeldung", "ILS Umland"),
+        (43.0, "abmelden", "ILS Umland"),
+        (43.0, "anmelden", "ILS Enklave"),
+        (44.0, "abmelden", "ILS Enklave"),
+        (44.0, "anmelden", "ILS Umland"),
     ]
 
 
@@ -142,7 +196,7 @@ async def test_compute_kanalwechsel_drops_noise_presence():
     entries = await _compute_kanalwechsel(FakeDB(rows), LINE, distance_m=100_000)
 
     assert [(e["km"], e["typ"], e["leitstelle_name"]) for e in entries] == [
-        (0.0, "anmelden", "ILS München"),
+        (0.0, "convoy_anmeldung", "ILS München"),
     ]
 
 
@@ -163,20 +217,7 @@ async def test_compute_kanalwechsel_skips_empty_geometries():
     entries = await _compute_kanalwechsel(FakeDB(rows), LINE, distance_m=100_000)
 
     assert [(e["km"], e["typ"], e["leitstelle_name"]) for e in entries] == [
-        (50.0, "anmelden", "ILS Gültig"),
+        (50.0, "convoy_anmeldung", "ILS Gültig"),
     ]
     assert entries[0]["lat"] == 48.0
     assert entries[0]["lon"] == 11.5
-
-
-def test_kanalwechsel_sorted_by_km_then_typ():
-    """Bei gleichem km steht Abmelden (alte Leitstelle) vor Anmelden (neue)."""
-    entries = [
-        {"km": 40.0, "typ": "anmelden", "leitstelle_name": "ILS B"},
-        {"km": 40.0, "typ": "abmelden", "leitstelle_name": "ILS A"},
-        {"km": 0.0, "typ": "anmelden", "leitstelle_name": "ILS A"},
-    ]
-    entries.sort(key=lambda x: (x["km"], x["typ"]))
-    assert [(e["km"], e["typ"]) for e in entries] == [
-        (0.0, "anmelden"), (40.0, "abmelden"), (40.0, "anmelden"),
-    ]

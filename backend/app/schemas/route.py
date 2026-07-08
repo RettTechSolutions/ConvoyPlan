@@ -48,9 +48,11 @@ class KanalwechselEntry(BaseModel):
     leitstelle_id: str
     leitstelle_name: str
     anrufgruppe: str
-    # "anmelden" = Eintritt ins Leitstellen-Gebiet, "abmelden" = Austritt.
-    # Default für Routen, die vor Einführung des Feldes berechnet wurden.
-    typ: Literal["anmelden", "abmelden"] = "anmelden"
+    # "convoy_anmeldung" = Anmeldung des Verbands bei der Start-Leitstelle,
+    # "anmelden" = Wechsel zur neuen Leitstelle, "abmelden" = Abmeldung bei
+    # der alten. Default für Routen, die vor Einführung des Feldes berechnet
+    # wurden.
+    typ: Literal["anmelden", "abmelden", "convoy_anmeldung"] = "anmelden"
 
 
 class RouteResponse(BaseModel):

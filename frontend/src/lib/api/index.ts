@@ -86,8 +86,12 @@ export interface KanalwechselEntry {
 	leitstelle_id: string;
 	leitstelle_name: string;
 	anrufgruppe: string;
-	/** "anmelden" = Eintritt ins Leitstellen-Gebiet, "abmelden" = Austritt (fehlt bei alten Routen). */
-	typ?: 'anmelden' | 'abmelden';
+	/**
+	 * "convoy_anmeldung" = Anmeldung des Verbands bei der Start-Leitstelle,
+	 * "anmelden" = Wechsel zur neuen Leitstelle, "abmelden" = Abmeldung bei
+	 * der alten (fehlt bei alten Routen).
+	 */
+	typ?: 'anmelden' | 'abmelden' | 'convoy_anmeldung';
 }
 
 export interface RouteResult {
