@@ -7,18 +7,21 @@ es pro Format einen kleinen Adapter:
 
 - ``mobidata_bw`` — MobiData BW / CIFS-Stil (Baden-Württemberg, bis Kreisstraße)
 - ``berlin_viz`` — Berliner Verkehrsinformationszentrale (VIZ)
+- ``datex2``     — DATEX II v2 (europäischer XML-Standard), z. B. Länder-Feeds
+                   aus der mobilithek für bundesweite Abdeckung abseits der
+                   Autobahn. Per mTLS geschützte Feeds (mobilithek-Broker) nutzen
+                   ``settings.opendata_traffic_client_cert`` (PEM).
 
 Weitere Regionen lassen sich über ``settings.opendata_traffic_feeds`` ergänzen:
 je Eintrag ``format|url`` (oder nur ``url`` → Standard ``mobidata_bw``). Jeder
 Feed wird gebündelt geholt, kurz gecacht, auf aktuell gültige Ereignisse und den
 Routenkorridor bzw. Radius gefiltert.
-
-Für eine wirklich bundesweite Abdeckung abseits der Autobahn ist die mobilithek
-(DATEX II) die offizielle Aggregation — der maschinelle Zugang erfordert dort
-allerdings Registrierung und Client-Zertifikat.
 """
 import asyncio
+import io
+import os
 import time
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 import httpx
@@ -179,9 +182,99 @@ def _adapt_berlin_viz(raw: dict, provider: str) -> list[dict]:
     return _build(geom, props)
 
 
-_ADAPTERS = {
-    "mobidata_bw": ("MobiData BW", _adapt_mobidata_bw),
-    "berlin_viz": ("Berlin VIZ", _adapt_berlin_viz),
+# ── DATEX II v2 (europäischer Standard, z. B. mobilithek-Länderfeeds) ─
+
+
+def _datex2_geoms(rec: ET.Element) -> list[dict]:
+    """Geometrie eines situationRecord: bevorzugt Linie (posList), sonst Punkt."""
+    geoms: list[dict] = []
+    for pl in rec.findall(".//{*}posList"):
+        nums = (pl.text or "").split()
+        # posList ist „lat lon lat lon …" (WGS84) → zu [lon, lat] paaren.
+        coords = []
+        for i in range(0, len(nums) - 1, 2):
+            try:
+                coords.append([float(nums[i + 1]), float(nums[i])])
+            except ValueError:
+                continue
+        if len(coords) >= 2:
+            geoms.append({"type": "LineString", "coordinates": coords})
+    if not geoms:
+        lat = rec.findtext(".//{*}locationForDisplay/{*}latitude")
+        lon = rec.findtext(".//{*}locationForDisplay/{*}longitude")
+        try:
+            if lat and lon:
+                geoms.append({"type": "Point", "coordinates": [float(lon), float(lat)]})
+        except ValueError:
+            # Upstream feed may contain malformed coordinates; ignore this point.
+            pass
+    return geoms
+
+
+def _parse_datex2(resp: httpx.Response, provider: str) -> list[dict]:
+    """DATEX-II-SituationPublication in unsere Feature-Form übersetzen.
+
+    Speicherschonend per iterparse (die Feeds können viele MB groß sein): je
+    ``situation`` extrahieren und den Teilbaum danach freigeben.
+    """
+    out: list[dict] = []
+    for _event, elem in ET.iterparse(io.BytesIO(resp.content), events=("end",)):
+        tag = elem.tag.rsplit("}", 1)[-1]
+        if tag != "situation":
+            continue
+        for rec in elem.findall("{*}situationRecord"):
+            geoms = _datex2_geoms(rec)
+            if not geoms:
+                continue
+            comments = [v.text for v in rec.findall(
+                ".//{*}generalPublicComment/{*}comment/{*}values/{*}value") if v.text]
+            description = comments[1] if len(comments) > 1 else None
+            end = rec.findtext(".//{*}validityTimeSpecification/{*}overallEndTime")
+            start = rec.findtext(".//{*}validityTimeSpecification/{*}overallStartTime")
+            street = rec.findtext(".//{*}roadName") or rec.findtext(".//{*}roadNumber")
+            # Verlässliches Sperr-Signal: roadOrCarriagewayOrLaneManagementType
+            # = roadClosed / carriagewayClosures. Das lane-Feld ist konstant
+            # „allLanesCompleteCarriageway" (nur Fahrbahn-Bezug) und untauglich.
+            mgmt = " ".join(t for t in (e.text for e in rec.findall(
+                ".//{*}roadOrCarriagewayOrLaneManagementType")) if t)
+            closure = _is_closure(mgmt)
+            title = comments[0] if comments else (street or ("Sperrung" if closure else "Baustelle"))
+            props = {
+                "source": "opendata",
+                "provider": provider,
+                "service": "closure" if closure else "roadworks",
+                "title": title,
+                "subtitle": description,
+                "description": description or title,
+                "isBlocked": "true" if closure else "false",
+                "street": street,
+                "starttime": start,
+                "endtime": end,
+                "identifier": rec.get("id"),
+            }
+            out.extend({"type": "Feature", "geometry": g, "properties": dict(props)} for g in geoms)
+        elem.clear()
+    return out
+
+
+def _geojson_parser(adapt):
+    def _parse(resp: httpx.Response, provider: str) -> list[dict]:
+        data = resp.json()
+        if not isinstance(data, dict) or data.get("type") != "FeatureCollection":
+            return []
+        out: list[dict] = []
+        for raw in data.get("features", []):
+            if isinstance(raw, dict):
+                out.extend(adapt(raw, provider))
+        return out
+    return _parse
+
+
+# Format → (Provider-Anzeigename, Parse-Funktion(response, provider) → Features)
+_FORMATS = {
+    "mobidata_bw": ("MobiData BW", _geojson_parser(_adapt_mobidata_bw)),
+    "berlin_viz": ("Berlin VIZ", _geojson_parser(_adapt_berlin_viz)),
+    "datex2": ("DATEX II", _parse_datex2),
 }
 
 
@@ -189,40 +282,48 @@ _ADAPTERS = {
 
 
 async def _fetch_feed(client: httpx.AsyncClient, fmt: str, url: str) -> list[dict]:
-    """Einen Feed holen, per Adapter normalisieren, Abgelaufenes ausfiltern."""
-    adapter = _ADAPTERS.get(fmt)
-    if adapter is None:
+    """Einen Feed holen, per Format-Parser normalisieren, Abgelaufenes ausfiltern."""
+    entry = _FORMATS.get(fmt)
+    if entry is None:
         return []
-    provider_name, adapt = adapter
+    provider_name, parse = entry
     try:
         resp = await client.get(url)
         resp.raise_for_status()
-        data = resp.json()
+        features = parse(resp, provider_name)
     except Exception:
         return []
-    if not isinstance(data, dict) or data.get("type") != "FeatureCollection":
-        return []
-
     now = datetime.now(timezone.utc)
-    out = []
-    for raw in data.get("features", []):
-        if not isinstance(raw, dict):
-            continue
-        for feature in adapt(raw, provider_name):
-            if _is_active(feature["properties"], now):
-                out.append(feature)
-    return out
+    return [f for f in features if _is_active(f["properties"], now)]
 
 
 async def _fetch_all_features() -> list[dict]:
     feeds = _feeds()
     if not feeds:
         return []
-    async with httpx.AsyncClient(timeout=20.0, headers=_HEADERS) as client:
-        results = await asyncio.gather(*[_fetch_feed(client, fmt, url) for fmt, url in feeds])
+
+    plain = [(f, u) for f, u in feeds if f != "datex2"]
+    datex = [(f, u) for f, u in feeds if f == "datex2"]
     features: list[dict] = []
-    for res in results:
-        features.extend(res)
+
+    if plain:
+        async with httpx.AsyncClient(timeout=20.0, headers=_HEADERS) as client:
+            results = await asyncio.gather(*[_fetch_feed(client, f, u) for f, u in plain])
+        for res in results:
+            features.extend(res)
+
+    # DATEX-II-Feeds ggf. mit Client-Zertifikat (mobilithek-Broker/mTLS) und in
+    # einem eigenen Client, damit ein fehlkonfiguriertes Zertifikat die offenen
+    # Feeds nicht mitreißt.
+    if datex:
+        cert = settings.opendata_traffic_client_cert or None
+        if cert and not os.path.exists(cert):
+            cert = None
+        async with httpx.AsyncClient(timeout=40.0, headers=_HEADERS, cert=cert) as client:
+            results = await asyncio.gather(*[_fetch_feed(client, f, u) for f, u in datex])
+        for res in results:
+            features.extend(res)
+
     return features
 
 

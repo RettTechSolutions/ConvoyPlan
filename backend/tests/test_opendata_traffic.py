@@ -9,8 +9,52 @@ from app.services.opendata_traffic import (
     _adapt_mobidata_bw,
     _flatten_geoms,
     _is_closure,
+    _parse_datex2,
     features_around,
 )
+
+
+_DATEX2_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
+<d2LogicalModel modelBaseVersion="2" xmlns="http://datex2.eu/schema/2/2_0">
+ <payloadPublication xsi:type="SituationPublication" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <situation id="s1">
+   <situationRecord xsi:type="ConstructionWorks" id="r1">
+    <validity><validityTimeSpecification>
+      <overallStartTime>2020-01-01T00:00:00.000+01:00</overallStartTime>
+      <overallEndTime>2999-01-01T00:00:00.000+01:00</overallEndTime>
+    </validityTimeSpecification></validity>
+    <generalPublicComment><comment><values><value lang="DE">B10 Baustelle</value></values></comment></generalPublicComment>
+    <groupOfLocations xsi:type="Linear">
+     <locationForDisplay><latitude>48.70</latitude><longitude>9.00</longitude></locationForDisplay>
+     <linearExtension><linearExtended><gmlLineString><srsName>WGS84 EPSG 4326</srsName>
+       <posList>48.70 9.00 48.71 9.01</posList></gmlLineString></linearExtended></linearExtension>
+     <roadName>B10</roadName>
+    </groupOfLocations>
+   </situationRecord>
+   <situationRecord xsi:type="RoadOrCarriagewayOrLaneManagement" id="r2">
+    <validity><validityTimeSpecification>
+      <overallEndTime>2999-01-01T00:00:00.000+01:00</overallEndTime>
+    </validityTimeSpecification></validity>
+    <roadOrCarriagewayOrLaneManagementType>roadClosed</roadOrCarriagewayOrLaneManagementType>
+    <groupOfLocations><locationForDisplay><latitude>50.0</latitude><longitude>8.0</longitude></locationForDisplay></groupOfLocations>
+   </situationRecord>
+  </situation>
+  <situation id="s2">
+   <situationRecord xsi:type="ConstructionWorks" id="r3">
+    <validity><validityTimeSpecification>
+      <overallEndTime>2000-01-01T00:00:00.000+01:00</overallEndTime>
+    </validityTimeSpecification></validity>
+    <generalPublicComment><comment><values><value lang="DE">Alte Baustelle</value></values></comment></generalPublicComment>
+    <groupOfLocations><locationForDisplay><latitude>52.0</latitude><longitude>13.0</longitude></locationForDisplay></groupOfLocations>
+   </situationRecord>
+  </situation>
+ </payloadPublication>
+</d2LogicalModel>"""
+
+
+class _XmlResp:
+    def __init__(self, content):
+        self.content = content
 
 
 @pytest.fixture(autouse=True)
@@ -182,3 +226,48 @@ async def test_disabled_returns_empty(monkeypatch):
     monkeypatch.setattr(settings, "opendata_traffic_enabled", False)
     out = await features_around(48.5, 9.0, 5000)
     assert out == []
+
+
+# ── DATEX II (europäischer Standard, mobilithek-Länderfeeds) ─────────
+
+
+def test_parse_datex2_construction_linestring():
+    feats = _parse_datex2(_XmlResp(_DATEX2_XML), "DATEX II")
+    r1 = next(f for f in feats if f["properties"]["identifier"] == "r1")
+    assert r1["geometry"]["type"] == "LineString"
+    # posList „lat lon" → GeoJSON [lon, lat]
+    assert r1["geometry"]["coordinates"] == [[9.00, 48.70], [9.01, 48.71]]
+    assert r1["properties"]["service"] == "roadworks"
+    assert r1["properties"]["title"] == "B10 Baustelle"
+    assert r1["properties"]["street"] == "B10"
+
+
+def test_parse_datex2_closure_from_management():
+    feats = _parse_datex2(_XmlResp(_DATEX2_XML), "DATEX II")
+    r2 = next(f for f in feats if f["properties"]["identifier"] == "r2")
+    assert r2["geometry"] == {"type": "Point", "coordinates": [8.0, 50.0]}
+    assert r2["properties"]["service"] == "closure"     # roadClosed
+    assert r2["properties"]["title"] == "Sperrung"      # ohne Kommentar/Straße
+
+
+async def test_datex2_feed_filters_expired(monkeypatch):
+    monkeypatch.setattr(settings, "opendata_traffic_feeds", "datex2|https://land/x.xml")
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *e):
+            return False
+
+        async def get(self, url):
+            return httpx.Response(200, content=_DATEX2_XML, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(od.httpx, "AsyncClient", _Client)
+    feats = await od._get_features()
+    ids = {f["properties"]["identifier"] for f in feats}
+    # r3 ist abgelaufen (2000) → gefiltert; r1 + r2 bleiben
+    assert ids == {"r1", "r2"}
