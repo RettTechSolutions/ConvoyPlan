@@ -161,10 +161,13 @@ async def _compute_kanalwechsel(
     """Bestimmt An- und Abmeldepunkte bei Leitstellen entlang der Route.
 
     Für jede Leitstelle werden die Routenabschnitte ermittelt, die in ihrem
-    Zuständigkeitsgebiet liegen. Der erste Eintritt ins Gebiet ergibt den
-    Anmeldepunkt, der letzte Austritt den Abmeldepunkt — pendelt die Route an
-    einer Gebietsgrenze mehrfach hin und her, bleibt der Verband im
-    Grenzbereich bei beiden Leitstellen angemeldet statt ständig zu wechseln.
+    Zuständigkeitsgebiet liegen. Daraus entsteht eine sequenzielle
+    Übergabekette: Der Verband ist zu jedem Zeitpunkt bei genau einer
+    Leitstelle angemeldet — bei einem Wechsel wird erst bei der alten
+    Leitstelle abgemeldet, dann bei der neuen angemeldet. Überlappen sich
+    zwei Gebiete (bzw. pendelt die Route an der Grenze hin und her), liegt
+    der Übergabepunkt in der Mitte des gemeinsamen Korridors. Der erste
+    Eintrag der Kette ist die Convoy-Anmeldung bei der Start-Leitstelle.
     """
     from app.models.leitstelle import Leitstelle
     from geoalchemy2.shape import from_shape
@@ -197,7 +200,7 @@ async def _compute_kanalwechsel(
         )
     )
 
-    entries: list[dict] = []
+    presences: list[dict] = []
     for row in rows.all():
         if not row.covered_geojson:
             continue
@@ -241,26 +244,66 @@ async def _compute_kanalwechsel(
             touches_end = end >= total_km - KW_EDGE_KM
             if end - start < KW_MIN_PRESENCE_KM and not (touches_start or touches_end):
                 continue
-            if touches_start:
-                start = 0.0
-            points = [("anmelden", start)]
-            if not touches_end:  # am Ziel wird nicht mehr abgemeldet
-                points.append(("abmelden", end))
-            for typ, km in points:
-                pt = route_line.interpolate(km / total_km, normalized=True)
-                entries.append({
-                    "km": round(km, 1),
-                    "lat": round(pt.y, 6),
-                    "lon": round(pt.x, 6),
-                    "leitstelle_id": str(row.id),
-                    "leitstelle_name": row.name,
-                    "anrufgruppe": row.anrufgruppe,
-                    "typ": typ,
-                })
+            presences.append({
+                "start": 0.0 if touches_start else start,
+                "end": total_km if touches_end else end,
+                "leitstelle_id": str(row.id),
+                "leitstelle_name": row.name,
+                "anrufgruppe": row.anrufgruppe,
+            })
 
-    # Bei gleichem km zuerst bei der alten Leitstelle abmelden, dann bei der
-    # neuen anmelden ("abmelden" < "anmelden" sortiert das bereits richtig).
-    entries.sort(key=lambda x: (x["km"], x["typ"]))
+    if not presences:
+        return []
+
+    # Sequenzielle Übergabekette aufbauen. Startgebiet zuerst (bei mehreren
+    # Kandidaten das mit der längsten Abdeckung), danach in Routenreihenfolge.
+    presences.sort(key=lambda p: (p["start"], -(p["end"] - p["start"])))
+    events: list[tuple[float, str, dict]] = []
+    active = presences[0]
+    events.append((active["start"], "convoy_anmeldung", active))
+    queue = presences[1:]
+    i = 0
+    while i < len(queue):
+        nxt = queue[i]
+        i += 1
+        if nxt["start"] <= active["end"]:
+            # Gebiete überlappen — Übergabe in der Mitte des Korridors.
+            handover = (nxt["start"] + min(active["end"], nxt["end"])) / 2
+            events.append((handover, "abmelden", active))
+            events.append((handover, "anmelden", nxt))
+        else:
+            # Lücke ohne Abdeckung: am Gebietsende abmelden, am nächsten
+            # Gebietsanfang anmelden.
+            events.append((active["end"], "abmelden", active))
+            events.append((nxt["start"], "anmelden", nxt))
+        if nxt["end"] < active["end"]:
+            # Enklave: der Rest des alten Gebiets kommt nach der Enklave
+            # wieder an die Reihe.
+            rest = {**active, "start": nxt["end"]}
+            j = i
+            while j < len(queue) and queue[j]["start"] < rest["start"]:
+                j += 1
+            queue.insert(j, rest)
+        active = nxt
+    if active["end"] < total_km - KW_EDGE_KM:
+        # Route endet außerhalb jedes Leitstellen-Gebiets.
+        events.append((active["end"], "abmelden", active))
+
+    entries: list[dict] = []
+    for km, typ, pres in events:
+        pt = route_line.interpolate(km / total_km, normalized=True)
+        entries.append({
+            "km": round(km, 1),
+            "lat": round(pt.y, 6),
+            "lon": round(pt.x, 6),
+            "leitstelle_id": pres["leitstelle_id"],
+            "leitstelle_name": pres["leitstelle_name"],
+            "anrufgruppe": pres["anrufgruppe"],
+            "typ": typ,
+        })
+    # Stabil nach km sortieren — bei gleichem km bleibt die Kettenreihenfolge
+    # (erst abmelden, dann anmelden) erhalten.
+    entries.sort(key=lambda x: x["km"])
     return entries
 
 

@@ -349,10 +349,11 @@ def generate_marschbefehl(
     # ── Kanalwechsel (under section 5) ───────────────────────────────────────
     if kanalwechsel:
         _subsection(pdf, "Kanalwechsel")
+        kw_aktionen = {"abmelden": "Abmelden", "convoy_anmeldung": "Convoy Anmeldung"}
         kw_cols = [
             (25, "km"),
-            (28, "Aktion"),
-            (total_w - 25 - 28 - 40, "Leitstelle"),
+            (36, "Aktion"),
+            (total_w - 25 - 36 - 40, "Leitstelle"),
             (40, "Anrufgruppe"),
         ]
         _table_header(pdf, kw_cols)
@@ -360,7 +361,7 @@ def generate_marschbefehl(
         fill = False
         for kw in kanalwechsel:
             pdf.set_fill_color(245, 246, 250) if fill else pdf.set_fill_color(255, 255, 255)
-            aktion = "Abmelden" if kw.get("typ") == "abmelden" else "Anmelden"
+            aktion = kw_aktionen.get(kw.get("typ"), "Anmelden")
             pdf.cell(kw_cols[0][0], 6, f"{kw.get('km', 0):.1f} km", border=1, fill=fill)
             pdf.cell(kw_cols[1][0], 6, aktion, border=1, fill=fill)
             pdf.cell(kw_cols[2][0], 6, str(kw.get("leitstelle_name", ""))[:35], border=1, fill=fill)

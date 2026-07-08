@@ -883,6 +883,11 @@
 		if (!iso) return '–';
 		return new Date(iso).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 	}
+	function kwAktion(typ?: string) {
+		if (typ === 'abmelden') return 'Abmelden';
+		if (typ === 'convoy_anmeldung') return 'Convoy Anmeldung';
+		return 'Anmelden';
+	}
 	function logout() {
 		const slug = ($page.params as Record<string, string>).slug;
 		orgStore.removeToken(slug);
@@ -1600,7 +1605,7 @@
 										{#each route.kanalwechsel as kw}
 											<tr>
 												<td>{kw.km.toFixed(1)}</td>
-												<td><span class="kw-typ" class:abmelden={kw.typ === 'abmelden'}>{kw.typ === 'abmelden' ? 'Abmelden' : 'Anmelden'}</span></td>
+												<td><span class="kw-typ" class:abmelden={kw.typ === 'abmelden'} class:convoy={kw.typ === 'convoy_anmeldung'}>{kwAktion(kw.typ)}</span></td>
 												<td>📡 {kw.leitstelle_name}</td>
 												<td><code>{kw.anrufgruppe}</code></td>
 											</tr>
@@ -1878,7 +1883,7 @@
 									{#each route.kanalwechsel as kw}
 										<tr>
 											<td>{kw.km.toFixed(1)}</td>
-											<td><span class="kw-typ" class:abmelden={kw.typ === 'abmelden'}>{kw.typ === 'abmelden' ? 'Abmelden' : 'Anmelden'}</span></td>
+											<td><span class="kw-typ" class:abmelden={kw.typ === 'abmelden'} class:convoy={kw.typ === 'convoy_anmeldung'}>{kwAktion(kw.typ)}</span></td>
 											<td>📡 {kw.leitstelle_name}</td>
 											<td><code>{kw.anrufgruppe}</code></td>
 										</tr>
@@ -2388,6 +2393,7 @@
 	.kw-table td code { background: var(--surface-2); color: var(--text-1); padding: .1rem .3rem; border-radius: 3px; font-size: .8rem; }
 	.kw-typ { display: inline-block; padding: .05rem .35rem; border-radius: 3px; font-size: var(--text-xs); background: rgba(39,174,96,.35); color: #a9dfbf; }
 	.kw-typ.abmelden { background: rgba(230,126,34,.35); color: #f0c9a6; }
+	.kw-typ.convoy { background: rgba(52,152,219,.35); color: #aed6f1; }
 	/* Kanalwechsel-Tabelle im (immer hellen) Marschbefehl-Modal — keine Theme-Variablen. */
 	.kw-befehl-block { display: flex; flex-direction: column; gap: .3rem; }
 	.kw-befehl-caption { font-size: .8rem; font-weight: 600; color: #333; }
@@ -2397,6 +2403,7 @@
 	.kw-befehl-table td code { background: #eef0f4; color: #222; padding: .1rem .3rem; border-radius: 3px; }
 	.kw-befehl-table .kw-typ { font-size: .72rem; background: #d9efe3; color: #1e7e4f; }
 	.kw-befehl-table .kw-typ.abmelden { background: #fbe6d4; color: #b35c12; }
+	.kw-befehl-table .kw-typ.convoy { background: #d8e9f7; color: #1c5d8f; }
 
 	.sidebar-footer { flex-shrink: 0; border-top: 1px solid var(--border); padding: .75rem 1rem; display: flex; align-items: center; justify-content: space-between; }
 	.theme-toggle { display: flex; align-items: center; gap: .4rem; background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--text-2); font-size: var(--text-sm); padding: .25rem .5rem; cursor: pointer; }
