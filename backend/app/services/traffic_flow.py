@@ -11,7 +11,6 @@ Beide Anbieter liefern JSON, das wir **selbst rendern** (keine fremden
 Raster-Kacheln) — nötig, weil unsere Basiskarte OSM/MapLibre ist.
 """
 import asyncio
-import math
 
 import httpx
 
