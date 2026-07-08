@@ -15,7 +15,7 @@ from jwt.exceptions import InvalidTokenError
 
 from app.api.routes import (
     auth, convoys, vehicles, routing, organizations,
-    tracking, weather, overpass, status, users, leitstellen,
+    tracking, weather, overpass, status, users, leitstellen, traffic,
 )
 from app.api.routes import org_leitstellen as org_leitstellen_router
 from app.api.routes import admin as admin_router
@@ -69,6 +69,7 @@ _TAGS_METADATA = [
     {"name": "leitstellen", "description": "Leitstellen/Dispositionszentren verwalten."},
     {"name": "weather", "description": "Wetterdaten entlang der Route abrufen."},
     {"name": "overpass", "description": "OpenStreetMap-/Overpass-Abfragen für Kartendaten."},
+    {"name": "traffic", "description": "Live-Verkehrslage (HERE/TomTom) — aktiv bei gesetztem API-Key."},
     {"name": "branding", "description": "Organisationsspezifisches Branding (Logo, Farben) anpassen."},
     {"name": "email-template", "description": "E-Mail-Vorlagen verwalten (Admin)."},
     {"name": "admin", "description": "Administrative Endpunkte für Superadmins."},
@@ -273,6 +274,7 @@ app.include_router(organizations.router, prefix="/api")
 app.include_router(tracking.router, prefix="/api")
 app.include_router(weather.router, prefix="/api")
 app.include_router(overpass.router, prefix="/api")
+app.include_router(traffic.router, prefix="/api")
 app.include_router(status.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(admin_router.router, prefix="/api")

@@ -99,6 +99,20 @@ class Settings(BaseSettings):
         "https://api.mobidata-bw.de/datasets/traffic/roadworks/roadworks_geojson.json"
     )
 
+    # Live-Verkehrslage (Fließgeschwindigkeit/Stau) von kommerziellen Anbietern.
+    # Vollständig vorbereitet, aber inaktiv, solange kein Key gesetzt ist —
+    # sobald eine Installation einen eigenen API-Key hinterlegt, fließt die
+    # Verkehrslage automatisch in die Karte. Kein Key ⇒ Feature einfach aus.
+    # Hinweis: Die Anzeige von HERE-/TomTom-Verkehrsdaten auf einer
+    # OSM-Basiskarte kann lizenzpflichtig sein — vor produktivem Einsatz die
+    # Nutzungsbedingungen des jeweiligen Anbieters prüfen (Verantwortung der
+    # jeweiligen Installation).
+    here_traffic_api_key: str = ""
+    tomtom_traffic_api_key: str = ""
+    # Bei mehreren gesetzten Keys die Quelle erzwingen ("here"/"tomtom");
+    # leer = automatisch (HERE bevorzugt).
+    traffic_flow_provider: str = ""
+
     # Optional API key that protects the interactive docs. When set, the docs
     # are served (no ENABLE_DOCS needed) but require the key: open
     # /docs?key=<value> once (the key is remembered in an HttpOnly cookie), or

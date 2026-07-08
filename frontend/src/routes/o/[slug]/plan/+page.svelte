@@ -12,7 +12,7 @@
 	import { activeConvoy, activeRoute, convoys } from '$lib/stores/convoy';
 	import { mapMode } from '$lib/stores/map';
 	import {
-		convoysApi, vehiclesApi, orgsApi, overpassApi, authApi, mfaApi,
+		convoysApi, vehiclesApi, orgsApi, overpassApi, trafficApi, authApi, mfaApi,
 		type Convoy, type Vehicle, type Organization, type OrgMember,
 		type FuelAnalysis, type FuelStation, type Waypoint, type RoadPreference,
 		type KanalwechselEntry, type ConvoyVehicleItem,
@@ -57,6 +57,11 @@
 	);
 	let closures = $state<FeatureCollection | null>(null);
 	let showClosures = $state(false);
+	// Live-Verkehrslage (HERE/TomTom) — nur verfügbar, wenn eine Installation
+	// einen eigenen API-Key hinterlegt hat.
+	let flow = $state<FeatureCollection | null>(null);
+	let showFlow = $state(false);
+	let flowProvider = $state<string | null>(null);
 	let mapCenter = $state<[number, number]>([10.0, 51.5]);
 	let activeTab = $state<'convoy'|'fahrzeuge'|'wegpunkte'|'zeitplan'|'export'|'konto'>('convoy');
 	let loading = $state(false);
@@ -265,6 +270,7 @@
 	// ── Init ──────────────────────────────────────────────────────────
 	onMount(async () => {
 		pwaStore.init();
+		void loadFlowProvider();
 		await loadData();
 		if (demoSession) {
 			try {
@@ -749,6 +755,7 @@
 				void loadFuelStationsInBackground(selected.id, r.fuel_analysis.fuel_stop_position);
 			}
 			void loadClosuresInBackground();
+			void loadFlowInBackground();
 		} catch (e: unknown) {
 			error = e instanceof Error ? e.message : 'Routing fehlgeschlagen';
 		} finally { loading = false; }
@@ -788,6 +795,36 @@
 			closures = await fetchClosures();
 			showClosures = closures.features.length > 0;
 		} catch { /* closures optional */ }
+	}
+
+	// ── Live-Verkehrslage (HERE/TomTom) ──────────────────────────────
+	async function loadFlowProvider() {
+		try {
+			flowProvider = (await trafficApi.flowStatus()).provider;
+		} catch { flowProvider = null; }
+	}
+
+	async function fetchFlow(): Promise<FeatureCollection> {
+		const coords = routeCoordinates();
+		if (!coords || coords.length < 2) return { type: 'FeatureCollection', features: [] };
+		return await trafficApi.getFlowForRoute(coords) as unknown as FeatureCollection;
+	}
+
+	async function loadFlowInBackground() {
+		if (!flowProvider) return; // nur wenn ein Anbieter-Key konfiguriert ist
+		try {
+			flow = await fetchFlow();
+			showFlow = flow.features.length > 0;
+		} catch { /* Verkehrslage optional */ }
+	}
+
+	async function toggleFlow() {
+		if (flow && showFlow) { showFlow = false; return; }
+		showFlow = false;
+		try {
+			flow = await fetchFlow();
+			showFlow = true;
+		} catch { error = 'Verkehrslage nicht verfügbar'; }
 	}
 
 	// ── Fuel stations ────────────────────────────────────────────────
@@ -1659,6 +1696,15 @@
 						<button class="btn-export" class:active={showClosures} onclick={toggleClosures}>
 							{showClosures ? '🚧 Sperrungen ausblenden' : '🚧 Sperrungen laden'}
 						</button>
+						{#if flowProvider}
+							<div class="section-header" style="margin-top:1rem"><strong>Live-Verkehrslage</strong></div>
+							<button class="btn-export" class:active={showFlow} onclick={toggleFlow}>
+								{showFlow ? '🚦 Verkehrslage ausblenden' : '🚦 Verkehrslage laden'}
+							</button>
+							<p style="font-size:.72rem;color:var(--text-muted,#8a97a3);margin:.3rem 0 0">
+								Quelle: {flowProvider.toUpperCase()} · grün = frei, rot = Stau
+							</p>
+						{/if}
 						<div class="section-header" style="margin-top:1rem"><strong>Import</strong></div>
 						<div style="display:flex;flex-direction:column;gap:.5rem">
 							<input
@@ -1818,6 +1864,7 @@
 			waypoints={selected?.waypoints ?? []}
 			routeGeojson={routeGeojson}
 			closuresGeojson={showClosures ? closures : null}
+			flowGeojson={showFlow ? flow : null}
 			onMapClick={handleMapClick}
 			onMapMove={handleMapMove}
 		/>

@@ -144,6 +144,7 @@ export interface StatusResponse {
 	weather_api: ServiceCheck;
 	overpass_api: ServiceCheck;
 	autobahn_api: ServiceCheck;
+	traffic_flow?: { provider: string | null };
 }
 
 export interface LoginResult {
@@ -302,6 +303,17 @@ export const overpassApi = {
 	// Sperrungen im Korridor entlang der Route (coordinates: GeoJSON [lon, lat])
 	getClosuresForRoute: (coordinates: number[][], corridorM = 2000) =>
 		api.post<Record<string, unknown>>('/api/overpass/closures/route', {
+			coordinates,
+			corridor_m: corridorM,
+		}),
+};
+
+// Live-Verkehrslage (HERE/TomTom) — nur aktiv, wenn eine Installation einen
+// eigenen API-Key hinterlegt hat (sonst liefert der Server leere Ergebnisse).
+export const trafficApi = {
+	flowStatus: () => api.get<{ provider: string | null }>('/api/traffic/flow/status'),
+	getFlowForRoute: (coordinates: number[][], corridorM = 1000) =>
+		api.post<Record<string, unknown>>('/api/traffic/flow/route', {
 			coordinates,
 			corridor_m: corridorM,
 		}),
