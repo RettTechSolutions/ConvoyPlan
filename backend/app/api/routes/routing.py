@@ -186,6 +186,7 @@ async def _compute_kanalwechsel(
             Leitstelle.id,
             Leitstelle.name,
             Leitstelle.anrufgruppe,
+            Leitstelle.zusatz_kanaele,
             func.ST_AsGeoJSON(
                 func.ST_CollectionExtract(
                     func.ST_Intersection(route_geom, Leitstelle.geometry),
@@ -250,6 +251,7 @@ async def _compute_kanalwechsel(
                 "leitstelle_id": str(row.id),
                 "leitstelle_name": row.name,
                 "anrufgruppe": row.anrufgruppe,
+                "zusatz_kanaele": row.zusatz_kanaele or [],
             })
 
     if not presences:
@@ -299,6 +301,7 @@ async def _compute_kanalwechsel(
             "leitstelle_id": pres["leitstelle_id"],
             "leitstelle_name": pres["leitstelle_name"],
             "anrufgruppe": pres["anrufgruppe"],
+            "zusatz_kanaele": pres["zusatz_kanaele"],
             "typ": typ,
         })
     # Stabil nach km sortieren — bei gleichem km bleibt die Kettenreihenfolge

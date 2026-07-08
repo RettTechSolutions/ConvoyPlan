@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.schemas.route import KanalwechselEntry
+
 
 class ShareLinkCreate(BaseModel):
     password_mode: Literal["none", "generate", "set"]
@@ -87,6 +89,10 @@ class TrackPublic(BaseModel):
     scope: str = "track"
     waypoints: list[TrackWaypoint]
     geojson: dict | None = None
+    # Routenlänge & Leitstellen-Übergabepunkte, damit die Tracking-Ansicht
+    # Wegpunkte/Kanalwechsel anhand der Konvoi-Position ankündigen kann.
+    distance_m: int | None = None
+    kanalwechsel: list[KanalwechselEntry] = []
     vehicles: list[TrackVehicle]
     positions: list[TrackPosition]
 

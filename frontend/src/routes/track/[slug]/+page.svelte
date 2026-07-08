@@ -13,6 +13,9 @@
 		STATUS_LABELS, STATUS_COLORS, STATUS_ICONS, HALT_LEVEL_LABELS, BREAKDOWN_LEVEL_LABELS,
 		statusColor, statusLabel,
 	} from '$lib/tracking/status';
+	import { routeCoords } from '$lib/tracking/eta';
+	import { buildRoutePoints, computeConvoyProgress, formatDistance, type RoutePoint } from '$lib/tracking/progress';
+	import { notifySignal } from '$lib/tracking/notify';
 
 	const slug = $derived($page.params.slug!);
 
@@ -283,6 +286,70 @@
 		} catch { /* ignore */ }
 	}
 
+	// ── Route-point announcements (Wegpunkte / Leitstellenwechsel) ─────────
+	// Same model as the internal tracking view: the convoy occupies the
+	// along-route interval [rear, front] of its live vehicles; a point is
+	// announced once the front crosses it and done once the rear passed it.
+	const REACH_MARGIN_M = 40;
+
+	let routePoints = $derived.by(() => {
+		if (!data?.geojson) return [];
+		const coords = routeCoords(data.geojson);
+		if (coords.length < 2) return [];
+		return buildRoutePoints(coords, data.kanalwechsel ?? [], data.waypoints ?? []);
+	});
+
+	let progress = $derived.by(() => {
+		if (!data?.geojson) return null;
+		const coords = routeCoords(data.geojson);
+		return computeConvoyProgress(coords, [...livePositions.values()]);
+	});
+
+	let maxFrontM = 0;
+	let announcedIds = new Set<string>();
+	let seededAnnouncements = false;
+	let pointEvent = $state<RoutePoint | null>(null);
+
+	$effect(() => {
+		const prog = progress;
+		const points = routePoints;
+		if (!prog || !points.length) return;
+		maxFrontM = Math.max(maxFrontM, prog.frontM);
+		if (!seededAnnouncements) {
+			for (const p of points) if (p.m <= maxFrontM + REACH_MARGIN_M) announcedIds.add(p.id);
+			seededAnnouncements = true;
+			return;
+		}
+		for (const p of points) {
+			if (announcedIds.has(p.id)) continue;
+			if (maxFrontM >= p.m + REACH_MARGIN_M) {
+				announcedIds.add(p.id);
+				pointEvent = p;
+				notifySignal(false);
+			}
+		}
+	});
+
+	let nextPoint = $derived.by(() => {
+		const prog = progress;
+		if (!prog) return null;
+		const p = routePoints.find((pt) => pt.m > prog.frontM + REACH_MARGIN_M);
+		return p ? { point: p, aheadM: p.m - prog.frontM } : null;
+	});
+
+	let pointEventPassed = $derived(
+		pointEvent && progress ? progress.alongM.filter((m) => m >= pointEvent!.m).length : 0
+	);
+	let pointEventDone = $derived(
+		!!pointEvent && !!progress && progress.count > 0 && progress.rearM >= pointEvent.m + REACH_MARGIN_M
+	);
+	$effect(() => {
+		if (pointEvent && pointEventDone) {
+			const t = setTimeout(() => (pointEvent = null), 8000);
+			return () => clearTimeout(t);
+		}
+	});
+
 	onMount(load);
 	onDestroy(() => {
 		if (geoWatcher !== null) navigator.geolocation.clearWatch(geoWatcher);
@@ -470,6 +537,27 @@
 			{#if isDriver && manualMode && transmitting}
 				<div class="map-hint-bar">Tippe auf die Karte, um deine Position zu senden</div>
 			{/if}
+
+			<!-- Route-point announcement (Leitstellenwechsel / Wegpunkt erreicht) -->
+			{#if pointEvent}
+				<div class="point-banner" class:done={pointEventDone}>
+					<span class="pb-icon">{pointEvent.kind === 'kanalwechsel' ? '📡' : '📍'}</span>
+					<div class="pb-text">
+						<strong>{pointEvent.label}</strong>
+						{#if pointEvent.detail}<div class="pb-note">{pointEvent.detail}</div>{/if}
+						{#if progress && progress.count > 1}
+							<div class="pb-note">{pointEventDone ? '✓ Alle Fahrzeuge passiert' : `${pointEventPassed}/${progress.count} Fahrzeuge passiert`}</div>
+						{/if}
+					</div>
+					<button class="pb-btn" onclick={() => (pointEvent = null)} aria-label="Schließen">✕</button>
+				</div>
+			{:else if nextPoint}
+				<!-- Next upcoming route point -->
+				<div class="next-point">
+					<span class="np-icon">{nextPoint.point.kind === 'kanalwechsel' ? '📡' : '📍'}</span>
+					<span class="np-text">In {formatDistance(nextPoint.aheadM)}: {nextPoint.point.label}</span>
+				</div>
+			{/if}
 			<MapView
 				bind:this={mapView}
 				waypoints={data.waypoints as unknown as Waypoint[]}
@@ -569,6 +657,20 @@
 	.map-area { flex: 1; position: relative; }
 	.map-area.cursor-crosshair :global(.maplibregl-canvas) { cursor: crosshair; }
 
+	/* Route-point announcement banner (Leitstellenwechsel / Wegpunkt) */
+	.point-banner { position: absolute; top: .75rem; left: 50%; transform: translateX(-50%); z-index: 18; display: flex; align-items: center; gap: .6rem; max-width: min(640px, calc(100% - 1.5rem)); padding: .6rem .8rem; border-radius: 12px; background: #3498db; color: #fff; box-shadow: 0 4px 16px rgba(0,0,0,.4); animation: banner-in .25s ease; }
+	.point-banner.done { background: #27ae60; }
+	.pb-icon { font-size: 1.3rem; flex-shrink: 0; }
+	.pb-text { font-size: var(--text-sm); min-width: 0; line-height: 1.3; }
+	.pb-note { font-size: var(--text-xs); opacity: .95; }
+	.pb-btn { background: rgba(0,0,0,.15); color: inherit; border: none; border-radius: 6px; padding: .35rem .6rem; font-weight: 600; cursor: pointer; font-size: var(--text-sm); flex-shrink: 0; }
+	@keyframes banner-in { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+	/* Next-upcoming-point pill */
+	.next-point { position: absolute; top: .75rem; left: 50%; transform: translateX(-50%); z-index: 15; display: flex; align-items: center; gap: .45rem; max-width: min(560px, calc(100% - 1.5rem)); padding: .4rem .8rem; border-radius: 18px; background: rgba(15,27,36,.88); color: #fff; font-size: var(--text-sm); box-shadow: 0 2px 10px rgba(0,0,0,.35); pointer-events: none; }
+	.np-icon { flex-shrink: 0; }
+	.np-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 	/* Map control buttons (Route) */
 	.map-controls { position: absolute; right: .75rem; bottom: calc(.75rem + env(safe-area-inset-bottom, 0px)); z-index: 10; display: flex; flex-direction: column; align-items: flex-end; gap: .5rem; max-width: calc(100% - 1.5rem); }
 	.map-ctrl-btn { display: flex; align-items: center; gap: .4rem; background: var(--color-primary); color: white; border: none; padding: .55rem .9rem; border-radius: 22px; font-size: var(--text-sm); font-weight: 600; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.35); white-space: nowrap; }
@@ -591,5 +693,7 @@
 		.sidebar.open { transform: translateX(0); box-shadow: 4px 0 24px rgba(0,0,0,.5); }
 		.sidebar-backdrop { display: block; position: fixed; inset: 0; top: 48px; background: rgba(0,0,0,.4); z-index: 39; border: none; cursor: pointer; }
 		.map-area { flex: 1; }
+		.point-banner { top: calc(48px + .5rem); }
+		.next-point { top: calc(48px + .5rem); }
 	}
 </style>
