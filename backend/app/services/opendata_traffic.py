@@ -206,7 +206,8 @@ def _datex2_geoms(rec: ET.Element) -> list[dict]:
             if lat and lon:
                 geoms.append({"type": "Point", "coordinates": [float(lon), float(lat)]})
         except ValueError:
-            pass
+            # Upstream feed may contain malformed coordinates; ignore this point.
+            continue
     return geoms
 
 
