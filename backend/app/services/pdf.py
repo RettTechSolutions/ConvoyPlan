@@ -366,6 +366,21 @@ def generate_marschbefehl(
             pdf.cell(kw_cols[1][0], 6, aktion, border=1, fill=fill)
             pdf.cell(kw_cols[2][0], 6, str(kw.get("leitstelle_name", ""))[:35], border=1, fill=fill)
             pdf.cell(kw_cols[3][0], 6, str(kw.get("anrufgruppe", "")), border=1, fill=fill, new_x="LMARGIN", new_y="NEXT")
+            # Weitere hinterlegte Funkgruppen der Leitstelle als Zusatzzeile
+            # (nur beim Anmelden — beim Abmelden ist die Info nicht mehr relevant).
+            zusatz = kw.get("zusatz_kanaele") or []
+            if zusatz and kw.get("typ") != "abmelden":
+                zusatz_text = "  •  ".join(
+                    f"{z.get('name', 'Kanal')}: {z.get('kanal', '')}" for z in zusatz if isinstance(z, dict)
+                )
+                if zusatz_text:
+                    pdf.set_font("DV", "", 7)
+                    pdf.cell(kw_cols[0][0], 5, "", border=1, fill=fill)
+                    pdf.cell(
+                        total_w - kw_cols[0][0], 5, f"Zusatzkanäle: {zusatz_text}"[:110],
+                        border=1, fill=fill, new_x="LMARGIN", new_y="NEXT",
+                    )
+                    pdf.set_font("DV", "", 8)
             fill = not fill
         pdf.ln(3)
 

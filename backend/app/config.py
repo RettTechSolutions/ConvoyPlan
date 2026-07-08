@@ -36,8 +36,13 @@ class Settings(BaseSettings):
     # this env value is only the fallback when no DB setting exists.
     update_mode: str = "auto"
     # How often the backend checks whether an update notification is due
-    # (seconds). Only relevant while the mode is "notify".
+    # (seconds). Relevant for mode "notify" and for notify_on_auto.
     update_notify_interval: int = 1800
+    # Optional: also email the superadmins AFTER an update was installed
+    # automatically (mode "auto"). The admin-panel checkbox
+    # (system_settings: "update.notify_on_auto") takes priority; this env
+    # value is only the fallback when no DB setting exists.
+    update_notify_on_auto: bool = False
 
     license_key: str = ""
     app_base_url: str = "https://convoyplan.example.com"

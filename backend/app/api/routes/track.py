@@ -127,6 +127,8 @@ async def _build_payload(convoy_id: uuid.UUID, db: AsyncSession, scope: str = "t
         scope=scope,
         waypoints=waypoints,
         geojson=geo_svc.linestring_to_geojson(route.geometry) if route else None,
+        distance_m=route.distance_m if route else None,
+        kanalwechsel=(route.kanalwechsel or []) if route else [],
         vehicles=vehicles,
         positions=track_positions,
     )

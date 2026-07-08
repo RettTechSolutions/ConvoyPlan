@@ -82,9 +82,10 @@ class FakeDB:
         return FakeResult(rows=self._rows)
 
 
-def _row(name, anrufgruppe, geojson):
+def _row(name, anrufgruppe, geojson, zusatz_kanaele=None):
     return SimpleNamespace(
-        id=uuid.uuid4(), name=name, anrufgruppe=anrufgruppe, covered_geojson=geojson
+        id=uuid.uuid4(), name=name, anrufgruppe=anrufgruppe,
+        zusatz_kanaele=zusatz_kanaele, covered_geojson=geojson,
     )
 
 
@@ -180,6 +181,22 @@ async def test_compute_kanalwechsel_enklave():
         (44.0, "abmelden", "ILS Enklave"),
         (44.0, "anmelden", "ILS Umland"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_compute_kanalwechsel_includes_zusatz_kanaele():
+    """Die hinterlegten Zusatzkanäle der Leitstelle werden in jeden Eintrag
+    übernommen, damit UI und PDF sie proaktiv anzeigen können."""
+    from app.api.routes.routing import _compute_kanalwechsel
+
+    kanaele = [{"name": "Führungskanal", "kanal": "469"}]
+    rows = [
+        _row("ILS München", "25", '{"type":"LineString","coordinates":[[11.0,48.0],[12.0,48.0]]}',
+             zusatz_kanaele=kanaele),
+    ]
+    entries = await _compute_kanalwechsel(FakeDB(rows), LINE, distance_m=100_000)
+
+    assert entries[0]["zusatz_kanaele"] == kanaele
 
 
 @pytest.mark.asyncio

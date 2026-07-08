@@ -424,3 +424,110 @@ async def test_check_and_notify_noop_when_mode_auto():
         sent = await check_and_notify_once(db)
     assert sent is False
     fetch.assert_not_awaited()
+
+
+# ── Benachrichtigung nach automatischer Installation (notify_on_auto) ─────────
+
+
+def _installed_db(last_installed=None, notify_on_auto="true", superadmin_emails=("admin@example.com",)):
+    """Mock AsyncSession for the installed-notification flow, in call order:
+    resolve_mode → resolve_notify_on_auto → last-installed lookup → superadmins."""
+    db = AsyncMock()
+
+    mode_result = MagicMock()
+    mode_result.scalar_one_or_none.return_value = None  # env fallback → "auto"
+
+    flag_result = MagicMock()
+    flag_setting = MagicMock()
+    flag_setting.value = notify_on_auto
+    flag_result.scalar_one_or_none.return_value = flag_setting
+
+    installed_result = MagicMock()
+    if last_installed is None:
+        installed_result.scalar_one_or_none.return_value = None
+    else:
+        setting = MagicMock()
+        setting.value = last_installed
+        installed_result.scalar_one_or_none.return_value = setting
+
+    admins_result = MagicMock()
+    users = []
+    for mail in superadmin_emails:
+        u = MagicMock()
+        u.email = mail
+        users.append(u)
+    admins_result.scalars.return_value.all.return_value = users
+
+    db.execute.side_effect = [mode_result, flag_result, installed_result, admins_result]
+    return db
+
+
+@pytest.mark.asyncio
+async def test_notify_on_auto_first_run_records_baseline_without_mail():
+    from app.services.update_notify import check_and_notify_once
+
+    send = AsyncMock()
+    db = _installed_db(last_installed=None)
+    with patch("app.services.update_notify.read_deployed", return_value=("aaa1111", "2026-07-07T11:33:49Z")), \
+         patch("app.services.update_notify.send_update_notification", new=send):
+        sent = await check_and_notify_once(db)
+    assert sent is False
+    send.assert_not_awaited()
+    # Basislinie wird still vermerkt, damit Altbestand keine Mail auslöst
+    added = db.add.call_args.args[0]
+    assert added.key == "update.last_installed_notified"
+    assert added.value == "aaa1111"
+
+
+@pytest.mark.asyncio
+async def test_notify_on_auto_sends_mail_after_installed_update():
+    from app.services.update_notify import check_and_notify_once
+
+    send = AsyncMock()
+    db = _installed_db(last_installed="aaa1111")
+    with patch("app.services.update_notify.read_deployed", return_value=("bbb2222", "2026-07-07T12:00:00Z")), \
+         patch("app.services.update_notify.send_update_notification", new=send):
+        sent = await check_and_notify_once(db)
+    assert sent is True
+    send.assert_awaited_once()
+    assert send.await_args.args[1] == "admin@example.com"
+    subject = send.await_args.args[2]
+    assert "installiert" in subject
+    assert "bbb2222" in subject
+
+
+@pytest.mark.asyncio
+async def test_notify_on_auto_skips_unchanged_deployment():
+    from app.services.update_notify import check_and_notify_once
+
+    send = AsyncMock()
+    db = _installed_db(last_installed="aaa1111")
+    with patch("app.services.update_notify.read_deployed", return_value=("aaa1111", "2026-07-07T11:33:49Z")), \
+         patch("app.services.update_notify.send_update_notification", new=send):
+        sent = await check_and_notify_once(db)
+    assert sent is False
+    send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_set_update_mode_persists_notify_on_auto_flag():
+    _make_app_with_superadmin_and_db()
+    with patch("os.makedirs"), patch("builtins.open", mock_open()), \
+         patch("app.api.routes.admin.audit.record", new=AsyncMock()):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            r = await client.put("/api/admin/settings/update-mode",
+                                 json={"mode": "auto", "notify_on_auto": True})
+    assert r.status_code == 204
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_get_update_mode_includes_notify_on_auto():
+    _make_app_with_superadmin_and_db()
+    with patch("os.makedirs"), patch("builtins.open", mock_open()):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            r = await client.get("/api/admin/settings/update-mode")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["notify_on_auto"] is False  # env default
+    app.dependency_overrides.clear()

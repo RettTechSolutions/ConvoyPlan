@@ -15,6 +15,8 @@
 	} from '$lib/tracking/status';
 	import { routeCoords, estimateDelay, haversine } from '$lib/tracking/eta';
 	import { prefetchRouteTiles } from '$lib/tracking/tileCache';
+	import { buildRoutePoints, computeConvoyProgress, formatDistance, type RoutePoint } from '$lib/tracking/progress';
+	import { notifySignal } from '$lib/tracking/notify';
 
 	const convoyId = $page.params.convoy_id!;
 
@@ -404,37 +406,79 @@
 	let lastAlertCount = 0;
 	$effect(() => {
 		const n = $trackingAlerts.length;
-		if (n > lastAlertCount) notify($trackingAlerts[0]?.alert_type === 'breakdown');
+		if (n > lastAlertCount) notifySignal($trackingAlerts[0]?.alert_type === 'breakdown');
 		lastAlertCount = n;
 	});
 
-	function notify(urgent: boolean) {
-		try { navigator.vibrate?.(urgent ? [200, 100, 200, 100, 200] : [200, 100, 200]); } catch { /* unsupported */ }
-		try { beep(urgent); } catch { /* audio blocked */ }
-	}
+	// --- Route-point announcements (Wegpunkte / Leitstellenwechsel) --------
+	// The convoy occupies the along-route interval [rear, front] of its live
+	// vehicles; a point is announced once the front crosses it and considered
+	// done once the rear (i.e. the whole convoy) has passed it too.
+	const REACH_MARGIN_M = 40;
 
-	let audioCtx: AudioContext | null = null;
-	function beep(urgent: boolean) {
-		const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-		if (!Ctx) return;
-		audioCtx ??= new Ctx();
-		const ctx = audioCtx;
-		const tones = urgent ? [880, 660, 880] : [660, 880];
-		tones.forEach((freq, i) => {
-			const osc = ctx.createOscillator();
-			const gain = ctx.createGain();
-			osc.type = 'sine';
-			osc.frequency.value = freq;
-			gain.gain.value = 0.001;
-			osc.connect(gain).connect(ctx.destination);
-			const t = ctx.currentTime + i * 0.22;
-			gain.gain.setValueAtTime(0.0001, t);
-			gain.gain.exponentialRampToValueAtTime(0.25, t + 0.02);
-			gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
-			osc.start(t);
-			osc.stop(t + 0.22);
-		});
-	}
+	let routePoints = $derived.by(() => {
+		if (!route?.geojson) return [];
+		const coords = routeCoords(route.geojson);
+		if (coords.length < 2) return [];
+		return buildRoutePoints(coords, route.kanalwechsel ?? [], convoy?.waypoints ?? []);
+	});
+
+	let progress = $derived.by(() => {
+		if (!route?.geojson) return null;
+		const coords = routeCoords(route.geojson);
+		return computeConvoyProgress(coords, [...$livePositions.values()]);
+	});
+
+	// Monotonic front position + announced set so GPS jitter can't re-announce.
+	let maxFrontM = 0;
+	let announcedIds = new Set<string>();
+	let seededAnnouncements = false;
+	let pointEvent = $state<RoutePoint | null>(null);
+
+	$effect(() => {
+		const prog = progress;
+		const points = routePoints;
+		if (!prog || !points.length) return;
+		maxFrontM = Math.max(maxFrontM, prog.frontM);
+		if (!seededAnnouncements) {
+			// First fix after (re)load: everything already behind the front is
+			// old news — don't replay past announcements.
+			for (const p of points) if (p.m <= maxFrontM + REACH_MARGIN_M) announcedIds.add(p.id);
+			seededAnnouncements = true;
+			return;
+		}
+		for (const p of points) {
+			if (announcedIds.has(p.id)) continue;
+			if (maxFrontM >= p.m + REACH_MARGIN_M) {
+				announcedIds.add(p.id);
+				pointEvent = p;
+				notifySignal(false);
+			}
+		}
+	});
+
+	// Next point ahead of the convoy front.
+	let nextPoint = $derived.by(() => {
+		const prog = progress;
+		if (!prog) return null;
+		const p = routePoints.find((pt) => pt.m > prog.frontM + REACH_MARGIN_M);
+		return p ? { point: p, aheadM: p.m - prog.frontM } : null;
+	});
+
+	// Cumulative view of the active announcement: how much of the convoy has
+	// already passed the point, and is the whole convoy through?
+	let pointEventPassed = $derived(
+		pointEvent && progress ? progress.alongM.filter((m) => m >= pointEvent!.m).length : 0
+	);
+	let pointEventDone = $derived(
+		!!pointEvent && !!progress && progress.count > 0 && progress.rearM >= pointEvent.m + REACH_MARGIN_M
+	);
+	$effect(() => {
+		if (pointEvent && pointEventDone) {
+			const t = setTimeout(() => (pointEvent = null), 8000);
+			return () => clearTimeout(t);
+		}
+	});
 
 	// Fall back to the vehicles tab whenever the schedule tab is hidden (no
 	// waypoints with a planned arrival). `$derived:` is not a rune in runes mode
@@ -720,6 +764,29 @@
 			</div>
 		{/if}
 
+		<!-- Route-point announcement (Leitstellenwechsel / Wegpunkt erreicht) -->
+		{#if pointEvent && activeAlerts.length === 0}
+			<div class="point-banner" class:with-net={offline || backOnline} class:done={pointEventDone}>
+				<span class="ab-icon">{pointEvent.kind === 'kanalwechsel' ? '📡' : '📍'}</span>
+				<div class="ab-text">
+					<strong>{pointEvent.label}</strong>
+					{#if pointEvent.detail}<div class="ab-note">{pointEvent.detail}</div>{/if}
+					{#if progress && progress.count > 1}
+						<div class="ab-note">{pointEventDone ? '✓ Alle Fahrzeuge passiert' : `${pointEventPassed}/${progress.count} Fahrzeuge passiert`}</div>
+					{/if}
+				</div>
+				<button class="ab-btn dim" onclick={() => (pointEvent = null)} aria-label="Schließen">✕</button>
+			</div>
+		{/if}
+
+		<!-- Next upcoming route point (Wegpunkt / Leitstellenwechsel) -->
+		{#if nextPoint && !pointEvent && activeAlerts.length === 0}
+			<div class="next-point" class:with-net={offline || backOnline}>
+				<span class="np-icon">{nextPoint.point.kind === 'kanalwechsel' ? '📡' : '📍'}</span>
+				<span class="np-text">In {formatDistance(nextPoint.aheadM)}: {nextPoint.point.label}</span>
+			</div>
+		{/if}
+
 		<div class="map-controls">
 			{#if fullscreenSupported}
 				<button class="map-ctrl-btn" class:active={isFullscreen} onclick={toggleFullscreen} title={isFullscreen ? 'Vollbild verlassen' : 'Vollbild – gesamten Bildschirm nutzen'}>
@@ -904,6 +971,17 @@
 	@keyframes alert-in { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 	@keyframes flash { from { box-shadow: 0 4px 16px rgba(0,0,0,.4); } to { box-shadow: 0 0 0 4px rgba(226,61,40,.5), 0 4px 16px rgba(0,0,0,.4); } }
 
+	/* Route-point announcement banner (Leitstellenwechsel / Wegpunkt) */
+	.point-banner { position: absolute; top: .75rem; left: 50%; transform: translateX(-50%); z-index: 18; display: flex; align-items: center; gap: .6rem; max-width: min(640px, calc(100% - 1.5rem)); padding: .6rem .8rem; border-radius: 12px; background: #3498db; color: #fff; box-shadow: 0 4px 16px rgba(0,0,0,.4); animation: alert-in .25s ease; }
+	.point-banner.done { background: #27ae60; }
+	.point-banner.with-net { top: calc(.75rem + 3.6rem); }
+
+	/* Next-upcoming-point pill */
+	.next-point { position: absolute; top: .75rem; left: 50%; transform: translateX(-50%); z-index: 15; display: flex; align-items: center; gap: .45rem; max-width: min(560px, calc(100% - 1.5rem)); padding: .4rem .8rem; border-radius: 18px; background: rgba(15,27,36,.88); color: #fff; font-size: var(--text-sm); box-shadow: 0 2px 10px rgba(0,0,0,.35); pointer-events: none; }
+	.next-point.with-net { top: calc(.75rem + 3.6rem); }
+	.np-icon { flex-shrink: 0; }
+	.np-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 	/* Connectivity banner (offline / back-online) */
 	.net-banner { position: absolute; top: .75rem; left: 50%; transform: translateX(-50%); z-index: 19; display: flex; align-items: center; gap: .55rem; max-width: min(560px, calc(100% - 1.5rem)); padding: .55rem .8rem; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.4); animation: alert-in .25s ease; }
 	.net-banner.offline { background: #4a5568; color: #fff; }
@@ -944,6 +1022,10 @@
 		.net-banner { top: calc(48px + .5rem); }
 		.alert-banner { top: calc(48px + .5rem); }
 		.alert-banner.with-net { top: calc(48px + .5rem + 3.6rem); }
+		.point-banner { top: calc(48px + .5rem); }
+		.point-banner.with-net { top: calc(48px + .5rem + 3.6rem); }
+		.next-point { top: calc(48px + .5rem); }
+		.next-point.with-net { top: calc(48px + .5rem + 3.6rem); }
 	}
 
 	/* Short landscape (phones held sideways): the stacked map control buttons

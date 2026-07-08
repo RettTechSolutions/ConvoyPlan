@@ -92,6 +92,8 @@ export interface KanalwechselEntry {
 	 * der alten (fehlt bei alten Routen).
 	 */
 	typ?: 'anmelden' | 'abmelden' | 'convoy_anmeldung';
+	/** Weitere hinterlegte Funkgruppen der Leitstelle. */
+	zusatz_kanaele?: { name?: string; kanal?: string }[];
 }
 
 export interface RouteResult {
@@ -362,6 +364,8 @@ export interface TrackPayload {
 	name: string; organization: string | null; start_time: string | null;
 	scope: ShareLinkScope;
 	waypoints: TrackWaypointPublic[]; geojson: Geometry | null;
+	distance_m: number | null;
+	kanalwechsel?: KanalwechselEntry[];
 	vehicles: TrackVehicle[]; positions: TrackPosition[];
 }
 export interface TrackGate { requires_password: true; convoy_name: string; }
@@ -506,8 +510,9 @@ export const adminApi = {
     setUpdateChannel: (channel: 'stable' | 'beta') =>
         api.put<void>('/api/admin/settings/update-channel', { channel }),
     getUpdateMode: () => api.get<UpdateMode>('/api/admin/settings/update-mode'),
-    setUpdateMode: (mode: 'auto' | 'notify') =>
-        api.put<void>('/api/admin/settings/update-mode', { mode }),
+    setUpdateMode: (mode: 'auto' | 'notify', notify_on_auto?: boolean) =>
+        api.put<void>('/api/admin/settings/update-mode',
+            notify_on_auto === undefined ? { mode } : { mode, notify_on_auto }),
     getDemoSettings: () => api.get<DemoSettings>('/api/admin/settings/demo'),
     saveDemoSettings: (enabled: boolean, session_hours?: number) =>
         api.put<DemoSettings>('/api/admin/settings/demo', { enabled, session_hours }),
@@ -547,6 +552,7 @@ export interface UpdateMode {
     mode: 'auto' | 'notify';
     source: 'db' | 'env';
     env_mode: 'auto' | 'notify';
+    notify_on_auto: boolean;   // E-Mail an Superadmins nach automatischer Installation
 }
 
 export interface DemoSettings {

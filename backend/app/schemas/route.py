@@ -48,6 +48,9 @@ class KanalwechselEntry(BaseModel):
     leitstelle_id: str
     leitstelle_name: str
     anrufgruppe: str
+    # Weitere hinterlegte Funkgruppen der Leitstelle:
+    # [{"name": "Führungskanal", "kanal": "469"}, …]
+    zusatz_kanaele: list[dict] = []
     # "convoy_anmeldung" = Anmeldung des Verbands bei der Start-Leitstelle,
     # "anmelden" = Wechsel zur neuen Leitstelle, "abmelden" = Abmeldung bei
     # der alten. Default für Routen, die vor Einführung des Feldes berechnet
