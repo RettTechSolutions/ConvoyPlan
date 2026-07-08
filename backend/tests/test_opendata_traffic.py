@@ -9,7 +9,6 @@ from app.services.opendata_traffic import (
     _adapt_mobidata_bw,
     _flatten_geoms,
     _is_closure,
-    features_along_route,
     features_around,
 )
 
