@@ -82,18 +82,25 @@ jobs:
 
       # Enable native auto-merge for manually-labelled PRs (any) and for
       # Dependabot patch/minor updates. Dependabot major bumps fall through.
-      # With a merge queue required on main, "auto merge" means "add to the
-      # queue when ready". Newer gh versions handle that transparently; older
-      # ones reject an explicit merge method when a queue is active, hence the
-      # method-less fallback.
+      # Mit erzwungener Merge Queue auf main heißt "auto merge" = "in die Queue,
+      # sobald bereit".
       #
-      # Token: MERGE_QUEUE_TOKEN (PAT/App-Token) ist Pflicht, damit der PR
-      # tatsächlich in die Merge Queue eingereiht wird — der eingebaute
-      # GITHUB_TOKEN kann das nicht (siehe Kopf-Kommentar). Ohne das Secret
-      # greift der Fallback auf GITHUB_TOKEN; Auto-Merge wird dann zwar
-      # aktiviert, der PR wandert aber nicht in die Queue. HAS_MQ_TOKEN spiegelt
+      # WARUM NICHT `gh pr merge --auto --squash`? Unter einer Merge Queue
+      # verwirft gh das explizite `--squash` ("! The merge strategy for main is
+      # set by the merge queue") und aktiviert Auto-Merge mit der
+      # Repo-Default-Methode — das ist i. d. R. MERGE. Das Ruleset/​die Queue
+      # erlauben aber NUR SQUASH, weshalb GitHub einen MERGE-Auto-Merge NICHT in
+      # die Queue einreiht: der PR bleibt mit "auto-merge an" + grünen Checks
+      # offen liegen. Genau das war der Bug. Deshalb aktivieren wir Auto-Merge
+      # direkt per GraphQL mit `mergeMethod: SQUASH` — das bleibt gesetzt und
+      # passt zur Queue.
+      #
+      # Token: MERGE_QUEUE_TOKEN (PAT/App-Token) ist zusätzlich Pflicht — der
+      # eingebaute GITHUB_TOKEN kann einen PR nicht in die Merge Queue einreihen
+      # (siehe Kopf-Kommentar). Ohne das Secret greift der Fallback auf
+      # GITHUB_TOKEN und der PR wandert nicht in die Queue. HAS_MQ_TOKEN spiegelt
       # nur wider, OB das Secret gesetzt ist (true/false) — es leakt keinen Wert.
-      - name: Enable native auto-merge
+      - name: Enable native auto-merge (squash)
         if: >-
           github.actor != 'dependabot[bot]' ||
           steps.meta.outputs.update-type == 'version-update:semver-patch' ||
@@ -101,9 +108,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.MERGE_QUEUE_TOKEN || secrets.GITHUB_TOKEN }}
           HAS_MQ_TOKEN: ${{ secrets.MERGE_QUEUE_TOKEN != '' }}
+          PR_NODE_ID: ${{ github.event.pull_request.node_id }}
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
           if [ "$HAS_MQ_TOKEN" != "true" ]; then
             echo "::warning::MERGE_QUEUE_TOKEN ist nicht gesetzt — der eingebaute GITHUB_TOKEN kann den PR NICHT in die Merge Queue einreihen. Auto-Merge wird aktiviert, der PR bleibt aber offen. Siehe .github/repo-setup-checklist.md."
           fi
-          gh pr merge --auto --squash "$PR_URL" || gh pr merge --auto "$PR_URL"
+          # Auto-Merge per GraphQL mit fest SQUASH aktivieren (siehe Kommentar).
+          # Ist der PR bereits "clean"/mergebar, liefert die Mutation einen
+          # Fehler ("Pull request is in clean status") — dann direkt in die
+          # Queue stellen bzw. mergen (gh entscheidet queue-abhängig).
+          gh api graphql -f query='
+            mutation($id: ID!) {
+              enablePullRequestAutoMerge(input: { pullRequestId: $id, mergeMethod: SQUASH }) {
+                pullRequest { number }
+              }
+            }' -f id="$PR_NODE_ID" \
+          || gh pr merge --squash "$PR_URL" \
+          || gh pr merge "$PR_URL"
