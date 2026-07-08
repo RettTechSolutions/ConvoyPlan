@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user
 from app.database import get_db
 from app.models.user import User
-from app.services import overpass as overpass_svc
+from app.services import traffic as traffic_svc
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/overpass", tags=["overpass"])
@@ -37,9 +37,9 @@ async def get_closures(
     _: User = Depends(get_current_user),
 ):
     try:
-        return await overpass_svc.get_closures(lat, lon, radius_m)
+        return await traffic_svc.get_closures(lat, lon, radius_m)
     except Exception as exc:
-        logger.error("Overpass closures fetch failed: %s", exc, exc_info=True)
+        logger.error("Closures fetch failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail="Sperrungsdaten nicht verfügbar")
 
 
@@ -52,7 +52,7 @@ async def get_closures_for_route(
     """Sperrungen/Baustellen im Korridor entlang der gesamten Route."""
     coords = [(c[0], c[1]) for c in body.coordinates]
     try:
-        return await overpass_svc.get_closures_along_route(coords, body.corridor_m)
+        return await traffic_svc.get_closures_along_route(coords, body.corridor_m)
     except Exception as exc:
-        logger.error("Overpass route closures fetch failed: %s", exc, exc_info=True)
+        logger.error("Route closures fetch failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail="Sperrungsdaten nicht verfügbar")

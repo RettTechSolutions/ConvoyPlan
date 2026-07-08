@@ -128,7 +128,8 @@
       <span class="dot {svcColor(status?.database)}" title="Datenbank"></span>
       <span class="dot {svcColor(status?.graphhopper)}" title="Routing"></span>
       <span class="dot {svcColor(status?.weather_api?.status)}" title="Wetter-API"></span>
-      <span class="dot {svcColor(status?.overpass_api?.status)}" title="Sperren-API"></span>
+      <span class="dot {svcColor(status?.overpass_api?.status)}" title="Sperren-API (Overpass)"></span>
+      <span class="dot {svcColor(status?.autobahn_api?.status)}" title="Autobahn-API"></span>
     </span>
 
     <span class="pill-sep">·</span>
@@ -190,6 +191,15 @@
               {status?.overpass_api?.status === 'ok'
                 ? `${status.overpass_api.latency_ms} ms`
                 : (status?.overpass_api?.status ?? '–')}
+            </span>
+          </div>
+          <div class="svc-row">
+            <span class="dot {svcColor(status?.autobahn_api?.status)}"></span>
+            <span class="svc-name">Autobahn (bund.dev)</span>
+            <span class="svc-val {svcColor(status?.autobahn_api?.status)}">
+              {status?.autobahn_api?.status === 'ok'
+                ? `${status.autobahn_api.latency_ms} ms`
+                : (status?.autobahn_api?.status ?? '–')}
             </span>
           </div>
         </div>

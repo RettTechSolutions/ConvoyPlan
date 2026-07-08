@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 
 import httpx
@@ -10,6 +11,7 @@ from app.config import settings
 from app.database import get_db
 from app.services import weather as weather_svc
 from app.services import overpass as overpass_svc
+from app.services import autobahn as autobahn_svc
 
 router = APIRouter(prefix="/status", tags=["status"])
 
@@ -45,7 +47,9 @@ async def service_status(db: AsyncSession = Depends(get_db)):
         # ReadTimeout / other — GH is up but still importing graph
         gh_status = "building"
 
-    overpass_check = await overpass_svc.probe()
+    overpass_check, autobahn_check = await asyncio.gather(
+        overpass_svc.probe(), autobahn_svc.probe()
+    )
 
     return {
         "checked_at": datetime.now(timezone.utc).isoformat(),
@@ -55,4 +59,5 @@ async def service_status(db: AsyncSession = Depends(get_db)):
         "graphhopper_bbox": gh_bbox,
         "weather_api": weather_svc.last_check(),
         "overpass_api": overpass_check,
+        "autobahn_api": autobahn_check,
     }

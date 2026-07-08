@@ -141,6 +141,7 @@ export interface StatusResponse {
 	graphhopper_bbox: number[] | null;
 	weather_api: ServiceCheck;
 	overpass_api: ServiceCheck;
+	autobahn_api: ServiceCheck;
 }
 
 export interface LoginResult {
