@@ -62,6 +62,40 @@ Empfohlen, gleich mit anhaken:
 
 **Issues/PRs → Labels → New label**, Name exakt: `auto-merge`.
 
+> Die in `dependabot.yml` verwendeten Labels müssen existieren, sonst postet
+> Dependabot auf jedem PR einen Fehlerkommentar. Aktuell genutzt: `dependencies`
+> und `auto-merge`. Wer zusätzlich Bereichs-Labels (`backend`, `frontend`, `ci`,
+> `docker`) möchte, legt sie hier an und trägt sie in `dependabot.yml` wieder ein.
+
+## 4. Merge-Queue-Token hinterlegen (`MERGE_QUEUE_TOKEN`) — Pflicht für Auto-Merge
+
+> **Ohne diesen Schritt wandern Dependabot-PRs NICHT in die Merge Queue** — sie
+> bleiben mit aktiviertem Auto-Merge und grünen Checks offen liegen. Genau das
+> war die Ursache, warum „der Dependabot-Auto-Merge nicht funktioniert".
+
+GitHub lässt den **eingebauten `GITHUB_TOKEN` einen PR nicht in eine Merge Queue
+einreihen** (offizielle Einschränkung: *„the built-in GITHUB_TOKEN cannot add
+pull requests to the queue"*). Der Auto-Merge-Workflow kann Auto-Merge damit
+zwar aktivieren, aber der PR erreicht die Queue nie. Deshalb braucht der
+Merge-Schritt ein **eigenes Token** mit den Rechten **Contents: write** +
+**Pull requests: write**:
+
+**Variante A — Fine-grained PAT (einfachste Einrichtung):**
+1. **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token.**
+2. Repository access: nur dieses Repo. Permissions: **Contents → Read and write**,
+   **Pull requests → Read and write**.
+3. Token kopieren, dann **Repo → Settings → Secrets and variables → Actions →
+   New repository secret**: Name exakt **`MERGE_QUEUE_TOKEN`**, Wert = das Token.
+
+**Variante B — GitHub-App-Token (empfohlen für Orgs, kurzlebig/rotierend):**
+Eine GitHub App mit `contents:write` + `pull_requests:write` installieren, im
+Workflow per `actions/create-github-app-token` ein Token erzeugen und dieses
+statt `MERGE_QUEUE_TOKEN` als `GH_TOKEN` an den Merge-Schritt geben.
+
+> Hinweis: Ist `MERGE_QUEUE_TOKEN` nicht gesetzt, fällt der Workflow auf
+> `GITHUB_TOKEN` zurück und schreibt eine Warnung ins Job-Log — Auto-Merge wird
+> aktiviert, der PR landet aber nicht in der Queue.
+
 ## Nutzung im Alltag
 
 1. Branch erstellen, Änderungen pushen, **Pull Request** öffnen.
