@@ -148,20 +148,42 @@
 				paint: { 'line-color': '#e74c3c', 'line-width': 4 },
 			});
 
-			// Sperrungen layer
+			// Sperrungen layer — Farbe nach Schweregrad: rot = Voll-/Sperrung,
+			// gelb = Verkehrswarnung (Unfall/Hindernis), orange = Baustelle.
+			// Speist sich aus mehreren Quellen (Overpass + Autobahn-API); die
+			// `service`/`isBlocked`-Properties liefern beide Quellen mit.
 			map.addSource('closures', { type: 'geojson', data: empty() });
 			map.addLayer({
 				id: 'closures-line',
 				type: 'line',
 				source: 'closures',
-				paint: { 'line-color': '#f39c12', 'line-width': 3, 'line-dasharray': [4, 2] },
+				paint: {
+					'line-color': [
+						'case',
+						['any', ['==', ['get', 'isBlocked'], 'true'], ['==', ['get', 'service'], 'closure']], '#e74c3c',
+						['==', ['get', 'service'], 'warning'], '#f1c40f',
+						'#f39c12',
+					],
+					'line-width': 3,
+					'line-dasharray': [4, 2],
+				},
 			});
 			map.addLayer({
 				id: 'closures-circle',
 				type: 'circle',
 				source: 'closures',
 				filter: ['==', '$type', 'Point'],
-				paint: { 'circle-color': '#f39c12', 'circle-radius': 6, 'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5 },
+				paint: {
+					'circle-color': [
+						'case',
+						['any', ['==', ['get', 'isBlocked'], 'true'], ['==', ['get', 'service'], 'closure']], '#e74c3c',
+						['==', ['get', 'service'], 'warning'], '#f1c40f',
+						'#f39c12',
+					],
+					'circle-radius': 6,
+					'circle-stroke-color': '#fff',
+					'circle-stroke-width': 1.5,
+				},
 			});
 
 			ready = true;
