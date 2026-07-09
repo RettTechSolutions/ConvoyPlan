@@ -38,10 +38,24 @@ services:
       UPDATE_NOTIFY_INTERVAL: ${UPDATE_NOTIFY_INTERVAL:-1800}
       UPDATE_NOTIFY_ON_AUTO: ${UPDATE_NOTIFY_ON_AUTO:-false}
       APP_BASE_URL: https://${DOMAIN:-localhost}
+      # Live-Verkehrslage (HERE/TomTom) — alternativ im Admin-Panel setzbar.
+      HERE_TRAFFIC_API_KEY: ${HERE_TRAFFIC_API_KEY:-}
+      TOMTOM_TRAFFIC_API_KEY: ${TOMTOM_TRAFFIC_API_KEY:-}
+      TRAFFIC_FLOW_PROVIDER: ${TRAFFIC_FLOW_PROVIDER:-}
+      # Offene Baustellenfeeds (Open Data + mobilithek/DATEX II). Standard =
+      # BW + Berlin; per OPENDATA_TRAFFIC_FEEDS überschreiben, um z. B.
+      # datex2|<broker-url> für weitere Bundesländer zu ergänzen.
+      OPENDATA_TRAFFIC_ENABLED: ${OPENDATA_TRAFFIC_ENABLED:-true}
+      OPENDATA_TRAFFIC_FEEDS: ${OPENDATA_TRAFFIC_FEEDS:-mobidata_bw|https://api.mobidata-bw.de/datasets/traffic/roadworks/roadworks_geojson.json,berlin_viz|https://api.viz.berlin.de/daten/baustellen_sperrungen_viz.json}
+      OPENDATA_TRAFFIC_CLIENT_CERT: ${OPENDATA_TRAFFIC_CLIENT_CERT:-}
+      OPENDATA_TRAFFIC_CA_CERT: ${OPENDATA_TRAFFIC_CA_CERT:-}
     volumes:
       - cert_uploads:/certs
       - logo_uploads:/uploads
       - update_status:/update_status
+      # Zertifikate für per mTLS geschützte Feeds (mobilithek-Broker). Dateien
+      # auf dem Host in ./secrets ablegen; im Container unter /secrets erreichbar.
+      - ./secrets:/secrets:ro
     depends_on:
       db:
         condition: service_healthy

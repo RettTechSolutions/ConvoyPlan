@@ -30,6 +30,11 @@ graphhopper/graph-cache/
 frontend/.env
 frontend/.env.local
 
+# Deployment secrets (mTLS certs für mobilithek-Feeds etc.) — nie committen
+/secrets/
+*.pem
+*.p12
+
 # License private key and issuer tool — admin-only, never commit
 scripts/convoyplan_license.key
 scripts/issue_license.py
