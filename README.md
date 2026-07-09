@@ -288,9 +288,11 @@ ConvoyPlan/
 ├── .github/
 │   ├── workflows/
 │   │   ├── ci.yml            # Tests + Typecheck + Docker-Build + Dependency-Audit
-│   │   └── release.yml       # Docker-Images zu GHCR + GitHub Release bei Tag
+│   │   ├── release.yml       # Docker-Images zu GHCR + GitHub Release bei Tag
+│   │   └── sync-wiki.yml     # Spiegelt wiki/ ins GitHub Wiki bei Push auf main
 │   └── dependabot.yml        # Dependency-Updates (pip/npm/Actions/Docker)
 ├── docs/                     # Backup/Restore, Retention- und ISO-Dokumentation
+├── wiki/                     # Wiki-Quellen (Markdown) — Sync ins GitHub Wiki via sync-wiki.yml
 ├── .hooks/pre-commit         # Lokaler Pre-Commit-Hook (ruff + svelte-check)
 ├── scripts/
 │   ├── install.sh            # Linux-Installer (+ systemd-Watchdog)
@@ -507,6 +509,31 @@ Domain und Zertifikat werden beim ersten Start über den Setup-Wizard in der Dat
 # frontend/.env.local
 VITE_WS_HOST=localhost:8000
 ```
+
+---
+
+## Dokumentation
+
+Die vollständige Anwender- und Betriebsdokumentation liegt im **[GitHub Wiki](https://github.com/RettTechSolutions/ConvoyPlan/wiki)**.
+
+Die Markdown-Quellen dazu liegen im Ordner [`wiki/`](wiki/). Bei jedem Push auf `main` werden sie
+über den Workflow [`.github/workflows/sync-wiki.yml`](.github/workflows/sync-wiki.yml) automatisch ins
+GitHub Wiki gespiegelt — Bearbeitungen also bitte immer in `wiki/` vornehmen, nicht direkt im Wiki.
+
+| Seite | Inhalt |
+|---|---|
+| [Home](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Home) | Projektübersicht, Architektur, Tech-Stack |
+| [Installation und Setup](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Installation-und-Setup) | Docker-Quickstart, Konfiguration, Deployment |
+| [API-Dokumentation](https://github.com/RettTechSolutions/ConvoyPlan/wiki/API-Dokumentation) | REST- und WebSocket-Endpunkte |
+| [Benutzerhandbuch](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Benutzerhandbuch) | Anleitung für Planer, Fahrer und Admins |
+| [Erste Schritte](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Erste-Schritte) | Registrierung, Login und erster Überblick |
+| [Konvoi-Planung](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Konvoi-Planung) | Konvois anlegen, Wegpunkte und Route berechnen |
+| [Fahrzeuge](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Fahrzeuge) | Fahrzeuge anlegen und verwalten |
+| [Live-Tracking](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Live-Tracking) | Echtzeit-Verfolgung der Fahrzeuge |
+| [Marschbefehl & Export](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Marschbefehl-Export) | PDF-Marschbefehl sowie GPX-/JSON-Export |
+| [Rollen & Berechtigungen](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Rollen) | Rollenmodell und Zugriffsrechte |
+| [Teilen](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Teilen) | Öffentliche Freigabelinks ohne Login |
+| [FAQ](https://github.com/RettTechSolutions/ConvoyPlan/wiki/FAQ) | Häufige Fragen |
 
 ---
 
