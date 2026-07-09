@@ -498,8 +498,19 @@ Domain und Zertifikat werden beim ersten Start über den Setup-Wizard in der Dat
 | `TRAFFIC_FLOW_PROVIDER` | Anbieter erzwingen (`here`/`tomtom`), wenn beide Keys gesetzt sind. Standard: automatisch, HERE bevorzugt. |
 | `OPENDATA_TRAFFIC_ENABLED` | Offene, lizenzfreie Baustellen-/Sperrungsfeeds aktiviert lassen. Standard: `true`. |
 | `OPENDATA_TRAFFIC_FEEDS` | Kommaseparierte Liste `format\|url`. Formate: `mobidata_bw`, `berlin_viz` (GeoJSON) und `datex2` (DATEX II v2, z. B. mobilithek-Länderfeeds für bundesweite Abdeckung abseits der Autobahn). Standard aktiviert MobiData BW + Berlin VIZ. |
-| `OPENDATA_TRAFFIC_CLIENT_CERT` | Client-Zertifikat (PEM) für per mTLS geschützte `datex2`-Feeds, insbesondere den mobilithek-Broker. |
-| `OPENDATA_TRAFFIC_CA_CERT` | CA-/Vertrauenskette (PEM) des Brokers, falls dieser eine private CA nutzt (z. B. mobilithek-M2M, `prod-mdp.m2m.de`). Ohne hinterlegte CA gilt der öffentliche Trust-Store. |
+| `OPENDATA_TRAFFIC_CLIENT_CERT` | Client-Zertifikat (PEM) für per mTLS geschützte `datex2`-Feeds, insbesondere den mobilithek-Broker. Standardpfad `/secrets/mobilithek-client.pem` (siehe unten). |
+| `OPENDATA_TRAFFIC_CA_CERT` | CA-/Vertrauenskette (PEM) des Brokers, falls dieser eine private CA nutzt (z. B. mobilithek-M2M, `prod-mdp.m2m.de`). Ohne hinterlegte CA gilt der öffentliche Trust-Store. Standardpfad `/secrets/mobilithek-ca.crt` (siehe unten). |
+
+**mTLS-Zertifikate ablegen:** `docker-compose.yml` mountet den Host-Ordner `./secrets` read-only nach `/secrets` im Backend-Container. Zertifikate dort ablegen, dann in der `.env` referenzieren:
+
+```
+./secrets/mobilithek-client.pem  # Client-Zertifikat + privater Schlüssel
+                                  # (aus certificate.p12 konvertieren: openssl pkcs12
+                                  # -in certificate.p12 -out mobilithek-client.pem -nodes)
+./secrets/mobilithek-ca.crt      # CA-Kette der mobilithek (prod-mdp.m2m.de)
+```
+
+`/secrets` ist über `.gitignore` (`/secrets/`, `*.pem`, `*.p12`) vom Repository ausgeschlossen — Zertifikate landen nie im Git-Verlauf.
 
 ### Frontend (lokale Entwicklung)
 
