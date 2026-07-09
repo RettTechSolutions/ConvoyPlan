@@ -335,17 +335,17 @@ async def set_traffic_keys(
     )
 
 
-# ── Update-Channel (stable / beta) ──────────────────────────────────────────
+# ── Update-Channel (stable / beta / nightly) ────────────────────────────────
 
 
 class UpdateChannelResponse(BaseModel):
-    channel: str             # effective channel ("stable" | "beta")
+    channel: str             # effective channel ("stable" | "beta" | "nightly")
     source: str              # "db" | "env" — where the effective value comes from
     env_channel: str         # the UPDATE_CHANNEL env fallback
 
 
 class UpdateChannelUpdate(BaseModel):
-    channel: str = Field(..., description="Release channel: 'stable' or 'beta'")
+    channel: str = Field(..., description="Release channel: 'stable', 'beta' or 'nightly'")
 
 
 @router.get("/settings/update-channel", response_model=UpdateChannelResponse)
@@ -368,10 +368,10 @@ async def set_update_channel(
     current: User = Depends(require_superadmin),
 ):
     """Store the release channel in system_settings and mirror it to the shared
-    volume so the updater switches between tracking releases (stable) and
-    every main commit (beta)."""
+    volume so the updater switches between tracking published releases (stable),
+    numbered pre-releases (beta) or every main commit (nightly)."""
     if data.channel not in VALID_CHANNELS:
-        raise HTTPException(422, "channel must be 'stable' or 'beta'")
+        raise HTTPException(422, "channel must be 'stable', 'beta' or 'nightly'")
     result = await db.execute(select(SystemSetting).where(SystemSetting.key == "update.channel"))
     setting = result.scalar_one_or_none()
     if setting:

@@ -1,14 +1,15 @@
-name: Beta Images
+name: Nightly Images
 
-# Baut auf jedem Push auf main alle Docker-Images mit dem Tag :beta und pusht
-# sie nach GHCR. Damit funktioniert der Update-Kanal "Beta" (Admin-Panel) auch
-# bei image-basierten Installationen: Der Updater zieht im Beta-Kanal die
-# :beta-Images statt :latest und folgt so jedem Commit auf main.
+# Baut auf jedem Push auf main alle Docker-Images mit dem Tag :nightly und pusht
+# sie nach GHCR. Damit funktioniert der Update-Kanal "Nightly" (Admin-Panel) auch
+# bei image-basierten Installationen: Der Updater zieht im Nightly-Kanal die
+# :nightly-Images statt :latest und folgt so jedem Commit auf main.
 #
 # Sicherheit: Jeder Commit auf main ist durch die Merge Queue gegen den
-# aktuellen main getestet (Required Checks) — :beta enthält also nie
-# ungeprüften Code. :latest bleibt davon unberührt und wird weiterhin
-# ausschließlich vom Release-Workflow (Tag vX.Y.Z) gebaut.
+# aktuellen main getestet (Required Checks) — :nightly enthält also nie
+# ungeprüften Code. :latest (Stable) und :beta (nummerierte Prereleases) bleiben
+# davon unberührt und werden ausschließlich vom Release-Workflow gebaut
+# (:latest aus einem vX.Y.Z-Tag, :beta aus einem vX.Y.Z-beta.N-Tag).
 
 on:
   push:
@@ -21,14 +22,14 @@ permissions:
 
 # Serialisieren statt canceln: Bei schnellen Merge-Wellen laufen die Builds
 # nacheinander, jeder Stand ist in sich konsistent (kein Mix aus alten und
-# neuen :beta-Images durch einen mittendrin abgebrochenen Lauf).
+# neuen :nightly-Images durch einen mittendrin abgebrochenen Lauf).
 concurrency:
-  group: beta-images
+  group: nightly-images
   cancel-in-progress: false
 
 jobs:
   build-and-push:
-    name: Build & push :beta images
+    name: Build & push :nightly images
     runs-on: ubuntu-latest
 
     steps:
@@ -51,34 +52,34 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # metadata-action normalisiert den Repo-Namen auf Kleinbuchstaben
-      # (GHCR-Pflicht) — deshalb nicht einfach ${{ github.repository }}:beta.
+      # (GHCR-Pflicht) — deshalb nicht einfach ${{ github.repository }}:nightly.
       - name: Docker metadata – backend
         id: meta-backend
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ghcr.io/${{ github.repository }}/backend
-          tags: type=raw,value=beta
+          tags: type=raw,value=nightly
 
       - name: Docker metadata – frontend
         id: meta-frontend
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ghcr.io/${{ github.repository }}/frontend
-          tags: type=raw,value=beta
+          tags: type=raw,value=nightly
 
       - name: Docker metadata – graphhopper
         id: meta-graphhopper
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ghcr.io/${{ github.repository }}/graphhopper
-          tags: type=raw,value=beta
+          tags: type=raw,value=nightly
 
       - name: Docker metadata – updater
         id: meta-updater
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ghcr.io/${{ github.repository }}/updater
-          tags: type=raw,value=beta
+          tags: type=raw,value=nightly
 
       # Base-Images stammen alle von Docker Hub und sind gelegentlich von
       # transienten Registry-Timeouts betroffen — vorab ziehen mit Retry

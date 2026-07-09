@@ -505,7 +505,7 @@
         }
     }
 
-    async function setChannel(channel: 'stable' | 'beta') {
+    async function setChannel(channel: 'stable' | 'beta' | 'nightly') {
         if (channelSaving || updateChannel?.channel === channel) return;
         channelSaving = true;
         updateError = '';
@@ -2025,13 +2025,21 @@
                             disabled={channelSaving}
                             onclick={() => setChannel('beta')}
                         >Beta</button>
+                        <button
+                            class="channel-btn"
+                            class:active={updateChannel.channel === 'nightly'}
+                            disabled={channelSaving}
+                            onclick={() => setChannel('nightly')}
+                        >Nightly</button>
                     </div>
                 </div>
                 <p class="hint" style="margin:-.25rem 0 1rem;">
                     {#if updateChannel.channel === 'stable'}
                         <strong>Stable:</strong> Updates nur bei veröffentlichten GitHub-Releases — einzelne Commits auf <code>main</code> lösen kein Update aus.
+                    {:else if updateChannel.channel === 'beta'}
+                        <strong>Beta:</strong> Nummerierte Vorabversionen (Release-Kandidaten, z. B. <code>v2026.2.1-beta.1</code>) zum gezielten Testen des nächsten Releases.
                     {:else}
-                        <strong>Beta:</strong> Jeder Commit auf <code>main</code> wird installiert, sobald seine Beta-Images gebaut sind (ca. 10–15 Min. nach dem Merge; für Tests/Vorab-Versionen).
+                        <strong>Nightly:</strong> Jeder Commit auf <code>main</code> wird installiert, sobald seine Nightly-Images gebaut sind (ca. 10–15 Min. nach dem Merge; für Entwickler/Tester).
                     {/if}
                 </p>
             {/if}
@@ -2086,15 +2094,17 @@
                         {/if}
                     </div>
                     <div class="update-row">
-                        {#if updateStatus.channel === 'beta'}
-                            <span class="update-label">Letzter Beta-Build</span>
+                        {#if updateStatus.channel === 'nightly'}
+                            <span class="update-label">Letzter Nightly-Build</span>
+                        {:else if updateStatus.channel === 'beta'}
+                            <span class="update-label">Neuestes Beta-Release</span>
                         {:else}
                             <span class="update-label">Neuestes Release</span>
                         {/if}
                         {#if !updateStatus.github_reachable}
                             <span class="hint">nicht erreichbar</span>
                         {:else if updateStatus.no_release}
-                            <span class="hint">noch kein Release veröffentlicht</span>
+                            <span class="hint">{updateStatus.channel === 'beta' ? 'noch kein Prerelease veröffentlicht' : 'noch kein Release veröffentlicht'}</span>
                         {:else}
                             {#if updateStatus.latest_release}
                                 <code>{updateStatus.latest_release}</code>

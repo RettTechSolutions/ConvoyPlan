@@ -6,7 +6,7 @@ REPO_URL="https://github.com/RettTechSolutions/ConvoyPlan.git"
 GITHUB_REPO="${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}"
 INTERVAL="${UPDATE_INTERVAL:-300}"
 TRIGGER_POLL=10   # check trigger file every 10s so the UI reacts quickly
-CHANNEL_FILE=/update_status/channel   # written by the backend: "stable" | "beta"
+CHANNEL_FILE=/update_status/channel   # written by the backend: "stable" | "beta" | "nightly"
 MODE_FILE=/update_status/mode         # written by the backend: "auto" | "notify"
 LAST_NOTIFIED_FILE=/update_status/last_notified
 
@@ -38,8 +38,9 @@ read_channel() {
         ch="$(tr -d '[:space:]' < "${CHANNEL_FILE}" 2>/dev/null || echo stable)"
     fi
     case "${ch}" in
-        beta) echo "beta" ;;
-        *)    echo "stable" ;;
+        beta)    echo "beta" ;;
+        nightly) echo "nightly" ;;
+        *)       echo "stable" ;;
     esac
 }
 
@@ -72,6 +73,24 @@ latest_release_tag() {
                 "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" 2>/dev/null
         fi
     } | grep -m1 '"tag_name"' | cut -d'"' -f4 || true
+}
+
+# Resolve the tag of the latest GitHub *pre-release* (release candidate, e.g.
+# v2026.2.1-beta.1). GitHub returns /releases newest-first, so the first tag
+# matching the "-beta." naming convention is the most recent pre-release.
+# Convention: pre-release ⟺ tag contains "-beta." (release.yml marks exactly
+# those tags as a GitHub pre-release). Empty output = no pre-release yet or
+# GitHub unreachable. `|| true` guards against SIGPIPE under `set -euo pipefail`.
+latest_prerelease_tag() {
+    {
+        if [ -n "${GITHUB_TOKEN:-}" ]; then
+            curl -sf --max-time 15 -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                "https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=30" 2>/dev/null
+        else
+            curl -sf --max-time 15 \
+                "https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=30" 2>/dev/null
+        fi
+    } | grep -oE '"tag_name": *"[^"]*"' | cut -d'"' -f4 | grep -m1 -- '-beta\.' || true
 }
 
 # First start: clone if no git repo present
@@ -126,8 +145,8 @@ while true; do
 
   CHANNEL="$(read_channel)"
 
-  if [ "${CHANNEL}" = "beta" ]; then
-    # Beta: track every commit on main (the historical behaviour).
+  if [ "${CHANNEL}" = "nightly" ]; then
+    # Nightly: track every commit on main (the historical "beta" behaviour).
     if ! git -C "${REPO_DIR}" fetch origin main --quiet 2>&1; then
       log "fetch failed, retrying in ${INTERVAL}s"
       wait_or_trigger && { DEPLOYED=""; continue; }
@@ -136,13 +155,25 @@ while true; do
     REMOTE=$(git -C "${REPO_DIR}" rev-parse origin/main)
     TARGET_DESC="main"
   else
-    # Stable: only deploy the latest published release, so a normal push to
-    # main does not trigger an update.
-    TAG="$(latest_release_tag)"
-    if [ -z "${TAG}" ]; then
-      log "Channel 'stable': kein Release gefunden — überspringe (warte auf erstes Release)."
-      wait_or_trigger && { DEPLOYED=""; continue; }
-      continue
+    # Tag-basierte Kanäle: stable → neuestes veröffentlichtes Release, beta →
+    # neuestes Prerelease (Release-Kandidat). Ein normaler Push auf main löst
+    # hier kein Update aus.
+    if [ "${CHANNEL}" = "beta" ]; then
+      TAG="$(latest_prerelease_tag)"
+      if [ -z "${TAG}" ]; then
+        log "Channel 'beta': kein Prerelease gefunden — überspringe (warte auf ersten Release-Kandidaten)."
+        wait_or_trigger && { DEPLOYED=""; continue; }
+        continue
+      fi
+      TARGET_DESC="Prerelease ${TAG}"
+    else
+      TAG="$(latest_release_tag)"
+      if [ -z "${TAG}" ]; then
+        log "Channel 'stable': kein Release gefunden — überspringe (warte auf erstes Release)."
+        wait_or_trigger && { DEPLOYED=""; continue; }
+        continue
+      fi
+      TARGET_DESC="Release ${TAG}"
     fi
     if ! git -C "${REPO_DIR}" fetch origin --tags --force --quiet 2>&1; then
       log "tag fetch failed, retrying in ${INTERVAL}s"
@@ -151,19 +182,19 @@ while true; do
     fi
     REMOTE=$(git -C "${REPO_DIR}" rev-parse "refs/tags/${TAG}^{commit}" 2>/dev/null || echo "")
     if [ -z "${REMOTE}" ]; then
-      log "Release-Tag ${TAG} nach fetch nicht auflösbar — überspringe."
+      log "Tag ${TAG} nach fetch nicht auflösbar — überspringe."
       wait_or_trigger && { DEPLOYED=""; continue; }
       continue
     fi
-    TARGET_DESC="Release ${TAG}"
   fi
 
-  # Kein automatisches DOWNGRADE im Stable-Kanal: Lief die Instanz vorher im
-  # Beta-Kanal, ist der deployte Stand neuer als das letzte Release — dann
-  # erst wieder aktualisieren, wenn ein Release den Stand überholt (bereits
-  # angewendete DB-Migrationen!). Der manuelle Trigger leert DEPLOYED und
-  # erzwingt das Downgrade weiterhin bewusst.
-  if [ "${CHANNEL}" = "stable" ] && [ -n "${DEPLOYED}" ] && [ "${DEPLOYED}" != "${REMOTE}" ] && \
+  # Kein automatisches DOWNGRADE bei tag-basierten Kanälen (stable/beta): Lief
+  # die Instanz vorher auf einem neueren Stand (z. B. Nightly), ist der
+  # deployte Stand neuer als das Ziel-Tag — dann erst wieder aktualisieren,
+  # wenn ein neueres Ziel den Stand überholt (bereits angewendete
+  # DB-Migrationen!). Nightly folgt bewusst immer main (kein Guard). Der
+  # manuelle Trigger leert DEPLOYED und erzwingt das Downgrade weiterhin bewusst.
+  if [ "${CHANNEL}" != "nightly" ] && [ -n "${DEPLOYED}" ] && [ "${DEPLOYED}" != "${REMOTE}" ] && \
      git -C "${REPO_DIR}" merge-base --is-ancestor "${REMOTE}" "${DEPLOYED}" 2>/dev/null; then
     log "Deployter Stand ${DEPLOYED:0:7} ist bereits ${TARGET_DESC} oder neuer — kein automatisches Downgrade."
   elif [ "$(read_mode)" = "notify" ] && [ -n "${DEPLOYED}" ] && [ "${DEPLOYED}" != "${REMOTE}" ]; then

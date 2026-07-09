@@ -522,7 +522,7 @@ export const adminApi = {
     setTrafficKeys: (data: { here_key?: string; tomtom_key?: string; provider?: string }) =>
         api.put<void>('/api/admin/settings/traffic-keys', data),
     getUpdateChannel: () => api.get<UpdateChannel>('/api/admin/settings/update-channel'),
-    setUpdateChannel: (channel: 'stable' | 'beta') =>
+    setUpdateChannel: (channel: UpdateChannelName) =>
         api.put<void>('/api/admin/settings/update-channel', { channel }),
     getUpdateMode: () => api.get<UpdateMode>('/api/admin/settings/update-mode'),
     setUpdateMode: (mode: 'auto' | 'notify', notify_on_auto?: boolean) =>
@@ -545,22 +545,26 @@ export const adminApi = {
     eraseUserData: (userId: string) => api.delete(`/api/admin/users/${userId}/data`),
 };
 
+// stable = published releases; beta = numbered pre-releases (release
+// candidates); nightly = every commit on main.
+export type UpdateChannelName = 'stable' | 'beta' | 'nightly';
+
 export interface UpdateStatus {
     deployed_sha: string | null;
     deployed_at: string | null;
     remote_sha: string | null;
     update_available: boolean;
     github_reachable: boolean;
-    channel: 'stable' | 'beta';
-    latest_release: string | null;   // tag of the latest release (stable channel)
-    no_release: boolean;             // stable channel but repo has no release yet
-    ahead_of_release: boolean;       // deployed build is newer than the latest release (ex-beta)
+    channel: UpdateChannelName;
+    latest_release: string | null;   // (pre-)release tag the target resolves to (stable/beta); null on nightly
+    no_release: boolean;             // channel has no (pre-)release/build target yet
+    ahead_of_release: boolean;       // deployed build is newer than the target tag (e.g. was on nightly)
 }
 
 export interface UpdateChannel {
-    channel: 'stable' | 'beta';
+    channel: UpdateChannelName;
     source: 'db' | 'env';
-    env_channel: 'stable' | 'beta';
+    env_channel: UpdateChannelName;
 }
 
 export interface TrafficKeyState {

@@ -167,7 +167,9 @@ async def _send_to_superadmins(db: AsyncSession, subject: str, body: str, contex
 def _render(state: dict) -> tuple[str, str]:
     """(subject, html_body) for the update-available notification email."""
     channel = state.get("channel", "stable")
-    if channel == "beta" or not state.get("latest_release"):
+    # "nightly" trackt einzelne Commits und hat keinen Tag → nur die SHA;
+    # "stable"/"beta" haben einen (Pre-)Release-Tag, der angezeigt wird.
+    if channel == "nightly" or not state.get("latest_release"):
         available = state.get("remote_sha") or "unbekannt"
     else:
         available = f"{state['latest_release']} ({state.get('remote_sha')})"

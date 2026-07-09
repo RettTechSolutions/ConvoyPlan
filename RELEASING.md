@@ -80,10 +80,14 @@ git push origin main --tags
 > workflow. Human merges never trigger this — but any unreleased commits
 > already sitting on `main` ship with that fix release.
 >
-> **Beta channel:** every push to `main` additionally builds `:beta` images
-> (`beta-images.yml`). These are only pulled by instances whose admin
-> explicitly switched the update channel to "Beta" — `:latest` and the stable
-> channel remain strictly release-tag-driven.
+> **Update channels (stable / beta / nightly):** instances pick one in the admin
+> panel (Admin → Software-Update):
+> - **stable** — published releases only, floating `:latest`.
+> - **beta** — numbered pre-releases (release candidates, `v2026.2.1-beta.N`),
+>   floating `:beta`. See "Cutting a Beta Pre-Release" below.
+> - **nightly** — every push to `main` builds `:nightly` images (`nightly-images.yml`);
+>   for developers/testers who want each commit. `:latest` and `:beta` are never
+>   moved by a main push — they stay strictly release-tag-driven.
 
 ### What happens automatically
 
@@ -99,6 +103,47 @@ The `release.yml` workflow triggers on the `v*.*.*` tag and:
    ...
    ```
 3. Creates a GitHub Release with auto-generated release notes from commit messages.
+
+---
+
+## Cutting a Beta Pre-Release
+
+Beta pre-releases are numbered release candidates for the next version — for
+targeted testing before a version goes stable to everyone. They are tagged with
+a `-beta.N` suffix and published as a GitHub **pre-release**:
+
+```bash
+git tag v2026.2.1-beta.1
+git push origin v2026.2.1-beta.1
+```
+
+`release.yml` detects the `-` suffix and:
+
+1. Builds the versioned images (`…/backend:2026.2.1-beta.1`) plus the floating
+   **`:beta`** tag.
+2. Does **not** move `:latest` or `2026.2` — stable instances are untouched
+   (GitHub `/releases/latest`, which the stable channel reads, ignores
+   pre-releases).
+3. Publishes a GitHub Release flagged `prerelease: true`.
+
+**Invariant (contract):** a pre-release ⟺ its tag contains `-beta.` **and** it
+is marked as a GitHub pre-release. The updaters detect the newest beta by the
+`-beta.` tag naming; keep that convention.
+
+Instances on the **beta** channel (Admin → Software-Update) then pull `:beta`
+automatically. `auto-release.yml` never touches pre-release tags (it only bumps
+the `FIX` component of the latest *stable* tag).
+
+> **One-time transition (3-channel rollout):** the old "beta" channel (every
+> commit) is renamed "nightly"; the DB migration flips existing
+> `update.channel=beta` rows to `nightly`. Because instances run the *old*
+> updater until they update once, they can't auto-recover after the workflow
+> rename — bootstrap them: (1) dispatch `nightly-images.yml` once so `:nightly`
+> exists, (2) cut a `v2026.x.y-beta.1` so `:beta` rebuilds with the new
+> updater/backend, (3) on each existing beta instance hit "Jetzt updaten" once —
+> it pulls the refreshed image, runs the migration (channel → nightly) and from
+> then on tracks `:nightly` automatically. Instances that set the channel purely
+> via `UPDATE_CHANNEL=beta` must switch that env to `UPDATE_CHANNEL=nightly`.
 
 ---
 
