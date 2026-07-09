@@ -92,7 +92,11 @@ jobs:
           set -euo pipefail
           git fetch --tags --force --quiet
 
-          last=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -1)
+          # Prerelease-Tags (v2026.2.1-beta.N) ausschließen: Der Glob matcht sie
+          # (dritte Gruppe [0-9]* frisst "1-beta.1"), und `IFS=. read … fix`
+          # würde daran zerbrechen. `grep -v -- '-'` lässt nur STABLE-Tags übrig,
+          # deren FIX-Komponente wir automatisch erhöhen.
+          last=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -v -- '-' | head -1)
           if [ -z "${last}" ]; then
             echo "::error::Kein bestehender Release-Tag gefunden — erstes Release bitte manuell schneiden."
             exit 1

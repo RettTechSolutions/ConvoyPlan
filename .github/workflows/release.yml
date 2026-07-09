@@ -5,6 +5,12 @@ on:
   # dispatch) — NOT on every push to main. This breaks the "merge → :latest →
   # auto-pulled onto every customer instance within minutes" chain: deploying
   # now requires cutting a release tag (git tag vX.Y.Z && git push --tags).
+  #
+  # A pre-release tag (suffix, e.g. v2026.2.1-beta.1) builds the same versioned
+  # images plus the floating :beta tag and publishes a GitHub *pre-release*
+  # (Beta channel) — it does NOT move :latest, so stable instances are untouched
+  # (GitHub /releases/latest ignores pre-releases). The every-commit :nightly
+  # images are built separately by nightly-images.yml.
   push:
     tags:
       - "v*.*.*"
@@ -34,11 +40,22 @@ jobs:
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             version="${GITHUB_REF_NAME#v}"
+            # Prerelease genau dann, wenn der Tag einen Suffix trägt (z. B.
+            # v2026.2.1-beta.1 → Kanal "Beta"). Bewusst NUR am Tag festgemacht:
+            # ein untagged workflow_dispatch (dessen `git describe` ein
+            # "-N-gsha"-Suffix enthalten kann) soll weiterhin :latest bauen.
+            if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+              prerelease=true
+            else
+              prerelease=false
+            fi
           else
             version="$(git describe --tags --always 2>/dev/null | sed 's/^v//')"
+            prerelease=false
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "Resolved APP_VERSION=${version}"
+          echo "prerelease=${prerelease}" >> "$GITHUB_OUTPUT"
+          echo "Resolved APP_VERSION=${version} (prerelease=${prerelease})"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
@@ -52,40 +69,54 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ghcr.io/${{ github.repository }}/backend
+          # latest=false: die :latest-/:beta-Tags werden unten explizit gesetzt,
+          # sonst hängt metadata-action :latest bei JEDEM Tag an (auch Prereleases).
+          flavor: |
+            latest=false
           tags: |
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
+            type=semver,pattern={{major}}.{{minor}},enable=${{ steps.appver.outputs.prerelease == 'false' }}
+            type=raw,value=latest,enable=${{ steps.appver.outputs.prerelease == 'false' }}
+            type=raw,value=beta,enable=${{ steps.appver.outputs.prerelease == 'true' }}
 
       - name: Docker metadata – frontend
         id: meta-frontend
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ghcr.io/${{ github.repository }}/frontend
+          flavor: |
+            latest=false
           tags: |
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
+            type=semver,pattern={{major}}.{{minor}},enable=${{ steps.appver.outputs.prerelease == 'false' }}
+            type=raw,value=latest,enable=${{ steps.appver.outputs.prerelease == 'false' }}
+            type=raw,value=beta,enable=${{ steps.appver.outputs.prerelease == 'true' }}
 
       - name: Docker metadata – graphhopper
         id: meta-graphhopper
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ghcr.io/${{ github.repository }}/graphhopper
+          flavor: |
+            latest=false
           tags: |
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
+            type=semver,pattern={{major}}.{{minor}},enable=${{ steps.appver.outputs.prerelease == 'false' }}
+            type=raw,value=latest,enable=${{ steps.appver.outputs.prerelease == 'false' }}
+            type=raw,value=beta,enable=${{ steps.appver.outputs.prerelease == 'true' }}
 
       - name: Docker metadata – updater
         id: meta-updater
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: ghcr.io/${{ github.repository }}/updater
+          flavor: |
+            latest=false
           tags: |
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
+            type=semver,pattern={{major}}.{{minor}},enable=${{ steps.appver.outputs.prerelease == 'false' }}
+            type=raw,value=latest,enable=${{ steps.appver.outputs.prerelease == 'false' }}
+            type=raw,value=beta,enable=${{ steps.appver.outputs.prerelease == 'true' }}
 
       # Base-Images stammen alle von Docker Hub und sind gelegentlich von
       # transienten Registry-Timeouts betroffen ("i/o timeout" beim Auflösen
@@ -168,8 +199,20 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Determine prerelease
+        id: pre
+        run: |
+          # Tag mit Suffix (v2026.2.1-beta.1) → GitHub-Prerelease. GitHubs
+          # /releases/latest (Stable-Kanal) blendet Prereleases automatisch aus.
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create release
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3
         with:
           generate_release_notes: true
           draft: false
+          prerelease: ${{ steps.pre.outputs.prerelease }}

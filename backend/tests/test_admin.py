@@ -34,12 +34,13 @@ def _make_app_with_superadmin_and_db():
 
 
 def _mock_github_client(*, latest_tag=None, latest_status=200, commit_sha=None, main_sha=None,
-                        compare_status="behind"):
+                        compare_status="behind", releases_list=None):
     """Mock httpx.AsyncClient for the update-status endpoint, dispatching by URL:
-      - releases/latest                    -> {"tag_name": latest_tag}  (status: latest_status)
-      - commits/<tag>                      -> {"sha": commit_sha}       (stable channel)
-      - compare/<tag>...<sha>              -> {"status": compare_status} (stable ancestry check)
-      - actions/workflows/beta-images.yml  -> last successful :beta build (beta channel)
+      - releases/latest                       -> {"tag_name": latest_tag} (status: latest_status) [stable]
+      - releases?per_page=…                    -> releases_list (or [])                            [beta]
+      - commits/<tag>                          -> {"sha": commit_sha}      (stable/beta tag→sha)
+      - compare/<tag>...<sha>                  -> {"status": compare_status} (ancestry check)
+      - actions/workflows/nightly-images.yml   -> last successful :nightly build                  [nightly]
     """
     async def _get(url, **kwargs):
         resp = MagicMock()
@@ -47,6 +48,11 @@ def _mock_github_client(*, latest_tag=None, latest_status=200, commit_sha=None, 
             resp.status_code = latest_status
             resp.is_success = 200 <= latest_status < 300
             resp.json.return_value = {"tag_name": latest_tag}
+        elif "/releases?" in url:
+            # Beta channel: list of releases, newest first.
+            resp.status_code = 200
+            resp.is_success = True
+            resp.json.return_value = releases_list or []
         elif "/compare/" in url:
             resp.status_code = 200
             resp.is_success = True
@@ -55,7 +61,7 @@ def _mock_github_client(*, latest_tag=None, latest_status=200, commit_sha=None, 
             resp.status_code = 200
             resp.is_success = True
             resp.json.return_value = {"sha": commit_sha}
-        else:  # actions/workflows/beta-images.yml/runs?…status=success (beta)
+        else:  # actions/workflows/nightly-images.yml/runs?…status=success (nightly)
             resp.status_code = 200
             resp.is_success = True
             resp.json.return_value = {
@@ -112,7 +118,7 @@ async def test_get_update_status_update_available():
 
 @pytest.mark.asyncio
 async def test_get_update_status_stable_deployed_ahead_of_release():
-    # Instance previously ran on the beta channel and is now AHEAD of the
+    # Instance previously ran on the nightly channel and is now AHEAD of the
     # latest release: no "update available" (that would be a downgrade).
     _make_app_with_superadmin_and_db()
     status_content = json.dumps({"deployed_sha": "fff9999", "deployed_at": "2026-07-07T11:33:49Z"})
@@ -152,43 +158,93 @@ async def test_get_update_status_stable_no_release():
 
 
 @pytest.mark.asyncio
-async def test_get_update_status_beta_channel_tracks_main():
-    # Beta channel compares against the commit of the last *successful*
-    # :beta image build — not the tip of main, which moves at merge time
-    # while the images only exist once the beta-images workflow finished.
+async def test_get_update_status_nightly_channel_tracks_main():
+    # Nightly channel compares against the commit of the last *successful*
+    # :nightly image build — not the tip of main, which moves at merge time
+    # while the images only exist once the nightly-images workflow finished.
     _make_app_with_superadmin_and_db()
     status_content = json.dumps({"deployed_sha": "aaa1111", "deployed_at": "2026-05-18T10:00:00Z"})
     with patch("builtins.open", mock_open(read_data=status_content)), \
          patch("os.makedirs"), \
-         patch("app.services.update_check.settings.update_channel", "beta"), \
+         patch("app.services.update_check.settings.update_channel", "nightly"), \
          patch("app.services.update_check.httpx.AsyncClient",
                return_value=_mock_github_client(main_sha="ccc3333abcdef")):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             r = await client.get("/api/admin/update-status")
     assert r.status_code == 200
     data = r.json()
-    assert data["channel"] == "beta"
+    assert data["channel"] == "nightly"
     assert data["remote_sha"] == "ccc3333"
     assert data["update_available"] is True
     app.dependency_overrides.clear()
 
 
 @pytest.mark.asyncio
-async def test_get_update_status_beta_channel_no_successful_build():
-    # Beta channel, but no :beta build has succeeded yet (e.g. workflow still
-    # running right after a merge): no remote_sha, no false "update available".
+async def test_get_update_status_nightly_channel_no_successful_build():
+    # Nightly channel, but no :nightly build has succeeded yet (e.g. workflow
+    # still running right after a merge): no remote_sha, no false "update available".
     _make_app_with_superadmin_and_db()
     status_content = json.dumps({"deployed_sha": "aaa1111", "deployed_at": "2026-05-18T10:00:00Z"})
     with patch("builtins.open", mock_open(read_data=status_content)), \
          patch("os.makedirs"), \
-         patch("app.services.update_check.settings.update_channel", "beta"), \
+         patch("app.services.update_check.settings.update_channel", "nightly"), \
          patch("app.services.update_check.httpx.AsyncClient",
                return_value=_mock_github_client(main_sha=None)):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             r = await client.get("/api/admin/update-status")
     assert r.status_code == 200
     data = r.json()
+    assert data["channel"] == "nightly"
+    assert data["remote_sha"] is None
+    assert data["update_available"] is False
+    assert data["github_reachable"] is True
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_get_update_status_beta_channel_tracks_latest_prerelease():
+    # Beta channel tracks the newest GitHub *pre-release* (the first prerelease
+    # entry in the /releases list), resolves its tag to a commit SHA and compares.
+    _make_app_with_superadmin_and_db()
+    status_content = json.dumps({"deployed_sha": "aaa1111", "deployed_at": "2026-05-18T10:00:00Z"})
+    releases = [
+        {"tag_name": "v2026.2.1-beta.2", "prerelease": True},
+        {"tag_name": "v2026.1.1", "prerelease": False},
+    ]
+    with patch("builtins.open", mock_open(read_data=status_content)), \
+         patch("os.makedirs"), \
+         patch("app.services.update_check.settings.update_channel", "beta"), \
+         patch("app.services.update_check.httpx.AsyncClient",
+               return_value=_mock_github_client(releases_list=releases, commit_sha="ddd4444abcdef")):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            r = await client.get("/api/admin/update-status")
+    assert r.status_code == 200
+    data = r.json()
     assert data["channel"] == "beta"
+    assert data["latest_release"] == "v2026.2.1-beta.2"
+    assert data["remote_sha"] == "ddd4444"
+    assert data["update_available"] is True
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_get_update_status_beta_channel_no_prerelease():
+    # Beta channel but the repo has only stable releases (no prerelease yet):
+    # reported as "no target", not a false "update available".
+    _make_app_with_superadmin_and_db()
+    status_content = json.dumps({"deployed_sha": "aaa1111", "deployed_at": "2026-05-18T10:00:00Z"})
+    releases = [{"tag_name": "v2026.1.1", "prerelease": False}]
+    with patch("builtins.open", mock_open(read_data=status_content)), \
+         patch("os.makedirs"), \
+         patch("app.services.update_check.settings.update_channel", "beta"), \
+         patch("app.services.update_check.httpx.AsyncClient",
+               return_value=_mock_github_client(releases_list=releases)):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            r = await client.get("/api/admin/update-status")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["channel"] == "beta"
+    assert data["no_release"] is True
     assert data["remote_sha"] is None
     assert data["update_available"] is False
     assert data["github_reachable"] is True
@@ -225,7 +281,7 @@ async def test_get_update_channel_default_env():
             r = await client.get("/api/admin/settings/update-channel")
     assert r.status_code == 200
     data = r.json()
-    assert data["channel"] in ("stable", "beta")
+    assert data["channel"] in ("stable", "beta", "nightly")
     assert data["source"] == "env"
     app.dependency_overrides.clear()
 
@@ -245,12 +301,25 @@ async def test_set_update_channel_persists_and_writes_file():
 
 
 @pytest.mark.asyncio
+async def test_set_update_channel_accepts_nightly():
+    _make_app_with_superadmin_and_db()
+    m = mock_open()
+    with patch("os.makedirs"), patch("builtins.open", m), \
+         patch("app.api.routes.admin.audit.record", new=AsyncMock()):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            r = await client.put("/api/admin/settings/update-channel", json={"channel": "nightly"})
+    assert r.status_code == 204
+    m().write.assert_any_call("nightly")
+    app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
 async def test_set_update_channel_rejects_invalid():
     _make_app_with_superadmin_and_db()
     with patch("os.makedirs"), patch("builtins.open", mock_open()), \
          patch("app.api.routes.admin.audit.record", new=AsyncMock()):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            r = await client.put("/api/admin/settings/update-channel", json={"channel": "nightly"})
+            r = await client.put("/api/admin/settings/update-channel", json={"channel": "canary"})
     assert r.status_code == 422
     app.dependency_overrides.clear()
 

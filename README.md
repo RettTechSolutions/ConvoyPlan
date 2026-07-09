@@ -125,7 +125,7 @@
 | Admin-Bereich | Benutzer- (inkl. optionalem Vor-/Nachname), Leitstellen- und Branding-Verwaltung | ✅ |
 | Auto-Updater | Git-Polling-Container aktualisiert die Instanz automatisch bei neuem Commit | ✅ |
 | Update-Status | Admin-UI zeigt Deploy-SHA und GitHub-Stand; manueller Trigger per Button | ✅ |
-| Update-Kanal | Umschaltbar zwischen „Stable" (nur veröffentlichte Releases) und „Beta" (jeder Commit auf `main`, auch bei image-basierten Installationen) im Admin-Bereich | ✅ |
+| Update-Kanal | Umschaltbar zwischen „Stable" (nur veröffentlichte Releases), „Beta" (nummerierte Vorabversionen / Release-Kandidaten) und „Nightly" (jeder Commit auf `main`) im Admin-Bereich — auch bei image-basierten Installationen | ✅ |
 | Update-Modus | „Automatisch" installiert Updates selbstständig; „Benachrichtigen" verschickt nur eine E-Mail an Superadmins, Installation erfolgt manuell; optionale Bestätigungs-Mail nach automatischer Installation | ✅ |
 | Live-Update-Log | Echtzeit-Ausgabe des Updater-Prozesses im Browser via SSE | ✅ |
 | GitHub-Token in UI | `GITHUB_TOKEN` für Update-Fetch direkt in der Admin-UI konfigurierbar, kein Neustart | ✅ |
@@ -288,9 +288,11 @@ ConvoyPlan/
 ├── .github/
 │   ├── workflows/
 │   │   ├── ci.yml            # Tests + Typecheck + Docker-Build + Dependency-Audit
-│   │   └── release.yml       # Docker-Images zu GHCR + GitHub Release bei Tag
+│   │   ├── release.yml       # Docker-Images zu GHCR + GitHub Release bei Tag
+│   │   └── sync-wiki.yml     # Spiegelt wiki/ ins GitHub Wiki bei Push auf main
 │   └── dependabot.yml        # Dependency-Updates (pip/npm/Actions/Docker)
 ├── docs/                     # Backup/Restore, Retention- und ISO-Dokumentation
+├── wiki/                     # Wiki-Quellen (Markdown) — Sync ins GitHub Wiki via sync-wiki.yml
 ├── .hooks/pre-commit         # Lokaler Pre-Commit-Hook (ruff + svelte-check)
 ├── scripts/
 │   ├── install.sh            # Linux-Installer (+ systemd-Watchdog)
@@ -485,7 +487,7 @@ Domain und Zertifikat werden beim ersten Start über den Setup-Wizard in der Dat
 | `LICENSE_KEY` | Lizenzschlüssel (ausgestellt von ConvoyPlan). Ohne gültigen Schlüssel läuft die App im Demo-Modus. Alternativ zur Env-Variable auch über den Admin-Bereich eintragbar (wird dann in der DB gespeichert). |
 | `GITHUB_TOKEN` | GitHub PAT mit `repo`-Leseberechtigung (Classic Token: `repo`-Scope). Benötigt für den Auto-Updater-Container, um das GitHub-Repository zu pollen und neue Commits zu erkennen. |
 | `GITHUB_REPO` | Repository das der Auto-Updater überwacht. Standard: `RettTechSolutions/ConvoyPlan`. Bei Fork auf das eigene Repository anpassen. |
-| `UPDATE_CHANNEL` | Update-Kanal-Fallback. `stable` (Standard, empfohlen) deployt nur veröffentlichte GitHub-Releases; `beta` verfolgt jeden Commit auf `main` (auch bei image-basierten Standard-Installationen, über eigens gebaute `:beta`-Images). Der Schalter im Admin-Bereich (Admin → Software-Update) überschreibt diesen Wert. |
+| `UPDATE_CHANNEL` | Update-Kanal-Fallback. `stable` (Standard, empfohlen) deployt nur veröffentlichte GitHub-Releases; `beta` verfolgt nummerierte Vorabversionen/Release-Kandidaten (`vX.Y.Z-beta.N`, Images `:beta`); `nightly` verfolgt jeden Commit auf `main` (Images `:nightly`). Der Schalter im Admin-Bereich (Admin → Software-Update) überschreibt diesen Wert. |
 | `UPDATE_MODE` | Update-Modus-Fallback. `auto` (Standard) installiert verfügbare Updates im gewählten Kanal automatisch; `notify` installiert nicht automatisch, sondern benachrichtigt Superadmins per E-Mail. Der Schalter im Admin-Bereich (Admin → Software-Update) überschreibt diesen Wert. |
 | `UPDATE_NOTIFY_ON_AUTO` | Nur im Modus `auto` relevant. `true` schickt zusätzlich eine E-Mail an alle aktiven Superadmins, nachdem ein Update automatisch installiert wurde (Standard: `false`). |
 | `UPDATE_NOTIFY_INTERVAL` | Prüfintervall in Sekunden, wie oft eine fällige Update-Benachrichtigung geprüft wird (Modus `notify` sowie `UPDATE_NOTIFY_ON_AUTO`; Standard: `1800`). |
@@ -511,6 +513,11 @@ Domain und Zertifikat werden beim ersten Start über den Setup-Wizard in der Dat
 ```
 
 `/secrets` ist über `.gitignore` (`/secrets/`, `*.pem`, `*.p12`) vom Repository ausgeschlossen — Zertifikate landen nie im Git-Verlauf.
+| `OPENDATA_TRAFFIC_CLIENT_CERT` | Client-Zertifikat (PEM) für per mTLS geschützte `datex2`-Feeds, insbesondere den mobilithek-Broker. |
+| `OPENDATA_TRAFFIC_CA_CERT` | Nur für Broker mit **privater** CA. Für den **mobilithek-Broker leer lassen** – er nutzt ein öffentliches Telekom-Zertifikat (System-Truststore); ein Setzen bricht die TLS-Verbindung. |
+
+> 📖 **Schritt-für-Schritt-Anleitung** (Live-Verkehrslage aktivieren, bundesweite
+> mobilithek-Baustellen einrichten, Fehlerbehebung): **[docs/verkehrsdaten.md](docs/verkehrsdaten.md)**
 
 ### Frontend (lokale Entwicklung)
 
@@ -518,6 +525,31 @@ Domain und Zertifikat werden beim ersten Start über den Setup-Wizard in der Dat
 # frontend/.env.local
 VITE_WS_HOST=localhost:8000
 ```
+
+---
+
+## Dokumentation
+
+Die vollständige Anwender- und Betriebsdokumentation liegt im **[GitHub Wiki](https://github.com/RettTechSolutions/ConvoyPlan/wiki)**.
+
+Die Markdown-Quellen dazu liegen im Ordner [`wiki/`](wiki/). Bei jedem Push auf `main` werden sie
+über den Workflow [`.github/workflows/sync-wiki.yml`](.github/workflows/sync-wiki.yml) automatisch ins
+GitHub Wiki gespiegelt — Bearbeitungen also bitte immer in `wiki/` vornehmen, nicht direkt im Wiki.
+
+| Seite | Inhalt |
+|---|---|
+| [Home](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Home) | Projektübersicht, Architektur, Tech-Stack |
+| [Installation und Setup](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Installation-und-Setup) | Docker-Quickstart, Konfiguration, Deployment |
+| [API-Dokumentation](https://github.com/RettTechSolutions/ConvoyPlan/wiki/API-Dokumentation) | REST- und WebSocket-Endpunkte |
+| [Benutzerhandbuch](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Benutzerhandbuch) | Anleitung für Planer, Fahrer und Admins |
+| [Erste Schritte](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Erste-Schritte) | Registrierung, Login und erster Überblick |
+| [Konvoi-Planung](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Konvoi-Planung) | Konvois anlegen, Wegpunkte und Route berechnen |
+| [Fahrzeuge](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Fahrzeuge) | Fahrzeuge anlegen und verwalten |
+| [Live-Tracking](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Live-Tracking) | Echtzeit-Verfolgung der Fahrzeuge |
+| [Marschbefehl & Export](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Marschbefehl-Export) | PDF-Marschbefehl sowie GPX-/JSON-Export |
+| [Rollen & Berechtigungen](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Rollen) | Rollenmodell und Zugriffsrechte |
+| [Teilen](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Teilen) | Öffentliche Freigabelinks ohne Login |
+| [FAQ](https://github.com/RettTechSolutions/ConvoyPlan/wiki/FAQ) | Häufige Fragen |
 
 ---
 
@@ -555,7 +587,7 @@ Die vollständige OpenAPI-Dokumentation wird automatisch von FastAPI bereitgeste
 | `GET/POST/DELETE` | `/api/admin/organizations/{org_id}/api-keys` | Org-gebundene API-Schlüssel verwalten |
 | `POST` | `/api/admin/trigger-update` | Auto-Update manuell anstoßen |
 | `GET` | `/api/admin/update-status` / `/api/admin/update-log` | Deploy-Stand bzw. Live-Update-Log (SSE) |
-| `GET/PUT` | `/api/admin/settings/update-channel` | Update-Kanal (Stable/Beta) lesen/setzen |
+| `GET/PUT` | `/api/admin/settings/update-channel` | Update-Kanal (Stable/Beta/Nightly) lesen/setzen |
 | `GET/PUT` | `/api/admin/settings/update-mode` | Update-Modus (Automatisch/Benachrichtigen), inkl. `notify_on_auto`, lesen/setzen |
 | `GET/PUT` | `/api/admin/settings/smtp` | SMTP-Konfiguration lesen/setzen |
 | `GET/PUT` | `/api/admin/settings/traffic-keys` | HERE-/TomTom-API-Keys für die Live-Verkehrslage lesen (ohne Klartext-Preisgabe) und setzen |
