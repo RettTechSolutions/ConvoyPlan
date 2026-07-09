@@ -1,15 +1,17 @@
 name: Auto-Release
 
-# Schneidet automatisch ein Patch-Release, sobald eine Dependabot-Welle
+# Schneidet automatisch ein Fix-Release, sobald eine Dependabot-Welle
 # vollständig abgearbeitet ist:
 #
 #   Dependabot öffnet PRs → auto-merge.yml aktiviert "Merge when ready"
 #   (patch/minor) → die Merge Queue arbeitet die PRs seriell von unten nach
 #   oben ab (Branch-Update + Checks übernimmt die Queue) → jeder Merge pusht
 #   auf main und startet diesen Workflow → sobald KEIN Dependabot-PR mehr auf
-#   den Merge wartet, wird der nächste Patch-Tag (vX.Y.Z+1) erstellt und
-#   release.yml auf diesem Tag gestartet (baut Images, veröffentlicht das
-#   GitHub-Release, das die Kunden-Updater dann automatisch ausrollen).
+#   den Merge wartet, wird der nächste Fix-Tag erstellt (die FIX-Komponente
+#   des Versionsschemas YYYY.MASTER.FIX wird erhöht, z. B. v2026.1.1 →
+#   v2026.1.2) und release.yml auf diesem Tag gestartet (baut Images,
+#   veröffentlicht das GitHub-Release, das die Kunden-Updater dann automatisch
+#   ausrollen).
 #
 # Absicherungen:
 #   - Läuft nur, wenn der auslösende Commit ein Dependabot-Merge ist — ein
@@ -82,7 +84,7 @@ jobs:
         with:
           fetch-depth: 0   # volle Historie + Tags für Versionsermittlung
 
-      - name: Nächsten Patch-Tag erstellen und Release starten
+      - name: Nächsten Fix-Tag erstellen und Release starten
         if: steps.queue.outputs.pending == '0'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -101,8 +103,11 @@ jobs:
             exit 0
           fi
 
-          IFS=. read -r major minor patch <<< "${last#v}"
-          next="v${major}.${minor}.$((patch + 1))"
+          # Versionsschema YYYY.MASTER.FIX: nur die FIX-Komponente wird
+          # automatisch erhöht (Jahr und Master-Release bleiben; die werden
+          # bewusst manuell beim Schneiden eines Master-Releases gesetzt).
+          IFS=. read -r year master fix <<< "${last#v}"
+          next="v${year}.${master}.$((fix + 1))"
 
           echo "Erstelle Release-Tag ${next} (Vorgänger: ${last})"
           git tag "${next}" HEAD

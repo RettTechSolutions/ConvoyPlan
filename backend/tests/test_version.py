@@ -34,11 +34,33 @@ def test_normalize_parses_versions():
     assert norm(None) is None
 
 
+def test_normalize_parses_calver_scheme():
+    """The YYYY.MASTER.FIX scheme (e.g. 2026.1.1) parses like any dotted
+    version, including the 'v' prefix and build/describe suffixes."""
+    norm = version_module._normalize
+    assert norm("2026.1.1") == (2026, 1, 1)
+    assert norm("v2026.1.1") == (2026, 1, 1)
+    assert norm("2026.1.1+abc1234") == (2026, 1, 1)
+    assert norm("2026.1.1-3-gabc1234") == (2026, 1, 1)
+
+
 def test_update_available_comparison():
     norm = version_module._normalize
     assert norm("0.9.1") > norm("0.9.0")
     assert norm("0.10.0") > norm("0.9.9")
     assert not norm("0.9.0") > norm("0.9.0")
+
+
+def test_update_available_comparison_across_scheme_switch():
+    """Ordering must hold both within the CalVer scheme and across the switch
+    from the old SemVer numbers, so the 'update available' hint stays correct."""
+    norm = version_module._normalize
+    # Within the new scheme: fix, master and year each bump correctly.
+    assert norm("2026.1.2") > norm("2026.1.1")   # fix bump
+    assert norm("2026.2.1") > norm("2026.1.9")   # master bump
+    assert norm("2027.1.1") > norm("2026.9.9")   # year rollover
+    # Across the switch: the first CalVer release sorts above the last SemVer.
+    assert norm("2026.1.1") > norm("1.0.2")
 
 
 def test_core_str_strips_metadata():
@@ -48,6 +70,8 @@ def test_core_str_strips_metadata():
     assert core("1.0.0+abc1234") == "1.0.0"
     assert core("1.0.0-3-gabc1234") == "1.0.0"
     assert core("0.0.0-dev") == "0.0.0"
+    assert core("2026.1.1") == "2026.1.1"
+    assert core("v2026.1.1+abc1234") == "2026.1.1"
     assert core("unknown") is None
     assert core(None) is None
 
