@@ -2,10 +2,18 @@
 
 Die vollständige OpenAPI-Dokumentation wird automatisch von FastAPI bereitgestellt:
 
-- **Swagger UI:** `https://<DOMAIN>/api/docs`
-- **OpenAPI JSON:** `https://<DOMAIN>/api/openapi.json`
+- **Swagger UI:** `/docs`
+- **ReDoc:** `/redoc`
+- **OpenAPI JSON:** `/openapi.json`
 
-Alle Endpunkte (außer `/api/setup` und `/api/auth`) erfordern einen gültigen JWT-Token im Header:
+Lokal (Dev) sind sie unter `http://localhost:8000/docs` erreichbar.
+
+> **Produktion:** `/docs`, `/redoc` und `/openapi.json` sind standardmäßig **deaktiviert (404)**.
+> Mit `DOCS_API_KEY=<geheim>` lassen sie sich per API-Key absichern (einmaliger Aufruf über
+> `/docs?key=<geheim>`, danach via HttpOnly-Cookie bzw. Header `X-API-Key`); mit `ENABLE_DOCS=true`
+> werden sie offen freigegeben (nur für Dev/intern).
+
+Alle Endpunkte (außer `/api/setup`, `/api/auth/*` und öffentlichen Share-/Track-Routen) erfordern einen gültigen JWT-Token im Header:
 
 ```
 Authorization: Bearer <token>
@@ -42,6 +50,17 @@ Antwort:
 |---|---|---|---|
 | `POST` | `/api/auth/register` | Account erstellen | Nein |
 | `POST` | `/api/auth/login` | Login, JWT erhalten | Nein |
+| `POST` | `/api/auth/password` | Eigenes Passwort ändern (liefert frisches Token) | Ja |
+| `POST` | `/api/auth/password-reset` | Passwort-Reset anstoßen | Nein |
+
+### MFA / TOTP
+
+| Methode | Endpunkt | Beschreibung |
+|---|---|---|
+| `POST` | `/api/auth/mfa/setup` | TOTP-Einrichtung starten (QR-Code generieren) |
+| `POST` | `/api/auth/mfa/confirm` | TOTP-Einrichtung bestätigen und aktivieren |
+| `POST` | `/api/auth/mfa/verify` | TOTP-Code bei Login verifizieren |
+| `DELETE` | `/api/auth/mfa` | MFA deaktivieren |
 
 ---
 
@@ -60,14 +79,43 @@ Nur für Benutzer mit Superadmin-Rolle zugänglich.
 
 | Methode | Endpunkt | Beschreibung |
 |---|---|---|
-| `GET` | `/api/admin/users` | Alle Benutzer auflisten |
-| `PATCH` | `/api/admin/users/{user_id}` | Benutzer aktivieren/deaktivieren, Rolle setzen |
+| `GET/POST` | `/api/admin/users` | Benutzer auflisten oder anlegen |
+| `PATCH/DELETE` | `/api/admin/users/{user_id}` | Benutzer aktivieren/deaktivieren, Rolle setzen, löschen |
+| `GET/POST` | `/api/admin/organizations` | Organisationen auflisten oder anlegen |
+| `POST/DELETE` | `/api/admin/users/{user_id}/orgs` | Benutzer einer Organisation zuweisen oder entfernen |
+| `GET/POST/DELETE` | `/api/admin/organizations/{org_id}/api-keys` | Org-gebundene API-Schlüssel verwalten |
 | `GET` | `/api/admin/branding` | Aktuelles Branding abrufen |
 | `PUT` | `/api/admin/branding` | Branding (Logo, Farben, App-Name) aktualisieren |
-| `POST` | `/api/admin/trigger-update` | Manuelles Update auslösen |
-| `GET`/`PUT` | `/api/admin/settings/update-channel` | Update-Kanal lesen/setzen (`stable`/`beta`/`nightly`) |
-| `GET`/`PUT` | `/api/admin/settings/update-mode` | Update-Modus lesen/setzen (`auto`/`notify`) |
-| `GET`/`PUT` | `/api/admin/settings/traffic-keys` | HERE-/TomTom-API-Keys für die Live-Verkehrslage lesen (ohne Klartext-Preisgabe) und setzen |
+| `POST` | `/api/admin/trigger-update` | Auto-Update manuell anstoßen |
+| `GET` | `/api/admin/update-status` / `/api/admin/update-log` | Deploy-Stand bzw. Live-Update-Log (SSE) |
+| `GET/PUT` | `/api/admin/settings/update-channel` | Update-Kanal (Stable/Beta/Nightly) lesen/setzen |
+| `GET/PUT` | `/api/admin/settings/update-mode` | Update-Modus (Automatisch/Benachrichtigen) lesen/setzen |
+| `GET/PUT` | `/api/admin/settings/smtp` | SMTP-Konfiguration lesen/setzen |
+| `GET/PUT` | `/api/admin/settings/traffic-keys` | HERE-/TomTom-API-Keys lesen (ohne Klartext) und setzen |
+
+---
+
+## Sicherheit und Datenschutz
+
+| Methode | Endpunkt | Beschreibung |
+|---|---|---|
+| `POST` | `/api/admin/users/{user_id}/reset-password` | Passwort als Superadmin zurücksetzen |
+| `POST` | `/api/admin/users/{user_id}/reset-mfa` | MFA eines Benutzers zurücksetzen |
+| `GET` | `/api/admin/audit-log` | Security-Audit-Log (Filter nach Aktion) |
+| `GET` | `/api/admin/users/{user_id}/export` | Personenbezogene Daten exportieren (DSGVO Art. 15) |
+| `DELETE` | `/api/admin/users/{user_id}/data` | Benutzerdaten löschen, Audit-Trail pseudonymisieren (Art. 17) |
+
+---
+
+## Lizenz
+
+| Methode | Endpunkt | Beschreibung |
+|---|---|---|
+| `GET` | `/api/license/instance-id` | Instanz-UUID abfragen (für Lizenzbeantragung) |
+| `GET` | `/api/license/status` | Lizenzstatus, `demo_mode` und `key_source` |
+| `POST` | `/api/license/activate` | Lizenzschlüssel validieren, speichern und Cache zurücksetzen |
+
+> Im Demo-Modus (kein gültiger Lizenzschlüssel) sind alle schreibenden Operationen (POST/PUT/PATCH/DELETE) mit **HTTP 402** gesperrt.
 
 ---
 
@@ -158,6 +206,16 @@ Nur für Benutzer mit Superadmin-Rolle zugänglich.
 
 ---
 
+## Freigabelinks und Tracking-App
+
+| Methode | Endpunkt | Beschreibung |
+|---|---|---|
+| `GET/POST/DELETE` | `/api/convoys/{convoy_id}/share-links` | Widerrufbare Freigabelinks pro Konvoi |
+| `GET/POST` | `/api/track/{slug}` | Öffentliche Tracking-App: Status abrufen / Position senden |
+| `WS` | `/api/ws/track/{slug}` | WebSocket der Tracking-App |
+
+---
+
 ## Live-Tracking
 
 ### REST
@@ -176,7 +234,7 @@ Nur für Benutzer mit Superadmin-Rolle zugänglich.
 WS /ws/tracking/{convoy_id}?token=<jwt>
 ```
 
-Verbindung herstellen und Positionsupdates empfangen/senden:
+Position senden:
 
 ```json
 {
@@ -207,32 +265,6 @@ Eingehende Updates vom Server:
 
 ---
 
-## Lagedaten
-
-| Methode | Endpunkt | Beschreibung |
-|---|---|---|
-| `GET` | `/api/convoys/{convoy_id}/lage` | Alle Lagedaten-Layer abrufen |
-| `POST` | `/api/convoys/{convoy_id}/lage` | GeoJSON-Layer hochladen |
-| `PUT` | `/api/convoys/{convoy_id}/lage/{layer_id}` | Layer aktualisieren |
-| `DELETE` | `/api/convoys/{convoy_id}/lage/{layer_id}` | Layer löschen |
-
----
-
-## Wetter, Sperrungen und Verkehrslage
-
-| Methode | Endpunkt | Beschreibung |
-|---|---|---|
-| `GET` | `/api/weather/?lat=48.13&lon=11.57` | Wetterdaten für Koordinaten (Open-Meteo) |
-| `GET` | `/api/overpass/closures?lat=48.13&lon=11.57` | Sperrungen und Baustellen im Radius um einen Punkt (Overpass, Autobahn-API, offene Feeds, DATEX-II/mobilithek) |
-| `POST` | `/api/overpass/closures/route` | Sperrungen und Baustellen im Korridor entlang der gesamten Routen-Geometrie (alle konfigurierten Quellen) |
-| `GET` | `/api/traffic/flow/status` | Konfigurierten Verkehrslage-Anbieter (HERE/TomTom) abfragen |
-| `GET` | `/api/traffic/flow` | Live-Verkehrslage im Radius um einen Punkt abrufen |
-| `POST` | `/api/traffic/flow/route` | Live-Verkehrslage entlang einer Routen-Geometrie abrufen |
-
-> 📖 Einrichtung der Verkehrsdatenquellen (Live-Verkehrslage aktivieren, bundesweite mobilithek-Baustellen einrichten): siehe [`docs/verkehrsdaten.md`](https://github.com/RettTechSolutions/ConvoyPlan/blob/main/docs/verkehrsdaten.md) im Repository.
-
----
-
 ## Organisationen
 
 | Methode | Endpunkt | Beschreibung |
@@ -240,8 +272,8 @@ Eingehende Updates vom Server:
 | `GET` | `/api/organizations/` | Eigene Organisationen auflisten |
 | `POST` | `/api/organizations/` | Neue Organisation anlegen |
 | `DELETE` | `/api/organizations/{org_id}` | Organisation löschen |
-| `POST` | `/api/organizations/{org_id}/invite` | Mitglied einladen |
-| `DELETE` | `/api/organizations/{org_id}/members/{user_id}` | Mitglied entfernen |
+
+> Siehe auch **[Multi-Tenancy](Multi-Tenancy)**.
 
 ---
 
@@ -249,10 +281,25 @@ Eingehende Updates vom Server:
 
 | Methode | Endpunkt | Beschreibung |
 |---|---|---|
-| `GET` | `/api/leitstellen/` | Alle Leitstellen auflisten |
-| `POST` | `/api/leitstellen/` | Neue Leitstelle anlegen |
-| `PUT` | `/api/leitstellen/{id}` | Leitstelle aktualisieren |
-| `DELETE` | `/api/leitstellen/{id}` | Leitstelle löschen |
+| `GET/POST/PUT/DELETE` | `/api/leitstellen/` | Globale (superadmin-gepflegte) Leitstellen verwalten |
+| `GET/POST/PUT/DELETE` | `/api/org/leitstellen/` | Org-eigene Leitstellen verwalten |
+| `POST` | `/api/org/leitstellen/{id}/submit` | Org-Leitstelle als globalen Vorschlag einreichen |
+| `GET` | `/api/org/leitstellen/geojson` | Sichtbare Leitstellengebiete als GeoJSON (Übersichtskarte) |
+
+---
+
+## Wetter, Sperrungen und Verkehrslage
+
+| Methode | Endpunkt | Beschreibung |
+|---|---|---|
+| `GET` | `/api/weather/?lat=48.13&lon=11.57` | Wetterdaten (Open-Meteo) |
+| `GET` | `/api/overpass/closures?lat=..&lon=..` | Sperrungen/Baustellen im Radius um einen Punkt (Overpass, Autobahn-API, offene Feeds, DATEX-II) |
+| `POST` | `/api/overpass/closures/route` | Sperrungen/Baustellen im Korridor entlang einer Routen-Geometrie |
+| `GET` | `/api/traffic/flow/status` | Konfigurierten Verkehrslage-Anbieter (HERE/TomTom) abfragen |
+| `GET` | `/api/traffic/flow` | Live-Verkehrslage im Radius um einen Punkt |
+| `POST` | `/api/traffic/flow/route` | Live-Verkehrslage entlang einer Routen-Geometrie |
+
+> Einrichtung der optionalen Quellen: **[Verkehrsdaten](Verkehrsdaten)**.
 
 ---
 
@@ -260,8 +307,9 @@ Eingehende Updates vom Server:
 
 | Methode | Endpunkt | Beschreibung |
 |---|---|---|
-| `GET` | `/api/status` | Systemstatus abrufen |
-| `GET` | `/health` | Health-Check |
+| `GET` | `/api/version` | Build-Version, Commit-SHA und Update-Hinweis |
+| `GET` | `/api/version/changelog` | Release-Notes der laufenden Version (gecacht) |
+| `GET` | `/health` | Health-Check mit Versionsangabe |
 
 ---
 
@@ -274,6 +322,7 @@ User
 └── UserOrganizations
 
 Organization
+├── org_code                # Kurzer URL-Slug (4–8 Zeichen), eindeutig
 └── UserOrganizations
 
 Convoy
@@ -282,8 +331,7 @@ Convoy
 ├── ConvoyVehicles          # Fahrzeugzuordnung inkl. Status
 ├── Waypoints               # Wegpunkte, Kontrollpunkte, Halte
 ├── Route                   # Geometrie, Distanz, Dauer, GPX, Kanalwechsel
-├── VehiclePositions        # Live-Tracking-Positionen
-└── LageLayers              # GeoJSON-Lagedaten
+└── VehiclePositions        # Live-Tracking-Positionen
 
 Leitstelle
 └── boundary                # GeoJSON/KML-Zuständigkeitsgebiet

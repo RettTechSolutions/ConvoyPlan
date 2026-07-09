@@ -70,14 +70,16 @@ npm run dev
 
 ### 5. Setup-Wizard
 
-Beim ersten Start leitet die Anwendung automatisch auf `/setup` weiter. Der dreistufige Wizard führt durch:
+Beim ersten Start leitet die Anwendung automatisch auf `/setup` weiter. Der fünfstufige Wizard führt durch:
 
 1. **Superadmin-Account** – E-Mail-Adresse und Passwort festlegen.
-2. **Domain und SSL** – Serverdomain (FQDN) eingeben und TLS-Modus wählen:
+2. **Erste Organisation** – Org-Name und Org-Code (URL-Slug, 4–8 Zeichen) anlegen; dieser Slug wird Teil aller org-spezifischen URLs (`/o/[slug]/plan/`, `/o/[slug]/admin/`).
+3. **Domain und SSL** – Serverdomain (FQDN) eingeben und TLS-Modus wählen:
    - **Let's Encrypt** – automatisches öffentliches Zertifikat
    - **Eigenes Zertifikat** – PEM-Datei hochladen
    - **Intern** – selbstsigniertes Zertifikat für lokale Nutzung
-3. **Abschluss** – Caddy wird live neu geladen, danach direkt zur Anmeldung.
+4. **Branding** (optional) – App-Name, Farben und Logo anpassen. Überspringbar und später im Admin-Bereich erreichbar.
+5. **Abschluss** – Caddy wird live neu geladen, danach direkt zur Anmeldung unter `https://<DOMAIN>/o/[slug]/login`.
 
 > Für lokale Entwicklung ohne Caddy: `localhost` als Domain und `internal` als TLS-Modus wählen.
 
@@ -100,17 +102,21 @@ Eine vollständige Vorlage liegt in `.env.example`. Die wichtigsten Variablen:
 | Variable | Standard | Beschreibung |
 |---|---|---|
 | `DATABASE_URL` | *(aus POSTGRES_\* zusammengesetzt)* | PostgreSQL/PostGIS-Verbindung |
-| `JWT_SECRET` | `changeme-in-production` | Signaturschlüssel für JWTs – zwingend ersetzen |
+| `APP_ENV` | `production` | `production` erzwingt einen starken `JWT_SECRET` (Fail-Closed); `development` lockert die Prüfung für lokale Arbeit |
+| `JWT_SECRET` | *(kein sicherer Default)* | Signaturschlüssel für JWTs – in Produktion zwingend ≥ 32 Zeichen; sonst **startet das Backend nicht** |
 | `JWT_ALGORITHM` | `HS256` | JWT-Algorithmus |
 | `JWT_EXPIRE_MINUTES` | `10080` | Token-Ablaufzeit in Minuten (7 Tage) |
 | `GRAPHHOPPER_URL` | `http://graphhopper:8989` | URL der Routing-Engine |
-| `CORS_ORIGINS` | `*` | Erlaubte CORS-Origins – in Produktion einschränken |
+| `APP_BASE_URL` | `https://convoyplan.example.com` | Öffentliche App-Origin (Fallback für CORS in Produktion) |
+| `CORS_ORIGINS` | *(leer)* | Komma-getrennte Allowlist oder `*`; leer = App-Origin aus `APP_BASE_URL`. `*` nur in Entwicklung |
 
-Sicheren JWT-Secret generieren:
+Sicheren JWT-Secret generieren (die Installer tun das automatisch):
 
 ```bash
 openssl rand -hex 32
 ```
+
+> ⚠️ In Produktion (`APP_ENV=production`, Default) verweigert das Backend den Start, wenn `JWT_SECRET` leer, der Platzhalter oder kürzer als 32 Zeichen ist (Fail-Closed).
 
 ### SSL / Caddy
 
@@ -133,23 +139,49 @@ openssl rand -hex 32
 
 > Für große Regionen (Deutschland ~4 GB) mindestens `-Xmx4g` empfohlen.
 
-### Verkehrsdaten (optional)
+### Sicherheit und Datenschutz
+
+| Variable | Standard | Beschreibung |
+|---|---|---|
+| `MFA_ENCRYPTION_KEY` | *(aus `JWT_SECRET` abgeleitet)* | Fernet-Schlüssel zur Verschlüsselung der TOTP-Secrets at-rest. Rotation von `JWT_SECRET` macht ohne eigenen Schlüssel bestehende MFA-Secrets unlesbar |
+| `PASSWORD_BREACH_CHECK_ENABLED` | `true` | Abgleich neuer Passwörter gegen Have-I-Been-Pwned (k-Anonymity, fail-open). Für Air-Gapped-Setups auf `false` |
+| `CSP_ENFORCE` | `false` | Content-Security-Policy erzwingen (Default: Report-Only, bricht die UI nicht) |
+| `RETENTION_ENABLED` | `true` | Periodisches Purgen alter Daten durch den `retention`-Container |
+| `RETENTION_INTERVAL` | `3600` | Sekunden zwischen den Purge-Läufen |
+| `RETENTION_POSITIONS_HOURS` | `24` | Live-Positionen älter als dieser Wert werden gelöscht |
+| `RETENTION_AUDIT_DAYS` | `365` | Audit-Log-Einträge älter als dieser Wert werden gelöscht |
+| `RETENTION_SHARE_LINKS_DAYS` | `30` | Widerrufene Share-Links älter als dieser Wert werden gelöscht |
+| `BACKUP_DIR` | `./backups` | Zielverzeichnis für `scripts/backup.sh` |
+| `BACKUP_RETENTION_DAYS` | `30` | Aufbewahrungsdauer der Backups |
+
+> Details zu Härtung, Audit-Log, DSGVO und Backup/Restore: **[Sicherheit und Datenschutz](Sicherheit-und-Datenschutz)**.
+
+### Lizenz und Auto-Updater
 
 | Variable | Beschreibung |
 |---|---|
-| `HERE_TRAFFIC_API_KEY` / `TOMTOM_TRAFFIC_API_KEY` | Optionale API-Keys für die Live-Verkehrslage (HERE bzw. TomTom, beide mit kostenlosem Kontingent). Ohne Key bleibt die Funktion inaktiv. Alternativ komfortabler im Admin-Bereich unter „Live-Verkehrslage" hinterlegbar. |
-| `TRAFFIC_FLOW_PROVIDER` | Bevorzugter Anbieter, wenn beide Keys gesetzt sind (Standard: HERE). |
-| `OPENDATA_TRAFFIC_ENABLED` | Offene Baustellenfeeds (MobiData BW, Berlin VIZ) aktivieren/deaktivieren (Standard: `true`). |
-| `OPENDATA_TRAFFIC_FEEDS` | Kommaseparierte Liste `format\|url`. Formate: `mobidata_bw`, `berlin_viz` (GeoJSON) und `datex2` (DATEX II v2, z. B. mobilithek-Länderfeeds für bundesweite Abdeckung). |
-| `OPENDATA_TRAFFIC_CLIENT_CERT` / `OPENDATA_TRAFFIC_CA_CERT` | Client-Zertifikat bzw. private CA-Kette (PEM) für mTLS-geschützte DATEX-II-Feeds (z. B. mobilithek-Broker). |
+| `LICENSE_KEY` | Lizenzschlüssel. Ohne gültigen Schlüssel läuft die App im Demo-Modus. Alternativ über den Admin-Bereich eintragbar (wird dann in der DB gespeichert). |
+| `GITHUB_TOKEN` | GitHub PAT mit `repo`-Leseberechtigung. Benötigt für den Auto-Updater, um neue Commits/Releases zu erkennen. |
+| `GITHUB_REPO` | Repository, das der Auto-Updater überwacht. Standard: `RettTechSolutions/ConvoyPlan`. |
+| `UPDATE_CHANNEL` | Fallback-Kanal: `stable` (Standard), `beta` oder `nightly`. Der Schalter im Admin-Bereich überschreibt diesen Wert. |
+| `UPDATE_MODE` | Fallback-Modus: `auto` (Standard) oder `notify`. Der Schalter im Admin-Bereich überschreibt diesen Wert. |
+| `UPDATE_NOTIFY_ON_AUTO` | Nur bei `auto`: `true` schickt zusätzlich eine E-Mail an Superadmins nach automatischer Installation (Standard: `false`). |
+| `UPDATE_NOTIFY_INTERVAL` | Prüfintervall in Sekunden für fällige Update-Benachrichtigungen (Standard: `1800`). |
 
-> 📖 Ausführliche Schritt-für-Schritt-Anleitung (Live-Verkehrslage aktivieren, bundesweite mobilithek-Baustellen einrichten, Fehlerbehebung): [`docs/verkehrsdaten.md`](https://github.com/RettTechSolutions/ConvoyPlan/blob/main/docs/verkehrsdaten.md) im Repository.
+> Details: **[Auto-Updater](Auto-Updater)** und **[Lizenz und Demo-Modus](Lizenz-und-Demo-Modus)**.
 
-### Update-Kanal
+### Verkehrsdaten
 
 | Variable | Beschreibung |
 |---|---|
-| `UPDATE_CHANNEL` | Fallback-Kanal. `stable` (Standard) deployt nur veröffentlichte GitHub-Releases; `beta` verfolgt nummerierte Vorabversionen/Release-Kandidaten (`vX.Y.Z-beta.N`); `nightly` verfolgt jeden Commit auf `main`. Der Schalter im Admin-Bereich (Admin → Software-Update) überschreibt diesen Wert. |
+| `HERE_TRAFFIC_API_KEY` / `TOMTOM_TRAFFIC_API_KEY` | Optionale API-Keys für die Live-Verkehrslage. Ohne Key bleibt die Funktion inaktiv. Alternativ im Admin-Bereich hinterlegbar (hat Vorrang). |
+| `TRAFFIC_FLOW_PROVIDER` | Anbieter erzwingen (`here`/`tomtom`). Standard: automatisch, HERE bevorzugt. |
+| `OPENDATA_TRAFFIC_ENABLED` | Offene Baustellen-/Sperrungsfeeds aktiviert lassen. Standard: `true`. |
+| `OPENDATA_TRAFFIC_FEEDS` | Kommaseparierte Liste `format\|url`. Formate: `mobidata_bw`, `berlin_viz`, `datex2`. |
+| `OPENDATA_TRAFFIC_CLIENT_CERT` | Client-Zertifikat (PEM) für per mTLS geschützte `datex2`-Feeds (mobilithek). |
+| `OPENDATA_TRAFFIC_CA_CERT` | Nur für Broker mit **privater** CA. Für den mobilithek-Broker **leer lassen**. |
+
+> Schritt-für-Schritt-Anleitung: **[Verkehrsdaten](Verkehrsdaten)**.
 
 ### Frontend (lokale Entwicklung)
 
@@ -190,16 +222,31 @@ open https://<DOMAIN>/setup
 
 ### Portainer
 
-Eine fertige Stack-Konfiguration liegt in `portainer-stack.yml`. Images werden über Variablen gesetzt; der Setup-Wizard übernimmt die Erstkonfiguration.
+Für die Produktion wird dieselbe `docker-compose.yml` verwendet. Sie kann vorgefertigte Images aus der GitHub Container Registry (GHCR) statt lokaler Builds nutzen — kein `git clone` auf dem Server nötig. Pflichtvariablen beim Anlegen des Stacks:
+
+| Variable | Beispiel |
+|---|---|
+| `BACKEND_IMAGE` | `ghcr.io/retttechsolutions/convoyplan-backend:latest` |
+| `FRONTEND_IMAGE` | `ghcr.io/retttechsolutions/convoyplan-frontend:latest` |
+| `GRAPHHOPPER_IMAGE` | `ghcr.io/retttechsolutions/convoyplan-graphhopper:latest` |
+| `JWT_SECRET` | mit `openssl rand -hex 32` erzeugen |
+| `POSTGRES_PASSWORD` | sicheres Datenbankpasswort |
+| `DOMAIN` / `ACME_EMAIL` | FQDN bzw. E-Mail für Let's Encrypt |
+
+Der Setup-Wizard übernimmt die Erstkonfiguration nach dem ersten Stack-Start.
+
+> **Hinweis:** Der `updater`-Container ist nur in `docker-compose.yml` enthalten. In Portainer übernimmt der Stack-Update-Mechanismus von Portainer selbst das Deployment neuer Images.
 
 ### Checkliste für Produktion
 
 - [ ] `JWT_SECRET` mit `openssl rand -hex 32` generieren – nicht in Git versionieren
 - [ ] Datenbankpasswort ändern
 - [ ] `CORS_ORIGINS` auf die produktive Domain einschränken
-- [ ] Persistente Volumes (`postgres_data`, `caddy_data`, `cert_uploads`) regelmäßig sichern
+- [ ] Persistente Volumes (`postgres_data`, `caddy_data`, `cert_uploads`, `logo_uploads`) regelmäßig sichern
 - [ ] Für Deutschland genug RAM einplanen (`JAVA_OPTS=-Xmx4g`)
 - [ ] GraphHopper-Graph-Cache (`gh_graph`) auf schnellem Speicher ablegen
+- [ ] `GITHUB_TOKEN` setzen, damit der Auto-Updater Commit-Stände abrufen kann
+- [ ] Lizenzschlüssel setzen (Env oder Admin → System); sonst läuft die Instanz dauerhaft im Demo-Modus
 
 ---
 
@@ -282,8 +329,12 @@ Für ein neues Release den Tag `vX.Y.Z` setzen – Docker-Images werden dann aut
 
 ## Sicherheitshinweise
 
-- Der Standardwert `changeme-in-production` für `JWT_SECRET` ist **nur für lokale Entwicklung** gedacht.
+- In Produktion (`APP_ENV=production`, Default) verweigert das Backend den Start, wenn `JWT_SECRET` leer, der Platzhalter oder kürzer als 32 Zeichen ist (Fail-Closed) — mit `openssl rand -hex 32` erzeugen.
 - Die Datenbankzugänge in `docker-compose.yml` sind Entwicklungs-Defaults – in Produktion ändern.
 - Die Caddy-Admin-API läuft auf Port `:2019` und ist nur im Docker-Netzwerk intern erreichbar.
-- Öffentliche Share-Links sind ohne Login abrufbar – Tokens sollten wie vertrauliche Links behandelt werden.
-- Live-Tracking verarbeitet Standortdaten – Zugriff, Aufbewahrung und Löschung organisatorisch regeln.
+- Caddy liefert Security-Header (HSTS, `X-Content-Type-Options`, `X-Frame-Options` u. a.) und eine Content-Security-Policy aus (Report-Only, per `CSP_ENFORCE=true` erzwingbar).
+- TOTP-Secrets werden Fernet-verschlüsselt at-rest gespeichert; Passwort-/MFA-Reset entziehen über die `token_version` alle bestehenden JWTs.
+- Öffentliche Share-Links sind ohne Login abrufbar – Tokens sollten wie vertrauliche Links behandelt und bei Bedarf widerrufen werden.
+- Live-Tracking verarbeitet Standortdaten – Aufbewahrung wird über den `retention`-Container geregelt.
+
+> Vollständige Übersicht: **[Sicherheit und Datenschutz](Sicherheit-und-Datenschutz)**.

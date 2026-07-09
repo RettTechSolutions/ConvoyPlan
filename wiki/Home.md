@@ -42,14 +42,18 @@ FastAPI Backend   SvelteKit Frontend
      │
      ├── PostgreSQL + PostGIS
      ├── GraphHopper (Routing)
-     └── Open-Meteo / Overpass API
+     └── Open-Meteo / Overpass / Autobahn-API / HERE·TomTom
+
+Updater-Container   → git-poll auto-deploy
+Retention-Container → periodischer Daten-Purge
 ```
 
-- **Caddy** übernimmt TLS-Terminierung (Let's Encrypt oder eigenes Zertifikat) und leitet Anfragen ans Backend und Frontend weiter.
+- **Caddy** übernimmt TLS-Terminierung (Let's Encrypt oder eigenes Zertifikat), leitet `/api/*` und `/ws/*` ans Backend und alles andere ans Frontend und liefert Security-Header sowie eine Content-Security-Policy aus.
 - **SvelteKit Frontend** stellt alle Nutzeroberflächen bereit: Login, Setup-Wizard, Planung, Tracking, Admin.
 - **FastAPI Backend** bündelt Authentifizierung, Geschäftslogik, Routing, Exporte und externe Integrationen.
 - **PostgreSQL + PostGIS** speichert alle Nutzer-, Fahrzeug-, Konvoi- und Geodaten.
 - **GraphHopper** läuft selbst gehostet und berechnet Routen auf Basis von OpenStreetMap-Daten.
+- **Updater-Container** pollt das Repository und deployt neue Commits automatisch; der **Retention-Container** löscht abgelaufene Live-Positionen, Audit-Log-Einträge und widerrufene Share-Links.
 
 ---
 
@@ -62,8 +66,9 @@ FastAPI Backend   SvelteKit Frontend
 | Backend | Python 3.12, FastAPI, Uvicorn |
 | Datenbank | PostgreSQL 15, PostGIS |
 | ORM / Migrationen | SQLAlchemy Async, Alembic |
-| Authentifizierung | JWT (python-jose, passlib) |
+| Authentifizierung | JWT (python-jose, passlib), MFA/TOTP |
 | Routing | GraphHopper 9.1 |
+| Externe Daten | Open-Meteo, Overpass, Autobahn-API, offene Feeds (MobiData BW, Berlin VIZ), DATEX-II/mobilithek, HERE/TomTom (optional) |
 | Reverse Proxy / TLS | Caddy 2 |
 | Infrastruktur | Docker Compose, Portainer Stack |
 
@@ -85,18 +90,20 @@ FastAPI Backend   SvelteKit Frontend
 - Freigabelink für öffentliche Routenansicht ohne Login
 
 ### Live, Lage und Export
-- Live-Tracking per WebSocket mit Fahrzeugstatus
-- GeoJSON-Lagedaten hochladen und auf der Karte anzeigen
+- Live-Tracking per WebSocket mit Fahrzeugstatus, Projektion auf die Route und Wegpunkt-/Kanalwechsel-Meldungen
 - Wetter via Open-Meteo (kein API-Key erforderlich)
-- Sperrungen und Baustellen aus mehreren Quellen: OpenStreetMap/Overpass, offizielle Autobahn-API (bund.dev), lizenzfreie offene Baustellenfeeds (MobiData BW, Berlin VIZ) und optional DATEX-II-Feeds der mobilithek (bundesweit, auch mTLS-geschützt) – entlang der gesamten Route, fallen einzelne Quellen aus liefern die anderen weiter
+- Sperrungen und Baustellen aus mehreren Quellen: Overpass, Autobahn-API (bund.dev), offene Feeds (MobiData BW, Berlin VIZ) und optional DATEX-II/mobilithek (bundesweit, auch mTLS-geschützt) – entlang der gesamten Route; fällt eine Quelle aus, liefern die anderen weiter
 - Live-Verkehrslage (Stau) optional über HERE oder TomTom, sobald ein API-Key hinterlegt ist
-- Leitstellen und automatische Kanalwechselpunkte entlang der Route
-- Export als PDF (Marschbefehl), GPX und JSON
+- Leitstellen (global und org-eigen) und automatische Kanalwechselpunkte entlang der Route
+- Export als PDF (Marschbefehl), GPX und JSON; Import von GPX/GeoJSON-Routen
 
-### Betrieb
+### Betrieb, Sicherheit & Datenschutz
 - Setup-Wizard für die Ersteinrichtung per Browser (kein SSH nötig)
 - Admin-Bereich für Benutzer-, Leitstellen-, Branding- und Verkehrsdaten-Verwaltung
-- Auto-Updater mit drei Kanälen (Stable/Beta/Nightly) und automatischem oder benachrichtigtem Modus
+- Multi-Tenancy mit Org-Code-Slug und org-spezifischem Branding
+- Auto-Updater (Kanäle Stable/Beta/Nightly, Modi automatisch/benachrichtigen)
+- Lizenzmodell mit Demo-Modus; MFA/TOTP, SMTP-Dienst
+- Security-Härtung, Audit-Log, DSGVO-Werkzeuge, Backup/Restore und Datenaufbewahrung
 - CI-Pipeline für Tests, Typecheck und Docker-Build
 
 ---
@@ -123,6 +130,30 @@ FastAPI Backend   SvelteKit Frontend
 | [Rollen & Berechtigungen](Rollen) | Rollenmodell und Zugriffsrechte |
 | [Teilen](Teilen) | Öffentliche Freigabelinks ohne Login |
 | [FAQ](FAQ) | Häufige Fragen |
+
+### Betrieb, Sicherheit & Features
+
+| Seite | Inhalt |
+|---|---|
+| [Verkehrsdaten](Verkehrsdaten) | Baustellen/Sperrungen und Live-Verkehrslage einrichten (HERE/TomTom, mobilithek) |
+| [Multi-Tenancy](Multi-Tenancy) | Organisationen, Org-Code-Slug, Datenisolation |
+| [Auto-Updater](Auto-Updater) | Update-Kanäle, Update-Modi und manueller Trigger |
+| [Lizenz und Demo-Modus](Lizenz-und-Demo-Modus) | Lizenzaktivierung, Demo-Modus, Instanz-UUID |
+| [Sicherheit und Datenschutz](Sicherheit-und-Datenschutz) | Härtung, Audit-Log, DSGVO, Backup/Restore, Retention |
+
+---
+
+## Datenmodell (Kurzform)
+
+```
+User ── Vehicles, Convoys, UserOrganizations
+Organization ── org_code (URL-Slug), UserOrganizations
+Convoy ── parent_convoy_id, organization_id, ConvoyVehicles,
+          Waypoints, Route, VehiclePositions
+Leitstelle ── boundary (GeoJSON/KML-Zuständigkeitsgebiet)
+```
+
+Details siehe [API-Dokumentation](API-Dokumentation#datenmodell).
 
 ---
 

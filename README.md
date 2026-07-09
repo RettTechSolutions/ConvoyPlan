@@ -421,110 +421,25 @@ Beim ersten Start leitet die Anwendung automatisch auf `http://localhost:5173/se
 
 ## Konfiguration
 
-Eine vollständige Vorlage liegt in `.env.example`. Die wichtigsten Variablen:
-
-### Datenbank
-
-| Variable | Beschreibung |
-|---|---|
-| `POSTGRES_USER` | Datenbankbenutzer |
-| `POSTGRES_PASSWORD` | Datenbankpasswort – in Produktion ändern |
-| `POSTGRES_DB` | Datenbankname |
-
-### Backend
+Eine vollständige Vorlage liegt in `.env.example`. Die wichtigsten Variablen für den ersten Start:
 
 | Variable | Standard | Beschreibung |
 |---|---|---|
-| `DATABASE_URL` | *(aus POSTGRES_\* zusammengesetzt)* | PostgreSQL/PostGIS-Verbindung |
-| `APP_ENV` | `production` | `production` erzwingt einen starken `JWT_SECRET` (Fail-Closed); `development` lockert die Prüfung für lokale Arbeit |
-| `JWT_SECRET` | *(kein sicherer Default)* | Signaturschlüssel für JWTs – in Produktion zwingend ≥ 32 Zeichen (`openssl rand -hex 32`); sonst startet das Backend nicht |
-| `JWT_ALGORITHM` | `HS256` | JWT-Algorithmus |
-| `JWT_EXPIRE_MINUTES` | `10080` | Token-Ablaufzeit in Minuten (7 Tage) |
-| `GRAPHHOPPER_URL` | `http://graphhopper:8989` | URL der Routing-Engine |
-| `APP_BASE_URL` | `https://convoyplan.example.com` | Öffentliche App-Origin (Fallback für CORS in Produktion) |
-| `CORS_ORIGINS` | *(leer)* | Komma-getrennte Allowlist oder `*`; leer = App-Origin aus `APP_BASE_URL`. `*` nur in Entwicklung |
+| `POSTGRES_PASSWORD` | – | Datenbankpasswort – in Produktion ändern |
+| `APP_ENV` | `production` | `production` erzwingt einen starken `JWT_SECRET` (Fail-Closed) |
+| `JWT_SECRET` | *(kein sicherer Default)* | Signaturschlüssel für JWTs – in Produktion ≥ 32 Zeichen (`openssl rand -hex 32`), sonst startet das Backend nicht |
+| `DOMAIN` / `ACME_EMAIL` | `localhost` / – | Serverdomain und E-Mail für Let's Encrypt |
+| `OSM_DOWNLOAD_URL` / `OSM_FILENAME` | Deutschland | OSM-Region für GraphHopper (kleinere Region = schnellerer Erststart) |
+| `LICENSE_KEY` | – | Lizenzschlüssel; ohne gültigen Schlüssel läuft die App im Demo-Modus |
+| `GITHUB_TOKEN` | – | PAT (`repo`-Lesezugriff) für den Auto-Updater |
 
-### Sicherheit und Datenschutz
+Frontend (lokale Entwicklung): `frontend/.env.local` mit `VITE_WS_HOST=localhost:8000`.
 
-| Variable | Standard | Beschreibung |
-|---|---|---|
-| `MFA_ENCRYPTION_KEY` | *(aus `JWT_SECRET` abgeleitet)* | Fernet-Schlüssel zur Verschlüsselung der TOTP-Secrets at-rest. Rotation von `JWT_SECRET` macht ohne eigenen Schlüssel bestehende MFA-Secrets unlesbar |
-| `PASSWORD_BREACH_CHECK_ENABLED` | `true` | Abgleich neuer Passwörter gegen Have-I-Been-Pwned (k-Anonymity, fail-open). Für Air-Gapped-Setups auf `false` |
-| `CSP_ENFORCE` | `false` | Content-Security-Policy erzwingen (Default: Report-Only, bricht die UI nicht) |
-| `RETENTION_ENABLED` | `true` | Periodisches Purgen alter Daten durch den `retention`-Container |
-| `RETENTION_INTERVAL` | `3600` | Sekunden zwischen den Purge-Läufen |
-| `RETENTION_POSITIONS_HOURS` | `24` | Live-Positionen älter als dieser Wert werden gelöscht |
-| `RETENTION_AUDIT_DAYS` | `365` | Audit-Log-Einträge älter als dieser Wert werden gelöscht |
-| `RETENTION_SHARE_LINKS_DAYS` | `30` | Widerrufene Share-Links älter als dieser Wert werden gelöscht |
-| `BACKUP_DIR` | `./backups` | Zielverzeichnis für `scripts/backup.sh` |
-| `BACKUP_RETENTION_DAYS` | `30` | Aufbewahrungsdauer der Backups |
-
-### SSL / Caddy
-
-Domain und Zertifikat werden beim ersten Start über den Setup-Wizard in der Datenbank gespeichert und als Caddyfile auf einem geteilten Volume abgelegt. Die folgenden Variablen gelten als Fallback für den allerersten Container-Start vor dem Wizard:
-
-| Variable | Beschreibung |
-|---|---|
-| `DOMAIN` | Serverdomain (z. B. `convoy.example.com`), Standard: `localhost` |
-| `ACME_EMAIL` | E-Mail für Let's Encrypt, Standard: `admin@example.com` |
-| `CADDY_TLS_CERT` | Pfad zum PEM-Zertifikat (optional, für eigene Zertifikate) |
-| `CADDY_TLS_KEY` | Pfad zum PEM-Schlüssel (optional, für eigene Zertifikate) |
-| `HTTP_PORT` | Externer HTTP-Port, Standard: `80` |
-| `HTTPS_PORT` | Externer HTTPS-Port, Standard: `443` |
-
-### GraphHopper
-
-| Variable | Standard | Beschreibung |
-|---|---|---|
-| `OSM_DOWNLOAD_URL` | `https://download.geofabrik.de/europe/germany-latest.osm.pbf` | Download-URL der OSM-PBF-Datei |
-| `OSM_FILENAME` | `germany-latest.osm.pbf` | Dateiname im persistenten OSM-Volume |
-| `JAVA_OPTS` | `-Xmx2g -Xms512m -XX:+UseG1GC` | JVM-Speicherkonfiguration |
-
-### Lizenz und Auto-Updater
-
-| Variable | Beschreibung |
-|---|---|
-| `LICENSE_KEY` | Lizenzschlüssel (ausgestellt von ConvoyPlan). Ohne gültigen Schlüssel läuft die App im Demo-Modus. Alternativ zur Env-Variable auch über den Admin-Bereich eintragbar (wird dann in der DB gespeichert). |
-| `GITHUB_TOKEN` | GitHub PAT mit `repo`-Leseberechtigung (Classic Token: `repo`-Scope). Benötigt für den Auto-Updater-Container, um das GitHub-Repository zu pollen und neue Commits zu erkennen. |
-| `GITHUB_REPO` | Repository das der Auto-Updater überwacht. Standard: `RettTechSolutions/ConvoyPlan`. Bei Fork auf das eigene Repository anpassen. |
-| `UPDATE_CHANNEL` | Update-Kanal-Fallback. `stable` (Standard, empfohlen) deployt nur veröffentlichte GitHub-Releases; `beta` verfolgt nummerierte Vorabversionen/Release-Kandidaten (`vX.Y.Z-beta.N`, Images `:beta`); `nightly` verfolgt jeden Commit auf `main` (Images `:nightly`). Der Schalter im Admin-Bereich (Admin → Software-Update) überschreibt diesen Wert. |
-| `UPDATE_MODE` | Update-Modus-Fallback. `auto` (Standard) installiert verfügbare Updates im gewählten Kanal automatisch; `notify` installiert nicht automatisch, sondern benachrichtigt Superadmins per E-Mail. Der Schalter im Admin-Bereich (Admin → Software-Update) überschreibt diesen Wert. |
-| `UPDATE_NOTIFY_ON_AUTO` | Nur im Modus `auto` relevant. `true` schickt zusätzlich eine E-Mail an alle aktiven Superadmins, nachdem ein Update automatisch installiert wurde (Standard: `false`). |
-| `UPDATE_NOTIFY_INTERVAL` | Prüfintervall in Sekunden, wie oft eine fällige Update-Benachrichtigung geprüft wird (Modus `notify` sowie `UPDATE_NOTIFY_ON_AUTO`; Standard: `1800`). |
-
-### Verkehrsdaten
-
-| Variable | Beschreibung |
-|---|---|
-| `HERE_TRAFFIC_API_KEY` / `TOMTOM_TRAFFIC_API_KEY` | Optionale API-Keys für die Live-Verkehrslage (HERE bzw. TomTom, beide mit kostenlosem Kontingent). Ohne Key bleibt die Funktion inaktiv (kein Schalter, keine Anfragen). Alternativ komfortabler im Admin-Bereich unter „Live-Verkehrslage" hinterlegbar – ein dort gesetzter Wert hat Vorrang. |
-| `TRAFFIC_FLOW_PROVIDER` | Anbieter erzwingen (`here`/`tomtom`), wenn beide Keys gesetzt sind. Standard: automatisch, HERE bevorzugt. |
-| `OPENDATA_TRAFFIC_ENABLED` | Offene, lizenzfreie Baustellen-/Sperrungsfeeds aktiviert lassen. Standard: `true`. |
-| `OPENDATA_TRAFFIC_FEEDS` | Kommaseparierte Liste `format\|url`. Formate: `mobidata_bw`, `berlin_viz` (GeoJSON) und `datex2` (DATEX II v2, z. B. mobilithek-Länderfeeds für bundesweite Abdeckung abseits der Autobahn). Standard aktiviert MobiData BW + Berlin VIZ. |
-| `OPENDATA_TRAFFIC_CLIENT_CERT` | Client-Zertifikat (PEM) für per mTLS geschützte `datex2`-Feeds, insbesondere den mobilithek-Broker. Standardpfad `/secrets/mobilithek-client.pem` (siehe unten). |
-| `OPENDATA_TRAFFIC_CA_CERT` | CA-/Vertrauenskette (PEM) des Brokers, falls dieser eine private CA nutzt (z. B. mobilithek-M2M, `prod-mdp.m2m.de`). Ohne hinterlegte CA gilt der öffentliche Trust-Store. Standardpfad `/secrets/mobilithek-ca.crt` (siehe unten). |
-
-**mTLS-Zertifikate ablegen:** `docker-compose.yml` mountet den Host-Ordner `./secrets` read-only nach `/secrets` im Backend-Container. Zertifikate dort ablegen, dann in der `.env` referenzieren:
-
-```
-./secrets/mobilithek-client.pem  # Client-Zertifikat + privater Schlüssel
-                                  # (aus certificate.p12 konvertieren: openssl pkcs12
-                                  # -in certificate.p12 -out mobilithek-client.pem -nodes)
-./secrets/mobilithek-ca.crt      # CA-Kette der mobilithek (prod-mdp.m2m.de)
-```
-
-`/secrets` ist über `.gitignore` (`/secrets/`, `*.pem`, `*.p12`) vom Repository ausgeschlossen — Zertifikate landen nie im Git-Verlauf.
-| `OPENDATA_TRAFFIC_CLIENT_CERT` | Client-Zertifikat (PEM) für per mTLS geschützte `datex2`-Feeds, insbesondere den mobilithek-Broker. |
-| `OPENDATA_TRAFFIC_CA_CERT` | Nur für Broker mit **privater** CA. Für den **mobilithek-Broker leer lassen** – er nutzt ein öffentliches Telekom-Zertifikat (System-Truststore); ein Setzen bricht die TLS-Verbindung. |
-
-> 📖 **Schritt-für-Schritt-Anleitung** (Live-Verkehrslage aktivieren, bundesweite
-> mobilithek-Baustellen einrichten, Fehlerbehebung): **[docs/verkehrsdaten.md](docs/verkehrsdaten.md)**
-
-### Frontend (lokale Entwicklung)
-
-```env
-# frontend/.env.local
-VITE_WS_HOST=localhost:8000
-```
+> 📖 **Vollständige Referenz aller Variablen** (Backend, Sicherheit/Retention, SSL/Caddy,
+> GraphHopper, Lizenz/Updater, Verkehrsdaten) im Wiki:
+> **[Installation und Setup](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Installation-und-Setup)**.
+> Verkehrsdaten (HERE/TomTom, mobilithek) im Detail:
+> **[Verkehrsdaten](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Verkehrsdaten)** bzw. [`docs/verkehrsdaten.md`](docs/verkehrsdaten.md).
 
 ---
 
@@ -549,6 +464,11 @@ GitHub Wiki gespiegelt — Bearbeitungen also bitte immer in `wiki/` vornehmen, 
 | [Marschbefehl & Export](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Marschbefehl-Export) | PDF-Marschbefehl sowie GPX-/JSON-Export |
 | [Rollen & Berechtigungen](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Rollen) | Rollenmodell und Zugriffsrechte |
 | [Teilen](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Teilen) | Öffentliche Freigabelinks ohne Login |
+| [Verkehrsdaten](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Verkehrsdaten) | Baustellen/Sperrungen und Live-Verkehrslage einrichten |
+| [Multi-Tenancy](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Multi-Tenancy) | Organisationen, Org-Code-Slug, Datenisolation |
+| [Auto-Updater](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Auto-Updater) | Update-Kanäle, Update-Modi und manueller Trigger |
+| [Lizenz und Demo-Modus](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Lizenz-und-Demo-Modus) | Lizenzaktivierung, Demo-Modus, Instanz-UUID |
+| [Sicherheit und Datenschutz](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Sicherheit-und-Datenschutz) | Härtung, Audit-Log, DSGVO, Backup/Restore, Retention |
 | [FAQ](https://github.com/RettTechSolutions/ConvoyPlan/wiki/FAQ) | Häufige Fragen |
 
 ---
@@ -562,127 +482,26 @@ Die vollständige OpenAPI-Dokumentation wird automatisch von FastAPI bereitgeste
 
 > **Produktion:** `/docs`, `/redoc` und `/openapi.json` sind standardmäßig deaktiviert (404). Mit `DOCS_API_KEY=<geheim>` lassen sie sich per API-Key absichern (Aufruf einmalig über `/docs?key=<geheim>`, danach via HttpOnly-Cookie bzw. Header `X-API-Key`); mit `ENABLE_DOCS=true` werden sie offen freigegeben (nur für Dev/intern).
 
-**Ersteinrichtung**
+Die API ist unter dem Präfix `/api` gruppiert. Ein Überblick über die Endpunkt-Gruppen:
 
-| Methode | Endpunkt | Beschreibung |
+| Gruppe | Präfix | Zweck |
 |---|---|---|
-| `GET` | `/api/setup/status` | Prüft ob Setup erforderlich ist |
-| `POST` | `/api/setup` | Superadmin anlegen, Domain und TLS konfigurieren |
+| Ersteinrichtung | `/api/setup` | Setup-Status, Wizard ausführen |
+| Authentifizierung & MFA | `/api/auth` | Register, Login, Passwort, TOTP |
+| Superadmin | `/api/admin` | Benutzer, Orgs, API-Keys, Updates, SMTP, Traffic-Keys |
+| Sicherheit & DSGVO | `/api/admin` | Audit-Log, Datenexport/-löschung, Passwort-/MFA-Reset |
+| Lizenz | `/api/license` | Instanz-UUID, Status, Aktivierung |
+| Fahrzeuge & Konvois | `/api/vehicles`, `/api/convoys` | CRUD, Wegpunkte, Routing, Export/Import, Teilverbände |
+| Organisationen | `/api/organizations` | Orgs und Mitglieder |
+| Leitstellen | `/api/leitstellen`, `/api/org/leitstellen` | Globale und org-eigene Leitstellen |
+| Live-Tracking | `/api/convoys/.../positions`, `/ws/tracking` | Positionen (REST + WebSocket) |
+| Freigabe & Tracking-App | `/api/convoys/.../share-links`, `/api/track` | Share-Links, öffentliche Fahrer-App |
+| Wetter & Verkehr | `/api/weather`, `/api/overpass`, `/api/traffic` | Wetter, Sperrungen, Live-Verkehrslage |
+| System | `/api/version`, `/health` | Version, Changelog, Healthcheck |
 
-**Authentifizierung**
-
-| Methode | Endpunkt | Beschreibung |
-|---|---|---|
-| `POST` | `/api/auth/register` | Account erstellen |
-| `POST` | `/api/auth/login` | Login und JWT erhalten |
-
-**Superadmin-Verwaltung**
-
-| Methode | Endpunkt | Beschreibung |
-|---|---|---|
-| `GET/POST` | `/api/admin/users` | Benutzer auflisten oder anlegen |
-| `PATCH/DELETE` | `/api/admin/users/{user_id}` | Benutzer aktivieren/deaktivieren, Rolle setzen, löschen |
-| `GET/POST` | `/api/admin/organizations` | Organisationen auflisten oder anlegen |
-| `POST/DELETE` | `/api/admin/users/{user_id}/orgs` | Benutzer einer Organisation zuweisen oder entfernen |
-| `GET/POST/DELETE` | `/api/admin/organizations/{org_id}/api-keys` | Org-gebundene API-Schlüssel verwalten |
-| `POST` | `/api/admin/trigger-update` | Auto-Update manuell anstoßen |
-| `GET` | `/api/admin/update-status` / `/api/admin/update-log` | Deploy-Stand bzw. Live-Update-Log (SSE) |
-| `GET/PUT` | `/api/admin/settings/update-channel` | Update-Kanal (Stable/Beta/Nightly) lesen/setzen |
-| `GET/PUT` | `/api/admin/settings/update-mode` | Update-Modus (Automatisch/Benachrichtigen), inkl. `notify_on_auto`, lesen/setzen |
-| `GET/PUT` | `/api/admin/settings/smtp` | SMTP-Konfiguration lesen/setzen |
-| `GET/PUT` | `/api/admin/settings/traffic-keys` | HERE-/TomTom-API-Keys für die Live-Verkehrslage lesen (ohne Klartext-Preisgabe) und setzen |
-
-**Sicherheit und Datenschutz**
-
-| Methode | Endpunkt | Beschreibung |
-|---|---|---|
-| `POST` | `/api/auth/password` | Eigenes Passwort ändern (frisches Token) |
-| `POST` | `/api/auth/password-reset` | Passwort-Reset anstoßen |
-| `POST` | `/api/admin/users/{user_id}/reset-password` | Passwort als Superadmin zurücksetzen |
-| `POST` | `/api/admin/users/{user_id}/reset-mfa` | MFA eines Benutzers zurücksetzen |
-| `GET` | `/api/admin/audit-log` | Security-Audit-Log (Filter nach Aktion) |
-| `GET` | `/api/admin/users/{user_id}/export` | Personenbezogene Daten exportieren (DSGVO Art. 15) |
-| `DELETE` | `/api/admin/users/{user_id}/data` | Benutzerdaten löschen, Audit-Trail pseudonymisieren (Art. 17) |
-
-**Lizenz**
-
-| Methode | Endpunkt | Beschreibung |
-|---|---|---|
-| `GET` | `/api/license/instance-id` | Instanz-UUID abfragen (für Lizenzbeantragung) |
-| `GET` | `/api/license/status` | Lizenzstatus, `demo_mode` und `key_source` |
-| `POST` | `/api/license/activate` | Lizenzschlüssel validieren, speichern und Cache zurücksetzen |
-
-**Fahrzeuge und Konvois**
-
-| Methode | Endpunkt | Beschreibung |
-|---|---|---|
-| `GET/POST/PUT/DELETE` | `/api/vehicles/` | Fahrzeuge verwalten |
-| `GET/POST/PUT/DELETE` | `/api/convoys/` | Marschverbände verwalten |
-| `POST/DELETE` | `/api/convoys/{convoy_id}/vehicles` | Fahrzeuge zuordnen oder entfernen |
-| `GET/POST/PUT/DELETE` | `/api/convoys/{convoy_id}/waypoints` | Wegpunkte verwalten |
-| `GET/POST` | `/api/convoys/{convoy_id}/sub-convoys` | Teilverbände anzeigen oder erstellen |
-| `POST` | `/api/convoys/{convoy_id}/calculate-route` | Route und Zeitplan berechnen |
-| `GET` | `/api/convoys/{convoy_id}/export/gpx` | GPX exportieren |
-| `GET` | `/api/convoys/{convoy_id}/export/json` | JSON exportieren |
-| `GET` | `/api/convoys/{convoy_id}/export/pdf` | Marschbefehl als PDF exportieren |
-| `POST` | `/api/convoys/{convoy_id}/import/gpx` | GPX-Track importieren |
-| `POST` | `/api/convoys/{convoy_id}/import/geojson` | GeoJSON-Route importieren |
-| `GET` | `/api/convoys/{convoy_id}/fuel-stations` | Tankstellen entlang der Route |
-| `GET` | `/api/convoys/share/{token}` | Öffentliche Routenansicht |
-
-**Organisationen und MFA**
-
-| Methode | Endpunkt | Beschreibung |
-|---|---|---|
-| `GET/POST/DELETE` | `/api/organizations/` | Organisationen und Mitglieder verwalten |
-| `POST` | `/api/auth/mfa/setup` | TOTP-Einrichtung starten (QR-Code generieren) |
-| `POST` | `/api/auth/mfa/confirm` | TOTP-Einrichtung bestätigen und aktivieren |
-| `POST` | `/api/auth/mfa/verify` | TOTP-Code bei Login verifizieren |
-| `DELETE` | `/api/auth/mfa` | MFA deaktivieren |
-
-**Live-Tracking**
-
-| Methode | Endpunkt | Beschreibung |
-|---|---|---|
-| `GET/POST` | `/api/convoys/{convoy_id}/positions` | Live-Positionen abrufen oder aktualisieren |
-| `PATCH` | `/api/convoys/{convoy_id}/vehicles/{vehicle_id}/status` | Fahrzeugstatus ändern |
-| `WS` | `/ws/tracking/{convoy_id}?token=...` | WebSocket für Live-Tracking |
-
-**Leitstellen**
-
-| Methode | Endpunkt | Beschreibung |
-|---|---|---|
-| `GET/POST/PUT/DELETE` | `/api/leitstellen/` | Globale (superadmin-gepflegte) Leitstellen verwalten |
-| `GET/POST/PUT/DELETE` | `/api/org/leitstellen/` | Org-eigene Leitstellen verwalten |
-| `POST` | `/api/org/leitstellen/{id}/submit` | Org-Leitstelle als globalen Vorschlag einreichen |
-| `GET` | `/api/org/leitstellen/geojson` | Sichtbare Leitstellengebiete als GeoJSON (Übersichtskarte) |
-
-**Freigabelinks und Tracking-App**
-
-| Methode | Endpunkt | Beschreibung |
-|---|---|---|
-| `GET/POST/DELETE` | `/api/convoys/{convoy_id}/share-links` | Widerrufbare Freigabelinks pro Konvoi |
-| `GET/POST` | `/api/track/{slug}` | Öffentliche Tracking-App: Status abrufen / Position senden |
-| `WS` | `/api/ws/track/{slug}` | WebSocket der Tracking-App |
-
-**Wetter, Sperrungen und Verkehrslage**
-
-| Methode | Endpunkt | Beschreibung |
-|---|---|---|
-| `GET` | `/api/weather/?lat=...&lon=...` | Wetterdaten abrufen |
-| `GET` | `/api/overpass/closures?lat=...&lon=...` | Sperrungen und Baustellen im Radius um einen Punkt abrufen (Overpass, Autobahn-API, offene Feeds, DATEX-II/mobilithek) |
-| `POST` | `/api/overpass/closures/route` | Sperrungen und Baustellen im Korridor entlang einer Routen-Geometrie abrufen (alle konfigurierten Quellen) |
-| `GET` | `/api/traffic/flow/status` | Konfigurierten Verkehrslage-Anbieter (HERE/TomTom) abfragen |
-| `GET` | `/api/traffic/flow` | Live-Verkehrslage im Radius um einen Punkt abrufen |
-| `POST` | `/api/traffic/flow/route` | Live-Verkehrslage entlang einer Routen-Geometrie abrufen |
-
-**System**
-
-| Methode | Endpunkt | Beschreibung |
-|---|---|---|
-| `GET` | `/api/version` | Build-Version, Commit-SHA und Update-Hinweis |
-| `GET` | `/api/version/changelog` | Release-Notes der laufenden Version (aus GitHub-Release, gecacht) |
-| `GET` | `/health` | Healthcheck mit Versionsangabe |
+> 📖 **Vollständige Endpunkt-Referenz** (alle Methoden, Pfade und Payloads) im Wiki:
+> **[API-Dokumentation](https://github.com/RettTechSolutions/ConvoyPlan/wiki/API-Dokumentation)** —
+> oder interaktiv über die Swagger UI (`/docs`).
 
 ---
 
@@ -710,16 +529,9 @@ Leitstelle
 └── boundary                # GeoJSON/KML-Zuständigkeitsgebiet
 ```
 
-Wichtige fachliche Objekte:
+Zentrale Objekte sind **User**, **Organization** (Mandant mit `org_code`-Slug), **Vehicle**, **Convoy** (mit Waypoints, Route, Share-Token), **VehiclePosition** und **Leitstelle** (mit GeoJSON/KML-Grenzgebiet für Kanalwechselpunkte).
 
-- **User**: Account für Login und Besitz von Fahrzeugen/Konvois.
-- **Organization**: Mandant für organisationsbezogene Planung und Rollen; mit kurzem `org_code`-Slug als URL-Bezeichner.
-- **Vehicle**: Fahrzeug mit Funkrufname, Kennzeichen, Abmessungen, Gewicht und Kraftstoffdaten.
-- **Convoy**: Marschverband mit Start-/Zielpunkt, Marschbefehl-Feldern, Share-Token und Status.
-- **Waypoint**: Wegpunkt, Stopp, Kontrollpunkt oder technischer Halt mit Zeitplanung.
-- **Route**: Berechnete Route inklusive Geometrie, Distanz, Dauer, Exportdaten und Kanalwechseln.
-- **VehiclePosition**: Aktuelle Fahrzeugposition innerhalb eines Konvois.
-- **Leitstelle**: Leitstelle mit GeoJSON/KML-Grenzgebiet; bestimmt Kanalwechselpunkte auf der Route.
+> 📖 Ausführliche Beschreibung der Objekte im Wiki: **[API-Dokumentation](https://github.com/RettTechSolutions/ConvoyPlan/wiki/API-Dokumentation)**.
 
 ---
 
@@ -861,6 +673,9 @@ Für iOS wird eine macOS-Umgebung mit Xcode benötigt.
 - Öffentliche Share-Links sind ohne Login abrufbar — Tokens sollten wie vertrauliche Links behandelt und bei Bedarf widerrufen werden.
 - Sicherheitsrelevante Ereignisse werden im Audit-Log protokolliert; Sicherheitslücken bitte gemäß [`SECURITY.md`](SECURITY.md) bzw. `/.well-known/security.txt` melden.
 - Im Demo-Modus (kein gültiger `LICENSE_KEY`) sind alle schreibenden API-Operationen (POST/PUT/PATCH/DELETE) mit HTTP 402 gesperrt. Der Demo-Modus ist für Tests geeignet, nicht für Einsatzbetrieb.
+
+> 📖 Härtung, Audit-Log, DSGVO-Werkzeuge, Backup/Restore und Datenaufbewahrung im Detail:
+> **[Sicherheit und Datenschutz](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Sicherheit-und-Datenschutz)** im Wiki.
 
 ---
 
