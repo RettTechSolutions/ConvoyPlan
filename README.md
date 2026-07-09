@@ -52,7 +52,8 @@
 - 📄 **Marschbefehl-PDF** sowie GPX- und JSON-Export für Weitergabe und Nachbearbeitung.
 - 📡 **Live-Tracking per WebSocket** mit Browser-Geolocation und Fahrzeugstatus. Projiziert sendende Fahrzeuge auf die Route und meldet mit Ton/Vibration, sobald die Spitze des Verbands einen Wegpunkt oder Leitstellenwechsel erreicht – inkl. Fortschrittszähler, bis der gesamte Verband durch ist.
 - 🔐 **Organisations- und Rollenmodell** für Admins, Planer, Fahrer und Beobachter.
-- 🌤️ **Wetter- und Verkehrsdaten-Integration** – Wetter über Open-Meteo sowie Sperrungen und Baustellen aus zwei Quellen: OpenStreetMap/Overpass und der offiziellen Autobahn-API (autobahn.api.bund.dev); fällt eine Quelle aus, liefert die andere weiter Ergebnisse.
+- 🌤️ **Wetter- und Verkehrsdaten-Integration** – Wetter über Open-Meteo sowie Sperrungen und Baustellen aus mehreren Quellen: OpenStreetMap/Overpass, der offiziellen Autobahn-API (autobahn.api.bund.dev), lizenzfreien offenen Baustellenfeeds (MobiData BW, Berlin VIZ) und optional DATEX-II-Feeds der mobilithek (bundesweite Länder-Feeds, auch mTLS-geschützt); fällt eine Quelle aus, liefern die anderen weiter Ergebnisse.
+- 🚦 **Live-Verkehrslage (Stau)** – optionale Anbindung an HERE oder TomTom: sobald eine Installation ihren eigenen API-Key hinterlegt (Admin-UI oder Env), wird die Fließgeschwindigkeit entlang der Route als Ampel-Ebene (grün→rot) über die Karte gelegt; ohne Key bleibt die Funktion vollständig inaktiv.
 - 📱 **PWA und Capacitor-Konfiguration** für installierbare Web-App und native App-Wrapper.
 - 🎨 **Branding-System** – eigenes Logo, Farben und App-Name über den Admin-Bereich konfigurierbar.
 - 🏢 **Multi-Tenancy** – Organisationen erhalten einen kurzen Org-Code (4–8 Zeichen) als URL-Slug unter dem Scope `/o/[slug]/`; org-spezifische Login-Seite mit eigenem Branding; vollständige Datenisolation pro Organisation.
@@ -109,7 +110,8 @@
 | Live-Tracking | Positionsupdates per REST und WebSocket | ✅ |
 | Fahrzeugstatus | Geplant, unterwegs, angekommen oder verspätet | ✅ |
 | Wetter | Integration über Open-Meteo ohne API-Key | ✅ |
-| Sperrungen | Sperrungen und Baustellen aus Overpass API und Autobahn-API (bund.dev), entlang der gesamten Route | ✅ |
+| Sperrungen | Sperrungen und Baustellen aus Overpass API, Autobahn-API (bund.dev), offenen regionalen Feeds (MobiData BW, Berlin VIZ) und optional DATEX-II/mobilithek, entlang der gesamten Route | ✅ |
+| Verkehrslage | Live-Fließgeschwindigkeit/Stau über HERE oder TomTom entlang der Route (optionaler API-Key pro Installation) | ✅ |
 | PDF | Marschbefehl als PDF | ✅ |
 | GPX / JSON | Export und Import für Navigation, Dokumentation und Weiterverarbeitung | ✅ |
 | PWA | Installierbare Web-App mit Tile-Caching | ✅ |
@@ -213,7 +215,7 @@ flowchart LR
 | Routing | GraphHopper 9.1 |
 | Geodaten | GeoAlchemy2, Shapely, GeoJSON |
 | Exporte | GPXPy, fpdf2, JSON |
-| Externe Daten | Open-Meteo, OpenStreetMap Overpass API, Autobahn-API (autobahn.api.bund.dev) |
+| Externe Daten | Open-Meteo, OpenStreetMap Overpass API, Autobahn-API (autobahn.api.bund.dev), offene Baustellenfeeds (MobiData BW, Berlin VIZ), DATEX-II/mobilithek, HERE/TomTom Traffic Flow (optional) |
 | Reverse Proxy / TLS | Caddy 2 (Let's Encrypt, eigenes Zertifikat, intern) |
 | Infrastruktur | Docker Compose, Portainer Stack |
 
@@ -242,7 +244,8 @@ ConvoyPlan/
 │   │   │   ├── tracking.py   # Live-Positionen + WebSocket
 │   │   │   ├── routing.py    # GraphHopper-Routing
 │   │   │   ├── weather.py    # Open-Meteo-Integration
-│   │   │   ├── overpass.py   # Sperrungsabfragen (Overpass + Autobahn-API), Punkt und Routenkorridor
+│   │   │   ├── overpass.py   # Sperrungsabfragen (Overpass, Autobahn-API, offene Feeds, DATEX-II), Punkt und Routenkorridor
+│   │   │   ├── traffic.py    # Live-Verkehrslage (HERE/TomTom), Punkt und Routenkorridor
 │   │   │   ├── users.py      # Eigenes Benutzerprofil
 │   │   │   ├── version.py    # Versions- und Build-Informationen
 │   │   │   └── status.py     # Systemstatus
@@ -487,6 +490,17 @@ Domain und Zertifikat werden beim ersten Start über den Setup-Wizard in der Dat
 | `UPDATE_NOTIFY_ON_AUTO` | Nur im Modus `auto` relevant. `true` schickt zusätzlich eine E-Mail an alle aktiven Superadmins, nachdem ein Update automatisch installiert wurde (Standard: `false`). |
 | `UPDATE_NOTIFY_INTERVAL` | Prüfintervall in Sekunden, wie oft eine fällige Update-Benachrichtigung geprüft wird (Modus `notify` sowie `UPDATE_NOTIFY_ON_AUTO`; Standard: `1800`). |
 
+### Verkehrsdaten
+
+| Variable | Beschreibung |
+|---|---|
+| `HERE_TRAFFIC_API_KEY` / `TOMTOM_TRAFFIC_API_KEY` | Optionale API-Keys für die Live-Verkehrslage (HERE bzw. TomTom, beide mit kostenlosem Kontingent). Ohne Key bleibt die Funktion inaktiv (kein Schalter, keine Anfragen). Alternativ komfortabler im Admin-Bereich unter „Live-Verkehrslage" hinterlegbar – ein dort gesetzter Wert hat Vorrang. |
+| `TRAFFIC_FLOW_PROVIDER` | Anbieter erzwingen (`here`/`tomtom`), wenn beide Keys gesetzt sind. Standard: automatisch, HERE bevorzugt. |
+| `OPENDATA_TRAFFIC_ENABLED` | Offene, lizenzfreie Baustellen-/Sperrungsfeeds aktiviert lassen. Standard: `true`. |
+| `OPENDATA_TRAFFIC_FEEDS` | Kommaseparierte Liste `format\|url`. Formate: `mobidata_bw`, `berlin_viz` (GeoJSON) und `datex2` (DATEX II v2, z. B. mobilithek-Länderfeeds für bundesweite Abdeckung abseits der Autobahn). Standard aktiviert MobiData BW + Berlin VIZ. |
+| `OPENDATA_TRAFFIC_CLIENT_CERT` | Client-Zertifikat (PEM) für per mTLS geschützte `datex2`-Feeds, insbesondere den mobilithek-Broker. |
+| `OPENDATA_TRAFFIC_CA_CERT` | CA-/Vertrauenskette (PEM) des Brokers, falls dieser eine private CA nutzt (z. B. mobilithek-M2M, `prod-mdp.m2m.de`). Ohne hinterlegte CA gilt der öffentliche Trust-Store. |
+
 ### Frontend (lokale Entwicklung)
 
 ```env
@@ -533,6 +547,7 @@ Die vollständige OpenAPI-Dokumentation wird automatisch von FastAPI bereitgeste
 | `GET/PUT` | `/api/admin/settings/update-channel` | Update-Kanal (Stable/Beta) lesen/setzen |
 | `GET/PUT` | `/api/admin/settings/update-mode` | Update-Modus (Automatisch/Benachrichtigen), inkl. `notify_on_auto`, lesen/setzen |
 | `GET/PUT` | `/api/admin/settings/smtp` | SMTP-Konfiguration lesen/setzen |
+| `GET/PUT` | `/api/admin/settings/traffic-keys` | HERE-/TomTom-API-Keys für die Live-Verkehrslage lesen (ohne Klartext-Preisgabe) und setzen |
 
 **Sicherheit und Datenschutz**
 
@@ -607,13 +622,16 @@ Die vollständige OpenAPI-Dokumentation wird automatisch von FastAPI bereitgeste
 | `GET/POST` | `/api/track/{slug}` | Öffentliche Tracking-App: Status abrufen / Position senden |
 | `WS` | `/api/ws/track/{slug}` | WebSocket der Tracking-App |
 
-**Wetter und Overpass**
+**Wetter, Sperrungen und Verkehrslage**
 
 | Methode | Endpunkt | Beschreibung |
 |---|---|---|
 | `GET` | `/api/weather/?lat=...&lon=...` | Wetterdaten abrufen |
-| `GET` | `/api/overpass/closures?lat=...&lon=...` | Sperrungen und Baustellen im Radius um einen Punkt abrufen (Overpass + Autobahn-API) |
-| `POST` | `/api/overpass/closures/route` | Sperrungen und Baustellen im Korridor entlang einer Routen-Geometrie abrufen (Overpass + Autobahn-API) |
+| `GET` | `/api/overpass/closures?lat=...&lon=...` | Sperrungen und Baustellen im Radius um einen Punkt abrufen (Overpass, Autobahn-API, offene Feeds, DATEX-II/mobilithek) |
+| `POST` | `/api/overpass/closures/route` | Sperrungen und Baustellen im Korridor entlang einer Routen-Geometrie abrufen (alle konfigurierten Quellen) |
+| `GET` | `/api/traffic/flow/status` | Konfigurierten Verkehrslage-Anbieter (HERE/TomTom) abfragen |
+| `GET` | `/api/traffic/flow` | Live-Verkehrslage im Radius um einen Punkt abrufen |
+| `POST` | `/api/traffic/flow/route` | Live-Verkehrslage entlang einer Routen-Geometrie abrufen |
 
 **System**
 
