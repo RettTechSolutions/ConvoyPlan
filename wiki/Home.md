@@ -24,7 +24,7 @@ ConvoyPlan ist eine selbst gehostete Web-Anwendung, die Einsatzorganisationen (B
 | Rollen & Mandanten | Admin, Planer, Fahrer, Beobachter je Organisation |
 | Branding | Eigenes Logo, Farben und App-Name konfigurierbar |
 | PWA / Native App | Installierbar im Browser, Capacitor für Android/iOS |
-| Auto-Updater | Git-Polling-Container deployt neue Commits automatisch |
+| Auto-Updater | Drei Update-Kanäle (Stable/Beta/Nightly) im Admin-Bereich, automatische oder benachrichtigte Installation |
 | Self-hosted | Vollständig on-premise, kein Cloud-Zwang |
 
 ---
@@ -88,14 +88,15 @@ FastAPI Backend   SvelteKit Frontend
 - Live-Tracking per WebSocket mit Fahrzeugstatus
 - GeoJSON-Lagedaten hochladen und auf der Karte anzeigen
 - Wetter via Open-Meteo (kein API-Key erforderlich)
-- Sperrungen und Baustellen via OpenStreetMap Overpass API
+- Sperrungen und Baustellen aus mehreren Quellen: OpenStreetMap/Overpass, offizielle Autobahn-API (bund.dev), lizenzfreie offene Baustellenfeeds (MobiData BW, Berlin VIZ) und optional DATEX-II-Feeds der mobilithek (bundesweit, auch mTLS-geschützt) – entlang der gesamten Route, fallen einzelne Quellen aus liefern die anderen weiter
+- Live-Verkehrslage (Stau) optional über HERE oder TomTom, sobald ein API-Key hinterlegt ist
 - Leitstellen und automatische Kanalwechselpunkte entlang der Route
 - Export als PDF (Marschbefehl), GPX und JSON
 
 ### Betrieb
 - Setup-Wizard für die Ersteinrichtung per Browser (kein SSH nötig)
-- Admin-Bereich für Benutzer-, Leitstellen- und Branding-Verwaltung
-- Auto-Updater deployt neue Commits automatisch
+- Admin-Bereich für Benutzer-, Leitstellen-, Branding- und Verkehrsdaten-Verwaltung
+- Auto-Updater mit drei Kanälen (Stable/Beta/Nightly) und automatischem oder benachrichtigtem Modus
 - CI-Pipeline für Tests, Typecheck und Docker-Build
 
 ---

@@ -133,6 +133,24 @@ openssl rand -hex 32
 
 > Für große Regionen (Deutschland ~4 GB) mindestens `-Xmx4g` empfohlen.
 
+### Verkehrsdaten (optional)
+
+| Variable | Beschreibung |
+|---|---|
+| `HERE_TRAFFIC_API_KEY` / `TOMTOM_TRAFFIC_API_KEY` | Optionale API-Keys für die Live-Verkehrslage (HERE bzw. TomTom, beide mit kostenlosem Kontingent). Ohne Key bleibt die Funktion inaktiv. Alternativ komfortabler im Admin-Bereich unter „Live-Verkehrslage" hinterlegbar. |
+| `TRAFFIC_FLOW_PROVIDER` | Bevorzugter Anbieter, wenn beide Keys gesetzt sind (Standard: HERE). |
+| `OPENDATA_TRAFFIC_ENABLED` | Offene Baustellenfeeds (MobiData BW, Berlin VIZ) aktivieren/deaktivieren (Standard: `true`). |
+| `OPENDATA_TRAFFIC_FEEDS` | Kommaseparierte Liste `format\|url`. Formate: `mobidata_bw`, `berlin_viz` (GeoJSON) und `datex2` (DATEX II v2, z. B. mobilithek-Länderfeeds für bundesweite Abdeckung). |
+| `OPENDATA_TRAFFIC_CLIENT_CERT` / `OPENDATA_TRAFFIC_CA_CERT` | Client-Zertifikat bzw. private CA-Kette (PEM) für mTLS-geschützte DATEX-II-Feeds (z. B. mobilithek-Broker). |
+
+> 📖 Ausführliche Schritt-für-Schritt-Anleitung (Live-Verkehrslage aktivieren, bundesweite mobilithek-Baustellen einrichten, Fehlerbehebung): [`docs/verkehrsdaten.md`](https://github.com/RettTechSolutions/ConvoyPlan/blob/main/docs/verkehrsdaten.md) im Repository.
+
+### Update-Kanal
+
+| Variable | Beschreibung |
+|---|---|
+| `UPDATE_CHANNEL` | Fallback-Kanal. `stable` (Standard) deployt nur veröffentlichte GitHub-Releases; `beta` verfolgt nummerierte Vorabversionen/Release-Kandidaten (`vX.Y.Z-beta.N`); `nightly` verfolgt jeden Commit auf `main`. Der Schalter im Admin-Bereich (Admin → Software-Update) überschreibt diesen Wert. |
+
 ### Frontend (lokale Entwicklung)
 
 ```env
@@ -258,7 +276,7 @@ npx cap open android
 
 CI-Checks (Backend-Tests, Frontend-Typecheck, Docker-Build) laufen automatisch auf Push und Pull Requests gegen `main`.
 
-Für ein neues Release den Tag `vX.Y.Z` setzen – Docker-Images werden dann automatisch zu GHCR gebaut und gepusht und ein GitHub Release wird erstellt.
+Für ein neues Release den Tag `vX.Y.Z` setzen – Docker-Images werden dann automatisch zu GHCR gebaut und gepusht und ein GitHub Release wird erstellt. Seit `2026.1.1` folgt die Versionsnummer dem kalenderbasierten Schema `YYYY.MASTER.FIX` (Jahr.Master-Release.Fix-Release) statt SemVer. Prerelease-Tags (`vX.Y.Z-beta.N`) bauen zusätzlich `:beta`-Images und ein GitHub-Prerelease, ohne `:latest` zu berühren; jeder Push auf `main` baut außerdem `:nightly`-Images.
 
 ---
 
