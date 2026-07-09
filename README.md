@@ -499,7 +499,10 @@ Domain und Zertifikat werden beim ersten Start über den Setup-Wizard in der Dat
 | `OPENDATA_TRAFFIC_ENABLED` | Offene, lizenzfreie Baustellen-/Sperrungsfeeds aktiviert lassen. Standard: `true`. |
 | `OPENDATA_TRAFFIC_FEEDS` | Kommaseparierte Liste `format\|url`. Formate: `mobidata_bw`, `berlin_viz` (GeoJSON) und `datex2` (DATEX II v2, z. B. mobilithek-Länderfeeds für bundesweite Abdeckung abseits der Autobahn). Standard aktiviert MobiData BW + Berlin VIZ. |
 | `OPENDATA_TRAFFIC_CLIENT_CERT` | Client-Zertifikat (PEM) für per mTLS geschützte `datex2`-Feeds, insbesondere den mobilithek-Broker. |
-| `OPENDATA_TRAFFIC_CA_CERT` | CA-/Vertrauenskette (PEM) des Brokers, falls dieser eine private CA nutzt (z. B. mobilithek-M2M, `prod-mdp.m2m.de`). Ohne hinterlegte CA gilt der öffentliche Trust-Store. |
+| `OPENDATA_TRAFFIC_CA_CERT` | Nur für Broker mit **privater** CA. Für den **mobilithek-Broker leer lassen** – er nutzt ein öffentliches Telekom-Zertifikat (System-Truststore); ein Setzen bricht die TLS-Verbindung. |
+
+> 📖 **Schritt-für-Schritt-Anleitung** (Live-Verkehrslage aktivieren, bundesweite
+> mobilithek-Baustellen einrichten, Fehlerbehebung): **[docs/verkehrsdaten.md](docs/verkehrsdaten.md)**
 
 ### Frontend (lokale Entwicklung)
 

@@ -107,9 +107,11 @@ class Settings(BaseSettings):
     # Feeds, die per mTLS geschützt sind — insbesondere der mobilithek-Broker.
     # Pfad zur PEM-Datei; nur nötig für zugangsbeschränkte "datex2"-Feeds.
     opendata_traffic_client_cert: str = ""
-    # CA-/Vertrauenskette (PEM) zum Verifizieren des Broker-Servers, wenn dieser
-    # eine private CA nutzt (mobilithek-M2M-Broker: prod-mdp.m2m.de). Pfad zur
-    # PEM-Datei mit der M2M-CA-Kette. Leer = öffentlicher Trust-Store.
+    # CA-/Vertrauenskette (PEM) zum Verifizieren des Broker-Servers — NUR nötig,
+    # wenn der Broker eine wirklich private CA nutzt. Leer = öffentlicher
+    # Trust-Store (Standard). Achtung: Der mobilithek-Broker (mobilithek.info:8443)
+    # nutzt ein öffentliches Telekom-Serverzertifikat — hier NICHT setzen, sonst
+    # scheitert die TLS-Verifikation ("self-signed cert in chain").
     opendata_traffic_ca_cert: str = ""
 
     # Live-Verkehrslage (Fließgeschwindigkeit/Stau) von kommerziellen Anbietern.
