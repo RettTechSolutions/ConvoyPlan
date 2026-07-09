@@ -65,6 +65,9 @@ Nur für Benutzer mit Superadmin-Rolle zugänglich.
 | `GET` | `/api/admin/branding` | Aktuelles Branding abrufen |
 | `PUT` | `/api/admin/branding` | Branding (Logo, Farben, App-Name) aktualisieren |
 | `POST` | `/api/admin/trigger-update` | Manuelles Update auslösen |
+| `GET`/`PUT` | `/api/admin/settings/update-channel` | Update-Kanal lesen/setzen (`stable`/`beta`/`nightly`) |
+| `GET`/`PUT` | `/api/admin/settings/update-mode` | Update-Modus lesen/setzen (`auto`/`notify`) |
+| `GET`/`PUT` | `/api/admin/settings/traffic-keys` | HERE-/TomTom-API-Keys für die Live-Verkehrslage lesen (ohne Klartext-Preisgabe) und setzen |
 
 ---
 
@@ -215,12 +218,18 @@ Eingehende Updates vom Server:
 
 ---
 
-## Wetter und Sperrungen
+## Wetter, Sperrungen und Verkehrslage
 
 | Methode | Endpunkt | Beschreibung |
 |---|---|---|
 | `GET` | `/api/weather/?lat=48.13&lon=11.57` | Wetterdaten für Koordinaten (Open-Meteo) |
-| `GET` | `/api/overpass/closures?lat=48.13&lon=11.57` | Sperrungen und Baustellen (OSM Overpass) |
+| `GET` | `/api/overpass/closures?lat=48.13&lon=11.57` | Sperrungen und Baustellen im Radius um einen Punkt (Overpass, Autobahn-API, offene Feeds, DATEX-II/mobilithek) |
+| `POST` | `/api/overpass/closures/route` | Sperrungen und Baustellen im Korridor entlang der gesamten Routen-Geometrie (alle konfigurierten Quellen) |
+| `GET` | `/api/traffic/flow/status` | Konfigurierten Verkehrslage-Anbieter (HERE/TomTom) abfragen |
+| `GET` | `/api/traffic/flow` | Live-Verkehrslage im Radius um einen Punkt abrufen |
+| `POST` | `/api/traffic/flow/route` | Live-Verkehrslage entlang einer Routen-Geometrie abrufen |
+
+> 📖 Einrichtung der Verkehrsdatenquellen (Live-Verkehrslage aktivieren, bundesweite mobilithek-Baustellen einrichten): siehe [`docs/verkehrsdaten.md`](https://github.com/RettTechSolutions/ConvoyPlan/blob/main/docs/verkehrsdaten.md) im Repository.
 
 ---
 

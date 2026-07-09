@@ -177,7 +177,17 @@ GeoJSON-Lagedaten können als zusätzliche Kartenebenen hochgeladen werden (z. B
 ### Sperrungen und Baustellen
 
 1. In der Kartenansicht das **Sperrungen-Layer** aktivieren.
-2. Aktuelle Sperrungen und Baustellen aus OpenStreetMap werden auf der Route angezeigt.
+2. Aktuelle Sperrungen und Baustellen entlang der gesamten Route werden angezeigt – zusammengeführt aus OpenStreetMap/Overpass, der offiziellen Autobahn-API (bund.dev), lizenzfreien offenen Baustellenfeeds (MobiData BW, Berlin VIZ) und optional DATEX-II-Feeds der mobilithek (bundesweite Länder-Feeds, auch mTLS-geschützt). Fällt eine Quelle aus, liefern die anderen weiterhin Ergebnisse. Auf der Karte sind die Meldungen nach Schweregrad eingefärbt (rot = Voll-/Sperrung, gelb = Warnung/Hindernis, orange = Baustelle).
+
+### Live-Verkehrslage (Stau)
+
+Zeigt die Fließgeschwindigkeit entlang der Route als Ampel-Ebene (grün → gelb → rot) – wie bei Google Maps.
+
+1. Die Funktion ist nur aktiv, wenn ein Superadmin einen HERE- oder TomTom-API-Key hinterlegt hat (Admin-Bereich oder Umgebungsvariable). Ohne Key erscheint kein Schalter.
+2. Im Export-Tab bzw. auf der Planungskarte den Schalter **Verkehrslage laden** aktivieren.
+3. Die Verkehrsdaten werden als farbige Linien direkt über die Karte gelegt.
+
+> HERE/TomTom decken bundesweit ab – anders als die regionalen offenen Baustellenfeeds. Die Nutzungsbedingungen des jeweiligen Anbieters sind vor Produktivbetrieb zu prüfen.
 
 ---
 
@@ -235,10 +245,18 @@ Superadmins haben Zugriff auf alle Verwaltungsfunktionen.
 
 ### System und Updates
 
-1. **Admin** → **System**.
-2. Aktueller und verfügbarer Commit-SHA werden angezeigt.
-3. Mit **Update auslösen** kann ein manuelles Deployment gestartet werden.
-4. Der Auto-Updater prüft alle 5 Minuten auf neue Commits und deployt automatisch.
+1. **Admin** → **Software-Update**.
+2. Aktuelle und verfügbare Version werden angezeigt.
+3. **Update-Kanal** wählen: **Stable** (Standard – nur veröffentlichte Releases), **Beta** (nummerierte Vorabversionen/Release-Kandidaten) oder **Nightly** (jeder Commit auf `main`, für Tests).
+4. **Update-Modus** wählen: **Automatisch** (Standard – installiert verfügbare Updates im gewählten Kanal ohne weiteres Zutun) oder **Benachrichtigen** (informiert Superadmins per E-Mail, Installation erfolgt bewusst über **Jetzt updaten**).
+5. Der Updater prüft standardmäßig alle 5 Minuten (`UPDATE_INTERVAL`) auf neue Stände im gewählten Kanal.
+6. Optional: E-Mail-Benachrichtigung an alle aktiven Superadmins **nach** einem automatischen Update aktivieren.
+
+### Live-Verkehrslage-Keys (Admin)
+
+1. **Admin** → **Live-Verkehrslage (Stau)**.
+2. HERE- und/oder TomTom-API-Key hinterlegen und bevorzugten Anbieter wählen.
+3. Der Status zeigt, ob ein Key gesetzt ist (Datenbank oder Umgebungsvariable) und welcher Anbieter aktiv ist. Der gespeicherte Key wird nie im Klartext angezeigt.
 
 ---
 
