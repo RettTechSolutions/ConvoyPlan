@@ -767,7 +767,9 @@ Der Setup-Wizard übernimmt die Erstkonfiguration nach dem ersten Stack-Start.
 
 CI-Checks (Backend-Tests, Frontend-Typecheck, Docker-Build) laufen automatisch auf Push und Pull Requests gegen `main`.
 
-Für ein neues Release den Tag `vX.Y.Z` setzen — Docker-Images werden dann automatisch zu GHCR gebaut und gepusht; ein GitHub Release wird erstellt. Vollständige Anleitung in [`RELEASING.md`](RELEASING.md).
+Die Versionierung folgt dem kalenderbasierten Schema **`YYYY.MASTER.FIX`** (z. B. `2026.1.1`): `YYYY` ist die Jahreszahl, `MASTER` das Master-Release (größere Feature-Veröffentlichung innerhalb des Jahres) und `FIX` das Fix-/Beta-Release (Bugfixes, Sicherheits-Patches, Dependabot-Wellen). Das Schema löst die frühere semantische Versionierung ab; das erste Release nach `1.0.2` ist `2026.1.1`.
+
+Für ein neues Release den Tag `vYYYY.MASTER.FIX` (z. B. `v2026.1.1`) setzen — Docker-Images werden dann automatisch zu GHCR gebaut und gepusht; ein GitHub Release wird erstellt. Vollständige Anleitung in [`RELEASING.md`](RELEASING.md).
 
 ---
 

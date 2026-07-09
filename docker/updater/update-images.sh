@@ -228,7 +228,7 @@ _compare_status() {
     } | grep -m1 '"status"' | cut -d'"' -f4 || true
 }
 
-# Resolve the latest *published release tag* (e.g. v1.0.1). On the stable
+# Resolve the latest *published release tag* (e.g. v2026.1.1). On the stable
 # channel the stack file is only ever fetched from a tagged release, never
 # from a moving branch — so a push to `main` cannot rewrite the compose file
 # (which the updater executes with the Docker socket) on customer instances.

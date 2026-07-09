@@ -2,6 +2,21 @@
 
 All notable changes to ConvoyPlan are documented here.
 
+## Versionierung
+
+Ab `2026.1.1` nutzt ConvoyPlan das kalenderbasierte Schema **`YYYY.MASTER.FIX`**
+(z. B. `2026.1.1`):
+
+- **`YYYY`** – Jahreszahl des Releases (z. B. `2026`).
+- **`MASTER`** – Master-Release: größere Feature-Veröffentlichung innerhalb des
+  Jahres; beginnt bei jedem Jahreswechsel wieder bei `1`.
+- **`FIX`** – Fix-/Beta-Release: Bugfixes, Sicherheits-Patches und
+  Dependabot-Wellen auf einem Master-Release.
+
+Zuvor galt die semantische Versionierung (`MAJOR.MINOR.PATCH`); das Schema
+wurde nach `1.0.2` umgestellt. Alle älteren Einträge unterhalb behalten ihre
+ursprünglichen SemVer-Nummern.
+
 ---
 
 ## [Unreleased]
@@ -20,6 +35,7 @@ All notable changes to ConvoyPlan are documented here.
 
 ### Changed
 
+- **Versionsschema auf `YYYY.MASTER.FIX` (CalVer) umgestellt.** ConvoyPlan nutzt statt der semantischen Versionierung (`MAJOR.MINOR.PATCH`) jetzt ein kalenderbasiertes Schema: `YYYY` (Jahreszahl) . `MASTER` (Master-Release des Jahres) . `FIX` (Fix-/Beta-Release). Der Wechsel erfolgt nach `1.0.2`; das erste Release im neuen Schema ist `2026.1.1`. Die „Update verfügbar"-Erkennung vergleicht die Versionskomponenten weiterhin rein numerisch, sodass die Reihenfolge über den Wechsel hinweg erhalten bleibt (`2026.1.1` liegt über `1.0.2`). `auto-release.yml` erhöht bei Dependabot-Wellen automatisch die `FIX`-Komponente; Jahr und Master-Release werden bewusst manuell beim Schneiden eines Master-Releases gesetzt.
 - **Dependabot-PRs laufen jetzt durch eine Merge Queue und lösen automatisch ein Patch-Release aus.** Bisher blockierten sich gleichzeitige Dependabot-PRs gegenseitig: Nach jedem Merge war der nächste PR „behind" und musste von Hand aktualisiert werden. Das Ruleset erzwingt jetzt GitHubs native Merge Queue — PRs werden seriell von unten nach oben abgearbeitet (temporärer Merge-Branch mit aktuellem `main` → Checks → Squash-Merge → nächster PR), ganz ohne manuelles „Update branch". Sobald die Welle abgearbeitet ist, erstellt der neue Workflow `auto-release.yml` automatisch den nächsten Patch-Tag und stößt den Release-Build an (nur bei Dependabot-Merges; menschliche Merges bleiben Tag-getrieben). Einmalige Admin-Aktion nötig: Ruleset aus `.github/rulesets/main.json` neu importieren (siehe `.github/repo-setup-checklist.md`).
 
 ### Added

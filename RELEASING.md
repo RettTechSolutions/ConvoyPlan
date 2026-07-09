@@ -6,11 +6,20 @@ This document describes how to cut a new release of ConvoyPlan.
 
 ## Versioning
 
-ConvoyPlan follows [Semantic Versioning](https://semver.org/):
+ConvoyPlan uses a calendar-based scheme **`YYYY.MASTER.FIX`** (e.g. `2026.1.1`):
 
-- **MAJOR** – incompatible API or database changes requiring manual migration steps.
-- **MINOR** – new features, backwards-compatible.
-- **PATCH** – bug fixes and security patches.
+- **`YYYY`** – the calendar year of the release (e.g. `2026`).
+- **`MASTER`** – the master release: incremented for each significant feature
+  release within the year. Resets to `1` when the year rolls over.
+- **`FIX`** – the fix/beta release: incremented for bug fixes, security patches
+  and Dependabot waves on top of a master release.
+
+> **History:** ConvoyPlan previously used Semantic Versioning (`MAJOR.MINOR.PATCH`).
+> The scheme switched after `1.0.2`; the first release under the new scheme is
+> `2026.1.1`. Tags are still prefixed with `v` (`v2026.1.1`), and the version
+> comparison used for the "update available" hint is a plain component-wise
+> numeric compare, so ordering across the switch is preserved (`2026.1.1` sorts
+> above `1.0.2`).
 
 ---
 
@@ -35,7 +44,7 @@ Before tagging a release, verify:
 Move everything under `[Unreleased]` to a new version section:
 
 ```markdown
-## [0.5.0] – 2026-06-01
+## [2026.1.1] – 2026-07-09
 
 ### Added
 - ...
@@ -49,13 +58,13 @@ Update the comparison links at the bottom of `CHANGELOG.md`.
 
 ```bash
 git add CHANGELOG.md backend/app/main.py frontend/package.json
-git commit -m "chore: release v0.5.0"
+git commit -m "chore: release v2026.1.1"
 ```
 
 ### 3. Tag and push
 
 ```bash
-git tag v0.5.0
+git tag v2026.1.1
 git push origin main --tags
 ```
 
@@ -66,9 +75,10 @@ git push origin main --tags
 >
 > **Exception — Dependabot waves:** once the merge queue has drained a batch of
 > auto-merged Dependabot PRs (patch/minor only, all CI checks green),
-> `auto-release.yml` automatically tags the next **patch** version and
-> dispatches the release workflow. Human merges never trigger this — but any
-> unreleased commits already sitting on `main` ship with that patch release.
+> `auto-release.yml` automatically tags the next **fix** version (bumps the
+> `FIX` component, e.g. `v2026.1.1 → v2026.1.2`) and dispatches the release
+> workflow. Human merges never trigger this — but any unreleased commits
+> already sitting on `main` ship with that fix release.
 >
 > **Beta channel:** every push to `main` additionally builds `:beta` images
 > (`beta-images.yml`). These are only pulled by instances whose admin
@@ -82,10 +92,10 @@ The `release.yml` workflow triggers on the `v*.*.*` tag and:
 1. Builds the `backend` and `frontend` Docker images.
 2. Pushes them to GitHub Container Registry (GHCR) as:
    ```
-   ghcr.io/retttechsolutions/convoyplan/backend:0.5.0
-   ghcr.io/retttechsolutions/convoyplan/backend:0.5
+   ghcr.io/retttechsolutions/convoyplan/backend:2026.1.1
+   ghcr.io/retttechsolutions/convoyplan/backend:2026.1
    ghcr.io/retttechsolutions/convoyplan/backend:latest
-   ghcr.io/retttechsolutions/convoyplan/frontend:0.5.0
+   ghcr.io/retttechsolutions/convoyplan/frontend:2026.1.1
    ...
    ```
 3. Creates a GitHub Release with auto-generated release notes from commit messages.
@@ -110,7 +120,7 @@ Alembic migrations run automatically on backend start via the `command` in `dock
 ### Portainer
 
 1. Open the stack in Portainer → **Editor**.
-2. Update the image tags to the new version (`backend:0.5.0`, `frontend:0.5.0`).
+2. Update the image tags to the new version (`backend:2026.1.1`, `frontend:2026.1.1`).
 3. Click **Update the stack** → **Pull and redeploy**.
 
 ---
@@ -119,7 +129,7 @@ Alembic migrations run automatically on backend start via the `command` in `dock
 
 ```bash
 # Roll back to the previous image tag
-docker compose up -d --no-deps -e BACKEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/backend:0.4.0 backend
+docker compose up -d --no-deps -e BACKEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/backend:1.0.2 backend
 ```
 
 If the new release introduced a database migration, run `alembic downgrade -1` inside the backend container before rolling back the image:
@@ -132,12 +142,12 @@ docker compose exec backend alembic downgrade -1
 
 ## Hotfix Releases
 
-For urgent bug fixes on a released version:
+For urgent bug fixes on a released version, bump the `FIX` component:
 
 ```bash
-git checkout -b hotfix/v0.4.1 v0.4.0
+git checkout -b hotfix/v2026.1.2 v2026.1.1
 # apply fix, commit
-git tag v0.4.1
-git push origin hotfix/v0.4.1 --tags
+git tag v2026.1.2
+git push origin hotfix/v2026.1.2 --tags
 # cherry-pick or PR back to main
 ```

@@ -28,14 +28,14 @@ _latest_cache: tuple[float, str | None] = (0.0, None)
 
 
 class VersionResponse(BaseModel):
-    version: str | None          # running build version, e.g. "0.9.0"
+    version: str | None          # running build version, e.g. "2026.1.1"
     sha: str | None              # git SHA the build was cut from
-    latest: str | None           # latest release tag on GitHub, e.g. "0.9.1"
+    latest: str | None           # latest release tag on GitHub, e.g. "2026.1.2"
     update_available: bool       # True when latest is newer than version
 
 
 class ChangelogResponse(BaseModel):
-    version: str | None          # release version the notes belong to, e.g. "1.0.0"
+    version: str | None          # release version the notes belong to, e.g. "2026.1.1"
     name: str | None             # release title on GitHub
     body: str | None             # release notes (markdown)
     html_url: str | None         # link to the release on GitHub
