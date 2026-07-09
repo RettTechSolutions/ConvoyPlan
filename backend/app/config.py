@@ -23,11 +23,19 @@ class Settings(BaseSettings):
     # tests so the version endpoint never hits the network.
     update_check_enabled: bool = True
 
-    # Release channel for the self-updater. "stable" only deploys published
-    # GitHub *releases* (so a normal push to main no longer triggers an update);
-    # "beta" tracks every commit on the main branch (the previous behaviour).
+    # Release channel for the self-updater:
+    #   "stable"  — only deploys published GitHub *releases* (a normal push to
+    #               main no longer triggers an update).
+    #   "beta"    — tracks numbered GitHub *pre-releases* (release candidates,
+    #               e.g. v2026.2.1-beta.1) via the floating :beta images.
+    #   "nightly" — tracks every commit on main via the :nightly images (this is
+    #               what "beta" meant before the 3-channel split).
     # The admin-panel toggle (system_settings: "update.channel") takes priority;
-    # this env value is only the fallback when no DB setting exists.
+    # this env value is only the fallback when no DB setting exists. NOTE: the
+    # DB migration that renames the old "beta" (every-commit) channel to
+    # "nightly" only touches the DB row — installs that select the channel purely
+    # via this env var must set UPDATE_CHANNEL=nightly to keep every-commit
+    # behaviour (UPDATE_CHANNEL=beta now means pre-releases only).
     update_channel: str = "stable"
 
     # Update mode for the self-updater. "auto" installs channel updates

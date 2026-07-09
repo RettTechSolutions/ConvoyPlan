@@ -140,11 +140,13 @@ write_status() {
 # Note: `docker cp $self:/tmp/foo $HOST_PATH` does NOT work here, because the
 # docker CLI interprets the destination in the CLIENT filesystem (= inside this
 # container), and the host path doesn't exist there.
-# ── Release-Kanal (stable | beta) ─────────────────────────────────────────────
+# ── Release-Kanal (stable | beta | nightly) ───────────────────────────────────
 # Der Backend-Admin-Bereich schreibt den gewählten Kanal in eine geteilte Datei.
-#   stable → deployt nur veröffentlichte Releases (Images :latest)
-#   beta   → deployt jeden Commit auf main (Images :beta, gebaut von
-#            .github/workflows/beta-images.yml auf jedem main-Push)
+#   stable  → deployt nur veröffentlichte Releases (Images :latest)
+#   beta    → deployt nummerierte Prereleases / Release-Kandidaten
+#             (Images :beta, gebaut von release.yml aus einem vX.Y.Z-beta.N-Tag)
+#   nightly → deployt jeden Commit auf main (Images :nightly, gebaut von
+#             .github/workflows/nightly-images.yml auf jedem main-Push)
 CHANNEL_FILE=/update_status/channel
 
 read_channel() {
@@ -153,8 +155,9 @@ read_channel() {
         ch="$(tr -d '[:space:]' < "${CHANNEL_FILE}" 2>/dev/null || echo stable)"
     fi
     case "${ch}" in
-        beta) echo "beta" ;;
-        *)    echo "stable" ;;
+        beta)    echo "beta" ;;
+        nightly) echo "nightly" ;;
+        *)       echo "stable" ;;
     esac
 }
 
@@ -177,32 +180,41 @@ read_mode() {
     esac
 }
 
-# Rewrite an image ref to the given tag (…:latest ⇄ …:beta).
+# Rewrite an image ref to the given tag (…:latest ⇄ …:beta ⇄ …:nightly).
 _retag() {
     echo "${1%:*}:${2}"
+}
+
+# Map the active channel to its floating image tag.
+_channel_tag() {
+    case "$(read_channel)" in
+        beta)    echo "beta" ;;
+        nightly) echo "nightly" ;;
+        *)       echo "latest" ;;
+    esac
 }
 
 # Export the *_IMAGE vars that docker-compose interpolates, so pull/up use the
 # active channel's image tag. The exported values are also forwarded to the
 # restart helper via its env-file, so a recreated updater keeps the channel.
 _apply_channel_images() {
-    local tag="latest"
-    [ "$(read_channel)" = "beta" ] && tag="beta"
+    local tag
+    tag="$(_channel_tag)"
     export BACKEND_IMAGE="$(_retag "${BACKEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/backend:latest}" "${tag}")"
     export FRONTEND_IMAGE="$(_retag "${FRONTEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/frontend:latest}" "${tag}")"
     export GRAPHHOPPER_IMAGE="$(_retag "${GRAPHHOPPER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/graphhopper:latest}" "${tag}")"
     export UPDATER_IMAGE="$(_retag "${UPDATER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/updater:latest}" "${tag}")"
 }
 
-# Beta-Kanal-Ziel: Commit-SHA des letzten ERFOLGREICHEN :beta-Image-Builds.
+# Nightly-Kanal-Ziel: Commit-SHA des letzten ERFOLGREICHEN :nightly-Image-Builds.
 # Bewusst NICHT der main-HEAD — der bewegt sich schon beim Merge, die Images
-# existieren aber erst, wenn der beta-images-Workflow (~10-15 min) durch ist.
-# Mit dem HEAD als Ziel würde der Updater alte :beta-Images ziehen und den
+# existieren aber erst, wenn der nightly-images-Workflow (~10-15 min) durch ist.
+# Mit dem HEAD als Ziel würde der Updater alte :nightly-Images ziehen und den
 # neuen Stand fälschlich als deployt verbuchen.
 # Leer = GitHub nicht erreichbar oder noch kein erfolgreicher Build.
-_beta_built_sha() {
+_nightly_built_sha() {
     local repo="${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}"
-    local url="https://api.github.com/repos/${repo}/actions/workflows/beta-images.yml/runs?branch=main&status=success&per_page=1&exclude_pull_requests=true"
+    local url="https://api.github.com/repos/${repo}/actions/workflows/nightly-images.yml/runs?branch=main&status=success&per_page=1&exclude_pull_requests=true"
     {
         if [ -n "${GITHUB_TOKEN:-}" ]; then
             curl -sf --max-time 15 -H "Authorization: Bearer ${GITHUB_TOKEN}" \
@@ -211,6 +223,25 @@ _beta_built_sha() {
             curl -sf --max-time 15 "${url}" 2>/dev/null
         fi
     } | grep -m1 '"head_sha"' | cut -d'"' -f4 || true
+}
+
+# Beta-Kanal-Ziel: Tag des jüngsten GitHub-Prereleases (Release-Kandidat,
+# z. B. v2026.2.1-beta.1). GitHub liefert /releases created_at-absteigend, das
+# erste Tag mit dem "-beta."-Namensschema ist damit das jüngste Prerelease.
+# Konvention: Prerelease ⟺ Tag enthält "-beta." (release.yml markiert genau
+# diese Tags als GitHub-Prerelease). Leer = GitHub nicht erreichbar oder noch
+# kein Prerelease. `|| true` gegen SIGPIPE unter `set -euo pipefail`.
+_latest_prerelease_tag() {
+    local repo="${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}"
+    local url="https://api.github.com/repos/${repo}/releases?per_page=30"
+    {
+        if [ -n "${GITHUB_TOKEN:-}" ]; then
+            curl -sf --max-time 15 -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                "${url}" 2>/dev/null
+        else
+            curl -sf --max-time 15 "${url}" 2>/dev/null
+        fi
+    } | grep -oE '"tag_name": *"[^"]*"' | cut -d'"' -f4 | grep -m1 -- '-beta\.' || true
 }
 
 # Ancestry zweier Refs laut GitHub-Compare-API: ahead|behind|identical|diverged.
@@ -258,17 +289,28 @@ _update_stack_file() {
     [ -z "${STACK_FILE_PATH:-}" ] && return 0
 
     local repo="${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}"
-    # Stable: Compose-Datei vom Release-Tag. Beta: von main (explizites Opt-in).
+    # Compose-Datei-Quelle je Kanal: stable → Release-Tag, beta → Prerelease-Tag,
+    # nightly → main (explizites Opt-in auf jeden Commit).
     local ref
-    if [ "$(read_channel)" = "beta" ]; then
-        ref="main"
-    else
-        ref="$(_latest_release_tag)"
-        if [ -z "${ref}" ]; then
-            log "WARNUNG: neuesten Release-Tag nicht ermittelbar — Stack-Datei nicht aktualisiert"
-            return 0
-        fi
-    fi
+    case "$(read_channel)" in
+        nightly)
+            ref="main"
+            ;;
+        beta)
+            ref="$(_latest_prerelease_tag)"
+            if [ -z "${ref}" ]; then
+                log "WARNUNG: neuesten Prerelease-Tag nicht ermittelbar — Stack-Datei nicht aktualisiert"
+                return 0
+            fi
+            ;;
+        *)
+            ref="$(_latest_release_tag)"
+            if [ -z "${ref}" ]; then
+                log "WARNUNG: neuesten Release-Tag nicht ermittelbar — Stack-Datei nicht aktualisiert"
+                return 0
+            fi
+            ;;
+    esac
 
     local tmp=/tmp/dc-new.yml
     if ! curl -sf --max-time 15 "https://raw.githubusercontent.com/${repo}/${ref}/docker-compose.yml" -o "${tmp}" || [ ! -s "${tmp}" ]; then
@@ -331,8 +373,8 @@ _spawn_restart_helper() {
 do_update() {
     log "Starte Image-Update (Kanal: $(read_channel))…"
 
-    # Image-Tags des aktiven Kanals exportieren (:latest bzw. :beta), damit
-    # docker compose pull/up die richtigen Refs interpoliert.
+    # Image-Tags des aktiven Kanals exportieren (:latest / :beta / :nightly),
+    # damit docker compose pull/up die richtigen Refs interpoliert.
     _apply_channel_images
 
     # Updater-Image-ID vor dem Pull merken: Der Restart-Helper am Ende läuft
@@ -396,22 +438,24 @@ log "Image-updater gestartet (Projekt: ${COMPOSE_PROJECT}, Compose: ${COMPOSE_FI
 # Update-Signal ist der Vergleich des Kanal-Ziels mit dem zuletzt deployten
 # Stand — so entfallen periodische Registry-Pulls (Docker-Hub-Rate-Limits!)
 # und es wird nur bei einer echten Änderung gezogen:
-#   stable → neuester Release-Tag   (:latest wird nur vom Release-Workflow gebaut)
-#   beta   → HEAD-Commit von main   (:beta wird bei jedem main-Push gebaut)
+#   stable  → neuester Release-Tag      (:latest, nur vom Release-Workflow gebaut)
+#   beta    → neuester Prerelease-Tag    (:beta, aus einem vX.Y.Z-beta.N-Tag)
+#   nightly → letzter Nightly-Build-SHA  (:nightly, bei jedem main-Push gebaut)
 # Gespeichert wird "<kanal> <ref>" — dadurch löst auch ein Kanalwechsel im
 # Admin-Panel beim nächsten Check automatisch ein Update auf das neue Ziel aus.
 LAST_DEPLOYED_FILE=/update_status/last_deployed
 LAST_NOTIFIED_FILE=/update_status/last_notified
 
-# Echoes "stable <tag>" or "beta <sha>"; empty when GitHub is unreachable.
+# Echoes "stable <tag>", "beta <tag>" or "nightly <sha>"; empty when GitHub is
+# unreachable (or the channel has no target yet).
 _current_target() {
     local ch ref
     ch="$(read_channel)"
-    if [ "${ch}" = "beta" ]; then
-        ref="$(_beta_built_sha)"
-    else
-        ref="$(_latest_release_tag)"
-    fi
+    case "${ch}" in
+        nightly) ref="$(_nightly_built_sha)" ;;
+        beta)    ref="$(_latest_prerelease_tag)" ;;
+        *)       ref="$(_latest_release_tag)" ;;
+    esac
     if [ -n "${ref}" ]; then
         echo "${ch} ${ref}"
     fi
@@ -436,15 +480,17 @@ check_target_and_update() {
         return 0   # nichts Neues
     fi
 
-    # Kein automatisches DOWNGRADE im Stable-Kanal: Lief die Instanz vorher im
-    # Beta-Kanal, ist der installierte Stand NEUER als das letzte Release —
-    # automatisch aufs ältere Release zurückzugehen wäre riskant (bereits
-    # angewendete DB-Migrationen!). Stable greift dann erst wieder, wenn das
-    # nächste Release den installierten Stand überholt. Der manuelle Trigger
-    # ("Jetzt updaten") erzwingt das Downgrade weiterhin bewusst.
+    # Kein automatisches DOWNGRADE bei tag-basierten Kanälen (stable/beta): Lief
+    # die Instanz vorher auf einem neueren Stand (z. B. Nightly oder ein
+    # neueres Release), ist der installierte Stand NEUER als das Ziel-Tag —
+    # automatisch aufs ältere Tag zurückzugehen wäre riskant (bereits
+    # angewendete DB-Migrationen!). Es greift dann erst wieder, wenn ein
+    # neueres Ziel den installierten Stand überholt. Der Nightly-Kanal folgt
+    # bewusst immer main-HEAD (kein Guard). Der manuelle Trigger ("Jetzt
+    # updaten") erzwingt das Downgrade weiterhin bewusst.
     ch="${target%% *}"
     ref="${target#* }"
-    if [ "${ch}" = "stable" ]; then
+    if [ "${ch}" != "nightly" ]; then
         local deployed cmp
         deployed="$(get_sha_from_backend)"
         if [ -n "${deployed}" ]; then

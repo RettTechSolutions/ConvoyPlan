@@ -8,7 +8,7 @@ Used by two consumers:
 
 Also owns the settings that are mirrored to the shared ``update_status``
 volume so the (DB-less) updater container can read them:
-  - ``update.channel``  → /update_status/channel  ("stable" | "beta")
+  - ``update.channel``  → /update_status/channel  ("stable" | "beta" | "nightly")
   - ``update.mode``     → /update_status/mode     ("auto" | "notify")
 """
 
@@ -31,14 +31,14 @@ STATUS_FILE = "/update_status/status.json"
 CHANNEL_FILE = "/update_status/channel"
 MODE_FILE = "/update_status/mode"
 
-VALID_CHANNELS = ("stable", "beta")
+VALID_CHANNELS = ("stable", "beta", "nightly")
 # auto   → der Updater installiert verfügbare Updates selbstständig
 # notify → keine automatische Installation; Superadmins werden per E-Mail
 #          benachrichtigt und aktualisieren manuell über das Admin-Panel
 VALID_MODES = ("auto", "notify")
 
 
-# ── Release channel (stable / beta) ──────────────────────────────────────────
+# ── Release channel (stable / beta / nightly) ────────────────────────────────
 
 def env_channel() -> str:
     """The fallback channel from configuration, sanitised to a valid value."""
@@ -156,10 +156,12 @@ async def fetch_update_state(db: AsyncSession) -> dict:
     deployed_sha, deployed_at = read_deployed()
     github_token = await resolve_github_token(db)
 
-    # Release channel decides what "up to date" means: in "stable" we compare
-    # against the latest published GitHub *release*; in "beta" against the
-    # last successfully built :beta images. Keep the shared channel file in
-    # sync so the updater container deploys the matching ref.
+    # Release channel decides what "up to date" means: "stable" compares against
+    # the latest published GitHub *release*; "beta" against the latest GitHub
+    # *pre-release* (numbered release candidate, e.g. v2026.2.1-beta.1);
+    # "nightly" against the last successfully built :nightly images (every main
+    # commit). Keep the shared channel file in sync so the updater container
+    # deploys the matching ref.
     channel, _ = await resolve_channel(db)
     write_channel_file(channel)
 
@@ -173,16 +175,16 @@ async def fetch_update_state(db: AsyncSession) -> dict:
         if github_token:
             headers["Authorization"] = f"Bearer {github_token}"
         async with httpx.AsyncClient(timeout=10.0) as client:
-            if channel == "beta":
-                # Update-Ziel ist NICHT der main-HEAD, sondern der Commit des
-                # letzten ERFOLGREICHEN :beta-Image-Builds: Der HEAD bewegt
+            if channel == "nightly":
+                # Nightly-Ziel ist NICHT der main-HEAD, sondern der Commit des
+                # letzten ERFOLGREICHEN :nightly-Image-Builds: Der HEAD bewegt
                 # sich schon beim Merge, die Images existieren aber erst,
-                # wenn der beta-images-Workflow (~10-15 min) durch ist.
+                # wenn der nightly-images-Workflow (~10-15 min) durch ist.
                 # Sonst zeigt die UI minutenlang "Update verfügbar", obwohl
                 # es noch nichts zu ziehen gibt.
                 resp = await client.get(
                     f"https://api.github.com/repos/{settings.github_repo}"
-                    "/actions/workflows/beta-images.yml/runs"
+                    "/actions/workflows/nightly-images.yml/runs"
                     "?branch=main&status=success&per_page=1&exclude_pull_requests=true",
                     headers=headers,
                 )
@@ -192,49 +194,75 @@ async def fetch_update_state(db: AsyncSession) -> dict:
                     if runs and runs[0].get("head_sha"):
                         remote_sha = runs[0]["head_sha"][:7]
             else:
-                rel = await client.get(
-                    f"https://api.github.com/repos/{settings.github_repo}/releases/latest",
-                    headers=headers,
-                )
-                if rel.status_code == 404:
-                    # GitHub is reachable, the repo simply has no release yet.
-                    github_reachable = True
-                    no_release = True
-                elif rel.is_success:
-                    github_reachable = True
-                    latest_release = rel.json().get("tag_name")
-                    if latest_release:
-                        # Resolve the tag to its commit SHA so the comparison
-                        # against deployed_sha is apples-to-apples.
-                        commit = await client.get(
-                            f"https://api.github.com/repos/{settings.github_repo}/commits/{latest_release}",
+                # stable → das neueste veröffentlichte Release.
+                # beta   → das neueste Prerelease (nummerierter Release-Kandidat,
+                #          z. B. v2026.2.1-beta.1). Beide durchlaufen danach
+                #          dieselbe "Tag → Commit-SHA + Ancestry"-Logik.
+                if channel == "beta":
+                    rel = await client.get(
+                        f"https://api.github.com/repos/{settings.github_repo}"
+                        "/releases?per_page=30",
+                        headers=headers,
+                    )
+                    if rel.is_success:
+                        github_reachable = True
+                        # /releases ist created_at-absteigend sortiert; das erste
+                        # Prerelease ist damit das jüngste. (Es gibt keinen
+                        # dedizierten "latest prerelease"-Endpunkt.)
+                        pre = next(
+                            (r for r in (rel.json() or []) if r.get("prerelease")),
+                            None,
+                        )
+                        if pre is None:
+                            # GitHub erreichbar, aber (noch) kein Prerelease vorhanden.
+                            no_release = True
+                        else:
+                            latest_release = pre.get("tag_name")
+                else:
+                    rel = await client.get(
+                        f"https://api.github.com/repos/{settings.github_repo}/releases/latest",
+                        headers=headers,
+                    )
+                    if rel.status_code == 404:
+                        # GitHub is reachable, the repo simply has no release yet.
+                        github_reachable = True
+                        no_release = True
+                    elif rel.is_success:
+                        github_reachable = True
+                        latest_release = rel.json().get("tag_name")
+
+                if latest_release:
+                    # Resolve the tag to its commit SHA so the comparison
+                    # against deployed_sha is apples-to-apples.
+                    commit = await client.get(
+                        f"https://api.github.com/repos/{settings.github_repo}/commits/{latest_release}",
+                        headers=headers,
+                    )
+                    if commit.is_success:
+                        sha = commit.json().get("sha")
+                        if sha:
+                            remote_sha = sha[:7]
+
+                    # SHA-Ungleichheit allein kennt keine Richtung: Eine Instanz,
+                    # die vorher im Nightly-Kanal (oder auf einem neueren Release)
+                    # lief, ist NEUER als das Ziel — das ist kein verfügbares
+                    # Update (und erst recht kein Grund für ein automatisches
+                    # Downgrade). Die Compare-API liefert die Ancestry:
+                    # "ahead" = deployed enthält das Ziel und mehr.
+                    if (
+                        remote_sha
+                        and deployed_sha
+                        and deployed_sha[:7] != remote_sha[:7]
+                    ):
+                        cmp_resp = await client.get(
+                            f"https://api.github.com/repos/{settings.github_repo}"
+                            f"/compare/{latest_release}...{deployed_sha[:7]}",
                             headers=headers,
                         )
-                        if commit.is_success:
-                            sha = commit.json().get("sha")
-                            if sha:
-                                remote_sha = sha[:7]
-
-                        # SHA-Ungleichheit allein kennt keine Richtung: Eine
-                        # Instanz, die vorher im Beta-Kanal lief, ist NEUER als
-                        # das letzte Release — das ist kein verfügbares Update
-                        # (und erst recht kein Grund für ein automatisches
-                        # Downgrade). Die Compare-API liefert die Ancestry:
-                        # "ahead" = deployed enthält das Release und mehr.
-                        if (
-                            remote_sha
-                            and deployed_sha
-                            and deployed_sha[:7] != remote_sha[:7]
-                        ):
-                            cmp_resp = await client.get(
-                                f"https://api.github.com/repos/{settings.github_repo}"
-                                f"/compare/{latest_release}...{deployed_sha[:7]}",
-                                headers=headers,
-                            )
-                            if cmp_resp.is_success:
-                                cmp_status = (cmp_resp.json() or {}).get("status")
-                                if cmp_status in ("ahead", "identical"):
-                                    ahead_of_release = True
+                        if cmp_resp.is_success:
+                            cmp_status = (cmp_resp.json() or {}).get("status")
+                            if cmp_status in ("ahead", "identical"):
+                                ahead_of_release = True
     except Exception as exc:
         # Fail open: GitHub-Ausfälle oder Netzwerkfehler dürfen den Status-
         # Endpoint nie brechen — github_reachable bleibt dann False und die
