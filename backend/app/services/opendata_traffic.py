@@ -33,6 +33,8 @@ from app.services.autobahn import _feature_points, _near_route
 from app.services.overpass import _haversine_m, _sample_route
 
 _HEADERS = {"Accept": "application/json", "User-Agent": "ConvoyPlan/1.0"}
+# DATEX-II-Feeds (u. a. mobilithek-Broker) liefern XML — nicht JSON anfragen.
+_XML_HEADERS = {"Accept": "application/xml, text/xml, */*", "User-Agent": "ConvoyPlan/1.0"}
 
 # Offene Feeds ändern sich nicht sekündlich — 5 min Cache.
 _CACHE_TTL_S = 300
@@ -327,7 +329,7 @@ async def _fetch_all_features() -> list[dict]:
         ca = settings.opendata_traffic_ca_cert or None
         verify = ca if ca and os.path.exists(ca) else True
         async with httpx.AsyncClient(
-            timeout=40.0, headers=_HEADERS, cert=cert, verify=verify
+            timeout=40.0, headers=_XML_HEADERS, cert=cert, verify=verify, follow_redirects=True
         ) as client:
             results = await asyncio.gather(*[_fetch_feed(client, f, u) for f, u in datex])
         for res in results:
