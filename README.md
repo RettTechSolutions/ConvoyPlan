@@ -18,6 +18,14 @@
   Kartenbasierte Routenplanung · Live-Tracking · Marschbefehl-PDF · Self-hosted · Docker
 </p>
 
+<p align="center">
+  <img src="docs/screenshots/Routenplanung.png" alt="ConvoyPlan – Kartenbasierte Marschplanung mit Route, Zeitschätzung und empfohlenen technischen Halten" width="880">
+</p>
+
+<p align="center">
+  <em>Marschplanung Berlin → München: Route über GraphHopper berechnet, Distanz und Dauer (583&nbsp;km · 8&nbsp;h&nbsp;58&nbsp;min), Reichweiten-Check und automatisch empfohlene technische Halte.</em>
+</p>
+
 ---
 
 ## Inhaltsverzeichnis
@@ -155,14 +163,73 @@
 
 ## Screenshots
 
-Screenshots folgen. Logo- und Design-Assets liegen unter [`logo/`](logo/):
+Der typische Ablauf – von der Planung bis zum laufenden Konvoi:
 
-| Asset | Datei |
-|---|---|
-| Hauptlogo | `logo/Hauptlogo.svg` / `logo/Hauptlogo.png` |
-| Horizontales Logo | `logo/Logo Horizontal.svg` / `logo/Logo Horizontal.png` |
-| Favicon | `logo/Favicon.svg` / `logo/Favicon.png` |
-| Designgrafik | `logo/ConvoyPlan_Design.png` |
+```mermaid
+flowchart LR
+    A["🗺️ Route planen<br/>Wegpunkte + GraphHopper"]
+    B["⏱️ Zeitplan<br/>Ankunft/Abfahrt automatisch"]
+    C["📄 Marschbefehl<br/>PDF · GPX · JSON"]
+    D["📡 Live-Tracking<br/>Position in Echtzeit"]
+    A --> B --> C --> D
+```
+
+### 🗺️ Kartenbasierte Marschplanung
+
+Wegpunkte, Kontrollpunkte und technische Halte per Klick setzen; GraphHopper berechnet die Route über selbst gehostetes OSM-Routing. Sidebar mit Distanz und Dauer, Reichweiten-Check anhand der Fahrzeugdaten sowie automatisch empfohlenen technischen Halten (Tanken, Pause, Fahrerwechsel). Oben: Wetter, Verbindungsstatus und Sperrungen entlang der Route.
+
+<p align="center">
+  <img src="docs/screenshots/Routenplanung.png" alt="Planungsansicht mit Karte, Route, Reichweiten-Check und empfohlenen Halten" width="820">
+</p>
+
+### 📡 Live-Tracking
+
+Fahrzeuge senden ihre Position per Browser-Geolocation über WebSocket; Status (geplant, unterwegs, angekommen, verspätet) und Fortschritt des Verbands erscheinen in Echtzeit auf der Karte – inklusive akustischer/haptischer Meldung beim Erreichen von Wegpunkten und Kanalwechseln.
+
+<p align="center">
+  <img src="docs/screenshots/LiveTracking.png" alt="Live-Tracking-Ansicht mit sendendem Fahrzeug und Live-Status" width="820">
+</p>
+
+### 📄 Marschbefehl & Export
+
+Strukturiertes Marschbefehl-Formular (Marschbewegung, Ablaufpunkt, Führung & Verbindung, Lage) generiert per Klick einen fertigen Marschbefehl als PDF. Zusätzlich stehen GPX- und JSON-Export für Navigation und Weiterverarbeitung bereit.
+
+<p align="center">
+  <img src="docs/screenshots/MarschbefehlExport.png" alt="Marschbefehl-Formular mit PDF-Export" width="440">
+</p>
+
+### 📞 Leitstellen & Kanalwechsel
+
+Leitstellen mit Anrufgruppe, Zusatzkanälen und Zuständigkeitsgrenzen (GeoJSON/KML). Kanalwechselpunkte entlang der Route werden automatisch aus den Gebietsgrenzen abgeleitet und in Zeitplan, Marschbefehl-Formular und PDF übernommen.
+
+<p align="center">
+  <img src="docs/screenshots/Leitstellen.png" alt="Leitstellen-Tabelle mit Anrufgruppe, Zusatzkanälen und Grenzen" width="820">
+</p>
+
+### 🔐 Rollen & Mitglieder
+
+Pro Organisation lassen sich Mitglieder einladen und mit den Rollen **Admin**, **Planer**, **Fahrer** oder **Beobachter** ausstatten – feingranulare Zugriffskontrolle bei vollständiger Datenisolation zwischen Mandanten.
+
+<p align="center">
+  <img src="docs/screenshots/Berechtigungen.png" alt="Mitgliederverwaltung mit Rollenauswahl je Benutzer" width="820">
+</p>
+
+### 🎨 Branding
+
+App-Name, Logos und ein vollständiges Farbschema pro Organisation – ConvoyPlan lässt sich für jede Einsatzorganisation individuell einrichten.
+
+<p align="center">
+  <img src="docs/screenshots/Branding.png" alt="Branding-Konfiguration mit App-Name, Logos und Farbpalette" width="820">
+</p>
+
+> Die Screenshots stammen aus dem Demo-Modus. Logo- und Design-Assets liegen unter [`logo/`](logo/):
+>
+> | Asset | Datei |
+> |---|---|
+> | Hauptlogo | `logo/Hauptlogo.svg` / `logo/Hauptlogo.png` |
+> | Horizontales Logo | `logo/Logo Horizontal.svg` / `logo/Logo Horizontal.png` |
+> | Favicon | `logo/Favicon.svg` / `logo/Favicon.png` |
+> | Designgrafik | `logo/ConvoyPlan_Design.png` |
 
 ---
 
