@@ -2,12 +2,14 @@
 
 **Start**
 - [Home](Home)
+- [Funktionsumfang](Funktionsumfang)
 - [FAQ](FAQ)
 
 **Einrichtung & Referenz**
 - [Installation und Setup](Installation-und-Setup)
 - [API-Dokumentation](API-Dokumentation)
 - [Benutzerhandbuch](Benutzerhandbuch)
+- [Entwicklung](Entwicklung)
 
 **Bedienung**
 - [Erste Schritte](Erste-Schritte)

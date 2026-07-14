@@ -114,9 +114,11 @@ Retention-Container → periodischer Daten-Purge
 
 | Seite | Inhalt |
 |---|---|
+| [Funktionsumfang](Funktionsumfang) | Vollständige Feature-Übersicht mit Status und Roadmap |
 | [Installation und Setup](Installation-und-Setup) | Docker-Quickstart, Konfiguration, Deployment |
 | [API-Dokumentation](API-Dokumentation) | Alle REST- und WebSocket-Endpunkte |
 | [Benutzerhandbuch](Benutzerhandbuch) | Anleitung für Planer, Fahrer und Admins |
+| [Entwicklung](Entwicklung) | Projektstruktur, lokaler Workflow, CI/Releases |
 
 ### Bedienung (Schritt für Schritt)
 
