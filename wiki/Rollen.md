@@ -4,6 +4,10 @@
 
 ConvoyPlan verwendet ein rollenbasiertes Berechtigungssystem auf Organisationsebene. Jedes Mitglied einer Organisation erhält eine Rolle, die seine Zugriffsrechte bestimmt.
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/RettTechSolutions/ConvoyPlan/main/docs/diagrams/rollen.svg" alt="Organisation als Mandant mit Org-Code und das Rollenmodell Admin, Planer, Fahrer, Beobachter" width="880">
+</p>
+
 | Rolle | Bezeichnung | Beschreibung |
 |-------|-------------|-------------|
 | **beobachter** | Beobachter | Lesezugriff auf Konvois, Fahrzeuge und Positionen |

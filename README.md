@@ -42,6 +42,10 @@ ConvoyPlan ist eine selbst gehostete Web-Anwendung, die Einsatzorganisationen (B
 - 🔄 **Auto-Updater** mit Kanälen (Stable/Beta/Nightly), Demo-Modus und Lizenzaktivierung über die Admin-UI.
 - 📱 **PWA & Capacitor** für installierbare Web-App und native App-Wrapper.
 
+<p align="center">
+  <img src="docs/diagrams/workflow.svg" alt="Ablauf in vier Schritten: Route planen, Zeitplan, Marschbefehl, Live-Tracking" width="880">
+</p>
+
 > 📖 **Vollständige Feature-Übersicht mit Status und Roadmap:**
 > **[Funktionsumfang](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Funktionsumfang)** im Wiki.
 
@@ -65,6 +69,18 @@ Der Installer prüft Voraussetzungen (Docker, Docker Compose), fragt interaktiv 
 
 > 📖 **Manuelle Installation, Konfiguration und Deployment** (Docker Compose, Portainer, alle Umgebungsvariablen):
 > **[Installation und Setup](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Installation-und-Setup)** im Wiki.
+
+---
+
+## Architektur
+
+<p align="center">
+  <img src="docs/diagrams/architektur.svg" alt="Systemarchitektur: Browser/PWA über Caddy zu Frontend und Backend, dahinter PostgreSQL/PostGIS, GraphHopper und externe Datenquellen – alles self-hosted in Docker Compose" width="900">
+</p>
+
+Caddy terminiert TLS und leitet `/api/*` und `/ws/*` ans FastAPI-Backend, alles andere ans SvelteKit-Frontend. Dahinter speichert PostgreSQL + PostGIS alle Daten, GraphHopper berechnet Routen, und ein Updater- sowie ein Retention-Container übernehmen Auto-Deploy und Datenaufbewahrung.
+
+> 📖 **Architektur und Tech-Stack im Detail:** **[Home](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Home)** im Wiki.
 
 ---
 

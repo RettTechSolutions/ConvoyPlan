@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 320" width="960" height="320" font-family="Inter,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif" role="img" aria-label="Organisationen und Rollenmodell: Admin, Planer, Fahrer, Beobachter">
+  <rect x="0" y="0" width="960" height="320" rx="16" fill="#0f172a" stroke="#1f2b40"/>
+
+  <rect x="330" y="30" width="300" height="70" rx="14" fill="#141d2e" stroke="#3b82f6"/>
+  <text x="480" y="62" text-anchor="middle" fill="#f1f5f9" font-size="15.5" font-weight="600">Organisation</text>
+  <text x="480" y="84" text-anchor="middle" fill="#93a4bd" font-size="12.5">Org-Code /o/thw-ov/ · vollständige Datenisolation</text>
+
+  <g stroke="#334155" stroke-width="2" fill="none">
+    <path d="M480,100 L480,128 M120,128 L840,128 M120,128 L120,150 M360,128 L360,150 M600,128 L600,150 M840,128 L840,150"/>
+  </g>
+
+  <!-- Admin -->
+  <rect x="34" y="150" width="172" height="140" rx="12" fill="#172033" stroke="#ef4444"/>
+  <rect x="34" y="150" width="172" height="6" rx="3" fill="#ef4444"/>
+  <text x="120" y="188" text-anchor="middle" fill="#f1f5f9" font-size="15" font-weight="600">Admin</text>
+  <text x="120" y="216" text-anchor="middle" fill="#93a4bd" font-size="12">Benutzer, Branding,</text>
+  <text x="120" y="234" text-anchor="middle" fill="#93a4bd" font-size="12">Leitstellen, System</text>
+  <text x="120" y="266" text-anchor="middle" fill="#ef4444" font-size="11.5" font-weight="600">VOLLZUGRIFF</text>
+
+  <!-- Planer -->
+  <rect x="274" y="150" width="172" height="140" rx="12" fill="#172033" stroke="#3b82f6"/>
+  <rect x="274" y="150" width="172" height="6" rx="3" fill="#3b82f6"/>
+  <text x="360" y="188" text-anchor="middle" fill="#f1f5f9" font-size="15" font-weight="600">Planer</text>
+  <text x="360" y="216" text-anchor="middle" fill="#93a4bd" font-size="12">Konvois, Routen,</text>
+  <text x="360" y="234" text-anchor="middle" fill="#93a4bd" font-size="12">Fahrzeuge, Export</text>
+  <text x="360" y="266" text-anchor="middle" fill="#3b82f6" font-size="11.5" font-weight="600">PLANEN &amp; BEARBEITEN</text>
+
+  <!-- Fahrer -->
+  <rect x="514" y="150" width="172" height="140" rx="12" fill="#172033" stroke="#22c55e"/>
+  <rect x="514" y="150" width="172" height="6" rx="3" fill="#22c55e"/>
+  <text x="600" y="188" text-anchor="middle" fill="#f1f5f9" font-size="15" font-weight="600">Fahrer</text>
+  <text x="600" y="216" text-anchor="middle" fill="#93a4bd" font-size="12">Position senden,</text>
+  <text x="600" y="234" text-anchor="middle" fill="#93a4bd" font-size="12">Route abrufen</text>
+  <text x="600" y="266" text-anchor="middle" fill="#22c55e" font-size="11.5" font-weight="600">UNTERWEGS</text>
+
+  <!-- Beobachter -->
+  <rect x="754" y="150" width="172" height="140" rx="12" fill="#172033" stroke="#64748b"/>
+  <rect x="754" y="150" width="172" height="6" rx="3" fill="#64748b"/>
+  <text x="840" y="188" text-anchor="middle" fill="#f1f5f9" font-size="15" font-weight="600">Beobachter</text>
+  <text x="840" y="216" text-anchor="middle" fill="#93a4bd" font-size="12">Konvois &amp; Tracking</text>
+  <text x="840" y="234" text-anchor="middle" fill="#93a4bd" font-size="12">nur ansehen</text>
+  <text x="840" y="266" text-anchor="middle" fill="#94a3b8" font-size="11.5" font-weight="600">LESEZUGRIFF</text>
+</svg>

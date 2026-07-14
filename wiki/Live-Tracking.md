@@ -4,6 +4,10 @@
 
 ConvoyPlan ermöglicht die Echtzeit-Verfolgung aller Fahrzeuge eines Konvois über eine WebSocket-Verbindung. Fahrer übermitteln ihre GPS-Position, Planer und Beobachter sehen die aktuellen Positionen live auf der Karte.
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/RettTechSolutions/ConvoyPlan/main/docs/diagrams/live-tracking.svg" alt="Datenfluss: Fahrzeuge senden Position an den WebSocket-Hub, der sie live an alle Beteiligten verteilt" width="880">
+</p>
+
 ---
 
 ## Tracking als Fahrer starten
