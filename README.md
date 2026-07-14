@@ -165,14 +165,9 @@
 
 Der typische Ablauf – von der Planung bis zum laufenden Konvoi:
 
-```mermaid
-flowchart LR
-    A["🗺️ Route planen<br/>Wegpunkte + GraphHopper"]
-    B["⏱️ Zeitplan<br/>Ankunft/Abfahrt automatisch"]
-    C["📄 Marschbefehl<br/>PDF · GPX · JSON"]
-    D["📡 Live-Tracking<br/>Position in Echtzeit"]
-    A --> B --> C --> D
-```
+<p align="center">
+  <img src="docs/diagrams/workflow.svg" alt="Ablauf in vier Schritten: Route planen, Zeitplan, Marschbefehl, Live-Tracking" width="880">
+</p>
 
 ### 🗺️ Kartenbasierte Marschplanung
 
@@ -185,6 +180,10 @@ Wegpunkte, Kontrollpunkte und technische Halte per Klick setzen; GraphHopper ber
 ### 📡 Live-Tracking
 
 Fahrzeuge senden ihre Position per Browser-Geolocation über WebSocket; Status (geplant, unterwegs, angekommen, verspätet) und Fortschritt des Verbands erscheinen in Echtzeit auf der Karte – inklusive akustischer/haptischer Meldung beim Erreichen von Wegpunkten und Kanalwechseln.
+
+<p align="center">
+  <img src="docs/diagrams/live-tracking.svg" alt="Datenfluss: Fahrzeuge senden Position an den WebSocket-Hub, der sie live an alle Beteiligten verteilt" width="880">
+</p>
 
 <p align="center">
   <img src="docs/screenshots/LiveTracking.png" alt="Live-Tracking-Ansicht mit sendendem Fahrzeug und Live-Status" width="820">
@@ -211,6 +210,10 @@ Leitstellen mit Anrufgruppe, Zusatzkanälen und Zuständigkeitsgrenzen (GeoJSON/
 Pro Organisation lassen sich Mitglieder einladen und mit den Rollen **Admin**, **Planer**, **Fahrer** oder **Beobachter** ausstatten – feingranulare Zugriffskontrolle bei vollständiger Datenisolation zwischen Mandanten.
 
 <p align="center">
+  <img src="docs/diagrams/rollen.svg" alt="Organisation als Mandant mit Org-Code und das Rollenmodell Admin, Planer, Fahrer, Beobachter" width="880">
+</p>
+
+<p align="center">
   <img src="docs/screenshots/Berechtigungen.png" alt="Mitgliederverwaltung mit Rollenauswahl je Benutzer" width="820">
 </p>
 
@@ -235,29 +238,9 @@ App-Name, Logos und ein vollständiges Farbschema pro Organisation – ConvoyPla
 
 ## Architektur
 
-```mermaid
-flowchart LR
-    Browser[Browser / PWA / Capacitor App]
-    Caddy[Caddy Reverse Proxy\nTLS + WebSocket]
-    Frontend[SvelteKit Frontend]
-    API[FastAPI Backend]
-    DB[(PostgreSQL + PostGIS)]
-    GH[GraphHopper]
-    EXT[Open-Meteo / Overpass / Autobahn-API]
-    Updater[Updater Container\ngit-poll auto-deploy]
-    Retention[Retention Container\nperiodischer Daten-Purge]
-
-    Browser -->|HTTPS / WSS| Caddy
-    Caddy -->|/api /ws| API
-    Caddy --> Frontend
-    API --> DB
-    API --> GH
-    API --> EXT
-    API -->|Caddy Admin API :2019| Caddy
-    Retention --> DB
-    Updater -->|docker compose up --build| API
-    Updater -->|HTTPS| GH[GitHub]
-```
+<p align="center">
+  <img src="docs/diagrams/architektur.svg" alt="Systemarchitektur: Browser/PWA über Caddy zu Frontend und Backend, dahinter PostgreSQL/PostGIS, GraphHopper und externe Datenquellen – alles self-hosted in Docker Compose" width="900">
+</p>
 
 - **Caddy** terminiert TLS (Let's Encrypt oder eigenes Zertifikat), leitet `/api/*` und `/ws/*` ans Backend und alles andere ans Frontend. Die Konfiguration kann per Admin-API live neu geladen werden.
 - Das **Frontend** stellt Login, Setup-Wizard, Planung, Karte, Live-Tracking und öffentliche Freigabelinks bereit.
