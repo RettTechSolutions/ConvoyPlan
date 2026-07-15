@@ -144,6 +144,72 @@ async def resolve_here_key(db: AsyncSession) -> str:
     return (await traffic_flow.resolve_config(db)).here_key
 
 
+# ── Kostendeckel: HERE-Anfragen pro Kalendermonat begrenzen ──────────
+#
+# HEREs Base-Plan rechnet ab, sobald das kostenlose Monatskontingent
+# überschritten ist. Um Kosten sicher auszuschließen, zählen wir die echten
+# HERE-Aufrufe pro Monat mit und schalten bei Erreichen des Deckels auf Photon
+# um. Der Zähler liegt in ``system_settings`` (überlebt Neustarts); alte Monate
+# bleiben als Historie stehen und stören nicht.
+
+_USAGE_KEY_PREFIX = "geocode.here_usage"
+
+
+def usage_key(month: str) -> str:
+    """system_settings-Schlüssel für den HERE-Zähler eines Monats ("YYYY-MM")."""
+    return f"{_USAGE_KEY_PREFIX}.{month}"
+
+
+async def current_usage(db: AsyncSession, month: str) -> int:
+    """Bisherige HERE-Anfragen im Monat *month* (0, wenn noch keine)."""
+    from app.models.settings import SystemSetting
+    from sqlalchemy import select
+
+    row = (
+        await db.execute(select(SystemSetting).where(SystemSetting.key == usage_key(month)))
+    ).scalar_one_or_none()
+    if row is None:
+        return 0
+    try:
+        return int(row.value)
+    except (TypeError, ValueError):
+        return 0
+
+
+async def reserve_here_quota(db: AsyncSession, month: str, limit: int) -> bool:
+    """Eine HERE-Anfrage im Monatsbudget verbuchen.
+
+    Gibt ``True`` zurück und zählt den Monatszähler hoch, wenn noch Budget frei
+    ist; ``False``, wenn der Deckel erreicht ist (Aufrufer fällt dann auf Photon
+    zurück). ``limit <= 0`` deaktiviert den Deckel (immer ``True``, kein Zähler).
+    """
+    if limit <= 0:
+        return True
+
+    from app.models.settings import SystemSetting
+    from sqlalchemy import select
+
+    key = usage_key(month)
+    row = (
+        await db.execute(select(SystemSetting).where(SystemSetting.key == key))
+    ).scalar_one_or_none()
+    used = 0
+    if row is not None:
+        try:
+            used = int(row.value)
+        except (TypeError, ValueError):
+            used = 0
+    if used >= limit:
+        return False
+
+    if row is not None:
+        row.value = str(used + 1)
+    else:
+        db.add(SystemSetting(key=key, value="1"))
+    await db.commit()
+    return True
+
+
 # ── Öffentliche API ──────────────────────────────────────────────────
 
 
