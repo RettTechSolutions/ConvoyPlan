@@ -16,7 +16,12 @@ class Convoy(Base):
     organization: Mapped[str | None] = mapped_column(String(100))
     organization_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
     parent_convoy_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("convoys.id", ondelete="SET NULL", use_alter=True, name="fk_convoy_parent"), nullable=True)
-    start_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Wall-clock local time (no timezone). datetime-local inputs in the frontend
+    # are timezone-naive; storing them in a timestamptz column made asyncpg tag
+    # them UTC and return timezone-aware values, which the frontend then shifted
+    # by the local offset on read (start time jumped by e.g. +2h). A naive
+    # `timestamp` column round-trips the entered wall-clock unchanged.
+    start_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=False))
     start_point = mapped_column(Geometry("POINT", srid=4326))
     end_point = mapped_column(Geometry("POINT", srid=4326))
     speed_urban_kmh: Mapped[int] = mapped_column(Integer, default=40)
@@ -34,7 +39,7 @@ class Convoy(Base):
     auftrag: Mapped[str | None] = mapped_column(Text, nullable=True)
     marschform: Mapped[str | None] = mapped_column(String(50), nullable=True)  # geschlossener_verband|einzelgruppen|individuell
     ablaufpunkt: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    ablaufzeit: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ablaufzeit: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)  # wall-clock local time, see start_time
     ablaufführer: Mapped[str | None] = mapped_column(String(100), nullable=True)
     versorgung: Mapped[str | None] = mapped_column(Text, nullable=True)
     funkgruppe: Mapped[str | None] = mapped_column(String(100), nullable=True)
