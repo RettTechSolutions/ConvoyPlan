@@ -1,25 +1,12 @@
 <!-- frontend/src/lib/components/LocationSearch.svelte -->
 <script lang="ts">
-	// Geocoding via Photon (https://photon.komoot.io) — im Gegensatz zu Nominatims
-	// Volltext-Suche ist Photon explizit für Tipp-während-Suchen (Autocomplete)
-	// gebaut und liefert für deutsche Teil-Adressen deutlich bessere Treffer.
-	interface PhotonProps {
-		name?: string;
-		street?: string;
-		housenumber?: string;
-		postcode?: string;
-		city?: string;
-		town?: string;
-		village?: string;
-		district?: string;
-		county?: string;
-		state?: string;
-		country?: string;
-	}
-	interface PhotonFeature {
-		geometry: { coordinates: [number, number] };
-		properties: PhotonProps;
-	}
+	// Geocoding über den Backend-Proxy /api/geocode/search: nutzt HERE Geocoding
+	// & Search, wenn ein API-Key hinterlegt ist (der Key bleibt serverseitig),
+	// sonst automatisch Photon (komoot). Beide sind auf Tipp-während-Suchen
+	// (Autocomplete) ausgelegt und liefern für deutsche Teil-Adressen gute Treffer.
+	import { getBaseUrl, getToken } from '$lib/api/client';
+	import type { GeocodeResponse } from '$lib/api';
+
 	interface Suggestion {
 		lat: number;
 		lon: number;
@@ -35,10 +22,6 @@
 	let { placeholder = 'Adresse suchen…', onSelect }: Props = $props();
 
 	const MIN_LEN = 2;
-	// Soft-Bias auf die Mitte Deutschlands, damit deutsche Treffer vorne stehen
-	// (kein harter Filter — grenznahe Adressen bleiben auffindbar).
-	const BIAS_LAT = 51.1657;
-	const BIAS_LON = 10.4515;
 
 	let query = $state('');
 	let results = $state<Suggestion[]>([]);
@@ -50,19 +33,6 @@
 
 	let timer: ReturnType<typeof setTimeout>;
 	let controller: AbortController | null = null;
-
-	function format(p: PhotonProps): { primary: string; secondary: string } {
-		const place = p.city || p.town || p.village || p.county || '';
-		const streetLine = p.street
-			? `${p.street}${p.housenumber ? ' ' + p.housenumber : ''}`
-			: '';
-		const primary = streetLine || p.name || place || 'Unbenannter Ort';
-		const cityLine = [p.postcode, place].filter(Boolean).join(' ');
-		const secondary = [cityLine, p.state, p.country]
-			.filter((part) => part && part !== primary)
-			.join(', ');
-		return { primary, secondary };
-	}
 
 	function onInput() {
 		clearTimeout(timer);
@@ -86,21 +56,20 @@
 	async function run(q: string) {
 		controller = new AbortController();
 		try {
-			const url =
-				`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}` +
-				`&lang=de&limit=6&lat=${BIAS_LAT}&lon=${BIAS_LON}`;
-			const res = await fetch(url, { signal: controller.signal });
-			if (!res.ok) throw new Error(`HTTP ${res.status}`);
-			const data: { features?: PhotonFeature[] } = await res.json();
-			results = (data.features ?? []).map((f) => {
-				const { primary, secondary } = format(f.properties);
-				return {
-					lon: f.geometry.coordinates[0],
-					lat: f.geometry.coordinates[1],
-					primary,
-					secondary
-				};
+			const token = getToken();
+			const url = `${getBaseUrl()}/api/geocode/search?q=${encodeURIComponent(q)}&limit=6`;
+			const res = await fetch(url, {
+				signal: controller.signal,
+				headers: token ? { Authorization: `Bearer ${token}` } : {}
 			});
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			const data: GeocodeResponse = await res.json();
+			results = (data.results ?? []).map((r) => ({
+				lat: r.lat,
+				lon: r.lon,
+				primary: r.primary,
+				secondary: r.secondary
+			}));
 			error = false;
 		} catch (e) {
 			// Abgebrochene Requests (neuer Tastendruck) sind kein Fehler.

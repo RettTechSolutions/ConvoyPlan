@@ -136,6 +136,14 @@ class Settings(BaseSettings):
     # leer = automatisch (HERE bevorzugt).
     traffic_flow_provider: str = ""
 
+    # HERE-API-Key für die Adresssuche (Geocoding & Search). Ist er gesetzt,
+    # läuft die Adresssuche über HERE (serverseitig proxied, der Key verlässt
+    # den Server nie); sonst fällt sie auf das offene Photon (komoot) zurück.
+    # HERE gibt EINEN Key für alle Produkte aus — ist hier keiner gesetzt, wird
+    # automatisch der HERE-Traffic-Key (ENV oder Admin-Panel) mitbenutzt, sodass
+    # der Key nur einmal hinterlegt werden muss.
+    here_api_key: str = ""
+
     # Optional API key that protects the interactive docs. When set, the docs
     # are served (no ENABLE_DOCS needed) but require the key: open
     # /docs?key=<value> once (the key is remembered in an HttpOnly cookie), or
