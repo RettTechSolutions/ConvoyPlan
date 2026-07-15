@@ -21,7 +21,13 @@
 
 	let { placeholder = 'Adresse suchen…', onSelect }: Props = $props();
 
-	const MIN_LEN = 2;
+	// Kostendeckelung der HERE-Anfragen beginnt schon hier im Client: Erst ab 3
+	// Zeichen und nach einer etwas längeren Tipp-Pause (400 ms) wird überhaupt
+	// eine Anfrage abgesetzt, und identische Eingaben werden aus einem kleinen
+	// Cache bedient statt erneut abgefragt. Das senkt die Anfragezahl deutlich,
+	// ohne die Bedienung spürbar zu verlangsamen.
+	const MIN_LEN = 3;
+	const DEBOUNCE_MS = 400;
 
 	let query = $state('');
 	let results = $state<Suggestion[]>([]);
@@ -33,6 +39,9 @@
 
 	let timer: ReturnType<typeof setTimeout>;
 	let controller: AbortController | null = null;
+	// Cache identischer Suchbegriffe (z. B. beim Löschen und Neutippen), damit
+	// derselbe String nicht mehrfach eine (kostenpflichtige) HERE-Anfrage auslöst.
+	const cache = new Map<string, Suggestion[]>();
 
 	function onInput() {
 		clearTimeout(timer);
@@ -48,9 +57,17 @@
 			return;
 		}
 		open = true;
+		const cached = cache.get(q);
+		if (cached) {
+			results = cached;
+			loading = false;
+			error = false;
+			searched = true;
+			return;
+		}
 		loading = true;
 		error = false;
-		timer = setTimeout(() => void run(q), 250);
+		timer = setTimeout(() => void run(q), DEBOUNCE_MS);
 	}
 
 	async function run(q: string) {
@@ -70,6 +87,7 @@
 				primary: r.primary,
 				secondary: r.secondary
 			}));
+			cache.set(q, results);
 			error = false;
 		} catch (e) {
 			// Abgebrochene Requests (neuer Tastendruck) sind kein Fehler.

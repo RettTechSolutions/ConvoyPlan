@@ -56,6 +56,20 @@ bei kommerziellen Anbietern — beide mit kostenlosem Kontingent.
 > (komoot). Ein eigener `HERE_API_KEY` überschreibt den Traffic-Key nur für die
 > Adresssuche.
 
+> 💰 **Kostendeckel für die Adresssuche:** Damit auf dem HERE-**Base-Plan**
+> (30.000 Transaktionen/Monat gratis, darüber kostenpflichtig) **keine Kosten**
+> entstehen, begrenzt `HERE_MONTHLY_LIMIT` die HERE-Anfragen pro Kalendermonat
+> (Standard **25.000**, mit Puffer unter dem Freikontingent). Ist der Deckel
+> erreicht, läuft die Adresssuche für den Rest des Monats automatisch über das
+> kostenlose Photon weiter — kein Ausfall. `0` schaltet den App-Deckel ab (dann
+> greift nur HEREs eigenes Kontingent). Der Client reduziert die Anfragen
+> zusätzlich (Suche erst ab 3 Zeichen, längere Tipp-Pause, Cache identischer
+> Eingaben).
+>
+> **Ganz ohne Kostenrisiko:** Wer den **Limited Plan** (ohne Kreditkarte, 1.000
+> Anfragen/Tag) nutzt, kann grundsätzlich nicht abgerechnet werden — dort führt
+> ein erschöpftes Kontingent nur zum automatischen Photon-Fallback.
+
 ---
 
 ## 3. 🇩🇪 Bundesweite Baustellen über die mobilithek (DATEX II)
@@ -172,6 +186,7 @@ Kommt `<?xml … <d2LogicalModel …` zurück, ist alles korrekt.
 | `HERE_TRAFFIC_API_KEY` / `TOMTOM_TRAFFIC_API_KEY` | Live-Verkehrslage (alternativ im Admin-Panel) |
 | `TRAFFIC_FLOW_PROVIDER` | `here` / `tomtom` erzwingen (leer = automatisch, HERE bevorzugt) |
 | `HERE_API_KEY` | Adresssuche über HERE Geocoding & Search. Leer = HERE-Traffic-Key mitbenutzen bzw. Photon-Fallback |
+| `HERE_MONTHLY_LIMIT` | Kostendeckel: max. HERE-Anfragen/Monat für die Adresssuche (Standard 25000, `0` = aus). Deckel erreicht → Photon-Fallback |
 
 > 💡 Die Zertifikatsdateien werden über den Host-Ordner `./secrets` read-only nach
 > `/secrets` in den Container gemountet (siehe `docker-compose.yml`).

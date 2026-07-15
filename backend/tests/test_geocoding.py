@@ -164,3 +164,62 @@ async def test_resolve_key_falls_back_to_traffic_key(monkeypatch):
 
     monkeypatch.setattr(traffic_flow, "resolve_config", _fake_resolve)
     assert await geo.resolve_here_key(db=object()) == "TRAFFIC_KEY"
+
+
+# ── Kostendeckel (Monatsbudget) ──────────────────────────────────────
+
+
+class _FakeDB:
+    """Minimaler AsyncSession-Ersatz über einem key→SystemSetting-Dict."""
+
+    def __init__(self):
+        self.store = {}
+
+    async def execute(self, stmt):
+        key = stmt.compile().params.get("key_1")
+        row = self.store.get(key)
+
+        class _Result:
+            def scalar_one_or_none(self_inner):
+                return row
+
+        return _Result()
+
+    def add(self, obj):
+        self.store[obj.key] = obj
+
+    async def commit(self):
+        pass
+
+
+async def test_reserve_quota_disabled_when_limit_zero():
+    db = _FakeDB()
+    assert await geo.reserve_here_quota(db, "2026-07", 0) is True
+    # Kein Zähler angelegt, wenn der Deckel aus ist.
+    assert await geo.current_usage(db, "2026-07") == 0
+
+
+async def test_reserve_quota_counts_up_and_caps():
+    db = _FakeDB()
+    # Deckel 3: drei Anfragen passen durch, die vierte wird abgewiesen.
+    assert await geo.reserve_here_quota(db, "2026-07", 3) is True
+    assert await geo.current_usage(db, "2026-07") == 1
+    assert await geo.reserve_here_quota(db, "2026-07", 3) is True
+    assert await geo.reserve_here_quota(db, "2026-07", 3) is True
+    assert await geo.current_usage(db, "2026-07") == 3
+    assert await geo.reserve_here_quota(db, "2026-07", 3) is False
+    # Deckel erreicht → Zähler steigt nicht weiter.
+    assert await geo.current_usage(db, "2026-07") == 3
+
+
+async def test_reserve_quota_is_per_month():
+    db = _FakeDB()
+    assert await geo.reserve_here_quota(db, "2026-07", 1) is True
+    assert await geo.reserve_here_quota(db, "2026-07", 1) is False
+    # Neuer Monat = frisches Budget.
+    assert await geo.reserve_here_quota(db, "2026-08", 1) is True
+    assert await geo.current_usage(db, "2026-08") == 1
+
+
+async def test_current_usage_zero_when_missing():
+    assert await geo.current_usage(_FakeDB(), "2026-07") == 0
