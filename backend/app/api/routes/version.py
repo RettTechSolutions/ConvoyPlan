@@ -1,6 +1,8 @@
 """
 Public endpoint exposing the running build's version and an "update available"
-hint derived live from the GitHub releases API.
+hint. The hint honours the active release channel (stable / beta / nightly) by
+reusing the same update-state logic as the admin panel, so a nightly or beta
+instance is never falsely compared against the latest *stable* release.
 
 GET /api/version  — no auth required
 """
@@ -12,19 +14,29 @@ import os
 import time
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.database import get_db
+from app.services.update_check import fetch_update_state, resolve_channel
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/version", tags=["version"])
 
-# Cache the latest-release lookup process-wide so the public endpoint never
-# hammers the GitHub API regardless of request volume.
+# Cache the changelog lookup TTL, shared with the update-state cache below, so
+# the public endpoint never hammers the GitHub API regardless of request volume.
 _LATEST_TTL = 3600  # seconds
-_latest_cache: tuple[float, str | None] = (0.0, None)
+
+# The "update available" hint reuses the same channel-aware update-state logic
+# as the admin panel (stable → latest release, beta → latest pre-release,
+# nightly → last successful nightly build). Because that logic performs several
+# GitHub calls, cache the computed state per channel with a short TTL so the
+# public, high-traffic footer request does not trigger a GitHub call every time.
+_STATE_TTL = 600  # seconds
+_state_cache: dict[str, tuple[float, dict]] = {}
 
 
 class VersionResponse(BaseModel):
@@ -59,66 +71,59 @@ def _core_str(v: str | None) -> str | None:
     return core
 
 
-def _normalize(v: str | None) -> tuple[int, ...] | None:
-    """Parse a version string into a comparable tuple, ignoring a leading 'v',
-    build metadata ("+sha") and pre-release suffixes ("-3-gabc")."""
-    core = _core_str(v)
-    if not core:
-        return None
-    try:
-        return tuple(int(p) for p in core.split("."))
-    except ValueError:
-        return None
-
-
-async def _fetch_latest() -> str | None:
-    """Return the latest release tag from GitHub, cached for _LATEST_TTL.
-    Fails open (returns None) so offline deployments behave gracefully."""
-    global _latest_cache
-    if not settings.update_check_enabled:
-        return None
-
+async def _cached_update_state(db: AsyncSession, channel: str) -> dict | None:
+    """The channel-aware update state (see app.services.update_check), cached
+    per channel for _STATE_TTL. Fails open (returns None) so offline / air-
+    gapped deployments and GitHub outages behave gracefully."""
     now = time.monotonic()
-    cached_at, cached = _latest_cache
-    if now - cached_at < _LATEST_TTL and cached_at > 0:
-        return cached
+    cached = _state_cache.get(channel)
+    if cached and now - cached[0] < _STATE_TTL:
+        return cached[1]
 
-    latest: str | None = None
     try:
-        headers = {
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-        }
-        if settings.github_token:
-            headers["Authorization"] = f"Bearer {settings.github_token}"
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(
-                f"https://api.github.com/repos/{settings.github_repo}/releases/latest",
-                headers=headers,
-            )
-        if resp.is_success:
-            tag = resp.json().get("tag_name")
-            if tag:
-                latest = str(tag).lstrip("vV")
+        state = await fetch_update_state(db)
     except Exception:
-        pass
+        # fetch_update_state already fails open internally; this only guards the
+        # surrounding DB/resolve calls so the public endpoint never errors.
+        logger.debug("Update-Status-Abfrage (öffentlich) fehlgeschlagen", exc_info=True)
+        return None
 
-    # Cache even on failure so a flaky network doesn't trigger a request storm;
-    # the short TTL means we retry within the hour.
-    _latest_cache = (now, latest)
-    return latest
+    _state_cache[channel] = (now, state)
+    return state
+
+
+async def _resolve_update_hint(db: AsyncSession) -> tuple[str | None, bool]:
+    """Return (latest, update_available) for the footer hint, honouring the
+    active release channel so a nightly/beta instance is never falsely told a
+    newer *stable* release is available. Fails open (no hint) when the update
+    check is disabled or GitHub is unreachable.
+
+    Unlike a plain version-string comparison, this reuses the admin panel's
+    SHA-ancestry logic: stable → latest release, beta → latest pre-release,
+    nightly → last successful nightly build, and it suppresses the hint when the
+    running build is actually *ahead* of the channel target."""
+    if not settings.update_check_enabled:
+        return None, False
+
+    channel, _ = await resolve_channel(db)
+    state = await _cached_update_state(db, channel)
+    if not state:
+        return None, False
+
+    update_available = bool(state.get("update_available"))
+    # stable/beta expose a release tag; nightly has none, so fall back to the
+    # target commit SHA as the human-readable "latest" marker.
+    latest = state.get("latest_release") or state.get("remote_sha")
+    return latest, update_available
 
 
 @router.get("", response_model=VersionResponse)
-async def get_version() -> VersionResponse:
+async def get_version(db: AsyncSession = Depends(get_db)) -> VersionResponse:
     raw_sha = os.environ.get("GIT_SHA", "unknown")
     sha = raw_sha[:7] if raw_sha and raw_sha != "unknown" else None
 
     version = settings.app_version or None
-    latest = await _fetch_latest()
-
-    cur, new = _normalize(version), _normalize(latest)
-    update_available = bool(cur and new and new > cur)
+    latest, update_available = await _resolve_update_hint(db)
 
     return VersionResponse(
         version=version,
