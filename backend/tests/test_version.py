@@ -24,43 +24,74 @@ async def test_version_endpoint_returns_build_info(monkeypatch):
     assert body["update_available"] is False
 
 
-def test_normalize_parses_versions():
-    norm = version_module._normalize
-    assert norm("0.9.0") == (0, 9, 0)
-    assert norm("v0.9.0") == (0, 9, 0)
-    assert norm("0.9.0+abc1234") == (0, 9, 0)
-    assert norm("0.9.0-3-gabc1234") == (0, 9, 0)
-    assert norm("unknown") is None
-    assert norm(None) is None
+@pytest.mark.asyncio
+async def test_version_endpoint_hint_is_channel_aware(monkeypatch):
+    """The public footer hint must honour the active release channel. On a
+    nightly instance the target is the last nightly build (a commit SHA, no
+    release tag), so `latest` reports that SHA and `update_available` mirrors
+    the channel-aware update-state — never a comparison against a stable
+    release."""
+    version_module._state_cache.clear()
+    monkeypatch.setattr(settings, "update_check_enabled", True)
+    monkeypatch.setattr(settings, "app_version", "1.0.2-6-g258ce81")
+
+    async def fake_resolve_channel(db):
+        return "nightly", "db"
+
+    async def fake_fetch_update_state(db):
+        return {
+            "deployed_sha": "258ce81",
+            "remote_sha": "8e421a8",
+            "update_available": True,
+            "channel": "nightly",
+            "latest_release": None,      # nightly has no release tag
+            "ahead_of_release": False,
+        }
+
+    monkeypatch.setattr(version_module, "resolve_channel", fake_resolve_channel)
+    monkeypatch.setattr(version_module, "fetch_update_state", fake_fetch_update_state)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/api/version")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["version"] == "1.0.2-6-g258ce81"
+    assert body["latest"] == "8e421a8"        # nightly target SHA, not a stable tag
+    assert body["update_available"] is True
 
 
-def test_normalize_parses_calver_scheme():
-    """The YYYY.MASTER.FIX scheme (e.g. 2026.1.1) parses like any dotted
-    version, including the 'v' prefix and build/describe suffixes."""
-    norm = version_module._normalize
-    assert norm("2026.1.1") == (2026, 1, 1)
-    assert norm("v2026.1.1") == (2026, 1, 1)
-    assert norm("2026.1.1+abc1234") == (2026, 1, 1)
-    assert norm("2026.1.1-3-gabc1234") == (2026, 1, 1)
+@pytest.mark.asyncio
+async def test_version_endpoint_suppresses_hint_when_ahead(monkeypatch):
+    """When the running build is newer than the channel target (e.g. a former
+    nightly now on stable), the update-state reports update_available False and
+    the footer must not show a spurious 'update available' hint."""
+    version_module._state_cache.clear()
+    monkeypatch.setattr(settings, "update_check_enabled", True)
 
+    async def fake_resolve_channel(db):
+        return "stable", "env"
 
-def test_update_available_comparison():
-    norm = version_module._normalize
-    assert norm("0.9.1") > norm("0.9.0")
-    assert norm("0.10.0") > norm("0.9.9")
-    assert not norm("0.9.0") > norm("0.9.0")
+    async def fake_fetch_update_state(db):
+        return {
+            "deployed_sha": "258ce81",
+            "remote_sha": "8afe9bd",
+            "update_available": False,   # deployed build is ahead of the release
+            "channel": "stable",
+            "latest_release": "v1.0.2",
+            "ahead_of_release": True,
+        }
 
+    monkeypatch.setattr(version_module, "resolve_channel", fake_resolve_channel)
+    monkeypatch.setattr(version_module, "fetch_update_state", fake_fetch_update_state)
 
-def test_update_available_comparison_across_scheme_switch():
-    """Ordering must hold both within the CalVer scheme and across the switch
-    from the old SemVer numbers, so the 'update available' hint stays correct."""
-    norm = version_module._normalize
-    # Within the new scheme: fix, master and year each bump correctly.
-    assert norm("2026.1.2") > norm("2026.1.1")   # fix bump
-    assert norm("2026.2.1") > norm("2026.1.9")   # master bump
-    assert norm("2027.1.1") > norm("2026.9.9")   # year rollover
-    # Across the switch: the first CalVer release sorts above the last SemVer.
-    assert norm("2026.1.1") > norm("1.0.2")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/api/version")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["update_available"] is False
+    assert body["latest"] == "v1.0.2"         # release tag still surfaced
 
 
 def test_core_str_strips_metadata():

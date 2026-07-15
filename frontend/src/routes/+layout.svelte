@@ -6,11 +6,16 @@
 	import { brandingStore, applyBranding, type Branding } from '$lib/stores/branding';
 	import { themeStore } from '$lib/stores/theme';
 	import { versionStore } from '$lib/stores/version.svelte';
+	import { formatVersion } from '$lib/version';
 	import { printConsoleBanner } from '$lib/console-banner';
 	import InstallPrompt from '$lib/components/InstallPrompt.svelte';
 	import ChangelogModal from '$lib/components/ChangelogModal.svelte';
 
 	let { children } = $props();
+
+	// Build version split into base + short commit so the footer stays readable
+	// even for nightly `git describe` builds (e.g. "1.0.2-6-g258ce81").
+	const buildVersion = formatVersion(__APP_VERSION__);
 
 	// /o/ hat eigenes Guard-Layout; /share/ und /track/ sind öffentlich (Token-/Slug-basiert)
 	// Wurzelpfad '/' ist die Org-Code-Eingabe — ebenfalls öffentlich
@@ -123,7 +128,7 @@
 <ChangelogModal />
 
 <footer class="powered-by">
-	v{__APP_VERSION__}
+	v{buildVersion.base}{#if buildVersion.commit} · {buildVersion.commit}{/if}
 	{#if versionStore.data.update_available}
 		· <a
 			class="update-hint"
