@@ -1,4 +1,4 @@
-function getBaseUrl(): string {
+export function getBaseUrl(): string {
 	if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
 	return '';
 }

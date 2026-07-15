@@ -48,6 +48,14 @@ bei kommerziellen Anbietern — beide mit kostenlosem Kontingent.
 > OSM-Basiskarte kann lizenzpflichtig sein. Vor produktivem Einsatz die
 > Nutzungsbedingungen des Anbieters prüfen.
 
+> 💡 **Ein Key, zwei Funktionen:** HERE gibt **einen** API-Key für alle Produkte
+> aus. Ist ein HERE-Key hinterlegt (hier oder als `HERE_TRAFFIC_API_KEY`), nutzt
+> ihn ConvoyPlan **automatisch auch für die Adresssuche** im Plan-Editor
+> (HERE Geocoding & Search, serverseitig proxied — der Key verlässt den Server
+> nie). Ohne Key läuft die Adresssuche wie bisher über das offene Photon
+> (komoot). Ein eigener `HERE_API_KEY` überschreibt den Traffic-Key nur für die
+> Adresssuche.
+
 ---
 
 ## 3. 🇩🇪 Bundesweite Baustellen über die mobilithek (DATEX II)
@@ -163,6 +171,7 @@ Kommt `<?xml … <d2LogicalModel …` zurück, ist alles korrekt.
 | `OPENDATA_TRAFFIC_CA_CERT` | Nur für Broker mit **privater** CA. Für die mobilithek **leer lassen**. |
 | `HERE_TRAFFIC_API_KEY` / `TOMTOM_TRAFFIC_API_KEY` | Live-Verkehrslage (alternativ im Admin-Panel) |
 | `TRAFFIC_FLOW_PROVIDER` | `here` / `tomtom` erzwingen (leer = automatisch, HERE bevorzugt) |
+| `HERE_API_KEY` | Adresssuche über HERE Geocoding & Search. Leer = HERE-Traffic-Key mitbenutzen bzw. Photon-Fallback |
 
 > 💡 Die Zertifikatsdateien werden über den Host-Ordner `./secrets` read-only nach
 > `/secrets` in den Container gemountet (siehe `docker-compose.yml`).

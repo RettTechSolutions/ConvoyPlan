@@ -319,6 +319,21 @@ export const trafficApi = {
 		}),
 };
 
+// Adresssuche (Geocoding) — serverseitig proxied. Nutzt HERE, wenn ein Key
+// hinterlegt ist, sonst Photon. Der Aufruf erfolgt aus LocationSearch.svelte
+// direkt per fetch (mit AbortController fürs Debouncing), daher hier nur die
+// Typen als gemeinsame Referenz.
+export interface GeocodeResult {
+	lat: number;
+	lon: number;
+	primary: string;
+	secondary: string;
+}
+export interface GeocodeResponse {
+	provider: 'here' | 'photon' | null;
+	results: GeocodeResult[];
+}
+
 // Public share
 export const shareApi = {
 	get: (token: string) => api.get<{

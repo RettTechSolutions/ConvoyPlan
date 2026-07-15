@@ -15,7 +15,7 @@ from jwt.exceptions import InvalidTokenError
 
 from app.api.routes import (
     auth, convoys, vehicles, routing, organizations,
-    tracking, weather, overpass, status, users, leitstellen, traffic,
+    tracking, weather, overpass, status, users, leitstellen, traffic, geocoding,
 )
 from app.api.routes import org_leitstellen as org_leitstellen_router
 from app.api.routes import admin as admin_router
@@ -275,6 +275,7 @@ app.include_router(tracking.router, prefix="/api")
 app.include_router(weather.router, prefix="/api")
 app.include_router(overpass.router, prefix="/api")
 app.include_router(traffic.router, prefix="/api")
+app.include_router(geocoding.router, prefix="/api")
 app.include_router(status.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(admin_router.router, prefix="/api")
