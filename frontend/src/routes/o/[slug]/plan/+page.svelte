@@ -375,9 +375,9 @@
 		if (!selected) return;
 		editConvoy = {
 			name: selected.name,
-			organization: selected.organization ?? '',
+			organization: selected.organization || organizations.find(o => o.id === selected?.organization_id)?.name || '',
 			organization_id: selected.organization_id ?? '',
-			start_time: selected.start_time ? new Date(selected.start_time).toISOString().slice(0, 16) : '',
+			start_time: selected.start_time ? toDatetimeLocal(selected.start_time) : '',
 			speed_urban_kmh: selected.speed_urban_kmh,
 			speed_rural_kmh: selected.speed_rural_kmh,
 			road_preference: selected.road_preference as RoadPreference,
@@ -948,10 +948,17 @@
 	let befehlSaved = $state(false);
 	let befehlError = $state('');
 
-	function nowLocalDatetime(): string {
-		const d = new Date();
-		// Trim to the local "YYYY-MM-DDTHH:mm" datetime-local format.
+	// Format a date/timestamp as the local "YYYY-MM-DDTHH:mm" value a
+	// datetime-local input expects. The input is timezone-naive and shows local
+	// wall-clock time, so we must NOT use toISOString() directly (that yields UTC
+	// and shifts the displayed time by the timezone offset).
+	function toDatetimeLocal(value: string | Date): string {
+		const d = new Date(value);
 		return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+	}
+
+	function nowLocalDatetime(): string {
+		return toDatetimeLocal(new Date());
 	}
 
 	function openBefehlModal() {
@@ -968,7 +975,7 @@
 			befehlForm = {
 				marschform: selected.marschform ?? '',
 				ablaufpunkt: selected.ablaufpunkt ?? '',
-				ablaufzeit: selected.ablaufzeit ? new Date(selected.ablaufzeit).toISOString().slice(0,16) : '',
+				ablaufzeit: selected.ablaufzeit ? toDatetimeLocal(selected.ablaufzeit) : '',
 				ablaufführer: selected.ablaufführer ?? '',
 				lage: selected.lage ?? '',
 				auftrag: selected.auftrag ?? '',
@@ -1139,7 +1146,7 @@
 							<span>Marschverband</span>
 							<button class="btn-small" onclick={openEditConvoyForm}>✎ Bearbeiten</button>
 						</div>
-						<p><strong>Organisation:</strong> {selected.organization ?? '–'}</p>
+						<p><strong>Organisation:</strong> {selected.organization || organizations.find(o => o.id === selected?.organization_id)?.name || '–'}</p>
 						<p><strong>Startzeit:</strong> {selected.start_time ? new Date(selected.start_time).toLocaleString('de-DE') : '–'}</p>
 						<p><strong>Tempo:</strong> {selected.speed_urban_kmh} km/h (innerorts) / {selected.speed_rural_kmh} km/h (außerorts) · {{ standard: 'Standard', schnell: 'Schnellste', kuerzeste: 'Kürzeste', bundesstrasse: 'Standard (veraltet)', landstrasse: 'Standard (veraltet)' }[selected.road_preference] ?? selected.road_preference}</p>
 						<p><strong>Abstände:</strong> {selected.spacing_urban_m} m / {selected.spacing_rural_m} m / {selected.spacing_motorway_m} m (i/a/BAB)</p>
