@@ -180,7 +180,7 @@ class _FakeDB:
         row = self.store.get(key)
 
         class _Result:
-            def scalar_one_or_none(self_inner):
+            def scalar_one_or_none(self):
                 return row
 
         return _Result()
