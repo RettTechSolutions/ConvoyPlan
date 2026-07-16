@@ -3,7 +3,6 @@ import json as _json
 import logging
 import re
 import uuid
-from datetime import timezone
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, File, Query, UploadFile
@@ -341,10 +340,13 @@ async def get_route(
     route_planned_departure = None
     route_planned_arrival = None
     if convoy.start_time is not None:
+        # Work in naive wall-clock (see migration 0029/0030): the schedule times
+        # are stored and displayed as the wall-clock the user entered, without a
+        # timezone the frontend would re-interpret and shift.
         start_dt = (
-            convoy.start_time.replace(tzinfo=timezone.utc)
+            convoy.start_time
             if convoy.start_time.tzinfo is None
-            else convoy.start_time
+            else convoy.start_time.replace(tzinfo=None)
         )
         route_planned_departure = start_dt
         if route.duration_s is not None:
@@ -505,10 +507,13 @@ async def calculate_route(
             wp.order_index = new_idx
 
     if convoy.start_time:
+        # Work in naive wall-clock (see migration 0029/0030): the schedule times
+        # are stored and displayed as the wall-clock the user entered, without a
+        # timezone the frontend would re-interpret and shift.
         start_dt = (
-            convoy.start_time.replace(tzinfo=timezone.utc)
+            convoy.start_time
             if convoy.start_time.tzinfo is None
-            else convoy.start_time
+            else convoy.start_time.replace(tzinfo=None)
         )
         route_planned_departure = start_dt
         if projected:
