@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 
 import httpx
 from fastapi import APIRouter, Depends, Path, Response
-from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -48,7 +47,14 @@ async def get_smartmaps_tile(
             api_key = ""
 
     if not api_key:
-        return RedirectResponse(url=osm_url, status_code=302)
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            osm_resp = await client.get(osm_url)
+            osm_resp.raise_for_status()
+            return Response(
+                content=osm_resp.content,
+                media_type=osm_resp.headers.get("content-type", "image/png").split(";")[0],
+                headers={"Cache-Control": f"public, max-age={_TILE_CACHE_MAX_AGE}"},
+            )
 
     tile_url = SMARTMAPS_TILE_URL.format(style=settings.smartmaps_style, z=z, x=x, y=y)
     try:
@@ -62,4 +68,11 @@ async def get_smartmaps_tile(
             )
     except Exception as exc:
         logger.warning("SmartMaps-Tile-Abruf fehlgeschlagen, Fallback auf OSM: %s", exc)
-        return RedirectResponse(url=osm_url, status_code=302)
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            osm_resp = await client.get(osm_url)
+            osm_resp.raise_for_status()
+            return Response(
+                content=osm_resp.content,
+                media_type=osm_resp.headers.get("content-type", "image/png").split(";")[0],
+                headers={"Cache-Control": f"public, max-age={_TILE_CACHE_MAX_AGE}"},
+            )
