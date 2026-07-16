@@ -33,8 +33,8 @@
 		vehicleColors?: Map<string, string>;
 		/** Heading-up: rotate the map so the followed vehicle's heading points up. */
 		headingUp?: boolean;
-		/** Show the HERE SmartMaps base layer instead of OSM. */
-		hereTilesEnabled?: boolean;
+		/** Show the SmartMaps base layer instead of OSM. */
+		smartmapsEnabled?: boolean;
 	}
 
 	let {
@@ -54,7 +54,7 @@
 		vehicleNames = new Map(),
 		vehicleColors = new Map(),
 		headingUp = false,
-		hereTilesEnabled = false,
+		smartmapsEnabled = false,
 	}: Props = $props();
 
 	const DEFAULT_MARKER_COLOR = '#e74c3c';
@@ -105,19 +105,19 @@
 						tileSize: 256,
 						attribution: '© OpenStreetMap contributors',
 					},
-					'here-smartmaps': {
+					smartmaps: {
 						type: 'raster',
-						tiles: [`${getBaseUrl()}/api/tiles/here/{z}/{x}/{y}`],
+						tiles: [`${getBaseUrl()}/api/tiles/smartmaps/{z}/{x}/{y}`],
 						tileSize: 256,
-						attribution: '© HERE',
+						attribution: '© YellowMap · SmartMaps',
 					},
 				},
 				layers: [
 					{ id: 'osm', type: 'raster', source: 'osm' },
 					{
-						id: 'here-smartmaps',
+						id: 'smartmaps',
 						type: 'raster',
-						source: 'here-smartmaps',
+						source: 'smartmaps',
 						layout: { visibility: 'none' },
 					},
 				],
@@ -131,7 +131,7 @@
 			// Der 302-Fallback auf OSM ist cross-origin; der Browser entfernt den
 			// Authorization-Header dabei automatisch (Token leakt nie an OSM).
 			transformRequest: (url) => {
-				if (url.includes('/api/tiles/here/')) {
+				if (url.includes('/api/tiles/smartmaps/')) {
 					const token = getToken();
 					if (token) return { url, headers: { Authorization: `Bearer ${token}` } };
 				}
@@ -512,8 +512,8 @@
 	// alle dynamisch hinzugefügten Sourcen/Layer oben zerstören).
 	$effect(() => {
 		if (!ready) return;
-		map.setLayoutProperty('osm', 'visibility', hereTilesEnabled ? 'none' : 'visible');
-		map.setLayoutProperty('here-smartmaps', 'visibility', hereTilesEnabled ? 'visible' : 'none');
+		map.setLayoutProperty('osm', 'visibility', smartmapsEnabled ? 'none' : 'visible');
+		map.setLayoutProperty('smartmaps', 'visibility', smartmapsEnabled ? 'visible' : 'none');
 	});
 </script>
 

@@ -70,7 +70,7 @@ _TAGS_METADATA = [
     {"name": "weather", "description": "Wetterdaten entlang der Route abrufen."},
     {"name": "overpass", "description": "OpenStreetMap-/Overpass-Abfragen für Kartendaten."},
     {"name": "traffic", "description": "Live-Verkehrslage (HERE/TomTom) — aktiv bei gesetztem API-Key."},
-    {"name": "tiles", "description": "Kartenkacheln (HERE SmartMaps, mit OSM-Fallback bei Jahresdeckel)."},
+    {"name": "tiles", "description": "Kartenkacheln (SmartMaps/YellowMap, mit OSM-Fallback bei Jahresdeckel)."},
     {"name": "branding", "description": "Organisationsspezifisches Branding (Logo, Farben) anpassen."},
     {"name": "email-template", "description": "E-Mail-Vorlagen verwalten (Admin)."},
     {"name": "admin", "description": "Administrative Endpunkte für Superadmins."},

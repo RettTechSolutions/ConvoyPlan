@@ -1,7 +1,18 @@
-# HERE SmartMaps mit Jahresdeckel — Design Spec
+# SmartMaps mit Jahresdeckel — Design Spec
 
 **Datum:** 2026-07-16
 **Status:** Approved
+
+> **Korrektur (2026-07-16):** Ursprünglich gegen HEREs Raster Tile API entworfen —
+> „SmartMaps" ist aber der eigenständige Dienst **YellowMap SmartMaps**
+> (smartmaps.net / tiles.smartmaps.cloud), nicht ein HERE-Produkt. Die
+> umgesetzte Lösung nutzt daher den SmartMaps-Raster-Endpoint
+> `https://tiles.smartmaps.cloud/tiles/v1/smartmaps/{style}/{z}/{x}/{y}.webp?apiKey=…`
+> (WebP), einen **eigenen `SMARTMAPS_API_KEY`** (nicht den HERE-Key), Style-Config
+> `SMARTMAPS_STYLE` (Default `light`) und `SMARTMAPS_YEARLY_LIMIT`. Architektur
+> (Backend-Proxy + In-Memory-Jahreszähler + OSM-Fallback + Toggle) ist unverändert;
+> unten stehende HERE-spezifische Details (Endpoint, Key-Reuse, PNG) sind durch
+> diese Korrektur ersetzt.
 
 ## Ziel
 

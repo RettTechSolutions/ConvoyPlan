@@ -23,10 +23,10 @@ async def _db_override():
     yield MagicMock()
 
 
-class _HereClient:
-    """Mock-HTTP-Client für den HERE-Tile-Abruf (analog zu test_geocoding.py)."""
+class _SmartMapsClient:
+    """Mock-HTTP-Client für den SmartMaps-Tile-Abruf (analog zu test_geocoding.py)."""
 
-    payload: bytes = b"PNGDATA"
+    payload: bytes = b"WEBPDATA"
     raises: bool = False
 
     def __init__(self, *a, **k):
@@ -39,90 +39,90 @@ class _HereClient:
         return False
 
     async def get(self, url, params=None):
-        if _HereClient.raises:
+        if _SmartMapsClient.raises:
             raise httpx.ConnectError("boom")
-        return httpx.Response(200, content=_HereClient.payload, request=httpx.Request("GET", url))
+        return httpx.Response(200, content=_SmartMapsClient.payload, request=httpx.Request("GET", url))
 
 
 @pytest.fixture(autouse=True)
 def _setup_overrides():
     app.dependency_overrides[get_current_user] = _user
     app.dependency_overrides[get_db] = _db_override
-    _HereClient.raises = False
-    _HereClient.payload = b"PNGDATA"
+    _SmartMapsClient.raises = False
+    _SmartMapsClient.payload = b"WEBPDATA"
     yield
     app.dependency_overrides.clear()
 
 
-async def test_tile_without_here_key_falls_back_to_osm(monkeypatch):
-    monkeypatch.setattr(tiles_route.geo_svc, "resolve_here_key", AsyncMock(return_value=""))
+async def test_tile_without_key_falls_back_to_osm(monkeypatch):
+    monkeypatch.setattr(tiles_route.settings, "smartmaps_api_key", "")
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        resp = await client.get("/api/tiles/here/5/16/10", follow_redirects=False)
+        resp = await client.get("/api/tiles/smartmaps/5/16/10", follow_redirects=False)
 
     assert resp.status_code == 302
     assert resp.headers["location"] == "https://tile.openstreetmap.org/5/16/10.png"
 
 
 async def test_tile_falls_back_to_osm_when_quota_exhausted(monkeypatch):
-    monkeypatch.setattr(tiles_route.geo_svc, "resolve_here_key", AsyncMock(return_value="KEY"))
+    monkeypatch.setattr(tiles_route.settings, "smartmaps_api_key", "KEY")
     monkeypatch.setattr(tiles_route.smartmaps_svc, "reserve_tile_quota", AsyncMock(return_value=False))
-    monkeypatch.setattr(tiles_route.settings, "here_smartmaps_yearly_limit", 250000)
+    monkeypatch.setattr(tiles_route.settings, "smartmaps_yearly_limit", 250000)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        resp = await client.get("/api/tiles/here/5/16/10", follow_redirects=False)
+        resp = await client.get("/api/tiles/smartmaps/5/16/10", follow_redirects=False)
 
     assert resp.status_code == 302
     assert resp.headers["location"] == "https://tile.openstreetmap.org/5/16/10.png"
 
 
 async def test_tile_cap_disabled_skips_reservation(monkeypatch):
-    monkeypatch.setattr(tiles_route.geo_svc, "resolve_here_key", AsyncMock(return_value="KEY"))
+    monkeypatch.setattr(tiles_route.settings, "smartmaps_api_key", "KEY")
     reserve = AsyncMock(return_value=False)
     monkeypatch.setattr(tiles_route.smartmaps_svc, "reserve_tile_quota", reserve)
-    monkeypatch.setattr(tiles_route.settings, "here_smartmaps_yearly_limit", 0)
-    _HereClient.raises = False
-    _HereClient.payload = b"PNGDATA"
-    monkeypatch.setattr(tiles_route.httpx, "AsyncClient", _HereClient)
+    monkeypatch.setattr(tiles_route.settings, "smartmaps_yearly_limit", 0)
+    _SmartMapsClient.raises = False
+    _SmartMapsClient.payload = b"WEBPDATA"
+    monkeypatch.setattr(tiles_route.httpx, "AsyncClient", _SmartMapsClient)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        resp = await client.get("/api/tiles/here/5/16/10", follow_redirects=False)
+        resp = await client.get("/api/tiles/smartmaps/5/16/10", follow_redirects=False)
 
     assert resp.status_code == 200
-    assert resp.content == b"PNGDATA"
+    assert resp.content == b"WEBPDATA"
     # Deckel deaktiviert (limit=0) -> keine Reservierung
     reserve.assert_not_awaited()
 
 
-async def test_tile_proxies_here_response(monkeypatch):
-    monkeypatch.setattr(tiles_route.geo_svc, "resolve_here_key", AsyncMock(return_value="KEY"))
+async def test_tile_proxies_smartmaps_response(monkeypatch):
+    monkeypatch.setattr(tiles_route.settings, "smartmaps_api_key", "KEY")
     reserve = AsyncMock(return_value=True)
     monkeypatch.setattr(tiles_route.smartmaps_svc, "reserve_tile_quota", reserve)
-    monkeypatch.setattr(tiles_route.settings, "here_smartmaps_yearly_limit", 250000)
-    _HereClient.raises = False
-    _HereClient.payload = b"PNGDATA"
-    monkeypatch.setattr(tiles_route.httpx, "AsyncClient", _HereClient)
+    monkeypatch.setattr(tiles_route.settings, "smartmaps_yearly_limit", 250000)
+    _SmartMapsClient.raises = False
+    _SmartMapsClient.payload = b"WEBPDATA"
+    monkeypatch.setattr(tiles_route.httpx, "AsyncClient", _SmartMapsClient)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        resp = await client.get("/api/tiles/here/5/16/10", follow_redirects=False)
+        resp = await client.get("/api/tiles/smartmaps/5/16/10", follow_redirects=False)
 
     assert resp.status_code == 200
-    assert resp.content == b"PNGDATA"
-    assert resp.headers["content-type"] == "image/png"
+    assert resp.content == b"WEBPDATA"
+    assert resp.headers["content-type"] == "image/webp"
     assert resp.headers["cache-control"] == "public, max-age=86400"
     # Happy-Path muss tatsächlich ein Kontingent reservieren
     reserve.assert_awaited_once()
 
 
-async def test_tile_falls_back_to_osm_on_here_error(monkeypatch):
-    monkeypatch.setattr(tiles_route.geo_svc, "resolve_here_key", AsyncMock(return_value="KEY"))
+async def test_tile_falls_back_to_osm_on_smartmaps_error(monkeypatch):
+    monkeypatch.setattr(tiles_route.settings, "smartmaps_api_key", "KEY")
     monkeypatch.setattr(tiles_route.smartmaps_svc, "reserve_tile_quota", AsyncMock(return_value=True))
-    monkeypatch.setattr(tiles_route.settings, "here_smartmaps_yearly_limit", 250000)
-    _HereClient.raises = True
-    monkeypatch.setattr(tiles_route.httpx, "AsyncClient", _HereClient)
+    monkeypatch.setattr(tiles_route.settings, "smartmaps_yearly_limit", 250000)
+    _SmartMapsClient.raises = True
+    monkeypatch.setattr(tiles_route.httpx, "AsyncClient", _SmartMapsClient)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        resp = await client.get("/api/tiles/here/5/16/10", follow_redirects=False)
+        resp = await client.get("/api/tiles/smartmaps/5/16/10", follow_redirects=False)
 
     assert resp.status_code == 302
     assert resp.headers["location"] == "https://tile.openstreetmap.org/5/16/10.png"

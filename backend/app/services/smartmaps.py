@@ -1,4 +1,4 @@
-"""Jahresdeckel für HERE-SmartMaps-Kachelanfragen (Raster Tile API v3).
+"""Jahresdeckel für SmartMaps-Kachelanfragen (YellowMap Raster Tile API).
 
 Kartenkacheln entstehen in Bürsten (20–50 Anfragen pro Kartenschwenk), im
 Gegensatz zur Adresssuche (`geocoding.py`), die pro Anfrage synchron in
