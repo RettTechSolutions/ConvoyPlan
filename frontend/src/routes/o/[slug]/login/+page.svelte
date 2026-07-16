@@ -61,7 +61,7 @@
             } catch { /* abgelaufen oder ungültig */ }
         }
 
-        // Org-Name für Anzeige laden
+        // Org-Name für Anzeige (Überschrift + Tab-Titel) laden
         try {
             const info = await orgAuthApi.lookup(slug);
             orgName = info.name;
@@ -113,6 +113,13 @@
         }
     }
 </script>
+
+<svelte:head>
+    <!-- Auf der Login-Seite ist der orgStore noch leer, daher hier der lokal geladene Name. -->
+    {#if orgName}
+        <title>{orgName}</title>
+    {/if}
+</svelte:head>
 
 <div class="login-container">
     <div class="login-card">
