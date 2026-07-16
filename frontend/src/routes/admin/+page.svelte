@@ -43,7 +43,7 @@
         await loadUsers();
         await loadLeitstellen();
         await loadBranding();
-        await Promise.all([loadGithubTokenStatus(), loadTrafficKeys(), loadUpdateStatus(), loadUpdateChannel(), loadUpdateMode(), loadMfaStatus(), loadSmtpSettings(), loadEmailTemplate(), loadDemoSettings()]);
+        await Promise.all([loadGithubTokenStatus(), loadTrafficKeys(), loadSmartmapsKey(), loadUpdateStatus(), loadUpdateChannel(), loadUpdateMode(), loadMfaStatus(), loadSmtpSettings(), loadEmailTemplate(), loadDemoSettings()]);
     }
 
     async function handleAuthenticated() {
@@ -828,6 +828,49 @@
             setTimeout(() => { trafficSuccess = ''; }, 3000);
         } catch { trafficError = 'Fehler beim Entfernen'; }
         finally { trafficSaving = false; }
+    }
+
+    // ── SmartMaps-Basemap (YellowMap) ──
+    let smartmapsKey = $state<import('$lib/api').SmartmapsKeyResponse | null>(null);
+    let smartmapsKeyInput = $state('');
+    let smartmapsSaving = $state(false);
+    let smartmapsSuccess = $state('');
+    let smartmapsError = $state('');
+
+    async function loadSmartmapsKey() {
+        try {
+            smartmapsKey = await adminApi.getSmartmapsKey();
+        } catch { /* ignore */ }
+    }
+
+    async function saveSmartmapsKey() {
+        if (!smartmapsKeyInput.trim()) return;
+        smartmapsSaving = true;
+        smartmapsError = '';
+        smartmapsSuccess = '';
+        try {
+            await adminApi.setSmartmapsKey({ api_key: smartmapsKeyInput.trim() });
+            smartmapsKeyInput = '';
+            await loadSmartmapsKey();
+            smartmapsSuccess = 'Gespeichert. SmartMaps ist beim nächsten Kachel-Laden aktiv.';
+            setTimeout(() => { smartmapsSuccess = ''; }, 5000);
+        } catch (e: unknown) {
+            smartmapsError = e instanceof Error ? e.message : 'Fehler beim Speichern';
+        } finally {
+            smartmapsSaving = false;
+        }
+    }
+
+    async function clearSmartmapsKey() {
+        if (!confirm('SmartMaps-Key entfernen?')) return;
+        smartmapsSaving = true;
+        try {
+            await adminApi.setSmartmapsKey({ api_key: '' });
+            await loadSmartmapsKey();
+            smartmapsSuccess = 'Key entfernt.';
+            setTimeout(() => { smartmapsSuccess = ''; }, 3000);
+        } catch { smartmapsError = 'Fehler beim Entfernen'; }
+        finally { smartmapsSaving = false; }
     }
 
     // ── MFA ──────────────────────────────────────────────────────────────────
@@ -2315,6 +2358,60 @@
                 </select>
                 <button class="btn-primary" onclick={saveTrafficKeys} disabled={trafficSaving}>
                     {trafficSaving ? '…' : 'Speichern'}
+                </button>
+            </div>
+        </div>
+
+        <!-- ── SmartMaps-Basemap (YellowMap) ── -->
+        <div class="section">
+            <div class="section-header">
+                <strong>SmartMaps-Basemap (Karte)</strong>
+            </div>
+
+            {#if smartmapsError}
+                <div class="error-bar">{smartmapsError} <button onclick={() => smartmapsError = ''}>✕</button></div>
+            {/if}
+            {#if smartmapsSuccess}
+                <div class="success-bar">{smartmapsSuccess}</div>
+            {/if}
+
+            <p class="hint" style="margin-bottom:.6rem">
+                Optional. Nicht zu verwechseln mit der Live-Verkehrslage oben: Dies ist der
+                Kartenhintergrund selbst. Ohne Key wird OpenStreetMap verwendet; mit hinterlegtem
+                <a href="https://smartmaps.net/" target="_blank" rel="noopener" style="color:var(--color-primary)">YellowMap-SmartMaps</a>-Key
+                lässt sich die SmartMaps-Basemap in der Planungskarte einblenden. Kostenloses
+                Kontingent: 300k Kachel-Anfragen/Jahr; bei erreichtem Jahresdeckel fällt die Karte
+                automatisch auf OSM zurück. Der Key wird serverseitig verwahrt und verlässt das
+                Backend nicht.
+            </p>
+
+            {#if smartmapsKey}
+                <div class="update-grid" style="margin-bottom:.75rem">
+                    <div class="update-row">
+                        <span class="update-label">SmartMaps-Key</span>
+                        {#if smartmapsKey.api_key.set}
+                            <span class="badge badge-ok">Gesetzt ({smartmapsKey.api_key.source === 'env' ? 'Umgebungsvariable' : 'Datenbank'}) ✓</span>
+                            {#if smartmapsKey.api_key.source === 'db'}
+                                <button class="btn-small danger" onclick={clearSmartmapsKey} disabled={smartmapsSaving}>Entfernen</button>
+                            {/if}
+                        {:else}
+                            <span class="badge badge-warn">Nicht konfiguriert (OSM)</span>
+                        {/if}
+                    </div>
+                </div>
+            {/if}
+
+            <label class="hint" style="display:block;margin-bottom:.25rem">SmartMaps-API-Key</label>
+            <div class="license-input-row">
+                <input
+                    type="password"
+                    class="license-input"
+                    placeholder={smartmapsKey?.api_key.set ? '••• Key ersetzen •••' : 'SmartMaps apiKey'}
+                    bind:value={smartmapsKeyInput}
+                    autocomplete="off"
+                />
+                <button class="btn-primary" onclick={saveSmartmapsKey} disabled={smartmapsSaving || !smartmapsKeyInput.trim()}>
+                    {smartmapsSaving ? '…' : 'Speichern'}
                 </button>
             </div>
         </div>

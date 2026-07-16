@@ -33,6 +33,31 @@ def _reset_state():
     smartmaps.reset()
 
 
+async def test_resolve_api_key_uses_env_without_db_override(monkeypatch):
+    monkeypatch.setattr(smartmaps.settings, "smartmaps_api_key", "ENVKEY")
+    db = _FakeDB()
+    assert await smartmaps.resolve_api_key(db) == "ENVKEY"
+
+
+async def test_resolve_api_key_db_overrides_env(monkeypatch):
+    from app.models.settings import SystemSetting
+
+    monkeypatch.setattr(smartmaps.settings, "smartmaps_api_key", "ENVKEY")
+    db = _FakeDB()
+    db.store[smartmaps.KEY_API] = SystemSetting(key=smartmaps.KEY_API, value="DBKEY")
+    assert await smartmaps.resolve_api_key(db) == "DBKEY"
+
+
+async def test_resolve_api_key_empty_db_row_clears_env(monkeypatch):
+    from app.models.settings import SystemSetting
+
+    # Ein leerer DB-Eintrag schaltet den Key bewusst ab (kein ENV-Fallback).
+    monkeypatch.setattr(smartmaps.settings, "smartmaps_api_key", "ENVKEY")
+    db = _FakeDB()
+    db.store[smartmaps.KEY_API] = SystemSetting(key=smartmaps.KEY_API, value="")
+    assert await smartmaps.resolve_api_key(db) == ""
+
+
 async def test_reserve_quota_disabled_when_limit_zero():
     db = _FakeDB()
     assert await smartmaps.reserve_tile_quota(db, "2026", 0) is True
