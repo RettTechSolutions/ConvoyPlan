@@ -32,6 +32,8 @@
 		vehicleColors?: Map<string, string>;
 		/** Heading-up: rotate the map so the followed vehicle's heading points up. */
 		headingUp?: boolean;
+		/** Show the HERE SmartMaps base layer instead of OSM. */
+		hereTilesEnabled?: boolean;
 	}
 
 	let {
@@ -51,6 +53,7 @@
 		vehicleNames = new Map(),
 		vehicleColors = new Map(),
 		headingUp = false,
+		hereTilesEnabled = false,
 	}: Props = $props();
 
 	const DEFAULT_MARKER_COLOR = '#e74c3c';
@@ -101,8 +104,22 @@
 						tileSize: 256,
 						attribution: '© OpenStreetMap contributors',
 					},
+					'here-smartmaps': {
+						type: 'raster',
+						tiles: ['/api/tiles/here/{z}/{x}/{y}'],
+						tileSize: 256,
+						attribution: '© HERE',
+					},
 				},
-				layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
+				layers: [
+					{ id: 'osm', type: 'raster', source: 'osm' },
+					{
+						id: 'here-smartmaps',
+						type: 'raster',
+						source: 'here-smartmaps',
+						layout: { visibility: 'none' },
+					},
+				],
 			},
 			center: [10.0, 51.5],
 			zoom: 6,
@@ -475,6 +492,15 @@
 		const src = map.getSource('flow') as maplibregl.GeoJSONSource | undefined;
 		if (!src) return;
 		src.setData((flowGeojson as FeatureCollection) ?? empty());
+	});
+
+	// Basemap-Umschaltung: OSM <-> HERE SmartMaps (beide Layer existieren
+	// immer, nur die Sichtbarkeit wechselt — kein map.setStyle(), das würde
+	// alle dynamisch hinzugefügten Sourcen/Layer oben zerstören).
+	$effect(() => {
+		if (!ready) return;
+		map.setLayoutProperty('osm', 'visibility', hereTilesEnabled ? 'none' : 'visible');
+		map.setLayoutProperty('here-smartmaps', 'visibility', hereTilesEnabled ? 'visible' : 'none');
 	});
 </script>
 
