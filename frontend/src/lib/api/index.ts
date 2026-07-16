@@ -101,6 +101,10 @@ export interface RouteResult {
 	routing_params: Record<string, unknown> | null; geojson: Geometry | null;
 	fuel_analysis: FuelAnalysis | null;
 	kanalwechsel?: KanalwechselEntry[];
+	/** Abmarschzeit (ISO), auf derselben Zeitbasis wie die Wegpunkt-Zeiten. */
+	planned_departure?: string | null;
+	/** Geplante Ankunft am Ziel (ISO); Abmarsch + Fahrzeit + Haltezeiten. */
+	planned_arrival?: string | null;
 }
 
 export interface Organization {

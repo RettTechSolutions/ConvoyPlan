@@ -41,7 +41,7 @@
 	// changes on every recalculation (avoids issues with the `unknown` type not
 	// being deeply proxied, which prevented the map from updating on re-clicks).
 	let routeGeojson = $state<Geometry | null>(null);
-	let route = $state<{ distance_m: number | null; duration_s: number | null; fuel_analysis: FuelAnalysis | null; kanalwechsel: KanalwechselEntry[] } | null>(null);
+	let route = $state<{ distance_m: number | null; duration_s: number | null; fuel_analysis: FuelAnalysis | null; kanalwechsel: KanalwechselEntry[]; planned_departure?: string | null; planned_arrival?: string | null } | null>(null);
 	let fuelStations = $state<FuelStation[]>([]);
 	let showFuelStations = $state(false);
 	let fuelStationsLoading = $state(false);
@@ -333,6 +333,8 @@
 				duration_s: r.duration_s,
 				fuel_analysis: r.fuel_analysis,
 				kanalwechsel: r.kanalwechsel ?? [],
+				planned_departure: r.planned_departure ?? null,
+				planned_arrival: r.planned_arrival ?? null,
 			};
 			activeRoute.set(r);
 		} catch { /* no stored route yet */ }
@@ -739,7 +741,7 @@
 		try {
 			const r = await convoysApi.calculateRoute(selected.id);
 			routeGeojson = r.geojson;
-			route = { distance_m: r.distance_m, duration_s: r.duration_s, fuel_analysis: r.fuel_analysis, kanalwechsel: r.kanalwechsel ?? [] };
+			route = { distance_m: r.distance_m, duration_s: r.duration_s, fuel_analysis: r.fuel_analysis, kanalwechsel: r.kanalwechsel ?? [], planned_departure: r.planned_departure ?? null, planned_arrival: r.planned_arrival ?? null };
 			fuelStations = [];
 			showFuelStations = false;
 			activeRoute.set(r);
@@ -1632,10 +1634,17 @@
 				{#if activeTab === 'zeitplan' && selected}
 					<div class="section" data-tour="schedule">
 						<strong>Zeitplan</strong>
-						{#if selected.waypoints.some(w => w.planned_arrival)}
+						{#if selected.waypoints.some(w => w.planned_arrival) || route?.planned_arrival}
 							<table class="schedule-table">
 								<thead><tr><th>Wegpunkt</th><th>Ankunft</th><th>Abfahrt</th></tr></thead>
 								<tbody>
+									{#if route?.planned_departure}
+										<tr class="schedule-endpoint">
+											<td>Abmarsch</td>
+											<td>–</td>
+											<td>{formatTime(route.planned_departure)}</td>
+										</tr>
+									{/if}
 									{#each selected.waypoints as wp}
 										<tr>
 											<td>{wp.name} {#if wp.type === 'technical_stop'}<span class="tag orange">Techn.</span>{/if}</td>
@@ -1643,6 +1652,13 @@
 											<td>{formatTime(wp.planned_departure)}</td>
 										</tr>
 									{/each}
+									{#if route?.planned_arrival}
+										<tr class="schedule-endpoint">
+											<td>Ziel</td>
+											<td>{formatTime(route.planned_arrival)}</td>
+											<td>–</td>
+										</tr>
+									{/if}
 								</tbody>
 							</table>
 						{:else}
@@ -2218,6 +2234,7 @@
 	.schedule-table { width: 100%; border-collapse: collapse; font-size: .8rem; }
 	.schedule-table th, .schedule-table td { padding: .3rem .4rem; text-align: left; border-bottom: 1px solid var(--border); color: var(--text-1); }
 	.schedule-table th { color: var(--text-muted); font-weight: 600; }
+	.schedule-table tr.schedule-endpoint td { font-weight: 600; color: var(--text-1); background: var(--surface-1); }
 
 	.inline-form { display: flex; flex-direction: column; gap: .35rem; margin-bottom: .5rem; }
 	.inline-form input, .inline-form select { padding: .35rem .4rem; border-radius: 4px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); }
