@@ -39,7 +39,6 @@ from app.services.update_check import (
     write_mode_file as _write_mode_file,
 )
 from app.services import demo as demo_svc
-from app.services import smartmaps as smartmaps_svc
 from app.services import traffic_flow as traffic_flow_svc
 from app.services.email import save_smtp_settings, send_password_email, test_smtp_connection
 from app.services.password import assert_password_not_breached, generate_password, validate_password
@@ -333,50 +332,6 @@ async def set_traffic_keys(
     await db.commit()
     await audit.record(
         db, "admin.settings.traffic_keys_changed", request=request, actor_id=current.id,
-    )
-
-
-# ── SmartMaps-Basemap (YellowMap) ───────────────────────────────────────────
-
-
-class SmartmapsKeyResponse(BaseModel):
-    api_key: TrafficKeyState  # gesetzt? Quelle "db"/"env"/None (der Wert bleibt geheim)
-
-
-class SmartmapsKeyUpdate(BaseModel):
-    # Optionales Feld: nur wenn gesetzt wird geschrieben. Leerer String löscht.
-    api_key: str | None = None
-
-
-@router.get("/settings/smartmaps-key", response_model=SmartmapsKeyResponse)
-async def get_smartmaps_key(
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_superadmin),
-):
-    """Konfigurationsstatus des SmartMaps-Keys (ohne den Wert preiszugeben)."""
-    api_db = await _get_setting(db, smartmaps_svc.KEY_API)
-    return SmartmapsKeyResponse(
-        api_key=_key_state(api_db, settings.smartmaps_api_key),
-    )
-
-
-@router.put("/settings/smartmaps-key", status_code=204)
-async def set_smartmaps_key(
-    data: SmartmapsKeyUpdate,
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    current: User = Depends(require_superadmin),
-):
-    """SmartMaps-Key in system_settings ablegen (überschreibt die ENV-Konfiguration).
-
-    Nur ein übergebenes Feld wird geändert; ein leerer String löscht den Wert
-    (DB-Eintrag hat Vorrang vor ``SMARTMAPS_API_KEY``).
-    """
-    if data.api_key is not None:
-        await _set_setting(db, smartmaps_svc.KEY_API, data.api_key.strip())
-    await db.commit()
-    await audit.record(
-        db, "admin.settings.smartmaps_key_changed", request=request, actor_id=current.id,
     )
 
 

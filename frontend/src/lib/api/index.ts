@@ -536,9 +536,6 @@ export const adminApi = {
     getTrafficKeys: () => api.get<TrafficKeysResponse>('/api/admin/settings/traffic-keys'),
     setTrafficKeys: (data: { here_key?: string; tomtom_key?: string; provider?: string }) =>
         api.put<void>('/api/admin/settings/traffic-keys', data),
-    getSmartmapsKey: () => api.get<SmartmapsKeyResponse>('/api/admin/settings/smartmaps-key'),
-    setSmartmapsKey: (data: { api_key?: string }) =>
-        api.put<void>('/api/admin/settings/smartmaps-key', data),
     getUpdateChannel: () => api.get<UpdateChannel>('/api/admin/settings/update-channel'),
     setUpdateChannel: (channel: UpdateChannelName) =>
         api.put<void>('/api/admin/settings/update-channel', { channel }),
@@ -595,10 +592,6 @@ export interface TrafficKeysResponse {
     provider: string | null;
     forced: string;
 }
-export interface SmartmapsKeyResponse {
-    api_key: TrafficKeyState;
-}
-
 export interface UpdateMode {
     mode: 'auto' | 'notify';
     source: 'db' | 'env';
