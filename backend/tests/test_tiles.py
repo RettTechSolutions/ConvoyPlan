@@ -41,7 +41,10 @@ class _SmartMapsClient:
         return False
 
     async def get(self, url, params=None):
-        if "openstreetmap.org" in str(url):
+        # SmartMaps wird mit apiKey-Query aufgerufen, der OSM-Fallback ohne
+        # Params — daran (statt an einem URL-Substring) unterscheiden wir die
+        # beiden Upstreams.
+        if params is None:
             if _SmartMapsClient.osm_raises:
                 raise httpx.ConnectError("osm boom")
             return httpx.Response(
