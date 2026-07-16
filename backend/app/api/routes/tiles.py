@@ -62,7 +62,7 @@ async def get_smartmaps_tile(
     """
     osm_url = OSM_TILE_URL.format(z=z, x=x, y=y)
 
-    api_key = settings.smartmaps_api_key.strip()
+    api_key = (await smartmaps_svc.resolve_api_key(db)).strip()
     if api_key and settings.smartmaps_yearly_limit > 0:
         year = datetime.now(timezone.utc).strftime("%Y")
         if not await smartmaps_svc.reserve_tile_quota(db, year, settings.smartmaps_yearly_limit):

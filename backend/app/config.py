@@ -157,6 +157,8 @@ class Settings(BaseSettings):
     # Routenberechnung. Eigener Key (nicht der HERE-Key) — bei YellowMap unter
     # smartmaps.net registrieren. Ist kein Key gesetzt, fällt die Kachel-Route
     # still auf OpenStreetMap zurück; das Feature ist dann de facto aus.
+    # Lässt sich alternativ im Admin-Panel hinterlegen (system_settings-Schlüssel
+    # "smartmaps.api_key" via smartmaps.resolve_api_key), was diese ENV überschreibt.
     smartmaps_api_key: str = ""
 
     # Kartenstil: essential | light | dark | grey | accessible | satellite.

@@ -20,7 +20,14 @@ def _user():
 
 
 async def _db_override():
-    yield MagicMock()
+    # resolve_api_key() fragt system_settings nach einem DB-Override ab; ohne
+    # Zeile greift die ENV. execute() muss awaitable sein und ein Result mit
+    # scalar_one_or_none()==None liefern.
+    db = MagicMock()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = None
+    db.execute = AsyncMock(return_value=result)
+    yield db
 
 
 class _SmartMapsClient:

@@ -1,4 +1,8 @@
-"""Jahresdeckel für SmartMaps-Kachelanfragen (YellowMap Raster Tile API).
+"""SmartMaps (YellowMap Raster Tile API): Key-Auflösung und Jahresdeckel.
+
+``resolve_api_key`` liefert den effektiven Key — ein im Admin-Panel hinterlegter
+Wert (``system_settings``) überschreibt die ENV ``SMARTMAPS_API_KEY`` (analog zu
+``traffic_flow.resolve_config``).
 
 Kartenkacheln entstehen in Bürsten (20–50 Anfragen pro Kartenschwenk), im
 Gegensatz zur Adresssuche (`geocoding.py`), die pro Anfrage synchron in
@@ -18,12 +22,30 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.settings import SystemSetting
 
 logger = logging.getLogger(__name__)
 
 _USAGE_KEY_PREFIX = "smartmaps.tile_usage"
 _FLUSH_INTERVAL_SECONDS = 30
+
+# system_settings-Schlüssel für den im Admin-Bereich hinterlegten Key.
+KEY_API = "smartmaps.api_key"
+
+
+async def resolve_api_key(db: AsyncSession) -> str:
+    """Effektiver SmartMaps-Key: DB-Wert (Admin-Panel) überschreibt ENV.
+
+    Analog zu ``traffic_flow.resolve_config``: existiert in ``system_settings``
+    ein Eintrag, hat er Vorrang vor ``SMARTMAPS_API_KEY`` — ein leerer DB-Wert
+    schaltet den Key also bewusst ab (fällt nicht auf die ENV zurück).
+    """
+    row = (
+        await db.execute(select(SystemSetting).where(SystemSetting.key == KEY_API))
+    ).scalar_one_or_none()
+    db_value = row.value if row is not None else None
+    return db_value if db_value is not None else settings.smartmaps_api_key
 
 # Jahr ("YYYY") -> zuletzt aus der DB gelesener Stand.
 _flushed: dict[str, int] = {}
