@@ -37,6 +37,9 @@ def _delete_org_logos(org_id) -> None:
         try:
             path.unlink()
         except OSError:
+            # Best-effort cleanup: the file may already be gone (concurrent
+            # request) or the volume read-only. The DB reset below is what
+            # matters — a stale orphaned file must not fail the request.
             pass
 
 
@@ -94,6 +97,9 @@ async def upload_org_logo(
         try:
             (LOGOS_DIR / old).unlink()
         except OSError:
+            # Best-effort cleanup of the replaced logo (different extension):
+            # if it is already gone or undeletable, the upload still succeeds —
+            # the override below points at the new file either way.
             pass
     loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, (LOGOS_DIR / filename).write_bytes, content)
