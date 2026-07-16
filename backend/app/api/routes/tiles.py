@@ -2,7 +2,7 @@ import logging
 from datetime import datetime, timezone
 
 import httpx
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Path, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,13 +19,14 @@ router = APIRouter(prefix="/tiles", tags=["tiles"])
 HERE_TILE_URL = "https://maps.hereapi.com/v3/base/mc/{z}/{x}/{y}/png8"
 OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 _TIMEOUT = 8.0
+_TILE_CACHE_MAX_AGE = 86400  # 1 Tag — Kacheln sind praktisch unveränderlich; senkt Backend-Last und Budgetverbrauch.
 
 
 @router.get("/here/{z}/{x}/{y}")
 async def get_here_tile(
-    z: int,
-    x: int,
-    y: int,
+    z: int = Path(ge=0, le=22),
+    x: int = Path(ge=0),
+    y: int = Path(ge=0),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
@@ -52,7 +53,11 @@ async def get_here_tile(
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.get(tile_url, params={"style": "explore.day", "apiKey": here_key})
             resp.raise_for_status()
-            return Response(content=resp.content, media_type="image/png")
+            return Response(
+                content=resp.content,
+                media_type="image/png",
+                headers={"Cache-Control": f"public, max-age={_TILE_CACHE_MAX_AGE}"},
+            )
     except Exception as exc:
         logger.warning("HERE-Tile-Abruf fehlgeschlagen, Fallback auf OSM: %s", exc)
         return RedirectResponse(url=osm_url, status_code=302)

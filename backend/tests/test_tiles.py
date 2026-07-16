@@ -48,6 +48,8 @@ class _HereClient:
 def _setup_overrides():
     app.dependency_overrides[get_current_user] = _user
     app.dependency_overrides[get_db] = _db_override
+    _HereClient.raises = False
+    _HereClient.payload = b"PNGDATA"
     yield
     app.dependency_overrides.clear()
 
@@ -74,9 +76,28 @@ async def test_tile_falls_back_to_osm_when_quota_exhausted(monkeypatch):
     assert resp.headers["location"] == "https://tile.openstreetmap.org/5/16/10.png"
 
 
+async def test_tile_cap_disabled_skips_reservation(monkeypatch):
+    monkeypatch.setattr(tiles_route.geo_svc, "resolve_here_key", AsyncMock(return_value="KEY"))
+    reserve = AsyncMock(return_value=False)
+    monkeypatch.setattr(tiles_route.smartmaps_svc, "reserve_tile_quota", reserve)
+    monkeypatch.setattr(tiles_route.settings, "here_smartmaps_yearly_limit", 0)
+    _HereClient.raises = False
+    _HereClient.payload = b"PNGDATA"
+    monkeypatch.setattr(tiles_route.httpx, "AsyncClient", _HereClient)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/api/tiles/here/5/16/10", follow_redirects=False)
+
+    assert resp.status_code == 200
+    assert resp.content == b"PNGDATA"
+    # Deckel deaktiviert (limit=0) -> keine Reservierung
+    reserve.assert_not_awaited()
+
+
 async def test_tile_proxies_here_response(monkeypatch):
     monkeypatch.setattr(tiles_route.geo_svc, "resolve_here_key", AsyncMock(return_value="KEY"))
-    monkeypatch.setattr(tiles_route.smartmaps_svc, "reserve_tile_quota", AsyncMock(return_value=True))
+    reserve = AsyncMock(return_value=True)
+    monkeypatch.setattr(tiles_route.smartmaps_svc, "reserve_tile_quota", reserve)
     monkeypatch.setattr(tiles_route.settings, "here_smartmaps_yearly_limit", 250000)
     _HereClient.raises = False
     _HereClient.payload = b"PNGDATA"
@@ -88,6 +109,9 @@ async def test_tile_proxies_here_response(monkeypatch):
     assert resp.status_code == 200
     assert resp.content == b"PNGDATA"
     assert resp.headers["content-type"] == "image/png"
+    assert resp.headers["cache-control"] == "public, max-age=86400"
+    # Happy-Path muss tatsächlich ein Kontingent reservieren
+    reserve.assert_awaited_once()
 
 
 async def test_tile_falls_back_to_osm_on_here_error(monkeypatch):
