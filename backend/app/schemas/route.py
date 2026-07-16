@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -67,5 +68,10 @@ class RouteResponse(BaseModel):
     geojson: dict | None = None
     fuel_analysis: FuelAnalysis | None = None
     kanalwechsel: list[KanalwechselEntry] = []
+    # Abmarschzeit und geplante Ankunft am Ziel. Beide werden auf derselben
+    # Zeitbasis wie die Wegpunkt-Zeiten berechnet, damit der Zeitplan konsistent
+    # dargestellt wird. planned_arrival = Abmarsch + Fahrzeit + alle Haltezeiten.
+    planned_departure: datetime | None = None
+    planned_arrival: datetime | None = None
 
     model_config = {"from_attributes": True}
