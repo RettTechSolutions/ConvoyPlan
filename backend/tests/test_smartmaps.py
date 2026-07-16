@@ -81,3 +81,30 @@ async def test_flush_pending_noop_when_nothing_pending():
     db = _FakeDB()
     await smartmaps.flush_pending(db)
     assert db.store == {}
+
+
+async def test_reserve_quota_rejected_attempt_not_counted():
+    db = _FakeDB()
+    assert await smartmaps.reserve_tile_quota(db, "2026", 2) is True
+    assert await smartmaps.reserve_tile_quota(db, "2026", 2) is True
+    # Deckel erreicht -> abgelehnte Reservierung darf nicht mitzählen
+    assert await smartmaps.reserve_tile_quota(db, "2026", 2) is False
+    await smartmaps.flush_pending(db)
+    assert db.store["smartmaps.tile_usage.2026"].value == "2"
+
+
+async def test_flush_retains_counts_when_commit_fails():
+    class _FailingDB(_FakeDB):
+        async def commit(self):
+            raise RuntimeError("commit boom")
+
+    db = _FailingDB()
+    await smartmaps.reserve_tile_quota(db, "2026", 100)
+    await smartmaps.reserve_tile_quota(db, "2026", 100)
+    with pytest.raises(RuntimeError):
+        await smartmaps.flush_pending(db)
+    # Nach dem fehlgeschlagenen Commit muessen die 2 Anfragen weiterhin pending
+    # sein und ein erneuter Flush (mit funktionierender DB) sie schreiben.
+    ok_db = _FakeDB()
+    await smartmaps.flush_pending(ok_db)
+    assert ok_db.store["smartmaps.tile_usage.2026"].value == "2"

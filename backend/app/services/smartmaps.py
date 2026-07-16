@@ -23,6 +23,7 @@ from app.models.settings import SystemSetting
 logger = logging.getLogger(__name__)
 
 _USAGE_KEY_PREFIX = "smartmaps.tile_usage"
+_FLUSH_INTERVAL_SECONDS = 30
 
 # Jahr ("YYYY") -> zuletzt aus der DB gelesener Stand.
 _flushed: dict[str, int] = {}
@@ -74,6 +75,7 @@ async def flush_pending(db: AsyncSession) -> None:
         to_flush = {year: count for year, count in _pending.items() if count > 0}
         if not to_flush:
             return
+        new_totals: dict[str, int] = {}
         for year, count in to_flush.items():
             key = usage_key(year)
             row = (
@@ -84,9 +86,14 @@ async def flush_pending(db: AsyncSession) -> None:
                 row.value = str(new_total)
             else:
                 db.add(SystemSetting(key=key, value=str(new_total)))
+            new_totals[year] = new_total
+        # Erst nach erfolgreichem Commit den In-Memory-Stand fortschreiben, damit
+        # bei einem Commit-Fehler die Zählungen erhalten bleiben und beim nächsten
+        # Flush (mit frischer Session) erneut versucht werden.
+        await db.commit()
+        for year, new_total in new_totals.items():
             _flushed[year] = new_total
             _pending[year] = 0
-        await db.commit()
 
 
 async def smartmaps_flush_loop() -> None:
@@ -97,7 +104,7 @@ async def smartmaps_flush_loop() -> None:
     """
     from app.database import AsyncSessionLocal
 
-    interval = 30
+    interval = _FLUSH_INTERVAL_SECONDS
     while True:
         await asyncio.sleep(interval)
         try:
