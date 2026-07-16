@@ -15,7 +15,7 @@ from jwt.exceptions import InvalidTokenError
 
 from app.api.routes import (
     auth, convoys, vehicles, routing, organizations,
-    tracking, weather, overpass, status, users, leitstellen, traffic, geocoding,
+    tracking, weather, overpass, status, users, leitstellen, traffic, geocoding, tiles,
 )
 from app.api.routes import org_leitstellen as org_leitstellen_router
 from app.api.routes import admin as admin_router
@@ -70,6 +70,7 @@ _TAGS_METADATA = [
     {"name": "weather", "description": "Wetterdaten entlang der Route abrufen."},
     {"name": "overpass", "description": "OpenStreetMap-/Overpass-Abfragen für Kartendaten."},
     {"name": "traffic", "description": "Live-Verkehrslage (HERE/TomTom) — aktiv bei gesetztem API-Key."},
+    {"name": "tiles", "description": "Kartenkacheln (SmartMaps/YellowMap, mit OSM-Fallback bei Jahresdeckel)."},
     {"name": "branding", "description": "Organisationsspezifisches Branding (Logo, Farben) anpassen."},
     {"name": "email-template", "description": "E-Mail-Vorlagen verwalten (Admin)."},
     {"name": "admin", "description": "Administrative Endpunkte für Superadmins."},
@@ -111,15 +112,25 @@ async def _lifespan(_app: FastAPI):
     # Schläft vor dem ersten Check, belastet den Start also nicht.
     from app.services.update_notify import update_notify_loop
     notify_task = asyncio.create_task(update_notify_loop())
+    # SmartMaps-Tile-Zähler: In-Memory-Jahresbudget wird alle 30s in die DB
+    # geflusht, statt pro Tile-Request synchron zu schreiben (Tiles entstehen
+    # in Bürsten von 20-50 Anfragen pro Kartenschwenk).
+    from app.services.smartmaps import flush_pending, smartmaps_flush_loop
+    smartmaps_task = asyncio.create_task(smartmaps_flush_loop())
     try:
         yield
     finally:
-        # Sauberes Herunterfahren: Task abbrechen und auf sein Ende warten.
+        # Sauberes Herunterfahren: Tasks abbrechen und auf ihr Ende warten.
         # CancelledError ist dabei der Normalfall; gather liefert ihn (statt
         # ihn zu werfen), sodass der Shutdown nie an ihm scheitert.
         notify_task.cancel()
-        outcome = await asyncio.gather(notify_task, return_exceptions=True)
-        logger.debug("Update-Notify-Task beendet: %r", outcome)
+        smartmaps_task.cancel()
+        outcome = await asyncio.gather(notify_task, smartmaps_task, return_exceptions=True)
+        logger.debug("Update-Notify-/SmartMaps-Flush-Task beendet: %r", outcome)
+        # Letzter Flush, damit bei Redeploys kein Zählstand verloren geht.
+        from app.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            await flush_pending(db)
 
 
 # Interactive docs are always on in development. In production they are off by
@@ -276,6 +287,7 @@ app.include_router(weather.router, prefix="/api")
 app.include_router(overpass.router, prefix="/api")
 app.include_router(traffic.router, prefix="/api")
 app.include_router(geocoding.router, prefix="/api")
+app.include_router(tiles.router, prefix="/api")
 app.include_router(status.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(admin_router.router, prefix="/api")

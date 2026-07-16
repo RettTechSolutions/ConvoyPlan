@@ -57,6 +57,7 @@
 	);
 	let closures = $state<FeatureCollection | null>(null);
 	let showClosures = $state(false);
+	let smartmapsEnabled = $state(false);
 	// Live-Verkehrslage (HERE/TomTom) — nur verfügbar, wenn eine Installation
 	// einen eigenen API-Key hinterlegt hat.
 	let flow = $state<FeatureCollection | null>(null);
@@ -1164,6 +1165,7 @@
 						<button class="btn-map" class:active={$mapMode === 'set-start'} onclick={() => mapMode.set($mapMode === 'set-start' ? 'idle' : 'set-start')}>📍 Start</button>
 						<button class="btn-map" class:active={$mapMode === 'set-end'} onclick={() => mapMode.set($mapMode === 'set-end' ? 'idle' : 'set-end')}>🏁 Ziel</button>
 						<button class="btn-map" class:active={$mapMode === 'add-waypoint'} onclick={() => mapMode.set($mapMode === 'add-waypoint' ? 'idle' : 'add-waypoint')}>➕ Wegpunkt</button>
+						<button class="btn-map" class:active={smartmapsEnabled} onclick={() => smartmapsEnabled = !smartmapsEnabled} title="SmartMaps statt OpenStreetMap anzeigen">🗺️ SmartMaps</button>
 					</div>
 					<details class="address-entry">
 						<summary>⌨ Start/Ziel per Adresse eingeben</summary>
@@ -1874,6 +1876,7 @@
 			flowGeojson={showFlow ? flow : null}
 			onMapClick={handleMapClick}
 			onMapMove={handleMapMove}
+			smartmapsEnabled={smartmapsEnabled}
 		/>
 	</main>
 </div>
