@@ -153,6 +153,15 @@ class Settings(BaseSettings):
     # wird. 0 = kein App-Deckel (dann greift nur HEREs eigenes Kontingent).
     here_monthly_limit: int = 25000
 
+    # Jahresdeckel für HERE SmartMaps (Raster Tile API v3) in der Hauptkarte:
+    # maximal so viele Tile-Anfragen pro Kalenderjahr. Ist der Deckel erreicht,
+    # liefert die Kachel-Proxy-Route für den Rest des Jahres OSM-Kacheln statt
+    # HERE (kein Ausfall, keine Kosten). HERE stellt ein Freikontingent von
+    # 300.000 Tile-Anfragen/Jahr — der Standard 250.000 lässt bewusst Puffer,
+    # damit nie abgerechnet wird. 0 = kein App-Deckel (dann greift nur HEREs
+    # eigenes Kontingent).
+    here_smartmaps_yearly_limit: int = 250000
+
     # Optional API key that protects the interactive docs. When set, the docs
     # are served (no ENABLE_DOCS needed) but require the key: open
     # /docs?key=<value> once (the key is remembered in an HttpOnly cookie), or
