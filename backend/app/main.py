@@ -111,15 +111,25 @@ async def _lifespan(_app: FastAPI):
     # Schläft vor dem ersten Check, belastet den Start also nicht.
     from app.services.update_notify import update_notify_loop
     notify_task = asyncio.create_task(update_notify_loop())
+    # SmartMaps-Tile-Zähler: In-Memory-Jahresbudget wird alle 30s in die DB
+    # geflusht, statt pro Tile-Request synchron zu schreiben (Tiles entstehen
+    # in Bürsten von 20-50 Anfragen pro Kartenschwenk).
+    from app.services.smartmaps import flush_pending, smartmaps_flush_loop
+    smartmaps_task = asyncio.create_task(smartmaps_flush_loop())
     try:
         yield
     finally:
-        # Sauberes Herunterfahren: Task abbrechen und auf sein Ende warten.
+        # Sauberes Herunterfahren: Tasks abbrechen und auf ihr Ende warten.
         # CancelledError ist dabei der Normalfall; gather liefert ihn (statt
         # ihn zu werfen), sodass der Shutdown nie an ihm scheitert.
         notify_task.cancel()
-        outcome = await asyncio.gather(notify_task, return_exceptions=True)
-        logger.debug("Update-Notify-Task beendet: %r", outcome)
+        smartmaps_task.cancel()
+        outcome = await asyncio.gather(notify_task, smartmaps_task, return_exceptions=True)
+        logger.debug("Update-Notify-/SmartMaps-Flush-Task beendet: %r", outcome)
+        # Letzter Flush, damit bei Redeploys kein Zählstand verloren geht.
+        from app.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            await flush_pending(db)
 
 
 # Interactive docs are always on in development. In production they are off by
