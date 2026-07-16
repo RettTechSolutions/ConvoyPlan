@@ -1391,7 +1391,7 @@
                                         <span class="hint">—</span>
                                     {/if}
                                 </td>
-                                <td>{user.email}</td>
+                                <td class="email-cell">{user.email}</td>
                                 <td>
                                     <div class="orgs-cell">
                                         {#each user.orgs as org}
@@ -1515,7 +1515,7 @@
                             <tr class:demo-row={org.is_demo}>
                                 <td>{org.name}</td>
                                 <td><code>{org.slug}</code></td>
-                                <td class="hint">{org.owner_email ?? '–'}</td>
+                                <td class="hint email-cell">{org.owner_email ?? '–'}</td>
                                 <td>{org.member_count}</td>
                                 <td class="actions-cell">
                                     <div>
@@ -2871,7 +2871,9 @@
 
     .error-bar { background: var(--color-primary-hover); color: white; padding: .4rem .75rem; border-radius: 4px; margin-bottom: 1rem; display: flex; justify-content: space-between; }
     .error-bar button { background: none; border: none; color: white; cursor: pointer; }
-    .section { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; box-shadow: var(--shadow); }
+    /* overflow-x: Breite Tabellen scrollen innerhalb der Karte statt rechts
+       über den Kartenrand hinauszulaufen. */
+    .section { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; box-shadow: var(--shadow); overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: .75rem; font-size: var(--text-sm); font-weight: 500; color: var(--text-1); }
 
     .create-form { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1rem; padding: .75rem; background: var(--surface-2); border-radius: 6px; border: 1px solid var(--border); }
@@ -2890,6 +2892,9 @@
     .user-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
     .user-table th { text-align: left; padding: .5rem; color: var(--text-muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--border); }
     .user-table td { padding: .5rem; border-bottom: 1px solid var(--border); vertical-align: middle; color: var(--text-2); }
+    /* Lange E-Mails (z. B. Demo-Adressen) dürfen umbrechen, damit die
+       Tabelle nicht breiter als die Karte wird. */
+    .user-table td.email-cell { overflow-wrap: anywhere; }
     .user-table tr.inactive td { opacity: .45; }
     .user-table tr.group-divider-row td {
         padding: .6rem .5rem .35rem;
@@ -3097,14 +3102,7 @@
         .tab-bar::-webkit-scrollbar { display: none; }
         .tab { flex-shrink: 0; padding: .55rem .85rem; font-size: var(--text-sm); }
 
-        .section {
-            padding: .75rem;
-            /* Wide tables scroll within the section instead of pushing the
-               whole page sideways. Keeping the <table> as native table
-               preserves column alignment; the section becomes the scroller. */
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-        }
+        .section { padding: .75rem; }
         .section :global(table) { white-space: nowrap; }
 
         .branding-panel {
