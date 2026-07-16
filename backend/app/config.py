@@ -153,25 +153,6 @@ class Settings(BaseSettings):
     # wird. 0 = kein App-Deckel (dann greift nur HEREs eigenes Kontingent).
     here_monthly_limit: int = 25000
 
-    # SmartMaps (YellowMap) als optionale Basemap in der Hauptkarte zur
-    # Routenberechnung. Eigener Key (nicht der HERE-Key) — bei YellowMap unter
-    # smartmaps.net registrieren. Ist kein Key gesetzt, fällt die Kachel-Route
-    # still auf OpenStreetMap zurück; das Feature ist dann de facto aus.
-    # Lässt sich alternativ im Admin-Panel hinterlegen (system_settings-Schlüssel
-    # "smartmaps.api_key" via smartmaps.resolve_api_key), was diese ENV überschreibt.
-    smartmaps_api_key: str = ""
-
-    # Kartenstil: essential | light | dark | grey | accessible | satellite.
-    smartmaps_style: str = "light"
-
-    # Jahresdeckel für SmartMaps-Kacheln: maximal so viele Tile-Anfragen pro
-    # Kalenderjahr. Ist der Deckel erreicht, liefert die Kachel-Proxy-Route für
-    # den Rest des Jahres OSM-Kacheln statt SmartMaps (kein Ausfall, keine
-    # Kosten). SmartMaps' Freikontingent liegt bei 300.000 Tile-Anfragen/Jahr —
-    # der Standard 250.000 lässt bewusst Puffer, damit nie abgerechnet wird.
-    # 0 = kein App-Deckel (dann greift nur SmartMaps' eigenes Kontingent).
-    smartmaps_yearly_limit: int = 250000
-
     # Optional API key that protects the interactive docs. When set, the docs
     # are served (no ENABLE_DOCS needed) but require the key: open
     # /docs?key=<value> once (the key is remembered in an HttpOnly cookie), or

@@ -4,7 +4,6 @@
 	import 'maplibre-gl/dist/maplibre-gl.css';
 	import { get } from 'svelte/store';
 	import { mapMode } from '$lib/stores/map';
-	import { getBaseUrl, getToken } from '$lib/api/client';
 	import type { Waypoint, VehiclePosition } from '$lib/api';
 	import type { Geometry, FeatureCollection } from 'geojson';
 
@@ -33,8 +32,6 @@
 		vehicleColors?: Map<string, string>;
 		/** Heading-up: rotate the map so the followed vehicle's heading points up. */
 		headingUp?: boolean;
-		/** Show the SmartMaps base layer instead of OSM. */
-		smartmapsEnabled?: boolean;
 	}
 
 	let {
@@ -54,7 +51,6 @@
 		vehicleNames = new Map(),
 		vehicleColors = new Map(),
 		headingUp = false,
-		smartmapsEnabled = false,
 	}: Props = $props();
 
 	const DEFAULT_MARKER_COLOR = '#e74c3c';
@@ -105,38 +101,14 @@
 						tileSize: 256,
 						attribution: '© OpenStreetMap contributors',
 					},
-					smartmaps: {
-						type: 'raster',
-						tiles: [`${getBaseUrl()}/api/tiles/smartmaps/{z}/{x}/{y}`],
-						tileSize: 256,
-						attribution: '© YellowMap · SmartMaps',
-					},
 				},
 				layers: [
 					{ id: 'osm', type: 'raster', source: 'osm' },
-					{
-						id: 'smartmaps',
-						type: 'raster',
-						source: 'smartmaps',
-						layout: { visibility: 'none' },
-					},
 				],
 			},
 			center: [10.0, 51.5],
 			zoom: 6,
 			attributionControl: false,
-			// MapLibre lädt Kacheln ohne unsere Auth-Header. Für den
-			// SmartMaps-Proxy (/api/tiles/…, get_current_user-geschützt) den
-			// Bearer-Token per transformRequest anhängen — sonst 401 pro Kachel.
-			// Der 302-Fallback auf OSM ist cross-origin; der Browser entfernt den
-			// Authorization-Header dabei automatisch (Token leakt nie an OSM).
-			transformRequest: (url) => {
-				if (url.includes('/api/tiles/smartmaps/')) {
-					const token = getToken();
-					if (token) return { url, headers: { Authorization: `Bearer ${token}` } };
-				}
-				return undefined;
-			},
 		});
 
 		map.addControl(new maplibregl.NavigationControl());
@@ -505,15 +477,6 @@
 		const src = map.getSource('flow') as maplibregl.GeoJSONSource | undefined;
 		if (!src) return;
 		src.setData((flowGeojson as FeatureCollection) ?? empty());
-	});
-
-	// Basemap-Umschaltung: OSM <-> HERE SmartMaps (beide Layer existieren
-	// immer, nur die Sichtbarkeit wechselt — kein map.setStyle(), das würde
-	// alle dynamisch hinzugefügten Sourcen/Layer oben zerstören).
-	$effect(() => {
-		if (!ready) return;
-		map.setLayoutProperty('osm', 'visibility', smartmapsEnabled ? 'none' : 'visible');
-		map.setLayoutProperty('smartmaps', 'visibility', smartmapsEnabled ? 'visible' : 'none');
 	});
 </script>
 
