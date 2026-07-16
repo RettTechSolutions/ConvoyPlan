@@ -17,6 +17,7 @@ from app.api.routes import (
     auth, convoys, vehicles, routing, organizations,
     tracking, weather, overpass, status, users, leitstellen, traffic, geocoding,
 )
+from app.api.routes import org_branding as org_branding_router
 from app.api.routes import org_leitstellen as org_leitstellen_router
 from app.api.routes import admin as admin_router
 from app.api.routes import branding as branding_router
@@ -283,6 +284,7 @@ app.include_router(setup_router.router, prefix="/api")
 app.include_router(leitstellen.router, prefix="/api")
 app.include_router(org_leitstellen_router.router, prefix="/api")
 app.include_router(branding_router.router, prefix="/api")
+app.include_router(org_branding_router.router, prefix="/api")
 app.include_router(email_template_router.router, prefix="/api")
 app.include_router(license_router.router, prefix="/api")
 app.include_router(share_links_router.router, prefix="/api")

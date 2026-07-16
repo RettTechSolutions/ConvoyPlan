@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import re
 import defusedxml.ElementTree as _ET
@@ -10,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db
+from app.models.organization import Organization
 from app.models.settings import SystemSetting
 from app.models.user import User
 from app.schemas.branding import BrandingResponse, BrandingUpdate
@@ -79,12 +81,37 @@ BRANDING_DEFAULTS: dict[str, str] = {
 
 LOGOS_DIR = Path("/uploads/logos")
 
-async def _get_branding_response(db: AsyncSession) -> BrandingResponse:
+async def _global_branding_dict(db: AsyncSession) -> dict[str, str]:
+    """Platform-wide branding: defaults overlaid with SystemSetting values."""
     result = await db.execute(
         select(SystemSetting).where(SystemSetting.key.like("branding.%"))
     )
     stored = {s.key: s.value for s in result.scalars().all()}
-    merged: dict[str, str] = {**BRANDING_DEFAULTS, **stored}
+    return {**BRANDING_DEFAULTS, **stored}
+
+
+def org_branding_overrides(org: Organization) -> dict[str, str]:
+    """Parse the org's branding JSON; empty dict if unset or malformed."""
+    if not org.branding:
+        return {}
+    try:
+        data = json.loads(org.branding)
+    except ValueError:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {k: v for k, v in data.items() if isinstance(v, str)}
+
+
+async def org_branding_response(db: AsyncSession, org: Organization) -> BrandingResponse:
+    """Effective branding for an org: platform branding + org overrides on top."""
+    merged = await _global_branding_dict(db)
+    for key, value in org_branding_overrides(org).items():
+        merged[f"branding.{key}"] = value
+    return _branding_response_from(merged)
+
+
+def _branding_response_from(merged: dict[str, str]) -> BrandingResponse:
     logo_main = merged["branding.logo_main"]
     logo_horizontal = merged["branding.logo_horizontal"]
     return BrandingResponse(
@@ -103,6 +130,10 @@ async def _get_branding_response(db: AsyncSession) -> BrandingResponse:
     )
 
 
+async def _get_branding_response(db: AsyncSession) -> BrandingResponse:
+    return _branding_response_from(await _global_branding_dict(db))
+
+
 async def _upsert(db: AsyncSession, key: str, value: str) -> None:
     result = await db.execute(select(SystemSetting).where(SystemSetting.key == key))
     setting = result.scalar_one_or_none()
@@ -115,6 +146,19 @@ async def _upsert(db: AsyncSession, key: str, value: str) -> None:
 @router.get("", response_model=BrandingResponse)
 async def get_branding(db: AsyncSession = Depends(get_db)):
     return await _get_branding_response(db)
+
+
+@router.get("/org/{slug}", response_model=BrandingResponse)
+async def get_org_branding_by_slug(slug: str, db: AsyncSession = Depends(get_db)):
+    """Public: effective branding for one org (platform branding + org overrides).
+
+    Like GET /branding this is unauthenticated so the org login page can already
+    be themed; colors/names/logos are not secrets."""
+    result = await db.execute(select(Organization).where(Organization.slug == slug))
+    org = result.scalar_one_or_none()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organisation nicht gefunden")
+    return await org_branding_response(db, org)
 
 
 @router.put("", response_model=BrandingResponse)
