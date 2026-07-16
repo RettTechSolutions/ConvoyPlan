@@ -56,6 +56,14 @@
     });
 </script>
 
+<svelte:head>
+    <!-- Tab-Titel = Organisationsname, damit User sofort sehen, in welchem Portal sie sind.
+         Solange der Name noch nicht geladen ist, greift der Titel aus dem Root-Layout. -->
+    {#if $orgStore?.org_name}
+        <title>{$orgStore.org_name}</title>
+    {/if}
+</svelte:head>
+
 {#if ready}
     {@render children()}
 {/if}
