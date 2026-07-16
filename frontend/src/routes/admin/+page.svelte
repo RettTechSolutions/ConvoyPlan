@@ -2394,6 +2394,7 @@
                                 <th>Code (Slug)</th>
                                 <th>Gestartet</th>
                                 <th>Läuft ab</th>
+                                <th>Herkunft</th>
                                 <th>Marschverbände</th>
                                 <th></th>
                             </tr>
@@ -2405,6 +2406,18 @@
                                     <td><code>{session.slug}</code></td>
                                     <td class="hint">{new Date(session.created_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</td>
                                     <td class="hint">{new Date(session.expires_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</td>
+                                    <td>
+                                        {#if session.created_location || session.created_ip}
+                                            {#if session.created_location}
+                                                {session.created_location}<br>
+                                            {/if}
+                                            {#if session.created_ip}
+                                                <code class="hint" title="IP-Adresse bei Sitzungsstart">{session.created_ip}</code>
+                                            {/if}
+                                        {:else}
+                                            <span class="hint">–</span>
+                                        {/if}
+                                    </td>
                                     <td>{session.convoy_count}</td>
                                     <td class="actions-cell">
                                         <div>

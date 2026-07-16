@@ -524,6 +524,8 @@ class DemoSessionInfo(BaseModel):
     created_at: datetime
     expires_at: datetime
     convoy_count: int
+    created_ip: str | None = None
+    created_location: str | None = None
 
 
 @router.get("/demo-sessions", response_model=list[DemoSessionInfo])
@@ -557,6 +559,8 @@ async def list_demo_sessions(
             created_at=o.created_at,
             expires_at=demo_svc.effective_expiry(o, fallback_hours),
             convoy_count=convoy_counts.get(o.id, 0),
+            created_ip=o.demo_created_ip,
+            created_location=o.demo_created_location,
         )
         for o in orgs
     ]
@@ -603,6 +607,7 @@ async def extend_demo_session(
     return DemoSessionInfo(
         id=org.id, name=org.name, slug=org.slug, created_at=org.created_at,
         expires_at=org.demo_expires_at, convoy_count=convoy_count,
+        created_ip=org.demo_created_ip, created_location=org.demo_created_location,
     )
 
 

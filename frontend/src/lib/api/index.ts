@@ -617,6 +617,8 @@ export interface DemoSessionInfo {
     created_at: string;
     expires_at: string;
     convoy_count: number;
+    created_ip: string | null;
+    created_location: string | null;
 }
 
 export interface BrandingData {
