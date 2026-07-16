@@ -4,6 +4,7 @@
 	import 'maplibre-gl/dist/maplibre-gl.css';
 	import { get } from 'svelte/store';
 	import { mapMode } from '$lib/stores/map';
+	import { getBaseUrl, getToken } from '$lib/api/client';
 	import type { Waypoint, VehiclePosition } from '$lib/api';
 	import type { Geometry, FeatureCollection } from 'geojson';
 
@@ -106,7 +107,7 @@
 					},
 					'here-smartmaps': {
 						type: 'raster',
-						tiles: ['/api/tiles/here/{z}/{x}/{y}'],
+						tiles: [`${getBaseUrl()}/api/tiles/here/{z}/{x}/{y}`],
 						tileSize: 256,
 						attribution: '© HERE',
 					},
@@ -124,6 +125,18 @@
 			center: [10.0, 51.5],
 			zoom: 6,
 			attributionControl: false,
+			// MapLibre lädt Kacheln ohne unsere Auth-Header. Für den
+			// SmartMaps-Proxy (/api/tiles/…, get_current_user-geschützt) den
+			// Bearer-Token per transformRequest anhängen — sonst 401 pro Kachel.
+			// Der 302-Fallback auf OSM ist cross-origin; der Browser entfernt den
+			// Authorization-Header dabei automatisch (Token leakt nie an OSM).
+			transformRequest: (url) => {
+				if (url.includes('/api/tiles/here/')) {
+					const token = getToken();
+					if (token) return { url, headers: { Authorization: `Bearer ${token}` } };
+				}
+				return undefined;
+			},
 		});
 
 		map.addControl(new maplibregl.NavigationControl());
