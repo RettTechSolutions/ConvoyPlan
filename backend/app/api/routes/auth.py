@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 import bcrypt
 import pyotp
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 import jwt as _jwt
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -17,6 +17,7 @@ from app.database import get_db
 from app.models.organization import Organization, UserOrganization
 from app.models.user import User
 from app.schemas.user import (
+    NormalizedEmail,
     PasswordChangeRequest,
     PasswordResetRequest,
     UserCreate,
@@ -24,8 +25,9 @@ from app.schemas.user import (
 )
 from app.services import audit
 from app.services import demo as demo_svc
+from app.services import geoip
 from app.services.crypto import decrypt_secret, encrypt_secret
-from app.services.email import send_password_email
+from app.services.email import build_login_url, send_password_email
 from app.services.password import (
     MAX_PASSWORD_LENGTH,
     assert_password_not_breached,
@@ -174,7 +176,10 @@ def decode_mfa_pending_token(token: str) -> dict:
 # ── Login ─────────────────────────────────────────────────────────────────────
 
 class LoginRequest(BaseModel):
-    email: str
+    # Normalised (trim + lower-case) so login is case-insensitive and matches the
+    # normalised addresses stored at sign-up. Kept as a plain string rather than
+    # EmailStr so a malformed value still yields a 401, not a 422.
+    email: NormalizedEmail
     password: str = Field(max_length=MAX_PASSWORD_LENGTH)
     org_slug: str | None = None
 
@@ -411,11 +416,11 @@ async def request_password_reset(
             actor_email=user.email,
         )
 
-        base_url = settings.app_base_url.rstrip("/")
-        if org_for_link:
-            login_url = f"{base_url}/o/{org_for_link.slug}/login"
-        else:
-            login_url = f"{base_url}/login"
+        login_url = build_login_url(
+            settings.app_base_url,
+            org_slug=org_for_link.slug if org_for_link else None,
+            is_superadmin=user.is_superadmin,
+        )
 
         # Dispatch the email in the background so the response isn't blocked by
         # the SMTP round-trip. Errors are swallowed there — the caller cannot
@@ -630,7 +635,11 @@ async def demo_session_info(
     response_model=DemoSessionResponse,
     dependencies=[Depends(rate_limit("demo", max_attempts=10, window_seconds=3600, count_attempts=True))],
 )
-async def create_demo_session(request: Request, db: AsyncSession = Depends(get_db)):
+async def create_demo_session(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
     """Create an ephemeral demo organisation + user and return a short-lived token.
 
     Requires the demo mode to be enabled (admin-panel toggle; the DEMO_ENABLED
@@ -663,15 +672,20 @@ async def create_demo_session(request: Request, db: AsyncSession = Depends(get_d
 
     session_hours = await demo_svc.get_demo_session_hours(db)
     expire = datetime.now(timezone.utc) + timedelta(hours=session_hours)
+    client_ip = audit.client_ip(request)
     demo_org = Organization(
         name=f"Demo {slug[-6:].upper()}", slug=slug, owner_id=demo_user.id,
-        is_demo=True, demo_expires_at=expire,
+        is_demo=True, demo_expires_at=expire, demo_created_ip=client_ip,
     )
     db.add(demo_org)
     await db.flush()
 
     db.add(UserOrganization(user_id=demo_user.id, organization_id=demo_org.id, role="planer"))
     await db.commit()
+
+    # Rough geo location for the admin panel ("welche Demo gehört zu wem") —
+    # resolved after the response so a slow geo API never delays demo creation.
+    background_tasks.add_task(geoip.resolve_demo_origin, demo_org.id, client_ip)
 
     # The JWT gets a generous ceiling so an admin-extended session keeps working;
     # the real cutoff is enforced server-side — the retention job deletes the

@@ -5,7 +5,7 @@
     import LeitstellenTable from '$lib/components/LeitstellenTable.svelte';
     import { auth } from '$lib/stores/auth';
     import { getStreamTicket } from '$lib/api/client';
-    import { adminApi, mfaApi, leistellenApi, licenseApi, emailTemplateApi, type AdminUser, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type EmailTemplate, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoSessionInfo } from '$lib/api';
+    import { adminApi, mfaApi, leistellenApi, licenseApi, emailTemplateApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type EmailTemplate, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoSessionInfo } from '$lib/api';
     import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
     import SuperadminLogin from '$lib/components/SuperadminLogin.svelte';
@@ -27,9 +27,22 @@
     let loading = $state(true);
     let error = $state('');
     let showCreateForm = $state(false);
-    let newUser = $state({ email: '', first_name: '', last_name: '', password: '', is_superadmin: false });
-    let createPwVisible = $state(false);
+    let newUser = $state({ email: '', first_name: '', last_name: '', is_superadmin: false, org_id: '', org_role: 'beobachter' });
+    let createOrgs = $state<AdminOrg[]>([]);
     let createAndEmailWorking = $state(false);
+
+    /** Load orgs for the create-user org dropdown (once). */
+    async function loadCreateOrgs() {
+        if (createOrgs.length) return;
+        try {
+            createOrgs = await adminApi.listOrgs();
+        } catch { /* ignore — dropdown just stays empty */ }
+    }
+
+    function toggleCreateForm() {
+        showCreateForm = !showCreateForm;
+        if (showCreateForm) loadCreateOrgs();
+    }
 
     onMount(async () => {
         if ($auth.is_superadmin) {
@@ -177,22 +190,29 @@
         finally { loading = false; }
     }
 
-    function generatePasswordForCreate() {
-        const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%&*';
-        const randomValues = crypto.getRandomValues(new Uint8Array(16));
-        newUser.password = Array.from(randomValues, v => charset[v % charset.length]).join('');
-        createPwVisible = true;
+    function resetCreateForm() {
+        newUser = { email: '', first_name: '', last_name: '', is_superadmin: false, org_id: '', org_role: 'beobachter' };
+        showCreateForm = false;
     }
 
-    function resetCreateForm() {
-        newUser = { email: '', first_name: '', last_name: '', password: '', is_superadmin: false };
-        createPwVisible = false;
-        showCreateForm = false;
+    /** Build the createUser payload, omitting the optional org fields when none picked. */
+    function createUserPayload(): AdminUserCreate {
+        const payload: AdminUserCreate = {
+            email: newUser.email,
+            first_name: newUser.first_name,
+            last_name: newUser.last_name,
+            is_superadmin: newUser.is_superadmin,
+        };
+        if (newUser.org_id) {
+            payload.org_id = newUser.org_id;
+            payload.org_role = newUser.org_role;
+        }
+        return payload;
     }
 
     async function createUser() {
         try {
-            await adminApi.createUser(newUser);
+            await adminApi.createUser(createUserPayload());
             resetCreateForm();
             await loadUsers();
         } catch (e: unknown) {
@@ -203,7 +223,7 @@
     async function createAndEmailUser() {
         createAndEmailWorking = true;
         try {
-            const created = await adminApi.createUser(newUser);
+            const created = await adminApi.createUser(createUserPayload());
             await adminApi.sendUserPassword(created.id);
             resetCreateForm();
             await loadUsers();
@@ -830,6 +850,7 @@
         finally { trafficSaving = false; }
     }
 
+
     // ── MFA ──────────────────────────────────────────────────────────────────
     let mfaEnabled = $state(false);
     let mfaSetupSecret = $state('');
@@ -1318,7 +1339,7 @@
         <div class="section">
             <div class="section-header">
                 <strong>Benutzer ({users.length - demoUserCount}{demoUserCount > 0 ? ` + ${demoUserCount} Demo` : ''})</strong>
-                <button class="btn-small" onclick={() => (showCreateForm = !showCreateForm)}>+ Neu</button>
+                <button class="btn-small" onclick={toggleCreateForm}>+ Neu</button>
             </div>
 
             {#if showCreateForm}
@@ -1328,23 +1349,30 @@
                         <input placeholder="Nachname" type="text" bind:value={newUser.last_name} autocomplete="off" />
                     </div>
                     <input placeholder="E-Mail *" type="email" bind:value={newUser.email} required />
-                    <div class="pw-input-row">
-                        <input
-                            placeholder="Passwort *"
-                            type={createPwVisible ? 'text' : 'password'}
-                            bind:value={newUser.password}
-                            required
-                            class="pw-field"
-                        />
-                        <button type="button" class="btn-tiny" onclick={generatePasswordForCreate} title="Sicheres Passwort generieren">🔑</button>
-                        {#if newUser.password && createPwVisible}
-                            <button type="button" class="btn-tiny" onclick={() => navigator.clipboard.writeText(newUser.password)} title="Kopieren">📋</button>
+                    <div class="org-input-row">
+                        <select bind:value={newUser.org_id} class="org-select">
+                            <option value="">Organisation (optional)…</option>
+                            {#each createOrgs.filter(o => !o.is_demo) as o}
+                                <option value={o.id}>{o.name} ({o.slug})</option>
+                            {/each}
+                        </select>
+                        {#if newUser.org_id}
+                            <select bind:value={newUser.org_role} class="role-select">
+                                <option value="beobachter">Beobachter</option>
+                                <option value="fahrer">Fahrer</option>
+                                <option value="planer">Planer</option>
+                                <option value="admin">Admin</option>
+                            </select>
                         {/if}
                     </div>
                     <label class="checkbox-label">
                         <input type="checkbox" bind:checked={newUser.is_superadmin} />
                         Superadmin
                     </label>
+                    <p class="hint create-pw-hint">
+                        🔑 Das Passwort wird automatisch generiert. Mit „Anlegen &amp; Einladen" erhält
+                        der Benutzer seine Zugangsdaten (inkl. Login-Link) per E-Mail.
+                    </p>
                     <div class="create-actions">
                         <button type="submit">Anlegen</button>
                         <button
@@ -1390,7 +1418,7 @@
                                         <span class="hint">—</span>
                                     {/if}
                                 </td>
-                                <td>{user.email}</td>
+                                <td class="email-cell">{user.email}</td>
                                 <td>
                                     <div class="orgs-cell">
                                         {#each user.orgs as org}
@@ -1514,7 +1542,7 @@
                             <tr class:demo-row={org.is_demo}>
                                 <td>{org.name}</td>
                                 <td><code>{org.slug}</code></td>
-                                <td class="hint">{org.owner_email ?? '–'}</td>
+                                <td class="hint email-cell">{org.owner_email ?? '–'}</td>
                                 <td>{org.member_count}</td>
                                 <td class="actions-cell">
                                     <div>
@@ -2393,6 +2421,7 @@
                                 <th>Code (Slug)</th>
                                 <th>Gestartet</th>
                                 <th>Läuft ab</th>
+                                <th>Herkunft</th>
                                 <th>Marschverbände</th>
                                 <th></th>
                             </tr>
@@ -2404,6 +2433,18 @@
                                     <td><code>{session.slug}</code></td>
                                     <td class="hint">{new Date(session.created_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</td>
                                     <td class="hint">{new Date(session.expires_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</td>
+                                    <td>
+                                        {#if session.created_location || session.created_ip}
+                                            {#if session.created_location}
+                                                {session.created_location}<br>
+                                            {/if}
+                                            {#if session.created_ip}
+                                                <code class="hint" title="IP-Adresse bei Sitzungsstart">{session.created_ip}</code>
+                                            {/if}
+                                        {:else}
+                                            <span class="hint">–</span>
+                                        {/if}
+                                    </td>
                                     <td>{session.convoy_count}</td>
                                     <td class="actions-cell">
                                         <div>
@@ -2870,7 +2911,9 @@
 
     .error-bar { background: var(--color-primary-hover); color: white; padding: .4rem .75rem; border-radius: 4px; margin-bottom: 1rem; display: flex; justify-content: space-between; }
     .error-bar button { background: none; border: none; color: white; cursor: pointer; }
-    .section { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; box-shadow: var(--shadow); }
+    /* overflow-x: Breite Tabellen scrollen innerhalb der Karte statt rechts
+       über den Kartenrand hinauszulaufen. */
+    .section { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; box-shadow: var(--shadow); overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: .75rem; font-size: var(--text-sm); font-weight: 500; color: var(--text-1); }
 
     .create-form { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1rem; padding: .75rem; background: var(--surface-2); border-radius: 6px; border: 1px solid var(--border); }
@@ -2879,6 +2922,8 @@
     .create-form button[type="submit"] { align-self: flex-start; padding: .5rem 1rem; background: #6B7F4D; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: var(--text-sm); }
     .pw-input-row { display: flex; align-items: center; gap: .3rem; }
     .pw-input-row .pw-field { flex: 1; }
+    .org-input-row { display: flex; gap: .5rem; align-items: center; }
+    .create-pw-hint { margin: 0; font-size: var(--text-sm); color: var(--text-2); line-height: 1.4; }
     .name-input-row { display: flex; gap: .5rem; }
     .name-input-row input { flex: 1; min-width: 0; }
     .create-actions { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
@@ -2889,6 +2934,9 @@
     .user-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
     .user-table th { text-align: left; padding: .5rem; color: var(--text-muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--border); }
     .user-table td { padding: .5rem; border-bottom: 1px solid var(--border); vertical-align: middle; color: var(--text-2); }
+    /* Lange E-Mails (z. B. Demo-Adressen) dürfen umbrechen, damit die
+       Tabelle nicht breiter als die Karte wird. */
+    .user-table td.email-cell { overflow-wrap: anywhere; }
     .user-table tr.inactive td { opacity: .45; }
     .user-table tr.group-divider-row td {
         padding: .6rem .5rem .35rem;
@@ -3096,14 +3144,7 @@
         .tab-bar::-webkit-scrollbar { display: none; }
         .tab { flex-shrink: 0; padding: .55rem .85rem; font-size: var(--text-sm); }
 
-        .section {
-            padding: .75rem;
-            /* Wide tables scroll within the section instead of pushing the
-               whole page sideways. Keeping the <table> as native table
-               preserves column alignment; the section becomes the scroller. */
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-        }
+        .section { padding: .75rem; }
         .section :global(table) { white-space: nowrap; }
 
         .branding-panel {

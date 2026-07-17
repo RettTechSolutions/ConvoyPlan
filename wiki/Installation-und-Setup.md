@@ -176,6 +176,8 @@ openssl rand -hex 32
 |---|---|
 | `HERE_TRAFFIC_API_KEY` / `TOMTOM_TRAFFIC_API_KEY` | Optionale API-Keys für die Live-Verkehrslage. Ohne Key bleibt die Funktion inaktiv. Alternativ im Admin-Bereich hinterlegbar (hat Vorrang). |
 | `TRAFFIC_FLOW_PROVIDER` | Anbieter erzwingen (`here`/`tomtom`). Standard: automatisch, HERE bevorzugt. |
+| `HERE_API_KEY` | Optional. Aktiviert die Adresssuche im Plan-Editor über HERE Geocoding & Search (serverseitig proxied). Leer = `HERE_TRAFFIC_API_KEY` mitbenutzen bzw. Photon-Fallback. |
+| `HERE_MONTHLY_LIMIT` | Kostendeckel für die Adresssuche: max. HERE-Anfragen pro Kalendermonat (Standard `25000`, `0` = kein App-Deckel). Deckel erreicht → automatischer Photon-Fallback. |
 | `OPENDATA_TRAFFIC_ENABLED` | Offene Baustellen-/Sperrungsfeeds aktiviert lassen. Standard: `true`. |
 | `OPENDATA_TRAFFIC_FEEDS` | Kommaseparierte Liste `format\|url`. Formate: `mobidata_bw`, `berlin_viz`, `datex2`. |
 | `OPENDATA_TRAFFIC_CLIENT_CERT` | Client-Zertifikat (PEM) für per mTLS geschützte `datex2`-Feeds (mobilithek). |

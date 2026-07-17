@@ -101,6 +101,10 @@ export interface RouteResult {
 	routing_params: Record<string, unknown> | null; geojson: Geometry | null;
 	fuel_analysis: FuelAnalysis | null;
 	kanalwechsel?: KanalwechselEntry[];
+	/** Abmarschzeit (ISO), auf derselben Zeitbasis wie die Wegpunkt-Zeiten. */
+	planned_departure?: string | null;
+	/** Geplante Ankunft am Ziel (ISO); Abmarsch + Fahrzeit + Haltezeiten. */
+	planned_arrival?: string | null;
 }
 
 export interface Organization {
@@ -442,10 +446,14 @@ export interface AdminUser {
 
 export interface AdminUserCreate {
     email: string;
-    password: string;
+    /** Optional — when omitted the backend generates a strong random password. */
+    password?: string;
     first_name?: string;
     last_name?: string;
     is_superadmin?: boolean;
+    /** Optional org to assign the new user to on creation. */
+    org_id?: string;
+    org_role?: string;
 }
 
 export interface AdminUserUpdate {
@@ -592,7 +600,6 @@ export interface TrafficKeysResponse {
     provider: string | null;
     forced: string;
 }
-
 export interface UpdateMode {
     mode: 'auto' | 'notify';
     source: 'db' | 'env';
@@ -614,6 +621,8 @@ export interface DemoSessionInfo {
     created_at: string;
     expires_at: string;
     convoy_count: number;
+    created_ip: string | null;
+    created_location: string | null;
 }
 
 export interface BrandingData {
@@ -649,6 +658,16 @@ export const brandingApi = {
     update: (data: BrandingUpdate) => api.put<BrandingData>('/api/branding', data),
     uploadLogo: (slot: 'main' | 'horizontal', file: File) =>
         uploadFile<BrandingData>(`/api/branding/logo/${slot}`, file),
+};
+
+// Org-scoped Branding: wirkt nur für die eigene Organisation (Org-Admin),
+// nie plattformweit. reset() entfernt alle Overrides → Plattform-Branding.
+export const orgBrandingApi = {
+    get: () => api.get<BrandingData>('/api/org/branding'),
+    update: (data: BrandingUpdate) => api.put<BrandingData>('/api/org/branding', data),
+    uploadLogo: (slot: 'main' | 'horizontal', file: File) =>
+        uploadFile<BrandingData>(`/api/org/branding/logo/${slot}`, file),
+    reset: () => api.delete<BrandingData>('/api/org/branding'),
 };
 
 export interface ZusatzKanal {

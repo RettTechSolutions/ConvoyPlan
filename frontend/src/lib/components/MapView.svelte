@@ -102,7 +102,9 @@
 						attribution: '© OpenStreetMap contributors',
 					},
 				},
-				layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
+				layers: [
+					{ id: 'osm', type: 'raster', source: 'osm' },
+				],
 			},
 			center: [10.0, 51.5],
 			zoom: 6,

@@ -53,7 +53,9 @@ Sobald Start, Ziel und Wegpunkte gesetzt sind, berechnet ConvoyPlan automatisch:
 - **Abfahrtszeit** (Ankunft + Haltedauer)
 - **Gesamtfahrtdauer** und **Gesamtstrecke**
 
-Die Berechnung berücksichtigt die konfigurierten Urban-/Rural-Geschwindigkeiten sowie alle eingetragenen Haltezeiten.
+Die Fahrzeit bis zu jedem Wegpunkt wird **streckenproportional** zur Gesamtroute berechnet, nicht gleichmäßig auf alle Wegpunkte verteilt: Ein Wegpunkt bei 40 % der Streckenlänge erhält auch rechnerisch 40 % der Gesamtfahrzeit als ETA. Haltezeiten an vorherigen Wegpunkten verschieben alle nachfolgenden Zeiten entsprechend nach hinten.
+
+Der **Zeitplan**-Tab zeigt zusätzlich zu den Wegpunkten eine **Abmarsch**-Zeile (Startzeit des Konvois) und eine **Ziel**-Zeile mit der berechneten Ankunftszeit am Zielort (Startzeit + Gesamtfahrzeit + alle Haltezeiten).
 
 ---
 

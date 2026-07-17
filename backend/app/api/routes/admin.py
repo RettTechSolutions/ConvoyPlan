@@ -40,7 +40,7 @@ from app.services.update_check import (
 )
 from app.services import demo as demo_svc
 from app.services import traffic_flow as traffic_flow_svc
-from app.services.email import save_smtp_settings, send_password_email, test_smtp_connection
+from app.services.email import build_login_url, save_smtp_settings, send_password_email, test_smtp_connection
 from app.services.password import assert_password_not_breached, generate_password, validate_password
 
 logger = logging.getLogger(__name__)
@@ -94,29 +94,54 @@ async def create_user(
     existing = await db.execute(select(User).where(User.email == data.email))
     if existing.scalar_one_or_none():
         raise HTTPException(400, "Email already registered")
-    validate_password(data.password)
-    await assert_password_not_breached(data.password)
+
+    # Resolve the optional org membership target before creating anything, so
+    # a bad org_id fails cleanly instead of leaving an orphaned user behind.
+    org: Organization | None = None
+    if data.org_id is not None:
+        org_result = await db.execute(select(Organization).where(Organization.id == data.org_id))
+        org = org_result.scalar_one_or_none()
+        if org is None:
+            raise HTTPException(404, "Organization not found")
+
+    # Use the admin-supplied password if given, otherwise generate a strong one.
+    # generate_password() already satisfies the policy, so it needs no re-check.
+    if data.password:
+        validate_password(data.password)
+        await assert_password_not_breached(data.password)
+        password = data.password
+    else:
+        password = generate_password()
+
     user = User(
         email=data.email,
         first_name=data.first_name,
         last_name=data.last_name,
-        hashed_password=bcrypt.hashpw(data.password.encode(), bcrypt.gensalt()).decode(),
+        hashed_password=bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode(),
         is_superadmin=data.is_superadmin,
     )
     db.add(user)
+    await db.flush()  # assign user.id so the membership can reference it
+
+    orgs: list[AdminUserOrgInfo] = []
+    if org is not None:
+        db.add(UserOrganization(user_id=user.id, organization_id=org.id, role=data.org_role))
+        orgs = [AdminUserOrgInfo(id=org.id, name=org.name, role=data.org_role)]
+
     await db.commit()
     await db.refresh(user)
     await audit.record(
         db, audit.USER_CREATED, request=request, actor_id=current.id,
         actor_email=current.email, target_type="user", target_id=user.id,
         detail={"email": user.email, "name": user.full_name or None,
-                "is_superadmin": user.is_superadmin},
+                "is_superadmin": user.is_superadmin,
+                "org": org.slug if org is not None else None},
     )
     return AdminUserResponse(id=user.id, email=user.email,
                              first_name=user.first_name, last_name=user.last_name,
                              is_active=user.is_active,
                              is_superadmin=user.is_superadmin, mfa_enabled=user.mfa_enabled,
-                             created_at=user.created_at, orgs=[])
+                             created_at=user.created_at, orgs=orgs)
 
 
 @router.patch("/users/{user_id}", response_model=AdminUserResponse)
@@ -524,6 +549,8 @@ class DemoSessionInfo(BaseModel):
     created_at: datetime
     expires_at: datetime
     convoy_count: int
+    created_ip: str | None = None
+    created_location: str | None = None
 
 
 @router.get("/demo-sessions", response_model=list[DemoSessionInfo])
@@ -557,6 +584,8 @@ async def list_demo_sessions(
             created_at=o.created_at,
             expires_at=demo_svc.effective_expiry(o, fallback_hours),
             convoy_count=convoy_counts.get(o.id, 0),
+            created_ip=o.demo_created_ip,
+            created_location=o.demo_created_location,
         )
         for o in orgs
     ]
@@ -603,6 +632,7 @@ async def extend_demo_session(
     return DemoSessionInfo(
         id=org.id, name=org.name, slug=org.slug, created_at=org.created_at,
         expires_at=org.demo_expires_at, convoy_count=convoy_count,
+        created_ip=org.demo_created_ip, created_location=org.demo_created_location,
     )
 
 
@@ -1115,13 +1145,13 @@ async def send_user_password(
     user.token_version += 1  # revoke the user's existing sessions
     await db.commit()
 
-    # Pick login URL: first org login page if member, else superadmin login
-    base_url = settings.app_base_url.rstrip("/")
-    if user.org_memberships:
-        first_org = user.org_memberships[0].organization
-        login_url = f"{base_url}/o/{first_org.slug}/login" if first_org else f"{base_url}/login"
-    else:
-        login_url = f"{base_url}/login"
+    # Pick login URL: first org login page if member, else superadmin/root.
+    first_org = user.org_memberships[0].organization if user.org_memberships else None
+    login_url = build_login_url(
+        settings.app_base_url,
+        org_slug=first_org.slug if first_org else None,
+        is_superadmin=user.is_superadmin,
+    )
 
     try:
         await send_password_email(

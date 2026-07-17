@@ -3,7 +3,6 @@ import json as _json
 import logging
 import re
 import uuid
-from datetime import timezone
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, File, Query, UploadFile
@@ -335,6 +334,26 @@ async def get_route(
             route_duration_s=route.duration_s or 0,
         )
 
+    # Departure + destination ETA, recomputed so a reloaded route shows the same
+    # total arrival as right after calculation (drive time + all waypoint holds).
+    # Same start_dt basis as the waypoint times → the whole Zeitplan stays consistent.
+    route_planned_departure = None
+    route_planned_arrival = None
+    if convoy.start_time is not None:
+        # Work in naive wall-clock (see migration 0029/0030): the schedule times
+        # are stored and displayed as the wall-clock the user entered, without a
+        # timezone the frontend would re-interpret and shift.
+        start_dt = (
+            convoy.start_time
+            if convoy.start_time.tzinfo is None
+            else convoy.start_time.replace(tzinfo=None)
+        )
+        route_planned_departure = start_dt
+        if route.duration_s is not None:
+            route_planned_arrival = schedule_svc.destination_arrival(
+                start_dt, route.duration_s, convoy.waypoints
+            )
+
     return RouteResponse(
         id=route.id,
         convoy_id=convoy_id,
@@ -344,6 +363,8 @@ async def get_route(
         geojson=geojson,
         fuel_analysis=fuel_analysis,
         kanalwechsel=route.kanalwechsel or [],
+        planned_departure=route_planned_departure,
+        planned_arrival=route_planned_arrival,
     )
 
 
@@ -462,40 +483,61 @@ async def calculate_route(
         )
         db.add(route)
 
-    # Calculate waypoint schedule
-    if convoy.start_time and convoy.waypoints:
-        waypoints_sorted = sorted(convoy.waypoints, key=lambda w: w.order_index)
-        n_segments = len(waypoints_sorted) + 1
-        seg_duration = convoy_duration_s // n_segments
-        schedule = schedule_svc.calculate_schedule(
-            waypoints_sorted,
-            convoy.start_time.replace(tzinfo=timezone.utc) if convoy.start_time.tzinfo is None else convoy.start_time,
-            [seg_duration] * (len(waypoints_sorted)),
-        )
-        for item in schedule:
-            result = await db.execute(select(Waypoint).where(Waypoint.id == item["waypoint_id"]))
-            wp = result.scalar_one_or_none()
-            if wp:
-                wp.planned_arrival = item["planned_arrival"]
-                wp.planned_departure = item["planned_departure"]
-
-    await db.commit()
-    await db.refresh(route)
-
-    # Re-sort waypoints by their projected position along the route geometry
+    # Order waypoints by their real position along the new route, then build a
+    # distance-proportional schedule. Projecting first means both the visiting
+    # order and each leg's travel time reflect the actual route: a waypoint's
+    # ETA lands at the same fraction of the total drive time as its position
+    # along the route. The previous "total ÷ (waypoints + 1)" even split pushed
+    # every waypoint towards the middle regardless of distance — e.g. a single
+    # waypoint at 40 % of the route was scheduled at 50 % of the drive time.
     route_coords = route_data["geometry"].get("coordinates", [])
+    total_distance_m = route_data["distance_m"]
+    route_planned_departure = None
+    route_planned_arrival = None
+
+    projected: list[tuple[float, Any]] = []
     if route_coords and convoy.waypoints:
-        from app.services import geometry as _geo
-        projected: list[tuple[float, object]] = []
         for wp in convoy.waypoints:
-            c = _geo.waypoint_coords(wp)
+            c = geo_svc.waypoint_coords(wp)
             if c["lat"] is not None and c["lon"] is not None:
                 d = fuel_svc.project_onto_route(route_coords, c["lat"], c["lon"])
                 projected.append((d, wp))
         projected.sort(key=lambda x: x[0])
         for new_idx, (_, wp) in enumerate(projected):
             wp.order_index = new_idx
-        await db.commit()
+
+    if convoy.start_time:
+        # Work in naive wall-clock (see migration 0029/0030): the schedule times
+        # are stored and displayed as the wall-clock the user entered, without a
+        # timezone the frontend would re-interpret and shift.
+        start_dt = (
+            convoy.start_time
+            if convoy.start_time.tzinfo is None
+            else convoy.start_time.replace(tzinfo=None)
+        )
+        route_planned_departure = start_dt
+        if projected:
+            waypoints_sorted = [wp for _, wp in projected]
+            # Per-leg distances along the route: Start→WP1, WP1→WP2, …
+            seg_distances: list[float] = []
+            prev = 0.0
+            for cum, _ in projected:
+                seg_distances.append(max(0.0, cum - prev))
+                prev = cum
+            seg_durations = schedule_svc.split_duration_by_distance(
+                convoy_duration_s, seg_distances, total_distance_m
+            )
+            schedule = schedule_svc.calculate_schedule(waypoints_sorted, start_dt, seg_durations)
+            for item, wp in zip(schedule, waypoints_sorted):
+                wp.planned_arrival = item["planned_arrival"]
+                wp.planned_departure = item["planned_departure"]
+        # Arrival at the destination (Ziel): full drive time plus every hold.
+        route_planned_arrival = schedule_svc.destination_arrival(
+            start_dt, convoy_duration_s, convoy.waypoints
+        )
+
+    await db.commit()
+    await db.refresh(route)
 
     # Kanalwechsel computation — Zusatzinfo, darf die Routenberechnung nie
     # scheitern lassen (z. B. bei unerwarteten Leitstellen-Geometrien).
@@ -525,6 +567,8 @@ async def calculate_route(
         "geojson": route_data["geometry"],
         "fuel_analysis": fuel_analysis,
         "kanalwechsel": kanalwechsel,
+        "planned_departure": route_planned_departure,
+        "planned_arrival": route_planned_arrival,
     }
 
 

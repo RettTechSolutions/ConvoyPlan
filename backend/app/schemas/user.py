@@ -1,8 +1,31 @@
 import uuid
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, field_validator
+from typing import Annotated
+
+from pydantic import AfterValidator, BaseModel, EmailStr, field_validator
 
 MAX_NAME_LENGTH = 100
+
+
+def normalize_email(value: str) -> str:
+    """Trim and lower-case an address so storage and look-ups are
+    case-insensitive.
+
+    Mailbox providers treat addresses case-insensitively, but the app used to
+    store and compare them verbatim. That made login fail when the case didn't
+    match what was typed at sign-up, and let ``Max@x.de`` and ``max@x.de`` be
+    registered as two separate accounts (bypassing the unique-email check).
+    Normalising on the way in — combined with the lower-cased data migration
+    and the ``lower(email)`` unique index — closes both holes."""
+    return value.strip().lower()
+
+
+# Full validation (format) + normalisation. Use for account-creation paths.
+NormalizedEmailStr = Annotated[EmailStr, AfterValidator(normalize_email)]
+# Normalisation only (no format enforcement). Use where a plain string is
+# accepted on purpose — e.g. login, so malformed input still yields a clean
+# 401 rather than a 422 that would reveal the field was even reached.
+NormalizedEmail = Annotated[str, AfterValidator(normalize_email)]
 
 
 def _clean_name(value: str | None) -> str | None:
@@ -28,7 +51,7 @@ class _NameFieldsMixin(BaseModel):
 
 
 class UserCreate(BaseModel):
-    email: EmailStr
+    email: NormalizedEmailStr
     password: str
 
 
@@ -50,15 +73,22 @@ class Token(BaseModel):
 
 
 class AdminUserCreate(_NameFieldsMixin):
-    email: EmailStr
-    password: str
+    email: NormalizedEmailStr
+    # Optional: when omitted, the backend generates a strong random password.
+    # The invite flow ("Anlegen & Einladen") sends fresh credentials by email,
+    # so admins no longer need to pick a password up front.
+    password: str | None = None
     is_superadmin: bool = False
+    # Optional org membership created together with the user, so the invited
+    # person immediately knows which org slug to log in under.
+    org_id: uuid.UUID | None = None
+    org_role: str = "beobachter"
 
 
 class AdminUserUpdate(_NameFieldsMixin):
     is_active: bool | None = None
     is_superadmin: bool | None = None
-    email: EmailStr | None = None
+    email: NormalizedEmailStr | None = None
     password: str | None = None
 
 
@@ -84,7 +114,7 @@ class AdminUserResponse(BaseModel):
 
 
 class InviteUserRequest(_NameFieldsMixin):
-    email: EmailStr
+    email: NormalizedEmailStr
     password: str
 
 
@@ -94,5 +124,5 @@ class PasswordChangeRequest(BaseModel):
 
 
 class PasswordResetRequest(BaseModel):
-    email: EmailStr
+    email: NormalizedEmailStr
     org_slug: str | None = None

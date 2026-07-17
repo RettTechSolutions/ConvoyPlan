@@ -2,14 +2,17 @@ from typing import Literal
 
 from pydantic import BaseModel, EmailStr
 
+from app.schemas.user import NormalizedEmailStr
+
 
 class SetupStatusResponse(BaseModel):
     setup_required: bool
 
 
 class SetupRequest(BaseModel):
-    # Admin account
-    email: EmailStr
+    # Admin account — normalised so the first superadmin can log in regardless of
+    # the case typed here vs. at login.
+    email: NormalizedEmailStr
     password: str
 
     # Server config

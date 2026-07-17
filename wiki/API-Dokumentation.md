@@ -84,14 +84,27 @@ Nur für Benutzer mit Superadmin-Rolle zugänglich.
 | `GET/POST` | `/api/admin/organizations` | Organisationen auflisten oder anlegen |
 | `POST/DELETE` | `/api/admin/users/{user_id}/orgs` | Benutzer einer Organisation zuweisen oder entfernen |
 | `GET/POST/DELETE` | `/api/admin/organizations/{org_id}/api-keys` | Org-gebundene API-Schlüssel verwalten |
-| `GET` | `/api/admin/branding` | Aktuelles Branding abrufen |
-| `PUT` | `/api/admin/branding` | Branding (Logo, Farben, App-Name) aktualisieren |
+| `GET` | `/api/admin/branding` | Aktuelles (globales) Branding abrufen |
+| `PUT` | `/api/admin/branding` | Globales Branding (Logo, Farben, App-Name) aktualisieren |
 | `POST` | `/api/admin/trigger-update` | Auto-Update manuell anstoßen |
 | `GET` | `/api/admin/update-status` / `/api/admin/update-log` | Deploy-Stand bzw. Live-Update-Log (SSE) |
 | `GET/PUT` | `/api/admin/settings/update-channel` | Update-Kanal (Stable/Beta/Nightly) lesen/setzen |
 | `GET/PUT` | `/api/admin/settings/update-mode` | Update-Modus (Automatisch/Benachrichtigen) lesen/setzen |
 | `GET/PUT` | `/api/admin/settings/smtp` | SMTP-Konfiguration lesen/setzen |
 | `GET/PUT` | `/api/admin/settings/traffic-keys` | HERE-/TomTom-API-Keys lesen (ohne Klartext) und setzen |
+
+### Demo-Sitzungen
+
+Jede Demo-Nutzung läuft als eigene, befristete Organisation (`is_demo=true`). Diese Endpunkte verwalten offene Sitzungen im Admin-Bereich.
+
+| Methode | Endpunkt | Beschreibung |
+|---|---|---|
+| `GET/PUT` | `/api/admin/settings/demo` | Demo-Modus an/aus und Sitzungsdauer (Stunden) konfigurieren |
+| `GET` | `/api/admin/demo-sessions` | Offene Demo-Sitzungen auflisten (Ablaufzeit, Konvoi-Anzahl, Herkunft) |
+| `POST` | `/api/admin/demo-sessions/{org_id}/extend` | Ablaufzeit einer Demo-Sitzung verlängern |
+| `DELETE` | `/api/admin/demo-sessions/{org_id}` | Demo-Sitzung sofort beenden (Konvois, Org und Demo-Nutzer löschen) |
+
+> Die Herkunftsfelder (`created_ip`, `created_location`) werden beim Start der Sitzung aus der Client-IP ermittelt und per Hintergrund-Geolokation (ipapi.co) um Stadt/Region/Land ergänzt — siehe [Lizenz und Demo-Modus](Lizenz-und-Demo-Modus#offene-demo-sitzungen-verwalten-admin).
 
 ---
 
@@ -179,6 +192,8 @@ Nur für Benutzer mit Superadmin-Rolle zugänglich.
 | Methode | Endpunkt | Beschreibung |
 |---|---|---|
 | `POST` | `/api/convoys/{convoy_id}/calculate-route` | Route und Zeitplan berechnen |
+
+> Die Fahrzeit je Wegpunkt wird streckenproportional zur Gesamtroute berechnet; die Antwort enthält zusätzlich `planned_departure` (Abmarsch) und `planned_arrival` des Ziels — siehe [Konvoi-Planung → Automatische Zeitplanung](Konvoi-Planung#automatische-zeitplanung).
 
 ### Teilverbände
 
@@ -275,6 +290,18 @@ Eingehende Updates vom Server:
 
 > Siehe auch **[Multi-Tenancy](Multi-Tenancy)**.
 
+### Org-Branding
+
+Org-Admin-Rolle erforderlich (außer dem öffentlichen Slug-Endpunkt). Die Overrides gelten nur innerhalb `/o/[slug]`; das globale `/api/branding` (Superadmin, siehe oben) bleibt davon unberührt.
+
+| Methode | Endpunkt | Beschreibung |
+|---|---|---|
+| `GET` | `/api/org/branding` | Effektives Branding der eigenen Org abrufen (Plattform-Branding + Org-Overrides zusammengeführt) |
+| `PUT` | `/api/org/branding` | Branding-Overrides (Farben, App-Name) der eigenen Org setzen |
+| `POST` | `/api/org/branding/logo/{slot}` | Logo hochladen (`slot`: `main` oder `horizontal`), PNG/JPG/SVG, max. 2 MB |
+| `DELETE` | `/api/org/branding` | Alle Overrides entfernen — Org fällt zurück auf das Plattform-Branding |
+| `GET` | `/api/branding/org/{slug}` | **Öffentlich:** effektives Branding einer Org per Slug (für die Org-Login-Seite, kein Login nötig) |
+
 ---
 
 ## Leitstellen
@@ -323,6 +350,7 @@ User
 
 Organization
 ├── org_code                # Kurzer URL-Slug (4–8 Zeichen), eindeutig
+├── branding                # JSON-Override, überlagert das globale Plattform-Branding
 └── UserOrganizations
 
 Convoy

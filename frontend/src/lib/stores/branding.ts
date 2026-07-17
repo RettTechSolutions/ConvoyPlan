@@ -43,4 +43,37 @@ export function applyBranding(b: Branding): void {
     root.style.setProperty('--color-text-muted', b.color_text_muted);
 }
 
+/**
+ * `brandingStore` hält immer das aktuell wirksame Branding (Komponenten wie
+ * AppLogo lesen daraus). Außerhalb einer Org ist das das Plattform-Branding;
+ * innerhalb von /o/[slug] das effektive Org-Branding. Das Plattform-Branding
+ * wird separat gemerkt, damit es beim Verlassen der Org wiederhergestellt
+ * werden kann.
+ */
 export const brandingStore = writable<Branding>(BRANDING_DEFAULTS);
+
+let globalBranding: Branding = BRANDING_DEFAULTS;
+let orgBrandingActive = false;
+
+/** Root-Layout: Plattform-Branding setzen (überschreibt nie ein aktives Org-Branding). */
+export function setGlobalBranding(b: Branding): void {
+    globalBranding = b;
+    if (orgBrandingActive) return;
+    brandingStore.set(b);
+    applyBranding(b);
+}
+
+/** Org-Layout: effektives Branding einer Organisation aktivieren. */
+export function setOrgBranding(b: Branding): void {
+    orgBrandingActive = true;
+    brandingStore.set(b);
+    applyBranding(b);
+}
+
+/** Org-Layout (beim Verlassen): zurück zum Plattform-Branding. */
+export function clearOrgBranding(): void {
+    if (!orgBrandingActive) return;
+    orgBrandingActive = false;
+    brandingStore.set(globalBranding);
+    applyBranding(globalBranding);
+}

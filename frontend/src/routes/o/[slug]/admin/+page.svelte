@@ -7,8 +7,8 @@
     import LeitstellenTable from '$lib/components/LeitstellenTable.svelte';
     import { orgStore } from '$lib/stores/org';
     import { orgLeistellenApi, orgsApi, convoysApi, trackingApi, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type OrgMember } from '$lib/api';
-    import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
-    import { brandingApi, type BrandingUpdate } from '$lib/api';
+    import { brandingStore, applyBranding, setOrgBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
+    import { orgBrandingApi, type BrandingUpdate } from '$lib/api';
 
     // ── Slug ─────────────────────────────────────────────────────────────────
     const slug = $derived(($page.params as Record<string, string>).slug);
@@ -285,7 +285,7 @@
 
     async function loadBranding() {
         try {
-            const data = await brandingApi.get();
+            const data = await orgBrandingApi.get();
             brandingForm = {
                 app_name: data.app_name,
                 color_primary: data.color_primary,
@@ -308,9 +308,8 @@
         brandingSuccess = false;
         brandingSaving = true;
         try {
-            const result = await brandingApi.update(brandingForm);
-            brandingStore.set({ ...result });
-            applyBranding({ ...result });
+            const result = await orgBrandingApi.update(brandingForm);
+            setOrgBranding({ ...result });
             brandingForm = {
                 app_name: result.app_name,
                 color_primary: result.color_primary,
@@ -334,29 +333,37 @@
         }
     }
 
-    function resetBrandingDefaults() {
-        brandingForm = {
-            app_name: BRANDING_DEFAULTS.app_name,
-            color_primary: BRANDING_DEFAULTS.color_primary,
-            color_primary_hover: BRANDING_DEFAULTS.color_primary_hover,
-            color_accent: BRANDING_DEFAULTS.color_accent,
-            color_bg: BRANDING_DEFAULTS.color_bg,
-            color_surface: BRANDING_DEFAULTS.color_surface,
-            color_nav_bg: BRANDING_DEFAULTS.color_nav_bg,
-            color_nav_text: BRANDING_DEFAULTS.color_nav_text,
-            color_text: BRANDING_DEFAULTS.color_text,
-            color_text_muted: BRANDING_DEFAULTS.color_text_muted,
-        };
-        logoMainPreview = null;
-        logoHorizPreview = null;
+    async function resetBrandingDefaults() {
+        if (!confirm('Alle Branding-Anpassungen dieser Organisation entfernen und zum Plattform-Branding zurückkehren?')) return;
+        brandingError = '';
+        try {
+            const result = await orgBrandingApi.reset();
+            setOrgBranding({ ...result });
+            brandingForm = {
+                app_name: result.app_name,
+                color_primary: result.color_primary,
+                color_primary_hover: result.color_primary_hover,
+                color_accent: result.color_accent,
+                color_bg: result.color_bg,
+                color_surface: result.color_surface,
+                color_nav_bg: result.color_nav_bg,
+                color_nav_text: result.color_nav_text,
+                color_text: result.color_text,
+                color_text_muted: result.color_text_muted,
+            };
+            logoMainPreview = result.logo_main_url;
+            logoHorizPreview = result.logo_horizontal_url;
+        } catch (e: unknown) {
+            brandingError = e instanceof Error ? e.message : 'Fehler beim Zurücksetzen';
+        }
     }
 
     function onAdminLogoMainChange(e: Event) {
         const file = (e.target as HTMLInputElement).files?.[0];
         if (!file) return;
         logoMainPreview = URL.createObjectURL(file);
-        brandingApi.uploadLogo('main', file)
-            .then(result => { brandingStore.set({ ...result }); applyBranding({ ...result }); })
+        orgBrandingApi.uploadLogo('main', file)
+            .then(result => setOrgBranding({ ...result }))
             .catch(() => { brandingError = 'Logo-Upload fehlgeschlagen'; });
     }
 
@@ -364,8 +371,8 @@
         const file = (e.target as HTMLInputElement).files?.[0];
         if (!file) return;
         logoHorizPreview = URL.createObjectURL(file);
-        brandingApi.uploadLogo('horizontal', file)
-            .then(result => { brandingStore.set({ ...result }); applyBranding({ ...result }); })
+        orgBrandingApi.uploadLogo('horizontal', file)
+            .then(result => setOrgBranding({ ...result }))
             .catch(() => { brandingError = 'Logo-Upload fehlgeschlagen'; });
     }
 
@@ -575,6 +582,9 @@
     {#if activeTab === 'branding'}
     <div class="branding-panel">
         <h2>Branding</h2>
+        <p class="hint" style="margin:-.5rem 0 1rem">
+            Anpassungen gelten nur für diese Organisation — die restliche Plattform bleibt unverändert.
+        </p>
 
         {#if brandingError}
             <div class="error-bar">{brandingError} <button onclick={() => brandingError = ''}>✕</button></div>
@@ -670,7 +680,7 @@
         </div>
 
         <div class="bf-actions">
-            <button class="btn-secondary" onclick={resetBrandingDefaults}>Defaults wiederherstellen</button>
+            <button class="btn-secondary" onclick={resetBrandingDefaults}>Plattform-Branding wiederherstellen</button>
             <button class="btn-primary" onclick={saveBranding} disabled={brandingSaving}>
                 {brandingSaving ? 'Wird gespeichert…' : 'Speichern'}
             </button>

@@ -42,6 +42,13 @@ CVE-2026-42504
 # Fixed upstream in Go 1.26.4.
 CVE-2026-27145
 
+# Go stdlib os.Root symlink-following / directory-traversal (os.Root followed
+# symlinks it should have rejected). Bundled in the docker CLI Go binaries
+# (docker / docker-buildx / docker-compose); the updater resolves no untrusted
+# symlinked paths — it only runs `git pull` + `docker compose pull/up` on
+# operator-trusted repositories and images. Fixed upstream in Go 1.25.12 / 1.26.5.
+CVE-2026-39822
+
 # golang.org/x/crypto SSH server/client vulnerabilities (authenticated
 # client loops, keyscan DoS, ssh/agent key restrictions bypass, etc.).
 # Bundled in docker CLI Go binaries; the updater does not act as or connect

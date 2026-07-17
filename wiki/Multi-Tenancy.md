@@ -19,7 +19,18 @@ Jede Organisation erhält einen kurzen **Org-Code** (4–8 Zeichen) als URL-Slug
 
 ## Org-spezifische Login-Seite und Branding
 
-Die Login-Seite unter `/o/[slug]/login` zeigt das **eigene Branding** der Organisation (Logo, Farben, App-Name). Das Branding wird im Org-Admin-Bereich gepflegt und ist unabhängig vom globalen Branding der Instanz.
+Die Login-Seite unter `/o/[slug]/login` zeigt das **eigene Branding** der Organisation (Logo, Farben, App-Name). Org-Admins pflegen es im Org-Admin-Bereich unter **System / Branding**.
+
+Technisch ist das Org-Branding ein **JSON-Override auf der Organisation** (Spalte `organizations.branding`), der über dem globalen Plattform-Branding liegt:
+
+- Nicht gesetzte Felder erben automatisch den Plattform-Wert (`NULL` = vollständig geerbt).
+- Der Override gilt **ausschließlich innerhalb von `/o/[slug]/*`** (Login, Planung, Tracking, Org-Admin) — der Superadmin-Bereich und andere Organisationen bleiben beim Plattform-Branding.
+- Logos werden pro Organisation namespaced abgelegt (`org-<id>-<slot>.<ext>`) und überschreiben nie die globalen Logos.
+- **„Plattform-Branding wiederherstellen"** entfernt alle Overrides der Organisation wieder — sie fällt dann vollständig auf das Plattform-Branding zurück.
+
+Das **globale Plattform-Branding** (`/api/branding`, Superadmin-only) bleibt davon unberührt und gilt für alle Bereiche außerhalb von `/o/[slug]`.
+
+> 📖 Vollständige Endpunkte siehe [API-Dokumentation → Org-Branding](API-Dokumentation#org-branding).
 
 ---
 
