@@ -21,6 +21,14 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Added
+
+- **Selbstheilung bei fehlgeschlagenen Deployments (kein stiller Totalausfall mehr).** Bislang konnte ein Backend-Image, das älter als der DB-Migrationsstand ist (z. B. ein versehentliches Downgrade auf ein `:beta`-Image, das eine bereits angewendete Migration nicht kennt), die gesamte API lautlos lahmlegen: Der Boot-Befehl `alembic upgrade head && uvicorn` brach mit „Can't locate revision" ab, uvicorn startete nie, der Container geriet in einen Restart-Loop und Caddy lieferte auf **alle** `/api/*`-Routen 502 — auch auf harmlose wie `/api/version`. Vier neue Schutzebenen verhindern das:
+  - **Healthcheck:** Der `backend`-Dienst hat jetzt einen Docker-Healthcheck auf `/health`. Docker und der Updater erkennen dadurch einen crashenden Backend-Container, statt „Container gestartet" als Erfolg zu werten.
+  - **Robuster Boot-Entrypoint** (`backend/docker-entrypoint.sh`): erkennt den Fall „Image älter als DB-Schema", schreibt eine klare, umsetzbare Diagnose ins Log, hinterlegt einen Alert-Marker und bricht bewusst *fail-closed* ab (keine App gegen ein unbekannt-neueres Schema).
+  - **Automatischer Rollback:** Der Updater merkt sich vor jedem Deploy das laufende Backend-Image (per Image-ID, damit ein verschobenes Tag den Rollback nicht aushebelt), wartet nach dem Deploy auf `healthy` und stellt bei Fehlschlag automatisch die vorherige, funktionierende Version wieder her. Betrifft beide Updater-Varianten (`update-images.sh` und `update.sh`).
+  - **Alert an Superadmins:** Der (wieder gesunde) Backend-Container liest den Marker und benachrichtigt alle Superadmins per E-Mail über den fehlgeschlagenen Deploy, den Rollback bzw. den abgebrochenen Start — genau einmal pro Ereignis.
+
 ### Fixed
 
 - **Login-Link in Zugangsdaten-E-Mails führt nicht mehr ins Leere.** Wurde ein Benutzer ohne Organisationszuordnung angelegt und per „Anlegen & Einladen" eingeladen, verwies der „Jetzt anmelden"-Knopf in der E-Mail auf `…/login` — eine Route, die es gar nicht gibt (Org-Mitglieder melden sich unter `/o/<slug>/login`, Superadmins unter `/admin` an). Der Login-Link wird jetzt zentral aufgebaut: Org-Mitglieder bekommen ihren Org-Login (`/o/<slug>/login`), Superadmins den Admin-Login (`/admin`), und alle übrigen die Startseite mit der Organisations-Code-Eingabe (`/`) — nie mehr die tote `/login`-Adresse. Betrifft sowohl die Admin-Einladung als auch die öffentliche Passwort-zurücksetzen-Mail.

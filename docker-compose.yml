@@ -19,7 +19,26 @@ services:
   backend:
     image: ${BACKEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/backend:latest}
     restart: unless-stopped
-    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${BACKEND_PORT:-8000}"
+    # Robust boot: runs migrations then uvicorn, and fails closed with a clear
+    # diagnostic if this image is older than the DB schema (see
+    # backend/docker-entrypoint.sh). The healthcheck below then reports the
+    # container unhealthy, which lets the updater auto-roll-back a bad deploy.
+    command: ["/app/docker-entrypoint.sh"]
+    healthcheck:
+      # Uses the stdlib (no curl in the slim image). Hits the internal /health
+      # route so Docker/updater can tell a crash-looping backend from a healthy
+      # one instead of treating "container started" as success.
+      test:
+        - CMD
+        - python
+        - -c
+        - import sys,urllib.request; sys.exit(0 if urllib.request.urlopen("http://127.0.0.1:${BACKEND_PORT:-8000}/health", timeout=4).status==200 else 1)
+      interval: 15s
+      timeout: 6s
+      retries: 5
+      # Generous grace period so slow migrations on first boot don't count as
+      # failures before uvicorn is even listening.
+      start_period: 90s
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-convoyplan}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set (see .env.example)}@db:5432/${POSTGRES_DB:-convoyplan}
       JWT_SECRET: ${JWT_SECRET:-changeme-in-production}
