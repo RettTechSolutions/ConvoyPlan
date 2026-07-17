@@ -14,6 +14,18 @@ ConvoyPlan läuft ohne gültigen Lizenzschlüssel im **Demo-Modus**. Lesezugriff
 
 ---
 
+## Offene Demo-Sitzungen verwalten (Admin)
+
+Jede Demo-Nutzung läuft als eigene, befristete Organisation. Der Admin-Bereich (**Admin** → **Demo-Sitzungen**) listet alle offenen Sitzungen mit Name, Ablaufzeit, Anzahl angelegter Konvois und **Herkunft**.
+
+Die Herkunft (Stadt/Region/Land) wird beim Start der Sitzung aus der Client-IP ermittelt und per Hintergrund-Geolokation (ipapi.co) angereichert — ein langsamer oder nicht erreichbarer Geo-Dienst verzögert den Demo-Start nie, die Anfrage läuft als Background-Task nach der Antwort. Private oder ungültige IPs (z. B. lokale Entwicklung) werden nicht abgefragt und bleiben ohne Herkunftsangabe. Die Daten helfen, Demo-Sitzungen Interessenten zuzuordnen.
+
+Sitzungen lassen sich hier verlängern oder sofort beenden. Herkunftsdaten (`created_ip`, `created_location`) werden zusammen mit der Demo-Organisation vom bestehenden Retention-Job gelöscht — es gibt keine gesonderte Aufbewahrungsfrist dafür.
+
+> 📖 Endpunkte: siehe [API-Dokumentation → Demo-Sitzungen](API-Dokumentation#demo-sitzungen).
+
+---
+
 ## Lizenz beantragen und aktivieren
 
 1. **Instanz-UUID abrufen** — im Admin-Bereich unter **System** oder per API:
