@@ -35,6 +35,9 @@ class Organization(Base):
     # sessions with interested parties. Deleted together with the org.
     demo_created_ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
     demo_created_location: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # JSON dict of branding overrides (app_name, colors, logo filenames).
+    # NULL = no override, the org inherits the platform branding.
+    branding: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     owner: Mapped["User"] = relationship(foreign_keys=[owner_id])
     members: Mapped[list["UserOrganization"]] = relationship(back_populates="organization", cascade="all, delete-orphan")

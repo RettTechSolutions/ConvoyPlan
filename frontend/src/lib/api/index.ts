@@ -656,6 +656,16 @@ export const brandingApi = {
         uploadFile<BrandingData>(`/api/branding/logo/${slot}`, file),
 };
 
+// Org-scoped Branding: wirkt nur für die eigene Organisation (Org-Admin),
+// nie plattformweit. reset() entfernt alle Overrides → Plattform-Branding.
+export const orgBrandingApi = {
+    get: () => api.get<BrandingData>('/api/org/branding'),
+    update: (data: BrandingUpdate) => api.put<BrandingData>('/api/org/branding', data),
+    uploadLogo: (slot: 'main' | 'horizontal', file: File) =>
+        uploadFile<BrandingData>(`/api/org/branding/logo/${slot}`, file),
+    reset: () => api.delete<BrandingData>('/api/org/branding'),
+};
+
 export interface ZusatzKanal {
     name: string;
     kanal: string;

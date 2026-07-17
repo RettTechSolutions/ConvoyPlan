@@ -3,7 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
-	import { brandingStore, applyBranding, type Branding } from '$lib/stores/branding';
+	import { brandingStore, setGlobalBranding, type Branding } from '$lib/stores/branding';
 	import { themeStore } from '$lib/stores/theme';
 	import { versionStore } from '$lib/stores/version.svelte';
 	import { formatVersion } from '$lib/version';
@@ -44,8 +44,9 @@
 			const resp = await fetch('/api/branding');
 			if (resp.ok) {
 				const data = await resp.json() as Branding;
-				brandingStore.set(data);
-				applyBranding(data);
+				// Überschreibt nie ein bereits aktives Org-Branding (das Org-Layout
+				// mountet vor dem Root-Layout und kann schneller geladen haben).
+				setGlobalBranding(data);
 			}
 		} catch {
 			// Keep defaults
