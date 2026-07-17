@@ -109,6 +109,90 @@ DEFAULT_EMAIL_TEMPLATE_HTML = """<!DOCTYPE html>
 </html>"""
 
 
+# ── Default org-membership notification template ───────────────────────────────
+
+# Human-readable German labels for the internal role keys.
+_ORG_ROLE_LABELS = {
+    "beobachter": "Beobachter",
+    "fahrer": "Fahrer",
+    "planer": "Planer",
+    "admin": "Admin",
+}
+
+DEFAULT_ORG_MEMBERSHIP_SUBJECT = "Du wurdest zu {org_name} hinzugefügt"
+
+DEFAULT_ORG_MEMBERSHIP_HTML = """<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+</head>
+<body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#f4f5f7;padding:40px 16px;">
+    <tr><td align="center">
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:520px;">
+
+        <!-- Header mit Logo -->
+        <tr>
+          <td style="background:{color_primary};border-radius:10px 10px 0 0;padding:28px 40px;text-align:center;">
+            {logo_block}
+          </td>
+        </tr>
+
+        <!-- Body -->
+        <tr>
+          <td style="background:#ffffff;padding:36px 40px;">
+            <p style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1a1a2e;">&#127881; Neue Organisation</p>
+            <p style="margin:0 0 20px;font-size:15px;color:#444;line-height:1.6;">
+              Hallo{recipient_name_greeting},<br/>
+              du wurdest der Organisation <strong>{org_name}</strong> in {app_name}
+              hinzugef&#252;gt. Du kannst dich ab sofort anmelden und mit der Arbeit beginnen.
+            </p>
+
+            <!-- Info box -->
+            <table role="presentation" cellpadding="0" cellspacing="0" width="100%"
+                   style="background:#f8f9fa;border:1px solid #e0e0e8;border-radius:8px;margin-bottom:28px;">
+              <tr><td style="padding:20px 24px;">
+                <p style="margin:0 0 4px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#888;">&#127970; Organisation</p>
+                <p style="margin:0 0 16px;font-size:15px;color:#1a1a2e;">{org_name}</p>
+                <p style="margin:0 0 4px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#888;">&#128100; Deine Rolle</p>
+                <p style="margin:0;font-size:15px;color:#1a1a2e;">{role_label}</p>
+              </td></tr>
+            </table>
+
+            <p style="margin:0 0 28px;font-size:14px;color:#666;line-height:1.5;">
+              Melde dich mit deinen bestehenden Zugangsdaten &#252;ber den Button unten an.
+            </p>
+
+            <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+              <tr><td align="center">
+                <a href="{login_url}"
+                   style="display:inline-block;background:{color_primary};color:#ffffff;text-decoration:none;
+                          font-size:15px;font-weight:600;padding:13px 36px;border-radius:7px;">
+                  &#128640; Jetzt anmelden &#8594;
+                </a>
+              </td></tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="background:#f0f1f3;border-radius:0 0 10px 10px;padding:20px 40px;text-align:center;">
+            <p style="margin:0;font-size:12px;color:#999;line-height:1.6;">
+              Diese E-Mail wurde automatisch von {app_name} versandt.<br/>
+              Falls du diese E-Mail nicht erwartet hast, kannst du sie ignorieren.
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>"""
+
+
 # ── SMTP config helper ────────────────────────────────────────────────────────
 
 async def _get_smtp_settings(db: AsyncSession) -> dict[str, str]:
@@ -356,6 +440,65 @@ async def send_update_notification(
 ) -> None:
     """Send an update-available notification to an admin via configured SMTP."""
     await _send_html_email(db, recipient_email, subject, html_body)
+
+
+async def _render_org_membership_email_async(
+    db: AsyncSession,
+    recipient_name: str,
+    org_name: str,
+    role: str,
+    login_url: str,
+    base_url: str = "",
+) -> tuple[str, str]:
+    """Render the org-membership notification. Returns (subject, html_body)."""
+    branding = await _get_branding_settings(db)
+    app_name = branding.get("branding.app_name", "ConvoyPlan")
+    color_primary = branding.get("branding.color_primary", "#E23D28")
+    logo_main = branding.get("branding.logo_main", "")
+
+    effective_base_url = base_url or _app_settings.app_base_url.rstrip("/")
+    logo_block = _build_logo_block(logo_main, app_name, effective_base_url)
+
+    safe_name = html.escape(recipient_name)
+    recipient_name_greeting = f" {safe_name}" if recipient_name else ""
+    role_label = _ORG_ROLE_LABELS.get(role, role)
+
+    html_vars = {
+        "recipient_name": safe_name,
+        "recipient_name_greeting": recipient_name_greeting,
+        "org_name": html.escape(org_name),
+        "role_label": html.escape(role_label),
+        "login_url": login_url,
+        "app_name": app_name,
+        "logo_block": logo_block,
+        "color_primary": color_primary,
+    }
+    # Subject is plain text — use raw (unescaped) values so &amp; never appears.
+    plain_vars = {**html_vars, "org_name": org_name}
+
+    subject = _safe_format(DEFAULT_ORG_MEMBERSHIP_SUBJECT, plain_vars)
+    html_body = _safe_format(DEFAULT_ORG_MEMBERSHIP_HTML, html_vars)
+    return subject, html_body
+
+
+async def send_org_membership_email(
+    db: AsyncSession,
+    recipient_email: str,
+    recipient_name: str,
+    org_name: str,
+    role: str,
+    login_url: str,
+    app_name: str = "ConvoyPlan",
+) -> None:
+    """Notify a user that they were granted access to an organization."""
+    subject, html_body = await _render_org_membership_email_async(
+        db=db,
+        recipient_name=recipient_name,
+        org_name=org_name,
+        role=role,
+        login_url=login_url,
+    )
+    await _send_html_email(db, recipient_email, subject, html_body, app_name=app_name)
 
 
 async def test_smtp_connection(db: AsyncSession) -> dict:
