@@ -220,6 +220,29 @@ async def save_smtp_settings(db: AsyncSession, settings: dict[str, str]) -> None
     await db.commit()
 
 
+# ── Login URL helper ───────────────────────────────────────────────────────────
+
+def build_login_url(
+    base_url: str,
+    *,
+    org_slug: str | None = None,
+    is_superadmin: bool = False,
+) -> str:
+    """Build the login link used in credential emails.
+
+    There is no standalone ``/login`` route — org members log in under
+    ``/o/<slug>/login`` and superadmins under ``/admin``. Everyone else lands
+    on the root org-code entry page. Falling back to ``/login`` (as older code
+    did) produced a dead link.
+    """
+    base = base_url.rstrip("/")
+    if org_slug:
+        return f"{base}/o/{org_slug}/login"
+    if is_superadmin:
+        return f"{base}/admin"
+    return f"{base}/"
+
+
 # ── Branding helper ────────────────────────────────────────────────────────────
 
 async def _get_branding_settings(db: AsyncSession) -> dict[str, str]:

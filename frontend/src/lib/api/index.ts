@@ -446,10 +446,14 @@ export interface AdminUser {
 
 export interface AdminUserCreate {
     email: string;
-    password: string;
+    /** Optional — when omitted the backend generates a strong random password. */
+    password?: string;
     first_name?: string;
     last_name?: string;
     is_superadmin?: boolean;
+    /** Optional org to assign the new user to on creation. */
+    org_id?: string;
+    org_role?: string;
 }
 
 export interface AdminUserUpdate {

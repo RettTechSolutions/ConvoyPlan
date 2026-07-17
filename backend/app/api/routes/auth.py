@@ -27,7 +27,7 @@ from app.services import audit
 from app.services import demo as demo_svc
 from app.services import geoip
 from app.services.crypto import decrypt_secret, encrypt_secret
-from app.services.email import send_password_email
+from app.services.email import build_login_url, send_password_email
 from app.services.password import (
     MAX_PASSWORD_LENGTH,
     assert_password_not_breached,
@@ -416,11 +416,11 @@ async def request_password_reset(
             actor_email=user.email,
         )
 
-        base_url = settings.app_base_url.rstrip("/")
-        if org_for_link:
-            login_url = f"{base_url}/o/{org_for_link.slug}/login"
-        else:
-            login_url = f"{base_url}/login"
+        login_url = build_login_url(
+            settings.app_base_url,
+            org_slug=org_for_link.slug if org_for_link else None,
+            is_superadmin=user.is_superadmin,
+        )
 
         # Dispatch the email in the background so the response isn't blocked by
         # the SMTP round-trip. Errors are swallowed there — the caller cannot
