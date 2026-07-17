@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import uuid
 from typing import Literal
 
@@ -9,13 +11,59 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
+from app.config import settings
 from app.database import get_db
 from app.models.organization import Organization, UserOrganization, _slugify
 from app.models.user import User
 from app.schemas.user import InviteUserRequest, NormalizedEmail, UserResponse
+from app.services.email import send_org_membership_email
 from app.services.password import assert_password_not_breached, validate_password
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/organizations", tags=["organizations"])
+
+# Strong references to in-flight fire-and-forget email tasks so the event loop
+# doesn't garbage-collect them mid-send.
+_BG_EMAIL_TASKS: set[asyncio.Task] = set()
+
+
+def _org_login_url(org: Organization) -> str:
+    """Org-specific login page so the member knows where to sign in."""
+    base_url = settings.app_base_url.rstrip("/")
+    return f"{base_url}/o/{org.slug}/login"
+
+
+def _dispatch_membership_email(
+    recipient_email: str,
+    recipient_name: str,
+    org_name: str,
+    role: str,
+    login_url: str,
+) -> None:
+    """Notify a newly-authorized member outside the request/response cycle.
+
+    Uses a fresh DB session (the request session is closed once the response is
+    returned) and swallows errors — granting access must never fail just
+    because SMTP is unavailable."""
+    async def _run() -> None:
+        from app.database import AsyncSessionLocal
+        try:
+            async with AsyncSessionLocal() as bg_db:
+                await send_org_membership_email(
+                    db=bg_db,
+                    recipient_email=recipient_email,
+                    recipient_name=recipient_name,
+                    org_name=org_name,
+                    role=role,
+                    login_url=login_url,
+                )
+        except Exception:
+            logger.warning("Org-membership email dispatch failed", exc_info=True)
+
+    task = asyncio.create_task(_run())
+    _BG_EMAIL_TASKS.add(task)
+    task.add_done_callback(_BG_EMAIL_TASKS.discard)
 
 
 class OrgCreate(BaseModel):
@@ -115,7 +163,7 @@ async def add_member(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    await _get_org_admin(org_id, current_user.id, db)
+    org = await _get_org_admin(org_id, current_user.id, db)
 
     user_result = await db.execute(select(User).where(User.email == data.email))
     user = user_result.scalar_one_or_none()
@@ -133,6 +181,15 @@ async def add_member(
 
     db.add(UserOrganization(user_id=user.id, organization_id=org_id, role=data.role))
     await db.commit()
+
+    # Let the user know they were granted access and where to sign in.
+    _dispatch_membership_email(
+        recipient_email=user.email,
+        recipient_name=user.full_name,
+        org_name=org.name,
+        role=data.role,
+        login_url=_org_login_url(org),
+    )
     return {"status": "added", "email": data.email, "role": data.role}
 
 
