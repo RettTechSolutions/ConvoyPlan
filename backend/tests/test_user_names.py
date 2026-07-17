@@ -29,6 +29,22 @@ def test_name_too_long_rejected():
         AdminUserCreate(email="a@b.de", password="x", first_name="x" * 101)
 
 
+def test_admin_create_password_optional():
+    # Password is optional now — the backend generates one when omitted.
+    data = AdminUserCreate(email="a@b.de")
+    assert data.password is None
+
+
+def test_admin_create_org_fields():
+    import uuid
+    oid = uuid.uuid4()
+    data = AdminUserCreate(email="a@b.de", org_id=oid, org_role="planer")
+    assert data.org_id == oid
+    assert data.org_role == "planer"
+    # Default role when only an org is given.
+    assert AdminUserCreate(email="a@b.de", org_id=oid).org_role == "beobachter"
+
+
 def test_update_distinguishes_omitted_from_cleared():
     # Omitted → not in fields_set → PATCH keeps the stored value.
     patch = AdminUserUpdate(is_active=True)

@@ -74,8 +74,15 @@ class Token(BaseModel):
 
 class AdminUserCreate(_NameFieldsMixin):
     email: NormalizedEmailStr
-    password: str
+    # Optional: when omitted, the backend generates a strong random password.
+    # The invite flow ("Anlegen & Einladen") sends fresh credentials by email,
+    # so admins no longer need to pick a password up front.
+    password: str | None = None
     is_superadmin: bool = False
+    # Optional org membership created together with the user, so the invited
+    # person immediately knows which org slug to log in under.
+    org_id: uuid.UUID | None = None
+    org_role: str = "beobachter"
 
 
 class AdminUserUpdate(_NameFieldsMixin):

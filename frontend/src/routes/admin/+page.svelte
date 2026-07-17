@@ -5,7 +5,7 @@
     import LeitstellenTable from '$lib/components/LeitstellenTable.svelte';
     import { auth } from '$lib/stores/auth';
     import { getStreamTicket } from '$lib/api/client';
-    import { adminApi, mfaApi, leistellenApi, licenseApi, emailTemplateApi, type AdminUser, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type EmailTemplate, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoSessionInfo } from '$lib/api';
+    import { adminApi, mfaApi, leistellenApi, licenseApi, emailTemplateApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type EmailTemplate, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoSessionInfo } from '$lib/api';
     import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
     import SuperadminLogin from '$lib/components/SuperadminLogin.svelte';
@@ -27,9 +27,22 @@
     let loading = $state(true);
     let error = $state('');
     let showCreateForm = $state(false);
-    let newUser = $state({ email: '', first_name: '', last_name: '', password: '', is_superadmin: false });
-    let createPwVisible = $state(false);
+    let newUser = $state({ email: '', first_name: '', last_name: '', is_superadmin: false, org_id: '', org_role: 'beobachter' });
+    let createOrgs = $state<AdminOrg[]>([]);
     let createAndEmailWorking = $state(false);
+
+    /** Load orgs for the create-user org dropdown (once). */
+    async function loadCreateOrgs() {
+        if (createOrgs.length) return;
+        try {
+            createOrgs = await adminApi.listOrgs();
+        } catch { /* ignore — dropdown just stays empty */ }
+    }
+
+    function toggleCreateForm() {
+        showCreateForm = !showCreateForm;
+        if (showCreateForm) loadCreateOrgs();
+    }
 
     onMount(async () => {
         if ($auth.is_superadmin) {
@@ -177,22 +190,29 @@
         finally { loading = false; }
     }
 
-    function generatePasswordForCreate() {
-        const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%&*';
-        const randomValues = crypto.getRandomValues(new Uint8Array(16));
-        newUser.password = Array.from(randomValues, v => charset[v % charset.length]).join('');
-        createPwVisible = true;
+    function resetCreateForm() {
+        newUser = { email: '', first_name: '', last_name: '', is_superadmin: false, org_id: '', org_role: 'beobachter' };
+        showCreateForm = false;
     }
 
-    function resetCreateForm() {
-        newUser = { email: '', first_name: '', last_name: '', password: '', is_superadmin: false };
-        createPwVisible = false;
-        showCreateForm = false;
+    /** Build the createUser payload, omitting the optional org fields when none picked. */
+    function createUserPayload(): AdminUserCreate {
+        const payload: AdminUserCreate = {
+            email: newUser.email,
+            first_name: newUser.first_name,
+            last_name: newUser.last_name,
+            is_superadmin: newUser.is_superadmin,
+        };
+        if (newUser.org_id) {
+            payload.org_id = newUser.org_id;
+            payload.org_role = newUser.org_role;
+        }
+        return payload;
     }
 
     async function createUser() {
         try {
-            await adminApi.createUser(newUser);
+            await adminApi.createUser(createUserPayload());
             resetCreateForm();
             await loadUsers();
         } catch (e: unknown) {
@@ -203,7 +223,7 @@
     async function createAndEmailUser() {
         createAndEmailWorking = true;
         try {
-            const created = await adminApi.createUser(newUser);
+            const created = await adminApi.createUser(createUserPayload());
             await adminApi.sendUserPassword(created.id);
             resetCreateForm();
             await loadUsers();
@@ -1319,7 +1339,7 @@
         <div class="section">
             <div class="section-header">
                 <strong>Benutzer ({users.length - demoUserCount}{demoUserCount > 0 ? ` + ${demoUserCount} Demo` : ''})</strong>
-                <button class="btn-small" onclick={() => (showCreateForm = !showCreateForm)}>+ Neu</button>
+                <button class="btn-small" onclick={toggleCreateForm}>+ Neu</button>
             </div>
 
             {#if showCreateForm}
@@ -1329,23 +1349,30 @@
                         <input placeholder="Nachname" type="text" bind:value={newUser.last_name} autocomplete="off" />
                     </div>
                     <input placeholder="E-Mail *" type="email" bind:value={newUser.email} required />
-                    <div class="pw-input-row">
-                        <input
-                            placeholder="Passwort *"
-                            type={createPwVisible ? 'text' : 'password'}
-                            bind:value={newUser.password}
-                            required
-                            class="pw-field"
-                        />
-                        <button type="button" class="btn-tiny" onclick={generatePasswordForCreate} title="Sicheres Passwort generieren">🔑</button>
-                        {#if newUser.password && createPwVisible}
-                            <button type="button" class="btn-tiny" onclick={() => navigator.clipboard.writeText(newUser.password)} title="Kopieren">📋</button>
+                    <div class="org-input-row">
+                        <select bind:value={newUser.org_id} class="org-select">
+                            <option value="">Organisation (optional)…</option>
+                            {#each createOrgs.filter(o => !o.is_demo) as o}
+                                <option value={o.id}>{o.name} ({o.slug})</option>
+                            {/each}
+                        </select>
+                        {#if newUser.org_id}
+                            <select bind:value={newUser.org_role} class="role-select">
+                                <option value="beobachter">Beobachter</option>
+                                <option value="fahrer">Fahrer</option>
+                                <option value="planer">Planer</option>
+                                <option value="admin">Admin</option>
+                            </select>
                         {/if}
                     </div>
                     <label class="checkbox-label">
                         <input type="checkbox" bind:checked={newUser.is_superadmin} />
                         Superadmin
                     </label>
+                    <p class="hint create-pw-hint">
+                        🔑 Das Passwort wird automatisch generiert. Mit „Anlegen &amp; Einladen" erhält
+                        der Benutzer seine Zugangsdaten (inkl. Login-Link) per E-Mail.
+                    </p>
                     <div class="create-actions">
                         <button type="submit">Anlegen</button>
                         <button
@@ -2895,6 +2922,8 @@
     .create-form button[type="submit"] { align-self: flex-start; padding: .5rem 1rem; background: #6B7F4D; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: var(--text-sm); }
     .pw-input-row { display: flex; align-items: center; gap: .3rem; }
     .pw-input-row .pw-field { flex: 1; }
+    .org-input-row { display: flex; gap: .5rem; align-items: center; }
+    .create-pw-hint { margin: 0; font-size: var(--text-sm); color: var(--text-2); line-height: 1.4; }
     .name-input-row { display: flex; gap: .5rem; }
     .name-input-row input { flex: 1; min-width: 0; }
     .create-actions { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
