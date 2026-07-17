@@ -11,6 +11,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Make the robust boot entrypoint executable (runs migrations, then uvicorn;
+# fails closed with a clear diagnostic if the image is older than the DB schema).
+RUN chmod +x /app/docker-entrypoint.sh
+
 # Bake git SHA and release version at build time so the admin UI / footer can
 # show the installed version even before the updater has written its status file.
 ARG GIT_SHA=unknown

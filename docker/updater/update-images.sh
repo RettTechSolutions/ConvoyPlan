@@ -370,12 +370,102 @@ _spawn_restart_helper() {
     rm -f "${env_file}"
 }
 
+# ── Self-repair: health-gated deploy with automatic rollback ─────────────────
+# A deploy is only "good" once the backend actually reports HEALTHY — not just
+# when the container started. If the new backend never becomes healthy (e.g. an
+# image older than the DB schema that crash-loops on `alembic upgrade`), roll
+# back to the image that ran before the deploy and alert the superadmins.
+
+DEPLOY_HEALTH_TIMEOUT="${DEPLOY_HEALTH_TIMEOUT:-180}"
+ROLLBACK_HEALTH_TIMEOUT="${ROLLBACK_HEALTH_TIMEOUT:-150}"
+
+# Container ID of the backend service (running or stopped).
+_backend_cid() {
+    docker ps -aq \
+        --filter "label=com.docker.compose.project=${COMPOSE_PROJECT}" \
+        --filter "label=com.docker.compose.service=backend" | head -1
+}
+
+# The IMAGE ID (not the floating tag) the backend currently runs. Pinning the
+# rollback target to the digest is essential: `docker compose pull` moves the
+# :nightly/:latest/:beta tag onto the NEW image, so rolling back "by tag" would
+# just redeploy the broken image. The image ID stays put.
+_backend_image_id() {
+    local cid
+    cid="$(_backend_cid)"
+    [ -z "${cid}" ] && { echo ""; return; }
+    docker inspect "${cid}" --format '{{.Image}}' 2>/dev/null || echo ""
+}
+
+# Wait until the backend healthcheck reports healthy, or give up. Fails fast on
+# a clear crash-loop (RestartCount climbing). An image WITHOUT a healthcheck
+# (older stacks) counts as good once it is "running" — backwards compatible.
+_wait_backend_healthy() {
+    local timeout="$1" waited=0 cid health status restarts
+    health=""; status=""
+    while [ "${waited}" -lt "${timeout}" ]; do
+        cid="$(_backend_cid)"
+        if [ -n "${cid}" ]; then
+            health="$(docker inspect "${cid}" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' 2>/dev/null || echo '')"
+            status="$(docker inspect "${cid}" --format '{{.State.Status}}' 2>/dev/null || echo '')"
+            restarts="$(docker inspect "${cid}" --format '{{.RestartCount}}' 2>/dev/null || echo 0)"
+            case "${health}" in
+                healthy) return 0 ;;
+                none)    [ "${status}" = "running" ] && return 0 ;;
+            esac
+            if [ "${restarts:-0}" -ge 3 ]; then
+                log "Backend im Crash-Loop (RestartCount=${restarts}, Health=${health})."
+                return 1
+            fi
+        fi
+        sleep 5
+        waited=$((waited + 5))
+    done
+    log "Backend nicht gesund innerhalb ${timeout}s (Health=${health:-unbekannt}, Status=${status:-unbekannt})."
+    return 1
+}
+
+# Drop an alert marker the backend's deploy-alert watcher emails to superadmins.
+_write_deploy_alert() {
+    local event="$1" detail="$2" failed="$3" restored="$4" id
+    id="$(date -u '+%Y%m%dT%H%M%SZ')-$$"
+    printf '{"id":"%s","event":"%s","at":"%s","failed_image":"%s","restored_image":"%s","detail":"%s"}\n' \
+        "${id}" "${event}" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "${failed}" "${restored}" "${detail}" \
+        > /update_status/deploy_alert.json 2>/dev/null || true
+}
+
+# Restore a known-good backend image (by ID) and wait for it to become healthy.
+_rollback_backend() {
+    local good_image="$1"
+    if [ -z "${good_image}" ]; then
+        log "ROLLBACK nicht möglich: kein vorheriges Backend-Image bekannt."
+        return 1
+    fi
+    log "ROLLBACK: Deploy nicht gesund — stelle vorheriges Backend-Image wieder her (${good_image})…"
+    if BACKEND_IMAGE="${good_image}" docker compose -p "${COMPOSE_PROJECT}" -f "${COMPOSE_FILE}" \
+            up -d --no-build --force-recreate backend 2>&1 | tee -a "${LOG_FILE}"; then
+        if _wait_backend_healthy "${ROLLBACK_HEALTH_TIMEOUT}"; then
+            log "ROLLBACK erfolgreich — Backend ist wieder gesund."
+            return 0
+        fi
+    fi
+    log "ROLLBACK fehlgeschlagen — manueller Eingriff nötig."
+    return 1
+}
+
 do_update() {
     log "Starte Image-Update (Kanal: $(read_channel))…"
 
     # Image-Tags des aktiven Kanals exportieren (:latest / :beta / :nightly),
     # damit docker compose pull/up die richtigen Refs interpoliert.
     _apply_channel_images
+
+    # Self-repair: den VOR diesem Deploy laufenden Backend-Image-Stand merken
+    # (per Image-ID, damit ein verschobenes Tag den Rollback nicht aushebelt)
+    # sowie das neue Ziel-Image für die Alert-Meldung.
+    local good_backend_image new_backend_image
+    good_backend_image="$(_backend_image_id)"
+    new_backend_image="${BACKEND_IMAGE:-unbekannt}"
 
     # Updater-Image-ID vor dem Pull merken: Der Restart-Helper am Ende läuft
     # nur, wenn sich das Updater-Image oder die Stack-Datei wirklich geändert
@@ -399,6 +489,26 @@ do_update() {
     log "Pulling: ${all_services}"
     if docker compose -p "${COMPOSE_PROJECT}" -f "${COMPOSE_FILE}" pull ${all_services} 2>&1 | tee -a "${LOG_FILE}" && \
        docker compose -p "${COMPOSE_PROJECT}" -f "${COMPOSE_FILE}" up -d --no-build ${non_updater} 2>&1 | tee -a "${LOG_FILE}"; then
+
+        # Self-repair health gate: the API must actually come up, not just start.
+        # A backend that crash-loops (e.g. an image older than the DB schema)
+        # would otherwise be reported as a successful update while every /api/*
+        # route 502s. If it never turns healthy, roll back to the previous image.
+        if ! _wait_backend_healthy "${DEPLOY_HEALTH_TIMEOUT}"; then
+            log "FEHLER: neues Backend wurde nach dem Deploy nicht gesund — starte automatischen Rollback."
+            if _rollback_backend "${good_backend_image}"; then
+                _write_deploy_alert "deploy_rolled_back" \
+                    "Neues Backend-Image wurde nicht gesund; automatischer Rollback auf die zuvor laufende Version durchgefuehrt." \
+                    "${new_backend_image}" "${good_backend_image}"
+                write_status "$(get_sha_from_backend)"
+            else
+                _write_deploy_alert "deploy_failed" \
+                    "Neues Backend-Image wurde nicht gesund UND der automatische Rollback ist fehlgeschlagen — manueller Eingriff noetig." \
+                    "${new_backend_image}" "${good_backend_image:-unbekannt}"
+            fi
+            return 1
+        fi
+
         sleep 5
         local new_sha
         new_sha=$(get_sha_from_backend)

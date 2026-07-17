@@ -111,16 +111,22 @@ async def _lifespan(_app: FastAPI):
     # aktiven Kanal ein Update verfügbar ist, und mailt die Superadmins.
     # Schläft vor dem ersten Check, belastet den Start also nicht.
     from app.services.update_notify import update_notify_loop
+    from app.services.deploy_alert import deploy_alert_loop
     notify_task = asyncio.create_task(update_notify_loop())
+    # Watches /update_status/deploy_alert.json for failed-deploy / auto-rollback
+    # / aborted-boot markers written by the updater and entrypoint, and emails
+    # the superadmins about them (once per event).
+    alert_task = asyncio.create_task(deploy_alert_loop())
     try:
         yield
     finally:
-        # Sauberes Herunterfahren: Task abbrechen und auf sein Ende warten.
+        # Sauberes Herunterfahren: Tasks abbrechen und auf ihr Ende warten.
         # CancelledError ist dabei der Normalfall; gather liefert ihn (statt
         # ihn zu werfen), sodass der Shutdown nie an ihm scheitert.
         notify_task.cancel()
-        outcome = await asyncio.gather(notify_task, return_exceptions=True)
-        logger.debug("Update-Notify-Task beendet: %r", outcome)
+        alert_task.cancel()
+        outcome = await asyncio.gather(notify_task, alert_task, return_exceptions=True)
+        logger.debug("Hintergrund-Tasks beendet: %r", outcome)
 
 
 # Interactive docs are always on in development. In production they are off by

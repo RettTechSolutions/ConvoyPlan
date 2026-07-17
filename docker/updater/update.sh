@@ -31,6 +31,56 @@ log() {
     echo "$msg" >> "${LOG_FILE}"
 }
 
+# ── Self-repair: health gate + rollback (source/build path) ──────────────────
+# A deploy counts as good only once the backend actually reports HEALTHY, not
+# merely "started". If the freshly built backend never turns healthy (e.g. it
+# crash-loops on `alembic upgrade` because the checkout is older than the DB
+# schema), we rebuild the previous commit and alert the superadmins.
+DEPLOY_HEALTH_TIMEOUT="${DEPLOY_HEALTH_TIMEOUT:-180}"
+ROLLBACK_HEALTH_TIMEOUT="${ROLLBACK_HEALTH_TIMEOUT:-150}"
+
+_backend_cid() {
+    docker ps -aq \
+        --filter "label=com.docker.compose.project=${COMPOSE_PROJECT}" \
+        --filter "label=com.docker.compose.service=backend" | head -1
+}
+
+# Wait until the backend healthcheck reports healthy, or give up. Fails fast on
+# a clear crash-loop. An image without a healthcheck counts as good once running.
+_wait_backend_healthy() {
+    local timeout="$1" waited=0 cid health status restarts
+    health=""; status=""
+    while [ "${waited}" -lt "${timeout}" ]; do
+        cid="$(_backend_cid)"
+        if [ -n "${cid}" ]; then
+            health="$(docker inspect "${cid}" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' 2>/dev/null || echo '')"
+            status="$(docker inspect "${cid}" --format '{{.State.Status}}' 2>/dev/null || echo '')"
+            restarts="$(docker inspect "${cid}" --format '{{.RestartCount}}' 2>/dev/null || echo 0)"
+            case "${health}" in
+                healthy) return 0 ;;
+                none)    [ "${status}" = "running" ] && return 0 ;;
+            esac
+            if [ "${restarts:-0}" -ge 3 ]; then
+                log "Backend im Crash-Loop (RestartCount=${restarts}, Health=${health})."
+                return 1
+            fi
+        fi
+        sleep 5
+        waited=$((waited + 5))
+    done
+    log "Backend nicht gesund innerhalb ${timeout}s (Health=${health:-unbekannt}, Status=${status:-unbekannt})."
+    return 1
+}
+
+# Drop an alert marker the backend's deploy-alert watcher emails to superadmins.
+_write_deploy_alert() {
+    local event="$1" detail="$2" failed="$3" restored="$4" id
+    id="$(date -u '+%Y%m%dT%H%M%SZ')-$$"
+    printf '{"id":"%s","event":"%s","at":"%s","failed_image":"%s","restored_image":"%s","detail":"%s"}\n' \
+        "${id}" "${event}" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "${failed}" "${restored}" "${detail}" \
+        > /update_status/deploy_alert.json 2>/dev/null || true
+}
+
 # Read the release channel chosen in the admin panel (default: stable).
 read_channel() {
     local ch="stable"
@@ -208,18 +258,43 @@ while true; do
     fi
   elif [ "${DEPLOYED}" != "${REMOTE}" ]; then
     log "Update detected (${CHANNEL}): ${DEPLOYED:0:7} → ${TARGET_DESC} ${REMOTE:0:7}"
+    # Remember the commit running before this deploy so we can rebuild it if the
+    # new one fails to become healthy (self-repair against bad deploys).
+    PREV_DEPLOYED="${DEPLOYED}"
     # Get all services except the updater itself (to avoid killing this container)
     SERVICES=$(docker compose "${COMPOSE_FILES[@]}" config --services 2>/dev/null | grep -v '^updater$' | tr '\n' ' ')
     if git -C "${REPO_DIR}" reset --hard "${REMOTE}" 2>&1 | tee -a "${LOG_FILE}" && \
        git -C "${REPO_DIR}" clean -fd 2>&1 | tee -a "${LOG_FILE}" && \
        GIT_SHA="${REMOTE}" docker compose "${COMPOSE_FILES[@]}" up -d --build ${SERVICES} 2>&1 | tee -a "${LOG_FILE}"; then
-      DEPLOYED=$(git -C "${REPO_DIR}" rev-parse HEAD)
-      log "Updated to ${DEPLOYED:0:7}"
-      mkdir -p /update_status
-      printf '{"deployed_sha":"%s","deployed_at":"%s"}\n' \
-        "${DEPLOYED}" \
-        "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
-        > /update_status/status.json
+
+      # Self-repair health gate: the API must actually come up, not just start.
+      if _wait_backend_healthy "${DEPLOY_HEALTH_TIMEOUT}"; then
+        DEPLOYED=$(git -C "${REPO_DIR}" rev-parse HEAD)
+        log "Updated to ${DEPLOYED:0:7}"
+        mkdir -p /update_status
+        printf '{"deployed_sha":"%s","deployed_at":"%s"}\n' \
+          "${DEPLOYED}" \
+          "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+          > /update_status/status.json
+      else
+        log "FEHLER: neues Backend wurde nach dem Deploy nicht gesund — Rollback auf ${PREV_DEPLOYED:0:7}."
+        if [ -n "${PREV_DEPLOYED}" ] && \
+           git -C "${REPO_DIR}" reset --hard "${PREV_DEPLOYED}" 2>&1 | tee -a "${LOG_FILE}" && \
+           git -C "${REPO_DIR}" clean -fd 2>&1 | tee -a "${LOG_FILE}" && \
+           GIT_SHA="${PREV_DEPLOYED}" docker compose "${COMPOSE_FILES[@]}" up -d --build backend 2>&1 | tee -a "${LOG_FILE}" && \
+           _wait_backend_healthy "${ROLLBACK_HEALTH_TIMEOUT}"; then
+          DEPLOYED="${PREV_DEPLOYED}"
+          log "ROLLBACK erfolgreich auf ${PREV_DEPLOYED:0:7}."
+          _write_deploy_alert "deploy_rolled_back" \
+            "Neues Backend wurde nicht gesund; automatischer Rollback auf ${PREV_DEPLOYED:0:7} durchgefuehrt." \
+            "${REMOTE:0:12}" "${PREV_DEPLOYED:0:12}"
+        else
+          log "ROLLBACK fehlgeschlagen — manueller Eingriff noetig."
+          _write_deploy_alert "deploy_failed" \
+            "Neues Backend wurde nicht gesund UND der automatische Rollback ist fehlgeschlagen — manueller Eingriff noetig." \
+            "${REMOTE:0:12}" "${PREV_DEPLOYED:0:12}"
+        fi
+      fi
     else
       log "Deploy failed — will retry in ${INTERVAL}s"
     fi
