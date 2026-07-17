@@ -17,6 +17,7 @@ from app.database import get_db
 from app.models.organization import Organization, UserOrganization
 from app.models.user import User
 from app.schemas.user import (
+    NormalizedEmail,
     PasswordChangeRequest,
     PasswordResetRequest,
     UserCreate,
@@ -175,7 +176,10 @@ def decode_mfa_pending_token(token: str) -> dict:
 # ── Login ─────────────────────────────────────────────────────────────────────
 
 class LoginRequest(BaseModel):
-    email: str
+    # Normalised (trim + lower-case) so login is case-insensitive and matches the
+    # normalised addresses stored at sign-up. Kept as a plain string rather than
+    # EmailStr so a malformed value still yields a 401, not a 422.
+    email: NormalizedEmail
     password: str = Field(max_length=MAX_PASSWORD_LENGTH)
     org_slug: str | None = None
 

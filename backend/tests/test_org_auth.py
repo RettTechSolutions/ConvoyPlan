@@ -88,6 +88,36 @@ async def test_org_login_success():
 
 
 @pytest.mark.asyncio
+async def test_org_login_is_case_insensitive_for_email():
+    """A mixed-/upper-case e-mail must log in against a lower-cased stored
+    address. The route queries ``User.email == data.email``, so the request
+    schema has to normalise the address before it reaches the DB."""
+    user = _user(email="test@example.com")
+    org = _org()
+    mem = _membership("planer")
+    db = _mock_db(user, org, mem)
+
+    app.dependency_overrides[get_db] = _db_override(db)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            r = await client.post("/api/auth/login", json={
+                "email": "  Test@Example.COM ",
+                "password": "secret",
+                "org_slug": "test-org",
+            })
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert r.status_code == 200
+
+    # The address bound into the first DB query must be normalised.
+    first_stmt = db.execute.call_args_list[0].args[0]
+    bound = list(first_stmt.compile().params.values())
+    assert "test@example.com" in bound
+    assert not any(isinstance(v, str) and v != v.lower() for v in bound)
+
+
+@pytest.mark.asyncio
 async def test_org_login_wrong_password_returns_401():
     user = _user(pw="correct")
     org = _org()

@@ -12,7 +12,7 @@ from app.api.deps import get_current_user
 from app.database import get_db
 from app.models.organization import Organization, UserOrganization, _slugify
 from app.models.user import User
-from app.schemas.user import InviteUserRequest, UserResponse
+from app.schemas.user import InviteUserRequest, NormalizedEmail, UserResponse
 from app.services.password import assert_password_not_breached, validate_password
 
 router = APIRouter(prefix="/organizations", tags=["organizations"])
@@ -27,7 +27,7 @@ OrgRole = Literal["beobachter", "fahrer", "planer", "admin"]
 
 
 class OrgMemberAdd(BaseModel):
-    email: str
+    email: NormalizedEmail
     role: OrgRole = "beobachter"
 
 
