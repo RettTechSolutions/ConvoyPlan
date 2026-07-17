@@ -1,11 +1,11 @@
 # SmartMaps mit Jahresdeckel — Implementation Plan
 
 > **Korrektur (2026-07-16):** „SmartMaps" ist der Dienst **YellowMap SmartMaps**
-> (tiles.smartmaps.cloud), nicht HERE. Umgesetzt mit SmartMaps-Raster-Endpoint
-> (WebP), eigenem `SMARTMAPS_API_KEY`, `SMARTMAPS_STYLE` (Default `light`),
-> `SMARTMAPS_YEARLY_LIMIT`; Route `/api/tiles/smartmaps/{z}/{x}/{y}`. Die
-> HERE-spezifischen Code-Snippets unten sind entsprechend ersetzt; Struktur und
-> TDD-Schritte bleiben gültig.
+(tiles.smartmaps.cloud), nicht HERE. Umgesetzt mit SmartMaps-Raster-Endpoint
+(WebP), eigenem `SMARTMAPS_API_KEY`, `SMARTMAPS_STYLE` (Default `light`),
+`SMARTMAPS_YEARLY_LIMIT`; Route `/api/tiles/smartmaps/{z}/{x}/{y}`. Die
+HERE-spezifischen Code-Snippets unten sind entsprechend ersetzt; Struktur und
+TDD-Schritte bleiben gültig.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
