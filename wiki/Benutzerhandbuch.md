@@ -90,7 +90,7 @@ Fahrzeuge werden einmalig angelegt und können dann beliebigen Konvois zugeordne
 
 1. Mindestens Start- und Zielpunkt setzen.
 2. **Route berechnen** klicken.
-3. GraphHopper berechnet die Route und erstellt automatisch den Zeitplan mit Ankunfts- und Abfahrtszeiten.
+3. GraphHopper berechnet die Route; ConvoyPlan erstellt automatisch den Zeitplan mit streckenproportionalen Ankunfts- und Abfahrtszeiten je Wegpunkt (ein Wegpunkt bei 40 % der Strecke bekommt auch 40 % der Fahrzeit als ETA). Der **Zeitplan**-Tab zeigt zusätzlich eine **Abmarsch**-Zeile (Startzeit) und eine **Ziel**-Zeile mit der Gesamt-Ankunftszeit.
 
 ### Konvoi bearbeiten
 
@@ -243,6 +243,8 @@ Superadmins haben Zugriff auf alle Verwaltungsfunktionen.
 2. Logo hochladen, Primär- und Akzentfarbe sowie App-Name anpassen.
 3. Eine Live-Vorschau zeigt die Änderungen sofort.
 
+> Dies ist das **globale Plattform-Branding**. Jede Organisation kann zusätzlich ein eigenes Branding im Org-Admin-Bereich hinterlegen, das nur innerhalb ihres `/o/[slug]`-Bereichs gilt – siehe [Multi-Tenancy](Multi-Tenancy#org-spezifische-login-seite-und-branding).
+
 ### System und Updates
 
 1. **Admin** → **Software-Update**.
@@ -257,6 +259,14 @@ Superadmins haben Zugriff auf alle Verwaltungsfunktionen.
 1. **Admin** → **Live-Verkehrslage (Stau)**.
 2. HERE- und/oder TomTom-API-Key hinterlegen und bevorzugten Anbieter wählen.
 3. Der Status zeigt, ob ein Key gesetzt ist (Datenbank oder Umgebungsvariable) und welcher Anbieter aktiv ist. Der gespeicherte Key wird nie im Klartext angezeigt.
+
+### Demo-Sitzungen (Admin)
+
+Jede Demo-Nutzung läuft als eigene, befristete Organisation.
+
+1. **Admin** → **Demo-Sitzungen** zeigt alle offen laufenden Demo-Sitzungen mit Name, Ablaufzeit und Anzahl angelegter Konvois.
+2. Die Spalte **Herkunft** zeigt Stadt/Region/Land der Sitzung, ermittelt aus der Client-IP beim Start der Sitzung (Geolokation läuft im Hintergrund und verzögert den Demo-Start nie). Bei privaten oder nicht auflösbaren IPs (z. B. lokale Entwicklung) bleibt das Feld leer.
+3. Sitzungen können hier verlängert oder sofort beendet werden. Herkunftsdaten werden zusammen mit der Demo-Organisation vom Retention-Job gelöscht — siehe [Lizenz und Demo-Modus](Lizenz-und-Demo-Modus#offene-demo-sitzungen-verwalten-admin).
 
 ---
 
