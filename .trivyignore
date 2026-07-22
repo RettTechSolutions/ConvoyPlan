@@ -76,6 +76,14 @@ CVE-2026-39821
 CVE-2026-42502
 CVE-2026-42506
 
+# google.golang.org/grpc xDS RBAC and HTTP/2 vulnerabilities. Bundled in the
+# docker-buildx and docker-compose CLI plugins' Go binaries. The updater does
+# not run or connect to a gRPC/xDS control plane — it only invokes the
+# plugins' local CLI commands (`docker compose pull/up`), which use the
+# Docker Engine API over the local socket, not gRPC/xDS.
+# Fixed upstream in google.golang.org/grpc 1.82.1.
+GHSA-hrxh-6v49-42gf
+
 # ─────────────────────────────────────────────────────────────────────────────
 # convoyplan-graphhopper: vulnerabilities bundled inside the upstream
 # graphhopper-web JAR (graphhopper/Dockerfile, GH_VERSION pin). We cannot patch
@@ -95,6 +103,12 @@ CVE-2026-42506
 # jackson-core: StackoverflowError on deeply nested input. GraphHopper only
 # parses its own config and our backend's requests. Fixed in jackson 2.15.0.
 CVE-2025-52999
+
+# jackson-core: async parser maxNumberLength bypass via chunked digit
+# accumulation (incomplete fix for the huge-number-DoS class above). Same
+# exposure as CVE-2025-52999 — GraphHopper only parses its own config and our
+# trusted backend's requests. Fixed in jackson-core 2.18.8/2.21.4/2.22.1.
+GHSA-r7wm-3cxj-wff9
 
 # protobuf-java: DoS in binary/textformat parsing. Used for OSM PBF import
 # (trusted, operator-configured Geofabrik source); worst case import DoS.
