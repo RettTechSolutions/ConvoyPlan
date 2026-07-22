@@ -76,6 +76,13 @@ CVE-2026-39821
 CVE-2026-42502
 CVE-2026-42506
 
+# gRPC-Go xDS RBAC and HTTP/2 vulnerabilities. Bundled in the docker-buildx and
+# docker-compose plugin Go binaries; the updater only runs `docker compose
+# pull/up` against operator-trusted images and never acts as an xDS-managed
+# gRPC server or applies RBAC policies — the affected code paths are unreachable.
+# Fixed upstream in google.golang.org/grpc 1.82.1.
+GHSA-hrxh-6v49-42gf
+
 # ─────────────────────────────────────────────────────────────────────────────
 # convoyplan-graphhopper: vulnerabilities bundled inside the upstream
 # graphhopper-web JAR (graphhopper/Dockerfile, GH_VERSION pin). We cannot patch
@@ -124,6 +131,14 @@ CVE-2022-1471
 # 2.18.8; requires a GraphHopper JAR release that pulls the patched jackson.
 CVE-2026-54512
 CVE-2026-54513
+
+# jackson-core async parser maxNumberLength bypass via chunked digit
+# accumulation (incomplete fix for the earlier maxNumberLength DoS). Bundled in
+# the upstream graphhopper.jar; GraphHopper only parses its own config and
+# well-formed routing requests from our trusted backend on the internal Docker
+# network — no untrusted JSON reaches the async parser. Fixed in jackson-core
+# 2.18.8; requires a GraphHopper JAR release that pulls the patched jackson.
+GHSA-r7wm-3cxj-wff9
 
 # ─────────────────────────────────────────────────────────────────────────────
 # convoyplan-frontend: vulnerability in the undici package bundled inside
