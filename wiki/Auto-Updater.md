@@ -61,6 +61,19 @@ Relevante Endpunkte:
 
 ---
 
+## Selbstheilung bei fehlgeschlagenen Deployments
+
+Ein Backend-Image, das älter als der DB-Migrationsstand ist (z. B. ein versehentliches Downgrade auf ein `:beta`-Image, das eine bereits angewendete Migration nicht kennt), konnte früher die gesamte API lautlos lahmlegen — Caddy lieferte auf alle `/api/*`-Routen 502, ohne dass jemand benachrichtigt wurde. Vier Schutzebenen verhindern das jetzt:
+
+| Ebene | Wirkung |
+|---|---|
+| **Healthcheck** | Der `backend`-Dienst hat einen Docker-Healthcheck auf `/health`; Docker und der Updater erkennen einen crashenden Container, statt „gestartet" als Erfolg zu werten |
+| **Robuster Boot-Entrypoint** (`backend/docker-entrypoint.sh`) | Erkennt „Image älter als DB-Schema", protokolliert eine klare Diagnose, hinterlegt einen Alert-Marker und bricht bewusst fail-closed ab |
+| **Automatischer Rollback** | Der Updater merkt sich vor jedem Deploy das laufende Backend-Image (per Image-ID), wartet nach dem Deploy auf `healthy` und stellt bei Fehlschlag automatisch die vorherige Version wieder her (beide Updater-Varianten) |
+| **Alert an Superadmins** | Der wieder gesunde Backend-Container liest den Alert-Marker und benachrichtigt alle Superadmins per E-Mail über den fehlgeschlagenen Deploy bzw. Rollback — genau einmal pro Ereignis |
+
+---
+
 ## Host-Watchdog
 
 Ein systemd-Timer (`scripts/updater-watchdog.sh`) räumt verwaiste Updater-Container auf und startet abgestürzte Updater neu. Er wird vom Linux-Installer eingerichtet.
