@@ -57,4 +57,6 @@ Innerhalb einer Organisation gelten die üblichen Rollen (**Admin, Planer, Fahre
 | Benutzer einer Org zuweisen | Superadmin → Benutzer, oder Org-Admin → Mitglieder |
 | Org-Code / Branding ändern | Org-Admin → System / Branding |
 
+Bei der Benutzeranlage im Superadmin-Bereich lässt sich optional direkt eine **Organisation samt Rolle** mitgeben — die Mitgliedschaft wird in derselben Transaktion angelegt. Wird stattdessen ein **bestehender** Benutzer nachträglich über Org-Admin → Mitglieder zu einer Organisation hinzugefügt, erhält er automatisch eine E-Mail mit Organisationsname, Rolle und dem passenden Org-Login-Link (`/o/[slug]/login`).
+
 Relevante Endpunkte: siehe [API-Dokumentation → Organisationen](API-Dokumentation#organisationen).
