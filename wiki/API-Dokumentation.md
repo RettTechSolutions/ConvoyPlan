@@ -79,7 +79,7 @@ Nur für Benutzer mit Superadmin-Rolle zugänglich.
 
 | Methode | Endpunkt | Beschreibung |
 |---|---|---|
-| `GET/POST` | `/api/admin/users` | Benutzer auflisten oder anlegen |
+| `GET/POST` | `/api/admin/users` | Benutzer auflisten oder anlegen (`password` optional — ohne Angabe wird eines generiert; optionale `org_id`/`org_role` legen die Org-Mitgliedschaft in derselben Transaktion mit an) |
 | `PATCH/DELETE` | `/api/admin/users/{user_id}` | Benutzer aktivieren/deaktivieren, Rolle setzen, löschen |
 | `GET/POST` | `/api/admin/organizations` | Organisationen auflisten oder anlegen |
 | `POST/DELETE` | `/api/admin/users/{user_id}/orgs` | Benutzer einer Organisation zuweisen oder entfernen |
@@ -287,6 +287,7 @@ Eingehende Updates vom Server:
 | `GET` | `/api/organizations/` | Eigene Organisationen auflisten |
 | `POST` | `/api/organizations/` | Neue Organisation anlegen |
 | `DELETE` | `/api/organizations/{org_id}` | Organisation löschen |
+| `POST` | `/api/organizations/{org_id}/members` | Bestehenden Benutzer per E-Mail zur Org hinzufügen (Org-Admin-Rolle erforderlich) — löst eine Benachrichtigungs-Mail mit Org-Login-Link an den neuen Mitglied aus |
 
 > Siehe auch **[Multi-Tenancy](Multi-Tenancy)**.
 
