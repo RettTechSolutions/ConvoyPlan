@@ -49,7 +49,11 @@ jobs:
         run: |
           cd backend
           pip install -r requirements.txt
-          pip install ruff pytest-asyncio
+          # Pin ruff: 0.16.0 broadened the default rule set (bugbear, isort,
+          # security, simplify, …), turning previously-clean code into 382
+          # findings. Pin to the last release before that change so CI stays
+          # reproducible; adopt the new rules deliberately in a separate change.
+          pip install "ruff==0.15.0" pytest-asyncio
 
       - name: Lint (ruff)
         run: cd backend && ruff check app/
