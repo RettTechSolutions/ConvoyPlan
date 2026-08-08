@@ -7,17 +7,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-# setuptools 70.3.0 (CVE-2025-47273 — path traversal in PackageIndex) is
-# flagged by the container scan not from site-packages, but from the wheel
-# CPython bundles for its own bootstrapping at
-# ensurepip/_bundled/setuptools-*.whl. That file sits inside the stdlib tree,
-# is never touched by `pip install`/`pip uninstall`, and is never executed at
-# container runtime (ensurepip is not invoked again after this build step) —
-# so it's a stale, inert artifact rather than something the app depends on.
-# Delete it so the scan has nothing stale to flag, then install the patched
-# setuptools that the app/build actually uses.
-RUN rm -f /usr/local/lib/python3.*/ensurepip/_bundled/setuptools-*.whl \
-    && pip install --no-cache-dir --upgrade "setuptools>=78.1.1" \
+# Upgrade the base image's baked-in setuptools (70.3.0, CVE-2025-47273 —
+# path traversal in PackageIndex) to a patched release. This is the copy
+# actually importable/usable by anything in the image. See .trivyignore for
+# why the scan still flags a residual finding after this.
+RUN pip install --no-cache-dir --upgrade "setuptools>=78.1.1" \
     && pip install --no-cache-dir -r requirements.txt
 
 COPY . .
