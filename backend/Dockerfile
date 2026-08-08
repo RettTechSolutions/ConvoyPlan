@@ -7,7 +7,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# setuptools ships baked into the python:3.14-slim base image at whatever
+# version was current when that image was built (currently 70.3.0, vulnerable
+# to CVE-2025-47273 — path traversal in setuptools' PackageIndex). Upgrade it
+# explicitly so the image carries the patched release regardless of base-image
+# staleness between rebuilds.
+RUN pip install --no-cache-dir --upgrade "setuptools>=78.1.1" \
+    && pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
