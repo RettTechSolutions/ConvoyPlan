@@ -7,16 +7,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-# setuptools ships baked into the python:3.14-slim base image at whatever
-# version was current when that image was built (currently 70.3.0, vulnerable
-# to CVE-2025-47273 — path traversal in setuptools' PackageIndex). The base
-# image's copy isn't tracked by a normal pip RECORD, so `pip install
-# --upgrade` alone installs a second, newer copy alongside the old one
-# instead of replacing it (both then coexist in site-packages). Remove the
-# baked-in dist-info/package directory first so only the patched version
-# remains, regardless of base-image staleness between rebuilds.
-RUN rm -rf /usr/local/lib/python3.14/site-packages/setuptools-*.dist-info \
-           /usr/local/lib/python3.14/site-packages/setuptools \
+# setuptools 70.3.0 (CVE-2025-47273 — path traversal in PackageIndex) is
+# flagged by the container scan not from site-packages, but from the wheel
+# CPython bundles for its own bootstrapping at
+# ensurepip/_bundled/setuptools-*.whl. That file sits inside the stdlib tree,
+# is never touched by `pip install`/`pip uninstall`, and is never executed at
+# container runtime (ensurepip is not invoked again after this build step) —
+# so it's a stale, inert artifact rather than something the app depends on.
+# Delete it so the scan has nothing stale to flag, then install the patched
+# setuptools that the app/build actually uses.
+RUN rm -f /usr/local/lib/python3.*/ensurepip/_bundled/setuptools-*.whl \
     && pip install --no-cache-dir --upgrade "setuptools>=78.1.1" \
     && pip install --no-cache-dir -r requirements.txt
 
