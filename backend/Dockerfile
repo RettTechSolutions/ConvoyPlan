@@ -6,13 +6,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgdal-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Drop ensurepip's bundled wheels: the python:3.14-slim base image ships an
-# ensurepip bootstrap copy of setuptools 70.3.0 (CVE-2025-47273, path traversal
-# in PackageIndex) that is never installed as a real package — it just sits on
-# disk and trips the container image scan. It's only used by `python -m
-# ensurepip`, which this image never runs, so it's safe to remove.
-RUN find / -path "*/ensurepip/_bundled/*" -delete
-
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

@@ -168,16 +168,23 @@ GHSA-r7wm-3cxj-wff9
 CVE-2026-12151
 
 # ─────────────────────────────────────────────────────────────────────────────
-# convoyplan-backend: msgpack vulnerability bundled inside pip's own vendored
-# copy (pip/_vendor/msgpack, not an installed top-level package — confirmed
-# absent from `pip list`). pip 26.2.1, the latest release as of this review,
-# still vendors msgpack 1.1.2; the pip maintainers have not bumped it, so there
-# is no newer pip that resolves this (VEX: not_affected). pip's vendored
-# msgpack is only used internally by pip's own HTTP disk cache during `pip
-# install`; the built image never runs pip again after the build step and
-# receives no attacker-controlled input through it.
-# Re-evaluate once pip vendors a patched msgpack. Review by: 2026-09-10.
+# convoyplan-backend: two vulnerabilities bundled inside pip's own vendor
+# directory (pip/_vendor/), not installed top-level packages — confirmed
+# absent from `pip list`. pip 26.2.1, the latest release as of this review,
+# still vendors both at the flagged versions (see pip/_vendor/vendor.txt), so
+# there is no newer pip that resolves either (VEX: not_affected). The built
+# image never runs pip again after the build step and receives no
+# attacker-controlled input through it.
+# Re-evaluate once pip vendors patched copies. Review by: 2026-09-10.
 
 # msgpack: out-of-bounds read / crash on Unpacker reuse after an unpack error.
+# pip's vendored msgpack is only used internally by pip's own HTTP disk cache.
 # Fixed upstream in msgpack 1.2.1 (not yet picked up by pip's vendor bundle).
 GHSA-6v7p-g79w-8964
+
+# setuptools: path traversal in setuptools.package_index.PackageIndex.
+# pip vendors only pkg_resources/__init__.py from setuptools 70.3.0 (for
+# pip/_internal/metadata/pkg_resources.py) — the vulnerable package_index
+# module isn't part of pip's vendored copy at all.
+# Fixed upstream in setuptools 78.1.1 (not yet picked up by pip's vendor bundle).
+CVE-2025-47273
