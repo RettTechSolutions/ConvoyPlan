@@ -166,3 +166,18 @@ GHSA-r7wm-3cxj-wff9
 # undici Denial-of-Service via unbounded response memory allocation.
 # Fixed upstream in undici 6.27.0 (bundled with a future Node.js 26.x release).
 CVE-2026-12151
+
+# ─────────────────────────────────────────────────────────────────────────────
+# convoyplan-backend: msgpack vulnerability bundled inside pip's own vendored
+# copy (pip/_vendor/msgpack, not an installed top-level package — confirmed
+# absent from `pip list`). pip 26.2.1, the latest release as of this review,
+# still vendors msgpack 1.1.2; the pip maintainers have not bumped it, so there
+# is no newer pip that resolves this (VEX: not_affected). pip's vendored
+# msgpack is only used internally by pip's own HTTP disk cache during `pip
+# install`; the built image never runs pip again after the build step and
+# receives no attacker-controlled input through it.
+# Re-evaluate once pip vendors a patched msgpack. Review by: 2026-09-10.
+
+# msgpack: out-of-bounds read / crash on Unpacker reuse after an unpack error.
+# Fixed upstream in msgpack 1.2.1 (not yet picked up by pip's vendor bundle).
+GHSA-6v7p-g79w-8964
