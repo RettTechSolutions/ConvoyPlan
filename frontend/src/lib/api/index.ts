@@ -164,6 +164,8 @@ export interface DemoSessionResult {
     token_type: string;
     org_slug: string;
     expires_at: string;
+    /** true = bestehende Sitzung fortgesetzt, keine neue angelegt. */
+    resumed?: boolean;
 }
 
 export const authApi = {

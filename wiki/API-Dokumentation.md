@@ -264,7 +264,7 @@ sind `/health`, `/api/auth/login`, `/api/license/*`, `/api/setup`, `/api/track/*
 |---|---|---|
 | `GET` | `/api/auth/demo-status` | Ist der öffentliche Demo-Modus aktiviert? |
 | `GET` | `/api/auth/demo-session/info` | Rahmendaten einer Demo-Sitzung (Laufzeit) |
-| `POST` | `/api/auth/demo-session` | Befristete Demo-Organisation samt Token erzeugen |
+| `POST` | `/api/auth/demo-session` | Befristete Demo-Organisation samt Token erzeugen — oder die noch laufende Sitzung dieser IP fortsetzen (`resumed: true`) |
 
 ---
 
@@ -315,7 +315,14 @@ Jede Demo-Nutzung läuft als eigene, befristete Organisation (`is_demo=true`). D
 | `POST` | `/api/admin/demo-ip-allowlist` | Adresse (`203.0.113.7`) oder Netz (`203.0.113.0/24`) dauerhaft freistellen; hebt eine laufende Sperre mit auf |
 | `DELETE` | `/api/admin/demo-ip-allowlist/{entry_id}` | Ausnahme zurücknehmen — ab dann gilt wieder die Karenzzeit |
 
-> **Karenzzeit je IP:** `POST /api/auth/demo-session` erlaubt je Client-IP eine Sitzung pro Karenzzeit (Standard 24 h, `DEMO_IP_COOLDOWN_HOURS` bzw. Admin-Portal; `0` schaltet sie ab). Ein weiterer Versuch innerhalb des Fensters antwortet mit `429` und `Retry-After`. Die Sperre liegt in der Datenbank (`demo_origins`), übersteht damit einen Neustart und gilt auch dann noch, wenn die Demo-Organisation längst abgelaufen und gelöscht ist. Der Retention-Job entfernt abgelaufene Einträge.
+> **Karenzzeit je IP:** `POST /api/auth/demo-session` erlaubt je Client-IP eine Sitzung pro Karenzzeit (Standard 24 h, `DEMO_IP_COOLDOWN_HOURS` bzw. Admin-Portal; `0` schaltet sie ab). Läuft die Karenzzeit noch, **die Sitzung dieser Adresse aber ebenfalls**, wird sie mit einem frischen Token fortgesetzt: Antwort `200` mit `resumed: true` (Audit-Eintrag `demo.session.resumed`) — sonst sperrte die Karenzzeit den Besucher aus seiner eigenen Demo aus, sobald er den Tab schließt. Ist keine Sitzung mehr da, antwortet der Endpunkt mit `429`, `Retry-After` und einem strukturierten `detail`:
+>
+> ```json
+> {"detail": {"message": "Pro IP-Adresse ist alle 24 Stunden …", "reason": "ip_cooldown",
+>              "retry_at": "2026-08-14T07:35:12+00:00", "retry_after": 79512, "cooldown_hours": 24}}
+> ```
+>
+> `retry_at` ist der genaue Zeitpunkt der Wiederfreigabe (ISO-8601, UTC) — die Oberfläche zeigt ihn in der Zeitzone des Besuchers an. Die Sperre liegt in der Datenbank (`demo_origins`), übersteht damit einen Neustart und gilt auch dann noch, wenn die Demo-Organisation längst abgelaufen und gelöscht ist. Der Retention-Job entfernt abgelaufene Einträge.
 
 > Die Herkunftsfelder (`created_ip`, `created_location`) werden beim Start der Sitzung aus der Client-IP ermittelt und per Hintergrund-Geolokation (ipapi.co) um Stadt/Region/Land ergänzt — siehe [Lizenz und Demo-Modus](Lizenz-und-Demo-Modus#offene-demo-sitzungen-verwalten-admin).
 

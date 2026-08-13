@@ -2,11 +2,12 @@
     import { onMount } from 'svelte';
     import { goto } from '$app/navigation';
     import { authApi } from '$lib/api';
-    import { demoFailureReason } from '$lib/demo-error';
+    import { demoFailure, formatRetryAt } from '$lib/demo-error';
     import { orgStore } from '$lib/stores/org';
     import AppLogo from '$lib/components/AppLogo.svelte';
 
     let error = $state('');
+    let retryAt = $state<Date | null>(null);
 
     onMount(async () => {
         try {
@@ -17,9 +18,11 @@
             }
             const result = await authApi.createDemoSession();
             orgStore.setToken(result.org_slug, result.access_token);
-            goto(`/o/${result.org_slug}/plan`, { replaceState: true });
+            goto(`/o/${result.org_slug}/plan${result.resumed ? '?resumed=1' : ''}`, { replaceState: true });
         } catch (err) {
-            error = demoFailureReason(err);
+            const failure = demoFailure(err);
+            error = failure.message;
+            retryAt = failure.retryAt;
         }
     });
 </script>
@@ -36,6 +39,9 @@
         </div>
         {#if error}
             <p class="error">{error}</p>
+            {#if retryAt}
+                <p class="retry">Wieder möglich ab {formatRetryAt(retryAt)}</p>
+            {/if}
             <a href="/" class="back-link">Zur Startseite →</a>
         {:else}
             <div class="spinner"></div>
@@ -93,6 +99,12 @@
         color: var(--color-primary);
         font-size: var(--text-base);
         margin: 0 0 1rem;
+    }
+    .retry {
+        color: var(--text-1);
+        font-size: var(--text-sm);
+        font-weight: 600;
+        margin: -.5rem 0 1rem;
     }
     .back-link {
         color: var(--color-primary);
