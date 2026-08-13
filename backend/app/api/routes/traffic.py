@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
+from app.api.quota import traffic_quota
 from app.database import get_db
 from app.models.user import User
 from app.services import traffic_flow as flow_svc
@@ -38,7 +39,7 @@ async def flow_status(
     return {"provider": cfg.provider}
 
 
-@router.get("/flow")
+@router.get("/flow", dependencies=[Depends(traffic_quota)])
 async def get_flow(
     lat: float = Query(..., ge=-90, le=90),
     lon: float = Query(..., ge=-180, le=180),
@@ -55,7 +56,7 @@ async def get_flow(
         raise HTTPException(status_code=502, detail="Verkehrslage nicht verfügbar")
 
 
-@router.post("/flow/route")
+@router.post("/flow/route", dependencies=[Depends(traffic_quota)])
 async def get_flow_for_route(
     body: RouteFlowRequest,
     db: AsyncSession = Depends(get_db),

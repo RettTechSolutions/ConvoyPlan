@@ -15,6 +15,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
 from app.api.guards import get_convoy_access
+from app.api.quota import routing_quota
 from app.database import get_db
 from app.models.convoy import Convoy, ConvoyVehicle
 from app.models.route import Route
@@ -368,7 +369,11 @@ async def get_route(
     )
 
 
-@router.post("/{convoy_id}/calculate-route", response_model=RouteResponse)
+@router.post(
+    "/{convoy_id}/calculate-route",
+    response_model=RouteResponse,
+    dependencies=[Depends(routing_quota)],
+)
 async def calculate_route(
     convoy_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),

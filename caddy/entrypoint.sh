@@ -4,6 +4,13 @@ set -e
 # If setup wizard wrote a Caddyfile to the shared volume, use it directly.
 if [ -f "/certs/Caddyfile" ]; then
     echo "[caddy] Using persisted Caddyfile from /certs/Caddyfile"
+    # That file is written once, at setup time, so an install predating the
+    # hardening headers keeps serving without them. The backend repairs it on
+    # boot (app/services/caddy_config.py); flag it here too, because Caddy may
+    # well start first and this is the only place the stale config is visible.
+    if ! grep -q "X-Content-Type-Options" /certs/Caddyfile; then
+        echo "[caddy] WARNING: persisted Caddyfile has no security headers — the backend will regenerate it on start; re-run the setup wizard if this persists" >&2
+    fi
     exec caddy run --config /certs/Caddyfile --adapter caddyfile
 fi
 

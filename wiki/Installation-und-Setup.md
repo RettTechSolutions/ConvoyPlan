@@ -146,6 +146,12 @@ openssl rand -hex 32
 | `MFA_ENCRYPTION_KEY` | *(aus `JWT_SECRET` abgeleitet)* | Fernet-Schlüssel zur Verschlüsselung der TOTP-Secrets at-rest. Rotation von `JWT_SECRET` macht ohne eigenen Schlüssel bestehende MFA-Secrets unlesbar |
 | `PASSWORD_BREACH_CHECK_ENABLED` | `true` | Abgleich neuer Passwörter gegen Have-I-Been-Pwned (k-Anonymity, fail-open). Für Air-Gapped-Setups auf `false` |
 | `CSP_ENFORCE` | `false` | Content-Security-Policy erzwingen (Default: Report-Only, bricht die UI nicht) |
+| `QUOTA_ROUTING_PER_HOUR` | `240` | Stundenbudget für Routenberechnungen (GraphHopper) je angemeldetem Benutzer. `0` = Drossel aus |
+| `QUOTA_ROUTING_DEMO_PER_HOUR` | `40` | Dasselbe für Demo-Sitzungen (zusätzlich pro IP gezählt) |
+| `QUOTA_GEOCODE_PER_HOUR` | `600` | Stundenbudget für die Adresssuche (HERE/Photon) je Benutzer |
+| `QUOTA_GEOCODE_DEMO_PER_HOUR` | `100` | Dasselbe für Demo-Sitzungen |
+| `QUOTA_TRAFFIC_PER_HOUR` | `600` | Stundenbudget für die Live-Verkehrslage (HERE/TomTom) je Benutzer |
+| `QUOTA_TRAFFIC_DEMO_PER_HOUR` | `100` | Dasselbe für Demo-Sitzungen |
 | `RETENTION_ENABLED` | `true` | Periodisches Purgen alter Daten durch den `retention`-Container |
 | `RETENTION_INTERVAL` | `3600` | Sekunden zwischen den Purge-Läufen |
 | `RETENTION_POSITIONS_HOURS` | `24` | Live-Positionen älter als dieser Wert werden gelöscht |
@@ -335,6 +341,8 @@ Für ein neues Release den Tag `vX.Y.Z` setzen – Docker-Images werden dann aut
 - Die Datenbankzugänge in `docker-compose.yml` sind Entwicklungs-Defaults – in Produktion ändern.
 - Die Caddy-Admin-API läuft auf Port `:2019` und ist nur im Docker-Netzwerk intern erreichbar.
 - Caddy liefert Security-Header (HSTS, `X-Content-Type-Options`, `X-Frame-Options` u. a.) und eine Content-Security-Policy aus (Report-Only, per `CSP_ENFORCE=true` erzwingbar).
+- Die persistierte Caddyfile (`/certs/Caddyfile`, vom Setup-Wizard geschrieben) wird bei jedem Backend-Start gegen die aktuelle Header-Baseline geprüft und bei Bedarf aus den gespeicherten Setup-Werten neu erzeugt und live nachgeladen — Bestandsinstallationen aus der Zeit vor den Security-Headern liefern sie damit automatisch aus, ohne erneuten Setup-Durchlauf.
+- Endpunkte, die fremdes Kontingent kosten (Routing, Adresssuche, Verkehrslage), haben ein Stundenbudget je Aufrufer; Demo-Sitzungen bekommen das kleinere und werden zusätzlich pro IP gezählt (`QUOTA_*`).
 - TOTP-Secrets werden Fernet-verschlüsselt at-rest gespeichert; Passwort-/MFA-Reset entziehen über die `token_version` alle bestehenden JWTs.
 - Öffentliche Share-Links sind ohne Login abrufbar – Tokens sollten wie vertrauliche Links behandelt und bei Bedarf widerrufen werden.
 - Live-Tracking verarbeitet Standortdaten – Aufbewahrung wird über den `retention`-Container geregelt.

@@ -62,7 +62,20 @@ class Settings(BaseSettings):
     app_env: str = "production"
 
     # Brute-force protection for authentication endpoints. Disabled in tests.
+    # Also gates the upstream-quota throttles below.
     rate_limit_enabled: bool = True
+
+    # Hourly per-caller budgets for the endpoints that spend a metered upstream
+    # quota (see app/api/quota.py). Demo sessions get the smaller budget because
+    # anyone can mint one via POST /api/auth/demo-session — without this, a
+    # single free session could drain the instance's HERE/TomTom credits or pin
+    # GraphHopper's CPU. Set a value to 0 to disable that throttle.
+    quota_routing_per_hour: int = 240        # GraphHopper route calculations
+    quota_routing_demo_per_hour: int = 40
+    quota_geocode_per_hour: int = 600        # HERE / Photon address search
+    quota_geocode_demo_per_hour: int = 100
+    quota_traffic_per_hour: int = 600        # HERE / TomTom live traffic flow
+    quota_traffic_demo_per_hour: int = 100
 
     # Check new passwords against the Have I Been Pwned k-anonymity range API.
     # Fails open (allows the password) if the service is unreachable, so it is
