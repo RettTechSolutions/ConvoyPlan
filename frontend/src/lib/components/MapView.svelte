@@ -4,6 +4,8 @@
 	import 'maplibre-gl/dist/maplibre-gl.css';
 	import { get } from 'svelte/store';
 	import { mapMode } from '$lib/stores/map';
+	import { themeStore } from '$lib/stores/theme';
+	import { addGermanyMask, applyMapTheme } from '$lib/map/germany';
 	import type { Waypoint, VehiclePosition } from '$lib/api';
 	import type { Geometry, FeatureCollection } from 'geojson';
 
@@ -143,6 +145,12 @@
 		});
 
 		map.on('load', () => {
+			// Deutschland-Fokus: alles außerhalb der Bundesgrenze wird abgedunkelt,
+			// weil die Routenberechnung nur in Deutschland möglich ist. Zuerst
+			// hinzugefügt, damit Route, Sperrungen und Marker darüber liegen.
+			addGermanyMask(map, get(themeStore));
+			applyMapTheme(map, get(themeStore));
+
 			// Live-Verkehrslage (Flow) — zuunterst, damit Route und Sperrungen
 			// darüber sichtbar bleiben. Ampelfarbe nach jamFactor (0 = frei,
 			// 10 = Stillstand); nur befüllt, wenn ein Anbieter-Key gesetzt ist.
@@ -477,6 +485,13 @@
 		const src = map.getSource('flow') as maplibregl.GeoJSONSource | undefined;
 		if (!src) return;
 		src.setData((flowGeojson as FeatureCollection) ?? empty());
+	});
+
+	// Karte folgt dem Hell-/Dunkel-Design der App
+	$effect(() => {
+		const theme = $themeStore;
+		if (!ready) return;
+		applyMapTheme(map, theme);
 	});
 </script>
 

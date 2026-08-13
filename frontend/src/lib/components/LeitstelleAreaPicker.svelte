@@ -11,6 +11,9 @@
     import * as maplibregl from '$lib/map/maplibre';
     import 'maplibre-gl/dist/maplibre-gl.css';
     import { onMount, onDestroy } from 'svelte';
+    import { get } from 'svelte/store';
+    import { themeStore } from '$lib/stores/theme';
+    import { addGermanyMask, applyMapTheme } from '$lib/map/germany';
     import { loadDistricts, DISTRICTS_ATTRIBUTION, type DistrictFeature } from '$lib/geo/districts';
 
     interface Props {
@@ -161,6 +164,9 @@
         });
 
         map.on('load', () => {
+            // Deutschland-Fokus + Hell/Dunkel-Abstimmung (siehe $lib/map/germany)
+            addGermanyMask(map!, get(themeStore));
+            applyMapTheme(map!, get(themeStore));
             map!.addSource('draft', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
             map!.addLayer({ id: 'draft-fill', type: 'fill', source: 'draft', paint: { 'fill-color': '#e74c3c', 'fill-opacity': 0.2 } });
             map!.addLayer({ id: 'draft-line', type: 'line', source: 'draft', paint: { 'line-color': '#e74c3c', 'line-width': 2 } });
@@ -227,6 +233,12 @@
     $effect(() => {
         const codes = takenCodes;
         if (mapReady && map?.getLayer('districts-taken')) map.setFilter('districts-taken', districtFilter(codes));
+    });
+
+    // Karte folgt dem Hell-/Dunkel-Design der App
+    $effect(() => {
+        const theme = $themeStore;
+        if (map) applyMapTheme(map, theme);
     });
 </script>
 
