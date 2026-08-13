@@ -34,8 +34,9 @@ hängt vom Endpunkt ab — die Tabelle nennt jeweils den kürzesten Weg.
 > und umgekehrt öffnet der Docs-Key keinen einzigen Datenendpunkt.
 
 Ohne Credential erreichbar sind nur: `GET /health`, `GET /api/version`,
-`GET /api/status`, `GET /api/setup/status`, `GET /api/license/mode`,
-`GET /api/branding/org/{slug}` sowie die Freigabe-/Track-Routen.
+`GET /api/status`, `GET /api/status/public`, `GET /api/setup/status`,
+`GET /api/license/mode`, `GET /api/branding/org/{slug}` sowie die
+Freigabe-/Track-Routen.
 
 ---
 
@@ -558,6 +559,15 @@ Org-Admin-Rolle erforderlich (außer dem öffentlichen Slug-Endpunkt). Die Overr
 | `GET` | `/api/version` | Build-Version, Commit-SHA und Update-Hinweis |
 | `GET` | `/api/version/changelog` | Release-Notes der laufenden Version (gecacht) |
 | `GET` | `/health` | Health-Check mit Versionsangabe |
+| `GET` | `/api/status` | Technischer Dienststatus inkl. Latenzen und Kartenausschnitt |
+| `GET` | `/api/status/public` | Funktionsstatus für die öffentliche Statusseite `/status` |
+
+`GET /api/status/public` ist die Datenquelle der öffentlichen Statusseite und bewusst
+grobkörnig: je Funktion (Portal, Konvoi-Daten, Routenplanung, Live-Tracking, Verkehr &
+Sperrungen, Wetter) nur `operational`, `degraded`, `down` oder `unknown` — **keine**
+Latenzen, Anbieternamen, Kartenausschnitte oder Versionsangaben. Das Ergebnis ist
+15 Sekunden gecacht, damit häufiges Neuladen der Seite nicht auf die geprüften Dienste
+durchschlägt. Wer die technischen Details braucht, nutzt `GET /api/status`.
 
 ---
 

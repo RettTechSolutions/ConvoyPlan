@@ -1,12 +1,26 @@
 <!--
-  Rechtliche Pflichtlinks (Impressum/Datenschutz).
-  Die Rechtsseiten werden zentral auf der Marketing-Website convoyplan.de
-  gepflegt; die App verweist darauf.
+  Rechtliche Pflichtlinks (Impressum/Datenschutz) plus der Verweis auf die
+  öffentliche Statusseite. Die Rechtsseiten werden zentral auf der Marketing-
+  Website convoyplan.de gepflegt; die App verweist darauf.
+
+  `showStatus` blendet den Status-Link dort aus, wo er ins Leere zeigen würde —
+  namentlich auf der Statusseite selbst.
 -->
+<script lang="ts">
+	interface Props {
+		showStatus?: boolean;
+	}
+	let { showStatus = true }: Props = $props();
+</script>
+
 <footer class="legal-footer">
 	<a href="https://convoyplan.de/impressum" target="_blank" rel="noopener">Impressum</a>
 	<span aria-hidden="true">·</span>
 	<a href="https://convoyplan.de/datenschutz" target="_blank" rel="noopener">Datenschutz</a>
+	{#if showStatus}
+		<span aria-hidden="true">·</span>
+		<a href="/status">Systemstatus</a>
+	{/if}
 </footer>
 
 <style>

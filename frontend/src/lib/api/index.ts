@@ -151,6 +151,23 @@ export interface StatusResponse {
 	traffic_flow?: { provider: string | null };
 }
 
+// Öffentliche Statusseite: grobkörnig und ohne Betriebsinterna (keine Latenzen,
+// keine Anbieter, keine Versionen) — siehe GET /api/status/public.
+export type PublicComponentState = 'operational' | 'degraded' | 'down' | 'unknown';
+
+export interface PublicStatusComponent {
+	key: string;
+	name: string;
+	description: string;
+	state: PublicComponentState;
+}
+
+export interface PublicStatusResponse {
+	checked_at: string;
+	overall: PublicComponentState;
+	components: PublicStatusComponent[];
+}
+
 export interface LoginResult {
 	access_token: string | null;
 	token_type: string;
@@ -288,6 +305,9 @@ export const weatherApi = {
 // V3: Status
 export const statusApi = {
 	get: () => api.get<StatusResponse>('/api/status'),
+	// Ohne Anmeldung erreichbar — die Statusseite läuft auch dann noch, wenn
+	// gerade niemand eingeloggt ist (oder das Login selbst hakt).
+	getPublic: () => api.get<PublicStatusResponse>('/api/status/public'),
 };
 
 // V3: Online Users (SSE)
