@@ -574,6 +574,7 @@ verändert den Zustand und erfordert einen Superadmin-Token.
 | Methode | Endpunkt | Zugang | Beschreibung |
 |---|---|---|---|
 | `GET` | `/api/admin/system/overview` | Token **oder** System-Key | Live-Zustand: CPU, RAM, Platten, PSI-Druck, Container, Datenbank, aktive Benutzer |
+| `GET` | `/api/admin/system/prtg` | Token **oder** System-Key | Derselbe Live-Zustand im Kanalformat von [PRTG](#anbindung-an-prtg) |
 | `GET` | `/api/admin/system/containers` | Token **oder** System-Key | Container-Zustände inkl. Healthcheck und CPU/RAM je Container (`with_stats=true\|false`) |
 | `GET` | `/api/admin/system/history` | Token **oder** System-Key | Verlauf (`range=1h…365d` oder `from`/`to`, `resolution=auto\|raw\|hour\|day`, `format=json\|csv`) |
 | `GET` | `/api/admin/system/usage` | Token **oder** System-Key | Portalnutzung je Tag (`days=1…1095`) |
@@ -606,6 +607,64 @@ curl -sH "X-API-Key: $CVP_SYSTEM_KEY" \
 Verlaufsdaten reichen so weit zurück, wie die Aufbewahrung erlaubt: Rohstichproben
 90 Tage, verdichtete Tageswerte standardmäßig 3 Jahre. `resolution=auto` wählt
 selbstständig zwischen Roh-, Stunden- und Tageswerten, damit die Antwort handlich bleibt.
+
+### Anbindung an PRTG
+
+`GET /api/admin/system/prtg` liefert dieselbe Momentaufnahme wie `/overview`, nur im
+Kanalformat des PRTG-Sensortyps **HTTP Data Advanced**. Ein Skript oder ein
+Mapping-Template auf der Probe ist dadurch nicht nötig.
+
+Einrichtung in PRTG:
+
+1. Im Superadmin-Portal unter **Admin → API-Keys** einen Key mit Geltungsbereich
+   *System* anlegen. Der Klartext wird nur einmal angezeigt.
+2. Neuen Sensor **HTTP Data Advanced** an dem Gerät anlegen, das die Instanz vertritt.
+3. **URL:** `https://web.convoyplan.de/api/admin/system/prtg`
+4. **Custom HTTP Headers:** `X-API-Key: cvp_a1b2c3d4_xxxxxxxx`
+5. Abfrageintervall auf 60 s oder mehr stellen — die Momentaufnahme misst die
+   CPU-Last über ein kurzes Messfenster und kostet dabei etwas Zeit.
+
+Die Antwort lässt sich vorab prüfen:
+
+```bash
+curl -sH "X-API-Key: $CVP_SYSTEM_KEY" \
+  https://web.convoyplan.de/api/admin/system/prtg | jq '.prtg.result[].channel'
+```
+
+Kanäle der Antwort:
+
+| Bereich | Kanäle |
+|---|---|
+| Host | CPU-Auslastung, Load 1 min, Load 5 min, Arbeitsspeicher belegt, Arbeitsspeicher verfügbar, Swap belegt, Plattenbelegung, Platte frei, Lese-/Schreibrate, Laufzeit |
+| Druck (PSI) | CPU-Druck, Speicher-Druck, I/O-Druck |
+| Container | Container gesamt, Container laufend, Container gestört |
+| Datenbank | Datenbankgröße, Datenbankverbindungen |
+| Nutzung | Aktive Benutzer, Aktive Demo-Besucher, Eindeutige Benutzer heute, Anmeldungen 24 h, Antwortzeit Ø |
+| Erfassung | Alter der letzten Stichprobe |
+
+Zu Auslastung, Druck und gestörten Containern liefert die Antwort Warn- und
+Fehlergrenzen mit. PRTG übernimmt sie beim Anlegen der Kanäle; wer sie danach in den
+Kanaleinstellungen ändert, behält seine eigenen Werte.
+
+Nicht jeder Kanal erscheint auf jeder Instanz:
+
+- **PSI-Kanäle** fehlen, wenn der Kernel keine Druckwerte liefert.
+- **Container-Kanäle** fehlen, solange die Docker-API nicht erreichbar ist — statt
+  dreier Nullen, die wie ein toter Stack aussähen, steht der Grund im Sensortext.
+- **Alter der letzten Stichprobe** fehlt, solange der Collector abgeschaltet ist
+  (`SYSTEM_METRICS_ENABLED=false`) oder noch nie gemessen hat.
+
+Ein Kennwert, den der Host grundsätzlich nicht messen kann, fehlt dauerhaft — das ist
+Absicht: PRTG erkennt Kanäle am Namen, und Kanäle, die kommen und gehen, zerreißen den
+Verlauf.
+
+Lässt sich überhaupt nichts messen, antwortet der Endpunkt mit dem Fehlerformat des
+Sensors (`{"prtg": {"error": 1, "text": "…"}}`) statt mit HTTP 500, damit in PRTG der
+Grund und nicht nur „Server Error" am Sensor steht. Ein falscher oder fehlender Key
+bleibt ein `401`, ein Org-Key ein `403`.
+
+Für einen reinen Erreichbarkeitscheck genügt ohne Key ein HTTP-Sensor auf `/health`
+oder `/api/status`.
 
 ---
 
