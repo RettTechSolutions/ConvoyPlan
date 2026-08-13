@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time as dtime, timedelta, timezone
 from typing import Any, Iterable
 
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import case, delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -176,6 +176,7 @@ async def collect_sample(db: AsyncSession) -> SystemMetricSample:
 
     counters, pending_users = activity.drain()
     active = activity.active_users()
+    active_by_kind = activity.count_by_kind(active)
     logins = await _count_logins_since(db, previous_at or now - timedelta(seconds=interval or 0))
 
     sample = SystemMetricSample(
@@ -207,8 +208,16 @@ async def collect_sample(db: AsyncSession) -> SystemMetricSample:
         containers_total=docker.total if docker.available else None,
         containers_running=docker.running if docker.available else None,
         containers_unhealthy=docker.unhealthy if docker.available else None,
-        active_users=len(active),
-        active_orgs=len({e.org_id for e in active if e.org_id is not None}),
+        active_users=active_by_kind[activity.KIND_MEMBER],
+        active_demo_users=active_by_kind[activity.KIND_DEMO],
+        active_admin_users=active_by_kind[activity.KIND_ADMIN],
+        active_orgs=len(
+            {
+                e.org_id
+                for e in active
+                if e.org_id is not None and e.kind == activity.KIND_MEMBER
+            }
+        ),
         logins=logins,
         requests=counters.requests,
         request_errors=counters.errors,
@@ -241,7 +250,9 @@ async def _persist_user_activity(db: AsyncSession, pending: Iterable[activity.Us
             existing = (
                 await db.execute(
                     select(UserActivityDay).where(
-                        UserActivityDay.user_id == entry.user_id, UserActivityDay.day == day
+                        UserActivityDay.user_id == entry.user_id,
+                        UserActivityDay.day == day,
+                        UserActivityDay.kind == entry.kind,
                     )
                 )
             ).scalar_one_or_none()
@@ -260,6 +271,7 @@ async def _persist_user_activity(db: AsyncSession, pending: Iterable[activity.Us
                     user_id=entry.user_id,
                     org_id=entry.org_id,
                     day=day,
+                    kind=entry.kind,
                     first_seen_at=entry.first_seen,
                     last_seen_at=entry.last_seen,
                     requests=entry.requests,
@@ -299,6 +311,8 @@ async def live_snapshot(db: AsyncSession) -> dict[str, Any]:
 
     today = datetime.now(timezone.utc).date()
     users_today = await unique_users_between(db, today, today)
+    demo_users_today = await unique_users_between(db, today, today, activity.KIND_DEMO)
+    admin_users_today = await unique_users_between(db, today, today, activity.KIND_ADMIN)
     logins_24h = await _count_logins_since(db, datetime.now(timezone.utc) - timedelta(hours=24))
 
     return {
@@ -320,6 +334,8 @@ async def live_snapshot(db: AsyncSession) -> dict[str, Any]:
         "usage": {
             **activity.snapshot(),
             "unique_users_today": users_today,
+            "unique_demo_users_today": demo_users_today,
+            "unique_admin_users_today": admin_users_today,
             "logins_24h": logins_24h,
         },
     }
@@ -345,6 +361,7 @@ _GAUGE_FIELDS = (
     "containers_running",
     "containers_unhealthy",
     "active_users",
+    "active_demo_users",
     "avg_response_ms",
 )
 
@@ -475,7 +492,11 @@ def _daily_point(row: SystemMetricDaily) -> dict[str, Any]:
         "containers_running": row.containers_running_min,
         "active_users": _round(row.active_users_avg),
         "active_users_max": row.active_users_max,
+        "active_demo_users": _round(row.active_demo_users_avg),
+        "active_admin_users": _round(row.active_admin_users_avg),
         "unique_users": row.unique_users,
+        "unique_demo_users": row.unique_demo_users,
+        "unique_admin_users": row.unique_admin_users,
         "logins": row.logins,
         "requests": row.requests,
         "request_errors": row.request_errors,
@@ -483,37 +504,58 @@ def _daily_point(row: SystemMetricDaily) -> dict[str, Any]:
     }
 
 
-async def unique_users_between(db: AsyncSession, start_day: date, end_day: date) -> int:
-    """Eindeutige Benutzer, die im Zeitraum im Portal aktiv waren."""
+async def unique_users_between(
+    db: AsyncSession, start_day: date, end_day: date, kind: str | None = activity.KIND_MEMBER
+) -> int:
+    """Eindeutige Benutzer, die im Zeitraum im Portal aktiv waren.
+
+    Standardmäßig nur reguläre Portalnutzer — Demo-Besucher bekommen je Sitzung
+    ein neues Konto und würden die Zahl sonst mit jedem Probeklick erhöhen, der
+    Superadmin verwaltet lediglich das System. ``kind=None`` zählt alle.
+    """
+    conditions = [UserActivityDay.day >= start_day, UserActivityDay.day <= end_day]
+    if kind is not None:
+        conditions.append(UserActivityDay.kind == kind)
     value = await _safe_scalar(
-        db,
-        select(func.count(func.distinct(UserActivityDay.user_id))).where(
-            UserActivityDay.day >= start_day, UserActivityDay.day <= end_day
-        ),
+        db, select(func.count(func.distinct(UserActivityDay.user_id))).where(*conditions)
     )
     return int(value or 0)
 
 
+def _distinct_if(column, kind: str):
+    """`count(distinct column) filter (where kind = …)`, portabel über CASE."""
+    return func.count(func.distinct(case((UserActivityDay.kind == kind, column))))
+
+
+def _sum_if(column, kind: str):
+    return func.sum(case((UserActivityDay.kind == kind, column), else_=0))
+
+
 async def user_activity_days(db: AsyncSession, start_day: date, end_day: date) -> list[dict]:
-    """Nutzung je Tag: eindeutige Nutzer, Organisationen und Requests."""
+    """Nutzung je Tag, nach Gruppen getrennt: reguläre Nutzer, Demo-Besucher,
+    Superadmins, dazu Organisationen und Requests der regulären Nutzer."""
+    member, demo, admin = activity.KIND_MEMBER, activity.KIND_DEMO, activity.KIND_ADMIN
     stmt = (
         select(
             UserActivityDay.day,
-            func.count(func.distinct(UserActivityDay.user_id)).label("users"),
-            func.count(func.distinct(UserActivityDay.org_id)).label("orgs"),
-            func.sum(UserActivityDay.requests).label("requests"),
+            _distinct_if(UserActivityDay.user_id, member).label("users"),
+            _distinct_if(UserActivityDay.user_id, demo).label("demo_users"),
+            _distinct_if(UserActivityDay.user_id, admin).label("admin_users"),
+            _distinct_if(UserActivityDay.org_id, member).label("orgs"),
+            _sum_if(UserActivityDay.requests, member).label("requests"),
+            _sum_if(UserActivityDay.requests, demo).label("demo_requests"),
+            _sum_if(UserActivityDay.requests, admin).label("admin_requests"),
         )
         .where(UserActivityDay.day >= start_day, UserActivityDay.day <= end_day)
         .group_by(UserActivityDay.day)
         .order_by(UserActivityDay.day)
     )
     rows = (await db.execute(stmt)).all()
+    keys = ("users", "demo_users", "admin_users", "orgs", "requests", "demo_requests", "admin_requests")
     return [
         {
             "day": r._mapping["day"].isoformat(),
-            "users": int(r._mapping["users"] or 0),
-            "orgs": int(r._mapping["orgs"] or 0),
-            "requests": int(r._mapping["requests"] or 0),
+            **{key: int(r._mapping[key] or 0) for key in keys},
         }
         for r in rows
     ]
@@ -551,6 +593,8 @@ async def rollup_day(db: AsyncSession, day: date) -> SystemMetricDaily | None:
                 func.min(SystemMetricSample.containers_running).label("containers_running_min"),
                 func.avg(SystemMetricSample.active_users).label("active_users_avg"),
                 func.max(SystemMetricSample.active_users).label("active_users_max"),
+                func.avg(SystemMetricSample.active_demo_users).label("active_demo_users_avg"),
+                func.avg(SystemMetricSample.active_admin_users).label("active_admin_users_avg"),
                 func.sum(SystemMetricSample.logins).label("logins"),
                 func.sum(SystemMetricSample.requests).label("requests"),
                 func.sum(SystemMetricSample.request_errors).label("request_errors"),
@@ -563,6 +607,8 @@ async def rollup_day(db: AsyncSession, day: date) -> SystemMetricDaily | None:
         return None
 
     values["unique_users"] = await unique_users_between(db, day, day)
+    values["unique_demo_users"] = await unique_users_between(db, day, day, activity.KIND_DEMO)
+    values["unique_admin_users"] = await unique_users_between(db, day, day, activity.KIND_ADMIN)
 
     existing = (
         await db.execute(select(SystemMetricDaily).where(SystemMetricDaily.day == day))
@@ -584,6 +630,8 @@ _INT_FIELDS = {
     "containers_running_min",
     "active_users_max",
     "unique_users",
+    "unique_demo_users",
+    "unique_admin_users",
     "logins",
     "requests",
     "request_errors",
@@ -704,6 +752,8 @@ async def monthly_report(db: AsyncSession, year: int, month: int) -> dict[str, A
     psi_avgs, psi_maxes = _collect("psi_io_avg"), _collect("psi_io_max")
 
     unique_users = await unique_users_between(db, first, last)
+    unique_demo_users = await unique_users_between(db, first, last, activity.KIND_DEMO)
+    unique_admin_users = await unique_users_between(db, first, last, activity.KIND_ADMIN)
     busiest = max(days, key=lambda d: d["unique_users"] or 0, default=None)
     peak_cpu_day = max(rows, key=lambda r: r.cpu_max or -1, default=None)
 
@@ -727,6 +777,8 @@ async def monthly_report(db: AsyncSession, year: int, month: int) -> dict[str, A
             "db_size_end_bytes": rows[-1].db_size_max_bytes if rows else None,
             "db_size_start_bytes": rows[0].db_size_max_bytes if rows else None,
             "unique_users": unique_users,
+            "unique_demo_users": unique_demo_users,
+            "unique_admin_users": unique_admin_users,
             "active_users_max": max((r.active_users_max or 0) for r in rows) if rows else None,
             "active_users_avg": _avg(_collect("active_users_avg")),
             "logins": sum((r.logins or 0) for r in rows),

@@ -21,7 +21,9 @@ async def test_run_all_returns_counts_and_audits(monkeypatch):
     r_links = MagicMock(); r_links.rowcount = 2
     r_hours = MagicMock(); r_hours.scalar_one_or_none.return_value = None  # session-hours setting unset
     r_demo = MagicMock(); r_demo.all.return_value = []  # no expired demo orgs
-    db.execute.side_effect = [r_pos, r_audit, r_links, r_hours, r_demo]
+    r_cooldown = MagicMock(); r_cooldown.scalar_one_or_none.return_value = None  # cooldown setting unset
+    r_origins = MagicMock(); r_origins.rowcount = 1  # one expired demo IP lock
+    db.execute.side_effect = [r_pos, r_audit, r_links, r_hours, r_demo, r_cooldown, r_origins]
 
     recorded = []
 
@@ -32,7 +34,10 @@ async def test_run_all_returns_counts_and_audits(monkeypatch):
 
     counts = await retention.run_all(db)
 
-    assert counts == {"positions": 3, "audit_logs": 0, "share_links": 2, "demo_sessions": 0}
+    assert counts == {
+        "positions": 3, "audit_logs": 0, "share_links": 2,
+        "demo_sessions": 0, "demo_origins": 1,
+    }
     db.commit.assert_awaited()
     # an audit entry is written because something was deleted
     assert recorded and recorded[0][0] == "retention.purge"
@@ -45,7 +50,9 @@ async def test_run_all_skips_audit_when_nothing_deleted(monkeypatch):
     results = [MagicMock(rowcount=0) for _ in range(3)]
     r_hours = MagicMock(); r_hours.scalar_one_or_none.return_value = None
     r_demo = MagicMock(); r_demo.all.return_value = []
-    db.execute.side_effect = results + [r_hours, r_demo]
+    r_cooldown = MagicMock(); r_cooldown.scalar_one_or_none.return_value = None
+    r_origins = MagicMock(); r_origins.rowcount = 0
+    db.execute.side_effect = results + [r_hours, r_demo, r_cooldown, r_origins]
 
     recorded = []
 
@@ -55,7 +62,10 @@ async def test_run_all_skips_audit_when_nothing_deleted(monkeypatch):
     monkeypatch.setattr("app.services.retention.audit.record", _spy)
 
     counts = await retention.run_all(db)
-    assert counts == {"positions": 0, "audit_logs": 0, "share_links": 0, "demo_sessions": 0}
+    assert counts == {
+        "positions": 0, "audit_logs": 0, "share_links": 0,
+        "demo_sessions": 0, "demo_origins": 0,
+    }
     assert recorded == []  # nothing deleted → no audit entry
 
 

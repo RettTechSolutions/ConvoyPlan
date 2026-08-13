@@ -2,8 +2,14 @@
 
 Pro Request werden zwei Dinge festgehalten: Antwortzeit/Statuscode (für die
 Last- und Fehlerkurve) und — sofern ein Bearer-Token mitkommt — die Benutzer-ID
-(für „wie viele Nutzer waren im Portal"). Beides landet nur in einem
-Prozess-Dictionary; geschrieben wird erst durch den Metrik-Collector.
+samt Nutzergruppe (für „wie viele Nutzer waren im Portal"). Beides landet nur in
+einem Prozess-Dictionary; geschrieben wird erst durch den Metrik-Collector.
+
+Die Gruppe ergibt sich aus dem Token: `is_demo` kennzeichnet eine Demo-Sitzung,
+`is_superadmin` (immer ohne Organisation ausgestellt) das Admin-Portal, alles
+übrige ist regulärer Portalbetrieb. Meldet sich ein Superadmin zusätzlich an
+einer Organisation an, trägt dieses Token keine Superadmin-Kennung — die
+Arbeit im Kundenportal zählt dann korrekt als reguläre Nutzung.
 
 Der Token wird lokal verifiziert (HS256, kein Datenbankzugriff). Ist er
 ungültig oder fehlt er, wird der Request schlicht anonym gezählt — die
@@ -33,7 +39,7 @@ _IGNORED_PREFIXES = (
 )
 
 
-def _user_from_token(request: Request) -> tuple[uuid.UUID, uuid.UUID | None] | None:
+def _user_from_token(request: Request) -> tuple[uuid.UUID, uuid.UUID | None, str] | None:
     auth = request.headers.get("authorization")
     if not auth or not auth.lower().startswith("bearer "):
         return None
@@ -56,7 +62,14 @@ def _user_from_token(request: Request) -> tuple[uuid.UUID, uuid.UUID | None] | N
         org_id = uuid.UUID(raw_org) if raw_org else None
     except (TypeError, ValueError):
         org_id = None
-    return user_id, org_id
+
+    if payload.get("is_demo"):
+        kind = activity.KIND_DEMO
+    elif payload.get("is_superadmin"):
+        kind = activity.KIND_ADMIN
+    else:
+        kind = activity.KIND_MEMBER
+    return user_id, org_id, kind
 
 
 class ActivityMiddleware(BaseHTTPMiddleware):
@@ -82,5 +95,5 @@ class ActivityMiddleware(BaseHTTPMiddleware):
         )
         identity = _user_from_token(request)
         if identity is not None:
-            activity.touch(identity[0], identity[1])
+            activity.touch(*identity)
         return response

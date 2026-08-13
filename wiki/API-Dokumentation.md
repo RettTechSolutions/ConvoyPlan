@@ -99,10 +99,14 @@ Jede Demo-Nutzung läuft als eigene, befristete Organisation (`is_demo=true`). D
 
 | Methode | Endpunkt | Beschreibung |
 |---|---|---|
-| `GET/PUT` | `/api/admin/settings/demo` | Demo-Modus an/aus und Sitzungsdauer (Stunden) konfigurieren |
+| `GET/PUT` | `/api/admin/settings/demo` | Demo-Modus an/aus, Sitzungsdauer und Karenzzeit je IP (Stunden) konfigurieren |
 | `GET` | `/api/admin/demo-sessions` | Offene Demo-Sitzungen auflisten (Ablaufzeit, Konvoi-Anzahl, Herkunft) |
 | `POST` | `/api/admin/demo-sessions/{org_id}/extend` | Ablaufzeit einer Demo-Sitzung verlängern |
 | `DELETE` | `/api/admin/demo-sessions/{org_id}` | Demo-Sitzung sofort beenden (Konvois, Org und Demo-Nutzer löschen) |
+| `GET` | `/api/admin/demo-ip-locks` | Aktuell gesperrte IP-Adressen mit Restlaufzeit auflisten |
+| `DELETE` | `/api/admin/demo-ip-locks/{ip}` | Sperre einer IP-Adresse aufheben |
+
+> **Karenzzeit je IP:** `POST /api/auth/demo-session` erlaubt je Client-IP eine Sitzung pro Karenzzeit (Standard 24 h, `DEMO_IP_COOLDOWN_HOURS` bzw. Admin-Portal; `0` schaltet sie ab). Ein weiterer Versuch innerhalb des Fensters antwortet mit `429` und `Retry-After`. Die Sperre liegt in der Datenbank (`demo_origins`), übersteht damit einen Neustart und gilt auch dann noch, wenn die Demo-Organisation längst abgelaufen und gelöscht ist. Der Retention-Job entfernt abgelaufene Einträge.
 
 > Die Herkunftsfelder (`created_ip`, `created_location`) werden beim Start der Sitzung aus der Client-IP ermittelt und per Hintergrund-Geolokation (ipapi.co) um Stadt/Region/Land ergänzt — siehe [Lizenz und Demo-Modus](Lizenz-und-Demo-Modus#offene-demo-sitzungen-verwalten-admin).
 

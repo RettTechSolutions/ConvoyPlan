@@ -5,7 +5,7 @@
     import LeitstellenTable from '$lib/components/LeitstellenTable.svelte';
     import { auth } from '$lib/stores/auth';
     import { getStreamTicket } from '$lib/api/client';
-    import { adminApi, mfaApi, leistellenApi, licenseApi, emailTemplateApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type EmailTemplate, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoSessionInfo } from '$lib/api';
+    import { adminApi, mfaApi, leistellenApi, licenseApi, emailTemplateApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type EmailTemplate, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoSessionInfo, type DemoIpLock } from '$lib/api';
     import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
     import SuperadminLogin from '$lib/components/SuperadminLogin.svelte';
@@ -674,10 +674,14 @@
         try {
             demoSettings = await adminApi.getDemoSettings();
             demoHoursInput = demoSettings.session_hours;
+            demoCooldownInput = demoSettings.ip_cooldown_hours;
         } catch { /* Abschnitt zeigt dann "Status nicht verfügbar" */ }
         try {
             demoSessions = await adminApi.listDemoSessions();
         } catch { demoSessions = []; }
+        try {
+            demoIpLocks = await adminApi.listDemoIpLocks();
+        } catch { demoIpLocks = []; }
     }
 
     let demoSessions = $state<DemoSessionInfo[]>([]);
@@ -737,6 +741,52 @@
             demoSettingsError = e instanceof Error ? e.message : 'Fehler beim Speichern';
         } finally {
             demoHoursSaving = false;
+        }
+    }
+
+    // ── IP-Karenzzeit ─────────────────────────────────────────────────────────
+    let demoCooldownInput = $state(24);
+    let demoCooldownSaving = $state(false);
+    let demoIpLocks = $state<DemoIpLock[]>([]);
+    let releasingIpLock = $state<string | null>(null);
+
+    async function saveDemoCooldown() {
+        if (!demoSettings) return;
+        const hours = Math.round(demoCooldownInput);
+        if (!Number.isFinite(hours) || hours < 0 || hours > 720) {
+            demoSettingsError = 'Karenzzeit muss zwischen 0 und 720 Stunden liegen.';
+            return;
+        }
+        demoCooldownSaving = true;
+        demoSettingsError = '';
+        demoSettingsSuccess = '';
+        try {
+            demoSettings = await adminApi.saveDemoSettings(
+                demoSettings.enabled, undefined, hours,
+            );
+            demoCooldownInput = demoSettings.ip_cooldown_hours;
+            demoSettingsSuccess = hours === 0
+                ? 'Karenzzeit deaktiviert — eine IP-Adresse kann beliebig viele Demos starten.'
+                : `Karenzzeit gespeichert — je IP-Adresse eine Demo alle ${hours} Stunden.`;
+            demoIpLocks = await adminApi.listDemoIpLocks();
+            setTimeout(() => { demoSettingsSuccess = ''; }, 5000);
+        } catch (e) {
+            demoSettingsError = e instanceof Error ? e.message : 'Fehler beim Speichern';
+        } finally {
+            demoCooldownSaving = false;
+        }
+    }
+
+    async function releaseIpLock(lock: DemoIpLock) {
+        releasingIpLock = lock.ip;
+        demoSettingsError = '';
+        try {
+            await adminApi.releaseDemoIpLock(lock.ip);
+            demoIpLocks = demoIpLocks.filter(l => l.ip !== lock.ip);
+        } catch (e) {
+            demoSettingsError = e instanceof Error ? e.message : 'Fehler beim Aufheben der Sperre';
+        } finally {
+            releasingIpLock = null;
         }
     }
 
@@ -2386,7 +2436,14 @@
                 <p class="hint" style="margin-bottom:.6rem">
                     Bei aktivem Demo-Modus erscheint auf der Startseite ein „Demo ausprobieren"-Button.
                     Besucher erhalten ohne Registrierung eine eigene temporäre Organisation, die nach
-                    {demoSettings.session_hours} Stunden automatisch gelöscht wird (max. 10 Demo-Starts pro Stunde pro IP).
+                    {demoSettings.session_hours} Stunden automatisch gelöscht wird.
+                    {#if demoSettings.ip_cooldown_hours > 0}
+                        Je IP-Adresse ist dabei alle {demoSettings.ip_cooldown_hours} Stunden genau
+                        eine Demo-Sitzung möglich.
+                    {:else}
+                        <strong>Ohne Karenzzeit</strong> — dieselbe IP-Adresse kann beliebig viele
+                        Demo-Sitzungen hintereinander starten.
+                    {/if}
                 </p>
 
                 <div style="display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; margin-bottom:.75rem">
@@ -2417,6 +2474,71 @@
                 <p class="hint" style="margin-bottom:.6rem; font-size:var(--text-xs)">
                     Gilt für neue Demo-Sitzungen. Bestehende Sitzungen behalten ihr Ablaufdatum — einzeln verlängerbar über „+24 h".
                 </p>
+
+                <div style="display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; margin-bottom:.35rem">
+                    <span class="update-label">Karenzzeit je IP</span>
+                    <input
+                        type="number"
+                        min="0"
+                        max="720"
+                        bind:value={demoCooldownInput}
+                        style="width:5rem; padding:.35rem .5rem; border:1px solid var(--border); border-radius:6px; background:var(--surface-2); color:var(--text-1)"
+                    />
+                    <span class="hint">Stunden (0 = keine Sperre)</span>
+                    <button
+                        class="btn-small"
+                        onclick={saveDemoCooldown}
+                        disabled={demoCooldownSaving || demoCooldownInput === demoSettings.ip_cooldown_hours}
+                    >
+                        {demoCooldownSaving ? '…' : 'Speichern'}
+                    </button>
+                </div>
+                <p class="hint" style="margin-bottom:.6rem; font-size:var(--text-xs)">
+                    Die Sperre wird in der Datenbank geführt und übersteht einen Neustart des Backends.
+                    Hinter einem Firmenanschluss oder Messe-WLAN teilen sich alle Besucher eine
+                    Adresse — dann die Sperre unten gezielt aufheben.
+                </p>
+
+                <div class="section-header" style="margin-top:1.25rem">
+                    <strong>Gesperrte IP-Adressen ({demoIpLocks.length})</strong>
+                    <button class="btn-small" onclick={loadDemoSettings} title="Aktualisieren">⟳</button>
+                </div>
+                {#if demoSettings.ip_cooldown_hours === 0}
+                    <p class="hint">Karenzzeit deaktiviert — es werden keine IP-Adressen gesperrt.</p>
+                {:else if demoIpLocks.length === 0}
+                    <p class="hint">Aktuell keine gesperrte IP-Adresse.</p>
+                {:else}
+                    <table class="user-table">
+                        <thead>
+                            <tr>
+                                <th>IP-Adresse</th>
+                                <th>Letzte Demo</th>
+                                <th>Frei ab</th>
+                                <th>Sitzungen gesamt</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {#each demoIpLocks as lock}
+                                <tr>
+                                    <td>{lock.ip}</td>
+                                    <td>{new Date(lock.last_created_at).toLocaleString('de-DE')}</td>
+                                    <td>{new Date(lock.blocked_until).toLocaleString('de-DE')}</td>
+                                    <td>{lock.sessions}</td>
+                                    <td>
+                                        <button
+                                            class="btn-small"
+                                            onclick={() => releaseIpLock(lock)}
+                                            disabled={releasingIpLock === lock.ip}
+                                        >
+                                            {releasingIpLock === lock.ip ? '…' : 'Sperre aufheben'}
+                                        </button>
+                                    </td>
+                                </tr>
+                            {/each}
+                        </tbody>
+                    </table>
+                {/if}
 
                 <div class="section-header" style="margin-top:1.25rem">
                     <strong>Offene Demo-Sitzungen ({demoSessions.length})</strong>

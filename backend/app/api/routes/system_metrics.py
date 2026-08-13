@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db, require_superadmin
 from app.models.user import User
-from app.services import docker_stats, system_metrics, system_report
+from app.services import activity, docker_stats, system_metrics, system_report
 
 router = APIRouter(prefix="/admin/system", tags=["system-metrics"])
 
@@ -141,9 +141,12 @@ async def history(
     "/usage",
     summary="Portalnutzung je Tag",
     description=(
-        "Wie viele Benutzer je Tag im Portal aktiv waren (eindeutige Benutzer, "
-        "Organisationen und Requests). Grundlage ist die Tagesaktivität, die "
-        "unabhängig von den Hardware-Stichproben geführt wird."
+        "Wie viele Benutzer je Tag im Portal aktiv waren — getrennt nach regulären "
+        "Portalnutzern (`users`), Demo-Besuchern (`demo_users`) und Superadmins im "
+        "Admin-Portal (`admin_users`). `unique_users` zählt nur reguläre Nutzer, damit "
+        "Probesitzungen und die eigene Administration die Kennzahl nicht aufblähen. "
+        "Grundlage ist die Tagesaktivität, die unabhängig von den Hardware-Stichproben "
+        "geführt wird."
     ),
 )
 async def usage(
@@ -158,6 +161,12 @@ async def usage(
         "from": start.isoformat(),
         "to": today.isoformat(),
         "unique_users": await system_metrics.unique_users_between(db, start, today),
+        "unique_demo_users": await system_metrics.unique_users_between(
+            db, start, today, activity.KIND_DEMO
+        ),
+        "unique_admin_users": await system_metrics.unique_users_between(
+            db, start, today, activity.KIND_ADMIN
+        ),
         "days": rows,
     }
 
