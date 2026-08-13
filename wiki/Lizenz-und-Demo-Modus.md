@@ -26,6 +26,8 @@ Sitzungen lassen sich hier verlängern oder sofort beenden. Herkunftsdaten (`cre
 
 Damit die Demo eine Vorführung bleibt und nicht als Dauerbetrieb genutzt wird, kann je Client-IP nur **eine** Sitzung pro Karenzzeit gestartet werden — Standard **24 Stunden**, einstellbar unter **Admin** → **Demo-Modus** → „Karenzzeit je IP" (`0` schaltet die Sperre ab) bzw. über `DEMO_IP_COOLDOWN_HOURS`. Ein weiterer Versuch innerhalb des Fensters wird mit **HTTP 429** und `Retry-After` abgewiesen.
 
+Der Besucher sieht dabei den Grund der Absage, nicht nur die Absage: Startseite und `/demo` zeigen die Begründung des Backends unverändert an — welche Karenzzeit gilt, wann der nächste Versuch möglich ist, oder dass der Demo-Modus gerade abgeschaltet ist. Nur wenn keine Antwort des Backends vorliegt (Netzwerkfehler), erscheint der allgemeine Hinweis „Bitte später nochmal versuchen".
+
 Die Sperre wird in der Datenbank geführt (Tabelle `demo_origins`) und hat damit zwei Eigenschaften, die ein reiner Zähler im Arbeitsspeicher nicht hätte: Sie übersteht einen **Neustart des Backends** (also jedes Update), und sie gilt auch dann noch, wenn die Demo-Organisation längst abgelaufen und gelöscht ist — bei kurzer Sitzungslaufzeit ist das der Normalfall.
 
 Hinter einem Firmenanschluss oder einem Messe-WLAN teilen sich alle Besucher eine Adresse. Für diesen Fall listet der Abschnitt **Gesperrte IP-Adressen** die aktuell blockierten Adressen mit Zeitpunkt der letzten Demo, Freigabezeitpunkt und Gesamtzahl der Sitzungen — einzelne Sperren lassen sich dort direkt aufheben. Abgelaufene Einträge löscht der Retention-Job; die Adressen werden also nicht länger gespeichert als die Sperre gilt.

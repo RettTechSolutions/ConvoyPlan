@@ -225,3 +225,26 @@ async def test_demo_session_endpoint_answers_429_during_cooldown(monkeypatch):
     assert resp.status_code == 429
     assert int(resp.headers["Retry-After"]) > 0
     assert "24 Stunden" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_demo_session_endpoint_names_the_reason_when_switched_off(monkeypatch):
+    """Bei abgeschalteter Demo nennt die Absage den Grund — die Startseite zeigt
+    diesen Text unverändert an, „später nochmal versuchen" wäre dort falsch."""
+    monkeypatch.setattr("app.services.demo.settings.demo_enabled", False)
+
+    unset = MagicMock(); unset.scalar_one_or_none.return_value = None
+    db = AsyncMock()
+    db.execute.return_value = unset
+
+    async def _db():
+        yield db
+    app.dependency_overrides[get_db] = _db
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post("/api/auth/demo-session")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert resp.status_code == 503
+    assert "abgeschaltet" in resp.json()["detail"]
