@@ -21,6 +21,42 @@ def last_check() -> dict:
     return dict(_last_check)
 
 
+async def probe() -> dict:
+    """Leichter Erreichbarkeitscheck, 60 s gecacht.
+
+    Analog zu Overpass/Autobahn: die Statusanzeigen pollen regelmäßig, ein
+    echter Wetterabruf über :func:`get_weather` aktualisiert ``_last_check``
+    ohnehin. Nur wenn längere Zeit niemand Wetter abgerufen hat, prüft dieser
+    Aufruf die API selbst — sonst stünde dort dauerhaft "unbekannt".
+    """
+    global _last_check
+    if _last_check["checked_at"] is not None:
+        last = datetime.fromisoformat(_last_check["checked_at"])
+        if (datetime.now(timezone.utc) - last).total_seconds() < 60:
+            return dict(_last_check)
+
+    t0 = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(
+                OPEN_METEO_URL,
+                params={"latitude": 52.52, "longitude": 13.41, "current_weather": True},
+            )
+            resp.raise_for_status()
+        _last_check = {
+            "status": "ok",
+            "latency_ms": round((time.monotonic() - t0) * 1000),
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception:
+        _last_check = {
+            "status": "error",
+            "latency_ms": None,
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+        }
+    return dict(_last_check)
+
+
 async def get_weather(lat: float, lon: float) -> dict:
     global _last_check
     params = {
