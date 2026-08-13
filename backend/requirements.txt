@@ -12,7 +12,7 @@ sqlalchemy[asyncio]==2.0.51
 # python:3.14-slim base image; 0.29.0 has no 3.14 wheel and fails to build).
 asyncpg==0.31.0
 geoalchemy2==0.20.0
-alembic==1.18.5
+alembic==1.19.1
 pydantic[email]==2.13.4
 # PyJWT replaces python-jose (CVE-2024-33663, CVE-2024-33664 — algorithm confusion / sig bypass).
 PyJWT==2.13.0
