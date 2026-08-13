@@ -580,9 +580,9 @@
 
     <!-- ── Branding ── -->
     {#if activeTab === 'branding'}
-    <div class="branding-panel">
-        <h2>Branding</h2>
-        <p class="hint" style="margin:-.5rem 0 1rem">
+    <div class="section branding-panel">
+        <div class="section-header"><strong>Branding</strong></div>
+        <p class="hint" style="margin:-.25rem 0 1rem">
             Anpassungen gelten nur für diese Organisation — die restliche Plattform bleibt unverändert.
         </p>
 
@@ -770,7 +770,9 @@
 
 <style>
     :global(body) { margin: 0; font-family: system-ui, sans-serif; background: var(--bg); color: var(--text-1); }
-    .admin-page { max-width: 900px; margin: 0 auto; padding: 2rem 1rem; }
+    /* Gleiche Inhaltsbreite wie im Superadmin-Portal — beide Portale teilen sich
+       Kopfzeile, Reiterleiste und Kartenraster. */
+    .admin-page { max-width: var(--admin-width, 1120px); margin: 0 auto; padding: 2rem 1rem; }
     .admin-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
     h1 { margin: 0; font-size: var(--text-lg); }
     .back-link { color: var(--text-2); font-size: var(--text-sm); text-decoration: none; }
@@ -823,19 +825,19 @@
     .import-row { display: flex; gap: .5rem; align-items: center; font-weight: 400; }
     .file-label { cursor: pointer; }
 
-    .branding-panel { padding: 1.5rem; max-width: 700px; }
-    .branding-panel h2 { margin: 0 0 1rem; font-size: var(--text-base); font-weight: 600; color: var(--text-1); }
+    /* Branding liegt in derselben Karte wie die übrigen Reiter — nur die
+       Eingabefelder bleiben auf Lesebreite begrenzt. */
     .branding-panel h3 { margin: 0 0 .5rem; font-size: var(--text-sm); color: var(--text-2); font-weight: 600; }
     .bf-section { margin-bottom: 1.5rem; }
     .bf-label { display: flex; flex-direction: column; gap: .25rem; font-size: var(--text-sm); color: var(--text-2); }
-    .bf-label input[type="text"] { padding: .5rem .75rem; border: 1px solid var(--border); border-radius: 6px; font-size: var(--text-base); width: 100%; box-sizing: border-box; background: var(--surface-2); color: var(--text-1); }
+    .bf-label input[type="text"] { padding: .5rem .75rem; border: 1px solid var(--border); border-radius: 6px; font-size: var(--text-base); width: 100%; max-width: var(--admin-field, 34rem); box-sizing: border-box; background: var(--surface-2); color: var(--text-1); }
     .bf-label input[type="text"]:focus { outline: none; border-color: var(--color-primary); }
     .bf-sublabel { font-size: var(--text-xs); color: var(--text-muted); margin-bottom: .25rem; display: block; }
     .success-bar { background: rgba(107,127,77,.15); border: 1px solid rgba(107,127,77,.4); color: #a8c070; padding: .4rem .75rem; border-radius: 4px; margin-bottom: 1rem; font-size: var(--text-sm); }
     .logo-row { display: flex; gap: 1.5rem; flex-wrap: wrap; }
     .logo-slot { display: flex; flex-direction: column; gap: .3rem; }
     .logo-thumb { max-height: 52px; max-width: 160px; border: 1px solid var(--border); border-radius: 4px; }
-    .colors-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .75rem 1rem; }
+    .colors-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem 1rem; max-width: var(--admin-field, 34rem); }
     .color-label { display: flex; flex-direction: column; gap: .25rem; font-size: var(--text-xs); color: var(--text-2); }
     .color-row { display: flex; align-items: center; gap: .4rem; }
     .color-swatch { width: 32px; height: 32px; padding: 0; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; }
@@ -845,12 +847,12 @@
     .btn-secondary:hover { background: var(--surface-2); }
 
     /* Mitglieder tab */
-    .invite-section { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: .75rem; margin-bottom: .75rem; }
+    .invite-section { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: .75rem; margin-bottom: .75rem; max-width: var(--admin-field, 34rem); }
     .invite-label { margin: 0 0 .5rem; font-size: var(--text-xs); color: var(--text-muted); }
     .invite-row { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
     .invite-row input, .invite-row select { flex: 1; min-width: 120px; padding: .3rem .5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-1); color: var(--text-1); font-size: var(--text-sm); }
     .invite-row input:focus, .invite-row select:focus { outline: none; border-color: var(--color-primary); }
-    .add-member-row { display: flex; gap: .4rem; align-items: center; margin-bottom: .75rem; flex-wrap: wrap; }
+    .add-member-row { display: flex; gap: .4rem; align-items: center; margin-bottom: .75rem; flex-wrap: wrap; max-width: var(--admin-field, 34rem); }
     .add-email { flex: 1; min-width: 160px; padding: .3rem .5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); }
     .add-email:focus { outline: none; border-color: var(--color-primary); }
     .add-role { padding: .3rem .5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); }
@@ -903,10 +905,6 @@
         }
         .section :global(table) { white-space: nowrap; }
 
-        .branding-panel {
-            padding: 1rem .75rem;
-            max-width: 100%;
-        }
         .colors-grid { grid-template-columns: 1fr; }
         .logo-row { gap: 1rem; }
         .bf-actions {
