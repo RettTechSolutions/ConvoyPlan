@@ -8,7 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.api.deps import get_db, require_superadmin
+from app.api import deps
+from app.api.deps import get_db, require_superadmin, require_system_read
 from app.config import settings
 from app.main import app
 from app.services import activity, docker_stats, host_metrics, system_metrics, system_report
@@ -22,8 +23,7 @@ def _superadmin():
     return user
 
 
-def _override_auth_and_db(db=None):
-    app.dependency_overrides[require_superadmin] = _superadmin
+def _override_db(db=None):
     db = db or AsyncMock()
 
     async def _db_override():
@@ -31,6 +31,14 @@ def _override_auth_and_db(db=None):
 
     app.dependency_overrides[get_db] = _db_override
     return db
+
+
+def _override_auth_and_db(db=None):
+    app.dependency_overrides[require_superadmin] = _superadmin
+    # The reading endpoints also accept a system-scoped API key, so they hang off
+    # require_system_read rather than require_superadmin.
+    app.dependency_overrides[require_system_read] = _superadmin
+    return _override_db(db)
 
 
 @pytest.fixture(autouse=True)
@@ -562,10 +570,58 @@ async def test_usage_endpoint_returns_day_rows():
 
 @pytest.mark.asyncio
 async def test_containers_endpoint_reports_unavailable_gracefully():
-    app.dependency_overrides[require_superadmin] = _superadmin
+    app.dependency_overrides[require_system_read] = _superadmin
     report = docker_stats.DockerReport(available=False, reason="Docker-API nicht erreichbar")
     with patch.object(docker_stats, "collect", AsyncMock(return_value=report)):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             r = await client.get("/api/admin/system/containers")
     assert r.status_code == 200
     assert r.json()["available"] is False
+
+
+# ── Zugang per API-Key (durch den echten Abhängigkeitsbaum) ───────────────────
+
+def _key(scope):
+    key = MagicMock()
+    key.scope = scope
+    key.organization_id = None if scope == "system" else uuid.uuid4()
+    return key
+
+
+async def _get_with_key(scope, path="/api/admin/system/overview"):
+    """Ruft path mit einem aufgelösten Key des gegebenen Scopes auf.
+
+    Ohne dependency_overrides für die Authentifizierung — nur der Key-Lookup
+    wird ersetzt, damit die echte Guard-Logik durchlaufen wird."""
+    _override_db()
+    snapshot = {"checked_at": "2026-08-13T10:00:00+00:00", "host": {}, "docker": {}, "database": {}, "usage": {}}
+    with patch.object(deps.api_key_svc, "resolve_key", AsyncMock(return_value=_key(scope))), \
+         patch.object(system_metrics, "live_snapshot", AsyncMock(return_value=snapshot)):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            return await client.get(path, headers={"X-API-Key": "cvp_aaaa1111_secret"})
+
+
+@pytest.mark.asyncio
+async def test_overview_accepts_system_api_key():
+    r = await _get_with_key("system")
+    assert r.status_code == 200
+    assert set(r.json()) >= {"host", "docker", "database", "usage"}
+
+
+@pytest.mark.asyncio
+async def test_overview_refuses_org_api_key():
+    """Die Kennzahlen umfassen alle Mandanten — ein Org-Key darf sie nicht sehen."""
+    r = await _get_with_key("organization")
+    assert r.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_sample_refuses_system_api_key():
+    """Schreibend: Stichprobe auslösen bleibt Superadmins vorbehalten."""
+    _override_db()
+    with patch.object(deps.api_key_svc, "resolve_key", AsyncMock(return_value=_key("system"))):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            r = await client.post(
+                "/api/admin/system/sample", headers={"X-API-Key": "cvp_aaaa1111_secret"}
+            )
+    assert r.status_code == 401

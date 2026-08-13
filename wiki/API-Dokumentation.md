@@ -13,15 +13,33 @@ Lokal (Dev) sind sie unter `http://localhost:8000/docs` erreichbar.
 > `/docs?key=<geheim>`, danach via HttpOnly-Cookie bzw. Header `X-API-Key`); mit `ENABLE_DOCS=true`
 > werden sie offen freigegeben (nur für Dev/intern).
 
-Alle Endpunkte (außer `/api/setup`, `/api/auth/*` und öffentlichen Share-/Track-Routen) erfordern einen gültigen JWT-Token im Header:
+---
 
-```
-Authorization: Bearer <token>
-```
+## Zugangswege im Überblick
+
+ConvoyPlan kennt **vier voneinander unabhängige Credentials**. Welches du brauchst,
+hängt vom Endpunkt ab — die Tabelle nennt jeweils den kürzesten Weg.
+
+| Zugangsweg | Wie mitgeben | Gilt für | Woher |
+|---|---|---|---|
+| **Bearer-Token (JWT)** | `Authorization: Bearer <token>` | alle geschützten Endpunkte | `POST /api/auth/login` |
+| **Org-API-Key** | `X-API-Key: cvp_…` | organisationsbezogene Endpunkte (siehe [Matrix](#welche-endpunkte-akzeptieren-einen-org-api-key)) | Superadmin-Portal → Reiter **API-Keys** |
+| **System-API-Key** | `X-API-Key: cvp_…` | nur lesende Endpunkte der [Systemübersicht](#systemübersicht-superadmin) | Superadmin-Portal → **API-Keys** → Geltungsbereich *System* |
+| **Freigabe-Token** | Teil der URL | `/api/convoys/share/{token}`, `/api/track/{slug}` | Freigabelink je Konvoi |
+| **Docs-Key** | `X-API-Key: <DOCS_API_KEY>` oder `?key=…` | nur `/docs`, `/redoc`, `/openapi.json` | Umgebungsvariable `DOCS_API_KEY` |
+
+> ⚠️ **Docs-Key ≠ Org-API-Key.** Beide reisen im Header `X-API-Key`, haben aber nichts
+> miteinander zu tun: Der Docs-Key ist eine Instanz-Umgebungsvariable und öffnet
+> ausschließlich die Swagger-/ReDoc-Oberfläche. Ein Org-API-Key funktioniert dort nicht —
+> und umgekehrt öffnet der Docs-Key keinen einzigen Datenendpunkt.
+
+Ohne Credential erreichbar sind nur: `GET /health`, `GET /api/version`,
+`GET /api/status`, `GET /api/setup/status`, `GET /api/license/mode`,
+`GET /api/branding/org/{slug}` sowie die Freigabe-/Track-Routen.
 
 ---
 
-## Authentifizierung
+## Authentifizierung mit Bearer-Token
 
 ### Token erhalten
 
@@ -31,9 +49,17 @@ Content-Type: application/json
 
 {
   "email": "benutzer@example.com",
-  "password": "passwort"
+  "password": "passwort",
+  "org_slug": "jpbg"
 }
 ```
+
+`org_slug` steuert den Geltungsbereich des Tokens:
+
+- **mit `org_slug`** → Token gilt *innerhalb dieser Organisation*, mit der Rolle aus der
+  Mitgliedschaft. Das ist der Normalfall für Kolonnen, Fahrzeuge und Tracking.
+- **ohne `org_slug`** → Superadmin-Token ohne Org-Bindung. Nur damit erreichst du
+  `/api/admin/**` inklusive der [Systemübersicht](#systemübersicht-superadmin).
 
 Antwort:
 
@@ -44,23 +70,201 @@ Antwort:
 }
 ```
 
+Der Token läuft nach `JWT_EXPIRE_MINUTES` ab (Standard: **7 Tage**). Er wird ungültig,
+sobald das Passwort geändert oder das Konto zurückgesetzt wird (Token-Versionierung).
+
+### Mit aktivierter MFA
+
+Ist für das Konto TOTP aktiv, liefert `/api/auth/login` **kein** `access_token`, sondern
+eine Zwischenstufe:
+
+```json
+{ "mfa_required": true, "mfa_token": "eyJ..." }
+```
+
+Diese gegen `POST /api/auth/mfa/verify` mit `{"mfa_token": "…", "code": "123456"}`
+eintauschen — erst diese Antwort enthält das `access_token`. Der `mfa_token` allein
+öffnet keinen einzigen Endpunkt.
+
+```bash
+TOKEN=$(curl -s -X POST https://web.convoyplan.de/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@example.com","password":"…"}' | jq -r .access_token)
+
+curl -H "Authorization: Bearer $TOKEN" https://web.convoyplan.de/api/admin/system/overview
+```
+
+---
+
+## Authentifizierung mit Org-API-Key
+
+API-Keys sind für **Fremdsysteme** gedacht, die dauerhaft und ohne Benutzerkonto auf die
+Daten *einer* Organisation zugreifen — Leitstellen-Anbindung, Dashboard, Skript.
+
+Anlegen im Superadmin-Portal unter **Admin → API-Keys**: Organisation wählen, Name,
+Rolle und optionales Ablaufdatum vergeben. Der Klartext wird **genau einmal** angezeigt
+(gespeichert wird nur ein bcrypt-Hash) — geht er verloren, muss ein neuer Key her.
+
+**Format:** `cvp_<prefix>_<secret>` — der `prefix` (8 Hex-Zeichen) ist der öffentliche
+Nachschlage-Teil und taucht in Portal und Audit-Log auf, das `secret` nie.
+
+```bash
+curl -H "X-API-Key: cvp_a1b2c3d4_xxxxxxxx" https://web.convoyplan.de/api/convoys/
+```
+
+Eigenschaften:
+
+- Der Key handelt **im Namen des Org-Eigentümers**, aber **immer mit seiner konfigurierten
+  Rolle** — auch auf Objekten, die dem Eigentümer selbst gehören. Ein `beobachter`-Key
+  kann also nichts ändern, egal wem die Kolonne gehört.
+- Wird gleichzeitig ein Bearer-Token gesendet, **gewinnt der API-Key**.
+- `last_used_at` wird höchstens alle 5 Minuten fortgeschrieben (ein Schreibzugriff pro
+  Request wäre zu teuer) — der Wert ist also grob, nicht sekundengenau.
+- Widerrufen wirkt sofort; abgelaufene und widerrufene Keys liefern `401`.
+
+### Welche Endpunkte akzeptieren einen Org-API-Key?
+
+| Bereich | `X-API-Key` | Anmerkung |
+|---|---|---|
+| `/api/convoys/` — Kolonnen, Fahrzeugzuordnung, Wegpunkte, Teilverbände | ✅ | Rolle des Keys wird durchgesetzt |
+| `/api/vehicles/**` | ✅ | ab `planer` schreibend |
+| `/api/org/leitstellen/**` | ✅ | |
+| `/api/org/branding` | ✅ | |
+| Routing, Export/Import, Tankstellen (`/calculate-route`, `/export/*`, …) | ❌ | nur Bearer-Token |
+| Tracking und Positionen (`/positions`, `/status`) | ❌ | nur Bearer-Token |
+| Freigabelinks (`/share-links`) | ❌ | nur Bearer-Token |
+| `/api/organizations/**`, `/api/users/**` | ❌ | nur Bearer-Token |
+| `/api/admin/**` inkl. Systemübersicht | ❌ | nur Superadmin-Token |
+
+Ein Org-API-Key auf einem Endpunkt, der keinen akzeptiert, führt zu `401` — nicht zu
+einem stillen Fallback auf anonymen Zugriff.
+
+---
+
+## Authentifizierung mit System-API-Key
+
+Ein **System-API-Key** gehört keiner Organisation. Er öffnet ausschließlich die
+**lesenden** Endpunkte der Systemübersicht (`GET /api/admin/system/…`) und sonst nichts —
+gedacht für Monitoring, Dashboards oder ein Skript, das die Kennzahlen dauerhaft abholen
+soll, ohne dass ein Benutzer-Token nach sieben Tagen abläuft.
+
+Anlegen im Superadmin-Portal unter **Admin → API-Keys**, im Auswahlfeld
+**Geltungsbereich** den Eintrag *System (instanzweit, nur lesen)* wählen. Format,
+einmalige Klartext-Anzeige, Ablauf und Widerruf verhalten sich wie bei Org-Keys; eine
+Rolle gibt es nicht, weil es nichts zu schreiben gibt.
+
+```bash
+curl -H "X-API-Key: cvp_a1b2c3d4_xxxxxxxx" \
+  https://web.convoyplan.de/api/admin/system/overview
+```
+
+Die Trennung gilt in beide Richtungen und ist bewusst hart:
+
+- Ein **Org-Key** auf `/api/admin/system/…` → `403`. Die Kennzahlen umfassen die ganze
+  Instanz, also alle Mandanten — ein Key, der einer Organisation gehört, darf sie nicht
+  sehen.
+- Ein **System-Key** auf Kolonnen, Fahrzeuge oder anderen Organisationsdaten → `403`.
+- `POST /api/admin/system/sample` verändert den Zustand und bleibt Superadmins
+  vorbehalten — ein System-Key erhält dort `401`.
+- Alle übrigen `/api/admin/**`-Endpunkte bleiben ebenfalls Superadmins vorbehalten.
+
+Verwaltet werden die Keys über diese Endpunkte (Superadmin-Token erforderlich):
+
+| Methode | Endpunkt | Beschreibung |
+|---|---|---|
+| `GET` | `/api/admin/system-api-keys` | System-Keys auflisten |
+| `POST` | `/api/admin/system-api-keys` | System-Key anlegen (`name`, optional `expires_at`) |
+| `DELETE` | `/api/admin/system-api-keys/{key_id}` | System-Key widerrufen |
+
+---
+
+## Rollen im API-Kontext
+
+Dieselbe Hierarchie gilt für Benutzer-Mitgliedschaften und für API-Keys:
+
+| Rolle | Lesen | Position/Status melden | Anlegen & Ändern | Löschen |
+|---|---|---|---|---|
+| `beobachter` | ✅ | ❌ | ❌ | ❌ |
+| `fahrer` | ✅ | ✅ | ❌ | ❌ |
+| `planer` | ✅ | ✅ | ✅ | ❌ |
+| `admin` | ✅ | ✅ | ✅ | ✅ |
+
+Reicht die Rolle nicht, antwortet die API mit `403` und dem Text
+`Insufficient role: requires <rolle>`. Ausführlich: **[Rollen & Berechtigungen](Rollen)**.
+
+---
+
+## Statuscodes und Fehler
+
+| Code | Bedeutung | Typische Ursache |
+|---|---|---|
+| `401` | nicht authentifiziert | Token fehlt/abgelaufen, Key ungültig, widerrufen oder abgelaufen; auch: Credential am falschen Endpunkt |
+| `402` | Demo-Modus | schreibender Zugriff ohne gültige Lizenz (siehe unten) |
+| `403` | authentifiziert, aber nicht berechtigt | Rolle zu niedrig, keine Org-Mitgliedschaft, Superadmin nötig, Konto deaktiviert |
+| `404` | nicht gefunden | Objekt existiert nicht — oder gehört einer anderen Organisation |
+| `422` | Validierungsfehler | fehlende/ungültige Felder (FastAPI-Standardformat) |
+| `429` | Drosselung | Rate-Limit oder Stundenkontingent erschöpft — `Retry-After` beachten |
+
+Fehlerantworten haben durchgängig die Form `{"detail": "…"}`; im Demo-Fall zusätzlich
+`"demo_mode": true`.
+
+### Drosselung im Detail
+
+**Rate-Limits** (pro IP, gleitendes Fenster) schützen die Anmeldung:
+Login und alle MFA-Endpunkte 10 Versuche / 5 Minuten, Passwort-Reset 5 / 15 Minuten,
+Tracking-Auth 5 / 5 Minuten, Demo-Sitzungen 10 / Stunde.
+
+**Stundenkontingente** (pro Benutzer) begrenzen Endpunkte, die fremde Dienste oder CPU
+kosten — Standardwerte, über `QUOTA_*` konfigurierbar:
+
+| Bereich | Regulär | Demo-Sitzung |
+|---|---|---|
+| Routenberechnung | 240/h | 40/h |
+| Adresssuche (Geocoding) | 600/h | 100/h |
+| Live-Verkehrslage | 600/h | 100/h |
+
+Beide Zähler liegen **im Prozessspeicher**: Sie gelten je Worker und werden bei einem
+Neustart zurückgesetzt. Als erste Verteidigungslinie gedacht, nicht als harte Abrechnung.
+
+### Demo-Modus (HTTP 402)
+
+Ohne gültigen Lizenzschlüssel läuft die Instanz im Demo-Modus: **GET immer erlaubt**,
+`POST`/`PUT`/`PATCH`/`DELETE` auf geschützten Pfaden mit `402` abgewiesen. Ausgenommen
+sind `/health`, `/api/auth/login`, `/api/license/*`, `/api/setup`, `/api/track/*` und
+`/uploads`. Lesende Integrationen funktionieren also auch unlizenziert.
+
 ### Endpunkte
 
 | Methode | Endpunkt | Beschreibung | Auth |
 |---|---|---|---|
 | `POST` | `/api/auth/register` | Account erstellen | Nein |
-| `POST` | `/api/auth/login` | Login, JWT erhalten | Nein |
+| `POST` | `/api/auth/login` | Login, JWT erhalten (optional `org_slug`) | Nein |
+| `GET` | `/api/auth/org-lookup` | Organisation zu einem Org-Code auflösen (Login-Maske) | Nein |
 | `POST` | `/api/auth/password` | Eigenes Passwort ändern (liefert frisches Token) | Ja |
 | `POST` | `/api/auth/password-reset` | Passwort-Reset anstoßen | Nein |
+| `POST` | `/api/auth/stream-ticket` | Kurzlebiges Ticket für SSE/WebSocket lösen | Ja |
+
+> SSE- und WebSocket-Verbindungen können keinen `Authorization`-Header setzen. Statt den
+> Zugangstoken in die URL zu schreiben, holt man sich über `/api/auth/stream-ticket` ein
+> kurzlebiges Ticket und hängt dieses als Query-Parameter an.
 
 ### MFA / TOTP
 
 | Methode | Endpunkt | Beschreibung |
 |---|---|---|
+| `GET` | `/api/auth/mfa/status` | Ist MFA für das eigene Konto aktiv? |
 | `POST` | `/api/auth/mfa/setup` | TOTP-Einrichtung starten (QR-Code generieren) |
 | `POST` | `/api/auth/mfa/confirm` | TOTP-Einrichtung bestätigen und aktivieren |
-| `POST` | `/api/auth/mfa/verify` | TOTP-Code bei Login verifizieren |
-| `DELETE` | `/api/auth/mfa` | MFA deaktivieren |
+| `POST` | `/api/auth/mfa/verify` | `mfa_token` + TOTP-Code gegen vollwertiges JWT tauschen |
+| `POST` | `/api/auth/mfa/disable` | MFA deaktivieren |
+
+### Demo-Sitzungen (öffentlich)
+
+| Methode | Endpunkt | Beschreibung |
+|---|---|---|
+| `GET` | `/api/auth/demo-status` | Ist der öffentliche Demo-Modus aktiviert? |
+| `GET` | `/api/auth/demo-session/info` | Rahmendaten einer Demo-Sitzung (Laufzeit) |
+| `POST` | `/api/auth/demo-session` | Befristete Demo-Organisation samt Token erzeugen |
 
 ---
 
@@ -84,8 +288,10 @@ Nur für Benutzer mit Superadmin-Rolle zugänglich.
 | `GET/POST` | `/api/admin/organizations` | Organisationen auflisten oder anlegen |
 | `POST/DELETE` | `/api/admin/users/{user_id}/orgs` | Benutzer einer Organisation zuweisen oder entfernen |
 | `GET/POST/DELETE` | `/api/admin/organizations/{org_id}/api-keys` | Org-gebundene API-Schlüssel verwalten |
-| `GET` | `/api/admin/branding` | Aktuelles (globales) Branding abrufen |
-| `PUT` | `/api/admin/branding` | Globales Branding (Logo, Farben, App-Name) aktualisieren |
+| `GET/POST/DELETE` | `/api/admin/system-api-keys` | Instanzweite System-API-Schlüssel verwalten (nur lesend, siehe [oben](#authentifizierung-mit-system-api-key)) |
+| `GET` | `/api/branding` | Aktuelles (globales) Branding abrufen |
+| `PUT` | `/api/branding` | Globales Branding (Farben, App-Name) aktualisieren |
+| `POST` | `/api/branding/logo/{slot}` | Globales Logo hochladen (`slot`: `main` oder `horizontal`) |
 | `POST` | `/api/admin/trigger-update` | Auto-Update manuell anstoßen |
 | `GET` | `/api/admin/update-status` / `/api/admin/update-log` | Deploy-Stand bzw. Live-Update-Log (SSE) |
 | `GET/PUT` | `/api/admin/settings/update-channel` | Update-Kanal (Stable/Beta/Nightly) lesen/setzen |
@@ -348,19 +554,22 @@ Org-Admin-Rolle erforderlich (außer dem öffentlichen Slug-Endpunkt). Die Overr
 ## Systemübersicht (Superadmin)
 
 Hardware-, Container- und Nutzungskennzahlen der Instanz — dieselbe Datenbasis,
-die der Reiter **Systemübersicht** im Admin-Portal anzeigt. Alle Endpunkte
-erfordern einen Superadmin-Token. Details siehe
+die der Reiter **Systemübersicht** im Admin-Portal anzeigt. Details siehe
 [Systemübersicht](Systemuebersicht).
 
-| Methode | Endpunkt | Beschreibung |
-|---|---|---|
-| `GET` | `/api/admin/system/overview` | Live-Zustand: CPU, RAM, Platten, PSI-Druck, Container, Datenbank, aktive Benutzer |
-| `GET` | `/api/admin/system/containers` | Container-Zustände inkl. Healthcheck und CPU/RAM je Container |
-| `GET` | `/api/admin/system/history` | Verlauf (`range=1h…365d` oder `from`/`to`, `resolution=auto\|raw\|hour\|day`, `format=json\|csv`) |
-| `GET` | `/api/admin/system/usage` | Portalnutzung je Tag (`days=1…1095`) |
-| `GET` | `/api/admin/system/reports/months` | Monate mit verfügbarem Bericht |
-| `GET` | `/api/admin/system/reports/monthly` | Monatsbericht (`month=JJJJ-MM`, `format=json\|csv\|pdf`) |
-| `POST` | `/api/admin/system/sample` | Stichprobe sofort erfassen |
+Die lesenden Endpunkte akzeptieren **entweder** einen Superadmin-Token **oder** einen
+[System-API-Key](#authentifizierung-mit-system-api-key). Das Erfassen einer Stichprobe
+verändert den Zustand und erfordert einen Superadmin-Token.
+
+| Methode | Endpunkt | Zugang | Beschreibung |
+|---|---|---|---|
+| `GET` | `/api/admin/system/overview` | Token **oder** System-Key | Live-Zustand: CPU, RAM, Platten, PSI-Druck, Container, Datenbank, aktive Benutzer |
+| `GET` | `/api/admin/system/containers` | Token **oder** System-Key | Container-Zustände inkl. Healthcheck und CPU/RAM je Container (`with_stats=true\|false`) |
+| `GET` | `/api/admin/system/history` | Token **oder** System-Key | Verlauf (`range=1h…365d` oder `from`/`to`, `resolution=auto\|raw\|hour\|day`, `format=json\|csv`) |
+| `GET` | `/api/admin/system/usage` | Token **oder** System-Key | Portalnutzung je Tag (`days=1…1095`) |
+| `GET` | `/api/admin/system/reports/months` | Token **oder** System-Key | Monate mit verfügbarem Bericht |
+| `GET` | `/api/admin/system/reports/monthly` | Token **oder** System-Key | Monatsbericht (`month=JJJJ-MM`, `format=json\|csv\|pdf`) |
+| `POST` | `/api/admin/system/sample` | nur Superadmin-Token | Stichprobe sofort erfassen |
 
 Beispiel — Monatsbericht als PDF holen:
 
@@ -370,12 +579,23 @@ curl -H "Authorization: Bearer $TOKEN" \
   -o systembericht-2026-07.pdf
 ```
 
-Beispiel — Auslastung der letzten 30 Tage für ein Monitoring-System:
+Beispiel — Auslastung der letzten 30 Tage für ein Monitoring-System, ohne Login:
 
 ```bash
-curl -H "Authorization: Bearer $TOKEN" \
+curl -H "X-API-Key: cvp_a1b2c3d4_xxxxxxxx" \
   "https://web.convoyplan.de/api/admin/system/history?range=30d&resolution=hour"
 ```
+
+Beispiel — CPU-Auslastung als einzelner Wert für einen Uptime-/Metrik-Check:
+
+```bash
+curl -sH "X-API-Key: $CVP_SYSTEM_KEY" \
+  https://web.convoyplan.de/api/admin/system/overview | jq '.host.cpu_percent'
+```
+
+Verlaufsdaten reichen so weit zurück, wie die Aufbewahrung erlaubt: Rohstichproben
+90 Tage, verdichtete Tageswerte standardmäßig 3 Jahre. `resolution=auto` wählt
+selbstständig zwischen Roh-, Stunden- und Tageswerten, damit die Antwort handlich bleibt.
 
 ---
 

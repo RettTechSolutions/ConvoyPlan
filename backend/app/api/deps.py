@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
+from app.models.api_key import SCOPE_ORGANIZATION, SCOPE_SYSTEM
 from app.models.organization import Organization, UserOrganization
 from app.models.user import User
 from app.services import api_key as api_key_svc
@@ -137,6 +138,13 @@ async def _api_key_org_context(raw_key: str, db: AsyncSession) -> OrgCtx:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Ungültiger, widerrufener oder abgelaufener API-Key",
         )
+    # A system key has no organization and no role — it must never be able to
+    # act on tenant data, not even read-only.
+    if key.scope != SCOPE_ORGANIZATION:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="System-API-Keys haben keinen Zugriff auf Organisationsdaten",
+        )
     org = await db.get(Organization, key.organization_id)
     if not org:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organisation nicht gefunden")
@@ -192,10 +200,7 @@ async def get_org_context(
     return user, org, membership.role
 
 
-async def require_superadmin(
-    token_data: TokenData = Depends(get_token_data),
-    db: AsyncSession = Depends(get_db),
-) -> User:
+async def _superadmin_from_token(token_data: TokenData, db: AsyncSession) -> User:
     if not token_data.is_superadmin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superadmin required")
     result = await db.execute(select(User).where(User.id == token_data.user_id))
@@ -207,3 +212,50 @@ async def require_superadmin(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superadmin required")
     _ensure_token_current(token_data, user)
     return user
+
+
+async def require_superadmin(
+    token_data: TokenData = Depends(get_token_data),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    return await _superadmin_from_token(token_data, db)
+
+
+async def require_system_read(
+    token: str | None = Depends(oauth2_optional),
+    raw_api_key: str | None = Depends(api_key_header),
+    db: AsyncSession = Depends(get_db),
+) -> User | None:
+    """Read access to the instance-wide system metrics.
+
+    Accepts either a superadmin bearer token (what the admin portal sends) or a
+    system-scoped API key, so a monitoring system can poll the figures without
+    holding a login. Returns the acting superadmin, or None when the caller
+    authenticated with a key — these endpoints only read, so there is no acting
+    user to resolve.
+
+    Organization-scoped keys are refused: hardware, container and usage figures
+    span every tenant on the instance, so a key issued to one of them must not
+    reach them.
+    """
+    if raw_api_key:
+        key = await api_key_svc.resolve_key(db, raw_api_key)
+        if key is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Ungültiger, widerrufener oder abgelaufener API-Key",
+            )
+        if key.scope != SCOPE_SYSTEM:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Dieser Endpunkt erfordert einen System-API-Key",
+            )
+        return None
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return await _superadmin_from_token(_decode_token(token), db)

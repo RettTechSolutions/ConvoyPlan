@@ -14,14 +14,19 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import decode_stream_token, get_db, require_superadmin
 from app.config import settings
-from app.models.api_key import ApiKey
+from app.models.api_key import SCOPE_ORGANIZATION, SCOPE_SYSTEM, ApiKey
 from app.models.audit_log import AuditLog
 from app.models.convoy import Convoy
 from app.models.organization import Organization, UserOrganization
 from app.models.settings import SystemSetting
 from app.models.share_link import ConvoyShareLink
 from app.models.user import User
-from app.schemas.api_key import ApiKeyCreate, ApiKeyCreatedResponse, ApiKeyResponse
+from app.schemas.api_key import (
+    ApiKeyCreate,
+    ApiKeyCreatedResponse,
+    ApiKeyResponse,
+    SystemApiKeyCreate,
+)
 from app.models.vehicle import Vehicle
 from app.schemas.user import AdminUserCreate, AdminUserResponse, AdminUserUpdate, AdminUserOrgInfo
 from app.services import api_key as api_key_svc
@@ -913,7 +918,9 @@ async def list_api_keys(
     if not org:
         raise HTTPException(404, "Organization not found")
     result = await db.execute(
-        select(ApiKey).where(ApiKey.organization_id == org_id).order_by(ApiKey.created_at.desc())
+        select(ApiKey)
+        .where(ApiKey.organization_id == org_id, ApiKey.scope == SCOPE_ORGANIZATION)
+        .order_by(ApiKey.created_at.desc())
     )
     return result.scalars().all()
 
@@ -941,6 +948,7 @@ async def create_api_key(
     generated = api_key_svc.generate_key()
     api_key = ApiKey(
         organization_id=org_id,
+        scope=SCOPE_ORGANIZATION,
         name=name,
         prefix=generated.prefix,
         key_hash=generated.key_hash,
@@ -969,7 +977,9 @@ async def revoke_api_key(
     current: User = Depends(require_superadmin),
 ):
     api_key = await db.get(ApiKey, key_id)
-    if not api_key or api_key.organization_id != org_id:
+    # scope guard as well as the org match, so a system key can never be reached
+    # (let alone revoked) through a tenant's path.
+    if not api_key or api_key.scope != SCOPE_ORGANIZATION or api_key.organization_id != org_id:
         raise HTTPException(404, "API key not found")
     if not api_key.revoked:
         api_key.revoked = True
@@ -978,6 +988,80 @@ async def revoke_api_key(
             db, audit.API_KEY_REVOKED, request=request, actor_id=current.id,
             actor_email=current.email, org_id=org_id, target_type="api_key",
             target_id=key_id, detail={"name": api_key.name, "prefix": api_key.prefix},
+        )
+
+
+# ── System-scoped API keys ────────────────────────────────────────────────────
+#
+# Unlike the org keys above these belong to no tenant. They open the read-only
+# system-metrics endpoints (/api/admin/system/*) and nothing else, so a
+# monitoring system can poll the instance without a superadmin login whose
+# token expires after a week.
+
+@router.get("/system-api-keys", response_model=list[ApiKeyResponse])
+async def list_system_api_keys(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    result = await db.execute(
+        select(ApiKey).where(ApiKey.scope == SCOPE_SYSTEM).order_by(ApiKey.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+@router.post("/system-api-keys", response_model=ApiKeyCreatedResponse, status_code=201)
+async def create_system_api_key(
+    data: SystemApiKeyCreate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    name = data.name.strip()
+    if not name:
+        raise HTTPException(400, "Name darf nicht leer sein")
+
+    generated = api_key_svc.generate_key()
+    api_key = ApiKey(
+        organization_id=None,
+        scope=SCOPE_SYSTEM,
+        name=name,
+        prefix=generated.prefix,
+        key_hash=generated.key_hash,
+        # Unused for this scope — system keys read the instance metrics and have
+        # no say over tenant data, so the org role hierarchy does not apply.
+        role="beobachter",
+        created_by_id=current.id,
+        expires_at=data.expires_at,
+    )
+    db.add(api_key)
+    await db.commit()
+    await db.refresh(api_key)
+    await audit.record(
+        db, audit.API_KEY_CREATED, request=request, actor_id=current.id,
+        actor_email=current.email, target_type="api_key", target_id=api_key.id,
+        detail={"name": name, "scope": SCOPE_SYSTEM, "prefix": generated.prefix},
+    )
+    base = ApiKeyResponse.model_validate(api_key)
+    return ApiKeyCreatedResponse(**base.model_dump(), key=generated.full_key)
+
+
+@router.delete("/system-api-keys/{key_id}", status_code=204)
+async def revoke_system_api_key(
+    key_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    api_key = await db.get(ApiKey, key_id)
+    if not api_key or api_key.scope != SCOPE_SYSTEM:
+        raise HTTPException(404, "API key not found")
+    if not api_key.revoked:
+        api_key.revoked = True
+        await db.commit()
+        await audit.record(
+            db, audit.API_KEY_REVOKED, request=request, actor_id=current.id,
+            actor_email=current.email, target_type="api_key", target_id=key_id,
+            detail={"name": api_key.name, "scope": SCOPE_SYSTEM, "prefix": api_key.prefix},
         )
 
 

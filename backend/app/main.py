@@ -54,6 +54,12 @@ Header `X-API-Key`. API-Keys werden im Superadmin-Portal je Organisation
 erstellt, besitzen eine feste Rolle und sind für den programmatischen Zugriff
 durch Fremdsysteme gedacht.
 
+Für Monitoring gibt es zusätzlich **System-API-Keys** (Geltungsbereich *System*):
+Sie gehören keiner Organisation und öffnen ausschließlich die lesenden Endpunkte
+der Systemübersicht unter `/api/admin/system`. Beide Key-Arten sind strikt
+getrennt — ein Org-Key erreicht die Systemkennzahlen nicht, ein System-Key keine
+Organisationsdaten.
+
 Ohne gültigen Lizenzschlüssel läuft die API im **Demo-Modus**: lesende Zugriffe
 (GET) sind erlaubt, schreibende Zugriffe (POST/PUT/PATCH/DELETE) auf geschützte
 Endpunkte antworten mit HTTP `402`.
@@ -84,9 +90,10 @@ _TAGS_METADATA = [
     {
         "name": "system-metrics",
         "description": (
-            "Systemübersicht für Superadmins: Live-Zustand von Hardware und Containern, "
-            "historische Kennzahlen (bis zu einem Jahr und mehr) sowie Monatsberichte "
-            "als JSON, CSV oder PDF."
+            "Systemübersicht: Live-Zustand von Hardware und Containern, historische "
+            "Kennzahlen (bis zu einem Jahr und mehr) sowie Monatsberichte als JSON, CSV "
+            "oder PDF. Lesend erreichbar mit Superadmin-Token oder System-API-Key; das "
+            "Auslösen einer Stichprobe bleibt Superadmins vorbehalten."
         ),
     },
     {"name": "version", "description": "Versions- und Build-Informationen."},

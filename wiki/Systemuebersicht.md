@@ -7,7 +7,11 @@ live, im Verlauf und als Monatsbericht zum Ablegen.
 
 Alle Zahlen sind auch über die API abrufbar (siehe
 [API-Dokumentation](API-Dokumentation#systemübersicht-superadmin)), etwa für ein
-eigenes Monitoring oder eine Tabellenkalkulation.
+eigenes Monitoring oder eine Tabellenkalkulation. Für einen Dauerauftrag lohnt
+sich statt eines Benutzer-Tokens ein **System-API-Key** (Admin → API-Keys,
+Geltungsbereich *System*): Er läuft nicht nach sieben Tagen ab und darf nur
+lesen — siehe
+[API-Dokumentation](API-Dokumentation#authentifizierung-mit-system-api-key).
 
 ---
 
@@ -101,6 +105,11 @@ Im Abschnitt **Monatsbericht** den Monat wählen und exportieren:
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
+  "https://web.convoyplan.de/api/admin/system/reports/monthly?month=2026-07&format=csv" \
+  -o bericht.csv
+
+# oder ohne Login, mit einem System-API-Key:
+curl -H "X-API-Key: $CVP_SYSTEM_KEY" \
   "https://web.convoyplan.de/api/admin/system/reports/monthly?month=2026-07&format=csv" \
   -o bericht.csv
 ```

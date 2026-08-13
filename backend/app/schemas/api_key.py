@@ -13,9 +13,19 @@ class ApiKeyCreate(BaseModel):
     expires_at: datetime | None = None
 
 
+class SystemApiKeyCreate(BaseModel):
+    """A system key carries no organization and no role — only a name and an
+    optional expiry. It grants read-only access to the system metrics."""
+
+    name: str
+    expires_at: datetime | None = None
+
+
 class ApiKeyResponse(BaseModel):
     id: uuid.UUID
-    organization_id: uuid.UUID
+    # None for system-scoped keys — they belong to the instance, not a tenant.
+    organization_id: uuid.UUID | None = None
+    scope: str = "organization"
     name: str
     prefix: str
     role: str

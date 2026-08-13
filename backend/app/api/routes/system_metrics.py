@@ -1,10 +1,16 @@
 """Systemübersicht — Live-Zustand, Verlauf und Monatsberichte.
 
-Alle Endpunkte liegen unter ``/api/admin/system`` und erfordern einen
-Superadmin (Bearer-Token). Sie sind bewusst als normale REST-Endpunkte
-ausgeführt, damit die Daten nicht nur im Admin-Portal, sondern auch von einem
-Monitoring-System, einem Skript oder einer Tabellenkalkulation abgeholt werden
-können — Swagger dokumentiert sie unter dem Tag ``system-metrics``.
+Alle Endpunkte liegen unter ``/api/admin/system``. Sie sind bewusst als normale
+REST-Endpunkte ausgeführt, damit die Daten nicht nur im Admin-Portal, sondern
+auch von einem Monitoring-System, einem Skript oder einer Tabellenkalkulation
+abgeholt werden können — Swagger dokumentiert sie unter dem Tag
+``system-metrics``.
+
+Die lesenden Endpunkte akzeptieren dafür zwei Zugangswege: einen Superadmin-
+Bearer-Token (Admin-Portal) oder einen System-API-Key per ``X-API-Key``. Ein
+Dauerauftrag wie „alle fünf Minuten die Auslastung ziehen" braucht damit keinen
+Benutzer-Login, dessen Token nach sieben Tagen abläuft. Das Auslösen einer
+Stichprobe verändert den Zustand und bleibt Superadmins vorbehalten.
 """
 
 from __future__ import annotations
@@ -16,7 +22,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db, require_superadmin
+from app.api.deps import get_db, require_superadmin, require_system_read
 from app.models.user import User
 from app.services import activity, docker_stats, system_metrics, system_report
 
@@ -84,7 +90,7 @@ def _resolve_window(
 )
 async def overview(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_superadmin),
+    _: User | None = Depends(require_system_read),
 ):
     return await system_metrics.live_snapshot(db)
 
@@ -100,7 +106,7 @@ async def overview(
 )
 async def containers(
     with_stats: bool = Query(True, description="CPU/RAM je Container mitliefern"),
-    _: User = Depends(require_superadmin),
+    _: User | None = Depends(require_system_read),
 ):
     report = await docker_stats.collect(with_stats=with_stats)
     return report.as_dict()
@@ -123,7 +129,7 @@ async def history(
     resolution: str = Query("auto", pattern="^(auto|raw|hour|day)$"),
     format: str = Query("json", pattern="^(json|csv)$"),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_superadmin),
+    _: User | None = Depends(require_system_read),
 ):
     start, end = _resolve_window(range, from_, to)
     series = await system_metrics.query_series(db, start, end, resolution)
@@ -152,7 +158,7 @@ async def history(
 async def usage(
     days: int = Query(30, ge=1, le=1095),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_superadmin),
+    _: User | None = Depends(require_system_read),
 ):
     today = datetime.now(timezone.utc).date()
     start = today - timedelta(days=days - 1)
@@ -178,7 +184,7 @@ async def usage(
 )
 async def report_months(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_superadmin),
+    _: User | None = Depends(require_system_read),
 ):
     months = await system_metrics.available_months(db)
     current = datetime.now(timezone.utc).strftime("%Y-%m")
@@ -202,7 +208,7 @@ async def monthly_report(
     month: str = Query(..., description="Monat im Format JJJJ-MM, z. B. 2026-07"),
     format: str = Query("json", pattern="^(json|csv|pdf)$"),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_superadmin),
+    _: User | None = Depends(require_system_read),
 ):
     year, mon = _parse_month(month)
     report = await system_metrics.monthly_report(db, year, mon)
@@ -236,7 +242,8 @@ async def monthly_report(
     description=(
         "Erzwingt außerhalb des Sampling-Intervalls eine Messung. Nützlich direkt "
         "nach der Einrichtung, damit die Verlaufscharts nicht erst nach dem ersten "
-        "Intervall etwas anzeigen."
+        "Intervall etwas anzeigen. Anders als die lesenden Endpunkte erfordert "
+        "dieser einen Superadmin-Token — ein System-API-Key darf nur lesen."
     ),
 )
 async def sample_now(
