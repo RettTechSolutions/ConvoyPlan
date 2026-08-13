@@ -359,6 +359,10 @@
     }
 
     // ── API-Keys ───────────────────────────────────────────────────────────────
+    // Die Auswahl kennt neben den Organisationen den Sonderwert SYSTEM_SCOPE:
+    // Keys ohne Organisationsbindung, die nur die Systemübersicht lesen dürfen.
+    const SYSTEM_SCOPE = '__system__';
+
     let apiKeyOrgs = $state<AdminOrg[]>([]);
     let apiKeyOrgId = $state('');
     let apiKeys = $state<ApiKey[]>([]);
@@ -368,14 +372,16 @@
     let creatingApiKey = $state(false);
     let createdApiKey = $state<ApiKeyCreated | null>(null);
 
+    let systemScope = $derived(apiKeyOrgId === SYSTEM_SCOPE);
+
     async function loadApiKeyOrgs() {
         apiKeysError = '';
         try {
             apiKeyOrgs = await adminApi.listOrgs();
-            if (!apiKeyOrgId && apiKeyOrgs.length > 0) {
-                apiKeyOrgId = apiKeyOrgs[0].id;
+            if (!apiKeyOrgId) {
+                apiKeyOrgId = apiKeyOrgs.length > 0 ? apiKeyOrgs[0].id : SYSTEM_SCOPE;
             }
-            if (apiKeyOrgId) await loadApiKeys();
+            await loadApiKeys();
         } catch { apiKeysError = 'Organisationen konnten nicht geladen werden'; }
     }
 
@@ -384,7 +390,9 @@
         apiKeysLoading = true;
         apiKeysError = '';
         try {
-            apiKeys = await adminApi.listApiKeys(apiKeyOrgId);
+            apiKeys = systemScope
+                ? await adminApi.listSystemApiKeys()
+                : await adminApi.listApiKeys(apiKeyOrgId);
         } catch { apiKeysError = 'API-Keys konnten nicht geladen werden'; }
         finally { apiKeysLoading = false; }
     }
@@ -403,11 +411,14 @@
             const expires_at = newApiKeyForm.expires_at
                 ? new Date(newApiKeyForm.expires_at).toISOString()
                 : null;
-            createdApiKey = await adminApi.createApiKey(apiKeyOrgId, {
-                name: newApiKeyForm.name.trim(),
-                role: newApiKeyForm.role,
-                expires_at,
-            });
+            const name = newApiKeyForm.name.trim();
+            createdApiKey = systemScope
+                ? await adminApi.createSystemApiKey({ name, expires_at })
+                : await adminApi.createApiKey(apiKeyOrgId, {
+                    name,
+                    role: newApiKeyForm.role,
+                    expires_at,
+                });
             newApiKeyForm = { name: '', role: 'beobachter', expires_at: '' };
             await loadApiKeys();
         } catch (e: unknown) {
@@ -420,7 +431,8 @@
     async function revokeApiKey(key: ApiKey) {
         if (!confirm(`API-Key "${key.name}" (cvp_${key.prefix}…) widerrufen?\n\nSysteme, die diesen Key nutzen, verlieren sofort den Zugriff.`)) return;
         try {
-            await adminApi.revokeApiKey(apiKeyOrgId, key.id);
+            if (key.scope === 'system') await adminApi.revokeSystemApiKey(key.id);
+            else await adminApi.revokeApiKey(apiKeyOrgId, key.id);
             await loadApiKeys();
         } catch { apiKeysError = 'API-Key konnte nicht widerrufen werden'; }
     }
@@ -1583,14 +1595,25 @@
             </p>
 
             <div class="form-row" style="margin-bottom:1rem">
-                <label>Organisation
+                <label>Geltungsbereich
                     <select bind:value={apiKeyOrgId} onchange={onApiKeyOrgChange}>
                         {#each apiKeyOrgs as org}
                             <option value={org.id}>{org.name} ({org.slug})</option>
                         {/each}
+                        <option value={SYSTEM_SCOPE}>⚙ System (instanzweit, nur lesen)</option>
                     </select>
                 </label>
             </div>
+
+            {#if systemScope}
+                <p class="hint" style="margin:-.4rem 0 .8rem">
+                    System-Keys gehören keiner Organisation. Sie öffnen ausschließlich die lesenden
+                    Endpunkte der Systemübersicht unter <code>/api/admin/system/…</code> — gedacht für
+                    Monitoring, das die Kennzahlen dauerhaft abholen soll, ohne dass ein Benutzer-Token
+                    nach sieben Tagen abläuft. Auf Kolonnen, Fahrzeuge oder andere Organisationsdaten
+                    haben sie keinen Zugriff.
+                </p>
+            {/if}
 
             {#if createdApiKey}
                 <div class="key-reveal">
@@ -1606,16 +1629,18 @@
             {#if apiKeyOrgId}
                 <div class="form-row" style="align-items:flex-end;flex-wrap:wrap;gap:.6rem">
                     <label style="flex:1;min-width:180px">Name / Verwendungszweck
-                        <input type="text" bind:value={newApiKeyForm.name} placeholder="z. B. Leitstellen-Anbindung" />
+                        <input type="text" bind:value={newApiKeyForm.name} placeholder={systemScope ? 'z. B. Monitoring Uptime Kuma' : 'z. B. Leitstellen-Anbindung'} />
                     </label>
-                    <label>Rolle
-                        <select bind:value={newApiKeyForm.role}>
-                            <option value="beobachter">Beobachter (nur lesen)</option>
-                            <option value="fahrer">Fahrer</option>
-                            <option value="planer">Planer (schreiben)</option>
-                            <option value="admin">Admin (voll)</option>
-                        </select>
-                    </label>
+                    {#if !systemScope}
+                        <label>Rolle
+                            <select bind:value={newApiKeyForm.role}>
+                                <option value="beobachter">Beobachter (nur lesen)</option>
+                                <option value="fahrer">Fahrer</option>
+                                <option value="planer">Planer (schreiben)</option>
+                                <option value="admin">Admin (voll)</option>
+                            </select>
+                        </label>
+                    {/if}
                     <label>Ablauf (optional)
                         <input type="date" bind:value={newApiKeyForm.expires_at} />
                     </label>
@@ -1645,7 +1670,7 @@
                                 <tr style:opacity={key.revoked ? 0.5 : 1}>
                                     <td>{key.name}</td>
                                     <td><code>cvp_{key.prefix}…</code></td>
-                                    <td>{key.role}</td>
+                                    <td>{key.scope === 'system' ? 'System (nur lesen)' : key.role}</td>
                                     <td class="hint">{fmtDate(key.created_at)}</td>
                                     <td class="hint">{fmtDate(key.last_used_at)}</td>
                                     <td class="hint">{fmtDate(key.expires_at)}</td>
@@ -1658,7 +1683,9 @@
                                 </tr>
                             {/each}
                             {#if apiKeys.length === 0}
-                                <tr><td colspan="8" class="hint" style="text-align:center">Noch keine API-Keys für diese Organisation.</td></tr>
+                                <tr><td colspan="8" class="hint" style="text-align:center">
+                                    {systemScope ? 'Noch keine System-Keys.' : 'Noch keine API-Keys für diese Organisation.'}
+                                </td></tr>
                             {/if}
                         </tbody>
                     </table>

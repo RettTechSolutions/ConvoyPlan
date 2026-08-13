@@ -124,6 +124,7 @@ async def test_get_org_context_api_key_success(monkeypatch):
 
     key = MagicMock()
     key.organization_id = org_id
+    key.scope = "organization"
     key.role = "fahrer"
 
     org = MagicMock(spec=Organization); org.id = org_id; org.owner_id = owner_id

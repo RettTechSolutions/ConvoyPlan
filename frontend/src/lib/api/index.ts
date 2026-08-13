@@ -477,7 +477,9 @@ export interface AdminOrg {
 
 export interface ApiKey {
     id: string;
-    organization_id: string;
+    /** null for system-scoped keys — they belong to the instance, not a tenant. */
+    organization_id: string | null;
+    scope: 'organization' | 'system';
     name: string;
     prefix: string;
     role: string;
@@ -495,6 +497,12 @@ export interface ApiKeyCreated extends ApiKey {
 export interface ApiKeyCreate {
     name: string;
     role: string;
+    expires_at?: string | null;
+}
+
+/** System keys carry no organization and no role — only a name and an expiry. */
+export interface SystemApiKeyCreate {
+    name: string;
     expires_at?: string | null;
 }
 
@@ -537,6 +545,10 @@ export const adminApi = {
         api.post<ApiKeyCreated>(`/api/admin/organizations/${orgId}/api-keys`, data),
     revokeApiKey: (orgId: string, keyId: string) =>
         api.delete(`/api/admin/organizations/${orgId}/api-keys/${keyId}`),
+    listSystemApiKeys: () => api.get<ApiKey[]>('/api/admin/system-api-keys'),
+    createSystemApiKey: (data: SystemApiKeyCreate) =>
+        api.post<ApiKeyCreated>('/api/admin/system-api-keys', data),
+    revokeSystemApiKey: (keyId: string) => api.delete(`/api/admin/system-api-keys/${keyId}`),
     getUpdateStatus: () => api.get<UpdateStatus>('/api/admin/update-status'),
     triggerUpdate: () => api.post<{ status: string }>('/api/admin/trigger-update', {}),
     getGithubTokenStatus: () => api.get<{ set: boolean; source: string | null }>('/api/admin/settings/github-token-set'),

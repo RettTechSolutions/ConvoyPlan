@@ -24,6 +24,7 @@ hängt vom Endpunkt ab — die Tabelle nennt jeweils den kürzesten Weg.
 |---|---|---|---|
 | **Bearer-Token (JWT)** | `Authorization: Bearer <token>` | alle geschützten Endpunkte | `POST /api/auth/login` |
 | **Org-API-Key** | `X-API-Key: cvp_…` | organisationsbezogene Endpunkte (siehe [Matrix](#welche-endpunkte-akzeptieren-einen-org-api-key)) | Superadmin-Portal → Reiter **API-Keys** |
+| **System-API-Key** | `X-API-Key: cvp_…` | nur lesende Endpunkte der [Systemübersicht](#systemübersicht-superadmin) | Superadmin-Portal → **API-Keys** → Geltungsbereich *System* |
 | **Freigabe-Token** | Teil der URL | `/api/convoys/share/{token}`, `/api/track/{slug}` | Freigabelink je Konvoi |
 | **Docs-Key** | `X-API-Key: <DOCS_API_KEY>` oder `?key=…` | nur `/docs`, `/redoc`, `/openapi.json` | Umgebungsvariable `DOCS_API_KEY` |
 
@@ -140,6 +141,43 @@ einem stillen Fallback auf anonymen Zugriff.
 
 ---
 
+## Authentifizierung mit System-API-Key
+
+Ein **System-API-Key** gehört keiner Organisation. Er öffnet ausschließlich die
+**lesenden** Endpunkte der Systemübersicht (`GET /api/admin/system/…`) und sonst nichts —
+gedacht für Monitoring, Dashboards oder ein Skript, das die Kennzahlen dauerhaft abholen
+soll, ohne dass ein Benutzer-Token nach sieben Tagen abläuft.
+
+Anlegen im Superadmin-Portal unter **Admin → API-Keys**, im Auswahlfeld
+**Geltungsbereich** den Eintrag *System (instanzweit, nur lesen)* wählen. Format,
+einmalige Klartext-Anzeige, Ablauf und Widerruf verhalten sich wie bei Org-Keys; eine
+Rolle gibt es nicht, weil es nichts zu schreiben gibt.
+
+```bash
+curl -H "X-API-Key: cvp_a1b2c3d4_xxxxxxxx" \
+  https://web.convoyplan.de/api/admin/system/overview
+```
+
+Die Trennung gilt in beide Richtungen und ist bewusst hart:
+
+- Ein **Org-Key** auf `/api/admin/system/…` → `403`. Die Kennzahlen umfassen die ganze
+  Instanz, also alle Mandanten — ein Key, der einer Organisation gehört, darf sie nicht
+  sehen.
+- Ein **System-Key** auf Kolonnen, Fahrzeuge oder anderen Organisationsdaten → `403`.
+- `POST /api/admin/system/sample` verändert den Zustand und bleibt Superadmins
+  vorbehalten — ein System-Key erhält dort `401`.
+- Alle übrigen `/api/admin/**`-Endpunkte bleiben ebenfalls Superadmins vorbehalten.
+
+Verwaltet werden die Keys über diese Endpunkte (Superadmin-Token erforderlich):
+
+| Methode | Endpunkt | Beschreibung |
+|---|---|---|
+| `GET` | `/api/admin/system-api-keys` | System-Keys auflisten |
+| `POST` | `/api/admin/system-api-keys` | System-Key anlegen (`name`, optional `expires_at`) |
+| `DELETE` | `/api/admin/system-api-keys/{key_id}` | System-Key widerrufen |
+
+---
+
 ## Rollen im API-Kontext
 
 Dieselbe Hierarchie gilt für Benutzer-Mitgliedschaften und für API-Keys:
@@ -250,6 +288,7 @@ Nur für Benutzer mit Superadmin-Rolle zugänglich.
 | `GET/POST` | `/api/admin/organizations` | Organisationen auflisten oder anlegen |
 | `POST/DELETE` | `/api/admin/users/{user_id}/orgs` | Benutzer einer Organisation zuweisen oder entfernen |
 | `GET/POST/DELETE` | `/api/admin/organizations/{org_id}/api-keys` | Org-gebundene API-Schlüssel verwalten |
+| `GET/POST/DELETE` | `/api/admin/system-api-keys` | Instanzweite System-API-Schlüssel verwalten (nur lesend, siehe [oben](#authentifizierung-mit-system-api-key)) |
 | `GET` | `/api/branding` | Aktuelles (globales) Branding abrufen |
 | `PUT` | `/api/branding` | Globales Branding (Farben, App-Name) aktualisieren |
 | `POST` | `/api/branding/logo/{slot}` | Globales Logo hochladen (`slot`: `main` oder `horizontal`) |
@@ -511,19 +550,22 @@ Org-Admin-Rolle erforderlich (außer dem öffentlichen Slug-Endpunkt). Die Overr
 ## Systemübersicht (Superadmin)
 
 Hardware-, Container- und Nutzungskennzahlen der Instanz — dieselbe Datenbasis,
-die der Reiter **Systemübersicht** im Admin-Portal anzeigt. Alle Endpunkte
-erfordern einen Superadmin-Token. Details siehe
+die der Reiter **Systemübersicht** im Admin-Portal anzeigt. Details siehe
 [Systemübersicht](Systemuebersicht).
 
-| Methode | Endpunkt | Beschreibung |
-|---|---|---|
-| `GET` | `/api/admin/system/overview` | Live-Zustand: CPU, RAM, Platten, PSI-Druck, Container, Datenbank, aktive Benutzer |
-| `GET` | `/api/admin/system/containers` | Container-Zustände inkl. Healthcheck und CPU/RAM je Container |
-| `GET` | `/api/admin/system/history` | Verlauf (`range=1h…365d` oder `from`/`to`, `resolution=auto\|raw\|hour\|day`, `format=json\|csv`) |
-| `GET` | `/api/admin/system/usage` | Portalnutzung je Tag (`days=1…1095`) |
-| `GET` | `/api/admin/system/reports/months` | Monate mit verfügbarem Bericht |
-| `GET` | `/api/admin/system/reports/monthly` | Monatsbericht (`month=JJJJ-MM`, `format=json\|csv\|pdf`) |
-| `POST` | `/api/admin/system/sample` | Stichprobe sofort erfassen |
+Die lesenden Endpunkte akzeptieren **entweder** einen Superadmin-Token **oder** einen
+[System-API-Key](#authentifizierung-mit-system-api-key). Das Erfassen einer Stichprobe
+verändert den Zustand und erfordert einen Superadmin-Token.
+
+| Methode | Endpunkt | Zugang | Beschreibung |
+|---|---|---|---|
+| `GET` | `/api/admin/system/overview` | Token **oder** System-Key | Live-Zustand: CPU, RAM, Platten, PSI-Druck, Container, Datenbank, aktive Benutzer |
+| `GET` | `/api/admin/system/containers` | Token **oder** System-Key | Container-Zustände inkl. Healthcheck und CPU/RAM je Container (`with_stats=true\|false`) |
+| `GET` | `/api/admin/system/history` | Token **oder** System-Key | Verlauf (`range=1h…365d` oder `from`/`to`, `resolution=auto\|raw\|hour\|day`, `format=json\|csv`) |
+| `GET` | `/api/admin/system/usage` | Token **oder** System-Key | Portalnutzung je Tag (`days=1…1095`) |
+| `GET` | `/api/admin/system/reports/months` | Token **oder** System-Key | Monate mit verfügbarem Bericht |
+| `GET` | `/api/admin/system/reports/monthly` | Token **oder** System-Key | Monatsbericht (`month=JJJJ-MM`, `format=json\|csv\|pdf`) |
+| `POST` | `/api/admin/system/sample` | nur Superadmin-Token | Stichprobe sofort erfassen |
 
 Beispiel — Monatsbericht als PDF holen:
 
@@ -533,12 +575,23 @@ curl -H "Authorization: Bearer $TOKEN" \
   -o systembericht-2026-07.pdf
 ```
 
-Beispiel — Auslastung der letzten 30 Tage für ein Monitoring-System:
+Beispiel — Auslastung der letzten 30 Tage für ein Monitoring-System, ohne Login:
 
 ```bash
-curl -H "Authorization: Bearer $TOKEN" \
+curl -H "X-API-Key: cvp_a1b2c3d4_xxxxxxxx" \
   "https://web.convoyplan.de/api/admin/system/history?range=30d&resolution=hour"
 ```
+
+Beispiel — CPU-Auslastung als einzelner Wert für einen Uptime-/Metrik-Check:
+
+```bash
+curl -sH "X-API-Key: $CVP_SYSTEM_KEY" \
+  https://web.convoyplan.de/api/admin/system/overview | jq '.host.cpu_percent'
+```
+
+Verlaufsdaten reichen so weit zurück, wie die Aufbewahrung erlaubt: Rohstichproben
+90 Tage, verdichtete Tageswerte standardmäßig 3 Jahre. `resolution=auto` wählt
+selbstständig zwischen Roh-, Stunden- und Tageswerten, damit die Antwort handlich bleibt.
 
 ---
 
