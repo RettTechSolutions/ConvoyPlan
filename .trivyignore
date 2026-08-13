@@ -166,3 +166,33 @@ GHSA-r7wm-3cxj-wff9
 # undici Denial-of-Service via unbounded response memory allocation.
 # Fixed upstream in undici 6.27.0 (bundled with a future Node.js 26.x release).
 CVE-2026-12151
+
+# ─────────────────────────────────────────────────────────────────────────────
+# convoyplan-backend: msgpack is vendored *inside pip itself*
+# (pip/_vendor/msgpack, see pip's vendor.txt) for pip's own internal wheel
+# cache — it is not a project dependency and is never imported by the running
+# FastAPI app. As of pip 26.2.1 (the latest release at time of review), pip
+# still vendors msgpack==1.1.2; no pip release with a patched vendored
+# msgpack exists yet, so there is nothing to bump on our side. The vendored
+# copy is only exercised during `pip install` at image build time, not at
+# container runtime — not exploitable here (VEX: not_affected).
+# Re-evaluate once a pip release vendors a patched msgpack. Review by: 2026-09-10.
+
+# msgpack: out-of-bounds read / crash on Unpacker reuse after an error.
+# Fixed upstream in msgpack 1.2.1 (not yet adopted by pip's vendored copy).
+GHSA-6v7p-g79w-8964
+
+# convoyplan-backend: setuptools 70.3.0 (CVE-2025-47273 — path traversal in
+# PackageIndex) keeps being reported even after backend/Dockerfile explicitly
+# upgrades setuptools to >=78.1.1 before installing requirements — that
+# upgrade replaces the copy actually importable in site-packages (verified:
+# it shows up patched and clean in the scan), so the residual 70.3.0 finding
+# comes from a second, bundled copy baked into the python:3.14-slim base
+# image (CPython images carry their own setuptools wheel for ensurepip
+# bootstrapping, separate from site-packages). That artifact is not
+# importable by / part of this project's dependency graph, and is never
+# executed at container runtime — the entrypoint only runs migrations +
+# uvicorn, never pip/ensurepip, so PackageIndex's vulnerable code path is
+# never reached (VEX: not_affected). Re-evaluate once a python:3.14-slim
+# base image ships without the stale bundled copy. Review by: 2026-09-10.
+CVE-2025-47273
