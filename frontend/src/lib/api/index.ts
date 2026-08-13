@@ -569,6 +569,11 @@ export const adminApi = {
     listDemoIpLocks: () => api.get<DemoIpLock[]>('/api/admin/demo-ip-locks'),
     releaseDemoIpLock: (ip: string) =>
         api.delete(`/api/admin/demo-ip-locks/${encodeURIComponent(ip)}`),
+    listDemoIpAllowlist: () => api.get<DemoIpAllowlistEntry[]>('/api/admin/demo-ip-allowlist'),
+    addDemoIpAllowlistEntry: (pattern: string, note?: string) =>
+        api.post<DemoIpAllowlistEntry>('/api/admin/demo-ip-allowlist', { pattern, note }),
+    removeDemoIpAllowlistEntry: (entryId: string) =>
+        api.delete(`/api/admin/demo-ip-allowlist/${entryId}`),
     listDemoSessions: () => api.get<DemoSessionInfo[]>('/api/admin/demo-sessions'),
     endDemoSession: (orgId: string) => api.delete(`/api/admin/demo-sessions/${orgId}`),
     extendDemoSession: (orgId: string, hours = 24) =>
@@ -636,6 +641,15 @@ export interface DemoIpLock {
     last_created_at: string;
     blocked_until: string;
     sessions: number;
+}
+
+/** Dauerhaft von der Karenzzeit ausgenommene Adresse oder Netz (CIDR). */
+export interface DemoIpAllowlistEntry {
+    id: string;
+    pattern: string;
+    note: string | null;
+    created_at: string;
+    created_by: string | null;
 }
 
 export interface DemoSessionInfo {

@@ -135,10 +135,16 @@ async def test_list_demo_sessions_empty():
 # ── IP-Karenzzeit ─────────────────────────────────────────────────────────────
 
 def _db_with_origin(origin: DemoOrigin | None) -> AsyncMock:
-    """Mock-DB, deren DemoOrigin-Abfrage *origin* (oder nichts) liefert."""
+    """Mock-DB, deren DemoOrigin-Abfrage *origin* (oder nichts) liefert.
+
+    Dasselbe Ergebnisobjekt bedient beide Abfragen von `claim_ip`: die
+    Allowlist (`scalars().all()` → leer) und den Sperreintrag
+    (`scalar_one_or_none()`).
+    """
     db = AsyncMock()
     result = MagicMock()
     result.scalar_one_or_none.return_value = origin
+    result.scalars.return_value.all.return_value = []
     db.execute.return_value = result
     return db
 
@@ -208,10 +214,11 @@ async def test_demo_session_endpoint_answers_429_during_cooldown(monkeypatch):
     monkeypatch.setattr("app.services.demo.settings.demo_ip_cooldown_hours", 24)
 
     unset = MagicMock(); unset.scalar_one_or_none.return_value = None
+    empty = MagicMock(); empty.scalars.return_value.all.return_value = []
     origin_row = MagicMock(); origin_row.scalar_one_or_none.return_value = _origin(hours_ago=2)
     db = AsyncMock()
-    # 1) demo.enabled  2) demo.ip_cooldown_hours  3) demo_origins-Abfrage
-    db.execute.side_effect = [unset, unset, origin_row]
+    # 1) demo.enabled  2) demo.ip_cooldown_hours  3) Allowlist  4) demo_origins
+    db.execute.side_effect = [unset, unset, empty, origin_row]
 
     async def _db():
         yield db
@@ -225,3 +232,143 @@ async def test_demo_session_endpoint_answers_429_during_cooldown(monkeypatch):
     assert resp.status_code == 429
     assert int(resp.headers["Retry-After"]) > 0
     assert "24 Stunden" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_demo_session_endpoint_names_the_reason_when_switched_off(monkeypatch):
+    """Bei abgeschalteter Demo nennt die Absage den Grund — die Startseite zeigt
+    diesen Text unverändert an, „später nochmal versuchen" wäre dort falsch."""
+    monkeypatch.setattr("app.services.demo.settings.demo_enabled", False)
+
+    unset = MagicMock(); unset.scalar_one_or_none.return_value = None
+    db = AsyncMock()
+    db.execute.return_value = unset
+
+    async def _db():
+        yield db
+    app.dependency_overrides[get_db] = _db
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post("/api/auth/demo-session")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert resp.status_code == 503
+    assert "abgeschaltet" in resp.json()["detail"]
+
+
+# ── Dauerhafte Ausnahmen (Allowlist) ──────────────────────────────────────────
+
+def _db_with_allowlist(*patterns: str) -> AsyncMock:
+    """Mock-DB, deren Allowlist-Abfrage *patterns* liefert."""
+    db = AsyncMock()
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = list(patterns)
+    db.execute.return_value = result
+    return db
+
+
+def test_normalize_ip_pattern_accepts_addresses_and_networks():
+    assert demo.normalize_ip_pattern("203.0.113.7") == "203.0.113.7"
+    assert demo.normalize_ip_pattern("  203.0.113.7  ") == "203.0.113.7"
+    # Einzeladresse mit /32 bleibt als Adresse stehen, nicht als Netz.
+    assert demo.normalize_ip_pattern("203.0.113.7/32") == "203.0.113.7"
+    assert demo.normalize_ip_pattern("203.0.113.0/24") == "203.0.113.0/24"
+    # Hostbits werden verworfen, damit der Eintrag das bedeutet, was da steht.
+    assert demo.normalize_ip_pattern("203.0.113.7/24") == "203.0.113.0/24"
+    assert demo.normalize_ip_pattern("2001:db8::1") == "2001:db8::1"
+    assert demo.normalize_ip_pattern("2001:db8::/32") == "2001:db8::/32"
+
+
+def test_normalize_ip_pattern_rejects_nonsense_and_catch_all():
+    for bad in ["", "   ", "kein Netz", "203.0.113.999", "203.0.113.0/33"]:
+        with pytest.raises(ValueError):
+            demo.normalize_ip_pattern(bad)
+    # Ein Netz ohne Präfixlänge würde die Karenzzeit für alle abschalten —
+    # dafür gibt es die Einstellung „Karenzzeit 0", nicht die Allowlist.
+    with pytest.raises(ValueError):
+        demo.normalize_ip_pattern("0.0.0.0/0")
+    with pytest.raises(ValueError):
+        demo.normalize_ip_pattern("::/0")
+
+
+@pytest.mark.asyncio
+async def test_allowlist_matches_single_address_and_network():
+    assert await demo.is_ip_allowlisted(_db_with_allowlist("203.0.113.7"), "203.0.113.7") is True
+    assert await demo.is_ip_allowlisted(_db_with_allowlist("203.0.113.7"), "203.0.113.8") is False
+    net = _db_with_allowlist("203.0.113.0/24")
+    assert await demo.is_ip_allowlisted(net, "203.0.113.200") is True
+    assert await demo.is_ip_allowlisted(_db_with_allowlist("203.0.113.0/24"), "198.51.100.1") is False
+    # Adressfamilien werden nicht verwechselt, und ein unbrauchbar gewordener
+    # Eintrag darf den Demo-Start nicht zum Fehler machen.
+    assert await demo.is_ip_allowlisted(_db_with_allowlist("2001:db8::/32"), "203.0.113.7") is False
+    assert await demo.is_ip_allowlisted(_db_with_allowlist("Datenmüll"), "203.0.113.7") is False
+
+
+@pytest.mark.asyncio
+async def test_allowlisted_ip_is_never_blocked_and_leaves_no_trace():
+    """Die Ausnahme greift vor der Sperre: kein 429 und kein Eintrag in
+    demo_origins — die Adresse soll in der Sperrliste nicht auftauchen."""
+    db = _db_with_allowlist("203.0.113.0/24")
+    assert await demo.claim_ip(db, "203.0.113.7", 24) is None
+    db.add.assert_not_called()
+    # Nur die Allowlist wurde abgefragt, der Sperreintrag gar nicht erst.
+    assert db.execute.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_adding_an_entry_lifts_the_running_lock():
+    """Wer einen Anschluss freistellt, will ihn jetzt frei haben — nicht erst
+    nach Ablauf der laufenden Karenzzeit."""
+    db = AsyncMock()
+    origins = MagicMock()
+    origins.scalars.return_value.all.return_value = ["203.0.113.7", "203.0.113.9", "198.51.100.1"]
+    db.execute.side_effect = [origins, MagicMock()]
+
+    entry, released = await demo.add_ip_allowlist_entry(
+        db, "203.0.113.7/24", note="Messe-WLAN", created_by="admin@example.com",
+    )
+
+    assert entry.pattern == "203.0.113.0/24"
+    assert entry.note == "Messe-WLAN"
+    # Beide Adressen aus dem Netz, die fremde nicht.
+    assert released == 2
+    db.commit.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_adding_a_known_entry_is_reported_as_duplicate():
+    db = AsyncMock()
+    db.flush.side_effect = IntegrityError("insert", {}, Exception("duplicate key"))
+    with pytest.raises(demo.DuplicateAllowlistEntry):
+        await demo.add_ip_allowlist_entry(db, "203.0.113.7")
+    db.rollback.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_removing_a_missing_entry_reports_nothing_removed():
+    db = AsyncMock()
+    db.get.return_value = None
+    assert await demo.remove_ip_allowlist_entry(db, uuid.uuid4()) is None
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_allowlist_endpoint_rejects_a_pattern_that_is_not_an_address():
+    app.dependency_overrides[require_superadmin] = _superadmin
+
+    db = AsyncMock()
+
+    async def _db():
+        yield db
+    app.dependency_overrides[get_db] = _db
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                "/api/admin/demo-ip-allowlist", json={"pattern": "das ganze Internet"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert resp.status_code == 422
+    db.add.assert_not_called()

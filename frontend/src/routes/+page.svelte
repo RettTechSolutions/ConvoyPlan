@@ -2,6 +2,7 @@
     import { onMount } from 'svelte';
     import { goto } from '$app/navigation';
     import { orgAuthApi, authApi } from '$lib/api';
+    import { demoFailureReason } from '$lib/demo-error';
     import { orgStore } from '$lib/stores/org';
     import AppLogo from '$lib/components/AppLogo.svelte';
     import LegalFooter from '$lib/components/LegalFooter.svelte';
@@ -46,8 +47,8 @@
             const result = await authApi.createDemoSession();
             orgStore.setToken(result.org_slug, result.access_token);
             goto(`/o/${result.org_slug}/plan`);
-        } catch {
-            demoError = 'Demo konnte nicht gestartet werden. Bitte später nochmal versuchen.';
+        } catch (err) {
+            demoError = demoFailureReason(err);
         } finally {
             demoLoading = false;
         }

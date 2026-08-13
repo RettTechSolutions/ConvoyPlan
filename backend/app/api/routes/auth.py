@@ -659,7 +659,12 @@ async def create_demo_session(
     the `demo_origins` table, not the in-process limiter, so it survives a
     backend restart and outlives the demo org itself."""
     if not await demo_svc.is_demo_enabled(db):
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Demo nicht verfügbar")
+        # Der Text landet unverändert auf der Startseite — deshalb der Grund,
+        # nicht nur die Absage.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Der Demo-Modus ist derzeit abgeschaltet. Bitte eine persönliche Vorführung anfragen.",
+        )
 
     client_ip = audit.client_ip(request)
     cooldown_hours = await demo_svc.get_demo_ip_cooldown_hours(db)

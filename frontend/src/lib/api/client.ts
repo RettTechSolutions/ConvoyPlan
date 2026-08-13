@@ -43,6 +43,33 @@ export async function getStreamTicket(): Promise<string | null> {
 	}
 }
 
+/**
+ * Fehlgeschlagene Antwort des Backends — mit Statuscode und der Klartext-
+ * Begründung aus `detail`. `message` bleibt wie bisher der Text, den bestehende
+ * Aufrufer anzeigen; `detail` ist zusätzlich der Marker dafür, dass die
+ * Begründung *vom Backend* stammt und nicht aus einem Netzwerkfehler — nur die
+ * darf man dem Besucher unverändert vorsetzen.
+ */
+export class ApiError extends Error {
+	readonly status: number;
+	readonly detail: string | null;
+
+	constructor(status: number, detail: string | null, fallback: string) {
+		super(detail ?? fallback);
+		this.name = 'ApiError';
+		this.status = status;
+		this.detail = detail;
+	}
+}
+
+async function toApiError(res: Response, fallback: string): Promise<ApiError> {
+	const body = await res.json().catch(() => null);
+	// FastAPI liefert bei Validierungsfehlern eine Liste statt eines Textes —
+	// die ist nichts, was ein Besucher lesen will.
+	const detail = typeof body?.detail === 'string' ? body.detail : null;
+	return new ApiError(res.status, detail, res.statusText || fallback);
+}
+
 async function request<T>(
 	path: string,
 	options: RequestInit = {}
@@ -55,10 +82,7 @@ async function request<T>(
 	if (token) headers['Authorization'] = `Bearer ${token}`;
 
 	const res = await fetch(`${getBaseUrl()}${path}`, { ...options, headers });
-	if (!res.ok) {
-		const err = await res.json().catch(() => ({ detail: res.statusText }));
-		throw new Error(err.detail ?? 'Request failed');
-	}
+	if (!res.ok) throw await toApiError(res, 'Request failed');
 	if (res.status === 204) return undefined as T;
 	return res.json();
 }
@@ -84,10 +108,7 @@ export async function downloadFile(path: string, filename: string): Promise<void
 	const headers: Record<string, string> = {};
 	if (token) headers['Authorization'] = `Bearer ${token}`;
 	const res = await fetch(`${getBaseUrl()}${path}`, { headers });
-	if (!res.ok) {
-		const err = await res.json().catch(() => ({ detail: res.statusText }));
-		throw new Error(err.detail ?? 'Download fehlgeschlagen');
-	}
+	if (!res.ok) throw await toApiError(res, 'Download fehlgeschlagen');
 	const blob = await res.blob();
 	const url = URL.createObjectURL(blob);
 	const anchor = document.createElement('a');
@@ -112,9 +133,6 @@ export async function uploadFile<T>(path: string, file: File): Promise<T> {
 		headers,
 		body: formData,
 	});
-	if (!res.ok) {
-		const err = await res.json().catch(() => ({ detail: res.statusText }));
-		throw new Error(err.detail ?? 'Request failed');
-	}
+	if (!res.ok) throw await toApiError(res, 'Request failed');
 	return res.json() as Promise<T>;
 }
