@@ -34,6 +34,10 @@ logger = logging.getLogger(__name__)
 
 _INSECURE_JWT_SECRETS = {"", "changeme-in-production", "change-me-generate-a-real-secret"}
 _DEV_ENVS = {"dev", "development", "local", "test", "testing"}
+# Tokens are symmetric (HMAC), so the verification key is the signing key. Any
+# other family would either not verify against JWT_SECRET at all, or — for
+# "none" — accept unsigned tokens, letting anyone mint `is_superadmin: true`.
+_ALLOWED_JWT_ALGORITHMS = {"HS256", "HS384", "HS512"}
 
 _API_DESCRIPTION = """
 REST-API für **ConvoyPlan** — Planung, Routing und Live-Tracking von Marschkolonnen.
@@ -85,6 +89,15 @@ def _verify_security_config() -> None:
     Generate a strong value with `openssl rand -hex 32` and set JWT_SECRET.
     Relax for local work with APP_ENV=development.
     """
+    # Checked in every environment, development included: `alg=none` disables
+    # signature verification outright, so there is no setup in which it is the
+    # right value — an attacker could then self-sign `is_superadmin: true`.
+    if settings.jwt_algorithm.upper() not in _ALLOWED_JWT_ALGORITHMS:
+        raise RuntimeError(
+            f"Unsupported JWT_ALGORITHM {settings.jwt_algorithm!r}: ConvoyPlan signs "
+            f"tokens with a shared secret, so only {sorted(_ALLOWED_JWT_ALGORITHMS)} "
+            "are accepted. Leave it unset to use the default (HS256)."
+        )
     if settings.app_env.lower() in _DEV_ENVS:
         return
     secret = settings.jwt_secret
@@ -104,9 +117,31 @@ def _verify_security_config() -> None:
         )
 
 
+async def _heal_caddy_security_headers() -> None:
+    """Bring an already-installed instance up to the current header baseline.
+
+    The setup wizard writes /certs/Caddyfile once and Caddy prefers it over its
+    env-var fallback forever after, so an install predating the hardening
+    headers would keep serving responses without HSTS/CSP/X-Frame-Options no
+    matter how often the images are updated. Checking (and regenerating) it on
+    boot is what actually delivers the headers to those deployments.
+    """
+    from app.database import get_db_session
+    from app.services.caddy_config import ensure_security_headers
+
+    try:
+        async with get_db_session() as db:
+            await ensure_security_headers(db)
+    except Exception:
+        # Never block startup on this — the DB may still be warming up, and an
+        # unhardened proxy is strictly better than a backend that will not boot.
+        logger.warning("Caddy security-header self-check skipped", exc_info=True)
+
+
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     _verify_security_config()
+    await _heal_caddy_security_headers()
     # Update-Benachrichtigung (Modus "notify"): prüft periodisch, ob im
     # aktiven Kanal ein Update verfügbar ist, und mailt die Superadmins.
     # Schläft vor dem ersten Check, belastet den Start also nicht.

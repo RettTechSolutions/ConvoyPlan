@@ -10,6 +10,7 @@ Diese Seite fasst die Sicherheits-Härtung, das Audit-Log, die DSGVO-Werkzeuge s
 |---|---|
 | **Fail-Closed JWT** | In Produktion (`APP_ENV=production`) startet das Backend nicht, wenn `JWT_SECRET` leer, Platzhalter oder < 32 Zeichen ist |
 | **Brute-Force-Schutz** | Rate-Limiting auf Login, MFA-Verify und Passwort-Reset (HTTP 429) |
+| **Kontingent-Drosselung** | Stundenbudget je Aufrufer auf Routing, Adresssuche und Verkehrslage (HTTP 429 mit `Retry-After`); Demo-Sitzungen mit kleinerem Budget und zusätzlich pro IP gezählt |
 | **Passwort-Policy** | Mind. 10 Zeichen mit Buchstaben + Ziffern, Abgleich gegen Have-I-Been-Pwned (k-Anonymity, fail-open) |
 | **E-Mail-Normalisierung** | Login-Adressen werden getrimmt und klein geschrieben gespeichert/verglichen — Login ist case-insensitive, doppelte Konten mit nur abweichender Groß-/Kleinschreibung sind ausgeschlossen (`lower(email)`-Unique-Index) |
 | **JWT-Revocation** | `token_version` entzieht alle Tokens bei Passwort-/MFA-Reset |

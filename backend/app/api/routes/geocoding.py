@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
+from app.api.quota import geocode_quota
 from app.config import settings
 from app.database import get_db
 from app.models.user import User
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/geocode", tags=["geocode"])
 
 
-@router.get("/search")
+@router.get("/search", dependencies=[Depends(geocode_quota)])
 async def search_address(
     q: str = Query(..., min_length=geo_svc.MIN_QUERY_LEN, max_length=200),
     limit: int = Query(6, ge=1, le=10),

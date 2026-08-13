@@ -1,3 +1,6 @@
+import uuid
+
+import jwt as _jwt
 import pytest
 from httpx import AsyncClient, ASGITransport
 
@@ -6,10 +9,19 @@ from app.api.routes import version as version_module
 from app.config import settings
 
 
+def _auth_header() -> dict[str, str]:
+    token = _jwt.encode(
+        {"sub": str(uuid.uuid4()), "typ": "access"},
+        settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
 @pytest.mark.asyncio
 async def test_version_endpoint_returns_build_info(monkeypatch):
-    """The public /api/version endpoint reports the build version and SHA and,
-    with the update check disabled (autouse fixture), reports no update."""
+    """The public /api/version endpoint reports the release version and, with
+    the update check disabled (autouse fixture), reports no update."""
     monkeypatch.setattr(settings, "app_version", "0.9.0")
     monkeypatch.setenv("GIT_SHA", "abcdef1234567")
 
@@ -19,9 +31,55 @@ async def test_version_endpoint_returns_build_info(monkeypatch):
     assert resp.status_code == 200
     body = resp.json()
     assert body["version"] == "0.9.0"
-    assert body["sha"] == "abcdef1"          # truncated to 7 chars
     assert body["latest"] is None            # update check disabled in tests
     assert body["update_available"] is False
+
+
+@pytest.mark.asyncio
+async def test_version_endpoint_hides_exact_build_from_anonymous_callers(monkeypatch):
+    """A `git describe` string ("4 commits past the tag") plus the commit SHA
+    tells an unauthenticated visitor the instance runs unreleased code and
+    exactly which commit — so anonymous callers only get the release version."""
+    monkeypatch.setattr(settings, "app_version", "2026.1.1-4-g37b9dad")
+    monkeypatch.setenv("GIT_SHA", "37b9dad1234567")
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/api/version")
+
+    body = resp.json()
+    assert body["version"] == "2026.1.1"
+    assert body["sha"] is None
+
+
+@pytest.mark.asyncio
+async def test_version_endpoint_gives_authenticated_callers_the_exact_build(monkeypatch):
+    """Signed-in users keep the precise build — support and the admin panel
+    need to know which commit is deployed."""
+    monkeypatch.setattr(settings, "app_version", "2026.1.1-4-g37b9dad")
+    monkeypatch.setenv("GIT_SHA", "37b9dad1234567")
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/api/version", headers=_auth_header())
+
+    body = resp.json()
+    assert body["version"] == "2026.1.1-4-g37b9dad"
+    assert body["sha"] == "37b9dad"          # truncated to 7 chars
+
+
+@pytest.mark.asyncio
+async def test_version_endpoint_ignores_an_invalid_token(monkeypatch):
+    """A bogus Authorization header must not fail the request — the endpoint is
+    public; it just falls back to the anonymous (coarse) response."""
+    monkeypatch.setattr(settings, "app_version", "2026.1.1-4-g37b9dad")
+    monkeypatch.setenv("GIT_SHA", "37b9dad1234567")
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/api/version", headers={"Authorization": "Bearer nonsense"})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["version"] == "2026.1.1"
+    assert body["sha"] is None
 
 
 @pytest.mark.asyncio
@@ -52,7 +110,7 @@ async def test_version_endpoint_hint_is_channel_aware(monkeypatch):
     monkeypatch.setattr(version_module, "fetch_update_state", fake_fetch_update_state)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        resp = await client.get("/api/version")
+        resp = await client.get("/api/version", headers=_auth_header())
 
     assert resp.status_code == 200
     body = resp.json()

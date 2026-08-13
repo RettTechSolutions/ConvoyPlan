@@ -2,8 +2,9 @@
 fail-closed check, and the in-process auth rate limiter."""
 
 import uuid
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
+import jwt as _jwt
 import pytest
 from fastapi import HTTPException
 
@@ -377,13 +378,39 @@ def test_ensure_token_current_allows_match():
     deps._ensure_token_current(MagicMock(token_version=3), MagicMock(token_version=3))
 
 
+
+def test_verify_security_config_rejects_alg_none(monkeypatch):
+    """`alg=none` would disable signature verification entirely, letting anyone
+    self-sign is_superadmin — rejected in every environment, dev included."""
+    monkeypatch.setattr(settings, "app_env", "development")
+    monkeypatch.setattr(settings, "jwt_algorithm", "none")
+    with pytest.raises(RuntimeError):
+        main._verify_security_config()
+
+
+def test_verify_security_config_rejects_asymmetric_alg(monkeypatch):
+    monkeypatch.setattr(settings, "app_env", "production")
+    monkeypatch.setattr(settings, "jwt_secret", "a" * 40)
+    monkeypatch.setattr(settings, "jwt_algorithm", "RS256")
+    with pytest.raises(RuntimeError):
+        main._verify_security_config()
+
+
+def test_verify_security_config_accepts_hmac_algs(monkeypatch):
+    monkeypatch.setattr(settings, "app_env", "production")
+    monkeypatch.setattr(settings, "jwt_secret", "a" * 40)
+    for alg in ("HS256", "HS384", "HS512"):
+        monkeypatch.setattr(settings, "jwt_algorithm", alg)
+        main._verify_security_config()
+
 # ── CSP / Caddyfile security headers (T4) ─────────────────────────────────────────
 
-from app.api.routes.setup import _generate_caddyfile  # noqa: E402
+from app.services import caddy_config  # noqa: E402
+from app.services.caddy_config import generate_caddyfile  # noqa: E402
 
 
 def test_setup_caddyfile_has_security_headers_report_only():
-    cf = _generate_caddyfile("convoy.example.de", "auto", "a@b.de")
+    cf = generate_caddyfile("convoy.example.de", "auto", "a@b.de")
     assert "Strict-Transport-Security" in cf
     assert "X-Content-Type-Options" in cf
     # Report-Only by default so the CSP can never break the map UI.
@@ -394,6 +421,236 @@ def test_setup_caddyfile_has_security_headers_report_only():
 
 def test_setup_caddyfile_csp_enforce_toggle(monkeypatch):
     monkeypatch.setenv("CSP_ENFORCE", "true")
-    cf = _generate_caddyfile("x.de", "internal", "a@b.de")
+    cf = generate_caddyfile("x.de", "internal", "a@b.de")
     assert "Content-Security-Policy-Report-Only" not in cf
     assert 'Content-Security-Policy "' in cf
+
+
+def test_generated_caddyfile_passes_the_header_self_check():
+    assert caddy_config.has_security_headers(generate_caddyfile("x.de", "auto", "a@b.de"))
+
+
+def test_has_security_headers_rejects_a_pre_hardening_caddyfile():
+    """The config the setup wizard wrote before the header block existed — the
+    exact file a long-running install still serves from /certs."""
+    legacy = """{
+    admin 0.0.0.0:2019
+    email a@b.de
+}
+
+convoy.example.de {
+    handle /api/* {
+        reverse_proxy backend:8000
+    }
+    handle {
+        reverse_proxy frontend:3000
+    }
+}
+"""
+    assert not caddy_config.has_security_headers(legacy)
+
+
+@pytest.mark.asyncio
+async def test_ensure_security_headers_rewrites_legacy_caddyfile(tmp_path, monkeypatch):
+    caddyfile = tmp_path / "Caddyfile"
+    caddyfile.write_text("convoy.example.de {\n    reverse_proxy frontend:3000\n}\n")
+    monkeypatch.setattr(caddy_config, "CADDYFILE_PATH", caddyfile)
+    monkeypatch.setattr(
+        caddy_config, "_persisted_setup_values",
+        AsyncMock(return_value=("convoy.example.de", "auto", "a@b.de")),
+    )
+    reload_mock = AsyncMock(return_value=True)
+    monkeypatch.setattr(caddy_config, "reload_caddy", reload_mock)
+
+    assert await caddy_config.ensure_security_headers(MagicMock()) is True
+    assert caddy_config.has_security_headers(caddyfile.read_text())
+    assert "wss://convoy.example.de" in caddyfile.read_text()
+    reload_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_ensure_security_headers_leaves_a_current_caddyfile_alone(tmp_path, monkeypatch):
+    caddyfile = tmp_path / "Caddyfile"
+    caddyfile.write_text(generate_caddyfile("convoy.example.de", "auto", "a@b.de"))
+    monkeypatch.setattr(caddy_config, "CADDYFILE_PATH", caddyfile)
+    before = caddyfile.read_text()
+    reload_mock = AsyncMock(return_value=True)
+    monkeypatch.setattr(caddy_config, "reload_caddy", reload_mock)
+
+    assert await caddy_config.ensure_security_headers(MagicMock()) is False
+    assert caddyfile.read_text() == before
+    reload_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_ensure_security_headers_noop_without_persisted_caddyfile(tmp_path, monkeypatch):
+    """Env-var mode: Caddy generates its own (already hardened) config."""
+    monkeypatch.setattr(caddy_config, "CADDYFILE_PATH", tmp_path / "absent")
+    assert await caddy_config.ensure_security_headers(MagicMock()) is False
+
+
+@pytest.mark.asyncio
+async def test_ensure_security_headers_never_raises(tmp_path, monkeypatch):
+    """A broken proxy config must not stop the backend from booting."""
+    caddyfile = tmp_path / "Caddyfile"
+    caddyfile.write_text("no headers here")
+    monkeypatch.setattr(caddy_config, "CADDYFILE_PATH", caddyfile)
+    monkeypatch.setattr(
+        caddy_config, "_persisted_setup_values", AsyncMock(side_effect=RuntimeError("db down"))
+    )
+    assert await caddy_config.ensure_security_headers(MagicMock()) is False
+
+
+# ── Upstream-quota throttles (demo sessions) ──────────────────────────────────
+
+from app.api import quota  # noqa: E402
+
+
+def _quota_request(ip: str = "203.0.113.7"):
+    request = MagicMock()
+    request.headers = {"x-forwarded-for": ip}
+    return request
+
+
+def _token(is_demo: bool, user_id: uuid.UUID | None = None) -> deps.TokenData:
+    return deps.TokenData(user_id=user_id or uuid.uuid4(), is_demo=is_demo)
+
+
+@pytest.mark.asyncio
+async def test_quota_limit_blocks_once_the_hourly_budget_is_spent(monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_enabled", True)
+    rl.reset()
+    dep = quota.quota_limit("traffic-test", limit=lambda is_demo: 2)
+    token = _token(is_demo=False)
+
+    await dep(_quota_request(), token)
+    await dep(_quota_request(), token)
+    with pytest.raises(HTTPException) as exc:
+        await dep(_quota_request(), token)
+    assert exc.value.status_code == 429
+    assert "Retry-After" in exc.value.headers
+
+
+@pytest.mark.asyncio
+async def test_quota_limit_is_per_user(monkeypatch):
+    """One caller exhausting their budget must not lock out everyone else."""
+    monkeypatch.setattr(settings, "rate_limit_enabled", True)
+    rl.reset()
+    dep = quota.quota_limit("geocode-test", limit=lambda is_demo: 1)
+
+    await dep(_quota_request(), _token(is_demo=False))
+    await dep(_quota_request(), _token(is_demo=False))  # different user, own budget
+
+
+@pytest.mark.asyncio
+async def test_quota_limit_gives_demo_sessions_the_smaller_budget(monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_enabled", True)
+    rl.reset()
+    dep = quota.quota_limit("routing-test", limit=lambda is_demo: 1 if is_demo else 50)
+
+    await dep(_quota_request(), _token(is_demo=True))
+    with pytest.raises(HTTPException) as exc:
+        await dep(_quota_request(), _token(is_demo=True, user_id=uuid.uuid4()))
+    # A *fresh* demo session from the same IP hits the shared demo-IP bucket, so
+    # cycling demo tokens does not reset the budget.
+    assert exc.value.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_quota_limit_demo_ip_bucket_is_per_ip(monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_enabled", True)
+    rl.reset()
+    dep = quota.quota_limit("routing-test-2", limit=lambda is_demo: 1)
+
+    await dep(_quota_request("198.51.100.1"), _token(is_demo=True))
+    await dep(_quota_request("198.51.100.2"), _token(is_demo=True))
+
+
+@pytest.mark.asyncio
+async def test_quota_limit_rejection_does_not_consume_other_buckets(monkeypatch):
+    """A demo request refused on the IP bucket must not also burn the (larger)
+    per-user budget, otherwise the two limits compound unpredictably."""
+    monkeypatch.setattr(settings, "rate_limit_enabled", True)
+    rl.reset()
+    dep = quota.quota_limit("mixed-test", limit=lambda is_demo: 1)
+    ip = "192.0.2.50"
+
+    await dep(_quota_request(ip), _token(is_demo=True))
+    fresh = _token(is_demo=True)
+    with pytest.raises(HTTPException):
+        await dep(_quota_request(ip), fresh)
+    # The blocked call was refused on the IP bucket; the new user's own budget
+    # is untouched, so it still works from a different address.
+    await dep(_quota_request("192.0.2.51"), fresh)
+
+
+@pytest.mark.asyncio
+async def test_quota_limit_disabled_is_noop(monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_enabled", False)
+    rl.reset()
+    dep = quota.quota_limit("off-test", limit=lambda is_demo: 1)
+    for _ in range(5):
+        await dep(_quota_request(), _token(is_demo=True))
+
+
+@pytest.mark.asyncio
+async def test_quota_limit_zero_disables_that_class(monkeypatch):
+    monkeypatch.setattr(settings, "rate_limit_enabled", True)
+    rl.reset()
+    dep = quota.quota_limit("zero-test", limit=lambda is_demo: 0 if is_demo else 1)
+    for _ in range(5):
+        await dep(_quota_request(), _token(is_demo=True))
+
+
+def test_demo_token_marks_the_session_as_demo():
+    """The throttles above rely on is_demo surviving the JWT round-trip."""
+    token = _jwt.encode(
+        {"sub": str(uuid.uuid4()), "typ": "access", "is_demo": True},
+        settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
+    assert deps._decode_token(token).is_demo is True
+
+
+def test_regular_token_is_not_marked_as_demo():
+    token = _jwt.encode(
+        {"sub": str(uuid.uuid4()), "typ": "access"},
+        settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
+    assert deps._decode_token(token).is_demo is False
+
+
+# ── Limiter bookkeeping ───────────────────────────────────────────────────────
+
+def test_read_only_check_does_not_leave_an_entry_behind():
+    rl.reset()
+    assert rl.check("probe", 5, 60, record=False) is None
+    assert "probe" not in rl._failures
+
+
+def test_expired_keys_are_swept_instead_of_accumulating():
+    """Quota keys include one per user — every ephemeral demo account included —
+    so the counter dict must not grow for the life of the process."""
+    rl.reset()
+    for i in range(rl._SWEEP_INTERVAL_OPS):
+        rl.check(f"stale:{i}", 5, 1, record=True)
+    assert len(rl._failures) == rl._SWEEP_INTERVAL_OPS
+
+    # Age every entry past its window, then trigger the next sweep.
+    for dq in rl._failures.values():
+        dq[0] -= 3600
+    for i in range(rl._SWEEP_INTERVAL_OPS):
+        rl.check(f"fresh:{i}", 5, 1, record=True)
+
+    assert not any(k.startswith("stale:") for k in rl._failures)
+
+
+def test_sweep_keeps_keys_that_are_still_within_their_window():
+    rl.reset()
+    rl.check("live", 5, 3600, record=True)
+    for i in range(rl._SWEEP_INTERVAL_OPS):
+        rl.check(f"filler:{i}", 5, 3600, record=True)
+    assert "live" in rl._failures
+    # And the surviving entry still counts toward the limit.
+    assert len(rl._failures["live"]) == 1

@@ -1,6 +1,11 @@
 /**
  * Version store — fetches /api/version once and caches the result.
+ *
+ * The token is attached when one is present: /api/version is public, but it
+ * only reveals the exact build (git-describe string + commit SHA) to
+ * authenticated callers. Anonymous visitors get the release version only.
  */
+import { getBaseUrl, getToken } from '$lib/api/client';
 
 interface VersionData {
     sha: string | null;
@@ -22,7 +27,10 @@ function createVersionStore(): VersionStore {
     async function load(): Promise<void> {
         if (loaded) return;
         try {
-            const resp = await fetch('/api/version');
+            const token = getToken();
+            const resp = await fetch(`${getBaseUrl()}/api/version`, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+            });
             if (resp.ok) {
                 const json = await resp.json() as Partial<VersionData>;
                 data = {

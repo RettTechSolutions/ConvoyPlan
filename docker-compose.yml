@@ -47,6 +47,15 @@ services:
       CSP_ENFORCE: ${CSP_ENFORCE:-false}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       PASSWORD_BREACH_CHECK_ENABLED: ${PASSWORD_BREACH_CHECK_ENABLED:-true}
+      # Hourly per-caller budgets for the endpoints that spend a metered
+      # upstream quota (HERE/TomTom, GraphHopper). Demo sessions get the
+      # smaller budget — see backend/app/api/quota.py.
+      QUOTA_ROUTING_PER_HOUR: ${QUOTA_ROUTING_PER_HOUR:-240}
+      QUOTA_ROUTING_DEMO_PER_HOUR: ${QUOTA_ROUTING_DEMO_PER_HOUR:-40}
+      QUOTA_GEOCODE_PER_HOUR: ${QUOTA_GEOCODE_PER_HOUR:-600}
+      QUOTA_GEOCODE_DEMO_PER_HOUR: ${QUOTA_GEOCODE_DEMO_PER_HOUR:-100}
+      QUOTA_TRAFFIC_PER_HOUR: ${QUOTA_TRAFFIC_PER_HOUR:-600}
+      QUOTA_TRAFFIC_DEMO_PER_HOUR: ${QUOTA_TRAFFIC_DEMO_PER_HOUR:-100}
       GRAPHHOPPER_URL: http://graphhopper:8989
       BACKEND_PORT: ${BACKEND_PORT:-8000}
       LICENSE_KEY: ${LICENSE_KEY:-}

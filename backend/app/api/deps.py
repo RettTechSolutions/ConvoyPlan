@@ -29,6 +29,11 @@ class TokenData(BaseModel):
     role: str | None = None
     is_superadmin: bool = False
     token_version: int = 0
+    # Set on tokens minted by POST /api/auth/demo-session. Purely informational
+    # — it never grants anything — but it lets the upstream-quota throttles
+    # (app.api.quota) give anonymous demo sessions a much smaller budget than
+    # licensed users, since anyone can mint one.
+    is_demo: bool = False
 
 
 def _ensure_token_current(token_data: TokenData, user: User) -> None:
@@ -70,6 +75,7 @@ def _decode_token(token: str, *, allow_stream: bool = False) -> TokenData:
             role=payload.get("role"),
             is_superadmin=bool(payload.get("is_superadmin", False)),
             token_version=int(payload.get("tv", 0)),
+            is_demo=bool(payload.get("is_demo", False)),
         )
     except (InvalidTokenError, ValueError):
         raise credentials_exception
@@ -77,6 +83,18 @@ def _decode_token(token: str, *, allow_stream: bool = False) -> TokenData:
 
 def get_token_data(token: str = Depends(oauth2_scheme)) -> TokenData:
     return _decode_token(token)
+
+
+def get_optional_token_data(token: str | None = Depends(oauth2_optional)) -> TokenData | None:
+    """Identify the caller on endpoints that are public but reveal more to a
+    signed-in user (e.g. /api/version). Returns None for anonymous callers and
+    for a token that does not validate — it never rejects the request."""
+    if not token:
+        return None
+    try:
+        return _decode_token(token)
+    except HTTPException:
+        return None
 
 
 def decode_stream_token(token: str) -> TokenData:

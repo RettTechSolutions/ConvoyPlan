@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import TokenData, get_optional_token_data
 from app.config import settings
 from app.database import get_db
 from app.services.update_check import fetch_update_state, resolve_channel
@@ -118,11 +119,26 @@ async def _resolve_update_hint(db: AsyncSession) -> tuple[str | None, bool]:
 
 
 @router.get("", response_model=VersionResponse)
-async def get_version(db: AsyncSession = Depends(get_db)) -> VersionResponse:
+async def get_version(
+    db: AsyncSession = Depends(get_db),
+    viewer: TokenData | None = Depends(get_optional_token_data),
+) -> VersionResponse:
+    """The endpoint stays public (the login page and the update hint need it),
+    but anonymous callers only see the release version — not the exact build.
+
+    `settings.app_version` is a `git describe` string, so for a build between
+    tags it reads e.g. "2026.1.1-4-g37b9dad": that tells an unauthenticated
+    visitor the instance runs unreleased code and which commit it is, which
+    narrows a search for applicable fixes. Signed-in users keep the precise
+    build — support and the admin panel need it."""
+    authenticated = viewer is not None
+
     raw_sha = os.environ.get("GIT_SHA", "unknown")
-    sha = raw_sha[:7] if raw_sha and raw_sha != "unknown" else None
+    sha = raw_sha[:7] if authenticated and raw_sha and raw_sha != "unknown" else None
 
     version = settings.app_version or None
+    if not authenticated:
+        version = _core_str(version)
     latest, update_available = await _resolve_update_hint(db)
 
     return VersionResponse(
