@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import * as maplibregl from 'maplibre-gl';
+	import * as maplibregl from '$lib/map/maplibre';
 	import 'maplibre-gl/dist/maplibre-gl.css';
 	import { get } from 'svelte/store';
 	import { mapMode } from '$lib/stores/map';

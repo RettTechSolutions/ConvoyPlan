@@ -18,6 +18,12 @@ export default defineConfig({
 	define: {
 		__APP_VERSION__: JSON.stringify(appVersion),
 	},
+	// MapLibre startet seinen Worker als Modul-Worker (`new Worker(url,
+	// { type: 'module' })`). Vite bündelt Worker sonst als IIFE — der von
+	// `$lib/map/maplibre` vorgegebene Worker muss deshalb ESM sein.
+	worker: {
+		format: 'es',
+	},
 	plugins: [
 		sveltekit(),
 		SvelteKitPWA({
