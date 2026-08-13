@@ -191,7 +191,10 @@ async def _fetch_stats(client: httpx.AsyncClient, container_id: str) -> dict[str
         if resp.is_success:
             return resp.json()
     except (httpx.HTTPError, ValueError):
-        pass
+        # Stats sind Beiwerk: Ein Container, der genau jetzt stoppt, oder ein
+        # Timeout darf nicht den gesamten Container-Report kippen — der
+        # Container erscheint dann eben ohne CPU-/RAM-Werte.
+        logger.debug("Container-Stats für %s nicht abrufbar", container_id, exc_info=True)
     return None
 
 

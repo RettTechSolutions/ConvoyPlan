@@ -23,7 +23,7 @@ def _superadmin():
 
 
 def _override_auth_and_db(db=None):
-    app.dependency_overrides[require_superadmin] = lambda: _superadmin()
+    app.dependency_overrides[require_superadmin] = _superadmin
     db = db or AsyncMock()
 
     async def _db_override():
@@ -497,7 +497,7 @@ async def test_usage_endpoint_returns_day_rows():
 
 @pytest.mark.asyncio
 async def test_containers_endpoint_reports_unavailable_gracefully():
-    app.dependency_overrides[require_superadmin] = lambda: _superadmin()
+    app.dependency_overrides[require_superadmin] = _superadmin
     report = docker_stats.DockerReport(available=False, reason="Docker-API nicht erreichbar")
     with patch.object(docker_stats, "collect", AsyncMock(return_value=report)):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

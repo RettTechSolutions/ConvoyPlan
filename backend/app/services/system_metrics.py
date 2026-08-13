@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import calendar
 import logging
+from dataclasses import dataclass
 from datetime import date, datetime, time as dtime, timedelta, timezone
 from typing import Any, Iterable
 
@@ -37,11 +38,23 @@ from app.services import activity, audit, docker_stats, host_metrics
 
 logger = logging.getLogger(__name__)
 
-# Zustand zwischen zwei Stichproben: CPU- und I/O-Zähler sind kumulativ, die
-# Rate ergibt sich erst aus der Differenz zweier Messpunkte.
-_last_cpu: host_metrics.CpuTimes | None = None
-_last_io: host_metrics.DiskIoCounters | None = None
-_last_sample_at: datetime | None = None
+
+@dataclass
+class _SamplerState:
+    """Zustand zwischen zwei Stichproben.
+
+    CPU- und I/O-Zähler des Kernels sind kumulativ — eine Rate ergibt sich erst
+    aus der Differenz zweier Messpunkte. Gehalten in einem Objekt statt in
+    Modulvariablen, damit ``collect_sample`` ohne ``global`` auskommt und der
+    gesamte Zustand an einer Stelle sichtbar ist.
+    """
+
+    cpu: host_metrics.CpuTimes | None = None
+    io: host_metrics.DiskIoCounters | None = None
+    sampled_at: datetime | None = None
+
+
+_state = _SamplerState()
 
 # Auflösungen der Verlaufsabfrage.
 RESOLUTIONS = ("raw", "hour", "day")
@@ -69,7 +82,10 @@ async def _safe_scalar(db: AsyncSession, statement) -> Any:
         try:
             await db.rollback()
         except Exception:
-            pass
+            # Auch der Rollback kann scheitern (Verbindung weg). Dann ist die
+            # Sitzung ohnehin verloren; der Aufrufer bekommt None und der
+            # Collector versucht es im nächsten Intervall mit frischer Sitzung.
+            logger.debug("Rollback nach fehlgeschlagener Metrikabfrage misslungen", exc_info=True)
         return None
 
 
@@ -144,16 +160,15 @@ def _host_snapshot(
 
 async def collect_sample(db: AsyncSession) -> SystemMetricSample:
     """Eine Stichprobe erheben, speichern und zurückgeben."""
-    global _last_cpu, _last_io, _last_sample_at
-
     now = datetime.now(timezone.utc)
-    interval = int((now - _last_sample_at).total_seconds()) if _last_sample_at else 0
+    previous_at = _state.sampled_at
+    interval = int((now - previous_at).total_seconds()) if previous_at else 0
 
     cpu_now = host_metrics.read_cpu_times()
     io_now = host_metrics.read_disk_io()
-    cpu_percent = host_metrics.cpu_percent_between(_last_cpu, cpu_now)
-    io_rates = host_metrics.disk_io_rates(_last_io, io_now)
-    _last_cpu, _last_io = cpu_now, io_now
+    cpu_percent = host_metrics.cpu_percent_between(_state.cpu, cpu_now)
+    io_rates = host_metrics.disk_io_rates(_state.io, io_now)
+    _state.cpu, _state.io = cpu_now, io_now
 
     host = _host_snapshot(cpu_percent=cpu_percent, io_rates=io_rates)
     docker = await docker_stats.collect()
@@ -161,7 +176,7 @@ async def collect_sample(db: AsyncSession) -> SystemMetricSample:
 
     counters, pending_users = activity.drain()
     active = activity.active_users()
-    logins = await _count_logins_since(db, _last_sample_at or now - timedelta(seconds=interval or 0))
+    logins = await _count_logins_since(db, previous_at or now - timedelta(seconds=interval or 0))
 
     sample = SystemMetricSample(
         captured_at=now,
@@ -209,7 +224,7 @@ async def collect_sample(db: AsyncSession) -> SystemMetricSample:
     await _persist_user_activity(db, pending_users)
     db.add(sample)
     await db.commit()
-    _last_sample_at = now
+    _state.sampled_at = now
     return sample
 
 
@@ -235,7 +250,9 @@ async def _persist_user_activity(db: AsyncSession, pending: Iterable[activity.Us
             try:
                 await db.rollback()
             except Exception:
-                pass
+                # Sitzung nicht mehr zu retten — die Stichprobe fällt für dieses
+                # Intervall aus, der nächste Lauf beginnt mit frischer Sitzung.
+                logger.debug("Rollback nach Aktivitätsfehler misslungen", exc_info=True)
             return
         if existing is None:
             db.add(
@@ -289,7 +306,7 @@ async def live_snapshot(db: AsyncSession) -> dict[str, Any]:
         "collector": {
             "enabled": settings.system_metrics_enabled,
             "interval_s": settings.system_metrics_interval,
-            "last_sample_at": _last_sample_at.isoformat() if _last_sample_at else None,
+            "last_sample_at": _state.sampled_at.isoformat() if _state.sampled_at else None,
             "raw_retention_days": settings.system_metrics_retention_days,
             "daily_retention_days": settings.system_metrics_daily_retention_days,
         },
