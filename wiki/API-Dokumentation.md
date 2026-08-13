@@ -13,15 +13,32 @@ Lokal (Dev) sind sie unter `http://localhost:8000/docs` erreichbar.
 > `/docs?key=<geheim>`, danach via HttpOnly-Cookie bzw. Header `X-API-Key`); mit `ENABLE_DOCS=true`
 > werden sie offen freigegeben (nur für Dev/intern).
 
-Alle Endpunkte (außer `/api/setup`, `/api/auth/*` und öffentlichen Share-/Track-Routen) erfordern einen gültigen JWT-Token im Header:
+---
 
-```
-Authorization: Bearer <token>
-```
+## Zugangswege im Überblick
+
+ConvoyPlan kennt **vier voneinander unabhängige Credentials**. Welches du brauchst,
+hängt vom Endpunkt ab — die Tabelle nennt jeweils den kürzesten Weg.
+
+| Zugangsweg | Wie mitgeben | Gilt für | Woher |
+|---|---|---|---|
+| **Bearer-Token (JWT)** | `Authorization: Bearer <token>` | alle geschützten Endpunkte | `POST /api/auth/login` |
+| **Org-API-Key** | `X-API-Key: cvp_…` | organisationsbezogene Endpunkte (siehe [Matrix](#welche-endpunkte-akzeptieren-einen-org-api-key)) | Superadmin-Portal → Reiter **API-Keys** |
+| **Freigabe-Token** | Teil der URL | `/api/convoys/share/{token}`, `/api/track/{slug}` | Freigabelink je Konvoi |
+| **Docs-Key** | `X-API-Key: <DOCS_API_KEY>` oder `?key=…` | nur `/docs`, `/redoc`, `/openapi.json` | Umgebungsvariable `DOCS_API_KEY` |
+
+> ⚠️ **Docs-Key ≠ Org-API-Key.** Beide reisen im Header `X-API-Key`, haben aber nichts
+> miteinander zu tun: Der Docs-Key ist eine Instanz-Umgebungsvariable und öffnet
+> ausschließlich die Swagger-/ReDoc-Oberfläche. Ein Org-API-Key funktioniert dort nicht —
+> und umgekehrt öffnet der Docs-Key keinen einzigen Datenendpunkt.
+
+Ohne Credential erreichbar sind nur: `GET /health`, `GET /api/version`,
+`GET /api/status`, `GET /api/setup/status`, `GET /api/license/mode`,
+`GET /api/branding/org/{slug}` sowie die Freigabe-/Track-Routen.
 
 ---
 
-## Authentifizierung
+## Authentifizierung mit Bearer-Token
 
 ### Token erhalten
 
@@ -31,9 +48,17 @@ Content-Type: application/json
 
 {
   "email": "benutzer@example.com",
-  "password": "passwort"
+  "password": "passwort",
+  "org_slug": "jpbg"
 }
 ```
+
+`org_slug` steuert den Geltungsbereich des Tokens:
+
+- **mit `org_slug`** → Token gilt *innerhalb dieser Organisation*, mit der Rolle aus der
+  Mitgliedschaft. Das ist der Normalfall für Kolonnen, Fahrzeuge und Tracking.
+- **ohne `org_slug`** → Superadmin-Token ohne Org-Bindung. Nur damit erreichst du
+  `/api/admin/**` inklusive der [Systemübersicht](#systemübersicht-superadmin).
 
 Antwort:
 
@@ -44,23 +69,164 @@ Antwort:
 }
 ```
 
+Der Token läuft nach `JWT_EXPIRE_MINUTES` ab (Standard: **7 Tage**). Er wird ungültig,
+sobald das Passwort geändert oder das Konto zurückgesetzt wird (Token-Versionierung).
+
+### Mit aktivierter MFA
+
+Ist für das Konto TOTP aktiv, liefert `/api/auth/login` **kein** `access_token`, sondern
+eine Zwischenstufe:
+
+```json
+{ "mfa_required": true, "mfa_token": "eyJ..." }
+```
+
+Diese gegen `POST /api/auth/mfa/verify` mit `{"mfa_token": "…", "code": "123456"}`
+eintauschen — erst diese Antwort enthält das `access_token`. Der `mfa_token` allein
+öffnet keinen einzigen Endpunkt.
+
+```bash
+TOKEN=$(curl -s -X POST https://web.convoyplan.de/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@example.com","password":"…"}' | jq -r .access_token)
+
+curl -H "Authorization: Bearer $TOKEN" https://web.convoyplan.de/api/admin/system/overview
+```
+
+---
+
+## Authentifizierung mit Org-API-Key
+
+API-Keys sind für **Fremdsysteme** gedacht, die dauerhaft und ohne Benutzerkonto auf die
+Daten *einer* Organisation zugreifen — Leitstellen-Anbindung, Dashboard, Skript.
+
+Anlegen im Superadmin-Portal unter **Admin → API-Keys**: Organisation wählen, Name,
+Rolle und optionales Ablaufdatum vergeben. Der Klartext wird **genau einmal** angezeigt
+(gespeichert wird nur ein bcrypt-Hash) — geht er verloren, muss ein neuer Key her.
+
+**Format:** `cvp_<prefix>_<secret>` — der `prefix` (8 Hex-Zeichen) ist der öffentliche
+Nachschlage-Teil und taucht in Portal und Audit-Log auf, das `secret` nie.
+
+```bash
+curl -H "X-API-Key: cvp_a1b2c3d4_xxxxxxxx" https://web.convoyplan.de/api/convoys/
+```
+
+Eigenschaften:
+
+- Der Key handelt **im Namen des Org-Eigentümers**, aber **immer mit seiner konfigurierten
+  Rolle** — auch auf Objekten, die dem Eigentümer selbst gehören. Ein `beobachter`-Key
+  kann also nichts ändern, egal wem die Kolonne gehört.
+- Wird gleichzeitig ein Bearer-Token gesendet, **gewinnt der API-Key**.
+- `last_used_at` wird höchstens alle 5 Minuten fortgeschrieben (ein Schreibzugriff pro
+  Request wäre zu teuer) — der Wert ist also grob, nicht sekundengenau.
+- Widerrufen wirkt sofort; abgelaufene und widerrufene Keys liefern `401`.
+
+### Welche Endpunkte akzeptieren einen Org-API-Key?
+
+| Bereich | `X-API-Key` | Anmerkung |
+|---|---|---|
+| `/api/convoys/` — Kolonnen, Fahrzeugzuordnung, Wegpunkte, Teilverbände | ✅ | Rolle des Keys wird durchgesetzt |
+| `/api/vehicles/**` | ✅ | ab `planer` schreibend |
+| `/api/org/leitstellen/**` | ✅ | |
+| `/api/org/branding` | ✅ | |
+| Routing, Export/Import, Tankstellen (`/calculate-route`, `/export/*`, …) | ❌ | nur Bearer-Token |
+| Tracking und Positionen (`/positions`, `/status`) | ❌ | nur Bearer-Token |
+| Freigabelinks (`/share-links`) | ❌ | nur Bearer-Token |
+| `/api/organizations/**`, `/api/users/**` | ❌ | nur Bearer-Token |
+| `/api/admin/**` inkl. Systemübersicht | ❌ | nur Superadmin-Token |
+
+Ein Org-API-Key auf einem Endpunkt, der keinen akzeptiert, führt zu `401` — nicht zu
+einem stillen Fallback auf anonymen Zugriff.
+
+---
+
+## Rollen im API-Kontext
+
+Dieselbe Hierarchie gilt für Benutzer-Mitgliedschaften und für API-Keys:
+
+| Rolle | Lesen | Position/Status melden | Anlegen & Ändern | Löschen |
+|---|---|---|---|---|
+| `beobachter` | ✅ | ❌ | ❌ | ❌ |
+| `fahrer` | ✅ | ✅ | ❌ | ❌ |
+| `planer` | ✅ | ✅ | ✅ | ❌ |
+| `admin` | ✅ | ✅ | ✅ | ✅ |
+
+Reicht die Rolle nicht, antwortet die API mit `403` und dem Text
+`Insufficient role: requires <rolle>`. Ausführlich: **[Rollen & Berechtigungen](Rollen)**.
+
+---
+
+## Statuscodes und Fehler
+
+| Code | Bedeutung | Typische Ursache |
+|---|---|---|
+| `401` | nicht authentifiziert | Token fehlt/abgelaufen, Key ungültig, widerrufen oder abgelaufen; auch: Credential am falschen Endpunkt |
+| `402` | Demo-Modus | schreibender Zugriff ohne gültige Lizenz (siehe unten) |
+| `403` | authentifiziert, aber nicht berechtigt | Rolle zu niedrig, keine Org-Mitgliedschaft, Superadmin nötig, Konto deaktiviert |
+| `404` | nicht gefunden | Objekt existiert nicht — oder gehört einer anderen Organisation |
+| `422` | Validierungsfehler | fehlende/ungültige Felder (FastAPI-Standardformat) |
+| `429` | Drosselung | Rate-Limit oder Stundenkontingent erschöpft — `Retry-After` beachten |
+
+Fehlerantworten haben durchgängig die Form `{"detail": "…"}`; im Demo-Fall zusätzlich
+`"demo_mode": true`.
+
+### Drosselung im Detail
+
+**Rate-Limits** (pro IP, gleitendes Fenster) schützen die Anmeldung:
+Login und alle MFA-Endpunkte 10 Versuche / 5 Minuten, Passwort-Reset 5 / 15 Minuten,
+Tracking-Auth 5 / 5 Minuten, Demo-Sitzungen 10 / Stunde.
+
+**Stundenkontingente** (pro Benutzer) begrenzen Endpunkte, die fremde Dienste oder CPU
+kosten — Standardwerte, über `QUOTA_*` konfigurierbar:
+
+| Bereich | Regulär | Demo-Sitzung |
+|---|---|---|
+| Routenberechnung | 240/h | 40/h |
+| Adresssuche (Geocoding) | 600/h | 100/h |
+| Live-Verkehrslage | 600/h | 100/h |
+
+Beide Zähler liegen **im Prozessspeicher**: Sie gelten je Worker und werden bei einem
+Neustart zurückgesetzt. Als erste Verteidigungslinie gedacht, nicht als harte Abrechnung.
+
+### Demo-Modus (HTTP 402)
+
+Ohne gültigen Lizenzschlüssel läuft die Instanz im Demo-Modus: **GET immer erlaubt**,
+`POST`/`PUT`/`PATCH`/`DELETE` auf geschützten Pfaden mit `402` abgewiesen. Ausgenommen
+sind `/health`, `/api/auth/login`, `/api/license/*`, `/api/setup`, `/api/track/*` und
+`/uploads`. Lesende Integrationen funktionieren also auch unlizenziert.
+
 ### Endpunkte
 
 | Methode | Endpunkt | Beschreibung | Auth |
 |---|---|---|---|
 | `POST` | `/api/auth/register` | Account erstellen | Nein |
-| `POST` | `/api/auth/login` | Login, JWT erhalten | Nein |
+| `POST` | `/api/auth/login` | Login, JWT erhalten (optional `org_slug`) | Nein |
+| `GET` | `/api/auth/org-lookup` | Organisation zu einem Org-Code auflösen (Login-Maske) | Nein |
 | `POST` | `/api/auth/password` | Eigenes Passwort ändern (liefert frisches Token) | Ja |
 | `POST` | `/api/auth/password-reset` | Passwort-Reset anstoßen | Nein |
+| `POST` | `/api/auth/stream-ticket` | Kurzlebiges Ticket für SSE/WebSocket lösen | Ja |
+
+> SSE- und WebSocket-Verbindungen können keinen `Authorization`-Header setzen. Statt den
+> Zugangstoken in die URL zu schreiben, holt man sich über `/api/auth/stream-ticket` ein
+> kurzlebiges Ticket und hängt dieses als Query-Parameter an.
 
 ### MFA / TOTP
 
 | Methode | Endpunkt | Beschreibung |
 |---|---|---|
+| `GET` | `/api/auth/mfa/status` | Ist MFA für das eigene Konto aktiv? |
 | `POST` | `/api/auth/mfa/setup` | TOTP-Einrichtung starten (QR-Code generieren) |
 | `POST` | `/api/auth/mfa/confirm` | TOTP-Einrichtung bestätigen und aktivieren |
-| `POST` | `/api/auth/mfa/verify` | TOTP-Code bei Login verifizieren |
-| `DELETE` | `/api/auth/mfa` | MFA deaktivieren |
+| `POST` | `/api/auth/mfa/verify` | `mfa_token` + TOTP-Code gegen vollwertiges JWT tauschen |
+| `POST` | `/api/auth/mfa/disable` | MFA deaktivieren |
+
+### Demo-Sitzungen (öffentlich)
+
+| Methode | Endpunkt | Beschreibung |
+|---|---|---|
+| `GET` | `/api/auth/demo-status` | Ist der öffentliche Demo-Modus aktiviert? |
+| `GET` | `/api/auth/demo-session/info` | Rahmendaten einer Demo-Sitzung (Laufzeit) |
+| `POST` | `/api/auth/demo-session` | Befristete Demo-Organisation samt Token erzeugen |
 
 ---
 
@@ -84,8 +250,9 @@ Nur für Benutzer mit Superadmin-Rolle zugänglich.
 | `GET/POST` | `/api/admin/organizations` | Organisationen auflisten oder anlegen |
 | `POST/DELETE` | `/api/admin/users/{user_id}/orgs` | Benutzer einer Organisation zuweisen oder entfernen |
 | `GET/POST/DELETE` | `/api/admin/organizations/{org_id}/api-keys` | Org-gebundene API-Schlüssel verwalten |
-| `GET` | `/api/admin/branding` | Aktuelles (globales) Branding abrufen |
-| `PUT` | `/api/admin/branding` | Globales Branding (Logo, Farben, App-Name) aktualisieren |
+| `GET` | `/api/branding` | Aktuelles (globales) Branding abrufen |
+| `PUT` | `/api/branding` | Globales Branding (Farben, App-Name) aktualisieren |
+| `POST` | `/api/branding/logo/{slot}` | Globales Logo hochladen (`slot`: `main` oder `horizontal`) |
 | `POST` | `/api/admin/trigger-update` | Auto-Update manuell anstoßen |
 | `GET` | `/api/admin/update-status` / `/api/admin/update-log` | Deploy-Stand bzw. Live-Update-Log (SSE) |
 | `GET/PUT` | `/api/admin/settings/update-channel` | Update-Kanal (Stable/Beta/Nightly) lesen/setzen |
