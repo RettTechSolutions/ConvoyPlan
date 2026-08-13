@@ -7,7 +7,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Upgrade the base image's baked-in setuptools (70.3.0, CVE-2025-47273 —
+# path traversal in PackageIndex) to a patched release. This is the copy
+# actually importable/usable by anything in the image. See .trivyignore for
+# why the scan still flags a residual finding after this.
+RUN pip install --no-cache-dir --upgrade "setuptools>=78.1.1" \
+    && pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
