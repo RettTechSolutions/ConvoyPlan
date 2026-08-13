@@ -8,7 +8,7 @@
 </script>
 
 <script lang="ts">
-    import * as maplibregl from 'maplibre-gl';
+    import * as maplibregl from '$lib/map/maplibre';
     import 'maplibre-gl/dist/maplibre-gl.css';
     import { onMount, onDestroy } from 'svelte';
     import { loadDistricts, DISTRICTS_ATTRIBUTION, type DistrictFeature } from '$lib/geo/districts';
