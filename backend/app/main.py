@@ -25,9 +25,11 @@ from app.api.routes import email_template as email_template_router
 from app.api.routes import license as license_router
 from app.api.routes import setup as setup_router
 from app.api.routes import share_links as share_links_router
+from app.api.routes import system_metrics as system_metrics_router
 from app.api.routes import track as track_router
 from app.api.routes import version as version_router
 from app.config import settings
+from app.middleware.activity import ActivityMiddleware
 from app.middleware.license_guard import LicenseGuardMiddleware
 
 logger = logging.getLogger(__name__)
@@ -79,6 +81,14 @@ _TAGS_METADATA = [
     {"name": "email-template", "description": "E-Mail-Vorlagen verwalten (Admin)."},
     {"name": "admin", "description": "Administrative Endpunkte für Superadmins."},
     {"name": "status", "description": "System- und Gesundheitsstatus der Instanz."},
+    {
+        "name": "system-metrics",
+        "description": (
+            "Systemübersicht für Superadmins: Live-Zustand von Hardware und Containern, "
+            "historische Kennzahlen (bis zu einem Jahr und mehr) sowie Monatsberichte "
+            "als JSON, CSV oder PDF."
+        ),
+    },
     {"name": "version", "description": "Versions- und Build-Informationen."},
 ]
 
@@ -147,11 +157,16 @@ async def _lifespan(_app: FastAPI):
     # Schläft vor dem ersten Check, belastet den Start also nicht.
     from app.services.update_notify import update_notify_loop
     from app.services.deploy_alert import deploy_alert_loop
+    from app.jobs.metrics import metrics_collector_loop
     notify_task = asyncio.create_task(update_notify_loop())
     # Watches /update_status/deploy_alert.json for failed-deploy / auto-rollback
     # / aborted-boot markers written by the updater and entrypoint, and emails
     # the superadmins about them (once per event).
     alert_task = asyncio.create_task(deploy_alert_loop())
+    # Erfasst periodisch Hardware-, Container- und Nutzungskennzahlen für die
+    # Systemübersicht im Admin-Portal. Läuft hier (und nicht im retention-
+    # Container), weil die Nutzungsdaten im Speicher dieses Prozesses liegen.
+    metrics_task = asyncio.create_task(metrics_collector_loop())
     try:
         yield
     finally:
@@ -160,7 +175,10 @@ async def _lifespan(_app: FastAPI):
         # ihn zu werfen), sodass der Shutdown nie an ihm scheitert.
         notify_task.cancel()
         alert_task.cancel()
-        outcome = await asyncio.gather(notify_task, alert_task, return_exceptions=True)
+        metrics_task.cancel()
+        outcome = await asyncio.gather(
+            notify_task, alert_task, metrics_task, return_exceptions=True
+        )
         logger.debug("Hintergrund-Tasks beendet: %r", outcome)
 
 
@@ -300,6 +318,10 @@ def _resolve_cors_origins() -> list[str]:
 _allow_origins = _resolve_cors_origins()
 
 app.add_middleware(LicenseGuardMiddleware)
+# Zählt Requests und aktive Benutzer für die Systemübersicht. Bewusst *innerhalb*
+# von CORS eingehängt: OPTIONS-Preflights beantwortet die CORS-Middleware selbst
+# und sollen nicht als Portalnutzung erscheinen.
+app.add_middleware(ActivityMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allow_origins,
@@ -321,6 +343,7 @@ app.include_router(geocoding.router, prefix="/api")
 app.include_router(status.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(admin_router.router, prefix="/api")
+app.include_router(system_metrics_router.router, prefix="/api")
 app.include_router(setup_router.router, prefix="/api")
 app.include_router(leitstellen.router, prefix="/api")
 app.include_router(org_leitstellen_router.router, prefix="/api")

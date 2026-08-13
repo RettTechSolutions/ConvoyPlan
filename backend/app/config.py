@@ -166,6 +166,30 @@ class Settings(BaseSettings):
     # wird. 0 = kein App-Deckel (dann greift nur HEREs eigenes Kontingent).
     here_monthly_limit: int = 25000
 
+    # ── Systemüberwachung (Admin → Systemübersicht) ──────────────────────────
+    # Der Collector läuft im Backend-Prozess und schreibt im Sampling-Intervall
+    # eine Zeile mit Hardware-, Container- und Nutzungskennzahlen. Rohdaten
+    # tragen die Detailcharts, die daraus verdichteten Tagesaggregate die
+    # Monatsberichte (und überleben die Rohdaten-Aufbewahrung deutlich).
+    system_metrics_enabled: bool = True
+    system_metrics_interval: int = 300            # Sekunden zwischen zwei Stichproben
+    system_metrics_retention_days: int = 90       # Aufbewahrung der Rohstichproben
+    system_metrics_daily_retention_days: int = 1095   # Aufbewahrung der Tagesaggregate
+    # Pfade, deren Belegung erfasst wird. "/" liegt auf dem Docker-Dateisystem
+    # des Hosts, die übrigen sind die Volumes der Instanz. Pfade auf demselben
+    # Dateisystem werden automatisch zusammengefasst.
+    system_metrics_disk_paths: str = "/,/uploads,/update_status"
+
+    # Container-Zustand über die Docker-Engine-API. Standardweg ist der
+    # Sidecar `dockerproxy` (docker-socket-proxy), der nur lesende Aufrufe
+    # durchlässt — der rohe Docker-Socket im von außen erreichbaren Backend
+    # wäre gleichbedeutend mit Root auf dem Host. Alternativ direkt:
+    # DOCKER_API_URL=unix:///var/run/docker.sock (Socket dann selbst mounten).
+    docker_metrics_enabled: bool = True
+    docker_api_url: str = "http://dockerproxy:2375"
+    # Zusätzlich CPU/RAM je Container abfragen (ein Extra-Aufruf pro Container).
+    docker_stats_enabled: bool = True
+
     # Optional API key that protects the interactive docs. When set, the docs
     # are served (no ENABLE_DOCS needed) but require the key: open
     # /docs?key=<value> once (the key is remembered in an HttpOnly cookie), or

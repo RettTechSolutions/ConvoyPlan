@@ -9,6 +9,7 @@
     import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
     import SuperadminLogin from '$lib/components/SuperadminLogin.svelte';
+    import SystemOverview from '$lib/components/SystemOverview.svelte';
     import QRCode from 'qrcode';
 
     // ── Auth gate ──────────────────────────────────────────────────────────────
@@ -17,7 +18,7 @@
     let authed = $state(false);
 
     // ── Tab ──────────────────────────────────────────────────────────────────
-    let activeTab = $state<'benutzer' | 'organisationen' | 'api-keys' | 'leitstellen' | 'branding' | 'system'>('benutzer');
+    let activeTab = $state<'benutzer' | 'organisationen' | 'api-keys' | 'leitstellen' | 'branding' | 'uebersicht' | 'system'>('benutzer');
 
     // ── Users ────────────────────────────────────────────────────────────────
     let users = $state<AdminUser[]>([]);
@@ -1312,7 +1313,9 @@
 </script>
 
 {#if authed}
-<div class="admin-page">
+<!-- Die Systemübersicht lebt von nebeneinanderliegenden Diagrammen und bekommt
+     deshalb mehr Breite als die übrigen, formularlastigen Reiter. -->
+<div class="admin-page" class:wide={activeTab === 'uebersicht'}>
     <div class="admin-header">
         <h1>Admin</h1>
         <div class="header-actions">
@@ -1327,6 +1330,7 @@
         <button class="tab" class:active={activeTab === 'api-keys'} onclick={() => { activeTab = 'api-keys'; loadApiKeyOrgs(); }}>API-Keys</button>
         <button class="tab" class:active={activeTab === 'leitstellen'} onclick={() => (activeTab = 'leitstellen')}>Leitstellen</button>
         <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>Branding</button>
+        <button class="tab" class:active={activeTab === 'uebersicht'} onclick={() => (activeTab = 'uebersicht')}>Systemübersicht</button>
         <button class="tab" class:active={activeTab === 'system'} onclick={() => { activeTab = 'system'; loadUpdateStatus(); loadUpdateChannel(); loadUpdateMode(); loadLicenseStatus(); loadGithubTokenStatus(); loadDemoSettings(); }}>System</button>
     </div>
 
@@ -1909,6 +1913,13 @@
             </div>
         </div>
     </div>
+    {/if}
+
+    <!-- ── Systemübersicht ── -->
+    {#if activeTab === 'uebersicht'}
+        <!-- Eigene Komponente: die Übersicht bringt Diagramme, Live-Abfragen und
+             Exporte mit und hätte diese Seite sonst weiter aufgebläht. -->
+        <SystemOverview />
     {/if}
 
     {#if activeTab === 'system'}
@@ -2889,6 +2900,7 @@
 <style>
     :global(body) { margin: 0; font-family: system-ui, sans-serif; background: var(--bg); color: var(--text-1); }
     .admin-page { max-width: 900px; margin: 0 auto; padding: 2rem 1rem; }
+    .admin-page.wide { max-width: 1280px; }
     .admin-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
     h1 { margin: 0; font-size: var(--text-lg); }
     .back-link { color: var(--text-2); font-size: var(--text-sm); text-decoration: none; }

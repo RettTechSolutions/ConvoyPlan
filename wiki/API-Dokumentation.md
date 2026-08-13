@@ -341,6 +341,40 @@ Org-Admin-Rolle erforderlich (außer dem öffentlichen Slug-Endpunkt). Die Overr
 
 ---
 
+## Systemübersicht (Superadmin)
+
+Hardware-, Container- und Nutzungskennzahlen der Instanz — dieselbe Datenbasis,
+die der Reiter **Systemübersicht** im Admin-Portal anzeigt. Alle Endpunkte
+erfordern einen Superadmin-Token. Details siehe
+[Systemübersicht](Systemuebersicht).
+
+| Methode | Endpunkt | Beschreibung |
+|---|---|---|
+| `GET` | `/api/admin/system/overview` | Live-Zustand: CPU, RAM, Platten, PSI-Druck, Container, Datenbank, aktive Benutzer |
+| `GET` | `/api/admin/system/containers` | Container-Zustände inkl. Healthcheck und CPU/RAM je Container |
+| `GET` | `/api/admin/system/history` | Verlauf (`range=1h…365d` oder `from`/`to`, `resolution=auto\|raw\|hour\|day`, `format=json\|csv`) |
+| `GET` | `/api/admin/system/usage` | Portalnutzung je Tag (`days=1…1095`) |
+| `GET` | `/api/admin/system/reports/months` | Monate mit verfügbarem Bericht |
+| `GET` | `/api/admin/system/reports/monthly` | Monatsbericht (`month=JJJJ-MM`, `format=json\|csv\|pdf`) |
+| `POST` | `/api/admin/system/sample` | Stichprobe sofort erfassen |
+
+Beispiel — Monatsbericht als PDF holen:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  "https://web.convoyplan.de/api/admin/system/reports/monthly?month=2026-07&format=pdf" \
+  -o systembericht-2026-07.pdf
+```
+
+Beispiel — Auslastung der letzten 30 Tage für ein Monitoring-System:
+
+```bash
+curl -H "Authorization: Bearer $TOKEN" \
+  "https://web.convoyplan.de/api/admin/system/history?range=30d&resolution=hour"
+```
+
+---
+
 ## Datenmodell
 
 ```

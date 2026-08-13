@@ -74,6 +74,32 @@ export const api = {
 	delete: <T = void>(path: string) => request<T>(path, { method: 'DELETE' }),
 };
 
+/**
+ * Load an authenticated endpoint and hand the response to the browser as a
+ * download. Needed wherever the export lives behind a Bearer token — a plain
+ * `<a href>` cannot carry the Authorization header.
+ */
+export async function downloadFile(path: string, filename: string): Promise<void> {
+	const token = getToken();
+	const headers: Record<string, string> = {};
+	if (token) headers['Authorization'] = `Bearer ${token}`;
+	const res = await fetch(`${getBaseUrl()}${path}`, { headers });
+	if (!res.ok) {
+		const err = await res.json().catch(() => ({ detail: res.statusText }));
+		throw new Error(err.detail ?? 'Download fehlgeschlagen');
+	}
+	const blob = await res.blob();
+	const url = URL.createObjectURL(blob);
+	const anchor = document.createElement('a');
+	anchor.href = url;
+	anchor.download = filename;
+	document.body.appendChild(anchor);
+	anchor.click();
+	anchor.remove();
+	// Give the browser a moment to start the download before dropping the blob.
+	setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 export async function uploadFile<T>(path: string, file: File): Promise<T> {
 	const token = getToken();
 	const headers: Record<string, string> = {};
