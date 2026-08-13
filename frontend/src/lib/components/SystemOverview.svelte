@@ -51,7 +51,13 @@
     const dateAxis = $derived(range === '7d' || range === '30d' || range === '90d' || range === '365d');
     const points = $derived(history?.points ?? []);
     const usagePoints = $derived(
-        (usage?.days ?? []).map((d) => ({ t: d.day, users: d.users, requests: d.requests })),
+        (usage?.days ?? []).map((d) => ({
+            t: d.day,
+            users: d.users,
+            demo_users: d.demo_users,
+            admin_users: d.admin_users,
+            requests: d.requests,
+        })),
     );
 
     let timer: ReturnType<typeof setInterval> | null = null;
@@ -367,6 +373,11 @@
                         · heute {num(overview.usage.unique_users_today)} · Anmeldungen 24 h
                         {num(overview.usage.logins_24h)}
                     </span>
+                    <span class="tile-sub">
+                        dazu {num(overview.usage.active_demo_users)} Demo
+                        ({num(overview.usage.unique_demo_users_today)} heute)
+                        · {num(overview.usage.active_admin_users)} Admin
+                    </span>
                 </div>
 
                 <div class="tile">
@@ -548,7 +559,10 @@
             <MetricChart
                 title="Benutzer im Portal"
                 {points}
-                series={[{ key: 'active_users', label: 'Gleichzeitig aktiv' }]}
+                series={[
+                    { key: 'active_users', label: 'Gleichzeitig aktiv' },
+                    { key: 'active_demo_users', label: 'davon Demo' },
+                ]}
                 decimals={0}
                 {dateAxis}
             />
@@ -577,17 +591,29 @@
         <div class="section-header">
             <strong>Portalnutzung (30 Tage)</strong>
             {#if usage}
-                <span class="hint-inline">{usage.unique_users} eindeutige Benutzer im Zeitraum</span>
+                <span class="hint-inline">
+                    {usage.unique_users} eindeutige Benutzer im Zeitraum
+                    · {usage.unique_demo_users} Demo · {usage.unique_admin_users} Admin
+                </span>
             {/if}
         </div>
         <MetricChart
             title="Eindeutige Benutzer je Tag"
             points={usagePoints}
-            series={[{ key: 'users', label: 'Benutzer' }]}
+            series={[
+                { key: 'users', label: 'Portalnutzer' },
+                { key: 'demo_users', label: 'Demo-Besucher' },
+                { key: 'admin_users', label: 'Administration' },
+            ]}
             decimals={0}
             dateAxis={true}
             empty="Noch keine Nutzungsdaten — sie entstehen, sobald sich Benutzer anmelden."
         />
+        <p class="hint">
+            Demo-Sitzungen bekommen je Aufruf ein eigenes Wegwerfkonto und Superadmins arbeiten
+            im Admin-Portal — beides zählt getrennt, damit „Portalnutzer" die tatsächliche
+            Nutzung der Organisationen zeigt.
+        </p>
     </div>
 
     <!-- ── Monatsbericht ────────────────────────────────────────────────── -->
@@ -625,6 +651,10 @@
                 <div class="report-item">
                     <span class="report-label">Eindeutige Benutzer</span>
                     <span class="report-value">{num(report.summary.unique_users as number)}</span>
+                </div>
+                <div class="report-item">
+                    <span class="report-label">Demo-Besucher</span>
+                    <span class="report-value">{num(report.summary.unique_demo_users as number)}</span>
                 </div>
                 <div class="report-item">
                     <span class="report-label">Gleichzeitig aktiv (Spitze)</span>

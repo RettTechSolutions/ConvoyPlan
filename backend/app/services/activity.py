@@ -24,6 +24,16 @@ from datetime import datetime, timezone
 # geschlossene Registerkarte noch minutenlang mitzählt.
 ACTIVE_WINDOW_SECONDS = 300
 
+# Nutzergruppen. Sie werden getrennt geführt, weil sie verschiedene Fragen
+# beantworten: „wie viele Kunden arbeiten im Portal" (member) ist die Kennzahl,
+# um die es geht — Demo-Besucher (demo) sind Interessenten, deren Konto nach
+# Stunden wieder verschwindet, und der Superadmin (admin) ist der Betreiber
+# selbst. Beide würden die Nutzerzahl sonst nach oben verfälschen.
+KIND_MEMBER = "member"
+KIND_DEMO = "demo"
+KIND_ADMIN = "admin"
+KINDS = (KIND_MEMBER, KIND_DEMO, KIND_ADMIN)
+
 
 @dataclass
 class UserActivity:
@@ -32,6 +42,7 @@ class UserActivity:
     first_seen: datetime
     last_seen: datetime
     requests: int = 0
+    kind: str = KIND_MEMBER
 
 
 @dataclass
@@ -53,34 +64,35 @@ class Counters:
 # Worker-Threads für sync-Endpunkte) auch aus anderen Threads erreicht werden —
 # deshalb ein Lock statt bloßem Vertrauen auf den GIL.
 _lock = threading.Lock()
-_users: dict[uuid.UUID, UserActivity] = {}
+# Schlüssel ist (Benutzer, Gruppe), nicht die Benutzer-ID allein: derselbe
+# Superadmin kann im Admin-Portal *und* in einer Organisation arbeiten, und
+# beides soll getrennt gezählt werden.
+_Key = tuple[uuid.UUID, str]
+_users: dict[_Key, UserActivity] = {}
 _counters = Counters()
 # Nutzer, die seit dem letzten Flush aktiv waren — Grundlage für die
 # Tagesstatistik. Wird beim Flush geleert, `_users` dagegen nur beim Verfallen.
-_pending: dict[uuid.UUID, UserActivity] = {}
+_pending: dict[_Key, UserActivity] = {}
 
 
-def touch(user_id: uuid.UUID, org_id: uuid.UUID | None = None) -> None:
+def touch(
+    user_id: uuid.UUID, org_id: uuid.UUID | None = None, kind: str = KIND_MEMBER
+) -> None:
     """Aktivität eines Benutzers vermerken (ein Request)."""
     now = datetime.now(timezone.utc)
+    if kind not in KINDS:
+        kind = KIND_MEMBER
+    key = (user_id, kind)
     with _lock:
-        entry = _users.get(user_id)
-        if entry is None:
-            _users[user_id] = UserActivity(user_id, org_id, now, now, 1)
-        else:
-            entry.last_seen = now
-            entry.requests += 1
-            if org_id is not None:
-                entry.org_id = org_id
-
-        pending = _pending.get(user_id)
-        if pending is None:
-            _pending[user_id] = UserActivity(user_id, org_id, now, now, 1)
-        else:
-            pending.last_seen = now
-            pending.requests += 1
-            if org_id is not None:
-                pending.org_id = org_id
+        for registry in (_users, _pending):
+            entry = registry.get(key)
+            if entry is None:
+                registry[key] = UserActivity(user_id, org_id, now, now, 1, kind)
+            else:
+                entry.last_seen = now
+                entry.requests += 1
+                if org_id is not None:
+                    entry.org_id = org_id
 
 
 def record_request(*, status_code: int, duration_ms: float) -> None:
@@ -95,25 +107,47 @@ def record_request(*, status_code: int, duration_ms: float) -> None:
         _counters.duration_ms_total += duration_ms
 
 
-def active_users(window_seconds: int = ACTIVE_WINDOW_SECONDS) -> list[UserActivity]:
-    """Momentan aktive Benutzer (Aktivität innerhalb des Fensters)."""
+def active_users(
+    window_seconds: int = ACTIVE_WINDOW_SECONDS, kind: str | None = None
+) -> list[UserActivity]:
+    """Momentan aktive Benutzer (Aktivität innerhalb des Fensters).
+
+    Ohne ``kind`` kommen alle Gruppen zurück; mit ``kind`` nur die gewünschte.
+    """
     now = datetime.now(timezone.utc)
     with _lock:
         return [
             entry
             for entry in _users.values()
             if (now - entry.last_seen).total_seconds() <= window_seconds
+            and (kind is None or entry.kind == kind)
         ]
+
+
+def count_by_kind(entries: list[UserActivity]) -> dict[str, int]:
+    """Aktive Benutzer je Gruppe — fehlende Gruppen als 0, damit die Kennzahlen
+    stabile Felder haben."""
+    counts = {k: 0 for k in KINDS}
+    for entry in entries:
+        counts[entry.kind] = counts.get(entry.kind, 0) + 1
+    return counts
 
 
 def snapshot(window_seconds: int = ACTIVE_WINDOW_SECONDS) -> dict:
     """Momentaufnahme für die Live-Anzeige (ohne die Zähler zurückzusetzen)."""
     entries = active_users(window_seconds)
+    counts = count_by_kind(entries)
     with _lock:
         counters = Counters(_counters.requests, _counters.errors, _counters.duration_ms_total)
     return {
-        "active_users": len(entries),
-        "active_orgs": len({e.org_id for e in entries if e.org_id is not None}),
+        # `active_users` meint die echten Portalnutzer — Demo und Admin stehen
+        # daneben, damit die Zahl nicht durch Probesitzungen aufgebläht wird.
+        "active_users": counts[KIND_MEMBER],
+        "active_demo_users": counts[KIND_DEMO],
+        "active_admin_users": counts[KIND_ADMIN],
+        "active_orgs": len(
+            {e.org_id for e in entries if e.org_id is not None and e.kind == KIND_MEMBER}
+        ),
         "window_seconds": window_seconds,
         "requests_since_flush": counters.requests,
         "errors_since_flush": counters.errors,
@@ -135,12 +169,12 @@ def drain() -> tuple[Counters, list[UserActivity]]:
         pending = list(_pending.values())
         _pending.clear()
         stale = [
-            uid
-            for uid, entry in _users.items()
+            key
+            for key, entry in _users.items()
             if (now - entry.last_seen).total_seconds() > ACTIVE_WINDOW_SECONDS
         ]
-        for uid in stale:
-            del _users[uid]
+        for key in stale:
+            del _users[key]
     return counters, pending
 
 

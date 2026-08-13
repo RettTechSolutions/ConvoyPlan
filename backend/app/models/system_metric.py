@@ -28,6 +28,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     Integer,
+    String,
     UniqueConstraint,
     func,
 )
@@ -93,7 +94,13 @@ class SystemMetricSample(Base):
     containers_unhealthy: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # ── Portalnutzung ─────────────────────────────────────────────────────────
+    # `active_users`/`active_orgs` zählen ausschließlich reguläre Portalnutzer;
+    # Demo-Besucher und Superadmins stehen getrennt daneben (siehe
+    # app.services.activity), damit die Nutzerkurve nicht durch Probesitzungen
+    # oder die eigene Administration verfälscht wird.
     active_users: Mapped[int] = mapped_column(Integer, default=0)
+    active_demo_users: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    active_admin_users: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     active_orgs: Mapped[int] = mapped_column(Integer, default=0)
     logins: Mapped[int] = mapped_column(Integer, default=0)
     requests: Mapped[int] = mapped_column(Integer, default=0)
@@ -142,9 +149,14 @@ class SystemMetricDaily(Base):
 
     active_users_avg: Mapped[float | None] = mapped_column(Float, nullable=True)
     active_users_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    active_demo_users_avg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    active_admin_users_avg: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Eindeutige Benutzer des Tages — aus user_activity_days gezählt, nicht aus
     # den Stichproben ableitbar (dort steht nur die jeweilige Momentanzahl).
+    # `unique_users` sind reguläre Portalnutzer; Demo und Admin daneben.
     unique_users: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    unique_demo_users: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    unique_admin_users: Mapped[int | None] = mapped_column(Integer, nullable=True)
     logins: Mapped[int | None] = mapped_column(Integer, nullable=True)
     requests: Mapped[int | None] = mapped_column(Integer, nullable=True)
     request_errors: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -152,15 +164,24 @@ class SystemMetricDaily(Base):
 
 
 class UserActivityDay(Base):
-    """Ein Benutzer an einem Tag: erste/letzte Aktivität und Request-Zahl."""
+    """Ein Benutzer an einem Tag: erste/letzte Aktivität und Request-Zahl.
+
+    Die Nutzergruppe (``kind``) gehört zum Schlüssel: ein Superadmin, der an
+    einem Tag im Admin-Portal *und* in einer Organisation gearbeitet hat, ergibt
+    zwei Zeilen — sonst ließe sich die Betreibernutzung nicht herausrechnen.
+    """
 
     __tablename__ = "user_activity_days"
-    __table_args__ = (UniqueConstraint("user_id", "day", name="uq_user_activity_user_day"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "day", "kind", name="uq_user_activity_user_day_kind"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(index=True)
     org_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True, index=True)
     day: Mapped[date] = mapped_column(Date, index=True)
+    # "member" | "demo" | "admin" — siehe app.services.activity.KINDS.
+    kind: Mapped[str] = mapped_column(String(16), default="member", server_default="member", index=True)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     requests: Mapped[int] = mapped_column(Integer, default=0)

@@ -2,13 +2,16 @@
 and the superadmin demo-session management endpoints."""
 
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.exc import IntegrityError
 from unittest.mock import AsyncMock, MagicMock
 
 from app.api.deps import get_db, require_superadmin
 from app.main import app
+from app.models.demo_origin import DemoOrigin
 from app.services import demo
 
 
@@ -127,3 +130,98 @@ async def test_list_demo_sessions_empty():
 
     assert resp.status_code == 200
     assert resp.json() == []
+
+
+# ── IP-Karenzzeit ─────────────────────────────────────────────────────────────
+
+def _db_with_origin(origin: DemoOrigin | None) -> AsyncMock:
+    """Mock-DB, deren DemoOrigin-Abfrage *origin* (oder nichts) liefert."""
+    db = AsyncMock()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = origin
+    db.execute.return_value = result
+    return db
+
+
+def _origin(*, hours_ago: float, sessions: int = 1) -> DemoOrigin:
+    stamp = datetime.now(timezone.utc) - timedelta(hours=hours_ago)
+    return DemoOrigin(ip="203.0.113.7", first_created_at=stamp, last_created_at=stamp,
+                      sessions=sessions)
+
+
+@pytest.mark.asyncio
+async def test_first_demo_from_ip_is_allowed_and_recorded():
+    db = _db_with_origin(None)
+    assert await demo.claim_ip(db, "203.0.113.7", 24) is None
+    db.add.assert_called_once()
+    assert db.add.call_args.args[0].ip == "203.0.113.7"
+
+
+@pytest.mark.asyncio
+async def test_second_demo_within_cooldown_is_blocked():
+    db = _db_with_origin(_origin(hours_ago=1))
+    retry_after = await demo.claim_ip(db, "203.0.113.7", 24)
+    # 23 Stunden Restzeit (auf die Sekunde genau, deshalb ein Toleranzfenster).
+    assert retry_after is not None
+    assert 23 * 3600 - 5 <= retry_after <= 23 * 3600 + 5
+    db.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_demo_allowed_again_after_cooldown_expired():
+    origin = _origin(hours_ago=25, sessions=1)
+    db = _db_with_origin(origin)
+    assert await demo.claim_ip(db, "203.0.113.7", 24) is None
+    # Kein neuer Datensatz, aber ein aktualisierter Zeitstempel und Zähler.
+    db.add.assert_not_called()
+    assert origin.sessions == 2
+    assert (datetime.now(timezone.utc) - origin.last_created_at).total_seconds() < 5
+
+
+@pytest.mark.asyncio
+async def test_cooldown_zero_disables_the_lock():
+    db = _db_with_origin(_origin(hours_ago=0))
+    assert await demo.claim_ip(db, "203.0.113.7", 0) is None
+    db.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_without_client_ip_there_is_nothing_to_lock():
+    db = _db_with_origin(None)
+    assert await demo.claim_ip(db, None, 24) is None
+    db.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_claims_lose_the_race_instead_of_slipping_through():
+    db = _db_with_origin(None)
+    db.flush.side_effect = IntegrityError("insert", {}, Exception("duplicate key"))
+    retry_after = await demo.claim_ip(db, "203.0.113.7", 24)
+    assert retry_after == 24 * 3600
+    db.rollback.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_demo_session_endpoint_answers_429_during_cooldown(monkeypatch):
+    """Der Endpunkt lehnt die zweite Demo derselben IP mit Retry-After ab."""
+    monkeypatch.setattr("app.services.demo.settings.demo_enabled", True)
+    monkeypatch.setattr("app.services.demo.settings.demo_ip_cooldown_hours", 24)
+
+    unset = MagicMock(); unset.scalar_one_or_none.return_value = None
+    origin_row = MagicMock(); origin_row.scalar_one_or_none.return_value = _origin(hours_ago=2)
+    db = AsyncMock()
+    # 1) demo.enabled  2) demo.ip_cooldown_hours  3) demo_origins-Abfrage
+    db.execute.side_effect = [unset, unset, origin_row]
+
+    async def _db():
+        yield db
+    app.dependency_overrides[get_db] = _db
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post("/api/auth/demo-session")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert resp.status_code == 429
+    assert int(resp.headers["Retry-After"]) > 0
+    assert "24 Stunden" in resp.json()["detail"]

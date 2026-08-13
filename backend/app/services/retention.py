@@ -105,6 +105,11 @@ async def run_all(db: AsyncSession) -> dict[str, int]:
         # behind after the mode is switched off. The hours act only as fallback
         # TTL for legacy rows without demo_expires_at.
         "demo_sessions": await purge_demo_sessions(db, await demo_svc.get_demo_session_hours(db)),
+        # Die IP-Sperre der Demo hält nur die Karenzzeit; danach ist die
+        # gespeicherte Adresse zwecklos und wird gelöscht.
+        "demo_origins": await demo_svc.purge_expired_origins(
+            db, await demo_svc.get_demo_ip_cooldown_hours(db)
+        ),
     }
     await db.commit()
     if any(counts.values()):

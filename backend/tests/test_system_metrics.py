@@ -241,6 +241,71 @@ def test_active_users_counts_distinct_users_within_window():
     assert activity.snapshot()["active_orgs"] == 1
 
 
+def test_snapshot_separates_demo_and_admin_from_portal_users():
+    member, demo, admin = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    org, demo_org = uuid.uuid4(), uuid.uuid4()
+    activity.touch(member, org, activity.KIND_MEMBER)
+    activity.touch(demo, demo_org, activity.KIND_DEMO)
+    activity.touch(admin, None, activity.KIND_ADMIN)
+
+    snap = activity.snapshot()
+    # Die Kennzahl „Benutzer im Portal" meint zahlende Nutzer — Demo-Besucher
+    # und der Superadmin stehen daneben, nicht darin.
+    assert snap["active_users"] == 1
+    assert snap["active_demo_users"] == 1
+    assert snap["active_admin_users"] == 1
+    # Auch die Organisation der Demo-Sitzung zählt nicht als aktive Org.
+    assert snap["active_orgs"] == 1
+    assert len(activity.active_users()) == 3
+    assert len(activity.active_users(kind=activity.KIND_DEMO)) == 1
+
+
+def test_same_user_in_admin_and_org_portal_is_counted_per_group():
+    user = uuid.uuid4()
+    activity.touch(user, None, activity.KIND_ADMIN)
+    activity.touch(user, uuid.uuid4(), activity.KIND_MEMBER)
+
+    _, pending = activity.drain()
+    assert sorted(p.kind for p in pending) == [activity.KIND_ADMIN, activity.KIND_MEMBER]
+    assert {p.user_id for p in pending} == {user}
+
+
+def test_unknown_kind_falls_back_to_member():
+    activity.touch(uuid.uuid4(), None, "sonstiges")
+    assert activity.snapshot()["active_users"] == 1
+
+
+def _request_with_token(**claims):
+    """Minimaler Request mit Bearer-Token für die Aktivitäts-Middleware."""
+    import jwt as _jwt
+    from starlette.requests import Request as StarletteRequest
+
+    payload = {
+        "sub": str(uuid.uuid4()),
+        "typ": "access",
+        "exp": datetime.now(timezone.utc) + timedelta(hours=1),
+        **claims,
+    }
+    token = _jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+    return StarletteRequest(
+        {"type": "http", "headers": [(b"authorization", f"Bearer {token}".encode())]}
+    )
+
+
+def test_middleware_reads_user_group_from_token_claims():
+    from app.middleware.activity import _user_from_token
+
+    org = uuid.uuid4()
+    _, org_id, kind = _user_from_token(_request_with_token(org_id=str(org), role="planer"))
+    assert (org_id, kind) == (org, activity.KIND_MEMBER)
+
+    _, _, kind = _user_from_token(_request_with_token(org_id=str(org), is_demo=True))
+    assert kind == activity.KIND_DEMO
+
+    _, _, kind = _user_from_token(_request_with_token(is_superadmin=True))
+    assert kind == activity.KIND_ADMIN
+
+
 def test_only_server_errors_count_as_errors():
     activity.record_request(status_code=200, duration_ms=10)
     activity.record_request(status_code=404, duration_ms=20)

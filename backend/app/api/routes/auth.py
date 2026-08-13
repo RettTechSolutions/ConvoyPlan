@@ -597,6 +597,15 @@ async def mfa_verify(data: MfaVerifyRequest, request: Request, db: AsyncSession 
 
 # ── Demo session ──────────────────────────────────────────────────────────────
 
+def _humanize_wait(seconds: int) -> str:
+    """Wartezeit für die Fehlermeldung: „23 Stunden" statt „82.740 Sekunden"."""
+    if seconds >= 3600:
+        hours = max(1, round(seconds / 3600))
+        return "einer Stunde" if hours == 1 else f"{hours} Stunden"
+    minutes = max(1, round(seconds / 60))
+    return "einer Minute" if minutes == 1 else f"{minutes} Minuten"
+
+
 class DemoSessionResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -644,9 +653,31 @@ async def create_demo_session(
 
     Requires the demo mode to be enabled (admin-panel toggle; the DEMO_ENABLED
     env var is the fallback). The session is deleted by the retention job once
-    its expiry (admin-configurable lifetime, extendable per session) passes."""
+    its expiry (admin-configurable lifetime, extendable per session) passes.
+
+    One session per client IP and cooldown window (default 24 h): the gate is
+    the `demo_origins` table, not the in-process limiter, so it survives a
+    backend restart and outlives the demo org itself."""
     if not await demo_svc.is_demo_enabled(db):
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Demo nicht verfügbar")
+
+    client_ip = audit.client_ip(request)
+    cooldown_hours = await demo_svc.get_demo_ip_cooldown_hours(db)
+    retry_after = await demo_svc.claim_ip(db, client_ip, cooldown_hours)
+    if retry_after is not None:
+        await audit.record(
+            db, "demo.session.rejected", request=request,
+            detail={"reason": "ip_cooldown", "cooldown_hours": cooldown_hours},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                f"Pro IP-Adresse ist alle {cooldown_hours} Stunden eine Demo-Sitzung möglich. "
+                f"Bitte in {_humanize_wait(retry_after)} erneut versuchen — oder eine "
+                "persönliche Vorführung anfragen."
+            ),
+            headers={"Retry-After": str(retry_after)},
+        )
 
     import secrets as _secrets
 
@@ -672,7 +703,6 @@ async def create_demo_session(
 
     session_hours = await demo_svc.get_demo_session_hours(db)
     expire = datetime.now(timezone.utc) + timedelta(hours=session_hours)
-    client_ip = audit.client_ip(request)
     demo_org = Organization(
         name=f"Demo {slug[-6:].upper()}", slug=slug, owner_id=demo_user.id,
         is_demo=True, demo_expires_at=expire, demo_created_ip=client_ip,
