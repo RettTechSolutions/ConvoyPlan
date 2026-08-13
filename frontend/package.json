@@ -37,7 +37,7 @@
 	"dependencies": {
 		"@types/qrcode": "^1.5.6",
 		"@vite-pwa/sveltekit": "^1.1.0",
-		"maplibre-gl": "^6.1.0",
+		"maplibre-gl": "^6.2.0",
 		"qrcode": "^1.5.4",
 		"svelte-dnd-action": "^0.9.77",
 		"workbox-window": "^7.4.1"
