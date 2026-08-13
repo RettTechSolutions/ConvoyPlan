@@ -500,6 +500,7 @@ class DemoSettingsResponse(BaseModel):
     source: str              # "db" | "env"
     env_enabled: bool        # value of the DEMO_ENABLED env var
     session_hours: int
+    ip_cooldown_hours: int   # 0 = keine IP-Sperre
 
 
 class DemoSettingsUpdate(BaseModel):
@@ -507,6 +508,20 @@ class DemoSettingsUpdate(BaseModel):
     session_hours: int | None = Field(
         None, ge=demo_svc.MIN_SESSION_HOURS, le=demo_svc.MAX_SESSION_HOURS,
         description="Laufzeit neuer Demo-Sitzungen in Stunden",
+    )
+    ip_cooldown_hours: int | None = Field(
+        None, ge=demo_svc.MIN_IP_COOLDOWN_HOURS, le=demo_svc.MAX_IP_COOLDOWN_HOURS,
+        description="Karenzzeit je IP-Adresse in Stunden (0 = keine Sperre)",
+    )
+
+
+async def _demo_settings_response(db: AsyncSession, *, source: str, enabled: bool) -> DemoSettingsResponse:
+    return DemoSettingsResponse(
+        enabled=enabled,
+        source=source,
+        env_enabled=settings.demo_enabled,
+        session_hours=await demo_svc.get_demo_session_hours(db),
+        ip_cooldown_hours=await demo_svc.get_demo_ip_cooldown_hours(db),
     )
 
 
@@ -516,11 +531,10 @@ async def get_demo_settings(
     _: User = Depends(require_superadmin),
 ):
     db_value = await demo_svc.get_demo_enabled_setting(db)
-    return DemoSettingsResponse(
-        enabled=db_value == "true" if db_value is not None else settings.demo_enabled,
+    return await _demo_settings_response(
+        db,
         source="db" if db_value is not None else "env",
-        env_enabled=settings.demo_enabled,
-        session_hours=await demo_svc.get_demo_session_hours(db),
+        enabled=db_value == "true" if db_value is not None else settings.demo_enabled,
     )
 
 
@@ -533,17 +547,52 @@ async def update_demo_settings(
 ):
     if data.session_hours is not None:
         await demo_svc.set_demo_session_hours(db, data.session_hours)
+    if data.ip_cooldown_hours is not None:
+        await demo_svc.set_demo_ip_cooldown_hours(db, data.ip_cooldown_hours)
     await demo_svc.set_demo_enabled(db, data.enabled)
     await audit.record(
         db, "admin.settings.demo_updated", request=request, actor_id=current.id,
         actor_email=current.email,
-        detail={"enabled": data.enabled, "session_hours": data.session_hours},
+        detail={
+            "enabled": data.enabled,
+            "session_hours": data.session_hours,
+            "ip_cooldown_hours": data.ip_cooldown_hours,
+        },
     )
-    return DemoSettingsResponse(
-        enabled=data.enabled,
-        source="db",
-        env_enabled=settings.demo_enabled,
-        session_hours=await demo_svc.get_demo_session_hours(db),
+    return await _demo_settings_response(db, source="db", enabled=data.enabled)
+
+
+class DemoIpLock(BaseModel):
+    ip: str
+    last_created_at: datetime
+    blocked_until: datetime
+    sessions: int
+
+
+@router.get("/demo-ip-locks", response_model=list[DemoIpLock])
+async def list_demo_ip_locks(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    """IP-Adressen, die aktuell keine neue Demo starten können."""
+    cooldown = await demo_svc.get_demo_ip_cooldown_hours(db)
+    return [DemoIpLock(**row) for row in await demo_svc.list_ip_locks(db, cooldown)]
+
+
+@router.delete("/demo-ip-locks/{ip}", status_code=204)
+async def release_demo_ip_lock(
+    ip: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    """Sperre einer IP aufheben — für den Fall, dass hinter einer Adresse mehrere
+    Interessenten sitzen (Firmenanschluss, Messe-WLAN)."""
+    if not await demo_svc.release_ip(db, ip):
+        raise HTTPException(404, "Für diese IP-Adresse besteht keine Sperre")
+    await audit.record(
+        db, "admin.demo_ip_lock.released", request=request, actor_id=current.id,
+        actor_email=current.email, target_type="ip", target_id=ip,
     )
 
 

@@ -98,6 +98,11 @@ class Settings(BaseSettings):
     # Lifetime of new demo sessions. Like demo_enabled, the admin-panel setting
     # (system_settings: "demo.session_hours") takes priority over this fallback.
     demo_session_hours: int = 24
+    # Cooldown between two demo sessions from the same client IP. Enforced
+    # against the `demo_origins` table, so it survives a backend restart (the
+    # in-process rate limiter does not). 0 disables the cooldown. The
+    # admin-panel setting (system_settings: "demo.ip_cooldown_hours") wins.
+    demo_ip_cooldown_hours: int = 24
 
     # Data retention (DSGVO Art. 5(1)(e)). Run by the `retention` cron container.
     retention_enabled: bool = True

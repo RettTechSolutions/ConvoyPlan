@@ -25,7 +25,25 @@ lesen — siehe
 | **Druck (PSI)** | Wartezeit-Anteil für I/O, CPU und Speicher |
 | **Container** | Zustand und Healthcheck je Container, CPU/RAM je Container |
 | **Datenbank** | Größe, offene Verbindungen, Anzahl Benutzer/Organisationen/Kolonnen |
-| **Portalnutzung** | gleichzeitig aktive Benutzer, eindeutige Benutzer je Tag, Anmeldungen, Requests, Serverfehler, Antwortzeit |
+| **Portalnutzung** | gleichzeitig aktive Benutzer, eindeutige Benutzer je Tag (getrennt nach Portalnutzern, Demo-Besuchern und Administration), Anmeldungen, Requests, Serverfehler, Antwortzeit |
+
+### Portalnutzer, Demo-Besucher, Administration
+
+Die Nutzerzahlen werden nach drei Gruppen getrennt geführt, weil sie
+verschiedene Fragen beantworten:
+
+| Gruppe | Wer | Warum getrennt |
+|---|---|---|
+| **Portalnutzer** (`member`) | angemeldete Mitglieder einer Organisation | die eigentliche Kennzahl: tatsächliche Nutzung des Portals |
+| **Demo-Besucher** (`demo`) | Besucher der öffentlichen Demo | jede Demo-Sitzung legt ein eigenes Wegwerfkonto an — mitgezählt sähen fünf Probeklicks aus wie fünf neue Nutzer |
+| **Administration** (`admin`) | Superadmins im Admin-Portal | der Betreiber selbst, keine Portalnutzung |
+
+Die Gruppe ergibt sich aus dem Zugriffstoken und gehört zum Tagesschlüssel: Ein
+Superadmin, der zusätzlich in einer Organisation arbeitet, zählt für diese
+Arbeit als regulärer Portalnutzer — das Org-Token trägt keine
+Superadmin-Kennung. In Kacheln, Charts, `/api/admin/system/usage` und den
+Monatsberichten meint „Benutzer" bzw. `unique_users` immer nur die erste
+Gruppe; `demo_users`/`admin_users` stehen daneben.
 
 ### Warum „Druck" und nicht nur „Auslastung"
 
@@ -125,8 +143,9 @@ genannten Konsequenz.
 
 ## Datenschutz
 
-Die Nutzungshistorie speichert je Benutzer und Tag **eine** Zeile: Benutzer-ID,
-Organisation, erster und letzter Zugriff sowie die Zahl der Requests. Es werden
+Die Nutzungshistorie speichert je Benutzer, Tag und Nutzergruppe **eine** Zeile:
+Benutzer-ID, Organisation, erster und letzter Zugriff sowie die Zahl der
+Requests. Es werden
 **keine** aufgerufenen Seiten, IP-Adressen oder Inhalte protokolliert — die
 Auswertung beantwortet „wie viele Leute waren wann im Portal", nicht „wer hat
 was getan" (dafür gibt es das Audit-Log). Die Daten unterliegen der oben

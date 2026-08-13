@@ -564,8 +564,11 @@ export const adminApi = {
         api.put<void>('/api/admin/settings/update-mode',
             notify_on_auto === undefined ? { mode } : { mode, notify_on_auto }),
     getDemoSettings: () => api.get<DemoSettings>('/api/admin/settings/demo'),
-    saveDemoSettings: (enabled: boolean, session_hours?: number) =>
-        api.put<DemoSettings>('/api/admin/settings/demo', { enabled, session_hours }),
+    saveDemoSettings: (enabled: boolean, session_hours?: number, ip_cooldown_hours?: number) =>
+        api.put<DemoSettings>('/api/admin/settings/demo', { enabled, session_hours, ip_cooldown_hours }),
+    listDemoIpLocks: () => api.get<DemoIpLock[]>('/api/admin/demo-ip-locks'),
+    releaseDemoIpLock: (ip: string) =>
+        api.delete(`/api/admin/demo-ip-locks/${encodeURIComponent(ip)}`),
     listDemoSessions: () => api.get<DemoSessionInfo[]>('/api/admin/demo-sessions'),
     endDemoSession: (orgId: string) => api.delete(`/api/admin/demo-sessions/${orgId}`),
     extendDemoSession: (orgId: string, hours = 24) =>
@@ -624,6 +627,15 @@ export interface DemoSettings {
     source: 'db' | 'env';
     env_enabled: boolean;
     session_hours: number;
+    /** Karenzzeit je IP-Adresse in Stunden; 0 = keine Sperre. */
+    ip_cooldown_hours: number;
+}
+
+export interface DemoIpLock {
+    ip: string;
+    last_created_at: string;
+    blocked_until: string;
+    sessions: number;
 }
 
 export interface DemoSessionInfo {
@@ -717,14 +729,20 @@ export interface SystemOverview {
         organizations: number | null;
         convoys: number | null;
     };
+    /** Portalnutzung. `active_users`/`unique_users_today` zählen ausschließlich
+     *  reguläre Portalnutzer — Demo-Besucher und Superadmins stehen daneben. */
     usage: {
         active_users: number;
+        active_demo_users: number;
+        active_admin_users: number;
         active_orgs: number;
         window_seconds: number;
         requests_since_flush: number;
         errors_since_flush: number;
         avg_response_ms: number | null;
         unique_users_today: number;
+        unique_demo_users_today: number;
+        unique_admin_users_today: number;
         logins_24h: number;
     };
 }
@@ -743,17 +761,26 @@ export interface MetricSeries {
     points: MetricPoint[];
 }
 
+/** Nutzung eines Tages, nach Gruppen getrennt: `users` sind reguläre
+ *  Portalnutzer, `demo_users` Probesitzungen, `admin_users` Superadmins im
+ *  Admin-Portal. */
 export interface UsageDay {
     day: string;
     users: number;
+    demo_users: number;
+    admin_users: number;
     orgs: number;
     requests: number;
+    demo_requests: number;
+    admin_requests: number;
 }
 
 export interface UsageHistory {
     from: string;
     to: string;
     unique_users: number;
+    unique_demo_users: number;
+    unique_admin_users: number;
     days: UsageDay[];
 }
 
