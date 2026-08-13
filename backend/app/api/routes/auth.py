@@ -606,11 +606,42 @@ def _humanize_wait(seconds: int) -> str:
     return "einer Minute" if minutes == 1 else f"{minutes} Minuten"
 
 
+def _demo_token(user: User, org: Organization, session_hours: int) -> str:
+    """Zugangstoken für eine Demo-Sitzung — beim Anlegen wie beim Fortsetzen.
+
+    Die Obergrenze ist absichtlich großzügig: die tatsächliche Frist steht in
+    der Datenbank (`demo_expires_at`, vom Superadmin verlängerbar) und wird bei
+    jeder Anfrage geprüft; die Aufräumroutine löscht den Benutzer danach.
+    """
+    token_expire = datetime.now(timezone.utc) + timedelta(
+        hours=max(session_hours, demo_svc.MAX_SESSION_HOURS)
+    )
+    return _jwt.encode(
+        {
+            "sub": str(user.id),
+            "exp": token_expire,
+            "typ": "access",
+            "is_superadmin": False,
+            "org_id": str(org.id),
+            "org_slug": org.slug,
+            "role": "planer",
+            "tv": user.token_version or 0,
+            "is_demo": True,
+        },
+        settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
+
+
 class DemoSessionResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     org_slug: str
     expires_at: str  # ISO-8601 UTC
+    # True, wenn die bestehende Sitzung fortgesetzt statt eine neue angelegt
+    # wurde — die Startseite sagt das dem Besucher, sonst wundert er sich über
+    # die Daten, die er beim letzten Mal angelegt hat.
+    resumed: bool = False
 
 
 @router.get("/demo-status")
@@ -657,7 +688,13 @@ async def create_demo_session(
 
     One session per client IP and cooldown window (default 24 h): the gate is
     the `demo_origins` table, not the in-process limiter, so it survives a
-    backend restart and outlives the demo org itself."""
+    backend restart and outlives the demo org itself.
+
+    Läuft die Karenzzeit noch und die dazugehörige Sitzung lebt, wird sie
+    fortgesetzt (`resumed: true`) statt abgelehnt — sonst sperrte die Karenzzeit
+    den Besucher aus seiner eigenen Demo aus, sobald er den Tab schließt oder
+    den Browserspeicher leert. Erst wenn die Sitzung abgelaufen ist, folgt die
+    Absage samt Zeitpunkt, ab dem es wieder geht."""
     if not await demo_svc.is_demo_enabled(db):
         # Der Text landet unverändert auf der Startseite — deshalb der Grund,
         # nicht nur die Absage.
@@ -670,17 +707,47 @@ async def create_demo_session(
     cooldown_hours = await demo_svc.get_demo_ip_cooldown_hours(db)
     retry_after = await demo_svc.claim_ip(db, client_ip, cooldown_hours)
     if retry_after is not None:
+        # Die Karenzzeit läuft — aber wenn die dazugehörige Sitzung noch lebt,
+        # ist die Absage die falsche Antwort: der Besucher will zurück in seine
+        # eigene Demo, nicht eine zweite.
+        session_hours = await demo_svc.get_demo_session_hours(db)
+        resumable = await demo_svc.find_resumable_session(db, client_ip, session_hours)
+        if resumable is not None:
+            org, user = resumable
+            expires = demo_svc.effective_expiry(org, session_hours)
+            token = _demo_token(user, org, session_hours)
+            await audit.record(
+                db, "demo.session.resumed", request=request,
+                actor_id=user.id, actor_email=user.email, org_id=org.id,
+                detail={"slug": org.slug, "expires_at": expires.isoformat()},
+            )
+            return DemoSessionResponse(
+                access_token=token, org_slug=org.slug,
+                expires_at=expires.isoformat(), resumed=True,
+            )
+
+        retry_at = datetime.now(timezone.utc) + timedelta(seconds=retry_after)
         await audit.record(
             db, "demo.session.rejected", request=request,
             detail={"reason": "ip_cooldown", "cooldown_hours": cooldown_hours},
         )
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=(
-                f"Pro IP-Adresse ist alle {cooldown_hours} Stunden eine Demo-Sitzung möglich. "
-                f"Bitte in {_humanize_wait(retry_after)} erneut versuchen — oder eine "
-                "persönliche Vorführung anfragen."
-            ),
+            # Strukturiert statt nur Fließtext: `message` ist der Text wie
+            # bisher, `retry_at` der Zeitpunkt der Wiederfreigabe — den rechnet
+            # der Browser in die Zone des Besuchers um und schreibt ihn dazu.
+            # „in 23 Stunden" allein lässt offen, wann genau das ist.
+            detail={
+                "message": (
+                    f"Pro IP-Adresse ist alle {cooldown_hours} Stunden eine Demo-Sitzung möglich. "
+                    f"Bitte in {_humanize_wait(retry_after)} erneut versuchen — oder eine "
+                    "persönliche Vorführung anfragen."
+                ),
+                "reason": "ip_cooldown",
+                "retry_at": retry_at.isoformat(),
+                "retry_after": retry_after,
+                "cooldown_hours": cooldown_hours,
+            },
             headers={"Retry-After": str(retry_after)},
         )
 
@@ -722,27 +789,7 @@ async def create_demo_session(
     # resolved after the response so a slow geo API never delays demo creation.
     background_tasks.add_task(geoip.resolve_demo_origin, demo_org.id, client_ip)
 
-    # The JWT gets a generous ceiling so an admin-extended session keeps working;
-    # the real cutoff is enforced server-side — the retention job deletes the
-    # demo user at demo_expires_at and every request re-checks the DB.
-    token_expire = datetime.now(timezone.utc) + timedelta(
-        hours=max(session_hours, demo_svc.MAX_SESSION_HOURS)
-    )
-    token = _jwt.encode(
-        {
-            "sub": str(demo_user.id),
-            "exp": token_expire,
-            "typ": "access",
-            "is_superadmin": False,
-            "org_id": str(demo_org.id),
-            "org_slug": slug,
-            "role": "planer",
-            "tv": 0,
-            "is_demo": True,
-        },
-        settings.jwt_secret,
-        algorithm=settings.jwt_algorithm,
-    )
+    token = _demo_token(demo_user, demo_org, session_hours)
 
     await audit.record(
         db, "demo.session.created", request=request,

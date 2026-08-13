@@ -2,7 +2,7 @@
     import { onMount } from 'svelte';
     import { goto } from '$app/navigation';
     import { orgAuthApi, authApi } from '$lib/api';
-    import { demoFailureReason } from '$lib/demo-error';
+    import { demoFailure, formatRetryAt } from '$lib/demo-error';
     import { orgStore } from '$lib/stores/org';
     import AppLogo from '$lib/components/AppLogo.svelte';
     import LegalFooter from '$lib/components/LegalFooter.svelte';
@@ -12,6 +12,9 @@
     let loading = $state(false);
     let demoLoading = $state(false);
     let demoError = $state('');
+    // Zeitpunkt der Wiederfreigabe nach der IP-Karenzzeit — als Datum, damit er
+    // in der Zeitzone des Besuchers angezeigt wird.
+    let demoRetryAt = $state<Date | null>(null);
     let demoAvailable = $state(false);
     let demoHours = $state(24);
 
@@ -43,12 +46,17 @@
     async function startDemo() {
         demoLoading = true;
         demoError = '';
+        demoRetryAt = null;
         try {
             const result = await authApi.createDemoSession();
             orgStore.setToken(result.org_slug, result.access_token);
-            goto(`/o/${result.org_slug}/plan`);
+            // Läuft die eigene Sitzung noch, kommt sie zurück statt einer neuen —
+            // der Hinweis erklärt die Daten, die dort schon stehen.
+            goto(`/o/${result.org_slug}/plan${result.resumed ? '?resumed=1' : ''}`);
         } catch (err) {
-            demoError = demoFailureReason(err);
+            const failure = demoFailure(err);
+            demoError = failure.message;
+            demoRetryAt = failure.retryAt;
         } finally {
             demoLoading = false;
         }
@@ -91,6 +99,9 @@
             </button>
             {#if demoError}
                 <p class="error" style="margin-top:.5rem">{demoError}</p>
+                {#if demoRetryAt}
+                    <p class="demo-retry">Wieder möglich ab {formatRetryAt(demoRetryAt)}</p>
+                {/if}
             {/if}
             <p class="demo-hint">Eigene temporäre Umgebung · Keine Registrierung · {demoHours} Stunden</p>
         {/if}
@@ -197,5 +208,14 @@
         font-size: var(--text-sm);
         color: var(--text-2);
         margin: .5rem 0 0;
+    }
+    /* Der genaue Zeitpunkt gehört zur Absage darüber, steht aber ruhiger da als
+       die rote Begründung — er ist die Antwort, nicht die Fehlermeldung. */
+    .demo-retry {
+        text-align: center;
+        font-size: var(--text-sm);
+        font-weight: 600;
+        color: var(--text-1);
+        margin: .25rem 0 0;
     }
 </style>

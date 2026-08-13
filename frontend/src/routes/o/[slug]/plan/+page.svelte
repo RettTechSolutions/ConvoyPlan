@@ -87,6 +87,10 @@
 		} catch { return null; }
 	});
 	let demoExpiresAt = $state<Date | null>(null);
+	// Der Demo-Start hat die noch laufende Sitzung zurückgegeben statt eine neue
+	// angelegt (`?resumed=1`) — das Banner sagt es, sonst wundert sich der
+	// Besucher über die Daten, die er beim letzten Mal angelegt hat.
+	const demoResumed = $derived($page.url.searchParams.get('resumed') === '1');
 
 	// Theme toggle
 	function toggleTheme() {
@@ -1100,7 +1104,7 @@
 
 		{#if demoSession}
 			<div class="demo-banner" data-tour="demo-banner">
-				<span>Demo-Sitzung{#if demoExpiresAt}&nbsp;· Läuft ab {demoExpiresAt.toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })} Uhr{/if}</span>
+				<span>{demoResumed ? 'Demo-Sitzung fortgesetzt' : 'Demo-Sitzung'}{#if demoExpiresAt}&nbsp;· Läuft ab {demoExpiresAt.toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })} Uhr{/if}</span>
 				<a href="https://convoyplan.de/#kontakt" target="_blank" rel="noopener" class="demo-banner-link">Vollversion anfragen →</a>
 			</div>
 		{/if}

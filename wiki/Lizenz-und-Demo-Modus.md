@@ -28,6 +28,16 @@ Damit die Demo eine Vorführung bleibt und nicht als Dauerbetrieb genutzt wird, 
 
 Der Besucher sieht dabei den Grund der Absage, nicht nur die Absage: Startseite und `/demo` zeigen die Begründung des Backends unverändert an — welche Karenzzeit gilt, wann der nächste Versuch möglich ist, oder dass der Demo-Modus gerade abgeschaltet ist. Nur wenn keine Antwort des Backends vorliegt (Netzwerkfehler), erscheint der allgemeine Hinweis „Bitte später nochmal versuchen".
 
+Dazu nennt die Absage den **genauen Zeitpunkt** der Wiederfreigabe („Wieder möglich ab Donnerstag, 14.08.2026 um 09:35 Uhr"), nicht nur die verbleibende Dauer. Das Backend liefert ihn als ISO-Zeitstempel (`retry_at` im Antwortkörper, zusätzlich zu `Retry-After`); der Browser rechnet ihn in die Zeitzone des Besuchers um, sodass die Angabe auch außerhalb Mitteleuropas stimmt.
+
+### Wiedereinstieg in die laufende Sitzung
+
+Karenzzeit und Sitzungslaufzeit sind zwei verschiedene Fristen — die Karenzzeit (Standard 24 h) ist üblicherweise länger als die Laufzeit einer Sitzung (Standard 2 h). Wer die Demo startet und danach den Tab schließt, den Rechner wechselt oder den Browserspeicher leert, verliert sein Token und stand bislang vor der Sperre, obwohl **seine eigene** Sitzung noch lief.
+
+Deshalb wird vor der Absage geprüft, ob zu dieser IP-Adresse noch eine gültige Demo-Sitzung existiert. Wenn ja, gibt `POST /api/auth/demo-session` sie mit einem frischen Token zurück (`resumed: true`) statt einer 429-Absage — der Besucher landet wieder in seiner Umgebung samt allem, was er dort angelegt hat, und das Banner oben sagt „Demo-Sitzung fortgesetzt". Erst wenn die Sitzung abgelaufen ist, folgt die Absage mit dem Zeitpunkt der Wiederfreigabe.
+
+Der Wiedereinstieg hängt allein an der IP-Adresse — demselben Merkmal, an dem auch die Karenzzeit hängt. Hinter einem gemeinsamen Anschluss (Büro-NAT, Mobilfunk-CGNAT) landen mehrere Besucher damit in derselben Demo-Umgebung; bislang bekam der zweite dort gar keine. Wo das nicht erwünscht ist, gehört der Anschluss auf die Liste der **dauerhaft freigestellten Adressen** (siehe unten): dort wird jedes Mal frisch angelegt und nie fortgesetzt. Der Wiedereinstieg wird im Audit-Log als `demo.session.resumed` vermerkt; die Karenzzeit selbst verlängert er nicht.
+
 Die Sperre wird in der Datenbank geführt (Tabelle `demo_origins`) und hat damit zwei Eigenschaften, die ein reiner Zähler im Arbeitsspeicher nicht hätte: Sie übersteht einen **Neustart des Backends** (also jedes Update), und sie gilt auch dann noch, wenn die Demo-Organisation längst abgelaufen und gelöscht ist — bei kurzer Sitzungslaufzeit ist das der Normalfall.
 
 Hinter einem Firmenanschluss oder einem Messe-WLAN teilen sich alle Besucher eine Adresse. Für diesen Fall listet der Abschnitt **Gesperrte IP-Adressen** die aktuell blockierten Adressen mit Zeitpunkt der letzten Demo, Freigabezeitpunkt und Gesamtzahl der Sitzungen — einzelne Sperren lassen sich dort direkt aufheben. Abgelaufene Einträge löscht der Retention-Job; die Adressen werden also nicht länger gespeichert als die Sperre gilt.

@@ -19,6 +19,7 @@ from app.models.demo_ip_allowlist import DemoIpAllowlistEntry
 from app.models.demo_origin import DemoOrigin
 from app.models.organization import Organization
 from app.models.settings import SystemSetting
+from app.models.user import User
 
 DEMO_ENABLED_KEY = "demo.enabled"
 DEMO_SESSION_HOURS_KEY = "demo.session_hours"
@@ -275,6 +276,51 @@ async def claim_ip(db: AsyncSession, ip: str | None, cooldown_hours: int) -> int
         # insert is exactly the request the cooldown is meant to stop.
         await db.rollback()
         return cooldown_hours * 3600
+    return None
+
+
+async def find_resumable_session(
+    db: AsyncSession, ip: str | None, fallback_hours: int,
+) -> tuple[Organization, User] | None:
+    """Die noch laufende Demo-Sitzung dieser Adresse — oder None.
+
+    Gegenstück zur Karenzzeit: wer die Demo gestartet hat und danach den Tab
+    schließt, den Rechner wechselt oder den Browserspeicher leert, steht sonst
+    vor der Sperre, obwohl *seine eigene* Sitzung noch läuft. Statt einer
+    Absage bekommt er sie zurück.
+
+    Die IP ist dabei derselbe Schlüssel, den die Karenzzeit ohnehin verwendet:
+    Innerhalb des Fensters gehört genau eine Sitzung zu einer Adresse. Hinter
+    einem gemeinsamen Anschluss (Büro-NAT, Mobilfunk-CGNAT) landen mehrere
+    Besucher damit in derselben Demo — bislang bekam der zweite gar keine, die
+    gemeinsame Wegwerf-Umgebung ist das kleinere Übel. Wer echte Trennung
+    braucht, stellt den Anschluss über die Allowlist frei; dann wird ohnehin
+    jedes Mal frisch angelegt.
+
+    Gibt die jüngste noch gültige Sitzung samt Demo-Benutzer zurück; abgelaufene
+    Organisationen und solche, deren Benutzer die Aufräumroutine bereits gelöscht
+    oder ein Superadmin stillgelegt hat, zählen nicht — ein Token darauf wäre
+    beim ersten Aufruf wieder ungültig.
+    """
+    if not ip:
+        return None
+    now = datetime.now(timezone.utc)
+    rows = (
+        await db.execute(
+            select(Organization, User)
+            .join(User, User.id == Organization.owner_id)
+            .where(
+                Organization.is_demo.is_(True),
+                Organization.demo_created_ip == ip,
+            )
+            .order_by(Organization.created_at.desc())
+        )
+    ).all()
+    for org, user in rows:
+        if not user.is_demo or not user.is_active:
+            continue
+        if _as_utc(effective_expiry(org, fallback_hours)) > now:
+            return org, user
     return None
 
 

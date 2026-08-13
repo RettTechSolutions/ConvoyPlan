@@ -53,21 +53,42 @@ export async function getStreamTicket(): Promise<string | null> {
 export class ApiError extends Error {
 	readonly status: number;
 	readonly detail: string | null;
+	/**
+	 * Strukturierte Begründung, wenn das Backend statt eines Textes ein Objekt
+	 * geschickt hat (`detail: { message, … }`) — etwa der Zeitpunkt, ab dem eine
+	 * abgelehnte Demo wieder möglich ist. `detail` bleibt dabei der Text daraus,
+	 * bestehende Aufrufer merken vom Unterschied nichts.
+	 */
+	readonly data: Record<string, unknown> | null;
 
-	constructor(status: number, detail: string | null, fallback: string) {
+	constructor(
+		status: number,
+		detail: string | null,
+		fallback: string,
+		data: Record<string, unknown> | null = null
+	) {
 		super(detail ?? fallback);
 		this.name = 'ApiError';
 		this.status = status;
 		this.detail = detail;
+		this.data = data;
 	}
 }
 
 async function toApiError(res: Response, fallback: string): Promise<ApiError> {
 	const body = await res.json().catch(() => null);
+	const raw = body?.detail;
 	// FastAPI liefert bei Validierungsfehlern eine Liste statt eines Textes —
 	// die ist nichts, was ein Besucher lesen will.
-	const detail = typeof body?.detail === 'string' ? body.detail : null;
-	return new ApiError(res.status, detail, res.statusText || fallback);
+	const data =
+		raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null;
+	const detail =
+		typeof raw === 'string'
+			? raw
+			: typeof data?.message === 'string'
+				? (data.message as string)
+				: null;
+	return new ApiError(res.status, detail, res.statusText || fallback, data);
 }
 
 async function request<T>(
