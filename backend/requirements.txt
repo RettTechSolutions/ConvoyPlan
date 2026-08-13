@@ -23,7 +23,7 @@ python-multipart==0.0.32
 bcrypt==5.0.0
 httpx==0.28.1
 gpxpy==1.6.2
-fpdf2==2.8.7
+fpdf2==2.8.8
 pyotp==2.10.0
 # aiosmtplib 5.1.2 fixes GHSA-vxj7-4xrp-5vr4: discard buffered server data
 # before STARTTLS handshake (response-injection attack prevention).
