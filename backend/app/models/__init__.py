@@ -8,6 +8,7 @@ from app.models.vehicle_position import VehiclePosition
 from app.models.share_link import ConvoyShareLink
 from app.models.audit_log import AuditLog
 from app.models.api_key import ApiKey
+from app.models.demo_ip_allowlist import DemoIpAllowlistEntry
 from app.models.demo_origin import DemoOrigin
 from app.models.system_metric import SystemMetricDaily, SystemMetricSample, UserActivityDay
 
@@ -15,6 +16,6 @@ __all__ = [
     "User", "Vehicle", "Organization", "UserOrganization",
     "Convoy", "ConvoyVehicle", "Waypoint", "Route",
     "VehiclePosition", "ConvoyShareLink", "AuditLog", "ApiKey",
-    "DemoOrigin",
+    "DemoOrigin", "DemoIpAllowlistEntry",
     "SystemMetricSample", "SystemMetricDaily", "UserActivityDay",
 ]

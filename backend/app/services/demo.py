@@ -6,6 +6,8 @@ the DEMO_ENABLED / DEMO_SESSION_HOURS env vars (same pattern as the GitHub
 token).
 """
 
+import ipaddress
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, select
@@ -13,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.models.demo_ip_allowlist import DemoIpAllowlistEntry
 from app.models.demo_origin import DemoOrigin
 from app.models.organization import Organization
 from app.models.settings import SystemSetting
@@ -118,6 +121,110 @@ def effective_expiry(org: Organization, fallback_hours: int) -> datetime:
     return org.demo_expires_at or (org.created_at + timedelta(hours=fallback_hours))
 
 
+# ── Dauerhafte Ausnahmen (Allowlist) ──────────────────────────────────────────
+
+class DuplicateAllowlistEntry(Exception):
+    """Diese Adresse bzw. dieses Netz steht bereits auf der Liste."""
+
+
+def normalize_ip_pattern(value: str) -> str:
+    """Eingabe des Superadmins in die gespeicherte Schreibweise bringen.
+
+    Einzeladressen bleiben wie sie sind (`203.0.113.7`), Netze werden auf ihre
+    Netzadresse zurückgeführt (`203.0.113.7/24` → `203.0.113.0/24`) — sonst
+    stünde in der Liste ein Eintrag, der etwas anderes bedeutet als das, was da
+    steht. Wirft ValueError bei allem, was weder Adresse noch Netz ist.
+    """
+    network = ipaddress.ip_network(value.strip(), strict=False)
+    if network.prefixlen == 0:
+        # `0.0.0.0/0` bzw. `::/0` würde die Karenzzeit stillschweigend für alle
+        # abschalten — dafür gibt es die Einstellung „Karenzzeit 0".
+        raise ValueError("Ein Netz ohne Präfixlänge stellt alle Adressen frei")
+    if network.prefixlen == network.max_prefixlen:
+        return str(network.network_address)
+    return str(network)
+
+
+def _matches(pattern: str, ip: str) -> bool:
+    """Ob *ip* von *pattern* (Einzeladresse oder Netz) abgedeckt ist."""
+    try:
+        return ipaddress.ip_address(ip) in ipaddress.ip_network(pattern, strict=False)
+    except (TypeError, ValueError):
+        # Unpassende Adressfamilie (IPv4 gegen IPv6-Netz) oder ein Eintrag, der
+        # sich nicht mehr parsen lässt: deckt die Adresse nicht ab. Ein
+        # kaputter Eintrag darf den Demo-Start nicht zum Fehler machen.
+        return False
+
+
+async def list_ip_allowlist(db: AsyncSession) -> list[DemoIpAllowlistEntry]:
+    """Alle dauerhaften Ausnahmen, zuletzt angelegte zuerst."""
+    result = await db.execute(
+        select(DemoIpAllowlistEntry).order_by(DemoIpAllowlistEntry.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def is_ip_allowlisted(db: AsyncSession, ip: str) -> bool:
+    """Ob *ip* dauerhaft von der Karenzzeit ausgenommen ist."""
+    patterns = (await db.execute(select(DemoIpAllowlistEntry.pattern))).scalars().all()
+    return any(_matches(pattern, ip) for pattern in patterns)
+
+
+async def _release_matching_origins(db: AsyncSession, pattern: str) -> int:
+    """Laufende Sperren löschen, die *pattern* abdeckt.
+
+    Die IP steht als Text in der Tabelle, ein CIDR-Vergleich in SQL wäre also
+    datenbankspezifisch (Postgres `inet`) — bei einer Zeile je gesperrter
+    Adresse innerhalb der Karenzzeit ist der Abgleich in Python billiger als
+    diese Bindung.
+    """
+    ips = (await db.execute(select(DemoOrigin.ip))).scalars().all()
+    hits = [ip for ip in ips if _matches(pattern, ip)]
+    if not hits:
+        return 0
+    await db.execute(delete(DemoOrigin).where(DemoOrigin.ip.in_(hits)))
+    return len(hits)
+
+
+async def add_ip_allowlist_entry(
+    db: AsyncSession, pattern: str, *, note: str | None = None, created_by: str | None = None,
+) -> tuple[DemoIpAllowlistEntry, int]:
+    """Ausnahme anlegen und eine bereits laufende Sperre dafür sofort aufheben.
+
+    Wer einen Anschluss freistellt, will ihn jetzt freigeschaltet haben und
+    nicht erst nach Ablauf der laufenden Karenzzeit — deshalb der zweite
+    Schritt. Gibt den Eintrag und die Zahl der dabei gelösten Sperren zurück.
+
+    Wirft ValueError bei ungültiger Eingabe und DuplicateAllowlistEntry, wenn
+    die Adresse bereits auf der Liste steht.
+    """
+    normalized = normalize_ip_pattern(pattern)
+    entry = DemoIpAllowlistEntry(
+        id=uuid.uuid4(), pattern=normalized, note=(note or None), created_by=created_by,
+    )
+    db.add(entry)
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        raise DuplicateAllowlistEntry(normalized) from None
+    released = await _release_matching_origins(db, normalized)
+    await db.commit()
+    return entry, released
+
+
+async def remove_ip_allowlist_entry(db: AsyncSession, entry_id: uuid.UUID) -> str | None:
+    """Ausnahme wieder entfernen. Gibt das entfernte Muster zurück (für das
+    Audit-Log) oder None, wenn es den Eintrag nicht gibt."""
+    entry = await db.get(DemoIpAllowlistEntry, entry_id)
+    if entry is None:
+        return None
+    pattern = entry.pattern
+    await db.delete(entry)
+    await db.commit()
+    return pattern
+
+
 # ── Per-IP cooldown ───────────────────────────────────────────────────────────
 
 def _as_utc(value: datetime) -> datetime:
@@ -138,6 +245,12 @@ async def claim_ip(db: AsyncSession, ip: str | None, cooldown_hours: int) -> int
     nothing to key on; those requests fall back to the in-process limiter.
     """
     if not ip or cooldown_hours <= 0:
+        return None
+
+    if await is_ip_allowlisted(db, ip):
+        # Dauerhaft freigestellt (Firmenanschluss, Messe-WLAN): keine Sperre —
+        # und auch kein Eintrag in demo_origins, damit die Adresse in der
+        # Sperrliste des Admin-Portals gar nicht erst auftaucht.
         return None
 
     now = datetime.now(timezone.utc)

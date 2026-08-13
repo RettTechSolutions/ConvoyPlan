@@ -311,6 +311,9 @@ Jede Demo-Nutzung läuft als eigene, befristete Organisation (`is_demo=true`). D
 | `DELETE` | `/api/admin/demo-sessions/{org_id}` | Demo-Sitzung sofort beenden (Konvois, Org und Demo-Nutzer löschen) |
 | `GET` | `/api/admin/demo-ip-locks` | Aktuell gesperrte IP-Adressen mit Restlaufzeit auflisten |
 | `DELETE` | `/api/admin/demo-ip-locks/{ip}` | Sperre einer IP-Adresse aufheben |
+| `GET` | `/api/admin/demo-ip-allowlist` | Dauerhaft freigestellte Adressen und Netze auflisten |
+| `POST` | `/api/admin/demo-ip-allowlist` | Adresse (`203.0.113.7`) oder Netz (`203.0.113.0/24`) dauerhaft freistellen; hebt eine laufende Sperre mit auf |
+| `DELETE` | `/api/admin/demo-ip-allowlist/{entry_id}` | Ausnahme zurücknehmen — ab dann gilt wieder die Karenzzeit |
 
 > **Karenzzeit je IP:** `POST /api/auth/demo-session` erlaubt je Client-IP eine Sitzung pro Karenzzeit (Standard 24 h, `DEMO_IP_COOLDOWN_HOURS` bzw. Admin-Portal; `0` schaltet sie ab). Ein weiterer Versuch innerhalb des Fensters antwortet mit `429` und `Retry-After`. Die Sperre liegt in der Datenbank (`demo_origins`), übersteht damit einen Neustart und gilt auch dann noch, wenn die Demo-Organisation längst abgelaufen und gelöscht ist. Der Retention-Job entfernt abgelaufene Einträge.
 

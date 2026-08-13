@@ -596,6 +596,79 @@ async def release_demo_ip_lock(
     )
 
 
+class DemoIpAllowlistEntryResponse(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: uuid.UUID
+    pattern: str
+    note: str | None
+    created_at: datetime
+    created_by: str | None
+
+
+class DemoIpAllowlistCreate(BaseModel):
+    pattern: str = Field(
+        ..., max_length=64,
+        description="Einzelne IP-Adresse (203.0.113.7) oder Netz in CIDR-Schreibweise (203.0.113.0/24)",
+    )
+    note: str | None = Field(None, max_length=200, description="Wozu die Ausnahme gehört")
+
+
+@router.get("/demo-ip-allowlist", response_model=list[DemoIpAllowlistEntryResponse])
+async def list_demo_ip_allowlist(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    """Adressen und Netze, für die die Demo-Karenzzeit dauerhaft nicht gilt."""
+    return await demo_svc.list_ip_allowlist(db)
+
+
+@router.post("/demo-ip-allowlist", response_model=DemoIpAllowlistEntryResponse, status_code=201)
+async def add_demo_ip_allowlist_entry(
+    data: DemoIpAllowlistCreate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    """Anschluss dauerhaft von der Karenzzeit ausnehmen — für Adressen, hinter
+    denen planmäßig viele Interessenten sitzen (Firmenanschluss, Messe-WLAN).
+    Eine bereits laufende Sperre für diese Adresse wird dabei mit aufgehoben."""
+    try:
+        entry, released = await demo_svc.add_ip_allowlist_entry(
+            db, data.pattern, note=data.note, created_by=current.email,
+        )
+    except demo_svc.DuplicateAllowlistEntry:
+        raise HTTPException(409, "Diese Adresse steht bereits auf der Liste") from None
+    except ValueError as exc:
+        raise HTTPException(
+            422, f"Keine gültige IP-Adresse und kein gültiges Netz: {exc}"
+        ) from None
+    await audit.record(
+        db, "admin.demo_ip_allowlist.added", request=request, actor_id=current.id,
+        actor_email=current.email, target_type="ip", target_id=entry.pattern,
+        detail={"note": entry.note, "released_locks": released},
+    )
+    return entry
+
+
+@router.delete("/demo-ip-allowlist/{entry_id}", status_code=204)
+async def remove_demo_ip_allowlist_entry(
+    entry_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    """Ausnahme zurücknehmen — ab dann gilt für diese Adresse wieder die
+    normale Karenzzeit."""
+    pattern = await demo_svc.remove_ip_allowlist_entry(db, entry_id)
+    if pattern is None:
+        raise HTTPException(404, "Diesen Eintrag gibt es nicht")
+    await audit.record(
+        db, "admin.demo_ip_allowlist.removed", request=request, actor_id=current.id,
+        actor_email=current.email, target_type="ip", target_id=pattern,
+    )
+
+
 class DemoSessionInfo(BaseModel):
     id: uuid.UUID
     name: str

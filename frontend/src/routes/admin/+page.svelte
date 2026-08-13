@@ -5,7 +5,7 @@
     import LeitstellenTable from '$lib/components/LeitstellenTable.svelte';
     import { auth } from '$lib/stores/auth';
     import { getStreamTicket } from '$lib/api/client';
-    import { adminApi, mfaApi, leistellenApi, licenseApi, emailTemplateApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type EmailTemplate, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoSessionInfo, type DemoIpLock } from '$lib/api';
+    import { adminApi, mfaApi, leistellenApi, licenseApi, emailTemplateApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type EmailTemplate, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoSessionInfo, type DemoIpLock, type DemoIpAllowlistEntry } from '$lib/api';
     import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
     import SuperadminLogin from '$lib/components/SuperadminLogin.svelte';
@@ -694,6 +694,9 @@
         try {
             demoIpLocks = await adminApi.listDemoIpLocks();
         } catch { demoIpLocks = []; }
+        try {
+            demoIpAllowlist = await adminApi.listDemoIpAllowlist();
+        } catch { demoIpAllowlist = []; }
     }
 
     let demoSessions = $state<DemoSessionInfo[]>([]);
@@ -786,6 +789,52 @@
             demoSettingsError = e instanceof Error ? e.message : 'Fehler beim Speichern';
         } finally {
             demoCooldownSaving = false;
+        }
+    }
+
+    // ── Dauerhafte Ausnahmen ──────────────────────────────────────────────────
+    let demoIpAllowlist = $state<DemoIpAllowlistEntry[]>([]);
+    let allowlistPatternInput = $state('');
+    let allowlistNoteInput = $state('');
+    let allowlistSaving = $state(false);
+    let removingAllowlistEntry = $state<string | null>(null);
+
+    async function addAllowlistEntry() {
+        const pattern = allowlistPatternInput.trim();
+        if (!pattern) return;
+        allowlistSaving = true;
+        demoSettingsError = '';
+        demoSettingsSuccess = '';
+        try {
+            const entry = await adminApi.addDemoIpAllowlistEntry(
+                pattern, allowlistNoteInput.trim() || undefined,
+            );
+            demoIpAllowlist = [entry, ...demoIpAllowlist];
+            allowlistPatternInput = '';
+            allowlistNoteInput = '';
+            // Eine laufende Sperre für diese Adresse hebt das Backend mit auf —
+            // die Sperrliste ist danach also nicht mehr aktuell.
+            demoIpLocks = await adminApi.listDemoIpLocks();
+            demoSettingsSuccess = `${entry.pattern} ist dauerhaft von der Karenzzeit ausgenommen.`;
+            setTimeout(() => { demoSettingsSuccess = ''; }, 5000);
+        } catch (e) {
+            demoSettingsError = e instanceof Error ? e.message : 'Eintrag konnte nicht angelegt werden';
+        } finally {
+            allowlistSaving = false;
+        }
+    }
+
+    async function removeAllowlistEntry(entry: DemoIpAllowlistEntry) {
+        if (!confirm(`Ausnahme für ${entry.pattern} entfernen? Ab dann gilt dort wieder die normale Karenzzeit.`)) return;
+        removingAllowlistEntry = entry.id;
+        demoSettingsError = '';
+        try {
+            await adminApi.removeDemoIpAllowlistEntry(entry.id);
+            demoIpAllowlist = demoIpAllowlist.filter(e => e.id !== entry.id);
+        } catch (e) {
+            demoSettingsError = e instanceof Error ? e.message : 'Eintrag konnte nicht entfernt werden';
+        } finally {
+            removingAllowlistEntry = null;
         }
     }
 
@@ -2523,7 +2572,8 @@
                 <p class="hint" style="margin-bottom:.6rem; font-size:var(--text-xs)">
                     Die Sperre wird in der Datenbank geführt und übersteht einen Neustart des Backends.
                     Hinter einem Firmenanschluss oder Messe-WLAN teilen sich alle Besucher eine
-                    Adresse — dann die Sperre unten gezielt aufheben.
+                    Adresse — dann die Sperre unten einmalig aufheben oder die Adresse gleich
+                    dauerhaft freistellen.
                 </p>
 
                 <div class="section-header" style="margin-top:1.25rem">
@@ -2559,6 +2609,74 @@
                                             disabled={releasingIpLock === lock.ip}
                                         >
                                             {releasingIpLock === lock.ip ? '…' : 'Sperre aufheben'}
+                                        </button>
+                                    </td>
+                                </tr>
+                            {/each}
+                        </tbody>
+                    </table>
+                {/if}
+
+                <div class="section-header" style="margin-top:1.25rem">
+                    <strong>Dauerhaft freigestellte Adressen ({demoIpAllowlist.length})</strong>
+                </div>
+                <p class="hint" style="margin-bottom:.6rem">
+                    Für diese Adressen gilt die Karenzzeit nicht — gedacht für Anschlüsse, hinter denen
+                    planmäßig viele Interessenten sitzen: Firmenanschluss, Messe- oder Schulungs-WLAN,
+                    der eigene Vertrieb. Einzelne Adresse (<code>203.0.113.7</code>) oder ganzes Netz
+                    in CIDR-Schreibweise (<code>203.0.113.0/24</code>, auch IPv6). Eine bereits
+                    laufende Sperre für die Adresse wird beim Anlegen mit aufgehoben.
+                </p>
+                <div style="display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; margin-bottom:.75rem">
+                    <input
+                        type="text"
+                        placeholder="203.0.113.0/24"
+                        bind:value={allowlistPatternInput}
+                        maxlength="64"
+                        style="width:13rem; padding:.35rem .5rem; border:1px solid var(--border); border-radius:6px; background:var(--surface-2); color:var(--text-1)"
+                    />
+                    <input
+                        type="text"
+                        placeholder="Notiz, z. B. „Messe Hannover“"
+                        bind:value={allowlistNoteInput}
+                        maxlength="200"
+                        style="flex:1; min-width:12rem; padding:.35rem .5rem; border:1px solid var(--border); border-radius:6px; background:var(--surface-2); color:var(--text-1)"
+                    />
+                    <button
+                        class="btn-small"
+                        onclick={addAllowlistEntry}
+                        disabled={allowlistSaving || !allowlistPatternInput.trim()}
+                    >
+                        {allowlistSaving ? '…' : 'Freistellen'}
+                    </button>
+                </div>
+                {#if demoIpAllowlist.length === 0}
+                    <p class="hint">Keine dauerhafte Ausnahme eingetragen.</p>
+                {:else}
+                    <table class="user-table">
+                        <thead>
+                            <tr>
+                                <th>Adresse / Netz</th>
+                                <th>Notiz</th>
+                                <th>Angelegt</th>
+                                <th>Von</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {#each demoIpAllowlist as entry}
+                                <tr>
+                                    <td>{entry.pattern}</td>
+                                    <td>{entry.note ?? '—'}</td>
+                                    <td>{new Date(entry.created_at).toLocaleString('de-DE')}</td>
+                                    <td>{entry.created_by ?? '—'}</td>
+                                    <td>
+                                        <button
+                                            class="btn-small danger"
+                                            onclick={() => removeAllowlistEntry(entry)}
+                                            disabled={removingAllowlistEntry === entry.id}
+                                        >
+                                            {removingAllowlistEntry === entry.id ? '…' : 'Entfernen'}
                                         </button>
                                     </td>
                                 </tr>
