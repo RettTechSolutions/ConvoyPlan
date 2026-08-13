@@ -1424,9 +1424,7 @@
 </script>
 
 {#if authed}
-<!-- Die Systemübersicht lebt von nebeneinanderliegenden Diagrammen und bekommt
-     deshalb mehr Breite als die übrigen, formularlastigen Reiter. -->
-<div class="admin-page" class:wide={activeTab === 'uebersicht'}>
+<div class="admin-page">
     <div class="admin-header">
         <h1>Admin</h1>
         <div class="header-actions">
@@ -1860,8 +1858,8 @@
 
     <!-- ── Branding ── -->
     {#if activeTab === 'branding'}
-    <div class="branding-panel">
-        <h2>Branding</h2>
+    <div class="section branding-panel">
+        <div class="section-header"><strong>Branding</strong></div>
 
         {#if brandingError}
             <div class="error-bar">{brandingError} <button onclick={() => brandingError = ''}>✕</button></div>
@@ -1962,81 +1960,81 @@
                 {brandingSaving ? 'Wird gespeichert…' : 'Speichern'}
             </button>
         </div>
+    </div>
 
-        <!-- ── E-Mail-Template ── -->
-        <div class="et-section">
-            <div class="et-header">
-                <h2>E-Mail-Template</h2>
-                {#if emailTemplate}
-                    {#if emailTemplate.is_custom}
-                        <span class="badge et-badge-custom">Angepasst</span>
-                    {:else}
-                        <span class="badge et-badge-default">Standard</span>
-                    {/if}
+    <!-- ── E-Mail-Template ── -->
+    <div class="section branding-panel">
+        <div class="section-header sh-inline">
+            <strong>E-Mail-Template</strong>
+            {#if emailTemplate}
+                {#if emailTemplate.is_custom}
+                    <span class="badge et-badge-custom">Angepasst</span>
+                {:else}
+                    <span class="badge et-badge-default">Standard</span>
                 {/if}
-            </div>
-
-            {#if emailTemplateError}
-                <div class="error-bar">{emailTemplateError} <button onclick={() => emailTemplateError = ''}>✕</button></div>
             {/if}
-            {#if emailTemplateSuccess}
-                <div class="success-bar">{emailTemplateSuccess}</div>
+        </div>
+
+        {#if emailTemplateError}
+            <div class="error-bar">{emailTemplateError} <button onclick={() => emailTemplateError = ''}>✕</button></div>
+        {/if}
+        {#if emailTemplateSuccess}
+            <div class="success-bar">{emailTemplateSuccess}</div>
+        {/if}
+
+        <div class="bf-section">
+            <label class="bf-label">Betreff
+                <input type="text" bind:value={emailTemplateForm.subject} placeholder="Deine Zugangsdaten für &#123;app_name&#125;" />
+            </label>
+        </div>
+
+        <div class="bf-section">
+            <label class="bf-label">HTML-Template
+                <textarea
+                    bind:value={emailTemplateForm.html}
+                    class="et-textarea"
+                    spellcheck="false"
+                    placeholder="<!DOCTYPE html>..."
+                ></textarea>
+            </label>
+        </div>
+
+        <!-- Variablen-Referenz -->
+        <div class="et-vars-panel">
+            <button class="et-vars-toggle" onclick={() => emailTemplateVarsOpen = !emailTemplateVarsOpen}>
+                {emailTemplateVarsOpen ? '▾' : '▸'} Verfügbare Variablen
+            </button>
+            {#if emailTemplateVarsOpen}
+                <table class="et-vars-table">
+                    <thead>
+                        <tr><th>Variable</th><th>Bedeutung</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>{'{recipient_name}'}</code></td><td>Name des Empfängers</td></tr>
+                        <tr><td><code>{'{email}'}</code></td><td>E-Mail-Adresse</td></tr>
+                        <tr><td><code>{'{password}'}</code></td><td>Generiertes Passwort</td></tr>
+                        <tr><td><code>{'{login_url}'}</code></td><td>Login-URL</td></tr>
+                        <tr><td><code>{'{app_name}'}</code></td><td>App-Name (aus Branding)</td></tr>
+                        <tr><td><code>{'{logo_block}'}</code></td><td>Logo-Block (automatisch aus Branding)</td></tr>
+                        <tr><td><code>{'{color_primary}'}</code></td><td>Primärfarbe (aus Branding)</td></tr>
+                        <tr><td><code>{'{color_primary_hover}'}</code></td><td>Primärfarbe hover</td></tr>
+                    </tbody>
+                </table>
             {/if}
+        </div>
 
-            <div class="bf-section">
-                <label class="bf-label">Betreff
-                    <input type="text" bind:value={emailTemplateForm.subject} placeholder="Deine Zugangsdaten für &#123;app_name&#125;" />
-                </label>
-            </div>
-
-            <div class="bf-section">
-                <label class="bf-label">HTML-Template
-                    <textarea
-                        bind:value={emailTemplateForm.html}
-                        class="et-textarea"
-                        spellcheck="false"
-                        placeholder="<!DOCTYPE html>..."
-                    ></textarea>
-                </label>
-            </div>
-
-            <!-- Variablen-Referenz -->
-            <div class="et-vars-panel">
-                <button class="et-vars-toggle" onclick={() => emailTemplateVarsOpen = !emailTemplateVarsOpen}>
-                    {emailTemplateVarsOpen ? '▾' : '▸'} Verfügbare Variablen
-                </button>
-                {#if emailTemplateVarsOpen}
-                    <table class="et-vars-table">
-                        <thead>
-                            <tr><th>Variable</th><th>Bedeutung</th></tr>
-                        </thead>
-                        <tbody>
-                            <tr><td><code>{'{recipient_name}'}</code></td><td>Name des Empfängers</td></tr>
-                            <tr><td><code>{'{email}'}</code></td><td>E-Mail-Adresse</td></tr>
-                            <tr><td><code>{'{password}'}</code></td><td>Generiertes Passwort</td></tr>
-                            <tr><td><code>{'{login_url}'}</code></td><td>Login-URL</td></tr>
-                            <tr><td><code>{'{app_name}'}</code></td><td>App-Name (aus Branding)</td></tr>
-                            <tr><td><code>{'{logo_block}'}</code></td><td>Logo-Block (automatisch aus Branding)</td></tr>
-                            <tr><td><code>{'{color_primary}'}</code></td><td>Primärfarbe (aus Branding)</td></tr>
-                            <tr><td><code>{'{color_primary_hover}'}</code></td><td>Primärfarbe hover</td></tr>
-                        </tbody>
-                    </table>
-                {/if}
-            </div>
-
-            <div class="bf-actions" style="margin-top:1rem">
-                <button class="btn-secondary" onclick={previewEmailTemplate}>Vorschau</button>
-                <button
-                    class="btn-secondary"
-                    onclick={resetEmailTemplate}
-                    disabled={emailTemplateResetting || !emailTemplate?.is_custom}
-                >
-                    {emailTemplateResetting ? '…' : 'Auf Standard zurücksetzen'}
-                </button>
-                <button class="btn-primary" onclick={saveEmailTemplate} disabled={emailTemplateSaving}>
-                    {emailTemplateSaving ? 'Wird gespeichert…' : 'Speichern'}
-                </button>
-            </div>
+        <div class="bf-actions" style="margin-top:1rem">
+            <button class="btn-secondary" onclick={previewEmailTemplate}>Vorschau</button>
+            <button
+                class="btn-secondary"
+                onclick={resetEmailTemplate}
+                disabled={emailTemplateResetting || !emailTemplate?.is_custom}
+            >
+                {emailTemplateResetting ? '…' : 'Auf Standard zurücksetzen'}
+            </button>
+            <button class="btn-primary" onclick={saveEmailTemplate} disabled={emailTemplateSaving}>
+                {emailTemplateSaving ? 'Wird gespeichert…' : 'Speichern'}
+            </button>
         </div>
     </div>
     {/if}
@@ -3166,8 +3164,10 @@
 
 <style>
     :global(body) { margin: 0; font-family: system-ui, sans-serif; background: var(--bg); color: var(--text-1); }
-    .admin-page { max-width: 900px; margin: 0 auto; padding: 2rem 1rem; }
-    .admin-page.wide { max-width: 1280px; }
+    /* Eine Breite für alle Reiter: die Systemübersicht behält bei dieser Breite
+       ihre dreispaltigen Diagramme, und Kopfzeile/Reiterleiste bleiben beim
+       Reiterwechsel an Ort und Stelle. */
+    .admin-page { max-width: var(--admin-width, 1120px); margin: 0 auto; padding: 2rem 1rem; }
     .admin-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
     h1 { margin: 0; font-size: var(--text-lg); }
     .back-link { color: var(--text-2); font-size: var(--text-sm); text-decoration: none; }
@@ -3194,8 +3194,10 @@
        über den Kartenrand hinauszulaufen. */
     .section { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; box-shadow: var(--shadow); overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: .75rem; font-size: var(--text-sm); font-weight: 500; color: var(--text-1); }
+    /* Titel + Statusabzeichen bleiben beieinander, statt auseinandergezogen zu werden. */
+    .section-header.sh-inline { justify-content: flex-start; gap: .75rem; }
 
-    .create-form { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1rem; padding: .75rem; background: var(--surface-2); border-radius: 6px; border: 1px solid var(--border); }
+    .create-form { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1rem; padding: .75rem; background: var(--surface-2); border-radius: 6px; border: 1px solid var(--border); max-width: var(--admin-field, 34rem); }
     .create-form input { padding: .5rem .75rem; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-1); color: var(--text-1); font-size: var(--text-sm); }
     .create-form input:focus { outline: none; border-color: var(--color-primary); }
     .create-form button[type="submit"] { align-self: flex-start; padding: .5rem 1rem; background: #6B7F4D; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: var(--text-sm); }
@@ -3287,19 +3289,20 @@
     .import-row { display: flex; gap: .5rem; align-items: center; font-weight: 400; }
     .file-label { cursor: pointer; }
 
-    .branding-panel { padding: 1.5rem; max-width: 700px; }
-    .branding-panel h2 { margin: 0 0 1rem; font-size: var(--text-base); font-weight: 600; color: var(--text-1); }
+    /* Branding und E-Mail-Template liegen in denselben Karten wie die übrigen
+       Reiter — nur die Eingabefelder bleiben auf Lesebreite begrenzt. */
     .branding-panel h3 { margin: 0 0 .5rem; font-size: var(--text-sm); color: var(--text-2); font-weight: 600; }
     .bf-section { margin-bottom: 1.5rem; }
     .bf-label { display: flex; flex-direction: column; gap: .25rem; font-size: var(--text-sm); color: var(--text-2); }
-    .bf-label input[type="text"] { padding: .5rem .75rem; border: 1px solid var(--border); border-radius: 6px; font-size: var(--text-base); width: 100%; box-sizing: border-box; background: var(--surface-2); color: var(--text-1); }
+    /* Einzeilige Felder auf Lesebreite; das HTML-Template darf die Karte füllen. */
+    .bf-label input[type="text"] { padding: .5rem .75rem; border: 1px solid var(--border); border-radius: 6px; font-size: var(--text-base); width: 100%; max-width: var(--admin-field, 34rem); box-sizing: border-box; background: var(--surface-2); color: var(--text-1); }
     .bf-label input[type="text"]:focus { outline: none; border-color: var(--color-primary); }
     .bf-sublabel { font-size: var(--text-xs); color: var(--text-muted); margin-bottom: .25rem; display: block; }
     .success-bar { background: rgba(107,127,77,.15); border: 1px solid rgba(107,127,77,.4); color: #a8c070; padding: .4rem .75rem; border-radius: 4px; margin-bottom: 1rem; font-size: var(--text-sm); }
     .logo-row { display: flex; gap: 1.5rem; flex-wrap: wrap; }
     .logo-slot { display: flex; flex-direction: column; gap: .3rem; }
     .logo-thumb { max-height: 52px; max-width: 160px; border: 1px solid var(--border); border-radius: 4px; }
-    .colors-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .75rem 1rem; }
+    .colors-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem 1rem; max-width: var(--admin-field, 34rem); }
     .color-label { display: flex; flex-direction: column; gap: .25rem; font-size: var(--text-xs); color: var(--text-2); }
     .color-row { display: flex; align-items: center; gap: .4rem; }
     .color-swatch { width: 32px; height: 32px; padding: 0; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; }
@@ -3344,7 +3347,7 @@
     .qr-img { border-radius: 6px; border: 4px solid white; }
     .mfa-secret-box { display: flex; flex-direction: column; gap: .5rem; }
     .mfa-secret { display: block; font-size: 13px; letter-spacing: .08em; word-break: break-all; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; padding: .4rem .6rem; }
-    .smtp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+    .smtp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; max-width: var(--admin-field, 34rem); }
     @media (max-width: 600px) { .smtp-grid { grid-template-columns: 1fr; } }
     .smtp-port { grid-column: span 1; }
     .smtp-label { display: flex; flex-direction: column; gap: .3rem; font-size: var(--text-sm); font-weight: 500; color: var(--text-2); }
@@ -3355,9 +3358,6 @@
     @keyframes spin { to { transform: rotate(360deg); } }
 
     /* E-Mail Template */
-    .et-section { margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border); }
-    .et-header { display: flex; align-items: center; gap: .75rem; margin-bottom: 1rem; }
-    .et-header h2 { margin: 0; font-size: var(--text-base); font-weight: 600; color: var(--text-1); }
     .et-badge-custom { background: rgba(210,120,30,.2); color: #e8a050; border: 1px solid rgba(210,120,30,.4); }
     .et-badge-default { background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border); }
     .et-textarea {
@@ -3384,7 +3384,7 @@
 
     .license-status-row { display: flex; align-items: center; margin-bottom: .25rem; }
     .uuid-code { font-size: var(--text-xs); font-family: monospace; word-break: break-all; background: var(--surface-2); padding: .1rem .3rem; border-radius: 3px; color: var(--text-1); }
-    .license-input-section { margin-top: 1rem; padding-top: .75rem; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: .3rem; }
+    .license-input-section { margin-top: 1rem; padding-top: .75rem; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: .3rem; max-width: var(--admin-field, 34rem); }
     .license-input-label { font-size: var(--text-xs); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
     .license-input-row { display: flex; gap: .4rem; align-items: center; }
     .license-input { flex: 1; padding: .45rem .65rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); font-family: monospace; }
@@ -3426,10 +3426,6 @@
         .section { padding: .75rem; }
         .section :global(table) { white-space: nowrap; }
 
-        .branding-panel {
-            padding: 1rem .75rem;
-            max-width: 100%;
-        }
         .colors-grid { grid-template-columns: 1fr; }
         .logo-row { gap: 1rem; }
         .bf-actions {
