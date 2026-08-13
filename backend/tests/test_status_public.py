@@ -36,7 +36,6 @@ def _install(monkeypatch, *, db_ok=True, graphhopper="ok",
 
     # Der Kurzzeit-Cache würde sonst Ergebnisse zwischen den Tests verschleppen.
     status_module._public_cache = None
-    status_module._public_cache_at = 0.0
 
 
 async def _get_public() -> dict:
@@ -51,7 +50,6 @@ def _cleanup():
     yield
     app.dependency_overrides.clear()
     status_module._public_cache = None
-    status_module._public_cache_at = 0.0
 
 
 @pytest.mark.asyncio

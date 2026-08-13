@@ -81,9 +81,22 @@ async def service_status(db: AsyncSession = Depends(get_db)):
 
 _PUBLIC_CACHE_TTL = 15.0  # s — die Seite pollt, die Prüfungen sollen es nicht
 
-_public_cache: dict | None = None
-_public_cache_at: float = 0.0
+# Antwort und Entstehungszeitpunkt hängen als *ein* Objekt zusammen: würden
+# beide einzeln gesetzt, könnte ein paralleler Aufruf dazwischen eine frische
+# Antwort mit altem Zeitstempel sehen (oder umgekehrt).
+_public_cache: tuple[dict, float] | None = None
 _public_lock = asyncio.Lock()
+
+
+def _cached_public_status() -> dict | None:
+    """Zwischengespeicherte Antwort, sofern sie noch frisch genug ist."""
+    cached = _public_cache
+    if cached is None:
+        return None
+    payload, created_at = cached
+    if (time.monotonic() - created_at) >= _PUBLIC_CACHE_TTL:
+        return None
+    return payload
 
 
 def _state_of(raw: str | None) -> str:
@@ -203,17 +216,19 @@ async def public_status(db: AsyncSession = Depends(get_db)):
     Das Ergebnis wird kurz zwischengespeichert, damit häufiges Neuladen der
     Seite nicht auf die geprüften Dienste durchschlägt.
     """
-    global _public_cache, _public_cache_at
+    global _public_cache
 
-    if _public_cache is not None and (time.monotonic() - _public_cache_at) < _PUBLIC_CACHE_TTL:
-        return _public_cache
+    cached = _cached_public_status()
+    if cached is not None:
+        return cached
 
     async with _public_lock:
         # Zweite Prüfung: während des Wartens kann ein paralleler Aufruf den
         # Cache bereits gefüllt haben.
-        if _public_cache is not None and (time.monotonic() - _public_cache_at) < _PUBLIC_CACHE_TTL:
-            return _public_cache
-        _public_cache = await _collect_public_status(db)
-        _public_cache_at = time.monotonic()
+        cached = _cached_public_status()
+        if cached is not None:
+            return cached
+        payload = await _collect_public_status(db)
+        _public_cache = (payload, time.monotonic())
 
-    return _public_cache
+    return payload
