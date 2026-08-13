@@ -68,6 +68,17 @@ services:
       OPENDATA_TRAFFIC_FEEDS: ${OPENDATA_TRAFFIC_FEEDS:-mobidata_bw|https://api.mobidata-bw.de/datasets/traffic/roadworks/roadworks_geojson.json,berlin_viz|https://api.viz.berlin.de/daten/baustellen_sperrungen_viz.json}
       OPENDATA_TRAFFIC_CLIENT_CERT: ${OPENDATA_TRAFFIC_CLIENT_CERT:-}
       OPENDATA_TRAFFIC_CA_CERT: ${OPENDATA_TRAFFIC_CA_CERT:-}
+      # Systemübersicht: Hardware-/Container-/Nutzungskennzahlen. Der
+      # Container-Zustand kommt über den lesenden dockerproxy-Sidecar — das
+      # Backend bekommt bewusst KEINEN Docker-Socket.
+      SYSTEM_METRICS_ENABLED: ${SYSTEM_METRICS_ENABLED:-true}
+      SYSTEM_METRICS_INTERVAL: ${SYSTEM_METRICS_INTERVAL:-300}
+      SYSTEM_METRICS_RETENTION_DAYS: ${SYSTEM_METRICS_RETENTION_DAYS:-90}
+      SYSTEM_METRICS_DAILY_RETENTION_DAYS: ${SYSTEM_METRICS_DAILY_RETENTION_DAYS:-1095}
+      SYSTEM_METRICS_DISK_PATHS: ${SYSTEM_METRICS_DISK_PATHS:-/,/uploads,/update_status}
+      DOCKER_METRICS_ENABLED: ${DOCKER_METRICS_ENABLED:-true}
+      DOCKER_API_URL: ${DOCKER_API_URL:-http://dockerproxy:2375}
+      DOCKER_STATS_ENABLED: ${DOCKER_STATS_ENABLED:-true}
     volumes:
       - cert_uploads:/certs
       - logo_uploads:/uploads
@@ -96,6 +107,35 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  dockerproxy:
+    image: ${DOCKER_PROXY_IMAGE:-ghcr.io/tecnativa/docker-socket-proxy:0.3.0}
+    restart: unless-stopped
+    # Liest den Docker-Socket und gibt davon NUR lesende Endpunkte frei, die die
+    # Systemübersicht braucht (Container-Zustand, Health, Stats). Der Socket
+    # selbst bleibt aus dem Backend heraus, denn Zugriff darauf ist faktisch
+    # Root auf dem Host — ein von außen erreichbarer Container darf ihn nicht
+    # haben. POST ist aus (Standard), es lässt sich also nichts starten,
+    # stoppen oder erzeugen.
+    environment:
+      CONTAINERS: 1     # /containers/json + /containers/<id>/stats
+      INFO: 1           # /info — Engine-Kennzahlen
+      VERSION: 1        # /version
+      POST: 0           # keine schreibenden Aufrufe
+      EXEC: 0
+      IMAGES: 0
+      NETWORKS: 0
+      VOLUMES: 0
+      SERVICES: 0
+      TASKS: 0
+      SECRETS: 0
+      SWARM: 0
+      SYSTEM: 0
+    volumes:
+      - ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}:/var/run/docker.sock:ro
+    # Nicht nach außen veröffentlicht — nur im Compose-Netz erreichbar.
+    expose:
+      - "2375"
 
   graphhopper:
     image: ${GRAPHHOPPER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/graphhopper:latest}
@@ -191,6 +231,16 @@ services:
       FRONTEND_IMAGE: ${FRONTEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/frontend:latest}
       GRAPHHOPPER_IMAGE: ${GRAPHHOPPER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/graphhopper:latest}
       UPDATER_IMAGE: ${UPDATER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/updater:latest}
+      DOCKER_PROXY_IMAGE: ${DOCKER_PROXY_IMAGE:-ghcr.io/tecnativa/docker-socket-proxy:0.3.0}
+      DOCKER_SOCKET_PATH: ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}
+      SYSTEM_METRICS_ENABLED: ${SYSTEM_METRICS_ENABLED:-true}
+      SYSTEM_METRICS_INTERVAL: ${SYSTEM_METRICS_INTERVAL:-300}
+      SYSTEM_METRICS_RETENTION_DAYS: ${SYSTEM_METRICS_RETENTION_DAYS:-90}
+      SYSTEM_METRICS_DAILY_RETENTION_DAYS: ${SYSTEM_METRICS_DAILY_RETENTION_DAYS:-1095}
+      SYSTEM_METRICS_DISK_PATHS: ${SYSTEM_METRICS_DISK_PATHS:-/,/uploads,/update_status}
+      DOCKER_METRICS_ENABLED: ${DOCKER_METRICS_ENABLED:-true}
+      DOCKER_API_URL: ${DOCKER_API_URL:-http://dockerproxy:2375}
+      DOCKER_STATS_ENABLED: ${DOCKER_STATS_ENABLED:-true}
     entrypoint: ["/bin/bash", "/update-images.sh"]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

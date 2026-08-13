@@ -1,4 +1,4 @@
-import { api, uploadFile, getStreamTicket } from './client';
+import { api, uploadFile, downloadFile, getStreamTicket } from './client';
 import type { Geometry } from 'geojson';
 
 export interface Point { lat: number; lon: number }
@@ -624,6 +624,166 @@ export interface DemoSessionInfo {
     created_ip: string | null;
     created_location: string | null;
 }
+
+// ── Systemübersicht ───────────────────────────────────────────────────────────
+
+export interface DiskUsage {
+    path: string;
+    total_bytes: number;
+    used_bytes: number;
+    free_bytes: number;
+    percent: number;
+}
+
+export interface ContainerInfo {
+    name: string;
+    image: string;
+    /** running | exited | restarting | created | paused | dead */
+    state: string;
+    status: string;
+    health: 'healthy' | 'unhealthy' | 'starting' | null;
+    created_at: number | null;
+    restart_count: number | null;
+    cpu_percent: number | null;
+    mem_bytes: number | null;
+    mem_limit_bytes: number | null;
+    mem_percent: number | null;
+}
+
+export interface DockerReport {
+    available: boolean;
+    reason: string | null;
+    engine_version: string | null;
+    total: number;
+    running: number;
+    unhealthy: number;
+    containers: ContainerInfo[];
+}
+
+export interface HostMetrics {
+    cpu_percent: number | null;
+    cpu_count: number | null;
+    load1: number | null;
+    load5: number | null;
+    load15: number | null;
+    uptime_seconds: number | null;
+    mem_total_bytes: number | null;
+    mem_used_bytes: number | null;
+    mem_available_bytes: number | null;
+    mem_percent: number | null;
+    swap_total_bytes: number | null;
+    swap_used_bytes: number | null;
+    disk_total_bytes: number | null;
+    disk_used_bytes: number | null;
+    disk_percent: number | null;
+    disk_read_bytes_s: number | null;
+    disk_write_bytes_s: number | null;
+    disk_util_percent: number | null;
+    /** PSI „some avg10" — Anteil der Zeit mit Wartezeit auf die Ressource. */
+    psi_cpu_avg10: number | null;
+    psi_mem_avg10: number | null;
+    psi_io_avg10: number | null;
+    psi_io_avg60: number | null;
+    disks: DiskUsage[];
+}
+
+export interface SystemOverview {
+    checked_at: string;
+    collector: {
+        enabled: boolean;
+        interval_s: number;
+        last_sample_at: string | null;
+        raw_retention_days: number;
+        daily_retention_days: number;
+    };
+    host: HostMetrics;
+    docker: DockerReport;
+    database: {
+        size_bytes: number | null;
+        connections: number | null;
+        users: number | null;
+        organizations: number | null;
+        convoys: number | null;
+    };
+    usage: {
+        active_users: number;
+        active_orgs: number;
+        window_seconds: number;
+        requests_since_flush: number;
+        errors_since_flush: number;
+        avg_response_ms: number | null;
+        unique_users_today: number;
+        logins_24h: number;
+    };
+}
+
+/** Ein Punkt der Zeitreihe. Feldnamen entsprechen den Metrik-Spalten; je nach
+ *  Auflösung kommen aggregierte Zusatzfelder (…_max) dazu. */
+export interface MetricPoint {
+    t: string;
+    [key: string]: number | string | null;
+}
+
+export interface MetricSeries {
+    resolution: 'raw' | 'hour' | 'day';
+    from: string;
+    to: string;
+    points: MetricPoint[];
+}
+
+export interface UsageDay {
+    day: string;
+    users: number;
+    orgs: number;
+    requests: number;
+}
+
+export interface UsageHistory {
+    from: string;
+    to: string;
+    unique_users: number;
+    days: UsageDay[];
+}
+
+export interface MonthlyReport {
+    month: string;
+    from: string;
+    to: string;
+    generated_at: string;
+    days_covered: number;
+    summary: Record<string, number | string | null>;
+    days: MetricPoint[];
+    usage_by_day: UsageDay[];
+}
+
+export type MetricRange = '1h' | '6h' | '24h' | '7d' | '30d' | '90d' | '365d';
+
+export const systemApi = {
+    overview: () => api.get<SystemOverview>('/api/admin/system/overview'),
+    containers: (withStats = true) =>
+        api.get<DockerReport>(`/api/admin/system/containers?with_stats=${withStats}`),
+    history: (range: MetricRange, resolution: 'auto' | 'raw' | 'hour' | 'day' = 'auto') =>
+        api.get<MetricSeries>(`/api/admin/system/history?range=${range}&resolution=${resolution}`),
+    usage: (days = 30) => api.get<UsageHistory>(`/api/admin/system/usage?days=${days}`),
+    reportMonths: () =>
+        api.get<{ months: string[]; current: string }>('/api/admin/system/reports/months'),
+    monthlyReport: (month: string) =>
+        api.get<MonthlyReport>(`/api/admin/system/reports/monthly?month=${month}`),
+    sampleNow: () =>
+        api.post<{ status: string; captured_at: string }>('/api/admin/system/sample', {}),
+    /** Monatsbericht als Datei herunterladen (der Endpunkt braucht den Token,
+     *  ein einfacher Link würde ihn nicht mitschicken). */
+    downloadReport: (month: string, format: 'csv' | 'pdf') =>
+        downloadFile(
+            `/api/admin/system/reports/monthly?month=${month}&format=${format}`,
+            `convoyplan-systembericht-${month}.${format}`,
+        ),
+    downloadHistoryCsv: (range: MetricRange, resolution: 'auto' | 'raw' | 'hour' | 'day' = 'auto') =>
+        downloadFile(
+            `/api/admin/system/history?range=${range}&resolution=${resolution}&format=csv`,
+            `convoyplan-verlauf-${range}.csv`,
+        ),
+};
 
 export interface BrandingData {
     app_name: string;
