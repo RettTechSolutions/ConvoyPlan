@@ -42,3 +42,30 @@ npx mapshaper kreise.geojson \
 
 Anschließend die Property-Arrays zu Skalaren geflacht und das `attribution`-Feld
 ergänzt. Ergebnis: ~0,7 MB, wird im Auswahl-Dialog erst bei Bedarf nachgeladen.
+
+## `deutschland.geojson`
+
+Umriss der Bundesrepublik (Außengrenze inkl. Inseln und der österreichischen
+Enklave Jungholz als Loch). Genutzt für den **Deutschland-Fokus** der Karten:
+Alles außerhalb der Grenze wird abgedunkelt bzw. ausgegraut, weil die
+Routenberechnung nur innerhalb Deutschlands möglich ist (GraphHopper-Graph =
+nur deutsches Straßennetz). Die Maske selbst (Welt minus Deutschland) wird zur
+Laufzeit aus dieser Datei gebaut — siehe `src/lib/map/germany.ts`.
+
+- **Quelle / Lizenz / Namensnennung:** identisch zu `landkreise.geojson`
+  (BKG VG2500, dl-de/by-2-0) — die Datei ist daraus abgeleitet.
+
+### Aufbereitung / Regenerierung
+
+Aus `landkreise.geojson` verschmolzen (keine weitere Vereinfachung, damit die
+Grenzlinie auch bei hohem Zoom sauber bleibt); anschließend als einzelnes
+`Feature` mit `name`/`attribution` gespeichert:
+
+```sh
+npx mapshaper landkreise.geojson \
+  -dissolve2 \
+  -filter-slivers \
+  -o precision=0.0001 format=geojson deutschland.geojson
+```
+
+Ergebnis: ~52 kB, wird beim Kartenstart einmalig geladen.

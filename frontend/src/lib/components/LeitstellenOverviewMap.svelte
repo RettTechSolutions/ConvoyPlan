@@ -2,6 +2,9 @@
     import * as maplibregl from '$lib/map/maplibre';
     import 'maplibre-gl/dist/maplibre-gl.css';
     import { onMount, onDestroy } from 'svelte';
+    import { get } from 'svelte/store';
+    import { themeStore } from '$lib/stores/theme';
+    import { addGermanyMask, applyMapTheme } from '$lib/map/germany';
 
     interface Props {
         geojson?: GeoJSON.FeatureCollection | null;
@@ -53,6 +56,9 @@
         });
         map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
         map.on('load', () => {
+            // Deutschland-Fokus + Hell/Dunkel-Abstimmung (siehe $lib/map/germany)
+            addGermanyMask(map!, get(themeStore));
+            applyMapTheme(map!, get(themeStore));
             map!.addSource('ls', { type: 'geojson', data: geojson ?? EMPTY });
             map!.addLayer({ id: 'ls-fill', type: 'fill', source: 'ls', paint: { 'fill-color': ['match', ['get', 'status'], 'global', '#2563eb', '#e74c3c'], 'fill-opacity': 0.18 } });
             map!.addLayer({ id: 'ls-line', type: 'line', source: 'ls', paint: { 'line-color': ['match', ['get', 'status'], 'global', '#2563eb', '#e74c3c'], 'line-width': 1.5 } });
@@ -83,6 +89,12 @@
     onDestroy(() => { popup?.remove(); map?.remove(); map = undefined; });
 
     $effect(() => { void geojson; render(); });
+
+    // Karte folgt dem Hell-/Dunkel-Design der App
+    $effect(() => {
+        const theme = $themeStore;
+        if (map && mapReady) applyMapTheme(map, theme);
+    });
 </script>
 
 <div class="ls-overview" style="height:{height}" bind:this={mapContainer}></div>
