@@ -12,7 +12,7 @@ from app.api import deps
 from app.api.deps import get_db, require_superadmin, require_system_read
 from app.config import settings
 from app.main import app
-from app.services import activity, docker_stats, host_metrics, system_metrics, system_report
+from app.services import activity, docker_stats, host_metrics, prtg, system_metrics, system_report
 
 
 # ── Testhilfen ───────────────────────────────────────────────────────────────
@@ -625,3 +625,153 @@ async def test_sample_refuses_system_api_key():
                 "/api/admin/system/sample", headers={"X-API-Key": "cvp_aaaa1111_secret"}
             )
     assert r.status_code == 401
+
+
+# ── PRTG-Sensorformat ────────────────────────────────────────────────────────
+
+def _prtg_snapshot(**overrides):
+    """Momentaufnahme mit gefüllten Kennwerten; einzelne Bereiche überschreibbar."""
+    snapshot = {
+        "checked_at": "2026-08-13T10:00:00+00:00",
+        "collector": {"enabled": False, "interval_s": 300, "last_sample_at": None},
+        "host": {
+            "cpu_percent": 12.34,
+            "load1": 0.75,
+            "mem_percent": 43.2,
+            "mem_available_bytes": 8_000_000_000,
+            "disk_total_bytes": 100,
+            "disk_used_bytes": 61,
+            "disk_percent": 61.0,
+            "psi_io_avg10": 1.5,
+            "uptime_seconds": 3600.0,
+        },
+        "docker": {"available": True, "total": 9, "running": 9, "unhealthy": 0},
+        "database": {"size_bytes": 1234, "connections": 7},
+        "usage": {"active_users": 3, "logins_24h": 11},
+    }
+    snapshot.update(overrides)
+    return snapshot
+
+
+def _channels(payload):
+    return {c["channel"]: c for c in payload["prtg"]["result"]}
+
+
+def test_prtg_payload_shapes_channels_for_the_sensor():
+    channels = _channels(prtg.sensor_payload(_prtg_snapshot()))
+
+    cpu = channels["CPU-Auslastung"]
+    # Fließkommawerte gehen als Zeichenkette mit Punkt raus, sonst liest PRTG
+    # ein deutsches Komma als Tausendertrenner.
+    assert cpu == {
+        "channel": "CPU-Auslastung",
+        "unit": "Percent",
+        "value": "12.3",
+        "float": 1,
+        "limitmode": 1,
+        "limitmaxwarning": 85.0,
+        "limitmaxerror": 95.0,
+        "limitwarningmsg": "CPU dauerhaft hoch ausgelastet",
+        "limiterrormsg": "CPU am Anschlag",
+    }
+    # Zählkanäle ohne Nachkommastellen und ohne float-Flag.
+    assert channels["Datenbankverbindungen"] == {
+        "channel": "Datenbankverbindungen", "unit": "Count", "value": "7"
+    }
+    assert channels["Platte frei"]["value"] == "39"
+
+
+def test_prtg_summary_names_the_headline_figures():
+    text = prtg.sensor_payload(_prtg_snapshot())["prtg"]["text"]
+    assert text == "CPU 12 % · RAM 43 % · Platte 61 % · 9/9 Container laufen"
+
+
+def test_prtg_payload_omits_values_the_host_cannot_measure():
+    """Fehlender PSI-Wert heißt: Kanal weglassen, nicht Null melden."""
+    snapshot = _prtg_snapshot()
+    snapshot["host"]["psi_io_avg10"] = None
+    channels = _channels(prtg.sensor_payload(snapshot))
+    assert "I/O-Druck" not in channels
+    assert "CPU-Auslastung" in channels
+
+
+def test_prtg_payload_keeps_zero_values():
+    """Null ist ein Messwert — der Kanal darf dadurch nicht verschwinden, sonst
+    verschiebt PRTG die Kanalzuordnung."""
+    snapshot = _prtg_snapshot()
+    snapshot["host"]["cpu_percent"] = 0.0
+    snapshot["usage"]["active_users"] = 0
+    channels = _channels(prtg.sensor_payload(snapshot))
+    assert channels["CPU-Auslastung"]["value"] == "0.0"
+    assert channels["Aktive Benutzer"]["value"] == "0"
+
+
+def test_prtg_payload_drops_container_channels_when_docker_is_unreachable():
+    """Sonst stünden dort drei Nullen, die wie ein toter Stack aussehen."""
+    payload = prtg.sensor_payload(
+        _prtg_snapshot(docker={"available": False, "reason": "nicht erreichbar"})
+    )
+    channels = _channels(payload)
+    assert "Container laufend" not in channels
+    assert "Docker-API nicht erreichbar" in payload["prtg"]["text"]
+
+
+def test_prtg_unhealthy_container_raises_an_error_above_zero():
+    channels = _channels(
+        prtg.sensor_payload(
+            _prtg_snapshot(docker={"available": True, "total": 9, "running": 8, "unhealthy": 1})
+        )
+    )
+    assert channels["Container gestört"]["value"] == "1"
+    assert channels["Container gestört"]["limitmaxerror"] == 0
+
+
+def test_prtg_reports_the_age_of_the_last_sample():
+    """Ein stehengebliebener Sampler soll auffallen — Grenzen aus dem Intervall."""
+    now = datetime(2026, 8, 13, 12, 0, tzinfo=timezone.utc)
+    snapshot = _prtg_snapshot(
+        collector={
+            "enabled": True,
+            "interval_s": 300,
+            "last_sample_at": "2026-08-13T11:50:00+00:00",
+        }
+    )
+    channel = _channels(prtg.sensor_payload(snapshot, now=now))["Alter der letzten Stichprobe"]
+    assert channel["value"] == "600"
+    assert channel["limitmaxwarning"] == 900
+    assert channel["limitmaxerror"] == 1800
+
+
+def test_prtg_omits_sample_age_while_the_collector_is_off():
+    channels = _channels(prtg.sensor_payload(_prtg_snapshot()))
+    assert "Alter der letzten Stichprobe" not in channels
+
+
+def test_prtg_payload_reports_an_error_when_nothing_is_measurable():
+    payload = prtg.sensor_payload({})
+    assert payload == {"prtg": {"error": 1, "text": "Keine Systemkennzahlen messbar"}}
+
+
+@pytest.mark.asyncio
+async def test_prtg_endpoint_accepts_system_api_key():
+    r = await _get_with_key("system", path="/api/admin/system/prtg")
+    assert r.status_code == 200
+    assert "prtg" in r.json()
+
+
+@pytest.mark.asyncio
+async def test_prtg_endpoint_refuses_org_api_key():
+    r = await _get_with_key("organization", path="/api/admin/system/prtg")
+    assert r.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_prtg_endpoint_answers_with_the_sensor_error_format():
+    """Ein HTTP-500 zeigt in PRTG nur „Server Error" — der Grund gehört an den
+    Sensor."""
+    _override_auth_and_db()
+    with patch.object(system_metrics, "live_snapshot", AsyncMock(side_effect=RuntimeError("kaputt"))):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            r = await client.get("/api/admin/system/prtg")
+    assert r.status_code == 200
+    assert r.json()["prtg"]["error"] == 1

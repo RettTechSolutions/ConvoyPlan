@@ -119,6 +119,27 @@ frisch verdichtet.
 
 ---
 
+## Anbindung an ein Monitoring (PRTG)
+
+Für PRTG gibt es einen fertigen Endpunkt: `GET /api/admin/system/prtg` liefert
+dieselben Live-Kennzahlen wie die Übersichtsseite, nur im Kanalformat des
+Sensortyps **HTTP Data Advanced**. Auf der Probe braucht es dadurch weder ein
+Skript noch ein Mapping-Template — Sensor anlegen, URL eintragen, unter *Custom
+HTTP Headers* die Zeile `X-API-Key: cvp_…` mit einem System-API-Key hinterlegen.
+
+Der Sensor bringt Kanäle für CPU, Last, Arbeitsspeicher, Platte, PSI-Druck,
+Container, Datenbank und Portalnutzung mit, dazu Warn- und Fehlergrenzen als
+Startwerte und einen Kanal „Alter der letzten Stichprobe", an dem ein
+stehengebliebener Sampler auffällt. Die vollständige Kanalliste und die
+Einrichtung Schritt für Schritt stehen in der
+[API-Dokumentation](API-Dokumentation#anbindung-an-prtg).
+
+Andere Monitoring-Systeme lesen `/api/admin/system/overview` direkt als JSON.
+Für einen reinen Erreichbarkeitscheck genügt ohne Key `/health` oder
+`/api/status`.
+
+---
+
 ## Container-Zustand (Docker)
 
 Den Zustand der Container holt das Backend über die Docker-Engine-API. Dabei

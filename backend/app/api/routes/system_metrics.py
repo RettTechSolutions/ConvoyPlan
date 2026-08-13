@@ -6,6 +6,10 @@ auch von einem Monitoring-System, einem Skript oder einer Tabellenkalkulation
 abgeholt werden können — Swagger dokumentiert sie unter dem Tag
 ``system-metrics``.
 
+Für PRTG gibt es zusätzlich ``/prtg``: dieselbe Momentaufnahme, aber im
+Kanalformat des Sensortyps „HTTP Data Advanced", damit auf der Probe weder ein
+Skript noch ein Mapping-Template nötig ist.
+
 Die lesenden Endpunkte akzeptieren dafür zwei Zugangswege: einen Superadmin-
 Bearer-Token (Admin-Portal) oder einen System-API-Key per ``X-API-Key``. Ein
 Dauerauftrag wie „alle fünf Minuten die Auslastung ziehen" braucht damit keinen
@@ -16,6 +20,7 @@ Stichprobe verändert den Zustand und bleibt Superadmins vorbehalten.
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -24,7 +29,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db, require_superadmin, require_system_read
 from app.models.user import User
-from app.services import activity, docker_stats, system_metrics, system_report
+from app.services import activity, docker_stats, prtg, system_metrics, system_report
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin/system", tags=["system-metrics"])
 
@@ -93,6 +100,35 @@ async def overview(
     _: User | None = Depends(require_system_read),
 ):
     return await system_metrics.live_snapshot(db)
+
+
+@router.get(
+    "/prtg",
+    summary="Live-Zustand als PRTG-Sensor",
+    description=(
+        "Dieselbe Momentaufnahme wie `/overview`, aber im Kanalformat des "
+        "PRTG-Sensortyps **HTTP Data Advanced** — CPU, Last, Arbeitsspeicher, Platte, "
+        "PSI-Druck, Container, Datenbank und Portalnutzung als einzelne Kanäle inkl. "
+        "voreingestellter Warn- und Fehlergrenzen. In PRTG genügt damit ein Sensor "
+        "ohne Skript und ohne Mapping-Template: diese URL eintragen und unter "
+        "*Custom HTTP Headers* die Zeile `X-API-Key: cvp_…` mit einem System-API-Key "
+        "hinterlegen."
+    ),
+)
+async def prtg_sensor(
+    db: AsyncSession = Depends(get_db),
+    _: User | None = Depends(require_system_read),
+):
+    # Ein Messfehler darf hier keinen HTTP-500 werfen: PRTG zeigt dann nur
+    # „Server Error", während das Fehlerformat des Sensors den Grund im Klartext
+    # an den Sensor schreibt. Authentifizierungsfehler bleiben davon unberührt —
+    # die entstehen in der Abhängigkeit, bevor dieser Rumpf läuft.
+    try:
+        snapshot = await system_metrics.live_snapshot(db)
+    except Exception:
+        logger.exception("PRTG-Sensordaten konnten nicht erhoben werden")
+        return prtg.error_payload("Systemkennzahlen konnten nicht erhoben werden")
+    return prtg.sensor_payload(snapshot)
 
 
 @router.get(
