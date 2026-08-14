@@ -118,7 +118,7 @@ services:
         condition: service_healthy
 
   dockerproxy:
-    image: ${DOCKER_PROXY_IMAGE:-ghcr.io/tecnativa/docker-socket-proxy:0.3.0}
+    image: ${DOCKER_PROXY_IMAGE:-ghcr.io/tecnativa/docker-socket-proxy:0.5.0}
     restart: unless-stopped
     # Liest den Docker-Socket und gibt davon NUR lesende Endpunkte frei, die die
     # Systemübersicht braucht (Container-Zustand, Health, Stats). Der Socket
@@ -240,7 +240,7 @@ services:
       FRONTEND_IMAGE: ${FRONTEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/frontend:latest}
       GRAPHHOPPER_IMAGE: ${GRAPHHOPPER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/graphhopper:latest}
       UPDATER_IMAGE: ${UPDATER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/updater:latest}
-      DOCKER_PROXY_IMAGE: ${DOCKER_PROXY_IMAGE:-ghcr.io/tecnativa/docker-socket-proxy:0.3.0}
+      DOCKER_PROXY_IMAGE: ${DOCKER_PROXY_IMAGE:-ghcr.io/tecnativa/docker-socket-proxy:0.5.0}
       DOCKER_SOCKET_PATH: ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}
       SYSTEM_METRICS_ENABLED: ${SYSTEM_METRICS_ENABLED:-true}
       SYSTEM_METRICS_INTERVAL: ${SYSTEM_METRICS_INTERVAL:-300}
