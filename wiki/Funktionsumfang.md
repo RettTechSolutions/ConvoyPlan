@@ -8,7 +8,7 @@ Vollständige Feature-Übersicht von ConvoyPlan mit Umsetzungsstatus. Eine kompa
 
 | Funktion | Beschreibung | Status |
 |---|---|---:|
-| Karte | Interaktive OSM-Karte mit Planungsansicht | ✅ |
+| Karte | Interaktive OSM-Karte mit Planungsansicht, Deutschland-Fokusmaske und Hell-/Dunkel-Kartendesign | ✅ |
 | Wegpunkte | Start, Ziel, Wegpunkte, Kontrollpunkte und technische Halte | ✅ |
 | Routenberechnung | GraphHopper-Routing über selbst gehosteten Dienst | ✅ |
 | Zeitplan | Automatische Ankunfts- und Abfahrtszeiten | ✅ |
@@ -71,6 +71,10 @@ Vollständige Feature-Übersicht von ConvoyPlan mit Umsetzungsstatus. Eine kompa
 | Lizenzaktivierung | Schlüsseleingabe und Instanz-UUID im Admin-Bereich „System"; Cache-Reset ohne Neustart | ✅ |
 | Backup / Restore | `scripts/backup.sh` und `scripts/restore.sh` für DB-Dump und Volumes inkl. Prüfsummen und Retention | ✅ |
 | Host-Watchdog | systemd-Timer räumt verwaiste Updater-Container auf und startet abgestürzte Updater neu | ✅ |
+| Systemübersicht | Admin-Reiter mit Hardware-, Container-, Platten- und Portalnutzungskennzahlen, live und im Verlauf | ✅ |
+| System-API-Keys | Nicht ablaufende, nur lesende API-Keys für eigenes Monitoring (Admin → API-Keys, Geltungsbereich *System*) | ✅ |
+| PRTG-Anbindung | `GET /api/admin/system/prtg` liefert die Systemkennzahlen im Kanalformat des Sensortyps „HTTP Data Advanced" | ✅ |
+| Öffentliche Statusseite | `/status` ohne Login: grobkörniger Funktionsstatus je Kernbereich, aktualisiert sich automatisch | ✅ |
 
 ---
 

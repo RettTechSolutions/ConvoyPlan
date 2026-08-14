@@ -122,6 +122,7 @@ Die Markdown-Quellen dazu liegen im Ordner [`wiki/`](wiki/). Bei jedem Push auf 
 | [Marschbefehl & Export](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Marschbefehl-Export) | PDF-Marschbefehl sowie GPX-/JSON-Export |
 | [Rollen & Berechtigungen](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Rollen) | Rollenmodell und Zugriffsrechte |
 | [Teilen](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Teilen) | Öffentliche Freigabelinks ohne Login |
+| [Systemübersicht](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Systemuebersicht) | Hardware-, Container- und Nutzungskennzahlen, System-API-Keys, PRTG-Anbindung, öffentliche Statusseite |
 | [Verkehrsdaten](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Verkehrsdaten) | Baustellen/Sperrungen und Live-Verkehrslage einrichten |
 | [Multi-Tenancy](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Multi-Tenancy) | Organisationen, Org-Code-Slug, Datenisolation |
 | [Auto-Updater](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Auto-Updater) | Update-Kanäle, Update-Modi und manueller Trigger |
