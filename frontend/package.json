@@ -39,7 +39,7 @@
 		"@vite-pwa/sveltekit": "^1.1.0",
 		"maplibre-gl": "^6.4.0",
 		"qrcode": "^1.5.4",
-		"svelte-dnd-action": "^0.9.78",
+		"svelte-dnd-action": "^0.9.79",
 		"workbox-window": "^7.4.1"
 	}
 }
