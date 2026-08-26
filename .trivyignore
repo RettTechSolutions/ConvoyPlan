@@ -1,2 +1,246 @@
-IyBUcml2eSBpZ25vcmUgZmlsZSDigJQgZG9jdW1lbnRlZCBzdXBwcmVzc2lvbnMgKElTTyAyNzAwMSBBLjguOCAvIFQxMCkKIwojIFRoZSBjb252b3lwbGFuLXVwZGF0ZXIgaW1hZ2UgaXMgYnVpbHQgRlJPTSBkb2NrZXI6Y2xpIGFuZCBidW5kbGVzIHRoZQojIGRvY2tlci1idWlsZHggYW5kIGRvY2tlci1jb21wb3NlIENMSSBwbHVnaW5zLiBUaGUgdnVsbmVyYWJpbGl0aWVzIGJlbG93IGxpdmUKIyBpbiB0aG9zZSB1cHN0cmVhbS1idW5kbGVkIHBsdWdpbiBiaW5hcmllcyAodmVuZG9yZWQgY29udGFpbmVyZCAvIG1vYnkgLyBHbyksCiMgbm90IGluIG91ciBjb2RlLCBhbmQgY2Fubm90IGJlIHBhdGNoZWQgYnkgdXMgd2l0aG91dCBhIGZpeGVkIHVwc3RyZWFtCiMgZG9ja2VyOmNsaSByZWxlYXNlLiBUaGUgdXBkYXRlciBjb250YWluZXIgb25seSBydW5zIG91ciBvd24gdHJ1c3RlZCB1cGRhdGUKIyBzY3JpcHRzIChnaXQgcHVsbCArIGBkb2NrZXIgY29tcG9zZSBwdWxsL3VwYCk7IGl0IGRvZXMgbm90IHBhcnNlIHVudHJ1c3RlZAojIE1JTUUgaW5wdXQsIGV4cG9zZSB0aGUgbW9ieSBhdXRob3JpemF0aW9uIHBsdWdpbiBBUEksIG9yIHJlbHkgb24KIyBydW5Bc05vblJvb3QgLS0gc28gbm9uZSBvZiB0aGVzZSBhcmUgZXhwbG9pdGFibGUgaGVyZSAoVkVYOiBub3RfYWZmZWN0ZWQpLgojCiMgUmUtZXZhbHVhdGUgb25jZSBhIHBhdGNoZWQgZG9ja2VyOmNsaSBiYXNlIGltYWdlIGlzIGF2YWlsYWJsZSBhbmQgZHJvcCB0aGUKIyBlbnRyaWVzIHRoZSBidW1wIHJlc29sdmVzLiBSZXZpZXcgYnk6IDIwMjYtMDktMTAuCgojIGNvbnRhaW5lcmQgdXNlciBJRCBoYW5kbGluZyBieXBhc3MgYWxsb3dzIHJ1bkFzTm9uUm9vdCBldmFzaW9uLgojIEJ1bmRsZWQgaW4gZG9ja2VyLWJ1aWxkeC9jb21wb3NlOyB0aGUgdXBkYXRlciBkb2VzIG5vdCB1c2UgcnVuQXNOb25Sb290LgojIEZpeGVkIHVwc3RyZWFtIGluIGNvbnRhaW5lcmQgMi4yLjQuCkNWRS0yMDI2LTQ2NjgwCgojIGNvbnRhaW5lcmQgT0NJLXNwZWMgdmlvbGF0aW9ucyBhbGxvd2luZyBjb250YWluZXIgZXNjYXBlcyAvIHByaXZpbGVnZSBieXBhc3MKIyAodGhyZWUgcmVsYXRlZCBidWdzKS4gQnVuZGxlZCBpbiBkb2NrZXItYnVpbGR4IGFuZCBkb2NrZXItY29tcG9zZSBwbHVnaW5zLgojIFRoZSB1cGRhdGVyIHJ1bnMgYGRvY2tlciBjb21wb3NlIHB1bGwvdXBgIGFnYWluc3QgdHJ1c3RlZCwgb3BlcmF0b3ItcHJvdmlkZWQKIyBpbWFnZXMgb25seTsgaXQgZG9lcyBub3QgbWFuYWdlIHVudHJ1c3RlZCB3b3JrbG9hZHMgdGhhdCB0cmlnZ2VyIHRoZXNlIHBhdGhzLgojIEZpeGVkIHVwc3RyZWFtIGluIGNvbnRhaW5lcmQgMi4yLjUuCkNWRS0yMDI2LTUzNDg4CkNWRS0yMDI2LTUzNDg5CkNWRS0yMDI2LTUzNDkyCgojIE1vYnkgYXV0aG9yaXphdGlvbiBieXBhc3MuIEJ1bmRsZWQgZG9ja2VyIGVuZ2luZSBsaWJzOyB0aGUgdXBkYXRlciBpbWFnZQojIHNoaXBzIG9ubHkgdGhlIGRvY2tlciBDTEkgLS0gbm8gZG9ja2VyZCAvIGF1dGh6IHBsdWdpbiBlbmRwb2ludCBpcyBleHBvc2VkLgojIEZpeGVkIHVwc3RyZWFtIGluIGRvY2tlci9tb2J5IDI5LjMuMS4KQ1ZFLTIwMjYtMzQwNDAKCiMgR28gc3RkbGliIE1JTUUgaGVhZGVyIERvUyAobmV0L3RleHRwcm90bykuIFRoZSB1cGRhdGVyIHBhcnNlcyBubyB1bnRydXN0ZWQKIyBNSU1FIGlucHV0LiBGaXhlZCB1cHN0cmVhbSBpbiBHbyAxLjI1LjExIC8gMS4yNi40LgpDVkUtMjAyNi00MjUwNAoKIyBHbyBzdGRsaWIgeDUwOSB3aWxkY2FyZCBob3N0bmFtZSB2ZXJpZmljYXRpb24gYnlwYXNzIChWZXJpZnlIb3N0bmFtZSBhY2NlcHRlZAojIHdpbGRjYXJkcyBmb3Igbm9uLWxlYWYgY2VydGlmaWNhdGVzKS4gQnVuZGxlZCBpbiBkb2NrZXIgQ0xJIEdvIGJpbmFyeS4gTUlUTQojIHJlcXVpcmVzIG5ldHdvcmstbGV2ZWwgaW50ZXJwb3NpdGlvbiBiZXR3ZWVuIHRoZSB1cGRhdGVyIGFuZCBEb2NrZXIgSHViIC8KIyBHaXRIdWI7IHRoZSB1cGRhdGVyIHJ1bnMgaW5zaWRlIHRoZSBvcGVyYXRvcidzIHRydXN0ZWQgRG9ja2VyIG5ldHdvcmsuCiMgRml4ZWQgdXBzdHJlYW0gaW4gR28gMS4yNi40LgpDVkUtMjAyNi0yNzE0NQoKIyBHbyBzdGRsaWIgb3MuUm9vdCBzeW1saW5rLWZvbGxvd2luZyAvIGRpcmVjdG9yeS10cmF2ZXJzYWwgKG9zLlJvb3QgZm9sbG93ZWQKIyBzeW1saW5rcyBpdCBzaG91bGQgaGF2ZSByZWplY3RlZCkuIEJ1bmRsZWQgaW4gdGhlIGRvY2tlciBDTEkgR28gYmluYXJpZXMKIyAoZG9ja2VyIC8gZG9ja2VyLWJ1aWxkeCAvIGRvY2tlci1jb21wb3NlKTsgdGhlIHVwZGF0ZXIgcmVzb2x2ZXMgbm8gdW50cnVzdGVkCiMgc3ltbGlua2VkIHBhdGhzIC0tIGl0IG9ubHkgcnVucyBgZ2l0IHB1bGxgICsgYGRvY2tlciBjb21wb3NlIHB1bGwvdXBgIG9uCiMgb3BlcmF0b3ItdHJ1c3RlZCByZXBvc2l0b3JpZXMgYW5kIGltYWdlcy4gRml4ZWQgdXBzdHJlYW0gaW4gR28gMS4yNS4xMiAvIDEuMjYuNS4KQ1ZFLTIwMjYtMzk4MjIKCiMgZ29sYW5nLm9yZy94L2NyeXB0byBTU0ggc2VydmVyL2NsaWVudCB2dWxuZXJhYmlsaXRpZXMgKGF1dGhlbnRpY2F0ZWQKIyBjbGllbnQgbG9vcHMsIGtleXNjYW4gRG9TLCBzc2gvYWdlbnQga2V5IHJlc3RyaWN0aW9ucyBieXBhc3MsIGV0Yy4pLgojIEJ1bmRsZWQgaW4gZG9ja2VyIENMSSBHbyBiaW5hcmllczsgdGhlIHVwZGF0ZXIgZG9lcyBub3QgYWN0IGFzIG9yIGNvbm5lY3QKIyB0byBhbiBTU0ggc2VydmVyIG9yIFNTSCBhZ2VudCAtLSBHaXQgYWNjZXNzIGdvZXMgb3ZlciBIVFRQUy4KIyBGaXhlZCB1cHN0cmVhbSBpbiBnb2xhbmcub3JnL3gvY3J5cHRvIDAuNTIuMC4KQ1ZFLTIwMjYtMzk4MjcKQ1ZFLTIwMjYtMzk4MjgKQ1ZFLTIwMjYtMzk4MjkKQ1ZFLTIwMjYtMzk4MzAKQ1ZFLTIwMjYtMzk4MzIKQ1ZFLTIwMjYtMzk4MzUKQ1ZFLTIwMjYtNDI1MDgKQ1ZFLTIwMjYtNDY1OTUKQ1ZFLTIwMjYtNDY1OTcKCiMgZ29sYW5nLm9yZy94L25ldCBIVE1MLXBhcnNpbmcgRG9TIC8gcmVkaXJlY3QgYnVncy4gQnVuZGxlZCBpbiBkb2NrZXIgQ0xJCiMgR28gYmluYXJpZXM7IHRoZSB1cGRhdGVyIHNlbmRzIG9ubHkgc3RydWN0dXJlZCBBUEkgcmVxdWVzdHMgdG8gRG9ja2VyCiMgcmVnaXN0cnkgYW5kIEdpdEh1YiAtLSBubyB1bnRydXN0ZWQgSFRNTCBpcyBwYXJzZWQgb3IgcmVuZGVyZWQuCiMgRml4ZWQgdXBzdHJlYW0gaW4gZ29sYW5nLm9yZy94L25ldCAwLjUzLjAtMC41NS4wLgpDVkUtMjAyNi0yNTY4MApDVkUtMjAyNi0yNTY4MQpDVkUtMjAyNi0yNzEzNgpDVkUtMjAyNi0zMzgxNApDVkUtMjAyNi0zOTgyMQpDVkUtMjAyNi00MjUwMgpDVkUtMjAyNi00MjUwNgoKIyBnUlBDLUdvIHhEUyBSQkFDIGFuZCBIVFRQLzIgdnVsbmVyYWJpbGl0aWVzLiBCdW5kbGVkIGluIHRoZSBkb2NrZXItYnVpbGR4IGFuZAojIGRvY2tlci1jb21wb3NlIHBsdWdpbiBHbyBiaW5hcmllczsgdGhlIHVwZGF0ZXIgb25seSBydW5zIGBkb2NrZXIgY29tcG9zZQojIHB1bGwvdXBgIGFnYWluc3Qgb3BlcmF0b3ItdHJ1c3RlZCBpbWFnZXMgYW5kIG5ldmVyIGFjdHMgYXMgYW4geERTLW1hbmFnZWQKIyBnUlBDIHNlcnZlciBvciBhcHBsaWVzIFJCQUMgcG9saWNpZXMgLS0gdGhlIGFmZmVjdGVkIGNvZGUgcGF0aHMgYXJlIHVucmVhY2hhYmxlLgojIEZpeGVkIHVwc3RyZWFtIGluIGdvb2dsZS5nb2xhbmcub3JnL2dycGMgMS44Mi4xLgpHSFNBLWhyeGgtNnY0OS00MmdmCgojIGdvbGFuZy5vcmcveC90ZXh0IG5vcm0uSXRlciBpbmZpbml0ZSBsb29wIG9uIGNyYWZ0ZWQgaW5wdXQgKERvUykuIEJ1bmRsZWQgaW4KIyB0aGUgZG9ja2VyLWJ1aWxkeC9kb2NrZXItY29tcG9zZSBwbHVnaW4gR28gYmluYXJpZXM7IHRoZSB1cGRhdGVyIG9ubHkgcGFzc2VzCiMgb3BlcmF0b3ItdHJ1c3RlZCBpbWFnZSByZWZzIGFuZCBjb21wb3NlIGZpbGVzIHRvIHRoZSBkb2NrZXIgQ0xJIC0tIGl0IGZlZWRzIG5vCiMgdW50cnVzdGVkIHRleHQgdGhyb3VnaCB4L3RleHQgbm9ybWFsaXphdGlvbi4gRml4ZWQgdXBzdHJlYW0gaW4KIyBnb2xhbmcub3JnL3gvdGV4dCAwLjM5LjAuCkNWRS0yMDI2LTU2ODUyCgojIE5ldyBiYXRjaCBwaWNrZWQgdXAgYnkgYSBsYXRlciBkb2NrZXI6Y2xpIHJlYnVpbGQgKDIwMjYtMDgpOiBHbyBzdGRsaWIKIyBEb1MvWFNTIGlzc3VlcyBhbmQgYSBtb2J5L2dvLWFyY2hpdmUgdGFyIHBhdGgtdHJhdmVyc2FsIGJ1ZywgYWxsIGJ1bmRsZWQgaW4KIyB0aGUgc2FtZSBkb2NrZXIvZG9ja2VyLWJ1aWxkeC9kb2NrZXItY29tcG9zZSBHbyBiaW5hcmllcyBhcyBhYm92ZS4gU2FtZSB0cnVzdAojIGJvdW5kYXJ5OiB0aGUgdXBkYXRlciBvbmx5IHJ1bnMgYGdpdCBwdWxsYCArIGBkb2NrZXIgY29tcG9zZSBwdWxsL3VwYCBhZ2FpbnN0CiMgb3BlcmF0b3ItdHJ1c3RlZCByZXBvc2l0b3JpZXMgYW5kIGltYWdlcyAtLSBpdCBleHRyYWN0cyBubyB1bnRydXN0ZWQgdGFyCiMgYXJjaGl2ZXMsIHBhcnNlcyBubyB1bnRydXN0ZWQgQVNOLjEvWE1MLCByZW5kZXJzIG5vIEhUTUwgdGVtcGxhdGVzLCBhbmQKIyByZWFjaGVzIG5vIHVudHJ1c3RlZCBVUkxzLiBUaGUgY3J5cHRvL3RscyBhbmQgZG5zbWVzc2FnZSBEb1MgZW50cmllcyBzaGFyZQojIHRoZSBzYW1lIG5ldHdvcmstaW50ZXJwb3NpdGlvbiBjYXZlYXQgYXMgQ1ZFLTIwMjYtMjcxNDUgYWJvdmUuIE5vIGZpeGVkCiMgZG9ja2VyOmNsaSB0YWcgZXhpc3RzIHlldC4gUmV2aWV3IGJ5OiAyMDI2LTA5LTI1LgoKIyBtb2J5L2dvLWFyY2hpdmU6IGNyYWZ0ZWQgdGFyIGFyY2hpdmUgY2FuIHdyaXRlIG91dHNpZGUgdGhlIGV4dHJhY3Rpb24KIyBkaXJlY3RvcnkuIEJ1bmRsZWQgaW4gZG9ja2VyLWJ1aWxkeDsgdGhlIHVwZGF0ZXIgZXh0cmFjdHMgbm8gdW50cnVzdGVkIHRhcgojIGFyY2hpdmVzLiBGaXhlZCB1cHN0cmVhbSBpbiBtb2J5L2dvLWFyY2hpdmUgMC4zLjAuCkNWRS0yMDI2LTE3MTA2CgojIGVuY29kaW5nL2FzbjE6IGdvbGFuZzogR28gZW5jb2RpbmcvYXNuMTogRGVuaWFsIG9mIFNlcnZpY2UgdmlhIGV4Y2Vzc2l2ZQojIHJlY3Vyc2lvbiBpbiBVbm1hcnNoYWwuIE5vIHVudHJ1c3RlZCBBU04uMSBpbnB1dCBpcyBwYXJzZWQuIEZpeGVkIHVwc3RyZWFtCiMgaW4gR28gMS4yNS4xMyAvIDEuMjYuNiAvIDEuMjcuMC1yYzMuCkNWRS0yMDI2LTMzODE4CgojIGdvbGFuZy5vcmcveC9uZXQvZG5zL2Ruc21lc3NhZ2U6IERlbmlhbCBvZiBTZXJ2aWNlIHZpYSBpbnZhbGlkIEROUyByZWNvcmQKIyBwYXJzaW5nLiBSZXF1aXJlcyBhIG1hbGljaW91cyBETlMgcmVzcG9uc2U7IHNhbWUgbmV0d29yay1pbnRlcnBvc2l0aW9uCiMgY2F2ZWF0IGFzIENWRS0yMDI2LTI3MTQ1LiBGaXhlZCB1cHN0cmVhbSBpbiBHbyAxLjI2LjYgLyAxLjI3LjAtcmMzLgpDVkUtMjAyNi00NjYwMAoKIyBuZXQvaHR0cDogVW5lbmNyeXB0ZWQgSFRUUC8yIGNvbm5lY3Rpb25zIHZ1bG5lcmFibGUgdG8gRGVuaWFsIG9mIFNlcnZpY2UuCiMgVGhlIHVwZGF0ZXIgb25seSBtYWtlcyBvdXRib3VuZCBIVFRQUyBjYWxscyB0byBEb2NrZXIgSHViIC8gR2l0SHViOyBpdCBydW5zCiMgbm8gSFRUUCBzZXJ2ZXIuIEZpeGVkIHVwc3RyZWFtIGluIEdvIDEuMjUuMTMgLyAxLjI2LjYgLyAxLjI3LjAtcmMzLgpDVkUtMjAyNi01Njg1MwoKIyBodG1sL3RlbXBsYXRlOiBDcm9zcy1TaXRlIFNjcmlwdGluZyB2aWEgcGF0aG9sb2dpY2FsIGlucHV0LiBUaGUgdXBkYXRlcgojIHJlbmRlcnMgbm8gSFRNTCB0ZW1wbGF0ZXMuIEZpeGVkIHVwc3RyZWFtIGluIEdvIDEuMjUuMTMgLyAxLjI2LjYgLyAxLjI3LjAtcmMzLgpDVkUtMjAyNi01Njg1OAoKIyBlbmNvZGluZy94bWw6IERlbmlhbCBvZiBTZXJ2aWNlIHZpYSBYTUwgZGVjb2RpbmcgcmVjdXJzaW9uIGRlcHRoIGlzc3VlLiBObwojIHVudHJ1c3RlZCBYTUwgaXMgcGFyc2VkLiBGaXhlZCB1cHN0cmVhbSBpbiBHbyAxLjI1LjEzIC8gMS4yNi42IC8gMS4yNy4wLXJjMy4KQ1ZFLTIwMjYtNTY4NTkKCiMgbmV0L3VybDogRGVuaWFsIG9mIFNlcnZpY2UgZnJvbSBxdWFkcmF0aWMgY29tcGxleGl0eSBpbiBwYXRoIHBhcnNpbmcuIFRoZQojIHVwZGF0ZXIgcGFyc2VzIG9ubHkgaXRzIG93biBjb25maWd1cmVkIFVSTHMsIG5ldmVyIHVudHJ1c3RlZCBpbnB1dC4gRml4ZWQKIyB1cHN0cmVhbSBpbiBHbyAxLjI1LjEzIC8gMS4yNi42IC8gMS4yNy4wLXJjMy4KQ1ZFLTIwMjYtNTY4NjAKCiMgY3J5cHRvL3RsczogRGVuaWFsIG9mIFNlcnZpY2UgdmlhIGluZGVmaW5pdGUgS2V5VXBkYXRlIG1lc3NhZ2VzLiBSZXF1aXJlcyBhCiMgbWFsaWNpb3VzL2NvbXByb21pc2VkIFRMUyBwZWVyOyBzYW1lIG5ldHdvcmstaW50ZXJwb3NpdGlvbiBjYXZlYXQgYXMKIyBDVkUtMjAyNi0yNzE0NSBhYm92ZS4gRml4ZWQgdXBzdHJlYW0gaW4gR28gMS4yNS4xMyAvIDEuMjYuNiAvIDEuMjcuMC1yYzMuCkNWRS0yMDI2LTU2ODYyCgojIOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgAojIGNvbnZveXBsYW4tZ3JhcGhob3BwZXI6IHZ1bG5lcmFiaWxpdGllcyBidW5kbGVkIGluc2lkZSB0aGUgdXBzdHJlYW0KIyBncmFwaGhvcHBlci13ZWIgSkFSIChncmFwaGhvcHBlci9Eb2NrZXJmaWxlLCBHSF9WRVJTSU9OIHBpbikuIFdlIGNhbm5vdCBwYXRjaAojIGluZGl2aWR1YWwgbGlicmFyaWVzIGluc2lkZSB0aGUgdXBzdHJlYW0gZmF0IEpBUjsgZml4aW5nIHRoZW0gcmVxdWlyZXMgYQojIEdyYXBoSG9wcGVyIHJlbGVhc2UgdGhhdCBidW1wcyB0aGVzZSBkZXBlbmRlbmNpZXMgKGV2YWx1YXRlIGEgR0hfVkVSU0lPTgojIHVwZ3JhZGUgLS0gbm90ZSB0aGF0IG1ham9yIGJ1bXBzIGNhbiBjaGFuZ2UgdGhlIGdyYXBoIGZvcm1hdCBhbmQgZm9yY2UgYQojIHJlLWltcG9ydCBvbiBldmVyeSBpbnN0YW5jZSkuCiMKIyBFeHBvc3VyZSBhc3Nlc3NtZW50IChWRVg6IG5vdF9hZmZlY3RlZCk6IHRoZSBHcmFwaEhvcHBlciBjb250YWluZXIgaXMgb25seQojIHJlYWNoYWJsZSBpbnNpZGUgdGhlIERvY2tlciBuZXR3b3JrIGFuZCBvbiAxMjcuMC4wLjEgKGRvY2tlci1jb21wb3NlLnltbCk7CiMgdGhlIHNvbGUgY2xpZW50IGlzIG91ciBiYWNrZW5kIHNlbmRpbmcgd2VsbC1mb3JtZWQgcm91dGluZyByZXF1ZXN0cy4gSXQgbmV2ZXIKIyByZWNlaXZlcyB1bnRydXN0ZWQgZXh0ZXJuYWwgdHJhZmZpYy4gVGhlIHJlbWFpbmluZyBpbnB1dCBpcyB0aGUgT1NNIFBCRgojIGV4dHJhY3QsIGRvd25sb2FkZWQgb3ZlciBIVFRQUyBmcm9tIHRoZSBvcGVyYXRvci1jb25maWd1cmVkIEdlb2ZhYnJpayBVUkwgLS0KIyB3b3JzdCBjYXNlIGZvciB0aGUgcGFyc2VyIENWRXMgYmVsb3cgaXMgYSBEb1Mgb2YgdGhlIG9uZS10aW1lIGdyYXBoIGltcG9ydC4KIyBSZXZpZXcgYnk6IDIwMjYtMDktMTAuCgojIGphY2tzb24tY29yZTogU3RhY2tvdmVyZmxvd0Vycm9yIG9uIGRlZXBseSBuZXN0ZWQgaW5wdXQuIEdyYXBoSG9wcGVyIG9ubHkKIyBwYXJzZXMgaXRzIG93biBjb25maWcgYW5kIG91ciBiYWNrZW5kJ3MgcmVxdWVzdHMuIEZpeGVkIGluIGphY2tzb24gMi4xNS4wLgpDVkUtMjAyNS01Mjk5OQoKIyBwcm90b2J1Zi1qYXZhOiBEb1MgaW4gYmluYXJ5L3RleHRmb3JtYXQgcGFyc2luZy4gVXNlZCBmb3IgT1NNIFBCRiBpbXBvcnQKIyAodHJ1c3RlZCwgb3BlcmF0b3ItY29uZmlndXJlZCBHZW9mYWJyaWsgc291cmNlKTsgd29yc3QgY2FzZSBpbXBvcnQgRG9TLgpDVkUtMjAyMS0yMjU2OQpDVkUtMjAyMi0zNTA5CkNWRS0yMDIyLTM1MTAKQ1ZFLTIwMjQtNzI1NAoKIyBjb21tb25zLWlvIFhtbFN0cmVhbVJlYWRlciBEb1Mgb24gdW50cnVzdGVkIGlucHV0IC0tIG5vIHVudHJ1c3RlZCBYTUwgcmVhY2hlcwojIEdyYXBoSG9wcGVyLiBGaXhlZCBpbiBjb21tb25zLWlvIDIuMTQuMC4KQ1ZFLTIwMjQtNDc1NTQKCiMgSmV0dHkgSFRUUCByZXF1ZXN0IHNtdWdnbGluZyAvIGd6aXAgYnVmZmVyIGNvcnJ1cHRpb24uIEpldHR5IHNlcnZlcyBvbmx5CiMgaW50ZXJuYWwgRG9ja2VyLW5ldHdvcmsgcmVxdWVzdHMgZnJvbSBvdXIgYmFja2VuZCAtLSBubyB1bnRydXN0ZWQgY2xpZW50cywKIyBubyBpbnRlcm1lZGlhcnkgcHJveHkgY2hhaW4gdG8gc211Z2dsZSB0aHJvdWdoLgpDVkUtMjAyNi0yMzMyCkNWRS0yMDI0LTEzMDA5CgojIEpldHR5IERpZ2VzdCBBdXRoZW50aWNhdGlvbiBJU08tODg1OS0xIGxvc3N5LWVuY29kaW5nIGF1dGggYnlwYXNzLiBHcmFwaEhvcHBlcgojIHNoaXBzIG5vIEpldHR5IHNlY3VyaXR5IHJlYWxtIC8gRGlnZXN0IGF1dGggLS0gaXQgc2VydmVzIHVuYXV0aGVudGljYXRlZAojIHJvdXRpbmcgcmVxdWVzdHMgZnJvbSBvdXIgYmFja2VuZCBvbiB0aGUgaW50ZXJuYWwgRG9ja2VyIG5ldHdvcmsgb25seSwgc28gdGhlCiMgYWZmZWN0ZWQgY29kZSBwYXRoIGlzIG5ldmVyIGV4ZXJjaXNlZC4gRml4ZWQgdXBzdHJlYW0gaW4gSmV0dHkgOS40LjYzOwojIHJlcXVpcmVzIGEgR3JhcGhIb3BwZXIgSkFSIHJlbGVhc2UgdGhhdCBidW5kbGVzIHRoZSBwYXRjaGVkIEpldHR5LgpDVkUtMjAyNi0xMDA1MAoKIyBTbmFrZVlBTUwgQ29uc3RydWN0b3IgZGVzZXJpYWxpemF0aW9uIFJDRS4gR3JhcGhIb3BwZXIgcGFyc2VzIG9ubHkgaXRzIG93bgojIGJha2VkLWluIGNvbmZpZy55bWwgKHRydXN0ZWQsIHNoaXBzIGluIG91ciBpbWFnZSkgLS0gbm8gdW50cnVzdGVkIFlBTUwgaW5wdXQuCkNWRS0yMDIyLTE0NzEKCiMgamFja3Nvbi1kYXRhYmluZCBQb2x5bW9ycGhpY1R5cGVWYWxpZGF0b3IgYnlwYXNzZXMgKGdlbmVyaWMgdHlwZSBwYXJhbWV0ZXJzCiMgYW5kIGFycmF5IHN1YnR5cGUgYWxsb3dsaXN0KS4gR3JhcGhIb3BwZXIgdXNlcyBKYWNrc29uIHRvIHBhcnNlIGl0cyBvd24KIyBjb25maWcgYW5kIHJvdXRpbmcgcmVxdWVzdHMgZnJvbSBvdXIgdHJ1c3RlZCBiYWNrZW5kIG9ubHkgLS0gbm8gcG9seW1vcnBoaWMKIyBkZXNlcmlhbGl6YXRpb24gb2YgdW50cnVzdGVkIGV4dGVybmFsIGRhdGEgb2NjdXJzLiBGaXhlZCBpbiBqYWNrc29uLWRhdGFiaW5kCiMgMi4xOC44OyByZXF1aXJlcyBhIEdyYXBoSG9wcGVyIEpBUiByZWxlYXNlIHRoYXQgcHVsbHMgdGhlIHBhdGNoZWQgamFja3Nvbi4KQ1ZFLTIwMjYtNTQ1MTIKQ1ZFLTIwMjYtNTQ1MTMKCiMgamFja3Nvbi1jb3JlIGFzeW5jIHBhcnNlciBtYXhOdW1iZXJMZW5ndGggYnlwYXNzIHZpYSBjaHVua2VkIGRpZ2l0CiMgYWNjdW11bGF0aW9uIChpbmNvbXBsZXRlIGZpeCBmb3IgdGhlIGVhcmxpZXIgbWF4TnVtYmVyTGVuZ3RoIERvUykuIEJ1bmRsZWQgaW4KIyB0aGUgdXBzdHJlYW0gZ3JhcGhob3BwZXIuamFyOyBHcmFwaEhvcHBlciBvbmx5IHBhcnNlcyBpdHMgb3duIGNvbmZpZyBhbmQKIyB3ZWxsLWZvcm1lZCByb3V0aW5nIHJlcXVlc3RzIGZyb20gb3VyIHRydXN0ZWQgYmFja2VuZCBvbiB0aGUgaW50ZXJuYWwgRG9ja2VyCiMgbmV0d29yayAtLSBubyB1bnRydXN0ZWQgSlNPTiByZWFjaGVzIHRoZSBhc3luYyBwYXJzZXIuIEZpeGVkIGluIGphY2tzb24tY29yZQojIDIuMTguODsgcmVxdWlyZXMgYSBHcmFwaEhvcHBlciBKQVIgcmVsZWFzZSB0aGF0IHB1bGxzIHRoZSBwYXRjaGVkIGphY2tzb24uCkdIU0EtcjZ3bS0zY3hqLXdmZjkKCiMg4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSAg
-CiMgY29udm95cGxhbi1mcm9udGVuZDogdnVsbmVyYWJpbGl0eSBpbiB0aGUgdW5kaWNpIHBhY2thZ2UgYnVuZGxlZCBpbnNpZGUKIyBOb2RlLmpzIDI2IChub3QgYW4gbnBtLWluc3RhbGxlZCBkZXBlbmRlbmN5IC0tIFRyaXZ5IHJlYWRzIE5vZGUncyBpbnRlcm5hbAojIHBhY2thZ2UuanNvbiBmb3IgaXRzIGJ1aWx0LWluIGZldGNoIGltcGxlbWVudGF0aW9uKS4gQ2Fubm90IGJlIHBhdGNoZWQgdmlhCiMgbnBtIG92ZXJyaWRlczsgcmVxdWlyZXMgYSBub2RlOjI2LWFscGluZSBpbWFnZSB1cGRhdGUgdGhhdCBzaGlwcyBOb2RlLmpzCiMgd2l0aCB1bmRpY2kgPj02LjI3LjAuIFRoZSBmcm9udGVuZCBjb250YWluZXIgb25seSBjYWxscyBvdXIgb3duIGJhY2tlbmQgQVBJCiMgb24gdGhlIHNhbWUgRG9ja2VyIG5ldHdvcmsgLS0gaXQgZG9lcyBub3QgZmV0Y2ggZnJvbSBhdHRhY2tlci1jb250cm9sbGVkIFVSTHMuCiMgUmUtZXZhbHVhdGUgb25jZSBhIHBhdGNoZWQgbm9kZToyNi1hbHBpbmUgaXMgYXZhaWxhYmxlLiBSZXZpZXcgYnk6IDIwMjYtMDktMTAuCgojIHVuZGljaSBEZW5pYWwtb2YtU2VydmljZSB2aWEgdW5ib3VuZGVkIHJlc3BvbnNlIG1lbW9yeSBhbGxvY2F0aW9uLgojIEZpeGVkIHVwc3RyZWFtIGluIHVuZGljaSA2LjI3LjAgKGJ1bmRsZWQgd2l0aCBhIGZ1dHVyZSBOb2RlLmpzIDI2Lnggcmw2LxZWFzZSkuCkNWRS0yMDI2LTEyMTUxCgojIOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgAojIGNvbnZveXBsYW4tYmFja2VuZDogbXNncGFjayBpcyB2ZW5kb3JlZCAqaW5zaWRlIHBpcCBpdHNlbGYqCiMgKHBpcC9fdmVuZG9yL21zZ3BhY2ssIHNlZSBwaXAncyB2ZW5kb3IudHh0KSBmb3IgcGlwJ3Mgb3duIGludGVybmFsIHdoZWVsCiMgY2FjaGUgLS0gaXQgaXMgbm90IGEgcHJvamVjdCBkZXBlbmRlbmN5IGFuZCBpcyBuZXZlciBpbXBvcnRlZCBieSB0aGUgcnVubmluZwojIEZhc3RBUEkgYXBwLiBBcyBvZiBwaXAgMjYuMi4xICh0aGUgbGF0ZXN0IHJlbGVhc2UgYXQgdGltZSBvZiByZXZpZXcpLCBwaXAKIyBzdGlsbCB2ZW5kb3JzIG1zZ3BhY2s9PTEuMS4yOyBubyBwaXAgcmVsZWFzZSB3aXRoIGEgcGF0Y2hlZCB2ZW5kb3JlZAojIG1zZ3BhY2sgZXhpc3RzIHlldCwgc28gdGhlcmUgaXMgbm90aGluZyB0byBidW1wIG9uIG91ciBzaWRlLiBUaGUgdmVuZG9yZWQKIyBjb3B5IGlzIG9ubHkgZXhlcmNpc2VkIGR1cmluZyBgcGlwIGluc3RhbGxgIGF0IGltYWdlIGJ1aWxkIHRpbWUsIG5vdCBhdAojIGNvbnRhaW5lciBydW50aW1lIC0tIG5vdCBleHBsb2l0YWJsZSBoZXJlIChWRVg6IG5vdF9hZmZlY3RlZCkuCiMgUmUtZXZhbHVhdGUgb25jZSBhIHBpcCByZWxlYXNlIHZlbmRvcnMgYSBwYXRjaGVkIG1zZ3BhY2suIFJldmlldyBieTogMjAyNi0wOS0xMC4KCiMgbXNncGFjazogb3V0LW9mLWJvdW5kcyByZWFkIC8gY3Jhc2ggb24gVW5wYWNrZXIgcmV1c2UgYWZ0ZXIgYW4gZXJyb3IuCiMgRml4ZWQgdXBzdHJlYW0gaW4gbXNncGFjayAxLjIuMSAobm90IHlldCBhZG9wdGVkIGJ5IHBpcCdzIHZlbmRvcmVkIGNvcHkpLgpHSFNBLTZ2N3AtZzc5dy04OTY0CgojIGNvbnZveXBsYW4tYmFja2VuZDogc2V0dXB0b29scyA3MC4zLjAgKENWRS0yMDI1LTQ3MjczIC0tIHBhdGggdHJhdmVyc2FsIGluCiMgUGFja2FnZUluZGV4KSBrZWVwcyBiZWluZyByZXBvcnRlZCBldmVuIGFmdGVyIGJhY2tlbmQvRG9ja2VyZmlsZSBleHBsaWNpdGx5CiMgdXBncmFkZXMgc2V0dXB0b29scyB0byA+PTc4LjEuMSBiZWZvcmUgaW5zdGFsbGluZyByZXF1aXJlbWVudHMgLS0gdGhhdAojIHVwZ3JhZGUgcmVwbGFjZXMgdGhlIGNvcHkgYWN0dWFsbHkgaW1wb3J0YWJsZSBpbiBzaXRlLXBhY2thZ2VzICh2ZXJpZmllZDoKIyBpdCBzaG93cyB1cCBwYXRjaGVkIGFuZCBjbGVhbiBpbiB0aGUgc2NhbiksIHNvIHRoZSByZXNpZHVhbCA3MC4zLjAgZmluZGluZwojIGNvbWVzIGZyb20gYSBzZWNvbmQsIGJ1bmRsZWQgY29weSBiYWtlZCBpbnRvIHRoZSBweXRob246My4xNC1zbGltIGJhc2UKIyBpbWFnZSAoQ1B5dGhvbiBpbWFnZXMgY2FycnkgdGhlaXIgb3duIHNldHVwdG9vbHMgd2hlZWwgZm9yIGVuc3VyZXBpcAojIGJvb3RzdHJhcHBpbmcsIHNlcGFyYXRlIGZyb20gc2l0ZS1wYWNrYWdlcykuIFRoYXQgYXJ0aWZhY3QgaXMgbm90CiMgaW1wb3J0YWJsZSBieSAvIHBhcnQgb2YgdGhpcyBwcm9qZWN0J3MgZGVwZW5kZW5jeSBncmFwaCwgYW5kIGlzIG5ldmVyCiMgZXhlY3V0ZWQgYXQgY29udGFpbmVyIHJ1bnRpbWUgLS0gdGhlIGVudHJ5cG9pbnQgb25seSBydW5zIG1pZ3JhdGlvbnMgKwojIHV2aWNvcm4sIG5ldmVyIHBpcC9lbnN1cmVwaXAsIHNvIFBhY2thZ2VJbmRleCdzIHZ1bG5lcmFibGUgY29kZSBwYXRoIGlzCiMgbmV2ZXIgcmVhY2hlZCAoVkVYOiBub3RfYWZmZWN0ZWQpLiBSZS1ldmFsdWF0ZSBvbmNlIGEgcHl0aG9uOjMuMTQtc2xpbQojIGJhc2UgaW1hZ2Ugc2hpcHMgd2l0aG91dCB0aGUgc3RhbGUgYnVuZGxlZCBjb3B5LiBSZXZpZXcgYnk6IDIwMjYtMDktMTAuCkNWRS0yMDI1LTQ3MjczCg==
+# Trivy ignore file — documented suppressions (ISO 27001 A.8.8 / T10)
+#
+# The convoyplan-updater image is built FROM docker:cli and bundles the
+# docker-buildx and docker-compose CLI plugins. The vulnerabilities below live
+# in those upstream-bundled plugin binaries (vendored containerd / moby / Go),
+# not in our code, and cannot be patched by us without a fixed upstream
+# docker:cli release. The updater container only runs our own trusted update
+# scripts (git pull + `docker compose pull/up`); it does not parse untrusted
+# MIME input, expose the moby authorization plugin API, or rely on
+# runAsNonRoot — so none of these are exploitable here (VEX: not_affected).
+#
+# Re-evaluate once a patched docker:cli base image is available and drop the
+# entries the bump resolves. Review by: 2026-09-10.
+
+# containerd user ID handling bypass allows runAsNonRoot evasion.
+# Bundled in docker-buildx/compose; the updater does not use runAsNonRoot.
+# Fixed upstream in containerd 2.2.4.
+CVE-2026-46680
+
+# containerd OCI-spec violations allowing container escapes / privilege bypass
+# (three related bugs). Bundled in docker-buildx and docker-compose plugins.
+# The updater runs `docker compose pull/up` against trusted, operator-provided
+# images only; it does not manage untrusted workloads that trigger these paths.
+# Fixed upstream in containerd 2.2.5.
+CVE-2026-53488
+CVE-2026-53489
+CVE-2026-53492
+
+# Moby authorization bypass. Bundled docker engine libs; the updater image
+# ships only the docker CLI — no dockerd / authz plugin endpoint is exposed.
+# Fixed upstream in docker/moby 29.3.1.
+CVE-2026-34040
+
+# Go stdlib MIME header DoS (net/textproto). The updater parses no untrusted
+# MIME input. Fixed upstream in Go 1.25.11 / 1.26.4.
+CVE-2026-42504
+
+# Go stdlib x509 wildcard hostname verification bypass (VerifyHostname accepted
+# wildcards for non-leaf certificates). Bundled in docker CLI Go binary. MITM
+# requires network-level interposition between the updater and Docker Hub /
+# GitHub; the updater runs inside the operator's trusted Docker network.
+# Fixed upstream in Go 1.26.4.
+CVE-2026-27145
+
+# Go stdlib os.Root symlink-following / directory-traversal (os.Root followed
+# symlinks it should have rejected). Bundled in the docker CLI Go binaries
+# (docker / docker-buildx / docker-compose); the updater resolves no untrusted
+# symlinked paths — it only runs `git pull` + `docker compose pull/up` on
+# operator-trusted repositories and images. Fixed upstream in Go 1.25.12 / 1.26.5.
+CVE-2026-39822
+
+# golang.org/x/crypto SSH server/client vulnerabilities (authenticated
+# client loops, keyscan DoS, ssh/agent key restrictions bypass, etc.).
+# Bundled in docker CLI Go binaries; the updater does not act as or connect
+# to an SSH server or SSH agent — Git access goes over HTTPS.
+# Fixed upstream in golang.org/x/crypto 0.52.0.
+CVE-2026-39827
+CVE-2026-39828
+CVE-2026-39829
+CVE-2026-39830
+CVE-2026-39832
+CVE-2026-39835
+CVE-2026-42508
+CVE-2026-46595
+CVE-2026-46597
+
+# golang.org/x/net HTML-parsing DoS / redirect bugs. Bundled in docker CLI
+# Go binaries; the updater sends only structured API requests to Docker
+# registry and GitHub — no untrusted HTML is parsed or rendered.
+# Fixed upstream in golang.org/x/net 0.53.0–0.55.0.
+CVE-2026-25680
+CVE-2026-25681
+CVE-2026-27136
+CVE-2026-33814
+CVE-2026-39821
+CVE-2026-42502
+CVE-2026-42506
+
+# gRPC-Go xDS RBAC and HTTP/2 vulnerabilities. Bundled in the docker-buildx and
+# docker-compose plugin Go binaries; the updater only runs `docker compose
+# pull/up` against operator-trusted images and never acts as an xDS-managed
+# gRPC server or applies RBAC policies — the affected code paths are unreachable.
+# Fixed upstream in google.golang.org/grpc 1.82.1.
+GHSA-hrxh-6v49-42gf
+
+# golang.org/x/text norm.Iter infinite loop on crafted input (DoS). Bundled in
+# the docker-buildx/docker-compose plugin Go binaries; the updater only passes
+# operator-trusted image refs and compose files to the docker CLI — it feeds no
+# untrusted text through x/text normalization. Fixed upstream in
+# golang.org/x/text 0.39.0.
+CVE-2026-56852
+
+# New batch picked up by a later docker:cli rebuild (2026-08): Go stdlib
+# DoS/XSS issues and a moby/go-archive tar path-traversal bug, all bundled in
+# the same docker/docker-buildx/docker-compose Go binaries as above. Same trust
+# boundary: the updater only runs `git pull` + `docker compose pull/up` against
+# operator-trusted repositories and images — it extracts no untrusted tar
+# archives, parses no untrusted ASN.1/XML, renders no HTML templates, and
+# reaches no untrusted URLs. The crypto/tls and dnsmessage DoS entries share
+# the same network-interposition caveat as CVE-2026-27145 above. No fixed
+# docker:cli tag exists yet. Review by: 2026-09-25.
+
+# moby/go-archive: crafted tar archive can write outside the extraction
+# directory. Bundled in docker-buildx; the updater extracts no untrusted tar
+# archives. Fixed upstream in moby/go-archive 0.3.0.
+CVE-2026-17106
+
+# encoding/asn1: golang: Go encoding/asn1: Denial of Service via excessive
+# recursion in Unmarshal. No untrusted ASN.1 input is parsed. Fixed upstream
+# in Go 1.25.13 / 1.26.6 / 1.27.0-rc3.
+CVE-2026-33818
+
+# golang.org/x/net/dns/dnsmessage: Denial of Service via invalid DNS record
+# parsing. Requires a malicious DNS response; same network-interposition
+# caveat as CVE-2026-27145. Fixed upstream in Go 1.26.6 / 1.27.0-rc3.
+CVE-2026-46600
+
+# net/http: Unencrypted HTTP/2 connections vulnerable to Denial of Service.
+# The updater only makes outbound HTTPS calls to Docker Hub / GitHub; it runs
+# no HTTP server. Fixed upstream in Go 1.25.13 / 1.26.6 / 1.27.0-rc3.
+CVE-2026-56853
+
+# html/template: Cross-Site Scripting via pathological input. The updater
+# renders no HTML templates. Fixed upstream in Go 1.25.13 / 1.26.6 / 1.27.0-rc3.
+CVE-2026-56858
+
+# encoding/xml: Denial of Service via XML decoding recursion depth issue. No
+# untrusted XML is parsed. Fixed upstream in Go 1.25.13 / 1.26.6 / 1.27.0-rc3.
+CVE-2026-56859
+
+# net/url: Denial of Service from quadratic complexity in path parsing. The
+# updater parses only its own configured URLs, never untrusted input. Fixed
+# upstream in Go 1.25.13 / 1.26.6 / 1.27.0-rc3.
+CVE-2026-56860
+
+# crypto/tls: Denial of Service via indefinite KeyUpdate messages. Requires a
+# malicious/compromised TLS peer; same network-interposition caveat as
+# CVE-2026-27145 above. Fixed upstream in Go 1.25.13 / 1.26.6 / 1.27.0-rc3.
+CVE-2026-56862
+
+# ─────────────────────────────────────────────────────────────────────────────
+# convoyplan-graphhopper: vulnerabilities bundled inside the upstream
+# graphhopper-web JAR (graphhopper/Dockerfile, GH_VERSION pin). We cannot patch
+# individual libraries inside the upstream fat JAR; fixing them requires a
+# GraphHopper release that bumps these dependencies (evaluate a GH_VERSION
+# upgrade — note that major bumps can change the graph format and force a
+# re-import on every instance).
+#
+# Exposure assessment (VEX: not_affected): the GraphHopper container is only
+# reachable inside the Docker network and on 127.0.0.1 (docker-compose.yml);
+# the sole client is our backend sending well-formed routing requests. It never
+# receives untrusted external traffic. The remaining input is the OSM PBF
+# extract, downloaded over HTTPS from the operator-configured Geofabrik URL —
+# worst case for the parser CVEs below is a DoS of the one-time graph import.
+# Review by: 2026-09-10.
+
+# jackson-core: StackoverflowError on deeply nested input. GraphHopper only
+# parses its own config and our backend's requests. Fixed in jackson 2.15.0.
+CVE-2025-52999
+
+# protobuf-java: DoS in binary/textformat parsing. Used for OSM PBF import
+# (trusted, operator-configured Geofabrik source); worst case import DoS.
+CVE-2021-22569
+CVE-2022-3509
+CVE-2022-3510
+CVE-2024-7254
+
+# commons-io XmlStreamReader DoS on untrusted input — no untrusted XML reaches
+# GraphHopper. Fixed in commons-io 2.14.0.
+CVE-2024-47554
+
+# Jetty HTTP request smuggling / gzip buffer corruption. Jetty serves only
+# internal Docker-network requests from our backend — no untrusted clients,
+# no intermediary proxy chain to smuggle through.
+CVE-2026-2332
+CVE-2024-13009
+
+# Jetty Digest Authentication ISO-8859-1 lossy-encoding auth bypass. GraphHopper
+# ships no Jetty security realm / Digest auth — it serves unauthenticated
+# routing requests from our backend on the internal Docker network only, so the
+# affected code path is never exercised. Fixed upstream in Jetty 9.4.63;
+# requires a GraphHopper JAR release that bundles the patched Jetty.
+CVE-2026-10050
+
+# SnakeYAML Constructor deserialization RCE. GraphHopper parses only its own
+# baked-in config.yml (trusted, ships in our image) — no untrusted YAML input.
+CVE-2022-1471
+
+# jackson-databind PolymorphicTypeValidator bypasses (generic type parameters
+# and array subtype allowlist). GraphHopper uses Jackson to parse its own
+# config and routing requests from our trusted backend only — no polymorphic
+# deserialization of untrusted external data occurs. Fixed in jackson-databind
+# 2.18.8; requires a GraphHopper JAR release that pulls the patched jackson.
+CVE-2026-54512
+CVE-2026-54513
+
+# jackson-core async parser maxNumberLength bypass via chunked digit
+# accumulation (incomplete fix for the earlier maxNumberLength DoS). Bundled in
+# the upstream graphhopper.jar; GraphHopper only parses its own config and
+# well-formed routing requests from our trusted backend on the internal Docker
+# network — no untrusted JSON reaches the async parser. Fixed in jackson-core
+# 2.18.8; requires a GraphHopper JAR release that pulls the patched jackson.
+GHSA-r7wm-3cxj-wff9
+
+# ─────────────────────────────────────────────────────────────────────────────
+# convoyplan-frontend: vulnerability in the undici package bundled inside
+# Node.js 26 (not an npm-installed dependency — Trivy reads Node's internal
+# package.json for its built-in fetch implementation). Cannot be patched via
+# npm overrides; requires a node:26-alpine image update that ships Node.js
+# with undici >=6.27.0. The frontend container only calls our own backend API
+# on the same Docker network — it does not fetch from attacker-controlled URLs.
+# Re-evaluate once a patched node:26-alpine is available. Review by: 2026-09-10.
+
+# undici Denial-of-Service via unbounded response memory allocation.
+# Fixed upstream in undici 6.27.0 (bundled with a future Node.js 26.x release).
+CVE-2026-12151
+
+# ─────────────────────────────────────────────────────────────────────────────
+# convoyplan-backend: msgpack is vendored *inside pip itself*
+# (pip/_vendor/msgpack, see pip's vendor.txt) for pip's own internal wheel
+# cache — it is not a project dependency and is never imported by the running
+# FastAPI app. As of pip 26.2.1 (the latest release at time of review), pip
+# still vendors msgpack==1.1.2; no pip release with a patched vendored
+# msgpack exists yet, so there is nothing to bump on our side. The vendored
+# copy is only exercised during `pip install` at image build time, not at
+# container runtime — not exploitable here (VEX: not_affected).
+# Re-evaluate once a pip release vendors a patched msgpack. Review by: 2026-09-10.
+
+# msgpack: out-of-bounds read / crash on Unpacker reuse after an error.
+# Fixed upstream in msgpack 1.2.1 (not yet adopted by pip's vendored copy).
+GHSA-6v7p-g79w-8964
+
+# convoyplan-backend: setuptools 70.3.0 (CVE-2025-47273 — path traversal in
+# PackageIndex) keeps being reported even after backend/Dockerfile explicitly
+# upgrades setuptools to >=78.1.1 before installing requirements — that
+# upgrade replaces the copy actually importable in site-packages (verified:
+# it shows up patched and clean in the scan), so the residual 70.3.0 finding
+# comes from a second, bundled copy baked into the python:3.14-slim base
+# image (CPython images carry their own setuptools wheel for ensurepip
+# bootstrapping, separate from site-packages). That artifact is not
+# importable by / part of this project's dependency graph, and is never
+# executed at container runtime — the entrypoint only runs migrations +
+# uvicorn, never pip/ensurepip, so PackageIndex's vulnerable code path is
+# never reached (VEX: not_affected). Re-evaluate once a python:3.14-slim
+# base image ships without the stale bundled copy. Review by: 2026-09-10.
+CVE-2025-47273
