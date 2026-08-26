@@ -138,6 +138,16 @@ CVE-2026-56860
 # CVE-2026-27145 above. Fixed upstream in Go 1.25.13 / 1.26.6 / 1.27.0-rc3.
 CVE-2026-56862
 
+# golang.org/x/mod GOSUMDB/transparency-log verification bypass (a malicious
+# GOSUMDB could serve arbitrary module content / bypass tile verification).
+# Bundled in docker-buildx and docker-compose; the updater never runs `go
+# build`/`go mod download` — it only executes the pre-built plugin binaries —
+# so the GOSUMDB-verification code path is never exercised. Picked up by the
+# same 2026-08 docker:cli rebuild as the batch above. Fixed upstream in
+# golang.org/x/mod 0.40.0.
+CVE-2026-56864
+CVE-2026-56865
+
 # ─────────────────────────────────────────────────────────────────────────────
 # convoyplan-graphhopper: vulnerabilities bundled inside the upstream
 # graphhopper-web JAR (graphhopper/Dockerfile, GH_VERSION pin). We cannot patch
