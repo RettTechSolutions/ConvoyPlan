@@ -92,7 +92,7 @@ Retention-Container → periodischer Daten-Purge
 ### Live, Lage und Export
 - Live-Tracking per WebSocket mit Fahrzeugstatus, Projektion auf die Route und Wegpunkt-/Kanalwechsel-Meldungen
 - Wetter via Open-Meteo (kein API-Key erforderlich)
-- Sperrungen und Baustellen aus mehreren Quellen: Overpass, Autobahn-API (bund.dev), offene Feeds (MobiData BW, Berlin VIZ) und optional DATEX-II/mobilithek (bundesweit, auch mTLS-geschützt) – entlang der gesamten Route; fällt eine Quelle aus, liefern die anderen weiter
+- Sperrungen und Baustellen aus mehreren Quellen: Overpass (DACH-weit), Autobahn-API (bund.dev), offene Feeds (MobiData BW, Berlin VIZ) und optional DATEX-II/mobilithek (weitere Bundesländer, auch mTLS-geschützt) – entlang der gesamten Route; fällt eine Quelle aus, liefern die anderen weiter. ASFINAG (AT) und opentransportdata.swiss (CH) lassen sich als DATEX-II-Feeds ergänzen
 - Live-Verkehrslage (Stau) optional über HERE oder TomTom, sobald ein API-Key hinterlegt ist
 - Leitstellen (global und org-eigen) und automatische Kanalwechselpunkte entlang der Route
 - Export als PDF (Marschbefehl), GPX und JSON; Import von GPX/GeoJSON-Routen

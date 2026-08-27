@@ -4,7 +4,7 @@
     import { onMount, onDestroy } from 'svelte';
     import { get } from 'svelte/store';
     import { themeStore } from '$lib/stores/theme';
-    import { addGermanyMask, applyMapTheme } from '$lib/map/germany';
+    import { addRegionMask, applyMapTheme } from '$lib/map/region';
 
     interface Props {
         geojson?: GeoJSON.FeatureCollection | null;
@@ -51,13 +51,13 @@
                 sources: { osm: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, attribution: '© OpenStreetMap' } },
                 layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
             },
-            center: [10.5, 51.0],
+            center: [11.5, 50.7],
             zoom: 5,
         });
         map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
         map.on('load', () => {
-            // Deutschland-Fokus + Hell/Dunkel-Abstimmung (siehe $lib/map/germany)
-            addGermanyMask(map!, get(themeStore));
+            // Regionsfokus + Hell/Dunkel-Abstimmung (siehe $lib/map/region)
+            addRegionMask(map!, get(themeStore));
             applyMapTheme(map!, get(themeStore));
             map!.addSource('ls', { type: 'geojson', data: geojson ?? EMPTY });
             map!.addLayer({ id: 'ls-fill', type: 'fill', source: 'ls', paint: { 'fill-color': ['match', ['get', 'status'], 'global', '#2563eb', '#e74c3c'], 'fill-opacity': 0.18 } });

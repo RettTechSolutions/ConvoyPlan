@@ -62,10 +62,14 @@ def _out_of_bounds_message(point_index: int | None, total_points: int) -> str:
         label = f"Wegpunkt {point_index} liegt"
     else:
         label = "Mindestens ein Punkt liegt"
+    # Bewusst ohne feste Ländernennung: welche Region abgedeckt ist, entscheidet
+    # das installierte OSM-Extract (Standard DACH, per OSM_DOWNLOAD_URL aber auch
+    # ein einzelnes Bundesland). Die Meldung bleibt so in jeder Installation wahr.
     return (
-        f"{label} außerhalb des abgedeckten Kartenbereichs. "
-        "Die Routenberechnung ist aktuell auf Deutschland beschränkt — "
-        "bitte Start, Ziel und alle Wegpunkte innerhalb Deutschlands wählen."
+        f"{label} außerhalb des abgedeckten Kartenbereichs. Die Routenberechnung "
+        "ist auf die installierten Kartendaten begrenzt (standardmäßig "
+        "Deutschland, Österreich, Schweiz und Liechtenstein) — bitte Start, Ziel "
+        "und alle Wegpunkte innerhalb dieses Gebiets wählen."
     )
 
 
@@ -434,7 +438,7 @@ async def calculate_route(
             road_preference=convoy.road_preference,
         )
     except routing_svc.RoutingOutOfBoundsError as exc:
-        # Punkt außerhalb der geladenen Kartendaten (aktuell nur Deutschland).
+        # Punkt außerhalb der geladenen Kartendaten (Standard: DACH).
         logger.warning("Routing point out of bounds for convoy %s: %s", convoy_id, exc)
         raise HTTPException(status_code=422, detail=_out_of_bounds_message(exc.point_index, len(points)))
     except ValueError as exc:

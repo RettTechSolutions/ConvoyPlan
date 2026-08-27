@@ -34,7 +34,8 @@
 	// Desktop/tablet: collapse the sidebar to a thin rail to free the map (landscape).
 	let sidebarCollapsed = $state(false);
 	let geoWatcher: number | null = null;
-	let mapCenter = $state<[number, number]>([10.0, 51.5]);
+	// [lat, lon] — wird von onMapMove gesetzt.
+	let mapCenter = $state<[number, number]>([50.7, 11.5]);
 	let error = $state('');
 	let mapView = $state<ReturnType<typeof MapView>>();
 	// When true, the map stays locked/centered on my vehicle as it moves.

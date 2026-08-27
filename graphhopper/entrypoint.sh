@@ -3,14 +3,15 @@ set -e
 
 OSM_DIR="/data/osm"
 GRAPH_DIR="/data/graph"
-OSM_FILENAME="${OSM_FILENAME:-germany-latest.osm.pbf}"
+OSM_FILENAME="${OSM_FILENAME:-dach-latest.osm.pbf}"
 OSM_FILE="$OSM_DIR/$OSM_FILENAME"
-DOWNLOAD_URL="${OSM_DOWNLOAD_URL:-https://download.geofabrik.de/europe/germany-latest.osm.pbf}"
-JAVA_OPTS="${JAVA_OPTS:--Xmx2g -Xms512m -XX:+UseG1GC}"
+DOWNLOAD_URL="${OSM_DOWNLOAD_URL:-https://download.geofabrik.de/europe/dach-latest.osm.pbf}"
+JAVA_OPTS="${JAVA_OPTS:--Xmx8g -Xms1g -XX:+UseG1GC}"
 
 mkdir -p "$OSM_DIR" "$GRAPH_DIR"
 
 # â”€â”€ OSM-Daten holen (nur beim ersten Start) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+DOWNLOADED=0
 if [ ! -f "$OSM_FILE" ]; then
     echo "================================================================"
     echo "  OSM-Kartendaten fehlen â€“ Download wird gestartet"
@@ -38,6 +39,7 @@ if [ ! -f "$OSM_FILE" ]; then
         echo "FEHLER: Download nach $RETRIES Versuchen fehlgeschlagen. URL prüfen: $DOWNLOAD_URL"
         exit 1
     fi
+    DOWNLOADED=1
 else
     echo "OSM-Daten vorhanden: $OSM_FILE"
 fi
@@ -50,20 +52,44 @@ fi
 # ab und calculate-route schlägt fehl.
 ENCODED_VALUES="car_access, car_average_speed, road_class, max_speed, max_height"
 
-# Encoded Values sind Teil des kompilierten Graphen. Ändern sie sich, muss der
-# Graph aus der OSM-Datei neu gebaut werden, sonst startet GraphHopper nicht
-# bzw. lehnt Anfragen ab. Fingerprint-Datei im Graph-Verzeichnis vergleichen.
-FINGERPRINT_FILE="$GRAPH_DIR/.encoded_values"
-if [ -n "$(ls -A "$GRAPH_DIR" 2>/dev/null | grep -v '^\.encoded_values$')" ]; then
-    if [ "$(cat "$FINGERPRINT_FILE" 2>/dev/null)" != "$ENCODED_VALUES" ]; then
+# Der kompilierte Graph gehört zu genau EINER OSM-Datei und EINEM Satz Encoded
+# Values. Ändert sich eines von beidem, muss er neu gebaut werden: bei den
+# Encoded Values, weil GraphHopper sonst nicht startet bzw. Anfragen ablehnt —
+# bei der OSM-Datei, weil GraphHopper einen vorhandenen Graphen kommentarlos
+# weiterverwendet und nach einem Regionswechsel sonst still weiter die alte
+# Region routen würde. Beides steckt deshalb im Fingerprint.
+FINGERPRINT="$OSM_FILENAME|$ENCODED_VALUES"
+FINGERPRINT_FILE="$GRAPH_DIR/.graph_fingerprint"
+LEGACY_FINGERPRINT_FILE="$GRAPH_DIR/.encoded_values"
+
+PREV_FINGERPRINT="$(cat "$FINGERPRINT_FILE" 2>/dev/null || true)"
+if [ -z "$PREV_FINGERPRINT" ] && [ -f "$LEGACY_FINGERPRINT_FILE" ]; then
+    # Bestand von vor der DACH-Umstellung: dort standen nur die Encoded Values
+    # in der Datei, die Region war nicht vermerkt. Der Altbestand darf als
+    # passend gelten — ein echter Regionswechsel wird unten über $DOWNLOADED
+    # erkannt, sonst würde ein reines Update den Graphen ohne Not neu bauen.
+    PREV_FINGERPRINT="$OSM_FILENAME|$(cat "$LEGACY_FINGERPRINT_FILE")"
+fi
+
+if [ -n "$(ls -A "$GRAPH_DIR" 2>/dev/null | grep -vE '^\.(graph_fingerprint|encoded_values)$')" ]; then
+    REBUILD_REASON=""
+    if [ "$PREV_FINGERPRINT" != "$FINGERPRINT" ]; then
+        REBUILD_REASON="Kartenregion oder Encoded Values haben sich geändert"
+    elif [ "$DOWNLOADED" -eq 1 ]; then
+        # Frisch geladene OSM-Datei neben einem bereits vorhandenen Graphen:
+        # der Graph stammt aus anderen Daten und passt nicht mehr dazu.
+        REBUILD_REASON="Neue OSM-Daten geladen"
+    fi
+    if [ -n "$REBUILD_REASON" ]; then
         echo "================================================================"
-        echo "  Encoded Values haben sich geändert – Routing-Graph wird"
+        echo "  $REBUILD_REASON – Routing-Graph wird"
         echo "  aus den OSM-Daten neu gebaut (kann mehrere Minuten dauern)."
         echo "================================================================"
-        rm -rf "$GRAPH_DIR"/* "$FINGERPRINT_FILE"
+        rm -rf "$GRAPH_DIR"/* "$FINGERPRINT_FILE" "$LEGACY_FINGERPRINT_FILE"
     fi
 fi
-printf '%s' "$ENCODED_VALUES" > "$FINGERPRINT_FILE"
+printf '%s' "$FINGERPRINT" > "$FINGERPRINT_FILE"
+rm -f "$LEGACY_FINGERPRINT_FILE"
 
 CONFIG_FILE="/tmp/graphhopper-config.yml"
 cat > "$CONFIG_FILE" << CONF

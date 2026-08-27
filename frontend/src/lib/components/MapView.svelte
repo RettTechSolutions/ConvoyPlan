@@ -5,7 +5,7 @@
 	import { get } from 'svelte/store';
 	import { mapMode } from '$lib/stores/map';
 	import { themeStore } from '$lib/stores/theme';
-	import { addGermanyMask, applyMapTheme } from '$lib/map/germany';
+	import { addRegionMask, applyMapTheme } from '$lib/map/region';
 	import type { Waypoint, VehiclePosition } from '$lib/api';
 	import type { Geometry, FeatureCollection } from 'geojson';
 
@@ -108,8 +108,8 @@
 					{ id: 'osm', type: 'raster', source: 'osm' },
 				],
 			},
-			center: [10.0, 51.5],
-			zoom: 6,
+			center: [11.5, 50.7],
+			zoom: 5.7,
 			attributionControl: false,
 		});
 
@@ -145,10 +145,10 @@
 		});
 
 		map.on('load', () => {
-			// Deutschland-Fokus: alles außerhalb der Bundesgrenze wird abgedunkelt,
-			// weil die Routenberechnung nur in Deutschland möglich ist. Zuerst
+			// Regionsfokus: alles außerhalb der abgedeckten Region (DACH) wird
+			// abgedunkelt, weil die Routenberechnung nur dort möglich ist. Zuerst
 			// hinzugefügt, damit Route, Sperrungen und Marker darüber liegen.
-			addGermanyMask(map, get(themeStore));
+			addRegionMask(map, get(themeStore));
 			applyMapTheme(map, get(themeStore));
 
 			// Live-Verkehrslage (Flow) — zuunterst, damit Route und Sperrungen

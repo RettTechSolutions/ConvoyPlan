@@ -30,7 +30,7 @@ cd ConvoyPlan
 docker compose up -d --build
 ```
 
-Beim ersten Start lädt GraphHopper die konfigurierte OSM-PBF-Datei herunter und baut den Routing-Graphen. Der Standard ist Deutschland (~4 GB). Für lokale Tests empfiehlt sich eine kleinere Region:
+Beim ersten Start lädt GraphHopper die konfigurierte OSM-PBF-Datei herunter und baut den Routing-Graphen. Der Standard ist **DACH** (Deutschland, Österreich, Schweiz, Liechtenstein; ~5,5 GB). Für lokale Tests empfiehlt sich eine kleinere Region:
 
 ```yaml
 # docker-compose.yml
@@ -133,11 +133,19 @@ openssl rand -hex 32
 
 | Variable | Standard | Beschreibung |
 |---|---|---|
-| `OSM_DOWNLOAD_URL` | `https://download.geofabrik.de/europe/germany-latest.osm.pbf` | Download-URL der OSM-PBF-Datei |
-| `OSM_FILENAME` | `germany-latest.osm.pbf` | Dateiname im persistenten OSM-Volume |
-| `JAVA_OPTS` | `-Xmx2g -Xms512m -XX:+UseG1GC` | JVM-Speicherkonfiguration |
+| `OSM_DOWNLOAD_URL` | `https://download.geofabrik.de/europe/dach-latest.osm.pbf` | Download-URL der OSM-PBF-Datei |
+| `OSM_FILENAME` | `dach-latest.osm.pbf` | Dateiname im persistenten OSM-Volume |
+| `JAVA_OPTS` | `-Xmx8g -Xms1g -XX:+UseG1GC` | JVM-Speicherkonfiguration |
 
-> Für große Regionen (Deutschland ~4 GB) mindestens `-Xmx4g` empfohlen.
+> Richtwerte: DACH `-Xmx8g`, Deutschland `-Xmx6g`, Bayern `-Xmx3g`, Berlin `-Xmx1g`.
+
+> **Regionswechsel:** Der Routing-Graph gehört zu genau einer OSM-Datei. Ändern
+> sich `OSM_DOWNLOAD_URL`/`OSM_FILENAME`, erkennt der GraphHopper-Container das
+> und baut den Graphen beim nächsten Start automatisch neu — das dauert je nach
+> Region erneut bis zu zwei Stunden. Der Umriss auf der Karte kommt dagegen aus
+> `frontend/static/geo/dach.geojson` und passt sich **nicht** automatisch an;
+> wer dauerhaft eine andere Region fährt, tauscht diese Datei mit (siehe
+> `frontend/static/geo/README.md`).
 
 ### Sicherheit und Datenschutz
 
@@ -251,7 +259,7 @@ Der Setup-Wizard übernimmt die Erstkonfiguration nach dem ersten Stack-Start.
 - [ ] Datenbankpasswort ändern
 - [ ] `CORS_ORIGINS` auf die produktive Domain einschränken
 - [ ] Persistente Volumes (`postgres_data`, `caddy_data`, `cert_uploads`, `logo_uploads`) regelmäßig sichern
-- [ ] Für Deutschland genug RAM einplanen (`JAVA_OPTS=-Xmx4g`)
+- [ ] Für DACH genug RAM einplanen (`JAVA_OPTS=-Xmx8g`; nur Deutschland: `-Xmx6g`)
 - [ ] GraphHopper-Graph-Cache (`gh_graph`) auf schnellem Speicher ablegen
 - [ ] `GITHUB_TOKEN` setzen, damit der Auto-Updater Commit-Stände abrufen kann
 - [ ] Lizenzschlüssel setzen (Env oder Admin → System); sonst läuft die Instanz dauerhaft im Demo-Modus

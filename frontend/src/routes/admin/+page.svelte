@@ -2404,7 +2404,7 @@
             <p class="hint" style="margin-bottom:.6rem">
                 Optional. Ohne Key ist die Verkehrslage aus; sobald ein Key hinterlegt ist,
                 lässt sich die Echtzeit-Verkehrslage (grün→rot) entlang der Route einblenden –
-                bundesweit. Kostenlose Kontingente:
+                im gesamten DACH-Raum. Kostenlose Kontingente:
                 <a href="https://platform.here.com/" target="_blank" rel="noopener" style="color:var(--color-primary)">HERE</a>
                 (250k Anfragen/Monat) oder
                 <a href="https://developer.tomtom.com/" target="_blank" rel="noopener" style="color:var(--color-primary)">TomTom</a>.

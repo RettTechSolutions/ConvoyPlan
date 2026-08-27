@@ -98,8 +98,10 @@ def test_out_of_bounds_message_start_end_waypoint():
     assert _out_of_bounds_message(2, 4).startswith("Wegpunkt 2 liegt")
     # Unbekannter Index → generische Formulierung
     assert _out_of_bounds_message(None, 4).startswith("Mindestens ein Punkt liegt")
-    # Alle Varianten erwähnen die Deutschland-Beschränkung
-    assert "Deutschland" in _out_of_bounds_message(0, 4)
+    # Alle Varianten benennen das abgedeckte Gebiet (DACH)
+    msg = _out_of_bounds_message(0, 4)
+    for country in ("Deutschland", "Österreich", "Schweiz", "Liechtenstein"):
+        assert country in msg
 
 
 async def _post_route(monkeypatch, status_code, message):

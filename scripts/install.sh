@@ -267,10 +267,11 @@ fi
 
 echo ""
 echo "OSM-Region wählen:"
-echo "  1) Deutschland (~4 GB)"
-echo "  2) Bayern      (~1 GB)"
-echo "  3) Berlin      (~30 MB, für Tests)"
-echo "  4) Eigene URL eingeben"
+echo "  1) DACH: DE+AT+CH+LI (~5,5 GB)"
+echo "  2) Deutschland       (~4 GB)"
+echo "  3) Bayern            (~1 GB)"
+echo "  4) Berlin            (~30 MB, für Tests)"
+echo "  5) Eigene URL eingeben"
 if [[ -n "$PREV_OSM_FILE" ]]; then
   read -rp "Auswahl [Enter = beibehalten: $PREV_OSM_FILE]: " OSM_CHOICE </dev/tty
 else
@@ -284,16 +285,19 @@ if [[ -z "$OSM_CHOICE" && -n "$PREV_OSM_FILE" ]]; then
 else
   OSM_CHOICE="${OSM_CHOICE:-1}"
   case "$OSM_CHOICE" in
-    1) OSM_URL="https://download.geofabrik.de/europe/germany-latest.osm.pbf"
+    1) OSM_URL="https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+       OSM_FILE="dach-latest.osm.pbf"
+       JAVA_OPTS="-Xmx8g -Xms1g -XX:+UseG1GC" ;;
+    2) OSM_URL="https://download.geofabrik.de/europe/germany-latest.osm.pbf"
        OSM_FILE="germany-latest.osm.pbf"
        JAVA_OPTS="-Xmx6g -Xms1g -XX:+UseG1GC" ;;
-    2) OSM_URL="https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf"
+    3) OSM_URL="https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf"
        OSM_FILE="bayern-latest.osm.pbf"
        JAVA_OPTS="-Xmx3g -Xms512m -XX:+UseG1GC" ;;
-    3) OSM_URL="https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf"
+    4) OSM_URL="https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf"
        OSM_FILE="berlin-latest.osm.pbf"
        JAVA_OPTS="-Xmx1g -Xms256m -XX:+UseG1GC" ;;
-    4) prompt "OSM-Download-URL" "" OSM_URL
+    5) prompt "OSM-Download-URL" "" OSM_URL
        OSM_FILE="$(basename "$OSM_URL")"
        JAVA_OPTS="-Xmx4g -Xms1g -XX:+UseG1GC" ;;
     *) echo "FEHLER: Ungültige Auswahl '$OSM_CHOICE'."; exit 1 ;;
@@ -368,7 +372,10 @@ _install_watchdog "$INSTALL_DIR"
 
 echo ""
 # GraphHopper-Hinweis je nach Region (max. 54 ASCII-Zeichen für saubere Box)
-if [[ "$OSM_FILE" == *"germany-latest"* ]]; then
+if [[ "$OSM_FILE" == *"dach-latest"* ]]; then
+  GH_HINT1="! Routing-Graph DACH: ca. 60-120 Min. Ladezeit"
+  GH_HINT2="  Voraussetzung: mind. 8 GB RAM verfuegbar"
+elif [[ "$OSM_FILE" == *"germany-latest"* ]]; then
   GH_HINT1="! Routing-Graph DE: ca. 45-90 Min. Ladezeit"
   GH_HINT2="  Voraussetzung: mind. 6 GB RAM verfuegbar"
 elif [[ "$OSM_FILE" == *"bayern"* ]]; then

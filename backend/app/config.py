@@ -129,6 +129,15 @@ class Settings(BaseSettings):
         "mobidata_bw|https://api.mobidata-bw.de/datasets/traffic/roadworks/roadworks_geojson.json,"
         "berlin_viz|https://api.viz.berlin.de/daten/baustellen_sperrungen_viz.json"
     )
+    # Zugangsdaten für Feeds, die einen API-Key/Token im HTTP-Header erwarten —
+    # etwa ASFINAG (AT) oder opentransportdata.swiss (CH). Bewusst getrennt von
+    # opendata_traffic_feeds, damit die Feed-Liste keine Geheimnisse enthält und
+    # unverändert weitergegeben werden kann.
+    # Ein Eintrag ist "host|Header-Name:Wert", mehrere kommasepariert:
+    #   api.opentransportdata.swiss|Authorization:Bearer eyJ...
+    # Der Header wird nur an Anfragen an genau diesen Host gehängt. Header-Werte
+    # dürfen deshalb kein Komma enthalten.
+    opendata_traffic_api_keys: str = ""
     # Client-Zertifikat (PEM mit Zertifikat + privatem Schlüssel) für DATEX-II-
     # Feeds, die per mTLS geschützt sind — insbesondere der mobilithek-Broker.
     # Pfad zur PEM-Datei; nur nötig für zugangsbeschränkte "datex2"-Feeds.
