@@ -102,6 +102,7 @@ Retention-Container → periodischer Daten-Purge
 - Admin-Bereich für Benutzer-, Leitstellen-, Branding- und Verkehrsdaten-Verwaltung
 - Multi-Tenancy mit Org-Code-Slug und org-spezifischem Branding
 - Auto-Updater (Kanäle Stable/Beta/Nightly, Modi automatisch/benachrichtigen)
+- Systemübersicht mit Hardware-, Container- und Nutzungskennzahlen, System-API-Keys, PRTG-Anbindung und öffentlicher Statusseite (`/status`)
 - Lizenzmodell mit Demo-Modus; MFA/TOTP, SMTP-Dienst
 - Security-Härtung, Audit-Log, DSGVO-Werkzeuge, Backup/Restore und Datenaufbewahrung
 - CI-Pipeline für Tests, Typecheck und Docker-Build
@@ -137,6 +138,7 @@ Retention-Container → periodischer Daten-Purge
 
 | Seite | Inhalt |
 |---|---|
+| [Systemübersicht](Systemuebersicht) | Hardware-, Container- und Nutzungskennzahlen, System-API-Keys, PRTG-Anbindung, öffentliche Statusseite |
 | [Verkehrsdaten](Verkehrsdaten) | Baustellen/Sperrungen und Live-Verkehrslage einrichten (HERE/TomTom, mobilithek) |
 | [Multi-Tenancy](Multi-Tenancy) | Organisationen, Org-Code-Slug, Datenisolation |
 | [Auto-Updater](Auto-Updater) | Update-Kanäle, Update-Modi und manueller Trigger |
