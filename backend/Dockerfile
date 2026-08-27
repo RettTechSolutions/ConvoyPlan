@@ -9,10 +9,11 @@ RUN apt-get update && apt-get upgrade -y \
 
 COPY requirements.txt .
 # Upgrade the base image's baked-in setuptools (70.3.0, CVE-2025-47273 —
-# path traversal in PackageIndex) to a patched release. This is the copy
-# actually importable/usable by anything in the image. See .trivyignore for
-# why the scan still flags a residual finding after this.
-RUN pip install --no-cache-dir --upgrade "setuptools>=78.1.1" \
+# path traversal in PackageIndex; also closes CVE-2026-59890, an sdist
+# MANIFEST.in exclusion bypass fixed in 83.0.0) to a patched release. This
+# is the copy actually importable/usable by anything in the image. See
+# .trivyignore for why the scan still flags a residual finding after this.
+RUN pip install --no-cache-dir --upgrade "setuptools>=83.0.0" \
     && pip install --no-cache-dir -r requirements.txt
 
 COPY . .
