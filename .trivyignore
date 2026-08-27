@@ -90,6 +90,64 @@ GHSA-hrxh-6v49-42gf
 # golang.org/x/text 0.39.0.
 CVE-2026-56852
 
+# New batch picked up by a later docker:cli rebuild (2026-08): Go stdlib
+# DoS/XSS issues and a moby/go-archive tar path-traversal bug, all bundled in
+# the same docker/docker-buildx/docker-compose Go binaries as above. Same trust
+# boundary: the updater only runs `git pull` + `docker compose pull/up` against
+# operator-trusted repositories and images — it extracts no untrusted tar
+# archives, parses no untrusted ASN.1/XML, renders no HTML templates, and
+# reaches no untrusted URLs. The crypto/tls and dnsmessage DoS entries share
+# the same network-interposition caveat as CVE-2026-27145 above. No fixed
+# docker:cli tag exists yet. Review by: 2026-09-25.
+
+# moby/go-archive: crafted tar archive can write outside the extraction
+# directory. Bundled in docker-buildx; the updater extracts no untrusted tar
+# archives. Fixed upstream in moby/go-archive 0.3.0.
+CVE-2026-17106
+
+# encoding/asn1: golang: Go encoding/asn1: Denial of Service via excessive
+# recursion in Unmarshal. No untrusted ASN.1 input is parsed. Fixed upstream
+# in Go 1.25.13 / 1.26.6 / 1.27.0-rc3.
+CVE-2026-33818
+
+# golang.org/x/net/dns/dnsmessage: Denial of Service via invalid DNS record
+# parsing. Requires a malicious DNS response; same network-interposition
+# caveat as CVE-2026-27145. Fixed upstream in Go 1.26.6 / 1.27.0-rc3.
+CVE-2026-46600
+
+# net/http: Unencrypted HTTP/2 connections vulnerable to Denial of Service.
+# The updater only makes outbound HTTPS calls to Docker Hub / GitHub; it runs
+# no HTTP server. Fixed upstream in Go 1.25.13 / 1.26.6 / 1.27.0-rc3.
+CVE-2026-56853
+
+# html/template: Cross-Site Scripting via pathological input. The updater
+# renders no HTML templates. Fixed upstream in Go 1.25.13 / 1.26.6 / 1.27.0-rc3.
+CVE-2026-56858
+
+# encoding/xml: Denial of Service via XML decoding recursion depth issue. No
+# untrusted XML is parsed. Fixed upstream in Go 1.25.13 / 1.26.6 / 1.27.0-rc3.
+CVE-2026-56859
+
+# net/url: Denial of Service from quadratic complexity in path parsing. The
+# updater parses only its own configured URLs, never untrusted input. Fixed
+# upstream in Go 1.25.13 / 1.26.6 / 1.27.0-rc3.
+CVE-2026-56860
+
+# crypto/tls: Denial of Service via indefinite KeyUpdate messages. Requires a
+# malicious/compromised TLS peer; same network-interposition caveat as
+# CVE-2026-27145 above. Fixed upstream in Go 1.25.13 / 1.26.6 / 1.27.0-rc3.
+CVE-2026-56862
+
+# golang.org/x/mod GOSUMDB/transparency-log verification bypass (a malicious
+# GOSUMDB could serve arbitrary module content / bypass tile verification).
+# Bundled in docker-buildx and docker-compose; the updater never runs `go
+# build`/`go mod download` — it only executes the pre-built plugin binaries —
+# so the GOSUMDB-verification code path is never exercised. Picked up by the
+# same 2026-08 docker:cli rebuild as the batch above. Fixed upstream in
+# golang.org/x/mod 0.40.0.
+CVE-2026-56864
+CVE-2026-56865
+
 # ─────────────────────────────────────────────────────────────────────────────
 # convoyplan-graphhopper: vulnerabilities bundled inside the upstream
 # graphhopper-web JAR (graphhopper/Dockerfile, GH_VERSION pin). We cannot patch

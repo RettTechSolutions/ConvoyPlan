@@ -6,8 +6,8 @@ fastapi==0.141.1
 # and CVE-2026-54283 (urlencoded form limits not enforced — DoS).
 starlette==1.6.0
 defusedxml==0.7.1
-uvicorn[standard]==0.52.1
-sqlalchemy[asyncio]==2.0.51
+uvicorn[standard]==0.52.4
+sqlalchemy[asyncio]==2.0.52
 # asyncpg 0.31.0 is the first release with cp314 wheels (needed for the
 # python:3.14-slim base image; 0.29.0 has no 3.14 wheel and fails to build).
 asyncpg==0.31.0
@@ -17,7 +17,12 @@ pydantic[email]==2.13.4
 # PyJWT replaces python-jose (CVE-2024-33663, CVE-2024-33664 — algorithm confusion / sig bypass).
 PyJWT==2.13.0
 pydantic-settings==2.15.0
-cryptography==50.0.0
+# cryptography 50.0.1 rebuilds wheels against OpenSSL 4.0.2, which fixes
+# several CVEs bundled in the statically-linked OpenSSL (CVE-2026-63072,
+# CVE-2026-63076, CVE-2026-14456, CVE-2026-14457, CVE-2026-54874,
+# CVE-2026-54876, CVE-2026-18798, CVE-2026-63074, CVE-2026-63075,
+# CVE-2026-75803).
+cryptography==50.0.1
 shapely==2.1.2
 python-multipart==0.0.32
 bcrypt==5.0.0
