@@ -1,14 +1,19 @@
 /**
- * Deutschland-Fokus für alle Karten.
+ * Regionsfokus für alle Karten — aktuell DACH (DE, AT, CH, LI).
  *
- * ConvoyPlan berechnet Routen ausschließlich innerhalb Deutschlands (der
- * GraphHopper-Graph enthält nur das deutsche Straßennetz). Damit das auf der
- * Karte sofort sichtbar ist, legen wir eine halbtransparente Maske über alles
- * außerhalb der Bundesgrenze und zeichnen die Grenze selbst als dünne Linie.
+ * ConvoyPlan berechnet Routen nur innerhalb der Region, die im
+ * GraphHopper-Graph steckt. Damit das auf der Karte sofort sichtbar ist, legen
+ * wir eine halbtransparente Maske über alles außerhalb und zeichnen die
+ * Außengrenze selbst als dünne Linie.
  *
- * Die Maske ist ein einziges Polygon, das die ganze Welt abdeckt und
- * Deutschland als Loch (inner ring) ausspart — dadurch braucht es keinen
- * Verschnitt zur Laufzeit und keine zusätzliche Geometrie-Bibliothek.
+ * Die Maske ist ein einziges Polygon, das die ganze Welt abdeckt und die
+ * Region als Loch (inner ring) ausspart — dadurch braucht es keinen Verschnitt
+ * zur Laufzeit und keine zusätzliche Geometrie-Bibliothek.
+ *
+ * Der Umriss ist bewusst datengetrieben: wer GraphHopper auf eine andere
+ * Region stellt, tauscht `static/geo/dach.geojson` und muss hier nichts
+ * anfassen. Die Geometrie ist dabei reine Anzeige — verbindlich ist allein,
+ * welche Daten GraphHopper geladen hat.
  *
  * Farben und die Helligkeit der Rasterkacheln richten sich nach dem Hell-/
  * Dunkel-Design der App (`themeStore`), damit die Karte nicht als heller Block
@@ -17,20 +22,20 @@
 import type { Feature, FeatureCollection, MultiPolygon, Position } from 'geojson';
 import type * as maplibregl from './maplibre';
 
-export const GERMANY_URL = '/geo/deutschland.geojson';
-export const GERMANY_ATTRIBUTION = '© GeoBasis-DE / BKG (dl-de/by-2-0)';
+export const REGION_URL = '/geo/dach.geojson';
+export const REGION_ATTRIBUTION = '© GeoBasis-DE / BKG (dl-de/by-2-0) · Natural Earth';
 
-const MASK_SOURCE = 'de-mask';
-const BORDER_SOURCE = 'de-border';
-export const MASK_FILL_LAYER = 'de-mask-fill';
-export const BORDER_LINE_LAYER = 'de-border-line';
+const MASK_SOURCE = 'region-mask';
+const BORDER_SOURCE = 'region-border';
+export const MASK_FILL_LAYER = 'region-mask-fill';
+export const BORDER_LINE_LAYER = 'region-border-line';
 
 export type MapTheme = 'dark' | 'light';
 
 /**
  * Maskenfarbe je Design. Dunkel wird abgedunkelt, hell entsättigt-vergraut —
- * in beiden Fällen bleibt das Ausland erkennbar (Orientierung an Nachbarstädten),
- * tritt aber deutlich hinter Deutschland zurück.
+ * in beiden Fällen bleibt das Umland erkennbar (Orientierung an Nachbarstädten),
+ * tritt aber deutlich hinter der Region zurück.
  */
 const MASK_STYLE: Record<MapTheme, { fill: string; fillOpacity: number; border: string; borderOpacity: number }> = {
 	dark:  { fill: '#03070c', fillOpacity: 0.68, border: '#7fa8c9', borderOpacity: 0.9 },
@@ -54,7 +59,7 @@ const RASTER_STYLE: Record<MapTheme, RasterStyle> = {
 	light: { brightnessMax: 1, saturation: 0, contrast: 0 },
 };
 
-/** Weltring (im Uhrzeigersinn), aus dem Deutschland ausgestanzt wird. */
+/** Weltring (im Uhrzeigersinn), aus dem die Region ausgestanzt wird. */
 const WORLD_RING: Position[] = [
 	[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85],
 ];
@@ -64,13 +69,13 @@ const EMPTY: FeatureCollection = { type: 'FeatureCollection', features: [] };
 let _outline: Feature<MultiPolygon> | null = null;
 let _pending: Promise<Feature<MultiPolygon>> | null = null;
 
-/** Lädt die Bundesgrenze einmalig und cacht sie für die Lebensdauer der Seite. */
-export function loadGermanyOutline(): Promise<Feature<MultiPolygon>> {
+/** Lädt den Regionsumriss einmalig und cacht ihn für die Lebensdauer der Seite. */
+export function loadRegionOutline(): Promise<Feature<MultiPolygon>> {
 	if (_outline) return Promise.resolve(_outline);
 	if (_pending) return _pending;
-	_pending = fetch(GERMANY_URL)
+	_pending = fetch(REGION_URL)
 		.then((res) => {
-			if (!res.ok) throw new Error('Bundesgrenze konnte nicht geladen werden');
+			if (!res.ok) throw new Error('Regionsgrenze konnte nicht geladen werden');
 			return res.json() as Promise<Feature<MultiPolygon>>;
 		})
 		.then((f) => {
@@ -82,12 +87,13 @@ export function loadGermanyOutline(): Promise<Feature<MultiPolygon>> {
 }
 
 /**
- * Baut aus der Bundesgrenze das Gegenstück: Welt minus Deutschland.
+ * Baut aus der Regionsgrenze das Gegenstück: Welt minus Region.
  *
- * Jeder äußere Ring Deutschlands (Festland + Inseln) wird zum Loch im
- * Weltpolygon. Löcher der Bundesgrenze selbst — z. B. die österreichische
- * Enklave Jungholz — sind kein deutsches Gebiet und werden deshalb als eigene
- * Polygone wieder maskiert.
+ * Jeder äußere Ring der Region (Festland + Inseln) wird zum Loch im
+ * Weltpolygon. Löcher im Umriss selbst — fremdstaatliche Enklaven wie Campione
+ * d'Italia — gehören nicht zur Region und werden deshalb als eigene Polygone
+ * wieder maskiert. Der aktuelle DACH-Umriss enthält keine solchen Löcher; der
+ * Zweig bleibt, damit ein anderer Umriss ohne Codeänderung funktioniert.
  */
 export function buildMask(outline: Feature<MultiPolygon>): FeatureCollection {
 	const holes: Position[][] = [];
@@ -111,7 +117,7 @@ export function buildMask(outline: Feature<MultiPolygon>): FeatureCollection {
  *
  * Schlägt das Laden fehl, bleibt die Karte ohne Maske voll nutzbar.
  */
-export function addGermanyMask(map: maplibregl.Map, theme: MapTheme): void {
+export function addRegionMask(map: maplibregl.Map, theme: MapTheme): void {
 	const style = MASK_STYLE[theme];
 	map.addSource(MASK_SOURCE, { type: 'geojson', data: EMPTY });
 	map.addLayer({
@@ -120,7 +126,14 @@ export function addGermanyMask(map: maplibregl.Map, theme: MapTheme): void {
 		source: MASK_SOURCE,
 		paint: { 'fill-color': style.fill, 'fill-opacity': style.fillOpacity },
 	});
-	map.addSource(BORDER_SOURCE, { type: 'geojson', data: EMPTY });
+	// Namensnennung an die Quelle hängen: MapLibres AttributionControl sammelt
+	// sie automatisch ein, sodass die dl-de/by-2-0-Auflage der BKG-Daten neben
+	// der OSM-Nennung erscheint — ohne eigenes UI.
+	map.addSource(BORDER_SOURCE, {
+		type: 'geojson',
+		data: EMPTY,
+		attribution: REGION_ATTRIBUTION,
+	});
 	map.addLayer({
 		id: BORDER_LINE_LAYER,
 		type: 'line',
@@ -133,7 +146,7 @@ export function addGermanyMask(map: maplibregl.Map, theme: MapTheme): void {
 		},
 	});
 
-	loadGermanyOutline()
+	loadRegionOutline()
 		.then((outline) => {
 			// Die Karte kann zwischenzeitlich zerstört worden sein (Seitenwechsel).
 			const mask = map.getSource(MASK_SOURCE) as maplibregl.GeoJSONSource | undefined;

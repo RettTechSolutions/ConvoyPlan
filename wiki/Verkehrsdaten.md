@@ -8,17 +8,26 @@ Fällt eine Quelle aus, liefern die anderen weiter.
 Diese Anleitung zeigt, was **out of the box** läuft und wie du die optionalen
 Quellen (Live-Stau, bundesweite Baustellen) aktivierst.
 
+> **Abdeckung:** Die Routenplanung läuft im gesamten DACH-Raum. Die amtlichen
+> Baustellen-/Sperrungsfeeds unten sind dagegen **deutsche** Quellen — auf
+> österreichischen und Schweizer Streckenteilen liefern derzeit nur Overpass
+> (OpenStreetMap) und die Live-Verkehrslage von HERE/TomTom Daten. Feeds für
+> AT (ASFINAG) und CH (opentransportdata.swiss) sprechen DATEX II und lassen
+> sich, sobald sie eingerichtet sind, über `OPENDATA_TRAFFIC_FEEDS` ergänzen
+> (siehe Abschnitt 3).
+
 ---
 
 ## 📊 Überblick — welche Quelle liefert was
 
 | Quelle | Abdeckung | Kosten | Setup nötig? |
 |---|---|---|---|
-| **Autobahn-API** (bund.dev) | bundesweit, alle Autobahnen | frei | nein — läuft |
+| **Overpass** (OpenStreetMap) | DACH-weit | frei | nein — läuft |
+| **Autobahn-API** (bund.dev) | Deutschland, alle Bundesautobahnen | frei | nein — läuft |
 | **MobiData BW** | Baden-Württemberg (bis Kreisstraße) | frei | nein — läuft |
 | **Berlin VIZ** | Berlin | frei | nein — läuft |
 | **mobilithek (DATEX II)** | weitere Bundesländer (Bundes-/Landesstraßen) | frei | ✅ Abschnitt 3 |
-| **HERE / TomTom** | Live-Verkehrslage (Stau), bundesweit | eigener API-Key (Freikontingent) | ✅ Abschnitt 2 |
+| **HERE / TomTom** | Live-Verkehrslage (Stau), DACH-weit | eigener API-Key (Freikontingent) | ✅ Abschnitt 2 |
 
 > **Farbcodierung auf der Karte:** 🟠 Baustelle · 🔴 Sperrung · 🟡 Warnung/Hindernis ·
 > Live-Verkehrslage grün→gelb→rot nach Staufaktor.

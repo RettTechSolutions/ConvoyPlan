@@ -43,29 +43,76 @@ npx mapshaper kreise.geojson \
 Anschließend die Property-Arrays zu Skalaren geflacht und das `attribution`-Feld
 ergänzt. Ergebnis: ~0,7 MB, wird im Auswahl-Dialog erst bei Bedarf nachgeladen.
 
-## `deutschland.geojson`
+## `dach.geojson`
 
-Umriss der Bundesrepublik (Außengrenze inkl. Inseln und der österreichischen
-Enklave Jungholz als Loch). Genutzt für den **Deutschland-Fokus** der Karten:
-Alles außerhalb der Grenze wird abgedunkelt bzw. ausgegraut, weil die
-Routenberechnung nur innerhalb Deutschlands möglich ist (GraphHopper-Graph =
-nur deutsches Straßennetz). Die Maske selbst (Welt minus Deutschland) wird zur
-Laufzeit aus dieser Datei gebaut — siehe `src/lib/map/germany.ts`.
+Umriss des abgedeckten Routing-Gebiets: Deutschland, Österreich, Schweiz und
+Liechtenstein als **eine** zusammenhängende Fläche. Genutzt für den
+**Regionsfokus** der Karten: Alles außerhalb wird abgedunkelt bzw. ausgegraut,
+weil die Routenberechnung nur innerhalb der geladenen OSM-Daten möglich ist
+(GraphHopper-Standard = Geofabrik-Extract `europe/dach`). Die Maske selbst
+(Welt minus Region) wird zur Laufzeit aus dieser Datei gebaut — siehe
+`src/lib/map/region.ts`.
 
-- **Quelle / Lizenz / Namensnennung:** identisch zu `landkreise.geojson`
-  (BKG VG2500, dl-de/by-2-0) — die Datei ist daraus abgeleitet.
+Die Datei ist reine **Anzeige**. Verbindlich ist allein, welches OSM-Extract
+GraphHopper geladen hat: Wer über `OSM_DOWNLOAD_URL` eine andere Region fährt,
+sollte diese Datei passend austauschen — sonst zeigt die Karte ein Gebiet als
+routingfähig an, das GraphHopper gar nicht kennt (oder umgekehrt).
+
+- **Quellen:**
+  - Deutschland: BKG VG2500 — aus `landkreise.geojson` verschmolzen, also
+    identisch zur Landkreis-Ebene. Deshalb passen Kreisgrenzen und Außengrenze
+    im Leitstellen-Dialog exakt aufeinander.
+  - Österreich, Schweiz, Liechtenstein:
+    [Natural Earth](https://www.naturalearthdata.com/) 1:10m
+    (`ne_10m_admin_0_countries`), Public Domain.
+- **Namensnennung:** `© GeoBasis-DE / BKG (dl-de/by-2-0) · Natural Earth` —
+  steht als `attribution`-Feld in der GeoJSON und wird über die GeoJSON-Quelle
+  an MapLibres AttributionControl gemeldet (siehe `src/lib/map/region.ts`).
 
 ### Aufbereitung / Regenerierung
 
-Aus `landkreise.geojson` verschmolzen (keine weitere Vereinfachung, damit die
-Grenzlinie auch bei hohem Zoom sauber bleibt); anschließend als einzelnes
-`Feature` mit `name`/`attribution` gespeichert:
+Zwei Quellen, ein Umriss — deshalb reicht kein simples `-dissolve`:
+
+1. Deutschland aus `landkreise.geojson` verschmelzen (keine weitere
+   Vereinfachung, damit die Grenzlinie auch bei hohem Zoom sauber bleibt).
+   `-filter-slivers` gehört hier dazu: es räumt den Verschnitt zwischen den
+   Kreisgrenzen weg. **Auf das fertige DACH-Mosaik darf es nicht angewendet
+   werden** — dort läge der Schwellwert bei 3,4 km² und würde echte Inseln
+   (Helgoland, Hiddensee) verschlucken.
+2. AT/CH/LI aus Natural Earth herausfiltern.
+3. Beides in *eine* FeatureCollection legen und mit `-clean gap-width=3km`
+   zusammenführen. Die beiden Quellen ziehen die gemeinsame Grenze um bis zu
+   ~2 km unterschiedlich; ohne diesen Schritt bleiben dunkle Nahtstreifen quer
+   durch das Alpenvorland stehen.
+4. Innenringe verwerfen. Übrig bleibt nach Schritt 3 nur der Bodensee (die
+   Quellen enden dort unterschiedlich); innerhalb von DACH gibt es keine echten
+   Enklaven mehr — Jungholz und Büsingen sind jetzt Binnenland.
 
 ```sh
+# 1) Deutschland
 npx mapshaper landkreise.geojson \
   -dissolve2 \
   -filter-slivers \
-  -o precision=0.0001 format=geojson deutschland.geojson
+  -o precision=0.0001 format=geojson de.geojson
+
+# 2) AT/CH/LI
+curl -sSLo ne10m.geojson \
+  "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_countries.geojson"
+npx mapshaper ne10m.geojson \
+  -filter '["AT","CH","LI"].indexOf(ISO_A2) > -1' \
+  -o precision=0.0001 format=geojson atchli.geojson
+
+# 3) + 4) zusammenführen, Naht schließen, Innenringe verwerfen
+npx mapshaper -i combine-files de.geojson atchli.geojson \
+  -merge-layers force \
+  -clean gap-width=3km close-outer-gaps \
+  -dissolve \
+  -o precision=0.0001 format=geojson dach.geojson
 ```
 
-Ergebnis: ~52 kB, wird beim Kartenstart einmalig geladen.
+Anschließend als einzelnes `Feature` mit `name`/`attribution` speichern.
+Ergebnis: ~62 kB, wird beim Kartenstart einmalig geladen.
+
+Kontrolle nach der Regenerierung: Die Bounding-Box muss ungefähr
+`lon 5,87…17,15 / lat 45,82…55,06` sein, es dürfen keine Innenringe übrig
+bleiben, und der Bodensee darf kein Loch sein.

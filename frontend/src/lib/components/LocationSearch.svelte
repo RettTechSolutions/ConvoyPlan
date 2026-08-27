@@ -3,7 +3,8 @@
 	// Geocoding über den Backend-Proxy /api/geocode/search: nutzt HERE Geocoding
 	// & Search, wenn ein API-Key hinterlegt ist (der Key bleibt serverseitig),
 	// sonst automatisch Photon (komoot). Beide sind auf Tipp-während-Suchen
-	// (Autocomplete) ausgelegt und liefern für deutsche Teil-Adressen gute Treffer.
+	// (Autocomplete) ausgelegt und liefern für Teil-Adressen aus dem abgedeckten
+	// Gebiet (DACH) gute Treffer — der Bias dorthin sitzt im Backend.
 	import { getBaseUrl, getToken } from '$lib/api/client';
 	import type { GeocodeResponse } from '$lib/api';
 

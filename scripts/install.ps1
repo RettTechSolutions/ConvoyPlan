@@ -162,26 +162,30 @@ if ((Test-Path $EnvFile)) {
 
 Write-Host ''
 Write-Host 'OSM-Region waehlen:'
-Write-Host '  1) Deutschland (~4 GB)'
-Write-Host '  2) Bayern      (~1 GB)'
-Write-Host '  3) Berlin      (~30 MB, fuer Tests)'
-Write-Host '  4) Eigene URL eingeben'
+Write-Host '  1) DACH: DE+AT+CH+LI (~5,5 GB)'
+Write-Host '  2) Deutschland       (~4 GB)'
+Write-Host '  3) Bayern            (~1 GB)'
+Write-Host '  4) Berlin            (~30 MB, fuer Tests)'
+Write-Host '  5) Eigene URL eingeben'
 $OsmChoice = Read-Host 'Auswahl [1]'
 if (-not $OsmChoice) { $OsmChoice = '1' }
 
 # JAVA_OPTS scale with the region's PBF size — must match install.sh, otherwise
-# the Germany default OOMs on a 2 GB heap during the graph import.
+# the DACH default OOMs on a 2 GB heap during the graph import.
 switch ($OsmChoice) {
-    '1' { $OsmUrl  = 'https://download.geofabrik.de/europe/germany-latest.osm.pbf'
+    '1' { $OsmUrl  = 'https://download.geofabrik.de/europe/dach-latest.osm.pbf'
+          $OsmFile = 'dach-latest.osm.pbf'
+          $JavaOpts = '-Xmx8g -Xms1g -XX:+UseG1GC' }
+    '2' { $OsmUrl  = 'https://download.geofabrik.de/europe/germany-latest.osm.pbf'
           $OsmFile = 'germany-latest.osm.pbf'
           $JavaOpts = '-Xmx6g -Xms1g -XX:+UseG1GC' }
-    '2' { $OsmUrl  = 'https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf'
+    '3' { $OsmUrl  = 'https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf'
           $OsmFile = 'bayern-latest.osm.pbf'
           $JavaOpts = '-Xmx3g -Xms512m -XX:+UseG1GC' }
-    '3' { $OsmUrl  = 'https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf'
+    '4' { $OsmUrl  = 'https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf'
           $OsmFile = 'berlin-latest.osm.pbf'
           $JavaOpts = '-Xmx1g -Xms256m -XX:+UseG1GC' }
-    '4' { $OsmUrl  = Read-Input 'OSM-Download-URL'
+    '5' { $OsmUrl  = Read-Input 'OSM-Download-URL'
           $OsmFile = [IO.Path]::GetFileName($OsmUrl)
           $JavaOpts = '-Xmx4g -Xms1g -XX:+UseG1GC' }
     default { Write-Host "FEHLER: Ungueltige Auswahl '$OsmChoice'." -ForegroundColor Red; exit 1 }

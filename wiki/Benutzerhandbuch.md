@@ -177,7 +177,7 @@ GeoJSON-Lagedaten können als zusätzliche Kartenebenen hochgeladen werden (z. B
 ### Sperrungen und Baustellen
 
 1. In der Kartenansicht das **Sperrungen-Layer** aktivieren.
-2. Aktuelle Sperrungen und Baustellen entlang der gesamten Route werden angezeigt – zusammengeführt aus OpenStreetMap/Overpass, der offiziellen Autobahn-API (bund.dev), lizenzfreien offenen Baustellenfeeds (MobiData BW, Berlin VIZ) und optional DATEX-II-Feeds der mobilithek (bundesweite Länder-Feeds, auch mTLS-geschützt). Fällt eine Quelle aus, liefern die anderen weiterhin Ergebnisse. Auf der Karte sind die Meldungen nach Schweregrad eingefärbt (rot = Voll-/Sperrung, gelb = Warnung/Hindernis, orange = Baustelle).
+2. Aktuelle Sperrungen und Baustellen entlang der gesamten Route werden angezeigt – zusammengeführt aus OpenStreetMap/Overpass, der offiziellen Autobahn-API (bund.dev), lizenzfreien offenen Baustellenfeeds (MobiData BW, Berlin VIZ) und optional DATEX-II-Feeds der mobilithek (weitere Bundesländer, auch mTLS-geschützt). Fällt eine Quelle aus, liefern die anderen weiterhin Ergebnisse. **Hinweis:** Die amtlichen Feeds decken derzeit nur Deutschland ab – auf österreichischen und Schweizer Streckenteilen kommen Sperrungen allein aus OpenStreetMap/Overpass. Auf der Karte sind die Meldungen nach Schweregrad eingefärbt (rot = Voll-/Sperrung, gelb = Warnung/Hindernis, orange = Baustelle).
 
 ### Live-Verkehrslage (Stau)
 
@@ -187,7 +187,7 @@ Zeigt die Fließgeschwindigkeit entlang der Route als Ampel-Ebene (grün → gel
 2. Im Export-Tab bzw. auf der Planungskarte den Schalter **Verkehrslage laden** aktivieren.
 3. Die Verkehrsdaten werden als farbige Linien direkt über die Karte gelegt.
 
-> HERE/TomTom decken bundesweit ab – anders als die regionalen offenen Baustellenfeeds. Die Nutzungsbedingungen des jeweiligen Anbieters sind vor Produktivbetrieb zu prüfen.
+> HERE/TomTom decken den gesamten DACH-Raum ab – anders als die regionalen offenen Baustellenfeeds. Die Nutzungsbedingungen des jeweiligen Anbieters sind vor Produktivbetrieb zu prüfen.
 
 ---
 

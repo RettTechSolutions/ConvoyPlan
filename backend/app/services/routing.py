@@ -13,10 +13,12 @@ logger = logging.getLogger(__name__)
 class RoutingOutOfBoundsError(ValueError):
     """A start-, waypoint- or end point lies outside the loaded map area.
 
-    GraphHopper hält aus Ressourcengründen nur die deutschen OSM-Daten vor.
-    Liegt ein Punkt außerhalb dieser Bounding-Box, lehnt GraphHopper die
-    Anfrage mit „Point N is out of bounds/range" ab. Wir fangen das ab, um im
-    Frontend eine verständliche Meldung statt der rohen Koordinaten zu zeigen.
+    GraphHopper hält aus Ressourcengründen nur ein OSM-Extract vor — per
+    Voreinstellung DACH (DE, AT, CH, LI), konfigurierbar über
+    ``OSM_DOWNLOAD_URL``. Liegt ein Punkt außerhalb dieser Bounding-Box, lehnt
+    GraphHopper die Anfrage mit „Point N is out of bounds/range" ab. Wir fangen
+    das ab, um im Frontend eine verständliche Meldung statt der rohen
+    Koordinaten zu zeigen.
 
     ``point_index`` ist der 0-basierte Index aus der GraphHopper-Meldung
     (0 = Start, letzter = Ziel, dazwischen = Wegpunkte) — soweit ermittelbar.
@@ -204,7 +206,7 @@ async def calculate_route(
             logger.warning("GraphHopper routing error (%s): %s", resp.status_code, detail)
             msg = str(detail)
             lower = msg.lower()
-            # Punkt außerhalb der geladenen Kartendaten (aktuell nur Deutschland)
+            # Punkt außerhalb der geladenen Kartendaten (Standard: DACH)
             # — GraphHopper: „Point N is out of bounds/range" bzw. „Cannot find
             # point N". Dedizierter Fehler für eine verständliche Frontend-Meldung.
             if "out of bounds" in lower or "out of range" in lower or "cannot find point" in lower:

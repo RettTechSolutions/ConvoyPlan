@@ -62,7 +62,8 @@
 	let flow = $state<FeatureCollection | null>(null);
 	let showFlow = $state(false);
 	let flowProvider = $state<string | null>(null);
-	let mapCenter = $state<[number, number]>([10.0, 51.5]);
+	// [lat, lon] — wird von handleMapMove gesetzt und in fetchClosures gelesen.
+	let mapCenter = $state<[number, number]>([50.7, 11.5]);
 	let activeTab = $state<'convoy'|'fahrzeuge'|'wegpunkte'|'zeitplan'|'export'|'konto'>('convoy');
 	let loading = $state(false);
 	let dndWaypoints = $state<Waypoint[]>([]);

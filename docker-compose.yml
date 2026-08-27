@@ -150,19 +150,23 @@ services:
     image: ${GRAPHHOPPER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/graphhopper:latest}
     restart: unless-stopped
     environment:
-      OSM_DOWNLOAD_URL: ${OSM_DOWNLOAD_URL:-https://download.geofabrik.de/europe/germany-latest.osm.pbf}
-      OSM_FILENAME: ${OSM_FILENAME:-germany-latest.osm.pbf}
-      JAVA_OPTS: ${JAVA_OPTS:--Xmx6g -Xms1g -XX:+UseG1GC}
+      OSM_DOWNLOAD_URL: ${OSM_DOWNLOAD_URL:-https://download.geofabrik.de/europe/dach-latest.osm.pbf}
+      OSM_FILENAME: ${OSM_FILENAME:-dach-latest.osm.pbf}
+      JAVA_OPTS: ${JAVA_OPTS:--Xmx8g -Xms1g -XX:+UseG1GC}
     volumes:
       - osm_data:/data/osm
       - gh_graph:/data/graph
     ports:
       - "127.0.0.1:${GH_PORT:-8989}:8989"
     healthcheck:
+      # Beim ersten Start (und nach jedem Regionswechsel) baut GraphHopper den
+      # Graphen, bevor /health antwortet: für DACH 60-120 Min. Die Toleranz von
+      # 360 x 30 s = 3 h liegt bewusst darüber, damit ein langsamer Datenträger
+      # den Container nicht mitten im Import als "unhealthy" markiert.
       test: ["CMD", "curl", "-f", "http://localhost:8989/health"]
       interval: 30s
       timeout: 10s
-      retries: 240
+      retries: 360
       start_period: 120s
 
   frontend:
@@ -233,9 +237,9 @@ services:
       BACKEND_PORT: ${BACKEND_PORT:-8000}
       FRONTEND_PORT: ${FRONTEND_PORT:-3000}
       GH_PORT: ${GH_PORT:-8989}
-      OSM_DOWNLOAD_URL: ${OSM_DOWNLOAD_URL:-https://download.geofabrik.de/europe/germany-latest.osm.pbf}
-      OSM_FILENAME: ${OSM_FILENAME:-germany-latest.osm.pbf}
-      JAVA_OPTS: ${JAVA_OPTS:--Xmx6g -Xms1g -XX:+UseG1GC}
+      OSM_DOWNLOAD_URL: ${OSM_DOWNLOAD_URL:-https://download.geofabrik.de/europe/dach-latest.osm.pbf}
+      OSM_FILENAME: ${OSM_FILENAME:-dach-latest.osm.pbf}
+      JAVA_OPTS: ${JAVA_OPTS:--Xmx8g -Xms1g -XX:+UseG1GC}
       BACKEND_IMAGE: ${BACKEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/backend:latest}
       FRONTEND_IMAGE: ${FRONTEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/frontend:latest}
       GRAPHHOPPER_IMAGE: ${GRAPHHOPPER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/graphhopper:latest}

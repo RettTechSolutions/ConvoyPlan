@@ -25,10 +25,11 @@ _HEADERS = {"Accept": "application/json", "User-Agent": "ConvoyPlan/1.0"}
 HERE_AUTOSUGGEST_URL = "https://autosuggest.search.hereapi.com/v1/autosuggest"
 PHOTON_URL = "https://photon.komoot.io/api/"
 
-# Soft-Bias auf die Mitte Deutschlands, damit deutsche Treffer vorne stehen
-# (kein harter Filter — grenznahe Adressen bleiben auffindbar).
-BIAS_LAT = 51.1657
-BIAS_LON = 10.4515
+# Soft-Bias auf die Mitte des abgedeckten Gebiets (DACH), damit Treffer aus der
+# Region vorne stehen (kein harter Filter — Adressen jenseits der Grenze bleiben
+# auffindbar, sie sind nur schlechter platziert).
+BIAS_LAT = 50.7
+BIAS_LON = 11.5
 
 MIN_QUERY_LEN = 2
 _TIMEOUT = 8.0

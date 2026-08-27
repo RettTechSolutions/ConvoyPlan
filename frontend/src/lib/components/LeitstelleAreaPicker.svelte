@@ -13,7 +13,7 @@
     import { onMount, onDestroy } from 'svelte';
     import { get } from 'svelte/store';
     import { themeStore } from '$lib/stores/theme';
-    import { addGermanyMask, applyMapTheme } from '$lib/map/germany';
+    import { addRegionMask, applyMapTheme } from '$lib/map/region';
     import { loadDistricts, DISTRICTS_ATTRIBUTION, type DistrictFeature } from '$lib/geo/districts';
 
     interface Props {
@@ -164,8 +164,8 @@
         });
 
         map.on('load', () => {
-            // Deutschland-Fokus + Hell/Dunkel-Abstimmung (siehe $lib/map/germany)
-            addGermanyMask(map!, get(themeStore));
+            // Regionsfokus + Hell/Dunkel-Abstimmung (siehe $lib/map/region)
+            addRegionMask(map!, get(themeStore));
             applyMapTheme(map!, get(themeStore));
             map!.addSource('draft', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
             map!.addLayer({ id: 'draft-fill', type: 'fill', source: 'draft', paint: { 'fill-color': '#e74c3c', 'fill-opacity': 0.2 } });

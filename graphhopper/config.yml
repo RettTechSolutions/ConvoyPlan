@@ -6,7 +6,7 @@
 #   java -jar graphhopper.jar server config.yml
 
 graphhopper:
-  datareader.file: /data/osm/germany-latest.osm.pbf
+  datareader.file: /data/osm/dach-latest.osm.pbf
   graph.location: /data/graph
 
   # Vom Backend benötigte Encoded Values: road_class + max_speed (Routen-Details
