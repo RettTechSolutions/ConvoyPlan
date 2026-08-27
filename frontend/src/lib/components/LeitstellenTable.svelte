@@ -1,17 +1,32 @@
 <script lang="ts" module>
-    // AGS-Präfix (erste zwei Ziffern des Kreisschlüssels) → Bundesland.
-    const STATE_NAMES: Record<string, string> = {
+    // Gebietsschlüssel → Gruppenüberschrift. Die Schlüssel tragen seit der
+    // DACH-Ausweitung ein ISO-Länderpräfix ("DE-08115", "AT-322", "CH-040").
+    //
+    // Deutschland: die zwei Ziffern nach dem Präfix sind das Bundesland.
+    const DE_STATES: Record<string, string> = {
         '01': 'Schleswig-Holstein', '02': 'Hamburg', '03': 'Niedersachsen', '04': 'Bremen',
         '05': 'Nordrhein-Westfalen', '06': 'Hessen', '07': 'Rheinland-Pfalz', '08': 'Baden-Württemberg',
         '09': 'Bayern', '10': 'Saarland', '11': 'Berlin', '12': 'Brandenburg',
         '13': 'Mecklenburg-Vorpommern', '14': 'Sachsen', '15': 'Sachsen-Anhalt', '16': 'Thüringen',
     };
-    const NO_STATE = 'Ohne Landkreis-Zuordnung';
+    // Österreich: die erste Ziffer der Bezirkskennziffer ist das Bundesland.
+    const AT_STATES: Record<string, string> = {
+        '1': 'Burgenland', '2': 'Kärnten', '3': 'Niederösterreich', '4': 'Oberösterreich',
+        '5': 'Salzburg', '6': 'Steiermark', '7': 'Tirol', '8': 'Vorarlberg', '9': 'Wien',
+    };
+    const NO_STATE = 'Ohne Gebietszuordnung';
 
     export function bundeslandOf(ls: { district_codes?: string[] }): string {
         const c = ls.district_codes?.[0];
         if (!c) return NO_STATE;
-        return STATE_NAMES[c.slice(0, 2)] ?? 'Unbekannt';
+        const key = c.slice(3);
+        // Kantone und Liechtenstein haben unterhalb des Bundes keine weitere
+        // Ebene — dort ist das Land selbst die Gruppe.
+        if (c.startsWith('DE-')) return DE_STATES[key.slice(0, 2)] ?? 'Unbekannt';
+        if (c.startsWith('AT-')) return AT_STATES[key.slice(0, 1)] ?? 'Unbekannt';
+        if (c.startsWith('CH-')) return 'Schweiz';
+        if (c.startsWith('LI-')) return 'Liechtenstein';
+        return 'Unbekannt';
     }
 
     const STATUS_LABEL: Record<string, string> = {
@@ -101,7 +116,7 @@
 
 <div class="lst-toolbar">
     <label class="lst-toggle">
-        <input type="checkbox" bind:checked={groupByState} /> Nach Bundesland gruppieren
+        <input type="checkbox" bind:checked={groupByState} /> Nach Bundesland/Land gruppieren
     </label>
     <input class="lst-search" type="search" placeholder="🔍 Suchen…" bind:value={search} />
 </div>

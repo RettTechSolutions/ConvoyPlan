@@ -177,7 +177,7 @@ GeoJSON-Lagedaten können als zusätzliche Kartenebenen hochgeladen werden (z. B
 ### Sperrungen und Baustellen
 
 1. In der Kartenansicht das **Sperrungen-Layer** aktivieren.
-2. Aktuelle Sperrungen und Baustellen entlang der gesamten Route werden angezeigt – zusammengeführt aus OpenStreetMap/Overpass, der offiziellen Autobahn-API (bund.dev), lizenzfreien offenen Baustellenfeeds (MobiData BW, Berlin VIZ) und optional DATEX-II-Feeds der mobilithek (weitere Bundesländer, auch mTLS-geschützt). Fällt eine Quelle aus, liefern die anderen weiterhin Ergebnisse. **Hinweis:** Die amtlichen Feeds decken derzeit nur Deutschland ab – auf österreichischen und Schweizer Streckenteilen kommen Sperrungen allein aus OpenStreetMap/Overpass. Auf der Karte sind die Meldungen nach Schweregrad eingefärbt (rot = Voll-/Sperrung, gelb = Warnung/Hindernis, orange = Baustelle).
+2. Aktuelle Sperrungen und Baustellen entlang der gesamten Route werden angezeigt – zusammengeführt aus OpenStreetMap/Overpass, der offiziellen Autobahn-API (bund.dev), lizenzfreien offenen Baustellenfeeds (MobiData BW, Berlin VIZ) und optional DATEX-II-Feeds der mobilithek (weitere Bundesländer, auch mTLS-geschützt). Fällt eine Quelle aus, liefern die anderen weiterhin Ergebnisse. **Hinweis:** Die amtlichen Feeds sind je Land einzeln einzurichten (siehe [Verkehrsdaten](Verkehrsdaten)). Ohne dieses Setup kommen Sperrungen auf österreichischen und Schweizer Streckenteilen aus OpenStreetMap/Overpass und der Live-Verkehrslage. Auf der Karte sind die Meldungen nach Schweregrad eingefärbt (rot = Voll-/Sperrung, gelb = Warnung/Hindernis, orange = Baustelle).
 
 ### Live-Verkehrslage (Stau)
 
@@ -199,7 +199,11 @@ Leitstellen definieren Zuständigkeitsbereiche. Bei der Routenberechnung werden 
 
 1. **Admin-Bereich** öffnen → Reiter **Leitstellen**.
 2. **Neue Leitstelle** klicken.
-3. Name und Zuständigkeitsgebiet eintragen – das Gebiet kann direkt auf der Karte gezeichnet werden.
+3. Name und Zuständigkeitsgebiet eintragen. Für das Gebiet gibt es zwei Wege:
+   - **Gebiet wählen** – fertige Verwaltungsgrenzen anklicken: Landkreise und kreisfreie Städte (Deutschland), politische Bezirke (Österreich), Kantone (Schweiz) sowie Liechtenstein. Bereits vergebene Gebiete sind grau; der Tooltip nennt Name, Bundesland bzw. Land und ggf. die Leitstelle, die es schon belegt.
+   - **Polygon zeichnen** – freie Grenze direkt auf der Karte, für Zuständigkeiten, die keiner Verwaltungsgrenze folgen.
+
+   Die Übersichtstabelle gruppiert Leitstellen nach Bundesland; Schweizer und Liechtensteiner Leitstellen stehen unter dem Landesnamen, weil es dort unterhalb des Bundes keine weitere Ebene gibt.
 
 ---
 

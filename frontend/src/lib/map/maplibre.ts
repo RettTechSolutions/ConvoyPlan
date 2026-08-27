@@ -11,7 +11,7 @@
  * Sichtbar wird das nur zur Hälfte — Rasterkacheln werden im Hauptthread
  * geladen, die Karte sieht also normal aus. Jede GeoJSON-/Vector-Quelle wird
  * dagegen im Worker geparst und bleibt leer: Routenlinien, Leitstellen-Grenzen
- * und die Landkreis-Auswahl verschwinden ersatzlos.
+ * und die Gebietsauswahl verschwinden ersatzlos.
  *
  * Deshalb bündeln wir den Worker hier explizit über Vites `?worker&url`
  * (inklusive seines `maplibre-gl-shared.mjs`-Imports) und geben MapLibre die

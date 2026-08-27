@@ -23,7 +23,10 @@ import type { Feature, FeatureCollection, MultiPolygon, Position } from 'geojson
 import type * as maplibregl from './maplibre';
 
 export const REGION_URL = '/geo/dach.geojson';
-export const REGION_ATTRIBUTION = '© GeoBasis-DE / BKG (dl-de/by-2-0) · Natural Earth';
+// Muss zum `attribution`-Feld in dach.geojson passen (dort aus gebiete.geojson
+// übernommen) — der Umriss ist die Außengrenze genau dieser Gebietsdaten.
+export const REGION_ATTRIBUTION =
+	'© GeoBasis-DE / BKG (dl-de/by-2-0) · © Statistik Austria (CC BY 4.0) · © EuroGeographics / Eurostat';
 
 const MASK_SOURCE = 'region-mask';
 const BORDER_SOURCE = 'region-border';

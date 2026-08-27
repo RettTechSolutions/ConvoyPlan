@@ -1,118 +1,121 @@
-# Geodaten — Kreisgrenzen
+# Geodaten
 
-## `landkreise.geojson`
+Zwei Dateien, beide erzeugt — nicht von Hand gepflegt. Die Bauskripte liegen
+unter `scripts/geo/`, die Quelldaten (soweit nicht heruntergeladen) unter
+`scripts/geo/sources/`.
 
-Grenzen der deutschen Landkreise und kreisfreien Städte (400 Kreise), genutzt
-für die Landkreis-Auswahl bei der Anlage von Leitstellen-Zuständigkeitsgebieten.
+| Datei | Zweck | Erzeugt von |
+|---|---|---|
+| `gebiete.geojson` | wählbare Zuständigkeitsgebiete im Leitstellen-Dialog | `scripts/geo/build_gebiete.py` |
+| `dach.geojson` | Umriss des Routing-Raums (Maske auf allen Karten) | `scripts/geo/build_umriss.sh` |
 
-- **Quelle:** Bundesamt für Kartographie und Geodäsie (BKG), Verwaltungsgebiete
-  (VG2500, Stand 2023), bereitgestellt über das OpenDataSoft-Dataset
-  `georef-germany-kreis`.
-- **Lizenz:** Datenlizenz Deutschland – Namensnennung 2.0 (**dl-de/by-2-0**),
-  <https://www.govdata.de/dl-de/by-2-0>. Kommerzielle Nutzung erlaubt bei
-  Namensnennung.
-- **Namensnennung:** `© GeoBasis-DE / BKG (dl-de/by-2-0)` — wird im Auswahl-Dialog
-  unter der Karte angezeigt und ist als `attribution`-Feld in der GeoJSON enthalten.
+Reihenfolge zählt: `dach.geojson` wird aus `gebiete.geojson` abgeleitet.
+
+```sh
+python3 scripts/geo/build_gebiete.py   # lädt AT und CH/LI herunter
+sh      scripts/geo/build_umriss.sh    # braucht mapshaper (via npx)
+```
+
+---
+
+## `gebiete.geojson`
+
+521 Gebiete: 400 deutsche Landkreise und kreisfreie Städte, 94 österreichische
+politische Bezirke, 26 Schweizer Kantone, Liechtenstein. Genutzt für die
+Gebietsauswahl bei der Anlage von Leitstellen-Zuständigkeitsgebieten; wird im
+Auswahl-Dialog erst bei Bedarf nachgeladen (~950 kB).
+
+Die Ebenen sind bewusst **nicht** einheitlich: In Deutschland und Österreich
+hängt die Leitstellen-Zuständigkeit an der Kreis- bzw. Bezirksebene, in der
+Schweiz am Kanton. Schweizer Bezirke wären dafür zu klein und existieren in
+mehreren Kantonen gar nicht.
 
 ### Eigenschaften pro Feature
 
-| Feld        | Beschreibung                              |
-|-------------|-------------------------------------------|
-| `krs_code`  | Amtlicher Gemeindeschlüssel (AGS, 5-stellig) |
-| `krs_name`  | Name des Kreises                          |
-| `lan_name`  | Bundesland                                |
+| Feld | Beschreibung |
+|---|---|
+| `code` | ISO-Land + Landesschlüssel: `DE-08115` (AGS), `AT-322` (Bezirkskennziffer), `CH-040` (NUTS-3), `LI-000` |
+| `name` | Name des Gebiets |
+| `country` | `DE` \| `AT` \| `CH` \| `LI` |
+| `region` | Bundesland (DE/AT). `null` bei Kantonen und Liechtenstein — dort gibt es unterhalb des Bundes keine weitere Verwaltungsebene |
 
-### Aufbereitung / Regenerierung
+Das Länderpräfix im `code` ist nicht kosmetisch: Die Nummernkreise überschneiden
+sich sonst (eine dreistellige österreichische Bezirkskennziffer gegen den Anfang
+eines deutschen AGS). Bestandsdaten wurden mit Alembic-Migration `0039`
+umgestellt.
 
-Die Originaldaten (~16 MB) wurden mit
-[mapshaper](https://github.com/mbloch/mapshaper) topologie-erhaltend vereinfacht
-(geteilte Grenzen werden nur einmal vereinfacht, damit benachbarte Kreise beim
-Verschmelzen keine Lücken/Slivers erzeugen) und auf die benötigten Felder
-reduziert:
+### Quellen und Lizenzen
 
-```sh
-curl -o kreise.geojson \
-  "https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/georef-germany-kreis/exports/geojson"
+| Land | Ebene | Quelle | Lizenz |
+|---|---|---|---|
+| DE | Landkreise | BKG VG2500 über `scripts/geo/sources/landkreise.geojson` | dl-de/by-2-0 |
+| AT | Politische Bezirke | [Statistik Austria](https://data.statistik.gv.at) über [ginseng666](https://github.com/ginseng666/GeoJSON-TopoJSON-Austria) | CC BY 4.0 |
+| CH, LI | Kantone / Land | Eurostat NUTS-3 2024 über [Nuts2json](https://github.com/eurostat/Nuts2json) | © EuroGeographics |
 
-npx mapshaper kreise.geojson \
-  -filter-fields krs_code,krs_name,lan_name \
-  -simplify 8% keep-shapes \
-  -o precision=0.0001 format=geojson landkreise.geojson
-```
+**Namensnennung:** `© GeoBasis-DE / BKG (dl-de/by-2-0) · © Statistik Austria (CC BY 4.0) · © EuroGeographics / Eurostat`
+— steht als `attribution`-Feld in der Datei und wird im Auswahl-Dialog unter der
+Karte angezeigt.
 
-Anschließend die Property-Arrays zu Skalaren geflacht und das `attribution`-Feld
-ergänzt. Ergebnis: ~0,7 MB, wird im Auswahl-Dialog erst bei Bedarf nachgeladen.
+### Fallstricke
+
+- Die österreichische Quelle enthält **Wien doppelt**: einmal als Ganzes
+  (`iso` 900) und einmal in 23 Gemeindebezirken (901–923), deckungsgleich
+  übereinander. Das Bauskript wirft die 23 weg — für die Zuständigkeit zählt
+  Wien als eine Einheit.
+- Nuts2json liefert **TopoJSON**. Das Bauskript dekodiert es selbst (Delta-
+  Kodierung, Quantisierung, Arc-Verweise), damit für die Regenerierung keine
+  zusätzliche Abhängigkeit nötig ist.
+
+### Kontrolle nach der Regenerierung
+
+Das Skript bricht bei doppelten Schlüsseln ab und meldet die Gebietszahl je
+Land. Erwartet: **DE 400, AT 94, CH 26, LI 1**. Die Landesflächen sollten auf
+rund ein halbes Prozent an die amtlichen Werte herankommen (DE 357.596,
+AT 83.879, CH 41.291, LI 160 km²) — größere Abweichungen heißen, dass eine
+Quelle ihre Struktur geändert hat.
+
+---
 
 ## `dach.geojson`
 
 Umriss des abgedeckten Routing-Gebiets: Deutschland, Österreich, Schweiz und
-Liechtenstein als **eine** zusammenhängende Fläche. Genutzt für den
-**Regionsfokus** der Karten: Alles außerhalb wird abgedunkelt bzw. ausgegraut,
-weil die Routenberechnung nur innerhalb der geladenen OSM-Daten möglich ist
-(GraphHopper-Standard = Geofabrik-Extract `europe/dach`). Die Maske selbst
-(Welt minus Region) wird zur Laufzeit aus dieser Datei gebaut — siehe
-`src/lib/map/region.ts`.
+Liechtenstein als **eine** zusammenhängende Fläche (~54 kB). Alles außerhalb
+wird auf den Karten abgedunkelt bzw. ausgegraut, weil die Routenberechnung nur
+innerhalb der geladenen OSM-Daten möglich ist (GraphHopper-Standard =
+Geofabrik-Extract `europe/dach`). Die Maske selbst (Welt minus Region) wird zur
+Laufzeit gebaut — siehe `src/lib/map/region.ts`.
+
+Der Umriss ist exakt die Außengrenze von `gebiete.geojson`. Das ist der Grund
+für die Ableitung statt einer eigenen Quelle: Kämen beide aus verschiedenen
+Datensätzen, ragten im Leitstellen-Dialog Gebiete sichtbar über den Maskenrand
+hinaus.
 
 Die Datei ist reine **Anzeige**. Verbindlich ist allein, welches OSM-Extract
 GraphHopper geladen hat: Wer über `OSM_DOWNLOAD_URL` eine andere Region fährt,
-sollte diese Datei passend austauschen — sonst zeigt die Karte ein Gebiet als
+sollte sie passend austauschen — sonst zeigt die Karte ein Gebiet als
 routingfähig an, das GraphHopper gar nicht kennt (oder umgekehrt).
 
-- **Quellen:**
-  - Deutschland: BKG VG2500 — aus `landkreise.geojson` verschmolzen, also
-    identisch zur Landkreis-Ebene. Deshalb passen Kreisgrenzen und Außengrenze
-    im Leitstellen-Dialog exakt aufeinander.
-  - Österreich, Schweiz, Liechtenstein:
-    [Natural Earth](https://www.naturalearthdata.com/) 1:10m
-    (`ne_10m_admin_0_countries`), Public Domain.
-- **Namensnennung:** `© GeoBasis-DE / BKG (dl-de/by-2-0) · Natural Earth` —
-  steht als `attribution`-Feld in der GeoJSON und wird über die GeoJSON-Quelle
-  an MapLibres AttributionControl gemeldet (siehe `src/lib/map/region.ts`).
+### Fallstricke
 
-### Aufbereitung / Regenerierung
+- Die drei Landesdatensätze ziehen ihre gemeinsamen Grenzen um bis zu ~2 km
+  unterschiedlich. Ohne `-clean gap-width=3km` blieben dunkle Nahtstreifen quer
+  durch das Alpenvorland stehen.
+- **Kein `-filter-slivers`** auf dem fertigen Mosaik: Der Verschnitt zwischen
+  Gebietsgrenzen taucht als Loch auf und wird schon von `-clean` erledigt.
+  `-filter-slivers` würde stattdessen kleine Außenflächen entfernen — und das
+  sind hier echte Exklaven und Inseln (Vennbahn-Gebiet bei Aachen, Elbinseln,
+  Halligen) zwischen 1,2 und 3 km².
+- Innenringe werden verworfen. Übrig bleibt dort nur der Bodensee, an dem die
+  Quellen unterschiedlich enden; echte Enklaven gibt es innerhalb von DACH nicht
+  mehr — Jungholz und Büsingen sind Binnenland.
 
-Zwei Quellen, ein Umriss — deshalb reicht kein simples `-dissolve`:
+### Kontrolle nach der Regenerierung
 
-1. Deutschland aus `landkreise.geojson` verschmelzen (keine weitere
-   Vereinfachung, damit die Grenzlinie auch bei hohem Zoom sauber bleibt).
-   `-filter-slivers` gehört hier dazu: es räumt den Verschnitt zwischen den
-   Kreisgrenzen weg. **Auf das fertige DACH-Mosaik darf es nicht angewendet
-   werden** — dort läge der Schwellwert bei 3,4 km² und würde echte Inseln
-   (Helgoland, Hiddensee) verschlucken.
-2. AT/CH/LI aus Natural Earth herausfiltern.
-3. Beides in *eine* FeatureCollection legen und mit `-clean gap-width=3km`
-   zusammenführen. Die beiden Quellen ziehen die gemeinsame Grenze um bis zu
-   ~2 km unterschiedlich; ohne diesen Schritt bleiben dunkle Nahtstreifen quer
-   durch das Alpenvorland stehen.
-4. Innenringe verwerfen. Übrig bleibt nach Schritt 3 nur der Bodensee (die
-   Quellen enden dort unterschiedlich); innerhalb von DACH gibt es keine echten
-   Enklaven mehr — Jungholz und Büsingen sind jetzt Binnenland.
+Das Skript bricht ab, wenn die Fläche mehr als 2 % von der amtlichen Summe
+abweicht, und meldet Teilflächen und Bounding-Box. Erwartet: **29 Teilflächen,
+0 Innenringe, `lon 5,87…17,15 / lat 45,82…55,06`, rund 481.000 km²**.
 
-```sh
-# 1) Deutschland
-npx mapshaper landkreise.geojson \
-  -dissolve2 \
-  -filter-slivers \
-  -o precision=0.0001 format=geojson de.geojson
-
-# 2) AT/CH/LI
-curl -sSLo ne10m.geojson \
-  "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_countries.geojson"
-npx mapshaper ne10m.geojson \
-  -filter '["AT","CH","LI"].indexOf(ISO_A2) > -1' \
-  -o precision=0.0001 format=geojson atchli.geojson
-
-# 3) + 4) zusammenführen, Naht schließen, Innenringe verwerfen
-npx mapshaper -i combine-files de.geojson atchli.geojson \
-  -merge-layers force \
-  -clean gap-width=3km close-outer-gaps \
-  -dissolve \
-  -o precision=0.0001 format=geojson dach.geojson
-```
-
-Anschließend als einzelnes `Feature` mit `name`/`attribution` speichern.
-Ergebnis: ~62 kB, wird beim Kartenstart einmalig geladen.
-
-Kontrolle nach der Regenerierung: Die Bounding-Box muss ungefähr
-`lon 5,87…17,15 / lat 45,82…55,06` sein, es dürfen keine Innenringe übrig
-bleiben, und der Bodensee darf kein Loch sein.
+Wichtig bei eigenen Prüfungen: Eine planare Shoelace-Formel mit festem
+cos(Breite)-Faktor ist hier wertlos — der Hauptring spannt neun Breitengrade,
+jede feste Bezugsbreite liegt um Prozente daneben. Das Skript rechnet deshalb
+mit dem sphärischen Exzess.

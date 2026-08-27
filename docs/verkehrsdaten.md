@@ -8,13 +8,10 @@ Fällt eine Quelle aus, liefern die anderen weiter.
 Diese Anleitung zeigt, was **out of the box** läuft und wie du die optionalen
 Quellen (Live-Stau, bundesweite Baustellen) aktivierst.
 
-> **Abdeckung:** Die Routenplanung läuft im gesamten DACH-Raum. Die amtlichen
-> Baustellen-/Sperrungsfeeds unten sind dagegen **deutsche** Quellen — auf
-> österreichischen und Schweizer Streckenteilen liefern derzeit nur Overpass
-> (OpenStreetMap) und die Live-Verkehrslage von HERE/TomTom Daten. Feeds für
-> AT (ASFINAG) und CH (opentransportdata.swiss) sprechen DATEX II und lassen
-> sich, sobald sie eingerichtet sind, über `OPENDATA_TRAFFIC_FEEDS` ergänzen
-> (siehe Abschnitt 3).
+> **Abdeckung:** Die Routenplanung läuft im gesamten DACH-Raum. Ohne Setup
+> liefern Overpass und die Live-Verkehrslage überall; die amtlichen
+> Baustellenfeeds sind je Land einzeln einzurichten — Deutschland in
+> Abschnitt 3, Österreich und die Schweiz in Abschnitt 4.
 
 ---
 
@@ -27,6 +24,8 @@ Quellen (Live-Stau, bundesweite Baustellen) aktivierst.
 | **MobiData BW** | Baden-Württemberg (bis Kreisstraße) | frei | nein — läuft |
 | **Berlin VIZ** | Berlin | frei | nein — läuft |
 | **mobilithek (DATEX II)** | weitere Bundesländer (Bundes-/Landesstraßen) | frei | ✅ Abschnitt 3 |
+| **ASFINAG (DATEX II)** | Österreich | frei, Registrierung | ✅ Abschnitt 4 |
+| **opentransportdata.swiss (DATEX II)** | Schweiz | frei, Registrierung | ✅ Abschnitt 4 |
 | **HERE / TomTom** | Live-Verkehrslage (Stau), DACH-weit | eigener API-Key (Freikontingent) | ✅ Abschnitt 2 |
 
 > **Farbcodierung auf der Karte:** 🟠 Baustelle · 🔴 Sperrung · 🟡 Warnung/Hindernis ·
@@ -161,7 +160,59 @@ die Baustellen nach spätestens dem 5-Minuten-Cache.
 
 ---
 
-## 4. 🛠️ Fehlerbehebung
+## 4. 🇦🇹🇨🇭 Baustellen in Österreich und der Schweiz
+
+Die Routenplanung deckt den gesamten DACH-Raum ab, die amtlichen Baustellenfeeds
+oben sind aber **deutsche** Quellen. Für den österreichischen und Schweizer Teil
+gibt es zwei Wege:
+
+- **Ohne Setup:** Overpass (OpenStreetMap) liefert überall, und die
+  Live-Verkehrslage von HERE/TomTom (Abschnitt 2) deckt DACH mit ab. Damit sieht
+  man Stau und dauerhaft in OSM erfasste Sperrungen — aber nicht die
+  kurzfristigen amtlichen Meldungen.
+- **Mit Setup:** Sowohl die **ASFINAG** (AT) als auch
+  **opentransportdata.swiss** (CH) veröffentlichen Verkehrsmeldungen im
+  Standard **DATEX II** — dasselbe Format wie die mobilithek. Sie lassen sich
+  deshalb ohne Codeänderung als weitere `datex2`-Feeds eintragen.
+
+### 4.1 Zugang besorgen
+
+Beide Angebote sind kostenlos, aber registrierungspflichtig. Der Ablauf ist bei
+beiden gleich: Konto anlegen, das Verkehrsmeldungs-Angebot abonnieren, und einen
+**API-Key bzw. Token** erzeugen. Die konkrete Abruf-URL bekommst du dabei aus
+dem jeweiligen Portal — sie steht bewusst nicht hier, weil beide Anbieter ihre
+Endpunkte gelegentlich umstellen.
+
+Anders als der mobilithek-Broker verlangen beide **kein Client-Zertifikat**,
+sondern die Kennung im HTTP-Header.
+
+### 4.2 Eintragen
+
+Die Abruf-URL kommt in die Feed-Liste, die Kennung getrennt davon in
+`OPENDATA_TRAFFIC_API_KEYS`:
+
+```bash
+OPENDATA_TRAFFIC_FEEDS=...,datex2|https://<asfinag-endpunkt>,datex2|https://api.opentransportdata.swiss/<endpunkt>
+OPENDATA_TRAFFIC_API_KEYS=<asfinag-host>|X-API-Key:<key>,api.opentransportdata.swiss|Authorization:Bearer <token>
+```
+
+Warum getrennt? Die Feed-Liste ist damit frei von Geheimnissen und kann
+unverändert weitergegeben oder in ein Ticket kopiert werden. Der Header geht
+außerdem **nur an genau den angegebenen Host** — nicht an andere Feeds und nicht
+über einen Redirect hinweg.
+
+> ⚠️ Header-Werte dürfen **kein Komma** enthalten, weil die Liste
+> kommasepariert ist.
+
+### 4.3 Prüfen
+
+Wie in Abschnitt 3.5: Feature-Zahl vor und nach der Änderung vergleichen.
+Kommt nichts dazu, ist meist der Header falsch benannt — der Abruf schlägt dann
+still fehl, damit ein kaputter Feed die anderen nicht mitreißt.
+
+---
+
+## 5. 🛠️ Fehlerbehebung
 
 | Symptom | Ursache & Lösung |
 |---|---|
@@ -190,6 +241,7 @@ Kommt `<?xml … <d2LogicalModel …` zurück, ist alles korrekt.
 |---|---|
 | `OPENDATA_TRAFFIC_ENABLED` | Offene Baustellenfeeds an/aus (Standard `true`) |
 | `OPENDATA_TRAFFIC_FEEDS` | Feed-Liste `format\|url`, kommasepariert. Formate: `mobidata_bw`, `berlin_viz`, `datex2` |
+| `OPENDATA_TRAFFIC_API_KEYS` | Zugangsdaten je Host: `host\|Header-Name:Wert`, kommasepariert. Für Feeds mit API-Key/Token statt Zertifikat (ASFINAG, opentransportdata.swiss) |
 | `OPENDATA_TRAFFIC_CLIENT_CERT` | Pfad zum mTLS-Client-Zertifikat (PEM) für `datex2`-Feeds |
 | `OPENDATA_TRAFFIC_CA_CERT` | Nur für Broker mit **privater** CA. Für die mobilithek **leer lassen**. |
 | `HERE_TRAFFIC_API_KEY` / `TOMTOM_TRAFFIC_API_KEY` | Live-Verkehrslage (alternativ im Admin-Panel) |

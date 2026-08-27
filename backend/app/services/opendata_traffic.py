@@ -9,10 +9,14 @@ es pro Format einen kleinen Adapter:
 - ``berlin_viz`` — Berliner Verkehrsinformationszentrale (VIZ)
 - ``datex2``     — DATEX II v2 (europäischer XML-Standard), z. B. Länder-Feeds
                    aus der mobilithek für bundesweite Abdeckung abseits der
-                   Autobahn. Per mTLS geschützte Feeds (mobilithek-Broker) nutzen
+                   Autobahn — oder ASFINAG (AT) und opentransportdata.swiss (CH)
+                   für den österreichischen und Schweizer Teil des Routing-Raums.
+                   Per mTLS geschützte Feeds (mobilithek-Broker) nutzen
                    ``settings.opendata_traffic_client_cert`` (eigenes Client-
                    Zertifikat) und ``settings.opendata_traffic_ca_cert`` (private
-                   Broker-CA zum Verifizieren des Servers).
+                   Broker-CA zum Verifizieren des Servers); Feeds mit API-Key
+                   oder Token im Header nutzen
+                   ``settings.opendata_traffic_api_keys``.
 
 Weitere Regionen lassen sich über ``settings.opendata_traffic_feeds`` ergänzen:
 je Eintrag ``format|url`` (oder nur ``url`` → Standard ``mobidata_bw``). Jeder
@@ -25,6 +29,7 @@ import os
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 import httpx
 
@@ -66,6 +71,36 @@ def _feeds() -> list[tuple[str, str]]:
         else:
             feeds.append(("mobidata_bw", entry))
     return feeds
+
+
+def _auth_headers() -> dict[str, dict[str, str]]:
+    """Host → zusätzliche Header aus ``opendata_traffic_api_keys``.
+
+    Feeds wie ASFINAG (AT) oder opentransportdata.swiss (CH) sind offen, aber
+    registrierungspflichtig: die Kennung reist als Header mit, nicht als
+    Client-Zertifikat wie beim mobilithek-Broker.
+    """
+    out: dict[str, dict[str, str]] = {}
+    for entry in settings.opendata_traffic_api_keys.split(","):
+        entry = entry.strip()
+        if "|" not in entry:
+            continue
+        host, header = entry.split("|", 1)
+        if ":" not in header:
+            continue
+        name, value = header.split(":", 1)
+        host, name, value = host.strip().lower(), name.strip(), value.strip()
+        if host and name and value:
+            out.setdefault(host, {})[name] = value
+    return out
+
+
+def _headers_for(url: str, by_host: dict[str, dict[str, str]]) -> dict[str, str] | None:
+    """Header für genau diesen Host — sonst würde ein Redirect den Key mitnehmen."""
+    if not by_host:
+        return None
+    host = (urlparse(url).hostname or "").lower()
+    return by_host.get(host) or None
 
 
 def _parse_time(value) -> datetime | None:
@@ -285,14 +320,17 @@ _FORMATS = {
 # ── Abruf & Cache ────────────────────────────────────────────────────
 
 
-async def _fetch_feed(client: httpx.AsyncClient, fmt: str, url: str) -> list[dict]:
+async def _fetch_feed(
+    client: httpx.AsyncClient, fmt: str, url: str,
+    headers: dict[str, str] | None = None,
+) -> list[dict]:
     """Einen Feed holen, per Format-Parser normalisieren, Abgelaufenes ausfiltern."""
     entry = _FORMATS.get(fmt)
     if entry is None:
         return []
     provider_name, parse = entry
     try:
-        resp = await client.get(url)
+        resp = await client.get(url, headers=headers)
         resp.raise_for_status()
         features = parse(resp, provider_name)
     except Exception:
@@ -309,10 +347,13 @@ async def _fetch_all_features() -> list[dict]:
     plain = [(f, u) for f, u in feeds if f != "datex2"]
     datex = [(f, u) for f, u in feeds if f == "datex2"]
     features: list[dict] = []
+    auth = _auth_headers()
 
     if plain:
         async with httpx.AsyncClient(timeout=20.0, headers=_HEADERS) as client:
-            results = await asyncio.gather(*[_fetch_feed(client, f, u) for f, u in plain])
+            results = await asyncio.gather(
+                *[_fetch_feed(client, f, u, _headers_for(u, auth)) for f, u in plain]
+            )
         for res in results:
             features.extend(res)
 
@@ -331,7 +372,9 @@ async def _fetch_all_features() -> list[dict]:
         async with httpx.AsyncClient(
             timeout=40.0, headers=_XML_HEADERS, cert=cert, verify=verify, follow_redirects=True
         ) as client:
-            results = await asyncio.gather(*[_fetch_feed(client, f, u) for f, u in datex])
+            results = await asyncio.gather(
+                *[_fetch_feed(client, f, u, _headers_for(u, auth)) for f, u in datex]
+            )
         for res in results:
             features.extend(res)
 

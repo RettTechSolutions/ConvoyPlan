@@ -1,6 +1,6 @@
 <script lang="ts" module>
     export interface AreaSelection {
-        /** Gewählte Landkreis-Schlüssel (leer bei freiem Polygon). */
+        /** Gewählte Gebietsschlüssel (leer bei freiem Polygon). */
         districtCodes: string[];
         /** Hochzuladende Grenze (GeoJSON), oder null wenn keine neue Grenze. */
         boundaryFile: File | null;
@@ -14,11 +14,14 @@
     import { get } from 'svelte/store';
     import { themeStore } from '$lib/stores/theme';
     import { addRegionMask, applyMapTheme } from '$lib/map/region';
-    import { loadDistricts, DISTRICTS_ATTRIBUTION, type DistrictFeature } from '$lib/geo/districts';
+    import {
+        loadDistricts, districtSubtitle, DISTRICTS_ATTRIBUTION,
+        type DistrictFeature, type DistrictProps,
+    } from '$lib/geo/districts';
 
     interface Props {
         initialGeo?: GeoJSON.Geometry | null;
-        /** Landkreis-Schlüssel, die bereits durch andere Leitstellen belegt sind. */
+        /** Gebietsschlüssel, die bereits durch andere Leitstellen belegt sind. */
         takenCodes?: string[];
         /** Schlüssel → Name der belegenden Leitstelle (für Tooltip). */
         takenOwnerByCode?: Record<string, string>;
@@ -92,7 +95,7 @@
     }
 
     function districtFilter(codes: string[]): maplibregl.FilterSpecification {
-        return ['in', ['get', 'krs_code'], ['literal', codes]] as maplibregl.FilterSpecification;
+        return ['in', ['get', 'code'], ['literal', codes]] as maplibregl.FilterSpecification;
     }
 
     function updateDistrictSelected() {
@@ -127,7 +130,7 @@
             districtsByCode = byCode;
             ensureDistrictLayers(fc);
         } catch (e: unknown) {
-            loadError = e instanceof Error ? e.message : 'Landkreis-Daten konnten nicht geladen werden';
+            loadError = e instanceof Error ? e.message : 'Gebietsdaten konnten nicht geladen werden';
             return;
         }
         drawingMode = false;
@@ -181,7 +184,7 @@
         const clickHandler = (e: maplibregl.MapMouseEvent) => {
             if (districtMode) {
                 const feats = map!.queryRenderedFeatures(e.point, { layers: ['districts-fill'] });
-                const code = feats[0]?.properties?.krs_code as string | undefined;
+                const code = feats[0]?.properties?.code as string | undefined;
                 if (!code) return;
                 selectedDistricts = selectedDistricts.includes(code)
                     ? selectedDistricts.filter((c) => c !== code)
@@ -206,14 +209,19 @@
             const feats = map.queryRenderedFeatures(e.point, { layers: ['districts-fill'] });
             const f = feats[0];
             if (!f) { popup?.remove(); return; }
-            const code = f.properties?.krs_code as string;
-            const name = f.properties?.krs_name as string;
-            const owner = takenOwnerByCode[code];
+            const props = f.properties as unknown as DistrictProps;
+            const owner = takenOwnerByCode[props.code];
             // Build via DOM/textContent — owner (Leitstellenname) is free text.
             const node = document.createElement('div');
             const strong = document.createElement('strong');
-            strong.textContent = name ?? '';
+            strong.textContent = props.name ?? '';
             node.appendChild(strong);
+            // Land/Bundesland dazu: "Zürich" allein sagt nicht, dass gerade ein
+            // Schweizer Kanton und kein deutscher Kreis unter dem Zeiger liegt.
+            const sub = document.createElement('div');
+            sub.className = 'ls-popup-sub';
+            sub.textContent = districtSubtitle(props);
+            node.appendChild(sub);
             if (owner) {
                 node.appendChild(document.createElement('br'));
                 node.appendChild(document.createTextNode(`bereits vergeben an: ${owner}`));
@@ -247,7 +255,7 @@
         {drawingMode ? '✓ Zeichnen aktiv (Doppelklick = fertig)' : '✏ Polygon zeichnen'}
     </button>
     <button type="button" class="btn-small" class:active={districtMode} onclick={toggleDistrictMode}>
-        {districtMode ? '✓ Landkreis-Auswahl aktiv' : '🗺 Landkreis wählen'}
+        {districtMode ? '✓ Gebietsauswahl aktiv' : '🗺 Gebiet wählen'}
     </button>
     <button type="button" class="btn-small" onclick={reset}>↺ Zurücksetzen</button>
 </div>
@@ -256,7 +264,7 @@
     <p class="poly-hint err">{loadError}</p>
 {:else if districtMode}
     <p class="poly-hint">
-        Landkreis anklicken zum Hinzufügen/Entfernen{selectedDistricts.length ? ` · ${selectedDistricts.length} ausgewählt` : ''}{takenCodes.length ? ' · grau = bereits vergeben' : ''} · Grenzen: {DISTRICTS_ATTRIBUTION}
+        Gebiet anklicken zum Hinzufügen/Entfernen — Landkreis (DE), Bezirk (AT) oder Kanton (CH){selectedDistricts.length ? ` · ${selectedDistricts.length} ausgewählt` : ''}{takenCodes.length ? ' · grau = bereits vergeben' : ''} · Grenzen: {DISTRICTS_ATTRIBUTION}
     </p>
 {/if}
 
@@ -279,6 +287,10 @@
         padding: .4rem .6rem;
         border-radius: 6px;
         box-shadow: 0 2px 10px rgba(0, 0, 0, .45);
+    }
+    :global(.ls-popup .ls-popup-sub) {
+        opacity: .7;
+        font-size: .72rem;
     }
     :global(.ls-popup .maplibregl-popup-tip) {
         border-top-color: #1e2a3a;

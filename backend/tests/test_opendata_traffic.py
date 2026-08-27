@@ -60,8 +60,10 @@ class _XmlResp:
 @pytest.fixture(autouse=True)
 def _reset(monkeypatch):
     od._cache = {"features": None, "fetched_at": 0.0}
+    _FeedClient.seen_headers = {}
     monkeypatch.setattr(settings, "opendata_traffic_enabled", True)
     monkeypatch.setattr(settings, "opendata_traffic_feeds", "mobidata_bw|https://example.org/bw.json")
+    monkeypatch.setattr(settings, "opendata_traffic_api_keys", "")
     yield
 
 
@@ -85,6 +87,53 @@ def test_feeds_bare_url_defaults_to_mobidata(monkeypatch):
 def test_feeds_disabled(monkeypatch):
     monkeypatch.setattr(settings, "opendata_traffic_enabled", False)
     assert od._feeds() == []
+
+
+# ── Zugangsdaten je Host (ASFINAG, opentransportdata.swiss) ──────────
+
+
+def test_api_keys_parsed_per_host(monkeypatch):
+    monkeypatch.setattr(
+        settings, "opendata_traffic_api_keys",
+        "api.asfinag.at|X-API-Key:abc123, API.OpenTransportData.swiss|Authorization:Bearer ey.J",
+    )
+    assert od._auth_headers() == {
+        "api.asfinag.at": {"X-API-Key": "abc123"},
+        # Host wird normalisiert, damit die Schreibweise in der Konfiguration egal ist.
+        "api.opentransportdata.swiss": {"Authorization": "Bearer ey.J"},
+    }
+
+
+def test_api_keys_ignore_malformed_entries(monkeypatch):
+    monkeypatch.setattr(
+        settings, "opendata_traffic_api_keys",
+        "kein-trenner, host.example|ohne-doppelpunkt, |X-Key:v, host.example|X-Key:",
+    )
+    assert od._auth_headers() == {}
+
+
+def test_headers_only_for_matching_host(monkeypatch):
+    by_host = {"api.asfinag.at": {"X-API-Key": "abc"}}
+    assert od._headers_for("https://api.asfinag.at/datex2", by_host) == {"X-API-Key": "abc"}
+    # Fremder Host bekommt den Schlüssel nicht — auch nicht als Teilstring.
+    assert od._headers_for("https://evil.example/api.asfinag.at", by_host) is None
+    assert od._headers_for("https://sub.api.asfinag.at/x", by_host) is None
+    assert od._headers_for("https://api.asfinag.at/x", {}) is None
+
+
+async def test_feed_sends_configured_header_only_to_its_host(monkeypatch):
+    monkeypatch.setattr(
+        settings, "opendata_traffic_feeds",
+        "mobidata_bw|https://api.asfinag.at/x.json,mobidata_bw|https://offen.example/y.json",
+    )
+    monkeypatch.setattr(settings, "opendata_traffic_api_keys", "api.asfinag.at|X-API-Key:geheim")
+    _FeedClient.payloads = {}
+    monkeypatch.setattr(od.httpx, "AsyncClient", _FeedClient)
+
+    await od._get_features()
+
+    assert _FeedClient.seen_headers["https://api.asfinag.at/x.json"] == {"X-API-Key": "geheim"}
+    assert _FeedClient.seen_headers["https://offen.example/y.json"] is None
 
 
 # ── Adapter: MobiData BW ─────────────────────────────────────────────
@@ -159,6 +208,7 @@ def test_flatten_polygon_to_linestring():
 
 class _FeedClient:
     payloads: dict = {}  # url -> FeatureCollection
+    seen_headers: dict = {}  # url -> mitgeschickte Zusatz-Header
 
     def __init__(self, *a, **k):
         pass
@@ -169,7 +219,8 @@ class _FeedClient:
     async def __aexit__(self, *e):
         return False
 
-    async def get(self, url):
+    async def get(self, url, headers=None):
+        _FeedClient.seen_headers[url] = headers
         return httpx.Response(200, json=_FeedClient.payloads.get(url, {"type": "FeatureCollection", "features": []}),
                               request=httpx.Request("GET", url))
 
@@ -272,7 +323,7 @@ async def test_datex2_client_uses_cert_and_ca(monkeypatch, tmp_path):
         async def __aexit__(self, *e):
             return False
 
-        async def get(self, url):
+        async def get(self, url, headers=None):
             return httpx.Response(200, content=_DATEX2_XML, request=httpx.Request("GET", url))
 
     monkeypatch.setattr(od.httpx, "AsyncClient", _Client)
@@ -294,7 +345,7 @@ async def test_datex2_feed_filters_expired(monkeypatch):
         async def __aexit__(self, *e):
             return False
 
-        async def get(self, url):
+        async def get(self, url, headers=None):
             return httpx.Response(200, content=_DATEX2_XML, request=httpx.Request("GET", url))
 
     monkeypatch.setattr(od.httpx, "AsyncClient", _Client)
