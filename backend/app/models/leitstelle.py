@@ -26,9 +26,11 @@ class Leitstelle(Base):
     anrufgruppe: Mapped[str] = mapped_column(String(50))
     zusatz_kanaele: Mapped[list | None] = mapped_column(JSON, nullable=True)
     geometry = mapped_column(Geometry("GEOMETRY", srid=4326), nullable=True)
-    # Amtliche Gemeindeschlüssel (AGS) der gewählten Landkreise, sofern das
-    # Gebiet über die Landkreis-Auswahl definiert wurde. Ermöglicht u.a. die
-    # Markierung bereits vergebener Kreise.
+    # Schlüssel der gewählten Gebiete, sofern das Gebiet über die Gebietsauswahl
+    # statt als freies Polygon definiert wurde. Ermöglicht u. a. die Markierung
+    # bereits vergebener Gebiete. Format: ISO-Länderkürzel + Landesschlüssel —
+    # "DE-08115" (AGS), "AT-322" (Bezirkskennziffer), "CH-040" (Kanton),
+    # "LI-000"; siehe app/schemas/leitstelle.py und Migration 0039.
     district_codes: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     # Org-Zuordnung & Vorschlags-Workflow
