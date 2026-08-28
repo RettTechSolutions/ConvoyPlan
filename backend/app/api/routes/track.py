@@ -149,7 +149,11 @@ async def get_track(
                 select(Convoy.name).where(Convoy.id == link.convoy_id)
             )
             convoy_name = convoy_result.scalar_one_or_none() or ""
-            return TrackGate(requires_password=True, convoy_name=convoy_name)
+            return TrackGate(
+                requires_password=True,
+                convoy_name=convoy_name,
+                scope=link.scope,
+            )
 
     payload = await _build_payload(link.convoy_id, db, scope=link.scope)
     await _bump_access(db, link.id)

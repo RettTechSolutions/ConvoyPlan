@@ -393,7 +393,11 @@
 			<div class="tab-content"><p class="hint">Lade…</p></div>
 		{:else if gate}
 			<div class="gate">
-				<p class="hint">Dieser Tracking-Link ist passwortgeschützt.</p>
+				<p class="hint">
+					{gate.scope === 'driver'
+						? 'Fahrer-Anmeldung – dieser Link ist passwortgeschützt.'
+						: 'Dieser Tracking-Link ist passwortgeschützt.'}
+				</p>
 				<form onsubmit={(e) => { e.preventDefault(); submitPassword(); }}>
 					<input
 						type="password"
