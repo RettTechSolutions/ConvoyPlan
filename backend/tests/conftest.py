@@ -8,6 +8,8 @@ tests are not affected by license validation.
 
 This fixture does NOT affect any production code path.
 """
+import time
+
 import pytest
 import app.middleware.license_guard as _lgm
 from app.config import settings
@@ -16,9 +18,17 @@ from app.services import rate_limit
 
 @pytest.fixture(autouse=True, scope="session")
 def bypass_license_for_tests():
+    # Der Zeitstempel muss mitgesetzt werden: `_cache_fresh()` prüft neben dem
+    # Wert auch das Alter gegen `time.monotonic()`, und das ist unter Linux die
+    # Zeit seit dem Boot. Ohne den Zeitstempel gilt der Cache auf jeder Maschine
+    # mit mehr als einer Stunde Uptime als abgelaufen — die Middleware validiert
+    # dann doch, findet keine Lizenz und beantwortet jeden schreibenden Aufruf
+    # mit 402. CI-Runner sind immer frisch gestartet, dort fällt das nie auf.
     _lgm._license_valid = True
+    _lgm._license_checked_at = time.monotonic()
     yield
     _lgm._license_valid = None
+    _lgm._license_checked_at = 0.0
 
 
 @pytest.fixture(autouse=True)
