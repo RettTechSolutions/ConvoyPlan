@@ -22,7 +22,7 @@
 - Klicke auf die Karte, um **Startpunkt** (grün) und **Zielort** (rot) zu setzen
 - Alternativ: Adresse über die **Suchleiste** eingeben und als Punkt übernehmen
 
-Die Routenberechnung ist auf Deutschland begrenzt (der GraphHopper-Graph enthält nur das deutsche Straßennetz). Die Karte zeigt das direkt: Alles außerhalb der Bundesgrenze ist abgedunkelt bzw. ausgegraut, die Grenze selbst als feine Linie gezogen — ein Ziel jenseits der Grenze fällt so schon vor der Berechnung auf. Die Kartendarstellung folgt außerdem dem gewählten Hell-/Dunkel-Design der App, ohne dass die Karte dafür neu geladen wird.
+Die Routenberechnung deckt standardmäßig den gesamten DACH-Raum ab (Deutschland, Österreich, Schweiz, Liechtenstein — der GraphHopper-Graph enthält das entsprechende Straßennetz). Die Karte zeigt das direkt: Alles außerhalb dieser Region ist abgedunkelt bzw. ausgegraut, die Außengrenze selbst als feine Linie gezogen — ein Ziel jenseits davon fällt so schon vor der Berechnung auf. Betreiber, die einen kleineren Kartenausschnitt (z. B. nur Deutschland) installiert haben, sehen die Maske entsprechend enger gefasst. Die Kartendarstellung folgt außerdem dem gewählten Hell-/Dunkel-Design der App, ohne dass die Karte dafür neu geladen wird.
 
 ### Wegpunkte hinzufügen
 Über das Panel können folgende Wegpunkttypen hinzugefügt werden:

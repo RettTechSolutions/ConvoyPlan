@@ -8,7 +8,7 @@ Vollständige Feature-Übersicht von ConvoyPlan mit Umsetzungsstatus. Eine kompa
 
 | Funktion | Beschreibung | Status |
 |---|---|---:|
-| Karte | Interaktive OSM-Karte mit Planungsansicht, Deutschland-Fokusmaske und Hell-/Dunkel-Kartendesign | ✅ |
+| Karte | Interaktive OSM-Karte mit Planungsansicht, DACH-Fokusmaske (Deutschland, Österreich, Schweiz, Liechtenstein) und Hell-/Dunkel-Kartendesign | ✅ |
 | Wegpunkte | Start, Ziel, Wegpunkte, Kontrollpunkte und technische Halte | ✅ |
 | Routenberechnung | GraphHopper-Routing über selbst gehosteten Dienst | ✅ |
 | Zeitplan | Automatische Ankunfts- und Abfahrtszeiten | ✅ |
@@ -34,7 +34,7 @@ Vollständige Feature-Übersicht von ConvoyPlan mit Umsetzungsstatus. Eine kompa
 | Freigabelink | Öffentliche Routenansicht per Share-Token | ✅ |
 | Branding | Eigenes App-Logo, Farben und Name über Admin-UI konfigurierbar | ✅ |
 | Leitstellen | Leitstellen und Kanalwechselpunkte entlang der Route | ✅ |
-| Org-Leitstellen | Org-eigene Leitstellen mit Vorschlags-/Freigabe-Workflow, Übersichtskarte und Landkreis-Auswahl | ✅ |
+| Org-Leitstellen | Org-eigene Leitstellen mit Vorschlags-/Freigabe-Workflow, Übersichtskarte und Auswahl fertiger Verwaltungsgrenzen (Kreise/kreisfreie Städte in DE, Bezirke in AT, Kantone in CH/LI) | ✅ |
 | API-Schlüssel | Org-gebundene API-Keys für programmatischen Zugriff (Admin-Panel) | ✅ |
 
 ---
