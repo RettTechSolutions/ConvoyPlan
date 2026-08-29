@@ -100,3 +100,8 @@ class TrackPublic(BaseModel):
 class TrackGate(BaseModel):
     requires_password: bool
     convoy_name: str
+    # Rolle des Links ("track" = nur lesend, "driver" = darf Position/Status
+    # senden). Steht schon vor der Passworteingabe zur Verfügung, damit ein
+    # Client die Anmeldemaske passend beschriften kann. Keine
+    # Sicherheitsauswirkung: durchgesetzt wird der Scope serverseitig.
+    scope: str = "track"

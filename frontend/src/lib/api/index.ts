@@ -421,7 +421,12 @@ export interface TrackPayload {
 	kanalwechsel?: KanalwechselEntry[];
 	vehicles: TrackVehicle[]; positions: TrackPosition[];
 }
-export interface TrackGate { requires_password: true; convoy_name: string; }
+export interface TrackGate {
+	requires_password: true;
+	convoy_name: string;
+	/** Rolle des Links — steht schon vor der Passworteingabe bereit. */
+	scope?: ShareLinkScope;
+}
 
 async function trackRequest<T>(path: string, init: RequestInit = {}, sessionToken?: string): Promise<T> {
 	const baseUrl = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
