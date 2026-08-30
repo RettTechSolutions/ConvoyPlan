@@ -13,7 +13,7 @@ sqlalchemy[asyncio]==2.0.52
 asyncpg==0.31.0
 geoalchemy2==0.20.0
 alembic==1.19.1
-pydantic[email]==2.13.4
+pydantic[email]==2.13.5
 # PyJWT replaces python-jose (CVE-2024-33663, CVE-2024-33664 — algorithm confusion / sig bypass).
 PyJWT==2.13.0
 pydantic-settings==2.15.0
