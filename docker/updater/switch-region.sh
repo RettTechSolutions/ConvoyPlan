@@ -797,9 +797,12 @@ if [ "$SWITCH_OK" != 1 ]; then
     if ! _rollback_to_old_region; then
         fail "Der Schwenk ist gescheitert UND der Rücktausch von Graph und .region ist fehlgeschlagen — manueller Eingriff nötig."
     fi
-    _compose up -d --force-recreate graphhopper >> "$LOG" 2>&1 || \
+    if _compose up -d --force-recreate graphhopper >> "$LOG" 2>&1; then
+        GH_STOPPED=0
+    else
+        # GH_STOPPED bleibt 1 — die Notbremse in _on_exit versucht es erneut.
         log "WARNUNG: 'compose up' nach dem Rollback meldete einen Fehler."
-    GH_STOPPED=0
+    fi
     if _wait_gh_healthy "$REGION_HEALTH_TIMEOUT"; then
         fail "Rollback auf die vorherige Region durchgeführt — der Schwenk auf die neue Region ist gescheitert."
     fi
