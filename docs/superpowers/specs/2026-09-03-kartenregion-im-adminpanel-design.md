@@ -326,12 +326,37 @@ Aufräumen prüfbar, ohne je einen Container zu starten.
 
 Der Berlin-Extract ist klein genug, um den vollständigen Weg von `preview` bis
 zum Schwenk auf einem Runner durchzuspielen. Der einzige Test, der die fünf
-Phasen gegeneinander prüft.
+Phasen gegeneinander prüft. Umgesetzt als Job `region-switch` in
+`.github/workflows/ci.yml` (Task 10): Ersteinstieg auf einer winzigen
+Fremdregion (Liechtenstein), Wechsel auf Berlin, Abschluss über
+`region_status.json` verfolgt. Der Job belegt zusätzlich drei Dinge, die
+sonst nirgends geprüft sind: dass GraphHopper nach dem Schwenk wirklich mit
+der neuen Region routet (`.region`-Inhalt + echte Routenanfrage innerhalb
+Berlins), dass der Graph dabei **nicht neu gebaut** wird (GraphHopper-Logs
+ohne den Rebuild-Hinweis aus `entrypoint.sh`), und dass `region.lock`,
+`region_request.json` und `region.cancel` nach `done` aufgeräumt sind (sonst
+blockiert ein liegen gebliebenes Lock jeden weiteren Versuch mit 409).
 
-**Nicht automatisierbar**
+**Nicht automatisierbar — bewusst offen gelassene Lücke**
 
-Der Pfad mit großen Regionen sprengt Laufzeit und Speicher jedes Runners. Er
-gehört als manueller Prüfschritt in den Plan, nicht als stillschweigende Lücke.
+Der Pfad mit großen Regionen (DACH und größer) sprengt Laufzeit und Speicher
+jedes CI-Runners: DACH allein ist mit 5,79 GB rund 64× so groß wie das
+Berlin-Extract, das der Job `region-switch` tatsächlich durchspielt (Abschnitt
+6, Task 1). Diese Lücke wird hier benannt statt stillschweigend übergangen:
+
+- Vor jedem Release ist der Regionswechsel auf DACH (oder eine größere Region,
+  falls das Sortiment erweitert wird) einmal von Hand auf einer echten
+  Instanz durchzuspielen — nicht auf einem CI-Runner, dessen Plattenplatz und
+  Arbeitsspeicher dafür nicht reichen.
+- Geprüft wird derselbe Ablauf wie im CI-Job, nur mit der großen Region: alle
+  fünf Phasen bis `done`, und dass GraphHopper danach tatsächlich mit der
+  neuen Region routet — inklusive der Größenordnung "Sekunden statt Stunden"
+  für den Schwenk selbst (Phase 4 baut nichts mehr, das hat bereits Phase 3
+  erledigt).
+- Dieser manuelle Schritt ist (Stand Task 10) nicht Teil eines dokumentierten,
+  erzwungenen Release-Prozesses — er bleibt Sache der freigebenden Person,
+  bis es einen solchen Prozess gibt. Hier absichtlich als benannte,
+  nicht automatisierbare Lücke festgehalten statt sie zu verschweigen.
 
 ---
 
