@@ -23,6 +23,7 @@ from app.api.routes import admin as admin_router
 from app.api.routes import branding as branding_router
 from app.api.routes import email_template as email_template_router
 from app.api.routes import license as license_router
+from app.api.routes import region as region_router
 from app.api.routes import setup as setup_router
 from app.api.routes import share_links as share_links_router
 from app.api.routes import system_metrics as system_metrics_router
@@ -350,6 +351,7 @@ app.include_router(geocoding.router, prefix="/api")
 app.include_router(status.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(admin_router.router, prefix="/api")
+app.include_router(region_router.router, prefix="/api")
 app.include_router(system_metrics_router.router, prefix="/api")
 app.include_router(setup_router.router, prefix="/api")
 app.include_router(leitstellen.router, prefix="/api")
