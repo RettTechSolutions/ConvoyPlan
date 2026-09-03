@@ -14,7 +14,10 @@
 # Die Zusage an den Nutzer: Scheitert etwas VOR dem Schwenk, läuft die alte
 # Region unberührt weiter. Der alte Graph wird deshalb erst in Phase 5 —
 # also nach einem nachweislich gesunden neuen GraphHopper — gelöscht; scheitert
-# der Schwenk selbst, holt _restore_old_graph() ihn samt alter .region zurück.
+# der Schwenk selbst, holt _rollback_to_old_region() .region und Graph zurück.
+# Jeder Eingriff in das Graph-Verzeichnis findet bei GESTOPPTEM GraphHopper
+# statt, damit dessen Entrypoint nicht in einen Zwischenstand hineinläuft und
+# den Graphen wegen Fingerprint-Mismatch löscht (siehe _stop_graphhopper).
 #
 # Aufruf: aus der Poll-Schleife des Updaters, wenn region_request.json vorliegt
 # und kein region.lock existiert.
@@ -23,6 +26,7 @@
 #   STATUS_DIR OSM_DIR GRAPH_DIR REPO_DIR COMPOSE_PROJECT_NAME
 #   GRAPHHOPPER_IMAGE REGION_COMPOSE_FILE REGION_IMPORT_MODE
 #   REGION_HEALTH_TIMEOUT REGION_IMPORT_TIMEOUT REGION_POLL_SLEEP SKIP_CHECKSUM
+#   REGION_MEMINFO REGION_HEAP_RESERVE_MB REGION_HEAP_MIN_MB
 set -uo pipefail
 
 STATUS_DIR="${STATUS_DIR:-/update_status}"
@@ -73,9 +77,22 @@ REGION_IMPORT_TIMEOUT="${REGION_IMPORT_TIMEOUT:-21600}"
 REGION_POLL_SLEEP="${REGION_POLL_SLEEP:-5}"   # Sekunden zwischen zwei Abfragen
 REGION_POLL_STEP="${REGION_POLL_STEP:-5}"     # dafür verbuchte Sekunden
 
+# Heap-Deckelung (Spec §3): Das Backend rechnet den Import-Heap aus Schätzwerten
+# und zwischengespeicherten Host-Metriken. Der Updater sieht den Host zum
+# Ausführungszeitpunkt und übernimmt den Wert deshalb nicht ungeprüft, sondern
+# deckelt ihn auf den real verfügbaren Speicher abzüglich einer Reserve. Ein zu
+# großes -Xmx ist die wahrscheinlichste Ursache dafür, dass der Import stirbt
+# oder — schlimmer — der neue GraphHopper nach dem Schwenk nicht mehr hochkommt.
+REGION_MEMINFO="${REGION_MEMINFO:-/proc/meminfo}"
+REGION_HEAP_RESERVE_MB="${REGION_HEAP_RESERVE_MB:-1024}"  # für Kernel, Page-Cache, die übrigen Container
+REGION_HEAP_MIN_MB="${REGION_HEAP_MIN_MB:-2048}"          # nie unter diesen Wert deckeln
+
 OWNS_LOCK=0        # 1, sobald dieses Skript das Lock hält
 FINISHED=0         # 1 nach erfolgreichem Abschluss
 FAILED_REPORTED=0  # 1, sobald fail() den Endstatus geschrieben hat
+GH_STOPPED=0       # 1, solange GraphHopper für den Graph-Tausch gestoppt ist
+REGION_BACKED_UP=0 # 1, sobald .region gesichert wurde (erst dann ist ein Rücktausch sinnvoll)
+IMPORT_CANCELLED=0 # 1, wenn der Import wegen region.cancel abgebrochen wurde
 
 mkdir -p "$STATUS_DIR" 2>/dev/null || true
 
@@ -124,6 +141,17 @@ fail() {
 
 _on_exit() {
     local rc=$?
+    # Notbremse: Bricht das Skript ab, WÄHREND GraphHopper für den Graph-Tausch
+    # gestoppt ist (Signal, OOM des Skripts, `set -u`-Verstoß), bliebe das
+    # Routing sonst dauerhaft aus — `compose stop` überlebt auch einen
+    # Daemon-Neustart, `restart: unless-stopped` holt den Container nicht
+    # zurück. Deshalb hier der letzte Versuch, ihn wieder hochzufahren.
+    if [ "$GH_STOPPED" = 1 ]; then
+        log "GraphHopper ist noch gestoppt — starte ihn wieder."
+        _compose up -d graphhopper >> "$LOG" 2>&1 || \
+            log "FEHLER: GraphHopper konnte nicht wieder gestartet werden — manueller Eingriff nötig."
+        GH_STOPPED=0
+    fi
     if [ "$OWNS_LOCK" = 1 ]; then
         if [ "$rc" -ne 0 ] && [ "$FINISHED" != 1 ] && [ "$FAILED_REPORTED" != 1 ]; then
             # Abbruch von außen (Signal, `set -u`-Verstoß, OOM des Skripts):
@@ -191,10 +219,18 @@ _gh_cid() {
 # Zustand über den Container erfragen, nicht per HTTP: ob der Updater
 # GraphHopper per DNS erreicht, ist unverifiziert — der Healthcheck des
 # Containers ist ohnehin die verlässlichere Quelle (docker-compose.yml).
+# $3 = 1: zwischen zwei Abfragen auch region.cancel prüfen und dann mit 2
+# abbrechen (Spec §3: „ein laufender Import bis zum Ende ODER Abbruch des
+# Wegwerf-Containers"). Nur für den Import-Wartelauf gesetzt — nach dem Schwenk
+# (Phase 4) ist kein Abbruch mehr vorgesehen.
 _wait_container_healthy() {
-    local cid="$1" timeout="$2" waited=0 health status restarts
+    local cid="$1" timeout="$2" watch_cancel="${3:-0}" waited=0 health status restarts
     health=""; status=""
     while [ "$waited" -lt "$timeout" ]; do
+        if [ "$watch_cancel" = 1 ] && cancelled; then
+            log "Abbruch angefordert — der Import-Container wird gestoppt."
+            return 2
+        fi
         health="$(docker inspect "$cid" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' 2>/dev/null || echo '')"
         status="$(docker inspect "$cid" --format '{{.State.Status}}' 2>/dev/null || echo '')"
         restarts="$(docker inspect "$cid" --format '{{.RestartCount}}' 2>/dev/null || echo 0)"
@@ -223,6 +259,30 @@ _wait_gh_healthy() {
     _wait_container_healthy "$cid" "$1"
 }
 
+# ── GraphHopper anhalten / hochfahren ───────────────────────────────────────
+# Jeder Eingriff in $GRAPH_DIR passiert bei GESTOPPTEM Container. Grund: läuft
+# GraphHopper (mit `restart: unless-stopped`) währenddessen weiter oder im
+# Neustart-Takt, kann sein Entrypoint mitten in den Tausch hineinfallen. Er
+# vergleicht dort OSM_FILENAME aus .region mit .graph_fingerprint im Graph-
+# Verzeichnis und löscht bei Abweichung `rm -rf "$GRAPH_DIR"/*`
+# (graphhopper/entrypoint.sh:117) — also genau die Dateien, die wir gerade
+# hin- oder zurückschieben. Zwischen Tausch und .region-Schreiben (und im
+# Rollback zwischen .region und Graph) liegt zwangsläufig ein Fenster mit
+# unpassender Kombination; der gestoppte Container ist das, was dieses Fenster
+# ungefährlich macht.
+_stop_graphhopper() {
+    [ "$GH_STOPPED" = 1 ] && return 0
+    log "Halte GraphHopper an, bevor am Graph-Verzeichnis gearbeitet wird."
+    # Vor dem `stop` markieren: schlägt der Aufruf teilweise fehl (Container
+    # schon weg, Daemon zickt), soll die Notbremse in _on_exit trotzdem
+    # greifen — ein überflüssiges `up -d` ist harmlos, ein ausgelassenes nicht.
+    GH_STOPPED=1
+    if ! _compose stop graphhopper >> "$LOG" 2>&1; then
+        log "WARNUNG: 'compose stop graphhopper' meldete einen Fehler — fahre trotzdem fort."
+    fi
+    return 0
+}
+
 # ── Volumes ─────────────────────────────────────────────────────────────────
 # Für `docker run` brauchen wir die NAMEN der Volumes: Pfade wie /data/osm sind
 # containerinterne Pfade, der Docker-Daemon würde sie als Host-Pfade deuten und
@@ -240,6 +300,95 @@ _resolve_volumes() {
     [ -n "$GRAPH_VOLUME" ] || GRAPH_VOLUME="${COMPOSE_PROJECT}_gh_graph"
 }
 
+# ── Heap-Deckelung ──────────────────────────────────────────────────────────
+# "-Xmx3g" → 3072 (MB). Leerer Rückgabewert plus Rückgabecode 1, wenn der Wert
+# nicht als Zahl mit bekannter Einheit lesbar ist — dann wird lieber gar nicht
+# gedeckelt als falsch.
+_xmx_mb() {
+    local v="${1#-Xm?}" num unit=""
+    v="$(printf '%s' "$v" | tr 'A-Z' 'a-z')"
+    case "$v" in
+        *k|*m|*g) unit="${v: -1}"; num="${v%?}" ;;
+        *)        num="$v" ;;
+    esac
+    case "$num" in ''|*[!0-9]*) return 1 ;; esac
+    case "$unit" in
+        k) printf '%s' $(( num / 1024 )) ;;
+        m) printf '%s' "$num" ;;
+        g) printf '%s' $(( num * 1024 )) ;;
+        *) printf '%s' $(( num / 1024 / 1024 )) ;;   # Bytes ohne Einheit
+    esac
+    return 0
+}
+
+# Verfügbarer Host-Speicher in MB. MemAvailable (nicht MemFree) ist der Wert,
+# den der Kernel selbst als „ohne Swapping vergebbar" ausweist — Page-Cache,
+# der zurückgewonnen werden kann, ist darin schon enthalten.
+_mem_available_mb() {
+    local kb
+    kb="$(awk '/^MemAvailable:/{print $2; exit}' "$REGION_MEMINFO" 2>/dev/null)"
+    case "${kb:-}" in ''|*[!0-9]*) return 1 ;; esac
+    printf '%s' $(( kb / 1024 ))
+    return 0
+}
+
+# Gibt $1 (JAVA_OPTS) mit gedeckeltem -Xmx/-Xms aus. $2 ist nur die Bezeichnung
+# für das Log. Der Zeitpunkt des Aufrufs ist bewusst Teil der Semantik: für den
+# Import wird gemessen, während der alte GraphHopper noch läuft; für den
+# produktiven Heap in .region erst, nachdem er gestoppt wurde — beides ist
+# genau der Zustand, in dem der jeweilige Heap tatsächlich gebraucht wird.
+_capped_java_opts() {
+    local opts="$1" purpose="$2" tok mb avail_mb cap_mb xmx_mb="" xmx_capped=0 out=""
+    if ! avail_mb="$(_mem_available_mb)"; then
+        log "WARNUNG: ${REGION_MEMINFO} nicht lesbar — Heap wird nicht gedeckelt (${purpose})." >&2
+        printf '%s' "$opts"
+        return 0
+    fi
+    cap_mb=$(( avail_mb - REGION_HEAP_RESERVE_MB ))
+    [ "$cap_mb" -lt "$REGION_HEAP_MIN_MB" ] && cap_mb="$REGION_HEAP_MIN_MB"
+
+    # Durchgang 1: den effektiven -Xmx bestimmen, damit -Xms in Durchgang 2
+    # daran (und nicht nur an der Obergrenze) gemessen werden kann — ein -Xms
+    # über -Xmx lässt die JVM gar nicht erst starten.
+    for tok in $opts; do
+        case "$tok" in
+            -Xmx*)
+                if mb="$(_xmx_mb "$tok")"; then
+                    if [ "$mb" -gt "$cap_mb" ]; then
+                        log "Heap gedeckelt (${purpose}): ${tok} → -Xmx${cap_mb}m — ${avail_mb} MB verfügbar abzüglich ${REGION_HEAP_RESERVE_MB} MB Reserve." >&2
+                        xmx_mb="$cap_mb"
+                        xmx_capped=1
+                    else
+                        xmx_mb="$mb"
+                    fi
+                else
+                    log "WARNUNG: ${tok} nicht lesbar — bleibt ungedeckelt (${purpose})." >&2
+                fi
+                ;;
+        esac
+    done
+
+    for tok in $opts; do
+        case "$tok" in
+            -Xmx*)
+                # Nur bei tatsächlicher Deckelung neu schreiben — sonst bliebe
+                # von "-Xmx3g" ein sachlich gleiches, aber grundlos anderes
+                # "-Xmx3072m" in .region stehen.
+                [ "$xmx_capped" = 1 ] && tok="-Xmx${xmx_mb}m"
+                ;;
+            -Xms*)
+                if [ -n "$xmx_mb" ] && mb="$(_xmx_mb "$tok")" && [ "$mb" -gt "$xmx_mb" ]; then
+                    log "Start-Heap gedeckelt (${purpose}): ${tok} → -Xms${xmx_mb}m (darf -Xmx nicht überschreiten)." >&2
+                    tok="-Xms${xmx_mb}m"
+                fi
+                ;;
+        esac
+        out="${out:+$out }$tok"
+    done
+    printf '%s' "$out"
+    return 0
+}
+
 # ── Phase 3: Graph bauen ────────────────────────────────────────────────────
 # REGION_SOURCE_SCRIPT=/dev/null ist der wichtigste Schalter hier: /data/osm/.region
 # enthält zu diesem Zeitpunkt noch die ALTE Region und hat im Container Vorrang
@@ -251,50 +400,106 @@ _import_container_args() {
         -v "${GRAPH_VOLUME}:/data/graph"
         -e "OSM_FILENAME=${FILENAME}"
         -e "OSM_DOWNLOAD_URL=${URL}"
-        -e "JAVA_OPTS=${JAVA_OPTS}"
+        -e "JAVA_OPTS=${IMPORT_JAVA_OPTS}"
         -e "GRAPH_DIR=${STAGING_IN_CONTAINER}"
         -e "REGION_SOURCE_SCRIPT=/dev/null"
     )
 }
 
 _import_graph_via_server() {
-    local cid rc=1 name="convoyplan-region-import-$$"
+    local cid start_rc rc=1 wrc name="convoyplan-region-import-$$"
     _import_container_args
     log "Baue den Graphen über einen temporären GraphHopper-Server (Rückfallweg)."
     docker rm -f "$name" >/dev/null 2>&1
+    # stderr getrennt halten und den Exit-Code auswerten: `2>&1 | tail -1`
+    # lieferte bei einem Fehlstart die FEHLERMELDUNG statt einer Container-ID.
+    # Die ist nicht leer, kam also am Leer-Guard vorbei — jedes folgende
+    # `docker inspect` lieferte dann leere Werte, RestartCount fiel auf 0
+    # zurück und die Warteschleife drehte bis REGION_IMPORT_TIMEOUT: sechs
+    # Stunden mit gehaltenem Lock für einen Fehler, der sofort feststand.
     cid="$(docker run -d --name "$name" \
         --health-cmd "curl -f http://localhost:8989/health" \
         --health-interval 15s --health-timeout 10s --health-retries 3 \
         --health-start-period 60s \
         "${IMPORT_ARGS[@]}" -e "GH_COMMAND=server" \
-        "$GRAPHHOPPER_IMAGE" 2>&1 | tail -1)"
-    if [ -z "$cid" ]; then
-        log "Import-Container ließ sich nicht starten."
+        "$GRAPHHOPPER_IMAGE" 2>>"$LOG")"
+    start_rc=$?
+    if [ "$start_rc" -ne 0 ] || [ -z "$cid" ]; then
+        log "Import-Container ließ sich nicht starten (docker run beendet mit ${start_rc})."
+        docker rm -f "$name" >/dev/null 2>&1
         return 1
     fi
-    if _wait_container_healthy "$cid" "$REGION_IMPORT_TIMEOUT"; then
-        rc=0
-    fi
+    _wait_container_healthy "$cid" "$REGION_IMPORT_TIMEOUT" 1
+    wrc=$?
+    [ "$wrc" = 0 ] && rc=0
+    [ "$wrc" = 2 ] && IMPORT_CANCELLED=1
     docker logs --tail 50 "$cid" >> "$LOG" 2>&1
     docker stop -t 30 "$cid" >/dev/null 2>&1
     docker rm -f "$cid" >/dev/null 2>&1
     return "$rc"
 }
 
+# Wartet auf den im Hintergrund laufenden Import und prüft nebenher
+# region.cancel. Rückgabe: 0 = Prozess regulär beendet, 1 = abgebrochen,
+# 2 = Zeitlimit. In den Fällen 1 und 2 wird der Container hart entfernt —
+# `docker run` beendet sich dadurch von selbst.
+_await_import_process() {
+    local pid="$1" name="$2" waited=0
+    while kill -0 "$pid" 2>/dev/null; do
+        if cancelled; then
+            log "Abbruch angefordert — der Import-Container wird gestoppt."
+            docker rm -f "$name" >/dev/null 2>&1
+            wait "$pid" 2>/dev/null
+            return 1
+        fi
+        if [ "$waited" -ge "$REGION_IMPORT_TIMEOUT" ]; then
+            log "Import überschreitet ${REGION_IMPORT_TIMEOUT}s — Container wird gestoppt."
+            docker rm -f "$name" >/dev/null 2>&1
+            wait "$pid" 2>/dev/null
+            return 2
+        fi
+        sleep "$REGION_POLL_SLEEP"
+        waited=$(( waited + REGION_POLL_STEP ))
+    done
+    wait "$pid" 2>/dev/null
+    return 0
+}
+
 _import_graph() {
-    local out rc
+    local out rcf pid wrc rc name="convoyplan-region-import-$$"
     if [ "$REGION_IMPORT_MODE" = "server" ]; then
         _import_graph_via_server
         return $?
     fi
     _import_container_args
     out="$STATUS_DIR/.region-import-out.$$"
-    # Ausgabe live nach region.log (das Panel zeigt sie an — ein Import kann
-    # Stunden dauern) UND in eine Datei, um danach die Ursache eines
-    # Fehlschlags erkennen zu koennen.
-    docker run --rm "${IMPORT_ARGS[@]}" -e "GH_COMMAND=import" "$GRAPHHOPPER_IMAGE" 2>&1 \
-        | tee -a "$LOG" > "$out"
-    rc="${PIPESTATUS[0]}"
+    rcf="$STATUS_DIR/.region-import-rc.$$"
+    docker rm -f "$name" >/dev/null 2>&1
+    # Ausgabe live nach region.log (das Panel streamt sie über
+    # GET /api/admin/region/log — ein Import kann Stunden dauern) UND in eine
+    # Datei, um danach die Ursache eines Fehlschlags erkennen zu koennen.
+    #
+    # Der Aufruf läuft im Hintergrund, damit die Warteschleife nebenher
+    # region.cancel prüfen kann. Zuvor stand `abort_if_cancelled` nur an den
+    # Phasengrenzen: ein Abbruch in Phase 3 wirkte erst, wenn der Import von
+    # selbst fertig war — bei großen Regionen Stunden später. Der Exit-Code
+    # von `docker` (nicht der von `tee`) wandert über $rcf aus der Subshell
+    # heraus; `wait` auf eine Hintergrund-Pipeline gibt ihn nicht verlässlich
+    # zurück.
+    ( docker run --rm --name "$name" "${IMPORT_ARGS[@]}" -e "GH_COMMAND=import" \
+        "$GRAPHHOPPER_IMAGE" 2>&1 | tee -a "$LOG" > "$out"
+      printf '%s' "${PIPESTATUS[0]}" > "$rcf" ) &
+    pid=$!
+    _await_import_process "$pid" "$name"
+    wrc=$?
+    if [ "$wrc" -ne 0 ]; then
+        [ "$wrc" = 1 ] && IMPORT_CANCELLED=1
+        rm -f "$out" "$rcf"
+        return 1
+    fi
+    rc="$(cat "$rcf" 2>/dev/null)"
+    case "${rc:-}" in ''|*[!0-9]*) rc=1 ;; esac
+    rm -f "$rcf"
     if [ "$rc" -ne 0 ] && grep -qiE 'unrecognized command|invalid choice|unknown command' "$out" 2>/dev/null; then
         # Der Unterbefehl `import` existiert in dieser GraphHopper-Version nicht.
         log "GraphHopper kennt den Unterbefehl 'import' nicht — Rückfall auf den Server-Weg."
@@ -308,8 +513,11 @@ _import_graph() {
 
 # ── Phase 4: Tausch und Rücktausch ──────────────────────────────────────────
 # Beides sind Umbenennungen innerhalb des Graph-Volumes (gleiches Dateisystem),
-# also praktisch verzögerungsfrei. Der laufende GraphHopper stört das nicht:
-# ein Umbenennen lässt offene Dateideskriptoren unberührt.
+# also praktisch verzögerungsfrei. Beide Funktionen setzen voraus, dass
+# GraphHopper gestoppt ist (_stop_graphhopper) — nicht wegen der offenen
+# Dateideskriptoren (die überlebt ein Umbenennen), sondern weil sein Entrypoint
+# beim Neustart einen Zwischenstand aus neuer .region und altem Graph als
+# Fingerprint-Mismatch deutet und das Verzeichnis leerräumt.
 _swap_in_new_graph() {
     local entry base rc=0
     rm -rf "$OLD" || return 1
@@ -330,33 +538,53 @@ _swap_in_new_graph() {
     return "$rc"
 }
 
+# Rückgabewert ist bindend: die Funktion lieferte früher immer 0 und prüfte
+# keinen einzigen `mv` — ein halb zurückgeschobener Graph sah damit aus wie ein
+# gelungener Rollback. Scheitert etwas, bleibt $OLD absichtlich stehen, damit
+# der Bestand für einen manuellen Eingriff erhalten bleibt.
 _restore_old_graph() {
-    local entry base
+    local entry base rc=0
     [ -d "$OLD" ] || return 0
     shopt -s dotglob nullglob
     for entry in "$GRAPH_DIR"/*; do
         base="${entry##*/}"
         case "$base" in .old) continue ;; esac
-        rm -rf "$entry"
+        rm -rf "$entry" || { rc=1; log "FEHLER: $entry ließ sich nicht entfernen."; }
     done
     for entry in "$OLD"/*; do
-        mv -f "$entry" "$GRAPH_DIR/"
+        mv -f "$entry" "$GRAPH_DIR/" || { rc=1; log "FEHLER: $entry ließ sich nicht zurückschieben."; }
     done
     shopt -u dotglob nullglob
-    rmdir "$OLD" 2>/dev/null || rm -rf "$OLD"
+    if [ "$rc" = 0 ]; then
+        rmdir "$OLD" 2>/dev/null || rm -rf "$OLD"
+    else
+        log "Der alte Graph ist nur unvollständig zurückgeschoben — ${OLD} bleibt für den manuellen Eingriff erhalten."
+    fi
+    return "$rc"
 }
 
 # .region atomar schreiben: Temporärdatei im selben Verzeichnis, dann mv. Die
 # Alles-oder-nichts-Semantik in graphhopper/region-source.sh fängt eine formal
 # kaputte Datei ab — eine Datei mit allen drei Schlüsseln und abgeschnittenem
 # letztem Wert käme aber durch.
-_write_region_file() {
-    local tmp="$OSM_DIR/.region.tmp.$$"
+# Sicherung getrennt vom Schreiben: der Rollback muss auch dann greifen, wenn
+# der Schwenk VOR _write_region_file scheitert (Graph-Tausch fehlgeschlagen).
+# Solange REGION_BACKED_UP 0 ist, steht in .region noch die alte Region und
+# _restore_region_file darf sie auf keinen Fall löschen.
+_backup_region_file() {
     if [ -f "$REGION_FILE" ]; then
         cp "$REGION_FILE" "$REGION_BACKUP" || return 1
     else
+        # Kein .region vorhanden (Bestandsinstallation vor dem ersten Wechsel):
+        # der Rollback muss die Datei dann wieder entfernen, nicht zurückspielen.
         rm -f "$REGION_BACKUP"
     fi
+    REGION_BACKED_UP=1
+    return 0
+}
+
+_write_region_file() {
+    local tmp="$OSM_DIR/.region.tmp.$$"
     printf 'OSM_DOWNLOAD_URL=%s\nOSM_FILENAME=%s\nJAVA_OPTS=%s\n' \
         "$URL" "$FILENAME" "$JAVA_OPTS" > "$tmp" || { rm -f "$tmp"; return 1; }
     chmod 0644 "$tmp" 2>/dev/null || true
@@ -365,11 +593,35 @@ _write_region_file() {
 }
 
 _restore_region_file() {
+    local rc=0
+    # Ohne Sicherung gibt es nichts zurückzustellen — .region enthält dann noch
+    # unverändert die alte Region.
+    [ "$REGION_BACKED_UP" = 1 ] || return 0
     if [ -f "$REGION_BACKUP" ]; then
-        mv -f "$REGION_BACKUP" "$REGION_FILE"
+        mv -f "$REGION_BACKUP" "$REGION_FILE" || { rc=1; log "FEHLER: .region ließ sich nicht zurückstellen."; }
     else
-        rm -f "$REGION_FILE"
+        rm -f "$REGION_FILE" || rc=1
     fi
+    [ "$rc" = 0 ] && REGION_BACKED_UP=0
+    return "$rc"
+}
+
+# Rollback nach einem gescheiterten Schwenk. Die Reihenfolge ist bindend:
+# ZUERST .region, DANN der Graph. Andersherum lag im Fenster zwischen beiden
+# Schritten — `rm -rf` über den neuen Graphen plus `mv` über Gigabytes — die
+# NEUE .region neben dem ALTEN .graph_fingerprint; ein Entrypoint-Lauf, der da
+# hineinfiel, sah einen Fingerprint-Mismatch und löschte per
+# `rm -rf "$GRAPH_DIR"/*` genau die Dateien, die gerade zurückgeschoben wurden
+# (graphhopper/entrypoint.sh:117). Zusätzlich ist GraphHopper während des
+# gesamten Rollbacks gestoppt (_stop_graphhopper) — das schließt das Fenster
+# wirklich, die Reihenfolge ist der Gürtel dazu.
+_rollback_to_old_region() {
+    local rc=0
+    _stop_graphhopper
+    _restore_region_file || rc=1
+    _restore_old_graph   || rc=1
+    rm -rf "$STAGING"
+    return "$rc"
 }
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -462,8 +714,14 @@ abort_if_cancelled
 phase "importing" "Phase 3/5: Baue Routing-Graph (läuft im Hintergrund, Routing bleibt aktiv)…"
 rm -rf "$STAGING"
 _resolve_volumes
+# Import-Heap gegen den Speicher deckeln, der JETZT — mit noch laufendem
+# GraphHopper — tatsächlich frei ist.
+IMPORT_JAVA_OPTS="$(_capped_java_opts "$JAVA_OPTS" "Import")"
 if ! _import_graph; then
     rm -rf "$STAGING"
+    if [ "$IMPORT_CANCELLED" = 1 ]; then
+        fail "Abgebrochen — die bisherige Region läuft unverändert weiter."
+    fi
     fail "Graph-Bau fehlgeschlagen (häufigste Ursache: zu wenig Heap). Die alte Region läuft weiter."
 fi
 if cancelled; then
@@ -473,27 +731,79 @@ fi
 
 # ── Phase 4: Schwenken (ab hier kein Abbruch mehr) ──────────────────────────
 phase "switching" "Phase 4/5: Schwenke auf die neue Region…"
-if ! _swap_in_new_graph; then
-    _restore_old_graph
+
+# Beleg, dass im Staging überhaupt ein Graph liegt. `_import_graph` kann 0
+# liefern, ohne dass etwas entstanden ist; die Schleife in
+# `_swap_in_new_graph` liefe dann nullmal durch und ließe $GRAPH_DIR LEER
+# zurück — der einzige unumkehrbare Schritt, ausgerechnet ungeprüft. Der
+# Fingerprint ist der belastbarste Beleg: ihn schreibt der Entrypoint erst,
+# nachdem er die Graph-Konfiguration festgelegt hat.
+if [ ! -s "$STAGING/.graph_fingerprint" ]; then
     rm -rf "$STAGING"
+    fail "Der Import hat keinen Graphen hinterlassen — die alte Region läuft unverändert weiter."
+fi
+
+# Ab hier wird am Graph-Verzeichnis gearbeitet: GraphHopper muss dafür still
+# stehen (Begründung ausführlich bei _stop_graphhopper).
+_stop_graphhopper
+# Erst jetzt den produktiven Heap deckeln: mit gestopptem GraphHopper meldet
+# MemAvailable genau den Speicher, den der neue Container gleich vorfindet.
+JAVA_OPTS="$(_capped_java_opts "$JAVA_OPTS" "produktiver GraphHopper")"
+_backup_region_file || fail ".region konnte nicht gesichert werden — Schwenk abgebrochen, die alte Region läuft weiter."
+
+if ! _swap_in_new_graph; then
+    if ! _rollback_to_old_region; then
+        fail "Graph-Tausch fehlgeschlagen UND der Rücktausch von Graph und .region ist fehlgeschlagen — manueller Eingriff nötig."
+    fi
     fail "Graph-Tausch fehlgeschlagen — die alte Region ist wiederhergestellt."
 fi
 if ! _write_region_file; then
-    _restore_old_graph
+    if ! _rollback_to_old_region; then
+        fail ".region konnte nicht geschrieben werden UND der Rücktausch ist fehlgeschlagen — manueller Eingriff nötig."
+    fi
     fail ".region konnte nicht geschrieben werden — die alte Region ist wiederhergestellt."
 fi
-_compose up -d --force-recreate graphhopper >> "$LOG" 2>&1 || \
-    log "WARNUNG: 'compose up' meldete einen Fehler — prüfe trotzdem den Zustand."
 
-if ! _wait_gh_healthy "$REGION_HEALTH_TIMEOUT"; then
-    log "Der neue Graph wird nicht gesund — Rollback auf die vorherige Region."
-    _restore_old_graph
-    _restore_region_file
-    _compose up -d --force-recreate graphhopper >> "$LOG" 2>&1 || true
-    if _wait_gh_healthy "$REGION_HEALTH_TIMEOUT"; then
-        fail "Rollback auf die vorherige Region durchgeführt — die neue Region wurde nicht gesund."
+# Rückgabewert auswerten UND nachsehen, ob wirklich ein neuer Container steht:
+# scheitert `compose up` früh (Konfigurationsfehler, fehlende Variable), läuft
+# der ALTE Container weiter. _gh_cid fände ihn, _wait_gh_healthy meldete
+# „gesund", Phase 5 löschte .old und das alte Extract — das Panel meldete
+# „done", geroutet würde die alte Region, und es gäbe keinen Rollback-Bestand
+# mehr. Der Vergleich der Container-ID vor/nach ist der Beleg, dass der
+# Austausch stattgefunden hat.
+GH_CID_BEFORE="$(_gh_cid)"
+SWITCH_OK=1
+if ! _compose up -d --force-recreate graphhopper >> "$LOG" 2>&1; then
+    log "FEHLER: 'compose up -d --force-recreate graphhopper' ist fehlgeschlagen."
+    SWITCH_OK=0
+else
+    GH_STOPPED=0
+    GH_CID_AFTER="$(_gh_cid)"
+    if [ -z "$GH_CID_AFTER" ]; then
+        log "FEHLER: Nach 'compose up' existiert kein GraphHopper-Container."
+        SWITCH_OK=0
+    elif [ -n "$GH_CID_BEFORE" ] && [ "$GH_CID_AFTER" = "$GH_CID_BEFORE" ]; then
+        log "FEHLER: GraphHopper läuft unverändert unter ${GH_CID_BEFORE} — 'compose up' hat nichts ausgetauscht."
+        SWITCH_OK=0
     fi
-    fail "Die neue Region wurde nicht gesund UND der Rollback ist fehlgeschlagen — manueller Eingriff nötig."
+fi
+if [ "$SWITCH_OK" = 1 ] && ! _wait_gh_healthy "$REGION_HEALTH_TIMEOUT"; then
+    log "Der neue Graph wird nicht gesund."
+    SWITCH_OK=0
+fi
+
+if [ "$SWITCH_OK" != 1 ]; then
+    log "Rollback auf die vorherige Region."
+    if ! _rollback_to_old_region; then
+        fail "Der Schwenk ist gescheitert UND der Rücktausch von Graph und .region ist fehlgeschlagen — manueller Eingriff nötig."
+    fi
+    _compose up -d --force-recreate graphhopper >> "$LOG" 2>&1 || \
+        log "WARNUNG: 'compose up' nach dem Rollback meldete einen Fehler."
+    GH_STOPPED=0
+    if _wait_gh_healthy "$REGION_HEALTH_TIMEOUT"; then
+        fail "Rollback auf die vorherige Region durchgeführt — der Schwenk auf die neue Region ist gescheitert."
+    fi
+    fail "Rollback auf die vorherige Region durchgeführt, aber GraphHopper wird auch damit nicht gesund — manueller Eingriff nötig."
 fi
 
 # ── Phase 5: Aufräumen ──────────────────────────────────────────────────────
