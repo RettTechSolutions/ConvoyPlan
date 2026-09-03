@@ -21,6 +21,8 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+## [2026.3.0] – 2026-09-03
+
 ### Added
 
 - **Die Passwortmaske eines Tracking-Links nennt jetzt die Rolle.** Ein Freigabelink wird entweder nur lesend (`track`) oder als Fahrer-Link (`driver`) angelegt — wer ihn öffnet, erfuhr das bisher aber erst **nach** der Passworteingabe, weil die Gate-Antwort nur `requires_password` und den Konvoinamen trug. Für die Anmeldemaske ist das zu spät: Ein Fahrer, der sein Fahrzeug übernehmen soll, sah dieselbe Maske wie ein Beobachter und konnte vor dem Absenden nicht erkennen, ob er überhaupt am richtigen Link ist. `GET /api/track/{slug}` liefert im Gate deshalb zusätzlich das Feld `scope`, und die Tracking-Ansicht beschriftet die Maske entsprechend („Fahrer-Anmeldung – dieser Link ist passwortgeschützt."). Rückwärtskompatibel: Das Feld kommt hinzu, bestehende Clients ignorieren es, und es ist **keine** Sicherheitsänderung — welche Rechte ein Link hat, entscheidet weiterhin allein der Server (ein Lese-Link kann auch mit Kenntnis des Scopes keine Position senden, eingehende WebSocket-Frames werden dort verworfen). Vor dem Passwort gibt die Antwort weiterhin nichts über den Konvoi preis außer seinem Namen.
@@ -38,6 +40,29 @@ ursprünglichen SemVer-Nummern.
   Bei bestehenden Installationen wird der Routing-Graph beim Regionswechsel **automatisch neu gebaut** — das dauert je nach Region bis zu zwei Stunden, passiert aber nur einmal. Bisher wurde nur eine Änderung der Encoded Values erkannt: Wer die OSM-Datei tauschte, bekam stillschweigend weiter Routen aus der alten Region, weil GraphHopper einen vorhandenen Graphen kommentarlos weiterverwendet. Der Abgleich umfasst jetzt auch die Kartendatei. Installationen, die bei ihrer bisherigen Region bleiben, bauen **nicht** neu.
 
 - **Karten zeigen den Regionsfokus und folgen dem Hell-/Dunkel-Design.** Die Routenberechnung ist auf das geladene Kartengebiet begrenzt (DACH, siehe oben), die Karte sah aber überall gleich aus — ein Ziel jenseits der Grenze war erst an der fehlgeschlagenen Berechnung zu erkennen. Alles außerhalb der Region wird deshalb jetzt abgedunkelt bzw. ausgegraut und die Außengrenze selbst als feine Linie gezogen; das Umland bleibt als Orientierung sichtbar, tritt aber deutlich zurück. Gleichzeitig richtet sich die Karte nach dem gewählten Design: im Dunkelmodus werden die Kacheln getönt, damit die Karte nicht mehr als heller Block in der dunklen Oberfläche steht — Route, Sperrungen, Verkehrslage und Fahrzeug-Marker behalten ihre volle Leuchtkraft. Umgeschaltet wird ohne Neuladen der Karte. Gilt für die Planungs- und Tracking-Karte ebenso wie für die Leitstellen-Übersicht und die Gebietsauswahl im Admin-Portal. Der Regionsumriss (`static/geo/dach.geojson`, ~54 kB) wird aus den wählbaren Zuständigkeitsgebieten abgeleitet (siehe Eintrag oben) — kein zusätzlicher Kartendienst. Lässt er sich nicht laden, bleibt die Karte ohne Maske voll bedienbar.
+
+### Security
+
+- **`cryptography` auf 50.0.1 angehoben.** Die Wheels sind gegen OpenSSL 4.0.2 neu gebaut und schließen damit zehn CVEs im statisch gelinkten OpenSSL (CVE-2026-63072, CVE-2026-63074 bis -63076, CVE-2026-14456, CVE-2026-14457, CVE-2026-54874, CVE-2026-54876, CVE-2026-18798, CVE-2026-75803). Reiner Patch-Bump ohne API-Änderung.
+
+- **`fast-uri` und `browserslist` im Frontend gepatcht.** `fast-uri` 3.1.5 (transitiv über `ajv`) war von vier High-CVEs zu SSRF und Host-Confusion betroffen (CVE-2026-75931, -75975, -75899, -76172); der Override steht jetzt auf `^3.1.6`. `browserslist` 4.28.2 war über zwei DoS-Advisories angreifbar (CVE-2026-73088 Prototype-Write, CVE-2026-73089 unbegrenztes Cache-Wachstum) und ist auf `^4.28.7` gepinnt. `npm audit` meldet danach null Schwachstellen.
+
+- **`util-linux` im Backend-Image gepatcht.** CVE-2026-53615 (Integer-Overflow in libblkid) betraf die gesamte util-linux-Paketfamilie im `python:3.14-slim`-Basisimage. Debian hatte den Fix bereits ausgeliefert; das Build zieht ihn jetzt per `apt-get upgrade` nach.
+
+- **`setuptools`-Floor auf 83.0.0 angehoben.** CVE-2026-59890 erlaubt es, MANIFEST.in-Ausschlüsse über eine NFC/NFD-Unicode-Kollision zu umgehen. Praktisch nicht ausnutzbar, weil dieses Image nur installiert und ausführt statt sdists zu bauen — der Pin folgt trotzdem der tatsächlich gepatchten Version, damit die VEX-Begründung für die Restkopie im Basisimage stimmig bleibt.
+
+- **Scan-Suppressions des Updater-Images aktualisiert.** Neue Funde aus den `docker:cli`-Rebuilds sind mit Erreichbarkeitsbewertung dokumentiert (VEX: not_affected) statt stillschweigend zu blockieren — zuletzt CVE-2026-56854 (`x/crypto/ssh`, rein serverseitig) und CVE-2026-84304 (gRPC-Go OOM über fragmentierte HTTP/2-Frames). Beide stecken ausschließlich in den upstream mitgelieferten `docker-buildx`- und `docker-compose`-Binaries; der Updater betreibt weder SSH-Server noch gRPC-Listener.
+
+---
+
+## [2026.1.1 – 2026.2.2] – 2026-07-09 bis 2026-08-26
+
+> **Sammelabschnitt.** Diese Änderungen wurden über 18 Tags ausgeliefert
+> (`v2026.1.23` bis `v2026.2.2`), ohne dass der CHANGELOG je Release
+> fortgeschrieben wurde. Sie sind hier gebündelt statt einzeln zugeordnet —
+> die Aufschlüsselung je Tag steht noch aus.
+
+### Added
 
 - **Öffentliche Statusseite unter `/status`.** Ob eine Instanz gerade arbeitet, war bisher nur *innerhalb* des Portals zu sehen — über die Status-Pille in der Planungsansicht, also erst nach der Anmeldung. Wer nicht hineinkam, hatte keine Möglichkeit zu unterscheiden, ob das Portal steht oder das eigene Passwort klemmt. Die neue Seite `/status` ist ohne Anmeldung erreichbar und beantwortet genau diese Frage: eine große Gesamtaussage („Alle Systeme betriebsbereit" / „Eingeschränkter Betrieb" / „Störung") und darunter je eine Kachel für **Portal & Anmeldung**, **Konvoi-Daten**, **Routenplanung**, **Live-Tracking**, **Verkehr & Sperrungen** und **Wetterdaten** — jeweils mit einem Satz, was die Funktion tut, und einem, was der Zustand praktisch bedeutet. Die Seite lädt sich alle 30 Sekunden selbst nach; antwortet der Server gar nicht, ist das die Aussage („Portal nicht erreichbar"), und der zuletzt bekannte Stand bleibt sichtbar. Gestaltung, Farben und Hell-/Dunkelumschaltung kommen aus dem Portal; der Link steht in der Fußzeile der Anmeldeseiten.
 
@@ -395,7 +420,9 @@ Das ruft den Update-Modus auf: räumt verwaiste Updater-Container auf, zieht all
 - Capacitor configuration for Android/iOS native wrapper.
 - Docker Compose setup with GraphHopper OSM pre-download.
 
-[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.3.0...HEAD
+[2026.3.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.2.2...v2026.3.0
+[2026.1.1 – 2026.2.2]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v1.0.0...v2026.2.2
 [1.0.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.8.5...v1.0.0
 [0.8.5]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.5.3...v0.8.5
 [0.5.3]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.5.2...v0.5.3
