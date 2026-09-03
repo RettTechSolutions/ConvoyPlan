@@ -1144,6 +1144,15 @@ async def trigger_update(
 ):
     if os.path.exists(TRIGGER_FILE):
         raise HTTPException(409, "Update already triggered")
+    # Mirrors the check in region.py's switch_region(): a region switch and a
+    # normal update must never run concurrently, both write into the same
+    # shared /update_status volume and both eventually restart/replace
+    # containers. Import kept local (not at module level) — admin.py and
+    # region.py have no other dependency on each other, and a module-level
+    # import would create one purely for this mirrored check.
+    from app.services import region_switch
+    if region_switch.is_busy():
+        raise HTTPException(409, "Ein Regionswechsel läuft — Update währenddessen gesperrt.")
     # Write initial message so the SSE terminal shows something immediately
     # (updater may be sleeping up to INTERVAL seconds before it picks up the trigger)
     try:

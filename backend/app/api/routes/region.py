@@ -1,29 +1,42 @@
-"""Regionswechsel im Admin-Panel: Vorab-Rechnung (Preview) vor dem Graph-Bau.
+"""Regionswechsel im Admin-Panel: Vorab-Rechnung, Auslösen, Status, Abbruch.
 
-Dieser Router traegt bewusst nur `POST /admin/region/preview` unter dem
-Prefix `/admin/region` (Singular). Task 5 braucht zusaetzlich
-`GET /api/admin/regions` (Plural, Liste verfuegbarer Regionen) — das liegt
-ausserhalb dieses Prefix und gehoert NICHT hierher. Dafuer legt Task 5 einen
-eigenen `APIRouter` an (z. B. `app/api/routes/regions.py`), sonst kollidiert
-der Prefix mit `/admin/region/{irgendwas}` und FastAPI muesste zwischen
-`/admin/region/preview` und `/admin/regions` anhand der Routing-Reihenfolge
-disambiguieren.
+Zwei Router in diesem Modul: `router` (Prefix `/admin/region`, Singular) fuer
+`preview`, das Ausloesen selbst, `status`, `cancel` und die aktuell aktive
+Region; `admin_router` (Prefix `/admin`) fuer die Plural-Route
+`GET /admin/regions` (Liste verfuegbarer Regionen). Ein einzelner Router mit
+Prefix `/admin/region` koennte `/admin/regions` nicht bedienen — der Plural
+liegt ausserhalb dieses Prefix.
 
 `preview` hat keine Nebenwirkung: es schreibt nichts (kein Aufruf von
 `region_switch.write_request`) und loest keinen Import aus. Es beantwortet
 nur die Frage, ob eine Region auf diese Maschine passt, bevor der Operator
-einen stundenlangen Graph-Bau anstoesst.
+einen stundenlangen Graph-Bau anstoesst. `switch_region` loest den echten
+Wechsel aus (schreibt eine Anforderung ins geteilte Volume, die der Updater
+abholt) und ist deshalb strikt gegen einen bereits laufenden Regionswechsel
+oder ein bereits laufendes normales Update verriegelt (siehe dort).
 """
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+import os
 
-from app.api.deps import require_superadmin
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.deps import get_db, require_superadmin
 from app.config import settings
 from app.models.user import User
-from app.services import geofabrik, host_metrics, region_estimate
+from app.services import audit, geofabrik, host_metrics, region_estimate, region_switch
 
 router = APIRouter(prefix="/admin/region", tags=["admin"])
+admin_router = APIRouter(prefix="/admin", tags=["admin"])
+
+# Von der GraphHopper-Region geschrieben (Task 6/7), hier nur lesend
+# gemountet (OSM_PATH, read-only siehe docker-compose.yml). Fehlt die Datei
+# (noch kein Wechsel seit der Installation durchgefuehrt), gilt die in
+# docker-compose.yml hinterlegte Werkseinstellung (DACH) als aktiv.
+_REGION_FILE_NAME = ".region"
+_DEFAULT_REGION_URL = "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+_DEFAULT_REGION_FILENAME = "dach-latest.osm.pbf"
 
 # Read-only in docker-compose.yml gemountet (siehe dort) — das Backend
 # schreibt hier nichts, `df` auf dem Mount meldet das darunterliegende
@@ -85,8 +98,14 @@ async def preview(body: RegionUrl, _: User = Depends(require_superadmin)):
     heruntergeladen, geschrieben oder an den Updater gemeldet.
     """
     try:
-        geofabrik.validate_region_url(body.url)
-        extract = await geofabrik.head_size_bytes(body.url)
+        # Genau eine validierte URL im Umlauf (Altlast behoben, Task 5): vorher
+        # wurde validate_region_url() aufgerufen und ihr Rueckgabewert verworfen,
+        # bevor head_size_bytes() intern erneut (und mit dem rohen body.url)
+        # validierte — zwei parallele URL-Werte, von denen nur der zweite
+        # tatsaechlich verwendet wurde. Jetzt wird ausschliesslich das rekon-
+        # struierte Ergebnis von validate_region_url() weiterverwendet.
+        url = geofabrik.validate_region_url(body.url)
+        extract = await geofabrik.head_size_bytes(url)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     except ConnectionError as exc:
@@ -144,3 +163,143 @@ async def preview(body: RegionUrl, _: User = Depends(require_superadmin)):
         "verdict": worst,
         "reason": reason,
     }
+
+
+def _read_active_region() -> dict:
+    """Liest die aktuell aktive Region aus `.region` (siehe Modul-Docstring).
+
+    Existiert die Datei nicht oder ist sie nicht lesbar, gilt die
+    Werkseinstellung aus docker-compose.yml als aktiv — kein Fehler, sondern
+    der Normalzustand direkt nach der Installation, bevor je ein Wechsel
+    stattgefunden hat.
+    """
+    values: dict[str, str] = {}
+    try:
+        with open(os.path.join(OSM_PATH, _REGION_FILE_NAME)) as f:
+            for line in f:
+                if "=" in line:
+                    key, _, value = line.strip().partition("=")
+                    values[key] = value
+    except OSError:
+        pass
+    return {
+        "url": values.get("OSM_DOWNLOAD_URL", _DEFAULT_REGION_URL),
+        "filename": values.get("OSM_FILENAME", _DEFAULT_REGION_FILENAME),
+        "java_opts": values.get("JAVA_OPTS", settings.java_opts),
+    }
+
+
+@router.post("", status_code=202)
+async def switch_region(
+    body: RegionUrl,
+    request: Request,
+    user: User = Depends(require_superadmin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Loest einen Regionswechsel aus.
+
+    Schreibt (anders als `preview`) tatsaechlich eine Anforderung ins
+    geteilte Volume, die der Updater abholt — der eigentliche Import- und
+    Umschalt-Vorgang laeuft danach ausserhalb dieses Requests weiter.
+
+    Nebenlaeufigkeit: 409, wenn entweder ein normales Update laeuft
+    (`TRIGGER_FILE` aus admin.py existiert) oder bereits ein Regionswechsel
+    laeuft oder wartet (`region_switch.is_busy()`). Der bestehende
+    `trigger-update`-Endpunkt (admin.py) prueft spiegelbildlich
+    `region_switch.is_busy()`, damit sich beide Operationen gegenseitig
+    ausschliessen. Der Import von `TRIGGER_FILE` erfolgt bewusst erst hier
+    (Funktionsrumpf), nicht auf Modulebene — admin.py importiert seinerseits
+    nichts aus region.py, ein Import auf Modulebene wuerde also zwar nicht
+    zirkulaer sein, aber unnoetig eine Abhaengigkeit zwischen zwei sonst
+    unabhaengigen Routern erzeugen.
+    """
+    from app.api.routes.admin import TRIGGER_FILE
+
+    if os.path.exists(TRIGGER_FILE) or region_switch.is_busy():
+        raise HTTPException(409, "Es läuft bereits ein Update oder Regionswechsel.")
+
+    try:
+        # Siehe Kommentar in preview(): genau eine validierte URL im Umlauf.
+        url = geofabrik.validate_region_url(body.url)
+        extract = await geofabrik.head_size_bytes(url)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except ConnectionError as exc:
+        raise HTTPException(503, str(exc)) from exc
+
+    ram = region_estimate.estimate_ram_bytes(extract)
+    # Mindestens 2 GB Heap, aufgerundet auf ganze GB — analog zur
+    # Groessenordnung der bestehenden JAVA_OPTS-Defaults (siehe config.py).
+    heap_gb = max(2, round(ram / (1024 ** 3)))
+    java_opts = f"-Xmx{heap_gb}g -Xms1g -XX:+UseG1GC"
+    filename = url.rsplit("/", 1)[-1]
+
+    try:
+        region_switch.write_request(url, filename, java_opts, user.email)
+    except OSError as exc:
+        raise HTTPException(
+            503,
+            "Regionswechsel konnte nicht ausgelöst werden: Das Update-Volume ist "
+            "nicht beschreibbar. Der Updater repariert die Rechte automatisch beim "
+            "nächsten Lauf — bitte in wenigen Minuten erneut versuchen.",
+        ) from exc
+
+    await audit.record(
+        db,
+        "region.switch_requested",
+        request=request,
+        actor_id=user.id,
+        actor_email=user.email,
+        target_type="region",
+        detail={"url": url, "filename": filename, "extract_bytes": extract, "java_opts": java_opts},
+    )
+    return {"status": "requested"}
+
+
+@router.get("/status")
+async def region_status(_: User = Depends(require_superadmin)):
+    """Aktueller Fortschritt eines laufenden oder zuletzt beendeten Regionswechsels.
+
+    Liest ausschliesslich `region_switch.read_status()` — die vom Updater
+    zuletzt geschriebene Statusdatei. Ruht kein Wechsel, ist das der
+    Default-Zustand `{"phase": "idle"}`.
+    """
+    return region_switch.read_status()
+
+
+@router.post("/cancel", status_code=202)
+async def cancel_region_switch(_: User = Depends(require_superadmin)):
+    """Signalisiert dem Updater, einen laufenden Regionswechsel abzubrechen.
+
+    409, wenn gerade keiner laeuft — es gibt dann nichts abzubrechen.
+    """
+    if not region_switch.is_busy():
+        raise HTTPException(409, "Es läuft kein Regionswechsel.")
+    region_switch.request_cancel()
+    return {"status": "cancelling"}
+
+
+@router.get("")
+async def current_region(_: User = Depends(require_superadmin)):
+    """Aktuell aktive Region (siehe `_read_active_region`)."""
+    return _read_active_region()
+
+
+@admin_router.get("/regions")
+async def list_regions(_: User = Depends(require_superadmin)):
+    """Liste aller bei Geofabrik verfuegbaren Regionen (Kontinente, Laender,
+    Teilregionen), fuer die Auswahl im Panel.
+
+    Der Index wird beim ersten Aufruf geholt und danach prozessweit im
+    Speicher gecacht (siehe `geofabrik.list_regions`) — 555 Eintraege, ~3,8 MB
+    JSON, die sich bei jedem Panel-Aufruf neu zu holen waere unnoetiger
+    Traffic fuer eine Liste, die sich praktisch nie aendert.
+    """
+    try:
+        entries = await geofabrik.list_regions()
+    except ConnectionError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    return [
+        {"id": e.id, "name": e.name, "path": e.path, "url": e.url}
+        for e in entries
+    ]

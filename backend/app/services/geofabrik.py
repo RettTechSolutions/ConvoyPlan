@@ -145,3 +145,74 @@ class RegionEntry:
     path: str        # "Europe › Germany › Bayern"
     url: str
     size_bytes: int | None
+
+
+# Prozessweiter Cache des Geofabrik-Index (siehe list_regions()). Bewusst ein
+# einfaches Modul-Attribut statt z. B. functools.lru_cache: der Index aendert
+# sich praktisch nie, ein TTL waere unnoetige Komplexitaet, und Tests koennen
+# das Attribut direkt zuruecksetzen (monkeypatch.setattr(geofabrik,
+# "_region_index_cache", None)).
+_region_index_cache: list[RegionEntry] | None = None
+
+
+async def list_regions() -> list["RegionEntry"]:
+    """Liste aller Regionen aus dem Geofabrik-Index, mit Pfad aus der Eltern-Kette.
+
+    Der Index (`index-v1.json`, eine GeoJSON-FeatureCollection mit 555
+    Eintraegen) wird beim ersten Aufruf per HTTP geholt und danach
+    prozessweit im Speicher gehalten (~3,8 MB JSON) — sich das bei jedem
+    Panel-Aufruf neu zu holen waere unnoetiger Traffic fuer eine Liste, die
+    sich praktisch nie aendert.
+
+    Jeder Eintrag traegt neben `urls.pbf` weitere URL-Varianten (u. a.
+    `urls.shp`, `urls.pbf-internal`, `urls.history`, `urls.taginfo`,
+    `urls.updates`). `urls.pbf-internal` und `urls.history` zeigen auf einen
+    ANDEREN Host (osm-internal.download.geofabrik.de), den
+    `validate_region_url()` zu Recht ablehnt — es wird deshalb ausschliesslich
+    `urls.pbf` verwendet. Ein Eintrag ohne `urls.pbf` wird uebersprungen statt
+    mit einer fremden URL aufzutauchen, die beim Ausloesen ohnehin an der
+    Allowlist scheitern wuerde.
+    """
+    global _region_index_cache
+    if _region_index_cache is not None:
+        return _region_index_cache
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(_INDEX_URL)
+        resp.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise ConnectionError(
+            "Geofabrik-Index ist gerade nicht abrufbar. Bitte spaeter erneut "
+            "versuchen."
+        ) from exc
+
+    features = resp.json()["features"]
+    by_id = {f["properties"]["id"]: f["properties"] for f in features}
+
+    def _path(entry_id: str) -> str:
+        # Lauft die parent-Kette hoch bis zum Kontinent. `seen` schuetzt vor
+        # einer Endlosschleife, falls der Index jemals einen Zyklus enthaelt
+        # (heute nicht der Fall, aber billig abzusichern).
+        names: list[str] = []
+        seen: set[str] = set()
+        current = by_id.get(entry_id)
+        while current is not None and current["id"] not in seen:
+            names.append(current["name"])
+            seen.add(current["id"])
+            current = by_id.get(current.get("parent"))
+        return " › ".join(reversed(names))
+
+    entries = [
+        RegionEntry(
+            id=props["id"],
+            name=props["name"],
+            path=_path(props["id"]),
+            url=props["urls"]["pbf"],
+            size_bytes=None,
+        )
+        for props in by_id.values()
+        if "pbf" in props.get("urls", {})
+    ]
+    _region_index_cache = entries
+    return entries
