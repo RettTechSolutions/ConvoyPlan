@@ -1144,12 +1144,13 @@ async def trigger_update(
 ):
     if os.path.exists(TRIGGER_FILE):
         raise HTTPException(409, "Update already triggered")
-    # Mirrors the check in region.py's switch_region(): a region switch and a
-    # normal update must never run concurrently, both write into the same
-    # shared /update_status volume and both eventually restart/replace
-    # containers. Import kept local (not at module level) — admin.py and
-    # region.py have no other dependency on each other, and a module-level
-    # import would create one purely for this mirrored check.
+    # Spiegelt die Pruefung in region.py's switch_region(): ein Regionswechsel
+    # und ein normales Update duerfen nie gleichzeitig laufen — beide
+    # schreiben ins selbe geteilte /update_status-Volume und stossen beide
+    # letztlich einen Container-Neustart bzw. -Austausch an. Import bewusst
+    # lokal (nicht auf Modulebene) — admin.py und region.py haben sonst keine
+    # Abhaengigkeit voneinander, ein Import auf Modulebene wuerde nur fuer
+    # diese eine gespiegelte Pruefung eine erzeugen.
     from app.services import region_switch
     if region_switch.is_busy():
         raise HTTPException(409, "Ein Regionswechsel läuft — Update währenddessen gesperrt.")
@@ -1167,10 +1168,21 @@ async def trigger_update(
     # volume that predates the non-root switch), surface a clear error instead of
     # a bare 500 — the updater chowns the volume to the backend user on its next
     # cycle, which heals this automatically.
+    #
+    # Exklusiv angelegt ("x"-Modus, Fix-Runde 1 zu Task 5): der Vorab-Check
+    # oben (os.path.exists) und dieses Schreiben liegen nicht atomar
+    # zueinander — zwei fast gleichzeitige Trigger-Aufrufe koennten beide den
+    # Vorab-Check bestehen. "x" lehnt eine bereits bestehende Datei mit
+    # FileExistsError ab, statt sie stillschweigend zu ueberschreiben (wie
+    # "w" es taete); nur der erste Aufrufer gewinnt, der zweite bekommt
+    # zuverlaessig 409. Dieselbe Absicherung wie region_switch.write_request()
+    # fuer REQUEST_FILE — siehe dort fuer die ausfuehrliche Begruendung.
     try:
         os.makedirs(os.path.dirname(TRIGGER_FILE), exist_ok=True)
-        with open(TRIGGER_FILE, "w") as f:
+        with open(TRIGGER_FILE, "x") as f:
             f.write(datetime.now(timezone.utc).isoformat())
+    except FileExistsError as exc:
+        raise HTTPException(409, "Update already triggered") from exc
     except OSError as exc:
         logger.error("Cannot write update trigger file %s: %s", TRIGGER_FILE, exc)
         raise HTTPException(

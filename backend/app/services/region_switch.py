@@ -22,29 +22,81 @@ def _path(name: str) -> str:
     return os.path.join(VOLUME, name)
 
 
-def _write_atomic(path: str, data: str) -> None:
-    """Schreibt `data` atomar nach `path`.
-
-    Es wird in eine temporaere Datei im selben Verzeichnis (also auf
-    demselben Dateisystem) geschrieben und anschliessend per os.replace()
-    umbenannt. Ein Rename innerhalb desselben Dateisystems ist atomar —
-    der Updater sieht die Zieldatei entweder gar nicht oder vollstaendig,
-    nie mit halbem Inhalt.
+def _spool_to_tempfile(directory: str, data: str) -> str:
+    """Schreibt `data` vollstaendig in eine neue Temporaerdatei im selben
+    Verzeichnis (also garantiert selbes Dateisystem) und gibt deren Pfad
+    zurueck. Gemeinsame Grundlage fuer `_write_atomic()` (ueberschreibt ein
+    bestehendes Ziel) und `_write_atomic_exclusive()` (lehnt ein bestehendes
+    Ziel ab) — beide brauchen exakt denselben ersten Schritt und
+    unterscheiden sich nur im letzten (`os.replace()` vs. `os.link()`).
     """
-    directory = os.path.dirname(path)
     fd, tmp_path = tempfile.mkstemp(dir=directory, prefix=".tmp-")
     try:
         with os.fdopen(fd, "w") as f:
             f.write(data)
-        os.replace(tmp_path, path)
+        return tmp_path
     except BaseException:
-        # Aufraeumen, falls das Schreiben oder der Rename fehlschlaegt —
-        # sonst bleibt eine verwaiste Temporaerdatei im Volume zurueck.
         try:
             os.remove(tmp_path)
         except OSError:
             pass
         raise
+
+
+def _write_atomic(path: str, data: str) -> None:
+    """Schreibt `data` atomar nach `path`, ueberschreibt ein bestehendes Ziel.
+
+    Es wird in eine temporaere Datei im selben Verzeichnis geschrieben und
+    anschliessend per os.replace() umbenannt. Ein Rename innerhalb desselben
+    Dateisystems ist atomar — ein Leser sieht die Zieldatei entweder gar
+    nicht oder vollstaendig, nie mit halbem Inhalt.
+    """
+    directory = os.path.dirname(path)
+    tmp_path = _spool_to_tempfile(directory, data)
+    try:
+        os.replace(tmp_path, path)
+    except BaseException:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def _write_atomic_exclusive(path: str, data: str) -> None:
+    """Wie `_write_atomic()`, aber lehnt ein bereits bestehendes Ziel ab,
+    statt es zu ueberschreiben (`FileExistsError`).
+
+    Hintergrund (Fix-Runde 1 zu Task 5, echte TOCTOU-Luecke): `write_request()`
+    wird von der Route erst NACH einem bis zu 15 s dauernden HTTP-HEAD-Request
+    aufgerufen. Ein reiner Vorab-Check von `is_busy()` vor diesem Request laesst
+    ein mehrsekuendiges Fenster offen, in dem eine zweite, praktisch
+    gleichzeitige Anforderung denselben "nicht beschaeftigt"-Zustand sieht und
+    ebenfalls durchkommt — bei mehreren Uvicorn-Workern keine rein theoretische
+    Sorge. `_write_atomic()` (via `os.replace()`) wuerde die erste Anforderung
+    dann stillschweigend durch die zweite ersetzen: zwei Regionswechsel wuerden
+    denselben Compose-Stack anfassen, einer baut einen Graphen, der andere
+    startet Container neu.
+
+    `os.replace()` ersetzt ein bestehendes Ziel bedingungslos — dafuer ist es
+    da. `os.link()` (Hardlink) dagegen lehnt ein bestehendes Ziel mit
+    `FileExistsError` ab; das ist exakt die Semantik, die hier gebraucht wird.
+    Der Inhalt bleibt trotzdem atomar sichtbar: die Temporaerdatei ist zum
+    Zeitpunkt des Verlinkens bereits vollstaendig geschrieben, ein Leser sieht
+    das Ziel entweder gar nicht oder vollstaendig — dieselbe Garantie wie bei
+    `_write_atomic()`, nur mit "ablehnen" statt "ersetzen" als letztem Schritt.
+    Die Temporaerdatei wird in jedem Fall entfernt (auch wenn `os.link()`
+    fehlschlaegt), damit keine `.tmp-`-Leiche im Volume zurueckbleibt.
+    """
+    directory = os.path.dirname(path)
+    tmp_path = _spool_to_tempfile(directory, data)
+    try:
+        os.link(tmp_path, path)
+    finally:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
 
 
 def write_request(url: str, filename: str, java_opts: str, actor_email: str) -> None:
@@ -65,7 +117,9 @@ def write_request(url: str, filename: str, java_opts: str, actor_email: str) -> 
     Ein Fehlschlag beim Schreiben der Request-Datei ist dagegen das
     eigentliche Ergebnis dieser Funktion — er wird durchgereicht, damit der
     Aufrufer (die Route) ihn wie bei trigger_update in eine verstaendliche
-    503-Antwort uebersetzen kann.
+    Antwort uebersetzen kann: `FileExistsError` (eine Anforderung liegt
+    bereits vor — exklusives Anlegen, siehe `_write_atomic_exclusive()`) in
+    ein 409, jeder andere `OSError` (Volume nicht beschreibbar) in ein 503.
     """
     os.makedirs(VOLUME, exist_ok=True)
     payload = {
@@ -85,8 +139,12 @@ def write_request(url: str, filename: str, java_opts: str, actor_email: str) -> 
     except OSError:
         pass
     # Kritisch: Diese Datei ist die eigentliche Anforderung an den Updater.
-    # Schlaegt das Schreiben fehl, reicht die Funktion den OSError durch.
-    _write_atomic(_path(REQUEST_FILE), json.dumps(payload))
+    # Exklusiv (nicht ueberschreibend) angelegt — siehe _write_atomic_exclusive().
+    # FileExistsError (zweite Anforderung waehrend eine erste noch aussteht
+    # oder gerade verarbeitet wird) und jeder andere OSError (Volume nicht
+    # beschreibbar) werden unveraendert durchgereicht, damit der Aufrufer
+    # (die Route) sie wie bei trigger_update in 409 bzw. 503 uebersetzen kann.
+    _write_atomic_exclusive(_path(REQUEST_FILE), json.dumps(payload))
 
 
 def read_status() -> dict:

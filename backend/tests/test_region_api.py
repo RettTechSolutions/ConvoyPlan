@@ -9,7 +9,7 @@ Die DB ist eine AsyncSession — auch hier Dependency-Override von `get_db`
 gegen einen AsyncMock statt eines synchronen `db.query(...)`.
 """
 import os
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -248,6 +248,10 @@ async def test_switch_returns_202_and_records_audit(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_switch_conflicts_with_running_update(monkeypatch):
+    # head_size_bytes gemockt: die Konfliktprüfung läuft jetzt (Fix-Runde 1)
+    # NACH dem HEAD-Request, nicht mehr davor — ohne Mock würde dieser Test
+    # einen echten Netzwerkaufruf gegen Geofabrik auslösen.
+    monkeypatch.setattr(geofabrik, "head_size_bytes", _async_size(int(1 * GB)))
     monkeypatch.setattr(os.path, "exists", lambda p: p == admin.TRIGGER_FILE)
     test_app = _make_app_with_superadmin_and_db()
     transport = ASGITransport(app=test_app)
@@ -262,6 +266,7 @@ async def test_switch_conflicts_with_running_update(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_switch_conflicts_with_running_region_switch(monkeypatch):
+    monkeypatch.setattr(geofabrik, "head_size_bytes", _async_size(int(1 * GB)))
     monkeypatch.setattr(os.path, "exists", lambda p: False)
     monkeypatch.setattr(region_switch, "is_busy", lambda: True)
     test_app = _make_app_with_superadmin_and_db()
@@ -507,3 +512,186 @@ async def test_geofabrik_list_regions_builds_path_from_parent_chain_and_uses_pbf
     assert by_id["act"].path == "Australia and Oceania › Australia › Australian Capital Territory"
     assert by_id["act"].url == "https://download.geofabrik.de/australia-oceania/australia/act-latest.osm.pbf"
     assert "osm-internal" not in by_id["act"].url
+
+
+# ── Fix-Runde 1: TOCTOU geschlossen, Audit auch bei Ablehnung ───────────────
+
+
+@pytest.mark.asyncio
+async def test_switch_returns_409_when_write_request_races(monkeypatch):
+    """Der eigentliche TOCTOU-Schutz: selbst wenn der Vorab-Check (is_busy())
+    im schmalen Fenster zwischen Prüfung und Schreiben von einer zweiten,
+    fast gleichzeitigen Anfrage bestanden wird, muss das exklusive Anlegen
+    der Anforderungsdatei die zweite Anfrage mit 409 abweisen — simuliert
+    hier direkt über FileExistsError aus region_switch.write_request()."""
+    monkeypatch.setattr(geofabrik, "head_size_bytes", _async_size(int(1 * GB)))
+    monkeypatch.setattr(os.path, "exists", lambda p: False)
+    monkeypatch.setattr(region_switch, "is_busy", lambda: False)
+
+    def _boom(*a, **k):
+        raise FileExistsError(17, "File exists")
+
+    monkeypatch.setattr(region_switch, "write_request", _boom)
+
+    test_app = _make_app_with_superadmin_and_db()
+    audit_mock = AsyncMock()
+    with patch("app.api.routes.region.audit.record", new=audit_mock):
+        transport = ASGITransport(app=test_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/admin/region",
+                json={"url": URL},
+                headers={"Authorization": "Bearer x"},
+            )
+    assert resp.status_code == 409
+    audit_mock.assert_awaited_once()
+    args, kwargs = audit_mock.call_args
+    assert args[1] == "region.switch_rejected"
+    assert kwargs["detail"]["url"] == URL
+
+
+@pytest.mark.asyncio
+async def test_switch_records_audit_on_invalid_url(monkeypatch):
+    """Kleinigkeit aus Fix-Runde 1: auch abgelehnte Versuche (400) müssen in
+    der Audit-Spur landen, nicht nur der Erfolgsfall."""
+    test_app = _make_app_with_superadmin_and_db()
+    audit_mock = AsyncMock()
+    with patch("app.api.routes.region.audit.record", new=audit_mock):
+        transport = ASGITransport(app=test_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/admin/region",
+                json={"url": "https://evil.example/x-latest.osm.pbf"},
+                headers={"Authorization": "Bearer x"},
+            )
+    assert resp.status_code == 400
+    audit_mock.assert_awaited_once()
+    args, kwargs = audit_mock.call_args
+    assert args[1] == "region.switch_rejected"
+
+
+@pytest.mark.asyncio
+async def test_switch_records_audit_on_geofabrik_unreachable(monkeypatch):
+    """Kleinigkeit aus Fix-Runde 1: auch der 503-Pfad (Geofabrik nicht
+    erreichbar) muss auditiert werden."""
+    async def _boom(url):
+        raise ConnectionError("Geofabrik ist gerade nicht erreichbar.")
+
+    monkeypatch.setattr(geofabrik, "head_size_bytes", _boom)
+
+    test_app = _make_app_with_superadmin_and_db()
+    audit_mock = AsyncMock()
+    with patch("app.api.routes.region.audit.record", new=audit_mock):
+        transport = ASGITransport(app=test_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/admin/region",
+                json={"url": URL},
+                headers={"Authorization": "Bearer x"},
+            )
+    assert resp.status_code == 503
+    audit_mock.assert_awaited_once()
+    args, kwargs = audit_mock.call_args
+    assert args[1] == "region.switch_rejected"
+
+
+@pytest.mark.asyncio
+async def test_switch_records_audit_on_conflict(monkeypatch):
+    """Kleinigkeit aus Fix-Runde 1: auch der 409-Pfad (bereits laufender
+    Regionswechsel/Update) muss auditiert werden."""
+    monkeypatch.setattr(geofabrik, "head_size_bytes", _async_size(int(1 * GB)))
+    monkeypatch.setattr(os.path, "exists", lambda p: False)
+    monkeypatch.setattr(region_switch, "is_busy", lambda: True)
+
+    test_app = _make_app_with_superadmin_and_db()
+    audit_mock = AsyncMock()
+    with patch("app.api.routes.region.audit.record", new=audit_mock):
+        transport = ASGITransport(app=test_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/admin/region",
+                json={"url": URL},
+                headers={"Authorization": "Bearer x"},
+            )
+    assert resp.status_code == 409
+    audit_mock.assert_awaited_once()
+    args, kwargs = audit_mock.call_args
+    assert args[1] == "region.switch_rejected"
+
+
+@pytest.mark.asyncio
+async def test_trigger_update_409_when_exclusive_create_races(monkeypatch):
+    """Spiegelbild zu test_switch_returns_409_when_write_request_races: auch
+    TRIGGER_FILE wird jetzt exklusiv angelegt ("x"-Modus). Der Vorab-Check
+    (os.path.exists) wird hier bewusst bestanden (False), damit ausschliesslich
+    das exklusive Anlegen selbst die Race abfängt."""
+    monkeypatch.setattr(admin.os.path, "exists", lambda p: False)
+    monkeypatch.setattr(region_switch, "is_busy", lambda: False)
+
+    log_mock = mock_open()
+
+    def _open_side_effect(path, mode="r", *a, **k):
+        if path == admin.TRIGGER_FILE and mode == "x":
+            raise FileExistsError(17, "File exists", path)
+        return log_mock(path, mode, *a, **k)
+
+    test_app = _make_app_with_superadmin()
+    with patch("builtins.open", side_effect=_open_side_effect), patch("os.makedirs"):
+        transport = ASGITransport(app=test_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/admin/trigger-update", headers={"Authorization": "Bearer x"}
+            )
+    assert resp.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_geofabrik_list_regions_skips_entry_without_pbf_url(monkeypatch):
+    """Testet den Skip-Zweig direkt in geofabrik.list_regions(): ein Eintrag
+    ganz ohne urls.pbf (z. B. eine reine SHP-Region) wird aus der Liste
+    entfernt statt mit einer fehlenden oder fremden URL zu erscheinen."""
+    monkeypatch.setattr(geofabrik, "_region_index_cache", None)
+
+    features = [
+        {
+            "properties": {
+                "id": "shp-only",
+                "name": "Nur-SHP-Region",
+                "urls": {"shp": "https://download.geofabrik.de/shp-only-latest-free.shp.zip"},
+            }
+        },
+        {
+            "properties": {
+                "id": "dach",
+                "name": "DACH",
+                "urls": {"pbf": "https://download.geofabrik.de/europe/dach-latest.osm.pbf"},
+            }
+        },
+    ]
+
+    class _FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"type": "FeatureCollection", "features": features}
+
+    class _FakeAsyncClient:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, url):
+            return _FakeResponse()
+
+    monkeypatch.setattr(geofabrik.httpx, "AsyncClient", _FakeAsyncClient)
+
+    entries = await geofabrik.list_regions()
+    ids = {e.id for e in entries}
+    assert ids == {"dach"}
+    assert "shp-only" not in ids

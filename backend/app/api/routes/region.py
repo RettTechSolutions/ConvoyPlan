@@ -189,6 +189,27 @@ def _read_active_region() -> dict:
     }
 
 
+async def _audit_switch_rejected(
+    db: AsyncSession, request: Request, user: User, url: str, reason: str
+) -> None:
+    """Protokolliert einen abgelehnten Auslöseversuch (400/409/503).
+
+    Fix-Runde 1 (Kleinigkeit): vorher wurde nur der Erfolgsfall auditiert —
+    wer wiederholt ungültige URLs einwirft oder gegen eine laufende Sperre
+    rennt, blieb unsichtbar. Sicherheitsrelevante Admin-Aktionen gehören
+    unabhängig vom Ausgang in die Spur.
+    """
+    await audit.record(
+        db,
+        "region.switch_rejected",
+        request=request,
+        actor_id=user.id,
+        actor_email=user.email,
+        target_type="region",
+        detail={"url": url, "reason": reason},
+    )
+
+
 @router.post("", status_code=202)
 async def switch_region(
     body: RegionUrl,
@@ -202,10 +223,22 @@ async def switch_region(
     geteilte Volume, die der Updater abholt — der eigentliche Import- und
     Umschalt-Vorgang laeuft danach ausserhalb dieses Requests weiter.
 
-    Nebenlaeufigkeit: 409, wenn entweder ein normales Update laeuft
-    (`TRIGGER_FILE` aus admin.py existiert) oder bereits ein Regionswechsel
-    laeuft oder wartet (`region_switch.is_busy()`). Der bestehende
-    `trigger-update`-Endpunkt (admin.py) prueft spiegelbildlich
+    Nebenlaeufigkeit (Fix-Runde 1 zu Task 5 — vorherige Fassung hatte hier
+    eine echte TOCTOU-Lücke): die Konfliktprüfung (`TRIGGER_FILE` aus
+    admin.py existiert, oder `region_switch.is_busy()`) lief vorher VOR dem
+    bis zu 15 s dauernden HTTP-HEAD-Request in `geofabrik.head_size_bytes()`.
+    In diesem mehrsekündigen Fenster hätte eine zweite, praktisch
+    gleichzeitige Anfrage denselben "nicht beschäftigt"-Zustand gesehen und
+    wäre ebenfalls durchgekommen — bei mehreren Uvicorn-Workern keine
+    theoretische Sorge. Die Prüfung steht deshalb jetzt unmittelbar vor dem
+    Schreiben, nicht davor; der teure, nebenwirkungsfreie HEAD-Request darf
+    weiterhin zuerst laufen. Die eigentliche Garantie liefert aber nicht
+    dieser Vorab-Check (der bleibt nur ein schneller Fail-Fast-Pfad), sondern
+    dass `region_switch.write_request()` die Anforderungsdatei EXKLUSIV
+    anlegt (`FileExistsError`, wenn eine zweite Anfrage im verbleibenden,
+    winzigen Fenster zwischen Prüfung und Schreiben gewinnt) — siehe dort.
+    Der bestehende `trigger-update`-Endpunkt (admin.py) legt `TRIGGER_FILE`
+    aus demselben Grund jetzt ebenfalls exklusiv an und prüft spiegelbildlich
     `region_switch.is_busy()`, damit sich beide Operationen gegenseitig
     ausschliessen. Der Import von `TRIGGER_FILE` erfolgt bewusst erst hier
     (Funktionsrumpf), nicht auf Modulebene — admin.py importiert seinerseits
@@ -213,18 +246,15 @@ async def switch_region(
     zirkulaer sein, aber unnoetig eine Abhaengigkeit zwischen zwei sonst
     unabhaengigen Routern erzeugen.
     """
-    from app.api.routes.admin import TRIGGER_FILE
-
-    if os.path.exists(TRIGGER_FILE) or region_switch.is_busy():
-        raise HTTPException(409, "Es läuft bereits ein Update oder Regionswechsel.")
-
     try:
         # Siehe Kommentar in preview(): genau eine validierte URL im Umlauf.
         url = geofabrik.validate_region_url(body.url)
         extract = await geofabrik.head_size_bytes(url)
     except ValueError as exc:
+        await _audit_switch_rejected(db, request, user, body.url, str(exc))
         raise HTTPException(400, str(exc)) from exc
     except ConnectionError as exc:
+        await _audit_switch_rejected(db, request, user, body.url, str(exc))
         raise HTTPException(503, str(exc)) from exc
 
     ram = region_estimate.estimate_ram_bytes(extract)
@@ -234,9 +264,32 @@ async def switch_region(
     java_opts = f"-Xmx{heap_gb}g -Xms1g -XX:+UseG1GC"
     filename = url.rsplit("/", 1)[-1]
 
+    # Konfliktprüfung unmittelbar vor dem Schreiben (siehe Docstring oben) —
+    # nur ein Fail-Fast-Pfad, die verbindliche Sperre ist die exklusive
+    # Dateierstellung in write_request().
+    from app.api.routes.admin import TRIGGER_FILE
+
+    if os.path.exists(TRIGGER_FILE) or region_switch.is_busy():
+        await _audit_switch_rejected(
+            db, request, user, url, "Update oder Regionswechsel läuft bereits."
+        )
+        raise HTTPException(409, "Es läuft bereits ein Update oder Regionswechsel.")
+
     try:
         region_switch.write_request(url, filename, java_opts, user.email)
+    except FileExistsError as exc:
+        # Der eigentliche TOCTOU-Schutz: der Vorab-Check oben kann von einer
+        # zweiten, fast gleichzeitigen Anfrage im verbleibenden Fenster noch
+        # bestanden werden — aber nur eine der beiden kann REQUEST_FILE
+        # exklusiv anlegen. Die andere landet hier statt die erste
+        # Anforderung stillschweigend zu überschreiben.
+        await _audit_switch_rejected(
+            db, request, user, url,
+            "Wettlauf mit einer gleichzeitigen Anforderung (exklusives Anlegen fehlgeschlagen).",
+        )
+        raise HTTPException(409, "Es läuft bereits ein Update oder Regionswechsel.") from exc
     except OSError as exc:
+        await _audit_switch_rejected(db, request, user, url, f"Volume nicht beschreibbar: {exc}")
         raise HTTPException(
             503,
             "Regionswechsel konnte nicht ausgelöst werden: Das Update-Volume ist "

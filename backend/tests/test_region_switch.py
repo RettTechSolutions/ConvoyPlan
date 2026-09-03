@@ -1,6 +1,8 @@
 import json
 import os
 
+import pytest
+
 from app.services import region_switch
 
 
@@ -51,4 +53,34 @@ def test_write_request_leaves_no_temp_file_behind(tmp_path, monkeypatch):
                                 "e-latest.osm.pbf", "-Xmx4g", "a@b.c")
     remaining = os.listdir(tmp_path)
     assert set(remaining) == {region_switch.LOG_FILE, region_switch.REQUEST_FILE}
+    assert not any(name.startswith(".tmp-") for name in remaining)
+
+
+def test_write_request_second_call_raises_and_first_survives(tmp_path, monkeypatch):
+    """Belegt die Exklusivität aus Fix-Runde 1 zu Task 5: eine zweite,
+    gleichzeitige Anforderung darf die erste niemals stillschweigend
+    überschreiben, sondern muss mit FileExistsError scheitern."""
+    monkeypatch.setattr(region_switch, "VOLUME", str(tmp_path))
+    region_switch.write_request(
+        url="https://download.geofabrik.de/europe/dach-latest.osm.pbf",
+        filename="dach-latest.osm.pbf",
+        java_opts="-Xmx8g",
+        actor_email="first@example.org",
+    )
+
+    with pytest.raises(FileExistsError):
+        region_switch.write_request(
+            url="https://download.geofabrik.de/europe/berlin-latest.osm.pbf",
+            filename="berlin-latest.osm.pbf",
+            java_opts="-Xmx3g",
+            actor_email="second@example.org",
+        )
+
+    # Die zuerst geschriebene Anforderung bleibt unveraendert erhalten.
+    data = json.loads((tmp_path / region_switch.REQUEST_FILE).read_text())
+    assert data["requested_by"] == "first@example.org"
+    assert data["filename"] == "dach-latest.osm.pbf"
+
+    # Kein Leichnam der gescheiterten zweiten Anforderung im Volume.
+    remaining = os.listdir(tmp_path)
     assert not any(name.startswith(".tmp-") for name in remaining)
