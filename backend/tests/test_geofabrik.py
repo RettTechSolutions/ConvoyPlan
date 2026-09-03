@@ -63,9 +63,12 @@ def test_rejects_paths_outside_character_allowlist(bad):
         validate_region_url(bad)
 
 
-def test_head_size_bytes_requests_the_validated_url(monkeypatch):
+@pytest.mark.asyncio
+async def test_head_size_bytes_requests_the_validated_url(monkeypatch):
     # head_size_bytes darf nicht das rohe Argument anfragen, sondern nur die
     # von validate_region_url rekonstruierte URL.
+    import httpx as httpx_module
+
     from app.services import geofabrik
 
     requested = []
@@ -74,26 +77,83 @@ def test_head_size_bytes_requests_the_validated_url(monkeypatch):
         status_code = 200
         headers = {"content-length": "42"}
 
-    class _FakeClient:
+    class _FakeAsyncClient:
         def __init__(self, *a, **kw):
             pass
 
-        def __enter__(self):
+        async def __aenter__(self):
             return self
 
-        def __exit__(self, *a):
+        async def __aexit__(self, *a):
             return False
 
-        def head(self, url):
+        async def head(self, url):
             requested.append(url)
             return _FakeResponse()
 
-    monkeypatch.setattr(geofabrik.httpx, "Client", _FakeClient)
+    monkeypatch.setattr(geofabrik.httpx, "AsyncClient", _FakeAsyncClient)
 
     raw = "https://DOWNLOAD.GEOFABRIK.DE/europe/dach-latest.osm.pbf"
-    assert geofabrik.head_size_bytes(raw) == 42
+    assert await geofabrik.head_size_bytes(raw) == 42
     assert requested == [validate_region_url(raw)]
     assert requested == ["https://download.geofabrik.de/europe/dach-latest.osm.pbf"]
+
+
+@pytest.mark.asyncio
+async def test_head_size_bytes_translates_connect_error(monkeypatch):
+    # Fix-Runde 1, Important 2: ein Verbindungsfehler darf nicht als nackter
+    # ValueError/500 durchschlagen, sondern muss eine sprechende Meldung
+    # liefern, die die Route als 503 uebersetzen kann.
+    import httpx as httpx_module
+
+    from app.services import geofabrik
+
+    class _FakeAsyncClient:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def head(self, url):
+            raise httpx_module.ConnectError("boom")
+
+    monkeypatch.setattr(geofabrik.httpx, "AsyncClient", _FakeAsyncClient)
+
+    with pytest.raises(ConnectionError):
+        await geofabrik.head_size_bytes(
+            "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+        )
+
+
+@pytest.mark.asyncio
+async def test_head_size_bytes_translates_timeout(monkeypatch):
+    import httpx as httpx_module
+
+    from app.services import geofabrik
+
+    class _FakeAsyncClient:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def head(self, url):
+            raise httpx_module.TimeoutException("boom")
+
+    monkeypatch.setattr(geofabrik.httpx, "AsyncClient", _FakeAsyncClient)
+
+    with pytest.raises(ConnectionError):
+        await geofabrik.head_size_bytes(
+            "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+        )
 
 
 @pytest.mark.parametrize("real", [

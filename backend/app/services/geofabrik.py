@@ -105,7 +105,7 @@ def validate_region_url(url: str) -> str:
     return f"https://{_HOST}{parsed.path}"
 
 
-def head_size_bytes(url: str) -> int:
+async def head_size_bytes(url: str) -> int:
     """Groesse des Extracts, ohne es zu laden. Folgt bewusst keinen Redirects.
 
     Angefragt wird ausschliesslich die von `validate_region_url`
@@ -115,10 +115,24 @@ def head_size_bytes(url: str) -> int:
     werden. Frueher wurde der Rueckgabewert verworfen und `client.head(url)`
     mit dem Originalstring aufgerufen; die Rekonstruktion aus Runde 3 wirkte
     damit an der einzigen Stelle nicht, an der sie gebraucht wird.
+
+    Async (Fix-Runde 1 zu Task 4): der bisherige synchrone `httpx.Client`
+    blockierte den Event-Loop bis zu `timeout` Sekunden lang — und damit
+    saemtliche anderen gleichzeitigen Anfragen des Backends, nicht nur diese.
+    `httpx.AsyncClient` ist im Rest des Backends ohnehin der durchgaengige
+    Standard (siehe z. B. app/services/weather.py, routing.py, geocoding.py).
+    `follow_redirects=False` und die Validierung am Anfang bleiben unveraendert
+    bestehen — beide sind Ergebnis eigener Sicherheitsrunden in Task 2.
     """
     url = validate_region_url(url)
-    with httpx.Client(follow_redirects=False, timeout=15) as client:
-        resp = client.head(url)
+    try:
+        async with httpx.AsyncClient(follow_redirects=False, timeout=15) as client:
+            resp = await client.head(url)
+    except (httpx.ConnectError, httpx.TimeoutException) as exc:
+        raise ConnectionError(
+            "Geofabrik ist gerade nicht erreichbar. Bitte spaeter erneut "
+            "versuchen."
+        ) from exc
     if resp.status_code != 200:
         raise ValueError(f"Extract nicht abrufbar (HTTP {resp.status_code}).")
     return int(resp.headers.get("content-length", 0))

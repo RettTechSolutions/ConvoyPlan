@@ -86,9 +86,15 @@ async def preview(body: RegionUrl, _: User = Depends(require_superadmin)):
     """
     try:
         geofabrik.validate_region_url(body.url)
-        extract = geofabrik.head_size_bytes(body.url)
+        extract = await geofabrik.head_size_bytes(body.url)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    except ConnectionError as exc:
+        # Netzwerkfehler (Timeout, Verbindungsabbruch) sind kein Problem der
+        # Eingabe des Nutzers, sondern der Erreichbarkeit von Geofabrik —
+        # 503 statt 400, mit einer Meldung, die zum erneuten Versuch anleitet
+        # (Fix-Runde 1, Important 2).
+        raise HTTPException(503, str(exc)) from exc
 
     graph = region_estimate.estimate_graph_bytes(extract)
     ram_needed = region_estimate.estimate_ram_bytes(extract)
