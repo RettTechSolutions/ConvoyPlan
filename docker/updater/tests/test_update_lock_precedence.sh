@@ -24,11 +24,14 @@ if ! docker info >/dev/null 2>&1; then
     exit 0
 fi
 
+# -i ist zwingend: ohne offenes stdin liest `bash -s` das Here-Document gar
+# nicht und der Container endet sofort mit 0 — der Test galt dann als
+# bestanden, ohne eine einzige Zusicherung geprueft zu haben.
 docker run --rm \
     -v "${UPDATER_DIR}/region-hook.sh:/region-hook.sh:ro" \
     -v "${UPDATER_DIR}/update.sh:/update.sh:ro" \
     -v "${UPDATER_DIR}/update-images.sh:/update-images.sh:ro" \
-    bash:5.2 bash -s <<'INNER'
+    -i bash:5.2 bash -s <<'INNER'
 set -uo pipefail
 FAILED=0
 ok()   { echo "ok   — $1"; }
