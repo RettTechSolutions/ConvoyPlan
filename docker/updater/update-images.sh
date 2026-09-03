@@ -23,6 +23,14 @@ log() {
     echo "$msg" >> "${LOG_FILE}"
 }
 
+# Regionswechsel-Einhängung: gemeinsame Logik mit update.sh, siehe
+# region-hook.sh (Begründung für die gemeinsame Datei dort). Dies ist der
+# ENTRYPOINT, den docker-compose.yml für die Standard-Installation tatsächlich
+# verwendet — ohne diesen Hook würde eine Regionswechsel-Anforderung nie
+# abgeholt.
+# shellcheck source=./region-hook.sh
+source /region-hook.sh
+
 mkdir -p /update_status
 # The backend runs as non-root (appuser, uid 1001 — see backend/Dockerfile) and
 # must be able to create the trigger file in this shared volume. The updater
@@ -640,6 +648,19 @@ while true; do
         if do_update; then
             _remember_target
         fi
+        continue
+    fi
+
+    # Regionswechsel: liegt eine Anforderung vor, hat sie Vorrang vor dem
+    # regulären Update-Check unten (switch-region.sh läuft synchron zu Ende).
+    if run_region_switch_if_requested; then
+        continue
+    fi
+    # Ein aktives Lock (auch ein verwaistes nach einem Absturz) blockiert die
+    # reguläre Update-Ausführung — spiegelbildlich zu is_busy() im Backend.
+    if region_switch_blocked; then
+        log "Regionswechsel-Lock aktiv — reguläres Update wird in diesem Zyklus übersprungen."
+        sleep "${TRIGGER_POLL}"
         continue
     fi
 
