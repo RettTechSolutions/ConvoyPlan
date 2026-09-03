@@ -34,10 +34,11 @@ def validate_region_url(url: str) -> str:
     Prozent-Kodierung — jedes "%" im Pfad ist folglich verdächtig und wird
     fail-closed abgelehnt, ohne ueberhaupt zu dekodieren.
 
-    Ebenso abgelehnt werden Query und Fragment: `urlparse` trennt sie vom
-    Pfad, sodass sie am Traversal-Check vorbeilaufen wuerden, und eine
-    kanonische Geofabrik-Extract-URL hat ohnehin weder das eine noch das
-    andere.
+    Ebenso abgelehnt werden Query, Fragment und das rfc3986-Params-Segment
+    (`;...` direkt hinter dem letzten Pfadsegment, von `urlparse` separat als
+    `.params` gefuehrt statt im Pfad): alle drei laufen am Traversal-Check
+    auf `parsed.path` vorbei, und eine kanonische Geofabrik-Extract-URL hat
+    keins von ihnen.
     """
     parsed = urlparse(url)
     if parsed.scheme != "https":
@@ -50,6 +51,8 @@ def validate_region_url(url: str) -> str:
         raise ValueError("Query-Parameter in der URL sind nicht zulässig.")
     if parsed.fragment:
         raise ValueError("Ein Fragment in der URL ist nicht zulässig.")
+    if parsed.params:
+        raise ValueError("Ein Params-Segment (';...') in der URL ist nicht zulässig.")
     if not parsed.path.endswith(_SUFFIX):
         raise ValueError(f"Der Pfad muss auf {_SUFFIX} enden.")
     if "%" in parsed.path:

@@ -25,6 +25,8 @@ def test_accepts_canonical_geofabrik_url():
     "https://download.geofabrik.de/x-latest.osm.pbf#../../etc/passwd",  # Traversal im Fragment
     "https://download.geofabrik.de/europe/dach-latest.osm.pbf?foo=bar", # harmloser Query
     "https://download.geofabrik.de/europe/dach-latest.osm.pbf#section", # harmloses Fragment
+    "https://download.geofabrik.de/europe/dach-latest.osm.pbf;..",        # Traversal in params
+    "https://download.geofabrik.de/europe/dach-latest.osm.pbf;type=binary", # harmlos aussehendes params-Segment
     "https://user@download.geofabrik.de/e-latest.osm.pbf",          # Userinfo
     "file:///data/osm/x-latest.osm.pbf",                            # anderes Schema
 ])
