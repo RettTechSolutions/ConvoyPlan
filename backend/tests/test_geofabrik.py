@@ -176,3 +176,24 @@ async def test_head_size_bytes_translates_timeout(monkeypatch):
 ])
 def test_accepts_all_real_geofabrik_path_shapes(real):
     assert validate_region_url(real) == real
+
+
+def test_rejects_pathological_dash_run_without_slowdown():
+    # CodeQL (py/polynomial-redos) markierte die fruehere Pfad-Allowlist-
+    # Regex `(?:/[a-z0-9][a-z0-9.-]*)+` als potenziell quadratisch fuer
+    # Strings mit vielen '-'. Empirisch war das Verhalten in CPythons `re`
+    # linear (siehe PR-Beschreibung) — die Segmentierung wurde trotzdem aus
+    # der Regex herausgenommen (`str.split("/")` + flache Pro-Segment-Regex),
+    # damit CodeQLs statische Pruefung das AST-Muster gar nicht mehr sieht.
+    # Dieser Test ist der Regressionsschutz: ein absichtlich pathologischer
+    # Pfad (50.000 '-', abgeschlossen von einem nicht erlaubten 'X') muss
+    # weiterhin klar abgelehnt werden und darf dabei nicht spuerbar langsamer
+    # sein als ein normaler Pfad.
+    import time
+
+    bad = "https://download.geofabrik.de/a" + "-" * 50_000 + "X-latest.osm.pbf"
+    start = time.perf_counter()
+    with pytest.raises(ValueError):
+        validate_region_url(bad)
+    elapsed = time.perf_counter() - start
+    assert elapsed < 1.0

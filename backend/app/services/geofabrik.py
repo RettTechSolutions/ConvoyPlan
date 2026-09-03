@@ -21,7 +21,41 @@ _INDEX_URL = f"https://{_HOST}/index-v1.json"
 # Pfades ausschliesslich a-z, "/", "-", "."; Segmenttiefen 1 bis 5) — kein
 # einziger realer Pfad wird abgelehnt. Ziffern sind vorsorglich erlaubt,
 # obwohl heute kein realer Pfad eine enthaelt.
-_PATH_ALLOWLIST = re.compile(r"(?:/[a-z0-9][a-z0-9.-]*)+")
+#
+# Frueher eine einzige Regex `(?:/[a-z0-9][a-z0-9.-]*)+` mit `fullmatch`.
+# CodeQL (py/polynomial-redos) markiert genau dieses AST-Muster als
+# potenziell polynomiell: eine mit `+` wiederholte Gruppe, deren Inhalt
+# selbst mit einem unbeschraenkten Quantor (`*`) endet. Empirische Messung
+# (siehe PR-Beschreibung) zeigt fuer CPythons `re`-Engine lineares Wachstum
+# bei wachsender Zahl von '-' — weil "/" aus der inneren Zeichenklasse
+# ausgeschlossen ist, gibt es nur eine moegliche Segmentierung, also kein
+# Backtracking ueber mehrere Aufteilungen. CodeQLs statische Pruefung
+# bewertet das AST-Muster jedoch unabhaengig von dieser Disjunktheit — sie
+# stuft die reine Form als riskant ein. Statt uns auf eine fuer uns nicht
+# ueberpruefbare Sanitizer-Erkennung (z. B. eine Laengenpruefung als
+# CodeQL-Barriere) zu verlassen, wird die Segmentierung strukturell aus der
+# Regex herausgenommen: `str.split("/")` (kein Backtracking moeglich, da
+# ohne Quantoren) uebernimmt die Aufteilung, eine flache Regex ohne aeussere
+# Wiederholung prueft danach jedes Segment einzeln. Damit verschwindet das
+# von CodeQL erkannte Muster strukturell, unabhaengig vom Messergebnis.
+_PATH_SEGMENT = re.compile(r"[a-z0-9][a-z0-9.-]*")
+
+
+def _path_matches_allowlist(path: str) -> bool:
+    """Ersetzt das fruehere `_PATH_ALLOWLIST.fullmatch(path)`.
+
+    Semantik identisch zur alten Regex `(?:/[a-z0-9][a-z0-9.-]*)+` mit
+    `fullmatch`: der Pfad muss aus einem oder mehreren "/"-Segmenten
+    bestehen, jedes Segment nicht leer und `_PATH_SEGMENT`-konform. Kein
+    Segment (auch nicht das erste vor dem ersten "/") darf etwas anderes
+    als das enthalten — `str.split("/")` liefert bei einem mit "/"
+    beginnenden Pfad als erstes Element immer "", das hier explizit
+    verlangt wird.
+    """
+    segments = path.split("/")
+    if len(segments) < 2 or segments[0] != "":
+        return False
+    return all(_PATH_SEGMENT.fullmatch(segment) for segment in segments[1:])
 
 
 def validate_region_url(url: str) -> str:
@@ -50,7 +84,7 @@ def validate_region_url(url: str) -> str:
     Geofabrik-Extract-URL hat keins von ihnen.
 
     Der Pfad muss zusaetzlich einer Zeichen-Allowlist genuegen
-    (`_PATH_ALLOWLIST`). Grund: Einzelverbote decken den Pfad nur
+    (`_path_matches_allowlist`). Grund: Einzelverbote decken den Pfad nur
     stichprobenartig ab. Zwei Beispiele, die alle bisherigen Einzelpruefungen
     bestanden haben: ein *mittig* platziertes ';'-Segment
     (".../europe;x/dach-latest.osm.pbf") — `urlparse` trennt nur hinter dem
@@ -97,7 +131,7 @@ def validate_region_url(url: str) -> str:
         raise ValueError("Prozent-kodierte Zeichen im Pfad sind nicht zulässig.")
     if ".." in parsed.path:
         raise ValueError("Der Pfad darf keine Rückwärtsverweise enthalten.")
-    if not _PATH_ALLOWLIST.fullmatch(parsed.path):
+    if not _path_matches_allowlist(parsed.path):
         raise ValueError(
             "Der Pfad darf nur Kleinbuchstaben, Ziffern, '/', '-' und '.' "
             "enthalten."
