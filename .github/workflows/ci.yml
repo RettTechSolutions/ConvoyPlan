@@ -235,21 +235,46 @@ jobs:
       OSM_DOWNLOAD_URL: https://download.geofabrik.de/europe/liechtenstein-latest.osm.pbf
       OSM_FILENAME: liechtenstein-latest.osm.pbf
       JAVA_OPTS: "-Xmx2g -Xms512m -XX:+UseG1GC"
-      # PR-Stand statt der veröffentlichten :latest-Images von GHCR — sonst
-      # würde dieser Test die alte, schon veröffentlichte Version prüfen statt
-      # der Änderungen in diesem Branch.
-      BACKEND_IMAGE: convoyplan-backend:region-ci
-      GRAPHHOPPER_IMAGE: convoyplan-graphhopper:region-ci
-      UPDATER_IMAGE: convoyplan-updater:region-ci
+      # PR-Stand statt der veröffentlichten Images von GHCR — sonst würde
+      # dieser Test die alte, schon veröffentlichte Version prüfen statt der
+      # Änderungen in diesem Branch. Der Repository-Teil ("convoyplan-*",
+      # ohne "ghcr.io/..."-Praefix) reicht dafuer bereits aus und kollidiert
+      # nicht mit den echten, veroeffentlichten Images.
+      #
+      # Der TAG muss zusaetzlich exakt ":latest" sein (nicht z. B.
+      # ":region-ci"): der Updater fuehrt in der Hauptschleife von
+      # update-images.sh VOR jedem Regionswechsel-Check auch den normalen
+      # Auto-Update-Check aus (check_target_and_update -> do_update), und der
+      # ruft _apply_channel_images() auf. Die schreibt GRAPHHOPPER_IMAGE (und
+      # BACKEND_IMAGE/UPDATER_IMAGE) unbedingt via _retag() auf den Tag des
+      # aktiven Kanals um — mangels /update_status/channel-Datei Kanal
+      # "stable", also Tag "latest" (siehe update-images.sh:_channel_tag).
+      # In einer frischen CI-Umgebung existiert /update_status/last_deployed
+      # noch nicht, der erste Zyklus haelt das Ziel also fuer "neu" und loest
+      # genau dieses Umschreiben aus - unabhaengig vom eigentlichen
+      # Regionswechsel-Trigger. Ein eigener Tag wie ":region-ci" wird dabei
+      # auf ":latest" umgeschrieben (_retag("convoyplan-graphhopper:region-ci",
+      # "latest") = "convoyplan-graphhopper:latest") — ein Image-Name, den
+      # niemand gebaut hat. _import_graph() in switch-region.sh startet den
+      # Wegwerf-Container danach per `docker run "$GRAPHHOPPER_IMAGE"`; ohne
+      # lokal vorhandenes Image versucht Docker implizit ein `pull`, das für
+      # dieses rein lokale, nicht veroeffentlichte Image fehlschlaegt ("pull
+      # access denied"). Ist der gebaute Tag dagegen bereits ":latest", ist
+      # dieses Umschreiben ein No-op (_retag(x:latest, latest) = x:latest) -
+      # der Name bleibt in jedem Fall mit dem gebauten Image identisch, ganz
+      # gleich ob/wann der Auto-Update-Check zwischenzeitlich zuschlaegt.
+      BACKEND_IMAGE: convoyplan-backend:latest
+      GRAPHHOPPER_IMAGE: convoyplan-graphhopper:latest
+      UPDATER_IMAGE: convoyplan-updater:latest
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Images aus dem PR-Stand bauen (nicht :latest von GHCR)
+      - name: Images aus dem PR-Stand bauen (lokale Tags, nicht die von GHCR)
         run: |
-          docker build -t convoyplan-backend:region-ci ./backend
-          docker build -t convoyplan-graphhopper:region-ci ./graphhopper
-          docker build -t convoyplan-updater:region-ci ./docker/updater
+          docker build -t convoyplan-backend:latest ./backend
+          docker build -t convoyplan-graphhopper:latest ./graphhopper
+          docker build -t convoyplan-updater:latest ./docker/updater
 
       - name: Stack starten (Entrypoint update-images.sh, wie docker-compose.yml:273 es real festlegt)
         run: docker compose up -d graphhopper updater
