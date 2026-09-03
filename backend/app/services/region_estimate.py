@@ -21,6 +21,31 @@ danach 20 % Sicherheitsaufschlag) gegen die drei belegten Stuetzstellen:
 Alle drei Testfaelle bestehen mit den urspruenglich angenommenen Koeffizienten
 (_BASE_BYTES = 2 GB, _PER_PBF_BYTE = 1,1) — eine Anpassung war nicht noetig,
 die gemessenen Groessen stuetzen die Formel.
+
+Dauer-Koeffizienten (_MINUTES_PER_GB_LOW / _MINUTES_PER_GB_HIGH), Herleitung
+aus denselben drei Stuetzstellen gegen die dokumentierten Dauern
+(scripts/install.sh:375: Bayern 10-20 min, Deutschland 45-90 min, DACH
+60-120 min). Dokumentierte Minuten je GB Extract, mit den gemessenen
+Groessen von oben:
+
+    Bayern (0,79 GB):      10/0,79 = 12,63 min/GB (untere Grenze)
+                            20/0,79 = 25,26 min/GB (obere Grenze)
+    Deutschland (4,50 GB): 45/4,50 = 10,00 min/GB
+                            90/4,50 = 20,00 min/GB
+    DACH (5,79 GB):        60/5,79 = 10,37 min/GB
+                           120/5,79 = 20,74 min/GB
+
+Die Verhaeltnisse fallen mit wachsender Extract-Groesse (fixe Grundlast wie
+JVM-Start und Indizierung faellt bei kleinen Extracts staerker ins Gewicht).
+Eine einzige Gerade durch den Ursprung trifft daher nicht alle drei Punkte
+exakt — sie muss sich an der kleinsten, strengsten Stuetzstelle (Bayern)
+ausrichten. Eine zu optimistische Dauerangabe ist schlimmer als eine zu
+pessimistische, weil der Operator danach sein Wartungsfenster plant: die
+Koeffizienten werden deshalb auf den Bayern-Quotienten aufgerundet, nicht
+gemittelt. Das ergibt 13 min/GB (untere Grenze) und 26 min/GB (obere Grenze).
+Damit unterschreitet keine der drei Stuetzstellen die Installer-Angabe;
+Deutschland und DACH werden dadurch bewusst grosszuegig (konservativ)
+geschaetzt, was laut Spec Abschnitt 6 der sicherere Fehler ist.
 """
 
 GB = 1024 ** 3
@@ -28,8 +53,8 @@ GB = 1024 ** 3
 _BASE_BYTES = 2 * GB          # JVM, Betriebssystem, GraphHopper-Grundlast
 _PER_PBF_BYTE = 1.1           # Steigung der Geraden durch die drei Stuetzstellen
 _SAFETY_MARGIN = 1.2          # 20 % Aufschlag (Spec Abschnitt 6)
-_MINUTES_PER_GB_LOW = 12
-_MINUTES_PER_GB_HIGH = 22
+_MINUTES_PER_GB_LOW = 13   # aufgerundeter Bayern-Quotient 12,63 min/GB (strengste Stuetzstelle)
+_MINUTES_PER_GB_HIGH = 26  # aufgerundeter Bayern-Quotient 25,26 min/GB (strengste Stuetzstelle)
 _TIGHT_THRESHOLD = 0.8
 
 
