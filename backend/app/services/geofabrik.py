@@ -5,6 +5,7 @@ herunterlädt. `validate_region_url` ist deshalb eine Sicherheitsgrenze
 (Allowlist), keine Formalie.
 """
 
+import re
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
@@ -13,6 +14,14 @@ import httpx
 _HOST = "download.geofabrik.de"
 _SUFFIX = "-latest.osm.pbf"
 _INDEX_URL = f"https://{_HOST}/index-v1.json"
+
+# Zeichen-Allowlist fuer den Pfad: ein oder mehrere Segmente, jedes
+# beginnend mit Kleinbuchstabe oder Ziffer, danach zusaetzlich "-" und ".".
+# Gegen den echten Geofabrik-Index geprueft (555 Regionen, Zeichenmenge des
+# Pfades ausschliesslich a-z, "/", "-", "."; Segmenttiefen 1 bis 5) — kein
+# einziger realer Pfad wird abgelehnt. Ziffern sind vorsorglich erlaubt,
+# obwohl heute kein realer Pfad eine enthaelt.
+_PATH_ALLOWLIST = re.compile(r"(?:/[a-z0-9][a-z0-9.-]*)+")
 
 
 def validate_region_url(url: str) -> str:
@@ -39,6 +48,19 @@ def validate_region_url(url: str) -> str:
     `.params` gefuehrt statt im Pfad) und ein expliziter Port: alle laufen am
     Traversal-Check auf `parsed.path` vorbei, und eine kanonische
     Geofabrik-Extract-URL hat keins von ihnen.
+
+    Der Pfad muss zusaetzlich einer Zeichen-Allowlist genuegen
+    (`_PATH_ALLOWLIST`). Grund: Einzelverbote decken den Pfad nur
+    stichprobenartig ab. Zwei Beispiele, die alle bisherigen Einzelpruefungen
+    bestanden haben: ein *mittig* platziertes ';'-Segment
+    (".../europe;x/dach-latest.osm.pbf") — `urlparse` trennt nur hinter dem
+    *letzten* Segment nach `.params` ab, mittig bleibt es unbemerkt im Pfad —
+    und ein NUL-Byte (0x00) mitten im Pfad, das Endungs-,
+    Prozent- und Traversal-Check uebersteht und unveraendert in der
+    rekonstruierten URL landet. Statt beide einzeln nachzuziehen (das Muster
+    der Runden 1 bis 3), erlaubt die Allowlist nur noch, was reale
+    Geofabrik-Pfade tatsaechlich enthalten. Alles andere — auch kuenftige
+    Sonderzeichen, an die heute niemand denkt — faellt automatisch heraus.
 
     Rueckgabewert: nicht die unveraenderte Eingabe, sondern eine aus den
     geprueften Bestandteilen rekonstruierte URL (Schema + `_HOST` + Pfad).
@@ -75,12 +97,26 @@ def validate_region_url(url: str) -> str:
         raise ValueError("Prozent-kodierte Zeichen im Pfad sind nicht zulässig.")
     if ".." in parsed.path:
         raise ValueError("Der Pfad darf keine Rückwärtsverweise enthalten.")
+    if not _PATH_ALLOWLIST.fullmatch(parsed.path):
+        raise ValueError(
+            "Der Pfad darf nur Kleinbuchstaben, Ziffern, '/', '-' und '.' "
+            "enthalten."
+        )
     return f"https://{_HOST}{parsed.path}"
 
 
 def head_size_bytes(url: str) -> int:
-    """Groesse des Extracts, ohne es zu laden. Folgt bewusst keinen Redirects."""
-    validate_region_url(url)
+    """Groesse des Extracts, ohne es zu laden. Folgt bewusst keinen Redirects.
+
+    Angefragt wird ausschliesslich die von `validate_region_url`
+    rekonstruierte URL, niemals das rohe Argument. Das rohe `url` wird
+    deshalb direkt ueberschrieben — so ist es unterhalb dieser Zeile gar
+    nicht mehr erreichbar und kann nicht versehentlich weiterverwendet
+    werden. Frueher wurde der Rueckgabewert verworfen und `client.head(url)`
+    mit dem Originalstring aufgerufen; die Rekonstruktion aus Runde 3 wirkte
+    damit an der einzigen Stelle nicht, an der sie gebraucht wird.
+    """
+    url = validate_region_url(url)
     with httpx.Client(follow_redirects=False, timeout=15) as client:
         resp = client.head(url)
     if resp.status_code != 200:

@@ -46,3 +46,73 @@ def test_returns_canonical_url_unchanged(canonical):
 def test_rejects_everything_else(bad):
     with pytest.raises(ValueError):
         validate_region_url(bad)
+
+
+# --- Fix-Runde 4: die drei Review-Findings -------------------------------
+
+@pytest.mark.parametrize("bad", [
+    "https://download.geofabrik.de/europe;x/dach-latest.osm.pbf",
+    # ^ ';'-Segment MITTIG im Pfad: urlparse trennt nur hinter dem LETZTEN
+    #   Segment nach .params ab, mittig bleibt es unbemerkt im Pfad stehen.
+    "https://download.geofabrik.de/a\x00b-latest.osm.pbf",
+    # ^ NUL-Byte im Pfad: besteht Endungs-, Prozent- und Traversal-Check und
+    #   landet unveraendert im rekonstruierten Rueckgabewert.
+])
+def test_rejects_paths_outside_character_allowlist(bad):
+    with pytest.raises(ValueError):
+        validate_region_url(bad)
+
+
+def test_head_size_bytes_requests_the_validated_url(monkeypatch):
+    # head_size_bytes darf nicht das rohe Argument anfragen, sondern nur die
+    # von validate_region_url rekonstruierte URL.
+    from app.services import geofabrik
+
+    requested = []
+
+    class _FakeResponse:
+        status_code = 200
+        headers = {"content-length": "42"}
+
+    class _FakeClient:
+        def __init__(self, *a, **kw):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def head(self, url):
+            requested.append(url)
+            return _FakeResponse()
+
+    monkeypatch.setattr(geofabrik.httpx, "Client", _FakeClient)
+
+    raw = "https://DOWNLOAD.GEOFABRIK.DE/europe/dach-latest.osm.pbf"
+    assert geofabrik.head_size_bytes(raw) == 42
+    assert requested == [validate_region_url(raw)]
+    assert requested == ["https://download.geofabrik.de/europe/dach-latest.osm.pbf"]
+
+
+@pytest.mark.parametrize("real", [
+    # Reale Pfadformen aus dem echten Geofabrik-Index (index-v1.json,
+    # 555 Regionen) — je Segmenttiefe 1 bis 5 mindestens ein Vertreter.
+    # Die Zeichen-Allowlist darf keine davon ablehnen: ein Fehlalarm hier
+    # faellt erst auf, wenn jemand genau diese Region auswaehlt.
+    "https://download.geofabrik.de/africa-latest.osm.pbf",
+    "https://download.geofabrik.de/australia-oceania-latest.osm.pbf",
+    "https://download.geofabrik.de/europe/dach-latest.osm.pbf",
+    "https://download.geofabrik.de/africa/canary-islands-latest.osm.pbf",
+    "https://download.geofabrik.de/europe/azores-latest.osm.pbf",
+    "https://download.geofabrik.de/north-america/us/california-latest.osm.pbf",
+    "https://download.geofabrik.de/europe/france/alsace-latest.osm.pbf",
+    "https://download.geofabrik.de/australia-oceania/australia/act-latest.osm.pbf",
+    "https://download.geofabrik.de/north-america/us/california/norcal-latest.osm.pbf",
+    "https://download.geofabrik.de/europe/germany/nordrhein-westfalen/arnsberg-regbez-latest.osm.pbf",
+    "https://download.geofabrik.de/europe/united-kingdom/england/bedfordshire-latest.osm.pbf",
+    "https://download.geofabrik.de/europe/united-kingdom/england/london/enfield-latest.osm.pbf",
+])
+def test_accepts_all_real_geofabrik_path_shapes(real):
+    assert validate_region_url(real) == real
