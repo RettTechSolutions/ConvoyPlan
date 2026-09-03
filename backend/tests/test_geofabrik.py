@@ -9,6 +9,18 @@ def test_accepts_canonical_geofabrik_url():
     assert validate_region_url(OK) == OK
 
 
+@pytest.mark.parametrize("canonical", [
+    "https://download.geofabrik.de/europe/dach-latest.osm.pbf",
+    "https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf",
+    "https://download.geofabrik.de/north-america/us/california-latest.osm.pbf",
+])
+def test_returns_canonical_url_unchanged(canonical):
+    # Fuer eine kanonische Geofabrik-URL muss die rekonstruierte Rueckgabe
+    # bit-identisch mit der Eingabe sein - sonst wuerde die Rekonstruktion
+    # in legitimen Faellen unbemerkt etwas veraendern.
+    assert validate_region_url(canonical) == canonical
+
+
 @pytest.mark.parametrize("bad", [
     "http://download.geofabrik.de/europe/dach-latest.osm.pbf",      # kein TLS
     "https://evil.example/europe/dach-latest.osm.pbf",              # fremder Host
@@ -27,6 +39,7 @@ def test_accepts_canonical_geofabrik_url():
     "https://download.geofabrik.de/europe/dach-latest.osm.pbf#section", # harmloses Fragment
     "https://download.geofabrik.de/europe/dach-latest.osm.pbf;..",        # Traversal in params
     "https://download.geofabrik.de/europe/dach-latest.osm.pbf;type=binary", # harmlos aussehendes params-Segment
+    "https://download.geofabrik.de:9999/europe/dach-latest.osm.pbf",  # nicht-Standard-Port
     "https://user@download.geofabrik.de/e-latest.osm.pbf",          # Userinfo
     "file:///data/osm/x-latest.osm.pbf",                            # anderes Schema
 ])

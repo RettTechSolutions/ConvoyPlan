@@ -34,11 +34,25 @@ def validate_region_url(url: str) -> str:
     Prozent-Kodierung — jedes "%" im Pfad ist folglich verdächtig und wird
     fail-closed abgelehnt, ohne ueberhaupt zu dekodieren.
 
-    Ebenso abgelehnt werden Query, Fragment und das rfc3986-Params-Segment
+    Ebenso abgelehnt werden Query, Fragment, das rfc3986-Params-Segment
     (`;...` direkt hinter dem letzten Pfadsegment, von `urlparse` separat als
-    `.params` gefuehrt statt im Pfad): alle drei laufen am Traversal-Check
-    auf `parsed.path` vorbei, und eine kanonische Geofabrik-Extract-URL hat
-    keins von ihnen.
+    `.params` gefuehrt statt im Pfad) und ein expliziter Port: alle laufen am
+    Traversal-Check auf `parsed.path` vorbei, und eine kanonische
+    Geofabrik-Extract-URL hat keins von ihnen.
+
+    Rueckgabewert: nicht die unveraenderte Eingabe, sondern eine aus den
+    geprueften Bestandteilen rekonstruierte URL (Schema + `_HOST` + Pfad).
+    Grund: drei Runden in Folge haben je einen anderen `urlparse`-Bestandteil
+    gefunden, der ungeprueft durchgereicht wurde (erst Query/Fragment, dann
+    Params, dann Port) — jede neue Einzelpruefung haette nur die naechste
+    Instanz dieses Musters verschoben. Die Rekonstruktion macht das
+    strukturell unmoeglich: das Ergebnis kann nur Schema, `_HOST` und den
+    bereits geprueften Pfad enthalten, unabhaengig davon, ob ein zukuenftiger
+    URL-Bestandteil, an den heute niemand gedacht hat, durch eine
+    Einzelpruefung rutscht. Die Einzelpruefungen bleiben trotzdem bestehen —
+    sie liefern eine konkrete, sprechende Fehlermeldung statt nur eine andere
+    (rekonstruierte) URL kommentarlos zurueckzugeben. Fuer eine kanonische
+    Geofabrik-URL ist die Rekonstruktion bit-identisch mit der Eingabe.
     """
     parsed = urlparse(url)
     if parsed.scheme != "https":
@@ -47,6 +61,8 @@ def validate_region_url(url: str) -> str:
         raise ValueError("Zugangsdaten in der URL sind nicht zulässig.")
     if parsed.hostname != _HOST:
         raise ValueError(f"Nur {_HOST} ist als Quelle zugelassen.")
+    if parsed.port is not None:
+        raise ValueError("Ein Port in der URL ist nicht zulässig.")
     if parsed.query:
         raise ValueError("Query-Parameter in der URL sind nicht zulässig.")
     if parsed.fragment:
@@ -59,7 +75,7 @@ def validate_region_url(url: str) -> str:
         raise ValueError("Prozent-kodierte Zeichen im Pfad sind nicht zulässig.")
     if ".." in parsed.path:
         raise ValueError("Der Pfad darf keine Rückwärtsverweise enthalten.")
-    return url
+    return f"https://{_HOST}{parsed.path}"
 
 
 def head_size_bytes(url: str) -> int:
