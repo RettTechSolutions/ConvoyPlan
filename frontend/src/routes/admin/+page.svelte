@@ -1,15 +1,16 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
+    import { onDestroy, onMount } from 'svelte';
     import LeitstelleAreaPicker, { type AreaSelection } from '$lib/components/LeitstelleAreaPicker.svelte';
     import LeitstellenOverviewMap from '$lib/components/LeitstellenOverviewMap.svelte';
     import LeitstellenTable from '$lib/components/LeitstellenTable.svelte';
     import { auth } from '$lib/stores/auth';
     import { getStreamTicket } from '$lib/api/client';
-    import { adminApi, mfaApi, leistellenApi, licenseApi, emailTemplateApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type EmailTemplate, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoSessionInfo, type DemoIpLock, type DemoIpAllowlistEntry } from '$lib/api';
+    import { adminApi, mfaApi, leistellenApi, licenseApi, emailTemplateApi, regionApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type EmailTemplate, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoSessionInfo, type DemoIpLock, type DemoIpAllowlistEntry, type RegionStatus, type RegionPhase } from '$lib/api';
     import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
     import SuperadminLogin from '$lib/components/SuperadminLogin.svelte';
     import SystemOverview from '$lib/components/SystemOverview.svelte';
+    import RegionCard from '$lib/components/RegionCard.svelte';
     import QRCode from 'qrcode';
 
     // ── Auth gate ──────────────────────────────────────────────────────────────
@@ -58,7 +59,11 @@
         await loadLeitstellen();
         await loadBranding();
         await Promise.all([loadGithubTokenStatus(), loadTrafficKeys(), loadUpdateStatus(), loadUpdateChannel(), loadUpdateMode(), loadMfaStatus(), loadSmtpSettings(), loadEmailTemplate(), loadDemoSettings()]);
+        await loadRegionStatus();
+        startRegionStatusPolling();
     }
+
+    onDestroy(stopRegionStatusPolling);
 
     async function handleAuthenticated() {
         authed = true;
@@ -514,6 +519,31 @@
     let updateTriggering = $state(false);
     let updateError = $state('');
     let updateSuccess = $state('');
+
+    // Regionswechsel (RegionCard.svelte) sperrt das Software-Update und
+    // umgekehrt (siehe app/api/routes/region.py und admin.py) — hier nur
+    // gepollt, um "Jetzt updaten" mit sichtbarer Begründung zu sperren.
+    const REGION_ACTIVE_PHASES: RegionPhase[] = ['checking', 'downloading', 'importing', 'switching', 'cleaning'];
+    let regionStatus = $state<RegionStatus>({ phase: 'idle' });
+    let regionStatusTimer: ReturnType<typeof setInterval> | null = null;
+    const regionSwitchBusy = $derived(REGION_ACTIVE_PHASES.includes(regionStatus.phase));
+
+    async function loadRegionStatus() {
+        try {
+            regionStatus = await regionApi.status();
+        } catch {
+            // wird beim naechsten Poll erneut versucht
+        }
+    }
+
+    function startRegionStatusPolling() {
+        if (regionStatusTimer) return;
+        regionStatusTimer = setInterval(loadRegionStatus, 5000);
+    }
+
+    function stopRegionStatusPolling() {
+        if (regionStatusTimer) { clearInterval(regionStatusTimer); regionStatusTimer = null; }
+    }
 
     // Release channel (stable / beta)
     let updateChannel = $state<import('$lib/api').UpdateChannel | null>(null);
@@ -2300,13 +2330,13 @@
                     {:else if updateStatus.github_reachable}
                         <button
                             class="btn-primary"
-                            disabled={!updateStatus.update_available}
+                            disabled={!updateStatus.update_available || regionSwitchBusy}
                             onclick={triggerUpdate}
                         >
                             Jetzt updaten
                         </button>
                     {:else}
-                        <button class="btn-primary" onclick={triggerUpdate}>
+                        <button class="btn-primary" disabled={regionSwitchBusy} onclick={triggerUpdate}>
                             Manuell aktualisieren
                         </button>
                         <span class="hint" style="font-size:var(--text-xs)">GitHub nicht erreichbar — zieht trotzdem neueste Images</span>
@@ -2315,6 +2345,9 @@
                         <button class="btn-small" onclick={() => showUpdateLog = false}>Log ausblenden</button>
                     {/if}
                 </div>
+                {#if regionSwitchBusy && !updateTriggering}
+                    <p class="hint" style="margin-top:.4rem">Ein Regionswechsel läuft — Software-Updates sind währenddessen gesperrt.</p>
+                {/if}
 
                 {#if showUpdateLog}
                     <div class="update-terminal" bind:this={logContainer}>
@@ -2332,6 +2365,9 @@
                 <p class="hint">Status nicht verfügbar</p>
             {/if}
         </div>
+
+        <!-- ── Kartenregion ── -->
+        <RegionCard />
 
         <!-- ── GitHub-Konfiguration ── -->
         <div class="section">
