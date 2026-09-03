@@ -22,6 +22,17 @@ def _path(name: str) -> str:
     return os.path.join(VOLUME, name)
 
 
+def log_path() -> str:
+    """Pfad der Live-Ausgabe des Updaters (`region.log`).
+
+    Oeffentlich, weil der SSE-Endpunkt `GET /api/admin/region/log` die Datei
+    selbst inkrementell liest — anders als bei `read_status()` waere ein
+    Rueckgabewert als String hier nutzlos: der Strom laeuft ueber Stunden und
+    liest jeweils nur den Zuwachs ab einem Byte-Offset.
+    """
+    return _path(LOG_FILE)
+
+
 def _spool_to_tempfile(directory: str, data: str) -> str:
     """Schreibt `data` vollstaendig in eine neue Temporaerdatei im selben
     Verzeichnis (also garantiert selbes Dateisystem) und gibt deren Pfad

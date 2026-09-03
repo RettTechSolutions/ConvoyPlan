@@ -1,8 +1,8 @@
 """Regionswechsel im Admin-Panel: Vorab-Rechnung, Auslösen, Status, Abbruch.
 
 Zwei Router in diesem Modul: `router` (Prefix `/admin/region`, Singular) fuer
-`preview`, das Ausloesen selbst, `status`, `cancel` und die aktuell aktive
-Region; `admin_router` (Prefix `/admin`) fuer die Plural-Route
+`preview`, das Ausloesen selbst, `status`, `log`, `cancel` und die aktuell
+aktive Region; `admin_router` (Prefix `/admin`) fuer die Plural-Route
 `GET /admin/regions` (Liste verfuegbarer Regionen). Ein einzelner Router mit
 Prefix `/admin/region` koennte `/admin/regions` nicht bedienen — der Plural
 liegt ausserhalb dieses Prefix.
@@ -16,13 +16,16 @@ abholt) und ist deshalb strikt gegen einen bereits laufenden Regionswechsel
 oder ein bereits laufendes normales Update verriegelt (siehe dort).
 """
 
+import asyncio
 import os
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db, require_superadmin
+from app.api.deps import decode_stream_token, get_db, require_superadmin
 from app.config import settings
 from app.models.user import User
 from app.services import audit, geofabrik, host_metrics, region_estimate, region_switch
@@ -318,6 +321,107 @@ async def region_status(_: User = Depends(require_superadmin)):
     Default-Zustand `{"phase": "idle"}`.
     """
     return region_switch.read_status()
+
+
+async def _require_superadmin_stream_token(token: str, db: AsyncSession) -> None:
+    """Prueft ein per Query-Parameter uebergebenes Stream-Ticket.
+
+    Wortgleich zur Absicherung von `GET /api/admin/update-log` (admin.py):
+    EventSource kann keinen Authorization-Header setzen, also wandert ein
+    kurzlebiges Ticket in die URL. `decode_stream_token` weist
+    mfa_pending-Token ab; die Gegenprobe in der Datenbank stellt sicher, dass
+    ein gesperrtes, degradiertes oder abgemeldetes Konto nicht weiterstreamen
+    kann, nachdem `token_version` erhoeht oder `is_superadmin` entzogen wurde.
+    """
+    token_data = decode_stream_token(token)
+    if not token_data.is_superadmin:
+        raise HTTPException(403, "Superadmin required")
+    result = await db.execute(select(User).where(User.id == token_data.user_id))
+    db_user = result.scalar_one_or_none()
+    if not db_user or not db_user.is_active:
+        raise HTTPException(401, "Invalid token")
+    if not db_user.is_superadmin:
+        raise HTTPException(403, "Superadmin required")
+    if token_data.token_version != db_user.token_version:
+        raise HTTPException(401, "Session expired — please log in again")
+
+
+# Wie lange ein einzelner Strom offen bleibt (Sekunden). Deutlich groesser als
+# beim Update-Log: ein Graph-Bau laeuft je nach Region Stunden, und genau
+# dessen Ausgabe ist der Grund fuer diesen Endpunkt. Der Browser verbindet
+# nach dem Ende ueber `retry:` von selbst neu und bekommt das Log ab Byte 0
+# erneut — es geht also nichts verloren.
+_LOG_STREAM_SECONDS = 3600
+_LOG_POLL_SECONDS = 0.5
+_LOG_KEEPALIVE_SECONDS = 20
+
+
+@router.get("/log")
+async def stream_region_log(
+    token: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """SSE-Strom der Live-Ausgabe des Updaters (`region.log`).
+
+    Das Panel zeigte bisher nur die fuenf bis acht Phasenmeldungen aus
+    `region_status.json` — bei einem zweistuendigen Import stand dort eine
+    einzige Zeile. `region.log` enthaelt dagegen die vollstaendige Ausgabe des
+    Import-Containers (switch-region.sh leitet sie live dorthin um).
+
+    Der Strom beginnt immer bei Byte 0: wer das Panel mitten im Import oeffnet
+    oder neu laedt, bekommt den bisherigen Verlauf und danach den Zuwachs.
+    Beendet wird er, sobald `region_status.json` eine Endphase meldet.
+    """
+    await _require_superadmin_stream_token(token, db)
+    log_file = region_switch.log_path()
+
+    async def log_generator():
+        offset = 0
+        loop = asyncio.get_event_loop()
+        deadline = loop.time() + _LOG_STREAM_SECONDS
+        last_activity = loop.time()
+
+        yield "retry: 2000\n\n"  # Hinweis an den Browser fuer den Neuaufbau
+
+        while loop.time() < deadline:
+            # Bewusst binaer gelesen und selbst dekodiert: `offset` ist eine
+            # Byte-Position, und `seek()` auf einem Textstrom erwartet einen
+            # undurchsichtigen Cookie aus `tell()`, keine beliebige Zahl.
+            try:
+                with open(log_file, "rb") as f:
+                    f.seek(offset)
+                    raw = f.read()
+            except OSError:
+                raw = b""
+            if raw:
+                offset += len(raw)
+                last_activity = loop.time()
+                for line in raw.decode("utf-8", errors="replace").splitlines():
+                    if line.strip():
+                        yield f"data: {line}\n\n"
+
+            # Endphase erst NACH dem Ausliefern des Zuwachses pruefen, sonst
+            # fehlen die letzten Zeilen des Laufs.
+            if region_switch.read_status().get("phase") in ("done", "failed"):
+                yield "event: done\ndata: \n\n"
+                return
+
+            if loop.time() - last_activity > _LOG_KEEPALIVE_SECONDS:
+                yield ": keepalive\n\n"
+                last_activity = loop.time()
+
+            await asyncio.sleep(_LOG_POLL_SECONDS)
+
+        yield "event: done\ndata: timeout\n\n"
+
+    return StreamingResponse(
+        log_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # Puffern in Nginx/Caddy abschalten
+        },
+    )
 
 
 @router.post("/cancel", status_code=202)

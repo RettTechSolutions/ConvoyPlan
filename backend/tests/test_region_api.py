@@ -695,3 +695,106 @@ async def test_geofabrik_list_regions_skips_entry_without_pbf_url(monkeypatch):
     ids = {e.id for e in entries}
     assert ids == {"dach"}
     assert "shp-only" not in ids
+
+
+# ── GET /api/admin/region/log (SSE) ───────────────────────────────────────────
+# Der Endpunkt ist der einzige Weg, die Ausgabe des Import-Containers ins Panel
+# zu bekommen: `region_status.json` traegt nur die fuenf bis acht
+# Phasenmeldungen, bei einem zweistuendigen Import also eine einzige Zeile.
+
+
+def _stream_app(monkeypatch, *, is_superadmin=True, token_version=3, user_version=3,
+                user_active=True, user_is_superadmin=True):
+    """App mit gefaelschtem Stream-Ticket und gemockter Nutzer-Gegenprobe."""
+    from app.api.routes import region as region_routes
+
+    token = MagicMock()
+    token.is_superadmin = is_superadmin
+    token.user_id = "11111111-1111-1111-1111-111111111111"
+    token.token_version = token_version
+    monkeypatch.setattr(region_routes, "decode_stream_token", lambda t: token)
+
+    db_user = MagicMock()
+    db_user.is_active = user_active
+    db_user.is_superadmin = user_is_superadmin
+    db_user.token_version = user_version
+
+    db = AsyncMock()
+    db.execute.return_value = MagicMock(
+        scalar_one_or_none=MagicMock(return_value=db_user)
+    )
+
+    async def _db_override():
+        yield db
+
+    app.dependency_overrides[get_db] = _db_override
+    return app
+
+
+@pytest.mark.asyncio
+async def test_region_log_streams_updater_output(tmp_path, monkeypatch):
+    log = tmp_path / "region.log"
+    log.write_text(
+        "[2026-09-03 10:00:00] Phase 3/5: Baue Routing-Graph…\n"
+        "2026-09-03 10:04:11 INFO  edges: 1234567, nodes: 890123\n"
+        "\n"
+        "[2026-09-03 12:41:02] Regionswechsel abgeschlossen: berlin-latest.osm.pbf\n"
+    )
+    monkeypatch.setattr(region_switch, "log_path", lambda: str(log))
+    monkeypatch.setattr(region_switch, "read_status", lambda: {"phase": "done"})
+
+    transport = ASGITransport(app=_stream_app(monkeypatch))
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/admin/region/log?token=ticket")
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/event-stream")
+    body = resp.text
+    # Die Import-Ausgabe selbst — nicht nur die Phasenmeldung.
+    assert "data: 2026-09-03 10:04:11 INFO  edges: 1234567, nodes: 890123" in body
+    assert "data: [2026-09-03 10:00:00] Phase 3/5: Baue Routing-Graph…" in body
+    # Leerzeilen wuerden den SSE-Rahmen zerreissen und werden uebersprungen.
+    assert "data: \n\ndata: \n\n" not in body
+    # Endphase erreicht → der Strom schliesst sich selbst.
+    assert body.rstrip().endswith("event: done\ndata:")
+
+
+@pytest.mark.asyncio
+async def test_region_log_survives_missing_logfile(tmp_path, monkeypatch):
+    """Noch kein Wechsel gelaufen: kein Fehler, nur ein sofortiges Ende."""
+    monkeypatch.setattr(region_switch, "log_path", lambda: str(tmp_path / "fehlt.log"))
+    monkeypatch.setattr(region_switch, "read_status", lambda: {"phase": "failed"})
+
+    transport = ASGITransport(app=_stream_app(monkeypatch))
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/admin/region/log?token=ticket")
+
+    assert resp.status_code == 200
+    assert "event: done" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_region_log_rejects_non_superadmin_ticket(monkeypatch):
+    transport = ASGITransport(app=_stream_app(monkeypatch, is_superadmin=False))
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/admin/region/log?token=ticket")
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_region_log_rejects_stale_token_version(monkeypatch):
+    """Abgemeldet oder Passwort geaendert: token_version wurde erhoeht."""
+    transport = ASGITransport(
+        app=_stream_app(monkeypatch, token_version=3, user_version=4)
+    )
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/admin/region/log?token=ticket")
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_region_log_requires_token():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/admin/region/log")
+    assert resp.status_code == 422
