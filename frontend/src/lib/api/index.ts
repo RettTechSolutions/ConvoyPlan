@@ -747,6 +747,22 @@ export const regionApi = {
     switch: (url: string) => api.post<{ status: string }>('/api/admin/region', { url }),
     status: () => api.get<RegionStatus>('/api/admin/region/status'),
     cancel: () => api.post<{ status: string }>('/api/admin/region/cancel', {}),
+    /**
+     * SSE-Strom der Live-Ausgabe des Updaters (`region.log`) — inklusive der
+     * Ausgabe des Import-Containers. Ohne ihn zeigte das Terminal nur die
+     * fünf bis acht Phasenmeldungen aus `status()`, bei einem zweistündigen
+     * Import also eine einzige Zeile.
+     *
+     * Kurzlebiges Stream-Ticket als Query-Parameter, weil EventSource keinen
+     * Authorization-Header setzen kann (wie `usersApi.onlineStream` und das
+     * Update-Log). `null`, wenn kein Ticket zu bekommen ist — der Aufrufer
+     * entscheidet, was er dem Bediener dann anzeigt.
+     */
+    logStream: async (): Promise<EventSource | null> => {
+        const ticket = await getStreamTicket();
+        if (!ticket) return null;
+        return new EventSource(`/api/admin/region/log?token=${encodeURIComponent(ticket)}`);
+    },
 };
 
 // ── Systemübersicht ───────────────────────────────────────────────────────────

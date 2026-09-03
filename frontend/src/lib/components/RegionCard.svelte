@@ -10,7 +10,10 @@
      * vollen Geofabrik-Index (lazy geladen, erst bei Bedarf).
      * Wechsel: Phase kommt ausschließlich aus GET /region/status — ein Reload
      * mitten im Wechsel zeigt denselben Zustand, weil hier nichts aus
-     * Komponentenzustand rekonstruiert wird.
+     * Komponentenzustand rekonstruiert wird. Das Terminal darunter speist sich
+     * aus GET /region/log (SSE, `region.log` des Updaters): das ist die
+     * vollständige Ausgabe inklusive Import-Container. Aus den Phasenmeldungen
+     * allein bestünde es bei einem zweistündigen Import aus einer Zeile.
      */
     import { onDestroy, onMount } from 'svelte';
     import {
@@ -67,12 +70,16 @@
     let cancelling = $state(false);
     let cancelError = $state('');
     let logLines = $state<string[]>([]);
+    let logError = $state('');
+    // $state, weil das Terminal am offenen Strom erkennt, ob es noch etwas
+    // erwarten darf (Cursor) — die Zuweisung muss also ein Rendern auslösen.
+    let logSource = $state<EventSource | null>(null);
+    let logContainer = $state<HTMLDivElement | null>(null);
     // true nach "Schließen" auf einem abgeschlossenen/fehlgeschlagenen Wechsel —
     // blendet die Phasenkarte lokal aus, obwohl der Server denselben Endstatus
     // bis zum nächsten Wechsel weiter meldet.
     let dismissed = $state(false);
     let timer: ReturnType<typeof setInterval> | null = null;
-    let lastLoggedKey = '';
 
     const ACTIVE_PHASES: RegionPhase[] = ['checking', 'downloading', 'importing', 'switching', 'cleaning'];
     const CANCELLABLE_PHASES: RegionPhase[] = ['checking', 'downloading', 'importing'];
@@ -96,11 +103,55 @@
     onMount(async () => {
         await loadCurrent();
         await refreshStatus();
+        // Läuft (oder endete gerade) ein Wechsel, den jemand anders oder ein
+        // früherer Seitenaufruf angestoßen hat: das Log gehört trotzdem hierher.
+        if (showSwitchPanel) await startLogStream();
         timer = setInterval(refreshStatus, 3000);
     });
     onDestroy(() => {
         if (timer) clearInterval(timer);
+        stopLogStream();
     });
+
+    function stopLogStream() {
+        if (logSource) {
+            logSource.close();
+            logSource = null;
+        }
+    }
+
+    async function startLogStream() {
+        stopLogStream();
+        logLines = [];
+        logError = '';
+        const es = await regionApi.logStream();
+        if (!es) {
+            logError = 'Log-Verbindung nicht möglich — bitte neu anmelden.';
+            return;
+        }
+        logSource = es;
+        es.onmessage = (e) => {
+            logLines = [...logLines, e.data];
+            // ans Ende scrollen, nachdem Svelte die neue Zeile gerendert hat
+            setTimeout(() => {
+                if (logContainer) logContainer.scrollTop = logContainer.scrollHeight;
+            }, 0);
+        };
+        es.addEventListener('done', (e) => {
+            stopLogStream();
+            // "timeout": der Strom hat sein Zeitlimit erreicht, der Wechsel
+            // läuft aber noch. Neu aufbauen — der Strom liest wieder ab Byte 0,
+            // deshalb entstehen dabei keine doppelten Zeilen.
+            if ((e as MessageEvent).data === 'timeout' && busy) void startLogStream();
+        });
+        es.onerror = () => {
+            // Verbindung weg (Backend startet neu, Proxy-Timeout). Nicht selbst
+            // weiterverbinden lassen: EventSource würde von Byte 0 neu lesen und
+            // alles doppelt anhängen. Stattdessen ein Knopf zum Neuladen.
+            stopLogStream();
+            logError = 'Log-Verbindung getrennt.';
+        };
+    }
 
     async function loadCurrent() {
         loadingCurrent = true;
@@ -117,13 +168,13 @@
 
     async function refreshStatus() {
         try {
-            const next = await regionApi.status();
-            status = next;
-            const key = `${next.phase}|${next.message ?? ''}|${next.at ?? ''}`;
-            if (next.message && key !== lastLoggedKey) {
-                lastLoggedKey = key;
-                const ts = next.at ? new Date(next.at).toLocaleTimeString('de-DE') : '';
-                logLines = [...logLines, ts ? `[${ts}] ${next.message}` : next.message];
+            const wasIdle = !ACTIVE_PHASES.includes(status.phase);
+            status = await regionApi.status();
+            // Ein Wechsel, der nicht in diesem Tab ausgelöst wurde (zweites
+            // Fenster, anderer Superadmin): Log nachträglich anhängen.
+            if (wasIdle && ACTIVE_PHASES.includes(status.phase) && !logSource) {
+                dismissed = false;
+                await startLogStream();
             }
         } catch {
             // Kurzfristig nicht lesbar (z. B. Backend startet gerade neu) —
@@ -188,8 +239,7 @@
             selected = null;
             preview = null;
             dismissed = false;
-            logLines = [];
-            lastLoggedKey = '';
+            await startLogStream();
             await refreshStatus();
         } catch (e: unknown) {
             if (e instanceof ApiError && e.status === 409) {
@@ -217,6 +267,9 @@
 
     async function closeFinished() {
         dismissed = true;
+        stopLogStream();
+        logLines = [];
+        logError = '';
         await loadCurrent();
     }
 
@@ -271,16 +324,22 @@
             </p>
         {/if}
 
-        <div class="update-terminal">
+        <div class="update-terminal" bind:this={logContainer}>
             {#each logLines as line}
                 <div class="log-line">{line}</div>
             {/each}
-            {#if busy}
+            {#if logLines.length === 0 && !logError}
+                <div class="log-line">Warte auf Ausgabe des Updaters…</div>
+            {/if}
+            {#if busy && logSource}
                 <div class="log-cursor">▌</div>
-            {:else}
+            {:else if !busy}
                 <div class="log-line log-done">─── {status.phase === 'failed' ? 'Fehlgeschlagen' : 'Fertig'} ───</div>
             {/if}
         </div>
+        {#if logError}
+            <div class="error-bar">{logError} <button onclick={startLogStream}>↺</button></div>
+        {/if}
 
         <div class="switch-actions">
             {#if canCancel}
