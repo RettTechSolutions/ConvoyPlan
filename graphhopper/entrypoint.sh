@@ -8,6 +8,20 @@ OSM_FILE="$OSM_DIR/$OSM_FILENAME"
 DOWNLOAD_URL="${OSM_DOWNLOAD_URL:-https://download.geofabrik.de/europe/dach-latest.osm.pbf}"
 JAVA_OPTS="${JAVA_OPTS:--Xmx8g -Xms1g -XX:+UseG1GC}"
 
+# .region hat Vorrang vor den obigen Env-Vorgaben: ein Regionswechsel aus dem
+# Admin-Panel schreibt die neue Region in diese Datei im osm_data-Volume.
+# Fehlt sie (Bestandsinstallationen ohne Regionswechsel), aendert das Sourcen
+# nichts — Regressionsschutz.
+# shellcheck source=region-source.sh
+. /region-source.sh
+
+# OSM_FILE und DOWNLOAD_URL wurden oben aus den (jetzt ggf. durch .region
+# ueberschriebenen) Env-Variablen abgeleitet und muessen deshalb NEU berechnet
+# werden — sonst zeigen sie trotz korrekt gesetzter OSM_FILENAME/
+# OSM_DOWNLOAD_URL weiterhin auf die alte Region.
+OSM_FILE="$OSM_DIR/$OSM_FILENAME"
+DOWNLOAD_URL="${OSM_DOWNLOAD_URL:-$DOWNLOAD_URL}"
+
 mkdir -p "$OSM_DIR" "$GRAPH_DIR"
 
 # â”€â”€ OSM-Daten holen (nur beim ersten Start) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
