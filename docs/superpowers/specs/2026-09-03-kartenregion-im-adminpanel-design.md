@@ -337,9 +337,16 @@ gehört als manueller Prüfschritt in den Plan, nicht als stillschweigende Lück
 
 ## 9. Offene Punkte für den Implementierungsplan
 
-1. Läuft `graphhopper.jar import` in Version 9.1 ohne Server-Start? (Abschnitt 3)
-2. Reale Extract-Größen für DACH, Deutschland, Bayern — Grundlage der
-   Schätzformel. (Abschnitt 6)
+1. ~~Läuft `graphhopper.jar import` in Version 9.1 ohne Server-Start?~~ **Offen
+   geblieben** (Abschnitt 3) — die Prüfung braucht einen laufenden
+   Docker-Daemon, der auf der Maschine von Task 1 nicht verfügbar war. Wird in
+   Task 7 nachgeholt; bis dahin gilt Annahme 1 als unbestätigt.
+2. ~~Reale Extract-Größen für DACH, Deutschland, Bayern — Grundlage der
+   Schätzformel.~~ **Geklärt** (Abschnitt 6, Task 1): per HTTP-HEAD gegen
+   Geofabrik gemessen (DACH 5,79 GB, Deutschland 4,50 GB, Bayern 0,79 GB,
+   Berlin 0,09 GB, Europa 32,49 GB). Die Formel `(2 GB + 1,1 × Extract) × 1,2`
+   besteht alle drei Installer-Stützstellen unverändert — siehe Docstring in
+   `backend/app/services/region_estimate.py`.
 3. Gibt es Installationen ohne Updater-Container? (Abschnitt 5)
 4. Verhält sich der Health-Check des GraphHopper-Containers verlässlich genug,
    um den Rollback in Phase 4 daran zu hängen?
