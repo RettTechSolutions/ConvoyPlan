@@ -80,4 +80,48 @@ out="$(run_sourced)"
 check "unvollstaendige .region (JAVA_OPTS fehlt) verwirft komplett" "$out" \
     "https://download.geofabrik.de/europe/dach-latest.osm.pbf|dach-latest.osm.pbf|-Xmx8g"
 
+# Fall 7: Wert enthaelt selbst ein "=" (z.B. JAVA_OPTS mit "-XX:Flag=Wert") —
+# es wird nur am ERSTEN "=" getrennt, alles danach bleibt Teil des Werts
+cat > "$TMP/osm/.region" <<'EOF'
+OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf
+OSM_FILENAME=berlin-latest.osm.pbf
+JAVA_OPTS=-Xmx3g -XX:MaxRAMPercentage=75.0
+EOF
+out="$(run_sourced)"
+check "Wert mit '=' bleibt beim Wert (nur am ersten '=' getrennt)" "$out" \
+    "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf|berlin-latest.osm.pbf|-Xmx3g -XX:MaxRAMPercentage=75.0"
+
+# Fall 8: Kommentarzeile ("#...") — bewusst NICHT toleriert, verwirft wie ein
+# unbekannter Schluessel die komplette Datei (siehe Kommentar in region-source.sh)
+cat > "$TMP/osm/.region" <<'EOF'
+# Region: Berlin
+OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf
+OSM_FILENAME=berlin-latest.osm.pbf
+JAVA_OPTS=-Xmx3g -Xms1g -XX:+UseG1GC
+EOF
+out="$(run_sourced)"
+check "Kommentarzeile verwirft komplette .region (kein Komfort-Feature)" "$out" \
+    "https://download.geofabrik.de/europe/dach-latest.osm.pbf|dach-latest.osm.pbf|-Xmx8g"
+
+# Fall 9: doppelter Schluessel — der LETZTE Wert gewinnt
+cat > "$TMP/osm/.region" <<'EOF'
+OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf
+OSM_FILENAME=berlin-latest.osm.pbf
+OSM_FILENAME=hamburg-latest.osm.pbf
+JAVA_OPTS=-Xmx3g -Xms1g -XX:+UseG1GC
+EOF
+out="$(run_sourced)"
+check "doppelter Schluessel: letzter Wert gewinnt" "$out" \
+    "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf|hamburg-latest.osm.pbf|-Xmx3g -Xms1g -XX:+UseG1GC"
+
+# Fall 10: Reihenfolge der drei Schluessel vertauscht — spielt keine Rolle
+cat > "$TMP/osm/.region" <<'EOF'
+JAVA_OPTS=-Xmx3g -Xms1g -XX:+UseG1GC
+OSM_FILENAME=berlin-latest.osm.pbf
+OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf
+EOF
+out="$(run_sourced)"
+check "Reihenfolge der Schluessel ist beliebig" "$out" \
+    "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf|berlin-latest.osm.pbf|-Xmx3g -Xms1g -XX:+UseG1GC"
+
 exit $FAILED

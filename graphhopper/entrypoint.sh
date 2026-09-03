@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-OSM_DIR="/data/osm"
+OSM_DIR="${OSM_DIR:-/data/osm}"
 GRAPH_DIR="/data/graph"
 OSM_FILENAME="${OSM_FILENAME:-dach-latest.osm.pbf}"
 OSM_FILE="$OSM_DIR/$OSM_FILENAME"
@@ -12,8 +12,10 @@ JAVA_OPTS="${JAVA_OPTS:--Xmx8g -Xms1g -XX:+UseG1GC}"
 # Admin-Panel schreibt die neue Region in diese Datei im osm_data-Volume.
 # Fehlt sie (Bestandsinstallationen ohne Regionswechsel), aendert das Sourcen
 # nichts — Regressionsschutz.
+# REGION_SOURCE_SCRIPT ist nur fuer Tests ueberschreibbar (siehe
+# tests/test_entrypoint_region.sh) — im Container immer der Default.
 # shellcheck source=region-source.sh
-. /region-source.sh
+. "${REGION_SOURCE_SCRIPT:-/region-source.sh}"
 
 # OSM_FILE und DOWNLOAD_URL wurden oben aus den (jetzt ggf. durch .region
 # ueberschriebenen) Env-Variablen abgeleitet und muessen deshalb NEU berechnet
@@ -21,6 +23,11 @@ JAVA_OPTS="${JAVA_OPTS:--Xmx8g -Xms1g -XX:+UseG1GC}"
 # OSM_DOWNLOAD_URL weiterhin auf die alte Region.
 OSM_FILE="$OSM_DIR/$OSM_FILENAME"
 DOWNLOAD_URL="${OSM_DOWNLOAD_URL:-$DOWNLOAD_URL}"
+# ── ENTRYPOINT_HEADER_ENDE ─────────────────────────────────────────────────
+# Testmarker (inhaltlich verankert, nicht an Zeilennummern): tests/test_entrypoint_region.sh
+# schneidet den Skriptkopf bis inklusive dieser Zeile heraus und sourct ihn
+# isoliert, um die obige Neuberechnung ohne echten Download/Java-Start zu
+# pruefen. Zeile beim Refactoring bitte erhalten oder den Test mitziehen.
 
 mkdir -p "$OSM_DIR" "$GRAPH_DIR"
 

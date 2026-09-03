@@ -12,7 +12,19 @@
 #   OSM_FILENAME=berlin-latest.osm.pbf
 #   JAVA_OPTS=-Xmx3g -Xms1g -XX:+UseG1GC
 # Es wird am ERSTEN "=" je Zeile getrennt, da JAVA_OPTS-Werte Leerzeichen
-# (aber kein "=") enthalten.
+# und ggf. selbst ein "=" enthalten koennen (z.B. "-XX:Flag=Wert") — alles
+# ab dem ersten "=" gehoert zum Wert.
+#
+# Bewusste Entscheidungen ueber den Drei-Zeilen-Normalfall hinaus:
+#   - Kommentarzeilen ("#...") sind NICHT Teil des festgelegten Formats und
+#     werden NICHT toleriert: eine solche Zeile faellt wie jeder unbekannte
+#     Schluessel unter "*)" unten und verwirft die komplette Datei. Das ist
+#     bewusst streng (kein Komfort-Feature ergaenzt, das nicht verlangt war)
+#     und konsistent mit der Alles-oder-nichts-Regel für alles Unerwartete.
+#   - Doppelte Schluessel: der LETZTE Wert gewinnt (einfache Ueberschreib-
+#     Semantik, wie man es von Shell-Variablenzuweisungen kennt).
+#   - Reihenfolge der drei Schluessel ist beliebig — es wird zeilenweise
+#     geparst und erst am Ende auf Vollstaendigkeit geprueft.
 
 REGION_FILE="${OSM_DIR:-/data/osm}/.region"
 
