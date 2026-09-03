@@ -643,6 +643,18 @@ check_target_and_update() {
 while true; do
     # Trigger check — runs every TRIGGER_POLL seconds so the UI reacts quickly
     if [ -f /update_status/trigger ]; then
+        # Regionswechsel hat Vorrang: Trigger und Regionswechsel-Lock können
+        # gleichzeitig gesetzt sein. Bei aktivem Lock wird der Trigger NICHT
+        # konsumiert (kein `rm -f`/`do_update`), sondern liegen gelassen —
+        # der Regionswechsel-Check unten holt das Update automatisch nach,
+        # sobald der Wechsel durch ist. Sonst würde ein manueller Trigger
+        # ("Jetzt updaten") denselben Compose-Stack anfassen wie ein laufender
+        # switch-region.sh.
+        if region_switch_blocked; then
+            log "Regionswechsel-Lock aktiv — Trigger wird zurückgestellt bis nach dem Wechsel."
+            sleep "${TRIGGER_POLL}"
+            continue
+        fi
         log "Trigger erkannt — starte Update"
         rm -f /update_status/trigger
         if do_update; then
