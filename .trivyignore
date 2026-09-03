@@ -64,6 +64,19 @@ CVE-2026-42508
 CVE-2026-46595
 CVE-2026-46597
 
+# golang.org/x/crypto/ssh source-address restriction bypass — the direct
+# follow-up to CVE-2026-46595 above: the fix there only enforced the
+# source-address critical option for the PublicKeyCallback paths, so
+# restrictions returned by PasswordCallback, KeyboardInteractiveCallback,
+# NoClientAuthCallback and GSSAPIWithMICConfig.AllowLogin were still ignored.
+# Purely an SSH *server* defect — it concerns Permissions returned by a
+# server-side authentication callback. The updater runs no SSH server (and no
+# SSH client; Git access goes over HTTPS), so no authentication callback of
+# any kind exists here. Bundled in the docker-buildx / docker-compose plugin
+# binaries. Fixed upstream in golang.org/x/crypto 0.55.0; docker:cli still
+# ships v0.54.0 as of the 2026-09-03 rebuild. Review by: 2026-09-25.
+CVE-2026-56854
+
 # golang.org/x/net HTML-parsing DoS / redirect bugs. Bundled in docker CLI
 # Go binaries; the updater sends only structured API requests to Docker
 # registry and GitHub — no untrusted HTML is parsed or rendered.
@@ -82,6 +95,17 @@ CVE-2026-42506
 # gRPC server or applies RBAC policies — the affected code paths are unreachable.
 # Fixed upstream in google.golang.org/grpc 1.82.1.
 GHSA-hrxh-6v49-42gf
+
+# gRPC-Go heap memory exhaustion (OOM) via HTTP/2 DATA frame fragmentation
+# (GHSA-vp52-pcj8-j9qc). Reaching this requires a malicious HTTP/2 peer that
+# streams pathologically fragmented DATA frames at a gRPC endpoint. The
+# bundled buildx / compose plugins speak gRPC only over local, operator-owned
+# transports — buildx to its buildkit worker, compose to the Docker daemon
+# socket — and the updater exposes no gRPC listener to the network, so there
+# is no untrusted peer on either side of the connection. Fixed upstream in
+# google.golang.org/grpc 1.83.1; docker:cli still ships v1.82.1 (buildx) and
+# v1.83.0 (compose) as of the 2026-09-03 rebuild. Review by: 2026-09-25.
+CVE-2026-84304
 
 # golang.org/x/text norm.Iter infinite loop on crafted input (DoS). Bundled in
 # the docker-buildx/docker-compose plugin Go binaries; the updater only passes
