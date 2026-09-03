@@ -30,6 +30,10 @@ case "$sub" in
       # Compose-Aufrufs. Damit ist beweisbar, dass `stop graphhopper` noch vor
       # dem Tausch kommt (dann steht dort der ALTE Graph) — Critical 1.
       echo "probe edges=$(cat "$STUB_PROBE_EDGES" 2>/dev/null || echo -) staging=$([ -e "${STUB_STAGING_DIR:-/nonexistent}" ] && echo ja || echo nein)" >> "$DOCKER_CALLS"
+      # Zaehlt jeden `stop graphhopper`-Aufruf mit (fuer STUB_GH_RUNNING_FROM_STOP).
+      if [ -n "${STOP_CALLS_FILE:-}" ] && printf '%s\n' "$@" | grep -qw 'stop'; then
+          echo $(( $(cat "$STOP_CALLS_FILE" 2>/dev/null || echo 0) + 1 )) > "$STOP_CALLS_FILE"
+      fi
       # Der GraphHopper-Container bekommt bei jedem erfolgreichen
       # `up --force-recreate` eine NEUE ID — nur so kann der Test pruefen, dass
       # switch-region.sh den Austausch wirklich nachweist (Wichtig 3).
@@ -49,6 +53,18 @@ case "$sub" in
       case "$fmt" in
         *Health*)       echo "${STUB_HEALTH:-healthy}" ;;
         *RestartCount*) echo "${STUB_RESTARTS:-0}" ;;
+        *State.Running*)
+            # Ob der Container nach `compose stop` wirklich steht (R1). Per
+            # STUB_GH_RUNNING_FROM_STOP laesst sich das gezielt erst AB dem
+            # n-ten `stop`-Aufruf umschalten — so ist der erste Stopp (vor dem
+            # Tausch) simulierbar als erfolgreich, waehrend der zweite (im
+            # Rollback, gegen den neuen/kranken Container) es nicht ist.
+            n="$(cat "${STOP_CALLS_FILE:-/dev/null}" 2>/dev/null || echo 0)"
+            if [ -n "${STUB_GH_RUNNING_FROM_STOP:-}" ] && [ "$n" -ge "$STUB_GH_RUNNING_FROM_STOP" ]; then
+                echo "true"
+            else
+                echo "${STUB_GH_RUNNING:-false}"
+            fi ;;
         *State.Status*) echo "running" ;;
         *Mounts*)       echo "${STUB_VOLUME:-}" ;;
         *)              echo "" ;;
@@ -163,6 +179,7 @@ setup_case() {
 run_case() {  # $1 = Ablage; weitere Env kommt vom Aufrufer
     local d="$1"; shift
     env DOCKER_CALLS="$d/calls.txt" GH_CID_FILE="$d/gh_cid" \
+        STOP_CALLS_FILE="$d/stop_calls" \
         STATUS_DIR="$d/status" OSM_DIR="$d/osm" GRAPH_DIR="$d/graph" \
         STUB_STAGING_DIR="$d/graph/.staging" REPO_DIR="$d" \
         STUB_IMPORT_HANG_FILE="$d/import-haengt" STUB_PROBE_EDGES="$d/graph/edges" \
@@ -304,6 +321,14 @@ grep -q "Rücktausch von Graph und .region ist fehlgeschlagen" "$D/status/region
 [ -d "$D/graph/.old" ]; check $? "alter Bestand bleibt fuer den manuellen Eingriff erhalten"
 [ "$(cat "$D/graph/.old/edges" 2>/dev/null)" = "ALT" ]; check $? "alter Graph liegt unversehrt in .old"
 [ ! -e "$D/status/region_request.json" ] && [ ! -e "$D/status/region.lock" ]; check $? "Sperrdateien entfernt"
+# R2: das Graph-Verzeichnis ist nach dem misslungenen Rueckschub leer (der
+# neue Graph wurde entfernt, der alte kam wegen STUB_MV_FAIL_FROM_OLD nicht
+# zurueck) — die Notbremse in _on_exit darf GraphHopper NICHT blind dagegen
+# hochfahren, das war genau der eingedaemmte, nicht geschlossene Rest-Critical.
+[ ! -s "$D/graph/.graph_fingerprint" ]; check $? "Graph-Verzeichnis ist nach dem Fehlschlag tatsaechlich unvollstaendig"
+! grep -qE 'up -d graphhopper$' "$D/calls.txt"; check $? "Notbremse startet GraphHopper NICHT gegen ein unvollstaendiges Graph-Verzeichnis"
+grep -q "wird NICHT automatisch gestartet" "$D/status/region.log"; check $? "Notbremse meldet den Verzicht auf den Autostart"
+grep -q "$D/graph/.old" "$D/status/region.log"; check $? "Meldung nennt den Ablageort des alten Bestands"
 
 echo "── Fall 13: Import liefert 0, hinterlaesst aber keinen Graphen ─────────"
 # Wichtig 1: Ohne Nachweis liefe die Tausch-Schleife nullmal durch und liesse
@@ -373,6 +398,50 @@ run_case "$D"
 grep -q "^JAVA_OPTS=-Xmx2048m -XX:MaxRAMPercentage=75.0$" "$D/osm/.region"; check $? "gedeckelter Heap steht in .region ($(grep '^JAVA_OPTS=' "$D/osm/.region"))"
 grep -q "JAVA_OPTS=-Xmx2048m" "$D/calls.txt"; check $? "auch der Import laeuft mit gedeckeltem Heap"
 grep -q "Heap gedeckelt" "$D/status/region.log"; check $? "Deckelung wird protokolliert"
+
+echo "── Fall 19: 'compose stop' laesst den Container laufen (R1, vor Phase 4) ─"
+# _stop_graphhopper vertraute frueher blind dem Rueckgabewert von `compose
+# stop`. Steht der Container trotzdem (klemmender Daemon), faesst Phase 4 den
+# Graphen unter einem lebenden Container an — der eingedaemmte Critical.
+D="$(setup_case case19)"; printf '%s' "$REQ_JSON" > "$D/status/region_request.json"
+run_case "$D" STUB_GH_RUNNING=true
+[ "$(cat "$D/rc")" != 0 ]; check $? "Exit ungleich 0"
+[ "$(phase_of "$D/status/region_status.json")" = "failed" ]; check $? "Endphase failed"
+grep -q "ließ sich nicht sicher anhalten" "$D/status/region.log"; check $? "Fehlermeldung nennt den nicht verifizierten Stopp"
+[ "$(cat "$D/graph/edges")" = "ALT" ]; check $? "alter Graph unangetastet"
+grep -q "^OSM_FILENAME=dach-latest.osm.pbf$" "$D/osm/.region"; check $? "alte .region unveraendert"
+[ "$(compose_seq "$D/calls.txt")" = "stop " ]; check $? "nur gestoppt, kein Schwenk ($(compose_seq "$D/calls.txt"))"
+[ ! -e "$D/status/region_request.json" ] && [ ! -e "$D/status/region.lock" ]; check $? "Sperrdateien entfernt"
+
+echo "── Fall 20: 'compose stop' scheitert im Rollback (R1, andere Lage) ──────"
+# Diesmal steht der ERSTE Stopp (vor dem Tausch) noch, aber der ZWEITE — im
+# Rollback, gegen den neuen/kranken Container — nicht. Der Rueckschub darf
+# dann nicht gegen einen laufenden Container versucht werden.
+D="$(setup_case case20)"; printf '%s' "$REQ_JSON" > "$D/status/region_request.json"
+run_case "$D" STUB_HEALTH=starting STUB_GH_RUNNING_FROM_STOP=2
+[ "$(cat "$D/rc")" != 0 ]; check $? "Exit ungleich 0"
+[ "$(phase_of "$D/status/region_status.json")" = "failed" ]; check $? "Endphase failed"
+grep -q "ließ sich vor dem Rücktausch nicht anhalten" "$D/status/region.log"; check $? "Rollback meldet den nicht verifizierten Stopp"
+[ "$(cat "$D/graph/edges" 2>/dev/null)" = "NEU" ]; check $? "neuer (kranker) Graph bleibt unangetastet stehen"
+[ "$(cat "$D/graph/.old/edges" 2>/dev/null)" = "ALT" ]; check $? "alter Bestand bleibt unversehrt in .old"
+[ ! -e "$D/status/region_request.json" ] && [ ! -e "$D/status/region.lock" ]; check $? "Sperrdateien entfernt"
+
+echo "── Fall 21: frueherer Rollback unvollstaendig → neuer Wechsel blockiert ─"
+# R3: _swap_in_new_graph loeschte .old frueher bedingungslos. Liegt dort noch
+# Bestand aus einem gescheiterten Rollback (Fall 12/20 heben ihn genau dafuer
+# auf), darf ein neuer Wechselversuch ihn nicht kommentarlos wegwerfen.
+D="$(setup_case case21)"
+mkdir -p "$D/graph/.old"; echo "ALT-AUS-VORHERIGEM-ROLLBACK" > "$D/graph/.old/edges"
+printf '%s' "$REQ_JSON" > "$D/status/region_request.json"
+run_case "$D"
+[ "$(cat "$D/rc")" != 0 ]; check $? "Exit ungleich 0"
+[ "$(phase_of "$D/status/region_status.json")" = "failed" ]; check $? "Endphase failed"
+grep -q "Ein früherer Rollback ist unvollständig" "$D/status/region.log"; check $? "Meldung nennt den unvollstaendigen Rollback"
+[ "$(cat "$D/graph/.old/edges")" = "ALT-AUS-VORHERIGEM-ROLLBACK" ]; check $? ".old bleibt unangetastet"
+[ "$(cat "$D/graph/edges")" = "ALT" ]; check $? "aktueller Graph unangetastet"
+[ "$(compose_seq "$D/calls.txt")" = "" ]; check $? "GraphHopper wurde gar nicht erst angefasst"
+[ ! -e "$D/osm/berlin-latest.osm.pbf" ]; check $? "nichts heruntergeladen"
+[ ! -e "$D/status/region_request.json" ] && [ ! -e "$D/status/region.lock" ]; check $? "Sperrdateien entfernt"
 
 echo
 [ "$FAILED" = 0 ] && echo "ALLE TESTS GRUEN" || echo "TESTS FEHLGESCHLAGEN"

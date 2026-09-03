@@ -26,7 +26,7 @@
 #   STATUS_DIR OSM_DIR GRAPH_DIR REPO_DIR COMPOSE_PROJECT_NAME
 #   GRAPHHOPPER_IMAGE REGION_COMPOSE_FILE REGION_IMPORT_MODE
 #   REGION_HEALTH_TIMEOUT REGION_IMPORT_TIMEOUT REGION_POLL_SLEEP SKIP_CHECKSUM
-#   REGION_MEMINFO REGION_HEAP_RESERVE_MB REGION_HEAP_MIN_MB
+#   REGION_MEMINFO REGION_HEAP_RESERVE_MB REGION_HEAP_MIN_MB REGION_STOP_TIMEOUT
 set -uo pipefail
 
 STATUS_DIR="${STATUS_DIR:-/update_status}"
@@ -76,6 +76,11 @@ REGION_HEALTH_TIMEOUT="${REGION_HEALTH_TIMEOUT:-900}"
 REGION_IMPORT_TIMEOUT="${REGION_IMPORT_TIMEOUT:-21600}"
 REGION_POLL_SLEEP="${REGION_POLL_SLEEP:-5}"   # Sekunden zwischen zwei Abfragen
 REGION_POLL_STEP="${REGION_POLL_STEP:-5}"     # dafür verbuchte Sekunden
+# Wartezeit, bis ein per `compose stop` angehaltener Container wirklich als
+# gestoppt bestätigt ist (siehe _stop_graphhopper). Ein klemmender Daemon kann
+# `stop` mit Erfolgscode quittieren und den Container trotzdem weiterlaufen
+# lassen — Sekunden, keine Minuten, denn ein SIGTERM/SIGKILL-Stopp ist schnell.
+REGION_STOP_TIMEOUT="${REGION_STOP_TIMEOUT:-30}"
 
 # Heap-Deckelung (Spec §3): Das Backend rechnet den Import-Heap aus Schätzwerten
 # und zwischengespeicherten Host-Metriken. Der Updater sieht den Host zum
@@ -147,10 +152,26 @@ _on_exit() {
     # Daemon-Neustart, `restart: unless-stopped` holt den Container nicht
     # zurück. Deshalb hier der letzte Versuch, ihn wieder hochzufahren.
     if [ "$GH_STOPPED" = 1 ]; then
-        log "GraphHopper ist noch gestoppt — starte ihn wieder."
-        _compose up -d graphhopper >> "$LOG" 2>&1 || \
-            log "FEHLER: GraphHopper konnte nicht wieder gestartet werden — manueller Eingriff nötig."
-        GH_STOPPED=0
+        # Vor dem Hochfahren prüfen, ob $GRAPH_DIR überhaupt ein vollständiger
+        # Graph ist. Ist der Rollback vorher selbst teilweise gescheitert (z. B.
+        # ein `mv` aus .old, siehe _restore_old_graph), kann das Verzeichnis
+        # leer oder unvollständig sein — der Entrypoint sähe dort einen
+        # Fingerprint-Mismatch, würfe alles per `rm -rf` weg und baute über
+        # Stunden neu, ohne dass es jemand mitbekommt. .graph_fingerprint
+        # schreibt der Entrypoint als letzten Schritt eines fertigen Graphen;
+        # seine Existenz ist der billigste verfügbare Beleg für Vollständigkeit.
+        if [ -s "$GRAPH_DIR/.graph_fingerprint" ]; then
+            log "GraphHopper ist noch gestoppt — starte ihn wieder."
+            _compose up -d graphhopper >> "$LOG" 2>&1 || \
+                log "FEHLER: GraphHopper konnte nicht wieder gestartet werden — manueller Eingriff nötig."
+            GH_STOPPED=0
+        else
+            # Ein stehender Container, den ein Mensch bewusst wieder startet,
+            # ist besser als ein unangekündigter Mehrstunden-Neuaufbau.
+            log "FEHLER: Graph-Verzeichnis (${GRAPH_DIR}) ist unvollständig (kein .graph_fingerprint) — GraphHopper wird NICHT automatisch gestartet. Alter Bestand liegt vermutlich noch in ${OLD} — bitte manuell prüfen und erst dann den Container starten."
+            phase "failed" "Notbremse: Graph-Verzeichnis unvollständig, GraphHopper bleibt bewusst gestoppt — manueller Eingriff nötig (Bestand ggf. in ${OLD})."
+            FAILED_REPORTED=1
+        fi
     fi
     if [ "$OWNS_LOCK" = 1 ]; then
         if [ "$rc" -ne 0 ] && [ "$FINISHED" != 1 ] && [ "$FAILED_REPORTED" != 1 ]; then
@@ -278,9 +299,26 @@ _stop_graphhopper() {
     # greifen — ein überflüssiges `up -d` ist harmlos, ein ausgelassenes nicht.
     GH_STOPPED=1
     if ! _compose stop graphhopper >> "$LOG" 2>&1; then
-        log "WARNUNG: 'compose stop graphhopper' meldete einen Fehler — fahre trotzdem fort."
+        log "WARNUNG: 'compose stop graphhopper' meldete einen Fehler — prüfe trotzdem den tatsächlichen Zustand."
     fi
-    return 0
+    # Weder ein Erfolgs- noch ein Fehlercode von `compose stop` ist verlässlich:
+    # ein klemmender Docker-Daemon kann Erfolg melden, während der Container
+    # weiterläuft. Deshalb hier verifizieren statt dem Rückgabewert zu
+    # vertrauen — erst ein NACHWEISLICH gestoppter Container macht das Fenster
+    # ungefährlich, das oben an dieser Funktionsgruppe beschrieben ist.
+    local cid running waited=0
+    cid="$(_gh_cid)"
+    if [ -z "$cid" ]; then
+        return 0   # kein Container im Projekt gefunden — es läuft nichts, das noch stünde
+    fi
+    while [ "$waited" -lt "$REGION_STOP_TIMEOUT" ]; do
+        running="$(docker inspect "$cid" --format '{{.State.Running}}' 2>/dev/null)"
+        [ "$running" = "false" ] && return 0
+        sleep "$REGION_POLL_SLEEP"
+        waited=$(( waited + REGION_POLL_STEP ))
+    done
+    log "FEHLER: GraphHopper läuft nach 'compose stop' immer noch (Container ${cid}, ${REGION_STOP_TIMEOUT}s abgewartet) — kein sicheres Fenster für den Graph-Zugriff."
+    return 1
 }
 
 # ── Volumes ─────────────────────────────────────────────────────────────────
@@ -617,7 +655,20 @@ _restore_region_file() {
 # wirklich, die Reihenfolge ist der Gürtel dazu.
 _rollback_to_old_region() {
     local rc=0
-    _stop_graphhopper
+    if ! _stop_graphhopper; then
+        # Andere Lage als vor Phase 4: der Tausch liegt schon hinter uns (neuer
+        # Graph aktiv oder halb getauscht, alter Bestand in $OLD) und der
+        # Container, der sich nicht anhalten lässt, ist hier der NEUE
+        # (vermutlich kranke). Trotzdem NICHT versuchen, .region/Graph gegen
+        # einen nachweislich noch laufenden Container zu tauschen — das wäre
+        # exakt das Fenster, das den Critical ausgemacht hat (Entrypoint sieht
+        # Fingerprint-Mismatch, räumt $GRAPH_DIR per `rm -rf` leer). Deshalb
+        # hier abbrechen: $OLD bleibt unangetastet für den manuellen Eingriff,
+        # der (kranke) neue Graph bleibt stehen und wird nicht zusätzlich
+        # beschädigt — der Aufrufer meldet ohnehin "manueller Eingriff nötig".
+        log "FEHLER: GraphHopper ließ sich vor dem Rücktausch nicht anhalten — Rücktausch abgebrochen, Bestand in ${OLD} bleibt für den manuellen Eingriff erhalten."
+        return 1
+    fi
     _restore_region_file || rc=1
     _restore_old_graph   || rc=1
     rm -rf "$STAGING"
@@ -666,6 +717,16 @@ fi
 
 mkdir -p "$OSM_DIR" "$GRAPH_DIR" 2>/dev/null || true
 abort_if_cancelled
+
+# Guard VOR Phase 1: ein befüllter .old-Ordner ist von _restore_old_graph
+# bewusst stehengelassen worden, weil ein früherer Rollback selbst gescheitert
+# ist ("für den manuellen Eingriff", siehe dort). _swap_in_new_graph löscht
+# .old bedingungslos zu Beginn von Phase 4 — ohne diesen Guard ginge genau
+# dieser aufbewahrte Altbestand beim nächsten Wechselversuch ersatzlos
+# verloren, bevor ein Mensch ihn je gesehen hat.
+if [ -d "$OLD" ] && [ -n "$(ls -A "$OLD" 2>/dev/null)" ]; then
+    fail "Ein früherer Rollback ist unvollständig; Bestand liegt in ${OLD} — bitte prüfen und entfernen, bevor ein neuer Regionswechsel gestartet wird."
+fi
 
 # ── Phase 1: Prüfen ─────────────────────────────────────────────────────────
 phase "checking" "Phase 1/5: Prüfe Verfügbarkeit und Platz…"
@@ -744,8 +805,13 @@ if [ ! -s "$STAGING/.graph_fingerprint" ]; then
 fi
 
 # Ab hier wird am Graph-Verzeichnis gearbeitet: GraphHopper muss dafür still
-# stehen (Begründung ausführlich bei _stop_graphhopper).
-_stop_graphhopper
+# stehen (Begründung ausführlich bei _stop_graphhopper). Verifiziert
+# _stop_graphhopper das nicht (klemmender Daemon), ist HIER der sicherste
+# Abbruchpunkt: An diesem Graph-Verzeichnis wurde noch nichts verändert, also
+# läuft die alte Region beim Abbruch unberührt weiter.
+if ! _stop_graphhopper; then
+    fail "GraphHopper ließ sich nicht sicher anhalten — die alte Region läuft unverändert weiter, nichts wurde verändert."
+fi
 # Erst jetzt den produktiven Heap deckeln: mit gestopptem GraphHopper meldet
 # MemAvailable genau den Speicher, den der neue Container gleich vorfindet.
 JAVA_OPTS="$(_capped_java_opts "$JAVA_OPTS" "produktiver GraphHopper")"
