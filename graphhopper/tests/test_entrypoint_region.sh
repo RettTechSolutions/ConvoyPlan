@@ -59,4 +59,23 @@ out="$(run_header)"
 check "entrypoint-Kopf: ohne .region bleibt OSM_FILE/DOWNLOAD_URL/JAVA_OPTS bitgleich" "$out" \
     "$TMP/osm/dach-latest.osm.pbf|https://download.geofabrik.de/europe/dach-latest.osm.pbf|-Xmx8g"
 
+# Fall 3: GRAPH_DIR und GH_COMMAND sind ueberschreibbar. Der Regionswechsel
+# (docker/updater/switch-region.sh, Phase 3) baut den neuen Graphen damit in
+# ein Staging-Verzeichnis, ohne den aktiven Graphen anzufassen — verschwindet
+# der Default-Fallback hier, faellt der Import still zurueck auf /data/graph
+# und ueberschreibt den laufenden Graphen.
+run_dirs() {
+    (
+        export OSM_DIR="$TMP/osm" REGION_SOURCE_SCRIPT="$HERE/../region-source.sh"
+        # shellcheck source=/dev/null
+        . "$HEADER"
+        echo "$GRAPH_DIR|$GH_COMMAND"
+    )
+}
+out="$(GRAPH_DIR=/data/graph/.staging GH_COMMAND=import run_dirs)"
+check "entrypoint-Kopf: GRAPH_DIR/GH_COMMAND ueberschreibbar" "$out" "/data/graph/.staging|import"
+
+out="$(run_dirs)"
+check "entrypoint-Kopf: ohne Vorgabe bleibt es /data/graph + server" "$out" "/data/graph|server"
+
 exit $FAILED

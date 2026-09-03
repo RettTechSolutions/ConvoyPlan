@@ -2,7 +2,15 @@
 set -e
 
 OSM_DIR="${OSM_DIR:-/data/osm}"
-GRAPH_DIR="/data/graph"
+# GRAPH_DIR ist ueberschreibbar, damit der Regionswechsel (docker/updater/
+# switch-region.sh, Phase 3) den neuen Graphen mit EXAKT dieser Konfiguration
+# in ein Staging-Verzeichnis im selben Volume bauen kann, waehrend der aktive
+# Graph unberuehrt weiterlaeuft. In docker-compose.yml wird die Variable nicht
+# gesetzt — Produktionsverhalten unveraendert.
+GRAPH_DIR="${GRAPH_DIR:-/data/graph}"
+# Unterbefehl des GraphHopper-JARs: "server" (Normalbetrieb) oder "import"
+# (baut nur den Graphen und endet). Ebenfalls nur vom Regionswechsel gesetzt.
+GH_COMMAND="${GH_COMMAND:-server}"
 OSM_FILENAME="${OSM_FILENAME:-dach-latest.osm.pbf}"
 OSM_FILE="$OSM_DIR/$OSM_FILENAME"
 DOWNLOAD_URL="${OSM_DOWNLOAD_URL:-https://download.geofabrik.de/europe/dach-latest.osm.pbf}"
@@ -149,7 +157,7 @@ server:
 CONF
 
 # â”€â”€ GraphHopper starten â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-echo "Starte GraphHopper (Graph-Cache: $GRAPH_DIR)..."
+echo "Starte GraphHopper ($GH_COMMAND, Graph-Cache: $GRAPH_DIR)..."
 exec java $JAVA_OPTS \
     -jar /graphhopper/graphhopper.jar \
-    server "$CONFIG_FILE"
+    "$GH_COMMAND" "$CONFIG_FILE"

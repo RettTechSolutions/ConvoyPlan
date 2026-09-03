@@ -280,6 +280,13 @@ services:
       # NOT read-only: Updater schreibt nach jedem Update die aktualisierte
       # Stack-Datei zurück, damit neue Env-Vars / Image-Refs übernommen werden.
       - ${STACK_FILE_PATH:-/dev/null}:/stack/docker-compose.yml
+      # Schreibend: der Regionswechsel (docker/updater/switch-region.sh) laedt
+      # das neue Extract nach /data/osm, schreibt dort .region und tauscht in
+      # /data/graph den vorbereiteten Graphen gegen den aktiven. Das Backend
+      # hat dieselben Volumes bewusst nur lesend — Downloads und Graph-Tausch
+      # sind Sache des Updaters, der als einziger den Docker-Socket hat.
+      - osm_data:/data/osm
+      - gh_graph:/data/graph
     depends_on:
       - backend
 
