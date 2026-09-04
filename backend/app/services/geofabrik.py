@@ -248,5 +248,12 @@ async def list_regions() -> list["RegionEntry"]:
         for props in by_id.values()
         if "pbf" in props.get("urls", {})
     ]
+    # Kein Dead Code, auch wenn eine statische Analyse das Modul-Attribut
+    # sonst nirgends verwendet sieht: Es wird ueber `global` (Zeile oben,
+    # `global _region_index_cache`) in dieser Funktion geschrieben und beim
+    # naechsten Aufruf gelesen (Fruehausstieg direkt danach, `if
+    # _region_index_cache is not None: return _region_index_cache`).
+    # Statische Checks, die Funktionskoerper nicht auswerten, sehen nur die
+    # Modulebene und halten die Zuweisung faelschlich fuer unbenutzt.
     _region_index_cache = entries
     return entries

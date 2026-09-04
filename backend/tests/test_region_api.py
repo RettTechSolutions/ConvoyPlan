@@ -33,7 +33,7 @@ def _superadmin():
 
 def _make_app_with_superadmin():
     from app.api.deps import require_superadmin
-    app.dependency_overrides[require_superadmin] = lambda: _superadmin()
+    app.dependency_overrides[require_superadmin] = _superadmin
     return app
 
 

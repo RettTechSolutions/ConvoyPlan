@@ -184,6 +184,10 @@ def _read_active_region() -> dict:
                     key, _, value = line.strip().partition("=")
                     values[key] = value
     except OSError:
+        # Siehe Docstring: Datei fehlt oder ist unlesbar = Normalzustand vor
+        # dem ersten Regionswechsel. `values` bleibt leer, der Aufrufer
+        # bemerkt nichts weiter ausser den unten greifenden Factory-Defaults
+        # — kein Fehlerfall, den man weiterreichen muesste.
         pass
     return {
         "url": values.get("OSM_DOWNLOAD_URL", _DEFAULT_REGION_URL),

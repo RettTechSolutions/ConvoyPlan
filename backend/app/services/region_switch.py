@@ -50,6 +50,12 @@ def _spool_to_tempfile(directory: str, data: str) -> str:
         try:
             os.remove(tmp_path)
         except OSError:
+            # Aufraeumen ist best effort: Der eigentliche Fehler wird gleich
+            # per `raise` unveraendert weitergereicht, das bemerkt der
+            # Aufrufer. Scheitert zusaetzlich das Entfernen (z. B. Datei
+            # schon weg), bleibt hoechstens eine harmlose `.tmp-`-Leiche im
+            # Verzeichnis zurueck — kein Grund, den urspruenglichen Fehler zu
+            # verdecken.
             pass
         raise
 
@@ -70,6 +76,10 @@ def _write_atomic(path: str, data: str) -> None:
         try:
             os.remove(tmp_path)
         except OSError:
+            # Wie in _spool_to_tempfile(): best effort, der eigentliche
+            # Fehler von os.replace() wird gleich per `raise` durchgereicht
+            # und ist das, was der Aufrufer sieht. Ein Fehlschlag hier
+            # hinterlaesst hoechstens eine harmlose `.tmp-`-Leiche.
             pass
         raise
 
@@ -107,6 +117,12 @@ def _write_atomic_exclusive(path: str, data: str) -> None:
         try:
             os.remove(tmp_path)
         except OSError:
+            # Best effort: os.link() ist zu diesem Zeitpunkt bereits
+            # entschieden (verlinkt oder mit FileExistsError/OSError
+            # fehlgeschlagen, beides unveraendert sichtbar fuer den
+            # Aufrufer). Scheitert nur das Entfernen der Temporaerdatei,
+            # bleibt hoechstens eine harmlose `.tmp-`-Leiche im Volume
+            # zurueck — kein Datenverlust, keine Doppel-Anforderung.
             pass
 
 
@@ -148,6 +164,10 @@ def write_request(url: str, filename: str, java_opts: str, actor_email: str) -> 
         with open(_path(LOG_FILE), "w") as f:
             f.write(f"[{ts}] Regionswechsel angefordert — warte auf Updater…\n")
     except OSError:
+        # Siehe Kommentar oben: nur die Terminal-Anzeige betroffen, nicht die
+        # Anforderung selbst. Der Aufrufer bemerkt hoechstens ein zunaechst
+        # leeres Log-Terminal im Admin-Panel, nichts weiter — die kritische
+        # Request-Datei unten wird unabhaengig davon geschrieben.
         pass
     # Kritisch: Diese Datei ist die eigentliche Anforderung an den Updater.
     # Exklusiv (nicht ueberschreibend) angelegt — siehe _write_atomic_exclusive().
