@@ -90,6 +90,13 @@ if [ -f "$REGION_FILE" ]; then
         # Umgebung zu hinterlassen ist unsauber.
         if [ -n "$region_sources" ]; then
             export OSM_SOURCES="$region_sources"
+        else
+            # Ohne else bliebe ein zuvor exportiertes OSM_SOURCES stehen: ein
+            # zweites Sourcen mit einer .region OHNE den Schluessel wuerde die
+            # Region wechseln, den Zusammensetzungs-Marker aber behalten. Heute
+            # nicht erreichbar (entrypoint.sh sourct einmal je Prozess), aber
+            # eine Falle fuer jedes kuenftige Re-Sourcing.
+            unset OSM_SOURCES
         fi
     else
         echo "WARNUNG: .region ist unvollstaendig oder fehlerhaft ($REGION_FILE) — Env-Vorgaben werden unveraendert verwendet" >&2

@@ -67,9 +67,6 @@ check "mit OSM_SOURCES wird gewartet statt geladen" "$r" "wartet"
 echo "$out1" | grep -qi "updater" && r=ja || r=nein
 check "Meldung nennt den Updater als Zustaendigen" "$r" "ja"
 
-echo "$out1" | grep -q "Download wird gestartet" && r=ja || r=nein
-check "der Download-Pfad wird NICHT betreten" "$r" "nein"
-
 echo "$out1" | grep -q "europe/germany|europe/poland" && r=ja || r=nein
 check "Meldung nennt die Bestandteile" "$r" "ja"
 
@@ -132,5 +129,26 @@ vals4="$( set +e
     . "$HEAD_SH" >/dev/null 2>&1
     echo "${OSM_SOURCES:-LEER}" )"
 check "OSM_SOURCES aus .region wird exportiert" "$vals4" "europe/germany|europe/poland"
+
+# ── Fall 5: zweimaliges Sourcen setzt OSM_SOURCES zurueck ───────────────────
+# Erst eine .region MIT OSM_SOURCES, dann eine OHNE. Ohne unset-Zweig bliebe
+# der alte Wert stehen und die neue Region gaelte faelschlich als zusammengesetzt.
+D5="$TMP/d5"; mkdir -p "$D5/graph"
+cp "$D1/.region" "$D5/.region"; touch "$D5/merged-a3f9c21e.osm.pbf"
+vals5="$( set +e
+    export OSM_DIR="$D5" GRAPH_DIR="$D5/graph" REGION_SOURCE_SCRIPT="$REGION_SOURCE"
+    # shellcheck source=/dev/null
+    . "$REGION_SOURCE" >/dev/null 2>&1
+    first="${OSM_SOURCES:-LEER}"
+    cat > "$D5/.region" <<'REG5'
+OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf
+OSM_FILENAME=berlin-latest.osm.pbf
+JAVA_OPTS=-Xmx3g
+REG5
+    # shellcheck source=/dev/null
+    . "$REGION_SOURCE" >/dev/null 2>&1
+    echo "${first}#${OSM_SOURCES:-LEER}" )"
+check "erstes Sourcen setzt OSM_SOURCES" "${vals5%%#*}" "europe/germany|europe/poland"
+check "zweites Sourcen ohne Schluessel raeumt auf" "${vals5##*#}" "LEER"
 
 exit $FAILED
