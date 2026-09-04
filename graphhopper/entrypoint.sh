@@ -1,12 +1,41 @@
 #!/bin/sh
 set -e
 
-OSM_DIR="/data/osm"
-GRAPH_DIR="/data/graph"
+OSM_DIR="${OSM_DIR:-/data/osm}"
+# GRAPH_DIR ist ueberschreibbar, damit der Regionswechsel (docker/updater/
+# switch-region.sh, Phase 3) den neuen Graphen mit EXAKT dieser Konfiguration
+# in ein Staging-Verzeichnis im selben Volume bauen kann, waehrend der aktive
+# Graph unberuehrt weiterlaeuft. In docker-compose.yml wird die Variable nicht
+# gesetzt — Produktionsverhalten unveraendert.
+GRAPH_DIR="${GRAPH_DIR:-/data/graph}"
+# Unterbefehl des GraphHopper-JARs: "server" (Normalbetrieb) oder "import"
+# (baut nur den Graphen und endet). Ebenfalls nur vom Regionswechsel gesetzt.
+GH_COMMAND="${GH_COMMAND:-server}"
 OSM_FILENAME="${OSM_FILENAME:-dach-latest.osm.pbf}"
 OSM_FILE="$OSM_DIR/$OSM_FILENAME"
 DOWNLOAD_URL="${OSM_DOWNLOAD_URL:-https://download.geofabrik.de/europe/dach-latest.osm.pbf}"
 JAVA_OPTS="${JAVA_OPTS:--Xmx8g -Xms1g -XX:+UseG1GC}"
+
+# .region hat Vorrang vor den obigen Env-Vorgaben: ein Regionswechsel aus dem
+# Admin-Panel schreibt die neue Region in diese Datei im osm_data-Volume.
+# Fehlt sie (Bestandsinstallationen ohne Regionswechsel), aendert das Sourcen
+# nichts — Regressionsschutz.
+# REGION_SOURCE_SCRIPT ist nur fuer Tests ueberschreibbar (siehe
+# tests/test_entrypoint_region.sh) — im Container immer der Default.
+# shellcheck source=region-source.sh
+. "${REGION_SOURCE_SCRIPT:-/region-source.sh}"
+
+# OSM_FILE und DOWNLOAD_URL wurden oben aus den (jetzt ggf. durch .region
+# ueberschriebenen) Env-Variablen abgeleitet und muessen deshalb NEU berechnet
+# werden — sonst zeigen sie trotz korrekt gesetzter OSM_FILENAME/
+# OSM_DOWNLOAD_URL weiterhin auf die alte Region.
+OSM_FILE="$OSM_DIR/$OSM_FILENAME"
+DOWNLOAD_URL="${OSM_DOWNLOAD_URL:-$DOWNLOAD_URL}"
+# ── ENTRYPOINT_HEADER_ENDE ─────────────────────────────────────────────────
+# Testmarker (inhaltlich verankert, nicht an Zeilennummern): tests/test_entrypoint_region.sh
+# schneidet den Skriptkopf bis inklusive dieser Zeile heraus und sourct ihn
+# isoliert, um die obige Neuberechnung ohne echten Download/Java-Start zu
+# pruefen. Zeile beim Refactoring bitte erhalten oder den Test mitziehen.
 
 mkdir -p "$OSM_DIR" "$GRAPH_DIR"
 
@@ -128,7 +157,7 @@ server:
 CONF
 
 # â”€â”€ GraphHopper starten â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-echo "Starte GraphHopper (Graph-Cache: $GRAPH_DIR)..."
+echo "Starte GraphHopper ($GH_COMMAND, Graph-Cache: $GRAPH_DIR)..."
 exec java $JAVA_OPTS \
     -jar /graphhopper/graphhopper.jar \
-    server "$CONFIG_FILE"
+    "$GH_COMMAND" "$CONFIG_FILE"

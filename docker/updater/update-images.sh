@@ -23,6 +23,14 @@ log() {
     echo "$msg" >> "${LOG_FILE}"
 }
 
+# Regionswechsel-Einhängung: gemeinsame Logik mit update.sh, siehe
+# region-hook.sh (Begründung für die gemeinsame Datei dort). Dies ist der
+# ENTRYPOINT, den docker-compose.yml für die Standard-Installation tatsächlich
+# verwendet — ohne diesen Hook würde eine Regionswechsel-Anforderung nie
+# abgeholt.
+# shellcheck source=./region-hook.sh
+source /region-hook.sh
+
 mkdir -p /update_status
 # The backend runs as non-root (appuser, uid 1001 — see backend/Dockerfile) and
 # must be able to create the trigger file in this shared volume. The updater
@@ -635,11 +643,36 @@ check_target_and_update() {
 while true; do
     # Trigger check — runs every TRIGGER_POLL seconds so the UI reacts quickly
     if [ -f /update_status/trigger ]; then
+        # Regionswechsel hat Vorrang: Trigger und Regionswechsel-Lock können
+        # gleichzeitig gesetzt sein. Bei aktivem Lock wird der Trigger NICHT
+        # konsumiert (kein `rm -f`/`do_update`), sondern liegen gelassen —
+        # der Regionswechsel-Check unten holt das Update automatisch nach,
+        # sobald der Wechsel durch ist. Sonst würde ein manueller Trigger
+        # ("Jetzt updaten") denselben Compose-Stack anfassen wie ein laufender
+        # switch-region.sh.
+        if region_switch_blocked; then
+            log "Regionswechsel-Lock aktiv — Trigger wird zurückgestellt bis nach dem Wechsel."
+            sleep "${TRIGGER_POLL}"
+            continue
+        fi
         log "Trigger erkannt — starte Update"
         rm -f /update_status/trigger
         if do_update; then
             _remember_target
         fi
+        continue
+    fi
+
+    # Regionswechsel: liegt eine Anforderung vor, hat sie Vorrang vor dem
+    # regulären Update-Check unten (switch-region.sh läuft synchron zu Ende).
+    if run_region_switch_if_requested; then
+        continue
+    fi
+    # Ein aktives Lock (auch ein verwaistes nach einem Absturz) blockiert die
+    # reguläre Update-Ausführung — spiegelbildlich zu is_busy() im Backend.
+    if region_switch_blocked; then
+        log "Regionswechsel-Lock aktiv — reguläres Update wird in diesem Zyklus übersprungen."
+        sleep "${TRIGGER_POLL}"
         continue
     fi
 

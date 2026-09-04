@@ -15,6 +15,7 @@ RUN curl -fsSL -o graphhopper.jar \
     "https://github.com/graphhopper/graphhopper/releases/download/${GH_VERSION}/graphhopper-web-${GH_VERSION}.jar"
 
 COPY entrypoint.sh /entrypoint.sh
+COPY region-source.sh /region-source.sh
 RUN chmod +x /entrypoint.sh
 
 # /data/osm   – OSM-PBF-Datei (wird beim ersten Start heruntergeladen)

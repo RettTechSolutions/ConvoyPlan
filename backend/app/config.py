@@ -211,6 +211,13 @@ class Settings(BaseSettings):
     # externally. Leave empty to serve the docs unprotected (dev convenience).
     docs_api_key: str = ""
 
+    # JVM-Optionen des GraphHopper-Containers (siehe docker-compose.yml),
+    # dem Backend zusaetzlich durchgereicht. Der Preview-Endpunkt fuer den
+    # Regionswechsel (app/api/routes/region.py) liest daraus den aktiven
+    # -Xmx-Wert: Dieser Heap ist waehrend eines Imports "zurueckgewinnbar",
+    # weil der Updater den laufenden GraphHopper darauf verkleinert.
+    java_opts: str = "-Xmx8g -Xms1g -XX:+UseG1GC"
+
     class Config:
         env_file = ".env"
 

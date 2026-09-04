@@ -188,3 +188,189 @@ jobs:
             --exit-code 1 \
             --no-progress \
             convoyplan-${{ matrix.name }}:scan
+
+  region-switch:
+    name: Region – Wechsel end-to-end (Berlin)
+    runs-on: ubuntu-24.04
+    # Einziger Test, der die fünf Phasen von docker/updater/switch-region.sh
+    # gegeneinander prüft, statt sie per docker-Stub zu simulieren (siehe
+    # docker/updater/tests/test_switch_region.sh — dort läuft nie ein
+    # Container). Nur mit dem Berlin-Extract (~90 MB): große Regionen (DACH
+    # und größer) sprengen Laufzeit und Speicher jedes Runners — das ist eine
+    # bewusst benannte Lücke, siehe docs/superpowers/specs/
+    # 2026-09-03-kartenregion-im-adminpanel-design.md, Abschnitt 8
+    # ("Nicht automatisierbar").
+    #
+    # timeout-minutes ist nur das Backstop; die eigentliche, lesbare
+    # Fehlerbehandlung passiert in den Wartschleifen unten (endliches,
+    # großzügiges Zeitlimit je Schritt, mit region.log + Container-Logs bei
+    # "failed" oder Zeitüberschreitung statt nur einem roten Kreuz).
+    timeout-minutes: 55
+    env:
+      COMPOSE_PROJECT_NAME: convoyplan-region-ci
+      # Muss auf den HOST-Pfad der echten docker-compose.yml zeigen — genau
+      # wie scripts/install.sh es beim echten Setup tut (dort:
+      # STACK_FILE_PATH=${INSTALL_DIR}/docker-compose.yml). Ohne das findet
+      # switch-region.sh:_resolve_compose_files() keine Compose-Datei (der
+      # Default-Mount ist /dev/null) und scheitert schon vor Phase 4.
+      STACK_FILE_PATH: ${{ github.workspace }}/docker-compose.yml
+      POSTGRES_PASSWORD: ci-region-switch-not-a-real-secret
+      # Produktions-Default (APP_ENV=production) verweigert dem Backend den
+      # Start, wenn JWT_SECRET auf dem Default steht oder kürzer als 32
+      # Zeichen ist (siehe .env.example) — deshalb hier ein eigener, langer
+      # Wert statt des Defaults.
+      JWT_SECRET: ci-region-switch-jwt-secret-do-not-reuse-anywhere-else
+      LICENSE_KEY: ${{ secrets.CI_LICENSE_KEY }}
+      # Die äußere Schleife von docker/updater/update-images.sh prüft
+      # region_request.json nur einmal pro Zyklus; mit dem Produktions-
+      # Default von 300s könnte das bis zu 5 Minuten kosten, bevor Phase 1
+      # überhaupt beginnt.
+      UPDATE_INTERVAL: "15"
+      # Ersteinstieg bewusst NICHT auf Berlin: eine von Berlin verschiedene,
+      # winzige Region hält den Erststart kurz und macht den späteren Wechsel
+      # zu einem echten Regionswechsel (altes Extract/alter Graph müssen
+      # wirklich weichen), nicht zu einem Wechsel auf dieselbe Region.
+      # Liechtenstein ist auch in GraphHoppers eigenen Beispielen die
+      # Standard-Winzregion für genau diesen Zweck.
+      OSM_DOWNLOAD_URL: https://download.geofabrik.de/europe/liechtenstein-latest.osm.pbf
+      OSM_FILENAME: liechtenstein-latest.osm.pbf
+      JAVA_OPTS: "-Xmx2g -Xms512m -XX:+UseG1GC"
+      # PR-Stand statt der veröffentlichten Images von GHCR — sonst würde
+      # dieser Test die alte, schon veröffentlichte Version prüfen statt der
+      # Änderungen in diesem Branch. Der Repository-Teil ("convoyplan-*",
+      # ohne "ghcr.io/..."-Praefix) reicht dafuer bereits aus und kollidiert
+      # nicht mit den echten, veroeffentlichten Images.
+      #
+      # Der TAG muss zusaetzlich exakt ":latest" sein (nicht z. B.
+      # ":region-ci"): der Updater fuehrt in der Hauptschleife von
+      # update-images.sh VOR jedem Regionswechsel-Check auch den normalen
+      # Auto-Update-Check aus (check_target_and_update -> do_update), und der
+      # ruft _apply_channel_images() auf. Die schreibt GRAPHHOPPER_IMAGE (und
+      # BACKEND_IMAGE/UPDATER_IMAGE) unbedingt via _retag() auf den Tag des
+      # aktiven Kanals um — mangels /update_status/channel-Datei Kanal
+      # "stable", also Tag "latest" (siehe update-images.sh:_channel_tag).
+      # In einer frischen CI-Umgebung existiert /update_status/last_deployed
+      # noch nicht, der erste Zyklus haelt das Ziel also fuer "neu" und loest
+      # genau dieses Umschreiben aus - unabhaengig vom eigentlichen
+      # Regionswechsel-Trigger. Ein eigener Tag wie ":region-ci" wird dabei
+      # auf ":latest" umgeschrieben (_retag("convoyplan-graphhopper:region-ci",
+      # "latest") = "convoyplan-graphhopper:latest") — ein Image-Name, den
+      # niemand gebaut hat. _import_graph() in switch-region.sh startet den
+      # Wegwerf-Container danach per `docker run "$GRAPHHOPPER_IMAGE"`; ohne
+      # lokal vorhandenes Image versucht Docker implizit ein `pull`, das für
+      # dieses rein lokale, nicht veroeffentlichte Image fehlschlaegt ("pull
+      # access denied"). Ist der gebaute Tag dagegen bereits ":latest", ist
+      # dieses Umschreiben ein No-op (_retag(x:latest, latest) = x:latest) -
+      # der Name bleibt in jedem Fall mit dem gebauten Image identisch, ganz
+      # gleich ob/wann der Auto-Update-Check zwischenzeitlich zuschlaegt.
+      BACKEND_IMAGE: convoyplan-backend:latest
+      GRAPHHOPPER_IMAGE: convoyplan-graphhopper:latest
+      UPDATER_IMAGE: convoyplan-updater:latest
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Images aus dem PR-Stand bauen (lokale Tags, nicht die von GHCR)
+        run: |
+          docker build -t convoyplan-backend:latest ./backend
+          docker build -t convoyplan-graphhopper:latest ./graphhopper
+          docker build -t convoyplan-updater:latest ./docker/updater
+
+      - name: Stack starten (Entrypoint update-images.sh, wie docker-compose.yml:273 es real festlegt)
+        run: docker compose up -d graphhopper updater
+
+      - name: Auf gesunden Ersteinstieg warten (Liechtenstein, max. 8 min)
+        run: |
+          for _ in $(seq 1 96); do
+            if curl -fsS http://127.0.0.1:8989/health >/dev/null 2>&1; then
+              echo "GraphHopper (Ersteinstieg Liechtenstein) ist gesund."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::GraphHopper wurde beim Ersteinstieg nicht gesund."
+          docker compose logs --no-color graphhopper
+          exit 1
+
+      - name: Regionswechsel auf Berlin auslösen
+        run: |
+          printf '%s' '{"url":"https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf","filename":"berlin-latest.osm.pbf","java_opts":"-Xmx3g -Xms512m -XX:+UseG1GC","requested_by":"ci@convoyplan"}' \
+            | docker compose exec -T updater tee /update_status/region_request.json >/dev/null
+
+      - name: Auf Abschluss warten (max. 40 min)
+        run: |
+          done=0
+          for _ in $(seq 1 240); do
+            phase="$(docker compose exec -T updater cat /update_status/region_status.json 2>/dev/null \
+              | python3 -c "import json,sys;print(json.load(sys.stdin).get('phase','?'))" 2>/dev/null || echo -)"
+            echo "Phase: ${phase:--}"
+            if [ "$phase" = "done" ]; then
+              done=1
+              break
+            fi
+            if [ "$phase" = "failed" ]; then
+              echo "::error::Regionswechsel ist fehlgeschlagen — region.log:"
+              docker compose exec -T updater cat /update_status/region.log || true
+              echo "::group::Container-Logs"
+              docker compose logs --no-color
+              echo "::endgroup::"
+              exit 1
+            fi
+            sleep 10
+          done
+          if [ "$done" -ne 1 ]; then
+            echo "::error::Zeitlimit (40 Min.) erreicht — kein 'done' in region_status.json."
+            docker compose exec -T updater cat /update_status/region.log || true
+            echo "::group::Container-Logs"
+            docker compose logs --no-color
+            echo "::endgroup::"
+            exit 1
+          fi
+
+      - name: "Beleg 1/3: GraphHopper routet tatsächlich in der neuen Region"
+        run: |
+          region_content="$(docker compose exec -T graphhopper cat /data/osm/.region)"
+          echo "$region_content"
+          echo "$region_content" | grep -q '^OSM_FILENAME=berlin-latest\.osm\.pbf$' || {
+            echo "::error::/data/osm/.region zeigt nicht auf Berlin — nur 'Container gesund' beweist das nicht."
+            exit 1
+          }
+          response="$(curl -fsS 'http://127.0.0.1:8989/route?point=52.5200,13.4050&point=52.5000,13.3800&profile=car&locale=de')"
+          echo "$response" | grep -q '"paths"' || {
+            echo "::error::Routenanfrage innerhalb Berlins ist fehlgeschlagen."
+            echo "$response"
+            exit 1
+          }
+          echo "Routenanfrage innerhalb Berlins erfolgreich."
+
+      - name: "Beleg 2/3: Graph wurde beim Schwenk NICHT neu gebaut"
+        run: |
+          logs="$(docker compose logs --no-color graphhopper)"
+          # entrypoint.sh schreibt "…Routing-Graph wird / aus den OSM-Daten neu
+          # gebaut…" NUR, wenn Fingerprint (Region+Encoded-Values) oder ein
+          # frischer Download einen Rebuild auslösen. Taucht die Zeile in den
+          # Logs des NACH dem Schwenk neu erzeugten Containers auf, hat
+          # GraphHopper den vom Import vorbereiteten Graphen verworfen und neu
+          # gebaut — die Zusage "Sekunden statt Stunden" wäre nicht eingelöst.
+          if echo "$logs" | grep -q 'Routing-Graph wird'; then
+            echo "::error::entrypoint.sh hat den Graphen neu gebaut statt den geschwenkten zu übernehmen."
+            echo "$logs" | grep -A1 'Routing-Graph wird'
+            exit 1
+          fi
+          echo "Kein Rebuild-Hinweis in den GraphHopper-Logs — der geschwenkte Graph wurde übernommen."
+
+      - name: "Beleg 3/3: Sperrdateien sind nach 'done' aufgeräumt"
+        run: |
+          docker compose exec -T updater sh -c '
+            for f in region.lock region_request.json region.cancel; do
+              if [ -f "/update_status/$f" ]; then
+                echo "::error::/update_status/$f liegt noch — würde jeden weiteren Regionswechsel mit 409 blockieren."
+                exit 1
+              fi
+            done
+            echo "region.lock, region_request.json und region.cancel sind wie erwartet weg."
+          '
+
+      - name: Stack stoppen
+        if: always()
+        run: docker compose down -v

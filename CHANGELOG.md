@@ -21,6 +21,24 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+## [2026.4.0] – 2026-09-04
+
+### Added
+
+- **Die Kartenregion lässt sich jetzt im Admin-Panel wechseln — ohne SSH und ohne stundenlangen Routing-Ausfall.** Bisher ging das nur, indem man auf dem Host die Umgebungsvariablen des GraphHopper-Containers bearbeitete und ihn neu startete; wer keinen Serverzugang hatte, konnte die Region gar nicht ändern. Im Reiter **System** steht dafür jetzt die Karte „Kartenregion": Auswahl aus allen **555 Geofabrik-Regionen** über ein Suchfeld mit Pfadanzeige („Europe › Germany › Bayern"), die vier Installer-Regionen als Schnellauswahl obenauf.
+
+  **Vor dem Klick steht die Rechnung, nicht danach die Überraschung.** Zu jeder gewählten Region zeigt das Panel, was sie kostet: Größe des Extracts (per HTTP-HEAD ermittelt, nicht geschätzt), benötigter Arbeitsspeicher gegen verfügbaren, benötigter Plattenplatz gegen freien, und die zu erwartende Dauer. Beim Arbeitsspeicher werden **zwei** Zahlen ausgewiesen — der freie und der „zurückgewinnbare", also der Heap des laufenden GraphHopper, den der Updater während des Imports verkleinert. Ohne diese Unterscheidung würde das Panel ausgerechnet der Region, die gerade läuft, bescheinigen, sie passe nicht. Reicht es nicht, bleibt der Knopf gesperrt und daneben steht im Klartext, was fehlt.
+
+  **Der Wechsel kostet Sekunden Ausfall statt Stunden.** Der neue Graph wird in einem Wegwerf-Container gebaut, während der laufende GraphHopper unangetastet weiterroutet; erst der fertige Graph erfordert einen kurzen Neustart. Fünf Phasen (Prüfen, Laden, Importieren, Schwenken, Aufräumen) mit Live-Ausgabe im Panel, abbrechbar bis zum Schwenk. **Scheitert etwas vor dem Schwenk — Extract nicht erreichbar, Prüfsumme falsch, Platte voll, Import-OOM —, läuft die bisherige Region unverändert weiter; verloren sind nur Zeit und Plattenplatz.** Wird der neue Container nicht gesund, wandert der alte Graph zurück. Die Karte sagt das im Fehlerfall ausdrücklich, statt es der Erschließung zu überlassen.
+
+  **Die Vertrauensgrenze bleibt, wo sie war.** Das Backend bekommt weiterhin **keinen** Docker-Socket — Socket-Zugriff ist faktisch Root auf dem Host, und ein von außen erreichbarer Container darf ihn nicht haben. Es legt stattdessen eine Absichtsdatei im geteilten Volume ab, die der Updater-Container abarbeitet: derselbe Weg, den der bestehende Update-Trigger schon nimmt, keine neue Berechtigung. Die Ziel-URL ist beidseitig auf `https://download.geofabrik.de/…-latest.osm.pbf` eingegrenzt und wird aus geprüften Bestandteilen neu zusammengesetzt, statt roh durchgereicht zu werden. Regionswechsel und Software-Update schließen sich gegenseitig aus; die aktive Region überlebt ein `docker compose up`, weil sie im Volume liegt statt in der Host-`.env`.
+
+### Security
+
+- **Regionswechsel und Software-Update können nicht mehr gleichzeitig laufen.** Beide fassen denselben Compose-Stack an. Anforderungs- und Trigger-Datei werden jetzt **exklusiv** angelegt; ein zweiter Versuch scheitert mit `409` statt die erste Anforderung zu überschreiben. Der Updater überspringt reguläre Updates, solange ein Wechsel läuft — auch beim manuell ausgelösten Update, das den Trigger dann liegen lässt und nach dem Wechsel nachholt.
+
+---
+
 ## [2026.3.0] – 2026-09-03
 
 ### Added
@@ -420,7 +438,8 @@ Das ruft den Update-Modus auf: räumt verwaiste Updater-Container auf, zieht all
 - Capacitor configuration for Android/iOS native wrapper.
 - Docker Compose setup with GraphHopper OSM pre-download.
 
-[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.3.0...HEAD
+[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.4.0...HEAD
+[2026.4.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.3.0...v2026.4.0
 [2026.3.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.2.2...v2026.3.0
 [2026.1.1 – 2026.2.2]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v1.0.0...v2026.2.2
 [1.0.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v0.8.5...v1.0.0

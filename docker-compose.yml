@@ -92,6 +92,11 @@ services:
       DOCKER_METRICS_ENABLED: ${DOCKER_METRICS_ENABLED:-true}
       DOCKER_API_URL: ${DOCKER_API_URL:-http://dockerproxy:2375}
       DOCKER_STATS_ENABLED: ${DOCKER_STATS_ENABLED:-true}
+      # JVM-Optionen des GraphHopper-Containers, dem Backend nur zum Lesen
+      # durchgereicht: Der Preview-Endpunkt fuer den Regionswechsel
+      # (app/api/routes/region.py) liest daraus den aktiven -Xmx-Wert, um den
+      # waehrend eines Imports zurueckgewinnbaren Heap zu bestimmen.
+      JAVA_OPTS: ${JAVA_OPTS:--Xmx8g -Xms1g -XX:+UseG1GC}
     volumes:
       - cert_uploads:/certs
       - logo_uploads:/uploads
@@ -99,6 +104,13 @@ services:
       # Zertifikate für per mTLS geschützte Feeds (mobilithek-Broker). Dateien
       # auf dem Host in ./secrets ablegen; im Container unter /secrets erreichbar.
       - ./secrets:/secrets:ro
+      # Nur lesend: der Preview-Endpunkt fuer den Regionswechsel ermittelt
+      # ueber diese Mounts die tatsaechlich verfuegbare Plattenkapazitaet
+      # (df auf einem Volume-Mount meldet das darunterliegende Dateisystem).
+      # Das Backend schreibt hier nichts — Downloads und Graph-Bau bleiben
+      # Sache des Updaters/GraphHopper-Containers.
+      - osm_data:/data/osm:ro
+      - gh_graph:/data/graph:ro
     depends_on:
       db:
         condition: service_healthy
@@ -268,6 +280,13 @@ services:
       # NOT read-only: Updater schreibt nach jedem Update die aktualisierte
       # Stack-Datei zurück, damit neue Env-Vars / Image-Refs übernommen werden.
       - ${STACK_FILE_PATH:-/dev/null}:/stack/docker-compose.yml
+      # Schreibend: der Regionswechsel (docker/updater/switch-region.sh) laedt
+      # das neue Extract nach /data/osm, schreibt dort .region und tauscht in
+      # /data/graph den vorbereiteten Graphen gegen den aktiven. Das Backend
+      # hat dieselben Volumes bewusst nur lesend — Downloads und Graph-Tausch
+      # sind Sache des Updaters, der als einziger den Docker-Socket hat.
+      - osm_data:/data/osm
+      - gh_graph:/data/graph
     depends_on:
       - backend
 

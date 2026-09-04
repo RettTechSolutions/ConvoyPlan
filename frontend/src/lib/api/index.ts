@@ -690,6 +690,81 @@ export interface DemoSessionInfo {
     created_location: string | null;
 }
 
+// ── Regionswechsel ────────────────────────────────────────────────────────────
+
+/** Aktuell aktive Kartenregion, gelesen aus `.region` (siehe backend/app/api/routes/region.py). */
+export interface RegionCurrent {
+    url: string;
+    filename: string;
+    java_opts: string;
+}
+
+/**
+ * Ein Eintrag aus dem Geofabrik-Index (555 Regionen). `path` ist die
+ * menschenlesbare Eltern-Kette, z. B. "Europe › Germany › Bayern" —
+ * `size_bytes` liefert der Endpunkt bewusst nicht mit (immer `null` im
+ * Backend, siehe geofabrik.list_regions()); Extract-Größen kommen
+ * ausschließlich aus `preview()`.
+ */
+export interface RegionEntry {
+    id: string;
+    name: string;
+    path: string;
+    url: string;
+}
+
+/** Ergebnis der nebenwirkungsfreien Vorab-Rechnung (`POST /region/preview`). */
+export interface RegionPreview {
+    extract_bytes: number;
+    graph_bytes: number;
+    ram_needed_bytes: number;
+    ram_available_bytes: number;
+    /** Heap des laufenden GraphHopper, den der Updater während des Imports verkleinert. */
+    ram_reclaimable_bytes: number;
+    ram_effective_available_bytes: number;
+    disk_needed_bytes: number;
+    disk_free_bytes: number;
+    duration_minutes: [number, number];
+    verdict: 'ok' | 'knapp' | 'reicht nicht';
+    reason: string;
+}
+
+/** Phasen aus docker/updater/switch-region.sh — Namen müssen exakt stimmen. */
+export type RegionPhase =
+    | 'idle' | 'checking' | 'downloading' | 'importing' | 'switching' | 'cleaning'
+    | 'done' | 'failed';
+
+export interface RegionStatus {
+    phase: RegionPhase;
+    message?: string;
+    at?: string;
+}
+
+export const regionApi = {
+    current: () => api.get<RegionCurrent>('/api/admin/region'),
+    list: () => api.get<RegionEntry[]>('/api/admin/regions'),
+    preview: (url: string) => api.post<RegionPreview>('/api/admin/region/preview', { url }),
+    switch: (url: string) => api.post<{ status: string }>('/api/admin/region', { url }),
+    status: () => api.get<RegionStatus>('/api/admin/region/status'),
+    cancel: () => api.post<{ status: string }>('/api/admin/region/cancel', {}),
+    /**
+     * SSE-Strom der Live-Ausgabe des Updaters (`region.log`) — inklusive der
+     * Ausgabe des Import-Containers. Ohne ihn zeigte das Terminal nur die
+     * fünf bis acht Phasenmeldungen aus `status()`, bei einem zweistündigen
+     * Import also eine einzige Zeile.
+     *
+     * Kurzlebiges Stream-Ticket als Query-Parameter, weil EventSource keinen
+     * Authorization-Header setzen kann (wie `usersApi.onlineStream` und das
+     * Update-Log). `null`, wenn kein Ticket zu bekommen ist — der Aufrufer
+     * entscheidet, was er dem Bediener dann anzeigt.
+     */
+    logStream: async (): Promise<EventSource | null> => {
+        const ticket = await getStreamTicket();
+        if (!ticket) return null;
+        return new EventSource(`/api/admin/region/log?token=${encodeURIComponent(ticket)}`);
+    },
+};
+
 // ── Systemübersicht ───────────────────────────────────────────────────────────
 
 export interface DiskUsage {

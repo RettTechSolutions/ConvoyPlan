@@ -31,6 +31,11 @@ log() {
     echo "$msg" >> "${LOG_FILE}"
 }
 
+# Regionswechsel-Einhängung: gemeinsame Logik mit update-images.sh, siehe
+# region-hook.sh (Begründung für die gemeinsame Datei dort).
+# shellcheck source=./region-hook.sh
+source /region-hook.sh
+
 # ── Self-repair: health gate + rollback (source/build path) ──────────────────
 # A deploy counts as good only once the backend actually reports HEALTHY, not
 # merely "started". If the freshly built backend never turns healthy (e.g. it
@@ -191,6 +196,19 @@ while true; do
     log "Trigger erkannt — erzwinge Update"
     rm -f /update_status/trigger
     DEPLOYED=""
+  fi
+
+  # Regionswechsel: liegt eine Anforderung vor, hat sie Vorrang vor dem
+  # regulären Update-Check unten (switch-region.sh läuft synchron zu Ende).
+  if run_region_switch_if_requested; then
+    continue
+  fi
+  # Ein aktives Lock (auch ein verwaistes nach einem Absturz) blockiert die
+  # reguläre Update-Ausführung — spiegelbildlich zu is_busy() im Backend.
+  if region_switch_blocked; then
+    log "Regionswechsel-Lock aktiv — reguläres Update wird in diesem Zyklus übersprungen."
+    sleep "${TRIGGER_POLL}"
+    continue
   fi
 
   CHANNEL="$(read_channel)"
