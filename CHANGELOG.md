@@ -21,6 +21,8 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+## [2026.4.1] – 2026-09-04
+
 ### Fixed
 
 - **Kartenregion-Vorabschätzung im Admin-Panel funktionierte für keine einzige Region.** Die Karte „Kartenregion" (siehe `2026.4.0`) meldete für jede Region „Extract nicht abrufbar (HTTP 302)"; Extract-Größe und freier Plattenplatz blieben leer. Ursache: Geofabrik beantwortet `-latest.osm.pbf`-URLs grundsätzlich mit `302` auf die tagesaktuelle, datierte Datei — bei größeren Regionen sogar auf einen Spiegelserver (z. B. `ftp5.gwdg.de`) statt auf `download.geofabrik.de` selbst. Die Größenabfrage folgte bewusst keinen Weiterleitungen (Ergebnis einer früheren Sicherheitsrunde) und wertete daher jede reale Anfrage als Fehler. `head_size_bytes` folgt Weiterleitungen jetzt kontrolliert: höchstens 5 Sprünge, jeder davon zwingend `https`; das Zielhost darf wechseln (Geofabrik wählt den Spiegelserver, nicht der Nutzer), aus der Antwort wird ausschließlich `Content-Length` gelesen. Die an den Updater weitergereichte URL bleibt unverändert die aus geprüften Bestandteilen rekonstruierte `https://download.geofabrik.de/…`-Adresse — der Umleitungsweg verlässt die Funktion an keiner Stelle.
@@ -442,7 +444,8 @@ Das ruft den Update-Modus auf: räumt verwaiste Updater-Container auf, zieht all
 - Capacitor configuration for Android/iOS native wrapper.
 - Docker Compose setup with GraphHopper OSM pre-download.
 
-[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.4.0...HEAD
+[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.4.1...HEAD
+[2026.4.1]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.4.0...v2026.4.1
 [2026.4.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.3.0...v2026.4.0
 [2026.3.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.2.2...v2026.3.0
 [2026.1.1 – 2026.2.2]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v1.0.0...v2026.2.2
