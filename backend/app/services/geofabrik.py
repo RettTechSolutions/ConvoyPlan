@@ -7,13 +7,21 @@ herunterlädt. `validate_region_url` ist deshalb eine Sicherheitsgrenze
 
 import re
 from dataclasses import dataclass
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
 _HOST = "download.geofabrik.de"
 _SUFFIX = "-latest.osm.pbf"
 _INDEX_URL = f"https://{_HOST}/index-v1.json"
+_MAX_REDIRECTS = 5
+# 301/302/303/307/308 — die von RFC 7231/7238 definierten Redirect-Codes mit
+# `Location`-Header. Bewusst eine eigene, feste Menge statt `httpx`s
+# `Response.is_redirect` (das jeden Code 300-399 als Redirect zaehlt, auch
+# 300 "Multiple Choices" und 304 "Not Modified" ohne sinnvolles
+# Umleitungsziel) — hier soll ausschliesslich echten Weiterleitungen gefolgt
+# werden.
+_REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
 
 # Zeichen-Allowlist fuer den Pfad: ein oder mehrere Segmente, jedes
 # beginnend mit Kleinbuchstabe oder Ziffer, danach zusaetzlich "-" und ".".
@@ -140,7 +148,7 @@ def validate_region_url(url: str) -> str:
 
 
 async def head_size_bytes(url: str) -> int:
-    """Groesse des Extracts, ohne es zu laden. Folgt bewusst keinen Redirects.
+    """Groesse des Extracts, ohne es zu laden. Folgt Weiterleitungen kontrolliert.
 
     Angefragt wird ausschliesslich die von `validate_region_url`
     rekonstruierte URL, niemals das rohe Argument. Das rohe `url` wird
@@ -155,13 +163,77 @@ async def head_size_bytes(url: str) -> int:
     saemtliche anderen gleichzeitigen Anfragen des Backends, nicht nur diese.
     `httpx.AsyncClient` ist im Rest des Backends ohnehin der durchgaengige
     Standard (siehe z. B. app/services/weather.py, routing.py, geocoding.py).
-    `follow_redirects=False` und die Validierung am Anfang bleiben unveraendert
-    bestehen — beide sind Ergebnis eigener Sicherheitsrunden in Task 2.
+
+    Weiterleitungen (Fix-Runde 5, Produktionsfehler): Geofabrik beantwortet
+    `-latest.osm.pbf` grundsaetzlich mit `302` auf die tagesaktuelle,
+    datierte Datei — teils auf demselben Host, teils (bei groesseren
+    Regionen wie `europe` oder `europe/germany`) auf einen Spiegelserver
+    (z. B. `ftp5.gwdg.de`). Ein striktes `follow_redirects=False` mit
+    "alles ausser 200 ist ein Fehler" — das Ergebnis der Sicherheitsrunden
+    in Task 2 — hat damit **jede** Region unbrauchbar gemacht, nicht nur
+    boesartige Eingaben: Die Vorab-Groessenschaetzung, die zentrale Zusage
+    dieses Features, hat nie funktioniert.
+
+    Das frueher gehaertete Prinzip bleibt bestehen, wird aber praeziser
+    gefasst: nicht "keine Weiterleitung", sondern "nur eine Weiterleitung,
+    die WEITERHIN nichts als Groesseninformation zurueckgibt und deren Ziel
+    kontrolliert bleibt". Konkret:
+      - Jeder Sprung wird einzeln mit `client.head()` (kein automatisches
+        `follow_redirects=True` von httpx, das den Pfad verschleiern wuerde)
+        nachvollzogen, hoechstens `_MAX_REDIRECTS` (5) davon — genug fuer
+        jede reale Geofabrik/Spiegel-Kette, aber keine Endlosschleife.
+      - Jedes Sprungziel (`Location`-Header) muss selbst wieder `https`
+        sein; ein Sprung auf `http` wird abgelehnt, auch wenn ein
+        nachfolgender Sprung wieder zu `https` zurueckkehren wuerde — sonst
+        koennte ein kompromittierter oder falsch konfigurierter Zwischen-
+        schritt den Rest der Kette unverschluesselt weiterreichen.
+      - Der ZielHOST darf dagegen wechseln (Spiegelserver wie `ftp5.gwdg.de`
+        sind Geofabriks legitime Wahl fuer grosse Extracts, nicht die des
+        Nutzers) — die Umleitung waehlt Geofabrik selbst, nicht die von
+        `validate_region_url` bereits auf `download.geofabrik.de`
+        eingegrenzte Nutzereingabe. Eine Host-Allowlist fuer Sprungziele
+        wuerde bedeuten, jeden aktuellen und kuenftigen Geofabrik-Spiegel
+        zu kennen und zu pflegen — genau die Bruechigkeit, die
+        `validate_region_url` an anderer Stelle bewusst vermeidet.
+      - Aus der (finalen oder jeder Zwischen-)Antwort wird ausschliesslich
+        `Content-Length` gelesen, niemals ein Body geholt (`HEAD` bleibt
+        durchgaengig) und niemals die tatsaechlich kontaktierte URL
+        zurueckgegeben oder geloggt: `current_url` unten ist eine rein
+        lokale Variable, die diese Funktion nie verlaesst. Die URL, die an
+        den Updater geht, bleibt unveraendert die von `validate_region_url`
+        rekonstruierte `https://download.geofabrik.de/…`-Adresse — der
+        Updater bekommt nie einen Spiegelserver-Pfad zu Gesicht. Genau
+        diese Trennung (Umleitungsweg nur fuer die Groessenabfrage nutzen,
+        niemals fuer den Download-Auftrag) ist die Bedingung, unter der das
+        Folgen von Weiterleitungen hier sicher ist, ohne die urspruengliche
+        Sicherheitsabsicht (kein Primitiv fuer beliebige Downloads) zu
+        unterlaufen.
     """
     url = validate_region_url(url)
+    current_url = url
     try:
         async with httpx.AsyncClient(follow_redirects=False, timeout=15) as client:
-            resp = await client.head(url)
+            for _ in range(_MAX_REDIRECTS + 1):
+                resp = await client.head(current_url)
+                if resp.status_code not in _REDIRECT_STATUS_CODES:
+                    break
+                location = resp.headers.get("location")
+                if not location:
+                    raise ValueError(
+                        "Weiterleitung ohne Ziel-Adresse (Location-Header "
+                        "fehlt)."
+                    )
+                next_url = urljoin(current_url, location)
+                if urlparse(next_url).scheme != "https":
+                    raise ValueError(
+                        "Weiterleitung auf eine unverschlüsselte Adresse "
+                        "(kein https) ist nicht zulässig."
+                    )
+                current_url = next_url
+            else:
+                raise ValueError(
+                    f"Zu viele Weiterleitungen (mehr als {_MAX_REDIRECTS})."
+                )
     except (httpx.ConnectError, httpx.TimeoutException) as exc:
         raise ConnectionError(
             "Geofabrik ist gerade nicht erreichbar. Bitte spaeter erneut "
@@ -169,7 +241,13 @@ async def head_size_bytes(url: str) -> int:
         ) from exc
     if resp.status_code != 200:
         raise ValueError(f"Extract nicht abrufbar (HTTP {resp.status_code}).")
-    return int(resp.headers.get("content-length", 0))
+    content_length = resp.headers.get("content-length")
+    if content_length is None:
+        raise ValueError(
+            "Antwort enthält keine Content-Length; Extract-Größe nicht "
+            "ermittelbar."
+        )
+    return int(content_length)
 
 
 @dataclass(frozen=True)

@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from app.services.geofabrik import validate_region_url
@@ -197,3 +199,223 @@ def test_rejects_pathological_dash_run_without_slowdown():
         validate_region_url(bad)
     elapsed = time.perf_counter() - start
     assert elapsed < 1.0
+
+
+# --- Fix-Runde 5: Produktionsfehler "Extract nicht abrufbar (HTTP 302)" ---
+#
+# Ursache: Geofabrik beantwortet "-latest.osm.pbf" grundsaetzlich mit 302 auf
+# die tagesaktuelle, datierte Datei - fuer JEDE Region, nicht nur boesartige
+# Eingaben. Das bisherige `follow_redirects=False` mit "alles ausser 200 ist
+# ein Fehler" hat die Vorab-Groessenschaetzung (Kernversprechen des
+# Features) deshalb nie funktionieren lassen. Genau dieser Fehler ist
+# entstanden, weil ALLE bisherigen Tests fuer head_size_bytes eine sofortige
+# 200-Antwort gemockt haben - keiner hat je einen echten Geofabrik-302
+# nachgebildet.
+
+class _FakeRedirectResponse:
+    def __init__(self, status_code, headers):
+        self.status_code = status_code
+        self.headers = headers
+
+
+class _FakeRedirectClient:
+    """Fake-httpx-Client, der eine Liste vorbereiteter Antworten der Reihe
+    nach ausliefert - eine pro `head()`-Aufruf - und jede angefragte URL
+    mitschreibt."""
+
+    def __init__(self, responses, requested):
+        self._responses = iter(responses)
+        self._requested = requested
+
+    def __call__(self, *a, **kw):
+        return self
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def head(self, url):
+        self._requested.append(url)
+        return next(self._responses)
+
+
+@pytest.mark.asyncio
+async def test_head_size_bytes_follows_redirect_chain_to_final_size(monkeypatch):
+    # Simuliert exakt die in Produktion gemessene Kette: Sprung 1 auf
+    # demselben Host (datierte Datei), Sprung 2 auf einen Spiegelserver
+    # (anderer Host - legitim, da Geofabrik selbst die Weiterleitung waehlt).
+    # Die Groesse muss aus der FINALEN (dritten) Antwort kommen, nicht aus
+    # der ersten oder zweiten.
+    from app.services import geofabrik
+
+    requested = []
+    responses = [
+        _FakeRedirectResponse(
+            302,
+            {"location": "https://download.geofabrik.de/europe/dach-260903.osm.pbf"},
+        ),
+        _FakeRedirectResponse(
+            302,
+            {
+                "location": "https://ftp5.gwdg.de/pub/misc/openstreetmap/"
+                "dach-260903.osm.pbf"
+            },
+        ),
+        _FakeRedirectResponse(200, {"content-length": "123456789"}),
+    ]
+    monkeypatch.setattr(
+        geofabrik.httpx,
+        "AsyncClient",
+        _FakeRedirectClient(responses, requested),
+    )
+
+    canonical = "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+    size = await geofabrik.head_size_bytes(canonical)
+
+    assert size == 123456789
+    assert len(requested) == 3
+    assert requested[0] == canonical
+
+
+@pytest.mark.asyncio
+async def test_head_size_bytes_rejects_redirect_to_http(monkeypatch):
+    # Jeder Sprung muss https bleiben - eine Weiterleitung auf http wird
+    # abgelehnt, unabhaengig davon, ob ein spaeterer Sprung wieder zu https
+    # zurueckkehren wuerde.
+    from app.services import geofabrik
+
+    requested = []
+    responses = [
+        _FakeRedirectResponse(
+            302,
+            {
+                "location": "http://download.geofabrik.de/europe/"
+                "dach-260903.osm.pbf"
+            },
+        ),
+    ]
+    monkeypatch.setattr(
+        geofabrik.httpx,
+        "AsyncClient",
+        _FakeRedirectClient(responses, requested),
+    )
+
+    with pytest.raises(ValueError, match="unverschlüsselte"):
+        await geofabrik.head_size_bytes(
+            "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+        )
+
+
+@pytest.mark.asyncio
+async def test_head_size_bytes_aborts_after_too_many_redirects(monkeypatch):
+    # Hoechstens 5 Spruenge werden gefolgt. Eine Kette, die auch nach dem
+    # 6. Request (5 gefolgte Weiterleitungen + die urspruengliche Anfrage)
+    # noch immer weiterleitet, bricht mit einer sprechenden Fehlermeldung ab
+    # statt endlos weiterzulaufen.
+    from app.services import geofabrik
+
+    requested = []
+    # 7 Redirect-Antworten vorbereitet, damit ein Fehler in der
+    # Abbruchbedingung (z.B. "6 statt 5" oder Off-by-one) auffiele, statt
+    # dass der Test mangels weiterer Antworten mit StopIteration abbricht.
+    responses = [
+        _FakeRedirectResponse(
+            302,
+            {"location": "https://download.geofabrik.de/x-latest.osm.pbf"},
+        )
+        for _ in range(7)
+    ]
+    monkeypatch.setattr(
+        geofabrik.httpx,
+        "AsyncClient",
+        _FakeRedirectClient(responses, requested),
+    )
+
+    with pytest.raises(ValueError, match="Zu viele Weiterleitungen"):
+        await geofabrik.head_size_bytes(
+            "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+        )
+    # Urspruengliche Anfrage + hoechstens 5 gefolgte Weiterleitungen = 6.
+    assert len(requested) == 6
+
+
+@pytest.mark.asyncio
+async def test_head_size_bytes_missing_content_length_is_error(monkeypatch):
+    # Fehlt Content-Length in der finalen Antwort, ist das ein Fehler mit
+    # sprechender Meldung - kein stillschweigendes 0.
+    from app.services import geofabrik
+
+    requested = []
+    responses = [_FakeRedirectResponse(200, {})]
+    monkeypatch.setattr(
+        geofabrik.httpx,
+        "AsyncClient",
+        _FakeRedirectClient(responses, requested),
+    )
+
+    with pytest.raises(ValueError, match="Content-Length"):
+        await geofabrik.head_size_bytes(
+            "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+        )
+
+
+@pytest.mark.asyncio
+async def test_head_size_bytes_never_forwards_redirect_target_as_url(monkeypatch):
+    # Bedingung, unter der das Folgen von Weiterleitungen ueberhaupt sicher
+    # ist: der Rueckgabewert ist ausschliesslich eine Groesse (int), niemals
+    # eine URL - der Spiegelserver-Pfad aus der Umleitung verlaesst
+    # head_size_bytes an keiner Stelle. Die URL, die separat (per erneutem
+    # validate_region_url-Aufruf) an den Updater weitergereicht wird, bleibt
+    # deshalb unveraendert die rekonstruierte kanonische Adresse.
+    from app.services import geofabrik
+
+    mirror_url = "https://ftp5.gwdg.de/pub/misc/openstreetmap/dach-260903.osm.pbf"
+    requested = []
+    responses = [
+        _FakeRedirectResponse(302, {"location": mirror_url}),
+        _FakeRedirectResponse(200, {"content-length": "999"}),
+    ]
+    monkeypatch.setattr(
+        geofabrik.httpx,
+        "AsyncClient",
+        _FakeRedirectClient(responses, requested),
+    )
+
+    canonical = "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+    result = await geofabrik.head_size_bytes(canonical)
+
+    assert result == 999
+    assert not isinstance(result, str)
+    # Der zweite (interne) Request ging an den Spiegelserver - aber das ist
+    # eine rein lokale Angelegenheit von head_size_bytes.
+    assert requested[1] == mirror_url
+    # Die URL, die an den Updater geht, bleibt unveraendert die
+    # rekonstruierte kanonische Adresse, nicht die Spiegelserver-Adresse.
+    assert validate_region_url(canonical) == canonical
+    assert validate_region_url(canonical) != mirror_url
+
+
+@pytest.mark.skipif(
+    os.environ.get("GEOFABRIK_LIVE_TEST") != "1",
+    reason="Kontaktiert das echte download.geofabrik.de; nur mit "
+    "GEOFABRIK_LIVE_TEST=1 gesetzt aktiv (kein Netz in CI).",
+)
+@pytest.mark.asyncio
+async def test_head_size_bytes_against_real_geofabrik():
+    # Genau der hier behobene Produktionsfehler ist entstanden, weil
+    # AUSNAHMSLOS alle Tests den Netzaufruf gemockt haben - der 302 auf die
+    # tagesaktuelle Datei kam erst live auf web.convoyplan.de zutage. Dieser
+    # Test kontaktiert bewusst das echte Geofabrik, damit ein aehnlicher
+    # Fehler (z.B. eine von Geofabrik geaenderte Redirect-Kette) kuenftig
+    # schon lokal auffallen kann, statt erst in Produktion.
+    from app.services import geofabrik
+
+    # Liechtenstein ist der kleinste Geofabrik-Extract - schnell genug fuer
+    # einen Testlauf, aber real genug, um die tatsaechliche 302-Kette zu
+    # durchlaufen.
+    size = await geofabrik.head_size_bytes(
+        "https://download.geofabrik.de/europe/liechtenstein-latest.osm.pbf"
+    )
+    assert size > 0
