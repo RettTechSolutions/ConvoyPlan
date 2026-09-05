@@ -21,6 +21,8 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+## [2026.5.0] – 2026-09-05
+
 ### Added
 
 - **Die Kartenregion darf jetzt aus mehreren Ländern bestehen.** Bisher war es genau eine Geofabrik-Region: Wer Konvois nach Polen oder Tschechien plante, musste sich zwischen einer Karte entscheiden, die das Nachbarland gar nicht kennt, und einer, die halb Europa mitlädt. Im Reiter **System** lassen sich in der Karte „Kartenregion" jetzt **beliebig viele der 555 Regionen** gleichzeitig auswählen; der Updater lädt jedes Extract einzeln, führt sie mit `osmium merge` zu **einer** Karte zusammen und baut daraus einen Graphen.
@@ -28,6 +30,10 @@ ursprünglichen SemVer-Nummern.
   **Der Grund für das Zusammenführen statt zweier getrennter Karten ist das Routing über die Grenze.** Zwei separat importierte Extracts ergäben zwei getrennte Graphkomponenten — Routen enden dann genau dort, wo sie gebraucht werden. `osmium merge` führt die Objekte über ihre OSM-IDs zusammen; ein Machbarkeitstest an Sachsen und Niederschlesien maß **294.181 zusammengeführte Knoten (0,67 %)** im Grenzstreifen, und Görlitz → Zgorzelec (2,30 km) sowie Dresden → Wrocław (268 km) routeten anschließend durch. Ein CI-Job fährt genau diesen Nachweis bei jeder Änderung nach, samt Kontrollroute innerhalb Sachsens — ohne sie unterschiede der Test nicht zwischen „Grenze kaputt" und „Graph generell kaputt".
 
   Die Vorabschätzung rechnet auf der gesamten Auswahl: Summe der Extracts, Spitzenbedarf auf der Platte während des Wechsels (Quelldateien, zusammengeführte Datei, neuer Graph und alter Bestand liegen gleichzeitig dort), Arbeitsspeicher und Dauer. Überlappende Auswahlen — ein Land zusammen mit seinen eigenen Unterregionen — werden als Hinweis angezeigt: erlaubt und korrekt, aber Download und Wartezeit doppelt. Der Wechsel bleibt ein Alles-oder-nichts: **scheitert einer von N Downloads oder das Zusammenführen, läuft die bisherige Region unverändert weiter.** Eine Karte, der ein Land fehlt, wäre schlimmer als kein Wechsel — sie liefert stillschweigend falsche Routen, statt sichtbar zu fehlen.
+
+### Changed
+
+- **Routine-Aktualisierung der Frontend-Abhängigkeiten** (#435): `maplibre-gl` `6.5` → `6.7`, `@types/node` `26.2` → `26.4`. Keine Sicherheitsmeldungen betroffen — die Prüfung über OSV.dev war für alle gepinnten Pakete sauber. `typescript` bleibt bewusst auf `6.x`; der Sprung auf `7.0` bringt einen neuen, in Go geschriebenen Compiler und gehört nicht in eine Routine-Welle.
 
 ### Security
 
@@ -463,7 +469,8 @@ Das ruft den Update-Modus auf: räumt verwaiste Updater-Container auf, zieht all
 - Capacitor configuration for Android/iOS native wrapper.
 - Docker Compose setup with GraphHopper OSM pre-download.
 
-[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.4.1...HEAD
+[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.5.0...HEAD
+[2026.5.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.4.1...v2026.5.0
 [2026.4.1]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.4.0...v2026.4.1
 [2026.4.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.3.0...v2026.4.0
 [2026.3.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.2.2...v2026.3.0
