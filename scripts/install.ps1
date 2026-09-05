@@ -104,6 +104,7 @@ if ((Test-Path $EnvFile)) {
             Add-EnvKeyIfMissing 'BACKEND_IMAGE'         'ghcr.io/retttechsolutions/convoyplan/backend:latest'    $EnvFile
             Add-EnvKeyIfMissing 'FRONTEND_IMAGE'        'ghcr.io/retttechsolutions/convoyplan/frontend:latest'   $EnvFile
             Add-EnvKeyIfMissing 'GRAPHHOPPER_IMAGE'     'ghcr.io/retttechsolutions/convoyplan/graphhopper:latest' $EnvFile
+            Add-EnvKeyIfMissing 'REGION_MERGE_IMAGE'    'ghcr.io/retttechsolutions/convoyplan/osmium:latest'      $EnvFile
             Add-EnvKeyIfMissing 'GITHUB_REPO'           'RettTechSolutions/ConvoyPlan'                          $EnvFile
 
             Write-Host ''
@@ -250,6 +251,7 @@ BACKEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/backend:latest
 FRONTEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/frontend:latest
 GRAPHHOPPER_IMAGE=ghcr.io/retttechsolutions/convoyplan/graphhopper:latest
 UPDATER_IMAGE=ghcr.io/retttechsolutions/convoyplan/updater:latest
+REGION_MERGE_IMAGE=ghcr.io/retttechsolutions/convoyplan/osmium:latest
 GITHUB_REPO=RettTechSolutions/ConvoyPlan
 STACK_FILE_PATH=$InstallDir\docker-compose.yml
 CADDY_ENTRYPOINT_PATH=$InstallDir\caddy\entrypoint.sh

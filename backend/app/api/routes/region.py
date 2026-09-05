@@ -119,7 +119,12 @@ async def preview(body: RegionUrls, _: User = Depends(require_superadmin)):
             raise ValueError("Keine Region ausgewählt.")
         # Jeder Bestandteil einzeln durch die Allowlist — die Sicherheitsgrenze
         # gilt pro URL, nicht fuer die Liste als Ganzes.
-        urls = [geofabrik.validate_region_url(u) for u in body.urls]
+        # Entdoppelt: Dieselbe Region zweimal ausgewaehlt ergaebe sonst eine
+        # "zusammengesetzte" Region aus einem einzigen Extract, das der Updater
+        # zweimal unter demselben Namen laedt und mit sich selbst verschmilzt.
+        # Nach der Validierung entdoppeln, damit zwei Schreibweisen derselben
+        # URL zusammenfallen — validate_region_url() rekonstruiert sie kanonisch.
+        urls = list(dict.fromkeys(geofabrik.validate_region_url(u) for u in body.urls))
         sizes = [await geofabrik.head_size_bytes(u) for u in urls]
         extract = region_estimate.sum_extract_bytes(sizes)
     except ValueError as exc:
@@ -285,7 +290,12 @@ async def switch_region(
             raise ValueError("Keine Region ausgewählt.")
         # Siehe Kommentar in preview(): jeder Bestandteil einzeln durch die
         # Allowlist, nur die rekonstruierten URLs werden weiterverwendet.
-        urls = [geofabrik.validate_region_url(u) for u in body.urls]
+        # Entdoppelt: Dieselbe Region zweimal ausgewaehlt ergaebe sonst eine
+        # "zusammengesetzte" Region aus einem einzigen Extract, das der Updater
+        # zweimal unter demselben Namen laedt und mit sich selbst verschmilzt.
+        # Nach der Validierung entdoppeln, damit zwei Schreibweisen derselben
+        # URL zusammenfallen — validate_region_url() rekonstruiert sie kanonisch.
+        urls = list(dict.fromkeys(geofabrik.validate_region_url(u) for u in body.urls))
         sizes = [await geofabrik.head_size_bytes(u) for u in urls]
         extract = region_estimate.sum_extract_bytes(sizes)
     except ValueError as exc:

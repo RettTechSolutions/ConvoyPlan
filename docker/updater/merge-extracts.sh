@@ -24,14 +24,20 @@ shift
 SOURCES=("$@")
 [ "${#SOURCES[@]}" -ge 2 ] || { echo "FEHLER: mindestens zwei Quellen noetig" >&2; exit 1; }
 
-# Image mit osmium-tool. Bewusst ein Image, das das Werkzeug bereits mitbringt,
-# statt zur Laufzeit `apt-get install` auszufuehren: Der Wechsel soll nicht von
-# einem Paket-Spiegel abhaengen, der gerade nicht antwortet.
-# ACHTUNG: ungepinntes Drittanbieter-Image, das mit Schreibzugriff auf das
-# OSM-Volume laeuft. Vor dem Produktivbetrieb auf einen Digest pinnen oder in
-# die eigene GHCR spiegeln — per REGION_MERGE_IMAGE austauschbar, ohne dass
-# hier etwas geaendert werden muss.
-MERGE_IMAGE="${REGION_MERGE_IMAGE:-stefda/osmium-tool:latest}"
+# Image mit osmium-tool, aus diesem Repo gebaut (docker/osmium/Dockerfile) und
+# neben den uebrigen vier Images in die eigene GHCR veroeffentlicht.
+#
+# Bewusst ein fertiges Image statt `apt-get install` zur Laufzeit: Der Wechsel
+# soll nicht von einem Paket-Spiegel abhaengen, der gerade nicht antwortet.
+#
+# Und bewusst ein EIGENES: Der naheliegende Kandidat `stefda/osmium-tool:latest`
+# stammt vom 19.12.2017, ist 492 MB gross, laeuft als root, traegt die komplette
+# Build-Toolchain mit sich und hat nur den Tag `latest` — also keinen, auf den
+# sich pinnen liesse, ohne dass er unter einem wegwandern kann. Ein Container,
+# der Schreibzugriff auf das OSM-Volume bekommt, sollte nichts davon sein.
+# Das eigene Image bringt osmium-tool 1.18 aus Debian trixie statt der
+# 2017er-Version.
+MERGE_IMAGE="${REGION_MERGE_IMAGE:-ghcr.io/retttechsolutions/convoyplan/osmium:latest}"
 
 # Volume-NAME, nicht Containerpfad: Ein Pfad wie /data/osm waere aus Sicht des
 # Docker-Daemons ein Host-Pfad, und er legte dort ein leeres Verzeichnis an.
@@ -39,6 +45,21 @@ OSM_VOLUME="${OSM_VOLUME:?Volume-Name fehlt}"
 
 TARGET_NAME="$(basename "$TARGET")"
 TMP_NAME=".merge-$$.osm.pbf"
+
+# Quellen paarweise verschieden — und zwar auch in ihren DATEINAMEN: Im
+# Container liegen alle Extracts flach unter /data/osm, dort faellt jede
+# Verzeichnisstruktur weg. Zwei Quellen mit demselben Dateinamen waeren fuer
+# osmium dieselbe Datei, es verschmoelze sie mit sich selbst und lieferte ein
+# Ergebnis, das jede Groessenpruefung besteht und trotzdem ein Gebiet weniger
+# enthaelt als bestellt. Der Aufrufer verhindert das bereits beim Benennen der
+# Downloads; das hier ist die letzte Linie, die auch ein kuenftiger zweiter
+# Aufrufer nicht umgehen kann.
+if [ "$(printf '%s\n' "${SOURCES[@]}" | sort -u | wc -l)" -ne "${#SOURCES[@]}" ]; then
+    echo "FEHLER: dieselbe Quelle mehrfach angegeben" >&2; exit 1
+fi
+if [ "$(for s in "${SOURCES[@]}"; do basename "$s"; done | sort -u | wc -l)" -ne "${#SOURCES[@]}" ]; then
+    echo "FEHLER: zwei Quellen tragen denselben Dateinamen — sie waeren im Container dieselbe Datei" >&2; exit 1
+fi
 
 src_args=""
 total_bytes=0
@@ -54,7 +75,10 @@ done
 echo "Führe ${#SOURCES[@]} Extracts zusammen (${total_bytes} Bytes roh)…"
 
 # shellcheck disable=SC2086
-if ! docker run --rm -v "${OSM_VOLUME}:/data/osm" "$MERGE_IMAGE" \
+# --network none: Der Merge liest und schreibt ausschliesslich im Volume.
+# Ein Container, der fremde Kartendaten verarbeitet, braucht dafuer keinen
+# Netzzugang — und ohne ihn kann er auch keinen herstellen.
+if ! docker run --rm --network none -v "${OSM_VOLUME}:/data/osm" "$MERGE_IMAGE" \
         osmium merge $src_args -o "/data/osm/$TMP_NAME"; then
     rm -f "$(dirname "$TARGET")/$TMP_NAME"
     echo "FEHLER: osmium merge fehlgeschlagen" >&2
@@ -64,24 +88,41 @@ fi
 TMP_PATH="$(dirname "$TARGET")/$TMP_NAME"
 merged_bytes=$(stat -c%s "$TMP_PATH" 2>/dev/null || stat -f%z "$TMP_PATH" 2>/dev/null || echo 0)
 
-# Plausibilitaetspruefung.
+# Plausibilitaetspruefung — und ihre Grenzen.
 #
-# Untergrenze: die groesste EINZELQUELLE, nicht ein Anteil der Rohsumme.
+# Untergrenze: die groesste EINZELQUELLE. Obergrenze: 105 % der Rohsumme.
 #
-# Eine Anteilsgrenze (etwa 80 % der Summe) verwirft legitime Auswahlen: Waehlt
-# jemand Deutschland zusammen mit drei seiner Bundeslaender, dedupliziert
-# osmium korrekt auf etwa die Groesse Deutschlands — rund 70 % der Rohsumme.
-# Der Merge waere richtig, die Pruefung falsch, und zwar erst nachdem alle
-# Gigabyte geladen wurden.
+# Was eine Groessenpruefung grundsaetzlich NICHT kann: einen legitimen Merge
+# von einem unterscheiden, der eine Quelle verloren hat. Waehlt jemand
+# `europe/germany` zusammen mit `europe/dach`, ist das Ergebnis bitgleich zu
+# einem Merge, bei dem Deutschland unter den Tisch fiel. Das ist kein Zufall,
+# sondern die Regel: Faellt ein fehlender Bestandteil an der Groesse nicht auf,
+# war sein Inhalt im Ergebnis ohnehin enthalten — der Verlust ist dann
+# folgenlos. Umgekehrt ist der Fehlbetrag bei einem SCHAEDLICHEN Verlust zwar
+# gross, aber nicht im Voraus bekannt; jede Anteilsgrenze verwirft deshalb
+# irgendwann einen richtigen Merge, und zwar erst, nachdem alle Gigabyte
+# geladen wurden. Eine schaerfere Schwelle loest das nicht, sie verschiebt nur,
+# in welche Richtung man falsch liegt.
 #
-# Die groesste Einzelquelle ist dagegen eine harte Untergrenze: Das Ergebnis
-# enthaelt jede Quelle vollstaendig, kann also nie kleiner sein als die
-# groesste von ihnen. Faellt es darunter, fehlt nachweislich Inhalt — genau
-# der stille Teilmerge, um den es geht: eine formal gueltige Datei, die
-# importiert, startet und an den fehlenden Stellen keine Route liefert.
+# Die Groessenpruefung traegt deshalb NICHT die Last, einen stillen Teilmerge
+# zu erkennen. Das tun strukturelle Zusicherungen:
+#   * jede Quelle existiert und ist nicht leer (oben),
+#   * die Quellen sind paarweise verschieden, auch im Dateinamen (oben),
+#   * die Bestandteile werden kollisionsfrei benannt — voller Pfad statt
+#     basename, sonst treffen sich `europe/georgia` und
+#     `north-america/us/georgia` (switch-region.sh),
+#   * der Aufrufer vergleicht die Zahl geladener Dateien gegen die Zahl
+#     angeforderter Bestandteile (ebenda),
+#   * und `osmium merge` bricht mit Fehlercode ab, wenn es eine angegebene
+#     Datei nicht lesen kann — es ueberspringt sie nicht still.
+# Sind die erfuellt, hat osmium jede Quelle gesehen.
 #
-# Obergrenze bleibt bei 105 % der Rohsumme: mehr bedeutet, dass nichts
-# dedupliziert wurde, und dann zerfaellt der Graph an den Grenzen.
+# Was die Groessenpruefung danach noch abfaengt, ist das, wofuer sie taugt:
+# ein abgeschnittenes Ergebnis (Untergrenze) und eines, in dem gar nicht
+# dedupliziert wurde (Obergrenze) — dann zerfaellt der Graph an den Grenzen.
+# Die Untergrenze ist bewusst so gewaehlt, dass sie nie einen richtigen Merge
+# verwirft: Das Ergebnis enthaelt jede Quelle vollstaendig und kann deshalb nie
+# kleiner sein als die groesste von ihnen.
 min_bytes="$largest_bytes"
 max_bytes=$(( total_bytes * 105 / 100 ))
 if [ "$merged_bytes" -lt "$min_bytes" ] || [ "$merged_bytes" -gt "$max_bytes" ]; then

@@ -902,3 +902,57 @@ async def test_switch_schreibt_sortierte_quellenliste(monkeypatch):
     assert geschrieben["sources"] == "europe/germany|europe/poland"
     assert geschrieben["filename"].startswith("merged-")
     assert geschrieben["filename"].endswith(".osm.pbf")
+
+
+@pytest.mark.asyncio
+async def test_preview_entdoppelt_dieselbe_region(monkeypatch):
+    """Dieselbe Region zweimal ausgewaehlt ist KEINE zusammengesetzte Region.
+
+    Ohne Entdopplung liefe der Wechsel in den Merge-Pfad: derselbe Extract
+    zweimal geladen, mit sich selbst verschmolzen, und das Ergebnis besteht
+    jede Groessenpruefung. Die Karte behauptete dann zwei Regionen und
+    enthielte eine. Zugleich ein Beleg, dass die Groessenschaetzung auf der
+    entdoppelten Liste rechnet und nicht doppelt zaehlt.
+    """
+    monkeypatch.setattr(geofabrik, "head_size_bytes", _async_size(int(2 * GB)))
+    test_app = _make_app_with_superadmin()
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/api/admin/region/preview",
+            json={"urls": [URL, URL]},
+            headers={"Authorization": "Bearer x"},
+        )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["composed"] is False
+    assert len(body["sources"]) == 1
+    assert body["extract_bytes"] == int(2 * GB)
+
+
+@pytest.mark.asyncio
+async def test_switch_entdoppelt_vor_dem_schreiben(monkeypatch, tmp_path):
+    """Derselbe Fall bis in die Anforderungsdatei hinein: Der Updater darf
+    `sources` gar nicht erst zu sehen bekommen, wenn nur EINE Region gemeint
+    ist — sonst nimmt er den Merge-Pfad fuer eine Einzelregion."""
+    monkeypatch.setattr(geofabrik, "head_size_bytes", _async_size(int(2 * GB)))
+    written = {}
+
+    def _fake_write(url, filename, java_opts, requested_by, sources=""):
+        written.update(
+            url=url, filename=filename, sources=sources, requested_by=requested_by
+        )
+
+    monkeypatch.setattr(region_switch, "write_request", _fake_write)
+    monkeypatch.setattr(region_switch, "is_busy", lambda: False)
+    test_app = _make_app_with_superadmin()
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/api/admin/region",
+            json={"urls": [URL, URL]},
+            headers={"Authorization": "Bearer x"},
+        )
+    assert resp.status_code in (200, 202), resp.text
+    assert written["sources"] == ""
+    assert not written["filename"].startswith("merged-")

@@ -212,6 +212,10 @@ _apply_channel_images() {
     export FRONTEND_IMAGE="$(_retag "${FRONTEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/frontend:latest}" "${tag}")"
     export GRAPHHOPPER_IMAGE="$(_retag "${GRAPHHOPPER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/graphhopper:latest}" "${tag}")"
     export UPDATER_IMAGE="$(_retag "${UPDATER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/updater:latest}" "${tag}")"
+    # Muss mit umgetaggt werden, obwohl es kein Stack-Dienst ist: Sonst liefe
+    # eine auf eine Version gepinnte Installation beim Regionswechsel gegen ein
+    # beliebig neueres osmium:latest.
+    export REGION_MERGE_IMAGE="$(_retag "${REGION_MERGE_IMAGE:-ghcr.io/retttechsolutions/convoyplan/osmium:latest}" "${tag}")"
 }
 
 # Nightly-Kanal-Ziel: Commit-SHA des letzten ERFOLGREICHEN :nightly-Image-Builds.

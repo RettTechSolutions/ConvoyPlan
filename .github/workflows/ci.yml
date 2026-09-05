@@ -419,6 +419,54 @@ jobs:
             exit 1
           fi
           echo "Dedupliziert: $((A + B - M)) Knoten"
+          echo "MERGED_NODES=$M" >> "$GITHUB_ENV"
+
+      - name: merge-extracts.sh gegen das echte osmium-Image
+        run: |
+          # Erster echter Lauf des Produktionspfads. Bis hierher pruefte die
+          # Shell-Suite merge-extracts.sh nur gegen einen docker-Stub, und der
+          # Schritt oben rief osmium direkt auf dem Runner auf. Ungetestet blieb
+          # genau das, was in Produktion zaehlt: das eigene osmium-Image, der
+          # `docker run` mit Volume-NAME statt Containerpfad, und die
+          # Plausibilitaetsgrenzen gegen echte Dateigroessen.
+          #
+          # Der Aufruf laeuft bewusst IM Updater-Image mit Docker-Socket und
+          # gemountetem Volume — also in derselben Lage wie beim echten
+          # Regionswechsel. Ein Aufruf vom Runner aus waere eine andere
+          # Konfiguration und bewiese wenig: merge-extracts.sh setzt voraus,
+          # dass sein Host-Pfad und der Volume-Inhalt dasselbe Verzeichnis sind.
+          docker build -t convoyplan-osmium:ci ./docker/osmium
+          docker build -t convoyplan-updater:ci ./docker/updater
+          docker volume create ci_osm > /dev/null
+          docker run --rm -v ci_osm:/data/osm -v "$PWD/osm:/src:ro" \
+            convoyplan-osmium:ci \
+            sh -c 'cp /src/sachsen.osm.pbf /src/dolnoslaskie.osm.pbf /data/osm/'
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v ci_osm:/data/osm \
+            -e OSM_VOLUME=ci_osm \
+            -e REGION_MERGE_IMAGE=convoyplan-osmium:ci \
+            --entrypoint bash convoyplan-updater:ci \
+            /merge-extracts.sh /data/osm/merged-ci.osm.pbf \
+              /data/osm/sachsen.osm.pbf /data/osm/dolnoslaskie.osm.pbf
+
+      - name: Ergebnis des Skriptlaufs gegen den Direktaufruf halten
+        run: |
+          # Gleiche Knotenzahl wie beim Direktaufruf oben — sonst hat der Weg
+          # ueber Image und Volume unterwegs etwas verloren. Genau diese Art
+          # stillen Verlusts ist der Grund fuer die Struktur-Zusicherungen in
+          # merge-extracts.sh; hier wird sie einmal echt nachgemessen.
+          S=$(docker run --rm -v ci_osm:/data/osm convoyplan-osmium:ci \
+                osmium fileinfo -e -g data.count.nodes /data/osm/merged-ci.osm.pbf)
+          echo "Skriptlauf=$S  Direktaufruf=$MERGED_NODES"
+          if [ "$S" != "$MERGED_NODES" ]; then
+            echo "::error::merge-extracts.sh lieferte $S Knoten, der Direktaufruf $MERGED_NODES"
+            exit 1
+          fi
+
+      - name: osmium-Volume aufraeumen
+        if: always()
+        run: docker volume rm -f ci_osm || true
 
       - name: GraphHopper bauen und starten
         run: |

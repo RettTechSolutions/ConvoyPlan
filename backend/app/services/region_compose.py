@@ -13,9 +13,23 @@ import hashlib
 _SEP = "|"
 
 
+def normalize(paths: list[str]) -> list[str]:
+    """Sortiert und ENTDOPPELT — die kanonische Form der Bestandteilsliste.
+
+    Die Sortierung verhindert, dass "DE, PL" und "PL, DE" verschiedene Hashes
+    und damit einen ueberfluessigen Neubau ergeben. Die Entdopplung verhindert
+    Schlimmeres: Waehlt jemand dieselbe Region zweimal aus, entstuende sonst
+    `sources="a|a"`, der Updater lud dieselbe Datei zweimal unter denselben
+    Namen und `osmium merge` fuehrte sie mit sich selbst zusammen. Das Ergebnis
+    ist formal gueltig und faellt durch keine Groessenpruefung — es waere eine
+    Karte, die zwei Regionen behauptet und eine enthaelt.
+    """
+    return sorted(set(paths))
+
+
 def compose_hash(paths: list[str]) -> str:
-    """Acht Zeichen aus der sortierten Bestandteilsliste."""
-    joined = _SEP.join(sorted(paths))
+    """Acht Zeichen aus der kanonischen Bestandteilsliste."""
+    joined = _SEP.join(normalize(paths))
     return hashlib.sha256(joined.encode()).hexdigest()[:8]
 
 
@@ -24,14 +38,14 @@ def merged_filename(paths: list[str]) -> str:
 
 
 def sources_value(paths: list[str]) -> str:
-    """Der Wert fuer OSM_SOURCES in `.region` — sortiert, |-getrennt."""
-    return _SEP.join(sorted(paths))
+    """Der Wert fuer OSM_SOURCES in `.region` — kanonisch, |-getrennt."""
+    return _SEP.join(normalize(paths))
 
 
 def parse_sources(value: str) -> list[str]:
     if not value.strip():
         return []
-    return sorted(p for p in value.split(_SEP) if p)
+    return normalize([p for p in value.split(_SEP) if p])
 
 
 def overlapping(paths: list[str]) -> list[tuple[str, str]]:

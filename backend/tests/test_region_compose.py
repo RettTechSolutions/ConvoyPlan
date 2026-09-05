@@ -1,4 +1,5 @@
 from app.services.region_compose import (
+    normalize,
     compose_hash, merged_filename, sources_value, parse_sources, overlapping,
     path_from_url,
 )
@@ -71,3 +72,38 @@ def test_pfad_und_hash_hangen_zusammen():
     ]
     paths = [path_from_url(u) for u in urls]
     assert merged_filename(paths) == merged_filename(["europe/germany", "europe/poland"])
+
+
+def test_normalize_entdoppelt_und_sortiert():
+    assert normalize(["europe/poland", "europe/germany", "europe/poland"]) == [
+        "europe/germany",
+        "europe/poland",
+    ]
+
+
+def test_doppelte_auswahl_ergibt_denselben_hash_wie_einfache():
+    """Dieselbe Region zweimal gewaehlt ist dieselbe Karte.
+
+    Ohne Entdopplung entstuende `sources="a|a"`: Der Updater laedt denselben
+    Extract zweimal, `osmium merge` verschmilzt ihn mit sich selbst, und das
+    Ergebnis besteht jede Groessenpruefung — die Untergrenze ist ja die
+    groesste Einzelquelle, und die ist hier eben diese eine. Herauskaeme eine
+    Karte, die zwei Regionen behauptet und eine enthaelt.
+    """
+    assert compose_hash(["europe/germany", "europe/germany"]) == compose_hash(
+        ["europe/germany"]
+    )
+    assert sources_value(["europe/germany", "europe/germany"]) == "europe/germany"
+    assert parse_sources("europe/germany|europe/germany") == ["europe/germany"]
+
+
+def test_kollidierende_basenamen_bleiben_verschiedene_bestandteile():
+    """`europe/georgia` und `north-america/us/georgia` sind der einzige
+    Basename-Konflikt im Geofabrik-Index (ueber alle 555 Regionen geprueft).
+    Auf Pfadebene sind es zwei Regionen und muessen es bleiben — das
+    Auseinanderhalten der DATEIEN loest switch-region.sh, indem es den vollen
+    Pfad in den Dateinamen zieht statt `basename`.
+    """
+    paths = ["europe/georgia", "north-america/us/georgia"]
+    assert normalize(paths) == sorted(paths)
+    assert compose_hash(paths) != compose_hash(["europe/georgia"])

@@ -185,6 +185,7 @@ if [[ -f "$INSTALL_DIR/.env" ]] && \
     _patch_env "BACKEND_IMAGE"           "ghcr.io/retttechsolutions/convoyplan/backend:latest"
     _patch_env "FRONTEND_IMAGE"          "ghcr.io/retttechsolutions/convoyplan/frontend:latest"
     _patch_env "GRAPHHOPPER_IMAGE"       "ghcr.io/retttechsolutions/convoyplan/graphhopper:latest"
+    _patch_env "REGION_MERGE_IMAGE"      "ghcr.io/retttechsolutions/convoyplan/osmium:latest"
     _patch_env "GITHUB_REPO"             "RettTechSolutions/ConvoyPlan"
 
     sudo chown -R "$(id -u):$(id -g)" "$INSTALL_DIR"
@@ -344,6 +345,7 @@ BACKEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/backend:latest
 FRONTEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/frontend:latest
 GRAPHHOPPER_IMAGE=ghcr.io/retttechsolutions/convoyplan/graphhopper:latest
 UPDATER_IMAGE=ghcr.io/retttechsolutions/convoyplan/updater:latest
+REGION_MERGE_IMAGE=ghcr.io/retttechsolutions/convoyplan/osmium:latest
 GITHUB_REPO=RettTechSolutions/ConvoyPlan
 # Interne Ports (Docker-Netzwerk, nicht nach außen exponiert — bei Bedarf anpassen)
 FRONTEND_PORT=3000

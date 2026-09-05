@@ -21,6 +21,25 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Added
+
+- **Die Kartenregion darf jetzt aus mehreren Ländern bestehen.** Bisher war es genau eine Geofabrik-Region: Wer Konvois nach Polen oder Tschechien plante, musste sich zwischen einer Karte entscheiden, die das Nachbarland gar nicht kennt, und einer, die halb Europa mitlädt. Im Reiter **System** lassen sich in der Karte „Kartenregion" jetzt **beliebig viele der 555 Regionen** gleichzeitig auswählen; der Updater lädt jedes Extract einzeln, führt sie mit `osmium merge` zu **einer** Karte zusammen und baut daraus einen Graphen.
+
+  **Der Grund für das Zusammenführen statt zweier getrennter Karten ist das Routing über die Grenze.** Zwei separat importierte Extracts ergäben zwei getrennte Graphkomponenten — Routen enden dann genau dort, wo sie gebraucht werden. `osmium merge` führt die Objekte über ihre OSM-IDs zusammen; ein Machbarkeitstest an Sachsen und Niederschlesien maß **294.181 zusammengeführte Knoten (0,67 %)** im Grenzstreifen, und Görlitz → Zgorzelec (2,30 km) sowie Dresden → Wrocław (268 km) routeten anschließend durch. Ein CI-Job fährt genau diesen Nachweis bei jeder Änderung nach, samt Kontrollroute innerhalb Sachsens — ohne sie unterschiede der Test nicht zwischen „Grenze kaputt" und „Graph generell kaputt".
+
+  Die Vorabschätzung rechnet auf der gesamten Auswahl: Summe der Extracts, Spitzenbedarf auf der Platte während des Wechsels (Quelldateien, zusammengeführte Datei, neuer Graph und alter Bestand liegen gleichzeitig dort), Arbeitsspeicher und Dauer. Überlappende Auswahlen — ein Land zusammen mit seinen eigenen Unterregionen — werden als Hinweis angezeigt: erlaubt und korrekt, aber Download und Wartezeit doppelt. Der Wechsel bleibt ein Alles-oder-nichts: **scheitert einer von N Downloads oder das Zusammenführen, läuft die bisherige Region unverändert weiter.** Eine Karte, der ein Land fehlt, wäre schlimmer als kein Wechsel — sie liefert stillschweigend falsche Routen, statt sichtbar zu fehlen.
+
+### Security
+
+- **Zwei Wege, auf denen eine Karte still ein Gebiet hätte verlieren können, sind geschlossen.** Beide hätten eine formal gültige Datei erzeugt, die importiert, startet und ausgerechnet in der fehlenden Gegend keine Route liefert — der gefährlichste denkbare Ausgang, weil nichts davon sichtbar gewesen wäre.
+
+  Der erste steckte in den Dateinamen: Die geladenen Bestandteile hießen nach dem letzten Pfadbestandteil, und über alle 555 Geofabrik-Regionen geprüft gibt es dafür **genau einen** Konflikt — `europe/georgia` und `north-america/us/georgia` ergeben beide `georgia-latest.osm.pbf`. Beide sind im Panel frei wählbar; zusammen ausgewählt hätte der zweite Download den ersten überschrieben und `osmium` Georgien mit sich selbst zusammengeführt. Die Bestandteile tragen jetzt ihren vollen Pfad im Dateinamen. Der zweite: Dieselbe Region zweimal in der Auswahl wurde nirgends entdoppelt und hätte denselben Effekt gehabt.
+
+  Erkannt werden solche Verluste nicht mehr über die Größe der Ergebnisdatei. Diese Prüfung bleibt, aber sie kann einen legitimen Merge von einem verstümmelten grundsätzlich nicht trennen: Wählt jemand Deutschland zusammen mit der DACH-Region, ist das Ergebnis **bitgleich** zu einem Merge, bei dem Deutschland verlorenging. Fällt ein fehlender Bestandteil an der Größe nicht auf, war sein Inhalt ohnehin enthalten — und ist der Verlust schädlich, ist der Fehlbetrag zwar groß, aber nicht im Voraus bekannt. Statt einer Schwelle tragen jetzt strukturelle Zusicherungen: kollisionsfreie Dateinamen, paarweise verschiedene Quellen (im Updater und im Merge-Skript getrennt geprüft), ein Abgleich der Zahl geladener Dateien gegen die Zahl angeforderter Bestandteile, Entdopplung schon im Backend — und der Umstand, dass `osmium merge` bei einer unlesbaren Datei mit Fehler abbricht, statt sie zu überspringen.
+
+- **Das Zusammenführen läuft nicht mehr in einem neun Jahre alten Fremdimage.** Der naheliegende fertige Kandidat vom Docker Hub stammt vom 19.12.2017, ist 492 MB groß, läuft als root, trägt die komplette Build-Toolchain mit sich und existiert nur unter `latest` — es gibt also nicht einmal einen Tag, auf den sich pinnen ließe. Für einen Container mit Schreibzugriff auf die Kartendaten ist das die falsche Grundlage. Stattdessen wird ein eigenes, schlankes Image aus diesem Repo gebaut (`docker/osmium`, Debian trixie mit `osmium-tool` 1.18), das wie die übrigen vier Images versioniert und mit auf die Release-Version umgetaggt wird — sonst liefe eine auf eine Version gepinnte Installation beim Regionswechsel gegen ein beliebig neueres osmium. Der Merge-Container startet ohne Netzwerkzugang; er liest und schreibt ausschließlich im Volume.
+
+
 ## [2026.4.1] – 2026-09-04
 
 ### Fixed

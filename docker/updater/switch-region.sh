@@ -737,6 +737,18 @@ if [ -n "$SOURCES" ]; then
         IFS='|'
     done
     IFS="$_old_ifs"
+    # Dubletten schon HIER, vor Phase 1: Derselbe Bestandteil zweimal ergaebe
+    # denselben Extract zweimal, und osmium verschmoelze ihn mit sich selbst.
+    # Das Backend entdoppelt bereits (region_compose.normalize) — diesem Skript
+    # wird das Backend aber grundsaetzlich nicht geglaubt, es hat den
+    # Docker-Socket und das Backend nicht. Die zweite Sperre nach dem Download
+    # (Quervergleich in Phase 2) bleibt als Netz bestehen; diese hier spart im
+    # Fehlerfall die Gigabyte.
+    _sc="$(printf '%s' "$SOURCES" | tr '|' '\n' | grep -c .)"
+    _su="$(printf '%s' "$SOURCES" | tr '|' '\n' | sort -u | grep -c .)"
+    if [ "$_sc" -ne "$_su" ]; then
+        fail "Derselbe Bestandteil ist mehrfach angefordert — Zusammenführung abgebrochen."
+    fi
 else
     if [[ ! "$FILENAME" =~ ^[A-Za-z0-9._-]+-latest\.osm\.pbf$ ]]; then
         fail "Dateiname nicht zugelassen: $FILENAME"
@@ -837,7 +849,16 @@ _download_one() {
                 rm -f "$_dl_part"
                 fail "Prüfsumme nicht abrufbar: $_dl_url.md5"
             fi
-            if ! ( cd "$OSM_DIR" && sed "s|$_dl_name|$_dl_name.part|" "$_dl_name.md5" | md5sum -c - ); then
+            # Nur den Hash aus der .md5 uebernehmen und den Dateinamen selbst
+            # setzen: Die Datei von Geofabrik nennt den DORTIGEN Namen. Bei
+            # einer zusammengesetzten Region laedt dieses Skript unter einem
+            # eigenen, kollisionsfreien Namen (siehe _src_name) — ein `sed` auf
+            # den entfernten Namen fuende dann nichts, md5sum pruefte eine
+            # nicht existierende Datei und jeder Wechsel scheiterte an einer
+            # Pruefsumme, die in Wahrheit stimmt.
+            if ! ( cd "$OSM_DIR" \
+                    && printf '%s  %s\n' "$(awk 'NR==1{print $1}' "$_dl_name.md5")" "$_dl_name.part" \
+                     | md5sum -c - ); then
                 rm -f "$_dl_part" "$OSM_DIR/$_dl_name.md5"
                 fail "Prüfsumme stimmt nicht — Datei verworfen: $_dl_name"
             fi
@@ -857,7 +878,18 @@ if [ -n "$SOURCES" ]; then
     for _src in $SOURCES; do
         IFS="$_old_ifs"
         _i=$((_i + 1))
-        _src_name="$(basename "$_src")-latest.osm.pbf"
+        # Dateiname aus dem VOLLEN Pfad, nicht aus `basename`: Geofabrik hat
+        # genau ein kollidierendes Basename-Paar — `europe/georgia` und
+        # `north-america/us/georgia` ergaeben beide `georgia-latest.osm.pbf`.
+        # Der zweite Download ueberschriebe den ersten, SOURCE_FILES enthielte
+        # zweimal dieselbe Datei, und osmium fuehrte Georgien mit sich selbst
+        # zusammen — eine Karte, die zwei Regionen behauptet und eine enthaelt,
+        # ohne dass irgendeine Groessenpruefung anschlaegt. Beide Regionen sind
+        # im Panel frei waehlbar, der Fall ist also erreichbar.
+        # `/` -> `-` bleibt im Zeichenraum der Allowlist (ueber alle 555
+        # Regionen geprueft: nur [a-z0-9./-]) und matcht weiterhin das
+        # Aufraeum-`find` auf `*-latest.osm.pbf`.
+        _src_name="$(printf '%s' "$_src" | tr '/' '-')-latest.osm.pbf"
         _src_url="https://download.geofabrik.de/${_src}-latest.osm.pbf"
         # Die Bestandteile sind oben bereits gegen die Zeichen-Allowlist
         # geprueft worden; ein case auf die hier gebaute URL waere
@@ -869,6 +901,24 @@ if [ -n "$SOURCES" ]; then
         IFS='|'
     done
     IFS="$_old_ifs"
+    # Quervergleich zweier unabhaengig entstandener Zahlen: _n stammt aus dem
+    # |-Split von SOURCES, die Liste aus der Download-Schleife. Weichen sie ab,
+    # hat die Schleife einen Bestandteil verschluckt. Genauso toedlich waere
+    # dieselbe Datei zweimal in der Liste — dann verschmoelze osmium sie mit
+    # sich selbst. Beides ergibt eine formal gueltige Karte, der ein Gebiet
+    # fehlt; sie importiert, startet und liefert genau dort keine Route.
+    # Deshalb hier hart abbrechen, bevor gemerged wird: Eine Karte, der ein
+    # Land fehlt, ist schlimmer als ein abgebrochener Wechsel.
+    # shellcheck disable=SC2086
+    _cnt="$(printf '%s\n' $SOURCE_FILES | grep -c .)"
+    # shellcheck disable=SC2086
+    _uniq="$(printf '%s\n' $SOURCE_FILES | sort -u | grep -c .)"
+    if [ "$_cnt" -ne "$_n" ]; then
+        fail "Interner Fehler: ${_n} Bestandteile angefordert, aber ${_cnt} Dateien geladen — Zusammenführung abgebrochen."
+    fi
+    if [ "$_uniq" -ne "$_cnt" ]; then
+        fail "Interner Fehler: dieselbe Quelldatei mehrfach in der Liste — Zusammenführung abgebrochen."
+    fi
 else
     phase "downloading" "Phase 2/5: Lade ${FILENAME}…"
     _download_one "$URL" "$FILENAME"

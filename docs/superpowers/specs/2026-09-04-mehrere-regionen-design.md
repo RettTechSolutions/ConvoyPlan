@@ -131,6 +131,67 @@ ist — jedes zusätzliche Paket vergrößert seine Angriffsfläche für einen
 Schritt, der einmal pro Regionswechsel läuft. Der Merge-Container lebt Sekunden
 und verschwindet.
 
+**Und aus dem eigenen Repo, nicht vom Hub** (`docker/osmium/Dockerfile`, als
+fünftes Image neben Backend, Frontend, GraphHopper und Updater). Der
+naheliegende fertige Kandidat, `stefda/osmium-tool:latest`, ist vom
+19.12.2017, 492 MB groß, läuft als root, enthält die komplette Build-Toolchain
+und existiert **nur** als `latest` — es gibt keinen Tag, auf den sich pinnen
+ließe. Für einen Container mit Schreibzugriff auf das OSM-Volume ist das die
+falsche Grundlage. Das eigene Image bringt `osmium-tool` 1.18 aus Debian
+trixie mit und wird über `update-images.sh` mit auf die Release-Version
+umgetaggt, damit eine gepinnte Installation nicht unbemerkt gegen ein
+beliebig neueres osmium läuft. Der Merge-Container startet mit
+`--network none` — er liest und schreibt nur im Volume.
+
+Warum nicht einfach `osmium-tool` ins Updater-Image: Es basiert auf
+`docker:cli` (Alpine), und `osmium-tool` ist in **keinem** Alpine-Zweig
+paketiert (v3.19, v3.20, v3.21, v3.22 und edge geprüft).
+
+### Die Bestandteile brauchen kollisionsfreie Dateinamen
+
+Der naheliegende Name für einen geladenen Bestandteil ist sein `basename` —
+`europe/germany` → `germany-latest.osm.pbf`. Über den Geofabrik-Index geprüft
+(alle 555 Regionen) gibt es dabei **genau einen** Konflikt:
+`europe/georgia` und `north-america/us/georgia` ergäben beide
+`georgia-latest.osm.pbf`. Der zweite Download überschriebe den ersten, die
+Merge-Liste enthielte zweimal dieselbe Datei, und `osmium` verschmölze
+Georgien mit sich selbst. Beide Regionen sind im Panel frei wählbar, der Fall
+ist also erreichbar — und das Ergebnis besteht **jede** Größenprüfung
+(siehe unten). Deshalb wird der volle Pfad in den Dateinamen gezogen:
+`north-america-us-georgia-latest.osm.pbf`. Der Zeichenraum aller 555 Pfade ist
+`[a-z0-9./-]`, `/` → `-` bleibt also innerhalb der Allowlist und trifft
+weiterhin das Aufräum-`find`.
+
+Folgekosten, die dabei fast durchgerutscht wären: Die `.md5` von Geofabrik
+nennt den **dortigen** Dateinamen. Solange lokal derselbe Name galt, ersetzte
+ihn ein `sed`; mit eigenem Namen findet das `sed` nichts mehr, und **jeder**
+kombinierte Wechsel scheiterte an einer Prüfsumme, die in Wahrheit stimmt.
+Der Updater übernimmt jetzt nur noch den Hash und setzt den Dateinamen selbst.
+
+### Was eine Größenprüfung kann — und was nicht
+
+Die Plausibilitätsprüfung nach dem Merge (Untergrenze: größte Einzelquelle;
+Obergrenze: 105 % der Rohsumme) kann einen stillen Teilmerge **grundsätzlich
+nicht** zuverlässig erkennen. Wählt jemand `europe/germany` zusammen mit
+`europe/dach`, ist das Ergebnis bitgleich zu einem Merge, bei dem Deutschland
+unter den Tisch fiel. Das ist kein Sonderfall, sondern die Regel: Fällt ein
+fehlender Bestandteil an der Größe nicht auf, war sein Inhalt ohnehin
+enthalten — der Verlust ist folgenlos. Bei einem **schädlichen** Verlust ist
+der Fehlbetrag zwar groß, aber nicht im Voraus bekannt; jede Anteilsgrenze
+verwirft deshalb irgendwann einen richtigen Merge, und zwar erst, nachdem alle
+Gigabyte geladen wurden. Eine schärfere Schwelle löst das nicht, sie
+verschiebt nur die Richtung des Fehlers.
+
+Die Last trägt deshalb **Struktur statt Statistik**: kollisionsfreie
+Dateinamen, paarweise verschiedene Quellen (im Updater und im Merge-Skript
+getrennt geprüft), ein Abgleich der Zahl geladener Dateien gegen die Zahl
+angeforderter Bestandteile, Entdopplung schon im Backend — und die Tatsache,
+dass `osmium merge` mit Fehlercode abbricht, wenn es eine angegebene Datei
+nicht lesen kann, statt sie still zu überspringen. Sind die erfüllt, hat
+osmium jede Quelle gesehen. Die Größenprüfung fängt danach das ab, wofür sie
+taugt: ein abgeschnittenes Ergebnis und eines, in dem gar nicht dedupliziert
+wurde.
+
 ### Teilerfolge gibt es nicht
 
 **Scheitert einer von N Downloads, scheitert der ganze Wechsel.** Phase 2 bricht
@@ -237,9 +298,15 @@ in realer Größenordnung.
 
 1. **Der Erstdownload-Fall** (Abschnitt 2) — greifen Entrypoint und Updater
    sauber ineinander, oder halten sich beide für zuständig? Zuerst zu klären.
-2. Welches schlanke Image `osmium-tool` mitbringt, ohne selbst gebaut werden zu
-   müssen.
-3. Ab welcher Abweichung eine zusammengeführte Datei als verstümmelt gilt —
-   die 0,67 % Überlappung aus dem Spike sind ein Datenpunkt, kein Gesetz.
+2. ~~Welches schlanke Image `osmium-tool` mitbringt, ohne selbst gebaut werden
+   zu müssen.~~ **Beantwortet:** keines, das man verantworten kann — der
+   einzige fertige Kandidat ist von 2017 und nur als `latest` verfügbar.
+   Eigenes Image aus `docker/osmium/Dockerfile` (Abschnitt oben).
+3. ~~Ab welcher Abweichung eine zusammengeführte Datei als verstümmelt gilt —
+   die 0,67 % Überlappung aus dem Spike sind ein Datenpunkt, kein Gesetz.~~
+   **Beantwortet, aber anders als gedacht:** Die Frage hat keine gute Antwort,
+   weil ein legitimer und ein verstümmelter Merge byte-gleich sein können
+   (Abschnitt „Was eine Größenprüfung kann"). Die Erkennung liegt deshalb
+   nicht an der Schwelle, sondern an strukturellen Zusicherungen.
 4. Ob `OSM_SOURCES` in `.region` das richtige Format ist oder ob eine eigene
    Datei sauberer wäre, sobald die Liste lang wird.

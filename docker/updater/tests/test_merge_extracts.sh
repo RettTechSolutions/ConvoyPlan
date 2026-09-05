@@ -67,6 +67,10 @@ grep -q "osmium merge" "$DOCKER_CALLS" && r=ja || r=nein
 check "Erfolgsfall: osmium merge wurde aufgerufen" "$r" "ja"
 grep -q "testproj_osm_data:/data/osm" "$DOCKER_CALLS" && r=ja || r=nein
 check "Volume-NAME statt Containerpfad gemountet" "$r" "ja"
+grep -q -- "--network none" "$DOCKER_CALLS" && r=ja || r=nein
+check "Merge-Container bekommt kein Netzwerk" "$r" "ja"
+grep -q "convoyplan/osmium" "$DOCKER_CALLS" && r=ja || r=nein
+check "eigenes osmium-Image statt Fremdimage" "$r" "ja"
 ls "$TMP/osm"/.merge-*.osm.pbf >/dev/null 2>&1 && r=ja || r=nein
 check "Erfolgsfall: keine Temporaerdatei zurueckgeblieben" "$r" "nein"
 
@@ -110,5 +114,31 @@ rc=$(MERGE_RESULT_BYTES=$(( RAW * 105 / 100 )) run_merge)
 check "exakt 105 % der Rohsumme besteht" "$rc" "0"
 rc=$(MERGE_RESULT_BYTES=$(( RAW * 106 / 100 )) run_merge)
 check "106 % wird abgelehnt" "$([ "$rc" -ne 0 ] && echo ja || echo nein)" "ja"
+
+# ── Fall 8: dieselbe Quelle zweimal ────────────────────────────────────────
+# osmium wuerde sie klaglos mit sich selbst verschmelzen. Das Ergebnis haette
+# die Groesse EINER Quelle — und bestuende damit die Untergrenze "groesste
+# Einzelquelle", weil die groesste Einzelquelle eben diese eine ist. Keine
+# Groessenpruefung kann das erkennen; sie muss vorher abgefangen werden.
+: > "$DOCKER_CALLS"
+( bash "$SCRIPT" "$TMP/osm/x.osm.pbf" \
+    "$TMP/osm/a-latest.osm.pbf" "$TMP/osm/a-latest.osm.pbf" >"$TMP/out.txt" 2>&1 )
+check "dieselbe Quelle zweimal wird abgelehnt" "$([ $? -ne 0 ] && echo ja || echo nein)" "ja"
+grep -q "osmium merge" "$DOCKER_CALLS" && r=ja || r=nein
+check "dabei wird osmium gar nicht erst gestartet" "$r" "nein"
+
+# ── Fall 9: gleicher Dateiname aus verschiedenen Verzeichnissen ────────────
+# Der Fall aus dem Geofabrik-Index: `europe/georgia` und
+# `north-america/us/georgia`. Im Container liegen beide flach unter /data/osm —
+# dort waeren sie DIESELBE Datei, ganz gleich wie verschieden ihre Pfade auf
+# dem Host sind.
+mkdir -p "$TMP/osm2"
+dd if=/dev/zero of="$TMP/osm2/a-latest.osm.pbf" bs=1024 count=1024 2>/dev/null
+: > "$DOCKER_CALLS"
+( bash "$SCRIPT" "$TMP/osm/y.osm.pbf" \
+    "$TMP/osm/a-latest.osm.pbf" "$TMP/osm2/a-latest.osm.pbf" >"$TMP/out.txt" 2>&1 )
+check "gleicher Dateiname aus zwei Verzeichnissen wird abgelehnt" "$([ $? -ne 0 ] && echo ja || echo nein)" "ja"
+grep -qi "dieselbe Datei" "$TMP/out.txt" && r=ja || r=nein
+check "Meldung erklaert warum" "$r" "ja"
 
 exit $FAILED

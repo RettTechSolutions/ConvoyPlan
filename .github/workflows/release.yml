@@ -118,6 +118,24 @@ jobs:
             type=raw,value=latest,enable=${{ steps.appver.outputs.prerelease == 'false' }}
             type=raw,value=beta,enable=${{ steps.appver.outputs.prerelease == 'true' }}
 
+      # osmium-tool fuer den Regionswechsel. Es laeuft nicht im Stack, sondern
+      # wird vom Updater fuer die Dauer eines Merge gestartet
+      # (docker/updater/merge-extracts.sh) — es muss aber mit den uebrigen
+      # Images versioniert sein, damit ein gepinntes Deployment nicht
+      # unbemerkt gegen ein neueres osmium laeuft.
+      - name: Docker metadata – osmium
+        id: meta-osmium
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ghcr.io/${{ github.repository }}/osmium
+          flavor: |
+            latest=false
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ steps.appver.outputs.prerelease == 'false' }}
+            type=raw,value=latest,enable=${{ steps.appver.outputs.prerelease == 'false' }}
+            type=raw,value=beta,enable=${{ steps.appver.outputs.prerelease == 'true' }}
+
       # Base-Images stammen alle von Docker Hub und sind gelegentlich von
       # transienten Registry-Timeouts betroffen ("i/o timeout" beim Auflösen
       # der Manifest-Metadaten). Wir ziehen sie deshalb vorab mit Retry +
@@ -131,6 +149,7 @@ jobs:
             "node:26-alpine"
             "eclipse-temurin:25-jre-alpine"
             "docker:cli"
+            "debian:trixie-slim"
           )
           for image in "${images[@]}"; do
             n=0
@@ -187,6 +206,15 @@ jobs:
           pull: false   # vorab gezogenes Base-Image aus dem lokalen Cache nutzen
           tags: ${{ steps.meta-updater.outputs.tags }}
           labels: ${{ steps.meta-updater.outputs.labels }}
+
+      - name: Build and push osmium
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        with:
+          context: ./docker/osmium
+          push: true
+          pull: false   # vorab gezogenes Base-Image aus dem lokalen Cache nutzen
+          tags: ${{ steps.meta-osmium.outputs.tags }}
+          labels: ${{ steps.meta-osmium.outputs.labels }}
 
   github-release:
     name: Create GitHub Release
