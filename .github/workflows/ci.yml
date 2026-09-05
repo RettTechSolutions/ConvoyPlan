@@ -194,6 +194,38 @@ jobs:
             --no-progress \
             convoyplan-${{ matrix.name }}:scan
 
+  shell-tests:
+    name: Shell – Updater und Entrypoint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    # Diese Suiten pruefen die Skripte, die den Regionswechsel tragen —
+    # switch-region.sh (Phasen, Rollback, Sperren), merge-extracts.sh,
+    # region-source.sh und den GraphHopper-Entrypoint. Sie haben die
+    # schwerwiegendsten Fehler dieses Features gefunden.
+    #
+    # Bis hierher liefen sie in KEINEM automatischen Lauf: Es gab sie nur als
+    # Dateien im Repo, ausgefuehrt hat sie, wer daran dachte. Ein Test, den
+    # niemand startet, altert genauso still wie ungetesteter Code — und der
+    # naechste, der eines dieser Skripte anfasst, haette den Bruch nicht
+    # bemerkt. Deshalb dieser Job.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Alle Shell-Suiten ausfuehren
+        run: |
+          rc=0
+          for t in docker/updater/tests/test_*.sh graphhopper/tests/test_*.sh; do
+            echo "::group::$t"
+            if bash "$t"; then
+              echo "$t: GRUEN"
+            else
+              echo "::error::$t ist fehlgeschlagen"
+              rc=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "$rc"
+
   region-switch:
     name: Region – Wechsel end-to-end (Berlin)
     runs-on: ubuntu-24.04

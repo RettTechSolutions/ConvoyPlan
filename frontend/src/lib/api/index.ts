@@ -737,8 +737,13 @@ export interface RegionPreview {
 
 /** Phasen aus docker/updater/switch-region.sh — Namen müssen exakt stimmen. */
 export type RegionPhase =
-    | 'idle' | 'checking' | 'downloading' | 'merging' | 'importing' | 'switching' | 'cleaning'
-    | 'done' | 'failed';
+    // 'queued': Die Anforderung liegt im geteilten Volume, der Updater hat sie
+    // noch nicht aufgegriffen. Kommt nicht aus der Statusdatei des Updaters,
+    // sondern leitet das Backend aus der Anforderung selbst ab — ohne diese
+    // Phase zeigte das Panel zwischen Klick und Aufgreifen entweder nichts
+    // oder das Ergebnis des vorigen Wechsels.
+    | 'idle' | 'queued' | 'checking' | 'downloading' | 'merging' | 'importing'
+    | 'switching' | 'cleaning' | 'done' | 'failed';
 
 export interface RegionStatus {
     phase: RegionPhase;

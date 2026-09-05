@@ -13,6 +13,11 @@ set -euo pipefail
 
 INTERVAL="${UPDATE_INTERVAL:-300}"
 TRIGGER_POLL=10           # check trigger file every 10s regardless of INTERVAL
+# Trigger-Datei des manuellen Updates. Ueberschreibbar fuer Tests, der
+# Betriebs-Default bleibt unveraendert — dasselbe Muster wie
+# SWITCH_REGION_SCRIPT in region-hook.sh und REGION_SOURCE_SCRIPT im
+# GraphHopper-Entrypoint.
+TRIGGER_FILE="${TRIGGER_FILE:-/update_status/trigger}"
 COMPOSE_PROJECT="${COMPOSE_PROJECT_NAME:-convoyplan}"
 COMPOSE_FILE="/stack/docker-compose.yml"
 
@@ -646,7 +651,7 @@ check_target_and_update() {
 
 while true; do
     # Trigger check — runs every TRIGGER_POLL seconds so the UI reacts quickly
-    if [ -f /update_status/trigger ]; then
+    if [ -f "${TRIGGER_FILE}" ]; then
         # Regionswechsel hat Vorrang: Trigger und Regionswechsel-Lock können
         # gleichzeitig gesetzt sein. Bei aktivem Lock wird der Trigger NICHT
         # konsumiert (kein `rm -f`/`do_update`), sondern liegen gelassen —
@@ -660,7 +665,7 @@ while true; do
             continue
         fi
         log "Trigger erkannt — starte Update"
-        rm -f /update_status/trigger
+        rm -f "${TRIGGER_FILE}"
         if do_update; then
             _remember_target
         fi
@@ -683,12 +688,17 @@ while true; do
     # Automatic update when the channel's target (release tag / main HEAD) moved
     check_target_and_update
 
-    # Sleep in short chunks so we notice a new trigger within TRIGGER_POLL seconds
+    # Sleep in short chunks so we notice a new trigger — or a new region
+    # request — within TRIGGER_POLL seconds
     slept=0
     while [ "${slept}" -lt "${INTERVAL}" ]; do
         sleep "${TRIGGER_POLL}"
         slept=$((slept + TRIGGER_POLL))
-        if [ -f /update_status/trigger ]; then
+        # Auch auf eine Regionsanforderung frueh aufwachen, nicht nur auf den
+        # Update-Trigger: Sonst schlaefe der Updater nach einem Ziel-Check bis
+        # zu INTERVAL (Standard 300 s) weiter, waehrend im Panel ein gerade
+        # angestossener Wechsel minutenlang unbearbeitet daliegt.
+        if [ -f "${TRIGGER_FILE}" ] || [ -f "${REGION_REQUEST_FILE}" ]; then
             break
         fi
     done

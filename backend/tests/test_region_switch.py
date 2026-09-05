@@ -84,3 +84,61 @@ def test_write_request_second_call_raises_and_first_survives(tmp_path, monkeypat
     # Kein Leichnam der gescheiterten zweiten Anforderung im Volume.
     remaining = os.listdir(tmp_path)
     assert not any(name.startswith(".tmp-") for name in remaining)
+
+
+def _write_request(tmp_path):
+    region_switch.write_request(
+        "https://download.geofabrik.de/europe/poland-latest.osm.pbf",
+        "poland-latest.osm.pbf", "-Xmx6g", "a@b.c",
+    )
+
+
+def test_read_status_meldet_wartend_solange_der_updater_nicht_zugreift(tmp_path, monkeypatch):
+    """Der Befund aus dem Betrieb: Nach dem Klick sah der Operator nicht, dass
+    ein Wechsel laeuft. Zwischen dem Schreiben der Anforderung und dem Moment,
+    in dem der Updater sie aufgreift, liegt sein Poll-Intervall — und in dieser
+    Zeit gab es nur die Statusdatei, die noch nichts von diesem Wechsel weiss.
+    """
+    monkeypatch.setattr(region_switch, "VOLUME", str(tmp_path))
+    _write_request(tmp_path)
+    status = region_switch.read_status()
+    assert status["phase"] == "queued"
+    assert status["message"] == region_switch.QUEUED_MESSAGE
+    # Zeitstempel kommt aus der Anforderung selbst, damit das Panel zeigen kann,
+    # seit wann gewartet wird.
+    assert status["at"]
+
+
+def test_read_status_zeigt_nicht_das_ergebnis_des_vorigen_wechsels(tmp_path, monkeypatch):
+    """Der irrefuehrendere Teil desselben Fehlers: Lag noch ein 'done' des
+    VORIGEN Wechsels in der Statusdatei, meldete der Endpunkt es weiter — das
+    Panel behauptete 'Abgeschlossen' ueber einem gerade erst angestossenen
+    Wechsel."""
+    monkeypatch.setattr(region_switch, "VOLUME", str(tmp_path))
+    (tmp_path / region_switch.STATUS_FILE).write_text(
+        json.dumps({"phase": "done", "message": "Regionswechsel abgeschlossen"})
+    )
+    assert region_switch.read_status()["phase"] == "done"   # vorher: zu Recht
+    _write_request(tmp_path)
+    assert region_switch.read_status()["phase"] == "queued"  # nachher: wartend
+
+
+def test_read_status_haelt_sich_ans_lock_sobald_der_updater_arbeitet(tmp_path, monkeypatch):
+    """Sobald das Lock liegt, arbeitet der Updater und SEIN Status gilt — die
+    Anforderungsdatei liegt waehrend des ganzen Laufs weiter im Volume und darf
+    den echten Fortschritt nicht ueberdecken."""
+    monkeypatch.setattr(region_switch, "VOLUME", str(tmp_path))
+    _write_request(tmp_path)
+    (tmp_path / region_switch.LOCK_FILE).write_text("")
+    (tmp_path / region_switch.STATUS_FILE).write_text(
+        json.dumps({"phase": "importing", "message": "Baue Routing-Graph"})
+    )
+    assert region_switch.read_status()["phase"] == "importing"
+
+
+def test_read_status_ohne_anforderung_unveraendert(tmp_path, monkeypatch):
+    """Regressionsschutz: Ohne wartende Anforderung bleibt alles wie bisher."""
+    monkeypatch.setattr(region_switch, "VOLUME", str(tmp_path))
+    assert region_switch.read_status()["phase"] == "idle"
+    (tmp_path / region_switch.STATUS_FILE).write_text(json.dumps({"phase": "failed"}))
+    assert region_switch.read_status()["phase"] == "failed"

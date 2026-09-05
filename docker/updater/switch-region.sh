@@ -136,7 +136,12 @@ phase() {
 # Sperrdateien. read_status() und is_busy() im Backend lesen getrennte Dateien —
 # andersherum meldete das Panel "nicht beschäftigt", während es noch die
 # vorletzte Phase anzeigt.
-_release() { rm -f "$LOCK" "$REQ" "$CANCEL"; }
+# Reihenfolge zaehlt: ZUERST die Anforderung, dann das Lock. Das Backend
+# leitet den Wartezustand aus "Anforderung da, Lock nicht da" ab
+# (region_switch.read_status). Andersherum gaebe es am Ende jedes Wechsels ein
+# kurzes Fenster, in dem genau das zutraefe — das Panel zeigte dann fuer einen
+# Wimpernschlag "wartet auf den Updater", obwohl der Wechsel gerade fertig ist.
+_release() { rm -f "$REQ"; rm -f "$LOCK" "$CANCEL"; }
 
 fail() {
     FAILED_REPORTED=1

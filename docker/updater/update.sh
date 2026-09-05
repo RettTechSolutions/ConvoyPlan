@@ -6,6 +6,11 @@ REPO_URL="https://github.com/RettTechSolutions/ConvoyPlan.git"
 GITHUB_REPO="${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}"
 INTERVAL="${UPDATE_INTERVAL:-300}"
 TRIGGER_POLL=10   # check trigger file every 10s so the UI reacts quickly
+# Trigger-Datei des manuellen Updates. Ueberschreibbar fuer Tests, der
+# Betriebs-Default bleibt unveraendert — dasselbe Muster wie
+# SWITCH_REGION_SCRIPT in region-hook.sh und REGION_SOURCE_SCRIPT im
+# GraphHopper-Entrypoint.
+TRIGGER_FILE="${TRIGGER_FILE:-/update_status/trigger}"
 CHANNEL_FILE=/update_status/channel   # written by the backend: "stable" | "beta" | "nightly"
 MODE_FILE=/update_status/mode         # written by the backend: "auto" | "notify"
 LAST_NOTIFIED_FILE=/update_status/last_notified
@@ -177,14 +182,29 @@ printf '{"deployed_sha":"%s","deployed_at":"%s"}\n' \
 
 log "Updater started. Polling every ${INTERVAL}s, trigger check every ${TRIGGER_POLL}s."
 
-# Helper: sleep in short chunks, break early if trigger appears
+# Helper: sleep in short chunks, break early if trigger or region request appears
 wait_or_trigger() {
     local slept=0
     while [ "${slept}" -lt "${INTERVAL}" ]; do
         sleep "${TRIGGER_POLL}"
         slept=$((slept + TRIGGER_POLL))
-        if [ -f /update_status/trigger ]; then
+        if [ -f "${TRIGGER_FILE}" ]; then
             return 0  # trigger detected
+        fi
+        # Auch auf eine Regionsanforderung frueh aufwachen, nicht nur auf den
+        # Update-Trigger: Sonst schlaefe der Updater nach einem Ziel-Check bis
+        # zu INTERVAL (Standard 300 s) weiter, waehrend im Panel ein gerade
+        # angestossener Wechsel minutenlang unbearbeitet daliegt.
+        #
+        # ABER mit eigenem Rueckgabewert, NICHT mit 0: Die Aufrufer behandeln 0
+        # als "manueller Update-Trigger" und leeren daraufhin DEPLOYED, was ein
+        # erneutes Deployment erzwingt — bei tag-basierten Kanaelen sogar ein
+        # bewusstes Downgrade (siehe Kommentar beim Downgrade-Guard). Ein
+        # Regionswechsel darf das nicht ausloesen. 2 faellt bei allen Aufrufern
+        # durch `&&` hindurch auf das direkt folgende `continue`, die Schleife
+        # dreht sich also sofort weiter und greift die Anforderung auf.
+        if [ -f "${REGION_REQUEST_FILE}" ]; then
+            return 2  # region switch requested
         fi
     done
     return 1  # no trigger, interval elapsed
@@ -192,9 +212,9 @@ wait_or_trigger() {
 
 while true; do
   # Check trigger first (may have been set while we were working)
-  if [ -f /update_status/trigger ]; then
+  if [ -f "${TRIGGER_FILE}" ]; then
     log "Trigger erkannt — erzwinge Update"
-    rm -f /update_status/trigger
+    rm -f "${TRIGGER_FILE}"
     DEPLOYED=""
   fi
 

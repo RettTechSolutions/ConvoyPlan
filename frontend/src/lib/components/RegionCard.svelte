@@ -91,14 +91,27 @@
     // 'importing' tauchen sie wieder auf. Fuer den Operator sieht das aus, als
     // sei der Wechsel abgestuerzt. Bei grossen Kombinationen dauert die Phase
     // Minuten.
+    // 'queued' MUSS hier stehen: Zwischen dem Klick und dem Moment, in dem der
+    // Updater die Anforderung aufgreift, liegt sein Poll-Intervall. Fehlt die
+    // Phase, ist `busy` in dieser Zeit false — und weil `showSwitchPanel` daran
+    // haengt, verschwinden Phasenkarte UND Terminal direkt nach dem Klick.
+    // Genau das war der Befund: Der Operator loest den Wechsel aus und sieht
+    // nicht, dass einer laeuft.
     const ACTIVE_PHASES: RegionPhase[] = [
-        'checking', 'downloading', 'merging', 'importing', 'switching', 'cleaning',
+        'queued', 'checking', 'downloading', 'merging', 'importing', 'switching', 'cleaning',
     ];
     // 'merging' bewusst NICHT abbrechbar: switch-region.sh prueft region.cancel
     // erst nach dem Merge wieder, ein Knopf waere hier ohne Wirkung.
-    const CANCELLABLE_PHASES: RegionPhase[] = ['checking', 'downloading', 'importing'];
+    // 'queued' ist abbrechbar, und zwar gefahrlos: Der Abbruch legt nur
+    // region.cancel ab. Greift der Updater die Anforderung danach auf, nimmt er
+    // das Lock, sieht die Marke und bricht ab, bevor irgendetwas geladen wird —
+    // sein Aufraeumen entfernt Anforderung, Lock und Marke gemeinsam. Das
+    // Backend loescht die Anforderung bewusst NICHT selbst: Es koennte sie
+    // genau dann wegziehen, wenn der Updater sie schon gelesen hat.
+    const CANCELLABLE_PHASES: RegionPhase[] = ['queued', 'checking', 'downloading', 'importing'];
     const PHASE_LABELS: Record<RegionPhase, string> = {
         idle: 'Bereit',
+        queued: 'Angefordert — wartet auf den Updater',
         checking: 'Phase 1/5 — Prüfe Verfügbarkeit und Plattenplatz',
         downloading: 'Phase 2/5 — Lade Extract herunter',
         // Nur bei kombinierten Regionen (mehr als ein Bestandteil) — daher

@@ -21,6 +21,19 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Nach dem Auslösen eines Regionswechsels sah man nicht, dass einer läuft.** Wer im Admin-Panel auf „Wechseln" klickte, bekam anschließend gar keine Rückmeldung — keine Phasenanzeige, kein Live-Log. Hatte zuvor schon einmal ein Wechsel stattgefunden, war es schlimmer als nichts: Die Karte zeigte dessen altes „Abgeschlossen" über einem gerade erst angestoßenen Wechsel.
+
+  Ursache waren zwei Dinge, die zusammenwirkten. Der Fortschritt kommt aus der Statusdatei, die der **Updater** schreibt — und die entsteht erst, wenn er die Anforderung aufgreift. Bis dahin meldete der Endpunkt `idle`, woraufhin das Panel Phasenkarte und Terminal ausblendete. Und dieses „bis dahin" konnte lange dauern: Der Updater wachte zwischen zwei Zyklen zwar alle 10 Sekunden für den manuellen Update-Trigger auf, für eine Regionsanforderung aber nicht — sie lag deshalb bis zu `UPDATE_INTERVAL` (Standard **5 Minuten**) unbearbeitet im Volume.
+
+  Beides ist behoben. Das Backend leitet den Wartezustand jetzt aus der Anforderung selbst ab und meldet die Phase **„Angefordert — wartet auf den Updater"**, sobald die Anforderung geschrieben ist; die Anzeige beginnt also mit dem Klick statt Minuten später. Der Updater wacht für eine Regionsanforderung genauso schnell auf wie für den Update-Trigger. Der Wechsel ist auch in diesem Zustand schon abbrechbar.
+
+### Changed
+
+- **Die Shell-Testsuiten laufen jetzt in CI.** Die Prüfungen für `switch-region.sh`, `merge-extracts.sh`, den GraphHopper-Entrypoint und die Updater-Schleife existierten zwar, wurden aber von keinem automatischen Lauf gestartet — ausgeführt hat sie, wer daran dachte. Gerade diese Suiten haben die schwerwiegendsten Fehler des Regionswechsels gefunden; ein Test, den niemand startet, altert still.
+
+
 ## [2026.5.0] – 2026-09-05
 
 ### Added
