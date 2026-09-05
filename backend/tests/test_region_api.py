@@ -73,7 +73,7 @@ async def test_preview_returns_verdict_and_numbers(monkeypatch):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post(
             "/api/admin/region/preview",
-            json={"url": URL},
+            json={"urls": [URL]},
             headers={"Authorization": "Bearer x"},
         )
     assert resp.status_code == 200
@@ -94,7 +94,7 @@ async def test_preview_rejects_foreign_host():
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post(
             "/api/admin/region/preview",
-            json={"url": "https://evil.example/x-latest.osm.pbf"},
+            json={"urls": ["https://evil.example/x-latest.osm.pbf"]},
             headers={"Authorization": "Bearer x"},
         )
     assert resp.status_code == 400
@@ -104,7 +104,7 @@ async def test_preview_rejects_foreign_host():
 async def test_preview_requires_superadmin():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.post("/api/admin/region/preview", json={"url": URL})
+        resp = await client.post("/api/admin/region/preview", json={"urls": [URL]})
     assert resp.status_code == 401
 
 
@@ -133,7 +133,7 @@ async def test_preview_credits_reclaimable_heap_of_running_graphhopper(monkeypat
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post(
             "/api/admin/region/preview",
-            json={"url": URL},
+            json={"urls": [URL]},
             headers={"Authorization": "Bearer x"},
         )
     assert resp.status_code == 200
@@ -166,7 +166,7 @@ async def test_preview_disk_shortage_overrides_ok_ram(monkeypatch):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post(
             "/api/admin/region/preview",
-            json={"url": URL},
+            json={"urls": [URL]},
             headers={"Authorization": "Bearer x"},
         )
     assert resp.status_code == 200
@@ -193,7 +193,7 @@ async def test_preview_returns_503_when_geofabrik_unreachable(monkeypatch):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post(
             "/api/admin/region/preview",
-            json={"url": URL},
+            json={"urls": [URL]},
             headers={"Authorization": "Bearer x"},
         )
     assert resp.status_code == 503
@@ -233,7 +233,7 @@ async def test_switch_returns_202_and_records_audit(monkeypatch):
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
                 "/api/admin/region",
-                json={"url": URL},
+                json={"urls": [URL]},
                 headers={"Authorization": "Bearer x"},
             )
     assert resp.status_code == 202
@@ -258,7 +258,7 @@ async def test_switch_conflicts_with_running_update(monkeypatch):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post(
             "/api/admin/region",
-            json={"url": URL},
+            json={"urls": [URL]},
             headers={"Authorization": "Bearer x"},
         )
     assert resp.status_code == 409
@@ -274,7 +274,7 @@ async def test_switch_conflicts_with_running_region_switch(monkeypatch):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.post(
             "/api/admin/region",
-            json={"url": URL},
+            json={"urls": [URL]},
             headers={"Authorization": "Bearer x"},
         )
     assert resp.status_code == 409
@@ -284,7 +284,7 @@ async def test_switch_conflicts_with_running_region_switch(monkeypatch):
 async def test_switch_requires_superadmin():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.post("/api/admin/region", json={"url": URL})
+        resp = await client.post("/api/admin/region", json={"urls": [URL]})
     assert resp.status_code == 401
 
 
@@ -540,7 +540,7 @@ async def test_switch_returns_409_when_write_request_races(monkeypatch):
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
                 "/api/admin/region",
-                json={"url": URL},
+                json={"urls": [URL]},
                 headers={"Authorization": "Bearer x"},
             )
     assert resp.status_code == 409
@@ -561,7 +561,7 @@ async def test_switch_records_audit_on_invalid_url(monkeypatch):
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
                 "/api/admin/region",
-                json={"url": "https://evil.example/x-latest.osm.pbf"},
+                json={"urls": ["https://evil.example/x-latest.osm.pbf"]},
                 headers={"Authorization": "Bearer x"},
             )
     assert resp.status_code == 400
@@ -586,7 +586,7 @@ async def test_switch_records_audit_on_geofabrik_unreachable(monkeypatch):
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
                 "/api/admin/region",
-                json={"url": URL},
+                json={"urls": [URL]},
                 headers={"Authorization": "Bearer x"},
             )
     assert resp.status_code == 503
@@ -610,7 +610,7 @@ async def test_switch_records_audit_on_conflict(monkeypatch):
         async with AsyncClient(transport=transport, base_url="http://test") as client:
             resp = await client.post(
                 "/api/admin/region",
-                json={"url": URL},
+                json={"urls": [URL]},
                 headers={"Authorization": "Bearer x"},
             )
     assert resp.status_code == 409
@@ -798,3 +798,107 @@ async def test_region_log_requires_token():
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.get("/api/admin/region/log")
     assert resp.status_code == 422
+
+
+# ── Zusammengesetzte Regionen (mehrere Extracts zu einer Karte) ─────────────
+
+_DE = "https://download.geofabrik.de/europe/germany-latest.osm.pbf"
+_PL = "https://download.geofabrik.de/europe/poland-latest.osm.pbf"
+_BY = "https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf"
+
+
+def _async_size_per_url(mapping):
+    """head_size_bytes-Ersatz, der je URL eine eigene Groesse liefert."""
+    async def _fake(url):
+        return mapping[url]
+    return _fake
+
+
+@pytest.mark.asyncio
+async def test_preview_summiert_mehrere_regionen(monkeypatch):
+    """Die Vorab-Rechnung muss ueber ALLE Bestandteile summieren — sonst
+    meldet das Panel fuer eine Kombination die Groesse nur einer Region."""
+    monkeypatch.setattr(geofabrik, "head_size_bytes",
+                        _async_size_per_url({_DE: 4 * GB, _PL: 2 * GB}))
+    test_app = _make_app_with_superadmin()
+    async with AsyncClient(transport=ASGITransport(app=test_app),
+                           base_url="http://test") as client:
+        resp = await client.post("/api/admin/region/preview",
+                                 json={"urls": [_DE, _PL]},
+                                 headers={"Authorization": "Bearer x"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["extract_bytes"] == 6 * GB
+    assert body["composed"] is True
+    assert body["sources"] == ["europe/germany", "europe/poland"]
+
+
+@pytest.mark.asyncio
+async def test_preview_meldet_ueberlappende_auswahl(monkeypatch):
+    """Deutschland UND Bayern ist erlaubt (osmium dedupliziert), aber
+    verschwenderisch — das Panel soll darauf hinweisen koennen."""
+    monkeypatch.setattr(geofabrik, "head_size_bytes",
+                        _async_size_per_url({_DE: 4 * GB, _BY: 1 * GB}))
+    test_app = _make_app_with_superadmin()
+    async with AsyncClient(transport=ASGITransport(app=test_app),
+                           base_url="http://test") as client:
+        resp = await client.post("/api/admin/region/preview",
+                                 json={"urls": [_DE, _BY]},
+                                 headers={"Authorization": "Bearer x"})
+    assert resp.status_code == 200
+    assert resp.json()["overlapping"] == [["europe/germany", "europe/germany/bayern"]]
+
+
+@pytest.mark.asyncio
+async def test_preview_einzelne_region_bleibt_unveraendert(monkeypatch):
+    """Genau eine Region: kein composed, keine Quellenliste, und die
+    Plattenrechnung bleibt die bisherige — Regressionsschutz."""
+    monkeypatch.setattr(geofabrik, "head_size_bytes", _async_size(int(5.5 * GB)))
+    test_app = _make_app_with_superadmin()
+    async with AsyncClient(transport=ASGITransport(app=test_app),
+                           base_url="http://test") as client:
+        resp = await client.post("/api/admin/region/preview",
+                                 json={"urls": [URL]},
+                                 headers={"Authorization": "Bearer x"})
+    body = resp.json()
+    assert body["composed"] is False
+    assert body["disk_needed_bytes"] == body["extract_bytes"] + body["graph_bytes"]
+
+
+@pytest.mark.asyncio
+async def test_preview_lehnt_leere_auswahl_ab():
+    test_app = _make_app_with_superadmin()
+    async with AsyncClient(transport=ASGITransport(app=test_app),
+                           base_url="http://test") as client:
+        resp = await client.post("/api/admin/region/preview", json={"urls": []},
+                                 headers={"Authorization": "Bearer x"})
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_switch_schreibt_sortierte_quellenliste(monkeypatch):
+    """Der Updater bekommt die Bestandteile sortiert und den Merged-Dateinamen.
+    Die Sortierung ist entscheidend: Ohne sie ergaeben dieselben Regionen in
+    anderer Reihenfolge einen anderen Hash und damit einen ueberfluessigen,
+    stundenlangen Graph-Neubau."""
+    monkeypatch.setattr(geofabrik, "head_size_bytes",
+                        _async_size_per_url({_DE: 4 * GB, _PL: 2 * GB}))
+    geschrieben = {}
+
+    def _fake_write(url, filename, java_opts, actor_email, sources=""):
+        geschrieben.update(url=url, filename=filename, sources=sources)
+
+    monkeypatch.setattr(region_switch, "write_request", _fake_write)
+    monkeypatch.setattr(region_switch, "is_busy", lambda: False)
+    monkeypatch.setattr(os.path, "exists", lambda p: False)
+
+    test_app = _make_app_with_superadmin_and_db()
+    async with AsyncClient(transport=ASGITransport(app=test_app),
+                           base_url="http://test") as client:
+        # Absichtlich unsortiert uebergeben — PL vor DE.
+        resp = await client.post("/api/admin/region", json={"urls": [_PL, _DE]},
+                                 headers={"Authorization": "Bearer x"})
+    assert resp.status_code == 202
+    assert geschrieben["sources"] == "europe/germany|europe/poland"
+    assert geschrieben["filename"].startswith("merged-")
+    assert geschrieben["filename"].endswith(".osm.pbf")

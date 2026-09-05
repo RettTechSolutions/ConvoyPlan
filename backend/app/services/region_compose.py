@@ -46,3 +46,21 @@ def overlapping(paths: list[str]) -> list[tuple[str, str]]:
             if a != b and b.startswith(a + "/"):
                 out.append((a, b))
     return out
+
+
+def path_from_url(url: str) -> str:
+    """Geofabrik-URL -> Regionspfad ohne Schema und Suffix.
+
+    `https://download.geofabrik.de/europe/germany-latest.osm.pbf`
+      -> `europe/germany`
+
+    Die Umkehrung von dem, was das Panel schickt: Es kennt Pfade (aus dem
+    Index), die API bekommt URLs. Fuer den Hash und fuer OSM_SOURCES brauchen
+    wir wieder die Pfade — kuerzer, stabiler und unabhaengig davon, ob die URL
+    spaeter einmal anders zusammengesetzt wird.
+    """
+    path = url.split("://", 1)[-1]
+    path = path.split("/", 1)[-1] if "/" in path else path
+    if path.endswith("-latest.osm.pbf"):
+        path = path[: -len("-latest.osm.pbf")]
+    return path.lstrip("/")

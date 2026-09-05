@@ -28,7 +28,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import decode_stream_token, get_db, require_superadmin
 from app.config import settings
 from app.models.user import User
-from app.services import audit, geofabrik, host_metrics, region_estimate, region_switch
+from app.services import (
+    audit, geofabrik, host_metrics, region_compose, region_estimate, region_switch,
+)
 
 router = APIRouter(prefix="/admin/region", tags=["admin"])
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
@@ -49,8 +51,14 @@ OSM_PATH = "/data/osm"
 GRAPH_PATH = "/data/graph"
 
 
-class RegionUrl(BaseModel):
-    url: str
+class RegionUrls(BaseModel):
+    """Eine oder mehrere Geofabrik-URLs.
+
+    Mehrere Eintraege werden vom Updater zu EINER Karte zusammengefuehrt
+    (siehe 2026-09-04-mehrere-regionen-design.md). Genau ein Eintrag ist der
+    bisherige Pfad und verhaelt sich unveraendert.
+    """
+    urls: list[str]
 
 
 def _reclaimable_heap_bytes() -> int:
@@ -93,7 +101,7 @@ def _reclaimable_heap_bytes() -> int:
 
 
 @router.post("/preview")
-async def preview(body: RegionUrl, _: User = Depends(require_superadmin)):
+async def preview(body: RegionUrls, _: User = Depends(require_superadmin)):
     """Schaetzt Ressourcenbedarf und -verfuegbarkeit fuer einen Regionswechsel.
 
     Reine Lesefunktion: validiert nur die URL, fragt per HTTP-HEAD die
@@ -107,8 +115,13 @@ async def preview(body: RegionUrl, _: User = Depends(require_superadmin)):
         # validierte — zwei parallele URL-Werte, von denen nur der zweite
         # tatsaechlich verwendet wurde. Jetzt wird ausschliesslich das rekon-
         # struierte Ergebnis von validate_region_url() weiterverwendet.
-        url = geofabrik.validate_region_url(body.url)
-        extract = await geofabrik.head_size_bytes(url)
+        if not body.urls:
+            raise ValueError("Keine Region ausgewählt.")
+        # Jeder Bestandteil einzeln durch die Allowlist — die Sicherheitsgrenze
+        # gilt pro URL, nicht fuer die Liste als Ganzes.
+        urls = [geofabrik.validate_region_url(u) for u in body.urls]
+        sizes = [await geofabrik.head_size_bytes(u) for u in urls]
+        extract = region_estimate.sum_extract_bytes(sizes)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     except ConnectionError as exc:
@@ -136,7 +149,16 @@ async def preview(body: RegionUrl, _: User = Depends(require_superadmin)):
     disk_free = sum(d.free_bytes for d in disks) if disks else 0
     # Waehrend des Wechsels liegen altes und neues Extract plus beide Graphen
     # gleichzeitig auf der Platte — deshalb die doppelte Rechnung.
-    disk_needed = extract + graph
+    #
+    # Bei einer ZUSAMMENGESETZTEN Region kommen die N Quelldateien und die
+    # daraus verschmolzene Datei hinzu; dafuer gibt es eine eigene, groessere
+    # Formel. Fuer genau eine Region bleibt es bei der bisherigen Rechnung —
+    # die neue Formel faellt dort hoeher aus und wuerde bestehende Urteile
+    # verschieben, ohne dass sich am Ablauf etwas geaendert haette.
+    if len(sizes) > 1:
+        disk_needed = region_estimate.estimate_disk_during_switch(sizes)
+    else:
+        disk_needed = extract + graph
 
     ram_verdict = region_estimate.verdict(ram_needed, ram_effective_available)
     disk_verdict = region_estimate.verdict(disk_needed, disk_free)
@@ -153,7 +175,11 @@ async def preview(body: RegionUrl, _: User = Depends(require_superadmin)):
         f"GraphHopper waehrend des Imports (effektiv {gb(ram_effective_available)}). "
         f"Auf der Platte werden ~{gb(disk_needed)} benoetigt, frei sind {gb(disk_free)}."
     )
+    paths = [region_compose.path_from_url(u) for u in urls]
     return {
+        "sources": paths,
+        "composed": len(paths) > 1,
+        "overlapping": region_compose.overlapping(paths),
         "extract_bytes": extract,
         "graph_bytes": graph,
         "ram_needed_bytes": ram_needed,
@@ -219,7 +245,7 @@ async def _audit_switch_rejected(
 
 @router.post("", status_code=202)
 async def switch_region(
-    body: RegionUrl,
+    body: RegionUrls,
     request: Request,
     user: User = Depends(require_superadmin),
     db: AsyncSession = Depends(get_db),
@@ -253,15 +279,20 @@ async def switch_region(
     zirkulaer sein, aber unnoetig eine Abhaengigkeit zwischen zwei sonst
     unabhaengigen Routern erzeugen.
     """
+    roh = ", ".join(body.urls) if body.urls else "(leer)"
     try:
-        # Siehe Kommentar in preview(): genau eine validierte URL im Umlauf.
-        url = geofabrik.validate_region_url(body.url)
-        extract = await geofabrik.head_size_bytes(url)
+        if not body.urls:
+            raise ValueError("Keine Region ausgewählt.")
+        # Siehe Kommentar in preview(): jeder Bestandteil einzeln durch die
+        # Allowlist, nur die rekonstruierten URLs werden weiterverwendet.
+        urls = [geofabrik.validate_region_url(u) for u in body.urls]
+        sizes = [await geofabrik.head_size_bytes(u) for u in urls]
+        extract = region_estimate.sum_extract_bytes(sizes)
     except ValueError as exc:
-        await _audit_switch_rejected(db, request, user, body.url, str(exc))
+        await _audit_switch_rejected(db, request, user, roh, str(exc))
         raise HTTPException(400, str(exc)) from exc
     except ConnectionError as exc:
-        await _audit_switch_rejected(db, request, user, body.url, str(exc))
+        await _audit_switch_rejected(db, request, user, roh, str(exc))
         raise HTTPException(503, str(exc)) from exc
 
     ram = region_estimate.estimate_ram_bytes(extract)
@@ -269,7 +300,19 @@ async def switch_region(
     # Groessenordnung der bestehenden JAVA_OPTS-Defaults (siehe config.py).
     heap_gb = max(2, round(ram / (1024 ** 3)))
     java_opts = f"-Xmx{heap_gb}g -Xms1g -XX:+UseG1GC"
-    filename = url.rsplit("/", 1)[-1]
+
+    # Bei genau einer Region bleibt alles wie bisher: der Dateiname kommt aus
+    # der URL, OSM_SOURCES bleibt leer. Erst mehrere Bestandteile erzeugen eine
+    # zusammengefuehrte Datei, deren Name den Hash der sortierten Liste traegt —
+    # daran erkennt entrypoint.sh spaeter einen Wechsel der Zusammensetzung.
+    paths = [region_compose.path_from_url(u) for u in urls]
+    if len(urls) > 1:
+        filename = region_compose.merged_filename(paths)
+        sources = region_compose.sources_value(paths)
+    else:
+        filename = urls[0].rsplit("/", 1)[-1]
+        sources = ""
+    url = urls[0]
 
     # Konfliktprüfung unmittelbar vor dem Schreiben (siehe Docstring oben) —
     # nur ein Fail-Fast-Pfad, die verbindliche Sperre ist die exklusive
@@ -283,7 +326,7 @@ async def switch_region(
         raise HTTPException(409, "Es läuft bereits ein Update oder Regionswechsel.")
 
     try:
-        region_switch.write_request(url, filename, java_opts, user.email)
+        region_switch.write_request(url, filename, java_opts, user.email, sources=sources)
     except FileExistsError as exc:
         # Der eigentliche TOCTOU-Schutz: der Vorab-Check oben kann von einer
         # zweiten, fast gleichzeitigen Anfrage im verbleibenden Fenster noch
