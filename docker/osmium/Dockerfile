@@ -17,7 +17,13 @@
 FROM debian:trixie-slim
 
 # osmium-tool 1.18 aus trixie (statt der 2017er-Version im Fremdimage).
+#
+# `upgrade` vor `install`, analog zum `apk upgrade` im Updater-Image: Das
+# Basisimage hinkt den Sicherheitsaktualisierungen regelmaessig hinterher —
+# beim ersten Bau waren es zwei behebbare HIGH-Befunde in openssl, die der
+# Trivy-Scan zu Recht abgewiesen hat.
 RUN apt-get update \
+ && apt-get upgrade -y \
  && apt-get install -y --no-install-recommends osmium-tool \
  && rm -rf /var/lib/apt/lists/*
 
