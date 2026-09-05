@@ -21,6 +21,8 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+## [2026.5.1] – 2026-09-05
+
 ### Fixed
 
 - **Nach dem Auslösen eines Regionswechsels sah man nicht, dass einer läuft.** Wer im Admin-Panel auf „Wechseln" klickte, bekam anschließend gar keine Rückmeldung — keine Phasenanzeige, kein Live-Log. Hatte zuvor schon einmal ein Wechsel stattgefunden, war es schlimmer als nichts: Die Karte zeigte dessen altes „Abgeschlossen" über einem gerade erst angestoßenen Wechsel.
@@ -482,7 +484,8 @@ Das ruft den Update-Modus auf: räumt verwaiste Updater-Container auf, zieht all
 - Capacitor configuration for Android/iOS native wrapper.
 - Docker Compose setup with GraphHopper OSM pre-download.
 
-[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.5.0...HEAD
+[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.5.1...HEAD
+[2026.5.1]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.5.0...v2026.5.1
 [2026.5.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.4.1...v2026.5.0
 [2026.4.1]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.4.0...v2026.4.1
 [2026.4.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.3.0...v2026.4.0
