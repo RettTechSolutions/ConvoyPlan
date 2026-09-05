@@ -21,6 +21,8 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+## [2026.5.2] – 2026-09-05
+
 ### Fixed
 
 - **Der Wechsel auf jede Region über 2 GB scheiterte an „Extract nicht abrufbar" — obwohl die Datei einwandfrei erreichbar war.** Betroffen war unter anderem **DACH**, also die Standardregion der Installation. Der Updater fragt die Größe des Extracts per HTTP-HEAD ab und wertete die Antwort mit `awk 'printf "%d"'` aus. Sein Image ist Alpine, also busybox-awk — und dessen `printf "%d"` castet den intern als `double` gehaltenen Wert auf `int`, also **32 Bit** (`editors/awk.c`, `awk_printf`: `xasprintf(s, (int)d)`, mit TODO an genau dieser Stelle). DACH ist 6.215.032.253 Bytes groß und liegt damit über 2³¹. Der Cast ist in C undefiniert: Auf x86-64 liefert er −2.147.483.648, womit die Prüfung „Größe > 0" fehlschlug; auf ARM sättigt er auf 2.147.483.647, womit der Wechsel mit einer um zwei Drittel zu kleinen Größe weitergelaufen und Stunden später auf der vollen Platte gelandet wäre.
@@ -493,7 +495,8 @@ Das ruft den Update-Modus auf: räumt verwaiste Updater-Container auf, zieht all
 - Capacitor configuration for Android/iOS native wrapper.
 - Docker Compose setup with GraphHopper OSM pre-download.
 
-[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.5.1...HEAD
+[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.5.2...HEAD
+[2026.5.2]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.5.1...v2026.5.2
 [2026.5.1]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.5.0...v2026.5.1
 [2026.5.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.4.1...v2026.5.0
 [2026.4.1]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.4.0...v2026.4.1
