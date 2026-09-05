@@ -685,6 +685,9 @@ URL="$(_json_str url "$REQ")"
 FILENAME="$(_json_str filename "$REQ")"
 JAVA_OPTS="$(_json_str java_opts "$REQ")"
 REQUESTED_BY="$(_json_str requested_by "$REQ")"
+# Leer bei einer Einzelregion; sonst die sortierte, |-getrennte Liste der
+# Bestandteile, die zu EINER Karte verschmolzen werden.
+SOURCES="$(_json_str sources "$REQ")"
 
 log "Regionswechsel angefordert von ${REQUESTED_BY:-unbekannt}: ${URL:-<leer>}"
 
@@ -746,30 +749,74 @@ done
 abort_if_cancelled
 
 # ── Phase 2: Laden ──────────────────────────────────────────────────────────
-phase "downloading" "Phase 2/5: Lade ${FILENAME}…"
-PART="$OSM_DIR/$FILENAME.part"
-rm -f "$PART"
-if ! curl -fsSL --retry 3 --retry-delay 10 -o "$PART" "$URL"; then
-    rm -f "$PART"
-    fail "Download fehlgeschlagen: $URL"
-fi
-if [ -z "${SKIP_CHECKSUM:-}" ]; then
-    if command -v md5sum >/dev/null 2>&1; then
-        if ! curl -fsSL --max-time 60 -o "$OSM_DIR/$FILENAME.md5" "$URL.md5"; then
-            rm -f "$PART"
-            fail "Prüfsumme nicht abrufbar: $URL.md5"
-        fi
-        if ! ( cd "$OSM_DIR" && sed "s|$FILENAME|$FILENAME.part|" "$FILENAME.md5" | md5sum -c - ); then
-            rm -f "$PART" "$OSM_DIR/$FILENAME.md5"
-            fail "Prüfsumme stimmt nicht — Datei verworfen."
-        fi
-        rm -f "$OSM_DIR/$FILENAME.md5"
-    else
-        log "WARNUNG: md5sum nicht verfügbar — Prüfsumme übersprungen."
+# Laedt EINE Datei mit Pruefsumme. Bei einer zusammengesetzten Region wird die
+# Funktion je Bestandteil aufgerufen; scheitert einer, scheitert der ganze
+# Wechsel. Eine Karte, der ein Land fehlt, waere schlimmer als kein Wechsel:
+# sie liefert stillschweigend falsche Routen, statt sichtbar zu fehlen.
+_download_one() {
+    _dl_url="$1"; _dl_name="$2"
+    _dl_part="$OSM_DIR/$_dl_name.part"
+    rm -f "$_dl_part"
+    if ! curl -fsSL --retry 3 --retry-delay 10 -o "$_dl_part" "$_dl_url"; then
+        rm -f "$_dl_part"
+        fail "Download fehlgeschlagen: $_dl_url"
     fi
+    if [ -z "${SKIP_CHECKSUM:-}" ]; then
+        if command -v md5sum >/dev/null 2>&1; then
+            if ! curl -fsSL --max-time 60 -o "$OSM_DIR/$_dl_name.md5" "$_dl_url.md5"; then
+                rm -f "$_dl_part"
+                fail "Prüfsumme nicht abrufbar: $_dl_url.md5"
+            fi
+            if ! ( cd "$OSM_DIR" && sed "s|$_dl_name|$_dl_name.part|" "$_dl_name.md5" | md5sum -c - ); then
+                rm -f "$_dl_part" "$OSM_DIR/$_dl_name.md5"
+                fail "Prüfsumme stimmt nicht — Datei verworfen: $_dl_name"
+            fi
+            rm -f "$OSM_DIR/$_dl_name.md5"
+        else
+            log "WARNUNG: md5sum nicht verfügbar — Prüfsumme übersprungen."
+        fi
+    fi
+    mv -f "$_dl_part" "$OSM_DIR/$_dl_name" || fail "Extract konnte nicht abgelegt werden: $_dl_name"
+}
+
+SOURCE_FILES=""
+if [ -n "$SOURCES" ]; then
+    _n=$(echo "$SOURCES" | tr '|' '\n' | wc -l | tr -d ' ')
+    _i=0
+    _old_ifs="$IFS"; IFS='|'
+    for _src in $SOURCES; do
+        IFS="$_old_ifs"
+        _i=$((_i + 1))
+        _src_name="$(basename "$_src")-latest.osm.pbf"
+        _src_url="https://download.geofabrik.de/${_src}-latest.osm.pbf"
+        # Allowlist erneut pruefen — dem Backend wird nicht vertraut.
+        case "$_src_url" in
+            https://download.geofabrik.de/*-latest.osm.pbf) ;;
+            *) fail "Bestandteil nicht zugelassen: $_src" ;;
+        esac
+        phase "downloading" "Phase 2/6: Lade ${_i}/${_n} — ${_src_name}…"
+        _download_one "$_src_url" "$_src_name"
+        SOURCE_FILES="$SOURCE_FILES $OSM_DIR/$_src_name"
+        abort_if_cancelled
+        IFS='|'
+    done
+    IFS="$_old_ifs"
+else
+    phase "downloading" "Phase 2/5: Lade ${FILENAME}…"
+    _download_one "$URL" "$FILENAME"
 fi
-mv -f "$PART" "$OSM_DIR/$FILENAME" || fail "Extract konnte nicht abgelegt werden."
 abort_if_cancelled
+
+# ── Phase 3: Zusammenfuehren (nur bei mehreren Bestandteilen) ───────────────
+if [ -n "$SOURCES" ]; then
+    phase "merging" "Phase 3/6: Führe ${_n} Extracts zu einer Karte zusammen…"
+    _resolve_volumes
+    if ! OSM_VOLUME="$OSM_VOLUME" /merge-extracts.sh "$OSM_DIR/$FILENAME" $SOURCE_FILES; then
+        rm -f $SOURCE_FILES "$OSM_DIR/$FILENAME"
+        fail "Zusammenführen fehlgeschlagen — die alte Region läuft unverändert weiter."
+    fi
+    abort_if_cancelled
+fi
 
 # ── Phase 3: Importieren ────────────────────────────────────────────────────
 phase "importing" "Phase 3/5: Baue Routing-Graph (läuft im Hintergrund, Routing bleibt aktiv)…"
