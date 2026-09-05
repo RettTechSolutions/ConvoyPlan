@@ -156,6 +156,11 @@ jobs:
             context: ./graphhopper
           - name: updater
             context: ./docker/updater
+          # Laeuft nicht im Stack, wird aber mit ausgeliefert und bekommt beim
+          # Regionswechsel Schreibzugriff auf die Kartendaten — also gehoert es
+          # in denselben Scan wie die uebrigen vier.
+          - name: osmium
+            context: ./docker/osmium
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
