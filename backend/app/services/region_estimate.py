@@ -81,3 +81,46 @@ def verdict(needed: int, available: int) -> str:
     if needed > available * _TIGHT_THRESHOLD:
         return "knapp"
     return "ok"
+
+
+# ── Zusammengesetzte Regionen ───────────────────────────────────────────────
+# Mehrere Geofabrik-Extracts werden zu einer Karte verschmolzen. Die Funktionen
+# oben rechnen mit EINER Groesse; die beiden hier fassen die Bestandteile
+# zusammen, bevor sie dort hineingehen.
+
+_STAGING_GRAPH_FACTOR = 1.5   # der gebaute Graph im Staging, Erfahrungswert wie oben
+
+
+def sum_extract_bytes(sizes: list[int]) -> int:
+    """Summe der Bestandteile einer zusammengesetzten Region.
+
+    Die Ueberlappung im Grenzstreifen wird bewusst NICHT abgezogen. Der
+    Machbarkeits-Spike mass 0,67 % zwischen Sachsen und Niederschlesien, aber
+    dieser Anteil haengt von Laenge und Zuschnitt der gemeinsamen Grenze ab —
+    zwischen Deutschland und Frankreich faellt er anders aus als zwischen
+    Deutschland und Daenemark. Eine Ueberschaetzung ist hier der sichere
+    Fehler: Sie fuehrt hoechstens dazu, dass das Panel eine Kombination als
+    knapp meldet, die gerade noch gepasst haette.
+    """
+    if not sizes:
+        raise ValueError("Keine Region ausgewählt — es gibt nichts zu schätzen.")
+    return sum(sizes)
+
+
+def estimate_disk_during_switch(sizes: list[int]) -> int:
+    """Spitzenbedarf auf der Platte waehrend eines Wechsels.
+
+    Gleichzeitig liegen dort: die N heruntergeladenen Quelldateien, die daraus
+    zusammengefuehrte Datei (etwa die Summe), der im Staging gebaute Graph
+    (etwa das 1,5-fache) sowie der alte Graph und das alte Extract, die bis
+    nach dem Health-Check aufgehoben werden. Die letzten beiden sind hier
+    unbekannt — als Naeherung wird die Summe noch einmal veranschlagt.
+
+    Ergibt zusammen das 4,5-fache der Quellsumme; fuer Deutschland + Polen +
+    Tschechien (~7 GB) also rund 32 GB.
+    """
+    total = sum_extract_bytes(sizes)
+    merged = total
+    staging_graph = int(total * _STAGING_GRAPH_FACTOR)
+    alter_bestand = total
+    return total + merged + staging_graph + alter_bestand

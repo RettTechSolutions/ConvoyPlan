@@ -146,7 +146,8 @@ sie als verstümmelt und der Wechsel bricht ab.
 
 Während des Wechsels liegen gleichzeitig auf der Platte: N Quelldateien, die
 zusammengeführte Datei, der Staging-Graph, der alte Graph, das alte Extract.
-Für DE+PL+CZ (~7 GB Quellen) grob **40 GB**. Das muss die Vorab-Rechnung
+Das ergibt das **4,5-fache der Quellsumme** — für DE+PL+CZ (~7 GB Quellen)
+also rund **32 GB**. Das muss die Vorab-Rechnung
 ausweisen — nicht im Nachhinein überraschen.
 
 ### Sicherheit unverändert
