@@ -27,6 +27,10 @@ SOURCES=("$@")
 # Image mit osmium-tool. Bewusst ein Image, das das Werkzeug bereits mitbringt,
 # statt zur Laufzeit `apt-get install` auszufuehren: Der Wechsel soll nicht von
 # einem Paket-Spiegel abhaengen, der gerade nicht antwortet.
+# ACHTUNG: ungepinntes Drittanbieter-Image, das mit Schreibzugriff auf das
+# OSM-Volume laeuft. Vor dem Produktivbetrieb auf einen Digest pinnen oder in
+# die eigene GHCR spiegeln — per REGION_MERGE_IMAGE austauschbar, ohne dass
+# hier etwas geaendert werden muss.
 MERGE_IMAGE="${REGION_MERGE_IMAGE:-stefda/osmium-tool:latest}"
 
 # Volume-NAME, nicht Containerpfad: Ein Pfad wie /data/osm waere aus Sicht des
@@ -38,11 +42,13 @@ TMP_NAME=".merge-$$.osm.pbf"
 
 src_args=""
 total_bytes=0
+largest_bytes=0
 for s in "${SOURCES[@]}"; do
     [ -s "$s" ] || { echo "FEHLER: Quelle fehlt oder ist leer: $s" >&2; exit 1; }
     src_args="$src_args /data/osm/$(basename "$s")"
     sz=$(stat -c%s "$s" 2>/dev/null || stat -f%z "$s" 2>/dev/null || echo 0)
     total_bytes=$((total_bytes + sz))
+    [ "$sz" -gt "$largest_bytes" ] && largest_bytes=$sz
 done
 
 echo "Führe ${#SOURCES[@]} Extracts zusammen (${total_bytes} Bytes roh)…"
@@ -58,18 +64,25 @@ fi
 TMP_PATH="$(dirname "$TARGET")/$TMP_NAME"
 merged_bytes=$(stat -c%s "$TMP_PATH" 2>/dev/null || stat -f%z "$TMP_PATH" 2>/dev/null || echo 0)
 
-# Plausibilitaetspruefung: Das Ergebnis muss zwischen 80 % und 105 % der
-# Quellsumme liegen.
+# Plausibilitaetspruefung.
 #
-# Nach unten grosszuegig, weil die Ueberlappung vom Zuschnitt der gemeinsamen
-# Grenze abhaengt — der Spike mass 0,67 % zwischen zwei Nachbarregionen, bei
-# stark verzahnten Gebieten kann es mehr sein. Nach oben eng, weil ein
-# Ergebnis GROESSER als die Summe bedeutet, dass nichts dedupliziert wurde.
+# Untergrenze: die groesste EINZELQUELLE, nicht ein Anteil der Rohsumme.
 #
-# Der Zweck ist der stille Teilmerge: eine Datei, die formal in Ordnung ist,
-# aber nur einen Teil der Daten enthaelt. Sie wuerde importieren, starten und
-# an den fehlenden Stellen einfach keine Route liefern.
-min_bytes=$(( total_bytes * 80 / 100 ))
+# Eine Anteilsgrenze (etwa 80 % der Summe) verwirft legitime Auswahlen: Waehlt
+# jemand Deutschland zusammen mit drei seiner Bundeslaender, dedupliziert
+# osmium korrekt auf etwa die Groesse Deutschlands — rund 70 % der Rohsumme.
+# Der Merge waere richtig, die Pruefung falsch, und zwar erst nachdem alle
+# Gigabyte geladen wurden.
+#
+# Die groesste Einzelquelle ist dagegen eine harte Untergrenze: Das Ergebnis
+# enthaelt jede Quelle vollstaendig, kann also nie kleiner sein als die
+# groesste von ihnen. Faellt es darunter, fehlt nachweislich Inhalt — genau
+# der stille Teilmerge, um den es geht: eine formal gueltige Datei, die
+# importiert, startet und an den fehlenden Stellen keine Route liefert.
+#
+# Obergrenze bleibt bei 105 % der Rohsumme: mehr bedeutet, dass nichts
+# dedupliziert wurde, und dann zerfaellt der Graph an den Grenzen.
+min_bytes="$largest_bytes"
 max_bytes=$(( total_bytes * 105 / 100 ))
 if [ "$merged_bytes" -lt "$min_bytes" ] || [ "$merged_bytes" -gt "$max_bytes" ]; then
     rm -f "$TMP_PATH"

@@ -625,6 +625,14 @@ _write_region_file() {
     local tmp="$OSM_DIR/.region.tmp.$$"
     printf 'OSM_DOWNLOAD_URL=%s\nOSM_FILENAME=%s\nJAVA_OPTS=%s\n' \
         "$URL" "$FILENAME" "$JAVA_OPTS" > "$tmp" || { rm -f "$tmp"; return 1; }
+    # Vierter Schluessel NUR bei einer zusammengesetzten Region. Ohne ihn waere
+    # der gesamte Erstdownload-Schutz in entrypoint.sh toter Code: Auf einem
+    # leeren Volume laedt der Entrypoint sonst nur den ERSTEN Bestandteil und
+    # routet still mit halber Karte. Fehlt der Schluessel, verhaelt sich alles
+    # bitgleich zu einer Einzelregion — das ist der Regressionsschutz.
+    if [ -n "$SOURCES" ]; then
+        printf 'OSM_SOURCES=%s\n' "$SOURCES" >> "$tmp" || { rm -f "$tmp"; return 1; }
+    fi
     chmod 0644 "$tmp" 2>/dev/null || true
     mv -f "$tmp" "$REGION_FILE" || { rm -f "$tmp"; return 1; }
     return 0
@@ -688,6 +696,13 @@ REQUESTED_BY="$(_json_str requested_by "$REQ")"
 # Leer bei einer Einzelregion; sonst die sortierte, |-getrennte Liste der
 # Bestandteile, die zu EINER Karte verschmolzen werden.
 SOURCES="$(_json_str sources "$REQ")"
+# Phasenzahl haengt davon ab, ob zusammengefuehrt wird — sonst saehe der
+# Operator bei einer Kombination zweimal "Phase 3".
+if [ -n "$SOURCES" ]; then
+    _PH_IMPORT="4/6"; _PH_SWITCH="5/6"; _PH_CLEAN="6/6"
+else
+    _PH_IMPORT="3/5"; _PH_SWITCH="4/5"; _PH_CLEAN="5/5"
+fi
 
 log "Regionswechsel angefordert von ${REQUESTED_BY:-unbekannt}: ${URL:-<leer>}"
 
@@ -702,11 +717,33 @@ case "$URL" in
     https://download.geofabrik.de/*-latest.osm.pbf) ;;
     *) fail "URL nicht zugelassen: $URL" ;;
 esac
-if [[ ! "$FILENAME" =~ ^[A-Za-z0-9._-]+-latest\.osm\.pbf$ ]]; then
-    fail "Dateiname nicht zugelassen: $FILENAME"
-fi
-if [ "${URL##*/}" != "$FILENAME" ]; then
-    fail "Dateiname passt nicht zur URL: $FILENAME"
+# Zwei zulaessige Formen: der Geofabrik-Originalname bei einer Einzelregion,
+# und merged-<8 Hex>.osm.pbf bei einer zusammengesetzten. Der Hash kommt aus
+# der sortierten Bestandteilsliste (backend/app/services/region_compose.py);
+# an ihm erkennt entrypoint.sh spaeter einen Wechsel der Zusammensetzung.
+if [ -n "$SOURCES" ]; then
+    if [[ ! "$FILENAME" =~ ^merged-[0-9a-f]{8}\.osm\.pbf$ ]]; then
+        fail "Dateiname einer zusammengesetzten Region nicht zugelassen: $FILENAME"
+    fi
+    # Die Bestandteile selbst pruefen — die abgeleiteten URLs entstehen erst in
+    # Phase 2 aus genau diesen Pfaden, ein `case` auf die fertige URL waere
+    # unerreichbarer toter Code.
+    _old_ifs="$IFS"; IFS='|'
+    for _s in $SOURCES; do
+        IFS="$_old_ifs"
+        if [[ ! "$_s" =~ ^[a-z0-9][a-z0-9./-]*$ ]] || [[ "$_s" == *..* ]]; then
+            fail "Bestandteil nicht zugelassen: $_s"
+        fi
+        IFS='|'
+    done
+    IFS="$_old_ifs"
+else
+    if [[ ! "$FILENAME" =~ ^[A-Za-z0-9._-]+-latest\.osm\.pbf$ ]]; then
+        fail "Dateiname nicht zugelassen: $FILENAME"
+    fi
+    if [ "${URL##*/}" != "$FILENAME" ]; then
+        fail "Dateiname passt nicht zur URL: $FILENAME"
+    fi
 fi
 # JAVA_OPTS landet als Zeile in .region — ein Zeilenumbruch (auch als
 # JSON-Escape \n) könnte dort einen weiteren Schlüssel einschmuggeln.
@@ -732,13 +769,46 @@ if [ -d "$OLD" ] && [ -n "$(ls -A "$OLD" 2>/dev/null)" ]; then
 fi
 
 # ── Phase 1: Prüfen ─────────────────────────────────────────────────────────
-phase "checking" "Phase 1/5: Prüfe Verfügbarkeit und Platz…"
-SIZE="$(curl -sSIL --max-time 60 "$URL" 2>/dev/null | awk 'tolower($1)=="content-length:"{v=$2} END{printf "%d", v+0}')"
-[ "${SIZE:-0}" -gt 0 ] 2>/dev/null || fail "Extract nicht abrufbar: $URL"
-# Grobe Faustregel: neues Extract + neuer Graph, rund das 2,5-fache der
-# Extract-Größe. Beide Volumes liegen in der Regel auf demselben Dateisystem;
-# liegen sie es nicht, wird hier zu Recht jedes einzeln geprüft.
-NEEDED=$(( SIZE * 5 / 2 ))
+if [ -n "$SOURCES" ]; then
+    phase "checking" "Phase 1/6: Prüfe Verfügbarkeit und Platz…"
+else
+    phase "checking" "Phase 1/5: Prüfe Verfügbarkeit und Platz…"
+fi
+
+_head_size() {
+    curl -sSIL --max-time 60 "$1" 2>/dev/null \
+        | awk 'tolower($1)=="content-length:"{v=$2} END{printf "%d", v+0}'
+}
+
+if [ -n "$SOURCES" ]; then
+    # Die Groesse ALLER Bestandteile, nicht nur des ersten. Ohne das prueft der
+    # Updater bei DE+PL+CZ gegen ~10 GB, waehrend der Spitzenbedarf bei ~32 GB
+    # liegt — der Wechsel liefe an der Pruefung vorbei und straebe Stunden
+    # spaeter mitten im Merge oder Import an ENOSPC.
+    SIZE=0
+    _old_ifs="$IFS"; IFS='|'
+    for _s in $SOURCES; do
+        IFS="$_old_ifs"
+        _sz="$(_head_size "https://download.geofabrik.de/${_s}-latest.osm.pbf")"
+        [ "${_sz:-0}" -gt 0 ] 2>/dev/null || fail "Extract nicht abrufbar: $_s"
+        SIZE=$(( SIZE + _sz ))
+        IFS='|'
+    done
+    IFS="$_old_ifs"
+    # Waehrend eines zusammengesetzten Wechsels liegen gleichzeitig auf der
+    # Platte: die N Quelldateien, die daraus verschmolzene Datei, der Staging-
+    # Graph (~1,5x) und der alte Bestand. Dieselbe Rechnung wie im Backend
+    # (region_estimate.estimate_disk_during_switch), damit Panel und Updater
+    # nicht verschiedene Zahlen nennen.
+    NEEDED=$(( SIZE * 9 / 2 ))
+else
+    SIZE="$(_head_size "$URL")"
+    [ "${SIZE:-0}" -gt 0 ] 2>/dev/null || fail "Extract nicht abrufbar: $URL"
+    # Grobe Faustregel: neues Extract + neuer Graph, rund das 2,5-fache der
+    # Extract-Größe. Beide Volumes liegen in der Regel auf demselben Dateisystem;
+    # liegen sie es nicht, wird hier zu Recht jedes einzeln geprüft.
+    NEEDED=$(( SIZE * 5 / 2 ))
+fi
 for dir in "$OSM_DIR" "$GRAPH_DIR"; do
     free_kb="$(df -Pk "$dir" 2>/dev/null | awk 'NR==2{print $4}')"
     free=$(( ${free_kb:-0} * 1024 ))
@@ -789,11 +859,9 @@ if [ -n "$SOURCES" ]; then
         _i=$((_i + 1))
         _src_name="$(basename "$_src")-latest.osm.pbf"
         _src_url="https://download.geofabrik.de/${_src}-latest.osm.pbf"
-        # Allowlist erneut pruefen — dem Backend wird nicht vertraut.
-        case "$_src_url" in
-            https://download.geofabrik.de/*-latest.osm.pbf) ;;
-            *) fail "Bestandteil nicht zugelassen: $_src" ;;
-        esac
+        # Die Bestandteile sind oben bereits gegen die Zeichen-Allowlist
+        # geprueft worden; ein case auf die hier gebaute URL waere
+        # unerreichbar, weil sie aus genau diesem Praefix entsteht.
         phase "downloading" "Phase 2/6: Lade ${_i}/${_n} — ${_src_name}…"
         _download_one "$_src_url" "$_src_name"
         SOURCE_FILES="$SOURCE_FILES $OSM_DIR/$_src_name"
@@ -811,7 +879,10 @@ abort_if_cancelled
 if [ -n "$SOURCES" ]; then
     phase "merging" "Phase 3/6: Führe ${_n} Extracts zu einer Karte zusammen…"
     _resolve_volumes
-    if ! OSM_VOLUME="$OSM_VOLUME" /merge-extracts.sh "$OSM_DIR/$FILENAME" $SOURCE_FILES; then
+    # Pfad ueberschreibbar wie REGION_SOURCE_SCRIPT: im Container liegt das
+    # Skript unter /, im Test daneben. Der Default bleibt der Containerpfad.
+    if ! OSM_VOLUME="$OSM_VOLUME" "${REGION_MERGE_SCRIPT:-/merge-extracts.sh}" \
+            "$OSM_DIR/$FILENAME" $SOURCE_FILES; then
         rm -f $SOURCE_FILES "$OSM_DIR/$FILENAME"
         fail "Zusammenführen fehlgeschlagen — die alte Region läuft unverändert weiter."
     fi
@@ -819,7 +890,7 @@ if [ -n "$SOURCES" ]; then
 fi
 
 # ── Phase 3: Importieren ────────────────────────────────────────────────────
-phase "importing" "Phase 3/5: Baue Routing-Graph (läuft im Hintergrund, Routing bleibt aktiv)…"
+phase "importing" "Phase ${_PH_IMPORT}: Baue Routing-Graph (läuft im Hintergrund, Routing bleibt aktiv)…"
 rm -rf "$STAGING"
 _resolve_volumes
 # Import-Heap gegen den Speicher deckeln, der JETZT — mit noch laufendem
@@ -838,7 +909,7 @@ if cancelled; then
 fi
 
 # ── Phase 4: Schwenken (ab hier kein Abbruch mehr) ──────────────────────────
-phase "switching" "Phase 4/5: Schwenke auf die neue Region…"
+phase "switching" "Phase ${_PH_SWITCH}: Schwenke auf die neue Region…"
 
 # Beleg, dass im Staging überhaupt ein Graph liegt. `_import_graph` kann 0
 # liefern, ohne dass etwas entstanden ist; die Schleife in
@@ -923,10 +994,11 @@ if [ "$SWITCH_OK" != 1 ]; then
 fi
 
 # ── Phase 5: Aufräumen ──────────────────────────────────────────────────────
-phase "cleaning" "Phase 5/5: Räume alte Daten auf…"
+phase "cleaning" "Phase ${_PH_CLEAN}: Räume alte Daten auf…"
 rm -rf "$OLD" "$STAGING"
 rm -f "$REGION_BACKUP"
-find "$OSM_DIR" -maxdepth 1 -name '*-latest.osm.pbf' ! -name "$FILENAME" -exec rm -f {} + 2>/dev/null
+find "$OSM_DIR" -maxdepth 1 \( -name '*-latest.osm.pbf' -o -name 'merged-*.osm.pbf' \) \
+     ! -name "$FILENAME" -exec rm -f {} + 2>/dev/null
 find "$OSM_DIR" -maxdepth 1 \( -name '*.md5' -o -name '*.part' \) -exec rm -f {} + 2>/dev/null
 
 phase "done" "Regionswechsel abgeschlossen: $FILENAME"

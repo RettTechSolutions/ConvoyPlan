@@ -223,6 +223,42 @@ ORDER="$(grep -oE 'Phase [1-5]/5' "$D/status/region.log" | tr '\n' ' ')"
 [ "$ORDER" = "Phase 1/5 Phase 2/5 Phase 3/5 Phase 4/5 Phase 5/5 " ]; check $? "Phasenreihenfolge stimmt ($ORDER)"
 grep -q "Regionswechsel abgeschlossen: berlin-latest.osm.pbf" "$D/status/region.log"; check $? "Abschlussmeldung im Log"
 
+echo "── Fall 1b: ZUSAMMENGESETZTE Region ────────────────────────────────────"
+# Genau dieser Fall fehlte — und liess zwei Critical-Fehler durch: die
+# Eingangsvalidierung wies den Merged-Dateinamen ab, und OSM_SOURCES wurde
+# nirgends in .region geschrieben. Beide Stuecke waren einzeln getestet, nur
+# nie zusammen durch dieses Skript hindurch.
+REQ_MERGED='{"url": "https://download.geofabrik.de/europe/germany-latest.osm.pbf", "filename": "merged-a3f9c21e.osm.pbf", "java_opts": "-Xmx12g", "sources": "europe/germany|europe/poland", "requested_by": "a@b.c", "requested_at": "2026-09-04T10:00:00+00:00"}'
+D="$(setup_case case1b)"; printf '%s' "$REQ_MERGED" > "$D/status/region_request.json"
+# Merge-Skript-Stub: erzeugt die Zieldatei, ohne osmium zu brauchen.
+cat > "$D/merge-stub.sh" <<'MSTUB'
+#!/usr/bin/env bash
+target="$1"; shift
+echo "Führe $# Extracts zusammen" 
+: > "$target"
+MSTUB
+chmod +x "$D/merge-stub.sh"
+export REGION_MERGE_SCRIPT="$D/merge-stub.sh"
+run_case "$D"
+[ "$(cat "$D/rc")" = 0 ]; check $? "Exit 0 (kein Abbruch in der Validierung)"
+[ "$(phase_of "$D/status/region_status.json")" = "done" ]; check $? "Endphase done"
+grep -q "^OSM_SOURCES=europe/germany|europe/poland$" "$D/osm/.region"; check $? "OSM_SOURCES steht in .region"
+[ "$(wc -l < "$D/osm/.region" | tr -d ' ')" = 4 ]; check $? ".region hat vier Zeilen"
+grep -q "^OSM_FILENAME=merged-a3f9c21e.osm.pbf$" "$D/osm/.region"; check $? "Merged-Dateiname in .region"
+grep -q "merge-extracts" "$D/status/region.log" || grep -q "Führe" "$D/status/region.log"; check $? "Merge-Phase wurde durchlaufen"
+[ -f "$D/osm/merged-a3f9c21e.osm.pbf" ]; check $? "zusammengefuehrte Datei liegt vor"
+# Phase 2 erscheint je Bestandteil einmal ("Lade 1/2", "Lade 2/2") — deshalb
+# die Duplikate herausfiltern, bevor die Reihenfolge geprueft wird.
+ORDER6="$(grep -oE 'Phase [1-6]/6' "$D/status/region.log" | awk '!seen[$0]++' | tr '\n' ' ')"
+[ "$ORDER6" = "Phase 1/6 Phase 2/6 Phase 3/6 Phase 4/6 Phase 5/6 Phase 6/6 " ]; check $? "sechs Phasen in Reihenfolge ($ORDER6)"
+[ "$(grep -c 'Phase 2/6' "$D/status/region.log")" = 2 ]; check $? "beide Bestandteile einzeln geladen"
+
+unset REGION_MERGE_SCRIPT
+echo "── Fall 1c: Einzelregion schreibt KEIN OSM_SOURCES ─────────────────────"
+D="$(setup_case case1c)"; printf '%s' "$REQ_JSON" > "$D/status/region_request.json"
+run_case "$D"
+grep -q "OSM_SOURCES" "$D/osm/.region"; [ $? -ne 0 ]; check $? "Einzelregion ohne OSM_SOURCES (Regressionsschutz)"
+
 echo "── Fall 2: Fehlschlag in Phase 3 (Graph-Bau) ───────────────────────────"
 D="$(setup_case case2)"; printf '%s' "$REQ_JSON" > "$D/status/region_request.json"
 run_case "$D" STUB_IMPORT_FAIL=1

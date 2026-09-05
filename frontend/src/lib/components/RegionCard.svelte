@@ -86,7 +86,16 @@
     let dismissed = $state(false);
     let timer: ReturnType<typeof setInterval> | null = null;
 
-    const ACTIVE_PHASES: RegionPhase[] = ['checking', 'downloading', 'importing', 'switching', 'cleaning'];
+    // 'merging' MUSS hier stehen: fehlt es, wird `busy` waehrend des
+    // Zusammenfuehrens false, Phasenkarte und Live-Log verschwinden — und bei
+    // 'importing' tauchen sie wieder auf. Fuer den Operator sieht das aus, als
+    // sei der Wechsel abgestuerzt. Bei grossen Kombinationen dauert die Phase
+    // Minuten.
+    const ACTIVE_PHASES: RegionPhase[] = [
+        'checking', 'downloading', 'merging', 'importing', 'switching', 'cleaning',
+    ];
+    // 'merging' bewusst NICHT abbrechbar: switch-region.sh prueft region.cancel
+    // erst nach dem Merge wieder, ein Knopf waere hier ohne Wirkung.
     const CANCELLABLE_PHASES: RegionPhase[] = ['checking', 'downloading', 'importing'];
     const PHASE_LABELS: Record<RegionPhase, string> = {
         idle: 'Bereit',

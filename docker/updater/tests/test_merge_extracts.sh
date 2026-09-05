@@ -79,7 +79,9 @@ check "Fehlgeschlagener Merge: keine Zieldatei" "$r" "nein"
 # ── Fall 3: stiller Teilmerge — Ergebnis nur 50 % der Rohsumme ─────────────
 # Der gefaehrlichste Fall: eine formal gueltige Datei mit halbem Inhalt. Sie
 # wuerde importieren, starten und an den fehlenden Stellen keine Route liefern.
-rc=$(MERGE_RESULT_BYTES=$(( RAW / 2 )) run_merge)
+# 40 % der Rohsumme = 0,8 MB, also weniger als die groesste Einzelquelle
+# (1 MB) — nachweislich unvollstaendig.
+rc=$(MERGE_RESULT_BYTES=$(( RAW * 40 / 100 )) run_merge)
 check "Teilmerge wird abgelehnt" "$([ "$rc" -ne 0 ] && echo ja || echo nein)" "ja"
 grep -qi "unplausibel" "$TMP/out.txt" && r=ja || r=nein
 check "Teilmerge: Meldung nennt den Grund" "$r" "ja"
@@ -93,5 +95,20 @@ check "Ergebnis groesser als Rohsumme wird abgelehnt" "$([ "$rc" -ne 0 ] && echo
 # ── Fall 5: nur eine Quelle -> Fehler, Merge ergibt keinen Sinn ────────────
 ( bash "$SCRIPT" "$TMP/osm/x.osm.pbf" "$TMP/osm/a-latest.osm.pbf" >/dev/null 2>&1 )
 check "eine einzige Quelle wird abgelehnt" "$([ $? -ne 0 ] && echo ja || echo nein)" "ja"
+
+# ── Fall 6: starke Ueberlappung ist LEGITIM ────────────────────────────────
+# Deutschland plus Bundeslaender dedupliziert auf etwa die Groesse
+# Deutschlands. Eine Anteilsgrenze haette das faelschlich verworfen; die
+# Untergrenze "groesste Einzelquelle" laesst es korrekt durch.
+rc=$(MERGE_RESULT_BYTES=$(( RAW * 55 / 100 )) run_merge)
+check "starke Ueberlappung wird akzeptiert" "$rc" "0"
+
+# ── Fall 7: Kanten der Pruefung ────────────────────────────────────────────
+rc=$(MERGE_RESULT_BYTES=$(( RAW / 2 )) run_merge)
+check "exakt die groesste Einzelquelle besteht" "$rc" "0"
+rc=$(MERGE_RESULT_BYTES=$(( RAW * 105 / 100 )) run_merge)
+check "exakt 105 % der Rohsumme besteht" "$rc" "0"
+rc=$(MERGE_RESULT_BYTES=$(( RAW * 106 / 100 )) run_merge)
+check "106 % wird abgelehnt" "$([ "$rc" -ne 0 ] && echo ja || echo nein)" "ja"
 
 exit $FAILED
