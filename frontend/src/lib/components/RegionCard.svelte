@@ -144,7 +144,20 @@
         stopLogStream();
     });
 
+    // Laufende Nummer des aktuellen Log-Stroms. Ohne sie konnten mehrere
+    // gleichzeitig leben: `startLogStream` wartet auf das Stream-Ticket, und in
+    // genau diesem Fenster ist `logSource` noch null — der 3-Sekunden-Poll in
+    // refreshStatus sieht "kein Strom da" und startet einen zweiten. Beide
+    // lesen ab Byte 0 und haengen an dieselbe Liste an, weshalb derselbe
+    // Log-Block mehrfach im Terminal stand (im Betrieb vierzehnmal, teils
+    // ineinander verschachtelt). Ein Zaehler statt eines Flags, damit auch der
+    // umgekehrte Fall sauber ist: Ein schwebender Start, den ein neuerer
+    // ueberholt hat, verwirft sein Ergebnis, statt den neuen zu ueberschreiben.
+    let logStreamSeq = 0;
+
     function stopLogStream() {
+        // Entwertet auch alle noch schwebenden Starts.
+        logStreamSeq += 1;
         if (logSource) {
             logSource.close();
             logSource = null;
@@ -153,15 +166,24 @@
 
     async function startLogStream() {
         stopLogStream();
+        const seq = logStreamSeq;
         logLines = [];
         logError = '';
         const es = await regionApi.logStream();
+        if (seq !== logStreamSeq) {
+            // Ein neuerer Start hat inzwischen uebernommen (oder es wurde
+            // gestoppt) — diesen hier wieder abbauen, statt ihn danebenlaufen
+            // zu lassen.
+            es?.close();
+            return;
+        }
         if (!es) {
             logError = 'Log-Verbindung nicht möglich — bitte neu anmelden.';
             return;
         }
         logSource = es;
         es.onmessage = (e) => {
+            if (seq !== logStreamSeq) return;
             logLines = [...logLines, e.data];
             // ans Ende scrollen, nachdem Svelte die neue Zeile gerendert hat
             setTimeout(() => {
@@ -169,6 +191,7 @@
             }, 0);
         };
         es.addEventListener('done', (e) => {
+            if (seq !== logStreamSeq) return;
             stopLogStream();
             // "timeout": der Strom hat sein Zeitlimit erreicht, der Wechsel
             // läuft aber noch. Neu aufbauen — der Strom liest wieder ab Byte 0,
@@ -176,6 +199,7 @@
             if ((e as MessageEvent).data === 'timeout' && busy) void startLogStream();
         });
         es.onerror = () => {
+            if (seq !== logStreamSeq) return;
             // Verbindung weg (Backend startet neu, Proxy-Timeout). Nicht selbst
             // weiterverbinden lassen: EventSource würde von Byte 0 neu lesen und
             // alles doppelt anhängen. Stattdessen ein Knopf zum Neuladen.
