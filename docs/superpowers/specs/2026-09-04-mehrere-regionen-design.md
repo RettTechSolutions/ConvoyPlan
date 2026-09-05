@@ -220,8 +220,16 @@ Schlüssel muss sich das Verhalten bitgleich zu heute verhalten.
 werden.
 
 **Nicht automatisierbar** bleibt der Pfad mit großen Kombinationen — Laufzeit
-und Speicher sprengen jeden Runner. Gehört als benannter manueller Prüfschritt
-in den Plan, nicht als stillschweigende Lücke.
+und Speicher sprengen jeden Runner. Der CI-Job `region-merge` prüft Sachsen +
+Niederschlesien (428 MB, ~2 Minuten Merge); DACH plus mehrere Nachbarländer
+liegen bei mehreren Gigabyte und Stunden Import.
+
+**Benannte Lücke — manueller Prüfschritt vor jedem Release:** Einmal auf einer
+echten Instanz eine große Kombination wechseln (etwa DACH + Polen +
+Tschechien) und prüfen, dass der Merge durchläuft, der Import nicht am Heap
+scheitert und eine Route über die Grenze zurückkommt. Was CI abdeckt, ist der
+*Mechanismus*; was sie nicht abdecken kann, sind Laufzeit und Speicherbedarf
+in realer Größenordnung.
 
 ---
 
