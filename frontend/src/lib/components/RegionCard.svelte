@@ -57,8 +57,13 @@
             .slice(0, 100);
     });
 
+    // ── Auswahl-Liste ────────────────────────────────────────────────────────
+    // Mehrere Regionen kombinierbar (Deutschland + Polen statt ganz Europa),
+    // die der Updater zu einer Karte verschmilzt. Schnellauswahl ERSETZT diese
+    // Liste ("einfach DACH"), Suchtreffer FÜGEN HINZU.
+    let selectedList = $state<RegionEntry[]>([]);
+
     // ── Vorab-Rechnung ───────────────────────────────────────────────────────
-    let selected = $state<RegionEntry | null>(null);
     let preview = $state<RegionPreview | null>(null);
     let previewLoading = $state(false);
     let previewError = $state('');
@@ -87,6 +92,10 @@
         idle: 'Bereit',
         checking: 'Phase 1/5 — Prüfe Verfügbarkeit und Plattenplatz',
         downloading: 'Phase 2/5 — Lade Extract herunter',
+        // Nur bei kombinierten Regionen (mehr als ein Bestandteil) — daher
+        // ohne eigene Ordinalzahl, um keine falsche Gesamtschrittzahl zu
+        // suggerieren (Einzelauswahl durchläuft diese Phase nie).
+        merging: 'Führe Extracts zu einer Karte zusammen',
         importing: 'Phase 3/5 — Baue Routing-Graph (Routing bleibt währenddessen aktiv)',
         switching: 'Phase 4/5 — Schwenke auf die neue Region',
         cleaning: 'Phase 5/5 — Räume alte Daten auf',
@@ -158,7 +167,7 @@
         currentError = '';
         try {
             current = await regionApi.current();
-            currentPreview = await regionApi.preview(current.url);
+            currentPreview = await regionApi.preview([current.url]);
         } catch (e: unknown) {
             currentError = e instanceof Error ? e.message : 'Aktuelle Region konnte nicht geladen werden';
         } finally {
@@ -188,7 +197,7 @@
 
     function closePicker() {
         showPicker = false;
-        selected = null;
+        selectedList = [];
         preview = null;
         previewError = '';
         search = '';
@@ -211,17 +220,44 @@
         return `https://download.geofabrik.de/${id}-latest.osm.pbf`;
     }
 
+    // Schnellauswahl ERSETZT die Auswahl — gedacht als "einfach DACH", nicht
+    // als weiterer Bestandteil einer Kombination.
     async function chooseQuick(qp: { id: string; label: string }) {
-        await choose({ id: qp.id, name: qp.label, path: qp.label, url: quickPickUrl(qp.id) });
+        selectedList = [{ id: qp.id, name: qp.label, path: qp.label, url: quickPickUrl(qp.id) }];
+        await refreshPreview();
     }
 
-    async function choose(entry: RegionEntry) {
-        selected = entry;
+    // Ein Suchtreffer FÜGT HINZU statt zu ersetzen — das ist der Kern der
+    // Mehrfachauswahl (Deutschland + Polen statt ganz Europa).
+    async function addRegion(entry: RegionEntry) {
+        if (selectedList.some((e) => e.id === entry.id)) return;
+        selectedList = [...selectedList, entry];
+        await refreshPreview();
+    }
+
+    // Entfernt eine Region aus der Auswahl — per Marken-Kreuz oder per
+    // Überlappungshinweis (dort mit dem Pfad der Unterregion als `id`, der
+    // Geofabrik-Pfad und `entry.id` sind dasselbe Format).
+    async function removeRegion(id: string) {
+        selectedList = selectedList.filter((e) => e.id !== id);
+        await refreshPreview();
+    }
+
+    // Bei jeder Änderung der Auswahl neu abgerufen — das ist der Schutz gegen
+    // die freie Mehrfachauswahl: Summe und Urteil laufen live mit, bevor der
+    // Wechsel überhaupt gestartet wird.
+    async function refreshPreview() {
+        if (selectedList.length === 0) {
+            preview = null;
+            previewError = '';
+            previewLoading = false;
+            return;
+        }
         preview = null;
         previewError = '';
         previewLoading = true;
         try {
-            preview = await regionApi.preview(entry.url);
+            preview = await regionApi.preview(selectedList.map((e) => e.url));
         } catch (e: unknown) {
             previewError = e instanceof Error ? e.message : 'Vorab-Rechnung fehlgeschlagen';
         } finally {
@@ -230,13 +266,13 @@
     }
 
     async function startSwitch() {
-        if (!selected || blocked || switching) return;
+        if (selectedList.length === 0 || blocked || switching) return;
         switchError = '';
         switching = true;
         try {
-            await regionApi.switch(selected.url);
+            await regionApi.switch(selectedList.map((e) => e.url));
             showPicker = false;
-            selected = null;
+            selectedList = [];
             preview = null;
             dismissed = false;
             await startLogStream();
@@ -387,11 +423,29 @@
                     {#each QUICK_PICKS as qp}
                         <button
                             class="btn-small"
-                            class:active={selected?.id === qp.id}
+                            class:active={selectedList.some((e) => e.id === qp.id)}
                             onclick={() => chooseQuick(qp)}
                         >{qp.label}</button>
                     {/each}
                 </div>
+
+                {#if selectedList.length > 1}
+                    <!-- Nur bei kombinierter Auswahl — bei genau einer Region soll
+                         die Karte wie bisher aussehen (keine Marken-Leiste). -->
+                    <div class="chip-row">
+                        {#each selectedList as entry (entry.id)}
+                            <span class="chip">
+                                {entry.path}
+                                <button
+                                    type="button"
+                                    class="chip-remove"
+                                    onclick={() => removeRegion(entry.id)}
+                                    aria-label={`${entry.path} entfernen`}
+                                >✕</button>
+                            </span>
+                        {/each}
+                    </div>
+                {/if}
 
                 <input
                     type="text"
@@ -412,8 +466,8 @@
                         {#each filteredRegions as r (r.id)}
                             <button
                                 class="region-item"
-                                class:active={selected?.id === r.id}
-                                onclick={() => choose(r)}
+                                class:active={selectedList.some((e) => e.id === r.id)}
+                                onclick={() => addRegion(r)}
                             >{r.path}</button>
                         {/each}
                         {#if filteredRegions.length === 0}
@@ -422,15 +476,41 @@
                     </div>
                 {/if}
 
-                {#if selected}
+                {#if selectedList.length > 0}
                     <div class="preview-box">
-                        <div class="preview-title">{selected.path}</div>
+                        {#if selectedList.length === 1}
+                            <div class="preview-title">{selectedList[0].path}</div>
+                        {:else}
+                            <div class="preview-title">Kombinierte Region — {selectedList.length} Bestandteile</div>
+                        {/if}
                         {#if previewLoading}
                             <p class="hint">Berechne Ressourcenbedarf…</p>
                         {:else if previewError}
-                            <div class="error-bar">{previewError} <button onclick={() => choose(selected!)}>↺</button></div>
+                            <div class="error-bar">{previewError} <button onclick={refreshPreview}>↺</button></div>
                         {:else if preview}
+                            {#if preview.overlapping.length > 0}
+                                <div class="overlap-hint">
+                                    <p>
+                                        Manche Regionen überlappen — das ist nicht falsch (der Merge dedupliziert
+                                        automatisch), verschwendet aber Download und Zeit:
+                                    </p>
+                                    {#each preview.overlapping as [parentPath, childPath]}
+                                        <div class="overlap-row">
+                                            <code>{parentPath}</code> enthält bereits <code>{childPath}</code>
+                                            <button class="btn-small" onclick={() => removeRegion(childPath)}>
+                                                Unterregion entfernen
+                                            </button>
+                                        </div>
+                                    {/each}
+                                </div>
+                            {/if}
                             <div class="update-grid">
+                                {#if preview.composed}
+                                    <div class="update-row">
+                                        <span class="update-label">Bestandteile</span>
+                                        <span>{preview.sources.join(', ')}</span>
+                                    </div>
+                                {/if}
                                 <div class="update-row">
                                     <span class="update-label">RAM benötigt</span>
                                     <span>{bytes(preview.ram_needed_bytes)}</span>
@@ -565,6 +645,30 @@
 
     .region-picker { margin-top: 1rem; padding-top: .75rem; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: .6rem; }
     .quick-picks { display: flex; gap: .4rem; flex-wrap: wrap; }
+    .chip-row { display: flex; gap: .4rem; flex-wrap: wrap; }
+    .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: .35rem;
+        padding: .25rem .5rem;
+        background: var(--color-primary);
+        color: white;
+        border-radius: 4px;
+        font-size: var(--text-xs);
+    }
+    .chip-remove { background: none; border: none; color: white; cursor: pointer; padding: 0; font-size: var(--text-xs); line-height: 1; opacity: .85; }
+    .chip-remove:hover { opacity: 1; }
+    .overlap-hint {
+        margin-bottom: .75rem;
+        padding: .5rem .75rem;
+        background: rgba(210,120,30,.12);
+        border: 1px solid rgba(210,120,30,.35);
+        border-radius: 6px;
+        font-size: var(--text-sm);
+        color: var(--text-1);
+    }
+    .overlap-hint p { margin: 0 0 .4rem; }
+    .overlap-row { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin: .25rem 0; }
     .region-search {
         padding: .5rem .75rem;
         border: 1px solid var(--border);
