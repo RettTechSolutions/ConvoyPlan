@@ -139,10 +139,21 @@ openssl rand -hex 32
 
 > Richtwerte: DACH `-Xmx8g`, Deutschland `-Xmx6g`, Bayern `-Xmx3g`, Berlin `-Xmx1g`.
 
-> **Regionswechsel:** Der Routing-Graph gehört zu genau einer OSM-Datei. Ändern
-> sich `OSM_DOWNLOAD_URL`/`OSM_FILENAME`, erkennt der GraphHopper-Container das
-> und baut den Graphen beim nächsten Start automatisch neu — das dauert je nach
-> Region erneut bis zu zwei Stunden. Der Umriss auf der Karte kommt dagegen aus
+> **Regionswechsel:** Die Variablen hier gelten nur für den **Erststart**. Zum
+> Wechseln der Kartenregion im laufenden Betrieb gibt es seit `2026.4.0` die
+> Karte „Kartenregion" im Admin-Panel unter **System** — dort mit
+> Vorabschätzung von Speicher-, Platten- und Zeitbedarf, Live-Fortschritt und
+> ohne nennenswerten Routing-Ausfall (der neue Graph entsteht neben dem
+> laufenden). Seit `2026.5.0` lassen sich dort auch **mehrere** Regionen
+> gleichzeitig wählen; sie werden zu einer Karte zusammengeführt, sodass
+> Routen über die Ländergrenzen hinweg funktionieren.
+>
+> Die aktive Region liegt danach in `/data/osm/.region` im `osm_data`-Volume
+> und hat Vorrang vor den Variablen aus der `.env` — so überlebt sie ein
+> `docker compose up`. Wer die Variablen hier nachträglich ändert, ändert
+> deshalb **nichts** an einer bereits per Panel gewechselten Installation.
+>
+> Der Umriss auf der Karte kommt dagegen aus
 > `frontend/static/geo/dach.geojson` und passt sich **nicht** automatisch an;
 > wer dauerhaft eine andere Region fährt, tauscht diese Datei mit (siehe
 > `frontend/static/geo/README.md`).

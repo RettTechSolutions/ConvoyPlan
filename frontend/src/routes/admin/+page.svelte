@@ -523,7 +523,7 @@
     // Regionswechsel (RegionCard.svelte) sperrt das Software-Update und
     // umgekehrt (siehe app/api/routes/region.py und admin.py) — hier nur
     // gepollt, um "Jetzt updaten" mit sichtbarer Begründung zu sperren.
-    const REGION_ACTIVE_PHASES: RegionPhase[] = ['checking', 'downloading', 'importing', 'switching', 'cleaning'];
+    const REGION_ACTIVE_PHASES: RegionPhase[] = ['checking', 'downloading', 'merging', 'importing', 'switching', 'cleaning'];
     let regionStatus = $state<RegionStatus>({ phase: 'idle' });
     let regionStatusTimer: ReturnType<typeof setInterval> | null = null;
     const regionSwitchBusy = $derived(REGION_ACTIVE_PHASES.includes(regionStatus.phase));

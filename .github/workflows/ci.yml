@@ -156,6 +156,11 @@ jobs:
             context: ./graphhopper
           - name: updater
             context: ./docker/updater
+          # Laeuft nicht im Stack, wird aber mit ausgeliefert und bekommt beim
+          # Regionswechsel Schreibzugriff auf die Kartendaten — also gehoert es
+          # in denselben Scan wie die uebrigen vier.
+          - name: osmium
+            context: ./docker/osmium
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -374,3 +379,160 @@ jobs:
       - name: Stack stoppen
         if: always()
         run: docker compose down -v
+
+  region-merge:
+    name: Region – Grenzrouting bei zusammengeführten Extracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    # Beantwortet fortlaufend die Frage, die vor dem Entwurf einmalig als
+    # Wegwerf-Spike beantwortet wurde: Routet GraphHopper über die Grenze
+    # zwischen zwei getrennt heruntergeladenen, per `osmium merge`
+    # zusammengeführten Geofabrik-Extracts?
+    #
+    # Der Spike mass: Görlitz→Zgorzelec 2,30 km, Dresden→Wrocław 268,3 km,
+    # und 294.181 deduplizierte Knoten (0,67 %) im Grenzstreifen. Er hat
+    # bewiesen, dass es geht — dieser Job beweist, dass es so bleibt.
+    #
+    # Die Kontrollroute innerhalb Sachsens ist nicht optional: Ohne sie
+    # unterscheidet der Job nicht zwischen "Grenze kaputt" und "Graph
+    # generell kaputt".
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: osmium installieren
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
+
+      - name: Extracts laden
+        run: |
+          mkdir -p osm
+          curl -fsSL -o osm/sachsen.osm.pbf      https://download.geofabrik.de/europe/germany/sachsen-latest.osm.pbf
+          curl -fsSL -o osm/dolnoslaskie.osm.pbf https://download.geofabrik.de/europe/poland/dolnoslaskie-latest.osm.pbf
+          ls -lh osm/
+
+      - name: Zusammenführen und Deduplizierung belegen
+        run: |
+          time osmium merge osm/sachsen.osm.pbf osm/dolnoslaskie.osm.pbf -o osm/merged.osm.pbf
+          A=$(osmium fileinfo -e -g data.count.nodes osm/sachsen.osm.pbf)
+          B=$(osmium fileinfo -e -g data.count.nodes osm/dolnoslaskie.osm.pbf)
+          M=$(osmium fileinfo -e -g data.count.nodes osm/merged.osm.pbf)
+          echo "sachsen=$A dolnoslaskie=$B merged=$M"
+          # Die Ueberlappung MUSS zusammengefuehrt worden sein: Ist merged
+          # gleich der Rohsumme, hat osmium nichts dedupliziert, und der
+          # Graph zerfaellt an der Grenze in zwei Komponenten.
+          if [ "$M" -ge "$((A + B))" ]; then
+            echo "::error::Keine Deduplizierung — merged ($M) >= sachsen+dolnoslaskie ($((A+B)))"
+            exit 1
+          fi
+          echo "Dedupliziert: $((A + B - M)) Knoten"
+          echo "MERGED_NODES=$M" >> "$GITHUB_ENV"
+
+      - name: merge-extracts.sh gegen das echte osmium-Image
+        run: |
+          # Erster echter Lauf des Produktionspfads. Bis hierher pruefte die
+          # Shell-Suite merge-extracts.sh nur gegen einen docker-Stub, und der
+          # Schritt oben rief osmium direkt auf dem Runner auf. Ungetestet blieb
+          # genau das, was in Produktion zaehlt: das eigene osmium-Image, der
+          # `docker run` mit Volume-NAME statt Containerpfad, und die
+          # Plausibilitaetsgrenzen gegen echte Dateigroessen.
+          #
+          # Der Aufruf laeuft bewusst IM Updater-Image mit Docker-Socket und
+          # gemountetem Volume — also in derselben Lage wie beim echten
+          # Regionswechsel. Ein Aufruf vom Runner aus waere eine andere
+          # Konfiguration und bewiese wenig: merge-extracts.sh setzt voraus,
+          # dass sein Host-Pfad und der Volume-Inhalt dasselbe Verzeichnis sind.
+          docker build -t convoyplan-osmium:ci ./docker/osmium
+          docker build -t convoyplan-updater:ci ./docker/updater
+          docker volume create ci_osm > /dev/null
+          docker run --rm -v ci_osm:/data/osm -v "$PWD/osm:/src:ro" \
+            convoyplan-osmium:ci \
+            sh -c 'cp /src/sachsen.osm.pbf /src/dolnoslaskie.osm.pbf /data/osm/'
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v ci_osm:/data/osm \
+            -e OSM_VOLUME=ci_osm \
+            -e REGION_MERGE_IMAGE=convoyplan-osmium:ci \
+            --entrypoint bash convoyplan-updater:ci \
+            /merge-extracts.sh /data/osm/merged-ci.osm.pbf \
+              /data/osm/sachsen.osm.pbf /data/osm/dolnoslaskie.osm.pbf
+
+      - name: Ergebnis des Skriptlaufs gegen den Direktaufruf halten
+        run: |
+          # Gleiche Knotenzahl wie beim Direktaufruf oben — sonst hat der Weg
+          # ueber Image und Volume unterwegs etwas verloren. Genau diese Art
+          # stillen Verlusts ist der Grund fuer die Struktur-Zusicherungen in
+          # merge-extracts.sh; hier wird sie einmal echt nachgemessen.
+          S=$(docker run --rm -v ci_osm:/data/osm convoyplan-osmium:ci \
+                osmium fileinfo -e -g data.count.nodes /data/osm/merged-ci.osm.pbf)
+          echo "Skriptlauf=$S  Direktaufruf=$MERGED_NODES"
+          if [ "$S" != "$MERGED_NODES" ]; then
+            echo "::error::merge-extracts.sh lieferte $S Knoten, der Direktaufruf $MERGED_NODES"
+            exit 1
+          fi
+
+      - name: osmium-Volume aufraeumen
+        if: always()
+        run: docker volume rm -f ci_osm || true
+
+      - name: GraphHopper bauen und starten
+        run: |
+          docker build -t gh-merge:latest ./graphhopper
+          docker run -d --name gh -p 8989:8989 \
+            -v "$PWD/osm:/data/osm" -v gh_merge_graph:/data/graph \
+            -e OSM_FILENAME=merged.osm.pbf \
+            -e OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/sachsen-latest.osm.pbf \
+            -e JAVA_OPTS=-Xmx6g \
+            -e REGION_SOURCE_SCRIPT=/dev/null \
+            gh-merge:latest
+          for i in $(seq 1 90); do
+            if curl -sf http://localhost:8989/health > /dev/null 2>&1; then echo "bereit nach ${i}0s"; exit 0; fi
+            sleep 10
+          done
+          echo "::error::GraphHopper nicht bereit"
+          docker logs gh 2>&1 | tail -40
+          exit 1
+
+      - name: Kontrollroute innerhalb Sachsens
+        id: ctl
+        run: |
+          curl -s "http://localhost:8989/route?point=51.0504,13.7373&point=51.3397,12.3731&profile=car&calc_points=false" -o r.json
+          D=$(jq -r '.paths[0].distance // "KEINE"' r.json)
+          echo "dist=$D" >> "$GITHUB_OUTPUT"
+          echo "Dresden -> Leipzig: $D"
+
+      - name: Kurze Grenzroute Görlitz nach Zgorzelec
+        id: short
+        run: |
+          curl -s "http://localhost:8989/route?point=51.1524,14.9887&point=51.1490,15.0080&profile=car&calc_points=false" -o r.json
+          D=$(jq -r '.paths[0].distance // "KEINE"' r.json)
+          echo "dist=$D" >> "$GITHUB_OUTPUT"
+          echo "Goerlitz -> Zgorzelec: $D"
+
+      - name: Lange Grenzroute Dresden nach Wrocław
+        id: long
+        run: |
+          curl -s "http://localhost:8989/route?point=51.0504,13.7373&point=51.1079,17.0385&profile=car&calc_points=false" -o r.json
+          D=$(jq -r '.paths[0].distance // "KEINE"' r.json)
+          echo "dist=$D" >> "$GITHUB_OUTPUT"
+          echo "Dresden -> Wroclaw: $D"
+
+      - name: Ergebnis
+        run: |
+          CTL='${{ steps.ctl.outputs.dist }}'
+          SHORT='${{ steps.short.outputs.dist }}'
+          LONG='${{ steps.long.outputs.dist }}'
+          echo "Kontrolle DE-intern : $CTL"
+          echo "Goerlitz->Zgorzelec : $SHORT"
+          echo "Dresden ->Wroclaw   : $LONG"
+          if [ "$CTL" = "KEINE" ]; then
+            echo "::error::Kontrollroute schlaegt fehl — Graph unbrauchbar, Test aussagelos"
+            exit 1
+          fi
+          if [ "$SHORT" = "KEINE" ] || [ "$LONG" = "KEINE" ]; then
+            echo "::error::Grenzueberschreitendes Routing funktioniert NICHT"
+            exit 1
+          fi
+          echo "Routing ueber die Grenze funktioniert."
+
+      - name: Logs bei Fehlschlag
+        if: failure()
+        run: docker logs gh 2>&1 | tail -60

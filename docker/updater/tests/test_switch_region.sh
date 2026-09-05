@@ -137,11 +137,27 @@ EOF
 
 cat > "$BIN/curl" <<'EOF'
 #!/usr/bin/env bash
-out=""; prev=""
-for a in "$@"; do [ "$prev" = "-o" ] && out="$a"; prev="$a"; done
+out=""; prev=""; url=""
+for a in "$@"; do
+    [ "$prev" = "-o" ] && out="$a"
+    case "$a" in https://*) url="$a" ;; esac
+    prev="$a"
+done
 if [ -n "$out" ]; then
-    echo "dummy-inhalt" > "$out"
-    exit "${STUB_CURL_DL_RC:-0}"
+    case "$out" in
+      *.md5)
+        # Wie Geofabrik: der Hash des Inhalts, daneben der DORTIGE Dateiname.
+        # Genau darauf darf sich switch-region.sh nicht mehr verlassen — bei
+        # einer zusammengesetzten Region laedt es unter einem eigenen,
+        # kollisionsfreien Namen. Deshalb steht hier bewusst der Geofabrik-Name.
+        remote="${url##*/}"; remote="${remote%.md5}"
+        h="$(printf 'dummy-inhalt\n' | md5sum 2>/dev/null | awk '{print $1}')"
+        printf '%s  %s\n' "$h" "$remote" > "$out"
+        exit "${STUB_CURL_MD5_RC:-0}" ;;
+      *)
+        echo "dummy-inhalt" > "$out"
+        exit "${STUB_CURL_DL_RC:-0}" ;;
+    esac
 fi
 echo "HTTP/1.1 200 OK"
 echo "Content-Length: ${STUB_SIZE:-1000}"
@@ -222,6 +238,104 @@ grep -q "GRAPH_DIR=/data/graph/.staging" "$D/calls.txt"; check $? "Import baut i
 ORDER="$(grep -oE 'Phase [1-5]/5' "$D/status/region.log" | tr '\n' ' ')"
 [ "$ORDER" = "Phase 1/5 Phase 2/5 Phase 3/5 Phase 4/5 Phase 5/5 " ]; check $? "Phasenreihenfolge stimmt ($ORDER)"
 grep -q "Regionswechsel abgeschlossen: berlin-latest.osm.pbf" "$D/status/region.log"; check $? "Abschlussmeldung im Log"
+
+echo "── Fall 1b: ZUSAMMENGESETZTE Region ────────────────────────────────────"
+# Genau dieser Fall fehlte — und liess zwei Critical-Fehler durch: die
+# Eingangsvalidierung wies den Merged-Dateinamen ab, und OSM_SOURCES wurde
+# nirgends in .region geschrieben. Beide Stuecke waren einzeln getestet, nur
+# nie zusammen durch dieses Skript hindurch.
+REQ_MERGED='{"url": "https://download.geofabrik.de/europe/germany-latest.osm.pbf", "filename": "merged-a3f9c21e.osm.pbf", "java_opts": "-Xmx12g", "sources": "europe/germany|europe/poland", "requested_by": "a@b.c", "requested_at": "2026-09-04T10:00:00+00:00"}'
+D="$(setup_case case1b)"; printf '%s' "$REQ_MERGED" > "$D/status/region_request.json"
+# Merge-Skript-Stub: erzeugt die Zieldatei, ohne osmium zu brauchen.
+cat > "$D/merge-stub.sh" <<'MSTUB'
+#!/usr/bin/env bash
+target="$1"; shift
+# Die Quellpfade protokollieren: nur so ist pruefbar, WAS zusammengefuehrt
+# werden sollte — nicht bloss, DASS etwas aufgerufen wurde.
+[ -n "${MERGE_ARGS_FILE:-}" ] && printf '%s\n' "$@" > "$MERGE_ARGS_FILE"
+echo "Führe $# Extracts zusammen"
+: > "$target"
+MSTUB
+chmod +x "$D/merge-stub.sh"
+export REGION_MERGE_SCRIPT="$D/merge-stub.sh"
+run_case "$D" MERGE_ARGS_FILE="$D/merge-args.txt"
+[ "$(cat "$D/rc")" = 0 ]; check $? "Exit 0 (kein Abbruch in der Validierung)"
+[ "$(phase_of "$D/status/region_status.json")" = "done" ]; check $? "Endphase done"
+grep -q "^OSM_SOURCES=europe/germany|europe/poland$" "$D/osm/.region"; check $? "OSM_SOURCES steht in .region"
+[ "$(wc -l < "$D/osm/.region" | tr -d ' ')" = 4 ]; check $? ".region hat vier Zeilen"
+grep -q "^OSM_FILENAME=merged-a3f9c21e.osm.pbf$" "$D/osm/.region"; check $? "Merged-Dateiname in .region"
+grep -q "merge-extracts" "$D/status/region.log" || grep -q "Führe" "$D/status/region.log"; check $? "Merge-Phase wurde durchlaufen"
+[ -f "$D/osm/merged-a3f9c21e.osm.pbf" ]; check $? "zusammengefuehrte Datei liegt vor"
+# Phase 2 erscheint je Bestandteil einmal ("Lade 1/2", "Lade 2/2") — deshalb
+# die Duplikate herausfiltern, bevor die Reihenfolge geprueft wird.
+ORDER6="$(grep -oE 'Phase [1-6]/6' "$D/status/region.log" | awk '!seen[$0]++' | tr '\n' ' ')"
+[ "$ORDER6" = "Phase 1/6 Phase 2/6 Phase 3/6 Phase 4/6 Phase 5/6 Phase 6/6 " ]; check $? "sechs Phasen in Reihenfolge ($ORDER6)"
+[ "$(grep -c 'Phase 2/6' "$D/status/region.log")" = 2 ]; check $? "beide Bestandteile einzeln geladen"
+# Die Bestandteile werden nach ihrem VOLLEN Pfad benannt, nicht nach basename.
+# Geprueft wird an den Argumenten des Merge — die Dateien selbst raeumt Phase
+# 6 planmaessig wieder weg, ihre blosse Existenz waere also kein Beleg.
+grep -q "/europe-germany-latest.osm.pbf$" "$D/merge-args.txt" \
+    && grep -q "/europe-poland-latest.osm.pbf$" "$D/merge-args.txt"
+check $? "Bestandteile nach vollem Pfad benannt"
+[ "$(sort -u "$D/merge-args.txt" | grep -c .)" = 2 ]; check $? "Merge bekam zwei VERSCHIEDENE Quellen"
+
+unset REGION_MERGE_SCRIPT
+echo "── Fall 1c: Einzelregion schreibt KEIN OSM_SOURCES ─────────────────────"
+D="$(setup_case case1c)"; printf '%s' "$REQ_JSON" > "$D/status/region_request.json"
+run_case "$D"
+grep -q "OSM_SOURCES" "$D/osm/.region"; [ $? -ne 0 ]; check $? "Einzelregion ohne OSM_SOURCES (Regressionsschutz)"
+
+echo "── Fall 1d: kollidierende Basenamen (europe/georgia + us/georgia) ──────"
+# Der einzige Basename-Konflikt im gesamten Geofabrik-Index — ueber alle 555
+# Regionen geprueft. Mit `basename` hiessen BEIDE Downloads
+# georgia-latest.osm.pbf: der zweite ueberschriebe den ersten, die Merge-Liste
+# enthielte zweimal dieselbe Datei, und osmium fuehrte Georgien mit sich selbst
+# zusammen. Das Ergebnis besteht jede Groessenpruefung und enthaelt trotzdem
+# nur eine der beiden Regionen. Beide sind im Panel frei waehlbar.
+REQ_GEO='{"url": "https://download.geofabrik.de/europe/georgia-latest.osm.pbf", "filename": "merged-deadbeef.osm.pbf", "java_opts": "-Xmx4g", "sources": "europe/georgia|north-america/us/georgia", "requested_by": "a@b.c", "requested_at": "2026-09-05T10:00:00+00:00"}'
+D="$(setup_case case1d)"; printf '%s' "$REQ_GEO" > "$D/status/region_request.json"
+cp "$ROOT/case1b/merge-stub.sh" "$D/merge-stub.sh" 2>/dev/null || {
+    printf '#!/usr/bin/env bash\ntarget="$1"; shift\n[ -n "${MERGE_ARGS_FILE:-}" ] && printf "%%s\\n" "$@" > "$MERGE_ARGS_FILE"\n: > "$target"\n' > "$D/merge-stub.sh"
+}
+chmod +x "$D/merge-stub.sh"
+REGION_MERGE_SCRIPT="$D/merge-stub.sh" run_case "$D" MERGE_ARGS_FILE="$D/merge-args.txt"
+[ "$(cat "$D/rc")" = 0 ]; check $? "Exit 0"
+grep -q "/europe-georgia-latest.osm.pbf$" "$D/merge-args.txt"; check $? "europe/georgia bekommt eine eigene Datei"
+grep -q "/north-america-us-georgia-latest.osm.pbf$" "$D/merge-args.txt"; check $? "us/georgia bekommt eine eigene Datei"
+[ "$(sort -u "$D/merge-args.txt" | grep -c .)" = 2 ]; check $? "zwei VERSCHIEDENE Dateien zum Zusammenführen"
+
+echo "── Fall 1e: Prüfsumme bei zusammengesetzter Region ─────────────────────"
+# Die .md5 von Geofabrik nennt den DORTIGEN Dateinamen. Solange die
+# Bestandteile unter genau diesem Namen lagen, ersetzte ein `sed` ihn einfach.
+# Seit sie kollisionsfrei nach vollem Pfad benannt werden, passt der Name nicht
+# mehr — ohne Anpassung schluege JEDER kombinierte Wechsel an einer Prüfsumme
+# fehl, die in Wahrheit stimmt. Alle uebrigen Faelle laufen mit SKIP_CHECKSUM=1
+# und haetten das nicht bemerkt.
+if command -v md5sum >/dev/null 2>&1; then
+    D="$(setup_case case1e)"; printf '%s' "$REQ_MERGED" > "$D/status/region_request.json"
+    cp "$ROOT/case1b/merge-stub.sh" "$D/merge-stub.sh"; chmod +x "$D/merge-stub.sh"
+    REGION_MERGE_SCRIPT="$D/merge-stub.sh" run_case "$D" SKIP_CHECKSUM=
+    [ "$(cat "$D/rc")" = 0 ]; check $? "Exit 0 trotz abweichendem Namen in der .md5"
+    [ "$(phase_of "$D/status/region_status.json")" = "done" ]; check $? "Endphase done"
+    ! grep -qi "Prüfsumme stimmt nicht" "$D/status/region.log"; check $? "keine falsche Prüfsummen-Ablehnung"
+    ls "$D/osm"/*.md5 >/dev/null 2>&1; [ $? -ne 0 ]; check $? ".md5-Dateien aufgeraeumt"
+else
+    echo "übersprungen — kein md5sum auf diesem System (läuft in CI)"
+fi
+
+echo "── Fall 1f: doppelter Bestandteil wird abgelehnt ───────────────────────"
+# Das Backend entdoppelt bereits; dies ist die Sperre im Updater, der dem
+# Backend nicht traut. Ohne sie liefe derselbe Extract zweimal in den Merge.
+REQ_DUP='{"url": "https://download.geofabrik.de/europe/germany-latest.osm.pbf", "filename": "merged-a3f9c21e.osm.pbf", "java_opts": "-Xmx4g", "sources": "europe/germany|europe/germany", "requested_by": "a@b.c", "requested_at": "2026-09-05T10:00:00+00:00"}'
+D="$(setup_case case1f)"; printf '%s' "$REQ_DUP" > "$D/status/region_request.json"
+cp "$ROOT/case1b/merge-stub.sh" "$D/merge-stub.sh"; chmod +x "$D/merge-stub.sh"
+REGION_MERGE_SCRIPT="$D/merge-stub.sh" run_case "$D" MERGE_ARGS_FILE="$D/merge-args.txt"
+[ "$(cat "$D/rc")" != 0 ]; check $? "Exit ungleich 0"
+[ ! -e "$D/merge-args.txt" ]; check $? "Merge wurde gar nicht erst aufgerufen"
+# Und zwar VOR dem Herunterladen — sonst kostete der Fehlschlag erst Gigabyte.
+! grep -q "Phase 2/6" "$D/status/region.log"; check $? "Abbruch schon vor Phase 2"
+grep -q "^OSM_FILENAME=dach-latest.osm.pbf$" "$D/osm/.region"; check $? "alte Region laeuft unveraendert weiter"
+[ "$(cat "$D/graph/edges")" = "ALT" ]; check $? "alter Graph unangetastet"
 
 echo "── Fall 2: Fehlschlag in Phase 3 (Graph-Bau) ───────────────────────────"
 D="$(setup_case case2)"; printf '%s' "$REQ_JSON" > "$D/status/region_request.json"

@@ -126,7 +126,8 @@ def _write_atomic_exclusive(path: str, data: str) -> None:
             pass
 
 
-def write_request(url: str, filename: str, java_opts: str, actor_email: str) -> None:
+def write_request(url: str, filename: str, java_opts: str, actor_email: str,
+                  sources: str = "") -> None:
     """Schreibt eine Regionswechsel-Anforderung ins geteilte Volume.
 
     Reihenfolge bewusst wie in trigger_update(): Erst die Log-Zeile, dann die
@@ -153,6 +154,10 @@ def write_request(url: str, filename: str, java_opts: str, actor_email: str) -> 
         "url": url,
         "filename": filename,
         "java_opts": java_opts,
+        # Leer bei einer Einzelregion; bei mehreren die sortierte, |-getrennte
+        # Bestandteilsliste, aus der der Updater die N Extracts laedt und
+        # zusammenfuehrt. Der Default haelt bestehende Aufrufer gueltig.
+        "sources": sources,
         "requested_by": actor_email,
         "requested_at": datetime.now(timezone.utc).isoformat(),
     }

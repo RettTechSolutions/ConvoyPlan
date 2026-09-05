@@ -715,6 +715,12 @@ export interface RegionEntry {
 
 /** Ergebnis der nebenwirkungsfreien Vorab-Rechnung (`POST /region/preview`). */
 export interface RegionPreview {
+    /** Regionspfade der Bestandteile, sortiert (z. B. "europe/germany"). */
+    sources: string[];
+    /** true bei mehr als einem Bestandteil. */
+    composed: boolean;
+    /** Paare (Oberregion, Unterregion) — erlaubt, aber verschwenderisch. */
+    overlapping: [string, string][];
     extract_bytes: number;
     graph_bytes: number;
     ram_needed_bytes: number;
@@ -731,7 +737,7 @@ export interface RegionPreview {
 
 /** Phasen aus docker/updater/switch-region.sh — Namen müssen exakt stimmen. */
 export type RegionPhase =
-    | 'idle' | 'checking' | 'downloading' | 'importing' | 'switching' | 'cleaning'
+    | 'idle' | 'checking' | 'downloading' | 'merging' | 'importing' | 'switching' | 'cleaning'
     | 'done' | 'failed';
 
 export interface RegionStatus {
@@ -743,8 +749,8 @@ export interface RegionStatus {
 export const regionApi = {
     current: () => api.get<RegionCurrent>('/api/admin/region'),
     list: () => api.get<RegionEntry[]>('/api/admin/regions'),
-    preview: (url: string) => api.post<RegionPreview>('/api/admin/region/preview', { url }),
-    switch: (url: string) => api.post<{ status: string }>('/api/admin/region', { url }),
+    preview: (urls: string[]) => api.post<RegionPreview>('/api/admin/region/preview', { urls }),
+    switch: (urls: string[]) => api.post<{ status: string }>('/api/admin/region', { urls }),
     status: () => api.get<RegionStatus>('/api/admin/region/status'),
     cancel: () => api.post<{ status: string }>('/api/admin/region/cancel', {}),
     /**

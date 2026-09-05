@@ -260,6 +260,10 @@ services:
       FRONTEND_IMAGE: ${FRONTEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/frontend:latest}
       GRAPHHOPPER_IMAGE: ${GRAPHHOPPER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/graphhopper:latest}
       UPDATER_IMAGE: ${UPDATER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/updater:latest}
+      # Wegwerf-Image fuer das Zusammenfuehren mehrerer Kartenregionen
+      # (docker/updater/merge-extracts.sh). Kein Stack-Dienst — es laeuft nur
+      # fuer die Dauer eines Merge und wird deshalb hier nur durchgereicht.
+      REGION_MERGE_IMAGE: ${REGION_MERGE_IMAGE:-ghcr.io/retttechsolutions/convoyplan/osmium:latest}
       DOCKER_PROXY_IMAGE: ${DOCKER_PROXY_IMAGE:-ghcr.io/tecnativa/docker-socket-proxy:0.3.0}
       DOCKER_SOCKET_PATH: ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}
       SYSTEM_METRICS_ENABLED: ${SYSTEM_METRICS_ENABLED:-true}

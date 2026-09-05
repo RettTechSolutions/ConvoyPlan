@@ -41,6 +41,42 @@ mkdir -p "$OSM_DIR" "$GRAPH_DIR"
 
 # â”€â”€ OSM-Daten holen (nur beim ersten Start) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 DOWNLOADED=0
+
+# Zusammengesetzte Region: die Karte entsteht aus MEHREREN Geofabrik-Extracts,
+# die der Updater laedt und mit `osmium merge` verschmilzt. Hier ist nur
+# OSM_DOWNLOAD_URL bekannt — also der ERSTE Bestandteil. Wuerden wir den
+# herunterladen, startete GraphHopper mit halber Karte und Routen liefen still
+# an den Grenzen ins Leere. Deshalb: nichts laden, sondern sichtbar warten.
+#
+# Die Ausgabe alle 5 Minuten ist Absicht: Das Zusammenstellen kann bei grossen
+# Kombinationen Stunden dauern, und ein stummer Container ist von einem
+# haengenden nicht zu unterscheiden.
+if [ -n "${OSM_SOURCES:-}" ] && [ ! -f "$OSM_FILE" ]; then
+    echo "================================================================"
+    echo "  Zusammengesetzte Kartenregion"
+    echo "  Bestandteile : $OSM_SOURCES"
+    echo "  Erwartet     : $OSM_FILE"
+    echo "  Die Karte wird vom Updater bereitgestellt (Download aller"
+    echo "  Bestandteile und Zusammenfuehrung). GraphHopper wartet solange."
+    echo "================================================================"
+    region_waited=0
+    while [ ! -f "$OSM_FILE" ]; do
+        # Ausstieg fuer den Test — im Betrieb nie gesetzt.
+        [ -n "${REGION_COMPOSED_WAIT_ONCE:-}" ] && exit 0
+        sleep 30
+        region_waited=$((region_waited + 30))
+        if [ "$((region_waited % 300))" -eq 0 ]; then
+            echo "  ... warte weiter auf $OSM_FILE (seit ${region_waited}s)"
+        fi
+    done
+    echo "  Karte ist da — GraphHopper startet."
+    unset region_waited
+fi
+# ── COMPOSED_WAIT_ENDE ──────────────────────────────────────────────────────
+# Marke fuer graphhopper/tests/test_first_start_composed.sh: der Test schneidet
+# den Kopf bis hierher heraus und fuehrt ihn aus. An einer Kommentarmarke
+# verankert statt an Zeilennummern, damit Einschuebe darueber ihn nicht brechen.
+
 if [ ! -f "$OSM_FILE" ]; then
     echo "================================================================"
     echo "  OSM-Kartendaten fehlen â€“ Download wird gestartet"

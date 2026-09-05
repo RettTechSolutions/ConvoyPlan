@@ -54,3 +54,29 @@ def test_estimate_graph_bytes_is_monotonic_and_stays_in_order_of_magnitude():
     assert small < large
     assert BAYERN_BYTES <= small <= 3 * BAYERN_BYTES
     assert DACH_BYTES <= large <= 3 * DACH_BYTES
+
+# --- Task 3: Schaetzung ueber mehrere Extracts ---
+
+def test_summe_der_extracts():
+    from app.services.region_estimate import sum_extract_bytes
+    assert sum_extract_bytes([4 * GB, 2 * GB, 1 * GB]) == 7 * GB
+
+def test_plattenbedarf_beruecksichtigt_alle_gleichzeitig_liegenden_dateien():
+    """Waehrend des Wechsels liegen N Quellen, die zusammengefuehrte Datei,
+    Staging-Graph, alter Graph und altes Extract gleichzeitig auf der Platte."""
+    from app.services.region_estimate import estimate_disk_during_switch
+    need = estimate_disk_during_switch([4 * GB, 2 * GB, 1 * GB])
+    assert need > 7 * GB * 2   # deutlich mehr als nur Quellen + Merge
+
+def test_sum_extract_bytes_lehnt_leere_liste_ab():
+    """Eine leere Auswahl hat keine sinnvolle Groesse — statt stillschweigend
+    0 zurueckzugeben (was das Panel als 'passt problemlos' werten wuerde),
+    wird ein Fehler ausgeloest."""
+    from app.services.region_estimate import sum_extract_bytes
+    with pytest.raises(ValueError):
+        sum_extract_bytes([])
+
+def test_estimate_disk_during_switch_lehnt_leere_liste_ab():
+    from app.services.region_estimate import estimate_disk_during_switch
+    with pytest.raises(ValueError):
+        estimate_disk_during_switch([])

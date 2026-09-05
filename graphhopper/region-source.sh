@@ -11,9 +11,18 @@
 #   OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf
 #   OSM_FILENAME=berlin-latest.osm.pbf
 #   JAVA_OPTS=-Xmx3g -Xms1g -XX:+UseG1GC
+# Optional (nur bei zusammengesetzten Regionen, siehe Mehrere-Regionen-Spec):
+#   OSM_SOURCES=europe/germany|europe/poland|europe/czech-republic
 # Es wird am ERSTEN "=" je Zeile getrennt, da JAVA_OPTS-Werte Leerzeichen
 # und ggf. selbst ein "=" enthalten koennen (z.B. "-XX:Flag=Wert") — alles
 # ab dem ersten "=" gehoert zum Wert.
+#
+# OSM_SOURCES ist der EINZIGE optionale Schluessel: er darf in der Datei
+# fehlen, ohne dass die Alles-oder-nichts-Regel unten greift und die Datei
+# verwirft. Er markiert eine zusammengesetzte Region (mehrere Geofabrik-
+# Extracts zu einer Karte verschmolzen) — entrypoint.sh liest ihn, um in
+# diesem Fall selbst NICHT herunterzuladen, sondern auf den Updater zu warten
+# (siehe entrypoint.sh, Abschnitt "OSM-Daten holen").
 #
 # Bewusste Entscheidungen ueber den Drei-Zeilen-Normalfall hinaus:
 #   - Kommentarzeilen ("#...") sind NICHT Teil des festgelegten Formats und
@@ -40,6 +49,7 @@ if [ -f "$REGION_FILE" ]; then
     region_url=""
     region_filename=""
     region_java_opts=""
+    region_sources=""
     region_ok=1
 
     while IFS= read -r region_line || [ -n "$region_line" ]; do
@@ -60,6 +70,7 @@ if [ -f "$REGION_FILE" ]; then
             OSM_DOWNLOAD_URL) region_url="$region_value" ;;
             OSM_FILENAME)     region_filename="$region_value" ;;
             JAVA_OPTS)        region_java_opts="$region_value" ;;
+            OSM_SOURCES)      region_sources="$region_value" ;;
             *)
                 # Unbekannter Schluessel — lieber die ganze Datei verwerfen
                 # als auf gut Glueck weiterzumachen
@@ -73,9 +84,23 @@ if [ -f "$REGION_FILE" ]; then
         export OSM_DOWNLOAD_URL="$region_url"
         export OSM_FILENAME="$region_filename"
         export JAVA_OPTS="$region_java_opts"
+        # OSM_SOURCES ist optional: nur exportieren, wenn wirklich ein Wert
+        # dasteht. Ein leerer Export wuerde entrypoint.sh nicht taeuschen
+        # (dort wird auf -n geprueft), aber eine leere Variable in der
+        # Umgebung zu hinterlassen ist unsauber.
+        if [ -n "$region_sources" ]; then
+            export OSM_SOURCES="$region_sources"
+        else
+            # Ohne else bliebe ein zuvor exportiertes OSM_SOURCES stehen: ein
+            # zweites Sourcen mit einer .region OHNE den Schluessel wuerde die
+            # Region wechseln, den Zusammensetzungs-Marker aber behalten. Heute
+            # nicht erreichbar (entrypoint.sh sourct einmal je Prozess), aber
+            # eine Falle fuer jedes kuenftige Re-Sourcing.
+            unset OSM_SOURCES
+        fi
     else
         echo "WARNUNG: .region ist unvollstaendig oder fehlerhaft ($REGION_FILE) — Env-Vorgaben werden unveraendert verwendet" >&2
     fi
 
-    unset region_url region_filename region_java_opts region_ok region_key region_value region_line
+    unset region_sources region_url region_filename region_java_opts region_ok region_key region_value region_line
 fi
