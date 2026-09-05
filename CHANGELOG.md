@@ -21,6 +21,15 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Der Wechsel auf jede Region über 2 GB scheiterte an „Extract nicht abrufbar" — obwohl die Datei einwandfrei erreichbar war.** Betroffen war unter anderem **DACH**, also die Standardregion der Installation. Der Updater fragt die Größe des Extracts per HTTP-HEAD ab und wertete die Antwort mit `awk 'printf "%d"'` aus. Sein Image ist Alpine, also busybox-awk — und dessen `printf "%d"` castet den intern als `double` gehaltenen Wert auf `int`, also **32 Bit** (`editors/awk.c`, `awk_printf`: `xasprintf(s, (int)d)`, mit TODO an genau dieser Stelle). DACH ist 6.215.032.253 Bytes groß und liegt damit über 2³¹. Der Cast ist in C undefiniert: Auf x86-64 liefert er −2.147.483.648, womit die Prüfung „Größe > 0" fehlschlug; auf ARM sättigt er auf 2.147.483.647, womit der Wechsel mit einer um zwei Drittel zu kleinen Größe weitergelaufen und Stunden später auf der vollen Platte gelandet wäre.
+
+  Warum das niemandem auffiel: **Jede in CI geprüfte Region liegt unter 2 GB** (Berlin 99 MB, Sachsen 200 MB). Die Größe wird jetzt als roher String durchgereicht; gerechnet wird ausschließlich in der Shell, die 64 Bit nutzt. Der neue Regressionstest läuft im echten Basisimage des Updaters — unter dem awk eines Entwicklungsrechners oder eines CI-Runners wäre auch die alte Fassung grün gewesen und der Test damit wertlos.
+
+- **Das Live-Log im Panel zeigte denselben Abschnitt vielfach, teils ineinander verschachtelt.** Zwei Ursachen. Serverseitig lieferte der Strom halbe Zeilen aus: Liest er die Logdatei, während der Updater gerade hineinschreibt, endet der Block mitten in einer Zeile — das Fragment ging als vollständige Zeile hinaus und der Rest als zweite. Es wird jetzt bis zum letzten Zeilenumbruch ausgeliefert, der Rest gepuffert; die letzte Zeile eines Laufs ohne abschließenden Umbruch wird am Ende nachgereicht. Clientseitig konnten mehrere Ströme gleichzeitig leben: Während auf das Stream-Ticket gewartet wurde, sah der Statuspoll „kein Strom vorhanden" und startete einen weiteren; alle lasen ab Byte 0 und hängten an dieselbe Liste an.
+
+
 ## [2026.5.1] – 2026-09-05
 
 ### Fixed

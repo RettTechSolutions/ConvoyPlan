@@ -956,3 +956,57 @@ async def test_switch_entdoppelt_vor_dem_schreiben(monkeypatch, tmp_path):
     assert resp.status_code in (200, 202), resp.text
     assert written["sources"] == ""
     assert not written["filename"].startswith("merged-")
+
+
+@pytest.mark.asyncio
+async def test_region_log_liefert_keine_halben_zeilen(tmp_path, monkeypatch):
+    """`f.read()` liefert, was gerade in der Datei steht — schreibt der Updater
+    in diesem Moment, endet der Block mitten in einer Zeile. Ohne Puffer ging
+    das Fragment als vollstaendige `data:`-Zeile hinaus und der Rest als
+    zweite; im Panel stand dann z. B. "[2026-09-05 10" ueber der eigentlichen
+    Zeile. Genau so im Betrieb beobachtet.
+    """
+    log = tmp_path / "region.log"
+    log.write_text("[2026-09-05 10")          # abgeschnitten, kein Zeilenumbruch
+    monkeypatch.setattr(region_switch, "log_path", lambda: str(log))
+
+    # Der Statuscheck laeuft NACH dem Ausliefern des Zuwachses — er ist damit
+    # der natuerliche Haken, um den Rest der Zeile "waehrend" des Streams
+    # nachzuschieben.
+    aufrufe = {"n": 0}
+
+    def _status():
+        aufrufe["n"] += 1
+        if aufrufe["n"] == 1:
+            with open(log, "a") as f:
+                f.write(":57:19] Regionswechsel angefordert\n")
+            return {"phase": "importing"}
+        return {"phase": "done"}
+
+    monkeypatch.setattr(region_switch, "read_status", _status)
+
+    transport = ASGITransport(app=_stream_app(monkeypatch))
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/admin/region/log?token=ticket")
+
+    body = resp.text
+    assert "data: [2026-09-05 10:57:19] Regionswechsel angefordert" in body
+    # Das Fragment darf NICHT als eigene Zeile erschienen sein.
+    assert "data: [2026-09-05 10\n" not in body
+
+
+@pytest.mark.asyncio
+async def test_region_log_liefert_die_letzte_zeile_ohne_umbruch(tmp_path, monkeypatch):
+    """Kehrseite des Puffers: Endet der Lauf mit einer Zeile ohne
+    abschliessenden Umbruch, darf sie nicht im Puffer liegen bleiben — gerade
+    die letzte Zeile traegt oft den Fehlergrund."""
+    log = tmp_path / "region.log"
+    log.write_text("[2026-09-05 10:57:24] Extract nicht abrufbar: europe/dach")
+    monkeypatch.setattr(region_switch, "log_path", lambda: str(log))
+    monkeypatch.setattr(region_switch, "read_status", lambda: {"phase": "failed"})
+
+    transport = ASGITransport(app=_stream_app(monkeypatch))
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/admin/region/log?token=ticket")
+
+    assert "data: [2026-09-05 10:57:24] Extract nicht abrufbar: europe/dach" in resp.text

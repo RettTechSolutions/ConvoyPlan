@@ -792,9 +792,30 @@ else
     phase "checking" "Phase 1/5: Prüfe Verfügbarkeit und Platz…"
 fi
 
+# Groesse eines Extracts per HEAD, ueber Weiterleitungen hinweg (Geofabrik
+# beantwortet -latest-URLs grundsaetzlich mit 302 auf die datierte Datei).
+#
+# Der Wert wird als ROHER STRING durchgereicht, nicht durch eine
+# awk-Zahlenkonvertierung. Das ist keine Kosmetik: Das Updater-Image ist
+# Alpine, also busybox-awk, und dessen `printf "%d"` castet den intern als
+# double gehaltenen Wert auf `int` — 32 Bit (editors/awk.c, awk_printf: `(int)d`,
+# mit TODO an genau dieser Stelle). DACH ist 6.215.032.253 Bytes gross und
+# liegt damit ueber 2^31. Der Cast ist in C undefiniert; auf x86-64 liefert
+# cvttsd2si dafuer -2147483648, womit die Pruefung unten fehlschlaegt und
+# JEDER Wechsel auf eine Region ueber 2 GB an "Extract nicht abrufbar"
+# scheitert. Auf aarch64 saettigt derselbe Cast auf 2147483647 — dann laeuft
+# der Wechsel mit einer um zwei Drittel zu kleinen Groesse weiter und rennt
+# Stunden spaeter in ENOSPC. Beide Ausgaenge sind schlecht, beide waren
+# unsichtbar: Jede in CI geprueft Region liegt unter 2 GB.
+#
+# `sub` entfernt das CR der HTTP-Kopfzeile ($2 behaelt es, weil awk nur an
+# Leerzeichen und Tabs trennt). Die Ziffernpruefung ersetzt die weggefallene
+# Zahlenkonvertierung; die Arithmetik danach macht bash, und die rechnet mit
+# 64 Bit.
 _head_size() {
     curl -sSIL --max-time 60 "$1" 2>/dev/null \
-        | awk 'tolower($1)=="content-length:"{v=$2} END{printf "%d", v+0}'
+        | awk 'tolower($1)=="content-length:"{v=$2}
+               END{ sub(/\r$/, "", v); if (v !~ /^[0-9]+$/) v="0"; print v }'
 }
 
 if [ -n "$SOURCES" ]; then

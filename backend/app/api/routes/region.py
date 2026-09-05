@@ -434,6 +434,13 @@ async def stream_region_log(
 
     async def log_generator():
         offset = 0
+        # Rest einer noch unvollstaendigen Zeile. `f.read()` liefert, was gerade
+        # in der Datei steht — schreibt der Updater in diesem Moment, endet der
+        # Block mitten in einer Zeile. Ohne Puffer ginge dieses Fragment als
+        # vollstaendige `data:`-Zeile hinaus und der Rest kaeme als zweite; im
+        # Panel stand dann so etwas wie "[2026-09-05 10" ueber der eigentlichen
+        # Zeile. Deshalb wird nur bis zum letzten Zeilenumbruch ausgeliefert.
+        pending = b""
         loop = asyncio.get_event_loop()
         deadline = loop.time() + _LOG_STREAM_SECONDS
         last_activity = loop.time()
@@ -453,13 +460,20 @@ async def stream_region_log(
             if raw:
                 offset += len(raw)
                 last_activity = loop.time()
-                for line in raw.decode("utf-8", errors="replace").splitlines():
-                    if line.strip():
-                        yield f"data: {line}\n\n"
+                pending += raw
+                complete, sep, pending = pending.rpartition(b"\n")
+                if sep:
+                    for line in complete.decode("utf-8", errors="replace").split("\n"):
+                        if line.strip():
+                            yield f"data: {line}\n\n"
 
             # Endphase erst NACH dem Ausliefern des Zuwachses pruefen, sonst
             # fehlen die letzten Zeilen des Laufs.
             if region_switch.read_status().get("phase") in ("done", "failed"):
+                # Eine letzte Zeile ohne abschliessenden Umbruch gehoert noch
+                # dazu — der Updater ist fertig, es kommt nichts mehr nach.
+                if pending.strip():
+                    yield f"data: {pending.decode('utf-8', errors='replace')}\n\n"
                 yield "event: done\ndata: \n\n"
                 return
 
