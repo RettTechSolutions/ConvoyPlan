@@ -141,7 +141,7 @@ Rollback in Phase 4.
 | Datei | Schreiber | Inhalt |
 |---|---|---|
 | `region_request.json` | Backend | Ziel-URL, Dateiname, Import-Heap, Auslöser, Zeitpunkt |
-| `region_status.json` | Updater | Phase, Fortschritt, Abbruchgrund |
+| `region_status.json` | Updater | Phase, Fortschritt, Abbruchgrund — erst ab dem Aufgreifen, siehe Randfall `queued` |
 | `region.log` | Updater | Live-Ausgabe für das Panel |
 | `region.cancel` | Backend | Abbruchwunsch; der Updater prüft ihn an jeder Phasengrenze |
 | `region.lock` | beide | Gegenseitiger Ausschluss mit dem Update-Trigger |
@@ -247,6 +247,17 @@ zentrale Zusage dieses Entwurfs und muss dastehen, statt erschlossen zu werden.
 
 - *Reload während des Wechsels* — Zustand kommt aus `region_status.json`, nicht
   aus dem Komponentenzustand. Verhält sich wie die Update-Anzeige heute.
+- *Zwischen Klick und Aufgreifen* — **nachträglich ergänzt, weil im Betrieb
+  aufgefallen.** `region_status.json` allein reicht als Zustandsquelle nicht:
+  Sie entsteht erst, wenn der Updater die Anforderung aufgreift. Bis dahin
+  meldete der Endpunkt `idle`, das Panel blendete daraufhin Phasenkarte und
+  Terminal aus, und der Operator sah nach dem Klick nichts — oder, wenn schon
+  einmal gewechselt worden war, das `done` des VORIGEN Wechsels. Der Status
+  wird deshalb aus ZWEI Quellen gebildet: Liegt `region_request.json` ohne
+  `region.lock` vor, ist die Phase `queued`. Das Lock grenzt beides sauber ab,
+  weil es genau für die Dauer der Verarbeitung existiert; `_release` entfernt
+  deshalb die Anforderung VOR dem Lock, sonst blitzte am Ende jedes Wechsels
+  kurz `queued` auf.
 - *Installation ohne Updater-Container* — der Aktor fehlt, der Wechsel ist
   unmöglich. Die Karte zeigt dann die Region als reine Information plus Hinweis
   auf den Konfigurationsweg. Kein toter Knopf. **Zu verifizieren:** ob solche

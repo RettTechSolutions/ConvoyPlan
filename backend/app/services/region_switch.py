@@ -183,8 +183,13 @@ def write_request(url: str, filename: str, java_opts: str, actor_email: str,
     _write_atomic_exclusive(_path(REQUEST_FILE), json.dumps(payload))
 
 
-def read_status() -> dict:
-    """Liest den zuletzt vom Updater geschriebenen Status.
+# Was das Panel anzeigt, solange die Anforderung im Volume liegt und der
+# Updater sie noch nicht aufgegriffen hat.
+QUEUED_MESSAGE = "Angefordert — wartet darauf, dass der Updater sie aufgreift."
+
+
+def _read_status_file() -> dict:
+    """Der zuletzt vom Updater geschriebene Status.
 
     Existiert die Datei nicht oder ist sie (z. B. waehrend eines laufenden
     Schreibvorgangs) nicht valides JSON, gilt der Ruhezustand als Default.
@@ -194,6 +199,41 @@ def read_status() -> dict:
             return json.load(f)
     except (OSError, ValueError):
         return {"phase": "idle"}
+
+
+def _requested_at() -> str | None:
+    """Zeitstempel aus der wartenden Anforderung, falls lesbar."""
+    try:
+        with open(_path(REQUEST_FILE)) as f:
+            value = json.load(f).get("requested_at")
+    except (OSError, ValueError):
+        return None
+    return value if isinstance(value, str) else None
+
+
+def read_status() -> dict:
+    """Der Zustand eines Regionswechsels — aus ZWEI Quellen, nicht einer.
+
+    Die Statusdatei allein reicht nicht: Zwischen dem Klick auf „Wechseln" und
+    dem Moment, in dem der Updater die Anforderung aufgreift, liegt sein
+    Poll-Intervall. In dieser Zeit gibt es fuer den neuen Wechsel noch keinen
+    Status, und die Datei enthaelt entweder gar nichts — dann meldete diese
+    Funktion `idle`, das Panel blendete daraufhin Phasenkarte UND Live-Log
+    aus, und der Operator sah nach dem Klick schlicht nichts — oder, noch
+    irrefuehrender, das Ergebnis des VORIGEN Wechsels: ein falsches
+    „Abgeschlossen" ueber einem gerade erst angestossenen Wechsel.
+
+    Deshalb hat die wartende Anforderung Vorrang. Das Lock grenzt beides
+    sauber ab: Es existiert genau, solange der Updater arbeitet — liegt eine
+    Anforderung ohne Lock vor, ist sie angefordert und noch nicht begonnen.
+    """
+    if os.path.exists(_path(REQUEST_FILE)) and not os.path.exists(_path(LOCK_FILE)):
+        status = {"phase": "queued", "message": QUEUED_MESSAGE}
+        at = _requested_at()
+        if at:
+            status["at"] = at
+        return status
+    return _read_status_file()
 
 
 def is_busy() -> bool:
