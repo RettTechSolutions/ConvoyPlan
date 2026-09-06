@@ -8,7 +8,7 @@ Vollständige Feature-Übersicht von ConvoyPlan mit Umsetzungsstatus. Eine kompa
 
 | Funktion | Beschreibung | Status |
 |---|---|---:|
-| Karte | Interaktive OSM-Karte mit Planungsansicht, DACH-Fokusmaske (Deutschland, Österreich, Schweiz, Liechtenstein) und Hell-/Dunkel-Kartendesign | ✅ |
+| Karte | Interaktive OSM-Karte mit Planungsansicht, konfigurierbarer Kartenregion (Standard DACH-Fokusmaske: Deutschland, Österreich, Schweiz, Liechtenstein) und Hell-/Dunkel-Kartendesign | ✅ |
 | Wegpunkte | Start, Ziel, Wegpunkte, Kontrollpunkte und technische Halte | ✅ |
 | Routenberechnung | GraphHopper-Routing über selbst gehosteten Dienst | ✅ |
 | Zeitplan | Automatische Ankunfts- und Abfahrtszeiten | ✅ |
@@ -67,6 +67,7 @@ Vollständige Feature-Übersicht von ConvoyPlan mit Umsetzungsstatus. Eine kompa
 | Update-Modus | „Automatisch" installiert Updates selbstständig; „Benachrichtigen" verschickt nur eine E-Mail an Superadmins, Installation erfolgt manuell; optionale Bestätigungs-Mail nach automatischer Installation | ✅ |
 | Live-Update-Log | Echtzeit-Ausgabe des Updater-Prozesses im Browser via SSE | ✅ |
 | GitHub-Token in UI | `GITHUB_TOKEN` für Update-Fetch direkt in der Admin-UI konfigurierbar, kein Neustart | ✅ |
+| Kartenregion wechseln | Kartenregion im laufenden Betrieb wechseln (Admin → System) mit Vorabschätzung von Speicher-, Platten- und Zeitbedarf und Live-Fortschritt, ohne nennenswerten Routing-Ausfall; seit `2026.5.0` mehrere Geofabrik-Regionen zu einer Karte kombinierbar, damit Routen auch über Landesgrenzen funktionieren | ✅ |
 | Demo-Modus | Ohne Lizenzschlüssel: Lesezugriff uneingeschränkt, Schreibzugriff gesperrt (HTTP 402) | ✅ |
 | Lizenzaktivierung | Schlüsseleingabe und Instanz-UUID im Admin-Bereich „System"; Cache-Reset ohne Neustart | ✅ |
 | Backup / Restore | `scripts/backup.sh` und `scripts/restore.sh` für DB-Dump und Volumes inkl. Prüfsummen und Retention | ✅ |
