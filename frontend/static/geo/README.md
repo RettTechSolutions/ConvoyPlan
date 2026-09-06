@@ -1,21 +1,32 @@
 # Geodaten
 
-Zwei Dateien, beide erzeugt — nicht von Hand gepflegt. Die Bauskripte liegen
-unter `scripts/geo/`, die Quelldaten (soweit nicht heruntergeladen) unter
+Eine Datei, erzeugt — nicht von Hand gepflegt. Das Bauskript liegt unter
+`scripts/geo/`, die Quelldaten (soweit nicht heruntergeladen) unter
 `scripts/geo/sources/`.
 
 | Datei | Zweck | Erzeugt von |
 |---|---|---|
 | `gebiete.geojson` | wählbare Zuständigkeitsgebiete im Leitstellen-Dialog | `scripts/geo/build_gebiete.py` |
-| `dach.geojson` | Umriss des Routing-Raums (Maske auf allen Karten) | `scripts/geo/build_umriss.sh` |
-
-Reihenfolge zählt: `dach.geojson` wird aus `gebiete.geojson` abgeleitet.
 
 ```sh
 python3 scripts/geo/build_gebiete.py   # lädt AT und CH/LI herunter
-sh      scripts/geo/build_umriss.sh    # braucht mapshaper (via npx)
 ```
 
+## Kein Umriss mehr in diesem Verzeichnis
+
+Bis v2026.5.2 lag hier `dach.geojson`: der Umriss des Routing-Raums, aus dem
+alle Karten ihre Maske bauen (alles außerhalb wird abgedunkelt, weil dort keine
+Route berechenbar ist). Die Datei war fest DACH — und bekam den Regionswechsel
+im Admin-Panel nicht mit. Nach einem Wechsel behauptete die Karte weiterhin
+DACH, während GraphHopper längst etwas anderes geladen hatte.
+
+Der Umriss kommt jetzt zur Laufzeit vom Backend (`GET /api/region/outline`),
+das ihn aus der aktiven Region in `.region` und den Geometrien des
+Geofabrik-Index ableitet — also immer aus genau dem Extract, das GraphHopper
+tatsächlich geladen hat. Siehe `backend/app/api/routes/region.py` und
+`frontend/src/lib/map/region.ts`.
+
+Damit entfällt auch `scripts/geo/build_umriss.sh`.
 ---
 
 ## `gebiete.geojson`
@@ -73,49 +84,3 @@ Land. Erwartet: **DE 400, AT 94, CH 26, LI 1**. Die Landesflächen sollten auf
 rund ein halbes Prozent an die amtlichen Werte herankommen (DE 357.596,
 AT 83.879, CH 41.291, LI 160 km²) — größere Abweichungen heißen, dass eine
 Quelle ihre Struktur geändert hat.
-
----
-
-## `dach.geojson`
-
-Umriss des abgedeckten Routing-Gebiets: Deutschland, Österreich, Schweiz und
-Liechtenstein als **eine** zusammenhängende Fläche (~54 kB). Alles außerhalb
-wird auf den Karten abgedunkelt bzw. ausgegraut, weil die Routenberechnung nur
-innerhalb der geladenen OSM-Daten möglich ist (GraphHopper-Standard =
-Geofabrik-Extract `europe/dach`). Die Maske selbst (Welt minus Region) wird zur
-Laufzeit gebaut — siehe `src/lib/map/region.ts`.
-
-Der Umriss ist exakt die Außengrenze von `gebiete.geojson`. Das ist der Grund
-für die Ableitung statt einer eigenen Quelle: Kämen beide aus verschiedenen
-Datensätzen, ragten im Leitstellen-Dialog Gebiete sichtbar über den Maskenrand
-hinaus.
-
-Die Datei ist reine **Anzeige**. Verbindlich ist allein, welches OSM-Extract
-GraphHopper geladen hat: Wer über `OSM_DOWNLOAD_URL` eine andere Region fährt,
-sollte sie passend austauschen — sonst zeigt die Karte ein Gebiet als
-routingfähig an, das GraphHopper gar nicht kennt (oder umgekehrt).
-
-### Fallstricke
-
-- Die drei Landesdatensätze ziehen ihre gemeinsamen Grenzen um bis zu ~2 km
-  unterschiedlich. Ohne `-clean gap-width=3km` blieben dunkle Nahtstreifen quer
-  durch das Alpenvorland stehen.
-- **Kein `-filter-slivers`** auf dem fertigen Mosaik: Der Verschnitt zwischen
-  Gebietsgrenzen taucht als Loch auf und wird schon von `-clean` erledigt.
-  `-filter-slivers` würde stattdessen kleine Außenflächen entfernen — und das
-  sind hier echte Exklaven und Inseln (Vennbahn-Gebiet bei Aachen, Elbinseln,
-  Halligen) zwischen 1,2 und 3 km².
-- Innenringe werden verworfen. Übrig bleibt dort nur der Bodensee, an dem die
-  Quellen unterschiedlich enden; echte Enklaven gibt es innerhalb von DACH nicht
-  mehr — Jungholz und Büsingen sind Binnenland.
-
-### Kontrolle nach der Regenerierung
-
-Das Skript bricht ab, wenn die Fläche mehr als 2 % von der amtlichen Summe
-abweicht, und meldet Teilflächen und Bounding-Box. Erwartet: **29 Teilflächen,
-0 Innenringe, `lon 5,87…17,15 / lat 45,82…55,06`, rund 481.000 km²**.
-
-Wichtig bei eigenen Prüfungen: Eine planare Shoelace-Formel mit festem
-cos(Breite)-Faktor ist hier wertlos — der Hauptring spannt neun Breitengrade,
-jede feste Bezugsbreite liegt um Prozente daneben. Das Skript rechnet deshalb
-mit dem sphärischen Exzess.

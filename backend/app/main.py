@@ -353,6 +353,10 @@ app.include_router(users.router, prefix="/api")
 app.include_router(admin_router.router, prefix="/api")
 app.include_router(region_router.router, prefix="/api")
 app.include_router(region_router.admin_router, prefix="/api")
+# Oeffentlich (kein require_superadmin): der Regionsumriss fuer die
+# Kartenmaske. Wird auch von den Tracking- und Freigabekarten gebraucht, die
+# ohne Anmeldung laufen — siehe Kommentar an `region_router.public_router`.
+app.include_router(region_router.public_router, prefix="/api")
 app.include_router(system_metrics_router.router, prefix="/api")
 app.include_router(setup_router.router, prefix="/api")
 app.include_router(leitstellen.router, prefix="/api")

@@ -335,3 +335,75 @@ async def list_regions() -> list["RegionEntry"]:
     # Modulebene und halten die Zuweisung faelschlich fuer unbenutzt.
     _region_index_cache = entries
     return entries
+
+
+# Umrisse (siehe region_outlines()). Bewusst NICHT zusammen mit
+# `_region_index_cache` gehalten: Die Geometrien machen den Loewenanteil der
+# 3,8 MB des Index aus, waehrend die Auswahlliste im Panel nur Namen und URLs
+# braucht. Sie prozessweit vorzuhalten hiesse, in jedem Uvicorn-Worker ein paar
+# Megabyte fuer 554 Umrisse zu halten, von denen genau einer je gebraucht wird.
+# Der Aufrufer cacht stattdessen das fertige Ergebnis (siehe
+# `region.py:region_outline`), sodass dieser Weg pro Prozess und Region genau
+# einmal laeuft.
+async def region_outlines(paths: list[str]) -> dict[str, dict]:
+    """Umriss-Geometrien der genannten Regionspfade, `{pfad: geometry}`.
+
+    `index-v1.json` ist eine echte GeoJSON-FeatureCollection: Jedes Feature
+    traegt neben den `properties` (die `list_regions()` auswertet) auch die
+    `geometry` des Extract-Umrisses — genau der Bereich, den Geofabrik in diese
+    Datei schneidet. Das ist die einzige Quelle, die immer zur tatsaechlich
+    geladenen Karte passt; ein mitgeliefertes GeoJSON kann das nicht, weil es
+    den Regionswechsel im Panel nicht mitbekommt.
+
+    Zugeordnet wird ueber `urls.pbf`, NICHT ueber `properties.id`: Die id ist
+    im Index kontextfrei ("dach", "bayern"), waehrend `.region` und das Panel
+    durchgehend mit dem vollen Pfad arbeiten ("europe/dach"). Die URL ist der
+    einzige Wert, aus dem sich dieser Pfad eindeutig ableiten laesst.
+
+    Fehlende Pfade fehlen im Ergebnis — der Aufrufer entscheidet, ob ein
+    unvollstaendiger Umriss noch taugt.
+    """
+    wanted = set(paths)
+    if not wanted:
+        return {}
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.get(_INDEX_URL)
+        resp.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise ConnectionError(
+            "Geofabrik-Index ist gerade nicht abrufbar. Bitte spaeter erneut "
+            "versuchen."
+        ) from exc
+
+    out: dict[str, dict] = {}
+    for feature in resp.json().get("features", []):
+        pbf = feature.get("properties", {}).get("urls", {}).get("pbf")
+        geometry = feature.get("geometry")
+        if not pbf or not geometry:
+            continue
+        path = path_from_pbf_url(pbf)
+        if path in wanted:
+            out[path] = geometry
+    return out
+
+
+def path_from_pbf_url(url: str) -> str:
+    """`https://download.geofabrik.de/europe/dach-latest.osm.pbf` -> `europe/dach`.
+
+    Dieselbe Abbildung wie `region_compose.path_from_url()`, hier noch einmal
+    ohne dessen Import: `region_compose` beschreibt das Zusammenfuehren
+    mehrerer Regionen und haette in einem reinen Geofabrik-Adapter nichts zu
+    suchen — die Abhaengigkeit liefe der Schichtung entgegen. Die Fassung hier
+    ist strenger, weil sie ausschliesslich auf Index-URLs angewandt wird: Sie
+    verlangt Host und Suffix und liefert sonst einen leeren Pfad, der in
+    keiner Auswahl vorkommt.
+    """
+    parsed = urlparse(url)
+    if parsed.netloc != _HOST:
+        return ""
+    path = parsed.path.lstrip("/")
+    if not path.endswith(_SUFFIX):
+        return ""
+    return path[: -len(_SUFFIX)]

@@ -1010,3 +1010,286 @@ async def test_region_log_liefert_die_letzte_zeile_ohne_umbruch(tmp_path, monkey
         resp = await client.get("/api/admin/region/log?token=ticket")
 
     assert "data: [2026-09-05 10:57:24] Extract nicht abrufbar: europe/dach" in resp.text
+
+
+# ── Regionsumriss fuer die Kartenmaske (GET /api/region/outline) ────────────
+#
+# Der Befund dahinter: Nach einem Regionswechsel im Panel rechnete GraphHopper
+# korrekt mit der neuen Karte (Route bis Bologna), aber die Maske auf der Karte
+# zeigte weiter DACH — sie kam aus einer mitgelieferten Datei im
+# Frontend-Build, die vom Wechsel nichts wusste. Die folgenden Tests halten
+# fest, dass der Umriss jetzt der aktiven Region folgt.
+
+
+def _fake_index(features):
+    """Ersetzt den HTTP-Aufruf auf index-v1.json durch feste Features."""
+    class _FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"type": "FeatureCollection", "features": features}
+
+    class _FakeAsyncClient:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, url):
+            return _FakeResponse()
+
+    return _FakeAsyncClient
+
+
+def _feature(pbf_path, geometry):
+    return {
+        "properties": {
+            "id": pbf_path.rsplit("/", 1)[-1],
+            "name": pbf_path,
+            "urls": {"pbf": f"https://download.geofabrik.de/{pbf_path}-latest.osm.pbf"},
+        },
+        "geometry": geometry,
+    }
+
+
+_QUADRAT = {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]}
+_ZWEITES = {
+    "type": "MultiPolygon",
+    "coordinates": [[[[5, 5], [6, 5], [6, 6], [5, 6], [5, 5]]]],
+}
+
+
+def _reset_outline_cache(monkeypatch):
+    from app.api.routes import region as region_routes
+    monkeypatch.setattr(region_routes, "_outline_cache", {})
+
+
+@pytest.mark.asyncio
+async def test_outline_folgt_der_aktiven_region(tmp_path, monkeypatch):
+    """Der eigentliche Befund: Nach einem Wechsel auf Italien darf der Umriss
+    NICHT mehr DACH sein. Vorher kam er aus `static/geo/dach.geojson` und war
+    damit unabhaengig von dem, was GraphHopper geladen hatte."""
+    from app.api.routes import region as region_routes
+
+    monkeypatch.setattr(region_routes, "OSM_PATH", str(tmp_path))
+    _reset_outline_cache(monkeypatch)
+    (tmp_path / ".region").write_text(
+        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/italy-latest.osm.pbf\n"
+        "OSM_FILENAME=italy-latest.osm.pbf\n"
+    )
+    monkeypatch.setattr(
+        geofabrik.httpx,
+        "AsyncClient",
+        _fake_index([
+            _feature("europe/dach", _ZWEITES),
+            _feature("europe/italy", _QUADRAT),
+        ]),
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/region/outline")
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["geometry"]["type"] == "MultiPolygon"
+    # Italien, nicht DACH. Das Polygon wird dabei zu genau einem Element des
+    # MultiPolygons — das Frontend erwartet durchgaengig MultiPolygon.
+    assert body["geometry"]["coordinates"] == [_QUADRAT["coordinates"]]
+    assert body["properties"]["name"] == "europe/italy"
+
+
+@pytest.mark.asyncio
+async def test_outline_ist_ohne_anmeldung_erreichbar(tmp_path, monkeypatch):
+    """Die Maske gehoert auch auf die Tracking- und Freigabekarten, die ohne
+    Anmeldung laufen — der Endpunkt darf deshalb nicht hinter
+    `require_superadmin` liegen. Ohne Dependency-Override, also mit der echten
+    Absicherung: Ein Admin-Endpunkt antwortete hier 401/403."""
+    from app.api.routes import region as region_routes
+
+    app.dependency_overrides.clear()
+    monkeypatch.setattr(region_routes, "OSM_PATH", str(tmp_path))
+    _reset_outline_cache(monkeypatch)
+    (tmp_path / ".region").write_text(
+        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/dach-latest.osm.pbf\n"
+    )
+    monkeypatch.setattr(
+        geofabrik.httpx, "AsyncClient", _fake_index([_feature("europe/dach", _QUADRAT)])
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/region/outline")
+
+    assert resp.status_code == 200, resp.text
+
+
+@pytest.mark.asyncio
+async def test_outline_setzt_zusammengesetzte_region_aus_allen_teilen(
+    tmp_path, monkeypatch
+):
+    """Bei einer kombinierten Region (OSM_SOURCES) muessen ALLE Bestandteile
+    im Umriss stehen. Fehlte einer, waere sein Gebiet auf der Karte maskiert,
+    obwohl GraphHopper dort routen kann."""
+    from app.api.routes import region as region_routes
+
+    monkeypatch.setattr(region_routes, "OSM_PATH", str(tmp_path))
+    _reset_outline_cache(monkeypatch)
+    (tmp_path / ".region").write_text(
+        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/dach-latest.osm.pbf\n"
+        "OSM_FILENAME=merged-53e53d81.osm.pbf\n"
+        "OSM_SOURCES=europe/dach|europe/italy\n"
+    )
+    monkeypatch.setattr(
+        geofabrik.httpx,
+        "AsyncClient",
+        _fake_index([
+            _feature("europe/dach", _ZWEITES),
+            _feature("europe/italy", _QUADRAT),
+        ]),
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/region/outline")
+
+    assert resp.status_code == 200, resp.text
+    coords = resp.json()["geometry"]["coordinates"]
+    # Ein Polygon je Bestandteil — Polygon und MultiPolygon gleichermassen
+    # flachgeklopft.
+    assert len(coords) == 2
+    assert _ZWEITES["coordinates"][0] in coords
+    assert _QUADRAT["coordinates"] in coords
+
+
+@pytest.mark.asyncio
+async def test_outline_meldet_503_wenn_der_index_nicht_erreichbar_ist(
+    tmp_path, monkeypatch
+):
+    """Ohne Umriss zeichnet die Karte keine Maske und bleibt nutzbar. Das ist
+    gewollt: Eine Maske aus veralteten Daten wuerde einen Routing-Raum
+    behaupten, den niemand geprueft hat."""
+    from app.api.routes import region as region_routes
+
+    monkeypatch.setattr(region_routes, "OSM_PATH", str(tmp_path))
+    _reset_outline_cache(monkeypatch)
+
+    async def _boom(paths):
+        raise ConnectionError("Geofabrik-Index ist gerade nicht abrufbar.")
+
+    monkeypatch.setattr(geofabrik, "region_outlines", _boom)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/region/outline")
+
+    assert resp.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_outline_meldet_503_statt_eines_unvollstaendigen_umrisses(
+    tmp_path, monkeypatch
+):
+    """Ein Bestandteil ohne Eintrag im Index (umbenannt oder entfallen) ergaebe
+    einen zu kleinen Umriss — der wuerde routbares Gebiet als gesperrt
+    darstellen. Gar keine Maske ist dann das kleinere Uebel."""
+    from app.api.routes import region as region_routes
+
+    monkeypatch.setattr(region_routes, "OSM_PATH", str(tmp_path))
+    _reset_outline_cache(monkeypatch)
+    (tmp_path / ".region").write_text(
+        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/dach-latest.osm.pbf\n"
+        "OSM_SOURCES=europe/dach|europe/gibt-es-nicht\n"
+    )
+    monkeypatch.setattr(
+        geofabrik.httpx, "AsyncClient", _fake_index([_feature("europe/dach", _QUADRAT)])
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/region/outline")
+
+    assert resp.status_code == 503
+    assert "gibt-es-nicht" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_outline_cacht_pro_region_und_holt_den_index_nur_einmal(
+    tmp_path, monkeypatch
+):
+    """Der Index ist ~3,8 MB. Ihn bei jedem Kartenaufruf zu holen waere fuer
+    einen Umriss, der sich nur beim Regionswechsel aendert, unvertretbar."""
+    from app.api.routes import region as region_routes
+
+    monkeypatch.setattr(region_routes, "OSM_PATH", str(tmp_path))
+    _reset_outline_cache(monkeypatch)
+    (tmp_path / ".region").write_text(
+        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/dach-latest.osm.pbf\n"
+    )
+    aufrufe = {"n": 0}
+    echte = geofabrik.region_outlines
+
+    async def _zaehlend(paths):
+        aufrufe["n"] += 1
+        return await echte(paths)
+
+    monkeypatch.setattr(geofabrik, "region_outlines", _zaehlend)
+    monkeypatch.setattr(
+        geofabrik.httpx, "AsyncClient", _fake_index([_feature("europe/dach", _QUADRAT)])
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        erste = await client.get("/api/region/outline")
+        zweite = await client.get("/api/region/outline")
+
+    assert erste.status_code == 200
+    assert zweite.json() == erste.json()
+    assert aufrufe["n"] == 1
+    # Und derselbe Gedanke eine Ebene hoeher: ohne Cache-Header holt der
+    # Browser den Umriss bei jedem Kartenaufruf neu.
+    assert "max-age" in erste.headers["cache-control"]
+
+
+@pytest.mark.asyncio
+async def test_outline_holt_den_index_auch_bei_gleichzeitigen_aufrufen_nur_einmal(
+    tmp_path, monkeypatch
+):
+    """Der Endpunkt ist oeffentlich: Nach einem Backend-Neustart koennen viele
+    Zuschauer gleichzeitig eine Tracking-Karte oeffnen. Ohne Lock loeste jeder
+    einzelne Aufruf einen eigenen 3,8-MB-Download des Geofabrik-Index aus."""
+    import asyncio
+
+    from app.api.routes import region as region_routes
+
+    monkeypatch.setattr(region_routes, "OSM_PATH", str(tmp_path))
+    _reset_outline_cache(monkeypatch)
+    monkeypatch.setattr(region_routes, "_outline_lock", None)
+    (tmp_path / ".region").write_text(
+        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/dach-latest.osm.pbf\n"
+    )
+
+    aufrufe = {"n": 0}
+
+    async def _langsam(paths):
+        aufrufe["n"] += 1
+        # Gibt die Kontrolle wirklich ab — ohne Lock kaeme hier jeder der
+        # wartenden Aufrufe durch, bevor der erste den Cache gefuellt hat.
+        await asyncio.sleep(0)
+        return {"europe/dach": _QUADRAT}
+
+    monkeypatch.setattr(geofabrik, "region_outlines", _langsam)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        antworten = await asyncio.gather(
+            *(client.get("/api/region/outline") for _ in range(5))
+        )
+
+    assert [r.status_code for r in antworten] == [200] * 5
+    assert aufrufe["n"] == 1

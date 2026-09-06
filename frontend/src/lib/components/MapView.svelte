@@ -145,9 +145,11 @@
 		});
 
 		map.on('load', () => {
-			// Regionsfokus: alles außerhalb der abgedeckten Region (DACH) wird
-			// abgedunkelt, weil die Routenberechnung nur dort möglich ist. Zuerst
-			// hinzugefügt, damit Route, Sperrungen und Marker darüber liegen.
+			// Regionsfokus: alles außerhalb der aktiv geladenen Kartenregion wird
+			// abgedunkelt, weil die Routenberechnung nur dort möglich ist. Der
+			// Umriss kommt vom Backend und folgt damit einem Regionswechsel im
+			// Admin-Panel (siehe $lib/map/region). Zuerst hinzugefügt, damit
+			// Route, Sperrungen und Marker darüber liegen.
 			addRegionMask(map, get(themeStore));
 			applyMapTheme(map, get(themeStore));
 

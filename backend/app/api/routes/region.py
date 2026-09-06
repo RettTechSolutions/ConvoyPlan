@@ -20,7 +20,7 @@ import asyncio
 import os
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,6 +34,14 @@ from app.services import (
 
 router = APIRouter(prefix="/admin/region", tags=["admin"])
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
+# Dritter Router, OHNE Admin-Prefix und OHNE require_superadmin: der
+# Regionsumriss ist Kartenzubehoer, keine Administration. Ihn hinter
+# `require_superadmin` zu legen hiesse, dass die Maske ausgerechnet dort fehlt,
+# wo sie am meisten hilft — auf den oeffentlichen Tracking- und Freigabekarten
+# (`/track/[slug]`, `/share/[token]`), die dieselbe MapView benutzen.
+# Preisgegeben wird dabei nur, welche Geofabrik-Region diese Instanz geladen
+# hat; die Geometrie selbst ist ein oeffentlicher Geofabrik-Datensatz.
+public_router = APIRouter(prefix="/region", tags=["region"])
 
 # Von der GraphHopper-Region geschrieben (Task 6/7), hier nur lesend
 # gemountet (OSM_PATH, read-only siehe docker-compose.yml). Fehlt die Datei
@@ -224,7 +232,27 @@ def _read_active_region() -> dict:
         "url": values.get("OSM_DOWNLOAD_URL", _DEFAULT_REGION_URL),
         "filename": values.get("OSM_FILENAME", _DEFAULT_REGION_FILENAME),
         "java_opts": values.get("JAVA_OPTS", settings.java_opts),
+        # Nur bei einer zusammengesetzten Region gesetzt (siehe
+        # `region_compose`): die kanonische, "|"-getrennte Liste der
+        # Bestandteile. Bei einer einzelnen Region leer — dort ist
+        # OSM_DOWNLOAD_URL die vollstaendige Auskunft.
+        "sources": values.get("OSM_SOURCES", ""),
     }
+
+
+def _active_region_paths() -> list[str]:
+    """Die Bestandteile der aktiven Region als Geofabrik-Pfade.
+
+    Eine zusammengesetzte Region nennt sie in OSM_SOURCES; eine einzelne
+    Region hat kein OSM_SOURCES, dort ist die Download-URL die Quelle. Das
+    Ergebnis ist in beiden Faellen dieselbe Form — eine Liste von Pfaden wie
+    `["europe/dach"]` oder `["europe/austria", "europe/italy"]`.
+    """
+    active = _read_active_region()
+    paths = region_compose.parse_sources(active["sources"])
+    if paths:
+        return paths
+    return [region_compose.path_from_url(active["url"])]
 
 
 async def _audit_switch_rejected(
@@ -531,3 +559,130 @@ async def list_regions(_: User = Depends(require_superadmin)):
         {"id": e.id, "name": e.name, "path": e.path, "url": e.url}
         for e in entries
     ]
+
+
+# ── Regionsumriss fuer die Kartenmaske ──────────────────────────────────────
+#
+# Fertig gebautes Feature, prozessweit gecacht. Schluessel ist die
+# Bestandteilsliste der aktiven Region: Ein Regionswechsel aendert sie und
+# entwertet den Eintrag damit von selbst — es braucht keine Invalidierung von
+# aussen und kein TTL. Mehr als ein Eintrag entsteht nur, wenn waehrend der
+# Laufzeit des Prozesses gewechselt wurde; der Graph-Bau danach beendet den
+# Prozess ohnehin nicht, also bleibt hoechstens ein verwaister Umriss liegen.
+_outline_cache: dict[str, dict] = {}
+
+# Serialisiert das Fuellen des Caches. Ohne ihn wuerde ein Ansturm auf einen
+# kalten Cache — etwa wenn nach einem Backend-Neustart viele Zuschauer
+# gleichzeitig eine Tracking-Karte oeffnen — fuer JEDEN Aufruf einen eigenen
+# 3,8-MB-Download des Geofabrik-Index ausloesen. Der Endpunkt ist oeffentlich,
+# die Zahl gleichzeitiger Zuschauer also nicht in unserer Hand. Erst im Lock
+# wird der Cache erneut geprueft: Wer waehrend eines laufenden Abrufs wartet,
+# findet danach das fertige Ergebnis vor und laedt nichts mehr.
+_outline_lock: asyncio.Lock | None = None
+
+
+def _get_outline_lock() -> asyncio.Lock:
+    """Erst beim ersten Aufruf angelegt, damit der Lock an der Event-Loop
+    haengt, die ihn auch benutzt — auf Modulebene erzeugt, gehoerte er zu der
+    Loop, die beim Import lief (in Tests eine andere als zur Laufzeit)."""
+    global _outline_lock
+    if _outline_lock is None:
+        _outline_lock = asyncio.Lock()
+    return _outline_lock
+
+
+# Ein Umriss ist je nach Region einige zehn bis hundert Kilobyte gross und
+# aendert sich nur bei einem Regionswechsel — der Stunden dauert. Ohne
+# Cache-Header holt der Browser ihn bei jedem Kartenaufruf neu, und in der App
+# wird oft zwischen Karten gewechselt. Fuenf Minuten sind lang genug, um das
+# abzustellen, und kurz genug, dass nach einem Wechsel niemand merklich einen
+# veralteten Umriss sieht.
+_OUTLINE_MAX_AGE = 300
+
+
+def _outline_response(feature: dict) -> JSONResponse:
+    return JSONResponse(
+        feature, headers={"Cache-Control": f"public, max-age={_OUTLINE_MAX_AGE}"}
+    )
+
+
+@public_router.get("/outline")
+async def region_outline():
+    """Umriss der aktiven Kartenregion als GeoJSON-Feature (MultiPolygon).
+
+    Die Karte legt eine Maske ueber alles ausserhalb dieses Umrisses, weil
+    ausserhalb keine Route berechenbar ist. Der Umriss MUSS deshalb aus der
+    tatsaechlich geladenen Region kommen: Vorher war er eine mitgelieferte
+    DACH-Datei im Frontend-Build, die den Regionswechsel im Panel nicht
+    mitbekam — nach einem Wechsel behauptete die Karte DACH, waehrend
+    GraphHopper laengst etwas anderes geladen hatte. Beobachtet mit einer
+    Route bis Bologna, die sauber rechnete, aber im maskierten Bereich lag.
+
+    Geometrien mehrerer Bestandteile werden schlicht aneinandergehaengt statt
+    vereinigt: Die Maske stanzt aus dem Weltpolygon jeden aeusseren Ring als
+    Loch aus (`buildMask` im Frontend), und ueberlappende Loecher ergeben
+    dieselbe Aussparung wie ein vereinigtes Polygon. Eine Geometrie-Bibliothek
+    fuer einen echten Union waere hier reine Rechenzeit ohne sichtbaren
+    Unterschied.
+    """
+    paths = _active_region_paths()
+    key = "|".join(paths)
+    cached = _outline_cache.get(key)
+    if cached is not None:
+        return _outline_response(cached)
+
+    async with _get_outline_lock():
+        # Zweite Pruefung im Lock: Waehrend des Wartens kann ein anderer
+        # Aufruf den Umriss bereits geholt haben.
+        cached = _outline_cache.get(key)
+        if cached is not None:
+            return _outline_response(cached)
+        return _outline_response(await _build_outline(paths, key))
+
+
+async def _build_outline(paths: list[str], key: str) -> dict:
+    """Holt die Geometrien und setzt daraus das Feature zusammen. Nur aus
+    `region_outline()` heraus und nur unter dem Lock aufgerufen."""
+    try:
+        geometries = await geofabrik.region_outlines(paths)
+    except ConnectionError as exc:
+        # Ohne Umriss zeichnet die Karte keine Maske und bleibt voll nutzbar
+        # (siehe `addRegionMask`). Das ist der ehrlichere Ausgang als eine
+        # Maske aus veralteten Daten: Sie wuerde einen Routing-Raum
+        # behaupten, den niemand geprueft hat.
+        raise HTTPException(503, str(exc)) from exc
+
+    coordinates: list = []
+    for path in paths:
+        geometry = geometries.get(path)
+        if geometry is None:
+            # Einzelner Bestandteil unauffindbar (Region bei Geofabrik
+            # umbenannt oder entfallen): Der Umriss waere dann zu klein und
+            # wuerde routbares Gebiet als gesperrt darstellen — schlechter als
+            # gar keine Maske.
+            raise HTTPException(
+                503,
+                "Der Umriss der aktiven Region ist im Geofabrik-Index nicht "
+                f"auffindbar: {path}",
+            )
+        if geometry.get("type") == "Polygon":
+            coordinates.append(geometry["coordinates"])
+        elif geometry.get("type") == "MultiPolygon":
+            coordinates.extend(geometry["coordinates"])
+
+    if not coordinates:
+        raise HTTPException(503, "Der Umriss der aktiven Region ist leer.")
+
+    feature = {
+        "type": "Feature",
+        # Die Namensnennung steht bewusst NICHT hier, sondern als Konstante im
+        # Frontend (`REGION_ATTRIBUTION`): MapLibre nimmt sie nur beim Anlegen
+        # der Quelle entgegen, also bevor diese Antwort da ist. Sie haengt
+        # ausserdem nicht an der Region — die Quelle ist immer der
+        # Geofabrik-Index. Zwei Stellen mit demselben Text wuerden nur
+        # auseinanderlaufen.
+        "properties": {"name": ", ".join(paths)},
+        "geometry": {"type": "MultiPolygon", "coordinates": coordinates},
+    }
+    _outline_cache[key] = feature
+    return feature

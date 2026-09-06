@@ -2,6 +2,7 @@ import os
 
 import pytest
 
+from app.services import geofabrik
 from app.services.geofabrik import validate_region_url
 
 OK = "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
@@ -419,3 +420,141 @@ async def test_head_size_bytes_against_real_geofabrik():
         "https://download.geofabrik.de/europe/liechtenstein-latest.osm.pbf"
     )
     assert size > 0
+
+
+# ── Umriss-Geometrien (region_outlines / path_from_pbf_url) ─────────────────
+
+
+def test_path_from_pbf_url_liefert_den_vollen_pfad():
+    """Die Zuordnung laeuft ueber `urls.pbf`, nicht ueber `properties.id`: Die
+    id ist im Index kontextfrei ("dach"), waehrend `.region` und das Panel
+    durchgehend mit dem vollen Pfad arbeiten ("europe/dach")."""
+    assert geofabrik.path_from_pbf_url(
+        "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+    ) == "europe/dach"
+    assert geofabrik.path_from_pbf_url(
+        "https://download.geofabrik.de/africa-latest.osm.pbf"
+    ) == "africa"
+    assert geofabrik.path_from_pbf_url(
+        "https://download.geofabrik.de/north-america/us/california/norcal-latest.osm.pbf"
+    ) == "north-america/us/california/norcal"
+
+
+def test_path_from_pbf_url_lehnt_fremden_host_und_fehlendes_suffix_ab():
+    """Der Index fuehrt neben `urls.pbf` auch Varianten auf
+    osm-internal.download.geofabrik.de und ohne `-latest.osm.pbf`. Sie duerfen
+    keinen Pfad ergeben, der zufaellig auf eine ausgewaehlte Region passt."""
+    assert geofabrik.path_from_pbf_url(
+        "https://osm-internal.download.geofabrik.de/europe/dach-latest-internal.osm.pbf"
+    ) == ""
+    assert geofabrik.path_from_pbf_url(
+        "https://download.geofabrik.de/europe/dach-latest-free.shp.zip"
+    ) == ""
+
+
+def _index_client(features):
+    class _FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"type": "FeatureCollection", "features": features}
+
+    class _FakeAsyncClient:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, url):
+            return _FakeResponse()
+
+    return _FakeAsyncClient
+
+
+@pytest.mark.asyncio
+async def test_region_outlines_ordnet_ueber_die_pbf_url_zu(monkeypatch):
+    features = [
+        {
+            "properties": {
+                "id": "dach",
+                "name": "DACH",
+                "urls": {"pbf": "https://download.geofabrik.de/europe/dach-latest.osm.pbf"},
+            },
+            "geometry": {"type": "MultiPolygon", "coordinates": [[[[0, 0]]]]},
+        },
+        {
+            "properties": {
+                "id": "italy",
+                "name": "Italy",
+                "urls": {"pbf": "https://download.geofabrik.de/europe/italy-latest.osm.pbf"},
+            },
+            "geometry": {"type": "Polygon", "coordinates": [[[9, 45]]]},
+        },
+    ]
+    monkeypatch.setattr(geofabrik.httpx, "AsyncClient", _index_client(features))
+
+    out = await geofabrik.region_outlines(["europe/italy"])
+
+    # Nur die angefragte Region — die Geometrien der uebrigen 554 Eintraege
+    # bleiben ungehalten (siehe Kommentar an region_outlines).
+    assert list(out) == ["europe/italy"]
+    assert out["europe/italy"]["type"] == "Polygon"
+
+
+@pytest.mark.asyncio
+async def test_region_outlines_ueberspringt_eintraege_ohne_geometrie(monkeypatch):
+    """Ein Eintrag ohne `geometry` (oder ohne `urls.pbf`) darf den Aufruf nicht
+    abbrechen — der Aufrufer merkt das Fehlen daran, dass der Pfad im Ergebnis
+    fehlt, und entscheidet dann selbst."""
+    features = [
+        {
+            "properties": {
+                "id": "dach",
+                "urls": {"pbf": "https://download.geofabrik.de/europe/dach-latest.osm.pbf"},
+            },
+            # kein "geometry"
+        },
+        {
+            "properties": {"id": "shp-only", "urls": {"shp": "https://download.geofabrik.de/x.zip"}},
+            "geometry": {"type": "Polygon", "coordinates": [[[0, 0]]]},
+        },
+    ]
+    monkeypatch.setattr(geofabrik.httpx, "AsyncClient", _index_client(features))
+
+    assert await geofabrik.region_outlines(["europe/dach"]) == {}
+
+
+@pytest.mark.asyncio
+async def test_region_outlines_ohne_pfade_fragt_nicht_an(monkeypatch):
+    """Kein Netzwerkverkehr fuer eine leere Anfrage."""
+    def _explode(*a, **k):
+        raise AssertionError("Es darf kein HTTP-Aufruf stattfinden.")
+
+    monkeypatch.setattr(geofabrik.httpx, "AsyncClient", _explode)
+    assert await geofabrik.region_outlines([]) == {}
+
+
+@pytest.mark.asyncio
+async def test_region_outlines_meldet_connectionerror_bei_netzfehler(monkeypatch):
+    class _FailingClient:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, url):
+            raise geofabrik.httpx.ConnectError("kein Netz")
+
+    monkeypatch.setattr(geofabrik.httpx, "AsyncClient", _FailingClient)
+
+    with pytest.raises(ConnectionError):
+        await geofabrik.region_outlines(["europe/dach"])
