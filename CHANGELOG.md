@@ -21,6 +21,14 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Nach einem Regionswechsel zeigte die Karte weiterhin den alten Umriss.** Die Maske, die alles außerhalb des routbaren Gebiets abdunkelt, kam aus einer im Frontend mitgelieferten Datei (`static/geo/dach.geojson`) — die bekam vom Regionswechsel im Admin-Panel nichts mit. Die Karte behauptete also DACH, während GraphHopper längst etwas anderes geladen hatte. Sichtbar wurde es an einer Route bis Bologna: Sie rechnete sauber, verlief aber quer durch den abgedunkelten Bereich. Umgekehrt war es genauso irreführend — eine kleinere Region wurde als größer dargestellt, als sie routen kann.
+
+  Der Umriss kommt jetzt zur Laufzeit vom Backend (`GET /api/region/outline`), das ihn aus der aktiven Region in `.region` und den Geometrien des Geofabrik-Index ableitet — also aus genau dem Extract, das GraphHopper geladen hat. Zusammengesetzte Regionen (mehrere Bestandteile in `OSM_SOURCES`) ergeben einen Umriss aus allen Teilen. Der Endpunkt ist bewusst **nicht** admin-geschützt: Dieselbe Maske gehört auf die Tracking- und Freigabekarten, die ohne Anmeldung laufen. Ist der Geofabrik-Index nicht erreichbar, bleibt die Karte wie bisher ohne Maske voll bedienbar — das ist der ehrlichere Ausgang als eine Maske aus veralteten Daten.
+
+  Damit entfallen `frontend/static/geo/dach.geojson` und `scripts/geo/build_umriss.sh`. Wer bisher beim Regionswechsel die Datei von Hand tauschen musste (so stand es in der Doku), braucht das nicht mehr.
+
 ## [2026.5.2] – 2026-09-05
 
 ### Fixed

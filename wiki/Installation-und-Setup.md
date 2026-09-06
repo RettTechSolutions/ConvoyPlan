@@ -153,10 +153,12 @@ openssl rand -hex 32
 > `docker compose up`. Wer die Variablen hier nachträglich ändert, ändert
 > deshalb **nichts** an einer bereits per Panel gewechselten Installation.
 >
-> Der Umriss auf der Karte kommt dagegen aus
-> `frontend/static/geo/dach.geojson` und passt sich **nicht** automatisch an;
-> wer dauerhaft eine andere Region fährt, tauscht diese Datei mit (siehe
-> `frontend/static/geo/README.md`).
+> Der Umriss auf der Karte — die Maske, die alles außerhalb des routbaren
+> Gebiets abdunkelt — folgt der aktiven Region automatisch: Das Backend leitet
+> ihn unter `GET /api/region/outline` aus `.region` und den Geometrien des
+> Geofabrik-Index ab. Bis `2026.5.2` war er eine mitgelieferte DACH-Datei und
+> musste von Hand getauscht werden; wer das früher getan hat, braucht dafür
+> jetzt nichts mehr zu tun.
 
 ### Sicherheit und Datenschutz
 

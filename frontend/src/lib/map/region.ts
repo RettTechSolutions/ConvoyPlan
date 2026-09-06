@@ -1,5 +1,5 @@
 /**
- * Regionsfokus für alle Karten — aktuell DACH (DE, AT, CH, LI).
+ * Regionsfokus für alle Karten — der Umriss der aktiv geladenen Kartenregion.
  *
  * ConvoyPlan berechnet Routen nur innerhalb der Region, die im
  * GraphHopper-Graph steckt. Damit das auf der Karte sofort sichtbar ist, legen
@@ -10,23 +10,36 @@
  * Region als Loch (inner ring) ausspart — dadurch braucht es keinen Verschnitt
  * zur Laufzeit und keine zusätzliche Geometrie-Bibliothek.
  *
- * Der Umriss ist bewusst datengetrieben: wer GraphHopper auf eine andere
- * Region stellt, tauscht `static/geo/dach.geojson` und muss hier nichts
- * anfassen. Die Geometrie ist dabei reine Anzeige — verbindlich ist allein,
- * welche Daten GraphHopper geladen hat.
+ * Der Umriss kommt vom Backend (`GET /api/region/outline`), das ihn aus der
+ * aktiven Region in `.region` und dem Geofabrik-Index ableitet. Vorher war er
+ * eine mitgelieferte Datei (`static/geo/dach.geojson`) — die bekam den
+ * Regionswechsel im Admin-Panel nicht mit: Nach einem Wechsel behauptete die
+ * Karte weiterhin DACH, während GraphHopper längst etwas anderes geladen
+ * hatte. Routen rechneten dann sichtbar in den abgedunkelten Bereich hinein.
+ *
+ * Die Geometrie bleibt reine Anzeige — verbindlich ist allein, welche Daten
+ * GraphHopper geladen hat. Ist der Umriss nicht zu bekommen (Backend oder
+ * Geofabrik-Index nicht erreichbar), bleibt die Karte ohne Maske voll
+ * nutzbar; das ist der ehrlichere Ausgang als eine Maske aus veralteten
+ * Daten.
  *
  * Farben und die Helligkeit der Rasterkacheln richten sich nach dem Hell-/
  * Dunkel-Design der App (`themeStore`), damit die Karte nicht als heller Block
  * in der dunklen Oberfläche steht.
  */
 import type { Feature, FeatureCollection, MultiPolygon, Position } from 'geojson';
+import { getBaseUrl } from '$lib/api/client';
 import type * as maplibregl from './maplibre';
 
-export const REGION_URL = '/geo/dach.geojson';
-// Muss zum `attribution`-Feld in dach.geojson passen (dort aus gebiete.geojson
-// übernommen) — der Umriss ist die Außengrenze genau dieser Gebietsdaten.
-export const REGION_ATTRIBUTION =
-	'© GeoBasis-DE / BKG (dl-de/by-2-0) · © Statistik Austria (CC BY 4.0) · © EuroGeographics / Eurostat';
+/** Pfad des Umriss-Endpunkts, ohne Basis — die kommt aus `getBaseUrl()`. */
+export const REGION_URL = '/api/region/outline';
+// Der Umriss stammt aus dem Geofabrik-Index, dessen Geometrien aus OSM-Daten
+// abgeleitet sind. Anders als bei der früheren DACH-Datei hängt die
+// Namensnennung nicht mehr an der Region — die Quelle ist immer dieselbe,
+// egal welche Region geladen ist. Sie steht deshalb hier und nicht in der
+// Antwort des Backends: MapLibre nimmt sie nur beim Anlegen der Quelle
+// entgegen, also bevor der Umriss geladen ist.
+export const REGION_ATTRIBUTION = '© Geofabrik · © OpenStreetMap-Mitwirkende';
 
 const MASK_SOURCE = 'region-mask';
 const BORDER_SOURCE = 'region-border';
@@ -76,7 +89,10 @@ let _pending: Promise<Feature<MultiPolygon>> | null = null;
 export function loadRegionOutline(): Promise<Feature<MultiPolygon>> {
 	if (_outline) return Promise.resolve(_outline);
 	if (_pending) return _pending;
-	_pending = fetch(REGION_URL)
+	// Ueber `getBaseUrl()` statt als nackter Pfad: Steht VITE_API_URL (Backend
+	// auf einem anderen Ursprung, etwa in der Entwicklung), ginge ein
+	// relatives `/api/...` an den Frontend-Server und liefe ins Leere.
+	_pending = fetch(`${getBaseUrl()}${REGION_URL}`)
 		.then((res) => {
 			if (!res.ok) throw new Error('Regionsgrenze konnte nicht geladen werden');
 			return res.json() as Promise<Feature<MultiPolygon>>;
@@ -95,8 +111,8 @@ export function loadRegionOutline(): Promise<Feature<MultiPolygon>> {
  * Jeder äußere Ring der Region (Festland + Inseln) wird zum Loch im
  * Weltpolygon. Löcher im Umriss selbst — fremdstaatliche Enklaven wie Campione
  * d'Italia — gehören nicht zur Region und werden deshalb als eigene Polygone
- * wieder maskiert. Der aktuelle DACH-Umriss enthält keine solchen Löcher; der
- * Zweig bleibt, damit ein anderer Umriss ohne Codeänderung funktioniert.
+ * wieder maskiert. Geofabrik-Umrisse enthalten solche Löcher selten, aber der
+ * Zweig kostet nichts und hält jeden Umriss korrekt.
  */
 export function buildMask(outline: Feature<MultiPolygon>): FeatureCollection {
 	const holes: Position[][] = [];
@@ -130,8 +146,8 @@ export function addRegionMask(map: maplibregl.Map, theme: MapTheme): void {
 		paint: { 'fill-color': style.fill, 'fill-opacity': style.fillOpacity },
 	});
 	// Namensnennung an die Quelle hängen: MapLibres AttributionControl sammelt
-	// sie automatisch ein, sodass die dl-de/by-2-0-Auflage der BKG-Daten neben
-	// der OSM-Nennung erscheint — ohne eigenes UI.
+	// sie automatisch ein, sodass die Herkunft des Umrisses neben der
+	// OSM-Nennung der Kacheln erscheint — ohne eigenes UI.
 	map.addSource(BORDER_SOURCE, {
 		type: 'geojson',
 		data: EMPTY,

@@ -17,8 +17,9 @@ Schweiz ist es der Kanton. Schweizer Bezirke wären zu klein und in mehreren
 Kantonen gar nicht vorhanden.
 
 Deutschland kommt bewusst aus der bereits im Repo liegenden Datei statt aus einer
-frischen Quelle: dieselbe Geometrie steckt in `dach.geojson` (dort verschmolzen),
-und nur so decken sich Kreisgrenzen und Regionsumriss im Auswahl-Dialog exakt.
+frischen Quelle (`sources/landkreise.geojson`): So bleibt der Datensatz zwischen
+zwei Laeufen stabil und der Auswahl-Dialog springt nicht, wenn eine Fremdquelle
+ihre Geometrie nachzieht.
 
 Aufruf (Netzzugang nötig, lädt AT und CH/LI herunter):
 
