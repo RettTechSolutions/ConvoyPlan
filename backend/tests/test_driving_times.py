@@ -4,7 +4,8 @@ from app.services.fuel import (
     DAILY_REST_MIN,
     MAX_CONTINUOUS_DRIVE_S,
     MAX_DAILY_DRIVE_S,
-    MIN_REMAINING_S,
+    TH_INTERVAL_S,
+    _arrival_window_s,
     _duration_halts,
 )
 
@@ -64,19 +65,52 @@ def test_long_tech_stop_counts_as_break():
 
 
 def test_no_halt_right_before_arrival():
-    """Ein Halt kurz vor dem Ziel entfaellt — gemessen an der Konstanten,
-    nicht an einer festen Zahl, damit der Test bei einer Anpassung mitgeht."""
-    for hours in (4.1, 6.4, 12.0):
+    """Kein Halt faellt in das Ankunftsfenster — gemessen an der Funktion,
+    nicht an einer festen Zahl, damit der Test einer Anpassung folgt."""
+    for hours in (4.1, 6.4, 12.0, 25.0):
+        dur = hours * 3600
         for h in _halts(hours, hours * 63):
-            assert h["after_drive_s"] <= hours * 3600 - MIN_REMAINING_S
+            assert h["after_drive_s"] <= dur - _arrival_window_s(dur)
 
 
 def test_halt_just_inside_the_arrival_window_is_dropped():
-    """Regressionsschutz fuer MIN_REMAINING_S: Bei 4 h 20 min Lenkzeit laege
-    die 4,5-h-Lenkpause hinter dem Ziel, der 4-h-TH aber nur 20 min davor —
-    also innerhalb des Fensters und damit weg."""
+    """Bei 4 h 20 min Lenkzeit liegt die 4,5-h-Lenkpause hinter dem Ziel,
+    der 4-h-TH aber nur 20 min davor — also im Fenster und damit weg."""
     halts = _halts(4 + 20 / 60, 275)
     assert [h["after_drive_s"] for h in halts] == [2 * 3600]
+
+
+def test_arrival_window_grows_with_the_march():
+    """Eine Stunde vor dem Ziel ist auf einer Tagesfahrt der Endanflug, auf
+    einer kurzen Fahrt ein Drittel der Strecke — das Fenster muss mitwachsen."""
+    assert _arrival_window_s(3 * 3600) < _arrival_window_s(12 * 3600)
+
+
+def test_arrival_window_has_a_floor_for_short_marches():
+    """Ohne Untergrenze waere das Fenster bei 3 h nur 18 min und die Regel
+    praktisch wirkungslos; ein 2-h-TH bleibt dort erhalten."""
+    assert _arrival_window_s(3 * 3600) == 30 * 60
+    assert [h["after_drive_s"] for h in _halts(3.5, 220)] == [2 * 3600]
+
+
+def test_arrival_window_is_capped_at_the_th_interval():
+    """Halte liegen nie enger als das TH-Intervall. Bleibt das Fenster darunter,
+    kann selbst auf einem mehrtaegigen Marsch nur der LETZTE Halt entfallen —
+    ungedeckelt waeren es bei 40 h Lenkzeit vier Stunden und damit mehrere."""
+    assert _arrival_window_s(40 * 3600) == TH_INTERVAL_S
+    for hours in (25.0, 40.0):
+        dur = hours * 3600
+        halts = _halts(hours, hours * 63)
+        # Nach dem letzten Halt bleibt weniger als ein volles TH-Intervall
+        # plus Fenster — sonst waere ein weiterer Halt zu Unrecht entfallen.
+        assert dur - halts[-1]["after_drive_s"] < TH_INTERVAL_S + _arrival_window_s(dur)
+
+
+def test_long_march_loses_only_the_final_halt():
+    """Regressionsschutz gegen ein zu grosses Fenster: Bei 12 h entfaellt der
+    TH eine Stunde vor dem Ziel, alles davor bleibt unangetastet."""
+    zeiten = [h["after_drive_s"] // 3600 for h in _halts(12, 760)]
+    assert zeiten == [2, 4, 6, 8, 9]
 
 
 def test_halt_km_increase_monotonically():

@@ -77,10 +77,24 @@ DAILY_REST_MIN = 11 * 60                   # 11 h Tagesruhezeit
 
 # Ab dieser Lenkzeit ist mindestens eine Lenkpause fällig
 REST_TRIGGER_S = MAX_CONTINUOUS_DRIVE_S
-# Halte, vor denen weniger als diese Restlenkzeit liegt, entfallen. Formal
-# genuegten 15 min, praktisch legt kein Verband kurz vor dem Ziel noch eine
-# WOLKE-Pruefung ein — der Halt waere am Ziel ohnehin faellig.
-MIN_REMAINING_S = 30 * 60
+# Halte kurz vor dem Ziel entfallen: Kein Verband legt auf den letzten
+# Kilometern noch eine WOLKE-Pruefung ein, der Halt waere am Ziel ohnehin
+# faellig. Was "kurz vor dem Ziel" heisst, haengt aber an der Marschlaenge —
+# eine Stunde vor dem Ziel ist auf einer Tagesfahrt der Endanflug, auf einer
+# Drei-Stunden-Fahrt ein Drittel der Strecke. Das Fenster waechst deshalb mit
+# der Lenkzeit, zwischen zwei Leitplanken:
+#
+#   ARRIVAL_WINDOW_FRACTION * Lenkzeit, begrenzt auf
+#   [ARRIVAL_WINDOW_MIN_S, ARRIVAL_WINDOW_MAX_S]
+#
+# Die Untergrenze haelt kurze Maersche brauchbar: ohne sie waere das Fenster
+# bei drei Stunden nur 18 min und die Regel wirkungslos. Die Obergrenze ist
+# das TH-Intervall, denn Halte liegen nie enger als dieses beieinander —
+# damit kann selbst auf einem mehrtaegigen Marsch immer nur der LETZTE Halt
+# entfallen und nie eine ganze Gruppe.
+ARRIVAL_WINDOW_FRACTION = 0.10
+ARRIVAL_WINDOW_MIN_S = 30 * 60
+ARRIVAL_WINDOW_MAX_S = TH_INTERVAL_S
 # Fällt ein Halt in dieses Fenster vor einem höherwertigen Halt, werden beide
 # zu einem einzigen Halt verschmolzen (statt zwei Stopps kurz hintereinander).
 HALT_MERGE_WINDOW_S = 30 * 60
@@ -98,6 +112,14 @@ def tech_stop_duration_min(vehicle_count: int) -> int:
         return TECH_STOP_MINUTES_PER_3_VEHICLES
     groups = math.ceil(vehicle_count / 3)
     return groups * TECH_STOP_MINUTES_PER_3_VEHICLES
+
+
+def _arrival_window_s(route_duration_s: float) -> float:
+    """Restlenkzeit vor dem Ziel, in der kein Halt mehr empfohlen wird."""
+    return min(
+        ARRIVAL_WINDOW_MAX_S,
+        max(ARRIVAL_WINDOW_MIN_S, ARRIVAL_WINDOW_FRACTION * route_duration_s),
+    )
 
 
 def _duration_halts(
@@ -143,7 +165,7 @@ def _duration_halts(
         since_rest += step
 
         # Kein Halt mehr kurz vor dem Ziel
-        if driven > route_duration_s - MIN_REMAINING_S:
+        if driven > route_duration_s - _arrival_window_s(route_duration_s):
             break
 
         # Halte, die dicht beieinander liegen, zu einem Halt zusammenfassen
