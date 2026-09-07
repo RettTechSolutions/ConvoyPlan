@@ -77,8 +77,10 @@ DAILY_REST_MIN = 11 * 60                   # 11 h Tagesruhezeit
 
 # Ab dieser Lenkzeit ist mindestens eine Lenkpause fällig
 REST_TRIGGER_S = MAX_CONTINUOUS_DRIVE_S
-# Halte, vor denen weniger als diese Restlenkzeit liegt, entfallen
-MIN_REMAINING_S = 15 * 60
+# Halte, vor denen weniger als diese Restlenkzeit liegt, entfallen. Formal
+# genuegten 15 min, praktisch legt kein Verband kurz vor dem Ziel noch eine
+# WOLKE-Pruefung ein — der Halt waere am Ziel ohnehin faellig.
+MIN_REMAINING_S = 30 * 60
 # Fällt ein Halt in dieses Fenster vor einem höherwertigen Halt, werden beide
 # zu einem einzigen Halt verschmolzen (statt zwei Stopps kurz hintereinander).
 HALT_MERGE_WINDOW_S = 30 * 60

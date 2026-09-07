@@ -4,6 +4,7 @@ from app.services.fuel import (
     DAILY_REST_MIN,
     MAX_CONTINUOUS_DRIVE_S,
     MAX_DAILY_DRIVE_S,
+    MIN_REMAINING_S,
     _duration_halts,
 )
 
@@ -63,8 +64,19 @@ def test_long_tech_stop_counts_as_break():
 
 
 def test_no_halt_right_before_arrival():
-    halts = _halts(4.1, 260)
-    assert all(h["after_drive_s"] <= 4.1 * 3600 - 15 * 60 for h in halts)
+    """Ein Halt kurz vor dem Ziel entfaellt — gemessen an der Konstanten,
+    nicht an einer festen Zahl, damit der Test bei einer Anpassung mitgeht."""
+    for hours in (4.1, 6.4, 12.0):
+        for h in _halts(hours, hours * 63):
+            assert h["after_drive_s"] <= hours * 3600 - MIN_REMAINING_S
+
+
+def test_halt_just_inside_the_arrival_window_is_dropped():
+    """Regressionsschutz fuer MIN_REMAINING_S: Bei 4 h 20 min Lenkzeit laege
+    die 4,5-h-Lenkpause hinter dem Ziel, der 4-h-TH aber nur 20 min davor —
+    also innerhalb des Fensters und damit weg."""
+    halts = _halts(4 + 20 / 60, 275)
+    assert [h["after_drive_s"] for h in halts] == [2 * 3600]
 
 
 def test_halt_km_increase_monotonically():
