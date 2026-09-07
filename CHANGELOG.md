@@ -21,6 +21,10 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Eine Störung bei Geofabrik sah im Panel aus, als sei die Kartenregion kaputt.** Über der Kartenregion stand „Extract nicht abrufbar (HTTP 502)." als roter Alarm — dabei fehlte der geladenen Karte nichts, das Routing lief weiter. Die Meldung stammte aus der Vorab-Rechnung: Das Panel fragt für die aktive Region die Extract-Größe bei Geofabrik ab, und diese Abfrage hing am selben `catch` wie das Auslesen der aktiven Region selbst. Beides ist jetzt getrennt — `.region` liegt lokal und ergibt bei einem Fehler weiterhin den roten Balken, die Größenabfrage bei einem fremden Server dagegen nur einen Hinweis in Fließtext samt Knopf zum erneuten Versuch. Die aktive Region bleibt in beiden Fällen sichtbar.
+
 ### Changed
 
 - **Das Admin-Panel nennt jetzt die Bestandteile einer zusammengesetzten Kartenregion.** Bisher stand dort nur der Dateiname, und der lautet bei einer kombinierten Karte `merged-<hash>.osm.pbf` — er identifiziert die Zusammensetzung, nennt sie aber nicht. Wer nach einem Wechsel wissen wollte, welche Länder tatsächlich geladen sind, stand vor einer Prüfsumme; im Betrieb steckten hinter `merged-53e53d81.osm.pbf` sechs Extracts (DACH, Italien, Slowenien, Kroatien, Montenegro, Albanien). Die Angabe lag im Backend längst vor (`OSM_SOURCES` in `.region`) und wird von `GET /api/admin/region` jetzt als Liste ausgeliefert — in derselben Form wie in der Vorab-Rechnung, auch bei einer einzelnen Region mit genau einem Eintrag.

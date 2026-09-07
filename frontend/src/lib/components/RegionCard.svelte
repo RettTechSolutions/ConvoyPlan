@@ -31,6 +31,10 @@
     let currentPreview = $state<RegionPreview | null>(null);
     let loadingCurrent = $state(true);
     let currentError = $state('');
+    // Getrennt von `currentError`: Die Vorab-Rechnung haengt an Geofabrik und
+    // faellt mit dem fremden Server aus, ohne dass der geladenen Karte etwas
+    // fehlt. Siehe `loadCurrent()`.
+    let currentPreviewError = $state('');
 
     // ── Auswahl ──────────────────────────────────────────────────────────────
     let showPicker = $state(false);
@@ -208,14 +212,40 @@
         };
     }
 
+    /**
+     * Aktive Region laden — und getrennt davon ihre Kennzahlen.
+     *
+     * Die beiden Abfragen sind grundverschieden und dürfen deshalb nicht am
+     * selben `catch` hängen:
+     *
+     * - `current()` liest `.region` aus dem lokalen Volume. Schlägt das fehl,
+     *   ist wirklich etwas kaputt — roter Balken ist angemessen.
+     * - `preview()` fragt Geofabrik nach der Größe des Extracts. Das ist ein
+     *   fremder Server, und wenn der hakt, fehlen Extract-Größe und
+     *   Platzbedarf — mehr nicht. Die geladene Karte ist davon völlig
+     *   unberührt, das Routing läuft weiter.
+     *
+     * Vorher hing beides an einem `catch`: Eine Störung bei Geofabrik ergab
+     * "Extract nicht abrufbar (HTTP 502)" als roten Alarm über einer Karte,
+     * der nichts fehlte. Im Betrieb genau so gesehen, während der Graph aus
+     * sechs Extracts einwandfrei routete.
+     */
     async function loadCurrent() {
         loadingCurrent = true;
         currentError = '';
+        currentPreviewError = '';
         try {
             current = await regionApi.current();
-            currentPreview = await regionApi.preview([current.url]);
         } catch (e: unknown) {
             currentError = e instanceof Error ? e.message : 'Aktuelle Region konnte nicht geladen werden';
+            loadingCurrent = false;
+            return;
+        }
+        try {
+            currentPreview = await regionApi.preview([current.url]);
+        } catch (e: unknown) {
+            currentPreview = null;
+            currentPreviewError = e instanceof Error ? e.message : 'nicht abrufbar';
         } finally {
             loadingCurrent = false;
         }
@@ -474,6 +504,21 @@
                     <span>{currentPreview ? bytes(currentPreview.disk_free_bytes) : '–'}</span>
                 </div>
             </div>
+
+            <!--
+                Beide Kennzahlen stammen aus der Vorab-Rechnung, und die hängt
+                an Geofabrik. Faellt der fremde Server aus, fehlen genau diese
+                zwei Zahlen — der Karte selbst fehlt nichts. Deshalb ein
+                Hinweis in Fliesstext statt des roten Balkens, den ein echter
+                Fehler bekommt.
+            -->
+            {#if currentPreviewError}
+                <p class="hint" style="margin-top:.5rem">
+                    Größe und Plattenbelegung gerade nicht abrufbar ({currentPreviewError})
+                    — die geladene Karte ist davon nicht betroffen, das Routing läuft weiter.
+                    <button class="btn-small" onclick={loadCurrent}>↺ Erneut versuchen</button>
+                </p>
+            {/if}
 
             {#if !showPicker}
                 <div style="margin-top:1rem">
