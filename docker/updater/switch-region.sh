@@ -813,7 +813,19 @@ fi
 # Zahlenkonvertierung; die Arithmetik danach macht bash, und die rechnet mit
 # 64 Bit.
 _head_size() {
-    curl -sSIL --max-time 60 "$1" 2>/dev/null \
+    # Ohne Retry beendete ein einzelner 502 den ganzen Regionswechsel mit
+    # "Extract nicht abrufbar" — noch bevor _download_one mit seinen eigenen
+    # Wiederholungen ueberhaupt an die Reihe kaeme. --retry-all-errors ist
+    # noetig, weil Geofabrik unter Last auch auf Transportebene abbricht
+    # ("Connection reset by peer"), und das faellt nicht unter die Fehler,
+    # die --retry allein wiederholt.
+    #
+    # --retry-max-time bewusst knapp: Die Funktion laeuft je Bestandteil der
+    # Region einmal. Bei einer aus sechs Extracts zusammengesetzten Karte
+    # summiert sich ein grosszuegiges Fenster sonst zu einer Viertelstunde,
+    # bevor ein echter Totalausfall im Panel ueberhaupt als Fehler ankommt.
+    curl -sSIL --max-time 60 --retry 3 --retry-all-errors --retry-delay 5 \
+         --retry-max-time 30 "$1" 2>/dev/null \
         | awk 'tolower($1)=="content-length:"{v=$2}
                END{ sub(/\r$/, "", v); if (v !~ /^[0-9]+$/) v="0"; print v }'
 }
@@ -865,7 +877,7 @@ _download_one() {
     _dl_url="$1"; _dl_name="$2"
     _dl_part="$OSM_DIR/$_dl_name.part"
     rm -f "$_dl_part"
-    if ! curl -fsSL --retry 3 --retry-delay 10 -o "$_dl_part" "$_dl_url"; then
+    if ! curl -fsSL --retry 3 --retry-all-errors --retry-delay 10 -o "$_dl_part" "$_dl_url"; then
         rm -f "$_dl_part"
         fail "Download fehlgeschlagen: $_dl_url"
     fi

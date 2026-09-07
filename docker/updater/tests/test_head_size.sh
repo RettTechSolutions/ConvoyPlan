@@ -58,6 +58,7 @@ check "_head_size vollstaendig aus switch-region.sh geschnitten" "$r" "ja"
 mkdir -p /stub
 cat > /stub/curl <<'STUB'
 #!/bin/sh
+[ -n "${STUB_ARGS_FILE:-}" ] && echo "$*" > "$STUB_ARGS_FILE"
 [ -n "${STUB_NO_LENGTH:-}" ] && { printf 'HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n\r\n'; exit 0; }
 printf 'HTTP/1.1 302 Found\r\nLocation: https://download.geofabrik.de/europe/dach-260904.osm.pbf\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: %s\r\n\r\n' "${STUB_LEN:-0}"
 STUB
@@ -87,6 +88,23 @@ check "Antwort ohne Content-Length ergibt 0" \
       "$(STUB_NO_LENGTH=1 _head_size https://x/y-latest.osm.pbf)" "0"
 check "unsinniger Wert ergibt 0" \
       "$(STUB_LEN=keine-zahl _head_size https://x/y-latest.osm.pbf)" "0"
+
+# ── Die Abfrage muss transiente Fehler wiederholen ────────────────────────
+# _head_size ist der erste Griff nach Geofabrik in einem Regionswechsel, und
+# ein Ergebnis von 0 laesst den Aufrufer sofort mit "Extract nicht abrufbar"
+# abbrechen — noch bevor _download_one mit seinen eigenen Wiederholungen an
+# die Reihe kaeme. Ohne --retry beendete deshalb ein einzelner 502 den
+# gesamten Wechsel. Geofabrik antwortet nachweislich zeitweise so; am
+# 6. September 2026 ueber zwoelf Stunden lang.
+STUB_ARGS_FILE=/args.txt STUB_LEN=1 _head_size https://x/y-latest.osm.pbf >/dev/null
+echo "$(cat /args.txt)" | grep -q -- '--retry ' && r=ja || r=nein
+check "_head_size wiederholt fehlgeschlagene Abfragen (--retry)" "$r" "ja"
+
+# --retry allein deckt 408/429/5xx und Timeouts ab, aber keinen Abbruch auf
+# Transportebene ("Connection reset by peer") — den liefert Geofabrik unter
+# Last ebenfalls, und ohne dieses Flag bliebe er unwiederholt.
+grep -q -- '--retry-all-errors' /args.txt && r=ja || r=nein
+check "_head_size wiederholt auch Transportfehler (--retry-all-errors)" "$r" "ja"
 
 exit $FAILED
 INNER
