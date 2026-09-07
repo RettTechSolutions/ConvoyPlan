@@ -22,7 +22,15 @@ class DurationHalt(BaseModel):
     stop_km: float
     stop_position: FuelStopPosition | None
     duration_min: int
+    # tech = Technischer Halt (WOLKE), break = Lenkzeitunterbrechung,
+    # daily_rest = Tagesruhezeit
+    kind: Literal["tech", "break", "daily_rest"] = "tech"
+    # Rückwärtskompatibel: True für Lenkpause und Tagesruhezeit
     is_rest: bool = False
+    # Kumulierte Lenkzeit bis zu diesem Halt
+    after_drive_s: int = 0
+    # Halt erfüllt (auch) die Lenkzeitunterbrechung
+    covers_break: bool = False
 
 
 class FuelAnalysis(BaseModel):

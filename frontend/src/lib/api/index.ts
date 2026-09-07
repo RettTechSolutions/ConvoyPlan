@@ -20,11 +20,15 @@ export interface Vehicle {
 
 export interface FuelStopPosition { lat: number; lon: number; }
 export interface VehicleRangeInfo { name: string; callsign: string | null; range_km: number; using_defaults: boolean; propulsion?: Propulsion; }
+export type HaltKind = 'tech' | 'break' | 'daily_rest';
 export interface DurationHalt {
 	stop_km: number;
 	stop_position: FuelStopPosition | null;
 	duration_min: number;
+	kind: HaltKind;
 	is_rest: boolean;
+	after_drive_s: number;
+	covers_break: boolean;
 }
 export interface FuelAnalysis {
 	vehicles_with_range: VehicleRangeInfo[];

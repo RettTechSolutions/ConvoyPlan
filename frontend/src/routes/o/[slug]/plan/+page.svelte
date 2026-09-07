@@ -890,11 +890,37 @@
 		}
 	}
 
+	const HALT_ICON: Record<string, string> = { tech: '🔧', break: '☕', daily_rest: '🛏' };
+	const HALT_LABEL: Record<string, string> = { tech: 'TH', break: 'Lenkpause', daily_rest: 'Tagesruhezeit' };
+	const HALT_TAG: Record<string, string> = {
+		tech: 'WOLKE',
+		break: 'Lenkzeitunterbrechung',
+		daily_rest: 'Fahrerwechsel / Tagesruhe'
+	};
+	const HALT_TAG_CLASS: Record<string, string> = {
+		tech: 'th-tag',
+		break: 'th-break-tag',
+		daily_rest: 'th-rest-tag'
+	};
+	const HALT_NAME: Record<string, string> = { tech: 'Technischer Halt', break: 'Lenkpause', daily_rest: 'Tagesruhezeit' };
+
+	function formatHaltDuration(min: number): string {
+		if (min < 60) return `${min} min`;
+		const h = Math.floor(min / 60);
+		const m = min % 60;
+		return m ? `${h} h ${m} min` : `${h} h`;
+	}
+
+	function formatDriveTime(seconds: number): string {
+		const total = Math.round(seconds / 60);
+		return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')} h`;
+	}
+
 	async function addTHStopWaypoint(halt: import('$lib/api').DurationHalt) {
 		if (!selected) return;
 		try {
 			await convoysApi.createWaypoint(selected.id, {
-				name: halt.is_rest ? `Rast (km ${halt.stop_km})` : `Technischer Halt (km ${halt.stop_km})`,
+				name: `${HALT_NAME[halt.kind] ?? 'Technischer Halt'} (km ${halt.stop_km})`,
 				type: 'technical_stop',
 				halt_purpose: halt.is_rest ? 'rest' : null,
 				lat: halt.stop_position?.lat ?? null,
@@ -1270,16 +1296,18 @@
 								{@const remaining = route.fuel_analysis.duration_halts.slice(thStopsAdded)}
 								{#if remaining.length > 0}
 									<div class="th-warning">
-										<p class="th-title">🛑 Technische Halte empfohlen</p>
-										<p class="th-detail">Marschdauer &gt; 3 h — WOLKE-Prüfung{route.fuel_analysis.rest_needed ? ' + Rast' : ''} einplanen:</p>
+										<p class="th-title">🛑 Halte empfohlen</p>
+										<p class="th-detail">Marschdauer &gt; 3 h — WOLKE-Prüfung{route.fuel_analysis.rest_needed ? ' + Lenk-/Ruhezeiten (VO (EG) 561/2006)' : ''} einplanen:</p>
 										<ul class="th-list">
 											{#each remaining as halt}
 												<li class="th-item">
 													<div>
-														<strong>{halt.is_rest ? '🛏 Rast' : '🔧 TH'}</strong>
+														<strong>{HALT_ICON[halt.kind] ?? '🔧'} {HALT_LABEL[halt.kind] ?? 'TH'}</strong>
 														bei ca. km <strong>{halt.stop_km}</strong>
-														— <strong>{halt.duration_min} min</strong>
-														{#if halt.is_rest}<span class="tag th-rest-tag">Fahrerwechsel / Erholung</span>{:else}<span class="tag th-tag">WOLKE</span>{/if}
+														— <strong>{formatHaltDuration(halt.duration_min)}</strong>
+														<span class="th-after">nach {formatDriveTime(halt.after_drive_s)} Lenkzeit</span>
+														<span class="tag {HALT_TAG_CLASS[halt.kind] ?? 'th-tag'}">{HALT_TAG[halt.kind] ?? 'WOLKE'}</span>
+														{#if halt.kind === 'tech' && halt.covers_break}<span class="tag th-break-tag">deckt Lenkpause ab</span>{/if}
 													</div>
 													<button class="btn-small" onclick={() => addTHStopWaypoint(halt)}>+ Halt</button>
 												</li>
@@ -2321,6 +2349,8 @@
 	.th-item { display: flex; justify-content: space-between; align-items: center; gap: .4rem; padding: .35rem; background: rgba(255,255,255,.06); border-radius: 4px; font-size: .82rem; }
 	.tag.th-tag { background: rgba(52,152,219,.25); color: #7fbde8; }
 	.tag.th-rest-tag { background: rgba(155,89,182,.25); color: #c39bd3; }
+	.tag.th-break-tag { background: rgba(241,196,15,.22); color: #f4d35e; }
+	.th-after { color: rgba(255,255,255,.55); font-size: .78rem; margin: 0 .35rem; }
 
 	.wizard { flex: 1; overflow-y: auto; padding: .75rem 1rem; display: flex; flex-direction: column; gap: .5rem; }
 	.wizard-steps { display: flex; align-items: center; gap: .3rem; font-size: .75rem; color: rgba(255,255,255,.4); margin-bottom: .25rem; }
