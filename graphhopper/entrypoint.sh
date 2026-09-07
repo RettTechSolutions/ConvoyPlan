@@ -89,7 +89,14 @@ if [ ! -f "$OSM_FILE" ]; then
     SUCCESS=0
     for i in $(seq 1 $RETRIES); do
         echo "Versuch $i/$RETRIES..."
-        if curl -fL --progress-bar -o "${OSM_FILE}.tmp" "$DOWNLOAD_URL"; then
+        # Bewusst kleine Werte: die Schleife drumherum ist bereits der grobe
+        # Wiederholungsmechanismus (5 Versuche, 10 s Pause). Die curl-eigenen
+        # Wiederholungen fangen nur die kurzen Aussetzer INNERHALB eines
+        # Versuchs ab. Grosszuegiger gewaehlt wuerden beide Ebenen sich
+        # multiplizieren und den Erststart minutenlang haengen lassen, bevor
+        # er sichtbar scheitert.
+        if curl -fL --progress-bar --retry 2 --retry-all-errors --retry-delay 5 \
+                -o "${OSM_FILE}.tmp" "$DOWNLOAD_URL"; then
             mv "${OSM_FILE}.tmp" "$OSM_FILE"
             echo "Download erfolgreich: $OSM_FILE"
             SUCCESS=1

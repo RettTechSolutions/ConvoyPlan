@@ -434,12 +434,96 @@ jobs:
       - name: osmium installieren
         run: sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
 
+      # Geofabrik baut die Extracts einmal taeglich neu; der Tagesstempel ist
+      # damit die feinste Aufloesung, in der sich die Daten ueberhaupt aendern.
+      - name: Tagesstempel fuer den Extract-Cache
+        id: osm-day
+        run: echo "day=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      # restore-keys ist hier nicht nur Tempo, sondern der eigentliche Zweck:
+      # Faellt Geofabrik aus, greift der Job auf die Extracts eines frueheren
+      # Tages zurueck statt rot zu werden. Geprueft wird das Zusammenfuehren
+      # und das Grenzrouting — beides haengt nicht daran, ob die Kartendaten
+      # von heute oder von letzter Woche sind.
+      - name: Extracts aus dem Cache holen
+        id: osm-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            osm/sachsen.osm.pbf
+            osm/dolnoslaskie.osm.pbf
+          key: osm-extracts-sachsen-dolnoslaskie-${{ steps.osm-day.outputs.day }}
+          restore-keys: |
+            osm-extracts-sachsen-dolnoslaskie-
+
       - name: Extracts laden
+        id: osm-download
+        env:
+          # "true" nur beim exakten Treffer, also den Extracts von heute.
+          # Ein restore-key-Treffer liefert hier bewusst nichts: der Job soll
+          # dann trotzdem versuchen, aktuelle Daten zu holen.
+          EXACT_HIT: ${{ steps.osm-cache.outputs.cache-hit }}
         run: |
           mkdir -p osm
-          curl -fsSL -o osm/sachsen.osm.pbf      https://download.geofabrik.de/europe/germany/sachsen-latest.osm.pbf
-          curl -fsSL -o osm/dolnoslaskie.osm.pbf https://download.geofabrik.de/europe/poland/dolnoslaskie-latest.osm.pbf
+
+          if [ "$EXACT_HIT" = "true" ]; then
+            echo "Extracts von heute liegen im Cache — kein Download noetig."
+            echo "fresh=false" >> "$GITHUB_OUTPUT"
+            ls -lh osm/
+            exit 0
+          fi
+
+          # --retry deckt 408/429/5xx und Timeouts ab, --retry-all-errors
+          # zusaetzlich Abbrueche auf Transportebene ("Connection reset by
+          # peer"), die Geofabrik unter Last ebenfalls liefert.
+          # Heruntergeladen wird nach .part und erst danach umbenannt: ein
+          # halber Download darf die brauchbare Datei aus dem Cache nicht
+          # ueberschreiben.
+          ok=1
+          for entry in \
+            "osm/sachsen.osm.pbf|https://download.geofabrik.de/europe/germany/sachsen-latest.osm.pbf" \
+            "osm/dolnoslaskie.osm.pbf|https://download.geofabrik.de/europe/poland/dolnoslaskie-latest.osm.pbf"
+          do
+            file="${entry%%|*}"
+            url="${entry##*|}"
+            echo "Lade $url"
+            if curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 \
+                    --retry-max-time 600 -o "$file.part" "$url"; then
+              mv "$file.part" "$file"
+            else
+              rm -f "$file.part"
+              ok=0
+              echo "::warning::Download von $url fehlgeschlagen."
+            fi
+          done
+
+          if [ "$ok" -eq 1 ]; then
+            echo "fresh=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "fresh=false" >> "$GITHUB_OUTPUT"
+            if [ -s osm/sachsen.osm.pbf ] && [ -s osm/dolnoslaskie.osm.pbf ]; then
+              echo "::warning::Geofabrik ist nicht erreichbar — der Job laeuft mit Extracts aus einem frueheren Cache weiter. Zusammenfuehren und Grenzrouting werden unveraendert geprueft, nur die Aktualitaet der Kartendaten ist nicht garantiert."
+            else
+              echo "::error::Geofabrik ist nicht erreichbar und es liegt kein Extract im Cache — der Job kann nichts pruefen."
+              exit 1
+            fi
+          fi
+
           ls -lh osm/
+
+      # Nur frisch geladene Extracts wandern in den Cache. Sonst schriebe ein
+      # Lauf waehrend einer Stoerung die alten Dateien unter dem heutigen
+      # Schluessel fest, und jeder weitere Lauf desselben Tages haette einen
+      # exakten Treffer — er wuerde also gar nicht mehr versuchen, aktuelle
+      # Daten zu holen, obwohl Geofabrik laengst wieder liefert.
+      - name: Extracts in den Cache legen
+        if: steps.osm-download.outputs.fresh == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            osm/sachsen.osm.pbf
+            osm/dolnoslaskie.osm.pbf
+          key: osm-extracts-sachsen-dolnoslaskie-${{ steps.osm-day.outputs.day }}
 
       - name: Zusammenführen und Deduplizierung belegen
         run: |
