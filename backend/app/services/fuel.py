@@ -65,12 +65,29 @@ DEFAULT_CONSUMPTION_KWH_100KM = 20.0
 DEFAULT_BATTERY_KWH = 60.0
 TECH_STOP_MINUTES_PER_3_VEHICLES = 15
 
-# Technischer Halt rules (THW/Johanniter/DRK standard)
-TH_INTERVAL_S = 2 * 3600      # TH every 2 hours of march
-TH_TRIGGER_S = 3 * 3600       # recommend TH when march > 3 h
-REST_TRIGGER_S = 6 * 3600     # recommend rest when march > 6 h
-REST_AT_S = 7 * 3600          # rest around the 7 h mark
-REST_DURATION_MIN = 120        # 2 h rest
+# Technischer Halt (THW/Johanniter/DRK-Standard)
+TH_INTERVAL_S = 2 * 3600      # TH alle 2 h Marschzeit
+TH_TRIGGER_S = 3 * 3600       # TH-Empfehlung ab 3 h Marschdauer
+
+# Lenk- und Ruhezeiten in Anlehnung an VO (EG) 561/2006
+MAX_CONTINUOUS_DRIVE_S = int(4.5 * 3600)   # max. 4,5 h Lenkzeit am Stück
+BREAK_DURATION_MIN = 45                    # 45 min Lenkzeitunterbrechung
+MAX_DAILY_DRIVE_S = 9 * 3600               # max. 9 h Tageslenkzeit
+DAILY_REST_MIN = 11 * 60                   # 11 h Tagesruhezeit
+
+# Ab dieser Lenkzeit ist mindestens eine Lenkpause fällig
+REST_TRIGGER_S = MAX_CONTINUOUS_DRIVE_S
+# Halte, vor denen weniger als diese Restlenkzeit liegt, entfallen
+MIN_REMAINING_S = 15 * 60
+# Fällt ein Halt in dieses Fenster vor einem höherwertigen Halt, werden beide
+# zu einem einzigen Halt verschmolzen (statt zwei Stopps kurz hintereinander).
+HALT_MERGE_WINDOW_S = 30 * 60
+# Sicherheitsnetz gegen Endlosschleifen bei absurd langen Routen
+MAX_HALTS = 100
+
+HALT_KIND_TECH = "tech"
+HALT_KIND_BREAK = "break"
+HALT_KIND_DAILY_REST = "daily_rest"
 
 
 def tech_stop_duration_min(vehicle_count: int) -> int:
@@ -88,11 +105,17 @@ def _duration_halts(
     vehicle_count: int,
 ) -> list[dict]:
     """
-    Compute recommended Technische Halte based on march duration.
+    Simuliert die Marschzeit und leitet daraus die empfohlenen Halte ab.
 
-    Rules:
-    - March > 3 h: one TH every 2 h of driving
-    - March > 6 h: a rest stop (~2 h) around the 7 h mark
+    Regeln (Lenkzeiten in Anlehnung an VO (EG) 561/2006):
+    - Marschdauer > 3 h: alle 2 h Lenkzeit ein Technischer Halt (WOLKE-Prüfung)
+    - Nach spätestens 4,5 h Lenkzeit am Stück: 45 min Lenkzeitunterbrechung
+    - Nach spätestens 9 h Tageslenkzeit: 11 h Tagesruhezeit
+
+    ``route_duration_s`` ist reine Fahrzeit, die Haltezeiten selbst zählen
+    also nicht in die Lenkzeit hinein. Ein Halt, der ohnehin mindestens
+    45 min dauert (große Verbände), gilt als vollwertige
+    Lenkzeitunterbrechung und setzt die Lenkzeit zurück.
     """
     if route_duration_s <= TH_TRIGGER_S:
         return []
@@ -100,24 +123,63 @@ def _duration_halts(
     th_min = tech_stop_duration_min(vehicle_count)
     halts: list[dict] = []
 
-    t = TH_INTERVAL_S
-    while t < route_duration_s:
-        frac = t / route_duration_s
-        km = round(frac * route_km, 1)
-        is_rest = route_duration_s > REST_TRIGGER_S and t >= REST_AT_S
-        dur = REST_DURATION_MIN if is_rest else th_min
-        pos = interpolate_along_route(route_coords, km * 1000) if route_coords else None
-        halts.append({"stop_km": km, "stop_position": pos, "duration_min": dur, "is_rest": is_rest})
-        t += TH_INTERVAL_S
+    driven = 0.0            # gesamte bisher gefahrene Lenkzeit
+    since_break = 0.0       # Lenkzeit seit der letzten Unterbrechung
+    since_rest = 0.0        # Tageslenkzeit seit der letzten Tagesruhezeit
+    next_th = float(TH_INTERVAL_S)
 
-    # If march > 6 h but no halt has hit the REST_AT_S mark yet, insert a separate rest
-    if route_duration_s > REST_TRIGGER_S and not any(h["is_rest"] for h in halts):
-        if REST_AT_S < route_duration_s:
-            frac = REST_AT_S / route_duration_s
-            km = round(frac * route_km, 1)
-            pos = interpolate_along_route(route_coords, km * 1000) if route_coords else None
-            halts.append({"stop_km": km, "stop_position": pos, "duration_min": REST_DURATION_MIN, "is_rest": True})
-            halts.sort(key=lambda h: h["stop_km"])
+    while len(halts) < MAX_HALTS:
+        to_th = next_th - driven
+        to_break = MAX_CONTINUOUS_DRIVE_S - since_break
+        to_rest = MAX_DAILY_DRIVE_S - since_rest
+        step = min(to_th, to_break, to_rest)
+        if step <= 0:
+            break
+
+        driven += step
+        since_break += step
+        since_rest += step
+
+        # Kein Halt mehr kurz vor dem Ziel
+        if driven > route_duration_s - MIN_REMAINING_S:
+            break
+
+        # Halte, die dicht beieinander liegen, zu einem Halt zusammenfassen
+        due_rest = to_rest - step <= HALT_MERGE_WINDOW_S
+        due_break = to_break - step <= HALT_MERGE_WINDOW_S
+
+        covers_break = True
+        if due_rest:
+            kind = HALT_KIND_DAILY_REST
+            duration = DAILY_REST_MIN
+            since_rest = 0.0
+            since_break = 0.0
+        elif due_break:
+            kind = HALT_KIND_BREAK
+            duration = max(BREAK_DURATION_MIN, th_min)
+            since_break = 0.0
+        else:
+            kind = HALT_KIND_TECH
+            duration = th_min
+            # Ein ohnehin langer TH erfüllt die Lenkzeitunterbrechung mit
+            covers_break = th_min >= BREAK_DURATION_MIN
+            if covers_break:
+                since_break = 0.0
+        # Nach jedem Halt läuft das TH-Intervall neu an
+        next_th = driven + TH_INTERVAL_S
+
+        frac = driven / route_duration_s
+        km = round(frac * route_km, 1)
+        pos = interpolate_along_route(route_coords, km * 1000) if route_coords else None
+        halts.append({
+            "stop_km": km,
+            "stop_position": pos,
+            "duration_min": duration,
+            "kind": kind,
+            "is_rest": kind != HALT_KIND_TECH,
+            "after_drive_s": int(driven),
+            "covers_break": covers_break,
+        })
 
     return halts
 
