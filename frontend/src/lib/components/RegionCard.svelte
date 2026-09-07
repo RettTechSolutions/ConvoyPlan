@@ -446,6 +446,25 @@
                     <span class="update-label">Aktuelle Region</span>
                     <code>{current.filename}</code>
                 </div>
+                <!--
+                    Bei einer zusammengesetzten Region sagt der Dateiname nichts:
+                    `merged-<hash>.osm.pbf` identifiziert die Zusammensetzung,
+                    nennt sie aber nicht. Wer nach einem Wechsel wissen will,
+                    welche Länder tatsächlich geladen sind, stand vor einer
+                    Prüfsumme. Bei einer einzelnen Region trägt der Dateiname die
+                    Auskunft schon (`dach-latest.osm.pbf`) — dann wäre die Zeile
+                    nur Wiederholung.
+                -->
+                {#if current.sources && current.sources.length > 1}
+                    <div class="update-row">
+                        <span class="update-label">Bestandteile ({current.sources.length})</span>
+                        <span class="sources-list">
+                            {#each current.sources as source (source)}
+                                <code>{source}</code>
+                            {/each}
+                        </span>
+                    </div>
+                {/if}
                 <div class="update-row">
                     <span class="update-label">Extract-Größe</span>
                     <span>{currentPreview ? bytes(currentPreview.extract_bytes) : '–'}</span>
@@ -648,6 +667,10 @@
 
     .update-grid { display: flex; flex-direction: column; gap: .6rem; }
     .update-row { display: flex; align-items: center; gap: .75rem; font-size: var(--text-sm); flex-wrap: wrap; }
+    /* Bei sechs Bestandteilen (real vorgekommen) reicht eine Zeile nicht —
+       die Liste bricht um und richtet sich am Label aus statt es zu
+       verschieben. */
+    .sources-list { display: flex; flex-wrap: wrap; gap: .35rem; min-width: 0; }
     .update-label { width: 130px; color: var(--text-muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; flex-shrink: 0; }
 
     .badge { display: inline-block; padding: .15rem .5rem; border-radius: 3px; font-size: var(--text-xs); font-weight: 600; }

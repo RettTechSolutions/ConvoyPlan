@@ -538,8 +538,22 @@ async def cancel_region_switch(_: User = Depends(require_superadmin)):
 
 @router.get("")
 async def current_region(_: User = Depends(require_superadmin)):
-    """Aktuell aktive Region (siehe `_read_active_region`)."""
-    return _read_active_region()
+    """Aktuell aktive Region (siehe `_read_active_region`).
+
+    `sources` kommt hier als LISTE von Regionspfaden heraus, nicht als roher
+    "|"-String wie in `.region` — dieselbe Form wie in `preview`, damit das
+    Panel beide gleich behandeln kann. Bei einer einzelnen Region steht genau
+    ein Eintrag drin (aus der Download-URL abgeleitet), nicht die leere Liste:
+    Fuer den Bediener ist "aus welchen Regionen besteht die Karte" dieselbe
+    Frage, egal ob es eine oder sechs sind.
+
+    Der Grund fuer die Angabe: Eine zusammengesetzte Region heisst auf der
+    Platte `merged-<hash>.osm.pbf`. Der Name traegt die Zusammensetzung nicht,
+    er identifiziert sie nur — im Panel stand damit eine Pruefsumme, aus der
+    niemand ablesen kann, welche Laender geladen sind.
+    """
+    active = _read_active_region()
+    return {**active, "sources": _active_region_paths()}
 
 
 @admin_router.get("/regions")

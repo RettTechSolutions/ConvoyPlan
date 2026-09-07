@@ -697,6 +697,14 @@ export interface RegionCurrent {
     url: string;
     filename: string;
     java_opts: string;
+    /**
+     * Die Bestandteile der Karte als Geofabrik-Pfade, z. B.
+     * `["europe/dach", "europe/italy"]`. Immer gefüllt — bei einer einzelnen
+     * Region mit genau einem Eintrag. Nötig, weil eine zusammengesetzte Region
+     * auf der Platte `merged-<hash>.osm.pbf` heißt: Der Name identifiziert die
+     * Zusammensetzung, nennt sie aber nicht.
+     */
+    sources: string[];
 }
 
 /**
