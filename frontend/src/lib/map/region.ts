@@ -111,8 +111,15 @@ export function loadRegionOutline(): Promise<Feature<MultiPolygon>> {
  * Jeder äußere Ring der Region (Festland + Inseln) wird zum Loch im
  * Weltpolygon. Löcher im Umriss selbst — fremdstaatliche Enklaven wie Campione
  * d'Italia — gehören nicht zur Region und werden deshalb als eigene Polygone
- * wieder maskiert. Geofabrik-Umrisse enthalten solche Löcher selten, aber der
- * Zweig kostet nichts und hält jeden Umriss korrekt.
+ * wieder maskiert.
+ *
+ * Dass die Löcher einander nicht schneiden, ist die Zusage des Backends: Es
+ * vereinigt die Bestandteile, bevor es den Umriss ausliefert. Darauf ist diese
+ * Funktion angewiesen, denn MapLibre trianguliert Flächen mit earcut, und
+ * earcut setzt disjunkte Löcher voraus. Als der Umriss die Ringe nur
+ * aneinanderhängte, zerfiel die Triangulierung und warf schwarze Keile quer
+ * über die Karte (mit earcuts `deviation()` nachgemessen: 0 bei disjunkten,
+ * 5.4 % bei überlappenden Löchern).
  */
 export function buildMask(outline: Feature<MultiPolygon>): FeatureCollection {
 	const holes: Position[][] = [];

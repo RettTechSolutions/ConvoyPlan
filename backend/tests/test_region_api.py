@@ -1064,6 +1064,22 @@ _ZWEITES = {
 }
 
 
+def _deckt_sich(geometry: dict, *erwartet: dict) -> bool:
+    """Deckt `geometry` genau die Vereinigung von `erwartet` ab?
+
+    Der Umriss wird serverseitig vereinigt (siehe `region_outline.py`), was
+    Startpunkt und Drehsinn der Ringe normalisiert und ueberlappende Teile
+    verschmilzt. Ein Vergleich der Koordinatenlisten wuerde deshalb an
+    Aeusserlichkeiten scheitern; verglichen gehoert die Flaeche.
+    """
+    from shapely.geometry import shape
+    from shapely.ops import unary_union
+
+    return shape(geometry).symmetric_difference(
+        unary_union([shape(e) for e in erwartet])
+    ).is_empty
+
+
 def _reset_outline_cache(monkeypatch):
     from app.api.routes import region as region_routes
     monkeypatch.setattr(region_routes, "_outline_cache", {})
@@ -1098,9 +1114,10 @@ async def test_outline_folgt_der_aktiven_region(tmp_path, monkeypatch):
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["geometry"]["type"] == "MultiPolygon"
-    # Italien, nicht DACH. Das Polygon wird dabei zu genau einem Element des
-    # MultiPolygons — das Frontend erwartet durchgaengig MultiPolygon.
-    assert body["geometry"]["coordinates"] == [_QUADRAT["coordinates"]]
+    # Italien, nicht DACH. Verglichen wird die FLAECHE, nicht die Schreibweise:
+    # Der Union normalisiert Startpunkt und Drehsinn der Ringe, ein Vergleich
+    # der Koordinatenliste wuerde daran scheitern, ohne dass etwas falsch ist.
+    assert _deckt_sich(body["geometry"], _QUADRAT)
     assert body["properties"]["name"] == "europe/italy"
 
 
@@ -1159,12 +1176,12 @@ async def test_outline_setzt_zusammengesetzte_region_aus_allen_teilen(
         resp = await client.get("/api/region/outline")
 
     assert resp.status_code == 200, resp.text
-    coords = resp.json()["geometry"]["coordinates"]
-    # Ein Polygon je Bestandteil — Polygon und MultiPolygon gleichermassen
-    # flachgeklopft.
-    assert len(coords) == 2
-    assert _ZWEITES["coordinates"][0] in coords
-    assert _QUADRAT["coordinates"] in coords
+    geometry = resp.json()["geometry"]
+    # Beide Bestandteile stecken drin — Polygon und MultiPolygon
+    # gleichermassen. Die beiden liegen auseinander, ergeben also zwei
+    # getrennte Flaechen.
+    assert len(geometry["coordinates"]) == 2
+    assert _deckt_sich(geometry, _QUADRAT, _ZWEITES)
 
 
 @pytest.mark.asyncio
@@ -1293,3 +1310,94 @@ async def test_outline_holt_den_index_auch_bei_gleichzeitigen_aufrufen_nur_einma
 
     assert [r.status_code for r in antworten] == [200] * 5
     assert aufrufe["n"] == 1
+
+
+@pytest.mark.asyncio
+async def test_outline_verschmilzt_ueberlappende_bestandteile(tmp_path, monkeypatch):
+    """Der Befund nach #444: Die Karte zeigte schwarze Keile quer ueber den
+    Balkan.
+
+    Ursache war, dass die aeusseren Ringe der Bestandteile nur aneinander
+    gehaengt wurden. Das Frontend stanzt jeden davon als Loch in ein
+    Weltpolygon, und MapLibres Triangulierung (earcut) setzt voraus, dass die
+    Loecher eines Polygons einander nicht schneiden. Mit earcut nachgemessen
+    (`deviation()`, 0 = korrekt): disjunkte Loecher 0.000e+0, ueberlappende
+    5.381e-2.
+
+    Ueberlappung ist dabei der Normalfall, nicht die Ausnahme: Geofabrik
+    schneidet Extracts mit Puffer ueber die Grenze hinaus, und `europe/dach`
+    deckt sich grossflaechig mit `europe/germany` und `europe/austria`.
+
+    Der Umriss wird deshalb vereinigt. Zwei ueberlappende Quadrate ergeben
+    danach EINE Flaeche, nicht zwei sich schneidende.
+    """
+    from shapely.geometry import shape
+
+    from app.api.routes import region as region_routes
+
+    monkeypatch.setattr(region_routes, "OSM_PATH", str(tmp_path))
+    _reset_outline_cache(monkeypatch)
+    (tmp_path / ".region").write_text(
+        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/dach-latest.osm.pbf\n"
+        "OSM_SOURCES=europe/dach|europe/italy\n"
+    )
+    links = {"type": "Polygon", "coordinates": [[[0, 0], [20, 0], [20, 20], [0, 20], [0, 0]]]}
+    rechts = {"type": "Polygon", "coordinates": [[[10, 10], [30, 10], [30, 30], [10, 30], [10, 10]]]}
+    monkeypatch.setattr(
+        geofabrik.httpx,
+        "AsyncClient",
+        _fake_index([
+            _feature("europe/dach", links),
+            _feature("europe/italy", rechts),
+        ]),
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/region/outline")
+
+    assert resp.status_code == 200, resp.text
+    geometry = resp.json()["geometry"]
+
+    # EINE zusammenhaengende Flaeche statt zweier sich schneidender Ringe.
+    assert len(geometry["coordinates"]) == 1
+    # Und sie deckt genau beide Quadrate ab — nichts verloren, nichts erfunden.
+    assert _deckt_sich(geometry, links, rechts)
+
+    # Der Kern der Zusage: keine zwei Ringe, die einander schneiden. Genau
+    # daran scheiterte earcut.
+    ringe = [shape({"type": "Polygon", "coordinates": [p[0]]}) for p in geometry["coordinates"]]
+    for i, a in enumerate(ringe):
+        for b in ringe[i + 1:]:
+            assert not a.intersection(b).area
+
+
+@pytest.mark.asyncio
+async def test_outline_repariert_ungueltige_geometrie(tmp_path, monkeypatch):
+    """Geofabriks Umrisse sind vereinfachte Polygone, und Vereinfachung kann
+    Selbstberuehrungen erzeugen. Ohne Reparatur braeche `unary_union` mit einer
+    TopologyException ab — die Karte stuende dann ganz ohne Maske da, obwohl
+    die Flaeche brauchbar ist."""
+    from app.api.routes import region as region_routes
+
+    monkeypatch.setattr(region_routes, "OSM_PATH", str(tmp_path))
+    _reset_outline_cache(monkeypatch)
+    (tmp_path / ".region").write_text(
+        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/dach-latest.osm.pbf\n"
+    )
+    # Sanduhr: der Ring kreuzt sich selbst — ungueltig nach OGC.
+    sanduhr = {
+        "type": "Polygon",
+        "coordinates": [[[0, 0], [10, 10], [10, 0], [0, 10], [0, 0]]],
+    }
+    monkeypatch.setattr(
+        geofabrik.httpx, "AsyncClient", _fake_index([_feature("europe/dach", sanduhr)])
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/region/outline")
+
+    assert resp.status_code == 200, resp.text
+    from shapely.geometry import shape
+    assert shape(resp.json()["geometry"]).is_valid
