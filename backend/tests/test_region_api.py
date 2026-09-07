@@ -1401,3 +1401,68 @@ async def test_outline_repariert_ungueltige_geometrie(tmp_path, monkeypatch):
     assert resp.status_code == 200, resp.text
     from shapely.geometry import shape
     assert shape(resp.json()["geometry"]).is_valid
+
+
+@pytest.mark.asyncio
+async def test_current_region_nennt_die_bestandteile(tmp_path, monkeypatch):
+    """Eine zusammengesetzte Region heisst auf der Platte
+    `merged-<hash>.osm.pbf`. Der Name identifiziert die Zusammensetzung, nennt
+    sie aber nicht — im Panel stand damit eine Pruefsumme, aus der niemand
+    ablesen kann, welche Laender geladen sind. Der Fall stammt aus dem Betrieb:
+    sechs Extracts (DACH, Italien, Slowenien, Kroatien, Montenegro, Albanien)
+    hinter `merged-53e53d81.osm.pbf`.
+
+    `sources` kommt als LISTE heraus, nicht als roher "|"-String aus `.region`
+    — dieselbe Form wie in `preview`, damit das Panel beide gleich behandelt.
+    """
+    from app.api.routes import region as region_routes
+
+    monkeypatch.setattr(region_routes, "OSM_PATH", str(tmp_path))
+    (tmp_path / ".region").write_text(
+        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/dach-latest.osm.pbf\n"
+        "OSM_FILENAME=merged-53e53d81.osm.pbf\n"
+        "OSM_SOURCES=europe/albania|europe/croatia|europe/dach|europe/italy"
+        "|europe/montenegro|europe/slovenia\n"
+    )
+    test_app = _make_app_with_superadmin()
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get(
+            "/api/admin/region", headers={"Authorization": "Bearer x"}
+        )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["filename"] == "merged-53e53d81.osm.pbf"
+    assert body["sources"] == [
+        "europe/albania",
+        "europe/croatia",
+        "europe/dach",
+        "europe/italy",
+        "europe/montenegro",
+        "europe/slovenia",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_current_region_nennt_auch_eine_einzelne_region(tmp_path, monkeypatch):
+    """Ohne OSM_SOURCES (einzelne Region) steht genau ein Eintrag drin, nicht
+    die leere Liste: "Aus welchen Regionen besteht die Karte" ist dieselbe
+    Frage, egal ob es eine oder sechs sind. Das Panel muss nicht zwei Faelle
+    unterscheiden."""
+    from app.api.routes import region as region_routes
+
+    monkeypatch.setattr(region_routes, "OSM_PATH", str(tmp_path))
+    (tmp_path / ".region").write_text(
+        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf\n"
+        "OSM_FILENAME=berlin-latest.osm.pbf\n"
+    )
+    test_app = _make_app_with_superadmin()
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get(
+            "/api/admin/region", headers={"Authorization": "Bearer x"}
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["sources"] == ["europe/germany/berlin"]

@@ -21,6 +21,10 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Changed
+
+- **Das Admin-Panel nennt jetzt die Bestandteile einer zusammengesetzten Kartenregion.** Bisher stand dort nur der Dateiname, und der lautet bei einer kombinierten Karte `merged-<hash>.osm.pbf` — er identifiziert die Zusammensetzung, nennt sie aber nicht. Wer nach einem Wechsel wissen wollte, welche Länder tatsächlich geladen sind, stand vor einer Prüfsumme; im Betrieb steckten hinter `merged-53e53d81.osm.pbf` sechs Extracts (DACH, Italien, Slowenien, Kroatien, Montenegro, Albanien). Die Angabe lag im Backend längst vor (`OSM_SOURCES` in `.region`) und wird von `GET /api/admin/region` jetzt als Liste ausgeliefert — in derselben Form wie in der Vorab-Rechnung, auch bei einer einzelnen Region mit genau einem Eintrag.
+
 ### Fixed
 
 - **Schwarze Keile quer über die Karte, nachdem die Maske der Region folgte.** Der Umriss stimmte nach dem vorigen Fix, aber über Adria und Balkan lagen große schwarze Dreiecke. Ursache war eine falsche Annahme in genau diesem Fix: Die äußeren Ringe der Bestandteile wurden nur aneinandergehängt, weil überlappende Löcher angeblich dieselbe Aussparung ergeben wie ein vereinigtes Polygon. Das stimmt nicht — MapLibre trianguliert Flächen mit earcut, und earcut setzt voraus, dass die Löcher eines Polygons einander nicht schneiden. Mit earcut selbst nachgemessen (`deviation()`, 0 = korrekt): disjunkte Löcher `0.000e+0`, überlappende `5.381e-2`. Bei hunderten Ringen echter Landesumrisse zerfällt die Triangulierung entsprechend.
