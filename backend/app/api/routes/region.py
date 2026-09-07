@@ -31,6 +31,7 @@ from app.models.user import User
 from app.services import (
     audit, geofabrik, host_metrics, region_compose, region_estimate, region_switch,
 )
+from app.services import region_outline as region_outline_geom
 
 router = APIRouter(prefix="/admin/region", tags=["admin"])
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
@@ -618,12 +619,14 @@ async def region_outline():
     GraphHopper laengst etwas anderes geladen hatte. Beobachtet mit einer
     Route bis Bologna, die sauber rechnete, aber im maskierten Bereich lag.
 
-    Geometrien mehrerer Bestandteile werden schlicht aneinandergehaengt statt
-    vereinigt: Die Maske stanzt aus dem Weltpolygon jeden aeusseren Ring als
-    Loch aus (`buildMask` im Frontend), und ueberlappende Loecher ergeben
-    dieselbe Aussparung wie ein vereinigtes Polygon. Eine Geometrie-Bibliothek
-    fuer einen echten Union waere hier reine Rechenzeit ohne sichtbaren
-    Unterschied.
+    Mehrere Bestandteile werden VEREINIGT, nicht nur aneinandergehaengt (siehe
+    `region_outline.union_coordinates`). Die erste Fassung tat Letzteres, mit
+    der Begruendung, ueberlappende Loecher ergaeben dieselbe Aussparung wie ein
+    echtes Polygon. Das war falsch: Die Maske stanzt aus dem Weltpolygon jeden
+    aeusseren Ring als Loch aus (`buildMask` im Frontend), MapLibre
+    trianguliert das mit earcut, und earcut setzt disjunkte Loecher voraus.
+    Ueberlappung ist bei Geofabrik-Extracts der Normalfall — im Betrieb ergab
+    das schwarze Keile quer ueber die Karte.
     """
     paths = _active_region_paths()
     key = "|".join(paths)
@@ -652,7 +655,7 @@ async def _build_outline(paths: list[str], key: str) -> dict:
         # behaupten, den niemand geprueft hat.
         raise HTTPException(503, str(exc)) from exc
 
-    coordinates: list = []
+    teile = []
     for path in paths:
         geometry = geometries.get(path)
         if geometry is None:
@@ -665,11 +668,9 @@ async def _build_outline(paths: list[str], key: str) -> dict:
                 "Der Umriss der aktiven Region ist im Geofabrik-Index nicht "
                 f"auffindbar: {path}",
             )
-        if geometry.get("type") == "Polygon":
-            coordinates.append(geometry["coordinates"])
-        elif geometry.get("type") == "MultiPolygon":
-            coordinates.extend(geometry["coordinates"])
+        teile.append(geometry)
 
+    coordinates = region_outline_geom.union_coordinates(teile)
     if not coordinates:
         raise HTTPException(503, "Der Umriss der aktiven Region ist leer.")
 
