@@ -159,6 +159,14 @@ openssl rand -hex 32
 > Geofabrik-Index ab. Bis `2026.5.2` war er eine mitgelieferte DACH-Datei und
 > musste von Hand getauscht werden; wer das früher getan hat, braucht dafür
 > jetzt nichts mehr zu tun.
+>
+> Bei einer aus mehreren Regionen zusammengesetzten Karte nennt die Karte
+> „Kartenregion" unter **Aktuelle Region** zusätzlich die einzelnen
+> Bestandteile — praktisch, um nach einem Wechsel nachzuvollziehen, welche
+> Länder/Gebiete tatsächlich geladen sind, statt das nur am kryptischen
+> `merged-<hash>.osm.pbf`-Dateinamen abzulesen. Bei nur einer Region entfällt
+> die Zeile, da der Dateiname (z. B. `dach-latest.osm.pbf`) die Auskunft
+> bereits enthält.
 
 ### Sicherheit und Datenschutz
 
