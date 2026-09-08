@@ -73,13 +73,21 @@ ConvoyPlan analysiert automatisch, ob der Konvoi einen Tankstopp benötigt:
 
 ## Technische Halte
 
-ConvoyPlan empfiehlt technische Halte nach diesen Faustregeln:
+Ab **3 Stunden** Marschdauer simuliert ConvoyPlan die Lenkzeit des Verbands und empfiehlt daraus Halte in Anlehnung an die Lenk- und Ruhezeiten der VO (EG) 561/2006. Dabei werden drei Haltearten unterschieden:
 
-- Alle **2 Fahrstunden** ein technischer Halt
-- Haltedauer: **15 Minuten** pro angefangener 3 Fahrzeuge
-- Nach **6+ Stunden** Marschzeit: erweiterter Ruhehalt (~120 Minuten)
+| Halteart | Auslöser | Haltedauer |
+|---|---|---|
+| 🔧 **Technischer Halt (WOLKE)** | Alle **2 Stunden** Lenkzeit | **15 Minuten** pro angefangener 3 Fahrzeuge |
+| ☕ **Lenkpause** | Spätestens nach **4,5 Stunden** Lenkzeit am Stück | **45 Minuten** (länger, falls der fahrzeuganzahlbasierte Halt ohnehin mehr Zeit braucht) |
+| 🛏 **Tagesruhezeit** | Spätestens nach **9 Stunden** Tageslenkzeit | **11 Stunden** |
 
-Die empfohlenen Positionen werden auf der Route interpoliert und können als Wegpunkte übernommen werden.
+Dabei gilt:
+
+- Ein technischer Halt, der wegen der Verbandsgröße bereits ≥ 45 Minuten dauert, erfüllt die fällige Lenkpause mit — er wird in der Übersicht dann zusätzlich mit **„deckt Lenkpause ab"** markiert, ein separater Stopp entfällt.
+- Fallen zwei Halttermine dicht hintereinander (innerhalb von 30 Minuten), werden sie zu einem einzigen Halt der höherwertigen Art zusammengefasst (Tagesruhezeit vor Lenkpause vor technischem Halt), statt zwei Stopps kurz nacheinander vorzuschlagen.
+- Kurz vor dem Ziel entfällt der letzte Halt, wenn er ohnehin am Ziel selbst fällig wäre. Wie groß dieses Zeitfenster ist, richtet sich nach der Gesamtlenkzeit (10 % davon, mindestens 30 Minuten, höchstens 2 Stunden) — auf einer Tagesfahrt wird so nur der allerletzte Halt übersprungen, nie eine ganze Gruppe.
+
+Jeder empfohlene Halt zeigt in der Planungsansicht seine Art, die Haltedauer und die kumulierte Lenkzeit bis zu diesem Punkt an. Die empfohlenen Positionen werden auf der Route interpoliert und können per Klick als Wegpunkte übernommen werden.
 
 ---
 
