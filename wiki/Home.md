@@ -87,7 +87,7 @@ Retention-Container → periodischer Daten-Purge
 - Organisations- und Rollenmodell (Admin, Planer, Fahrer, Beobachter)
 - Fahrzeugverwaltung mit Funkrufname, Kennzeichen, Abmessungen und Kraftstoffdaten
 - Teilverbände (Sub-Convoys) mit Parent-Konvoi-Zuordnung
-- Freigabelink für öffentliche Routenansicht ohne Login
+- Tracking-Links ohne Login: als Viewer (nur ansehen) oder als Fahrer (Position und Status senden ohne Konto), optional passwortgeschützt und jederzeit widerrufbar
 
 ### Live, Lage und Export
 - Live-Tracking per WebSocket mit Fahrzeugstatus, Projektion auf die Route und Wegpunkt-/Kanalwechsel-Meldungen
@@ -128,10 +128,10 @@ Retention-Container → periodischer Daten-Purge
 | [Erste Schritte](Erste-Schritte) | Registrierung, Login und erster Überblick |
 | [Konvoi-Planung](Konvoi-Planung) | Konvois anlegen, Wegpunkte und Route berechnen |
 | [Fahrzeuge](Fahrzeuge) | Fahrzeuge anlegen und verwalten |
-| [Live-Tracking](Live-Tracking) | Echtzeit-Verfolgung der Fahrzeuge |
+| [Live-Tracking](Live-Tracking) | Echtzeit-Verfolgung, Statusmeldungen und Alarme, Streckenmeldungen, Verspätungsprognose |
 | [Marschbefehl & Export](Marschbefehl-Export) | PDF-Marschbefehl sowie GPX-/JSON-Export |
 | [Rollen & Berechtigungen](Rollen) | Rollenmodell und Zugriffsrechte |
-| [Teilen](Teilen) | Öffentliche Freigabelinks ohne Login |
+| [Teilen](Teilen) | Tracking-Links ohne Login: Viewer- und Fahrer-Links, Passwortschutz, Widerruf |
 | [FAQ](FAQ) | Häufige Fragen |
 
 ### Betrieb, Sicherheit & Features
