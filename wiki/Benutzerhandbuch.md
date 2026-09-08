@@ -81,6 +81,7 @@ Fahrzeuge werden einmalig angelegt und können dann beliebigen Konvois zugeordne
 
 1. Den Konvoi öffnen und zur **Kartenansicht** wechseln.
 2. Auf der Karte Klicken um Wegpunkte zu setzen, oder über die Seitenleiste manuell hinzufügen.
+   - Alternativ zum Kartenklick lässt sich jeder Punkt über die **Adresssuche** setzen: Start, Ziel und jeder Wegpunkt haben ein eigenes Suchfeld, das schon während des Tippens Vorschläge liefert.
 3. Für jeden Wegpunkt kann festgelegt werden:
    - **Typ:** Start, Stopp, Kontrollpunkt, Tankhalt, Technischer Halt
    - **Haltezeit** in Minuten
@@ -129,11 +130,18 @@ Für mehrstufige Marschverbände können Teilverbände angelegt werden.
 2. GPX-Track oder GeoJSON-Datei hochladen.
 3. Die Route wird in den Konvoi übernommen.
 
-### Öffentlicher Freigabelink
+### Tracking-Link (Freigabe ohne Login)
 
-1. Konvoi öffnen → **Freigabelink erstellen**.
-2. Den Link teilen – Empfänger können die Route ohne Login einsehen.
-3. Freigabelinks sollten wie vertrauliche Links behandelt werden.
+1. Konvoi öffnen → **Teilen** (Dialog **Live-Tracking teilen**).
+2. Rolle des Links wählen:
+   - **Nur ansehen** – Empfänger verfolgen den Verband live (Viewer).
+   - **Fahrer** – Empfänger können zusätzlich ohne Konto ein Fahrzeug wählen und Position/Status senden.
+3. Passwortschutz wählen: *ohne Passwort*, *Passwort generieren* (10 Zeichen, wird **nur einmal** angezeigt) oder *Passwort selbst setzen* (min. 4 Zeichen).
+4. **Link erstellen** und den Link – bei Passwortschutz getrennt davon das Passwort – weitergeben.
+
+Die Liste **Vorhandene Links** zeigt Rolle, Passwortschutz, letzten Zugriff und Aufrufzähler; **Widerrufen** macht einen Link sofort ungültig.
+
+> Ein **Fahrer-Link ist ein Schreibzugriff**: Wer ihn hat, kann für ein beliebiges Fahrzeug des Konvois Position und Status senden – ein versehentlich gesetzter Ausfall alarmiert alle Beteiligten. Für Fahrer-Links deshalb immer ein Passwort setzen. Details: [Teilen & Öffentliche Ansicht](Teilen).
 
 ---
 
@@ -141,18 +149,25 @@ Für mehrstufige Marschverbände können Teilverbände angelegt werden.
 
 ### Als Fahrer
 
-1. Den Konvoi öffnen → Reiter **Tracking**.
-2. Browser-Standortfreigabe erlauben.
-3. **Tracking starten** klicken – die eigene Position wird automatisch übermittelt.
-4. Fahrzeugstatus über die Statusschaltfläche aktualisieren:
+1. Den Konvoi öffnen → Reiter **Tracking** (oder einen **Fahrer-Tracking-Link** öffnen).
+2. Das eigene Fahrzeug auswählen und die Browser-Standortfreigabe erlauben.
+3. **Tracking starten** – die Position wird laufend übermittelt. Ohne HTTPS oder ohne Freigabe lässt sie sich per Tippen auf die Karte setzen.
+4. Status im Reiter **Status** unter **Mein Status** melden:
    - *Geplant* → *Unterwegs* → *Angekommen*
-   - Bei Verzögerung: *Verspätet* setzen
+   - **Techn. Halt** mit Dringlichkeit *Standard*, *Dringend* oder *Sehr dringend*
+   - **Ausfall/Störung** als *Totalausfall – sofort halten* oder *Eingeschränkt – in Sicherheit fahren*
+   - Zu Halt und Ausfall lässt sich eine kurze Bemerkung mitgeben.
 
 ### Als Beobachter / Planer
 
 1. Den Konvoi öffnen → Reiter **Tracking**.
-2. Alle Fahrzeugpositionen werden in Echtzeit auf der Karte angezeigt.
-3. Fahrzeugstatus (unterwegs, angekommen, verspätet) wird farblich markiert.
+2. Alle Fahrzeugpositionen werden in Echtzeit auf der Karte angezeigt, eingefärbt nach Status.
+3. **Techn. Halt** und **Ausfall** lösen bei allen Verbundenen einen Alarm mit Banner, Ton und Vibration aus; über **Anzeigen** geht es in den Reiter **Status**, **Quittieren** blendet ihn aus.
+4. Erreichte **Wegpunkte** und **Leitstellenwechsel** werden automatisch angekündigt, sobald die Spitze des Verbands den Punkt passiert.
+5. Der Reiter **Zeitplan** zeigt die aus der Position berechnete **Verspätung** und verschiebt die Ankunftszeiten aller Wegpunkte entsprechend.
+6. Über **Norden** und **Fahrtrichtung** lässt sich die Karte ausrichten; reißt die Verbindung ab, meldet ein Banner den Ausfall der Übertragung.
+
+Ausführlich: [Live-Tracking](Live-Tracking).
 
 ---
 

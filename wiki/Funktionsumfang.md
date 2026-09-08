@@ -31,7 +31,7 @@ Vollständige Feature-Übersicht von ConvoyPlan mit Umsetzungsstatus. Eine kompa
 | Rollen | Admin, Planer, Fahrer und Beobachter | ✅ |
 | MFA / TOTP | Zwei-Faktor-Authentifizierung per TOTP im Org-Admin-Panel einrichtbar | ✅ |
 | SMTP-Dienst | Passwort-E-Mails direkt aus dem Admin-Panel versenden | ✅ |
-| Freigabelink | Öffentliche Routenansicht per Share-Token | ✅ |
+| Tracking-Links | Freigabe ohne Login als **Viewer** (nur ansehen) oder **Fahrer** (darf ohne Konto ein Fahrzeug wählen und Position/Status senden), optional passwortgeschützt, einzeln widerrufbar mit Zugriffszähler | ✅ |
 | Branding | Eigenes App-Logo, Farben und Name über Admin-UI konfigurierbar | ✅ |
 | Leitstellen | Leitstellen und Kanalwechselpunkte entlang der Route | ✅ |
 | Org-Leitstellen | Org-eigene Leitstellen mit Vorschlags-/Freigabe-Workflow, Übersichtskarte und Auswahl fertiger Verwaltungsgrenzen (Kreise/kreisfreie Städte in DE, Bezirke in AT, Kantone in CH/LI) | ✅ |
@@ -44,7 +44,12 @@ Vollständige Feature-Übersicht von ConvoyPlan mit Umsetzungsstatus. Eine kompa
 | Funktion | Beschreibung | Status |
 |---|---|---:|
 | Live-Tracking | Positionsupdates per REST und WebSocket | ✅ |
-| Fahrzeugstatus | Geplant, unterwegs, angekommen oder verspätet | ✅ |
+| Fahrzeugstatus | Geplant, unterwegs, angekommen, technischer Halt (drei Dringlichkeitsstufen) und Ausfall/Störung (zwei Schweregrade), je mit optionaler Bemerkung | ✅ |
+| Alarmierung | Technischer Halt und Ausfall lösen bei allen verbundenen Clients Banner, Ton und Vibration aus; Meldungen sind einzeln oder gesammelt quittierbar | ✅ |
+| Streckenmeldungen | Erreichte Wegpunkte und Leitstellenwechsel werden aus der auf die Route projizierten Konvoiposition angekündigt (Spitze erreicht / Verband vollständig passiert) | ✅ |
+| Verspätungsprognose | Der Zeitplan schätzt aus der Position des vordersten Fahrzeugs die aktuelle Abweichung und verschiebt die Ankunftszeiten aller Wegpunkte | ✅ |
+| Verbindungsüberwachung | Anwendungs-Heartbeat erkennt eine still abgerissene Mobilfunkverbindung binnen Sekunden und meldet sie im Klartext | ✅ |
+| Kartenbedienung | Frei drehbare Karte mit Norden-Rückstellung, Fahrtrichtungs-Modus und Folgen des eigenen Fahrzeugs; Richtungspfeile bleiben zur echten Fahrtrichtung ausgerichtet | ✅ |
 | Wetter | Integration über Open-Meteo ohne API-Key | ✅ |
 | Sperrungen | Sperrungen und Baustellen aus Overpass API, Autobahn-API (bund.dev), offenen regionalen Feeds (MobiData BW, Berlin VIZ) und optional DATEX-II/mobilithek, entlang der gesamten Route | ✅ |
 | Verkehrslage | Live-Fließgeschwindigkeit/Stau über HERE oder TomTom entlang der Route (optionaler API-Key pro Installation) | ✅ |
@@ -115,10 +120,12 @@ Bereits umgesetzt:
 - ~~DSGVO-Werkzeuge (Datenexport/-löschung) und Datenaufbewahrung~~ ✅ (seit 1.0.0)
 - ~~Backup-/Restore-Skripte~~ ✅ (seit 1.0.0)
 - ~~Org-eigene Leitstellen mit Vorschlags-Workflow~~ ✅ (seit 1.0.0)
+- ~~Benachrichtigungen bei Verzögerungen und beim Erreichen von Wegpunkten/Leitstellenwechseln~~ ✅ (seit `2026.1.1`)
+- ~~Verkehrsdaten aus mehreren Quellen inkl. Live-Verkehrslage~~ ✅ (`2026.1.1` – `2026.2.2`)
+- ~~Kartenregion im laufenden Betrieb wechseln und aus mehreren Regionen zusammensetzen~~ ✅ (seit `2026.4.0` / `2026.5.0`)
 
 Geplant:
 
-- Benachrichtigungen bei Verzögerungen oder Abweichungen von der Route.
 - Audit-Log für fachliche Änderungen an Marschbefehlen und Konvois.
 - Offline-First-Synchronisation für mobile Nutzung.
 - Erweiterte Einsatzdokumentation und Einsatznachbereitung.
