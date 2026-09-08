@@ -32,6 +32,9 @@ fpdf2==2.8.8
 pyotp==2.10.0
 # aiosmtplib 5.1.2 fixes GHSA-vxj7-4xrp-5vr4: discard buffered server data
 # before STARTTLS handshake (response-injection attack prevention).
-aiosmtplib==5.1.2
+# 5.1.3 is a follow-up hardening to CVE-2026-53533 / GHSA-v3q9-hj7j-63hq
+# (the 5.1.1 fix only rejected CR/LF; 5.1.3 also rejects whitespace/angle
+# brackets that could smuggle extra ESMTP parameters via mail()/rcpt()).
+aiosmtplib==5.1.3
 pytest>=9.1.1
 pytest-asyncio>=1.4.0
