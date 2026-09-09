@@ -21,6 +21,14 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Security
+
+- **`aiosmtplib` und `docker-socket-proxy` auf die aktuellen Patch-Versionen angehoben.** `aiosmtplib` 5.1.2 → 5.1.3 schließt einen Nachfolge-Bypass von CVE-2026-53533 (GHSA-v3q9-hj7j-63hq): Der 5.1.1-Fix wies CR/LF in SMTP-Adressen ab, 5.1.3 weist zusätzlich Leerzeichen- und Spitzklammer-Schmuggel in ESMTP-Parametern von `mail()`/`rcpt()`/`sendmail()` ab. `ghcr.io/tecnativa/docker-socket-proxy` 0.3.0 → v0.5.0 wechselt die Basis von `haproxy:2.2-alpine` (seit 2025-Q2 ohne Sicherheits-Backports, u. a. betroffen von CVE-2023-45539) auf `haproxy:3.4-alpine` (LTS bis 2030-Q2) — gleiche Umgebungsvariablen, gleiches Startverhalten, reiner Austausch.
+
+### Changed
+
+- **Routine-Aktualisierung der Frontend-Abhängigkeiten:** `@types/node` `26.4.1` → `26.5.0`. Keine Sicherheitsmeldungen betroffen — die Prüfung war für alle gepinnten Pakete sauber, `@types/node` lag lediglich einen Patch-Release im Rückstand.
+
 ### Fixed
 
 - **Eine Störung bei Geofabrik sah im Panel aus, als sei die Kartenregion kaputt.** Über der Kartenregion stand „Extract nicht abrufbar (HTTP 502)." als roter Alarm — dabei fehlte der geladenen Karte nichts, das Routing lief weiter. Die Meldung stammte aus der Vorab-Rechnung: Das Panel fragt für die aktive Region die Extract-Größe bei Geofabrik ab, und diese Abfrage hing am selben `catch` wie das Auslesen der aktiven Region selbst. Beides ist jetzt getrennt — `.region` liegt lokal und ergibt bei einem Fehler weiterhin den roten Balken, die Größenabfrage bei einem fremden Server dagegen nur einen Hinweis in Fließtext samt Knopf zum erneuten Versuch. Die aktive Region bleibt in beiden Fällen sichtbar.
