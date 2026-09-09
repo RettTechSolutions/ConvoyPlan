@@ -134,8 +134,15 @@ services:
         condition: service_healthy
 
   dockerproxy:
-    image: ${DOCKER_PROXY_IMAGE:-ghcr.io/tecnativa/docker-socket-proxy:0.3.0}
+    image: ${DOCKER_PROXY_IMAGE:-ghcr.io/tecnativa/docker-socket-proxy:v0.5.0}
     restart: unless-stopped
+    # 0.5.0 statt 0.3.0: 0.3.0 basiert auf haproxy:2.2-alpine — der 2.2-Zweig
+    # von HAProxy ist seit 2025-Q2 offiziell "unmaintained" (haproxy.org) und
+    # bekommt keine Security-Fixes mehr, u. a. nicht CVE-2023-45539 (`#` in der
+    # URI wird als Pfadbestandteil behandelt, gefixt erst ab 2.8.2) — relevant,
+    # weil diese Proxy-ACLs komplett auf Pfad-Regex-Matching beruhen. 0.5.0
+    # baut auf haproxy:3.4-alpine (aktueller LTS-Zweig, Support bis 2030-Q2).
+    # Gleiche ENV-Variablen/Startverhalten, kein Config-Mount hier betroffen.
     # Liest den Docker-Socket und gibt davon NUR lesende Endpunkte frei, die die
     # Systemübersicht braucht (Container-Zustand, Health, Stats). Der Socket
     # selbst bleibt aus dem Backend heraus, denn Zugriff darauf ist faktisch
@@ -264,7 +271,9 @@ services:
       # (docker/updater/merge-extracts.sh). Kein Stack-Dienst — es laeuft nur
       # fuer die Dauer eines Merge und wird deshalb hier nur durchgereicht.
       REGION_MERGE_IMAGE: ${REGION_MERGE_IMAGE:-ghcr.io/retttechsolutions/convoyplan/osmium:latest}
-      DOCKER_PROXY_IMAGE: ${DOCKER_PROXY_IMAGE:-ghcr.io/tecnativa/docker-socket-proxy:0.3.0}
+      # Default gleich wie beim dockerproxy-Service oben halten (siehe dort:
+      # CVE-2023-45539 / unmaintained haproxy:2.2-Basis von 0.3.0).
+      DOCKER_PROXY_IMAGE: ${DOCKER_PROXY_IMAGE:-ghcr.io/tecnativa/docker-socket-proxy:v0.5.0}
       DOCKER_SOCKET_PATH: ${DOCKER_SOCKET_PATH:-/var/run/docker.sock}
       SYSTEM_METRICS_ENABLED: ${SYSTEM_METRICS_ENABLED:-true}
       SYSTEM_METRICS_INTERVAL: ${SYSTEM_METRICS_INTERVAL:-300}
