@@ -21,6 +21,10 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Changed
+
+- **Routine-Abhängigkeitsprüfung: `uvicorn` 0.52.4 → 0.53.0, `svelte` 5.56.10 → 5.57.0, `vite` 8.2.2 → 8.3.0, `@types/node` 26.5.0 → 26.5.1.** Keine Sicherheitsmeldungen betroffen — die OSV-Prüfung war für alle gepinnten Backend- und Frontend-Pakete sauber, die genannten vier lagen lediglich einen Patch- bzw. Minor-Release im Rückstand.
+
 ### Security
 
 - **`aiosmtplib` und `docker-socket-proxy` auf die aktuellen Patch-Versionen angehoben.** `aiosmtplib` 5.1.2 → 5.1.3 schließt einen Nachfolge-Bypass von CVE-2026-53533 (GHSA-v3q9-hj7j-63hq): Der 5.1.1-Fix wies CR/LF in SMTP-Adressen ab, 5.1.3 weist zusätzlich Leerzeichen- und Spitzklammer-Schmuggel in ESMTP-Parametern von `mail()`/`rcpt()`/`sendmail()` ab. `ghcr.io/tecnativa/docker-socket-proxy` 0.3.0 → v0.5.0 wechselt die Basis von `haproxy:2.2-alpine` (seit 2025-Q2 ohne Sicherheits-Backports, u. a. betroffen von CVE-2023-45539) auf `haproxy:3.4-alpine` (LTS bis 2030-Q2) — gleiche Umgebungsvariablen, gleiches Startverhalten, reiner Austausch.
