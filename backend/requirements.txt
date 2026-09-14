@@ -12,10 +12,13 @@ sqlalchemy[asyncio]==2.0.52
 # python:3.14-slim base image; 0.29.0 has no 3.14 wheel and fails to build).
 asyncpg==0.31.0
 geoalchemy2==0.20.0
-alembic==1.19.2
+alembic==1.20.0
 pydantic[email]==2.13.5
 # PyJWT replaces python-jose (CVE-2024-33663, CVE-2024-33664 — algorithm confusion / sig bypass).
-PyJWT==2.13.0
+# 2.14.0 hardens HMAC key validation against public-key material passed as JWK/JWKS/DER/PEM,
+# rejects JWKS-fetch redirects in PyJWKClient, and rate-limits repeated JWKS refreshes for
+# unknown key IDs.
+PyJWT==2.14.0
 pydantic-settings==2.15.0
 # cryptography 50.0.1 rebuilds wheels against OpenSSL 4.0.2, which fixes
 # several CVEs bundled in the statically-linked OpenSSL (CVE-2026-63072,
