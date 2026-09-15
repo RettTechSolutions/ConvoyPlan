@@ -23,6 +23,7 @@ ursprünglichen SemVer-Nummern.
 
 ### Changed
 
+- **Routine-Abhängigkeitsprüfung: `sqlalchemy[asyncio]` 2.0.52 → 2.0.53, `maplibre-gl` 6.9.0 → 6.9.1.** Keine Sicherheitsmeldungen betroffen — die OSV-Prüfung war für alle gepinnten Backend- und Frontend-Pakete sauber, die beiden genannten lagen lediglich einen Patch-Release im Rückstand.
 - **Routine-Abhängigkeitsprüfung: `uvicorn` 0.52.4 → 0.53.0, `svelte` 5.56.10 → 5.57.0, `vite` 8.2.2 → 8.3.0, `@types/node` 26.5.0 → 26.5.1.** Keine Sicherheitsmeldungen betroffen — die OSV-Prüfung war für alle gepinnten Backend- und Frontend-Pakete sauber, die genannten vier lagen lediglich einen Patch- bzw. Minor-Release im Rückstand.
 
 ### Security
