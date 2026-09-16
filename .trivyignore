@@ -107,6 +107,22 @@ GHSA-hrxh-6v49-42gf
 # v1.83.0 (compose) as of the 2026-09-03 rebuild. Review by: 2026-09-25.
 CVE-2026-84304
 
+# gRPC-Go DoS: ein xDS-Server (xds.NewGRPCServer) stuerzt ab, wenn eine RPC
+# weder :authority noch Host traegt — RouteAndProcess indiziert dann in einen
+# leeren Slice. Gebuendelt im cosign-Binary des Updater-Images (cosign 3.1.3
+# haengt an google.golang.org/grpc v1.82.0, fix in 1.82.2 bzw. 1.83.2).
+#
+# Betroffen ist ausschliesslich der Server-Pfad hinter xds.NewGRPCServer().
+# cosign laeuft hier als CLI-Client (`cosign verify` gegen ghcr.io und Rekor
+# ueber HTTPS) und oeffnet ueberhaupt keinen Listener, weder gRPC noch xDS —
+# der verwundbare Code wird nie erreicht (VEX: not_affected).
+#
+# Kein cosign-Release enthaelt bisher ein gepatchtes grpc: v3.1.3 ist die
+# aktuellste Version und pinnt v1.82.0. Sobald ein cosign-Build mit
+# grpc >= 1.82.2 erscheint, COSIGN_VERSION in docker/updater/Dockerfile heben
+# und diesen Eintrag streichen. Review by: 2026-10-15.
+CVE-2026-84445
+
 # golang.org/x/text norm.Iter infinite loop on crafted input (DoS). Bundled in
 # the docker-buildx/docker-compose plugin Go binaries; the updater only passes
 # operator-trusted image refs and compose files to the docker CLI — it feeds no
