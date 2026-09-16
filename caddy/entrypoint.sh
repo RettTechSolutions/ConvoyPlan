@@ -11,6 +11,9 @@ if [ -f "/certs/Caddyfile" ]; then
     if ! grep -q "X-Content-Type-Options" /certs/Caddyfile; then
         echo "[caddy] WARNING: persisted Caddyfile has no security headers — the backend will regenerate it on start; re-run the setup wizard if this persists" >&2
     fi
+    if ! grep -q "handle /.well-known/oauth-\*" /certs/Caddyfile; then
+        echo "[caddy] WARNING: persisted Caddyfile has no MCP/OAuth routes — /mcp would be served by the frontend; the backend regenerates it on start" >&2
+    fi
     exec caddy run --config /certs/Caddyfile --adapter caddyfile
 fi
 
@@ -85,6 +88,32 @@ $SITE_ADDRESS {
         }
     }
     handle /api/* {
+        reverse_proxy backend:$BACKEND_PORT
+    }
+    # MCP-Endpunkt. Streamable HTTP kann mit einem SSE-Stream antworten, darf
+    # also nicht gepuffert werden. Immer geroutet, auch bei MCP_ENABLED=false —
+    # das Backend antwortet dann mit 404, und ein späteres Einschalten braucht
+    # keine Proxy-Änderung.
+    handle /mcp {
+        reverse_proxy backend:$BACKEND_PORT {
+            flush_interval -1
+        }
+    }
+    # OAuth-Discovery und -Endpunkte des MCP-Servers. RFC 9728 verlangt die
+    # Metadaten an der Wurzel der Site, sie können nicht unter /api/ liegen.
+    handle /.well-known/oauth-* {
+        reverse_proxy backend:$BACKEND_PORT
+    }
+    handle /authorize {
+        reverse_proxy backend:$BACKEND_PORT
+    }
+    handle /token {
+        reverse_proxy backend:$BACKEND_PORT
+    }
+    handle /register {
+        reverse_proxy backend:$BACKEND_PORT
+    }
+    handle /revoke {
         reverse_proxy backend:$BACKEND_PORT
     }
     handle /ws/* {

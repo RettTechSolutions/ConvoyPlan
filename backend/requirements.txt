@@ -41,3 +41,14 @@ pyotp==2.10.0
 aiosmtplib==5.1.3
 pytest>=9.1.1
 pytest-asyncio>=1.4.0
+
+# MCP-Server (Model Context Protocol) unter /mcp — liefert Transport,
+# OAuth-Endpunkte und beide Metadaten-Dokumente. Exakter Pin, weil die
+# ASGI-Verdrahtung in app/mcp/mount.py an internen Details des SDK hängt
+# (siehe den dortigen Kommentar) und ein Minor-Sprung sie brechen kann.
+#
+# Zieht httpx2 als zweiten HTTP-Stack neben dem bereits gepinnten httpx
+# 0.28.1 ins Image. Die Pakete koexistieren konfliktfrei, aber ein
+# httpx-CVE betrifft ab jetzt potenziell beide — bei Sicherheitsupdates
+# an beide denken.
+mcp==2.2.0

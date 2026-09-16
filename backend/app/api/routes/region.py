@@ -18,6 +18,7 @@ oder ein bereits laufendes normales Update verriegelt (siehe dort).
 
 import asyncio
 import os
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -68,21 +69,42 @@ class RegionUrls(BaseModel):
     bisherige Pfad und verhaelt sich unveraendert.
     """
     urls: list[str]
+    # Wartungsmodus: GraphHopper wird VOR dem Import angehalten, statt
+    # waehrenddessen weiterzulaufen. Das Routing faellt fuer die Dauer des
+    # Imports aus — dafuer steht dessen Heap dem Import zur Verfuegung. Ohne
+    # diesen Modus ist eine grosse zusammengesetzte Karte auf einer Maschine
+    # mit knappem Speicher nicht baubar (siehe _reclaimable_heap_bytes).
+    pause_routing: bool = False
+    # Zeitpunkt, zu dem der Updater den Wechsel starten soll. Ohne Angabe
+    # laeuft er, sobald der Updater die Anforderung sieht. Vor allem fuer den
+    # Wartungsmodus gedacht: Einen Routing-Ausfall legt man in die Nacht.
+    # `preview` ignoriert das Feld — es aendert an der Schaetzung nichts.
+    scheduled_for: datetime | None = None
 
 
-def _reclaimable_heap_bytes() -> int:
-    """Heap-Anteil des laufenden GraphHopper, der waehrend eines Imports
-    zurueckgewonnen werden kann.
+def _reclaimable_heap_bytes(pause_routing: bool) -> int:
+    """Heap-Anteil des laufenden GraphHopper, der im WARTUNGSMODUS waehrend
+    eines Imports zurueckgewonnen werden kann — sonst 0.
 
     Herkunft: `JAVA_OPTS`/`-Xmx` der *aktiven* Region (app/config.py,
     `settings.java_opts`, aus derselben Env-Variable wie der
-    GraphHopper-Container in docker-compose.yml). Der Updater startet den
-    Import-Prozess mit einem eigenen, kleineren Heap und faehrt den
-    laufenden GraphHopper-Container erst danach — mit dem neuen Graph — mit
-    voller Groesse wieder hoch. Fuer die Dauer des Imports steht der Anteil,
-    den GraphHopper normalerweise als `-Xmx` beansprucht, dem Import-Prozess
-    zur Verfuegung, auch wenn `MemAvailable` ihn (weil vom laufenden
-    Container gehalten) nicht als frei ausweist.
+    GraphHopper-Container in docker-compose.yml).
+
+    Der `pause_routing`-Parameter ist nicht kosmetisch, er korrigiert einen
+    Rechenfehler: Diese Funktion hat den Betrag frueher IMMER gutgeschrieben,
+    mit der Begruendung, der Updater verkleinere GraphHopper waehrend des
+    Imports. Das tat er nie. `_stop_graphhopper` laeuft in Phase 4, also NACH
+    dem Import; waehrend des Imports haelt die JVM ihren `-Xmx` unveraendert
+    (genau das ist die Zusage "Routing bleibt aktiv"), und reservierten Heap
+    gibt eine JVM nicht zurueck. Das Panel rechnete damit mit Speicher, den
+    der Updater nicht hatte: Es meldete "knapp", waehrend `_capped_java_opts`
+    gegen den wirklich freien Speicher deckelte. Am 16.09.2026 wurden aus
+    angeforderten -Xmx14g so 7075m — der Wechsel lud sechs Extracts, baute 20
+    Minuten und starb an OutOfMemoryError. Panel und Updater muessen dieselbe
+    Zahl nennen; beim Plattenplatz ist das seit jeher so.
+
+    Erst der Wartungsmodus macht die Gutschrift wahr: Dort haelt der Updater
+    GraphHopper VOR dem Import an, und der Speicher wird tatsaechlich frei.
     Alternativen wie eine Live-Abfrage des Container-Cgroups wurden bewusst
     verworfen: `preview` darf keine Docker-Abfrage ausloesen (kein
     Docker-Socket im Backend, siehe docker-compose.yml-Kommentar beim
@@ -92,6 +114,8 @@ def _reclaimable_heap_bytes() -> int:
     benutzt. Kann der Wert nicht geparst werden (z. B. leeres `JAVA_OPTS`),
     wird konservativ 0 zurueckgegeben statt zu raten.
     """
+    if not pause_routing:
+        return 0
     for token in settings.java_opts.split():
         if not token.startswith("-Xmx"):
             continue
@@ -156,7 +180,7 @@ async def preview(body: RegionUrls, _: User = Depends(require_superadmin)):
     # `ram_available_bytes` eingerechnet, damit das Panel zeigen kann, dass
     # die Routenplanung waehrend des Imports mit weniger Speicher auskommen
     # muss.
-    ram_reclaimable = _reclaimable_heap_bytes()
+    ram_reclaimable = _reclaimable_heap_bytes(body.pause_routing)
     ram_effective_available = ram_available + ram_reclaimable
 
     disks = host_metrics.disk_usage([OSM_PATH, GRAPH_PATH])
@@ -183,10 +207,21 @@ async def preview(body: RegionUrls, _: User = Depends(require_superadmin)):
     def gb(n: int) -> str:
         return f"{n / (1024 ** 3):.1f} GB"
 
+    if body.pause_routing:
+        ram_reason = (
+            f"Import braucht ~{gb(ram_needed)} Heap. Frei sind {gb(ram_available)}, "
+            f"dazu {gb(ram_reclaimable)} aus dem angehaltenen GraphHopper "
+            f"(effektiv {gb(ram_effective_available)}) — das Routing pausiert dafuer "
+            f"waehrend des Imports."
+        )
+    else:
+        ram_reason = (
+            f"Import braucht ~{gb(ram_needed)} Heap. Frei sind {gb(ram_available)} — "
+            f"der laufende GraphHopper haelt seinen Speicher waehrend des Imports. "
+            f"Mit pausiertem Routing kaemen {gb(_reclaimable_heap_bytes(True))} dazu."
+        )
     reason = (
-        f"Import braucht ~{gb(ram_needed)} Heap. Verfuegbar sind {gb(ram_available)}, "
-        f"zusaetzlich {gb(ram_reclaimable)} durch Verkleinern des laufenden "
-        f"GraphHopper waehrend des Imports (effektiv {gb(ram_effective_available)}). "
+        f"{ram_reason} "
         f"Auf der Platte werden ~{gb(disk_needed)} benoetigt, frei sind {gb(disk_free)}."
     )
     paths = [region_compose.path_from_url(u) for u in urls]
@@ -277,6 +312,45 @@ async def _audit_switch_rejected(
     )
 
 
+# Wie weit im Voraus ein Wechsel geplant werden darf. Die Anforderungsdatei
+# belegt den Wechselkanal, solange sie liegt (region_switch.is_busy) — ein
+# Termin in ferner Zukunft sperrte das Panel entsprechend lange.
+MAX_SCHEDULE_AHEAD = timedelta(days=30)
+# Wieviel Rueckstand ein Termin haben darf, ohne als Vertipper zu gelten.
+# Zwischen Auswahl im Panel und Ankunft hier vergehen Sekunden, und die Uhren
+# von Browser und Server gehen selten exakt gleich.
+MAX_SCHEDULE_LAG = timedelta(minutes=5)
+
+
+def _validated_schedule(value: datetime | None) -> datetime | None:
+    """Prueft den gewuenschten Zeitpunkt und normalisiert ihn auf UTC.
+
+    Ein Zeitstempel ohne Zeitzone wird als UTC gelesen statt als Ortszeit des
+    Servers: Der Updater rechnet in Epoch-Sekunden, und eine stillschweigend
+    angenommene Ortszeit verschoebe einen naechtlichen Wartungslauf je nach
+    Serverzeitzone um Stunden — im Wartungsmodus mitten in den Betrieb.
+    """
+    if value is None:
+        return None
+    when = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    when = when.astimezone(timezone.utc)
+    now = datetime.now(timezone.utc)
+    if when < now - MAX_SCHEDULE_LAG:
+        raise HTTPException(
+            400, "Der gewählte Zeitpunkt liegt in der Vergangenheit."
+        )
+    if when > now + MAX_SCHEDULE_AHEAD:
+        raise HTTPException(
+            400,
+            f"Der Zeitpunkt liegt mehr als {MAX_SCHEDULE_AHEAD.days} Tage in der "
+            f"Zukunft — so lange bliebe der Regionswechsel blockiert.",
+        )
+    # Ein Termin, der gerade eben verstrichen ist (innerhalb der Toleranz),
+    # wird nicht als Termin weitergereicht: Der Updater soll ihn sofort
+    # abarbeiten, statt ihn als "geplant" im Panel stehen zu lassen.
+    return when if when > now else None
+
+
 @router.post("", status_code=202)
 async def switch_region(
     body: RegionUrls,
@@ -334,6 +408,13 @@ async def switch_region(
         await _audit_switch_rejected(db, request, user, roh, str(exc))
         raise HTTPException(503, str(exc)) from exc
 
+    # Termin pruefen, bevor irgendetwas geschrieben wird. Beide Grenzen sind
+    # da, weil die Anforderungsdatei den Wechselkanal belegt, solange sie
+    # liegt (is_busy): Ein versehentlich auf 2099 gelegter Wechsel sperrte
+    # das Panel bis dahin, ein in der Vergangenheit liegender liefe sofort
+    # los — und genau das will niemand, der gerade einen Termin eintippt.
+    scheduled = _validated_schedule(body.scheduled_for)
+
     ram = region_estimate.estimate_ram_bytes(extract)
     # Mindestens 2 GB Heap, aufgerundet auf ganze GB — analog zur
     # Groessenordnung der bestehenden JAVA_OPTS-Defaults (siehe config.py).
@@ -365,7 +446,10 @@ async def switch_region(
         raise HTTPException(409, "Es läuft bereits ein Update oder Regionswechsel.")
 
     try:
-        region_switch.write_request(url, filename, java_opts, user.email, sources=sources)
+        region_switch.write_request(
+            url, filename, java_opts, user.email, sources=sources,
+            pause_routing=body.pause_routing, scheduled_for=scheduled,
+        )
     except FileExistsError as exc:
         # Der eigentliche TOCTOU-Schutz: der Vorab-Check oben kann von einer
         # zweiten, fast gleichzeitigen Anfrage im verbleibenden Fenster noch

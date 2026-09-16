@@ -28,9 +28,11 @@ from app.api.routes import setup as setup_router
 from app.api.routes import share_links as share_links_router
 from app.api.routes import system_metrics as system_metrics_router
 from app.api.routes import track as track_router
+from app.api.routes import mcp_consent as mcp_consent_router
 from app.api.routes import version as version_router
 from app.config import settings
 from app.middleware.activity import ActivityMiddleware
+from app.mcp import mount as mcp_mount
 from app.middleware.license_guard import LicenseGuardMiddleware
 
 logger = logging.getLogger(__name__)
@@ -135,21 +137,22 @@ def _verify_security_config() -> None:
         )
 
 
-async def _heal_caddy_security_headers() -> None:
-    """Bring an already-installed instance up to the current header baseline.
+async def _heal_caddy_config() -> None:
+    """Bring an already-installed instance up to the current proxy baseline.
 
     The setup wizard writes /certs/Caddyfile once and Caddy prefers it over its
-    env-var fallback forever after, so an install predating the hardening
-    headers would keep serving responses without HSTS/CSP/X-Frame-Options no
-    matter how often the images are updated. Checking (and regenerating) it on
-    boot is what actually delivers the headers to those deployments.
+    env-var fallback forever after, so an install predating a change would keep
+    serving the old routing no matter how often the images are updated.
+    Checking (and regenerating) it on boot is what actually delivers such
+    changes to those deployments — first the hardening headers, now also the
+    MCP/OAuth routes at the site root.
     """
     from app.database import get_db_session
-    from app.services.caddy_config import ensure_security_headers
+    from app.services.caddy_config import ensure_caddyfile_current
 
     try:
         async with get_db_session() as db:
-            await ensure_security_headers(db)
+            await ensure_caddyfile_current(db)
     except Exception:
         # Never block startup on this — the DB may still be warming up, and an
         # unhardened proxy is strictly better than a backend that will not boot.
@@ -159,7 +162,7 @@ async def _heal_caddy_security_headers() -> None:
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     _verify_security_config()
-    await _heal_caddy_security_headers()
+    await _heal_caddy_config()
     # Update-Benachrichtigung (Modus "notify"): prüft periodisch, ob im
     # aktiven Kanal ein Update verfügbar ist, und mailt die Superadmins.
     # Schläft vor dem ersten Check, belastet den Start also nicht.
@@ -176,7 +179,11 @@ async def _lifespan(_app: FastAPI):
     # Container), weil die Nutzungsdaten im Speicher dieses Prozesses liegen.
     metrics_task = asyncio.create_task(metrics_collector_loop())
     try:
-        yield
+        # Der Streamable-HTTP-Transport des MCP-Servers braucht eine laufende
+        # Task-Group. Ohne das scheitert der erste MCP-Request mit einem
+        # RuntimeError — bei abgeschaltetem MCP ist das ein No-op.
+        async with mcp_mount.lifespan_context():
+            yield
     finally:
         # Sauberes Herunterfahren: Tasks abbrechen und auf ihr Ende warten.
         # CancelledError ist dabei der Normalfall; gather liefert ihn (statt
@@ -335,7 +342,16 @@ app.add_middleware(
     allow_origins=_allow_origins,
     allow_credentials=_allow_origins != ["*"],
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Requested-With"],
+    allow_headers=[
+        "Authorization", "Content-Type", "X-API-Key", "X-Requested-With",
+        # Streamable HTTP: der Client führt die Sitzung über diesen Header,
+        # und ab Protokollversion 2025-06-18 schickt er zusätzlich die
+        # ausgehandelte Version mit.
+        "Mcp-Session-Id", "MCP-Protocol-Version", "Last-Event-ID",
+    ],
+    # Ohne expose_headers kommt der Browser nicht an die Session-Id heran —
+    # rein serverseitige Clients merken das nicht, der MCP Inspector schon.
+    expose_headers=["Mcp-Session-Id"],
 )
 
 app.include_router(auth.router, prefix="/api")
@@ -369,6 +385,11 @@ app.include_router(share_links_router.router, prefix="/api")
 app.include_router(track_router.router, prefix="/api")
 app.include_router(track_router.ws_router, prefix="/api")
 app.include_router(version_router.router, prefix="/api")
+app.include_router(mcp_consent_router.router, prefix="/api")
+
+# MCP-Server. Hängt /mcp sowie die OAuth- und Well-Known-Routen an die
+# Wurzel — und tut nichts, solange MCP_ENABLED nicht gesetzt ist.
+mcp_mount.mount(app)
 
 _uploads_dir = Path("/uploads")
 try:

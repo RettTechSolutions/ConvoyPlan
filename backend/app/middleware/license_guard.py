@@ -49,6 +49,18 @@ _EXEMPT_PREFIXES = (
     "/docs",
     "/redoc",
     "/openapi.json",
+    # MCP spricht ausschließlich POST. Ohne Ausnahme würde diese Middleware
+    # im Demo-Modus auch das Lesen blockieren, während die REST-API dort
+    # lesend offen bleibt — dieselbe Semantik stellt stattdessen die
+    # Werkzeugschicht her (lesen ja, schreiben nein).
+    "/mcp",
+    # Die OAuth-Strecke muss auch ohne Lizenz erreichbar sein, sonst
+    # scheitert schon das Verbinden statt mit einer klaren Meldung.
+    "/.well-known/oauth-",
+    "/authorize",
+    "/token",
+    "/register",
+    "/revoke",
 )
 
 _license_valid: bool | None = None

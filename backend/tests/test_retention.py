@@ -24,7 +24,12 @@ async def test_run_all_returns_counts_and_audits(monkeypatch):
     r_cooldown = MagicMock(); r_cooldown.scalar_one_or_none.return_value = None  # cooldown setting unset
     r_origins = MagicMock(); r_origins.rowcount = 1  # one expired demo IP lock
     r_leads = MagicMock(); r_leads.rowcount = 4  # four contact rows past the retention window
-    db.execute.side_effect = [r_pos, r_audit, r_links, r_hours, r_demo, r_cooldown, r_origins, r_leads]
+    r_codes = MagicMock(); r_codes.rowcount = 5  # five expired OAuth authorization codes
+    r_refresh = MagicMock(); r_refresh.rowcount = 1  # one rotated refresh token past the grace period
+    db.execute.side_effect = [
+        r_pos, r_audit, r_links, r_hours, r_demo, r_cooldown, r_origins, r_leads,
+        r_codes, r_refresh,
+    ]
 
     recorded = []
 
@@ -41,6 +46,7 @@ async def test_run_all_returns_counts_and_audits(monkeypatch):
         "demo_followups": 2,
         "positions": 3, "audit_logs": 0, "share_links": 2,
         "demo_sessions": 0, "demo_origins": 1, "demo_leads": 4,
+        "oauth_codes": 5, "oauth_refresh_tokens": 1,
     }
     db.commit.assert_awaited()
     # an audit entry is written because something was deleted
@@ -57,7 +63,11 @@ async def test_run_all_skips_audit_when_nothing_deleted(monkeypatch):
     r_cooldown = MagicMock(); r_cooldown.scalar_one_or_none.return_value = None
     r_origins = MagicMock(); r_origins.rowcount = 0
     r_leads = MagicMock(); r_leads.rowcount = 0
-    db.execute.side_effect = results + [r_hours, r_demo, r_cooldown, r_origins, r_leads]
+    r_codes = MagicMock(); r_codes.rowcount = 0
+    r_refresh = MagicMock(); r_refresh.rowcount = 0
+    db.execute.side_effect = results + [
+        r_hours, r_demo, r_cooldown, r_origins, r_leads, r_codes, r_refresh,
+    ]
 
     recorded = []
 
@@ -72,6 +82,7 @@ async def test_run_all_skips_audit_when_nothing_deleted(monkeypatch):
         "demo_followups": 0,
         "positions": 0, "audit_logs": 0, "share_links": 0,
         "demo_sessions": 0, "demo_origins": 0, "demo_leads": 0,
+        "oauth_codes": 0, "oauth_refresh_tokens": 0,
     }
     assert recorded == []  # nothing deleted → no audit entry
 

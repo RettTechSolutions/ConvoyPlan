@@ -121,6 +121,43 @@ class Settings(BaseSettings):
     # weil daran die Nachfrage und ein etwaiges Vertriebsgespräch hängen — aber
     # nicht dauerhaft.
     retention_demo_leads_days: int = 180
+    # Rotierte und widerrufene Refresh-Tokens des MCP-Servers. Sie bleiben
+    # absichtlich eine Weile stehen, nachdem sie tot sind: nur solange erkennt
+    # die Wiederverwendungserkennung ein gestohlenes Token als Diebstahlsignal
+    # statt es bloß als unbekannt abzulehnen.
+    retention_oauth_tokens_grace_days: int = 30
+
+    # ── MCP-Server ────────────────────────────────────────────────────────
+    # Stellt die Fachdaten der Organisation als Model-Context-Protocol-Server
+    # unter /mcp bereit, damit KI-Clients (Claude Desktop, Claude Code,
+    # claude.ai) nach einem OAuth-2.1-Login darauf zugreifen können.
+    #
+    # Standardmäßig AUS. Das ist Absicht und keine Bequemlichkeit: der
+    # Endpunkt öffnet Einsatzdaten für einen externen Modellanbieter, und
+    # diese Entscheidung gehört dem Betreiber, nicht dem Auslieferungszustand.
+    # Solange der Schalter aus ist, existieren weder /mcp noch die
+    # Well-Known-Dokumente — eine Bestandsinstallation verhält sich unverändert.
+    mcp_enabled: bool = False
+    # Kanonische Resource-URI im Sinne von RFC 8707. Leer = aus app_base_url
+    # abgeleitet (+ "/mcp"). Ohne abschließenden Schrägstrich, sonst passt sie
+    # nicht mehr zur aud-Claim der ausgestellten Tokens.
+    mcp_public_url: str = ""
+    # Access-Tokens sind zustandslose JWTs und damit nicht einzeln widerrufbar.
+    # Die kurze Laufzeit ist der Ersatz dafür: nach einem Widerruf bleibt ein
+    # bereits ausgegebenes Token höchstens so lange gültig.
+    mcp_access_token_ttl_minutes: int = 15
+    mcp_refresh_token_ttl_days: int = 30
+    # Dynamic Client Registration (RFC 7591). In der MCP-Revision 2026-07-28
+    # nur noch MAY und als deprecated markiert, aber der einzige Weg, den
+    # heutige Clients beherrschen. Wer den offenen Registrierungsendpunkt
+    # nicht möchte, schaltet ihn ab und trägt Clients von Hand ein.
+    mcp_allow_dcr: bool = True
+    # Gültigkeit einer angefangenen Autorisierung: die Spanne, die der Benutzer
+    # zum Anmelden und Zustimmen hat.
+    mcp_authorize_request_ttl_minutes: int = 15
+    # Gültigkeit des Autorisierungscodes zwischen Zustimmung und Token-Tausch.
+    # Kurz, weil der Client ihn sofort einlöst (OAuth 2.1 empfiehlt <= 1 min).
+    mcp_code_ttl_seconds: int = 60
     # Interactive API docs (Swagger UI at /docs, ReDoc at /redoc, schema at
     # /openapi.json). Always available in development environments. In
     # production they are disabled by default so the API surface is not exposed

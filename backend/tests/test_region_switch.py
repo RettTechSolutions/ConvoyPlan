@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import datetime, timezone
 
 import pytest
 
@@ -142,3 +143,79 @@ def test_read_status_ohne_anforderung_unveraendert(tmp_path, monkeypatch):
     assert region_switch.read_status()["phase"] == "idle"
     (tmp_path / region_switch.STATUS_FILE).write_text(json.dumps({"phase": "failed"}))
     assert region_switch.read_status()["phase"] == "failed"
+
+
+# ── Wartungsmodus und Terminierung ──────────────────────────────────────────
+
+
+def test_write_request_schreibt_wartungsmodus_und_termin_als_strings(tmp_path, monkeypatch):
+    """Der Updater liest die Datei ohne python3/jq (docker:cli-Image) und ist
+    auf flache String-Werte ausgelegt — deshalb "1" statt true und die
+    Epoch-Sekunden als Zeichenkette. Ausserdem stehen dort ZWEI Zeitangaben:
+    der ISO-Stempel fuers Panel und die Epoch-Sekunden fuer die Shell, deren
+    busybox-`date` ISO-8601 mit Offset nicht verlaesslich parst."""
+    monkeypatch.setattr(region_switch, "VOLUME", str(tmp_path))
+    wann = datetime(2099, 3, 1, 2, 30, tzinfo=timezone.utc)
+    region_switch.write_request(
+        url="https://download.geofabrik.de/europe/dach-latest.osm.pbf",
+        filename="dach-latest.osm.pbf",
+        java_opts="-Xmx14g",
+        actor_email="admin@example.org",
+        pause_routing=True,
+        scheduled_for=wann,
+    )
+    data = json.loads((tmp_path / "region_request.json").read_text())
+    assert data["pause_routing"] == "1"
+    assert data["scheduled_for"] == wann.isoformat()
+    assert data["scheduled_for_epoch"] == str(int(wann.timestamp()))
+    assert isinstance(data["scheduled_for_epoch"], str)
+
+
+def test_write_request_ohne_termin_schreibt_keine_terminfelder(tmp_path, monkeypatch):
+    """Der Normalfall bleibt unveraendert: Ohne Termin liegen die Felder gar
+    nicht erst in der Datei, und region-hook.sh behandelt die Anforderung als
+    sofort faellig."""
+    monkeypatch.setattr(region_switch, "VOLUME", str(tmp_path))
+    region_switch.write_request("https://download.geofabrik.de/e-latest.osm.pbf",
+                                "e-latest.osm.pbf", "-Xmx4g", "a@b.c")
+    data = json.loads((tmp_path / "region_request.json").read_text())
+    assert "scheduled_for" not in data
+    assert "scheduled_for_epoch" not in data
+    assert data["pause_routing"] == ""
+
+
+def test_read_status_meldet_geplant_statt_wartend(tmp_path, monkeypatch):
+    """Ein geplanter Wechsel liegt womoeglich Stunden da. Als `queued`
+    gemeldet zeigte das Panel dauerhaft "wartet auf den Updater", und der
+    Operator hielte das fuer eine Stoerung."""
+    monkeypatch.setattr(region_switch, "VOLUME", str(tmp_path))
+    wann = datetime(2099, 3, 1, 2, 30, tzinfo=timezone.utc)
+    region_switch.write_request("https://download.geofabrik.de/e-latest.osm.pbf",
+                                "e-latest.osm.pbf", "-Xmx4g", "a@b.c",
+                                pause_routing=True, scheduled_for=wann)
+    status = region_switch.read_status()
+    assert status["phase"] == "scheduled"
+    assert status["scheduled_for"] == wann.isoformat()
+    assert status["pause_routing"] is True
+
+
+def test_read_status_meldet_wartend_wenn_kein_termin_gesetzt_ist(tmp_path, monkeypatch):
+    """Gegenprobe: Ohne Termin bleibt es beim bisherigen `queued`."""
+    monkeypatch.setattr(region_switch, "VOLUME", str(tmp_path))
+    region_switch.write_request("https://download.geofabrik.de/e-latest.osm.pbf",
+                                "e-latest.osm.pbf", "-Xmx4g", "a@b.c")
+    assert region_switch.read_status()["phase"] == "queued"
+
+
+def test_read_status_haelt_sich_ans_lock_auch_bei_geplantem_wechsel(tmp_path, monkeypatch):
+    """Sobald der Updater zugreift, zaehlt sein Status — auch wenn in der
+    Anforderung noch ein Termin steht. Sonst zeigte das Panel "geplant",
+    waehrend der Wechsel laengst laeuft."""
+    monkeypatch.setattr(region_switch, "VOLUME", str(tmp_path))
+    region_switch.write_request("https://download.geofabrik.de/e-latest.osm.pbf",
+                                "e-latest.osm.pbf", "-Xmx4g", "a@b.c",
+                                scheduled_for=datetime(2099, 3, 1, tzinfo=timezone.utc))
+    (tmp_path / "region.lock").write_text("")
+    (tmp_path / "region_status.json").write_text(
+        json.dumps({"phase": "importing", "message": "Baue Routing-Graph…"}))
+    assert region_switch.read_status()["phase"] == "importing"
