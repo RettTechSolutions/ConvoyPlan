@@ -624,6 +624,7 @@ export const adminApi = {
     removeDemoIpAllowlistEntry: (entryId: string) =>
         api.delete(`/api/admin/demo-ip-allowlist/${entryId}`),
     listDemoSessions: () => api.get<DemoSessionInfo[]>('/api/admin/demo-sessions'),
+    getDemoStats: () => api.get<DemoStats>('/api/admin/demo-stats'),
     listDemoLeads: () => api.get<DemoLeadInfo[]>('/api/admin/demo-leads'),
     deleteDemoLead: (leadId: string) => api.delete(`/api/admin/demo-leads/${leadId}`),
     endDemoSession: (orgId: string) => api.delete(`/api/admin/demo-sessions/${orgId}`),
@@ -719,6 +720,26 @@ export interface DemoSessionInfo {
     /** Beim Start angegebene Kontaktdaten; null bei Sitzungen von vor der Abfrage. */
     contact_email: string | null;
     contact_name: string | null;
+}
+
+/** Kennzahlen für die Übersicht im Demo-Tab (in SQL gezählt, nicht aus den Listen). */
+export interface DemoStats {
+    sessions_open: number;
+    sessions_expiring_24h: number;
+    convoys_in_demo: number;
+    leads_total: number;
+    leads_last_7d: number;
+    leads_last_30d: number;
+    followups_sent: number;
+    /** Sitzung abgelaufen, Mail steht im nächsten Durchgang an. */
+    followups_due: number;
+    /** Sitzung läuft noch — die Nachfrage kommt später. */
+    followups_waiting: number;
+    /** Nach drei Fehlversuchen aufgegeben. */
+    followups_failed: number;
+    unsubscribed: number;
+    ip_locks_active: number;
+    allowlist_entries: number;
 }
 
 /** Ein Interessent aus dem Demo-Start — bleibt über die Sitzung hinaus stehen. */

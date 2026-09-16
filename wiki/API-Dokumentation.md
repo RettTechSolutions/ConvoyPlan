@@ -327,6 +327,7 @@ Jede Demo-Nutzung läuft als eigene, befristete Organisation (`is_demo=true`). D
 | `GET` | `/api/admin/demo-ip-allowlist` | Dauerhaft freigestellte Adressen und Netze auflisten |
 | `POST` | `/api/admin/demo-ip-allowlist` | Adresse (`203.0.113.7`) oder Netz (`203.0.113.0/24`) dauerhaft freistellen; hebt eine laufende Sperre mit auf |
 | `DELETE` | `/api/admin/demo-ip-allowlist/{entry_id}` | Ausnahme zurücknehmen — ab dann gilt wieder die Karenzzeit |
+| `GET` | `/api/admin/demo-stats` | Kennzahlen für die Übersicht im Demo-Reiter (Sitzungen, Interessenten, Stand der Nachfrage, Sperren) |
 | `GET` | `/api/admin/demo-leads` | Interessenten aus dem Demo-Start auflisten (Kontakt, Sitzung, Stand der Nachfrage) |
 | `DELETE` | `/api/admin/demo-leads/{lead_id}` | Kontaktangabe vorzeitig löschen (Löschersuchen nach DSGVO Art. 17) |
 

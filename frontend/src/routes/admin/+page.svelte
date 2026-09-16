@@ -5,7 +5,7 @@
     import LeitstellenTable from '$lib/components/LeitstellenTable.svelte';
     import { auth } from '$lib/stores/auth';
     import { getStreamTicket } from '$lib/api/client';
-    import { adminApi, mfaApi, leistellenApi, licenseApi, emailTemplateApi, regionApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type EmailTemplate, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoSessionInfo, type DemoLeadInfo, type DemoIpLock, type DemoIpAllowlistEntry, type RegionStatus, type RegionPhase } from '$lib/api';
+    import { adminApi, mfaApi, leistellenApi, licenseApi, emailTemplateApi, regionApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type EmailTemplate, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoStats, type DemoSessionInfo, type DemoLeadInfo, type DemoIpLock, type DemoIpAllowlistEntry, type RegionStatus, type RegionPhase } from '$lib/api';
     import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
     import SuperadminLogin from '$lib/components/SuperadminLogin.svelte';
@@ -19,7 +19,7 @@
     let authed = $state(false);
 
     // ── Tab ──────────────────────────────────────────────────────────────────
-    let activeTab = $state<'benutzer' | 'organisationen' | 'api-keys' | 'leitstellen' | 'branding' | 'uebersicht' | 'system'>('benutzer');
+    let activeTab = $state<'benutzer' | 'organisationen' | 'api-keys' | 'leitstellen' | 'branding' | 'demo' | 'uebersicht' | 'system'>('benutzer');
 
     // ── Users ────────────────────────────────────────────────────────────────
     let users = $state<AdminUser[]>([]);
@@ -712,7 +712,12 @@
     let demoSettingsError = $state('');
     let demoSettingsSuccess = $state('');
 
+    let demoStats = $state<DemoStats | null>(null);
+
     async function loadDemoSettings() {
+        try {
+            demoStats = await adminApi.getDemoStats();
+        } catch { demoStats = null; }
         try {
             demoSettings = await adminApi.getDemoSettings();
             demoHoursInput = demoSettings.session_hours;
@@ -1520,8 +1525,9 @@
         <button class="tab" class:active={activeTab === 'api-keys'} onclick={() => { activeTab = 'api-keys'; loadApiKeyOrgs(); }}>API-Keys</button>
         <button class="tab" class:active={activeTab === 'leitstellen'} onclick={() => (activeTab = 'leitstellen')}>Leitstellen</button>
         <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>Branding</button>
+        <button class="tab" class:active={activeTab === 'demo'} onclick={() => { activeTab = 'demo'; loadDemoSettings(); }}>Demo</button>
         <button class="tab" class:active={activeTab === 'uebersicht'} onclick={() => (activeTab = 'uebersicht')}>Systemübersicht</button>
-        <button class="tab" class:active={activeTab === 'system'} onclick={() => { activeTab = 'system'; loadUpdateStatus(); loadUpdateChannel(); loadUpdateMode(); loadLicenseStatus(); loadGithubTokenStatus(); loadDemoSettings(); }}>System</button>
+        <button class="tab" class:active={activeTab === 'system'} onclick={() => { activeTab = 'system'; loadUpdateStatus(); loadUpdateChannel(); loadUpdateMode(); loadLicenseStatus(); loadGithubTokenStatus(); }}>System</button>
     </div>
 
     <!-- ── Benutzer ── -->
@@ -2127,6 +2133,441 @@
         <SystemOverview />
     {/if}
 
+    {#if activeTab === 'demo'}
+        <!-- ── Übersicht ── -->
+        <div class="section">
+            <div class="section-header">
+                <strong>Übersicht</strong>
+                <button class="btn-small" onclick={loadDemoSettings} title="Aktualisieren">⟳</button>
+            </div>
+            {#if demoStats}
+                <div class="kpi-grid">
+                    <div class="kpi">
+                        <span class="kpi-value">{demoStats.sessions_open}</span>
+                        <span class="kpi-label">Offene Sitzungen</span>
+                        <span class="kpi-sub">
+                            {#if demoStats.sessions_expiring_24h > 0}
+                                {demoStats.sessions_expiring_24h} laufen in 24 h ab
+                            {:else}
+                                keine läuft in 24 h ab
+                            {/if}
+                        </span>
+                    </div>
+                    <div class="kpi">
+                        <span class="kpi-value">{demoStats.convoys_in_demo}</span>
+                        <span class="kpi-label">Marschverbände</span>
+                        <span class="kpi-sub">in laufenden Sitzungen angelegt</span>
+                    </div>
+                    <div class="kpi">
+                        <span class="kpi-value">{demoStats.leads_total}</span>
+                        <span class="kpi-label">Interessenten</span>
+                        <span class="kpi-sub">{demoStats.leads_last_7d} in 7 Tagen · {demoStats.leads_last_30d} in 30 Tagen</span>
+                    </div>
+                    <div class="kpi">
+                        <span class="kpi-value">{demoStats.followups_sent}</span>
+                        <span class="kpi-label">Nachfragen versandt</span>
+                        <span class="kpi-sub">
+                            {#if demoStats.followups_waiting > 0}
+                                {demoStats.followups_waiting} folgen nach Sitzungsende
+                            {:else}
+                                keine weitere vorgemerkt
+                            {/if}
+                        </span>
+                    </div>
+                    <!-- Die beiden folgenden Kacheln sind Ausnahmezustände: Sie
+                         bleiben auf 0 stehen, solange der Versand läuft wie
+                         gedacht — deshalb heben sie sich erst dann hervor. -->
+                    <div class="kpi" class:kpi-attention={demoStats.followups_due > 0}>
+                        <span class="kpi-value">{demoStats.followups_due}</span>
+                        <span class="kpi-label">Nachfragen ausstehend</span>
+                        <span class="kpi-sub">
+                            {#if demoStats.followups_due === 0}
+                                nichts in der Warteschlange
+                            {:else if demoSettings && !demoSettings.followup_enabled}
+                                Nachfrage ist abgeschaltet
+                            {:else if demoSettings && !demoSettings.smtp_configured}
+                                kein SMTP — bleibt liegen
+                            {:else}
+                                gehen im nächsten Durchgang raus
+                            {/if}
+                        </span>
+                    </div>
+                    <div class="kpi" class:kpi-attention={demoStats.followups_failed > 0}>
+                        <span class="kpi-value">{demoStats.followups_failed}</span>
+                        <span class="kpi-label">Nachfragen aufgegeben</span>
+                        <span class="kpi-sub">nach 3 Fehlversuchen liegen geblieben</span>
+                    </div>
+                    <div class="kpi">
+                        <span class="kpi-value">{demoStats.unsubscribed}</span>
+                        <span class="kpi-label">Abbestellt</span>
+                        <span class="kpi-sub">bekommen keine Nachfrage mehr</span>
+                    </div>
+                    <div class="kpi">
+                        <span class="kpi-value">{demoStats.ip_locks_active}</span>
+                        <span class="kpi-label">Gesperrte IPs</span>
+                        <span class="kpi-sub">{demoStats.allowlist_entries} dauerhaft freigestellt</span>
+                    </div>
+                </div>
+            {:else}
+                <p class="hint">Kennzahlen nicht verfügbar</p>
+            {/if}
+        </div>
+
+
+        <!-- ── Demo-Modus ── -->
+        <div class="section">
+            <div class="section-header">
+                <strong>Demo-Modus</strong>
+            </div>
+
+            {#if demoSettingsError}
+                <div class="error-bar">{demoSettingsError} <button onclick={() => demoSettingsError = ''}>✕</button></div>
+            {/if}
+            {#if demoSettingsSuccess}
+                <div class="success-bar">{demoSettingsSuccess}</div>
+            {/if}
+
+            {#if demoSettings}
+                <div class="update-grid" style="margin-bottom:.75rem">
+                    <div class="update-row">
+                        <span class="update-label">Status</span>
+                        {#if demoSettings.enabled}
+                            <span class="badge badge-ok">Aktiv ({demoSettings.source === 'env' ? 'Umgebungsvariable' : 'Datenbank'}) ✓</span>
+                        {:else}
+                            <span class="badge badge-warn">Deaktiviert</span>
+                        {/if}
+                    </div>
+                </div>
+
+                <p class="hint" style="margin-bottom:.6rem">
+                    Bei aktivem Demo-Modus erscheint auf der Startseite ein „Demo ausprobieren"-Button.
+                    Besucher erhalten ohne Registrierung eine eigene temporäre Organisation, die nach
+                    {demoSettings.session_hours} Stunden automatisch gelöscht wird.
+                    {#if demoSettings.ip_cooldown_hours > 0}
+                        Je IP-Adresse ist dabei alle {demoSettings.ip_cooldown_hours} Stunden genau
+                        eine Demo-Sitzung möglich.
+                    {:else}
+                        <strong>Ohne Karenzzeit</strong> — dieselbe IP-Adresse kann beliebig viele
+                        Demo-Sitzungen hintereinander starten.
+                    {/if}
+                </p>
+
+                <div style="display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; margin-bottom:.75rem">
+                    <button
+                        class={demoSettings.enabled ? 'btn-small danger' : 'btn-primary'}
+                        onclick={toggleDemo}
+                        disabled={demoSaving}
+                    >
+                        {demoSaving ? '…' : demoSettings.enabled ? 'Demo-Modus deaktivieren' : 'Demo-Modus aktivieren'}
+                    </button>
+                    <span class="update-label" style="margin-left:.5rem">Laufzeit</span>
+                    <input
+                        type="number"
+                        min="1"
+                        max="720"
+                        bind:value={demoHoursInput}
+                        style="width:5rem; padding:.35rem .5rem; border:1px solid var(--border); border-radius:6px; background:var(--surface-2); color:var(--text-1)"
+                    />
+                    <span class="hint">Stunden</span>
+                    <button
+                        class="btn-small"
+                        onclick={saveDemoHours}
+                        disabled={demoHoursSaving || demoHoursInput === demoSettings.session_hours}
+                    >
+                        {demoHoursSaving ? '…' : 'Speichern'}
+                    </button>
+                </div>
+                <p class="hint" style="margin-bottom:.6rem; font-size:var(--text-xs)">
+                    Gilt für neue Demo-Sitzungen. Bestehende Sitzungen behalten ihr Ablaufdatum — einzeln verlängerbar über „+24 h".
+                </p>
+
+                <div style="display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; margin-bottom:.35rem">
+                    <span class="update-label">Nachfrage nach Sitzungsende</span>
+                    <button
+                        class={demoSettings.followup_enabled ? 'btn-small danger' : 'btn-small'}
+                        onclick={toggleDemoFollowup}
+                        disabled={demoFollowupSaving}
+                    >
+                        {demoFollowupSaving ? '…' : demoSettings.followup_enabled ? 'Abschalten' : 'Einschalten'}
+                    </button>
+                    <span class="hint">{demoSettings.followup_enabled ? 'aktiv' : 'aus'}</span>
+                </div>
+                <p class="hint" style="margin-bottom:.6rem; font-size:var(--text-xs)">
+                    Einmalige E-Mail an die beim Start angegebene Adresse, sobald die Sitzung
+                    abgelaufen ist: hat alles gepasst, sind Fragen offen, wird eine gemeinsame
+                    Session gebraucht. Verschickt der Retention-Durchgang, stündlich.
+                    {#if !demoSettings.smtp_configured}
+                        <strong> Ohne konfiguriertes SMTP bleibt der Schalter wirkungslos.</strong>
+                    {/if}
+                </p>
+
+                <div style="display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; margin-bottom:.35rem">
+                    <span class="update-label">Karenzzeit je IP</span>
+                    <input
+                        type="number"
+                        min="0"
+                        max="720"
+                        bind:value={demoCooldownInput}
+                        style="width:5rem; padding:.35rem .5rem; border:1px solid var(--border); border-radius:6px; background:var(--surface-2); color:var(--text-1)"
+                    />
+                    <span class="hint">Stunden (0 = keine Sperre)</span>
+                    <button
+                        class="btn-small"
+                        onclick={saveDemoCooldown}
+                        disabled={demoCooldownSaving || demoCooldownInput === demoSettings.ip_cooldown_hours}
+                    >
+                        {demoCooldownSaving ? '…' : 'Speichern'}
+                    </button>
+                </div>
+                <p class="hint" style="margin-bottom:.6rem; font-size:var(--text-xs)">
+                    Die Sperre wird in der Datenbank geführt und übersteht einen Neustart des Backends.
+                    Hinter einem Firmenanschluss oder Messe-WLAN teilen sich alle Besucher eine
+                    Adresse — dann die Sperre unten einmalig aufheben oder die Adresse gleich
+                    dauerhaft freistellen.
+                </p>
+
+                <div class="section-header" style="margin-top:1.25rem">
+                    <strong>Offene Demo-Sitzungen ({demoSessions.length})</strong>
+                    <button class="btn-small" onclick={loadDemoSettings} title="Aktualisieren">⟳</button>
+                </div>
+                {#if demoSessions.length === 0}
+                    <p class="hint">Keine offenen Demo-Sitzungen.</p>
+                {:else}
+                    <table class="user-table">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Kontakt</th>
+                                <th>Code (Slug)</th>
+                                <th>Gestartet</th>
+                                <th>Läuft ab</th>
+                                <th>Herkunft</th>
+                                <th>Marschverbände</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {#each demoSessions as session}
+                                <tr>
+                                    <td>{session.name}</td>
+                                    <td>
+                                        {#if session.contact_email}
+                                            {#if session.contact_name}
+                                                {session.contact_name}<br>
+                                            {/if}
+                                            <a href="mailto:{session.contact_email}" class="hint">{session.contact_email}</a>
+                                        {:else}
+                                            <span class="hint" title="Sitzung aus der Zeit vor der Kontaktabfrage">–</span>
+                                        {/if}
+                                    </td>
+                                    <td><code>{session.slug}</code></td>
+                                    <td class="hint">{new Date(session.created_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</td>
+                                    <td class="hint">{new Date(session.expires_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</td>
+                                    <td>
+                                        {#if session.created_location || session.created_ip}
+                                            {#if session.created_location}
+                                                {session.created_location}<br>
+                                            {/if}
+                                            {#if session.created_ip}
+                                                <code class="hint" title="IP-Adresse bei Sitzungsstart">{session.created_ip}</code>
+                                            {/if}
+                                        {:else}
+                                            <span class="hint">–</span>
+                                        {/if}
+                                    </td>
+                                    <td>{session.convoy_count}</td>
+                                    <td class="actions-cell">
+                                        <div>
+                                            <button
+                                                class="btn-small"
+                                                onclick={() => extendDemoSession(session)}
+                                                disabled={extendingDemoSession === session.id}
+                                                title="Ablauf um 24 Stunden verlängern"
+                                            >
+                                                {extendingDemoSession === session.id ? '…' : '+24 h'}
+                                            </button>
+                                            <button
+                                                class="btn-small danger"
+                                                onclick={() => endDemoSession(session)}
+                                                disabled={endingDemoSession === session.id}
+                                                title="Sitzung beenden und Daten löschen"
+                                            >
+                                                {endingDemoSession === session.id ? '…' : '✕ Beenden'}
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            {/each}
+                        </tbody>
+                    </table>
+                {/if}
+
+                <div class="section-header" style="margin-top:1.25rem">
+                    <strong>Interessenten aus der Demo ({demoLeads.length})</strong>
+                    <button class="btn-small" onclick={loadDemoSettings} title="Aktualisieren">⟳</button>
+                </div>
+                <p class="hint" style="margin-bottom:.6rem; font-size:var(--text-xs)">
+                    Bleibt über das Ende der Sitzung hinaus stehen — die Demo-Umgebung ist dann
+                    längst gelöscht. Wird nach der Aufbewahrungsfrist automatisch abgeräumt
+                    (RETENTION_DEMO_LEADS_DAYS, Standard 180 Tage).
+                </p>
+                {#if demoLeads.length === 0}
+                    <p class="hint">Noch keine Kontaktangaben.</p>
+                {:else}
+                    <table class="user-table">
+                        <thead>
+                            <tr>
+                                <th>E-Mail</th>
+                                <th>Name</th>
+                                <th>Sitzung</th>
+                                <th>Gestartet</th>
+                                <th>Nachfrage</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {#each demoLeads as lead}
+                                <tr>
+                                    <td><a href="mailto:{lead.email}">{lead.email}</a></td>
+                                    <td>{[lead.first_name, lead.last_name].filter(Boolean).join(' ') || '—'}</td>
+                                    <td>
+                                        <code>{lead.org_slug}</code>
+                                        {#if !lead.session_active}
+                                            <span class="hint" title="Die Demo-Umgebung wurde bereits gelöscht"> (beendet)</span>
+                                        {/if}
+                                    </td>
+                                    <td class="hint">{new Date(lead.created_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</td>
+                                    <td class="hint" title={lead.followup_error ?? ''}>{followupState(lead)}</td>
+                                    <td class="actions-cell">
+                                        <button
+                                            class="btn-small danger"
+                                            onclick={() => deleteDemoLead(lead)}
+                                            disabled={deletingLead === lead.id}
+                                            title="Kontakt löschen (Löschersuchen nach DSGVO Art. 17)"
+                                        >
+                                            {deletingLead === lead.id ? '…' : '✕ Löschen'}
+                                        </button>
+                                    </td>
+                                </tr>
+                            {/each}
+                        </tbody>
+                    </table>
+                {/if}
+                <div class="section-header" style="margin-top:1.25rem">
+                    <strong>Gesperrte IP-Adressen ({demoIpLocks.length})</strong>
+                    <button class="btn-small" onclick={loadDemoSettings} title="Aktualisieren">⟳</button>
+                </div>
+                {#if demoSettings.ip_cooldown_hours === 0}
+                    <p class="hint">Karenzzeit deaktiviert — es werden keine IP-Adressen gesperrt.</p>
+                {:else if demoIpLocks.length === 0}
+                    <p class="hint">Aktuell keine gesperrte IP-Adresse.</p>
+                {:else}
+                    <table class="user-table">
+                        <thead>
+                            <tr>
+                                <th>IP-Adresse</th>
+                                <th>Letzte Demo</th>
+                                <th>Frei ab</th>
+                                <th>Sitzungen gesamt</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {#each demoIpLocks as lock}
+                                <tr>
+                                    <td>{lock.ip}</td>
+                                    <td>{new Date(lock.last_created_at).toLocaleString('de-DE')}</td>
+                                    <td>{new Date(lock.blocked_until).toLocaleString('de-DE')}</td>
+                                    <td>{lock.sessions}</td>
+                                    <td>
+                                        <button
+                                            class="btn-small"
+                                            onclick={() => releaseIpLock(lock)}
+                                            disabled={releasingIpLock === lock.ip}
+                                        >
+                                            {releasingIpLock === lock.ip ? '…' : 'Sperre aufheben'}
+                                        </button>
+                                    </td>
+                                </tr>
+                            {/each}
+                        </tbody>
+                    </table>
+                {/if}
+
+                <div class="section-header" style="margin-top:1.25rem">
+                    <strong>Dauerhaft freigestellte Adressen ({demoIpAllowlist.length})</strong>
+                </div>
+                <p class="hint" style="margin-bottom:.6rem">
+                    Für diese Adressen gilt die Karenzzeit nicht — gedacht für Anschlüsse, hinter denen
+                    planmäßig viele Interessenten sitzen: Firmenanschluss, Messe- oder Schulungs-WLAN,
+                    der eigene Vertrieb. Einzelne Adresse (<code>203.0.113.7</code>) oder ganzes Netz
+                    in CIDR-Schreibweise (<code>203.0.113.0/24</code>, auch IPv6). Eine bereits
+                    laufende Sperre für die Adresse wird beim Anlegen mit aufgehoben.
+                </p>
+                <div style="display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; margin-bottom:.75rem">
+                    <input
+                        type="text"
+                        placeholder="203.0.113.0/24"
+                        bind:value={allowlistPatternInput}
+                        maxlength="64"
+                        style="width:13rem; padding:.35rem .5rem; border:1px solid var(--border); border-radius:6px; background:var(--surface-2); color:var(--text-1)"
+                    />
+                    <input
+                        type="text"
+                        placeholder="Notiz, z. B. „Messe Hannover“"
+                        bind:value={allowlistNoteInput}
+                        maxlength="200"
+                        style="flex:1; min-width:12rem; padding:.35rem .5rem; border:1px solid var(--border); border-radius:6px; background:var(--surface-2); color:var(--text-1)"
+                    />
+                    <button
+                        class="btn-small"
+                        onclick={addAllowlistEntry}
+                        disabled={allowlistSaving || !allowlistPatternInput.trim()}
+                    >
+                        {allowlistSaving ? '…' : 'Freistellen'}
+                    </button>
+                </div>
+                {#if demoIpAllowlist.length === 0}
+                    <p class="hint">Keine dauerhafte Ausnahme eingetragen.</p>
+                {:else}
+                    <table class="user-table">
+                        <thead>
+                            <tr>
+                                <th>Adresse / Netz</th>
+                                <th>Notiz</th>
+                                <th>Angelegt</th>
+                                <th>Von</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {#each demoIpAllowlist as entry}
+                                <tr>
+                                    <td>{entry.pattern}</td>
+                                    <td>{entry.note ?? '—'}</td>
+                                    <td>{new Date(entry.created_at).toLocaleString('de-DE')}</td>
+                                    <td>{entry.created_by ?? '—'}</td>
+                                    <td>
+                                        <button
+                                            class="btn-small danger"
+                                            onclick={() => removeAllowlistEntry(entry)}
+                                            disabled={removingAllowlistEntry === entry.id}
+                                        >
+                                            {removingAllowlistEntry === entry.id ? '…' : 'Entfernen'}
+                                        </button>
+                                    </td>
+                                </tr>
+                            {/each}
+                        </tbody>
+                    </table>
+                {/if}
+
+            {:else}
+                <p class="hint">Status nicht verfügbar</p>
+            {/if}
+        </div>
+    {/if}
+
     {#if activeTab === 'system'}
         <!-- ── Lizenz-Sektion ── -->
         <div class="section">
@@ -2569,358 +3010,6 @@
             </div>
         </div>
 
-        <!-- ── Demo-Modus ── -->
-        <div class="section">
-            <div class="section-header">
-                <strong>Demo-Modus</strong>
-            </div>
-
-            {#if demoSettingsError}
-                <div class="error-bar">{demoSettingsError} <button onclick={() => demoSettingsError = ''}>✕</button></div>
-            {/if}
-            {#if demoSettingsSuccess}
-                <div class="success-bar">{demoSettingsSuccess}</div>
-            {/if}
-
-            {#if demoSettings}
-                <div class="update-grid" style="margin-bottom:.75rem">
-                    <div class="update-row">
-                        <span class="update-label">Status</span>
-                        {#if demoSettings.enabled}
-                            <span class="badge badge-ok">Aktiv ({demoSettings.source === 'env' ? 'Umgebungsvariable' : 'Datenbank'}) ✓</span>
-                        {:else}
-                            <span class="badge badge-warn">Deaktiviert</span>
-                        {/if}
-                    </div>
-                </div>
-
-                <p class="hint" style="margin-bottom:.6rem">
-                    Bei aktivem Demo-Modus erscheint auf der Startseite ein „Demo ausprobieren"-Button.
-                    Besucher erhalten ohne Registrierung eine eigene temporäre Organisation, die nach
-                    {demoSettings.session_hours} Stunden automatisch gelöscht wird.
-                    {#if demoSettings.ip_cooldown_hours > 0}
-                        Je IP-Adresse ist dabei alle {demoSettings.ip_cooldown_hours} Stunden genau
-                        eine Demo-Sitzung möglich.
-                    {:else}
-                        <strong>Ohne Karenzzeit</strong> — dieselbe IP-Adresse kann beliebig viele
-                        Demo-Sitzungen hintereinander starten.
-                    {/if}
-                </p>
-
-                <div style="display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; margin-bottom:.75rem">
-                    <button
-                        class={demoSettings.enabled ? 'btn-small danger' : 'btn-primary'}
-                        onclick={toggleDemo}
-                        disabled={demoSaving}
-                    >
-                        {demoSaving ? '…' : demoSettings.enabled ? 'Demo-Modus deaktivieren' : 'Demo-Modus aktivieren'}
-                    </button>
-                    <span class="update-label" style="margin-left:.5rem">Laufzeit</span>
-                    <input
-                        type="number"
-                        min="1"
-                        max="720"
-                        bind:value={demoHoursInput}
-                        style="width:5rem; padding:.35rem .5rem; border:1px solid var(--border); border-radius:6px; background:var(--surface-2); color:var(--text-1)"
-                    />
-                    <span class="hint">Stunden</span>
-                    <button
-                        class="btn-small"
-                        onclick={saveDemoHours}
-                        disabled={demoHoursSaving || demoHoursInput === demoSettings.session_hours}
-                    >
-                        {demoHoursSaving ? '…' : 'Speichern'}
-                    </button>
-                </div>
-                <p class="hint" style="margin-bottom:.6rem; font-size:var(--text-xs)">
-                    Gilt für neue Demo-Sitzungen. Bestehende Sitzungen behalten ihr Ablaufdatum — einzeln verlängerbar über „+24 h".
-                </p>
-
-                <div style="display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; margin-bottom:.35rem">
-                    <span class="update-label">Nachfrage nach Sitzungsende</span>
-                    <button
-                        class={demoSettings.followup_enabled ? 'btn-small danger' : 'btn-small'}
-                        onclick={toggleDemoFollowup}
-                        disabled={demoFollowupSaving}
-                    >
-                        {demoFollowupSaving ? '…' : demoSettings.followup_enabled ? 'Abschalten' : 'Einschalten'}
-                    </button>
-                    <span class="hint">{demoSettings.followup_enabled ? 'aktiv' : 'aus'}</span>
-                </div>
-                <p class="hint" style="margin-bottom:.6rem; font-size:var(--text-xs)">
-                    Einmalige E-Mail an die beim Start angegebene Adresse, sobald die Sitzung
-                    abgelaufen ist: hat alles gepasst, sind Fragen offen, wird eine gemeinsame
-                    Session gebraucht. Verschickt der Retention-Durchgang, stündlich.
-                    {#if !demoSettings.smtp_configured}
-                        <strong> Ohne konfiguriertes SMTP bleibt der Schalter wirkungslos.</strong>
-                    {/if}
-                </p>
-
-                <div style="display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; margin-bottom:.35rem">
-                    <span class="update-label">Karenzzeit je IP</span>
-                    <input
-                        type="number"
-                        min="0"
-                        max="720"
-                        bind:value={demoCooldownInput}
-                        style="width:5rem; padding:.35rem .5rem; border:1px solid var(--border); border-radius:6px; background:var(--surface-2); color:var(--text-1)"
-                    />
-                    <span class="hint">Stunden (0 = keine Sperre)</span>
-                    <button
-                        class="btn-small"
-                        onclick={saveDemoCooldown}
-                        disabled={demoCooldownSaving || demoCooldownInput === demoSettings.ip_cooldown_hours}
-                    >
-                        {demoCooldownSaving ? '…' : 'Speichern'}
-                    </button>
-                </div>
-                <p class="hint" style="margin-bottom:.6rem; font-size:var(--text-xs)">
-                    Die Sperre wird in der Datenbank geführt und übersteht einen Neustart des Backends.
-                    Hinter einem Firmenanschluss oder Messe-WLAN teilen sich alle Besucher eine
-                    Adresse — dann die Sperre unten einmalig aufheben oder die Adresse gleich
-                    dauerhaft freistellen.
-                </p>
-
-                <div class="section-header" style="margin-top:1.25rem">
-                    <strong>Gesperrte IP-Adressen ({demoIpLocks.length})</strong>
-                    <button class="btn-small" onclick={loadDemoSettings} title="Aktualisieren">⟳</button>
-                </div>
-                {#if demoSettings.ip_cooldown_hours === 0}
-                    <p class="hint">Karenzzeit deaktiviert — es werden keine IP-Adressen gesperrt.</p>
-                {:else if demoIpLocks.length === 0}
-                    <p class="hint">Aktuell keine gesperrte IP-Adresse.</p>
-                {:else}
-                    <table class="user-table">
-                        <thead>
-                            <tr>
-                                <th>IP-Adresse</th>
-                                <th>Letzte Demo</th>
-                                <th>Frei ab</th>
-                                <th>Sitzungen gesamt</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {#each demoIpLocks as lock}
-                                <tr>
-                                    <td>{lock.ip}</td>
-                                    <td>{new Date(lock.last_created_at).toLocaleString('de-DE')}</td>
-                                    <td>{new Date(lock.blocked_until).toLocaleString('de-DE')}</td>
-                                    <td>{lock.sessions}</td>
-                                    <td>
-                                        <button
-                                            class="btn-small"
-                                            onclick={() => releaseIpLock(lock)}
-                                            disabled={releasingIpLock === lock.ip}
-                                        >
-                                            {releasingIpLock === lock.ip ? '…' : 'Sperre aufheben'}
-                                        </button>
-                                    </td>
-                                </tr>
-                            {/each}
-                        </tbody>
-                    </table>
-                {/if}
-
-                <div class="section-header" style="margin-top:1.25rem">
-                    <strong>Dauerhaft freigestellte Adressen ({demoIpAllowlist.length})</strong>
-                </div>
-                <p class="hint" style="margin-bottom:.6rem">
-                    Für diese Adressen gilt die Karenzzeit nicht — gedacht für Anschlüsse, hinter denen
-                    planmäßig viele Interessenten sitzen: Firmenanschluss, Messe- oder Schulungs-WLAN,
-                    der eigene Vertrieb. Einzelne Adresse (<code>203.0.113.7</code>) oder ganzes Netz
-                    in CIDR-Schreibweise (<code>203.0.113.0/24</code>, auch IPv6). Eine bereits
-                    laufende Sperre für die Adresse wird beim Anlegen mit aufgehoben.
-                </p>
-                <div style="display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; margin-bottom:.75rem">
-                    <input
-                        type="text"
-                        placeholder="203.0.113.0/24"
-                        bind:value={allowlistPatternInput}
-                        maxlength="64"
-                        style="width:13rem; padding:.35rem .5rem; border:1px solid var(--border); border-radius:6px; background:var(--surface-2); color:var(--text-1)"
-                    />
-                    <input
-                        type="text"
-                        placeholder="Notiz, z. B. „Messe Hannover“"
-                        bind:value={allowlistNoteInput}
-                        maxlength="200"
-                        style="flex:1; min-width:12rem; padding:.35rem .5rem; border:1px solid var(--border); border-radius:6px; background:var(--surface-2); color:var(--text-1)"
-                    />
-                    <button
-                        class="btn-small"
-                        onclick={addAllowlistEntry}
-                        disabled={allowlistSaving || !allowlistPatternInput.trim()}
-                    >
-                        {allowlistSaving ? '…' : 'Freistellen'}
-                    </button>
-                </div>
-                {#if demoIpAllowlist.length === 0}
-                    <p class="hint">Keine dauerhafte Ausnahme eingetragen.</p>
-                {:else}
-                    <table class="user-table">
-                        <thead>
-                            <tr>
-                                <th>Adresse / Netz</th>
-                                <th>Notiz</th>
-                                <th>Angelegt</th>
-                                <th>Von</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {#each demoIpAllowlist as entry}
-                                <tr>
-                                    <td>{entry.pattern}</td>
-                                    <td>{entry.note ?? '—'}</td>
-                                    <td>{new Date(entry.created_at).toLocaleString('de-DE')}</td>
-                                    <td>{entry.created_by ?? '—'}</td>
-                                    <td>
-                                        <button
-                                            class="btn-small danger"
-                                            onclick={() => removeAllowlistEntry(entry)}
-                                            disabled={removingAllowlistEntry === entry.id}
-                                        >
-                                            {removingAllowlistEntry === entry.id ? '…' : 'Entfernen'}
-                                        </button>
-                                    </td>
-                                </tr>
-                            {/each}
-                        </tbody>
-                    </table>
-                {/if}
-
-                <div class="section-header" style="margin-top:1.25rem">
-                    <strong>Offene Demo-Sitzungen ({demoSessions.length})</strong>
-                    <button class="btn-small" onclick={loadDemoSettings} title="Aktualisieren">⟳</button>
-                </div>
-                {#if demoSessions.length === 0}
-                    <p class="hint">Keine offenen Demo-Sitzungen.</p>
-                {:else}
-                    <table class="user-table">
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Kontakt</th>
-                                <th>Code (Slug)</th>
-                                <th>Gestartet</th>
-                                <th>Läuft ab</th>
-                                <th>Herkunft</th>
-                                <th>Marschverbände</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {#each demoSessions as session}
-                                <tr>
-                                    <td>{session.name}</td>
-                                    <td>
-                                        {#if session.contact_email}
-                                            {#if session.contact_name}
-                                                {session.contact_name}<br>
-                                            {/if}
-                                            <a href="mailto:{session.contact_email}" class="hint">{session.contact_email}</a>
-                                        {:else}
-                                            <span class="hint" title="Sitzung aus der Zeit vor der Kontaktabfrage">–</span>
-                                        {/if}
-                                    </td>
-                                    <td><code>{session.slug}</code></td>
-                                    <td class="hint">{new Date(session.created_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</td>
-                                    <td class="hint">{new Date(session.expires_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</td>
-                                    <td>
-                                        {#if session.created_location || session.created_ip}
-                                            {#if session.created_location}
-                                                {session.created_location}<br>
-                                            {/if}
-                                            {#if session.created_ip}
-                                                <code class="hint" title="IP-Adresse bei Sitzungsstart">{session.created_ip}</code>
-                                            {/if}
-                                        {:else}
-                                            <span class="hint">–</span>
-                                        {/if}
-                                    </td>
-                                    <td>{session.convoy_count}</td>
-                                    <td class="actions-cell">
-                                        <div>
-                                            <button
-                                                class="btn-small"
-                                                onclick={() => extendDemoSession(session)}
-                                                disabled={extendingDemoSession === session.id}
-                                                title="Ablauf um 24 Stunden verlängern"
-                                            >
-                                                {extendingDemoSession === session.id ? '…' : '+24 h'}
-                                            </button>
-                                            <button
-                                                class="btn-small danger"
-                                                onclick={() => endDemoSession(session)}
-                                                disabled={endingDemoSession === session.id}
-                                                title="Sitzung beenden und Daten löschen"
-                                            >
-                                                {endingDemoSession === session.id ? '…' : '✕ Beenden'}
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            {/each}
-                        </tbody>
-                    </table>
-                {/if}
-
-                <div class="section-header" style="margin-top:1.25rem">
-                    <strong>Interessenten aus der Demo ({demoLeads.length})</strong>
-                    <button class="btn-small" onclick={loadDemoSettings} title="Aktualisieren">⟳</button>
-                </div>
-                <p class="hint" style="margin-bottom:.6rem; font-size:var(--text-xs)">
-                    Bleibt über das Ende der Sitzung hinaus stehen — die Demo-Umgebung ist dann
-                    längst gelöscht. Wird nach der Aufbewahrungsfrist automatisch abgeräumt
-                    (RETENTION_DEMO_LEADS_DAYS, Standard 180 Tage).
-                </p>
-                {#if demoLeads.length === 0}
-                    <p class="hint">Noch keine Kontaktangaben.</p>
-                {:else}
-                    <table class="user-table">
-                        <thead>
-                            <tr>
-                                <th>E-Mail</th>
-                                <th>Name</th>
-                                <th>Sitzung</th>
-                                <th>Gestartet</th>
-                                <th>Nachfrage</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {#each demoLeads as lead}
-                                <tr>
-                                    <td><a href="mailto:{lead.email}">{lead.email}</a></td>
-                                    <td>{[lead.first_name, lead.last_name].filter(Boolean).join(' ') || '—'}</td>
-                                    <td>
-                                        <code>{lead.org_slug}</code>
-                                        {#if !lead.session_active}
-                                            <span class="hint" title="Die Demo-Umgebung wurde bereits gelöscht"> (beendet)</span>
-                                        {/if}
-                                    </td>
-                                    <td class="hint">{new Date(lead.created_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</td>
-                                    <td class="hint" title={lead.followup_error ?? ''}>{followupState(lead)}</td>
-                                    <td class="actions-cell">
-                                        <button
-                                            class="btn-small danger"
-                                            onclick={() => deleteDemoLead(lead)}
-                                            disabled={deletingLead === lead.id}
-                                            title="Kontakt löschen (Löschersuchen nach DSGVO Art. 17)"
-                                        >
-                                            {deletingLead === lead.id ? '…' : '✕ Löschen'}
-                                        </button>
-                                    </td>
-                                </tr>
-                            {/each}
-                        </tbody>
-                    </table>
-                {/if}
-            {:else}
-                <p class="hint">Status nicht verfügbar</p>
-            {/if}
-        </div>
 
         <!-- ── Zwei-Faktor-Authentifizierung ── -->
         <div class="section">
@@ -3354,8 +3443,13 @@
     }
     .logout-btn:hover { background: var(--surface-1); border-color: var(--color-primary); color: var(--color-primary); }
 
-    .tab-bar { display: flex; gap: .25rem; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem; padding: .25rem .25rem 0; }
-    .tab { padding: .5rem 1rem; background: none; border: none; cursor: pointer; font-size: var(--text-sm); color: var(--text-2); border-radius: 4px 4px 0 0; margin-bottom: -1px; }
+    /* overflow-x statt Umbruch: Mit dem Demo-Tab sind es acht Reiter, die auf
+       einem Telefon nicht mehr nebeneinander passen. Eine zweite Zeile würde
+       die Unterkante zerreißen, an der die aktive Lasche hängt — also scrollt
+       die Leiste seitlich, wie es Tabellen in .section ohnehin tun. */
+    .tab-bar { display: flex; gap: .25rem; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem; padding: .25rem .25rem 0; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+    .tab-bar::-webkit-scrollbar { display: none; }
+    .tab { flex: 0 0 auto; white-space: nowrap; padding: .5rem 1rem; background: none; border: none; cursor: pointer; font-size: var(--text-sm); color: var(--text-2); border-radius: 4px 4px 0 0; margin-bottom: -1px; }
     .tab.active { color: var(--color-primary); background: var(--surface-2); font-weight: 600; border-bottom: 2px solid var(--color-primary); }
 
     .error-bar { background: var(--color-primary-hover); color: white; padding: .4rem .75rem; border-radius: 4px; margin-bottom: 1rem; display: flex; justify-content: space-between; }
@@ -3488,6 +3582,40 @@
     .channel-btn + .channel-btn { border-left: 1px solid var(--border); }
     .channel-btn.active { background: var(--color-primary); color: #fff; }
     .channel-btn:disabled { opacity: .6; cursor: default; }
+    /* ── Kennzahlen im Demo-Tab ────────────────────────────────────────────
+       auto-fit statt fester Spaltenzahl: auf dem Telefon eine Spalte, auf dem
+       Schreibtisch so viele wie hineinpassen — ohne eigene Breakpoints. */
+    .kpi-grid {
+        display: grid;
+        /* Auf dem Telefon zwei Spalten statt acht gestapelter Karten — eine
+           Übersicht, für die man scrollen muss, ist keine. Ab Tablet-Breite
+           feste 4×2 statt auto-fit: Sonst stünden sechs Kacheln oben und zwei
+           verloren darunter. grid-auto-rows gleicht die Zeilenhöhen an, damit
+           unterschiedlich lange Unterzeilen keine Treppe erzeugen. */
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        grid-auto-rows: 1fr;
+        gap: .75rem;
+    }
+    @media (min-width: 760px) {
+        .kpi-grid { grid-template-columns: repeat(4, 1fr); }
+    }
+    .kpi {
+        display: flex;
+        flex-direction: column;
+        gap: .15rem;
+        padding: .85rem 1rem;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--surface-2);
+    }
+    .kpi-value { font-size: 1.6rem; font-weight: 700; line-height: 1.1; color: var(--text-1); }
+    .kpi-label { font-size: var(--text-sm); font-weight: 600; color: var(--text-1); }
+    .kpi-sub { font-size: var(--text-xs); color: var(--text-muted); line-height: 1.4; }
+    /* Nur für Zahlen, die im Normalbetrieb 0 sind — sonst wäre das Hervorheben
+       Dauerzustand und damit wertlos. */
+    .kpi-attention { border-color: rgba(180,60,40,.45); }
+    .kpi-attention .kpi-value { color: var(--color-primary); }
+
     .badge { display: inline-block; padding: .15rem .5rem; border-radius: 3px; font-size: var(--text-xs); font-weight: 600; }
     .badge-ok { background: rgba(107,127,77,.2); color: #a8c070; border: 1px solid rgba(107,127,77,.4); }
     .badge-update { background: rgba(210,120,30,.2); color: #e8a050; border: 1px solid rgba(210,120,30,.4); }
