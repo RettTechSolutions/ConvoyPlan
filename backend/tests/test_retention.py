@@ -23,7 +23,8 @@ async def test_run_all_returns_counts_and_audits(monkeypatch):
     r_demo = MagicMock(); r_demo.all.return_value = []  # no expired demo orgs
     r_cooldown = MagicMock(); r_cooldown.scalar_one_or_none.return_value = None  # cooldown setting unset
     r_origins = MagicMock(); r_origins.rowcount = 1  # one expired demo IP lock
-    db.execute.side_effect = [r_pos, r_audit, r_links, r_hours, r_demo, r_cooldown, r_origins]
+    r_leads = MagicMock(); r_leads.rowcount = 4  # four contact rows past the retention window
+    db.execute.side_effect = [r_pos, r_audit, r_links, r_hours, r_demo, r_cooldown, r_origins, r_leads]
 
     recorded = []
 
@@ -31,12 +32,15 @@ async def test_run_all_returns_counts_and_audits(monkeypatch):
         recorded.append((action, kwargs.get("detail")))
 
     monkeypatch.setattr("app.services.retention.audit.record", _spy)
+    # Der Mailversand hat eigene Tests; hier geht es um die Zählung der Purges.
+    monkeypatch.setattr("app.services.retention.send_due_demo_followups", AsyncMock(return_value=2))
 
     counts = await retention.run_all(db)
 
     assert counts == {
+        "demo_followups": 2,
         "positions": 3, "audit_logs": 0, "share_links": 2,
-        "demo_sessions": 0, "demo_origins": 1,
+        "demo_sessions": 0, "demo_origins": 1, "demo_leads": 4,
     }
     db.commit.assert_awaited()
     # an audit entry is written because something was deleted
@@ -52,7 +56,8 @@ async def test_run_all_skips_audit_when_nothing_deleted(monkeypatch):
     r_demo = MagicMock(); r_demo.all.return_value = []
     r_cooldown = MagicMock(); r_cooldown.scalar_one_or_none.return_value = None
     r_origins = MagicMock(); r_origins.rowcount = 0
-    db.execute.side_effect = results + [r_hours, r_demo, r_cooldown, r_origins]
+    r_leads = MagicMock(); r_leads.rowcount = 0
+    db.execute.side_effect = results + [r_hours, r_demo, r_cooldown, r_origins, r_leads]
 
     recorded = []
 
@@ -60,11 +65,13 @@ async def test_run_all_skips_audit_when_nothing_deleted(monkeypatch):
         recorded.append(action)
 
     monkeypatch.setattr("app.services.retention.audit.record", _spy)
+    monkeypatch.setattr("app.services.retention.send_due_demo_followups", AsyncMock(return_value=0))
 
     counts = await retention.run_all(db)
     assert counts == {
+        "demo_followups": 0,
         "positions": 0, "audit_logs": 0, "share_links": 0,
-        "demo_sessions": 0, "demo_origins": 0,
+        "demo_sessions": 0, "demo_origins": 0, "demo_leads": 0,
     }
     assert recorded == []  # nothing deleted → no audit entry
 

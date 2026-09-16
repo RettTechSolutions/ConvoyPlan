@@ -266,6 +266,18 @@ sind `/health`, `/api/auth/login`, `/api/license/*`, `/api/setup`, `/api/track/*
 | `GET` | `/api/auth/demo-status` | Ist der öffentliche Demo-Modus aktiviert? |
 | `GET` | `/api/auth/demo-session/info` | Rahmendaten einer Demo-Sitzung (Laufzeit) |
 | `POST` | `/api/auth/demo-session` | Befristete Demo-Organisation samt Token erzeugen — oder die noch laufende Sitzung dieser IP fortsetzen (`resumed: true`) |
+| `POST` | `/api/auth/demo-followup/unsubscribe` | Nachfrage-Mails für eine Adresse abbestellen (Token aus dem Abmeldelink) |
+
+> **Kontaktangabe:** `POST /api/auth/demo-session` erwartet einen Körper mit
+> `email` (Pflicht, wird normalisiert) sowie optional `first_name` und
+> `last_name`; ohne gültige Adresse antwortet der Endpunkt mit `422`. Die
+> Angabe landet in `demo_leads` und **nicht** als Kennung des Demo-Benutzers —
+> dort steht weiterhin die interne `demo-<hex>@demo.local`. Beim Fortsetzen
+> einer Sitzung ersetzt die neue Angabe die alte.
+>
+> ```json
+> {"email": "name@organisation.de", "first_name": "Max", "last_name": "Mustermann"}
+> ```
 
 ---
 
@@ -306,8 +318,8 @@ Jede Demo-Nutzung läuft als eigene, befristete Organisation (`is_demo=true`). D
 
 | Methode | Endpunkt | Beschreibung |
 |---|---|---|
-| `GET/PUT` | `/api/admin/settings/demo` | Demo-Modus an/aus, Sitzungsdauer und Karenzzeit je IP (Stunden) konfigurieren |
-| `GET` | `/api/admin/demo-sessions` | Offene Demo-Sitzungen auflisten (Ablaufzeit, Konvoi-Anzahl, Herkunft) |
+| `GET/PUT` | `/api/admin/settings/demo` | Demo-Modus an/aus, Sitzungsdauer, Karenzzeit je IP (Stunden) und Nachfrage-Mail konfigurieren |
+| `GET` | `/api/admin/demo-sessions` | Offene Demo-Sitzungen auflisten (Ablaufzeit, Konvoi-Anzahl, Herkunft, Kontakt) |
 | `POST` | `/api/admin/demo-sessions/{org_id}/extend` | Ablaufzeit einer Demo-Sitzung verlängern |
 | `DELETE` | `/api/admin/demo-sessions/{org_id}` | Demo-Sitzung sofort beenden (Konvois, Org und Demo-Nutzer löschen) |
 | `GET` | `/api/admin/demo-ip-locks` | Aktuell gesperrte IP-Adressen mit Restlaufzeit auflisten |
@@ -315,6 +327,8 @@ Jede Demo-Nutzung läuft als eigene, befristete Organisation (`is_demo=true`). D
 | `GET` | `/api/admin/demo-ip-allowlist` | Dauerhaft freigestellte Adressen und Netze auflisten |
 | `POST` | `/api/admin/demo-ip-allowlist` | Adresse (`203.0.113.7`) oder Netz (`203.0.113.0/24`) dauerhaft freistellen; hebt eine laufende Sperre mit auf |
 | `DELETE` | `/api/admin/demo-ip-allowlist/{entry_id}` | Ausnahme zurücknehmen — ab dann gilt wieder die Karenzzeit |
+| `GET` | `/api/admin/demo-leads` | Interessenten aus dem Demo-Start auflisten (Kontakt, Sitzung, Stand der Nachfrage) |
+| `DELETE` | `/api/admin/demo-leads/{lead_id}` | Kontaktangabe vorzeitig löschen (Löschersuchen nach DSGVO Art. 17) |
 
 > **Karenzzeit je IP:** `POST /api/auth/demo-session` erlaubt je Client-IP eine Sitzung pro Karenzzeit (Standard 24 h, `DEMO_IP_COOLDOWN_HOURS` bzw. Admin-Portal; `0` schaltet sie ab). Läuft die Karenzzeit noch, **die Sitzung dieser Adresse aber ebenfalls**, wird sie mit einem frischen Token fortgesetzt: Antwort `200` mit `resumed: true` (Audit-Eintrag `demo.session.resumed`) — sonst sperrte die Karenzzeit den Besucher aus seiner eigenen Demo aus, sobald er den Tab schließt. Ist keine Sitzung mehr da, antwortet der Endpunkt mit `429`, `Retry-After` und einem strukturierten `detail`:
 >
@@ -324,6 +338,8 @@ Jede Demo-Nutzung läuft als eigene, befristete Organisation (`is_demo=true`). D
 > ```
 >
 > `retry_at` ist der genaue Zeitpunkt der Wiederfreigabe (ISO-8601, UTC) — die Oberfläche zeigt ihn in der Zeitzone des Besuchers an. Die Sperre liegt in der Datenbank (`demo_origins`), übersteht damit einen Neustart und gilt auch dann noch, wenn die Demo-Organisation längst abgelaufen und gelöscht ist. Der Retention-Job entfernt abgelaufene Einträge.
+
+> **Nachfrage nach Sitzungsende:** Der Retention-Durchgang verschickt einmalig eine E-Mail an die beim Start angegebene Adresse, sobald `session_expires_at` der Kontaktzeile erreicht ist — hat alles gepasst, sind Fragen offen, wird eine gemeinsame Session gebraucht. Abschaltbar über den Schalter im Admin-Portal bzw. `DEMO_FOLLOWUP_ENABLED`; ohne konfiguriertes SMTP unterbleibt der Versand, ohne einen Fehlversuch zu verbrauchen. Nach drei Fehlversuchen ruht eine Adresse. Der Abmeldelink im Fußbereich der Mail vermerkt den Widerspruch für die Adresse, nicht für die einzelne Sitzung. Siehe [Lizenz und Demo-Modus](Lizenz-und-Demo-Modus#nachfrage-nach-ablauf-der-sitzung).
 
 > Die Herkunftsfelder (`created_ip`, `created_location`) werden beim Start der Sitzung aus der Client-IP ermittelt und per Hintergrund-Geolokation (ipapi.co) um Stadt/Region/Land ergänzt — siehe [Lizenz und Demo-Modus](Lizenz-und-Demo-Modus#offene-demo-sitzungen-verwalten-admin).
 

@@ -180,6 +180,14 @@ export interface LoginResult {
 }
 
 // Auth
+
+/** Kontaktangabe beim Demo-Start — die Adresse ist Pflicht, der Name nicht. */
+export interface DemoContact {
+	email: string;
+	first_name?: string;
+	last_name?: string;
+}
+
 export interface DemoSessionResult {
     access_token: string;
     token_type: string;
@@ -199,7 +207,10 @@ export const authApi = {
 		api.post<{ status: string; access_token?: string }>('/api/auth/password', { current_password, new_password }),
 	requestPasswordReset: (email: string, org_slug?: string) =>
 		api.post<{ status: string }>('/api/auth/password-reset', { email, org_slug }),
-	createDemoSession: () => api.post<DemoSessionResult>('/api/auth/demo-session', {}),
+	createDemoSession: (contact: DemoContact) =>
+		api.post<DemoSessionResult>('/api/auth/demo-session', contact),
+	unsubscribeDemoFollowup: (token: string) =>
+		api.post<{ status: string }>('/api/auth/demo-followup/unsubscribe', { token }),
 	demoStatus: () => api.get<{ enabled: boolean; session_hours: number }>('/api/auth/demo-status'),
 	demoSessionInfo: () => api.get<{ expires_at: string }>('/api/auth/demo-session/info'),
 };
@@ -595,8 +606,15 @@ export const adminApi = {
         api.put<void>('/api/admin/settings/update-mode',
             notify_on_auto === undefined ? { mode } : { mode, notify_on_auto }),
     getDemoSettings: () => api.get<DemoSettings>('/api/admin/settings/demo'),
-    saveDemoSettings: (enabled: boolean, session_hours?: number, ip_cooldown_hours?: number) =>
-        api.put<DemoSettings>('/api/admin/settings/demo', { enabled, session_hours, ip_cooldown_hours }),
+    saveDemoSettings: (
+        enabled: boolean,
+        session_hours?: number,
+        ip_cooldown_hours?: number,
+        followup_enabled?: boolean,
+    ) =>
+        api.put<DemoSettings>('/api/admin/settings/demo', {
+            enabled, session_hours, ip_cooldown_hours, followup_enabled,
+        }),
     listDemoIpLocks: () => api.get<DemoIpLock[]>('/api/admin/demo-ip-locks'),
     releaseDemoIpLock: (ip: string) =>
         api.delete(`/api/admin/demo-ip-locks/${encodeURIComponent(ip)}`),
@@ -606,6 +624,8 @@ export const adminApi = {
     removeDemoIpAllowlistEntry: (entryId: string) =>
         api.delete(`/api/admin/demo-ip-allowlist/${entryId}`),
     listDemoSessions: () => api.get<DemoSessionInfo[]>('/api/admin/demo-sessions'),
+    listDemoLeads: () => api.get<DemoLeadInfo[]>('/api/admin/demo-leads'),
+    deleteDemoLead: (leadId: string) => api.delete(`/api/admin/demo-leads/${leadId}`),
     endDemoSession: (orgId: string) => api.delete(`/api/admin/demo-sessions/${orgId}`),
     extendDemoSession: (orgId: string, hours = 24) =>
         api.post<DemoSessionInfo>(`/api/admin/demo-sessions/${orgId}/extend`, { hours }),
@@ -665,6 +685,10 @@ export interface DemoSettings {
     session_hours: number;
     /** Karenzzeit je IP-Adresse in Stunden; 0 = keine Sperre. */
     ip_cooldown_hours: number;
+    /** Nachfrage-Mail nach Ablauf einer Sitzung. */
+    followup_enabled: boolean;
+    /** Ohne SMTP bleibt der Schalter oben wirkungslos. */
+    smtp_configured: boolean;
 }
 
 export interface DemoIpLock {
@@ -692,6 +716,26 @@ export interface DemoSessionInfo {
     convoy_count: number;
     created_ip: string | null;
     created_location: string | null;
+    /** Beim Start angegebene Kontaktdaten; null bei Sitzungen von vor der Abfrage. */
+    contact_email: string | null;
+    contact_name: string | null;
+}
+
+/** Ein Interessent aus dem Demo-Start — bleibt über die Sitzung hinaus stehen. */
+export interface DemoLeadInfo {
+    id: string;
+    email: string;
+    first_name: string | null;
+    last_name: string | null;
+    org_slug: string;
+    created_at: string;
+    session_expires_at: string;
+    /** false = die Demo-Umgebung ist bereits gelöscht. */
+    session_active: boolean;
+    followup_sent_at: string | null;
+    followup_attempts: number;
+    followup_error: string | null;
+    unsubscribed_at: string | null;
 }
 
 // ── Regionswechsel ────────────────────────────────────────────────────────────

@@ -40,7 +40,7 @@ def _clean_name(value: str | None) -> str | None:
     return value
 
 
-class _NameFieldsMixin(BaseModel):
+class NameFieldsMixin(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
 
@@ -72,7 +72,7 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
-class AdminUserCreate(_NameFieldsMixin):
+class AdminUserCreate(NameFieldsMixin):
     email: NormalizedEmailStr
     # Optional: when omitted, the backend generates a strong random password.
     # The invite flow ("Anlegen & Einladen") sends fresh credentials by email,
@@ -85,7 +85,7 @@ class AdminUserCreate(_NameFieldsMixin):
     org_role: str = "beobachter"
 
 
-class AdminUserUpdate(_NameFieldsMixin):
+class AdminUserUpdate(NameFieldsMixin):
     is_active: bool | None = None
     is_superadmin: bool | None = None
     email: NormalizedEmailStr | None = None
@@ -113,7 +113,7 @@ class AdminUserResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class InviteUserRequest(_NameFieldsMixin):
+class InviteUserRequest(NameFieldsMixin):
     email: NormalizedEmailStr
     password: str
 

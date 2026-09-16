@@ -103,12 +103,24 @@ class Settings(BaseSettings):
     # in-process rate limiter does not). 0 disables the cooldown. The
     # admin-panel setting (system_settings: "demo.ip_cooldown_hours") wins.
     demo_ip_cooldown_hours: int = 24
+    # Nachfrage-Mail nach Ablauf einer Demo-Sitzung ("hat alles gepasst?").
+    # Wie demo_enabled: die Einstellung im Admin-Portal
+    # (system_settings: "demo.followup_enabled") geht vor, das hier ist der
+    # Rückfall. Ohne konfiguriertes SMTP passiert ohnehin nichts.
+    demo_followup_enabled: bool = True
+    # Ziel der beiden Schaltflächen in der Nachfrage-Mail (Fragen stellen /
+    # gemeinsame Sitzung vereinbaren).
+    demo_followup_contact_url: str = "https://convoyplan.de/#kontakt"
 
     # Data retention (DSGVO Art. 5(1)(e)). Run by the `retention` cron container.
     retention_enabled: bool = True
     retention_positions_hours: int = 24      # live positions older than this are purged
     retention_audit_days: int = 365          # audit-log entries older than this are purged
     retention_share_links_days: int = 30     # revoked share links older than this are purged
+    # Kontaktangaben aus dem Demo-Start (demo_leads). Länger als die Sitzung,
+    # weil daran die Nachfrage und ein etwaiges Vertriebsgespräch hängen — aber
+    # nicht dauerhaft.
+    retention_demo_leads_days: int = 180
     # Interactive API docs (Swagger UI at /docs, ReDoc at /redoc, schema at
     # /openapi.json). Always available in development environments. In
     # production they are disabled by default so the API surface is not exposed

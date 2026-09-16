@@ -62,6 +62,15 @@ Der `retention`-Container purgt periodisch abgelaufene Daten:
 | `RETENTION_POSITIONS_HOURS` | `24` | Live-Positionen älter als … löschen |
 | `RETENTION_AUDIT_DAYS` | `365` | Audit-Log-Einträge älter als … löschen |
 | `RETENTION_SHARE_LINKS_DAYS` | `30` | Widerrufene Share-Links älter als … löschen |
+| `RETENTION_DEMO_LEADS_DAYS` | `180` | Kontaktangaben aus dem Demo-Start älter als … löschen |
+
+Im selben Durchgang laufen zwei Aufgaben ohne eigene Variable: Abgelaufene
+Demo-Sitzungen samt ihrer Daten werden gelöscht (Frist im Admin-Portal), und
+für abgelaufene Sitzungen geht die einmalige Nachfrage-Mail raus (siehe
+[Lizenz und Demo-Modus](Lizenz-und-Demo-Modus#nachfrage-nach-ablauf-der-sitzung)).
+Die Kontaktangabe hält bewusst länger als die Sitzung — daran hängen Nachfrage
+und ein etwaiges Vertriebsgespräch —, aber nicht dauerhaft; einzelne Kontakte
+lassen sich im Admin-Bereich sofort löschen.
 
 ---
 

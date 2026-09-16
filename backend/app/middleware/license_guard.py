@@ -16,6 +16,7 @@ Call reset_license_cache() after saving a new key via the API.
 Exempt paths (always allowed regardless of method):
   - /health
   - /api/auth/login
+  - /api/auth/demo-followup/unsubscribe
   - /api/license/*
   - /api/setup/*
   - /uploads/*
@@ -36,6 +37,10 @@ from app.services.license import validate_license
 _EXEMPT_PREFIXES = (
     "/health",
     "/api/auth/login",
+    # Ein Widerspruch gegen die Nachfrage-Mail muss auch dann durchgehen, wenn
+    # die Lizenz zwischenzeitlich abgelaufen ist — sonst hinge eine
+    # datenschutzrechtliche Pflicht am Lizenzstatus.
+    "/api/auth/demo-followup/unsubscribe",
     "/api/license/",
     "/api/setup",
     "/api/track/",

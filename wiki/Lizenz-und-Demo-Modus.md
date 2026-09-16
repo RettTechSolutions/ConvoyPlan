@@ -14,9 +14,71 @@ ConvoyPlan läuft ohne gültigen Lizenzschlüssel im **Demo-Modus**. Lesezugriff
 
 ---
 
+## Kontaktangabe beim Demo-Start
+
+Der Demo-Knopf auf der Startseite führt auf `/demo`, wo vor dem Start eine
+**E-Mail-Adresse** abgefragt wird; **Vor- und Nachname sind freiwillig**. Ohne
+Adresse lässt sich weder auseinanderhalten, wer gerade in welcher Demo sitzt,
+noch nach Ablauf nachfragen — ein Name allein leistet beides nicht. Alles
+darüber hinaus kostet nur Abbrüche auf dem Weg in die Demo, deshalb bleibt es
+bei diesem einen Pflichtfeld.
+
+Die Angabe landet in der Tabelle `demo_leads`, **nicht** als Kennung des
+Demo-Benutzers: Dort steht weiterhin die interne `demo-<hex>@demo.local`. Sonst
+kollidierte der Demo-Zugang mit einem bestehenden Konto derselben Adresse
+(Unique-Constraint), und ein Demo-Zugang wäre plötzlich unter einer echten
+Kennung anmeldbar.
+
+Die Kontaktzeile liegt außerhalb der Demo-Organisation, weil sie diese
+überleben muss — die Nachfrage-Mail geht erst raus, wenn die Umgebung bereits
+gelöscht ist. Beim Aufräumen der Organisation fällt lediglich der Verweis
+(`org_id`) auf NULL; der Code der Sitzung (`org_slug`) bleibt als Text stehen.
+
+Aufbewahrung: `RETENTION_DEMO_LEADS_DAYS`, Standard **180 Tage**. Danach löscht
+der Retention-Job die Zeile. Einzelne Kontakte lassen sich im Admin-Bereich
+vorzeitig löschen (Löschersuchen nach DSGVO Art. 17).
+
+---
+
+## Nachfrage nach Ablauf der Sitzung
+
+Ist eine Demo-Sitzung abgelaufen, geht **einmalig** eine E-Mail an die beim
+Start angegebene Adresse: Hat alles so funktioniert wie erwartet? Ist eine Frage
+offen geblieben? Soll man sich das Ganze gemeinsam in einer Session ansehen? Die
+Mail enthält einen Knopf auf die Kontaktseite (`DEMO_FOLLOWUP_CONTACT_URL`) und
+lässt sich schlicht beantworten.
+
+Verschickt wird sie vom **Retention-Durchgang** (stündlich, `RETENTION_INTERVAL`),
+nicht von einem eigenen Dienst. Ausgelöst wird sie über den in der Kontaktzeile
+gespiegelten Ablaufzeitpunkt (`session_expires_at`) — der Abgleich funktioniert
+also unabhängig davon, ob die Organisation noch existiert. Verlängert oder
+beendet ein Superadmin eine Sitzung, wird dieser Zeitpunkt mitgeführt: Nach
+„+24 h" kommt die Nachfrage entsprechend später, nach „✕ Beenden" beim nächsten
+Durchgang.
+
+| Bedingung | Verhalten |
+|---|---|
+| Schalter **Admin** → **Demo-Modus** → „Nachfrage nach Sitzungsende" aus (bzw. `DEMO_FOLLOWUP_ENABLED=false`) | kein Versand |
+| Kein SMTP konfiguriert | kein Versand, kein gezählter Versuch |
+| Postfach unzustellbar | Fehler wird vermerkt, Durchgang läuft weiter; nach **3** Versuchen ruht die Adresse |
+| Adresse hat abbestellt | kein Versand — auch nicht nach einer späteren Demo |
+
+**Einwilligung und Widerspruch.** Es gibt kein Opt-in-Häkchen beim Start; das
+Formular weist stattdessen auf die einmalige Nachfrage hin. Dafür trägt jede
+Mail im Fußbereich einen Abmeldelink (`/demo/abmelden?token=…`). Ein Klick
+darauf vermerkt den Widerspruch für **die Adresse**, nicht für die einzelne
+Sitzung — ein späterer Demo-Start hebt ihn nicht wieder auf.
+
+**Interessentenliste.** Der Abschnitt **Interessenten aus der Demo**
+(Admin → Demo-Modus) listet die Kontakte mit Sitzungscode, Startzeitpunkt und
+Stand der Nachfrage (ausstehend / versandt / fehlgeschlagen / abbestellt /
+aufgegeben). Er überdauert die Sitzung selbst — genau dafür ist er da.
+
+---
+
 ## Offene Demo-Sitzungen verwalten (Admin)
 
-Jede Demo-Nutzung läuft als eigene, befristete Organisation. Der Admin-Bereich (**Admin** → **Demo-Sitzungen**) listet alle offenen Sitzungen mit Name, Ablaufzeit, Anzahl angelegter Konvois und **Herkunft**.
+Jede Demo-Nutzung läuft als eigene, befristete Organisation. Der Admin-Bereich (**Admin** → **Demo-Sitzungen**) listet alle offenen Sitzungen mit Name, **Kontakt** (die beim Start angegebene Adresse), Ablaufzeit, Anzahl angelegter Konvois und **Herkunft**.
 
 Die Herkunft (Stadt/Region/Land) wird beim Start der Sitzung aus der Client-IP ermittelt und per Hintergrund-Geolokation (ipapi.co) angereichert — ein langsamer oder nicht erreichbarer Geo-Dienst verzögert den Demo-Start nie, die Anfrage läuft als Background-Task nach der Antwort. Private oder ungültige IPs (z. B. lokale Entwicklung) werden nicht abgefragt und bleiben ohne Herkunftsangabe. Die Daten helfen, Demo-Sitzungen Interessenten zuzuordnen.
 

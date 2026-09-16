@@ -193,6 +193,87 @@ DEFAULT_ORG_MEMBERSHIP_HTML = """<!DOCTYPE html>
 </html>"""
 
 
+# ── Default demo follow-up template ────────────────────────────────────────────
+
+# Geht einmalig raus, nachdem eine Demo-Sitzung abgelaufen ist: Die Umgebung
+# ist zu diesem Zeitpunkt bereits gelöscht, die Fragen („hat alles gepasst,
+# ist etwas offen geblieben, wollen wir uns das gemeinsam ansehen?") sind
+# genau dann fällig, solange der Eindruck noch frisch ist.
+
+DEFAULT_DEMO_FOLLOWUP_SUBJECT = "Wie lief deine {app_name}-Demo?"
+
+DEFAULT_DEMO_FOLLOWUP_HTML = """<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+</head>
+<body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#f4f5f7;padding:40px 16px;">
+    <tr><td align="center">
+      <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="max-width:520px;">
+
+        <!-- Header mit Logo -->
+        <tr>
+          <td style="background:{color_primary};border-radius:10px 10px 0 0;padding:28px 40px;text-align:center;">
+            {logo_block}
+          </td>
+        </tr>
+
+        <!-- Body -->
+        <tr>
+          <td style="background:#ffffff;padding:36px 40px;">
+            <p style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1a1a2e;">&#128172; Hat alles gepasst?</p>
+            <p style="margin:0 0 20px;font-size:15px;color:#444;line-height:1.6;">
+              Hallo{recipient_name_greeting},<br/>
+              deine Demo-Umgebung f&#252;r <strong>{app_name}</strong> ist abgelaufen und wurde
+              samt aller Testdaten gel&#246;scht. Wir w&#252;rden gern wissen, wie es gelaufen ist.
+            </p>
+
+            <!-- Fragenbox -->
+            <table role="presentation" cellpadding="0" cellspacing="0" width="100%"
+                   style="background:#f8f9fa;border:1px solid #e0e0e8;border-radius:8px;margin-bottom:28px;">
+              <tr><td style="padding:20px 24px;">
+                <p style="margin:0 0 10px;font-size:15px;color:#1a1a2e;line-height:1.5;">&#9989; Hat in der Demo alles so funktioniert, wie du es erwartet hast?</p>
+                <p style="margin:0 0 10px;font-size:15px;color:#1a1a2e;line-height:1.5;">&#10067; Ist eine Frage offen geblieben?</p>
+                <p style="margin:0;font-size:15px;color:#1a1a2e;line-height:1.5;">&#128101; Sollen wir uns das Ganze gemeinsam in einer Session ansehen?</p>
+              </td></tr>
+            </table>
+
+            <p style="margin:0 0 28px;font-size:14px;color:#666;line-height:1.5;">
+              Eine Antwort auf diese E-Mail gen&#252;gt &#8212; oder du vereinbarst gleich einen Termin:
+            </p>
+
+            <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+              <tr><td align="center">
+                <a href="{contact_url}"
+                   style="display:inline-block;background:{color_primary};color:#ffffff;text-decoration:none;
+                          font-size:15px;font-weight:600;padding:13px 36px;border-radius:7px;">
+                  &#128197; Gemeinsame Session vereinbaren &#8594;
+                </a>
+              </td></tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="background:#f0f1f3;border-radius:0 0 10px 10px;padding:20px 40px;text-align:center;">
+            <p style="margin:0;font-size:12px;color:#999;line-height:1.6;">
+              Du bekommst diese einmalige Nachfrage, weil du unter dieser Adresse einen
+              Demo-Zugang f&#252;r {app_name} gestartet hast.<br/>
+              <a href="{unsubscribe_url}" style="color:#999;">Keine weiteren E-Mails zu Demo-Zug&#228;ngen</a>
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>"""
+
+
 # ── SMTP config helper ────────────────────────────────────────────────────────
 
 async def _get_smtp_settings(db: AsyncSession) -> dict[str, str]:
@@ -218,6 +299,16 @@ async def save_smtp_settings(db: AsyncSession, settings: dict[str, str]) -> None
         else:
             db.add(SystemSetting(key=key, value=value))
     await db.commit()
+
+
+async def is_smtp_configured(db: AsyncSession) -> bool:
+    """Whether a send would even have a chance — no host, no mail.
+
+    Used by the background jobs so an instance without SMTP quietly skips
+    sending instead of logging one failure per pass.
+    """
+    cfg = await _get_smtp_settings(db)
+    return bool(cfg.get("smtp.host", "").strip())
 
 
 # ── Login URL helper ───────────────────────────────────────────────────────────
@@ -522,6 +613,56 @@ async def send_org_membership_email(
         login_url=login_url,
     )
     await _send_html_email(db, recipient_email, subject, html_body, app_name=app_name)
+
+
+
+async def _render_demo_followup_email_async(
+    db: AsyncSession,
+    recipient_name: str,
+    unsubscribe_url: str,
+    contact_url: str,
+    base_url: str = "",
+) -> tuple[str, str]:
+    """Render the demo follow-up. Returns (subject, html_body)."""
+    branding = await _get_branding_settings(db)
+    app_name = branding.get("branding.app_name", "ConvoyPlan")
+    color_primary = branding.get("branding.color_primary", "#E23D28")
+    logo_main = branding.get("branding.logo_main", "")
+
+    effective_base_url = base_url or _app_settings.app_base_url.rstrip("/")
+    logo_block = _build_logo_block(logo_main, app_name, effective_base_url)
+
+    safe_name = html.escape(recipient_name)
+    html_vars = {
+        "recipient_name": safe_name,
+        "recipient_name_greeting": f" {safe_name}" if recipient_name else "",
+        "app_name": app_name,
+        "logo_block": logo_block,
+        "color_primary": color_primary,
+        "contact_url": contact_url,
+        "unsubscribe_url": unsubscribe_url,
+    }
+
+    subject = _safe_format(DEFAULT_DEMO_FOLLOWUP_SUBJECT, html_vars)
+    html_body = _safe_format(DEFAULT_DEMO_FOLLOWUP_HTML, html_vars)
+    return subject, html_body
+
+
+async def send_demo_followup_email(
+    db: AsyncSession,
+    recipient_email: str,
+    recipient_name: str,
+    unsubscribe_url: str,
+    contact_url: str,
+) -> None:
+    """Ask a demo visitor how it went, once the session has expired."""
+    subject, html_body = await _render_demo_followup_email_async(
+        db=db,
+        recipient_name=recipient_name,
+        unsubscribe_url=unsubscribe_url,
+        contact_url=contact_url,
+    )
+    await _send_html_email(db, recipient_email, subject, html_body)
 
 
 async def test_smtp_connection(db: AsyncSession) -> dict:

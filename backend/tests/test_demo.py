@@ -19,6 +19,11 @@ from app.models.user import User
 from app.services import demo
 
 
+# Der Demo-Start verlangt seit der Kontakterfassung eine Adresse im Body; der
+# Name ist freiwillig.
+_CONTACT = {"email": "interessent@example.org", "first_name": "Max", "last_name": "Mustermann"}
+
+
 def _db_returning(value: str | None) -> AsyncMock:
     """Mock db whose SystemSetting lookup returns a row with *value* (or no row)."""
     db = AsyncMock()
@@ -231,7 +236,7 @@ async def test_demo_session_endpoint_answers_429_during_cooldown(monkeypatch):
     app.dependency_overrides[get_db] = _db
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            resp = await client.post("/api/auth/demo-session")
+            resp = await client.post("/api/auth/demo-session", json=_CONTACT)
     finally:
         app.dependency_overrides.clear()
 
@@ -263,7 +268,7 @@ async def test_demo_session_endpoint_names_the_reason_when_switched_off(monkeypa
     app.dependency_overrides[get_db] = _db
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            resp = await client.post("/api/auth/demo-session")
+            resp = await client.post("/api/auth/demo-session", json=_CONTACT)
     finally:
         app.dependency_overrides.clear()
 
@@ -359,15 +364,17 @@ async def test_demo_session_endpoint_resumes_instead_of_rejecting(monkeypatch):
     empty = MagicMock(); empty.scalars.return_value.all.return_value = []
     origin_row = MagicMock(); origin_row.scalar_one_or_none.return_value = _origin(hours_ago=2)
     session_row = MagicMock(); session_row.all.return_value = [(org, user)]
+    # 7) Kontaktzeile dieser Sitzung — hier keine (Sitzung von vor der Abfrage)
+    no_lead = MagicMock(); no_lead.scalars.return_value.first.return_value = None
     db = AsyncMock()
-    db.execute.side_effect = [unset, unset, empty, origin_row, unset, session_row]
+    db.execute.side_effect = [unset, unset, empty, origin_row, unset, session_row, no_lead]
 
     async def _db():
         yield db
     app.dependency_overrides[get_db] = _db
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            resp = await client.post("/api/auth/demo-session")
+            resp = await client.post("/api/auth/demo-session", json=_CONTACT)
     finally:
         app.dependency_overrides.clear()
 
