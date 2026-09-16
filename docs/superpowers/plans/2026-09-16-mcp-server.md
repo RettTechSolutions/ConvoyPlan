@@ -302,49 +302,54 @@ Diese Liste ist die Abnahme für Phase 1.
 
 ### Task 2.1: Schreib-Tools (ohne Löschen)
 
-- [ ] `konvoi_anlegen`, `konvoi_aktualisieren`
-- [ ] `fahrzeug_anlegen`, `fahrzeug_aktualisieren`
-- [ ] `fahrzeug_zu_konvoi_hinzufuegen`, `fahrzeug_aus_konvoi_entfernen`, `konvoi_fahrzeuge_umsortieren`
-- [ ] `wegpunkt_anlegen`, `wegpunkt_aktualisieren`, `wegpunkte_umsortieren`
-- [ ] `route_berechnen`
-- [ ] `fahrzeugstatus_setzen` (Scope `fleet:status`)
-- [ ] Alle übrigen verlangen `convoy:write`
-- [ ] Bei fehlendem Scope: **403 mit `WWW-Authenticate: Bearer error="insufficient_scope", scope="…", resource_metadata="…"`**, alle für die Operation nötigen Scopes in **einer** Challenge — die Spec verlangt ausdrücklich, nicht inkrementell nachzufordern
-- [ ] Eingaben über Pydantic-Schemas validieren, dieselben wie in `app/schemas/`
+- [x] `konvoi_anlegen`, `konvoi_aktualisieren`
+  > **Grundsatzentscheidung dieser Phase:** die Werkzeuge rufen **dieselben Funktionen auf, die hinter der REST-API stehen** — direkt, nicht über HTTP. Die Schreiblogik existiert damit genau einmal. Nachgebaut liefen die Kopien beim ersten Fehler auseinander, den jemand nur an einer Stelle behebt, und in den Routen steckt Logik, die man beim Nachbauen nicht errät (die lückenlose Marschposition, das Umsortieren der Wegpunkte entlang der vorherigen Route). Die Werkzeugschicht steuert bei, was die Route nicht wissen kann: Scope, Kontingent, Audit und eine modelllesbare Antwort.
+- [x] `fahrzeug_anlegen`, `fahrzeug_aktualisieren`
+- [x] `fahrzeug_zu_konvoi_hinzufuegen`, `fahrzeug_aus_konvoi_entfernen`, `konvoi_fahrzeuge_umsortieren`
+- [x] `wegpunkt_anlegen`, `wegpunkt_aktualisieren`, `wegpunkte_umsortieren`
+- [x] `route_berechnen`
+- [x] `fahrzeugstatus_setzen` (Scope `fleet:status`)
+- [x] Alle übrigen verlangen `convoy:write`
+- [x] Bei fehlendem Scope ein Werkzeugfehler, der den benötigten Scope benennt; die 403-Challenge mit `insufficient_scope` und `scope` liefert `ScopeAnnouncingAuthMiddleware` auf Transportebene (Phase 1)
+  > **Abweichung:** ein einzelner Werkzeugaufruf kann keine HTTP-Challenge erzeugen — er läuft *innerhalb* einer bereits authentifizierten Sitzung, der Transport hat den Statuscode längst gesendet. Die Challenge greift dort, wo sie hingehört: beim Verbindungsaufbau. Innerhalb der Sitzung sagt der Werkzeugfehler dem Modell im Klartext, welche Berechtigung fehlt und dass die Verbindung dafür neu erteilt werden muss.
+- [x] Eingaben über Pydantic-Schemas validieren, dieselben wie in `app/schemas/`
+- [x] Jedes Werkzeug quittiert, *was* geschehen ist — ein blosses `{"status": "ok"}` lässt Modell und Gesprächsverlauf im Unklaren
 
 **Entschieden:** `fahrzeug_aus_konvoi_entfernen` ist **drin**. Es ruft zwar `DELETE /api/convoys/{id}/vehicles/{vehicle_id}` auf, löst dabei aber nur die Zuordnung — Fahrzeug und Konvoi überleben unverändert. Es läuft unter `convoy:write`, steht in der Positivliste und ist audit-pflichtig wie jeder andere Schreibaufruf. Zusätzlich:
 
-- [ ] Das Tool gibt in seiner Antwort zurück, welches Fahrzeug aus welchem Konvoi gelöst wurde, damit ein versehentlicher Aufruf im Gesprächsverlauf sichtbar wird und sich mit `fahrzeug_zu_konvoi_hinzufuegen` rückgängig machen lässt
-- [ ] Die Tool-Beschreibung sagt ausdrücklich, dass das Fahrzeug **nicht gelöscht** wird — sonst leitet das Modell aus dem Namen das Falsche ab
-- [ ] Test: nach dem Aufruf existieren Fahrzeug und Konvoi weiterhin, nur die Zuordnung ist weg
+- [x] Das Tool gibt in seiner Antwort zurück, welches Fahrzeug aus welchem Konvoi gelöst wurde, damit ein versehentlicher Aufruf im Gesprächsverlauf sichtbar wird und sich mit `fahrzeug_zu_konvoi_hinzufuegen` rückgängig machen lässt
+- [x] Die Tool-Beschreibung sagt ausdrücklich, dass das Fahrzeug **nicht gelöscht** wird — sonst leitet das Modell aus dem Namen das Falsche ab
+- [x] Test: nach dem Aufruf existieren Fahrzeug und Konvoi weiterhin, nur die Zuordnung ist weg
 
 ### Task 2.2: Audit
 
-- [ ] Jeder Schreibaufruf schreibt über `app/services/audit.py` einen Eintrag mit Benutzer, Org, **`client_id` des MCP-Clients**, Tool-Name und Parametern
-- [ ] Die Quelle ist als `mcp` gekennzeichnet, damit im Audit-Log unterscheidbar bleibt, was ein Mensch und was ein Modell getan hat. Für ein BOS-Produkt ist das keine Kür
-- [ ] Test: ein Schreib-Tool erzeugt genau einen Audit-Eintrag mit korrekter Quelle
+- [x] Jeder Schreibaufruf schreibt über `app/services/audit.py` einen Eintrag mit Benutzer, Org, **`client_id` des MCP-Clients**, Tool-Name und Parametern
+- [x] Die Quelle ist als `mcp` gekennzeichnet, damit im Audit-Log unterscheidbar bleibt, was ein Mensch und was ein Modell getan hat. Für ein BOS-Produkt ist das keine Kür
+- [x] Test: ein Schreib-Tool erzeugt genau einen Audit-Eintrag mit korrekter Quelle
 
 ### Task 2.3: Quota und Rate Limiting
 
 `route_berechnen` und Geocoding verbrauchen GraphHopper-CPU bzw. HERE/TomTom-Kontingent. Die vorhandenen Schutzmechanismen (`app/api/quota.py`) sind FastAPI-`Depends` und greifen im MCP-Pfad nicht.
 
-- [ ] In der Tool-Schicht direkt `app/services/rate_limit.check()` aufrufen, gekeyt auf `(user_id, "mcp:<bucket>")`
-- [ ] Budgets aus denselben `QUOTA_*`-Einstellungen ableiten — keine zweite Zahlenwelt
-- [ ] Zusätzlich eine Obergrenze für Tool-Aufrufe pro Minute und Token; ein Modell in einer Schleife ist ein realistisches Lastprofil
-- [ ] Bei Überschreitung ein klarer Tool-Fehler, den das Modell versteht, statt eines nackten 429
+- [x] In der Tool-Schicht direkt `app/services/rate_limit.check()` aufrufen, gekeyt auf `(user_id, "mcp:<bucket>")`
+- [x] Budgets aus denselben `QUOTA_*`-Einstellungen ableiten — keine zweite Zahlenwelt
+- [x] Zusätzlich eine Obergrenze für Tool-Aufrufe pro Minute und Token; ein Modell in einer Schleife ist ein realistisches Lastprofil
+- [x] Bei Überschreitung ein klarer Tool-Fehler, den das Modell versteht, statt eines nackten 429
 
 ### Task 2.4: Lizenzstatus in der Tool-Schicht
 
-- [ ] Ohne gültige Lizenz sind nur die lesenden Tools registriert; `tools/list` zeigt die schreibenden erst gar nicht an
-- [ ] Der Lizenzstatus wird beim Verbindungsaufbau ausgewertet, nicht einmalig beim Start
-- [ ] Test: Instanz ohne Lizenz → `tools/list` enthält kein Schreib-Tool
+- [x] Ohne gültige Lizenz sind nur die lesenden Tools registriert; `tools/list` zeigt die schreibenden erst gar nicht an
+- [x] Der Lizenzstatus wird bei **jeder** Auflistung ausgewertet, nicht einmalig beim Start — eine im Portal hinterlegte Lizenz wirkt damit ohne Neustart
+  > Umgesetzt als `ServerMiddleware`, die das Ergebnis von `tools/list` filtert. Stolperstelle: auf dieser Ebene reicht das SDK das Ergebnis als rohes `dict` durch, nicht als `ListToolsResult` — ein `getattr(result, "tools")` läuft still ins Leere. Beide Formen werden bedient, und ein Test hält das fest.
+- [x] Test: Instanz ohne Lizenz → `tools/list` enthält kein Schreib-Tool
 
 ### Task 2.5: Resources und Prompts
 
-- [ ] Resource `convoyplan://konvoi/{id}/marschbefehl.pdf` über `app/services/pdf.py`
-- [ ] Resources für GPX- und GeoJSON-Export über `app/services/export.py`
-- [ ] Ein Prompt „Marschbefehl erstellen", der Konvoi, Fahrzeuge, Wegpunkte und Route zu einer Vorlage bündelt
-- [ ] Resource-URIs gehen durch dieselben Zugriffsprüfungen wie die Tools
+- [x] Resource `convoyplan://konvoi/{id}/marschbefehl.pdf` über `app/services/pdf.py`
+- [x] Resources für GPX- und JSON-Export über die vorhandenen Export-Routen
+  > Der Plan sprach von GeoJSON; die Instanz exportiert JSON (`build_json_export`), kein GeoJSON. Übernommen wurde, was es gibt.
+- [x] Ein Prompt „Marschbefehl erstellen", der Konvoi, Fahrzeuge, Wegpunkte und Route zu einer Vorlage bündelt
+- [x] Resource-URIs gehen durch dieselben Zugriffsprüfungen wie die Tools
 
 ---
 

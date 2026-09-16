@@ -24,7 +24,7 @@ Montiert wird nur, wenn ``settings.mcp_enabled`` gesetzt ist.
 #
 # Es gibt kein Werkzeug, das einen Konvoi, ein Fahrzeug, einen Wegpunkt, eine
 # Route oder einen Benutzer löscht.
-ALLOWED_TOOLS: tuple[str, ...] = (
+READ_TOOLS: tuple[str, ...] = (
     # Lesend (Phase 1)
     "konvois_auflisten",
     "konvoi_details",
@@ -36,3 +36,27 @@ ALLOWED_TOOLS: tuple[str, ...] = (
     "fahrzeugpositionen_abrufen",
     "konvoi_status",
 )
+ALLOWED_TOOLS: tuple[str, ...] = READ_TOOLS
+
+# Die schreibenden Werkzeuge (Phase 2). Sie erscheinen nur, wenn die Instanz
+# lizenziert ist — ohne Lizenz verhält sich der MCP-Server wie die REST-API
+# im Demo-Modus: lesen ja, schreiben nein.
+#
+# Keines davon löscht einen Datensatz. ``fahrzeug_aus_konvoi_entfernen`` löst
+# nur die Zuordnung; Fahrzeug und Konvoi bleiben bestehen.
+WRITE_TOOLS: tuple[str, ...] = (
+    "konvoi_anlegen",
+    "konvoi_aktualisieren",
+    "fahrzeug_anlegen",
+    "fahrzeug_aktualisieren",
+    "fahrzeug_zu_konvoi_hinzufuegen",
+    "fahrzeug_aus_konvoi_entfernen",
+    "konvoi_fahrzeuge_umsortieren",
+    "wegpunkt_anlegen",
+    "wegpunkt_aktualisieren",
+    "wegpunkte_umsortieren",
+    "route_berechnen",
+    "fahrzeugstatus_setzen",
+)
+
+ALLOWED_TOOLS = ALLOWED_TOOLS + WRITE_TOOLS

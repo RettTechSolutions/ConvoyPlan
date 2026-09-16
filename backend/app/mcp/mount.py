@@ -57,8 +57,11 @@ from starlette.types import Send
 
 from app.config import settings
 from app.database import get_db_session
+from app.mcp import WRITE_TOOLS
 from app.mcp import scopes as scope_svc
-from app.mcp import tools_read
+from app.mcp import resources as mcp_resources
+from app.mcp import tools_read, tools_write
+from app.middleware.license_guard import is_licensed
 from app.services import oauth_tokens
 from app.services.oauth_provider import ConvoyPlanOAuthProvider
 
@@ -68,6 +71,54 @@ MCP_PATH = "/mcp"
 
 # Wird beim Montieren gesetzt und vom Lifespan gebraucht.
 _session_manager: StreamableHTTPSessionManager | None = None
+
+
+def _tool_name(tool) -> str | None:
+    """Der Name eines Werkzeugs, gleich ob als dict oder als Modell."""
+    if isinstance(tool, dict):
+        return tool.get("name")
+    return getattr(tool, "name", None)
+
+
+class LicenseGatedToolsMiddleware:
+    """Blendet die schreibenden Werkzeuge aus, solange keine Lizenz vorliegt.
+
+    Der MCP-Server verhält sich damit wie die REST-API im Demo-Modus: lesen
+    ja, schreiben nein. Nur zeigt er die schreibenden Werkzeuge gar nicht
+    erst an, statt sie anzubieten und beim Aufruf abzulehnen — ein Modell,
+    das ein Werkzeug sieht, probiert es aus, und eine Absage nach dem
+    Versuch ist eine schlechtere Auskunft als ein Werkzeug, das es nicht gibt.
+
+    Geprüft wird bei **jeder** Auflistung, nicht einmalig beim Start: eine
+    Lizenz lässt sich im Admin-Portal zur Laufzeit hinterlegen, und dann soll
+    die nächste Verbindung sie sehen, ohne dass jemand den Dienst neu startet.
+    ``is_licensed()`` hält dafür einen stündlichen Cache vor, der Aufruf
+    kostet also im Normalfall nichts.
+    """
+
+    async def __call__(self, ctx, call_next):
+        result = await call_next(ctx)
+        if ctx.method != "tools/list":
+            return result
+        if await is_licensed():
+            return result
+
+        # Auf dieser Ebene reicht das Ergebnis als rohes dict durch, nicht als
+        # ListToolsResult — die Modellvalidierung passiert erst danach. Beide
+        # Formen werden bedient, damit ein Umbau im SDK hier nicht still
+        # aufhört zu filtern, sondern höchstens am Test bricht.
+        if isinstance(result, dict):
+            tools = result.get("tools")
+            if tools is None:
+                return result
+            result["tools"] = [t for t in tools if _tool_name(t) not in WRITE_TOOLS]
+            return result
+
+        tools = getattr(result, "tools", None)
+        if tools is None:
+            return result
+        result.tools = [t for t in tools if _tool_name(t) not in WRITE_TOOLS]
+        return result
 
 
 class ScopeAnnouncingAuthMiddleware(RequireAuthMiddleware):
@@ -173,8 +224,11 @@ def build_server() -> MCPServer:
         version=settings.app_version,
         token_verifier=ConvoyPlanTokenVerifier(),
         auth=auth_settings,
+        middleware=[LicenseGatedToolsMiddleware()],
     )
     tools_read.register(mcp)
+    tools_write.register(mcp)
+    mcp_resources.register(mcp)
     return mcp
 
 

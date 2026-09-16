@@ -121,6 +121,16 @@ async def _check_license() -> bool:
     return _license_valid
 
 
+async def is_licensed() -> bool:
+    """Ob die Instanz eine gültige Lizenz hat.
+
+    Öffentlicher Name für ``_check_license()``, damit Aufrufer außerhalb
+    dieser Middleware — der MCP-Server gattert daran seine schreibenden
+    Werkzeuge — nicht auf einen Unterstrich-Namen zugreifen müssen. Nutzt
+    denselben stündlichen Cache, kostet also im Normalfall nichts."""
+    return await _check_license()
+
+
 class LicenseGuardMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
