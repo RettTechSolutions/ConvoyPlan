@@ -203,6 +203,13 @@ services:
     restart: unless-stopped
     environment:
       PORT: ${FRONTEND_PORT:-3000}
+      # Auskunft über das Produkt für Suchmaschinen und KI-Agenten: llms.txt,
+      # die Well-Known-Dokumente, die Markdown-Fassungen der Seiten und die
+      # Seiten /about, /pricing, /developers, /docs, /contact, /privacy.
+      # Standard an; auf "false" bleibt von alldem nichts erreichbar — für eine
+      # Instanz, die ausschließlich intern läuft und nichts über sich erzählen
+      # soll. Die Anwendung selbst ändert sich dadurch nicht.
+      AGENT_DISCOVERY: ${AGENT_DISCOVERY:-true}
     depends_on:
       - backend
 

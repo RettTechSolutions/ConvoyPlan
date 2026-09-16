@@ -23,7 +23,13 @@
 	// /admin ist self-gated (zeigt selbst die Anmeldung) — daher öffentlich erreichbar.
 	// /status ist die öffentliche Statusseite — sie muss gerade dann erreichbar
 	// sein, wenn eine Anmeldung nicht klappt.
-	const PUBLIC_ROUTES = ['/share', '/track', '/setup', '/o/', '/admin', '/status'];
+	// /about … /privacy beschreiben das Produkt, nicht die Organisation. Sie
+	// stehen hinter keiner Anmeldung, weil sie genau denen etwas sagen sollen,
+	// die noch keine haben — Interessenten, Suchmaschinen und KI-Agenten.
+	const PUBLIC_ROUTES = [
+		'/share', '/track', '/setup', '/o/', '/admin', '/status',
+		'/about', '/contact', '/privacy', '/pricing', '/developers', '/docs'
+	];
 	const isPublicPath = (path: string) =>
 		path === '/' || PUBLIC_ROUTES.some((r) => path.startsWith(r));
 	let setupChecked = $state(false);
