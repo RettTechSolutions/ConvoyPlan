@@ -197,7 +197,29 @@ export interface DemoSessionResult {
     resumed?: boolean;
 }
 
+export interface MeResult {
+	user_id: string;
+	email: string;
+	is_superadmin: boolean;
+	org_id: string | null;
+	org_slug: string | null;
+	org_name: string | null;
+	role: string | null;
+	is_demo: boolean;
+}
+
 export const authApi = {
+	/**
+	 * Wer gerade angemeldet ist — die Auskunft des Servers.
+	 *
+	 * Ersetzt das frühere Dekodieren des JWT im Browser. Wirft bei fehlender
+	 * oder abgelaufener Sitzung (401); genau daran erkennen die Stores, dass
+	 * zur Anmeldung geschickt werden muss.
+	 */
+	me: () => api.get<MeResult>('/api/auth/me'),
+	/** Die Sitzung serverseitig beenden — ein HttpOnly-Cookie kann sich das
+	 *  Portal nicht selbst wegnehmen. */
+	logout: () => api.post<{ status: string }>('/api/auth/logout', {}),
 	register: (email: string, password: string) => api.post('/api/auth/register', { email, password }),
 	login: (email: string, password: string) =>
 		api.post<LoginResult>('/api/auth/login', { email, password }),

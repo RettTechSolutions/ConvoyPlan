@@ -10,6 +10,7 @@
     import { onMount } from 'svelte';
     import { auth } from '$lib/stores/auth';
     import { emailTemplateApi, type EmailTemplate, type EmailTemplateKind } from '$lib/api';
+    import { authHeaders } from '$lib/api/client';
 
     let { kind, title }: { kind: EmailTemplateKind; title: string } = $props();
 
@@ -109,10 +110,12 @@
     async function preview() {
         error = '';
         try {
-            // Nicht als einfacher Link: Die Vorschau hängt am Superadmin-Token,
-            // das ein neuer Tab nicht mitschickt.
+            // Als Blob statt als einfacher Link: Die Vorschau hängt an der
+            // Superadmin-Sitzung, und der Aufruf trägt den CSRF-Kopf, den ein
+            // <a target="_blank"> nicht setzen kann.
             const resp = await fetch(emailTemplateApi.previewUrl(kind), {
-                headers: { Authorization: `Bearer ${$auth.token ?? ''}` },
+                credentials: 'same-origin',
+                headers: authHeaders(),
             });
             if (!resp.ok) throw new Error(resp.statusText);
             const url = URL.createObjectURL(await resp.blob());

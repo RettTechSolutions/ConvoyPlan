@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 import jwt as _jwt
 from jwt.exceptions import InvalidTokenError
 
+from app.api import cookies
 from app.api.routes import (
     auth, convoys, vehicles, routing, organizations,
     tracking, weather, overpass, status, users, leitstellen, traffic, geocoding,
@@ -269,13 +270,18 @@ def _guard_docs(request: Request) -> bool:
 
 
 def _set_docs_cookie(response, request: Request) -> None:
+    del request  # Signatur bleibt, das Schema kommt jetzt aus der Konfiguration
     response.set_cookie(
         _DOCS_COOKIE,
         _issue_docs_cookie(),
         max_age=int(_DOCS_COOKIE_TTL.total_seconds()),
         httponly=True,
         samesite="lax",
-        secure=request.url.scheme == "https",
+        # Nicht mehr aus request.url.scheme: hinter dem Reverse Proxy spricht
+        # das Backend unverschlüsselt und uvicorn läuft ohne --proxy-headers,
+        # das Schema wäre in Produktion also immer "http" und das Cookie nie
+        # Secure. Dieselbe Ableitung wie beim Sitzungs-Cookie.
+        secure=cookies.cookie_secure(),
     )
 
 

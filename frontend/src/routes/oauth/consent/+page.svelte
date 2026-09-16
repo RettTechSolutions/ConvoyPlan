@@ -3,7 +3,7 @@
     import { page } from '$app/stores';
     import { onMount } from 'svelte';
     import { mcpApi, type McpConsentRequest } from '$lib/api';
-    import { getToken } from '$lib/api/client';
+    import { ApiError } from '$lib/api/client';
     import AppLogo from '$lib/components/AppLogo.svelte';
     import LegalFooter from '$lib/components/LegalFooter.svelte';
 
@@ -39,16 +39,19 @@
             loading = false;
             return;
         }
-        if (!getToken()) {
-            // Nicht angemeldet: zur Anmeldung und danach hierher zurück.
-            goto(`/?redirect=${encodeURIComponent($page.url.pathname + $page.url.search)}`);
-            return;
-        }
         try {
+            // Ob eine Sitzung besteht, weiß nur der Server — das Cookie ist
+            // für das Portal nicht lesbar. Statt vorab zu prüfen, wird die
+            // Anfrage gestellt und ein 401 als „nicht angemeldet" gelesen.
             info = await mcpApi.readConsentRequest(ticket);
             const erste = info.organizations.find((o) => o.grantable_scopes.length > 0);
             selectedOrgId = erste?.id ?? info.organizations[0]?.id ?? '';
         } catch (e) {
+            if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
+                // Nicht angemeldet: zur Anmeldung und danach hierher zurück.
+                goto(`/?redirect=${encodeURIComponent($page.url.pathname + $page.url.search)}`);
+                return;
+            }
             error = e instanceof Error ? e.message : 'Die Anfrage konnte nicht geladen werden.';
         } finally {
             loading = false;

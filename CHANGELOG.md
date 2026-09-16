@@ -21,6 +21,29 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Security
+
+- **Die Anmeldung liegt nicht mehr im Browserspeicher, sondern in einem HttpOnly-Cookie.** Das Zugriffstoken stand bisher im `localStorage` und wurde von der Oberfläche in jeden API-Aufruf geschrieben. Bequem — aber lesen konnte es damit **jedes** Stück JavaScript auf der Seite. Ein einziges Cross-Site-Scripting, in einer Abhängigkeit oder in einem eingebetteten Namen, hätte gereicht; das Token ist sieben Tage gültig (`JWT_EXPIRE_MINUTES`) und von jedem Rechner der Welt einlösbar. Gestohlen war es eine Woche lang eine vollwertige Anmeldung.
+
+  Jetzt setzt der Server die Sitzung als `HttpOnly`-Cookie, und der Browser schickt sie von sich aus mit. Skripte kommen an den Wert nicht mehr heran.
+
+  **Was das nicht leistet, steht dazu:** läuft fremder Code auf der Seite, kann er weiterhin im Namen des Angemeldeten Anfragen stellen — das Cookie geht ja automatisch mit. Was er nicht mehr kann, ist das Token *mitnehmen*. Ein Angriff endet damit mit der Sitzung im Browser, statt eine Woche lang von einem fremden Rechner aus weiterzulaufen. Das ist der Gewinn, und es ist kein Freibrief.
+
+  Weil man sich in ConvoyPlan pro Organisation getrennt anmeldet und in zwei Tabs in zwei Organisationen arbeiten kann, gibt es ein Cookie je Organisation; welche gemeint ist, sagt die Oberfläche über einen Kopf mit dem Slug — der steht ohnehin in der URL und ist kein Geheimnis.
+
+  Dazu kommt **CSRF-Schutz**, den es vorher nicht brauchte: ein Cookie schickt der Browser auch dann mit, wenn eine fremde Seite die Anfrage auslöst. Alle ändernden Aufrufe verlangen deshalb einen festen Zusatzkopf, den fremdes JavaScript nur nach einer Freigabe setzen könnte, die diese Instanz nur dem eigenen Ursprung erteilt — und den ein Formular von außen gar nicht setzen kann.
+
+  **Für API-Clients ändert sich nichts.** Der Weg über `Authorization: Bearer` bleibt bestehen, das `access_token` steht weiterhin in der Login-Antwort. Der Bearer-Weg war nie das Problem; das Problem war, das Token dafür im Browser zu lagern. Skripte, API-Keys und der MCP-Server sind unberührt.
+
+  **Beim ersten Laden nach dem Update wird einmal neu angemeldet.** Die alte Ablage wird nicht mehr gelesen, sondern aufgeräumt — liegenlassen hieße, das gerade aus der Reichweite von Skripten geholte Token noch bis zu sieben Tage daneben liegen zu lassen.
+
+- **Das Cookie der API-Dokumentation trug nie `Secure`.** Es leitete das Flag aus dem Schema der eingehenden Anfrage ab — hinter dem Reverse Proxy spricht das Backend aber unverschlüsselt, das Schema war in Produktion also immer „http". Beide Cookies leiten es jetzt aus `APP_BASE_URL` ab.
+
+### Changed
+
+- **Rolle und Organisation kommen jetzt vom Server statt aus dem Token.** Die Oberfläche hat diese Angaben bisher selbst aus dem JWT gelesen. Da sie im Cookie nicht mehr lesbar sind, fragt sie den Server (neu: `GET /api/auth/me`) — und bekommt damit den Stand von eben statt den vom Anmeldezeitpunkt. Wem die Rolle heruntergestuft oder die Mitgliedschaft entzogen wurde, merkt das jetzt beim nächsten Laden statt in bis zu sieben Tagen. Neu ist außerdem `POST /api/auth/logout`: ein HttpOnly-Cookie kann sich die Oberfläche nicht selbst wegnehmen, das muss der Server tun.
+
+
 ## [2026.6.0] – 2026-09-16
 
 ### Added
