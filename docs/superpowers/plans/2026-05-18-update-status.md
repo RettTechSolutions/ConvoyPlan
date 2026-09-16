@@ -751,8 +751,8 @@ Expected: alle Commits gepusht, kein Fehler.
 - [ ] **Step 2: Server deployen**
 
 ```bash
-rsync -az docker/updater/update.sh s-lx04-docker:~/MarschPlan/docker/updater/update.sh
-ssh s-lx04-docker "cd ~/MarschPlan && docker compose build --no-cache updater && docker compose up -d"
+rsync -az docker/updater/update.sh <docker-host>:~/MarschPlan/docker/updater/update.sh
+ssh <docker-host> "cd ~/MarschPlan && docker compose build --no-cache updater && docker compose up -d"
 ```
 
 Expected: Alle Container starten, kein Fehler.
@@ -760,7 +760,7 @@ Expected: Alle Container starten, kein Fehler.
 - [ ] **Step 3: Updater-Status prüfen**
 
 ```bash
-ssh s-lx04-docker "docker logs --tail=5 marschplan-updater-1"
+ssh <docker-host> "docker logs --tail=5 marschplan-updater-1"
 ```
 
 Expected: Letzte Zeile enthält `Updater started. Polling every 300s.` oder `Updated to <sha>`.
@@ -768,7 +768,7 @@ Expected: Letzte Zeile enthält `Updater started. Polling every 300s.` oder `Upd
 - [ ] **Step 4: Backend-Endpoint direkt testen**
 
 ```bash
-ssh s-lx04-docker "curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/api/admin/update-status"
+ssh <docker-host> "curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/api/admin/update-status"
 ```
 
 Expected: `401` (nicht eingeloggt — korrekt, Superadmin-Guard greift).
@@ -783,7 +783,7 @@ Expected: `401` (nicht eingeloggt — korrekt, Superadmin-Guard greift).
 - [ ] **Step 6: status.json manuell prüfen**
 
 ```bash
-ssh s-lx04-docker "docker exec marschplan-updater-1 cat /update_status/status.json"
+ssh <docker-host> "docker exec marschplan-updater-1 cat /update_status/status.json"
 ```
 
 Expected: JSON mit `deployed_sha` und `deployed_at`.

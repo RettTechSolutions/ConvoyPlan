@@ -238,14 +238,14 @@ When the server is reachable, run these steps once:
 # 1. Final rsync deploy (gets the new compose + updater image)
 ./scripts/deploy.sh
 
-# 2. On the server (ssh s-lx04-docker):
+# 2. On the server (ssh <docker-host>):
 echo "GITHUB_TOKEN=<your_pat>" > ~/MarschPlan/.env
 
 # 3. Start updater (other containers already running)
-ssh s-lx04-docker "cd ~/MarschPlan && docker compose up -d updater"
+ssh <docker-host> "cd ~/MarschPlan && docker compose up -d updater"
 
 # 4. Watch it clone and start polling
-ssh s-lx04-docker "docker logs -f updater"
+ssh <docker-host> "docker logs -f updater"
 # Expected output:
 # [2026-05-13 10:00:01] No repo found, cloning...
 # [2026-05-13 10:00:15] Cloned to /workspace
@@ -260,7 +260,7 @@ git commit --allow-empty -m "test: trigger updater"
 git push origin main
 
 # Within 5 minutes on the server:
-ssh s-lx04-docker "docker logs --since=5m updater"
+ssh <docker-host> "docker logs --since=5m updater"
 # Expected:
 # [2026-05-13 10:05:01] Update detected: abc1234 → def5678
 # [2026-05-13 10:05:30] Updated to def5678
