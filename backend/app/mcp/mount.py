@@ -73,6 +73,13 @@ MCP_PATH = "/mcp"
 # Wird beim Montieren gesetzt und vom Lifespan gebraucht.
 _session_manager: StreamableHTTPSessionManager | None = None
 
+# Die App und die fertig gebauten MCP-Routen. Gebaut heißt **nicht** montiert:
+# angehängt werden sie erst von `aktivieren()`, und `deaktivieren()` nimmt sie
+# wieder weg. Darin liegt der Unterschied zwischen diesem Schalter und einem,
+# der nur 404 zurückgibt — siehe `app/services/mcp_config.py`.
+_app: "FastAPI | None" = None
+_routes: list[Route] = []
+
 
 def _tool_name(tool) -> str | None:
     """Der Name eines Werkzeugs, gleich ob als dict oder als Modell."""
@@ -398,17 +405,22 @@ def _authorization_server_metadata_route(auth_settings: AuthSettings) -> Route:
 
 
 def mount(app: FastAPI) -> None:
-    """Den MCP-Server in die FastAPI-App einhängen.
+    """Den MCP-Server vorbereiten — aber noch nicht einhängen.
 
-    Tut nichts, wenn ``MCP_ENABLED`` nicht gesetzt ist — dann existieren
-    weder ``/mcp`` noch die Well-Known-Dokumente, und eine Bestandsinstallation
-    verhält sich exakt wie vorher."""
-    global _session_manager
+    Gebaut wird hier alles: der Server mit seinen Werkzeugen, der Transport
+    und die Routen. **Angehängt** wird nichts; das entscheidet erst
+    ``aktivieren()``, und den Zustand dafür liefert der Schalter aus
+    ``app/services/mcp_config.py`` beim Start (siehe ``lifespan_context``).
 
-    if not settings.mcp_enabled:
-        logger.info("MCP: nicht aktiviert (MCP_ENABLED=false) — keine Routen montiert")
-        return
+    Dass die Maschinerie auch bei abgeschaltetem MCP im Speicher steht, ist
+    der Preis für einen Schalter, der ohne Neustart wirkt: den Transport kann
+    nur der Lifespan starten (seine Task-Group gehört der Aufgabe, die sie
+    betreten hat — aus einem Request-Handler heraus ließe sie sich nicht
+    nachträglich öffnen). Beobachtbar ist davon nichts: ohne Routen führt
+    kein Weg dorthin, und die Task-Group läuft leer."""
+    global _session_manager, _app, _routes
 
+    _app = app
     mcp = build_server()
     # Live-Meldungen der Fahrzeugverfolgung in Abo-Ereignisse übersetzen.
     mcp_subs.attach_tracking()
@@ -442,7 +454,7 @@ def mount(app: FastAPI) -> None:
     )
     # Ohne methods=, damit GET (SSE-Stream), POST (JSON-RPC) und DELETE
     # (Session beenden) alle auf denselben Endpunkt treffen.
-    app.router.routes.append(Route(MCP_PATH, endpoint=endpoint))
+    gesammelt: list[Route] = [Route(MCP_PATH, endpoint=endpoint)]
 
     # OAuth- und Well-Known-Routen an der WURZEL. RFC 9728 verlangt die
     # Protected Resource Metadata unter /.well-known/oauth-protected-resource
@@ -464,16 +476,83 @@ def mount(app: FastAPI) -> None:
         r for r in auth_routes
         if getattr(r, "path", "") != "/.well-known/oauth-authorization-server"
     ]
-    app.router.routes.extend(metadata_routes)
-    app.router.routes.append(_authorization_server_metadata_route(auth_settings))
-    app.router.routes.extend(auth_routes)
+    gesammelt.extend(metadata_routes)
+    gesammelt.append(_authorization_server_metadata_route(auth_settings))
+    gesammelt.extend(auth_routes)
+    _routes = gesammelt
 
     logger.info(
-        "MCP: montiert auf %s (Resource %s, DCR %s)",
+        "MCP: vorbereitet für %s (Resource %s, DCR %s) — %d Routen, noch nicht montiert",
         MCP_PATH,
         auth_settings.resource_server_url,
         "an" if settings.mcp_allow_dcr else "aus",
+        len(_routes),
     )
+
+
+# ── Der Laufzeitschalter ─────────────────────────────────────────────────
+
+
+def ist_aktiv() -> bool:
+    """Ob die MCP-Routen gerade montiert sind."""
+    if _app is None or not _routes:
+        return False
+    return _routes[0] in _app.router.routes
+
+
+def aktivieren() -> bool:
+    """Die MCP-Routen anhängen. Gibt zurück, ob sich etwas geändert hat."""
+    if _app is None or not _routes or ist_aktiv():
+        return False
+    # Die Liste wird als Ganzes ersetzt statt in Ruhe verändert: eine Anfrage,
+    # die gerade darüber läuft, hält noch die alte und läuft sauber zu Ende.
+    _app.router.routes = [*_app.router.routes, *_routes]
+    _openapi_verwerfen()
+    logger.info("MCP: aktiviert — %d Routen montiert", len(_routes))
+    return True
+
+
+def deaktivieren() -> bool:
+    """Die MCP-Routen wieder entfernen. Gibt zurück, ob sich etwas geändert hat.
+
+    Danach gibt es ``/mcp`` und die Well-Known-Dokumente wirklich nicht mehr —
+    404, weil keine Route passt, nicht weil ein Handler ablehnt. Bereits
+    ausgestellte Tokens werden dadurch **nicht** ungültig; sie laufen nur ins
+    Leere, weil der Endpunkt fehlt. Wer sie loswerden will, trennt die
+    Verbindungen im Reiter MCP."""
+    if _app is None or not _routes or not ist_aktiv():
+        return False
+    unsere = {id(r) for r in _routes}
+    _app.router.routes = [r for r in _app.router.routes if id(r) not in unsere]
+    _openapi_verwerfen()
+    logger.info("MCP: deaktiviert — Routen entfernt")
+    return True
+
+
+def _openapi_verwerfen() -> None:
+    """Das zwischengespeicherte OpenAPI-Dokument wegwerfen.
+
+    FastAPI baut es einmal und hält es fest. Ohne das hier zeigte ``/docs``
+    nach dem Umschalten weiter den alten Stand — bei einem Schalter, dessen
+    ganzer Zweck die Sichtbarkeit von Endpunkten ist, die falsche Auskunft."""
+    if _app is not None:
+        _app.openapi_schema = None
+
+
+async def zustand_anwenden() -> bool:
+    """Den gespeicherten Schalterzustand auf die Routen anwenden.
+
+    Wird beim Start gerufen und nach jeder Änderung im Adminportal. Gibt den
+    geltenden Zustand zurück."""
+    from app.services import mcp_config
+
+    async with get_db_session() as db:
+        soll = await mcp_config.is_mcp_enabled(db)
+    if soll:
+        aktivieren()
+    else:
+        deaktivieren()
+    return soll
 
 
 @contextlib.asynccontextmanager
@@ -482,9 +561,21 @@ async def lifespan_context():
 
     Gehört in ConvoyPlans ``_lifespan``. Ohne das läuft die Task-Group des
     Transports nie an und der erste MCP-Request scheitert mit einem
-    ``RuntimeError`` — laut, immerhin, aber eben kaputt."""
+    ``RuntimeError`` — laut, immerhin, aber eben kaputt.
+
+    Sie läuft **immer**, auch bei abgeschaltetem MCP: betreten kann sie nur
+    diese Aufgabe hier, und ein Request-Handler könnte sie später nicht
+    nachholen. Ohne montierte Routen führt ohnehin kein Weg dorthin."""
     if _session_manager is None:
         yield
         return
     async with _session_manager.run():
+        try:
+            await zustand_anwenden()
+        except Exception:
+            # Ein Datenbankfehler beim Start darf die App nicht aufhalten —
+            # und fail-closed heißt hier: aus bleibt aus.
+            logger.warning(
+                "MCP: Schalterzustand nicht lesbar — bleibt deaktiviert", exc_info=True
+            )
         yield

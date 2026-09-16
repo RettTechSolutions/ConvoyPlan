@@ -56,8 +56,15 @@ Siehe `backend/app/config.py` (`docs_api_key`, `enable_docs`) und `backend/app/m
 ### MCP-Server (KI-Schnittstelle)
 
 `/mcp` stellt Konvois, Fahrzeuge, Wegpunkte, Routen und Status als
-Model-Context-Protocol-Server bereit. **Standardmäßig aus** (`MCP_ENABLED=false`) —
-ohne den Schalter wird kein Endpunkt montiert, auch keine Well-Known-Dokumente.
+Model-Context-Protocol-Server bereit. **Standardmäßig aus** — abgeschaltet wird
+kein Endpunkt montiert, auch keine Well-Known-Dokumente.
+
+Der Schalter sitzt im Admin-Portal unter **System → KI-Schnittstelle** und wirkt
+ohne Neustart; `MCP_ENABLED` ist nur noch der Ausgangswert (Datenbank schlägt
+Umgebung, `app/services/mcp_config.py`). Er *entfernt* die Routen, statt sie mit
+404 zu bedecken — `app/mcp/mount.py` trennt dafür Bauen (`mount`) von Anhängen
+(`aktivieren`/`deaktivieren`). `tests/test_mcp_toggle.py` prüft die Routentabelle
+selbst, nicht nur den Statuscode; wer daran etwas ändert, sieht zuerst dort nach.
 
 Die Instanz ist dabei Resource Server *und* OAuth-2.1-Authorization-Server; Zugriff
 entsteht erst durch die Zustimmung eines angemeldeten Benutzers auf `/oauth/consent`

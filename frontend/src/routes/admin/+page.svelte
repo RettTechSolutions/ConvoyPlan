@@ -1452,6 +1452,35 @@
 
     // ── MCP ──────────────────────────────────────────────────────────────
     let mcpStatus = $state<McpStatus | null>(null);
+    let mcpToggleSaving = $state(false);
+    let mcpToggleError = $state('');
+    let mcpToggleSuccess = $state('');
+
+    /**
+     * Die KI-Schnittstelle ein- oder ausschalten.
+     *
+     * Wirkt ohne Neustart und vollständig: ausgeschaltet sind die Routen weg,
+     * nicht nur mit 404 bedeckt. Was das Ausschalten *nicht* tut, steht neben
+     * dem Knopf — bereits ausgestellte Tokens bleiben Tokens, sie laufen nur
+     * ins Leere.
+     */
+    async function toggleMcp() {
+        if (!mcpStatus) return;
+        mcpToggleSaving = true;
+        mcpToggleError = '';
+        mcpToggleSuccess = '';
+        try {
+            mcpStatus = await mcpAdminApi.setEnabled(!mcpStatus.enabled);
+            mcpToggleSuccess = mcpStatus.enabled
+                ? 'KI-Schnittstelle aktiviert — /mcp ist jetzt erreichbar.'
+                : 'KI-Schnittstelle deaktiviert — /mcp existiert nicht mehr.';
+            setTimeout(() => { mcpToggleSuccess = ''; }, 5000);
+        } catch (e) {
+            mcpToggleError = e instanceof Error ? e.message : 'Fehler beim Speichern';
+        } finally {
+            mcpToggleSaving = false;
+        }
+    }
     let mcpClients = $state<McpClient[]>([]);
     let mcpConnections = $state<McpConnection[]>([]);
     let mcpError = $state('');
@@ -1553,7 +1582,7 @@
         <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>Branding</button>
         <button class="tab" class:active={activeTab === 'demo'} onclick={() => { activeTab = 'demo'; loadDemoSettings(); }}>Demo</button>
         <button class="tab" class:active={activeTab === 'uebersicht'} onclick={() => (activeTab = 'uebersicht')}>Systemübersicht</button>
-        <button class="tab" class:active={activeTab === 'system'} onclick={() => { activeTab = 'system'; loadUpdateStatus(); loadUpdateChannel(); loadUpdateMode(); loadLicenseStatus(); loadGithubTokenStatus(); }}>System</button>
+        <button class="tab" class:active={activeTab === 'system'} onclick={() => { activeTab = 'system'; loadUpdateStatus(); loadUpdateChannel(); loadUpdateMode(); loadLicenseStatus(); loadGithubTokenStatus(); loadMcp(); }}>System</button>
     </div>
 
     <!-- ── Benutzer ── -->
@@ -2703,6 +2732,87 @@
     {/if}
 
     {#if activeTab === 'system'}
+        <!-- ── KI-Schnittstelle (MCP) ── -->
+        <div class="section">
+            <div class="section-header">
+                <strong>KI-Schnittstelle (MCP)</strong>
+                <button class="btn-small" onclick={loadMcp}>↺</button>
+            </div>
+
+            {#if mcpToggleError}
+                <div class="error-bar">{mcpToggleError} <button onclick={() => mcpToggleError = ''}>✕</button></div>
+            {/if}
+            {#if mcpToggleSuccess}
+                <div class="success-bar">{mcpToggleSuccess}</div>
+            {/if}
+
+            {#if mcpStatus}
+                <div class="license-status-row">
+                    {#if mcpStatus.enabled}
+                        <span class="badge badge-ok">An</span>
+                    {:else}
+                        <span class="badge badge-warn">Aus</span>
+                    {/if}
+                    <span class="hint" style="margin-left:.5rem">
+                        {mcpStatus.enabled
+                            ? `${mcpStatus.connection_url} ist erreichbar`
+                            : 'Es existiert kein MCP-Endpunkt'}
+                    </span>
+                </div>
+
+                <p class="hint" style="margin-top:.75rem">
+                    KI-Programme lesen und ändern über diese Schnittstelle Konvois, Fahrzeuge,
+                    Wegpunkte, Routen und Status — im Rahmen dessen, was der zustimmende Benutzer
+                    selbst darf. <strong>Was ein Modell dabei liest, verlässt die Instanz</strong>
+                    und geht an den Anbieter des KI-Programms.
+                </p>
+                <p class="hint">
+                    Ausgeschaltet gibt es weder <code>/mcp</code> noch die Discovery-Dokumente —
+                    nicht als Fehlerseite, sondern gar nicht. Das Umschalten wirkt sofort, ein
+                    Neustart ist nicht nötig.
+                </p>
+
+                <div style="display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; margin:.75rem 0">
+                    <button
+                        class={mcpStatus.enabled ? 'btn-small danger' : 'btn-primary'}
+                        onclick={toggleMcp}
+                        disabled={mcpToggleSaving}
+                    >
+                        {mcpToggleSaving
+                            ? '…'
+                            : mcpStatus.enabled
+                                ? 'Schnittstelle deaktivieren'
+                                : 'Schnittstelle aktivieren'}
+                    </button>
+                    {#if mcpStatus.enabled && mcpStatus.active_connections > 0}
+                        <span class="hint">
+                            {mcpStatus.active_connections}
+                            {mcpStatus.active_connections === 1 ? 'aktive Verbindung' : 'aktive Verbindungen'}
+                            — Verwaltung im Reiter <strong>MCP</strong>
+                        </span>
+                    {/if}
+                </div>
+
+                {#if mcpStatus.enabled}
+                    <p class="hint">
+                        <strong>Beim Ausschalten:</strong> bereits ausgestellte Zugriffstoken werden
+                        nicht ungültig, sie laufen nur ins Leere, weil der Endpunkt fehlt. Wer sie
+                        wirklich entziehen will, trennt die Verbindungen im Reiter
+                        <strong>MCP</strong>.
+                    </p>
+                {/if}
+
+                {#if mcpStatus.source === 'db' && mcpStatus.env_enabled !== mcpStatus.enabled}
+                    <p class="hint">
+                        Diese Einstellung stammt aus dem Portal und überschreibt
+                        <code>MCP_ENABLED={mcpStatus.env_enabled}</code> aus der <code>.env</code>.
+                    </p>
+                {/if}
+            {:else}
+                <p class="hint">Lade…</p>
+            {/if}
+        </div>
+
         <!-- ── Lizenz-Sektion ── -->
         <div class="section">
             <div class="section-header">

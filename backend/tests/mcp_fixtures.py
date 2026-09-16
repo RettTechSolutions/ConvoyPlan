@@ -91,13 +91,22 @@ async def mcp_app():
         app.include_router(mcp_consent_router.router, prefix="/api")
         mcp_mount.mount(app)
         async with app.router.lifespan_context(app):
+            # Ausdrücklich einschalten statt auf den Lifespan zu vertrauen:
+            # der liest den Laufzeitschalter aus der Datenbank, und eine dort
+            # liegengebliebene "mcp.enabled=false"-Zeile würde diese Tests
+            # sonst still ohne Routen laufen lassen — mit Fehlern, die nach
+            # allem Möglichen aussehen, nur nicht nach der Ursache.
+            mcp_mount.aktivieren()
             async with AsyncClient(
                 transport=ASGITransport(app=app), base_url=BASE_URL
             ) as client:
                 yield app, client
     finally:
         settings.mcp_enabled, settings.app_base_url, settings.mcp_public_url = previous
+        mcp_mount.deaktivieren()
         mcp_mount._session_manager = None
+        mcp_mount._app = None
+        mcp_mount._routes = []
 
 
 class Fixtures:

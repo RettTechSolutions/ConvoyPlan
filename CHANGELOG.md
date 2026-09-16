@@ -28,6 +28,17 @@ ursprünglichen SemVer-Nummern.
   Das ist derselbe Fehler, der zuvor schon die lesenden Endpunkte der Systemübersicht getroffen hatte — dieselbe Ursache, eine andere Stelle. Deshalb prüft ein Test jetzt nicht mehr nur den Einzelfall, sondern die **Klasse**: er durchsucht den Backend-Code und schlägt fehl, sobald sich irgendwo wieder jemand die Anmeldung selbst aus dem Header holt, statt den gemeinsamen Weg zu nehmen. Ein Test für den Einzelfall hätte den zweiten Vorfall nicht verhindert.
 
 - **Werkzeugaufrufe der KI-Schnittstelle zählten als Portalnutzung.** MCP-Tokens sind mit demselben Schlüssel signiert und tragen eine Benutzer-ID; die Middleware nahm sie deshalb für eine Anmeldung im Portal. Ein Modell, das im Minutentakt Werkzeuge aufruft, stand damit in der Kurve „aktive Nutzer" — die Menschen zählen soll. Gilt auch für die kurzlebigen Tickets, mit denen Live-Karte und Fortschrittsanzeige ihre Verbindung aufbauen.
+### Added
+
+- **Die KI-Schnittstelle lässt sich jetzt im Admin-Portal ein- und ausschalten** — unter **System → KI-Schnittstelle**, ohne Neustart. Bisher ging das nur über `MCP_ENABLED` in der `.env`, also nur mit Zugriff auf den Server und einem Neustart des Backends.
+
+  Das war kein Versäumnis, sondern eine bewusste Entscheidung: Solange der Schalter eine Umgebungsvariable war, wurde bei abgeschaltetem MCP **gar kein Endpunkt montiert** — es gab schlicht nichts, was versehentlich offenstehen konnte. Ein Knopf im Portal heißt in solchen Fällen üblicherweise: alles ist immer da und antwortet nur mit einer Fehlerseite. Das wäre eine stillschweigende Aufweichung einer öffentlich gemachten Zusage gewesen.
+
+  **Die Zusage gilt deshalb unverändert weiter.** Der Schalter entfernt die Routen tatsächlich, statt sie zu verstecken: ausgeschaltet gibt es weder `/mcp` noch die Discovery-Dokumente — nicht als 404 eines Handlers, sondern weil keine Route passt. Ein Test prüft dafür die Routentabelle der Anwendung selbst und nicht nur den Statuscode; ein Schalter, der bloß 404 zurückgäbe, bestünde ihn nicht.
+
+  Neben dem Schalter steht, was das Ausschalten **nicht** tut: bereits ausgestellte Zugriffstoken werden nicht ungültig, sie laufen nur ins Leere, weil der Endpunkt fehlt. Wer sie wirklich entziehen will, trennt die Verbindungen im Reiter **MCP**. Steht der Schalter anders als die `.env`, sagt das Portal auch das — sonst wundert sich beim nächsten Neustart jemand.
+
+  `MCP_ENABLED` bleibt als Ausgangswert bestehen; die Einstellung im Portal hat Vorrang. Dasselbe Muster wie beim Demo-Modus und beim GitHub-Token.
 
 ### Security
 
