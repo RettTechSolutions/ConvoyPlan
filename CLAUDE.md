@@ -39,8 +39,8 @@ offen zu schalten:
   die Freigabe. Programmatischer Zugriff via Header `X-API-Key: <geheim>`.
 - **`ENABLE_DOCS=true`**: Docs offen erreichbar (ohne Key) — nur für Dev/intern.
 
-Siehe `backend/app/config.py` (`docs_api_key`, `enable_docs`) und
-`backend/app/main.py`.
+Ein `?key=…` im Query-String wird nicht akzeptiert. Siehe `backend/app/api/docs_ui.py`
+(Türsteher, Formular, Cookie) und `backend/app/config.py` (`docs_api_key`, `enable_docs`).
 
 ### MCP-Server (KI-Schnittstelle)
 
