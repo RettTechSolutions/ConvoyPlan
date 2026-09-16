@@ -17,7 +17,6 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import jwt as _jwt
-import pytest
 
 from app.config import settings
 from app.middleware.activity import _user_from_token
