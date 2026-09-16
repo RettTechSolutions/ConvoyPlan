@@ -40,6 +40,8 @@ Jetzt liegt es in einem **`HttpOnly`-Cookie**. Der Browser schickt es von sich a
 
 **`Secure`-Flag.** Ob das Cookie nur über HTTPS gesendet wird, leitet sich aus `APP_BASE_URL` ab und **nicht** aus dem Schema der eingehenden Anfrage. Hinter dem Reverse Proxy spricht das Backend unverschlüsselt; eine Ableitung aus der Anfrage ergäbe in Produktion immer „http" und das Cookie nie `Secure`.
 
+**Eine Quelle für die Anmeldung.** Header *oder* Cookie wird an genau einer Stelle entschieden (`deps._credential`, bzw. `deps.credential_from_request` für Aufrufer ohne Dependency-Injection). Das ist keine Formalie: zweimal hat eine Stelle, die sich das Token selbst aus dem `Authorization`-Header zog, nach der Umstellung still aufgehört zu funktionieren — einmal die lesenden Endpunkte der Systemübersicht, einmal die Zählung der aktiven Nutzer. Ein Test durchsucht deshalb den Backend-Code und schlägt fehl, sobald wieder jemand am Header vorbeiliest.
+
 **Für API-Clients ändert sich nichts.** Der Weg über `Authorization: Bearer` bleibt bestehen, inklusive `access_token` in der Login-Antwort. Er war nie das Problem — das Problem war, das Token dafür im Browser zu lagern. Skripte, API-Keys und der MCP-Server sind unberührt.
 
 > Wer schon angemeldet war, wird beim ersten Laden nach dem Update einmal zur Anmeldung geschickt: die alte Ablage wird nicht mehr gelesen, sondern aufgeräumt.

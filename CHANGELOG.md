@@ -21,6 +21,14 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Die Kurve „aktive Nutzer" in der Systemübersicht stand seit der Cookie-Umstellung auf null.** Die Middleware, die Portalnutzung mitschreibt, zog sich die Anmeldung selbst aus dem `Authorization`-Header — und den schickt das Portal seit der Umstellung nicht mehr. Jeder Aufruf wurde damit als anonym gezählt: die Last- und Fehlerkurven stimmten weiter, die Nutzerzahlen zeigten dauerhaft niemanden. Die Middleware liest die Sitzung jetzt aus derselben Quelle wie der Rest der Anwendung, also Header **oder** Cookie.
+
+  Das ist derselbe Fehler, der zuvor schon die lesenden Endpunkte der Systemübersicht getroffen hatte — dieselbe Ursache, eine andere Stelle. Deshalb prüft ein Test jetzt nicht mehr nur den Einzelfall, sondern die **Klasse**: er durchsucht den Backend-Code und schlägt fehl, sobald sich irgendwo wieder jemand die Anmeldung selbst aus dem Header holt, statt den gemeinsamen Weg zu nehmen. Ein Test für den Einzelfall hätte den zweiten Vorfall nicht verhindert.
+
+- **Werkzeugaufrufe der KI-Schnittstelle zählten als Portalnutzung.** MCP-Tokens sind mit demselben Schlüssel signiert und tragen eine Benutzer-ID; die Middleware nahm sie deshalb für eine Anmeldung im Portal. Ein Modell, das im Minutentakt Werkzeuge aufruft, stand damit in der Kurve „aktive Nutzer" — die Menschen zählen soll. Gilt auch für die kurzlebigen Tickets, mit denen Live-Karte und Fortschrittsanzeige ihre Verbindung aufbauen.
+
 ### Security
 
 - **Die Anmeldung liegt nicht mehr im Browserspeicher, sondern in einem HttpOnly-Cookie.** Das Zugriffstoken stand bisher im `localStorage` und wurde von der Oberfläche in jeden API-Aufruf geschrieben. Bequem — aber lesen konnte es damit **jedes** Stück JavaScript auf der Seite. Ein einziges Cross-Site-Scripting, in einer Abhängigkeit oder in einem eingebetteten Namen, hätte gereicht; das Token ist sieben Tage gültig (`JWT_EXPIRE_MINUTES`) und von jedem Rechner der Welt einlösbar. Gestohlen war es eine Woche lang eine vollwertige Anmeldung.
