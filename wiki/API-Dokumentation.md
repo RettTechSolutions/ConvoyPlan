@@ -9,9 +9,18 @@ Die vollständige OpenAPI-Dokumentation wird automatisch von FastAPI bereitgeste
 Lokal (Dev) sind sie unter `http://localhost:8000/docs` erreichbar.
 
 > **Produktion:** `/docs`, `/redoc` und `/openapi.json` sind standardmäßig **deaktiviert (404)**.
-> Mit `DOCS_API_KEY=<geheim>` lassen sie sich per API-Key absichern (einmaliger Aufruf über
-> `/docs?key=<geheim>`, danach via HttpOnly-Cookie bzw. Header `X-API-Key`); mit `ENABLE_DOCS=true`
+> Mit `DOCS_API_KEY=<geheim>` lassen sie sich per API-Key absichern; mit `ENABLE_DOCS=true`
 > werden sie offen freigegeben (nur für Dev/intern).
+>
+> **Anmeldung im Browser:** `/docs/login` aufrufen, Key eingeben, absenden. Das Backend setzt
+> ein HttpOnly-Cookie (8 Stunden), danach laden `/docs`, `/redoc` und `/openapi.json` nahtlos.
+> Wer `/docs` ohne gültiges Cookie aufruft, bekommt `401` mit demselben Formular im Rumpf.
+>
+> **Programmatisch:** Header `X-API-Key: <geheim>`.
+>
+> Ein `?key=…` im Query-String wird **nicht** akzeptiert (401). Query-Parameter landen im
+> Access-Log des Reverse Proxy, in der Browser-History und ggf. im `Referer` — für ein
+> Geheimnis der falsche Transportweg.
 
 ---
 
@@ -26,7 +35,7 @@ hängt vom Endpunkt ab — die Tabelle nennt jeweils den kürzesten Weg.
 | **Org-API-Key** | `X-API-Key: cvp_…` | organisationsbezogene Endpunkte (siehe [Matrix](#welche-endpunkte-akzeptieren-einen-org-api-key)) | Superadmin-Portal → Reiter **API-Keys** |
 | **System-API-Key** | `X-API-Key: cvp_…` | nur lesende Endpunkte der [Systemübersicht](#systemübersicht-superadmin) | Superadmin-Portal → **API-Keys** → Geltungsbereich *System* |
 | **Freigabe-Token** | Teil der URL | `/api/convoys/share/{token}`, `/api/track/{slug}` | Freigabelink je Konvoi |
-| **Docs-Key** | `X-API-Key: <DOCS_API_KEY>` oder `?key=…` | nur `/docs`, `/redoc`, `/openapi.json` | Umgebungsvariable `DOCS_API_KEY` |
+| **Docs-Key** | `X-API-Key: <DOCS_API_KEY>` oder Anmeldung über `/docs/login` | nur `/docs`, `/redoc`, `/openapi.json` | Umgebungsvariable `DOCS_API_KEY` |
 | **MCP-Zugang (OAuth 2.1)** | `Authorization: Bearer <token>` | ausschließlich `/mcp` | Zustimmung eines Benutzers, siehe [MCP-Server](MCP-Server) |
 
 > ⚠️ **MCP-Zugang ≠ Bearer-Token.** Beide reisen als `Authorization: Bearer …`, sind
