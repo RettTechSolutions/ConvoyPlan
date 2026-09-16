@@ -1,6 +1,8 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import { goto } from '$app/navigation';
+    import { page } from '$app/stores';
+    import { sicheresZiel } from '$lib/redirect';
     import { orgAuthApi, authApi } from '$lib/api';
     import AppLogo from '$lib/components/AppLogo.svelte';
     import LegalFooter from '$lib/components/LegalFooter.svelte';
@@ -28,7 +30,14 @@
         error = '';
         try {
             await orgAuthApi.lookup(slug);
-            goto(`/o/${slug}/login`);
+            // Ein Ziel, das uns hierher geschickt hat, überlebt den Umweg
+            // über die Organisationsanmeldung.
+            const ziel = sicheresZiel($page.url.searchParams.get('redirect'));
+            goto(
+                ziel
+                    ? `/o/${slug}/login?redirect=${encodeURIComponent(ziel)}`
+                    : `/o/${slug}/login`
+            );
         } catch {
             error = 'Organisation nicht gefunden. Bitte Code prüfen.';
         } finally {

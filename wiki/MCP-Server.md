@@ -40,6 +40,25 @@ Die Einstellung aus dem Portal hat Vorrang; die Umgebungsvariable gilt, solange 
 
 ### Wenn der Schalter auf „An" steht und trotzdem nichts geht
 
+Zwei Dinge können es sein: der Reverse Proxy (unten) oder der
+Zustimmungsbildschirm. Kommt der Client bis zur Anmeldung und scheitert dort,
+liegt es nicht am Proxy.
+
+#### Zustimmung: wer darf sie erteilen?
+
+Jedes Mitglied einer Organisation, nicht nur Superadmins. Der Bildschirm
+erkennt die **Person** und bietet danach alle Organisationen zur Auswahl an,
+in denen sie Mitglied ist; die Rolle dort deckelt, welche Zugriffe erteilbar
+sind.
+
+Sind im selben Browser **verschiedene Personen** angemeldet, verweigert der
+Bildschirm die Auskunft, statt sich eine auszusuchen. Dann in den anderen
+Konten abmelden und im Client neu beginnen.
+
+Wer nicht angemeldet ist, wird zur Anmeldung geschickt und danach auf den
+Zustimmungsbildschirm zurückgebracht. Dauert das zu lange, verfällt die
+Anfrage des Clients — dann im Client erneut starten.
+
 Der Schalter mountet die Routen **im Backend**. Ob der Reverse Proxy sie von außen auch dorthin leitet, ist eine zweite Frage — und bei einer Installation, die von vor dieser Schnittstelle stammt, lautet die Antwort oft nein. Das Portal zeigte dann „An" samt Verbindungsadresse, und ein Aufruf von außen landete beim Frontend.
 
 Der Reiter **System → KI-Schnittstelle** prüft das jetzt mit und sagt es: steht dort eine Zeile **Proxy** mit einem Hinweis, leitet der Proxy die Pfade nicht weiter. Der Knopf **Proxy reparieren** stellt sie her — er schreibt eine dauerhafte Proxy-Konfiguration und lädt sie sofort nach, ohne Neustart und ohne Zugriff auf den Server.
