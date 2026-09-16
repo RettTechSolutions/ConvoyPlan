@@ -27,6 +27,8 @@ braucht:
 4. **Interessenten aus der Demo** — die Kontakte samt Stand der Nachfrage.
 5. **Gesperrte IP-Adressen** und **Dauerhaft freigestellte Adressen** — die
    Zugangssteuerung.
+6. **E-Mail-Vorlage: Nachfrage nach der Demo** — der Wortlaut der Mail, samt
+   Vorschau und Testversand.
 
 ### Die Kennzahlen
 
@@ -106,6 +108,8 @@ Formular weist stattdessen auf die einmalige Nachfrage hin. Dafür trägt jede
 Mail im Fußbereich einen Abmeldelink (`/demo/abmelden?token=…`). Ein Klick
 darauf vermerkt den Widerspruch für **die Adresse**, nicht für die einzelne
 Sitzung — ein späterer Demo-Start hebt ihn nicht wieder auf.
+
+**Wortlaut ändern.** Ganz unten im Reiter steht der Abschnitt **E-Mail-Vorlage: Nachfrage nach der Demo**: Betreff und HTML lassen sich dort bearbeiten, mit **Vorschau** (öffnet ein Musterexemplar im neuen Tab), **Testmail an mich** (schickt dasselbe Musterexemplar an die eigene Adresse — der Weg dahin ist derselbe wie im Betrieb, kommt sie an, kommt auch die echte an) und **Auf Standard zurücksetzen**. Welche Platzhalter erlaubt sind, steht aufgeklappt unter „Verfügbare Variablen"; alles andere in geschweiften Klammern bleibt unverändert stehen, ein Tippfehler verschluckt den Text also nicht.
 
 **Interessentenliste.** Der Abschnitt **Interessenten aus der Demo**
 (Admin → Demo) listet die Kontakte mit Sitzungscode, Startzeitpunkt und

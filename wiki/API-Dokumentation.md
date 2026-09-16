@@ -312,6 +312,23 @@ Nur für Benutzer mit Superadmin-Rolle zugänglich.
 | `GET/PUT` | `/api/admin/settings/smtp` | SMTP-Konfiguration lesen/setzen |
 | `GET/PUT` | `/api/admin/settings/traffic-keys` | HERE-/TomTom-API-Keys lesen (ohne Klartext) und setzen |
 
+### E-Mail-Vorlagen
+
+Betreff und HTML der verschickten Mails sind vom Superadmin anpassbar und liegen in `system_settings`. `{kind}` ist derzeit `password` (Zugangsdaten) oder `demo_followup` (Nachfrage nach der Demo).
+
+| Methode | Endpunkt | Beschreibung |
+|---|---|---|
+| `GET` | `/api/admin/email-templates` | Verzeichnis: welche Vorlagen es gibt und welche angepasst wurden |
+| `GET` | `/api/admin/email-templates/{kind}` | Betreff, HTML, `is_custom` und die erlaubten Platzhalter |
+| `PUT` | `/api/admin/email-templates/{kind}` | Eigene Fassung hinterlegen |
+| `POST` | `/api/admin/email-templates/{kind}/reset` | Eigene Fassung verwerfen — es gilt wieder die mitgelieferte |
+| `GET` | `/api/admin/email-templates/{kind}/preview` | Musterexemplar als HTML |
+| `POST` | `/api/admin/email-templates/{kind}/test` | Musterexemplar an die Adresse des Aufrufers schicken |
+
+> Platzhalter werden als bloßes `{wort}` ersetzt, ohne die Mächtigkeit von Python-Formatstrings (kein `{x.attr}`) — auf einer vom Superadmin editierbaren Vorlage wäre das eine serverseitige Template-Injection (CWE-1336). Ein unbekannter Name bleibt wörtlich stehen, statt den Text zu verschlucken. Welche Namen eine Vorlage kennt, liefert `placeholders` mit.
+
+> Der Testversand geht **ausschließlich** an die Adresse des angemeldeten Superadmins. Ein frei wählbarer Empfänger machte aus dem Admin-Portal einen Versender für beliebige Adressen — mit dem Absender und dem Ruf der Installation im Rücken. Ohne konfiguriertes SMTP antwortet der Endpunkt mit `400`, ein ablehnender Mailserver mit `502` samt dessen eigener Begründung.
+
 ### Demo-Sitzungen
 
 Jede Demo-Nutzung läuft als eigene, befristete Organisation (`is_demo=true`). Diese Endpunkte verwalten offene Sitzungen im Admin-Bereich.
