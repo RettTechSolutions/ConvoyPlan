@@ -4,8 +4,9 @@
     import LeitstellenOverviewMap from '$lib/components/LeitstellenOverviewMap.svelte';
     import LeitstellenTable from '$lib/components/LeitstellenTable.svelte';
     import { auth } from '$lib/stores/auth';
+    import EmailTemplateEditor from '$lib/components/EmailTemplateEditor.svelte';
     import { getStreamTicket } from '$lib/api/client';
-    import { adminApi, mfaApi, leistellenApi, licenseApi, emailTemplateApi, regionApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type EmailTemplate, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoStats, type DemoSessionInfo, type DemoLeadInfo, type DemoIpLock, type DemoIpAllowlistEntry, type RegionStatus, type RegionPhase } from '$lib/api';
+    import { adminApi, mfaApi, leistellenApi, licenseApi, regionApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoStats, type DemoSessionInfo, type DemoLeadInfo, type DemoIpLock, type DemoIpAllowlistEntry, type RegionStatus, type RegionPhase } from '$lib/api';
     import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
     import SuperadminLogin from '$lib/components/SuperadminLogin.svelte';
@@ -58,7 +59,7 @@
         await loadUsers();
         await loadLeitstellen();
         await loadBranding();
-        await Promise.all([loadGithubTokenStatus(), loadTrafficKeys(), loadUpdateStatus(), loadUpdateChannel(), loadUpdateMode(), loadMfaStatus(), loadSmtpSettings(), loadEmailTemplate(), loadDemoSettings()]);
+        await Promise.all([loadGithubTokenStatus(), loadTrafficKeys(), loadUpdateStatus(), loadUpdateChannel(), loadUpdateMode(), loadMfaStatus(), loadSmtpSettings(), loadDemoSettings()]);
         await loadRegionStatus();
         startRegionStatusPolling();
     }
@@ -1442,71 +1443,6 @@
             .catch(() => { brandingError = 'Logo-Upload fehlgeschlagen'; });
     }
 
-    // ── E-Mail Template ──────────────────────────────────────────────────────
-    let emailTemplate = $state<EmailTemplate | null>(null);
-    let emailTemplateForm = $state({ subject: '', html: '' });
-    let emailTemplateSaving = $state(false);
-    let emailTemplateResetting = $state(false);
-    let emailTemplateError = $state('');
-    let emailTemplateSuccess = $state('');
-    let emailTemplateVarsOpen = $state(false);
-
-    async function loadEmailTemplate() {
-        try {
-            emailTemplate = await emailTemplateApi.get();
-            emailTemplateForm = { subject: emailTemplate.subject, html: emailTemplate.html };
-        } catch { /* ignore, may not be superadmin yet */ }
-    }
-
-    async function saveEmailTemplate() {
-        emailTemplateSaving = true;
-        emailTemplateError = '';
-        emailTemplateSuccess = '';
-        try {
-            emailTemplate = await emailTemplateApi.update(emailTemplateForm);
-            emailTemplateForm = { subject: emailTemplate.subject, html: emailTemplate.html };
-            emailTemplateSuccess = 'Template gespeichert.';
-            setTimeout(() => { emailTemplateSuccess = ''; }, 4000);
-        } catch (e: unknown) {
-            emailTemplateError = e instanceof Error ? e.message : 'Fehler beim Speichern';
-        } finally {
-            emailTemplateSaving = false;
-        }
-    }
-
-    async function resetEmailTemplate() {
-        if (!confirm('E-Mail-Template wirklich auf Standard zurücksetzen? Alle Anpassungen gehen verloren.')) return;
-        emailTemplateResetting = true;
-        emailTemplateError = '';
-        emailTemplateSuccess = '';
-        try {
-            emailTemplate = await emailTemplateApi.reset();
-            emailTemplateForm = { subject: emailTemplate.subject, html: emailTemplate.html };
-            emailTemplateSuccess = 'Template auf Standard zurückgesetzt.';
-            setTimeout(() => { emailTemplateSuccess = ''; }, 4000);
-        } catch (e: unknown) {
-            emailTemplateError = e instanceof Error ? e.message : 'Fehler beim Zurücksetzen';
-        } finally {
-            emailTemplateResetting = false;
-        }
-    }
-
-    async function previewEmailTemplate() {
-        const token = $auth.token ?? '';
-        try {
-            const resp = await fetch('/api/admin/email-template/preview', {
-                headers: { 'Authorization': `Bearer ${token}` },
-            });
-            if (!resp.ok) throw new Error(resp.statusText);
-            const blob = await resp.blob();
-            const url = URL.createObjectURL(blob);
-            window.open(url, '_blank', 'noopener');
-            // Release the object URL once the new tab has had time to load it.
-            setTimeout(() => URL.revokeObjectURL(url), 60_000);
-        } catch (e: unknown) {
-            emailTemplateError = e instanceof Error ? e.message : 'Vorschau fehlgeschlagen';
-        }
-    }
 </script>
 
 {#if authed}
@@ -2049,81 +1985,8 @@
         </div>
     </div>
 
-    <!-- ── E-Mail-Template ── -->
-    <div class="section branding-panel">
-        <div class="section-header sh-inline">
-            <strong>E-Mail-Template</strong>
-            {#if emailTemplate}
-                {#if emailTemplate.is_custom}
-                    <span class="badge et-badge-custom">Angepasst</span>
-                {:else}
-                    <span class="badge et-badge-default">Standard</span>
-                {/if}
-            {/if}
-        </div>
-
-        {#if emailTemplateError}
-            <div class="error-bar">{emailTemplateError} <button onclick={() => emailTemplateError = ''}>✕</button></div>
-        {/if}
-        {#if emailTemplateSuccess}
-            <div class="success-bar">{emailTemplateSuccess}</div>
-        {/if}
-
-        <div class="bf-section">
-            <label class="bf-label">Betreff
-                <input type="text" bind:value={emailTemplateForm.subject} placeholder="Deine Zugangsdaten für &#123;app_name&#125;" />
-            </label>
-        </div>
-
-        <div class="bf-section">
-            <label class="bf-label">HTML-Template
-                <textarea
-                    bind:value={emailTemplateForm.html}
-                    class="et-textarea"
-                    spellcheck="false"
-                    placeholder="<!DOCTYPE html>..."
-                ></textarea>
-            </label>
-        </div>
-
-        <!-- Variablen-Referenz -->
-        <div class="et-vars-panel">
-            <button class="et-vars-toggle" onclick={() => emailTemplateVarsOpen = !emailTemplateVarsOpen}>
-                {emailTemplateVarsOpen ? '▾' : '▸'} Verfügbare Variablen
-            </button>
-            {#if emailTemplateVarsOpen}
-                <table class="et-vars-table">
-                    <thead>
-                        <tr><th>Variable</th><th>Bedeutung</th></tr>
-                    </thead>
-                    <tbody>
-                        <tr><td><code>{'{recipient_name}'}</code></td><td>Name des Empfängers</td></tr>
-                        <tr><td><code>{'{email}'}</code></td><td>E-Mail-Adresse</td></tr>
-                        <tr><td><code>{'{password}'}</code></td><td>Generiertes Passwort</td></tr>
-                        <tr><td><code>{'{login_url}'}</code></td><td>Login-URL</td></tr>
-                        <tr><td><code>{'{app_name}'}</code></td><td>App-Name (aus Branding)</td></tr>
-                        <tr><td><code>{'{logo_block}'}</code></td><td>Logo-Block (automatisch aus Branding)</td></tr>
-                        <tr><td><code>{'{color_primary}'}</code></td><td>Primärfarbe (aus Branding)</td></tr>
-                        <tr><td><code>{'{color_primary_hover}'}</code></td><td>Primärfarbe hover</td></tr>
-                    </tbody>
-                </table>
-            {/if}
-        </div>
-
-        <div class="bf-actions" style="margin-top:1rem">
-            <button class="btn-secondary" onclick={previewEmailTemplate}>Vorschau</button>
-            <button
-                class="btn-secondary"
-                onclick={resetEmailTemplate}
-                disabled={emailTemplateResetting || !emailTemplate?.is_custom}
-            >
-                {emailTemplateResetting ? '…' : 'Auf Standard zurücksetzen'}
-            </button>
-            <button class="btn-primary" onclick={saveEmailTemplate} disabled={emailTemplateSaving}>
-                {emailTemplateSaving ? 'Wird gespeichert…' : 'Speichern'}
-            </button>
-        </div>
-    </div>
+    <!-- ── E-Mail-Vorlage: Zugangsdaten ── -->
+    <EmailTemplateEditor kind="password" title="E-Mail-Vorlage: Zugangsdaten" />
     {/if}
 
     <!-- ── Systemübersicht ── -->
@@ -2295,7 +2158,8 @@
                 <p class="hint" style="margin-bottom:.6rem; font-size:var(--text-xs)">
                     Einmalige E-Mail an die beim Start angegebene Adresse, sobald die Sitzung
                     abgelaufen ist: hat alles gepasst, sind Fragen offen, wird eine gemeinsame
-                    Session gebraucht. Verschickt der Retention-Durchgang, stündlich.
+                    Session gebraucht. Verschickt der Retention-Durchgang, stündlich. Den
+                    Wortlaut bearbeitest du unten unter „E-Mail-Vorlage".
                     {#if !demoSettings.smtp_configured}
                         <strong> Ohne konfiguriertes SMTP bleibt der Schalter wirkungslos.</strong>
                     {/if}
@@ -2566,6 +2430,12 @@
                 <p class="hint">Status nicht verfügbar</p>
             {/if}
         </div>
+
+        <!-- ── Wortlaut der Nachfrage-Mail ── -->
+        <EmailTemplateEditor
+            kind="demo_followup"
+            title="E-Mail-Vorlage: Nachfrage nach der Demo"
+        />
     {/if}
 
     {#if activeTab === 'system'}
@@ -3459,7 +3329,6 @@
     .section { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; box-shadow: var(--shadow); overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: .75rem; font-size: var(--text-sm); font-weight: 500; color: var(--text-1); }
     /* Titel + Statusabzeichen bleiben beieinander, statt auseinandergezogen zu werden. */
-    .section-header.sh-inline { justify-content: flex-start; gap: .75rem; }
 
     .create-form { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1rem; padding: .75rem; background: var(--surface-2); border-radius: 6px; border: 1px solid var(--border); max-width: var(--admin-field, 34rem); }
     .create-form input { padding: .5rem .75rem; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-1); color: var(--text-1); font-size: var(--text-sm); }
@@ -3655,31 +3524,6 @@
     .success-btn { background: rgba(107,127,77,.2) !important; color: #a8c070 !important; border-color: rgba(107,127,77,.4) !important; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* E-Mail Template */
-    .et-badge-custom { background: rgba(210,120,30,.2); color: #e8a050; border: 1px solid rgba(210,120,30,.4); }
-    .et-badge-default { background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border); }
-    .et-textarea {
-        width: 100%;
-        height: 400px;
-        resize: vertical;
-        font-family: 'Menlo', 'Consolas', 'Monaco', monospace;
-        font-size: 12px;
-        line-height: 1.5;
-        padding: .5rem .75rem;
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        background: var(--surface-2);
-        color: var(--text-1);
-        box-sizing: border-box;
-    }
-    .et-textarea:focus { outline: none; border-color: var(--color-primary); }
-    .et-vars-panel { margin-bottom: .75rem; }
-    .et-vars-toggle { background: none; border: none; cursor: pointer; font-size: var(--text-sm); color: var(--color-primary); padding: 0; font-weight: 500; }
-    .et-vars-table { width: 100%; border-collapse: collapse; font-size: var(--text-xs); margin-top: .5rem; }
-    .et-vars-table th { text-align: left; padding: .3rem .5rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--border); }
-    .et-vars-table td { padding: .3rem .5rem; border-bottom: 1px solid var(--border); color: var(--text-2); vertical-align: middle; }
-    .et-vars-table tr:last-child td { border-bottom: none; }
-
     .license-status-row { display: flex; align-items: center; margin-bottom: .25rem; }
     .uuid-code { font-size: var(--text-xs); font-family: monospace; word-break: break-all; background: var(--surface-2); padding: .1rem .3rem; border-radius: 3px; color: var(--text-1); }
     .license-input-section { margin-top: 1rem; padding-top: .75rem; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: .3rem; max-width: var(--admin-field, 34rem); }
@@ -3754,7 +3598,6 @@
         }
         .modal-footer > * { flex: 1 1 auto; min-width: 0; }
 
-        .et-textarea { height: 240px; font-size: 13px; }
         .update-terminal { font-size: 11px; max-height: 200px; }
     }
 </style>

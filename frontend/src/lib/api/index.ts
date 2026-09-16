@@ -1127,9 +1127,24 @@ export const licenseApi = {
     remove: () => api.delete<{ demo_mode: boolean }>('/api/license/'),
 };
 
+/** Kennung einer verwaltbaren Vorlage (siehe backend/app/api/routes/email_template.py). */
+export type EmailTemplateKind = 'password' | 'demo_followup';
+
 export interface EmailTemplate {
+    kind: EmailTemplateKind;
+    label: string;
+    description: string;
     subject: string;
     html: string;
+    is_custom: boolean;
+    /** Platzhalter, die in dieser Vorlage etwas bedeuten. */
+    placeholders: string[];
+}
+
+export interface EmailTemplateSummary {
+    kind: EmailTemplateKind;
+    label: string;
+    description: string;
     is_custom: boolean;
 }
 
@@ -1139,9 +1154,19 @@ export interface EmailTemplateUpdate {
 }
 
 export const emailTemplateApi = {
-    get: () => api.get<EmailTemplate>('/api/admin/email-template'),
-    update: (data: EmailTemplateUpdate) => api.put<EmailTemplate>('/api/admin/email-template', data),
-    reset: () => api.post<EmailTemplate>('/api/admin/email-template/reset', {}),
+    list: () => api.get<EmailTemplateSummary[]>('/api/admin/email-templates'),
+    get: (kind: EmailTemplateKind) =>
+        api.get<EmailTemplate>(`/api/admin/email-templates/${kind}`),
+    update: (kind: EmailTemplateKind, data: EmailTemplateUpdate) =>
+        api.put<EmailTemplate>(`/api/admin/email-templates/${kind}`, data),
+    reset: (kind: EmailTemplateKind) =>
+        api.post<EmailTemplate>(`/api/admin/email-templates/${kind}/reset`, {}),
+    /** Musterexemplar an die eigene Adresse; liefert den tatsächlichen Empfänger zurück. */
+    sendTest: (kind: EmailTemplateKind) =>
+        api.post<{ status: string; recipient: string }>(
+            `/api/admin/email-templates/${kind}/test`, {},
+        ),
+    previewUrl: (kind: EmailTemplateKind) => `/api/admin/email-templates/${kind}/preview`,
 };
 
 export const leistellenApi = {
