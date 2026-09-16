@@ -1861,7 +1861,15 @@ async def erase_user_data(
 
 
 class McpStatusResponse(BaseModel):
+    # Der *geltende* Zustand: die Einstellung aus der Datenbank schlägt die
+    # Umgebungsvariable. Bis zum Laufzeitschalter war das schlicht
+    # settings.mcp_enabled.
     enabled: bool
+    # Woher der geltende Zustand kommt ("db" | "env") und was in der
+    # Umgebung steht. Ohne beides sähe jemand im Portal einen Schalter und
+    # wüsste nicht, warum er nach einem Neustart wieder anders steht.
+    source: str
+    env_enabled: bool
     allow_dcr: bool
     # Die Adresse, die ein Client als Remote-MCP-Server einträgt.
     connection_url: str
@@ -1931,9 +1939,10 @@ async def mcp_status(
     _: User = Depends(require_superadmin),
 ):
     """Zustand der KI-Schnittstelle und die Adresse zum Verbinden."""
-    from app.services import oauth_tokens
+    from app.services import mcp_config, oauth_tokens
 
     OAuthClient, OAuthRefreshToken = _mcp_models()
+    db_wert = await mcp_config.get_mcp_enabled_setting(db)
 
     clients = await db.scalar(
         select(func.count()).select_from(OAuthClient).where(OAuthClient.revoked.is_(False))
@@ -1944,7 +1953,9 @@ async def mcp_status(
         )
     )
     return McpStatusResponse(
-        enabled=settings.mcp_enabled,
+        enabled=db_wert == "true" if db_wert is not None else settings.mcp_enabled,
+        source="db" if db_wert is not None else "env",
+        env_enabled=settings.mcp_enabled,
         allow_dcr=settings.mcp_allow_dcr,
         connection_url=oauth_tokens.public_resource_url(),
         issuer_url=oauth_tokens.issuer_url(),
@@ -1954,6 +1965,40 @@ async def mcp_status(
         registered_clients=clients or 0,
         active_connections=connections or 0,
     )
+
+
+class McpToggleRequest(BaseModel):
+    enabled: bool
+
+
+@router.put("/settings/mcp", response_model=McpStatusResponse)
+async def update_mcp_enabled(
+    data: McpToggleRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    """Die KI-Schnittstelle ein- oder ausschalten — ohne Neustart.
+
+    Wirkt sofort und vollständig: eingeschaltet werden die Routen angehängt,
+    ausgeschaltet wieder entfernt. Danach gibt es ``/mcp`` und die
+    Well-Known-Dokumente nicht als 404 eines Handlers, sondern gar nicht.
+
+    **Was das Ausschalten nicht tut:** bereits ausgestellte Zugriffstokens
+    ungültig machen. Die laufen ins Leere, weil der Endpunkt fehlt, bleiben
+    aber Tokens. Wer sie wirklich loswerden will, trennt die Verbindungen im
+    Reiter MCP — das steht auch im Portal neben dem Schalter."""
+    from app.mcp import mount as mcp_mount
+    from app.services import mcp_config
+
+    await mcp_config.set_mcp_enabled(db, data.enabled)
+    geaendert = await mcp_mount.zustand_anwenden()
+    await audit.record(
+        db, "admin.settings.mcp_updated", request=request, actor_id=current.id,
+        actor_email=current.email,
+        detail={"enabled": data.enabled, "wirksam": geaendert},
+    )
+    return await mcp_status(db=db, _=current)
 
 
 @router.get("/mcp/clients", response_model=list[McpClientResponse])

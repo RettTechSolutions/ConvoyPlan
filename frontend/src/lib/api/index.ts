@@ -1224,7 +1224,12 @@ export const mcpApi = {
 };
 
 export interface McpStatus {
+    /** Der geltende Zustand: Einstellung aus der Datenbank schlägt Umgebung. */
     enabled: boolean;
+    /** Woher er kommt — "db" (im Portal gesetzt) oder "env" (aus der .env). */
+    source: 'db' | 'env';
+    /** Was in MCP_ENABLED steht. Zeigt an, worauf ein Zurücksetzen fiele. */
+    env_enabled: boolean;
     allow_dcr: boolean;
     /** Die Adresse, die ein Client als Remote-MCP-Server einträgt. */
     connection_url: string;
@@ -1264,6 +1269,9 @@ export interface McpConnection {
 
 export const mcpAdminApi = {
     status: () => api.get<McpStatus>('/api/admin/mcp/status'),
+    /** Die Schnittstelle ein- oder ausschalten. Wirkt sofort, ohne Neustart. */
+    setEnabled: (enabled: boolean) =>
+        api.put<McpStatus>('/api/admin/settings/mcp', { enabled }),
     listClients: () => api.get<McpClient[]>('/api/admin/mcp/clients'),
     revokeClient: (clientId: string) =>
         api.delete(`/api/admin/mcp/clients/${encodeURIComponent(clientId)}`),
