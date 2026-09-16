@@ -68,6 +68,49 @@ Die ASGI-Verdrahtung in `app/mcp/mount.py` hängt an internen Details des SDK �
 `mcp` ist deshalb exakt gepinnt, und `tests/test_mcp_auth.py` prüft das beobachtbare
 Verhalten. Bei einem SDK-Upgrade zuerst dort nachsehen.
 
+### Auskunft für Agenten (llms.txt, Well-Known, Markdown)
+
+Jede Instanz liefert unter ihrer eigenen Domain aus, was sie ist und wie man sie
+programmatisch anspricht: `/llms.txt`, `/agents.md`, `/auth.md`, `/api.md`,
+`/openapi.json`, `/sitemap.xml`, `/robots.txt`, die Well-Known-Dokumente
+(`agent-card.json`, `agent-skills/index.json`, `ard.json`, `mcp/server-card.json`,
+`api-catalog`), `/ask` (NLWeb) und die Seiten `/about`, `/pricing`, `/developers`,
+`/docs`, `/contact`, `/privacy`.
+
+Alles davon **liegt im Frontend**, nicht im Backend: Caddy reicht nur `/api/*`, `/mcp`,
+`/.well-known/oauth-*` und die OAuth-Endpunkte ans Backend durch, der Rest geht ans
+Frontend. Verteilt wird in `frontend/src/lib/server/agent/dispatch.ts`, aufgerufen aus
+`hooks.server.ts` — eine Tabelle statt je einer SvelteKit-Route, weil der
+Dateisystem-Router ein Verzeichnis mit führendem Punkt (`.well-known`) übergeht.
+
+Die Texte stehen in `lib/server/agent/documents.ts`, die Produktfakten in
+`lib/agent/facts.ts`, der Seitenkatalog in `lib/agent/pages.ts`. **HTML und Markdown
+entstehen aus derselben Quelle** (`render.ts` rendert dasselbe Dokument, das unter
+`/<seite>.md` ausgeliefert wird) — wer eine Seite ändert, ändert beide Fassungen.
+
+Zwei Regeln, die den Aufwand erklären:
+
+- **Nichts ankündigen, was es auf dieser Instanz nicht gibt.** Die Dokumente werden je
+  Anfrage aus `GET /api/status/capabilities` gebaut (Domain, MCP an/aus, Demo an/aus).
+  Ein `server-card.json`, das auf einen abgeschalteten `/mcp` zeigt, wäre schlechter als
+  keines.
+- **Nicht nach User-Agent unterscheiden.** Markdown gibt es über `Accept: text/markdown`,
+  über `.md` und über `?mode=agent` — nicht, weil ein Crawler sich als Crawler zu
+  erkennen gibt. Das wäre Cloaking.
+
+Abschaltbar über `AGENT_DISCOVERY=false` (Standard an); dann existieren diese Pfade
+nicht. Anwenderdoku: `wiki/Agenten-Auskunft.md`.
+
+`/openapi.json` ist bewusst **nicht** die vollständige Beschreibung — die bleibt hinter
+`DOCS_API_KEY`. Das Frontend reicht `/api/public/openapi.json` durch; das Backend baut
+dort eine kuratierte Teilmenge aus der laufenden App
+(`backend/app/api/routes/public_meta.py`). Die Liste der öffentlichen Operationen steht
+ausdrücklich in `PUBLIC_OPERATIONS`, mit **eigenen** Beschreibungen statt der Docstrings:
+Docstrings erklären hier Entscheidungen, und die gehören nicht in ein offenes Dokument.
+`tests/test_public_openapi.py` prüft die Liste in beide Richtungen — jeder Eintrag
+existiert, und keiner hängt an einem Guard. Wer dort etwas ändert, sieht zuerst in diesem
+Test nach.
+
 ## Test-Konventionen
 
 Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste:

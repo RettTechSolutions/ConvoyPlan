@@ -9,6 +9,7 @@
 - [Installation und Setup](Installation-und-Setup)
 - [API-Dokumentation](API-Dokumentation)
 - [MCP-Server (KI-Schnittstelle)](MCP-Server)
+- [Auskunft für Agenten](Agenten-Auskunft)
 - [Benutzerhandbuch](Benutzerhandbuch)
 - [Entwicklung](Entwicklung)
 

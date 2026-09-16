@@ -24,6 +24,7 @@ from app.api.routes import share_links as share_links_router
 from app.api.routes import system_metrics as system_metrics_router
 from app.api.routes import track as track_router
 from app.api.routes import mcp_consent as mcp_consent_router
+from app.api.routes import public_meta as public_meta_router
 from app.api.routes import version as version_router
 from app.config import settings
 from app.middleware.activity import ActivityMiddleware
@@ -299,6 +300,12 @@ app.include_router(track_router.router, prefix="/api")
 app.include_router(track_router.ws_router, prefix="/api")
 app.include_router(version_router.router, prefix="/api")
 app.include_router(mcp_consent_router.router, prefix="/api")
+# Selbstauskunft für Maschinen: die öffentliche OpenAPI-Teilmenge unter
+# /api/public/openapi.json und die Protected Resource Metadata der REST-API
+# an der Wurzel. Beide bewusst ohne Anmeldung — sie sind der Einstieg, den
+# ein Agent braucht, bevor er überhaupt Zugangsdaten hat.
+app.include_router(public_meta_router.router, prefix="/api")
+app.include_router(public_meta_router.wellknown_router)
 
 # MCP-Server. Hängt /mcp sowie die OAuth- und Well-Known-Routen an die
 # Wurzel — und tut nichts, solange MCP_ENABLED nicht gesetzt ist.

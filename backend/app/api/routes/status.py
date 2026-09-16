@@ -209,6 +209,47 @@ async def _collect_public_status(db: AsyncSession) -> dict:
     }
 
 
+@router.get("/capabilities")
+async def capabilities(db: AsyncSession = Depends(get_db)):
+    """Welche Schnittstellen diese Instanz anbietet — ohne Anmeldung abfragbar.
+
+    Gedacht für Programme und KI-Agenten, die wissen wollen, womit sie es zu
+    tun haben, bevor sie einen Endpunkt raten. Alles hier ist ohnehin
+    beobachtbar: ob ``/mcp`` antwortet, merkt ein Aufrufer mit einer Anfrage.
+    Der Unterschied ist, dass er sie sich sparen kann.
+
+    Das Frontend baut daraus die Agenten-Dokumente (``llms.txt``,
+    ``agent-card.json``, ``server-card.json``). Deshalb steht hier nur, was
+    tatsächlich montiert ist: ein angekündigter Endpunkt, der mit 404
+    antwortet, ist schlimmer als ein verschwiegener.
+    """
+    from app.api import docs_ui
+    from app.api.routes.version import _core_str
+    from app.mcp import mount as mcp_mount
+    from app.services import demo as demo_svc
+
+    try:
+        demo_enabled = await demo_svc.is_demo_enabled(db)
+    except Exception:
+        demo_enabled = False
+
+    return {
+        "name": "ConvoyPlan",
+        # Kernversion, nicht der ``git describe``-String: den hält
+        # ``/api/version`` vor anonymen Aufrufern zurueck, weil er den genauen
+        # Commit einer unveroeffentlichten Instanz verraet.
+        "version": _core_str(settings.app_version),
+        "mcp_enabled": mcp_mount.ist_aktiv(),
+        "mcp_url": "/mcp" if mcp_mount.ist_aktiv() else None,
+        "demo_enabled": demo_enabled,
+        "docs_enabled": docs_ui.docs_enabled(),
+        "rest_api": "/api",
+        "public_openapi": "/openapi.json",
+        "agent_instructions": "/agents.md",
+        "llms_txt": "/llms.txt",
+    }
+
+
 @router.get("/public")
 async def public_status(db: AsyncSession = Depends(get_db)):
     """Grobkörniger Funktionsstatus für die öffentliche Statusseite.

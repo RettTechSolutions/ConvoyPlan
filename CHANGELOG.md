@@ -21,6 +21,33 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Added
+
+- **Die Instanz sagt jetzt selbst, was sie ist — für Suchmaschinen und KI-Agenten.** Wer `https://<DOMAIN>/` abrief, bekam bis hierher ein Logo, ein Eingabefeld und einen Knopf: rund 40 Zeichen Text im ausgelieferten HTML. Für einen Menschen reicht das, für ein Sprachmodell ist es eine leere Seite — und genau dort entscheidet sich, ob ConvoyPlan überhaupt als Antwort in Frage kommt, wenn jemand seine KI nach einer Konvoiplanung fragt.
+
+  Neu unter der eigenen Domain jeder Instanz: **`/llms.txt`** als Einstieg (samt der Aussage, wann ein Agent ConvoyPlan aufrufen soll **und wann nicht**), **`/agents.md`**, **`/auth.md`** und **`/api.md`** als Anleitung, **`/openapi.json`** als maschinenlesbare Beschreibung der anmeldefreien Endpunkte, eine **Sitemap**, eine **robots.txt** mit ausdrücklicher Erlaubnis für die großen KI-Crawler, die **Well-Known-Dokumente** (A2A Agent Card, Agent Skills, ARD-Katalog, MCP Server Card, API-Katalog nach RFC 9727, Resource-Metadaten nach RFC 9728) und **`/ask`**, das Fragen über ConvoyPlan mit passenden Seiten beantwortet — auf Wunsch als Stream.
+
+  Dazu sechs neue Seiten, die es vorher nur auf der Marketing-Website gab: **`/about`**, **`/pricing`**, **`/developers`**, **`/docs`**, **`/contact`** und **`/privacy`**. Jede davon hat eine Markdown-Fassung, erreichbar mit angehängtem `.md`, über `Accept: text/markdown` oder mit `?mode=agent`. HTML und Markdown entstehen aus **derselben Quelle** und können deshalb nicht auseinanderlaufen. Die Startseite trägt endlich eine Überschrift — die fehlte bis hierher auch der Barrierefreiheit.
+
+  Zwei Entscheidungen sind wichtiger als die Liste:
+
+  **Es wird nichts angekündigt, was es auf der Instanz nicht gibt.** Die Dokumente entstehen je Anfrage aus der tatsächlichen Lage: unter welcher Domain die Instanz läuft, ob die KI-Schnittstelle montiert ist, ob ein Demo-Zugang freigeschaltet wurde. Eine Instanz unter `feuerwehr.example` verweist nicht auf `convoyplan.de`, und ein Server-Card, das einen abgeschalteten `/mcp` bewirbt, wäre schlechter als gar keines.
+
+  **Ein Crawler bekommt dieselbe Seite wie ein Mensch.** Markdown gibt es, wer danach fragt — nicht, wer sich als Bot zu erkennen gibt. Das wäre Cloaking, und seit die Seiten ihren Inhalt serverseitig ausliefern, hätte ein Bot davon ohnehin nichts.
+
+  Abschaltbar mit **`AGENT_DISCOVERY=false`**: dann gibt es keinen dieser Pfade, und die Startseite zeigt wieder nur die Anmeldung. Für eine Instanz, die ausschließlich intern läuft und nichts über sich erzählen soll.
+
+- **Eine öffentliche OpenAPI-Beschreibung, ohne die Docs aufzumachen.** `/docs`, `/redoc` und die vollständige Beschreibung bleiben in Produktion abgeschaltet und per `DOCS_API_KEY` geschützt — daran ändert sich nichts. Veröffentlicht wird stattdessen unter **`/openapi.json`** eine kuratierte Teilmenge: ausschließlich Endpunkte, die ohnehin ohne Anmeldung erreichbar sind, dazu die Sicherheitsschemata, damit ein Programm erfährt, wie es an ein Token kommt.
+
+  Die Beschreibungen darin sind **eigens geschrieben** und stammen nicht aus den Docstrings des Quelltexts. Die erklären in diesem Projekt Entscheidungen — welcher Fehler dahinterstand, welche Enumeration erschwert werden soll —, und das gehört nicht in ein Dokument, das ohne Anmeldung ausgeliefert wird. Aus demselben Grund steht dort nur die Release-Version und nicht der genaue Build: `/api/version` hält den vor anonymen Aufrufern zurück, und ein offenes Dokument darf ihn nicht hintenherum nachreichen.
+
+  Struktur (Parameter, Antwortschemata) kommt weiterhin aus der laufenden App und kann deshalb nicht veralten. Ein Test prüft die Liste in beide Richtungen: jeder Eintrag existiert noch, und keiner davon hängt an einem Guard — ein vergessener Guard würde den Endpunkt sonst nicht nur offen lassen, sondern ihn auch noch veröffentlichen.
+
+- **`GET /api/status/capabilities`** sagt ohne Anmeldung, welche Schnittstellen eine Instanz anbietet: ob der MCP-Server montiert ist, ob ein Demo-Zugang besteht, wo die maschinenlesbaren Beschreibungen liegen. Der richtige erste Aufruf für ein Programm, das die Instanz noch nicht kennt — beobachtbar war das ohnehin, nur eben erst nach mehreren Fehlversuchen.
+
+- **Resource-Metadaten nach RFC 9728 für die REST-API** unter `/.well-known/oauth-protected-resource`, unabhängig von der KI-Schnittstelle. Bei abgeschaltetem MCP bleibt `authorization_servers` leer, statt auf einen Autorisierungsserver zu zeigen, den es dann nicht gibt.
+
+
 ### Fixed
 
 - **Der Schalter für die KI-Schnittstelle kümmert sich jetzt auch um den Reverse Proxy.** Bisher tat er nur das halbe Ding: er schaltete die Routen im Backend frei, ans Weiterleiten von außen kam er nicht heran. Bei einer Installation, die von vor dieser Schnittstelle stammt, kennt der Proxy die Pfade nicht — das Portal zeigte dann **„An" samt Verbindungsadresse, und ein Aufruf von außen landete beim Frontend**. Sichtbar war davon nirgends etwas; man musste sich per SSH auf den Server schalten, um das überhaupt zu bemerken.
