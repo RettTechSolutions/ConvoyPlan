@@ -1,6 +1,20 @@
 # ConvoyPlan — Security contact / Vulnerability disclosure
 # https://www.rfc-editor.org/rfc/rfc9116
+#
+# Expires ist nach RFC 9116 ein Pflichtfeld; ohne es ist die Datei ungültig.
+# Es steht hier als festes Datum und nicht als Build-Zeitpunkt + 1 Jahr:
+# Diese Datei wird in das Frontend-Image gebacken und läuft auch bei selbst
+# gehosteten Instanzen. Ein aus dem Build abgeleitetes Datum wäre dort nach
+# einiger Laufzeit abgelaufen — ausgerechnet in dem Moment, in dem jemand eine
+# Lücke melden möchte. Das Datum deshalb rechtzeitig vor Ablauf hochsetzen.
+#
+# Canonical nennt beide Orte, an denen RettTechSolutions diese Datei ausliefert
+# (RFC 9116 erlaubt mehrere Felder und verlangt, dass jeder Auslieferungsort
+# genannt wird). Bei selbst gehosteten Instanzen steht die Datei zwangsläufig
+# auch unter deren eigener Domain — die Kontaktangabe gilt dort genauso.
 Contact: mailto:anfrage@convoyplan.de
+Expires: 2027-09-30T23:59:59Z
 Preferred-Languages: de, en
 Canonical: https://convoyplan.de/.well-known/security.txt
+Canonical: https://web.convoyplan.de/.well-known/security.txt
 Policy: https://github.com/RettTechSolutions/ConvoyPlan/blob/main/SECURITY.md
