@@ -802,7 +802,12 @@ export interface RegionPreview {
     graph_bytes: number;
     ram_needed_bytes: number;
     ram_available_bytes: number;
-    /** Heap des laufenden GraphHopper, den der Updater während des Imports verkleinert. */
+    /**
+     * Heap des laufenden GraphHopper, der im Wartungsmodus frei wird — sonst 0.
+     * Ohne pausiertes Routing läuft GraphHopper während des Imports weiter und
+     * gibt nichts her; früher wurde der Betrag trotzdem immer gutgeschrieben,
+     * und das Panel meldete "knapp", wo der Updater mangels Speicher scheiterte.
+     */
     ram_reclaimable_bytes: number;
     ram_effective_available_bytes: number;
     disk_needed_bytes: number;
@@ -819,20 +824,53 @@ export type RegionPhase =
     // sondern leitet das Backend aus der Anforderung selbst ab — ohne diese
     // Phase zeigte das Panel zwischen Klick und Aufgreifen entweder nichts
     // oder das Ergebnis des vorigen Wechsels.
-    | 'idle' | 'queued' | 'checking' | 'downloading' | 'merging' | 'importing'
-    | 'switching' | 'cleaning' | 'done' | 'failed';
+    //
+    // 'scheduled': Die Anforderung trägt einen Zeitpunkt und wartet darauf —
+    // womöglich stundenlang. Als 'queued' gemeldet stünde im Panel dauerhaft
+    // "wartet auf den Updater", was nach Störung aussieht statt nach Plan.
+    | 'idle' | 'queued' | 'scheduled' | 'checking' | 'downloading' | 'merging'
+    | 'importing' | 'switching' | 'cleaning' | 'done' | 'failed';
 
 export interface RegionStatus {
     phase: RegionPhase;
     message?: string;
     at?: string;
+    /** Nur bei phase === 'scheduled': ISO-Zeitpunkt des geplanten Starts. */
+    scheduled_for?: string;
+    /** Nur bei phase === 'scheduled': ob das Routing dabei pausiert wird. */
+    pause_routing?: boolean;
+}
+
+/** Optionen für Vorab-Rechnung und Wechsel. */
+export interface RegionSwitchOptions {
+    /**
+     * Routing während des Imports anhalten. Macht den Heap des laufenden
+     * GraphHopper für den Import frei — ohne das ist eine große kombinierte
+     * Karte auf einer Maschine mit knappem Speicher nicht baubar. Preis: keine
+     * Routenplanung, bis der Wechsel durch ist.
+     */
+    pauseRouting?: boolean;
+    /** ISO-Zeitpunkt, zu dem der Updater starten soll. Ohne Angabe: sofort. */
+    scheduledFor?: string;
 }
 
 export const regionApi = {
     current: () => api.get<RegionCurrent>('/api/admin/region'),
     list: () => api.get<RegionEntry[]>('/api/admin/regions'),
-    preview: (urls: string[]) => api.post<RegionPreview>('/api/admin/region/preview', { urls }),
-    switch: (urls: string[]) => api.post<{ status: string }>('/api/admin/region', { urls }),
+    preview: (urls: string[], opts: RegionSwitchOptions = {}) =>
+        api.post<RegionPreview>('/api/admin/region/preview', {
+            urls,
+            pause_routing: opts.pauseRouting ?? false,
+        }),
+    switch: (urls: string[], opts: RegionSwitchOptions = {}) =>
+        api.post<{ status: string }>('/api/admin/region', {
+            urls,
+            pause_routing: opts.pauseRouting ?? false,
+            // Nur mitschicken, wenn wirklich ein Termin gewählt wurde: `null`
+            // bedeutet serverseitig dasselbe wie "fehlt", aber ein leerer
+            // String käme als Validierungsfehler zurück.
+            ...(opts.scheduledFor ? { scheduled_for: opts.scheduledFor } : {}),
+        }),
     status: () => api.get<RegionStatus>('/api/admin/region/status'),
     cancel: () => api.post<{ status: string }>('/api/admin/region/cancel', {}),
     /**
