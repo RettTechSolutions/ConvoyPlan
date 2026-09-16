@@ -1844,3 +1844,289 @@ async def erase_user_data(
         actor_email=current.email, target_type="user", target_id=user_id,
         detail={"audit_pseudonymized": True},
     )
+
+
+# ── MCP-Server ────────────────────────────────────────────────────────────────
+#
+# Verwaltung der KI-Schnittstelle: Status, registrierte Clients und die daraus
+# entstandenen Verbindungen. Superadmin-only wie der übrige Admin-Router.
+#
+# Der Plan sah zusätzlich einen Zugang für Org-Admins auf die eigene
+# Organisation vor. Das ist hier bewusst nicht umgesetzt: /api/admin/* ist
+# durchgehend superadmin-gesichert, und eine zweite, org-bezogene Oberfläche
+# wäre eine eigene Änderung mit eigener Abwägung — halb gebaut wäre sie
+# schlechter als gar nicht. Ein Org-Admin, der eine Verbindung trennen will,
+# wendet sich bis dahin an den Betreiber; ein Benutzer kann seine eigene
+# Verbindung jederzeit im Client löschen und über /revoke widerrufen lassen.
+
+
+class McpStatusResponse(BaseModel):
+    enabled: bool
+    allow_dcr: bool
+    # Die Adresse, die ein Client als Remote-MCP-Server einträgt.
+    connection_url: str
+    issuer_url: str
+    access_token_ttl_minutes: int
+    refresh_token_ttl_days: int
+    tool_calls_per_minute: int
+    registered_clients: int
+    active_connections: int
+
+
+class McpClientResponse(BaseModel):
+    client_id: str
+    # Selbstauskunft aus der Registrierung. Ungeprüft — bei Dynamic Client
+    # Registration darf sich jeder registrieren, und der Name ist frei wählbar.
+    client_name: str
+    name_verified: bool
+    redirect_uris: list[str]
+    created_at: datetime
+    last_used_at: datetime | None
+    revoked: bool
+    active_connections: int
+
+
+class McpConnectionResponse(BaseModel):
+    family_id: uuid.UUID
+    client_id: str
+    client_name: str
+    user_id: uuid.UUID
+    user_email: str | None
+    organization_id: uuid.UUID
+    organization_name: str | None
+    scopes: list[str]
+    created_at: datetime
+    last_used_at: datetime | None
+    expires_at: datetime
+
+
+def _mcp_models():
+    """Die MCP-Modelle erst beim Aufruf importieren.
+
+    Hält den Import-Graphen von admin.py frei von der MCP-Schicht, die
+    ihrerseits das SDK lädt — auf einer Instanz mit abgeschaltetem MCP soll
+    dafür kein Grund bestehen."""
+    from app.models.oauth_client import OAuthClient
+    from app.models.oauth_refresh_token import OAuthRefreshToken
+
+    return OAuthClient, OAuthRefreshToken
+
+
+def _active_connection_filter(OAuthRefreshToken):
+    """Was als „aktive Verbindung" zählt.
+
+    Eine Verbindung ist eine Token-*Familie*, nicht ein einzelnes Token: die
+    Tokens rotieren bei jeder Nutzung, die Verbindung bleibt dieselbe.
+    Gezählt wird deshalb das jeweils jüngste, noch nicht rotierte Glied."""
+    return and_(
+        OAuthRefreshToken.revoked.is_(False),
+        OAuthRefreshToken.rotated_at.is_(None),
+        OAuthRefreshToken.expires_at > datetime.now(timezone.utc),
+    )
+
+
+@router.get("/mcp/status", response_model=McpStatusResponse)
+async def mcp_status(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    """Zustand der KI-Schnittstelle und die Adresse zum Verbinden."""
+    from app.services import oauth_tokens
+
+    OAuthClient, OAuthRefreshToken = _mcp_models()
+
+    clients = await db.scalar(
+        select(func.count()).select_from(OAuthClient).where(OAuthClient.revoked.is_(False))
+    )
+    connections = await db.scalar(
+        select(func.count(func.distinct(OAuthRefreshToken.family_id))).where(
+            _active_connection_filter(OAuthRefreshToken)
+        )
+    )
+    return McpStatusResponse(
+        enabled=settings.mcp_enabled,
+        allow_dcr=settings.mcp_allow_dcr,
+        connection_url=oauth_tokens.public_resource_url(),
+        issuer_url=oauth_tokens.issuer_url(),
+        access_token_ttl_minutes=settings.mcp_access_token_ttl_minutes,
+        refresh_token_ttl_days=settings.mcp_refresh_token_ttl_days,
+        tool_calls_per_minute=settings.mcp_tool_calls_per_minute,
+        registered_clients=clients or 0,
+        active_connections=connections or 0,
+    )
+
+
+@router.get("/mcp/clients", response_model=list[McpClientResponse])
+async def list_mcp_clients(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    """Die registrierten MCP-Clients, neueste zuerst."""
+    OAuthClient, OAuthRefreshToken = _mcp_models()
+
+    rows = (
+        await db.execute(select(OAuthClient).order_by(OAuthClient.created_at.desc()))
+    ).scalars().all()
+
+    counts = dict(
+        (
+            await db.execute(
+                select(
+                    OAuthRefreshToken.client_id,
+                    func.count(func.distinct(OAuthRefreshToken.family_id)),
+                )
+                .where(_active_connection_filter(OAuthRefreshToken))
+                .group_by(OAuthRefreshToken.client_id)
+            )
+        ).all()
+    )
+
+    return [
+        McpClientResponse(
+            client_id=row.client_id,
+            client_name=row.client_name or "(ohne Namen)",
+            # Immer False, und das bleibt so: der Name stammt aus der
+            # Registrierung. Das Feld existiert, damit die Oberfläche ihn gar
+            # nicht erst vertrauenswürdig darstellen *kann*.
+            name_verified=False,
+            redirect_uris=list(row.redirect_uris or []),
+            created_at=row.created_at,
+            last_used_at=row.last_used_at,
+            revoked=row.revoked,
+            active_connections=counts.get(row.client_id, 0),
+        )
+        for row in rows
+    ]
+
+
+@router.delete("/mcp/clients/{client_id}", status_code=204)
+async def revoke_mcp_client(
+    client_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    """Einen Client sperren und alle seine Verbindungen trennen.
+
+    Beides zusammen, nicht nur das eine: ein gesperrter Client, dessen
+    Refresh-Tokens weiterleben, behielte seinen Zugang bis zu deren Ablauf."""
+    from app.services import oauth_tokens
+
+    OAuthClient, OAuthRefreshToken = _mcp_models()
+
+    client = await db.get(OAuthClient, client_id)
+    if client is None:
+        raise HTTPException(404, "Client nicht gefunden")
+
+    familien = (
+        await db.execute(
+            select(func.distinct(OAuthRefreshToken.family_id)).where(
+                OAuthRefreshToken.client_id == client_id
+            )
+        )
+    ).scalars().all()
+    for family_id in familien:
+        await oauth_tokens.revoke_family(db, family_id, reason="Client im Adminportal gesperrt")
+
+    client.revoked = True
+    await db.commit()
+    await audit.record(
+        db,
+        "mcp.client.revoked",
+        request=request,
+        actor_id=current.id,
+        actor_email=current.email,
+        target_type="oauth_client",
+        target_id=client_id,
+        detail={"client_name": client.client_name, "familien": len(familien)},
+    )
+
+
+@router.get("/mcp/connections", response_model=list[McpConnectionResponse])
+async def list_mcp_connections(
+    org_id: uuid.UUID | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    """Die aktiven Verbindungen, optional auf eine Organisation eingegrenzt.
+
+    Eine Zeile je Token-Familie — also je erteilter Zustimmung, nicht je
+    ausgestelltem Token."""
+    OAuthClient, OAuthRefreshToken = _mcp_models()
+
+    query = (
+        select(OAuthRefreshToken, OAuthClient.client_name, User.email, Organization.name)
+        .join(OAuthClient, OAuthClient.client_id == OAuthRefreshToken.client_id)
+        .join(User, User.id == OAuthRefreshToken.user_id, isouter=True)
+        .join(
+            Organization,
+            Organization.id == OAuthRefreshToken.organization_id,
+            isouter=True,
+        )
+        .where(_active_connection_filter(OAuthRefreshToken))
+        .order_by(OAuthRefreshToken.created_at.desc())
+    )
+    if org_id is not None:
+        query = query.where(OAuthRefreshToken.organization_id == org_id)
+
+    return [
+        McpConnectionResponse(
+            family_id=token.family_id,
+            client_id=token.client_id,
+            client_name=client_name or "(ohne Namen)",
+            user_id=token.user_id,
+            user_email=user_email,
+            organization_id=token.organization_id,
+            organization_name=org_name,
+            scopes=token.scopes.split(),
+            created_at=token.created_at,
+            last_used_at=token.last_used_at,
+            expires_at=token.expires_at,
+        )
+        for token, client_name, user_email, org_name in (await db.execute(query)).all()
+    ]
+
+
+@router.delete("/mcp/connections/{family_id}", status_code=204)
+async def disconnect_mcp_connection(
+    family_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    """Eine Verbindung trennen.
+
+    Widerruft die ganze Token-Familie. Ein bereits ausgegebenes Access-Token
+    bleibt noch bis zu seinem Ablauf gültig (MCP_ACCESS_TOKEN_TTL_MINUTES,
+    Standard 15 Minuten) — das ist der Preis zustandsloser Tokens und in
+    wiki/MCP-Server.md benannt, nicht verschwiegen."""
+    from app.services import oauth_tokens
+
+    _OAuthClient, OAuthRefreshToken = _mcp_models()
+
+    vorhanden = await db.scalar(
+        select(func.count()).select_from(OAuthRefreshToken).where(
+            OAuthRefreshToken.family_id == family_id
+        )
+    )
+    if not vorhanden:
+        raise HTTPException(404, "Verbindung nicht gefunden")
+
+    org_id = await db.scalar(
+        select(OAuthRefreshToken.organization_id).where(
+            OAuthRefreshToken.family_id == family_id
+        ).limit(1)
+    )
+    anzahl = await oauth_tokens.revoke_family(db, family_id, reason="Trennung im Adminportal")
+    await db.commit()
+    await audit.record(
+        db,
+        "mcp.connection.revoked",
+        request=request,
+        actor_id=current.id,
+        actor_email=current.email,
+        org_id=org_id,
+        target_type="oauth_connection",
+        target_id=str(family_id),
+        detail={"tokens": anzahl},
+    )

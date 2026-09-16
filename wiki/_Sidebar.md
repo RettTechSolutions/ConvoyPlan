@@ -8,6 +8,7 @@
 **Einrichtung & Referenz**
 - [Installation und Setup](Installation-und-Setup)
 - [API-Dokumentation](API-Dokumentation)
+- [MCP-Server (KI-Schnittstelle)](MCP-Server)
 - [Benutzerhandbuch](Benutzerhandbuch)
 - [Entwicklung](Entwicklung)
 

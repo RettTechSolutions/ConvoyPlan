@@ -52,3 +52,22 @@ statt offen aktiviert:
 - **`ENABLE_DOCS=true`**: Docs offen erreichbar (ohne Key) — nur für Dev/intern.
 
 Siehe `backend/app/config.py` (`docs_api_key`, `enable_docs`) und `backend/app/main.py`.
+
+### MCP-Server (KI-Schnittstelle)
+
+`/mcp` stellt Konvois, Fahrzeuge, Wegpunkte, Routen und Status als
+Model-Context-Protocol-Server bereit. **Standardmäßig aus** (`MCP_ENABLED=false`) —
+ohne den Schalter wird kein Endpunkt montiert, auch keine Well-Known-Dokumente.
+
+Die Instanz ist dabei Resource Server *und* OAuth-2.1-Authorization-Server; Zugriff
+entsteht erst durch die Zustimmung eines angemeldeten Benutzers auf `/oauth/consent`
+und gilt für genau eine Organisation, gedeckelt durch dessen Rolle. Kein Werkzeug
+löscht Daten. Jeder schreibende Aufruf landet im Audit-Log mit Quelle `mcp`.
+
+Code in `backend/app/mcp/` (Werkzeuge, Scopes, Montage), `backend/app/services/
+oauth_provider.py` und `oauth_tokens.py`. Verwaltung im Admin-Portal unter **MCP**.
+Anwenderdoku: `wiki/MCP-Server.md`.
+
+Die ASGI-Verdrahtung in `app/mcp/mount.py` hängt an internen Details des SDK —
+`mcp` ist deshalb exakt gepinnt, und `tests/test_mcp_auth.py` prüft das beobachtbare
+Verhalten. Bei einem SDK-Upgrade zuerst dort nachsehen.

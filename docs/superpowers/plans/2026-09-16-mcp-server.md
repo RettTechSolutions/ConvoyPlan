@@ -357,28 +357,35 @@ Diese Liste ist die Abnahme für Phase 1.
 
 ### Task 3.1: Admin-Oberfläche
 
-- [ ] Neuer Reiter „MCP" in `/admin`
-- [ ] Schalter für `MCP_ENABLED` und `MCP_ALLOW_DCR` zur Laufzeit
-- [ ] Liste registrierter Clients: Name (als unbestätigt gekennzeichnet), `redirect_uris`, Registrierungszeitpunkt, letzte Nutzung, Widerruf
-- [ ] Liste aktiver Verbindungen pro Org: Benutzer, Client, Scopes, letzte Nutzung, „Verbindung trennen" (widerruft die Refresh-Familie)
-- [ ] Die Verbindungs-URL zum Kopieren, plus ein Hinweis, dass Clients sie als Remote-MCP-Server eintragen
-- [ ] Nur für Superadmin und Org-Admin; Org-Admins sehen ausschließlich ihre eigene Org
+- [x] Neuer Reiter „MCP" in `/admin`
+- [ ] ~~Schalter für `MCP_ENABLED` und `MCP_ALLOW_DCR` zur Laufzeit~~ — **verworfen**
+  > Ein Laufzeitschalter widerspräche der Zusage aus Phase 1, dass bei abgeschaltetem MCP **kein Endpunkt montiert** ist — die ist getestet und im Changelog zugesagt. Ein Knopf im Portal hieße: alles ist immer montiert und antwortet nur mit 404. Sicherheitstechnisch wäre das kaum schlechter, aber es wäre eine stillschweigende Aufweichung einer öffentlich gemachten Eigenschaft. Der Reiter zeigt den Zustand stattdessen an und sagt, welche Variable zu setzen ist. Wer den Laufzeitschalter will, ändert damit auch die Phase-1-Zusage — das ist eine eigene Entscheidung, keine Nebenwirkung.
+- [x] Liste registrierter Clients: Name (als unbestätigt gekennzeichnet), `redirect_uris`, Registrierungszeitpunkt, letzte Nutzung, Widerruf
+- [x] Liste aktiver Verbindungen: Benutzer, Client, Organisation, Scopes, letzte Nutzung, „Verbindung trennen" (widerruft die Token-Familie)
+  > Eine Zeile je Token-*Familie*, nicht je Token: die Tokens rotieren bei jeder Nutzung, die Verbindung bleibt dieselbe. Gezählt und gelistet wird das jeweils jüngste, noch nicht rotierte Glied.
+- [x] Die Verbindungs-URL zum Kopieren, plus ein Hinweis, dass Clients sie als Remote-MCP-Server eintragen
+- [x] Nur für Superadmin
+  > **Abweichung:** `/api/admin/*` ist durchgehend superadmin-gesichert. Org-Admins einen zweiten, org-bezogenen Zugang zu geben hieße, eine eigene Oberfläche in der Org-Ansicht zu bauen — halb gebaut wäre sie schlechter als gar nicht. Bis dahin wendet sich ein Org-Admin an den Betreiber; ein Benutzer kann seinen eigenen Zugang im Client löschen und über `/revoke` widerrufen lassen. Als eigener Vorgang vorgemerkt.
 
 ### Task 3.2: Dokumentation
 
-- [ ] `wiki/MCP-Server.md`: Was der Server kann und was nicht, Verbinden Schritt für Schritt, Scope-Tabelle, Widerruf, das 15-Minuten-Fenster bei Access-Tokens, DSGVO-Einordnung (welche Daten an welchen Modellanbieter fließen — bei einem BOS-Produkt der Punkt, an dem Kunden hängenbleiben)
-- [ ] `wiki/_Sidebar.md` und `wiki/API-Dokumentation.md` verlinken
-- [ ] `wiki/Sicherheit-und-Datenschutz.md` um den MCP-Abschnitt ergänzen
-- [ ] `README.md`: eine Zeile im Funktionsumfang
-- [ ] `CHANGELOG.md` unter Unreleased
-- [ ] `CLAUDE.md`: MCP-Endpunkt neben dem `/docs`-Abschnitt erwähnen
+- [x] `wiki/MCP-Server.md`: Was der Server kann und was nicht, Verbinden Schritt für Schritt, Scope-Tabelle, Widerruf, das 15-Minuten-Fenster bei Access-Tokens, DSGVO-Einordnung (welche Daten an welchen Modellanbieter fließen — bei einem BOS-Produkt der Punkt, an dem Kunden hängenbleiben)
+- [x] `wiki/_Sidebar.md` und `wiki/API-Dokumentation.md` verlinken
+- [x] `wiki/Sicherheit-und-Datenschutz.md` um den MCP-Abschnitt ergänzen
+- [x] `README.md`: eine Zeile im Funktionsumfang
+- [x] `CHANGELOG.md` unter Unreleased
+- [x] `CLAUDE.md`: MCP-Endpunkt neben dem `/docs`-Abschnitt erwähnen
 
 ### Task 3.3: Ende-zu-Ende-Abnahme
 
-- [ ] Gegen eine lokale Instanz mit `tls internal` mit dem MCP Inspector verbinden: Discovery, DCR, Consent, Token, `tools/list`, ein Lese- und ein Schreib-Tool
-- [ ] Mit einem echten MCP-Client (Claude Desktop oder Claude Code) als Remote-Server verbinden
-- [ ] Widerruf über die Admin-Oberfläche → Client verliert den Zugriff
-- [ ] Upgrade-Pfad: bestehende Installation mit persistiertem Caddyfile, `MCP_ENABLED=true` setzen, prüfen dass die Handles nachgetragen wurden
+Zwei Punkte hier lassen sich nicht automatisieren — sie brauchen einen Browser, einen echten Client und eine laufende Instanz. Sie bleiben **offen** und sind als solche markiert, statt sie abzuhaken, weil sie plausibel funktionieren würden.
+
+- [ ] Gegen eine lokale Instanz mit `tls internal` mit dem MCP Inspector verbinden — **offen, manuell**
+- [ ] Mit einem echten MCP-Client (Claude Desktop oder Claude Code) als Remote-Server verbinden — **offen, manuell**
+- [x] Widerruf über die Admin-Oberfläche → Client verliert den Zugriff
+  > Automatisiert abgedeckt (`tests/test_mcp_admin.py`): nach dem Trennen lässt sich das Refresh-Token nicht mehr einlösen, und ein gesperrter Client kann sich nicht neu autorisieren.
+- [x] Upgrade-Pfad: persistiertes Caddyfile bekommt die MCP-Handles nachgetragen
+  > Automatisiert abgedeckt (`tests/test_security_hardening.py`). Der Durchlauf auf einer echten Bestandsinstallation bleibt manuell.
 
 ---
 

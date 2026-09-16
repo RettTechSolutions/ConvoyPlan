@@ -6,7 +6,7 @@
     import { auth } from '$lib/stores/auth';
     import EmailTemplateEditor from '$lib/components/EmailTemplateEditor.svelte';
     import { getStreamTicket } from '$lib/api/client';
-    import { adminApi, mfaApi, leistellenApi, licenseApi, regionApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoStats, type DemoSessionInfo, type DemoLeadInfo, type DemoIpLock, type DemoIpAllowlistEntry, type RegionStatus, type RegionPhase } from '$lib/api';
+    import { adminApi, mfaApi, leistellenApi, licenseApi, mcpAdminApi, regionApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoStats, type DemoSessionInfo, type DemoLeadInfo, type DemoIpLock, type DemoIpAllowlistEntry, type RegionStatus, type RegionPhase, type McpStatus, type McpClient, type McpConnection } from '$lib/api';
     import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
     import SuperadminLogin from '$lib/components/SuperadminLogin.svelte';
@@ -20,7 +20,7 @@
     let authed = $state(false);
 
     // ── Tab ──────────────────────────────────────────────────────────────────
-    let activeTab = $state<'benutzer' | 'organisationen' | 'api-keys' | 'leitstellen' | 'branding' | 'demo' | 'uebersicht' | 'system'>('benutzer');
+    let activeTab = $state<'benutzer' | 'organisationen' | 'api-keys' | 'mcp' | 'leitstellen' | 'branding' | 'demo' | 'uebersicht' | 'system'>('benutzer');
 
     // ── Users ────────────────────────────────────────────────────────────────
     let users = $state<AdminUser[]>([]);
@@ -1443,6 +1443,88 @@
             .catch(() => { brandingError = 'Logo-Upload fehlgeschlagen'; });
     }
 
+    // ── MCP ──────────────────────────────────────────────────────────────
+    let mcpStatus = $state<McpStatus | null>(null);
+    let mcpClients = $state<McpClient[]>([]);
+    let mcpConnections = $state<McpConnection[]>([]);
+    let mcpError = $state('');
+    let mcpLoading = $state(false);
+    let mcpBusy = $state('');
+    let mcpUrlCopied = $state(false);
+
+    async function loadMcp() {
+        mcpLoading = true;
+        mcpError = '';
+        try {
+            const [status, clients, connections] = await Promise.all([
+                mcpAdminApi.status(),
+                mcpAdminApi.listClients(),
+                mcpAdminApi.listConnections(),
+            ]);
+            mcpStatus = status;
+            mcpClients = clients;
+            mcpConnections = connections;
+        } catch (e) {
+            mcpError = e instanceof Error ? e.message : 'MCP-Daten konnten nicht geladen werden.';
+        } finally {
+            mcpLoading = false;
+        }
+    }
+
+    async function copyMcpUrl() {
+        if (!mcpStatus) return;
+        try {
+            await navigator.clipboard.writeText(mcpStatus.connection_url);
+            mcpUrlCopied = true;
+            setTimeout(() => (mcpUrlCopied = false), 2000);
+        } catch {
+            mcpError = 'Die Adresse konnte nicht in die Zwischenablage kopiert werden.';
+        }
+    }
+
+    async function disconnectMcp(conn: McpConnection) {
+        const wer = conn.user_email ?? 'diesem Benutzer';
+        if (!confirm(
+            `Verbindung von „${conn.client_name}" für ${wer} trennen?\n\n` +
+            'Der Client verliert den Zugang sofort. Ein bereits ausgegebenes ' +
+            `Zugriffstoken bleibt noch bis zu ${mcpStatus?.access_token_ttl_minutes ?? 15} Minuten gültig.`
+        )) return;
+        mcpBusy = conn.family_id;
+        mcpError = '';
+        try {
+            await mcpAdminApi.disconnect(conn.family_id);
+            await loadMcp();
+        } catch (e) {
+            mcpError = e instanceof Error ? e.message : 'Die Verbindung konnte nicht getrennt werden.';
+        } finally {
+            mcpBusy = '';
+        }
+    }
+
+    async function revokeMcpClient(client: McpClient) {
+        if (!confirm(
+            `Client „${client.client_name}" sperren?\n\n` +
+            `Alle ${client.active_connections} Verbindungen dieses Clients werden getrennt. ` +
+            'Er kann sich danach nicht mehr neu autorisieren.'
+        )) return;
+        mcpBusy = client.client_id;
+        mcpError = '';
+        try {
+            await mcpAdminApi.revokeClient(client.client_id);
+            await loadMcp();
+        } catch (e) {
+            mcpError = e instanceof Error ? e.message : 'Der Client konnte nicht gesperrt werden.';
+        } finally {
+            mcpBusy = '';
+        }
+    }
+
+    function mcpDatum(iso: string | null): string {
+        if (!iso) return '—';
+        return new Date(iso).toLocaleString('de-DE', {
+            dateStyle: 'short', timeStyle: 'short',
+        });
+    }
 </script>
 
 {#if authed}
@@ -1459,6 +1541,7 @@
         <button class="tab" class:active={activeTab === 'benutzer'} onclick={() => (activeTab = 'benutzer')}>Benutzer</button>
         <button class="tab" class:active={activeTab === 'organisationen'} onclick={() => { activeTab = 'organisationen'; loadOrgs(); }}>Organisationen</button>
         <button class="tab" class:active={activeTab === 'api-keys'} onclick={() => { activeTab = 'api-keys'; loadApiKeyOrgs(); }}>API-Keys</button>
+        <button class="tab" class:active={activeTab === 'mcp'} onclick={() => { activeTab = 'mcp'; loadMcp(); }}>MCP</button>
         <button class="tab" class:active={activeTab === 'leitstellen'} onclick={() => (activeTab = 'leitstellen')}>Leitstellen</button>
         <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>Branding</button>
         <button class="tab" class:active={activeTab === 'demo'} onclick={() => { activeTab = 'demo'; loadDemoSettings(); }}>Demo</button>
@@ -1817,6 +1900,180 @@
     {/if}
 
     <!-- ── Leitstellen ── -->
+    {#if activeTab === 'mcp'}
+        {#if mcpError}
+            <div class="error-bar">{mcpError} <button onclick={() => (mcpError = '')}>✕</button></div>
+        {/if}
+
+        <div class="section">
+            <div class="section-header">
+                <strong>KI-Schnittstelle (MCP)</strong>
+                <button class="btn-small" onclick={loadMcp} disabled={mcpLoading} title="Aktualisieren">⟳</button>
+            </div>
+            <p class="hint" style="margin:.2rem 0 .8rem">
+                Über den Model-Context-Protocol-Server können KI-Programme wie Claude Desktop
+                oder Claude Code nach einer ausdrücklichen Zustimmung auf die Fachdaten
+                <em>einer</em> Organisation zugreifen. Gelöscht werden kann über die
+                Schnittstelle nichts.
+            </p>
+
+            {#if mcpStatus}
+                <div class="kpi-grid">
+                    <div class="kpi">
+                        <span class="kpi-value">{mcpStatus.enabled ? 'An' : 'Aus'}</span>
+                        <span class="kpi-label">Schnittstelle</span>
+                        <span class="kpi-sub">
+                            {#if mcpStatus.enabled}
+                                erreichbar unter /mcp
+                            {:else}
+                                MCP_ENABLED=true setzen und neu starten
+                            {/if}
+                        </span>
+                    </div>
+                    <div class="kpi">
+                        <span class="kpi-value">{mcpStatus.registered_clients}</span>
+                        <span class="kpi-label">Registrierte Clients</span>
+                        <span class="kpi-sub">
+                            {mcpStatus.allow_dcr ? 'Selbstregistrierung erlaubt' : 'Selbstregistrierung aus'}
+                        </span>
+                    </div>
+                    <div class="kpi">
+                        <span class="kpi-value">{mcpStatus.active_connections}</span>
+                        <span class="kpi-label">Aktive Verbindungen</span>
+                        <span class="kpi-sub">je erteilter Zustimmung eine</span>
+                    </div>
+                    <div class="kpi">
+                        <span class="kpi-value">{mcpStatus.access_token_ttl_minutes} min</span>
+                        <span class="kpi-label">Zugriffstoken gültig</span>
+                        <span class="kpi-sub">so lange wirkt ein Widerruf verzögert</span>
+                    </div>
+                </div>
+
+                {#if !mcpStatus.enabled}
+                    <p class="hint" style="margin:.8rem 0 0">
+                        Die Schnittstelle ist abgeschaltet — es existieren weder <code>/mcp</code>
+                        noch die Discovery-Dokumente. Sie wird über die Umgebungsvariable
+                        <code>MCP_ENABLED=true</code> eingeschaltet und erfordert einen Neustart
+                        des Backends. Das ist Absicht: solange sie aus ist, gibt es keinen
+                        Endpunkt, der versehentlich offenstehen könnte.
+                    </p>
+                {:else}
+                    <div class="form-row" style="margin:.8rem 0 0; align-items:flex-end">
+                        <label style="flex:1">Adresse für den Client
+                            <input type="text" readonly value={mcpStatus.connection_url} />
+                        </label>
+                        <button class="btn-small" onclick={copyMcpUrl}>
+                            {mcpUrlCopied ? '✓ Kopiert' : 'Kopieren'}
+                        </button>
+                    </div>
+                    <p class="hint" style="margin:.4rem 0 0">
+                        Diese Adresse im KI-Programm als <em>Remote-MCP-Server</em> eintragen.
+                        Das Programm führt dann durch die Anmeldung; erst nach der Zustimmung
+                        eines Benutzers entsteht ein Zugang, und zwar nur für die dabei
+                        gewählte Organisation mit dessen Rolle.
+                    </p>
+                {/if}
+            {:else if mcpLoading}
+                <p class="hint">Wird geladen …</p>
+            {/if}
+        </div>
+
+        <!-- ── Aktive Verbindungen ── -->
+        <div class="section">
+            <div class="section-header"><strong>Aktive Verbindungen</strong></div>
+            {#if mcpConnections.length === 0}
+                <p class="hint">Derzeit ist keine Verbindung erteilt.</p>
+            {:else}
+                <table class="user-table">
+                    <thead>
+                            <tr>
+                                <th>Programm</th>
+                                <th>Benutzer</th>
+                                <th>Organisation</th>
+                                <th>Rechte</th>
+                                <th>Zuletzt genutzt</th>
+                                <th></th>
+                            </tr>
+                    </thead>
+                    <tbody>
+                            {#each mcpConnections as conn (conn.family_id)}
+                                <tr>
+                                    <td>
+                                        {conn.client_name}
+                                        <span class="badge badge-warn" title="Diesen Namen hat sich das Programm bei der Registrierung selbst gegeben">ungeprüft</span>
+                                    </td>
+                                    <td>{conn.user_email ?? '—'}</td>
+                                    <td>{conn.organization_name ?? '—'}</td>
+                                    <td><code>{conn.scopes.join(' ')}</code></td>
+                                    <td>{mcpDatum(conn.last_used_at ?? conn.created_at)}</td>
+                                    <td>
+                                        <button
+                                            class="btn-small danger"
+                                            onclick={() => disconnectMcp(conn)}
+                                            disabled={mcpBusy === conn.family_id}
+                                        >
+                                            {mcpBusy === conn.family_id ? '…' : 'Trennen'}
+                                        </button>
+                                    </td>
+                                </tr>
+                            {/each}
+                    </tbody>
+                </table>
+            {/if}
+        </div>
+
+        <!-- ── Registrierte Clients ── -->
+        <div class="section">
+            <div class="section-header"><strong>Registrierte Programme</strong></div>
+            <p class="hint" style="margin:.2rem 0 .8rem">
+                Bei aktivierter Selbstregistrierung kann sich jedes Programm eintragen, das die
+                Instanz erreicht — der angegebene Name ist deshalb <strong>ungeprüft</strong>.
+                Überprüft wird allein die Zieladresse, an die der Autorisierungscode geht.
+                Eine Registrierung allein verschafft keinen Zugriff; dafür braucht es die
+                Zustimmung eines angemeldeten Benutzers.
+            </p>
+            {#if mcpClients.length === 0}
+                <p class="hint">Es hat sich noch kein Programm registriert.</p>
+            {:else}
+                <table class="user-table">
+                    <thead>
+                            <tr>
+                                <th>Name (ungeprüft)</th>
+                                <th>Zieladresse (geprüft)</th>
+                                <th>Registriert</th>
+                                <th>Verbindungen</th>
+                                <th></th>
+                            </tr>
+                    </thead>
+                    <tbody>
+                            {#each mcpClients as client (client.client_id)}
+                                <tr style:opacity={client.revoked ? 0.5 : 1}>
+                                    <td>
+                                        {client.client_name}
+                                        {#if client.revoked}<span class="badge badge-warn">gesperrt</span>{/if}
+                                    </td>
+                                    <td><code>{client.redirect_uris.join(', ')}</code></td>
+                                    <td>{mcpDatum(client.created_at)}</td>
+                                    <td>{client.active_connections}</td>
+                                    <td>
+                                        {#if !client.revoked}
+                                            <button
+                                                class="btn-small danger"
+                                                onclick={() => revokeMcpClient(client)}
+                                                disabled={mcpBusy === client.client_id}
+                                            >
+                                                {mcpBusy === client.client_id ? '…' : 'Sperren'}
+                                            </button>
+                                        {/if}
+                                    </td>
+                                </tr>
+                            {/each}
+                    </tbody>
+                </table>
+            {/if}
+        </div>
+    {/if}
+
     {#if activeTab === 'leitstellen'}
         {#if lsError}
             <div class="error-bar">{lsError} <button onclick={() => (lsError = '')}>✕</button></div>

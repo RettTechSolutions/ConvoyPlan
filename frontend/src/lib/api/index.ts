@@ -1201,6 +1201,55 @@ export const mcpApi = {
         }),
 };
 
+export interface McpStatus {
+    enabled: boolean;
+    allow_dcr: boolean;
+    /** Die Adresse, die ein Client als Remote-MCP-Server einträgt. */
+    connection_url: string;
+    issuer_url: string;
+    access_token_ttl_minutes: number;
+    refresh_token_ttl_days: number;
+    tool_calls_per_minute: number;
+    registered_clients: number;
+    active_connections: number;
+}
+
+export interface McpClient {
+    client_id: string;
+    client_name: string;
+    /** Immer false — siehe McpConsentRequest.client_name_verified. */
+    name_verified: boolean;
+    redirect_uris: string[];
+    created_at: string;
+    last_used_at: string | null;
+    revoked: boolean;
+    active_connections: number;
+}
+
+export interface McpConnection {
+    family_id: string;
+    client_id: string;
+    client_name: string;
+    user_id: string;
+    user_email: string | null;
+    organization_id: string;
+    organization_name: string | null;
+    scopes: string[];
+    created_at: string;
+    last_used_at: string | null;
+    expires_at: string;
+}
+
+export const mcpAdminApi = {
+    status: () => api.get<McpStatus>('/api/admin/mcp/status'),
+    listClients: () => api.get<McpClient[]>('/api/admin/mcp/clients'),
+    revokeClient: (clientId: string) =>
+        api.delete(`/api/admin/mcp/clients/${encodeURIComponent(clientId)}`),
+    listConnections: () => api.get<McpConnection[]>('/api/admin/mcp/connections'),
+    disconnect: (familyId: string) =>
+        api.delete(`/api/admin/mcp/connections/${encodeURIComponent(familyId)}`),
+};
+
 export const licenseApi = {
     getStatus: () => api.get<LicenseStatus>('/api/license/status'),
     activate: (license_key: string) =>
