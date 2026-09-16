@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from app.api.deps import get_db
+from app.api.deps import get_db, require_superadmin
 from app.main import app
 from app.models.demo_lead import DemoLead
 from app.services import demo, email as email_svc, retention
@@ -282,3 +282,89 @@ async def test_a_visitor_without_a_name_is_greeted_without_one():
     )
 
     assert "Hallo," in body
+
+
+# ── Kennzahlen für die Übersicht ──────────────────────────────────────────────
+
+def _superadmin() -> MagicMock:
+    u = MagicMock()
+    u.id = uuid.uuid4()
+    u.is_superadmin = True
+    u.email = "admin@example.com"
+    return u
+
+
+def _counting_db(counts: list[int]) -> AsyncMock:
+    """Mock-DB, die jede Zählung der Reihe nach beantwortet.
+
+    Nebenbei wird jede Anweisung gegen den Postgres-Dialekt übersetzt: Die
+    Kennzahlen bestehen aus einem Dutzend handgeschriebener Abfragen, und ein
+    Mock allein würde auch die durchwinken, die sich gar nicht ausführen ließe.
+    """
+    from sqlalchemy.dialects import postgresql
+
+    remaining = iter(counts)
+
+    def _execute(statement, *args, **kwargs):
+        statement.compile(dialect=postgresql.dialect())
+        result = MagicMock()
+        # Einstellungen (Laufzeit, Karenzzeit) sind nicht gesetzt → Rückfall auf
+        # die Umgebungsvariablen; nur die Zählungen zehren von der Liste.
+        result.scalar_one_or_none.return_value = None
+        result.scalar_one.side_effect = lambda: next(remaining)
+        return result
+
+    db = AsyncMock()
+    db.execute.side_effect = _execute
+    return db
+
+
+async def _get_stats(db: AsyncMock) -> dict:
+    app.dependency_overrides[require_superadmin] = _superadmin
+
+    async def _db():
+        yield db
+    app.dependency_overrides[get_db] = _db
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.get("/api/admin/demo-stats")
+    finally:
+        app.dependency_overrides.clear()
+    assert resp.status_code == 200, resp.text
+    return resp.json()
+
+
+@pytest.mark.asyncio
+async def test_every_count_lands_in_its_own_field(monkeypatch):
+    """Dreizehn Zahlen, dreizehn Felder — vertauschte Zuordnungen fallen sonst
+    erst in der Oberfläche auf, wo sie niemand nachrechnet."""
+    monkeypatch.setattr("app.services.demo.settings.demo_ip_cooldown_hours", 24)
+    body = await _get_stats(_counting_db([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]))
+
+    assert body == {
+        "sessions_open": 1,
+        "sessions_expiring_24h": 2,
+        "convoys_in_demo": 3,
+        "leads_total": 4,
+        "leads_last_7d": 5,
+        "leads_last_30d": 6,
+        "followups_sent": 7,
+        "unsubscribed": 8,
+        "followups_due": 9,
+        "followups_waiting": 10,
+        "followups_failed": 11,
+        "ip_locks_active": 12,
+        "allowlist_entries": 13,
+    }
+
+
+@pytest.mark.asyncio
+async def test_without_a_cooldown_no_address_counts_as_blocked(monkeypatch):
+    """Karenzzeit 0 heißt: Es gibt keine Sperre, also auch nichts zu zählen —
+    die Abfrage entfällt statt jede je gesehene Adresse zu melden."""
+    monkeypatch.setattr("app.services.demo.settings.demo_ip_cooldown_hours", 0)
+    body = await _get_stats(_counting_db([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 99]))
+
+    assert body["ip_locks_active"] == 0
+    # Die übersprungene Zählung verschiebt nichts: 99 ist die Allowlist.
+    assert body["allowlist_entries"] == 99

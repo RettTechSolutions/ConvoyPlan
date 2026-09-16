@@ -8,7 +8,7 @@ import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -17,7 +17,9 @@ from app.config import settings
 from app.models.api_key import SCOPE_ORGANIZATION, SCOPE_SYSTEM, ApiKey
 from app.models.audit_log import AuditLog
 from app.models.convoy import Convoy
+from app.models.demo_ip_allowlist import DemoIpAllowlistEntry
 from app.models.demo_lead import DemoLead
+from app.models.demo_origin import DemoOrigin
 from app.models.organization import Organization, UserOrganization
 from app.models.settings import SystemSetting
 from app.models.share_link import ConvoyShareLink
@@ -842,6 +844,142 @@ class DemoLeadInfo(BaseModel):
     followup_attempts: int = 0
     followup_error: str | None = None
     unsubscribed_at: datetime | None = None
+
+
+class DemoStats(BaseModel):
+    """Kennzahlen für die Übersicht im Demo-Tab.
+
+    Bewusst in SQL gezählt statt aus den (auf 100 Zeilen begrenzten) Listen
+    abgeleitet — sonst stünde in der Übersicht etwas anderes als in der
+    Datenbank, sobald mehr Kontakte zusammenkommen.
+    """
+
+    # Laufende Sitzungen
+    sessions_open: int
+    sessions_expiring_24h: int
+    convoys_in_demo: int
+    # Interessenten
+    leads_total: int
+    leads_last_7d: int
+    leads_last_30d: int
+    # Stand der Nachfrage
+    followups_sent: int
+    followups_due: int          # Sitzung abgelaufen, Mail steht noch aus
+    followups_waiting: int      # Sitzung läuft noch, Nachfrage kommt später
+    followups_failed: int       # nach MAX_FOLLOWUP_ATTEMPTS aufgegeben
+    unsubscribed: int
+    # Zugangssteuerung
+    ip_locks_active: int
+    allowlist_entries: int
+
+
+@router.get("/demo-stats", response_model=DemoStats)
+async def get_demo_stats(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    """Zahlen für die Übersicht: was läuft gerade, wer hat sich gemeldet, was
+    steht beim Versand an."""
+    now = datetime.now(timezone.utc)
+    fallback_hours = await demo_svc.get_demo_session_hours(db)
+
+    async def _count(stmt) -> int:
+        return (await db.execute(stmt)).scalar_one() or 0
+
+    demo_org_ids = select(Organization.id).where(Organization.is_demo.is_(True))
+
+    sessions_open = await _count(
+        select(func.count(Organization.id)).where(Organization.is_demo.is_(True))
+    )
+    # Der Ablauf steht in demo_expires_at; ältere Zeilen ohne diesen Wert
+    # fallen auf created_at + Laufzeit zurück — derselbe Rückfall wie überall.
+    soon = now + timedelta(hours=24)
+    sessions_expiring_24h = await _count(
+        select(func.count(Organization.id)).where(
+            Organization.is_demo.is_(True),
+            or_(
+                and_(
+                    Organization.demo_expires_at.is_not(None),
+                    Organization.demo_expires_at <= soon,
+                ),
+                and_(
+                    Organization.demo_expires_at.is_(None),
+                    Organization.created_at <= soon - timedelta(hours=fallback_hours),
+                ),
+            ),
+        )
+    )
+    convoys_in_demo = await _count(
+        select(func.count(Convoy.id)).where(Convoy.organization_id.in_(demo_org_ids))
+    )
+
+    leads_total = await _count(select(func.count(DemoLead.id)))
+    leads_last_7d = await _count(
+        select(func.count(DemoLead.id)).where(DemoLead.created_at >= now - timedelta(days=7))
+    )
+    leads_last_30d = await _count(
+        select(func.count(DemoLead.id)).where(DemoLead.created_at >= now - timedelta(days=30))
+    )
+
+    followups_sent = await _count(
+        select(func.count(DemoLead.id)).where(DemoLead.followup_sent_at.is_not(None))
+    )
+    unsubscribed = await _count(
+        select(func.count(DemoLead.id)).where(DemoLead.unsubscribed_at.is_not(None))
+    )
+    # Dieselben Bedingungen wie demo_svc.due_followups — die Übersicht soll
+    # dieselbe Menge zählen, die der Versandjob im nächsten Durchgang anfasst.
+    open_followup = and_(
+        DemoLead.followup_sent_at.is_(None),
+        DemoLead.unsubscribed_at.is_(None),
+    )
+    followups_due = await _count(
+        select(func.count(DemoLead.id)).where(
+            open_followup,
+            DemoLead.session_expires_at <= now,
+            DemoLead.followup_attempts < demo_svc.MAX_FOLLOWUP_ATTEMPTS,
+        )
+    )
+    followups_waiting = await _count(
+        select(func.count(DemoLead.id)).where(
+            open_followup,
+            DemoLead.session_expires_at > now,
+        )
+    )
+    followups_failed = await _count(
+        select(func.count(DemoLead.id)).where(
+            open_followup,
+            DemoLead.followup_attempts >= demo_svc.MAX_FOLLOWUP_ATTEMPTS,
+        )
+    )
+
+    cooldown_hours = await demo_svc.get_demo_ip_cooldown_hours(db)
+    ip_locks_active = (
+        await _count(
+            select(func.count(DemoOrigin.ip)).where(
+                DemoOrigin.last_created_at >= now - timedelta(hours=cooldown_hours)
+            )
+        )
+        if cooldown_hours > 0
+        else 0
+    )
+    allowlist_entries = await _count(select(func.count(DemoIpAllowlistEntry.id)))
+
+    return DemoStats(
+        sessions_open=sessions_open,
+        sessions_expiring_24h=sessions_expiring_24h,
+        convoys_in_demo=convoys_in_demo,
+        leads_total=leads_total,
+        leads_last_7d=leads_last_7d,
+        leads_last_30d=leads_last_30d,
+        followups_sent=followups_sent,
+        followups_due=followups_due,
+        followups_waiting=followups_waiting,
+        followups_failed=followups_failed,
+        unsubscribed=unsubscribed,
+        ip_locks_active=ip_locks_active,
+        allowlist_entries=allowlist_entries,
+    )
 
 
 @router.get("/demo-leads", response_model=list[DemoLeadInfo])

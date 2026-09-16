@@ -14,6 +14,44 @@ ConvoyPlan läuft ohne gültigen Lizenzschlüssel im **Demo-Modus**. Lesezugriff
 
 ---
 
+## Der Demo-Bereich im Admin-Portal
+
+Alles zur Demo steht in einem eigenen Reiter **Demo** — vorher lag es verstreut
+unter **System**, zwischen Lizenz, Updates und MFA. Der Reiter ist in fünf
+Abschnitte gegliedert, in der Reihenfolge, in der man sie üblicherweise
+braucht:
+
+1. **Übersicht** — Kennzahlen auf einen Blick (siehe unten).
+2. **Demo-Modus** — an/aus, Sitzungslaufzeit, Karenzzeit je IP, Nachfrage-Mail.
+3. **Offene Demo-Sitzungen** — wer gerade testet, verlängern und beenden.
+4. **Interessenten aus der Demo** — die Kontakte samt Stand der Nachfrage.
+5. **Gesperrte IP-Adressen** und **Dauerhaft freigestellte Adressen** — die
+   Zugangssteuerung.
+
+### Die Kennzahlen
+
+Gezählt wird in der Datenbank, nicht aus den darunter stehenden Listen: Die
+Interessentenliste zeigt die letzten 100 Einträge, die Übersicht soll aber auch
+bei mehr die richtige Zahl nennen.
+
+| Kachel | Bedeutung |
+|---|---|
+| **Offene Sitzungen** | Laufende Demo-Organisationen, dazu wie viele davon in den nächsten 24 Stunden ablaufen |
+| **Marschverbände** | In laufenden Sitzungen angelegte Konvois — der Anhaltspunkt dafür, ob tatsächlich gearbeitet oder nur geschaut wurde |
+| **Interessenten** | Alle Kontaktangaben in der Aufbewahrungsfrist, dazu die letzten 7 und 30 Tage |
+| **Nachfragen versandt** | Bereits verschickte Nachfragen, dazu wie viele nach Sitzungsende noch folgen |
+| **Nachfragen ausstehend** | Sitzung abgelaufen, Mail steht im nächsten Retention-Durchgang an. Bleibt die Zahl stehen, nennt die Kachel den Grund (Nachfrage abgeschaltet, kein SMTP) |
+| **Nachfragen aufgegeben** | Nach drei Fehlversuchen liegen gelassen — in der Regel eine unzustellbare Adresse |
+| **Abbestellt** | Adressen mit Widerspruch |
+| **Gesperrte IPs** | Aktuell blockierte Adressen, dazu die Zahl der dauerhaften Ausnahmen |
+
+Die beiden Kacheln **ausstehend** und **aufgegeben** heben sich farblich hervor,
+sobald sie über 0 stehen. Im Normalbetrieb sind sie leer — deshalb ist eine Zahl
+dort ein Hinweis und kein Dauerzustand, den man nach einer Woche nicht mehr
+wahrnimmt.
+
+---
+
 ## Kontaktangabe beim Demo-Start
 
 Der Demo-Knopf auf der Startseite führt auf `/demo`, wo vor dem Start eine
@@ -58,7 +96,7 @@ Durchgang.
 
 | Bedingung | Verhalten |
 |---|---|
-| Schalter **Admin** → **Demo-Modus** → „Nachfrage nach Sitzungsende" aus (bzw. `DEMO_FOLLOWUP_ENABLED=false`) | kein Versand |
+| Schalter **Admin** → **Demo** → „Nachfrage nach Sitzungsende" aus (bzw. `DEMO_FOLLOWUP_ENABLED=false`) | kein Versand |
 | Kein SMTP konfiguriert | kein Versand, kein gezählter Versuch |
 | Postfach unzustellbar | Fehler wird vermerkt, Durchgang läuft weiter; nach **3** Versuchen ruht die Adresse |
 | Adresse hat abbestellt | kein Versand — auch nicht nach einer späteren Demo |
@@ -70,7 +108,7 @@ darauf vermerkt den Widerspruch für **die Adresse**, nicht für die einzelne
 Sitzung — ein späterer Demo-Start hebt ihn nicht wieder auf.
 
 **Interessentenliste.** Der Abschnitt **Interessenten aus der Demo**
-(Admin → Demo-Modus) listet die Kontakte mit Sitzungscode, Startzeitpunkt und
+(Admin → Demo) listet die Kontakte mit Sitzungscode, Startzeitpunkt und
 Stand der Nachfrage (ausstehend / versandt / fehlgeschlagen / abbestellt /
 aufgegeben). Er überdauert die Sitzung selbst — genau dafür ist er da.
 
@@ -78,7 +116,7 @@ aufgegeben). Er überdauert die Sitzung selbst — genau dafür ist er da.
 
 ## Offene Demo-Sitzungen verwalten (Admin)
 
-Jede Demo-Nutzung läuft als eigene, befristete Organisation. Der Admin-Bereich (**Admin** → **Demo-Sitzungen**) listet alle offenen Sitzungen mit Name, **Kontakt** (die beim Start angegebene Adresse), Ablaufzeit, Anzahl angelegter Konvois und **Herkunft**.
+Jede Demo-Nutzung läuft als eigene, befristete Organisation. Der Reiter **Admin** → **Demo** listet im Abschnitt **Offene Demo-Sitzungen** alle offenen Sitzungen mit Name, **Kontakt** (die beim Start angegebene Adresse), Ablaufzeit, Anzahl angelegter Konvois und **Herkunft**.
 
 Die Herkunft (Stadt/Region/Land) wird beim Start der Sitzung aus der Client-IP ermittelt und per Hintergrund-Geolokation (ipapi.co) angereichert — ein langsamer oder nicht erreichbarer Geo-Dienst verzögert den Demo-Start nie, die Anfrage läuft als Background-Task nach der Antwort. Private oder ungültige IPs (z. B. lokale Entwicklung) werden nicht abgefragt und bleiben ohne Herkunftsangabe. Die Daten helfen, Demo-Sitzungen Interessenten zuzuordnen.
 
@@ -86,7 +124,7 @@ Sitzungen lassen sich hier verlängern oder sofort beenden. Herkunftsdaten (`cre
 
 ### Eine Demo je IP-Adresse (Karenzzeit)
 
-Damit die Demo eine Vorführung bleibt und nicht als Dauerbetrieb genutzt wird, kann je Client-IP nur **eine** Sitzung pro Karenzzeit gestartet werden — Standard **24 Stunden**, einstellbar unter **Admin** → **Demo-Modus** → „Karenzzeit je IP" (`0` schaltet die Sperre ab) bzw. über `DEMO_IP_COOLDOWN_HOURS`. Ein weiterer Versuch innerhalb des Fensters wird mit **HTTP 429** und `Retry-After` abgewiesen.
+Damit die Demo eine Vorführung bleibt und nicht als Dauerbetrieb genutzt wird, kann je Client-IP nur **eine** Sitzung pro Karenzzeit gestartet werden — Standard **24 Stunden**, einstellbar unter **Admin** → **Demo** → „Karenzzeit je IP" (`0` schaltet die Sperre ab) bzw. über `DEMO_IP_COOLDOWN_HOURS`. Ein weiterer Versuch innerhalb des Fensters wird mit **HTTP 429** und `Retry-After` abgewiesen.
 
 Der Besucher sieht dabei den Grund der Absage, nicht nur die Absage: Startseite und `/demo` zeigen die Begründung des Backends unverändert an — welche Karenzzeit gilt, wann der nächste Versuch möglich ist, oder dass der Demo-Modus gerade abgeschaltet ist. Nur wenn keine Antwort des Backends vorliegt (Netzwerkfehler), erscheint der allgemeine Hinweis „Bitte später nochmal versuchen".
 
@@ -106,7 +144,7 @@ Hinter einem Firmenanschluss oder einem Messe-WLAN teilen sich alle Besucher ein
 
 ### Dauerhaft freigestellte Adressen
 
-Manche Anschlüsse sollen gar nicht erst gesperrt werden: der eigene Vertrieb, ein Firmenanschluss beim Interessenten, das WLAN auf einer Messe oder in einer Schulung. Dort einzeln zu entsperren wäre nach jeder Vorführung erneut nötig. Der Abschnitt **Dauerhaft freigestellte Adressen** (Admin → Demo-Modus) nimmt solche Anschlüsse dauerhaft von der Karenzzeit aus.
+Manche Anschlüsse sollen gar nicht erst gesperrt werden: der eigene Vertrieb, ein Firmenanschluss beim Interessenten, das WLAN auf einer Messe oder in einer Schulung. Dort einzeln zu entsperren wäre nach jeder Vorführung erneut nötig. Der Abschnitt **Dauerhaft freigestellte Adressen** (Admin → Demo) nimmt solche Anschlüsse dauerhaft von der Karenzzeit aus.
 
 Eingetragen wird entweder eine einzelne Adresse (`203.0.113.7`) oder ein ganzes Netz in CIDR-Schreibweise (`203.0.113.0/24`, ebenso IPv6: `2001:db8::/32`) — Letzteres, weil ein Firmenanschluss selten auf eine feste Adresse festgelegt ist. Dazu gehört eine Notiz, damit in einem Jahr noch nachvollziehbar ist, warum ausgerechnet dieses Netz freigestellt ist.
 
