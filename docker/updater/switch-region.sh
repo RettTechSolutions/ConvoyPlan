@@ -6,7 +6,7 @@
 # dem einzigen Container mit Docker-Socket — und arbeitet sie ab:
 #
 #   1 Prüfen      Extract erreichbar? Platz da?          (nichts verändert)
-#   2 Laden       Extract herunterladen, Prüfsumme       (nichts geschwenkt)
+#   2 Laden       Extract herunterladen, Größe+Prüfsumme (nichts geschwenkt)
 #   3 Importieren Graph in ein Staging-Verzeichnis bauen (Routing läuft weiter)
 #   4 Schwenken   Graph tauschen, .region schreiben, GraphHopper neu starten
 #   5 Aufräumen   alten Graph und altes Extract löschen
@@ -27,6 +27,7 @@
 #   GRAPHHOPPER_IMAGE REGION_COMPOSE_FILE REGION_IMPORT_MODE
 #   REGION_HEALTH_TIMEOUT REGION_IMPORT_TIMEOUT REGION_POLL_SLEEP SKIP_CHECKSUM
 #   REGION_MEMINFO REGION_HEAP_RESERVE_MB REGION_HEAP_MIN_MB REGION_STOP_TIMEOUT
+#   REGION_DOWNLOAD_ATTEMPTS REGION_DOWNLOAD_RETRY_SLEEP
 set -uo pipefail
 
 STATUS_DIR="${STATUS_DIR:-/update_status}"
@@ -836,12 +837,20 @@ if [ -n "$SOURCES" ]; then
     # liegt — der Wechsel liefe an der Pruefung vorbei und straebe Stunden
     # spaeter mitten im Merge oder Import an ENOSPC.
     SIZE=0
+    # Die Einzelgroessen wandern zusaetzlich in ein Array: Phase 2 prueft damit
+    # JEDEN geladenen Bestandteil gegen die Groesse, die der Server vorher
+    # angekuendigt hat. Ohne diesen Abgleich faellt eine abgeschnittene Antwort
+    # erst der Pruefsumme auf — und meldet dann "Pruefsumme stimmt nicht", was
+    # den Operator auf die falsche Faehrte (kaputtes Extract bei Geofabrik)
+    # schickt, obwohl schlicht die Leitung abgerissen ist.
+    SOURCE_SIZES=()
     _old_ifs="$IFS"; IFS='|'
     for _s in $SOURCES; do
         IFS="$_old_ifs"
         _sz="$(_head_size "https://download.geofabrik.de/${_s}-latest.osm.pbf")"
         [ "${_sz:-0}" -gt 0 ] 2>/dev/null || fail "Extract nicht abrufbar: $_s"
         SIZE=$(( SIZE + _sz ))
+        SOURCE_SIZES+=("$_sz")
         IFS='|'
     done
     IFS="$_old_ifs"
@@ -869,43 +878,135 @@ done
 abort_if_cancelled
 
 # ── Phase 2: Laden ──────────────────────────────────────────────────────────
-# Laedt EINE Datei mit Pruefsumme. Bei einer zusammengesetzten Region wird die
-# Funktion je Bestandteil aufgerufen; scheitert einer, scheitert der ganze
-# Wechsel. Eine Karte, der ein Land fehlt, waere schlimmer als kein Wechsel:
-# sie liefert stillschweigend falsche Routen, statt sichtbar zu fehlen.
+# Wie oft ein einzelner Bestandteil neu geladen wird, bevor der Wechsel
+# aufgibt, und wie lange dazwischen gewartet wird. Beides nur fuer Tests
+# ueberschreibbar — in Produktion sind drei Anlaeufe mit 30 s Pause die
+# Balance zwischen "uebersteht das taegliche Fenster" und "haengt nicht ewig".
+REGION_DOWNLOAD_ATTEMPTS="${REGION_DOWNLOAD_ATTEMPTS:-3}"
+REGION_DOWNLOAD_RETRY_SLEEP="${REGION_DOWNLOAD_RETRY_SLEEP:-30}"
+
+_file_size() { wc -c < "$1" 2>/dev/null | tr -d ' '; }
+_file_md5()  { md5sum "$1" 2>/dev/null | awk '{print $1}'; }
+
+# Holt den Hash aus der .md5 neben dem Extract und gibt ihn auf stdout aus.
+# Nur das erste Feld: Geofabrik schreibt daneben den DORTIGEN Dateinamen, und
+# bei einer zusammengesetzten Region laedt dieses Skript unter einem eigenen,
+# kollisionsfreien Namen (siehe _src_name) — ein Vergleich der ganzen Zeile
+# schluege dann fehl an einer Pruefsumme, die in Wahrheit stimmt.
+_remote_md5() {
+    _md5_file="$OSM_DIR/$2.md5"
+    rm -f "$_md5_file"
+    if ! curl -fsSL --max-time 60 --retry 3 --retry-all-errors --retry-delay 5 \
+              --retry-max-time 60 -o "$_md5_file" "$1.md5"; then
+        rm -f "$_md5_file"
+        return 1
+    fi
+    awk 'NR==1{print $1}' "$_md5_file"
+    rm -f "$_md5_file"
+}
+
+# Laedt EINEN Bestandteil und gibt ihn erst frei, wenn Groesse UND Pruefsumme
+# stimmen. Bei einer zusammengesetzten Region wird die Funktion je Bestandteil
+# aufgerufen; scheitert einer endgueltig, scheitert der ganze Wechsel. Eine
+# Karte, der ein Land fehlt, waere schlimmer als kein Wechsel: sie liefert
+# stillschweigend falsche Routen, statt sichtbar zu fehlen.
+#
+# Warum Wiederholungen statt sofortigem Abbruch: Geofabrik ersetzt die
+# `-latest`-Dateien taeglich am Abend (MESZ). Faellt ein Download in genau
+# dieses Fenster, gehoeren die geladenen Bytes und die daneben liegende .md5
+# zu verschiedenen Staenden — die Pruefsumme kann gar nicht stimmen, obwohl
+# beide Dateien fuer sich in Ordnung sind. Frueher beendete das den ganzen
+# Wechsel: Bei einer aus sieben Extracts zusammengesetzten Region war nach
+# einer halben Stunde Ladezeit alles verloren, nur weil der VIERTE Bestandteil
+# in dieser einen Minute erneuert wurde. Ein zweiter Anlauf 30 s spaeter holt
+# ein zusammenpassendes Paar.
+#
+# $3 = vom Server angekuendigte Groesse in Bytes (0 = unbekannt).
 _download_one() {
-    _dl_url="$1"; _dl_name="$2"
+    _dl_url="$1"; _dl_name="$2"; _dl_expect="${3:-0}"
     _dl_part="$OSM_DIR/$_dl_name.part"
-    rm -f "$_dl_part"
-    if ! curl -fsSL --retry 3 --retry-all-errors --retry-delay 10 -o "$_dl_part" "$_dl_url"; then
-        rm -f "$_dl_part"
-        fail "Download fehlgeschlagen: $_dl_url"
+    _dl_target="$OSM_DIR/$_dl_name"
+
+    _dl_check=1
+    if [ -n "${SKIP_CHECKSUM:-}" ]; then
+        _dl_check=0
+    elif ! command -v md5sum >/dev/null 2>&1; then
+        _dl_check=0
+        log "WARNUNG: md5sum nicht verfügbar — Prüfsumme übersprungen."
     fi
-    if [ -z "${SKIP_CHECKSUM:-}" ]; then
-        if command -v md5sum >/dev/null 2>&1; then
-            if ! curl -fsSL --max-time 60 -o "$OSM_DIR/$_dl_name.md5" "$_dl_url.md5"; then
-                rm -f "$_dl_part"
-                fail "Prüfsumme nicht abrufbar: $_dl_url.md5"
+
+    _dl_try=1
+    _dl_before=""
+    while : ; do
+        if [ "$_dl_check" = 1 ]; then
+            # VOR dem Download geholt, damit ein Wechsel des Hashes waehrend
+            # des Ladens erkennbar ist (siehe unten) — und damit ein aus einem
+            # frueheren, gescheiterten Anlauf liegengebliebener Bestandteil
+            # wiederverwendet werden kann, statt Gigabyte erneut zu laden.
+            if ! _dl_before="$(_remote_md5 "$_dl_url" "$_dl_name")"; then
+                _dl_why="Prüfsumme nicht abrufbar ($_dl_url.md5)"
+                _dl_before=""
+            elif [ -z "$_dl_before" ]; then
+                _dl_why="Prüfsumme nicht lesbar ($_dl_url.md5)"
+            elif [ -f "$_dl_target" ] && [ "$(_file_md5 "$_dl_target")" = "$_dl_before" ]; then
+                log "Bereits vollständig vorhanden und geprüft — kein erneuter Download: $_dl_name"
+                return 0
             fi
-            # Nur den Hash aus der .md5 uebernehmen und den Dateinamen selbst
-            # setzen: Die Datei von Geofabrik nennt den DORTIGEN Namen. Bei
-            # einer zusammengesetzten Region laedt dieses Skript unter einem
-            # eigenen, kollisionsfreien Namen (siehe _src_name) — ein `sed` auf
-            # den entfernten Namen fuende dann nichts, md5sum pruefte eine
-            # nicht existierende Datei und jeder Wechsel scheiterte an einer
-            # Pruefsumme, die in Wahrheit stimmt.
-            if ! ( cd "$OSM_DIR" \
-                    && printf '%s  %s\n' "$(awk 'NR==1{print $1}' "$_dl_name.md5")" "$_dl_name.part" \
-                     | md5sum -c - ); then
-                rm -f "$_dl_part" "$OSM_DIR/$_dl_name.md5"
-                fail "Prüfsumme stimmt nicht — Datei verworfen: $_dl_name"
-            fi
-            rm -f "$OSM_DIR/$_dl_name.md5"
-        else
-            log "WARNUNG: md5sum nicht verfügbar — Prüfsumme übersprungen."
         fi
-    fi
-    mv -f "$_dl_part" "$OSM_DIR/$_dl_name" || fail "Extract konnte nicht abgelegt werden: $_dl_name"
+
+        if [ -z "${_dl_why:-}" ]; then
+            rm -f "$_dl_part"
+            # --speed-limit/--speed-time: bricht eine Verbindung ab, die zwar
+            # offen bleibt, aber nichts mehr liefert. Ohne das haengt ein
+            # Wechsel an einem toten Socket, bis jemand ihn abbricht — curl
+            # selbst hat fuer den Nutzdaten-Download bewusst kein --max-time,
+            # weil ein 4-GB-Extract legitim lange braucht.
+            if curl -fsSL --retry 3 --retry-all-errors --retry-delay 10 \
+                    --speed-limit 1024 --speed-time 120 -o "$_dl_part" "$_dl_url"; then
+                _dl_have="$(_file_size "$_dl_part")"
+                _dl_after=""
+                [ "$_dl_check" = 1 ] && _dl_after="$(_remote_md5 "$_dl_url" "$_dl_name")"
+                if [ "${_dl_expect:-0}" -gt 0 ] 2>/dev/null \
+                   && [ "${_dl_have:-0}" -ne "$_dl_expect" ] 2>/dev/null; then
+                    _dl_why="unvollständig geladen (${_dl_have:-0} von ${_dl_expect} Bytes)"
+                elif [ "$_dl_check" = 1 ] && [ "$(_file_md5 "$_dl_part")" != "$_dl_after" ]; then
+                    if [ -z "$_dl_after" ]; then
+                        _dl_why="Prüfsumme nicht abrufbar ($_dl_url.md5)"
+                    elif [ "$_dl_after" != "$_dl_before" ]; then
+                        # Kein Fehler in den Daten, sondern ein Rennen: Der
+                        # Server hat die Datei waehrend des Ladens erneuert.
+                        _dl_why="Datei wurde während des Downloads auf dem Server erneuert"
+                    else
+                        _dl_why="Prüfsumme stimmt nicht"
+                    fi
+                else
+                    mv -f "$_dl_part" "$_dl_target" \
+                        || fail "Extract konnte nicht abgelegt werden: $_dl_name"
+                    return 0
+                fi
+            else
+                _dl_why="Download fehlgeschlagen"
+            fi
+        fi
+
+        rm -f "$_dl_part"
+        if [ "$_dl_try" -ge "$REGION_DOWNLOAD_ATTEMPTS" ]; then
+            # Ohne den Zusatz "die alte Region laeuft weiter": Das Panel
+            # blendet diesen Satz bei jedem Fehlschlag ohnehin als Banner ein
+            # (RegionCard.svelte), er staende hier ein zweites Mal.
+            fail "${_dl_why} — nach ${_dl_try} Versuchen aufgegeben: ${_dl_name}"
+        fi
+        log "Versuch ${_dl_try}/${REGION_DOWNLOAD_ATTEMPTS} gescheitert (${_dl_why}) — neuer Versuch in ${REGION_DOWNLOAD_RETRY_SLEEP}s: $_dl_name"
+        _dl_why=""
+        _dl_try=$(( _dl_try + 1 ))
+        [ "${REGION_DOWNLOAD_RETRY_SLEEP:-0}" -gt 0 ] 2>/dev/null \
+            && sleep "$REGION_DOWNLOAD_RETRY_SLEEP"
+        abort_if_cancelled
+        # Groesse neu erfragen: Wurde die Datei erneuert, ist die alte Zahl aus
+        # Phase 1 ueberholt und wuerde den naechsten Versuch sicher verwerfen.
+        _dl_fresh="$(_head_size "$_dl_url")"
+        [ "${_dl_fresh:-0}" -gt 0 ] 2>/dev/null && _dl_expect="$_dl_fresh"
+    done
 }
 
 SOURCE_FILES=""
@@ -933,7 +1034,7 @@ if [ -n "$SOURCES" ]; then
         # geprueft worden; ein case auf die hier gebaute URL waere
         # unerreichbar, weil sie aus genau diesem Praefix entsteht.
         phase "downloading" "Phase 2/6: Lade ${_i}/${_n} — ${_src_name}…"
-        _download_one "$_src_url" "$_src_name"
+        _download_one "$_src_url" "$_src_name" "${SOURCE_SIZES[$((_i - 1))]:-0}"
         SOURCE_FILES="$SOURCE_FILES $OSM_DIR/$_src_name"
         abort_if_cancelled
         IFS='|'
@@ -959,7 +1060,7 @@ if [ -n "$SOURCES" ]; then
     fi
 else
     phase "downloading" "Phase 2/5: Lade ${FILENAME}…"
-    _download_one "$URL" "$FILENAME"
+    _download_one "$URL" "$FILENAME" "${SIZE:-0}"
 fi
 abort_if_cancelled
 
