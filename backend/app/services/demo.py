@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.demo_ip_allowlist import DemoIpAllowlistEntry
+from app.models.demo_lead import DemoLead, new_unsubscribe_token
 from app.models.demo_origin import DemoOrigin
 from app.models.organization import Organization
 from app.models.settings import SystemSetting
@@ -362,4 +363,186 @@ async def purge_expired_origins(db: AsyncSession, cooldown_hours: int) -> int:
     meaning and the IP should not be kept longer than needed."""
     cutoff = datetime.now(timezone.utc) - timedelta(hours=max(cooldown_hours, 0))
     result = await db.execute(delete(DemoOrigin).where(DemoOrigin.last_created_at < cutoff))
+    return result.rowcount or 0
+
+
+# ── Nachfrage-Mail nach Sitzungsende (an/aus) ─────────────────────────────────
+
+DEMO_FOLLOWUP_ENABLED_KEY = "demo.followup_enabled"
+
+
+async def get_demo_followup_setting(db: AsyncSession) -> str | None:
+    """Rohwert aus der DB ("true"/"false") oder None, wenn nichts gesetzt ist."""
+    value = await _get_setting(db, DEMO_FOLLOWUP_ENABLED_KEY)
+    return value if value in ("true", "false") else None
+
+
+async def is_demo_followup_enabled(db: AsyncSession) -> bool:
+    """Effektiver Zustand: DB-Einstellung schlägt DEMO_FOLLOWUP_ENABLED."""
+    db_value = await get_demo_followup_setting(db)
+    if db_value is not None:
+        return db_value == "true"
+    return settings.demo_followup_enabled
+
+
+async def set_demo_followup_enabled(db: AsyncSession, enabled: bool) -> None:
+    await _upsert_setting(db, DEMO_FOLLOWUP_ENABLED_KEY, "true" if enabled else "false")
+    await db.commit()
+
+
+# ── Kontaktdaten der Interessenten (demo_leads) ───────────────────────────────
+
+# Nach so vielen vergeblichen Versuchen wird die Adresse in Ruhe gelassen. Ohne
+# Obergrenze liefe der Retention-Job bei einem dauerhaft unzustellbaren
+# Postfach stündlich in denselben Fehler.
+MAX_FOLLOWUP_ATTEMPTS = 3
+
+
+def lead_display_name(lead: DemoLead) -> str:
+    """Anrede für die Nachfrage-Mail — leer, wenn kein Name angegeben wurde."""
+    return " ".join(p for p in (lead.first_name, lead.last_name) if p)
+
+
+async def is_email_suppressed(db: AsyncSession, email: str) -> bool:
+    """Ob diese Adresse dem Nachfragen widersprochen hat.
+
+    Der Widerspruch hängt an der Adresse, nicht an der einzelnen Sitzung: Wer
+    einmal abbestellt hat, bekommt auch nach einer späteren Demo keine Mail
+    mehr.
+    """
+    row = (
+        await db.execute(
+            select(DemoLead.id)
+            .where(DemoLead.email == email, DemoLead.unsubscribed_at.is_not(None))
+            .limit(1)
+        )
+    ).first()
+    return row is not None
+
+
+async def record_lead(
+    db: AsyncSession,
+    *,
+    email: str,
+    first_name: str | None,
+    last_name: str | None,
+    org_id: uuid.UUID,
+    org_slug: str,
+    session_expires_at: datetime,
+) -> DemoLead:
+    """Kontaktangabe zu einer neu angelegten Demo-Sitzung festhalten.
+
+    Ein bestehender Widerspruch derselben Adresse wird dabei übernommen — sonst
+    hebelte ein zweiter Demo-Start die Abmeldung aus.
+    """
+    lead = DemoLead(
+        id=uuid.uuid4(),
+        email=email,
+        first_name=first_name,
+        last_name=last_name,
+        org_id=org_id,
+        org_slug=org_slug,
+        session_expires_at=session_expires_at,
+        unsubscribe_token=new_unsubscribe_token(),
+    )
+    if await is_email_suppressed(db, email):
+        lead.unsubscribed_at = datetime.now(timezone.utc)
+    db.add(lead)
+    await db.flush()
+    return lead
+
+
+async def update_lead_for_org(
+    db: AsyncSession,
+    org_id: uuid.UUID,
+    *,
+    email: str,
+    first_name: str | None,
+    last_name: str | None,
+    session_expires_at: datetime,
+) -> DemoLead | None:
+    """Kontaktangabe einer fortgesetzten Sitzung auf den neuesten Stand bringen.
+
+    Wer seine Sitzung fortsetzt, füllt das Formular erneut aus — meist mit
+    denselben Angaben, manchmal mit der korrigierten Adresse. Die letzte
+    Angabe gewinnt; existiert noch keine Zeile (Sitzung von vor dieser
+    Funktion), wird eine angelegt.
+    """
+    lead = (
+        await db.execute(
+            select(DemoLead).where(DemoLead.org_id == org_id).order_by(DemoLead.created_at.desc())
+        )
+    ).scalars().first()
+    if lead is None:
+        return None
+    lead.email = email
+    lead.first_name = first_name
+    lead.last_name = last_name
+    lead.session_expires_at = session_expires_at
+    if lead.unsubscribed_at is None and await is_email_suppressed(db, email):
+        lead.unsubscribed_at = datetime.now(timezone.utc)
+    return lead
+
+
+async def sync_lead_expiry(
+    db: AsyncSession, org_id: uuid.UUID, session_expires_at: datetime
+) -> None:
+    """Den gespiegelten Ablaufzeitpunkt nachziehen.
+
+    Nötig, wenn der Superadmin eine Sitzung verlängert oder vorzeitig beendet:
+    Die Nachfrage-Mail hängt an diesem Zeitpunkt, nicht an der Org (die ist
+    beim Versand in der Regel schon gelöscht).
+    """
+    leads = (
+        await db.execute(select(DemoLead).where(DemoLead.org_id == org_id))
+    ).scalars().all()
+    for lead in leads:
+        lead.session_expires_at = session_expires_at
+
+
+async def due_followups(db: AsyncSession, *, limit: int = 50) -> list[DemoLead]:
+    """Kontakte, deren Sitzung abgelaufen ist und die noch keine Mail bekamen."""
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        select(DemoLead)
+        .where(
+            DemoLead.followup_sent_at.is_(None),
+            DemoLead.unsubscribed_at.is_(None),
+            DemoLead.session_expires_at <= now,
+            DemoLead.followup_attempts < MAX_FOLLOWUP_ATTEMPTS,
+        )
+        .order_by(DemoLead.session_expires_at)
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
+async def unsubscribe_by_token(db: AsyncSession, token: str) -> bool:
+    """Widerspruch über den Link aus der Mail. True, wenn das Token passte.
+
+    Vermerkt wird auf allen Zeilen derselben Adresse — der Widerspruch gilt der
+    Person, nicht der einzelnen Sitzung.
+    """
+    lead = (
+        await db.execute(select(DemoLead).where(DemoLead.unsubscribe_token == token))
+    ).scalar_one_or_none()
+    if lead is None:
+        return False
+    now = datetime.now(timezone.utc)
+    rows = (
+        await db.execute(select(DemoLead).where(DemoLead.email == lead.email))
+    ).scalars().all()
+    for row in rows:
+        if row.unsubscribed_at is None:
+            row.unsubscribed_at = now
+    await db.commit()
+    return True
+
+
+async def purge_old_leads(db: AsyncSession, max_age_days: int) -> int:
+    """Kontaktangaben löschen, die älter als die Aufbewahrungsfrist sind."""
+    if max_age_days <= 0:
+        return 0
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+    result = await db.execute(delete(DemoLead).where(DemoLead.created_at < cutoff))
     return result.rowcount or 0

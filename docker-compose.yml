@@ -129,6 +129,12 @@ services:
       RETENTION_POSITIONS_HOURS: ${RETENTION_POSITIONS_HOURS:-24}
       RETENTION_AUDIT_DAYS: ${RETENTION_AUDIT_DAYS:-365}
       RETENTION_SHARE_LINKS_DAYS: ${RETENTION_SHARE_LINKS_DAYS:-30}
+      RETENTION_DEMO_LEADS_DAYS: ${RETENTION_DEMO_LEADS_DAYS:-180}
+      # Für die Nachfrage-Mail nach Ablauf einer Demo-Sitzung: Abmeldelink und
+      # Logo in der Mail zeigen auf diese Adresse.
+      APP_BASE_URL: https://${DOMAIN:-localhost}
+      DEMO_FOLLOWUP_ENABLED: ${DEMO_FOLLOWUP_ENABLED:-true}
+      DEMO_FOLLOWUP_CONTACT_URL: ${DEMO_FOLLOWUP_CONTACT_URL:-https://convoyplan.de/#kontakt}
     depends_on:
       db:
         condition: service_healthy

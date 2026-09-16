@@ -17,6 +17,7 @@ from app.config import settings
 from app.models.api_key import SCOPE_ORGANIZATION, SCOPE_SYSTEM, ApiKey
 from app.models.audit_log import AuditLog
 from app.models.convoy import Convoy
+from app.models.demo_lead import DemoLead
 from app.models.organization import Organization, UserOrganization
 from app.models.settings import SystemSetting
 from app.models.share_link import ConvoyShareLink
@@ -44,6 +45,7 @@ from app.services.update_check import (
     write_mode_file as _write_mode_file,
 )
 from app.services import demo as demo_svc
+from app.services import email as email_svc
 from app.services import traffic_flow as traffic_flow_svc
 from app.services.email import build_login_url, save_smtp_settings, send_password_email, test_smtp_connection
 from app.services.password import assert_password_not_breached, generate_password, validate_password
@@ -501,10 +503,15 @@ class DemoSettingsResponse(BaseModel):
     env_enabled: bool        # value of the DEMO_ENABLED env var
     session_hours: int
     ip_cooldown_hours: int   # 0 = keine IP-Sperre
+    # Nachfrage-Mail nach Ablauf einer Sitzung. Ohne SMTP bleibt sie wirkungslos
+    # — deshalb wird der Zustand der SMTP-Einrichtung gleich mitgeliefert.
+    followup_enabled: bool
+    smtp_configured: bool
 
 
 class DemoSettingsUpdate(BaseModel):
     enabled: bool
+    followup_enabled: bool | None = None
     session_hours: int | None = Field(
         None, ge=demo_svc.MIN_SESSION_HOURS, le=demo_svc.MAX_SESSION_HOURS,
         description="Laufzeit neuer Demo-Sitzungen in Stunden",
@@ -522,6 +529,8 @@ async def _demo_settings_response(db: AsyncSession, *, source: str, enabled: boo
         env_enabled=settings.demo_enabled,
         session_hours=await demo_svc.get_demo_session_hours(db),
         ip_cooldown_hours=await demo_svc.get_demo_ip_cooldown_hours(db),
+        followup_enabled=await demo_svc.is_demo_followup_enabled(db),
+        smtp_configured=await email_svc.is_smtp_configured(db),
     )
 
 
@@ -549,6 +558,8 @@ async def update_demo_settings(
         await demo_svc.set_demo_session_hours(db, data.session_hours)
     if data.ip_cooldown_hours is not None:
         await demo_svc.set_demo_ip_cooldown_hours(db, data.ip_cooldown_hours)
+    if data.followup_enabled is not None:
+        await demo_svc.set_demo_followup_enabled(db, data.followup_enabled)
     await demo_svc.set_demo_enabled(db, data.enabled)
     await audit.record(
         db, "admin.settings.demo_updated", request=request, actor_id=current.id,
@@ -557,6 +568,7 @@ async def update_demo_settings(
             "enabled": data.enabled,
             "session_hours": data.session_hours,
             "ip_cooldown_hours": data.ip_cooldown_hours,
+            "followup_enabled": data.followup_enabled,
         },
     )
     return await _demo_settings_response(db, source="db", enabled=data.enabled)
@@ -678,6 +690,10 @@ class DemoSessionInfo(BaseModel):
     convoy_count: int
     created_ip: str | None = None
     created_location: str | None = None
+    # Beim Start angegebene Kontaktdaten (aus demo_leads). None bei Sitzungen
+    # aus der Zeit vor der Abfrage.
+    contact_email: str | None = None
+    contact_name: str | None = None
 
 
 @router.get("/demo-sessions", response_model=list[DemoSessionInfo])
@@ -702,6 +718,11 @@ async def list_demo_sessions(
     )
     convoy_counts = dict(counts_result.all())
 
+    leads_result = await db.execute(
+        select(DemoLead).where(DemoLead.org_id.in_([o.id for o in orgs]))
+    )
+    leads = {lead.org_id: lead for lead in leads_result.scalars().all()}
+
     fallback_hours = await demo_svc.get_demo_session_hours(db)
     return [
         DemoSessionInfo(
@@ -713,6 +734,8 @@ async def list_demo_sessions(
             convoy_count=convoy_counts.get(o.id, 0),
             created_ip=o.demo_created_ip,
             created_location=o.demo_created_location,
+            contact_email=leads[o.id].email if o.id in leads else None,
+            contact_name=demo_svc.lead_display_name(leads[o.id]) or None if o.id in leads else None,
         )
         for o in orgs
     ]
@@ -743,6 +766,9 @@ async def extend_demo_session(
     now = datetime.now(timezone.utc)
     base = max(demo_svc.effective_expiry(org, fallback_hours), now)
     org.demo_expires_at = base + timedelta(hours=data.hours)
+    # Die Nachfrage-Mail hängt am gespiegelten Ablauf in demo_leads, nicht an
+    # der Org — sonst ginge sie trotz Verlängerung zum alten Termin raus.
+    await demo_svc.sync_lead_expiry(db, org.id, org.demo_expires_at)
     await db.commit()
     await db.refresh(org)
 
@@ -783,6 +809,9 @@ async def terminate_demo_session(
 
     detail = {"name": org.name, "slug": org.slug}
     owner_id = org.owner_id
+    # Vor dem Löschen: Für die Nachfrage endet die Sitzung jetzt. Danach wäre
+    # die Zuordnung weg (org_id fällt beim Löschen auf NULL).
+    await demo_svc.sync_lead_expiry(db, org_id, datetime.now(timezone.utc))
     await db.execute(delete(Convoy).where(Convoy.organization_id == org_id))
     await db.execute(delete(Organization).where(Organization.id == org_id))
     # Guard on is_demo so a (mis)assigned regular account can never be deleted here.
@@ -793,6 +822,83 @@ async def terminate_demo_session(
         db, "admin.demo_session.terminated", request=request, actor_id=current.id,
         actor_email=current.email, org_id=org_id, target_type="organization",
         target_id=org_id, detail=detail,
+    )
+
+
+class DemoLeadInfo(BaseModel):
+    """Eine Kontaktangabe aus dem Demo-Start, samt Stand der Nachfrage."""
+
+    id: uuid.UUID
+    email: str
+    first_name: str | None = None
+    last_name: str | None = None
+    org_slug: str
+    created_at: datetime
+    session_expires_at: datetime
+    # True, solange die dazugehörige Demo-Sitzung noch existiert (org_id wird
+    # beim Aufräumen auf NULL gesetzt).
+    session_active: bool
+    followup_sent_at: datetime | None = None
+    followup_attempts: int = 0
+    followup_error: str | None = None
+    unsubscribed_at: datetime | None = None
+
+
+@router.get("/demo-leads", response_model=list[DemoLeadInfo])
+async def list_demo_leads(
+    limit: int = Query(100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    """Wer die Demo gestartet hat — neueste zuerst.
+
+    Überdauert die Sitzung selbst: Die Demo-Org ist nach Ablauf gelöscht, der
+    Kontakt bleibt bis zum Ende der Aufbewahrungsfrist
+    (`RETENTION_DEMO_LEADS_DAYS`) stehen.
+    """
+    result = await db.execute(
+        select(DemoLead).order_by(DemoLead.created_at.desc()).limit(limit)
+    )
+    return [
+        DemoLeadInfo(
+            id=lead.id,
+            email=lead.email,
+            first_name=lead.first_name,
+            last_name=lead.last_name,
+            org_slug=lead.org_slug,
+            created_at=lead.created_at,
+            session_expires_at=lead.session_expires_at,
+            session_active=lead.org_id is not None,
+            followup_sent_at=lead.followup_sent_at,
+            followup_attempts=lead.followup_attempts or 0,
+            followup_error=lead.followup_error,
+            unsubscribed_at=lead.unsubscribed_at,
+        )
+        for lead in result.scalars().all()
+    ]
+
+
+@router.delete("/demo-leads/{lead_id}", status_code=204)
+async def delete_demo_lead(
+    lead_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    """Eine Kontaktangabe vorzeitig löschen — für ein Löschersuchen nach
+    DSGVO Art. 17, ohne auf die Aufbewahrungsfrist zu warten.
+
+    Die laufende Demo-Sitzung bleibt davon unberührt; sie läuft wie gehabt ab.
+    Eine Nachfrage-Mail geht danach nicht mehr raus.
+    """
+    lead = await db.get(DemoLead, lead_id)
+    if lead is None:
+        raise HTTPException(404, "Diesen Kontakt gibt es nicht")
+    await db.delete(lead)
+    await db.commit()
+    await audit.record(
+        db, "admin.demo_lead.deleted", request=request, actor_id=current.id,
+        actor_email=current.email, target_type="demo_lead", target_id=str(lead_id),
     )
 
 

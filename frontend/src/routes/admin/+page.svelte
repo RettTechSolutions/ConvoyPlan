@@ -5,7 +5,7 @@
     import LeitstellenTable from '$lib/components/LeitstellenTable.svelte';
     import { auth } from '$lib/stores/auth';
     import { getStreamTicket } from '$lib/api/client';
-    import { adminApi, mfaApi, leistellenApi, licenseApi, emailTemplateApi, regionApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type EmailTemplate, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoSessionInfo, type DemoIpLock, type DemoIpAllowlistEntry, type RegionStatus, type RegionPhase } from '$lib/api';
+    import { adminApi, mfaApi, leistellenApi, licenseApi, emailTemplateApi, regionApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type EmailTemplate, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoSessionInfo, type DemoLeadInfo, type DemoIpLock, type DemoIpAllowlistEntry, type RegionStatus, type RegionPhase } from '$lib/api';
     import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
     import SuperadminLogin from '$lib/components/SuperadminLogin.svelte';
@@ -727,6 +727,9 @@
         try {
             demoIpAllowlist = await adminApi.listDemoIpAllowlist();
         } catch { demoIpAllowlist = []; }
+        try {
+            demoLeads = await adminApi.listDemoLeads();
+        } catch { demoLeads = []; }
     }
 
     let demoSessions = $state<DemoSessionInfo[]>([]);
@@ -762,6 +765,54 @@
         } finally {
             demoSaving = false;
         }
+    }
+
+    // ── Nachfrage nach Sitzungsende ───────────────────────────────────────────
+    let demoFollowupSaving = $state(false);
+    let demoLeads = $state<DemoLeadInfo[]>([]);
+    let deletingLead = $state<string | null>(null);
+
+    async function toggleDemoFollowup() {
+        if (!demoSettings) return;
+        demoFollowupSaving = true;
+        demoSettingsError = '';
+        demoSettingsSuccess = '';
+        try {
+            demoSettings = await adminApi.saveDemoSettings(
+                demoSettings.enabled, undefined, undefined, !demoSettings.followup_enabled,
+            );
+            demoSettingsSuccess = demoSettings.followup_enabled
+                ? 'Nachfrage aktiviert — nach Ablauf einer Sitzung geht einmalig eine E-Mail raus.'
+                : 'Nachfrage deaktiviert.';
+            setTimeout(() => { demoSettingsSuccess = ''; }, 5000);
+        } catch (e) {
+            demoSettingsError = e instanceof Error ? e.message : 'Fehler beim Speichern';
+        } finally {
+            demoFollowupSaving = false;
+        }
+    }
+
+    async function deleteDemoLead(lead: DemoLeadInfo) {
+        if (!confirm(`Kontakt ${lead.email} löschen? Eine noch laufende Demo-Sitzung bleibt davon unberührt.`)) return;
+        deletingLead = lead.id;
+        demoSettingsError = '';
+        try {
+            await adminApi.deleteDemoLead(lead.id);
+            demoLeads = demoLeads.filter(l => l.id !== lead.id);
+        } catch (e) {
+            demoSettingsError = e instanceof Error ? e.message : 'Kontakt konnte nicht gelöscht werden';
+        } finally {
+            deletingLead = null;
+        }
+    }
+
+    /** Stand der Nachfrage in einem Wort — für die Spalte in der Kontaktliste. */
+    function followupState(lead: DemoLeadInfo): string {
+        if (lead.unsubscribed_at) return 'abbestellt';
+        if (lead.followup_sent_at) return `versandt ${new Date(lead.followup_sent_at).toLocaleDateString('de-DE')}`;
+        if (lead.followup_attempts >= 3) return 'aufgegeben';
+        if (lead.followup_attempts > 0) return `fehlgeschlagen (${lead.followup_attempts}×)`;
+        return new Date(lead.session_expires_at) > new Date() ? 'wartet auf Ablauf' : 'ausstehend';
     }
 
     let demoHoursInput = $state(24);
@@ -2586,6 +2637,26 @@
                 </p>
 
                 <div style="display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; margin-bottom:.35rem">
+                    <span class="update-label">Nachfrage nach Sitzungsende</span>
+                    <button
+                        class={demoSettings.followup_enabled ? 'btn-small danger' : 'btn-small'}
+                        onclick={toggleDemoFollowup}
+                        disabled={demoFollowupSaving}
+                    >
+                        {demoFollowupSaving ? '…' : demoSettings.followup_enabled ? 'Abschalten' : 'Einschalten'}
+                    </button>
+                    <span class="hint">{demoSettings.followup_enabled ? 'aktiv' : 'aus'}</span>
+                </div>
+                <p class="hint" style="margin-bottom:.6rem; font-size:var(--text-xs)">
+                    Einmalige E-Mail an die beim Start angegebene Adresse, sobald die Sitzung
+                    abgelaufen ist: hat alles gepasst, sind Fragen offen, wird eine gemeinsame
+                    Session gebraucht. Verschickt der Retention-Durchgang, stündlich.
+                    {#if !demoSettings.smtp_configured}
+                        <strong> Ohne konfiguriertes SMTP bleibt der Schalter wirkungslos.</strong>
+                    {/if}
+                </p>
+
+                <div style="display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; margin-bottom:.35rem">
                     <span class="update-label">Karenzzeit je IP</span>
                     <input
                         type="number"
@@ -2730,6 +2801,7 @@
                         <thead>
                             <tr>
                                 <th>Name</th>
+                                <th>Kontakt</th>
                                 <th>Code (Slug)</th>
                                 <th>Gestartet</th>
                                 <th>Läuft ab</th>
@@ -2742,6 +2814,16 @@
                             {#each demoSessions as session}
                                 <tr>
                                     <td>{session.name}</td>
+                                    <td>
+                                        {#if session.contact_email}
+                                            {#if session.contact_name}
+                                                {session.contact_name}<br>
+                                            {/if}
+                                            <a href="mailto:{session.contact_email}" class="hint">{session.contact_email}</a>
+                                        {:else}
+                                            <span class="hint" title="Sitzung aus der Zeit vor der Kontaktabfrage">–</span>
+                                        {/if}
+                                    </td>
                                     <td><code>{session.slug}</code></td>
                                     <td class="hint">{new Date(session.created_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</td>
                                     <td class="hint">{new Date(session.expires_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</td>
@@ -2777,6 +2859,58 @@
                                                 {endingDemoSession === session.id ? '…' : '✕ Beenden'}
                                             </button>
                                         </div>
+                                    </td>
+                                </tr>
+                            {/each}
+                        </tbody>
+                    </table>
+                {/if}
+
+                <div class="section-header" style="margin-top:1.25rem">
+                    <strong>Interessenten aus der Demo ({demoLeads.length})</strong>
+                    <button class="btn-small" onclick={loadDemoSettings} title="Aktualisieren">⟳</button>
+                </div>
+                <p class="hint" style="margin-bottom:.6rem; font-size:var(--text-xs)">
+                    Bleibt über das Ende der Sitzung hinaus stehen — die Demo-Umgebung ist dann
+                    längst gelöscht. Wird nach der Aufbewahrungsfrist automatisch abgeräumt
+                    (RETENTION_DEMO_LEADS_DAYS, Standard 180 Tage).
+                </p>
+                {#if demoLeads.length === 0}
+                    <p class="hint">Noch keine Kontaktangaben.</p>
+                {:else}
+                    <table class="user-table">
+                        <thead>
+                            <tr>
+                                <th>E-Mail</th>
+                                <th>Name</th>
+                                <th>Sitzung</th>
+                                <th>Gestartet</th>
+                                <th>Nachfrage</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {#each demoLeads as lead}
+                                <tr>
+                                    <td><a href="mailto:{lead.email}">{lead.email}</a></td>
+                                    <td>{[lead.first_name, lead.last_name].filter(Boolean).join(' ') || '—'}</td>
+                                    <td>
+                                        <code>{lead.org_slug}</code>
+                                        {#if !lead.session_active}
+                                            <span class="hint" title="Die Demo-Umgebung wurde bereits gelöscht"> (beendet)</span>
+                                        {/if}
+                                    </td>
+                                    <td class="hint">{new Date(lead.created_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}</td>
+                                    <td class="hint" title={lead.followup_error ?? ''}>{followupState(lead)}</td>
+                                    <td class="actions-cell">
+                                        <button
+                                            class="btn-small danger"
+                                            onclick={() => deleteDemoLead(lead)}
+                                            disabled={deletingLead === lead.id}
+                                            title="Kontakt löschen (Löschersuchen nach DSGVO Art. 17)"
+                                        >
+                                            {deletingLead === lead.id ? '…' : '✕ Löschen'}
+                                        </button>
                                     </td>
                                 </tr>
                             {/each}

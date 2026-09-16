@@ -17,7 +17,9 @@ from app.database import get_db
 from app.models.organization import Organization, UserOrganization
 from app.models.user import User
 from app.schemas.user import (
+    NameFieldsMixin,
     NormalizedEmail,
+    NormalizedEmailStr,
     PasswordChangeRequest,
     PasswordResetRequest,
     UserCreate,
@@ -633,6 +635,21 @@ def _demo_token(user: User, org: Organization, session_hours: int) -> str:
     )
 
 
+class DemoSessionRequest(NameFieldsMixin):
+    """Kontaktangabe beim Demo-Start.
+
+    Die Adresse ist Pflicht, der Name nicht: Ohne eine Adresse lässt sich
+    weder auseinanderhalten, wer gerade in welcher Demo sitzt, noch nach
+    Ablauf nachfragen — ein Name allein leistet beides nicht. Alles, was über
+    die Adresse hinausgeht, kostet nur Abbrüche auf dem Weg in die Demo.
+
+    Gespeichert wird die Angabe in `demo_leads`, nicht als Kennung des
+    Demo-Benutzers (siehe app.models.demo_lead).
+    """
+
+    email: NormalizedEmailStr
+
+
 class DemoSessionResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -676,6 +693,7 @@ async def demo_session_info(
     dependencies=[Depends(rate_limit("demo", max_attempts=10, window_seconds=3600, count_attempts=True))],
 )
 async def create_demo_session(
+    data: DemoSessionRequest,
     request: Request,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
@@ -715,6 +733,14 @@ async def create_demo_session(
         if resumable is not None:
             org, user = resumable
             expires = demo_svc.effective_expiry(org, session_hours)
+            # Wer fortsetzt, hat das Formular gerade erneut ausgefüllt — die
+            # frische Angabe gewinnt (etwa eine korrigierte Adresse).
+            await demo_svc.update_lead_for_org(
+                db, org.id,
+                email=data.email, first_name=data.first_name, last_name=data.last_name,
+                session_expires_at=expires,
+            )
+            await db.commit()
             token = _demo_token(user, org, session_hours)
             await audit.record(
                 db, "demo.session.resumed", request=request,
@@ -769,7 +795,12 @@ async def create_demo_session(
     password = _secrets.token_urlsafe(24)
     hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
-    demo_user = User(id=uid, email=email, hashed_password=hashed, is_demo=True)
+    demo_user = User(
+        id=uid, email=email, hashed_password=hashed, is_demo=True,
+        # Der Anmeldename bleibt die synthetische Adresse (siehe oben); der
+        # angegebene Name darf trotzdem in der Oberfläche auftauchen.
+        first_name=data.first_name, last_name=data.last_name,
+    )
     db.add(demo_user)
     await db.flush()
 
@@ -783,6 +814,18 @@ async def create_demo_session(
     await db.flush()
 
     db.add(UserOrganization(user_id=demo_user.id, organization_id=demo_org.id, role="planer"))
+
+    # Kontaktangabe in einer eigenen Tabelle, die das Aufräumen der Org
+    # überlebt — die Nachfrage-Mail geht erst danach raus.
+    await demo_svc.record_lead(
+        db,
+        email=data.email,
+        first_name=data.first_name,
+        last_name=data.last_name,
+        org_id=demo_org.id,
+        org_slug=slug,
+        session_expires_at=expire,
+    )
     await db.commit()
 
     # Rough geo location for the admin panel ("welche Demo gehört zu wem") —
@@ -798,3 +841,29 @@ async def create_demo_session(
     )
 
     return DemoSessionResponse(access_token=token, org_slug=slug, expires_at=expire.isoformat())
+
+
+class DemoUnsubscribeRequest(BaseModel):
+    token: str = Field(min_length=8, max_length=64)
+
+
+@router.post(
+    "/demo-followup/unsubscribe",
+    dependencies=[Depends(rate_limit("demo_unsubscribe", max_attempts=20, window_seconds=3600))],
+)
+async def unsubscribe_demo_followup(
+    data: DemoUnsubscribeRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Widerspruch gegen die Nachfrage-Mail — der Link in ihrem Fußbereich.
+
+    Öffentlich und ohne Anmeldung: Wer die Demo genutzt hat, hat kein Konto,
+    über das er sich ausweisen könnte. Das Token aus der Mail ist der Nachweis.
+    Der Vermerk gilt der Adresse, nicht der einzelnen Sitzung — ein späterer
+    Demo-Start hebt ihn nicht auf.
+    """
+    if not await demo_svc.unsubscribe_by_token(db, data.token):
+        raise HTTPException(status_code=404, detail="Dieser Abmeldelink ist nicht (mehr) gültig.")
+    await audit.record(db, "demo.followup.unsubscribed", request=request)
+    return {"status": "unsubscribed"}
