@@ -342,6 +342,26 @@ def test_ein_abgebrochener_schreibvorgang_laesst_die_alte_datei_stehen(certs):
     assert [p.name for p in certs.iterdir()] == ["Caddyfile"]
 
 
+def test_die_temporaerdatei_entsteht_neben_dem_ziel(tmp_path, monkeypatch):
+    """CERTS_DIR und CADDYFILE_PATH können auseinanderfallen. Passiert das,
+    darf der Schreibweg nicht ins *andere* Verzeichnis greifen: os.replace ist
+    nur innerhalb eines Dateisystems atomar, und das Schreibrecht, auf das es
+    hier ankommt, gilt für das Verzeichnis der Zieldatei.
+
+    Gefunden von CI, nicht hier: lokal lief der Lauf als root und legte das
+    unbeteiligte Verzeichnis kurzerhand an."""
+    unerreichbar = tmp_path / "gibt-es-nicht" / "certs"
+    ziel = tmp_path / "woanders" / "Caddyfile"
+    ziel.parent.mkdir()
+    monkeypatch.setattr(caddy_config, "CERTS_DIR", unerreichbar)
+    monkeypatch.setattr(caddy_config, "CADDYFILE_PATH", ziel)
+
+    caddy_config._caddyfile_schreiben("neu")
+
+    assert ziel.read_text() == "neu"
+    assert not unerreichbar.exists()
+
+
 def test_die_geschriebene_datei_ist_lesbar(certs):
     """mkstemp legt mit 0600 an. Caddy läuft zwar als root, aber eine
     Konfigurationsdatei, die nur ihr Erzeuger lesen kann, ist eine Falle."""

@@ -330,16 +330,22 @@ def _caddyfile_schreiben(inhalt: str) -> None:
     Installationen gehört ``/certs/Caddyfile`` oft noch einem früheren, als
     root laufenden Backend; ``write_text`` scheiterte dort mit EACCES, obwohl
     an den Rechten nichts auszusetzen war.
+
+    Die Temporärdatei entsteht im Verzeichnis des Ziels, nicht in ``CERTS_DIR``.
+    Im Betrieb ist das dasselbe, aber ``os.replace`` ist nur innerhalb eines
+    Dateisystems atomar — und die Sicherheit oben gilt für das Verzeichnis, in
+    dem die Zieldatei tatsächlich liegt.
     """
-    CERTS_DIR.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=CERTS_DIR, prefix=".Caddyfile.", suffix=".tmp")
+    ziel = Path(CADDYFILE_PATH)
+    ziel.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=ziel.parent, prefix=".Caddyfile.", suffix=".tmp")
     try:
         with os.fdopen(fd, "w") as fh:
             fh.write(inhalt)
         # mkstemp legt mit 0600 an; Caddy soll die Datei lesen können, auch
         # wenn es einmal nicht als root laufen sollte.
         os.chmod(tmp, 0o644)
-        os.replace(tmp, CADDYFILE_PATH)
+        os.replace(tmp, ziel)
     except BaseException:
         with suppress(OSError):
             os.unlink(tmp)
