@@ -25,6 +25,7 @@ from urllib.parse import urlparse
 
 import jwt as _jwt
 from jwt.exceptions import InvalidTokenError
+from pydantic import ValidationError
 from mcp.server.auth.provider import (
     AccessToken,
     AuthorizationCode,
@@ -46,7 +47,7 @@ from app.models.oauth_client import AUTH_METHOD_NONE, OAuthClient
 from app.models.oauth_code import OAuthCode
 from app.models.oauth_refresh_token import OAuthRefreshToken
 from app.models.user import User
-from app.services import crypto, oauth_tokens
+from app.services import crypto, oauth_tokens, safe_fetch
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +145,108 @@ def decode_authorize_request(ticket: str) -> dict | None:
     return payload
 
 
+# ── Client ID Metadata Documents ─────────────────────────────────────────
+#
+# Der in der MCP-Revision 2026-07-28 vorgesehene Nachfolger der dynamischen
+# Registrierung: statt sich beim Server einzutragen, veröffentlicht ein
+# Programm seine Angaben unter einer HTTPS-URL — und **diese URL ist die
+# client_id**. Der Vorteil: nichts wird gespeichert, was nicht der
+# Betreiber des Clients selbst kontrolliert, und ein zurückgezogenes
+# Dokument entzieht dem Client den Zugang von seiner Seite aus.
+#
+# Der Preis: der Server ruft eine Adresse ab, die der Anfragende bestimmt.
+# Deshalb ausschließlich über ``safe_fetch`` und standardmäßig abgeschaltet.
+
+# Abgerufene Dokumente im Speicher, damit nicht jede Autorisierung einen
+# Netzzugriff auslöst. Prozessweit und flüchtig — ein Neustart leert ihn, und
+# genau das ist bei einem Cache für fremde Angaben richtig.
+_cimd_cache: dict[str, tuple[float, OAuthClientInformationFull]] = {}
+
+
+def _cimd_cache_gueltig(eintrag: tuple[float, OAuthClientInformationFull]) -> bool:
+    alter = time.time() - eintrag[0]
+    return alter < settings.mcp_cimd_cache_minutes * 60
+
+
+def reset_cimd_cache() -> None:
+    """Den Cache leeren. Für Tests und für den Fall, dass ein Betreiber eine
+    zurückgezogene Registrierung sofort wirksam machen will."""
+    _cimd_cache.clear()
+
+
+def ist_cimd_client_id(client_id: str) -> bool:
+    """Ob eine client_id als Metadatendokument zu verstehen ist.
+
+    Die Spec unterscheidet an genau einem Merkmal: eine client_id, die wie
+    eine HTTPS-URL aussieht, *ist* eine. Alles andere ist ein registrierter
+    Bezeichner."""
+    return client_id.startswith("https://")
+
+
+async def loese_cimd_auf(client_id: str) -> OAuthClientInformationFull | None:
+    """Ein Client ID Metadata Document abrufen und prüfen.
+
+    Gibt None zurück, wenn es nicht abrufbar oder nicht stimmig ist — der
+    Aufrufer behandelt das wie einen unbekannten Client. Die Gründe stehen
+    im Log, nicht in der Antwort: einem Anfragenden zu erklären, warum genau
+    sein Dokument abgelehnt wurde, hilft vor allem beim Sondieren."""
+    if not settings.mcp_allow_cimd:
+        return None
+
+    zwischengespeichert = _cimd_cache.get(client_id)
+    if zwischengespeichert is not None and _cimd_cache_gueltig(zwischengespeichert):
+        return zwischengespeichert[1]
+
+    try:
+        dokument = await safe_fetch.fetch_json(client_id)
+    except safe_fetch.UnsafeUrlError as exc:
+        logger.warning("MCP: CIMD %s abgelehnt: %s", client_id, exc)
+        return None
+
+    # Das Dokument muss sich selbst als das ausweisen, was abgerufen wurde.
+    # Ohne diese Prüfung könnte ein Dokument unter der eigenen Adresse eine
+    # fremde client_id behaupten und damit deren Zustimmungen erben.
+    if dokument.get("client_id") != client_id:
+        logger.warning(
+            "MCP: CIMD %s abgelehnt — das Dokument nennt sich %r",
+            client_id, dokument.get("client_id"),
+        )
+        return None
+
+    redirect_uris = dokument.get("redirect_uris")
+    if not isinstance(redirect_uris, list) or not redirect_uris:
+        logger.warning("MCP: CIMD %s abgelehnt — keine redirect_uris", client_id)
+        return None
+    try:
+        for uri in redirect_uris:
+            validate_redirect_uri(str(uri))
+    except RegistrationError as exc:
+        logger.warning("MCP: CIMD %s abgelehnt — %s", client_id, exc.error_description)
+        return None
+
+    try:
+        client = OAuthClientInformationFull(
+            client_id=client_id,
+            # Ein CIMD-Client ist per Konstruktion öffentlich: es gibt
+            # niemanden, der ihm ein Secret hätte ausstellen können.
+            client_secret=None,
+            token_endpoint_auth_method="none",
+            client_name=str(dokument.get("client_name") or "")[:255] or None,
+            redirect_uris=[str(u) for u in redirect_uris],
+            grant_types=list(dokument.get("grant_types") or
+                             ["authorization_code", "refresh_token"]),
+            scope=str(dokument.get("scope") or "") or None,
+        )
+    except ValidationError as exc:
+        logger.warning("MCP: CIMD %s abgelehnt — unbrauchbare Angaben: %s", client_id, exc)
+        return None
+
+    _cimd_cache[client_id] = (time.time(), client)
+    logger.info("MCP: CIMD %s aufgelöst (Name laut Dokument: %r)",
+                client_id, client.client_name)
+    return client
+
+
 # ── Provider ─────────────────────────────────────────────────────────────
 
 
@@ -153,6 +256,11 @@ class ConvoyPlanOAuthProvider(
     # ---- Clients ----
 
     async def get_client(self, client_id: str) -> OAuthClientInformationFull | None:
+        # Eine HTTPS-client_id ist ein Metadatendokument, kein Bezeichner in
+        # der Datenbank — dort steht sie gar nicht.
+        if ist_cimd_client_id(client_id):
+            return await loese_cimd_auf(client_id)
+
         async with get_db_session() as db:
             row = await db.get(OAuthClient, client_id)
             if row is None or row.revoked:

@@ -1,6 +1,7 @@
 import logging
 import time
 from collections import defaultdict
+from typing import Callable
 
 from fastapi import WebSocket
 
@@ -18,6 +19,28 @@ class TrackingManager:
     def __init__(self):
         self._connections: dict[str, list[WebSocket]] = defaultdict(list)
         self._cleared: dict[tuple[str, str], float] = {}
+        # Zusätzliche Interessenten an jedem Broadcast, die keine WebSocket
+        # sind. Eingeführt für die MCP-Subscriptions: die brauchen dieselben
+        # Ereignisse, aber dieses Modul soll nichts von MCP wissen — es läuft
+        # auch auf Instanzen, auf denen MCP abgeschaltet ist.
+        self._listeners: list[Callable[[str, dict], None]] = []
+
+    def add_broadcast_listener(self, listener: "Callable[[str, dict], None]") -> None:
+        """Einen Beobachter für jeden Broadcast anmelden.
+
+        Der Beobachter läuft synchron auf der Event-Loop und darf deshalb
+        weder blockieren noch werfen — ein Fehler dort würde sonst die
+        Live-Verfolgung mitreißen, und die ist der Teil, bei dem ein Ausfall
+        im Einsatz unmittelbar weh tut.
+
+        Derselbe Beobachter lässt sich nicht zweimal anmelden: die Montage
+        des MCP-Servers läuft in Tests mehrfach gegen denselben Prozess, und
+        doppelte Zustellung wäre dort ein Fehler, der erst später auffiele."""
+        if listener not in self._listeners:
+            self._listeners.append(listener)
+
+    def reset_listeners(self) -> None:
+        self._listeners.clear()
 
     async def connect(self, convoy_id: str, ws: WebSocket):
         await ws.accept()
@@ -55,6 +78,18 @@ class TrackingManager:
                 )
 
     async def broadcast(self, convoy_id: str, data: dict):
+        # Zuerst die Beobachter, jeder für sich abgeschirmt: ein MCP-Abonnent,
+        # dessen Zustellung scheitert, darf die WebSocket-Verteilung an die
+        # Fahrzeuge nicht aufhalten.
+        for listener in self._listeners:
+            try:
+                listener(convoy_id, data)
+            except Exception:
+                logger.warning(
+                    "Broadcast-Beobachter hat geworfen (convoy_id=%s) — ignoriert",
+                    convoy_id, exc_info=True,
+                )
+
         dead: list[WebSocket] = []
         for ws in list(self._connections.get(convoy_id, [])):
             try:

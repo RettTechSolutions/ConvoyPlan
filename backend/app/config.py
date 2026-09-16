@@ -163,6 +163,23 @@ class Settings(BaseSettings):
     # anders als ein Mensch merkt es nicht von selbst, dass es sich im Kreis
     # dreht. Greift für lesende wie schreibende Aufrufe.
     mcp_tool_calls_per_minute: int = 120
+    # Client ID Metadata Documents (draft-ietf-oauth-client-id-metadata-
+    # document-00). In der MCP-Revision 2026-07-28 der vorgesehene Nachfolger
+    # der dynamischen Registrierung: die client_id ist dann eine HTTPS-URL,
+    # unter der das Programm seine Angaben selbst veröffentlicht.
+    #
+    # STANDARDMÄSSIG AUS. Eingeschaltet ruft der Server eine Adresse ab, die
+    # der Anfragende bestimmt — also genau die Form, aus der SSRF entsteht.
+    # app/services/safe_fetch.py schränkt das hart ein (nur HTTPS, keine
+    # privaten, Loopback-, Link-local- oder reservierten Adressen, keine
+    # Weiterleitungen, kurze Zeitgrenzen, Größenlimit), aber DNS-Rebinding
+    # bleibt als Restrisiko und ist dort benannt. Wer das nicht tragen will,
+    # lässt den Schalter aus und bleibt bei MCP_ALLOW_DCR.
+    mcp_allow_cimd: bool = False
+    # Wie lange ein abgerufenes Metadatendokument als gültig gilt. Kurz genug,
+    # dass eine zurückgezogene Registrierung zeitnah wirkt; lang genug, dass
+    # nicht jede Autorisierung einen Abruf auslöst.
+    mcp_cimd_cache_minutes: int = 60
     # Interactive API docs (Swagger UI at /docs, ReDoc at /redoc, schema at
     # /openapi.json). Always available in development environments. In
     # production they are disabled by default so the API surface is not exposed

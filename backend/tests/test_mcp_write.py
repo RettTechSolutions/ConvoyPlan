@@ -17,6 +17,8 @@ from app.models.vehicle import Vehicle
 from app.models.waypoint import Waypoint
 from app.database import AsyncSessionLocal
 from tests.mcp_fixtures import (
+    MCP_HEADERS,
+    PROTOCOL_VERSION,
     call,
     connect,
     mcp_app,
@@ -39,6 +41,28 @@ async def _sitzung(client, user, org, scopes=None):
 async def _werkzeug(client, token, session, name, argumente):
     return await call(
         client, token, session, "tools/call", {"name": name, "arguments": argumente}
+    )
+
+
+async def _roh(client, token, session, name, argumente):
+    """Derselbe Aufruf, aber die HTTP-Antwort statt des JSON-RPC-Ergebnisses.
+
+    Nötig, seit die Step-up-Schicht (``mount.StepUpScopeMiddleware``) einen
+    Aufruf mit zu schmalen Rechten schon vor dem Transport mit 403 beantwortet
+    — dann gibt es gar kein Werkzeugergebnis mehr, in das man hineinsehen
+    könnte."""
+    return await client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0", "id": 7, "method": "tools/call",
+            "params": {"name": name, "arguments": argumente},
+        },
+        headers={
+            **MCP_HEADERS,
+            "Authorization": f"Bearer {token}",
+            "mcp-session-id": session,
+            "MCP-Protocol-Version": PROTOCOL_VERSION,
+        },
     )
 
 
@@ -163,11 +187,14 @@ async def test_beobachter_darf_nicht_schreiben():
     async with seeded() as fx, mcp_app() as (_app, client):
         reg, token, session = await _sitzung(client, fx.beobachter, fx.org_a)
 
-        antwort = await _werkzeug(client, token, session, "konvoi_anlegen",
-                                  {"name": "Sollte nicht entstehen"})
-        assert antwort["result"]["isError"] is True
-        text = antwort["result"]["content"][0]["text"]
-        assert scope_svc.SCOPE_WRITE in text
+        # Ein Beobachter bekommt convoy:write gar nicht erst zugeteilt
+        # (scopes.grantable), der Aufruf scheitert also schon an der
+        # Step-up-Schicht — und die antwortet protokollgerecht mit 403 und
+        # der Challenge, statt mit einem Werkzeugfehler.
+        antwort = await _roh(client, token, session, "konvoi_anlegen",
+                             {"name": "Sollte nicht entstehen"})
+        assert antwort.status_code == 403, antwort.text
+        assert scope_svc.SCOPE_WRITE in antwort.headers["www-authenticate"]
 
         async with AsyncSessionLocal() as db:
             treffer = (
@@ -185,12 +212,12 @@ async def test_nur_lese_scope_reicht_fuer_status_nicht():
         reg, token, session = await _sitzung(
             client, fx.planer, fx.org_a, [scope_svc.SCOPE_READ]
         )
-        antwort = await _werkzeug(client, token, session, "fahrzeugstatus_setzen", {
+        antwort = await _roh(client, token, session, "fahrzeugstatus_setzen", {
             "konvoi_id": str(fx.convoy_a.id), "fahrzeug_id": str(fx.vehicle_a.id),
             "status": "en_route",
         })
-        assert antwort["result"]["isError"] is True
-        assert scope_svc.SCOPE_FLEET_STATUS in antwort["result"]["content"][0]["text"]
+        assert antwort.status_code == 403, antwort.text
+        assert scope_svc.SCOPE_FLEET_STATUS in antwort.headers["www-authenticate"]
         await purge_clients([reg["client_id"]])
 
 

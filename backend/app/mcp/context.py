@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from fastapi import HTTPException
 
 from mcp.server.auth.middleware.auth_context import get_access_token
-from mcp.server.mcpserver.exceptions import ToolError
+from mcp.server.mcpserver.exceptions import ResourceError, ToolError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,18 +27,27 @@ from app.services import audit, rate_limit
 logger = logging.getLogger(__name__)
 
 
-class McpError(ToolError):
-    """Ein vorhergesehener Fehler, der als Tool-Ergebnis beim Modell landet.
+class McpError(ToolError, ResourceError):
+    """Ein vorhergesehener Fehler, der als Ergebnis beim Modell landet.
 
     Die Meldung ist für ein Sprachmodell geschrieben, nicht für einen Log:
     sie sagt, was fehlt und was stattdessen ginge, damit das Modell den
     nächsten Schritt wählen kann statt es erneut zu versuchen.
 
-    Die Ableitung von ``ToolError`` ist dabei nicht kosmetisch: das SDK
-    behandelt jede andere Ausnahme als Absturz und ersetzt den Text durch
-    ein nacktes „Error executing tool …". Die sorgfältig formulierte
-    Meldung käme also nie an, und der Log bekäme einen Traceback für etwas,
-    das kein Fehler des Servers ist."""
+    Die Ableitung ist dabei nicht kosmetisch: das SDK behandelt jede andere
+    Ausnahme als Absturz und ersetzt den Text durch ein nacktes „Error
+    executing tool …". Die sorgfältig formulierte Meldung käme also nie an,
+    und der Log bekäme einen Traceback für etwas, das kein Fehler des
+    Servers ist.
+
+    **Beide** Basisklassen sind nötig, weil das SDK Werkzeuge und Resources
+    getrennt behandelt: die Werkzeugschicht lässt ``ToolError`` durch, die
+    Resource-Schicht ``ResourceError`` — und was dort nicht passt, wird in
+    ``UnexpectedResourceError`` verpackt, dessen Text nur die URI nennt.
+    Mit nur ``ToolError`` kam die Absage einer Resource also als „Error
+    creating resource from template …" an, und die Zugriffsprüfung stand
+    im Log als Absturz. Beide leiten von ``MCPServerError`` ab, die
+    Mehrfachvererbung ist daher geradlinig."""
 
 
 @dataclass

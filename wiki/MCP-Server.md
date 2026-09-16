@@ -14,6 +14,8 @@ ConvoyPlan kann seine Fachdaten über einen **Model-Context-Protocol-Server** be
 
 **Dokumente** (Resources): Marschbefehl als PDF, Route als GPX, Konvoi als JSON — dieselben Exporte wie im Portal.
 
+**Live mitlaufen** (Abonnement): Ein Programm kann einen Konvoi *abonnieren* und wird benachrichtigt, sobald sich dort etwas bewegt, statt im Sekundentakt nachzufragen. Übertragen wird dabei nur der Anstoß „hier gibt es Neues" — die Daten holt das Programm anschließend selbst, und dabei greift dieselbe Prüfung wie bei jedem anderen Zugriff. Voraussetzung ist ein Programm, das die MCP-Revision 2026-07-28 spricht.
+
 ## Was der Server nicht kann
 
 | | |
@@ -125,9 +127,33 @@ Siehe auch: [Sicherheit und Datenschutz](Sicherheit-und-Datenschutz), [Rollen & 
 | `MCP_ACCESS_TOKEN_TTL_MINUTES` | `15` | Gültigkeit eines Zugriffstokens — siehe Zeitfenster oben. |
 | `MCP_REFRESH_TOKEN_TTL_DAYS` | `30` | Wie lange eine Verbindung ohne erneute Zustimmung hält. |
 | `MCP_ALLOW_DCR` | `true` | Ob sich Programme selbst registrieren dürfen. Aus bedeutet: Clients von Hand eintragen. |
+| `MCP_ALLOW_CIMD` | `false` | Ob Programme sich über eine hinterlegte Steckbrief-URL ausweisen dürfen — siehe unten. |
+| `MCP_CIMD_CACHE_MINUTES` | `60` | Wie lange ein abgeholter Steckbrief gilt. |
 | `MCP_TOOL_CALLS_PER_MINUTE` | `120` | Obergrenze je Verbindung. Ein Modell in einer Schleife ist ein realistisches Lastprofil. |
 
 Routenberechnungen zählen zusätzlich gegen `QUOTA_ROUTING_PER_HOUR` — dieselbe Einstellung wie an der REST-API.
+
+---
+
+## Programme ohne Selbstregistrierung (CIMD)
+
+Die Selbstregistrierung (`MCP_ALLOW_DCR`) hat einen bekannten Haken: **jedes** Programm, das die Instanz erreicht, kann sich eintragen und sich dabei nennen, wie es will. Deshalb steht der Name auf dem Zustimmungsbildschirm als *ungeprüft*.
+
+Der Nachfolger heißt **Client ID Metadata Documents**. Statt sich einzutragen, nennt ein Programm als Kennung eine HTTPS-Adresse, unter der sein Steckbrief liegt — der Server holt ihn dort ab. Die Kennung ist damit selbst überprüfbar: sie sagt, wem das Programm gehört.
+
+Das ist standardmäßig **aus**, und zwar bewusst. Eingeschaltet ruft der Server eine Adresse ab, **die der Client bestimmt** — die klassische Zutat für einen Angriff auf das interne Netz. Abgesichert ist das: nur HTTPS, keine internen, privaten oder Link-Local-Adressen (jede aufgelöste, nicht nur die erste), keine Weiterleitungen, harte Zeit- und Größengrenzen. Trotzdem bleibt es eine Entscheidung des Betreibers:
+
+```
+MCP_ALLOW_CIMD=true
+```
+
+---
+
+## Wenn die Rechte nicht reichen
+
+Ein Zugang beginnt mit dem schmalsten Recht (`convoy:read`). Versucht ein Programm etwas, wofür das nicht genügt, bekommt es keine nichtssagende Fehlermeldung, sondern die Auskunft, **welches** Recht fehlt — und fordert es von sich aus nach. Für den Benutzer heißt das: eine Nachfrage im Browser, kein Neu-Einrichten der Verbindung.
+
+Was dabei erteilt werden kann, deckelt weiterhin die Rolle. Ein *beobachter* kann `convoy:write` auch dann nicht nachfordern, wenn das Programm danach fragt.
 
 ---
 
@@ -138,3 +164,5 @@ Die Instanz ist zugleich **Resource Server und Authorization Server**: eine selb
 Umgesetzt nach der MCP-Revision **2026-07-28**: Protected Resource Metadata nach RFC 9728 an der Wurzel der Site, PKCE ausschließlich mit `S256`, Resource Indicators nach RFC 8707 (ein Zugang für Instanz A ist an Instanz B wertlos) und der `iss`-Parameter nach RFC 9207 in jeder Antwort — auch in einer Absage, damit ein Programm den Absender prüfen kann.
 
 Zugänge erneuern sich rollierend. Taucht ein bereits erneuertes Token noch einmal auf, hat es jemand mitgelesen — dann wird die **gesamte** Verbindung entzogen, nicht nur das vorgelegte Token.
+
+Die Live-Abonnements laufen über `subscriptions/listen`. Die Adresse einer abonnierbaren Resource trägt die Organisation in sich (`convoyplan://org/<org>/konvoi/<id>/live`) — daran entscheidet der Server, wer eine Benachrichtigung bekommt. Das ist nicht kosmetisch: das MCP-SDK nimmt jede angefragte Adresse ohne Rückfrage an, die Trennung nach Organisationen muss also aus der Form der Adresse selbst kommen. Ein Programm, das die Adresse eines fremden Konvois errät, erfährt davon nichts.
