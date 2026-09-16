@@ -301,6 +301,39 @@ async def save_smtp_settings(db: AsyncSession, settings: dict[str, str]) -> None
     await db.commit()
 
 
+# ── Hinterlegte Vorlagen ──────────────────────────────────────────────────────
+
+# Schlüssel in system_settings. Die Zugangsdaten-Mail trägt die historischen
+# Namen ohne Kennung — umbenennen hieße, bereits angepasste Vorlagen bestehender
+# Installationen stillschweigend auf den Standard zurückzusetzen.
+PASSWORD_SUBJECT_KEY = "email.template.subject"
+PASSWORD_HTML_KEY = "email.template.html"
+DEMO_FOLLOWUP_SUBJECT_KEY = "email.template.demo_followup.subject"
+DEMO_FOLLOWUP_HTML_KEY = "email.template.demo_followup.html"
+
+
+async def get_template(
+    db: AsyncSession,
+    subject_key: str,
+    html_key: str,
+    default_subject: str,
+    default_html: str,
+) -> tuple[str, str]:
+    """Betreff und HTML einer Vorlage — hinterlegt, sonst Standard.
+
+    Ein leerer Wert zählt als „nicht hinterlegt": Eine Vorlage ohne Text wäre
+    eine Mail ohne Inhalt, und die ist nie gemeint.
+    """
+    result = await db.execute(
+        select(SystemSetting).where(SystemSetting.key.in_([subject_key, html_key]))
+    )
+    rows = {r.key: r.value for r in result.scalars().all()}
+    return (
+        rows.get(subject_key) or default_subject,
+        rows.get(html_key) or default_html,
+    )
+
+
 async def is_smtp_configured(db: AsyncSession) -> bool:
     """Whether a send would even have a chance — no host, no mail.
 
@@ -401,15 +434,10 @@ async def _render_password_email_async(
     color_primary_hover = branding.get("branding.color_primary_hover", "#C23020")
     logo_main = branding.get("branding.logo_main", "")
 
-    # Load custom template from DB (if set)
-    result = await db.execute(
-        select(SystemSetting).where(
-            SystemSetting.key.in_(["email.template.subject", "email.template.html"])
-        )
+    subject_tpl, html_tpl = await get_template(
+        db, PASSWORD_SUBJECT_KEY, PASSWORD_HTML_KEY,
+        DEFAULT_EMAIL_TEMPLATE_SUBJECT, DEFAULT_EMAIL_TEMPLATE_HTML,
     )
-    rows = {r.key: r.value for r in result.scalars().all()}
-    subject_tpl = rows.get("email.template.subject") or DEFAULT_EMAIL_TEMPLATE_SUBJECT
-    html_tpl = rows.get("email.template.html") or DEFAULT_EMAIL_TEMPLATE_HTML
 
     # Build computed fragments. Resolve base_url so logo src is absolute: email
     # clients cannot follow relative URLs (there is no page URL to resolve against).
@@ -643,8 +671,12 @@ async def _render_demo_followup_email_async(
         "unsubscribe_url": unsubscribe_url,
     }
 
-    subject = _safe_format(DEFAULT_DEMO_FOLLOWUP_SUBJECT, html_vars)
-    html_body = _safe_format(DEFAULT_DEMO_FOLLOWUP_HTML, html_vars)
+    subject_tpl, html_tpl = await get_template(
+        db, DEMO_FOLLOWUP_SUBJECT_KEY, DEMO_FOLLOWUP_HTML_KEY,
+        DEFAULT_DEMO_FOLLOWUP_SUBJECT, DEFAULT_DEMO_FOLLOWUP_HTML,
+    )
+    subject = _safe_format(subject_tpl, html_vars)
+    html_body = _safe_format(html_tpl, html_vars)
     return subject, html_body
 
 
