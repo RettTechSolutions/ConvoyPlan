@@ -274,17 +274,18 @@ async def require_superadmin(
 
 
 async def require_system_read(
+    request: Request,
     token: str | None = Depends(oauth2_optional),
     raw_api_key: str | None = Depends(api_key_header),
     db: AsyncSession = Depends(get_db),
 ) -> User | None:
     """Read access to the instance-wide system metrics.
 
-    Accepts either a superadmin bearer token (what the admin portal sends) or a
-    system-scoped API key, so a monitoring system can poll the figures without
-    holding a login. Returns the acting superadmin, or None when the caller
-    authenticated with a key — these endpoints only read, so there is no acting
-    user to resolve.
+    Accepts either a superadmin session — the HttpOnly cookie the admin portal
+    now carries, or an ``Authorization: Bearer`` token — or a system-scoped API
+    key, so a monitoring system can poll the figures without holding a login.
+    Returns the acting superadmin, or None when the caller authenticated with a
+    key — these endpoints only read, so there is no acting user to resolve.
 
     Organization-scoped keys are refused: hardware, container and usage figures
     span every tenant on the instance, so a key issued to one of them must not
@@ -304,10 +305,16 @@ async def require_system_read(
             )
         return None
 
-    if not token:
+    # Über ``_credential`` statt direkt über ``token``: die Sitzung des
+    # Admin-Portals liegt seit der Cookie-Umstellung nicht mehr im
+    # ``Authorization``-Kopf, sondern im HttpOnly-Cookie. Wer hier nur den
+    # Kopf liest, sperrt genau den Aufrufer aus, für den die Endpunkte
+    # gebaut sind — die Systemübersicht sah dann „Not authenticated".
+    credential = _credential(request, token)
+    if not credential:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return await _superadmin_from_token(_decode_token(token), db)
+    return await _superadmin_from_token(_decode_token(credential), db)
