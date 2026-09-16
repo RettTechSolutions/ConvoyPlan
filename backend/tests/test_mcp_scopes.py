@@ -8,13 +8,14 @@ Zustimmung ändert.
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-import tests.mcp_fixtures as fixtures
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.mcp import scopes as scope_svc
 from app.models.organization import UserOrganization
 from app.services import oauth_tokens
 from tests.mcp_fixtures import (
+    connect,
+    convoyplan_access_token,
     mcp_app,
     purge_clients,
     reset_db_engine,  # noqa: F401 — autouse-Fixture, per Import aktiviert
@@ -73,7 +74,7 @@ def test_scopes_supported_ist_der_minimale_satz():
 async def test_beobachter_bekommt_kein_schreibrecht_zugestanden():
     """Auch wenn der Client convoy:write verlangt: die Rolle entscheidet."""
     async with seeded() as fx, mcp_app() as (_app, client):
-        reg, token = await fixtures.connect(
+        reg, token = await connect(
             client, fx.beobachter, fx.org_a, scopes=list(scope_svc.ALL_SCOPES)
         )
         assert token["scope"] == scope_svc.SCOPE_READ
@@ -157,7 +158,7 @@ async def test_consent_route_ist_ohne_mcp_enabled_zu():
     from app.main import app as real_app
 
     async with seeded() as fx:
-        bearer = fixtures.convoyplan_access_token(fx.planer, fx.org_a)
+        bearer = convoyplan_access_token(fx.planer, fx.org_a)
         async with AsyncClient(
             transport=ASGITransport(app=real_app), base_url="http://test"
         ) as client:

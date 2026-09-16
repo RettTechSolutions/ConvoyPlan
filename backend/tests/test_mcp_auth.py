@@ -7,21 +7,28 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
+
 from app.config import settings
 from app.database import AsyncSessionLocal
-from sqlalchemy import select
 from app.mcp import scopes as scope_svc
 from app.models.oauth_refresh_token import OAuthRefreshToken
 from app.services import oauth_tokens
-import tests.mcp_fixtures as fixtures
 from tests.mcp_fixtures import (
     BASE_URL,
     INIT_REQUEST as INIT,
     MCP_HEADERS,
+    authorize,
+    call,
+    connect,
+    consent,
     convoyplan_access_token,
+    exchange_code,
     mcp_app,
+    mcp_session,
     pkce_pair,
     purge_clients,
+    register_client,
     reset_db_engine,  # noqa: F401 — autouse-Fixture, per Import aktiviert
     seeded,
 )
@@ -264,7 +271,7 @@ async def test_dcr_laesst_sich_abschalten():
 async def test_authorize_lehnt_eine_fremde_resource_ab():
     """Ein Client darf sich hier kein Token für eine andere Instanz holen."""
     async with mcp_app() as (_app, client):
-        reg = await _register(client)
+        reg = await register_client(client)
         _verifier, challenge = pkce_pair()
         resp = await client.get(
             "/authorize",
@@ -290,7 +297,7 @@ async def test_nicht_registrierte_redirect_uri_fuehrt_zu_keinem_redirect():
     **nicht** angesteuert werden, auch nicht mit einer Fehlermeldung —
     sonst wäre der Endpunkt ein offener Redirector."""
     async with mcp_app() as (_app, client):
-        reg = await _register(client)
+        reg = await register_client(client)
         _verifier, challenge = pkce_pair()
         resp = await client.get(
             "/authorize",
@@ -310,18 +317,6 @@ async def test_nicht_registrierte_redirect_uri_fuehrt_zu_keinem_redirect():
 # ── Hilfen ───────────────────────────────────────────────────────────────
 
 
-async def _register(client: AsyncClient, redirect_uri: str = "http://127.0.0.1:33418/cb") -> dict:
-    resp = await client.post(
-        "/register",
-        json={
-            "redirect_uris": [redirect_uri],
-            "client_name": "Testclient",
-            "grant_types": ["authorization_code", "refresh_token"],
-            "response_types": ["code"],
-        },
-    )
-    assert resp.status_code == 201, resp.text
-    return resp.json()
 
 
 # ── Der vollständige Fluss ───────────────────────────────────────────────
@@ -334,13 +329,13 @@ async def test_vollstaendiger_fluss_bis_zur_werkzeugliste():
     Der Durchstich. Schlägt er fehl, ist eine der Stationen kaputt und die
     Einzeltests sagen welche."""
     async with seeded() as fx, mcp_app() as (_app, client):
-        reg, token = await fixtures.connect(client, fx.planer, fx.org_a)
+        reg, token = await connect(client, fx.planer, fx.org_a)
         assert token["token_type"] == "Bearer"
         assert token["refresh_token"]
         assert token["expires_in"] == settings.mcp_access_token_ttl_minutes * 60
 
-        session = await fixtures.mcp_session(client, token["access_token"])
-        listing = await fixtures.call(client, token["access_token"], session, "tools/list")
+        session = await mcp_session(client, token["access_token"])
+        listing = await call(client, token["access_token"], session, "tools/list")
         names = {t["name"] for t in listing["result"]["tools"]}
         assert "konvois_auflisten" in names
         await purge_clients([reg["client_id"]])
@@ -349,10 +344,10 @@ async def test_vollstaendiger_fluss_bis_zur_werkzeugliste():
 @pytest.mark.asyncio
 async def test_ablehnen_liefert_access_denied_und_keinen_code():
     async with seeded() as fx, mcp_app() as (_app, client):
-        reg = await fixtures.register_client(client)
+        reg = await register_client(client)
         _verifier, challenge = pkce_pair()
-        ticket = await fixtures.authorize(client, reg, challenge)
-        assert await fixtures.consent(client, ticket, fx.planer, fx.org_a, approve=False) == ""
+        ticket = await authorize(client, reg, challenge)
+        assert await consent(client, ticket, fx.planer, fx.org_a, approve=False) == ""
         await purge_clients([reg["client_id"]])
 
 
@@ -360,13 +355,13 @@ async def test_ablehnen_liefert_access_denied_und_keinen_code():
 async def test_falscher_code_verifier_wird_abgelehnt():
     """Ohne PKCE-Prüfung nützte ein abgefangener Code einem Angreifer sofort."""
     async with seeded() as fx, mcp_app() as (_app, client):
-        reg = await fixtures.register_client(client)
+        reg = await register_client(client)
         _verifier, challenge = pkce_pair()
-        ticket = await fixtures.authorize(client, reg, challenge)
-        code = await fixtures.consent(client, ticket, fx.planer, fx.org_a)
+        ticket = await authorize(client, reg, challenge)
+        code = await consent(client, ticket, fx.planer, fx.org_a)
 
         anderer_verifier, _ = pkce_pair()
-        result = await fixtures.exchange_code(client, reg, code, anderer_verifier)
+        result = await exchange_code(client, reg, code, anderer_verifier)
         assert result["status"] == 400
         assert result["body"]["error"] == "invalid_grant"
         await purge_clients([reg["client_id"]])
@@ -381,15 +376,15 @@ async def test_code_replay_toetet_die_token_familie():
     Angreifer (oder der rechtmäßige Client, je nachdem wer zuerst war)
     dauerhaften Zugang."""
     async with seeded() as fx, mcp_app() as (_app, client):
-        reg = await fixtures.register_client(client)
+        reg = await register_client(client)
         verifier, challenge = pkce_pair()
-        ticket = await fixtures.authorize(client, reg, challenge)
-        code = await fixtures.consent(client, ticket, fx.planer, fx.org_a)
+        ticket = await authorize(client, reg, challenge)
+        code = await consent(client, ticket, fx.planer, fx.org_a)
 
-        first = await fixtures.exchange_code(client, reg, code, verifier)
+        first = await exchange_code(client, reg, code, verifier)
         assert first["status"] == 200
 
-        second = await fixtures.exchange_code(client, reg, code, verifier)
+        second = await exchange_code(client, reg, code, verifier)
         assert second["status"] == 400
 
         # Das Refresh-Token aus dem ersten Tausch ist jetzt widerrufen.
@@ -414,7 +409,7 @@ async def test_refresh_token_rotiert_und_erkennt_wiederverwendung():
     """Rotation allein genügt nicht — das alte Token muss beim erneuten
     Auftauchen die ganze Familie mitnehmen, sonst merkt niemand den Diebstahl."""
     async with seeded() as fx, mcp_app() as (_app, client):
-        reg, token = await fixtures.connect(client, fx.planer, fx.org_a)
+        reg, token = await connect(client, fx.planer, fx.org_a)
         altes_refresh = token["refresh_token"]
 
         erneuert = await _refresh(client, reg, altes_refresh)
@@ -437,7 +432,7 @@ async def test_refresh_kann_scopes_nicht_ausweiten():
     """Ein Client darf sich über den Refresh nicht mehr holen, als ihm
     zugestimmt wurde."""
     async with seeded() as fx, mcp_app() as (_app, client):
-        reg, token = await fixtures.connect(
+        reg, token = await connect(
             client, fx.planer, fx.org_a, scopes=[scope_svc.SCOPE_READ]
         )
         result = await _refresh(
@@ -451,7 +446,7 @@ async def test_refresh_kann_scopes_nicht_ausweiten():
 @pytest.mark.asyncio
 async def test_widerruf_trennt_die_verbindung():
     async with seeded() as fx, mcp_app() as (_app, client):
-        reg, token = await fixtures.connect(client, fx.planer, fx.org_a)
+        reg, token = await connect(client, fx.planer, fx.org_a)
         resp = await client.post(
             "/revoke",
             data={
@@ -488,7 +483,7 @@ async def test_widerrufener_client_wird_nicht_mehr_aufgeloest():
     from app.services.oauth_provider import ConvoyPlanOAuthProvider
 
     async with mcp_app() as (_app, client):
-        reg = await _register(client)
+        reg = await register_client(client)
         provider = ConvoyPlanOAuthProvider()
         assert await provider.get_client(reg["client_id"]) is not None
 
@@ -509,7 +504,7 @@ async def test_abgelaufenes_client_secret_wird_nicht_mehr_aufgeloest():
     from app.services.oauth_provider import ConvoyPlanOAuthProvider
 
     async with mcp_app() as (_app, client):
-        reg = await _register(client)
+        reg = await register_client(client)
         async with AsyncSessionLocal() as db:
             row = await db.get(OAuthClient, reg["client_id"])
             row.client_secret_expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
@@ -522,7 +517,7 @@ async def test_abgelaufenes_client_secret_wird_nicht_mehr_aufgeloest():
 @pytest.mark.asyncio
 async def test_unbekannter_scope_wird_beim_autorisieren_abgelehnt():
     async with mcp_app() as (_app, client):
-        reg = await _register(client)
+        reg = await register_client(client)
         _verifier, challenge = pkce_pair()
         resp = await client.get(
             "/authorize",
@@ -548,7 +543,7 @@ async def test_client_secret_liegt_verschluesselt_in_der_datenbank():
     from app.models.oauth_client import OAuthClient
 
     async with mcp_app() as (_app, client):
-        reg = await _register(client)
+        reg = await register_client(client)
         secret = reg.get("client_secret")
         assert secret, "das SDK hat kein Secret ausgestellt — Test ist gegenstandslos"
         async with AsyncSessionLocal() as db:
@@ -567,16 +562,16 @@ async def test_consent_lehnt_eine_nachtraeglich_entfernte_zieladresse_ab():
     from app.models.oauth_client import OAuthClient
 
     async with seeded() as fx, mcp_app() as (_app, client):
-        reg = await _register(client)
+        reg = await register_client(client)
         _verifier, challenge = pkce_pair()
-        ticket = await fixtures.authorize(client, reg, challenge)
+        ticket = await authorize(client, reg, challenge)
 
         async with AsyncSessionLocal() as db:
             row = await db.get(OAuthClient, reg["client_id"])
             row.redirect_uris = ["https://inzwischen-etwas-anderes.invalid/cb"]
             await db.commit()
 
-        bearer = fixtures.convoyplan_access_token(fx.planer, fx.org_a)
+        bearer = convoyplan_access_token(fx.planer, fx.org_a)
         for approve in (True, False):
             resp = await client.post(
                 "/api/mcp/consent",
@@ -597,16 +592,16 @@ async def test_consent_lehnt_einen_widerrufenen_client_ab():
     from app.models.oauth_client import OAuthClient
 
     async with seeded() as fx, mcp_app() as (_app, client):
-        reg = await _register(client)
+        reg = await register_client(client)
         _verifier, challenge = pkce_pair()
-        ticket = await fixtures.authorize(client, reg, challenge)
+        ticket = await authorize(client, reg, challenge)
 
         async with AsyncSessionLocal() as db:
             row = await db.get(OAuthClient, reg["client_id"])
             row.revoked = True
             await db.commit()
 
-        bearer = fixtures.convoyplan_access_token(fx.planer, fx.org_a)
+        bearer = convoyplan_access_token(fx.planer, fx.org_a)
         resp = await client.post(
             "/api/mcp/consent",
             json={
