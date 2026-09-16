@@ -13,6 +13,10 @@ problematischen Deploy eine Alert-Datei auf dem geteilten Volume ab
 * ``boot_image_older_than_db``  — der Entrypoint hat den Start abgebrochen, weil
                                   das Image älter ist als das DB-Schema.
 * ``boot_migration_failed``     — eine Migration ist beim Start fehlgeschlagen.
+* ``image_signature_invalid``   — der Updater konnte die Sigstore-Signatur eines
+                                  Ziel-Images nicht verifizieren und hat das
+                                  Update abgebrochen; die Installation laeuft
+                                  unveraendert weiter.
 
 Dieser Task liest die Datei, benachrichtigt alle Superadmins per E-Mail und
 merkt sich die Alert-ID in ``system_settings``, sodass pro Ereignis genau eine
@@ -51,6 +55,7 @@ _EVENT_TITLES = {
     "deploy_failed": "Update fehlgeschlagen — manueller Eingriff nötig",
     "boot_image_older_than_db": "Backend-Start abgebrochen: Image älter als DB-Schema",
     "boot_migration_failed": "Backend-Start abgebrochen: Migration fehlgeschlagen",
+    "image_signature_invalid": "Update abgebrochen: Image-Signatur nicht verifizierbar",
 }
 
 

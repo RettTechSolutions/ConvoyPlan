@@ -21,6 +21,7 @@ Diese Seite fasst die Sicherheits-Härtung, das Audit-Log, die DSGVO-Werkzeuge s
 | **CSP & Security-Header** | Content-Security-Policy (Report-Only/Enforce) plus HSTS, X-Content-Type-Options u. a. über Caddy |
 | **security.txt** | Vulnerability-Disclosure-Kontakt unter `/.well-known/security.txt` |
 | **Dependency-Scanning** | Dependabot + CI-Job (`pip-audit`, `npm audit`) |
+| **Update-Integrität** | Alle Images sind mit Sigstore signiert; der Updater prüft die Signatur, bevor er zieht (siehe unten) |
 
 Sicherheitslücken bitte gemäß `SECURITY.md` bzw. `/.well-known/security.txt` melden.
 
@@ -163,3 +164,74 @@ ConvoyPlan verschlüsselt Anwendungsgeheimnisse selektiv (MFA-TOTP-Secrets via F
 - **Backups:** Zielverzeichnis auf verschlüsseltem Volume ablegen oder Archive vor Off-site-Transfer verschlüsseln (`age`/`gpg`).
 
 Schlüsselverwaltung: `.env` enthält Klartext-Geheimnisse → Dateirechte `chmod 600`, LUKS-Passphrase nicht neben den Daten ablegen. `MFA_ENCRYPTION_KEY` wird aus `JWT_SECRET` abgeleitet, falls nicht gesetzt — bei Rotation von `JWT_SECRET` ohne eigenen Schlüssel werden bestehende MFA-Secrets unlesbar.
+
+---
+
+## Update-Integrität
+
+Der Updater-Container ist die mächtigste Komponente der Installation: Er hält
+den **Docker-Socket mit Schreibrecht** — anders lässt sich ein Container nicht
+austauschen. Was er zieht und startet, läuft damit als root auf dem Host.
+
+Bis zur Signaturprüfung entschied darüber allein ein **Tag** auf ghcr.io. Ein Tag
+sagt nur: irgendjemand mit Schreibrecht auf die Registry hat ihn dorthin gesetzt.
+Ein kompromittierter GitHub-Account oder ein gestohlenes Write-Token hätte damit
+gereicht, um auf jeder Installation mit Auto-Update root zu bekommen.
+
+### Wie es abgesichert ist
+
+1. **Signiert in der CI.** `release.yml` und `nightly-images.yml` signieren jedes
+   der fünf Images (`backend`, `frontend`, `graphhopper`, `updater`, `osmium`)
+   **keyless** mit [Sigstore/cosign](https://docs.sigstore.dev/). Die Identität
+   ist der Workflow selbst — GitHub stellt ein OIDC-Token aus, Fulcio tauscht es
+   gegen ein kurzlebiges Zertifikat. **Es gibt keinen privaten Schlüssel**, weder
+   im Repository noch in einem Secret noch auf einem Rechner. Signiert wird der
+   Digest, nicht der Tag.
+
+2. **Geprüft vor dem Pull.** Der Updater ruft für jedes Ziel-Image
+   `cosign verify` auf, bevor `docker compose pull` überhaupt startet. Akzeptiert
+   wird nur eine Signatur, deren Zertifikat auf einen Workflow dieses
+   Repositories und auf GitHubs OIDC-Aussteller zeigt.
+
+3. **Fehlschlag heißt Stillstand, nicht Warnung.** Lässt sich auch nur ein Image
+   nicht verifizieren, wird **nichts** gezogen und **nichts** neu gestartet. Die
+   Installation läuft unverändert auf dem alten Stand weiter, und die Superadmins
+   bekommen eine E-Mail („Update abgebrochen: Image-Signatur nicht
+   verifizierbar"). Dasselbe gilt, wenn `cosign` im Updater-Image fehlt — es gibt
+   keinen stillen Rückfall auf ungeprüftes Ziehen.
+
+### Selbst nachprüfen
+
+```bash
+cosign verify \
+  --certificate-identity-regexp '^https://github.com/RettTechSolutions/ConvoyPlan/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/retttechsolutions/convoyplan/backend:latest
+```
+
+### Air-Gapped-Installationen
+
+`cosign verify` braucht Zugang zu **Rekor** und **Fulcio** (sigstore.dev). Ohne
+Internet kann die Signatur nicht geprüft werden. Dafür gibt es den Schalter:
+
+```env
+UPDATE_VERIFY_SIGNATURES=false
+```
+
+Das ist eine bewusste Entscheidung des Betreibers, kein automatischer Fallback:
+Der Updater protokolliert bei jedem Lauf, dass er ungeprüft zieht. In einer
+abgeschotteten Umgebung ist das vertretbar, weil die Images dort ohnehin nicht
+von ghcr.io kommen — überall sonst gehört der Schalter auf `true`.
+
+Ein Fork mit eigener Registry setzt stattdessen
+`UPDATE_SIGNATURE_IDENTITY=^https://github.com/<org>/<repo>/`.
+
+### Was das **nicht** abdeckt
+
+Die Signatur beweist, dass ein Workflow *dieses Repositories* das Image gebaut
+hat — nicht, dass der Inhalt gutartig ist. Wer Code nach `main` bringen kann,
+bekommt weiterhin ein gültig signiertes Image. Die Signatur schließt den Weg
+„Image direkt in die Registry schieben", nicht den Weg „bösartigen Code
+mergen". Dagegen helfen Branch-Protection, Review-Pflicht für
+`.github/workflows/` und `docker/updater/` sowie 2FA mit Hardware-Key auf der
+Organisation.

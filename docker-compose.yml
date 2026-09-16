@@ -238,6 +238,12 @@ services:
     environment:
       COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-convoyplan}
       UPDATE_INTERVAL: "${UPDATE_INTERVAL:-300}"
+      # Signaturpruefung der Ziel-Images vor jedem Update (Sigstore/cosign).
+      # false nur fuer Air-Gapped-Installationen ohne Zugang zu Rekor/Fulcio —
+      # dann zieht der Updater ungeprueft. Siehe .env.example.
+      UPDATE_VERIFY_SIGNATURES: "${UPDATE_VERIFY_SIGNATURES:-true}"
+      UPDATE_SIGNATURE_IDENTITY: ${UPDATE_SIGNATURE_IDENTITY:-}
+      UPDATE_SIGNATURE_ISSUER: ${UPDATE_SIGNATURE_ISSUER:-}
       # STACK_FILE_PATH: absoluter HOST-Pfad zu dieser Compose-Datei.
       # Wird vom Installer automatisch gesetzt. Fehlt er, erkennt der Updater
       # den Pfad selbst über Docker-Labels und heilt sich eigenständig.

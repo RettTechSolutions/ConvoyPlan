@@ -64,3 +64,23 @@ def test_render_boot_failure_without_restored_row():
 def test_render_unknown_event_falls_back():
     subject, _ = da._render_alert({"id": "3", "event": "something_new"})
     assert subject.startswith("ConvoyPlan: ")
+
+
+def test_render_signature_failure_names_the_rejected_images():
+    """Der Updater bricht ab, statt ein nicht verifizierbares Image zu ziehen —
+    die Mail muss sagen, welches es war, sonst kann niemand nachsehen."""
+    subject, body = da._render_alert(
+        {
+            "id": "3",
+            "event": "image_signature_invalid",
+            "at": "2026-09-16T04:00:00Z",
+            "failed_image": "ghcr.io/x/backend:latest, ghcr.io/x/frontend:latest",
+            "detail": "Die Signaturpruefung ist fehlgeschlagen.",
+        }
+    )
+    assert "Signatur" in subject
+    assert "ghcr.io/x/backend:latest" in body
+    assert "ghcr.io/x/frontend:latest" in body
+    # Kein "Wiederhergestellt"-Feld: es wurde nichts zurückgerollt, weil gar
+    # nichts deployt wurde.
+    assert "Wiederhergestellt" not in body
