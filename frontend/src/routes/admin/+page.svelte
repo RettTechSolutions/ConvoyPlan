@@ -1453,6 +1453,30 @@
     // ── MCP ──────────────────────────────────────────────────────────────
     let mcpStatus = $state<McpStatus | null>(null);
     let mcpToggleSaving = $state(false);
+    let mcpProxyRepairing = $state(false);
+
+    /**
+     * Die MCP-Pfade im Reverse Proxy herstellen.
+     *
+     * Der Schalter allein reicht nicht: er mountet die Routen im Backend, ans
+     * Weiterleiten kommt er nicht heran. Fehlt das, zeigt das Portal „An" und
+     * von außen ist trotzdem nichts erreichbar — deshalb dieser Knopf, statt
+     * dass jemand sich dafür per SSH auf den Server schalten muss.
+     */
+    async function repairMcpProxy() {
+        mcpProxyRepairing = true;
+        mcpToggleError = '';
+        mcpToggleSuccess = '';
+        try {
+            mcpStatus = await mcpAdminApi.repairProxy();
+            mcpToggleSuccess = 'Der Reverse Proxy leitet die MCP-Pfade jetzt ans Backend.';
+            setTimeout(() => { mcpToggleSuccess = ''; }, 6000);
+        } catch (e) {
+            mcpToggleError = e instanceof Error ? e.message : 'Reparatur fehlgeschlagen';
+        } finally {
+            mcpProxyRepairing = false;
+        }
+    }
     let mcpToggleError = $state('');
     let mcpToggleSuccess = $state('');
 
@@ -2755,10 +2779,36 @@
                     {/if}
                     <span class="hint" style="margin-left:.5rem">
                         {mcpStatus.enabled
-                            ? `${mcpStatus.connection_url} ist erreichbar`
+                            ? (mcpStatus.proxy_routes_live === false
+                                ? 'Im Backend aktiv — aber von außen nicht erreichbar'
+                                : `${mcpStatus.connection_url} ist erreichbar`)
                             : 'Es existiert kein MCP-Endpunkt'}
                     </span>
                 </div>
+
+                <!-- Der Reverse Proxy. Ohne ihn nützt der Schalter nichts:
+                     er mountet die Routen im Backend, ans Weiterleiten kommt
+                     er nicht heran. -->
+                {#if mcpStatus.proxy_hint}
+                    <div class="license-status-row" style="margin-top:.75rem">
+                        {#if mcpStatus.proxy_routes_live === false}
+                            <span class="badge badge-warn">Proxy</span>
+                        {:else}
+                            <span class="badge">Proxy</span>
+                        {/if}
+                        <span class="hint" style="margin-left:.5rem">{mcpStatus.proxy_hint}</span>
+                    </div>
+                    {#if mcpStatus.proxy_repairable && mcpStatus.proxy_routes_live === false}
+                        <button
+                            class="btn-primary"
+                            style="margin-top:.5rem"
+                            onclick={repairMcpProxy}
+                            disabled={mcpProxyRepairing}
+                        >
+                            {mcpProxyRepairing ? 'Einen Moment …' : 'Proxy reparieren'}
+                        </button>
+                    {/if}
+                {/if}
 
                 <p class="hint" style="margin-top:.75rem">
                     KI-Programme lesen und ändern über diese Schnittstelle Konvois, Fahrzeuge,

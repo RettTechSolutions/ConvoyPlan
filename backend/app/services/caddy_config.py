@@ -23,6 +23,8 @@ import logging
 import os
 from pathlib import Path
 
+from dataclasses import dataclass
+
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -155,14 +157,19 @@ def generate_caddyfile(domain: str, tls_mode: str, acme_email: str) -> str:
 
 # Die Pfade, die der MCP-Server an der Wurzel braucht. Ein Caddyfile aus der
 # Zeit vor diesem Feature leitet sie ans Frontend — dort laufen sie ins Leere.
-REQUIRED_MCP_ROUTES = (
-    "handle /mcp",
-    "handle /.well-known/oauth-*",
-    "handle /authorize",
-    "handle /token",
-    "handle /register",
-    "handle /revoke",
+REQUIRED_MCP_PATHS = (
+    "/mcp",
+    "/.well-known/oauth-*",
+    "/authorize",
+    "/token",
+    "/register",
+    "/revoke",
 )
+
+# Dieselben Pfade in der Schreibweise des Caddyfiles. Abgeleitet statt ein
+# zweites Mal getippt: zwei Listen, die auseinanderlaufen können, wären genau
+# die Art Fehler, die hier niemand bemerkt.
+REQUIRED_MCP_ROUTES = tuple(f"handle {pfad}" for pfad in REQUIRED_MCP_PATHS)
 
 
 def has_mcp_routes(caddyfile: str) -> bool:
@@ -205,6 +212,134 @@ async def reload_caddy(caddyfile: str) -> bool:
     except Exception as exc:
         logger.warning("Caddy reload failed (will apply on next start): %s", exc)
         return False
+
+
+@dataclass(frozen=True)
+class ProxyBefund:
+    """Was der Reverse Proxy gerade tatsächlich tut — und was sich reparieren lässt.
+
+    ``routen_aktiv`` ist die einzige Angabe, die zählt: sie kommt aus der
+    **laufenden** Konfiguration über Caddys Admin-API, nicht aus einer Datei
+    auf der Platte. Genau das ist der Fall, der uns hier beschäftigt hat: das
+    Backend war aktualisiert, die Datei stimmte womöglich, und der
+    Caddy-Container lief trotzdem noch mit der alten Konfiguration.
+
+    ``None`` heißt „nicht feststellbar" (Admin-API nicht erreichbar) und ist
+    ausdrücklich nicht dasselbe wie ``False`` — im Portal darf daraus keine
+    Fehlermeldung werden, sondern ein Hinweis.
+    """
+
+    routen_aktiv: bool | None
+    persistierte_datei: bool
+    datei_hat_routen: bool | None
+    setup_werte_vorhanden: bool
+
+    @property
+    def reparierbar(self) -> bool:
+        """Ob eine Reparatur aus dem Portal heraus etwas ausrichten kann.
+
+        Ohne die Setup-Werte (Domain, TLS-Modus) lässt sich kein Caddyfile
+        erzeugen — dann hilft nur der Setup-Assistent oder die Datei von Hand."""
+        return self.routen_aktiv is not True and self.setup_werte_vorhanden
+
+
+async def _live_config() -> str | None:
+    """Die laufende Caddy-Konfiguration als Rohtext, oder None."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(f"{settings.caddy_admin_url}/config/")
+            resp.raise_for_status()
+            return resp.text
+    except Exception as exc:
+        logger.debug("Caddy-Admin-API nicht erreichbar: %s", exc)
+        return None
+
+
+async def mcp_routes_live() -> bool | None:
+    """Ob der laufende Proxy die MCP-Pfade ans Backend leitet.
+
+    None, wenn die Admin-API nicht erreichbar ist — dann ist die Frage
+    unbeantwortet und nicht etwa mit „nein" beantwortet.
+
+    Gesucht wird im JSON der adaptierten Konfiguration nach den Pfaden in
+    Anführungszeichen (``"/mcp"``). Das ist bewusst eine Textsuche statt
+    einer Strukturauswertung: Caddys JSON-Aufbau ist ein Implementierungs-
+    detail, die Pfade sind es nicht."""
+    raw = await _live_config()
+    if raw is None:
+        return None
+    return all(f'"{pfad}"' in raw for pfad in REQUIRED_MCP_PATHS)
+
+
+async def diagnose_proxy(db: AsyncSession) -> ProxyBefund:
+    """Den Zustand des Reverse Proxy für die Anzeige im Portal erheben."""
+    datei_da = CADDYFILE_PATH.is_file()
+    datei_routen: bool | None = None
+    if datei_da:
+        try:
+            datei_routen = has_mcp_routes(CADDYFILE_PATH.read_text())
+        except OSError:
+            datei_routen = None
+    return ProxyBefund(
+        routen_aktiv=await mcp_routes_live(),
+        persistierte_datei=datei_da,
+        datei_hat_routen=datei_routen,
+        setup_werte_vorhanden=await _persisted_setup_values(db) is not None,
+    )
+
+
+async def repair_mcp_routes(db: AsyncSession) -> tuple[bool, str]:
+    """Die MCP-Routen in den Proxy bringen. Gibt (Erfolg, Begründung).
+
+    Schreibt ein frisch erzeugtes Caddyfile nach ``/certs/Caddyfile`` und lädt
+    es über die Admin-API nach. Beides ist nötig: das Laden wirkt sofort, die
+    Datei sorgt dafür, dass es einen Caddy-Neustart übersteht.
+
+    Anders als ``ensure_caddyfile_current`` steigt diese Funktion **nicht**
+    aus, wenn noch keine persistierte Datei existiert. Genau dieser Fall — der
+    Container läuft mit der vom Entrypoint erzeugten Konfiguration von vor dem
+    MCP-Feature — ließ sich bisher nur per SSH beheben. Dass die Instanz
+    danach eine persistierte Datei hat, ist eine dauerhafte Änderung an ihrer
+    Betriebsweise; deshalb passiert das nur auf ausdrückliche Anforderung aus
+    dem Portal und nicht beim Start."""
+    werte = await _persisted_setup_values(db)
+    if werte is None:
+        return False, (
+            "Die Setup-Werte (Domain, TLS-Modus) stehen nicht in der Datenbank — "
+            "daraus lässt sich keine Proxy-Konfiguration erzeugen. Bitte den "
+            "Setup-Assistenten erneut durchlaufen."
+        )
+
+    domain, tls_mode, acme_email = werte
+    caddyfile = generate_caddyfile(domain, tls_mode, acme_email)
+    try:
+        CERTS_DIR.mkdir(parents=True, exist_ok=True)
+        CADDYFILE_PATH.write_text(caddyfile)
+    except OSError as exc:
+        logger.warning("Caddyfile konnte nicht geschrieben werden: %s", exc)
+        return False, (
+            f"Die Proxy-Konfiguration ließ sich nicht schreiben ({exc.strerror}). "
+            "Läuft der Backend-Container mit Schreibrecht auf /certs?"
+        )
+
+    if not await reload_caddy(caddyfile):
+        return False, (
+            "Die Konfiguration wurde geschrieben, aber Caddy hat sie nicht "
+            "übernommen — die Admin-API war nicht erreichbar. Sie greift beim "
+            "nächsten Start des Caddy-Containers."
+        )
+
+    if await mcp_routes_live() is False:
+        # Geschrieben, geladen, und trotzdem fehlen die Pfade: dann stimmt an
+        # der erzeugten Konfiguration etwas nicht, und das soll nicht als
+        # Erfolg durchgehen.
+        return False, (
+            "Die Konfiguration wurde übernommen, die MCP-Pfade fehlen aber "
+            "weiterhin. Bitte die Logs des Backends und von Caddy ansehen."
+        )
+
+    logger.info("MCP-Routen im Proxy hergestellt (Domain %s)", domain)
+    return True, "Der Reverse Proxy leitet die MCP-Pfade jetzt ans Backend."
 
 
 async def _persisted_setup_values(db: AsyncSession) -> tuple[str, str, str] | None:

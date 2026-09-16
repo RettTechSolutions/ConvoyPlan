@@ -1239,6 +1239,19 @@ export interface McpStatus {
     tool_calls_per_minute: number;
     registered_clients: number;
     active_connections: number;
+    /**
+     * Ob der Reverse Proxy die MCP-Pfade ans Backend leitet.
+     *
+     * `null` heißt „nicht feststellbar" (Caddys Admin-API antwortet nicht) und
+     * ist nicht dasselbe wie `false`. Ohne diese Angabe zeigte das Portal „An"
+     * samt Verbindungsadresse, während von außen nichts erreichbar war — der
+     * Schalter mountet nur die Routen im Backend.
+     */
+    proxy_routes_live: boolean | null;
+    /** Ob sich das aus dem Portal heraus reparieren lässt. */
+    proxy_repairable: boolean;
+    /** Klartext für den Betreiber, oder null wenn alles passt. */
+    proxy_hint: string | null;
 }
 
 export interface McpClient {
@@ -1272,6 +1285,13 @@ export const mcpAdminApi = {
     /** Die Schnittstelle ein- oder ausschalten. Wirkt sofort, ohne Neustart. */
     setEnabled: (enabled: boolean) =>
         api.put<McpStatus>('/api/admin/settings/mcp', { enabled }),
+    /**
+     * Die MCP-Pfade im Reverse Proxy herstellen — ohne Zugriff auf den Server.
+     *
+     * Schreibt eine frische Proxy-Konfiguration und lädt sie sofort nach.
+     * Wirft mit der Begründung im `detail`, wenn es nicht geht.
+     */
+    repairProxy: () => api.post<McpStatus>('/api/admin/mcp/proxy-repair', {}),
     listClients: () => api.get<McpClient[]>('/api/admin/mcp/clients'),
     revokeClient: (clientId: string) =>
         api.delete(`/api/admin/mcp/clients/${encodeURIComponent(clientId)}`),

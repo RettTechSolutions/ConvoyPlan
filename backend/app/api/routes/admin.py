@@ -1879,6 +1879,17 @@ class McpStatusResponse(BaseModel):
     tool_calls_per_minute: int
     registered_clients: int
     active_connections: int
+    # Der Reverse Proxy. Ohne diese Angaben zeigte das Portal „An" samt
+    # Verbindungsadresse, während von außen nichts erreichbar ist — der
+    # Schalter mountet nur die Routen im Backend, ans Weiterleiten kommt er
+    # nicht heran. Genau diese Lücke hat eine Instanz stillschweigend
+    # unbrauchbar gemacht.
+    #
+    # None heißt „nicht feststellbar" (Caddys Admin-API antwortet nicht) und
+    # ist nicht dasselbe wie False.
+    proxy_routes_live: bool | None = None
+    proxy_repairable: bool = False
+    proxy_hint: str | None = None
 
 
 class McpClientResponse(BaseModel):
@@ -1939,7 +1950,7 @@ async def mcp_status(
     _: User = Depends(require_superadmin),
 ):
     """Zustand der KI-Schnittstelle und die Adresse zum Verbinden."""
-    from app.services import mcp_config, oauth_tokens
+    from app.services import caddy_config, mcp_config, oauth_tokens
 
     OAuthClient, OAuthRefreshToken = _mcp_models()
     db_wert = await mcp_config.get_mcp_enabled_setting(db)
@@ -1952,7 +1963,11 @@ async def mcp_status(
             _active_connection_filter(OAuthRefreshToken)
         )
     )
+    befund = await caddy_config.diagnose_proxy(db)
     return McpStatusResponse(
+        proxy_routes_live=befund.routen_aktiv,
+        proxy_repairable=befund.reparierbar,
+        proxy_hint=_proxy_hinweis(befund),
         enabled=db_wert == "true" if db_wert is not None else settings.mcp_enabled,
         source="db" if db_wert is not None else "env",
         env_enabled=settings.mcp_enabled,
@@ -1965,6 +1980,73 @@ async def mcp_status(
         registered_clients=clients or 0,
         active_connections=connections or 0,
     )
+
+
+def _proxy_hinweis(befund) -> str | None:
+    """Was der Betreiber über den Proxy wissen muss — oder None, wenn alles passt.
+
+    Der Text landet unverändert im Portal, formuliert also für jemanden, der
+    gerade den Schalter umgelegt hat und nicht weiß, warum trotzdem nichts
+    geht."""
+    if befund.routen_aktiv is True:
+        return None
+    if befund.routen_aktiv is None:
+        return (
+            "Der Zustand des Reverse Proxy lässt sich nicht feststellen — Caddys "
+            "Admin-API antwortet nicht. Die Schnittstelle kann trotzdem "
+            "funktionieren; prüfen lässt es sich mit einem Aufruf von außen."
+        )
+    if not befund.setup_werte_vorhanden:
+        return (
+            "Der Reverse Proxy leitet die MCP-Pfade nicht ans Backend, und die "
+            "Setup-Werte (Domain, TLS-Modus) stehen nicht in der Datenbank — "
+            "daraus lässt sich keine Konfiguration erzeugen. Bitte den "
+            "Setup-Assistenten erneut durchlaufen."
+        )
+    if not befund.persistierte_datei:
+        return (
+            "Der Reverse Proxy leitet die MCP-Pfade nicht ans Backend. Er läuft "
+            "mit der Konfiguration, die sein Container beim Start erzeugt hat, "
+            "und die stammt aus der Zeit vor dieser Schnittstelle. „Proxy "
+            "reparieren\u201c schreibt eine dauerhafte Konfiguration und lädt sie "
+            "sofort nach."
+        )
+    return (
+        "Der Reverse Proxy leitet die MCP-Pfade nicht ans Backend. Seine "
+        "hinterlegte Konfiguration stammt aus der Zeit vor dieser "
+        "Schnittstelle. „Proxy reparieren\u201c erneuert sie und lädt sie sofort nach."
+    )
+
+
+@router.post("/mcp/proxy-repair", response_model=McpStatusResponse)
+async def repair_mcp_proxy(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    """Die MCP-Pfade im Reverse Proxy herstellen — ohne Zugriff auf den Server.
+
+    Schreibt eine frische Proxy-Konfiguration und lädt sie über Caddys
+    Admin-API nach. Beides ist nötig: das Laden wirkt sofort, die Datei sorgt
+    dafür, dass es einen Neustart übersteht.
+
+    Bewusst ein eigener Knopf und nicht etwas, das beim Start passiert: die
+    Instanz bekommt dadurch eine dauerhaft hinterlegte Proxy-Konfiguration,
+    und das ist eine Änderung an ihrer Betriebsweise, die jemand entscheiden
+    soll."""
+    from app.services import caddy_config
+
+    erfolg, begruendung = await caddy_config.repair_mcp_routes(db)
+    await audit.record(
+        db, "admin.mcp.proxy_repaired", request=request, actor_id=current.id,
+        actor_email=current.email,
+        detail={"erfolg": erfolg, "begruendung": begruendung},
+    )
+    if not erfolg:
+        raise HTTPException(
+            status_code=503, detail=begruendung
+        )
+    return await mcp_status(db=db, _=current)
 
 
 class McpToggleRequest(BaseModel):
@@ -1989,10 +2071,21 @@ async def update_mcp_enabled(
     aber Tokens. Wer sie wirklich loswerden will, trennt die Verbindungen im
     Reiter MCP — das steht auch im Portal neben dem Schalter."""
     from app.mcp import mount as mcp_mount
-    from app.services import mcp_config
+    from app.services import caddy_config, mcp_config
 
     await mcp_config.set_mcp_enabled(db, data.enabled)
     geaendert = await mcp_mount.zustand_anwenden()
+
+    # Beim Einschalten den vorhandenen Retrofit anstoßen: er erneuert eine
+    # hinterlegte Proxy-Konfiguration, der die MCP-Pfade fehlen. Dasselbe
+    # läuft beim Backend-Start, hier greift es ohne Neustart. Schlägt es
+    # fehl, bleibt der Schalter trotzdem umgelegt — der Status sagt dann,
+    # woran es liegt, statt die Einstellung zu verweigern.
+    if data.enabled:
+        try:
+            await caddy_config.ensure_caddyfile_current(db)
+        except Exception:
+            logger.warning("Proxy-Auffrischung beim Einschalten fehlgeschlagen", exc_info=True)
     await audit.record(
         db, "admin.settings.mcp_updated", request=request, actor_id=current.id,
         actor_email=current.email,
