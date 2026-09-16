@@ -302,49 +302,54 @@ Diese Liste ist die Abnahme für Phase 1.
 
 ### Task 2.1: Schreib-Tools (ohne Löschen)
 
-- [ ] `konvoi_anlegen`, `konvoi_aktualisieren`
-- [ ] `fahrzeug_anlegen`, `fahrzeug_aktualisieren`
-- [ ] `fahrzeug_zu_konvoi_hinzufuegen`, `fahrzeug_aus_konvoi_entfernen`, `konvoi_fahrzeuge_umsortieren`
-- [ ] `wegpunkt_anlegen`, `wegpunkt_aktualisieren`, `wegpunkte_umsortieren`
-- [ ] `route_berechnen`
-- [ ] `fahrzeugstatus_setzen` (Scope `fleet:status`)
-- [ ] Alle übrigen verlangen `convoy:write`
-- [ ] Bei fehlendem Scope: **403 mit `WWW-Authenticate: Bearer error="insufficient_scope", scope="…", resource_metadata="…"`**, alle für die Operation nötigen Scopes in **einer** Challenge — die Spec verlangt ausdrücklich, nicht inkrementell nachzufordern
-- [ ] Eingaben über Pydantic-Schemas validieren, dieselben wie in `app/schemas/`
+- [x] `konvoi_anlegen`, `konvoi_aktualisieren`
+  > **Grundsatzentscheidung dieser Phase:** die Werkzeuge rufen **dieselben Funktionen auf, die hinter der REST-API stehen** — direkt, nicht über HTTP. Die Schreiblogik existiert damit genau einmal. Nachgebaut liefen die Kopien beim ersten Fehler auseinander, den jemand nur an einer Stelle behebt, und in den Routen steckt Logik, die man beim Nachbauen nicht errät (die lückenlose Marschposition, das Umsortieren der Wegpunkte entlang der vorherigen Route). Die Werkzeugschicht steuert bei, was die Route nicht wissen kann: Scope, Kontingent, Audit und eine modelllesbare Antwort.
+- [x] `fahrzeug_anlegen`, `fahrzeug_aktualisieren`
+- [x] `fahrzeug_zu_konvoi_hinzufuegen`, `fahrzeug_aus_konvoi_entfernen`, `konvoi_fahrzeuge_umsortieren`
+- [x] `wegpunkt_anlegen`, `wegpunkt_aktualisieren`, `wegpunkte_umsortieren`
+- [x] `route_berechnen`
+- [x] `fahrzeugstatus_setzen` (Scope `fleet:status`)
+- [x] Alle übrigen verlangen `convoy:write`
+- [x] Bei fehlendem Scope ein Werkzeugfehler, der den benötigten Scope benennt; die 403-Challenge mit `insufficient_scope` und `scope` liefert `ScopeAnnouncingAuthMiddleware` auf Transportebene (Phase 1)
+  > **Abweichung:** ein einzelner Werkzeugaufruf kann keine HTTP-Challenge erzeugen — er läuft *innerhalb* einer bereits authentifizierten Sitzung, der Transport hat den Statuscode längst gesendet. Die Challenge greift dort, wo sie hingehört: beim Verbindungsaufbau. Innerhalb der Sitzung sagt der Werkzeugfehler dem Modell im Klartext, welche Berechtigung fehlt und dass die Verbindung dafür neu erteilt werden muss.
+- [x] Eingaben über Pydantic-Schemas validieren, dieselben wie in `app/schemas/`
+- [x] Jedes Werkzeug quittiert, *was* geschehen ist — ein blosses `{"status": "ok"}` lässt Modell und Gesprächsverlauf im Unklaren
 
 **Entschieden:** `fahrzeug_aus_konvoi_entfernen` ist **drin**. Es ruft zwar `DELETE /api/convoys/{id}/vehicles/{vehicle_id}` auf, löst dabei aber nur die Zuordnung — Fahrzeug und Konvoi überleben unverändert. Es läuft unter `convoy:write`, steht in der Positivliste und ist audit-pflichtig wie jeder andere Schreibaufruf. Zusätzlich:
 
-- [ ] Das Tool gibt in seiner Antwort zurück, welches Fahrzeug aus welchem Konvoi gelöst wurde, damit ein versehentlicher Aufruf im Gesprächsverlauf sichtbar wird und sich mit `fahrzeug_zu_konvoi_hinzufuegen` rückgängig machen lässt
-- [ ] Die Tool-Beschreibung sagt ausdrücklich, dass das Fahrzeug **nicht gelöscht** wird — sonst leitet das Modell aus dem Namen das Falsche ab
-- [ ] Test: nach dem Aufruf existieren Fahrzeug und Konvoi weiterhin, nur die Zuordnung ist weg
+- [x] Das Tool gibt in seiner Antwort zurück, welches Fahrzeug aus welchem Konvoi gelöst wurde, damit ein versehentlicher Aufruf im Gesprächsverlauf sichtbar wird und sich mit `fahrzeug_zu_konvoi_hinzufuegen` rückgängig machen lässt
+- [x] Die Tool-Beschreibung sagt ausdrücklich, dass das Fahrzeug **nicht gelöscht** wird — sonst leitet das Modell aus dem Namen das Falsche ab
+- [x] Test: nach dem Aufruf existieren Fahrzeug und Konvoi weiterhin, nur die Zuordnung ist weg
 
 ### Task 2.2: Audit
 
-- [ ] Jeder Schreibaufruf schreibt über `app/services/audit.py` einen Eintrag mit Benutzer, Org, **`client_id` des MCP-Clients**, Tool-Name und Parametern
-- [ ] Die Quelle ist als `mcp` gekennzeichnet, damit im Audit-Log unterscheidbar bleibt, was ein Mensch und was ein Modell getan hat. Für ein BOS-Produkt ist das keine Kür
-- [ ] Test: ein Schreib-Tool erzeugt genau einen Audit-Eintrag mit korrekter Quelle
+- [x] Jeder Schreibaufruf schreibt über `app/services/audit.py` einen Eintrag mit Benutzer, Org, **`client_id` des MCP-Clients**, Tool-Name und Parametern
+- [x] Die Quelle ist als `mcp` gekennzeichnet, damit im Audit-Log unterscheidbar bleibt, was ein Mensch und was ein Modell getan hat. Für ein BOS-Produkt ist das keine Kür
+- [x] Test: ein Schreib-Tool erzeugt genau einen Audit-Eintrag mit korrekter Quelle
 
 ### Task 2.3: Quota und Rate Limiting
 
 `route_berechnen` und Geocoding verbrauchen GraphHopper-CPU bzw. HERE/TomTom-Kontingent. Die vorhandenen Schutzmechanismen (`app/api/quota.py`) sind FastAPI-`Depends` und greifen im MCP-Pfad nicht.
 
-- [ ] In der Tool-Schicht direkt `app/services/rate_limit.check()` aufrufen, gekeyt auf `(user_id, "mcp:<bucket>")`
-- [ ] Budgets aus denselben `QUOTA_*`-Einstellungen ableiten — keine zweite Zahlenwelt
-- [ ] Zusätzlich eine Obergrenze für Tool-Aufrufe pro Minute und Token; ein Modell in einer Schleife ist ein realistisches Lastprofil
-- [ ] Bei Überschreitung ein klarer Tool-Fehler, den das Modell versteht, statt eines nackten 429
+- [x] In der Tool-Schicht direkt `app/services/rate_limit.check()` aufrufen, gekeyt auf `(user_id, "mcp:<bucket>")`
+- [x] Budgets aus denselben `QUOTA_*`-Einstellungen ableiten — keine zweite Zahlenwelt
+- [x] Zusätzlich eine Obergrenze für Tool-Aufrufe pro Minute und Token; ein Modell in einer Schleife ist ein realistisches Lastprofil
+- [x] Bei Überschreitung ein klarer Tool-Fehler, den das Modell versteht, statt eines nackten 429
 
 ### Task 2.4: Lizenzstatus in der Tool-Schicht
 
-- [ ] Ohne gültige Lizenz sind nur die lesenden Tools registriert; `tools/list` zeigt die schreibenden erst gar nicht an
-- [ ] Der Lizenzstatus wird beim Verbindungsaufbau ausgewertet, nicht einmalig beim Start
-- [ ] Test: Instanz ohne Lizenz → `tools/list` enthält kein Schreib-Tool
+- [x] Ohne gültige Lizenz sind nur die lesenden Tools registriert; `tools/list` zeigt die schreibenden erst gar nicht an
+- [x] Der Lizenzstatus wird bei **jeder** Auflistung ausgewertet, nicht einmalig beim Start — eine im Portal hinterlegte Lizenz wirkt damit ohne Neustart
+  > Umgesetzt als `ServerMiddleware`, die das Ergebnis von `tools/list` filtert. Stolperstelle: auf dieser Ebene reicht das SDK das Ergebnis als rohes `dict` durch, nicht als `ListToolsResult` — ein `getattr(result, "tools")` läuft still ins Leere. Beide Formen werden bedient, und ein Test hält das fest.
+- [x] Test: Instanz ohne Lizenz → `tools/list` enthält kein Schreib-Tool
 
 ### Task 2.5: Resources und Prompts
 
-- [ ] Resource `convoyplan://konvoi/{id}/marschbefehl.pdf` über `app/services/pdf.py`
-- [ ] Resources für GPX- und GeoJSON-Export über `app/services/export.py`
-- [ ] Ein Prompt „Marschbefehl erstellen", der Konvoi, Fahrzeuge, Wegpunkte und Route zu einer Vorlage bündelt
-- [ ] Resource-URIs gehen durch dieselben Zugriffsprüfungen wie die Tools
+- [x] Resource `convoyplan://konvoi/{id}/marschbefehl.pdf` über `app/services/pdf.py`
+- [x] Resources für GPX- und JSON-Export über die vorhandenen Export-Routen
+  > Der Plan sprach von GeoJSON; die Instanz exportiert JSON (`build_json_export`), kein GeoJSON. Übernommen wurde, was es gibt.
+- [x] Ein Prompt „Marschbefehl erstellen", der Konvoi, Fahrzeuge, Wegpunkte und Route zu einer Vorlage bündelt
+- [x] Resource-URIs gehen durch dieselben Zugriffsprüfungen wie die Tools
 
 ---
 
@@ -352,37 +357,55 @@ Diese Liste ist die Abnahme für Phase 1.
 
 ### Task 3.1: Admin-Oberfläche
 
-- [ ] Neuer Reiter „MCP" in `/admin`
-- [ ] Schalter für `MCP_ENABLED` und `MCP_ALLOW_DCR` zur Laufzeit
-- [ ] Liste registrierter Clients: Name (als unbestätigt gekennzeichnet), `redirect_uris`, Registrierungszeitpunkt, letzte Nutzung, Widerruf
-- [ ] Liste aktiver Verbindungen pro Org: Benutzer, Client, Scopes, letzte Nutzung, „Verbindung trennen" (widerruft die Refresh-Familie)
-- [ ] Die Verbindungs-URL zum Kopieren, plus ein Hinweis, dass Clients sie als Remote-MCP-Server eintragen
-- [ ] Nur für Superadmin und Org-Admin; Org-Admins sehen ausschließlich ihre eigene Org
+- [x] Neuer Reiter „MCP" in `/admin`
+- [ ] ~~Schalter für `MCP_ENABLED` und `MCP_ALLOW_DCR` zur Laufzeit~~ — **verworfen**
+  > Ein Laufzeitschalter widerspräche der Zusage aus Phase 1, dass bei abgeschaltetem MCP **kein Endpunkt montiert** ist — die ist getestet und im Changelog zugesagt. Ein Knopf im Portal hieße: alles ist immer montiert und antwortet nur mit 404. Sicherheitstechnisch wäre das kaum schlechter, aber es wäre eine stillschweigende Aufweichung einer öffentlich gemachten Eigenschaft. Der Reiter zeigt den Zustand stattdessen an und sagt, welche Variable zu setzen ist. Wer den Laufzeitschalter will, ändert damit auch die Phase-1-Zusage — das ist eine eigene Entscheidung, keine Nebenwirkung.
+- [x] Liste registrierter Clients: Name (als unbestätigt gekennzeichnet), `redirect_uris`, Registrierungszeitpunkt, letzte Nutzung, Widerruf
+- [x] Liste aktiver Verbindungen: Benutzer, Client, Organisation, Scopes, letzte Nutzung, „Verbindung trennen" (widerruft die Token-Familie)
+  > Eine Zeile je Token-*Familie*, nicht je Token: die Tokens rotieren bei jeder Nutzung, die Verbindung bleibt dieselbe. Gezählt und gelistet wird das jeweils jüngste, noch nicht rotierte Glied.
+- [x] Die Verbindungs-URL zum Kopieren, plus ein Hinweis, dass Clients sie als Remote-MCP-Server eintragen
+- [x] Nur für Superadmin
+  > **Abweichung:** `/api/admin/*` ist durchgehend superadmin-gesichert. Org-Admins einen zweiten, org-bezogenen Zugang zu geben hieße, eine eigene Oberfläche in der Org-Ansicht zu bauen — halb gebaut wäre sie schlechter als gar nicht. Bis dahin wendet sich ein Org-Admin an den Betreiber; ein Benutzer kann seinen eigenen Zugang im Client löschen und über `/revoke` widerrufen lassen. Als eigener Vorgang vorgemerkt.
 
 ### Task 3.2: Dokumentation
 
-- [ ] `wiki/MCP-Server.md`: Was der Server kann und was nicht, Verbinden Schritt für Schritt, Scope-Tabelle, Widerruf, das 15-Minuten-Fenster bei Access-Tokens, DSGVO-Einordnung (welche Daten an welchen Modellanbieter fließen — bei einem BOS-Produkt der Punkt, an dem Kunden hängenbleiben)
-- [ ] `wiki/_Sidebar.md` und `wiki/API-Dokumentation.md` verlinken
-- [ ] `wiki/Sicherheit-und-Datenschutz.md` um den MCP-Abschnitt ergänzen
-- [ ] `README.md`: eine Zeile im Funktionsumfang
-- [ ] `CHANGELOG.md` unter Unreleased
-- [ ] `CLAUDE.md`: MCP-Endpunkt neben dem `/docs`-Abschnitt erwähnen
+- [x] `wiki/MCP-Server.md`: Was der Server kann und was nicht, Verbinden Schritt für Schritt, Scope-Tabelle, Widerruf, das 15-Minuten-Fenster bei Access-Tokens, DSGVO-Einordnung (welche Daten an welchen Modellanbieter fließen — bei einem BOS-Produkt der Punkt, an dem Kunden hängenbleiben)
+- [x] `wiki/_Sidebar.md` und `wiki/API-Dokumentation.md` verlinken
+- [x] `wiki/Sicherheit-und-Datenschutz.md` um den MCP-Abschnitt ergänzen
+- [x] `README.md`: eine Zeile im Funktionsumfang
+- [x] `CHANGELOG.md` unter Unreleased
+- [x] `CLAUDE.md`: MCP-Endpunkt neben dem `/docs`-Abschnitt erwähnen
 
 ### Task 3.3: Ende-zu-Ende-Abnahme
 
-- [ ] Gegen eine lokale Instanz mit `tls internal` mit dem MCP Inspector verbinden: Discovery, DCR, Consent, Token, `tools/list`, ein Lese- und ein Schreib-Tool
-- [ ] Mit einem echten MCP-Client (Claude Desktop oder Claude Code) als Remote-Server verbinden
-- [ ] Widerruf über die Admin-Oberfläche → Client verliert den Zugriff
-- [ ] Upgrade-Pfad: bestehende Installation mit persistiertem Caddyfile, `MCP_ENABLED=true` setzen, prüfen dass die Handles nachgetragen wurden
+Zwei Punkte hier lassen sich nicht automatisieren — sie brauchen einen Browser, einen echten Client und eine laufende Instanz. Sie bleiben **offen** und sind als solche markiert, statt sie abzuhaken, weil sie plausibel funktionieren würden.
+
+- [ ] Gegen eine lokale Instanz mit `tls internal` mit dem MCP Inspector verbinden — **offen, manuell**
+- [ ] Mit einem echten MCP-Client (Claude Desktop oder Claude Code) als Remote-Server verbinden — **offen, manuell**
+- [x] Widerruf über die Admin-Oberfläche → Client verliert den Zugriff
+  > Automatisiert abgedeckt (`tests/test_mcp_admin.py`): nach dem Trennen lässt sich das Refresh-Token nicht mehr einlösen, und ein gesperrter Client kann sich nicht neu autorisieren.
+- [x] Upgrade-Pfad: persistiertes Caddyfile bekommt die MCP-Handles nachgetragen
+  > Automatisiert abgedeckt (`tests/test_security_hardening.py`). Der Durchlauf auf einer echten Bestandsinstallation bleibt manuell.
 
 ---
 
 ## Phase 4 — Optional, nach Bedarf
 
-- [ ] **Client ID Metadata Documents** (`SHOULD` der Spec). `get_client()` erkennt ein HTTPS-`client_id`, ruft das Dokument ab, validiert `client_id`-Übereinstimmung und `redirect_uris`, cached. **Zwingend mit SSRF-Schutz**: nur HTTPS, keine privaten oder Link-Local-Adressen, keine Redirects, harte Timeouts, Größenlimit — im Zweifel das Muster von `validate_region_url` übernehmen. Danach `client_id_metadata_document_supported: true` in die AS-Metadata und DCR abschaltbar machen
-- [ ] **Step-up-Autorisierung** vollständig: ein Token mit nur `convoy:read` bekommt beim Schreib-Tool eine Scope-Challenge und der Client holt inkrementell nach
+- [x] **Client ID Metadata Documents** (`SHOULD` der Spec). `get_client()` erkennt ein HTTPS-`client_id`, ruft das Dokument ab, validiert `client_id`-Übereinstimmung und `redirect_uris`, cached. **Zwingend mit SSRF-Schutz**: nur HTTPS, keine privaten oder Link-Local-Adressen, keine Redirects, harte Timeouts, Größenlimit — im Zweifel das Muster von `validate_region_url` übernehmen. Danach `client_id_metadata_document_supported: true` in die AS-Metadata und DCR abschaltbar machen
+  > Umgesetzt in `app/services/oauth_provider.py` (`ist_cimd_client_id`, `loese_cimd_auf`) und `app/services/safe_fetch.py`. Hinter `MCP_ALLOW_CIMD` (Standard aus), Cache über `MCP_CIMD_CACHE_MINUTES`.
+  > **Abweichung:** der Schutzwall ist *nicht* von `validate_region_url` übernommen, sondern neu geschrieben. Jene Prüfung löst den Namen einmal auf und sieht nur die erste Adresse an; `safe_fetch.pruefe_url` prüft **jede** aufgelöste Adresse. Dabei ist außerdem eine echte Lücke des Musters aufgefallen: `100.64.0.0/10` (RFC 6598, Carrier-Grade NAT) ist in Pythons `ipaddress` **nicht** `is_private` und wäre durchgerutscht. Ein Test hält diese Annahme über CPython fest, damit sie nicht still kippt.
+  > **Offen und dokumentiert:** DNS-Rebinding zwischen Prüfung und Verbindungsaufbau. Dagegen hülfe nur, die geprüfte IP selbst zu verbinden und den Namen für TLS/SNI mitzugeben — das ist mit `httpx` nicht sauber zu haben. Vermerkt im Modulkopf von `safe_fetch.py`.
+- [x] **Step-up-Autorisierung** vollständig: ein Token mit nur `convoy:read` bekommt beim Schreib-Tool eine Scope-Challenge und der Client holt inkrementell nach
+  > Umgesetzt als `StepUpScopeMiddleware` in `app/mcp/mount.py`, gestützt auf `scopes.TOOL_SCOPES` / `required_for_tool()`.
+  > **Abweichung:** die Absage kann nicht aus dem Werkzeug kommen. Die Spec verlangt eine HTTP-403 mit `WWW-Authenticate: Bearer error="insufficient_scope"`; im Werkzeug läuft aber längst eine Antwort, deren Status gesendet ist. Die Prüfung sitzt deshalb **vor** dem Transport und puffert dafür den Anfragerumpf. Sie ist bewusst fail-open: was sie nicht eindeutig als zu schmal erkennt, geht durch und trifft auf `ctx.require()` — die maßgebliche Prüfung bleibt im Werkzeug, hier geht es nur um die protokollgerechte *Form* der Absage. Ein Stapel mehrerer Aufrufe wird nicht zerlegt; für „Challenge für einen von mehreren" sieht das Protokoll keine Form vor.
 - [ ] **Stdio-Wrapper** für Clients ohne Remote-Unterstützung
-- [ ] **Subscriptions**: Positions- und Statusänderungen als MCP-Subscription, gestützt auf den bestehenden WebSocket-/SSE-Pfad
+  > Nicht umgesetzt — ausdrücklich abgewählt.
+- [x] **Subscriptions**: Positions- und Statusänderungen als MCP-Subscription, gestützt auf den bestehenden WebSocket-/SSE-Pfad
+  > Umgesetzt in `app/mcp/subscriptions.py`. Resource `convoyplan://org/{org_id}/konvoi/{konvoi_id}/live`, abonnierbar über `subscriptions/listen` (2026-07-28).
+  > **Entscheidender Fund:** der `ListenHandler` des SDK honoriert **jede** angefragte Resource-URI ohne Autorisierungshaken. Ein Client, der die URI eines fremden Konvois errät, bekäme zwar nie dessen Daten (die Leseprüfung hält), wohl aber die Nachricht *dass* sich dort etwas tut — im Einsatz schon eine Auskunft. Gelöst über die **Form der URI**: die Organisation steht darin, damit ist die Zustellprüfung ein reiner Präfixvergleich gegen die Organisation des Tokens. `OrgScopedSubscriptionBus` hält sie beim Abonnieren fest (der Handler läuft in der Aufgabe des Aufrufers, die Auth-Contextvar trägt dorthin). Ein Test fährt den echten `ListenHandler` ab, ein zweiter nagelt das ungeprüfte Honorieren des SDK fest — bessert das SDK nach, bricht er und die Doppelung lässt sich aufgeben.
+  > **Abweichung:** der Veröffentlicher sitzt in `TrackingManager.broadcast` und kennt nur die Konvoi-ID; für die URI fehlt ihm die Organisation. Eine Datenbankabfrage kommt dort nicht in Frage — das ist der Pfad, der im laufenden Einsatz GPS-Positionen verteilt. Die Zuordnung wird stattdessen beim Lesen gemerkt (`merke_konvoi`, aus `tools_read._load_convoy`). Sie kann nicht veralten: ein Konvoi bekommt seine `organization_id` beim Anlegen und behält sie. Ein Konvoi, den über die Schnittstelle noch nie jemand angesehen hat, meldet nichts — fail-closed, und der Client erfährt die URI ohnehin nur aus `konvoi_details`.
+  > **Offen und dokumentiert:** festgehalten wird die Organisation *des Tokens*, nicht die aus der Datenbank — `subscribe()` ist synchron, eine Rückfrage geht dort nicht. Wer seine Mitgliedschaft verliert, während sein Strom offen ist, erfährt bis zum Ablauf des Tokens (15 Minuten) weiterhin, dass sich etwas bewegt; lesen kann er nichts davon.
+  > **Nebenbefund:** dabei ist ein Fehler aus Phase 2 aufgefallen. `McpError` leitete nur von `ToolError` ab; die Resource-Schicht des SDK lässt aber nur `ResourceError` durch und verpackt alles andere in `UnexpectedResourceError`, dessen Text nur die URI nennt. Jede Zugriffsabsage auf den drei Resources aus Phase 2 kam damit als „Error creating resource from template …" an und stand im Log als Absturz. `McpError` leitet jetzt von beiden ab.
 
 ---
 

@@ -57,8 +57,12 @@ from starlette.types import Send
 
 from app.config import settings
 from app.database import get_db_session
+from app.mcp import WRITE_TOOLS
 from app.mcp import scopes as scope_svc
-from app.mcp import tools_read
+from app.mcp import resources as mcp_resources
+from app.mcp import subscriptions as mcp_subs
+from app.mcp import tools_read, tools_write
+from app.middleware.license_guard import is_licensed
 from app.services import oauth_tokens
 from app.services.oauth_provider import ConvoyPlanOAuthProvider
 
@@ -68,6 +72,182 @@ MCP_PATH = "/mcp"
 
 # Wird beim Montieren gesetzt und vom Lifespan gebraucht.
 _session_manager: StreamableHTTPSessionManager | None = None
+
+
+def _tool_name(tool) -> str | None:
+    """Der Name eines Werkzeugs, gleich ob als dict oder als Modell."""
+    if isinstance(tool, dict):
+        return tool.get("name")
+    return getattr(tool, "name", None)
+
+
+class StepUpScopeMiddleware:
+    """Beantwortet einen Werkzeugaufruf ohne ausreichende Rechte mit 403.
+
+    Die Spec verlangt bei zu schmalen Rechten eine **HTTP**-Antwort: 403 mit
+    ``error="insufficient_scope"`` und den nötigen Scopes im
+    ``WWW-Authenticate``-Header. Ein kompatibler Client autorisiert daraufhin
+    von sich aus nach — der Benutzer muss die Verbindung nicht von Hand neu
+    erteilen.
+
+    Das lässt sich nicht aus dem Werkzeug heraus erzeugen: dort läuft bereits
+    eine HTTP-Anfrage, deren Status längst gesendet ist. Die Prüfung muss also
+    **vor** den Transport, und dafür muss der Rumpf der Anfrage gelesen
+    werden. Er wird gepuffert und unverändert weitergereicht — ein ASGI-Server
+    liefert ihn nur einmal.
+
+    Die Prüfung im Werkzeug (``ctx.require()``) bleibt bestehen und ist die
+    maßgebliche: hier geht es um die *protokollgerechte Form* der Absage, nicht
+    um die Absage selbst. Fällt diese Schicht aus, lehnt das Werkzeug
+    weiterhin ab — nur eben ohne Challenge.
+    """
+
+    def __init__(self, app, resource_metadata_url) -> None:
+        self.app = app
+        self.resource_metadata_url = resource_metadata_url
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] != "http" or scope.get("method") != "POST":
+            await self.app(scope, receive, send)
+            return
+
+        body, replay = await _buffer_body(receive)
+        fehlend = self._fehlender_scope(scope, body)
+        if fehlend is None:
+            await self.app(scope, replay, send)
+            return
+
+        await _send_insufficient_scope(send, fehlend, self.resource_metadata_url)
+
+    def _fehlender_scope(self, scope, body: bytes) -> str | None:
+        """Den fehlenden Scope bestimmen, oder None wenn alles passt.
+
+        Fail-open per Absicht: was hier nicht eindeutig als Werkzeugaufruf
+        mit zu schmalen Rechten erkennbar ist, geht durch — und trifft dann
+        auf die Prüfung im Werkzeug. Diese Schicht darf nichts *zusätzlich*
+        verbieten, sie darf nur früher und präziser ablehnen."""
+        credentials = scope.get("auth")
+        if credentials is None:
+            return None
+        try:
+            payload = json.loads(body)
+        except (ValueError, TypeError):
+            return None
+        # Ein Stapel mehrerer Aufrufe wird nicht zerlegt — die Challenge
+        # gälte dann für einen von mehreren, und das Protokoll sieht dafür
+        # keine Form vor.
+        if not isinstance(payload, dict) or payload.get("method") != "tools/call":
+            return None
+        name = (payload.get("params") or {}).get("name")
+        if not isinstance(name, str):
+            return None
+        benoetigt = scope_svc.required_for_tool(name)
+        if benoetigt is None:
+            return None
+        if scope_svc.satisfies(list(credentials.scopes), benoetigt):
+            return None
+        return benoetigt
+
+
+async def _buffer_body(receive):
+    """Den Anfragerumpf einlesen und ein receive liefern, das ihn erneut gibt."""
+    teile: list[bytes] = []
+    nachrichten: list[dict] = []
+    while True:
+        nachricht = await receive()
+        nachrichten.append(nachricht)
+        if nachricht["type"] != "http.request":
+            break
+        teile.append(nachricht.get("body", b""))
+        if not nachricht.get("more_body", False):
+            break
+
+    index = 0
+
+    async def replay():
+        nonlocal index
+        if index < len(nachrichten):
+            nachricht = nachrichten[index]
+            index += 1
+            return nachricht
+        return await receive()
+
+    return b"".join(teile), replay
+
+
+async def _send_insufficient_scope(send, benoetigt: str, resource_metadata_url) -> None:
+    """Die Scope-Challenge nach RFC 6750 §3.1 senden.
+
+    Alle für die Operation nötigen Scopes in **einer** Challenge: inkrementell
+    nachzufordern kostet eine Autorisierungsrunde pro Scope und damit den
+    Benutzer je einen Klick zu viel. Weil unsere Scopes hierarchisch sind,
+    genügt der breiteste — er schließt die schmaleren ein."""
+    beschreibung = (
+        f"Dieser Zugriff erfordert {benoetigt} "
+        f"({scope_svc.SCOPE_LABELS.get(benoetigt, benoetigt)})"
+    )
+    teile = [
+        'error="insufficient_scope"',
+        f'error_description="{beschreibung}"',
+        f'scope="{benoetigt}"',
+    ]
+    if resource_metadata_url:
+        teile.append(f'resource_metadata="{resource_metadata_url}"')
+
+    rumpf = json.dumps(
+        {"error": "insufficient_scope", "error_description": beschreibung}
+    ).encode()
+    await send({
+        "type": "http.response.start",
+        "status": 403,
+        "headers": [
+            (b"content-type", b"application/json"),
+            (b"content-length", str(len(rumpf)).encode()),
+            (b"www-authenticate", f"Bearer {', '.join(teile)}".encode()),
+        ],
+    })
+    await send({"type": "http.response.body", "body": rumpf})
+
+
+class LicenseGatedToolsMiddleware:
+    """Blendet die schreibenden Werkzeuge aus, solange keine Lizenz vorliegt.
+
+    Der MCP-Server verhält sich damit wie die REST-API im Demo-Modus: lesen
+    ja, schreiben nein. Nur zeigt er die schreibenden Werkzeuge gar nicht
+    erst an, statt sie anzubieten und beim Aufruf abzulehnen — ein Modell,
+    das ein Werkzeug sieht, probiert es aus, und eine Absage nach dem
+    Versuch ist eine schlechtere Auskunft als ein Werkzeug, das es nicht gibt.
+
+    Geprüft wird bei **jeder** Auflistung, nicht einmalig beim Start: eine
+    Lizenz lässt sich im Admin-Portal zur Laufzeit hinterlegen, und dann soll
+    die nächste Verbindung sie sehen, ohne dass jemand den Dienst neu startet.
+    ``is_licensed()`` hält dafür einen stündlichen Cache vor, der Aufruf
+    kostet also im Normalfall nichts.
+    """
+
+    async def __call__(self, ctx, call_next):
+        result = await call_next(ctx)
+        if ctx.method != "tools/list":
+            return result
+        if await is_licensed():
+            return result
+
+        # Auf dieser Ebene reicht das Ergebnis als rohes dict durch, nicht als
+        # ListToolsResult — die Modellvalidierung passiert erst danach. Beide
+        # Formen werden bedient, damit ein Umbau im SDK hier nicht still
+        # aufhört zu filtern, sondern höchstens am Test bricht.
+        if isinstance(result, dict):
+            tools = result.get("tools")
+            if tools is None:
+                return result
+            result["tools"] = [t for t in tools if _tool_name(t) not in WRITE_TOOLS]
+            return result
+
+        tools = getattr(result, "tools", None)
+        if tools is None:
+            return result
+        result.tools = [t for t in tools if _tool_name(t) not in WRITE_TOOLS]
+        return result
 
 
 class ScopeAnnouncingAuthMiddleware(RequireAuthMiddleware):
@@ -173,8 +353,17 @@ def build_server() -> MCPServer:
         version=settings.app_version,
         token_verifier=ConvoyPlanTokenVerifier(),
         auth=auth_settings,
+        middleware=[LicenseGatedToolsMiddleware()],
+        # Der eigene Bus statt des mitgelieferten: der ``ListenHandler`` des
+        # SDK honoriert jede angefragte Resource-URI ohne Prüfung. Die
+        # Mandantentrennung in der Zustellung steckt deshalb im Bus — siehe
+        # app/mcp/subscriptions.py.
+        subscriptions=mcp_subs.bus(),
     )
     tools_read.register(mcp)
+    tools_write.register(mcp)
+    mcp_resources.register(mcp)
+    mcp_subs.register(mcp)
     return mcp
 
 
@@ -197,6 +386,10 @@ def _authorization_server_metadata_route(auth_settings: AuthSettings) -> Route:
         auth_settings.revocation_options or RevocationOptions(),
     )
     metadata.authorization_response_iss_parameter_supported = True
+    # Client ID Metadata Documents ankündigen, sobald sie eingeschaltet sind.
+    # Ohne die Angabe versucht es kein Client, und die Funktion läge brach.
+    if settings.mcp_allow_cimd:
+        metadata.client_id_metadata_document_supported = True
     return Route(
         "/.well-known/oauth-authorization-server",
         endpoint=cors_middleware(MetadataHandler(metadata).handle, ["GET", "OPTIONS"]),
@@ -217,6 +410,8 @@ def mount(app: FastAPI) -> None:
         return
 
     mcp = build_server()
+    # Live-Meldungen der Fahrzeugverfolgung in Abo-Ereignisse übersetzen.
+    mcp_subs.attach_tracking()
     auth_settings = mcp.settings.auth
     assert auth_settings is not None and auth_settings.resource_server_url is not None
 
@@ -227,12 +422,18 @@ def mount(app: FastAPI) -> None:
 
     # Transport: Authentication außen, AuthContext darunter, RequireAuth
     # innen — dieselbe Reihenfolge, die das SDK auf App-Ebene herstellt.
+    resource_metadata_url = build_resource_metadata_url(auth_settings.resource_server_url)
     endpoint = AuthenticationMiddleware(
         AuthContextMiddleware(
             ScopeAnnouncingAuthMiddleware(
-                StreamableHTTPASGIApp(_session_manager),
+                # Die Step-up-Prüfung sitzt innerhalb von RequireAuth: erst
+                # muss überhaupt ein gültiges Token vorliegen (401), dann
+                # entscheidet sie über die Breite seiner Rechte (403).
+                StepUpScopeMiddleware(
+                    StreamableHTTPASGIApp(_session_manager), resource_metadata_url
+                ),
                 auth_settings.required_scopes or [],
-                build_resource_metadata_url(auth_settings.resource_server_url),
+                resource_metadata_url,
             )
         ),
         backend=BearerAuthBackend(

@@ -113,6 +113,7 @@ Die Markdown-Quellen dazu liegen im Ordner [`wiki/`](wiki/). Bei jedem Push auf 
 | [Funktionsumfang](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Funktionsumfang) | Vollständige Feature-Übersicht mit Status und Roadmap |
 | [Installation und Setup](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Installation-und-Setup) | Docker-Quickstart, Konfiguration, Deployment |
 | [API-Dokumentation](https://github.com/RettTechSolutions/ConvoyPlan/wiki/API-Dokumentation) | REST- und WebSocket-Endpunkte, Datenmodell |
+| [MCP-Server (KI-Schnittstelle)](https://github.com/RettTechSolutions/ConvoyPlan/wiki/MCP-Server) | KI-Programme anbinden, Berechtigungen, Widerruf, Datenschutz |
 | [Entwicklung](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Entwicklung) | Projektstruktur, lokaler Workflow, CI/Releases |
 | [Benutzerhandbuch](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Benutzerhandbuch) | Anleitung für Planer, Fahrer und Admins |
 | [Erste Schritte](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Erste-Schritte) | Registrierung, Login und erster Überblick |

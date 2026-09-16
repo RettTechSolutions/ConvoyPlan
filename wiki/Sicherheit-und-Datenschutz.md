@@ -73,6 +73,23 @@ Ein **append-only** Protokoll erfasst sicherheitsrelevante Ereignisse (Logins, M
 
 ---
 
+## KI-Schnittstelle (MCP)
+
+Standardmäßig **abgeschaltet**. Ohne `MCP_ENABLED=true` existiert weder `/mcp` noch ein
+Discovery-Dokument.
+
+Eingeschaltet gilt: Zugriff entsteht erst durch die ausdrückliche Zustimmung eines
+angemeldeten Benutzers (inklusive MFA), gilt für genau eine Organisation und ist durch
+dessen Rolle gedeckelt. Jeder schreibende Aufruf landet im Audit-Log mit Quelle `mcp` und
+dem auslösenden Programm. Gelöscht werden kann über die Schnittstelle nichts.
+
+Was ein Modell liest, verlässt dabei die Instanz und geht an den Anbieter des
+KI-Programms — das ist der Zweck der Schnittstelle. Die datenschutzrechtliche Einordnung,
+das Zeitfenster beim Widerruf und die Einstellungen stehen in
+[MCP-Server](MCP-Server).
+
+---
+
 ## Datenaufbewahrung (Retention)
 
 Der `retention`-Container purgt periodisch abgelaufene Daten:

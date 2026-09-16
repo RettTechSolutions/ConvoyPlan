@@ -34,6 +34,15 @@ CONVOY_UPDATED = "convoy.updated"
 CONVOY_DELETED = "convoy.deleted"
 SHARE_LINK_CREATED = "convoy.share_link.created"
 SHARE_LINK_REVOKED = "convoy.share_link.revoked"
+# MCP: jeder schreibende Werkzeugaufruf. Ein eigener Präfix, damit sich im
+# Audit-Log auf einen Blick trennen lässt, was ein Mensch im Portal getan hat
+# und was ein Sprachmodell über die Schnittstelle. Für ein BOS-Produkt ist
+# diese Unterscheidung keine Kür.
+MCP_TOOL_CALL = "mcp.tool.call"
+# Kennzeichnung in AuditLog.detail["source"]. Die Tabelle hat keine eigene
+# Spalte dafür, und eine Migration nur für ein Wort wäre unverhältnismäßig —
+# der Präfix der Aktion trägt die Information ohnehin doppelt.
+SOURCE_MCP = "mcp"
 
 
 def client_ip(request: Request | None) -> str | None:

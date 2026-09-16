@@ -27,6 +27,12 @@ hängt vom Endpunkt ab — die Tabelle nennt jeweils den kürzesten Weg.
 | **System-API-Key** | `X-API-Key: cvp_…` | nur lesende Endpunkte der [Systemübersicht](#systemübersicht-superadmin) | Superadmin-Portal → **API-Keys** → Geltungsbereich *System* |
 | **Freigabe-Token** | Teil der URL | `/api/convoys/share/{token}`, `/api/track/{slug}` | Freigabelink je Konvoi |
 | **Docs-Key** | `X-API-Key: <DOCS_API_KEY>` oder `?key=…` | nur `/docs`, `/redoc`, `/openapi.json` | Umgebungsvariable `DOCS_API_KEY` |
+| **MCP-Zugang (OAuth 2.1)** | `Authorization: Bearer <token>` | ausschließlich `/mcp` | Zustimmung eines Benutzers, siehe [MCP-Server](MCP-Server) |
+
+> ⚠️ **MCP-Zugang ≠ Bearer-Token.** Beide reisen als `Authorization: Bearer …`, sind
+> aber strikt getrennt: Ein MCP-Token trägt einen eigenen Typ und wird an jedem
+> REST-Endpunkt abgewiesen — und umgekehrt öffnet ein Login-Token `/mcp` nicht.
+> Die Schnittstelle ist standardmäßig abgeschaltet; siehe [MCP-Server](MCP-Server).
 
 > ⚠️ **Docs-Key ≠ Org-API-Key.** Beide reisen im Header `X-API-Key`, haben aber nichts
 > miteinander zu tun: Der Docs-Key ist eine Instanz-Umgebungsvariable und öffnet

@@ -16,6 +16,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from app.mcp import subscriptions as live
 from app.mcp.context import McpError, mcp_context
 from app.mcp.scopes import SCOPE_READ
 from app.models.convoy import Convoy, ConvoyVehicle
@@ -55,6 +56,10 @@ def _convoy_full(convoy: Convoy) -> dict:
             "abstand_ausserorts_m": convoy.spacing_rural_m,
             "abstand_autobahn_m": convoy.spacing_motorway_m,
             "strassenpraeferenz": convoy.road_preference,
+            # Die Resource, die sich abonnieren lässt. Sie steht hier, weil
+            # der Client die Organisation in der URI sonst nicht kennt —
+            # und ohne sie kein Abo aufmachen kann.
+            "live_uri": live.live_uri(convoy.organization_id, convoy.id),
             # Die sieben Abschnitte des Marschbefehls. Genau dafür wird ein
             # Modell hier am ehesten gebraucht, also gehören sie mit hinein.
             "marschbefehl": {
@@ -119,6 +124,56 @@ def _vehicle(vehicle: Vehicle) -> dict:
     return data
 
 
+async def _positionen(ctx, convoy: Convoy) -> list[dict]:
+    """Die zuletzt gemeldeten Positionen eines Konvois.
+
+    Ausgelagert, weil sowohl ``fahrzeugpositionen_abrufen`` als auch die
+    Live-Resource (``app/mcp/subscriptions.py``) dieselbe Antwort liefern
+    müssen — zwei Formen derselben Auskunft wären zwei Wahrheiten."""
+    rows = (
+        await ctx.db.execute(
+            select(VehiclePosition)
+            .where(VehiclePosition.convoy_id == convoy.id)
+            .options(selectinload(VehiclePosition.vehicle))
+            .order_by(VehiclePosition.recorded_at.desc())
+        )
+    ).scalars().all()
+    return [
+        {
+            "fahrzeug_id": str(p.vehicle_id),
+            "name": p.vehicle.name if p.vehicle else None,
+            "funkrufname": p.vehicle.callsign if p.vehicle else None,
+            "lat": p.lat,
+            "lon": p.lon,
+            "geschwindigkeit_kmh": p.speed_kmh,
+            "kurs": p.heading,
+            "gemeldet_um": _iso(p.recorded_at),
+        }
+        for p in rows
+    ]
+
+
+def _status(convoy: Convoy) -> tuple[dict[str, int], list[dict]]:
+    """Zusammenfassung und Einzelstatus der Fahrzeuge eines Konvois."""
+    zusammenfassung: dict[str, int] = {}
+    fahrzeuge = []
+    for cv in sorted(convoy.convoy_vehicles, key=lambda c: c.position):
+        zusammenfassung[cv.vehicle_status] = zusammenfassung.get(cv.vehicle_status, 0) + 1
+        fahrzeuge.append(
+            {
+                "position": cv.position,
+                "fahrzeug_id": str(cv.vehicle_id),
+                "name": cv.vehicle.name if cv.vehicle else None,
+                "funkrufname": cv.vehicle.callsign if cv.vehicle else None,
+                "status": cv.vehicle_status,
+                "status_stufe": cv.status_level,
+                "status_notiz": cv.status_note,
+                "status_seit": _iso(cv.status_changed_at),
+            }
+        )
+    return zusammenfassung, fahrzeuge
+
+
 def _convoy_query(org_id: uuid.UUID):
     return (
         select(Convoy)
@@ -151,6 +206,9 @@ async def _load_convoy(ctx, convoy_id: str) -> Convoy:
             f"Kein Konvoi mit der ID {convoy_id} in der Organisation "
             f"„{ctx.organization.name}“."
         )
+    # Dem Veröffentlicher der Live-Abos die Organisation dieses Konvois
+    # bekannt machen — siehe app/mcp/subscriptions.py.
+    live.merke_konvoi(convoy.id, convoy.organization_id)
     return convoy
 
 
@@ -171,6 +229,8 @@ def register(mcp) -> None:
                     _convoy_query(ctx.organization.id).order_by(Convoy.created_at.desc())
                 )
             ).scalars().all()
+            for c in rows:
+                live.merke_konvoi(c.id, c.organization_id)
             return {
                 "organisation": ctx.organization.name,
                 "anzahl": len(rows),
@@ -343,30 +403,11 @@ def register(mcp) -> None:
         async with mcp_context() as ctx:
             ctx.require(SCOPE_READ)
             convoy = await _load_convoy(ctx, konvoi_id)
-            rows = (
-                await ctx.db.execute(
-                    select(VehiclePosition)
-                    .where(VehiclePosition.convoy_id == convoy.id)
-                    .options(selectinload(VehiclePosition.vehicle))
-                    .order_by(VehiclePosition.recorded_at.desc())
-                )
-            ).scalars().all()
+            positionen = await _positionen(ctx, convoy)
             return {
                 "konvoi": convoy.name,
-                "anzahl": len(rows),
-                "positionen": [
-                    {
-                        "fahrzeug_id": str(p.vehicle_id),
-                        "name": p.vehicle.name if p.vehicle else None,
-                        "funkrufname": p.vehicle.callsign if p.vehicle else None,
-                        "lat": p.lat,
-                        "lon": p.lon,
-                        "geschwindigkeit_kmh": p.speed_kmh,
-                        "kurs": p.heading,
-                        "gemeldet_um": _iso(p.recorded_at),
-                    }
-                    for p in rows
-                ],
+                "anzahl": len(positionen),
+                "positionen": positionen,
             }
 
     @mcp.tool()
@@ -383,24 +424,7 @@ def register(mcp) -> None:
         async with mcp_context() as ctx:
             ctx.require(SCOPE_READ)
             convoy = await _load_convoy(ctx, konvoi_id)
-            zusammenfassung: dict[str, int] = {}
-            fahrzeuge = []
-            for cv in sorted(convoy.convoy_vehicles, key=lambda c: c.position):
-                zusammenfassung[cv.vehicle_status] = (
-                    zusammenfassung.get(cv.vehicle_status, 0) + 1
-                )
-                fahrzeuge.append(
-                    {
-                        "position": cv.position,
-                        "fahrzeug_id": str(cv.vehicle_id),
-                        "name": cv.vehicle.name if cv.vehicle else None,
-                        "funkrufname": cv.vehicle.callsign if cv.vehicle else None,
-                        "status": cv.vehicle_status,
-                        "status_stufe": cv.status_level,
-                        "status_notiz": cv.status_note,
-                        "status_seit": _iso(cv.status_changed_at),
-                    }
-                )
+            zusammenfassung, fahrzeuge = _status(convoy)
             return {
                 "konvoi": convoy.name,
                 "konvoi_status": convoy.status,

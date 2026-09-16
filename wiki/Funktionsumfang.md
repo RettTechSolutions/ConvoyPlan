@@ -81,6 +81,7 @@ Vollständige Feature-Übersicht von ConvoyPlan mit Umsetzungsstatus. Eine kompa
 | System-API-Keys | Nicht ablaufende, nur lesende API-Keys für eigenes Monitoring (Admin → API-Keys, Geltungsbereich *System*) | ✅ |
 | PRTG-Anbindung | `GET /api/admin/system/prtg` liefert die Systemkennzahlen im Kanalformat des Sensortyps „HTTP Data Advanced" | ✅ |
 | Öffentliche Statusseite | `/status` ohne Login: grobkörniger Funktionsstatus je Kernbereich, aktualisiert sich automatisch | ✅ |
+| KI-Schnittstelle (MCP) | Konvois, Fahrzeuge, Wegpunkte, Routen und Status über einen Model-Context-Protocol-Server für KI-Programme; standardmäßig aus, Zugriff nur nach ausdrücklicher Zustimmung eines Benutzers, gedeckelt durch dessen Rolle, ohne jede Löschmöglichkeit ([Details](MCP-Server)) | ✅ |
 
 ---
 
