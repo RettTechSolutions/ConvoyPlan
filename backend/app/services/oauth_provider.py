@@ -47,7 +47,7 @@ from app.models.oauth_client import AUTH_METHOD_NONE, OAuthClient
 from app.models.oauth_code import OAuthCode
 from app.models.oauth_refresh_token import OAuthRefreshToken
 from app.models.user import User
-from app.services import crypto, oauth_tokens, safe_fetch
+from app.services import crypto, mcp_config, oauth_tokens, safe_fetch
 
 logger = logging.getLogger(__name__)
 
@@ -325,7 +325,18 @@ class ConvoyPlanOAuthProvider(
     async def authorize(
         self, client: OAuthClientInformationFull, params: AuthorizationParams
     ) -> str:
-        if not settings.mcp_enabled:
+        # Der *geltende* Zustand — Datenbank schlägt Umgebungsvariable. Stand
+        # hier ``settings.mcp_enabled``, war es derselbe Fehler wie zuvor im
+        # Consent-Router (siehe ``routes/mcp_consent.py``), nur eine Station
+        # früher: Auf einer Instanz mit ``MCP_ENABLED=false`` und dem Schalter
+        # im Portal auf „an" sind die Routen montiert, ``/register`` und die
+        # Well-Known-Dokumente antworten — und ``/authorize`` schickte jeden
+        # Client mit ``temporarily_unavailable`` zurück. Sichtbar war davon
+        # nur, dass sich Registrierungen häuften, zu denen nie eine
+        # Zustimmung entstand.
+        async with get_db_session() as db:
+            aktiv = await mcp_config.is_mcp_enabled(db)
+        if not aktiv:
             raise AuthorizeError(
                 "temporarily_unavailable", "Der MCP-Zugang ist auf dieser Instanz abgeschaltet"
             )

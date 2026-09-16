@@ -19,12 +19,15 @@ Anmeldung vor einem 401.
 Beide Male half kein Blick in die Logs: der Client meldete nur, dass die
 Anmeldung fehlschlug.
 """
+import contextlib
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from mcp.server.auth.provider import AuthorizationParams
+from mcp.server.auth.provider import AuthorizationParams, AuthorizeError
+from mcp.shared.auth import OAuthClientInformationFull
+from pydantic import AnyUrl
 
 from app.api import cookies
 from app.api.routes.auth import create_token
@@ -358,3 +361,59 @@ async def test_zustimmen_mit_csrf_kopf_erzeugt_einen_code():
     assert resp.status_code == 200, resp.text
     assert resp.json()["redirect_url"].startswith(REDIRECT)
     assert "code=" in resp.json()["redirect_url"]
+
+
+# ── Die Station davor: /authorize ────────────────────────────────────────
+#
+# Derselbe Fehler noch einmal, eine Stufe früher. ``authorize()`` im Provider
+# las weiterhin ``settings.mcp_enabled`` — auf einer Instanz mit
+# ``MCP_ENABLED=false`` und dem Schalter im Portal auf „an" kam kein Client
+# jemals bis zum Zustimmungsbildschirm: ``/authorize`` schickte ihn mit
+# ``temporarily_unavailable`` zurück. Zu sehen war davon nur eine wachsende
+# Liste registrierter Programme ohne eine einzige Verbindung.
+
+
+@contextlib.asynccontextmanager
+async def _feste_sitzung(db):
+    yield db
+
+
+async def _autorisieren(db, monkeypatch) -> str:
+    """``authorize()`` mit der übergebenen Datenbank aufrufen.
+
+    Die Methode öffnet ihre Sitzung selbst (``get_db_session``), außerhalb
+    jeder Dependency — überschreiben lässt sie sich deshalb nur hier."""
+    monkeypatch.setattr(
+        oauth_provider, "get_db_session", lambda: _feste_sitzung(db)
+    )
+    return await oauth_provider.ConvoyPlanOAuthProvider().authorize(
+        OAuthClientInformationFull(client_id=CLIENT_ID, redirect_uris=[AnyUrl(REDIRECT)]),
+        AuthorizationParams(
+            state="xyz",
+            scopes=["convoy:read"],
+            code_challenge="c" * 43,
+            redirect_uri=AnyUrl(REDIRECT),
+            redirect_uri_provided_explicitly=True,
+            resource=None,
+        ),
+    )
+
+
+async def test_authorize_folgt_dem_portal_und_nicht_der_env(monkeypatch):
+    """Der Fall aus der Produktion. Vorher: Rückweisung, für jeden Client."""
+    monkeypatch.setattr(settings, "mcp_enabled", False)
+    ziel = await _autorisieren(_db(schalter=_setting("true")), monkeypatch)
+    assert "/oauth/consent?request=" in ziel
+
+
+async def test_authorize_ist_zu_wenn_im_portal_abgeschaltet_wird(monkeypatch):
+    monkeypatch.setattr(settings, "mcp_enabled", True)
+    with pytest.raises(AuthorizeError) as fehler:
+        await _autorisieren(_db(schalter=_setting("false")), monkeypatch)
+    assert fehler.value.error == "temporarily_unavailable"
+
+
+async def test_authorize_faellt_ohne_eintrag_auf_die_env_zurueck(monkeypatch):
+    monkeypatch.setattr(settings, "mcp_enabled", False)
+    with pytest.raises(AuthorizeError):
+        await _autorisieren(_db(schalter=None), monkeypatch)
