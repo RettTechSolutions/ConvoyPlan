@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Eine ConvoyPlan-Instanz stellt unter `https://<domain>/mcp` einen Remote-MCP-Server bereit, den MCP-Clients (Claude Desktop, Claude Code, claude.ai, ChatGPT-Connectoren) nach einem OAuth-2.1-Login der jeweiligen Organisation anbinden können. Der Server liest Konvois, Fahrzeuge, Wegpunkte, Routen und Positionen und legt sie auch an bzw. ändert sie — **löscht aber nichts**.
+**Goal:** Eine ConvoyPlan-Instanz stellt unter `https://<domain>/mcp` einen Remote-MCP-Server bereit, den MCP-Clients (Claude Desktop, Claude Code, claude.ai, ChatGPT-Connectoren) nach einem OAuth-2.1-Login der jeweiligen Organisation anbinden können. Der Server liest Konvois, Fahrzeuge, Wegpunkte, Routen und Positionen und legt sie auch an bzw. ändert sie — **löscht aber keine Daten**. Einzige Ausnahme von der reinen Anlegen-und-Ändern-Regel ist das Lösen einer Fahrzeug-Konvoi-Zuordnung, bei der kein Datensatz verlorengeht.
 
 **Architecture:** Der MCP-Server läuft **in-process in der bestehenden FastAPI-App**, nicht als eigener Container. Die Tool-Schicht ruft die vorhandenen `app/services/*`-Funktionen direkt auf, nicht die eigene REST-API über HTTP. ConvoyPlan ist gleichzeitig **Resource Server und Authorization Server** — eine On-Prem-Installation hat keinen externen IdP, und Benutzer, Passwörter, MFA, Organisationen und die Rollenhierarchie liegen bereits in der eigenen Datenbank. Das Python-SDK (`mcp`) liefert Transport, `/authorize`, `/token`, `/register`, `/revoke` und beide Metadaten-Dokumente fertig mit; zu implementieren ist der `OAuthAuthorizationServerProvider` gegen Postgres plus eine Consent-Seite im Frontend.
 
@@ -29,7 +29,7 @@ Drei Punkte, die den Zuschnitt beeinflussen und vor dem ersten Task bekannt sein
 ## Global Constraints
 
 - **Standardmäßig aus.** `MCP_ENABLED=false` ist der Auslieferungszustand. Eine Bestandsinstallation, die nichts konfiguriert, verhält sich bitgleich zu heute — kein offener Endpunkt, keine neuen Well-Known-Routen, kein Caddy-Verhalten, das sich ändert.
-- **Kein Löschen.** Es wird **kein** Tool implementiert, das einen `DELETE`-Pfad oder eine löschende Service-Funktion aufruft. Kein `convoy:delete`-Scope existiert. Ein Test prüft, dass die registrierte Toolliste keinen Namen mit `delete`/`remove` enthält.
+- **Kein Datenverlust.** Es wird **kein** Tool implementiert, das einen Konvoi, ein Fahrzeug, einen Wegpunkt, eine Route, eine Position oder einen Benutzer löscht. Kein `convoy:delete`-Scope existiert. Einzige Ausnahme ist `fahrzeug_aus_konvoi_entfernen` (Task 2.1): der `DELETE`-Pfad dahinter löst nur die Zuordnung, Fahrzeug und Konvoi bleiben bestehen. Abgesichert wird das nicht über eine Namensregel, sondern über eine **Positivliste**: `backend/app/mcp/__init__.py` führt die zugelassenen Tool-Namen explizit, und ein Test vergleicht die registrierte Toolliste exakt gegen diese Liste. Ein neu hinzugefügtes Tool bricht den Test, bis es bewusst eingetragen wurde.
 - **MCP-Tokens sind keine ConvoyPlan-Tokens.** Sie tragen `typ="mcp"`. `app/api/deps.py::_decode_token` akzeptiert nur `typ in ("access", "stream")` — damit ist ein MCP-Token an der REST-API strukturell wertlos. Umgekehrt akzeptiert der `TokenVerifier` nur `typ="mcp"`. Beide Richtungen bekommen einen Test.
 - **Audience-Bindung ist Pflicht.** Jedes Access-Token trägt `aud` = kanonische Resource-URI (`https://<domain>/mcp`). `AuthSettings.validate_token_resource=True`. Ein Token für Instanz A darf an Instanz B nicht funktionieren.
 - **Die Rollenhierarchie bleibt die einzige Wahrheit.** Scopes sind eine Projektion von `ROLE_ORDER` aus `app/api/guards.py`, keine zweite Berechtigungslogik. Ein Token kann nie mehr dürfen als die Mitgliedschaft des Benutzers in der gewählten Organisation.
@@ -109,24 +109,68 @@ Zwei Fallen:
 
 **Fallback (B):** Die SDK-App als **letzte** Route mit `app.mount("/", mcp_app)` einhängen. Funktioniert, weil Starlette der Reihe nach matcht und alle `/api/*`-Routen vorher registriert sind — verschluckt aber alle unbekannten Pfade und ändert den 404-Körper des Backends.
 
-- [ ] Prototyp beider Formen in `/tmp`, gegen `mcp==2.2.0`
-- [ ] Prüfen: `GET /.well-known/oauth-protected-resource/mcp` → 200 **an der Wurzel**
-- [ ] Prüfen: `POST /mcp` ohne Token → 401 mit `WWW-Authenticate: Bearer resource_metadata="…/.well-known/oauth-protected-resource/mcp"`
-- [ ] Prüfen: `GET /api/version` verhält sich unverändert (keine Auth-Middleware auf ConvoyPlan-Routen)
-- [ ] Prüfen: eine echte MCP-Session (initialize → tools/list) läuft durch, d. h. der Session-Manager wurde gestartet
-- [ ] Entscheidung dokumentieren; der Rest des Plans baut darauf auf
+- [x] Prototyp gegen `mcp==2.2.0`
+- [x] Prüfen: `GET /.well-known/oauth-protected-resource/mcp` → 200 **an der Wurzel**
+- [x] Prüfen: `POST /mcp` ohne Token → 401 mit `WWW-Authenticate: Bearer resource_metadata="…/.well-known/oauth-protected-resource/mcp"`
+- [x] Prüfen: `GET /api/version` verhält sich unverändert (keine Auth-Middleware auf ConvoyPlan-Routen)
+- [x] Prüfen: eine echte MCP-Session (initialize → tools/list) läuft durch, d. h. der Session-Manager wurde gestartet
+- [x] Entscheidung dokumentieren; der Rest des Plans baut darauf auf
 
-**Acceptance:** Form C läuft, oder es ist schriftlich begründet, warum auf B ausgewichen wird.
+**Ergebnis: Form C, mit einer Korrektur.** 9 von 9 Abnahmekriterien erfüllt. Zwei Befunde aus dem Spike, die vorher nur Vermutung waren:
+
+**Befund 1 — ein `Mount` scheitert lauter als gedacht.** `app.mount("/mcp", <Starlette mit Route "/">)` beantwortet `POST /mcp` nicht mit 401, sondern mit einem **307 auf `/mcp/`**: Starlette hängt den Schrägstrich an. Die kanonische Resource-URI ist aber `https://<domain>/mcp` ohne Schrägstrich, und ein Redirect auf jedem MCP-Request ist weder spec-konform noch robust. **Konsequenz: kein `Mount` für den Transport.** Stattdessen eine echte `Route` auf `/mcp`, und die Middleware-Kette, die das SDK sonst auf App-Ebene legt, wird um den Endpunkt herum gebaut — Reihenfolge wie im SDK, `AuthenticationMiddleware` außen, `AuthContextMiddleware` darunter, `RequireAuthMiddleware` innen. Kein `methods=`, damit `GET` (SSE-Stream), `POST` (JSON-RPC) und `DELETE` (Session beenden) alle durchgehen:
+
+```python
+session_manager = StreamableHTTPSessionManager(app=mcp._lowlevel_server)
+
+mcp_endpoint = AuthenticationMiddleware(
+    AuthContextMiddleware(
+        RequireAuthMiddleware(
+            StreamableHTTPASGIApp(session_manager),
+            auth_settings.required_scopes or [],
+            build_resource_metadata_url(auth_settings.resource_server_url),
+        )
+    ),
+    backend=BearerAuthBackend(
+        verifier, resource_server_url=auth_settings.resource_server_url
+    ),
+)
+app.router.routes.append(Route("/mcp", endpoint=mcp_endpoint))
+
+# Well-Known- und OAuth-Routen an der WURZEL der FastAPI-App:
+for route in create_protected_resource_routes(...):
+    app.router.routes.append(route)
+for route in create_auth_routes(...):
+    app.router.routes.append(route)
+```
+
+Dass die Auth-Middleware **um den Endpunkt** statt auf App-Ebene liegt, ist dabei kein Schönheitsfehler, sondern die Absicht: eine app-weite `AuthenticationMiddleware` würde jeden `Authorization`-Header auf `/api/*` durch den MCP-Verifier schicken. Im Spike ist verifiziert, dass `GET /api/version` auch mit einem kaputten Bearer-Header unverändert 200 liefert.
+
+**Befund 2 — die Lifespan-Falle schlägt hart zu, nicht still.** Ohne `session_manager.run()` im Lifespan der FastAPI-App scheitert der erste MCP-Request mit `RuntimeError: Task group is not initialized. Make sure to use run().` Das ist die gute Variante: ein lauter Fehler beim ersten Request statt eines Hängers. `_lifespan` in `main.py` muss den Session-Manager per `AsyncExitStack` betreten.
+
+**Acceptance: erfüllt.** Form C, ohne Ausweichen auf B.
 
 ### Task 0.2: Abhängigkeits-Fallout prüfen
 
 `mcp==2.2.0` zieht `mcp-types`, `httpx2>=2.5.0`, `sse-starlette>=3.0.0`, `opentelemetry-api`, `jsonschema`, `pyjwt[crypto]`.
 
-- [ ] `httpx2` ist ein **eigenes** Distributionspaket und kollidiert nicht mit dem gepinnten `httpx==0.28.1` — aber das Image trägt dann zwei HTTP-Stacks. Größenzuwachs messen und bewerten
-- [ ] `starlette>=0.48.0` (ab Python 3.14) — das Repo pinnt `1.6.0`, passt
-- [ ] `pydantic>=2.12.0` — Repo hat `2.13.5`, passt
-- [ ] Trivy-Scan über das neue Image; `.trivyignore` nur falls unvermeidbar erweitern
+- [x] `httpx2` ist ein **eigenes** Distributionspaket und kollidiert nicht mit dem gepinnten `httpx==0.28.1`
+- [x] `starlette>=0.48.0` (ab Python 3.14) — das Repo pinnt `1.6.0`, passt
+- [x] `pydantic>=2.12.0` — Repo hat `2.13.5`, passt
+- [x] Größenzuwachs gemessen
+- [x] Python-3.14-Wheels für alle neuen Abhängigkeiten geprüft
+- [ ] Trivy-Scan über das neue Image; `.trivyignore` nur falls unvermeidbar erweitern *(erst mit Phase 1, wenn `mcp` wirklich in `requirements.txt` steht)*
 - [ ] Alle transitiven Abhängigkeiten in `requirements.txt` pinnen, dem Stil der Datei folgend (Begründung als Kommentar, wo eine Version sicherheitsrelevant ist)
+
+**Ergebnis: unkritisch.** `pip install --dry-run` über `requirements.txt` + `mcp==2.2.0` löst **konfliktfrei** auf; **kein** bestehender Pin verschiebt sich (`fastapi 0.141.1`, `starlette 1.6.0`, `pydantic 2.13.5`, `httpx 0.28.1`, `PyJWT 2.14.0` bleiben exakt stehen).
+
+Neu hinzu kommen: `mcp-types 2.2.0`, `httpx2 2.13.0` + `httpcore2 2.13.0` + `truststore 0.10.4`, `jsonschema 4.26.0` (+ `jsonschema-specifications`, `referencing`, `rpds-py`, `attrs`), `opentelemetry-api 1.44.0`, `sse-starlette 3.4.11`.
+
+- **Größe: ~4 MB** entpackt. Für ein Image, das GDAL und Shapely trägt, kein Argument.
+- **Python 3.14:** alle neuen Pakete sind reine Python-Wheels (`py3-none-any`) bis auf `rpds-py`, und das hat 29 cp314-Wheels. Kein Build-Risiko wie seinerzeit bei `asyncpg`.
+- **Zwei HTTP-Stacks im Image** (`httpx` und `httpx2`) bleiben der einzige echte Wermutstropfen — hinnehmbar, aber beim nächsten `httpx`-CVE muss man an beide denken. Gehört als Kommentar in `requirements.txt`.
+
+Einschränkung: der Dry-Run lief gegen Python 3.11, das Image nutzt 3.14. Die Wheel-Prüfung oben deckt den Unterschied ab, ein `docker build` in Phase 1 bestätigt ihn endgültig.
 
 ---
 
@@ -237,7 +281,7 @@ Diese Liste ist die Abnahme für Phase 1.
 - [ ] Rotiertes Refresh-Token erneut vorgelegt → gesamte Familie tot
 - [ ] Token für Org A sieht keine Daten von Org B
 - [ ] `token_version`-Bump entwertet bestehende MCP-Tokens
-- [ ] Registrierte Toolliste enthält kein Tool, das löscht
+- [ ] Registrierte Toolliste stimmt exakt mit der Positivliste überein; insbesondere existiert kein Tool, das einen Konvoi, ein Fahrzeug, einen Wegpunkt oder eine Route löscht
 - [ ] Mit `MCP_ENABLED=false` antworten `/mcp` und beide Well-Known-Pfade mit 404
 
 ---
@@ -248,7 +292,7 @@ Diese Liste ist die Abnahme für Phase 1.
 
 - [ ] `konvoi_anlegen`, `konvoi_aktualisieren`
 - [ ] `fahrzeug_anlegen`, `fahrzeug_aktualisieren`
-- [ ] `fahrzeug_zu_konvoi_hinzufuegen`, `konvoi_fahrzeuge_umsortieren`
+- [ ] `fahrzeug_zu_konvoi_hinzufuegen`, `fahrzeug_aus_konvoi_entfernen`, `konvoi_fahrzeuge_umsortieren`
 - [ ] `wegpunkt_anlegen`, `wegpunkt_aktualisieren`, `wegpunkte_umsortieren`
 - [ ] `route_berechnen`
 - [ ] `fahrzeugstatus_setzen` (Scope `fleet:status`)
@@ -256,7 +300,11 @@ Diese Liste ist die Abnahme für Phase 1.
 - [ ] Bei fehlendem Scope: **403 mit `WWW-Authenticate: Bearer error="insufficient_scope", scope="…", resource_metadata="…"`**, alle für die Operation nötigen Scopes in **einer** Challenge — die Spec verlangt ausdrücklich, nicht inkrementell nachzufordern
 - [ ] Eingaben über Pydantic-Schemas validieren, dieselben wie in `app/schemas/`
 
-**Offen, vor Umsetzung zu entscheiden:** `fahrzeug_aus_konvoi_entfernen` ist technisch ein `DELETE`, semantisch aber „Zuordnung lösen" und kein Datenverlust. Nach der Vorgabe „Schreiben ja, Löschen nein" bleibt es vorerst **draußen**. Falls es hineinsoll, gehört es unter `convoy:write` und in die Audit-Liste.
+**Entschieden:** `fahrzeug_aus_konvoi_entfernen` ist **drin**. Es ruft zwar `DELETE /api/convoys/{id}/vehicles/{vehicle_id}` auf, löst dabei aber nur die Zuordnung — Fahrzeug und Konvoi überleben unverändert. Es läuft unter `convoy:write`, steht in der Positivliste und ist audit-pflichtig wie jeder andere Schreibaufruf. Zusätzlich:
+
+- [ ] Das Tool gibt in seiner Antwort zurück, welches Fahrzeug aus welchem Konvoi gelöst wurde, damit ein versehentlicher Aufruf im Gesprächsverlauf sichtbar wird und sich mit `fahrzeug_zu_konvoi_hinzufuegen` rückgängig machen lässt
+- [ ] Die Tool-Beschreibung sagt ausdrücklich, dass das Fahrzeug **nicht gelöscht** wird — sonst leitet das Modell aus dem Namen das Falsche ab
+- [ ] Test: nach dem Aufruf existieren Fahrzeug und Konvoi weiterhin, nur die Zuordnung ist weg
 
 ### Task 2.2: Audit
 
@@ -330,7 +378,7 @@ Diese Liste ist die Abnahme für Phase 1.
 
 | Risiko | Bewertung | Gegenmaßnahme |
 |---|---|---|
-| Ein Modell ändert Einsatzdaten falsch | Real, keine hypothetische Sorge | Kein Löschen; Scopes an Rollen gebunden; jeder Schreibaufruf im Audit-Log mit Quelle `mcp`; Schreiben verlangt `planer` |
+| Ein Modell ändert Einsatzdaten falsch | Real, keine hypothetische Sorge | Kein Datensatz wird gelöscht; Tools nur aus einer Positivliste; Scopes an Rollen gebunden; jeder Schreibaufruf im Audit-Log mit Quelle `mcp`; Schreiben verlangt `planer` |
 | Confused Deputy über frei wählbaren `client_name` | Bekannter Angriff auf DCR | `client_name` escaped und als unbestätigt gekennzeichnet; geprüfte `redirect_uri`-Domain daneben; Zustimmung pro Client und Org |
 | SSRF über CIMD | Erst in Phase 4 relevant | Phase 4 ist ohne den Schutzwall aus Task 4.1 nicht abnahmefähig |
 | Access-Token bleibt nach Widerruf ≤15 min gültig | Folge zustandsloser JWTs | Kurze TTL; Widerruf tötet die Refresh-Familie; Fenster dokumentiert statt verschwiegen |
