@@ -11,7 +11,6 @@ Geprüft wird deshalb nicht nur, dass das Dokument entsteht, sondern was **nicht
 darin steht: keine geschützten Pfade, keine Schemata der geschützten Endpunkte,
 keine Docstring-Interna und nicht die genaue Build-Version.
 """
-import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.api.routes.public_meta import PUBLIC_OPERATIONS, build_public_openapi
