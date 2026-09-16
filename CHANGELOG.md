@@ -21,6 +21,18 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Added
+
+- **Die KI-Schnittstelle lässt sich jetzt im Admin-Portal ein- und ausschalten** — unter **System → KI-Schnittstelle**, ohne Neustart. Bisher ging das nur über `MCP_ENABLED` in der `.env`, also nur mit Zugriff auf den Server und einem Neustart des Backends.
+
+  Das war kein Versäumnis, sondern eine bewusste Entscheidung: Solange der Schalter eine Umgebungsvariable war, wurde bei abgeschaltetem MCP **gar kein Endpunkt montiert** — es gab schlicht nichts, was versehentlich offenstehen konnte. Ein Knopf im Portal heißt in solchen Fällen üblicherweise: alles ist immer da und antwortet nur mit einer Fehlerseite. Das wäre eine stillschweigende Aufweichung einer öffentlich gemachten Zusage gewesen.
+
+  **Die Zusage gilt deshalb unverändert weiter.** Der Schalter entfernt die Routen tatsächlich, statt sie zu verstecken: ausgeschaltet gibt es weder `/mcp` noch die Discovery-Dokumente — nicht als 404 eines Handlers, sondern weil keine Route passt. Ein Test prüft dafür die Routentabelle der Anwendung selbst und nicht nur den Statuscode; ein Schalter, der bloß 404 zurückgäbe, bestünde ihn nicht.
+
+  Neben dem Schalter steht, was das Ausschalten **nicht** tut: bereits ausgestellte Zugriffstoken werden nicht ungültig, sie laufen nur ins Leere, weil der Endpunkt fehlt. Wer sie wirklich entziehen will, trennt die Verbindungen im Reiter **MCP**. Steht der Schalter anders als die `.env`, sagt das Portal auch das — sonst wundert sich beim nächsten Neustart jemand.
+
+  `MCP_ENABLED` bleibt als Ausgangswert bestehen; die Einstellung im Portal hat Vorrang. Dasselbe Muster wie beim Demo-Modus und beim GitHub-Token.
+
 ### Security
 
 - **Die Anmeldung liegt nicht mehr im Browserspeicher, sondern in einem HttpOnly-Cookie.** Das Zugriffstoken stand bisher im `localStorage` und wurde von der Oberfläche in jeden API-Aufruf geschrieben. Bequem — aber lesen konnte es damit **jedes** Stück JavaScript auf der Seite. Ein einziges Cross-Site-Scripting, in einer Abhängigkeit oder in einem eingebetteten Namen, hätte gereicht; das Token ist sieben Tage gültig (`JWT_EXPIRE_MINUTES`) und von jedem Rechner der Welt einlösbar. Gestohlen war es eine Woche lang eine vollwertige Anmeldung.

@@ -28,15 +28,19 @@ ConvoyPlan kann seine Fachdaten über einen **Model-Context-Protocol-Server** be
 
 ## Einschalten
 
-In der `.env`:
+Im Admin-Portal unter **System → KI-Schnittstelle**: ein Klick auf *Schnittstelle aktivieren*. Das wirkt sofort, ein Neustart ist nicht nötig.
+
+Alternativ als Ausgangswert in der `.env`:
 
 ```
 MCP_ENABLED=true
 ```
 
-Danach das Backend neu starten. Ein Reiter **MCP** im Admin-Portal zeigt anschließend den Zustand, die Verbindungsadresse und die erteilten Zugänge.
+Die Einstellung aus dem Portal hat Vorrang; die Umgebungsvariable gilt, solange im Portal nichts eingestellt wurde. Der Reiter **MCP** zeigt anschließend den Zustand, die Verbindungsadresse und die erteilten Zugänge.
 
-> Der Schalter ist bewusst **keine** Laufzeiteinstellung. Solange er aus ist, wird gar kein Endpunkt montiert — es gibt also nichts, was versehentlich offenstehen könnte. Das wäre mit einem Knopf im Portal nicht mehr so.
+> **Ausgeschaltet heißt wirklich ausgeschaltet.** Der Schalter entfernt die Routen, statt sie mit einer Fehlerseite zu bedecken: es gibt dann weder `/mcp` noch die Discovery-Dokumente — nicht als 404 eines Handlers, sondern weil keine Route passt. Genau das war der Grund, warum es lange nur eine Umgebungsvariable gab; die Zusage gilt mit dem Knopf unverändert weiter und wird von einem Test festgehalten.
+>
+> **Was das Ausschalten nicht tut:** bereits ausgestellte Zugriffstoken ungültig machen. Die laufen ins Leere, weil der Endpunkt fehlt, bleiben aber Tokens. Wer sie wirklich entziehen will, trennt die Verbindungen im Reiter **MCP**.
 
 Der Reverse Proxy braucht Routen für `/mcp` und die OAuth-Pfade an der Wurzel der Site. **Bestehende Installationen rüsten das beim nächsten Backend-Start automatisch nach**; bei Neuinstallationen ist es von vornherein enthalten.
 
@@ -122,7 +126,7 @@ Siehe auch: [Sicherheit und Datenschutz](Sicherheit-und-Datenschutz), [Rollen & 
 
 | Variable | Standard | Bedeutung |
 |---|---|---|
-| `MCP_ENABLED` | `false` | Schaltet die Schnittstelle ein. Erfordert einen Neustart. |
+| `MCP_ENABLED` | `false` | Ausgangswert für die Schnittstelle. Der Schalter im Portal (System → KI-Schnittstelle) hat Vorrang und wirkt ohne Neustart. |
 | `MCP_PUBLIC_URL` | aus `APP_BASE_URL` | Die Adresse, unter der Clients den Server erreichen. Ohne abschließenden Schrägstrich. |
 | `MCP_ACCESS_TOKEN_TTL_MINUTES` | `15` | Gültigkeit eines Zugriffstokens — siehe Zeitfenster oben. |
 | `MCP_REFRESH_TOKEN_TTL_DAYS` | `30` | Wie lange eine Verbindung ohne erneute Zustimmung hält. |
