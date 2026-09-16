@@ -454,3 +454,44 @@ async def test_abmelden_mit_praeparieretem_kopf_bricht_nicht():
     assert any(
         c.startswith("cp_session=") for c in resp.headers.get_list("set-cookie")
     )
+
+
+# ── Die Systemübersicht ──────────────────────────────────────────────────
+
+
+async def test_systemuebersicht_per_cookie(monkeypatch):
+    """Die Regression hinter der roten Leiste „Not authenticated".
+
+    ``require_system_read`` las nach der Cookie-Umstellung weiter nur den
+    ``Authorization``-Kopf — den das Portal seither nicht mehr schickt. Alle
+    sieben lesenden Endpunkte der Systemübersicht antworteten damit dem
+    angemeldeten Superadmin mit 401, und die Seite blieb leer.
+
+    Geprüft wird über den ASGI-Stack statt über die Dependency allein, weil
+    genau die Verdrahtung das Loch hatte: die Unit-Tests der Endpunkte
+    überschreiben ``require_system_read`` und hätten es nie gesehen.
+    """
+    from app.api.routes import system_metrics as route
+
+    monkeypatch.setattr(
+        route.system_metrics, "live_snapshot", AsyncMock(return_value={"cpu": {}})
+    )
+    admin = _user(superadmin=True)
+    db = _mock_db(admin)
+    app.dependency_overrides[get_db] = _db_override(db)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url=BASE) as client:
+            client.cookies.set(cookies.SESSION_COOKIE, _token(admin, superadmin=True))
+            resp = await client.get("/api/admin/system/overview")
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"cpu": {}}
+
+
+async def test_systemuebersicht_ohne_sitzung_bleibt_401():
+    """Der Weg über das Cookie darf die Tür nicht aufmachen."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url=BASE) as client:
+        resp = await client.get("/api/admin/system/overview")
+    assert resp.status_code == 401

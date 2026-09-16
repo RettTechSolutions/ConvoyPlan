@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import HTTPException
 
-from app.api import deps
+from app.api import cookies, deps
 from app.api.deps import get_org_context, require_system_read
 from app.models.api_key import SCOPE_ORGANIZATION, SCOPE_SYSTEM
 from app.models.user import User
@@ -134,7 +134,7 @@ def resolves_to(monkeypatch):
 async def test_system_read_accepts_system_key(resolves_to):
     resolves_to(_fake_key(SCOPE_SYSTEM))
     # No acting user: the metrics endpoints only read.
-    assert await require_system_read(token=None, raw_api_key="cvp_x_y", db=AsyncMock()) is None
+    assert await require_system_read(fake_request(), token=None, raw_api_key="cvp_x_y", db=AsyncMock()) is None
 
 
 @pytest.mark.asyncio
@@ -142,7 +142,7 @@ async def test_system_read_rejects_org_key(resolves_to):
     """The regression this guards: an org key must not see instance-wide data."""
     resolves_to(_fake_key(SCOPE_ORGANIZATION))
     with pytest.raises(HTTPException) as exc:
-        await require_system_read(token=None, raw_api_key="cvp_x_y", db=AsyncMock())
+        await require_system_read(fake_request(), token=None, raw_api_key="cvp_x_y", db=AsyncMock())
     assert exc.value.status_code == 403
 
 
@@ -150,14 +150,14 @@ async def test_system_read_rejects_org_key(resolves_to):
 async def test_system_read_rejects_unknown_key(resolves_to):
     resolves_to(None)
     with pytest.raises(HTTPException) as exc:
-        await require_system_read(token=None, raw_api_key="cvp_x_y", db=AsyncMock())
+        await require_system_read(fake_request(), token=None, raw_api_key="cvp_x_y", db=AsyncMock())
     assert exc.value.status_code == 401
 
 
 @pytest.mark.asyncio
 async def test_system_read_rejects_anonymous():
     with pytest.raises(HTTPException) as exc:
-        await require_system_read(token=None, raw_api_key=None, db=AsyncMock())
+        await require_system_read(fake_request(), token=None, raw_api_key=None, db=AsyncMock())
     assert exc.value.status_code == 401
 
 
@@ -176,16 +176,37 @@ async def test_system_read_accepts_superadmin_token():
     db.execute.return_value = result
 
     resolved = await require_system_read(
-        token=_superadmin_token(user_id), raw_api_key=None, db=db
+        fake_request(), token=_superadmin_token(user_id), raw_api_key=None, db=db
     )
     assert resolved is user
+
+
+@pytest.mark.asyncio
+async def test_system_read_accepts_session_cookie():
+    """Die Regression: das Admin-Portal legt sein Token nicht mehr in den
+    ``Authorization``-Kopf, sondern in das HttpOnly-Cookie. Wer hier nur den
+    Kopf liest, antwortet der Systemübersicht mit „Not authenticated"."""
+    user_id = uuid.uuid4()
+    user = MagicMock(spec=User)
+    user.id = user_id
+    user.is_active = True
+    user.is_superadmin = True
+    user.token_version = 0
+
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = user
+    db = AsyncMock()
+    db.execute.return_value = result
+
+    request = fake_request(cookies={cookies.SESSION_COOKIE: _superadmin_token(user_id)})
+    assert await require_system_read(request, token=None, raw_api_key=None, db=db) is user
 
 
 @pytest.mark.asyncio
 async def test_system_read_rejects_ordinary_token():
     token = _superadmin_token(uuid.uuid4(), is_superadmin=False)
     with pytest.raises(HTTPException) as exc:
-        await require_system_read(token=token, raw_api_key=None, db=AsyncMock())
+        await require_system_read(fake_request(), token=token, raw_api_key=None, db=AsyncMock())
     assert exc.value.status_code == 403
 
 

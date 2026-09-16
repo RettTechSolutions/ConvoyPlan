@@ -39,6 +39,14 @@ ursprünglichen SemVer-Nummern.
 
 - **Das Cookie der API-Dokumentation trug nie `Secure`.** Es leitete das Flag aus dem Schema der eingehenden Anfrage ab — hinter dem Reverse Proxy spricht das Backend aber unverschlüsselt, das Schema war in Produktion also immer „http". Beide Cookies leiten es jetzt aus `APP_BASE_URL` ab.
 
+### Fixed
+
+- **Die Systemübersicht im Admin-Portal zeigte „Not authenticated" statt Messwerten.** Beim Umzug der Anmeldung in das HttpOnly-Cookie ist eine Stelle liegengeblieben: die Zugangsprüfung der Systemübersicht las weiterhin ausschließlich den `Authorization`-Kopf — den das Portal seither nicht mehr schickt. Alle sieben lesenden Endpunkte (Live-Zustand, Verlauf, Container, Portalnutzung, Monatsberichte) antworteten dem angemeldeten Superadmin deshalb mit 401; die Seite blieb leer, Diagramme meldeten „Noch keine Messwerte". Gemessen und geschrieben wurde dabei die ganze Zeit korrekt — die Daten waren da, nur unerreichbar.
+
+  Die Prüfung nimmt jetzt dieselbe Quelle wie alle anderen: Kopf **oder** Cookie. Der Zugang per System-API-Key (Monitoring, PRTG) und per `Authorization: Bearer` war nie betroffen und bleibt unverändert.
+
+  Nicht aufgefallen ist es, weil die Endpunkt-Tests genau diese Prüfung durch eine Attrappe ersetzen — sie hätten den Fehler nie sehen können. Der neue Test fährt deshalb den vollen Weg ab: echtes Cookie, echter ASGI-Stack, echte Zugangsprüfung.
+
 ### Changed
 
 - **Rolle und Organisation kommen jetzt vom Server statt aus dem Token.** Die Oberfläche hat diese Angaben bisher selbst aus dem JWT gelesen. Da sie im Cookie nicht mehr lesbar sind, fragt sie den Server (neu: `GET /api/auth/me`) — und bekommt damit den Stand von eben statt den vom Anmeldezeitpunkt. Wem die Rolle heruntergestuft oder die Mitgliedschaft entzogen wurde, merkt das jetzt beim nächsten Laden statt in bis zu sieben Tagen. Neu ist außerdem `POST /api/auth/logout`: ein HttpOnly-Cookie kann sich die Oberfläche nicht selbst wegnehmen, das muss der Server tun.
