@@ -143,24 +143,55 @@ for a in "$@"; do
     case "$a" in https://*) url="$a" ;; esac
     prev="$a"
 done
+
+# Der Stub bildet nach, dass Geofabrik die `-latest`-Dateien taeglich ersetzt:
+# Inhalt UND .md5 haengen an einer gemeinsamen "Generation" auf der Serverseite.
+# STUB_DL_FLIP_GEN_AT=n erhoeht sie nach dem n-ten Nutzdaten-Download — damit
+# ist das Rennen abbildbar, an dem ein Wechsel frueher endgueltig scheiterte:
+# geladene Bytes und danebenliegende Pruefsumme gehoeren zu verschiedenen
+# Staenden, beide Dateien sind fuer sich in Ordnung.
+_gen()  { cat "${STUB_GEN_FILE:-/nonexistent}" 2>/dev/null || echo 1; }
+_body() { echo "dummy-inhalt-gen$(_gen)"; }
+_bump() {
+    local f="${1:-}" n
+    [ -n "$f" ] || { echo 1; return 0; }
+    n=$(( $(cat "$f" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$f"; echo "$n"
+}
+
 if [ -n "$out" ]; then
     case "$out" in
       *.md5)
         # Wie Geofabrik: der Hash des Inhalts, daneben der DORTIGE Dateiname.
-        # Genau darauf darf sich switch-region.sh nicht mehr verlassen — bei
-        # einer zusammengesetzten Region laedt es unter einem eigenen,
+        # Genau darauf darf sich switch-region.sh nicht verlassen — bei einer
+        # zusammengesetzten Region laedt es unter einem eigenen,
         # kollisionsfreien Namen. Deshalb steht hier bewusst der Geofabrik-Name.
         remote="${url##*/}"; remote="${remote%.md5}"
-        h="$(printf 'dummy-inhalt\n' | md5sum 2>/dev/null | awk '{print $1}')"
+        h="$(_body | md5sum 2>/dev/null | awk '{print $1}')"
         printf '%s  %s\n' "$h" "$remote" > "$out"
         exit "${STUB_CURL_MD5_RC:-0}" ;;
       *)
-        echo "dummy-inhalt" > "$out"
+        n="$(_bump "${STUB_DL_CALLS:-}")"
+        if [ -n "${STUB_DL_FAIL_TIMES:-}" ] && [ "$n" -le "$STUB_DL_FAIL_TIMES" ]; then
+            rm -f "$out"; exit 7
+        fi
+        if [ -n "${STUB_DL_TRUNC_TIMES:-}" ] && [ "$n" -le "$STUB_DL_TRUNC_TIMES" ]; then
+            # Kuerzer als die angekuendigte Content-Length: abgerissene
+            # Leitung, die curl selbst nicht bemerkt hat.
+            printf 'abge' > "$out"
+        else
+            _body > "$out"
+        fi
+        if [ -n "${STUB_DL_FLIP_GEN_AT:-}" ] && [ "$n" = "${STUB_DL_FLIP_GEN_AT}" ] \
+           && [ -n "${STUB_GEN_FILE:-}" ]; then
+            echo $(( $(_gen) + 1 )) > "$STUB_GEN_FILE"
+        fi
         exit "${STUB_CURL_DL_RC:-0}" ;;
     esac
 fi
 echo "HTTP/1.1 200 OK"
-echo "Content-Length: ${STUB_SIZE:-1000}"
+# Die angekuendigte Groesse ist die WIRKLICHE Groesse des Inhalts — sonst
+# pruefte der Test die Groessenpruefung des Skripts gegen eine Luege.
+echo "Content-Length: ${STUB_SIZE:-$(_body | wc -c | tr -d ' ')}"
 exit "${STUB_CURL_HEAD_RC:-0}"
 EOF
 
@@ -189,6 +220,7 @@ setup_case() {
     # (und existiert auf macOS gar nicht).
     printf 'MemTotal:       67108864 kB\nMemAvailable:   33554432 kB\n' > "$d/meminfo"
     echo "0" > "$d/gh_cid"
+    echo "1" > "$d/gen"
     echo "$d"
 }
 
@@ -200,7 +232,9 @@ run_case() {  # $1 = Ablage; weitere Env kommt vom Aufrufer
         STUB_STAGING_DIR="$d/graph/.staging" REPO_DIR="$d" \
         STUB_IMPORT_HANG_FILE="$d/import-haengt" STUB_PROBE_EDGES="$d/graph/edges" \
         REGION_MEMINFO="$d/meminfo" \
+        STUB_DL_CALLS="$d/dl_calls" STUB_GEN_FILE="$d/gen" \
         SKIP_CHECKSUM=1 REGION_POLL_SLEEP=0 REGION_HEALTH_TIMEOUT=10 \
+        REGION_DOWNLOAD_RETRY_SLEEP=0 \
         "$@" bash "$SCRIPT" >"$d/out.txt" 2>&1
     echo $? > "$d/rc"
 }
@@ -398,6 +432,66 @@ run_case "$D" STUB_CURL_DL_RC=7
 [ ! -e "$D/osm/berlin-latest.osm.pbf" ]; check $? "kein halbes Extract zurueckgelassen"
 [ "$(cat "$D/graph/edges")" = "ALT" ]; check $? "alter Graph unangetastet"
 [ ! -e "$D/status/region_request.json" ] && [ ! -e "$D/status/region.lock" ]; check $? "Sperrdateien entfernt"
+
+echo "── Fall 8b: erster Versuch scheitert, zweiter traegt ──────────────────"
+# Frueher beendete JEDER Aussetzer beim Laden den ganzen Wechsel. Bei einer aus
+# sieben Extracts zusammengesetzten Region war damit nach einer halben Stunde
+# Ladezeit alles verloren, weil eine einzige Verbindung abriss.
+D="$(setup_case case8b)"; printf '%s' "$REQ_JSON" > "$D/status/region_request.json"
+run_case "$D" STUB_DL_FAIL_TIMES=1
+[ "$(cat "$D/rc")" = 0 ]; check $? "Exit 0"
+[ "$(phase_of "$D/status/region_status.json")" = "done" ]; check $? "Endphase done"
+grep -q "Versuch 1/3 gescheitert (Download fehlgeschlagen)" "$D/status/region.log"; check $? "erster Fehlversuch protokolliert"
+[ -f "$D/osm/berlin-latest.osm.pbf" ]; check $? "neues Extract vorhanden"
+
+echo "── Fall 8c: abgeschnittene Antwort wird als solche erkannt ─────────────"
+# curl meldet Erfolg, die Datei ist aber kuerzer als die angekuendigte
+# Content-Length. Ohne Groessenpruefung faellt das erst der Pruefsumme auf —
+# und meldet "Prüfsumme stimmt nicht", was den Operator zu Geofabrik schickt,
+# obwohl schlicht die Leitung abgerissen ist.
+D="$(setup_case case8c)"; printf '%s' "$REQ_JSON" > "$D/status/region_request.json"
+run_case "$D" STUB_DL_TRUNC_TIMES=1
+[ "$(cat "$D/rc")" = 0 ]; check $? "Exit 0 nach Wiederholung"
+grep -q "unvollständig geladen (4 von" "$D/status/region.log"; check $? "Meldung nennt gelesene und erwartete Bytes"
+! grep -qi "Prüfsumme stimmt nicht" "$D/status/region.log"; check $? "kein irrefuehrender Prüfsummen-Fehler"
+
+echo "── Fall 8d: abgeschnitten bleibt abgeschnitten → sauberer Abbruch ──────"
+D="$(setup_case case8d)"; printf '%s' "$REQ_JSON" > "$D/status/region_request.json"
+run_case "$D" STUB_DL_TRUNC_TIMES=9
+[ "$(cat "$D/rc")" != 0 ]; check $? "Exit ungleich 0"
+[ "$(phase_of "$D/status/region_status.json")" = "failed" ]; check $? "Endphase failed"
+grep -q "nach 3 Versuchen aufgegeben" "$D/status/region.log"; check $? "Meldung nennt die Zahl der Versuche"
+[ "$(grep -c "Versuch [0-9]*/3 gescheitert" "$D/status/region.log")" = 2 ]; check $? "genau zwei Wiederholungen vor dem Abbruch"
+[ ! -e "$D/osm/berlin-latest.osm.pbf" ] && ! ls "$D/osm"/*.part >/dev/null 2>&1; check $? "kein halbes Extract zurueckgelassen"
+[ "$(cat "$D/graph/edges")" = "ALT" ]; check $? "alter Graph unangetastet"
+
+if command -v md5sum >/dev/null 2>&1; then
+echo "── Fall 8e: Datei wird WAEHREND des Downloads erneuert ─────────────────"
+# Geofabrik ersetzt die -latest-Dateien taeglich am Abend. Faellt ein Wechsel
+# in dieses Fenster, gehoeren geladene Bytes und danebenliegende .md5 zu
+# verschiedenen Staenden — die Pruefsumme KANN nicht stimmen, obwohl beide
+# Dateien fuer sich in Ordnung sind. Genau daran starb der Wechsel auf
+# Europa/Italien am 07.09. beim vierten von sieben Bestandteilen.
+D="$(setup_case case8e)"; printf '%s' "$REQ_JSON" > "$D/status/region_request.json"
+run_case "$D" SKIP_CHECKSUM= STUB_DL_FLIP_GEN_AT=1
+[ "$(cat "$D/rc")" = 0 ]; check $? "Exit 0 — der zweite Anlauf holt ein zusammenpassendes Paar"
+[ "$(phase_of "$D/status/region_status.json")" = "done" ]; check $? "Endphase done"
+grep -q "während des Downloads auf dem Server erneuert" "$D/status/region.log"; check $? "Meldung benennt das Rennen statt 'Prüfsumme stimmt nicht'"
+
+echo "── Fall 8f: geprüfter Bestandteil wird nicht erneut geladen ────────────"
+# Nach einem gescheiterten Anlauf liegen die bereits geladenen Bestandteile
+# noch da. Sie erneut zu ziehen kostet bei einer Europa-Karte Stunden — der
+# Abgleich mit der .md5 des Servers belegt, dass sie noch aktuell sind.
+D="$(setup_case case8f)"; printf '%s' "$REQ_MERGED" > "$D/status/region_request.json"
+cp "$ROOT/case1b/merge-stub.sh" "$D/merge-stub.sh"; chmod +x "$D/merge-stub.sh"
+echo "dummy-inhalt-gen1" > "$D/osm/europe-germany-latest.osm.pbf"
+REGION_MERGE_SCRIPT="$D/merge-stub.sh" run_case "$D" SKIP_CHECKSUM=
+[ "$(cat "$D/rc")" = 0 ]; check $? "Exit 0"
+grep -q "Bereits vollständig vorhanden und geprüft — kein erneuter Download: europe-germany-latest.osm.pbf" "$D/status/region.log"; check $? "vorhandener Bestandteil wird uebernommen"
+[ "$(cat "$D/dl_calls" 2>/dev/null || echo 0)" = 1 ]; check $? "nur der fehlende Bestandteil wurde geladen"
+else
+echo "übersprungen (Fall 8e/8f) — kein md5sum auf diesem System (läuft in CI)"
+fi
 
 echo "── Fall 9: zu wenig Plattenplatz ───────────────────────────────────────"
 D="$(setup_case case9)"; printf '%s' "$REQ_JSON" > "$D/status/region_request.json"
