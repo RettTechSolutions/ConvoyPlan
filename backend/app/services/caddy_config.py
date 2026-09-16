@@ -8,7 +8,7 @@ the hardening headers existed keeps serving responses **without** HSTS, CSP,
 ``X-Frame-Options``, ``X-Content-Type-Options``, ``Referrer-Policy`` and
 ``Permissions-Policy`` — even after the images have been updated many times.
 
-``ensure_security_headers()`` closes that gap. On every backend start the
+``ensure_caddyfile_current()`` closes that gap. On every backend start the
 persisted Caddyfile is checked for the hardening headers; if any are missing it
 is regenerated from the persisted setup settings (domain / TLS mode / ACME
 mail) and hot-reloaded via Caddy's admin API, so the fix lands without a manual
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 CERTS_DIR = Path("/certs")
 CADDYFILE_PATH = CERTS_DIR / "Caddyfile"
 
-# Every header the generated config must carry. `ensure_security_headers()`
+# Every header the generated config must carry. `ensure_caddyfile_current()`
 # regenerates the persisted Caddyfile as soon as one of them is absent, so
 # adding an entry here also rolls it out to existing installs on next start.
 REQUIRED_SECURITY_HEADERS = (
@@ -115,6 +115,32 @@ def generate_caddyfile(domain: str, tls_mode: str, acme_email: str) -> str:
     handle /api/* {{
         reverse_proxy backend:8000
     }}
+    # MCP endpoint. Streamable HTTP can answer with an SSE stream, so this
+    # must not be buffered either. Always routed, even when MCP_ENABLED is
+    # off — the backend answers 404 then, and switching MCP on later needs
+    # no proxy change.
+    handle /mcp {{
+        reverse_proxy backend:8000 {{
+            flush_interval -1
+        }}
+    }}
+    # OAuth discovery and endpoints for the MCP server. RFC 9728 requires the
+    # metadata at the site root, so it cannot live under /api/.
+    handle /.well-known/oauth-* {{
+        reverse_proxy backend:8000
+    }}
+    handle /authorize {{
+        reverse_proxy backend:8000
+    }}
+    handle /token {{
+        reverse_proxy backend:8000
+    }}
+    handle /register {{
+        reverse_proxy backend:8000
+    }}
+    handle /revoke {{
+        reverse_proxy backend:8000
+    }}
     handle /ws/* {{
         reverse_proxy backend:8000 {{
             flush_interval -1
@@ -125,6 +151,23 @@ def generate_caddyfile(domain: str, tls_mode: str, acme_email: str) -> str:
     }}
 }}
 """
+
+
+# Die Pfade, die der MCP-Server an der Wurzel braucht. Ein Caddyfile aus der
+# Zeit vor diesem Feature leitet sie ans Frontend — dort laufen sie ins Leere.
+REQUIRED_MCP_ROUTES = (
+    "handle /mcp",
+    "handle /.well-known/oauth-*",
+    "handle /authorize",
+    "handle /token",
+    "handle /register",
+    "handle /revoke",
+)
+
+
+def has_mcp_routes(caddyfile: str) -> bool:
+    """True, wenn die Konfiguration die MCP-Pfade ans Backend leitet."""
+    return all(route in caddyfile for route in REQUIRED_MCP_ROUTES)
 
 
 def has_security_headers(caddyfile: str) -> bool:
@@ -183,12 +226,17 @@ async def _persisted_setup_values(db: AsyncSession) -> tuple[str, str, str] | No
     )
 
 
-async def ensure_security_headers(db: AsyncSession) -> bool:
-    """Upgrade a persisted Caddyfile that predates the security headers.
+async def ensure_caddyfile_current(db: AsyncSession) -> bool:
+    """Upgrade a persisted Caddyfile that predates a routing or hardening change.
+
+    Covers two retrofits: the security headers, and the MCP/OAuth routes at the
+    site root. Both share the same mechanism — a persisted /certs/Caddyfile is
+    written once at setup time and would otherwise never learn about anything
+    added later.
 
     Returns True when the file was rewritten. Never raises: a proxy config that
     cannot be repaired must not stop the backend from booting — the failure is
-    logged and the (unhardened but working) config stays in place.
+    logged and the (outdated but working) config stays in place.
     """
     try:
         if not CADDYFILE_PATH.is_file():
@@ -197,14 +245,20 @@ async def ensure_security_headers(db: AsyncSession) -> bool:
             return False
 
         current = CADDYFILE_PATH.read_text()
-        if has_security_headers(current):
+        missing = []
+        if not has_security_headers(current):
+            missing.append("security headers")
+        if not has_mcp_routes(current):
+            missing.append("MCP/OAuth routes")
+        if not missing:
             return False
 
         values = await _persisted_setup_values(db)
         if values is None:
             logger.warning(
-                "Persisted Caddyfile lacks security headers but no setup domain is "
-                "stored — re-run the setup wizard to regenerate the proxy config."
+                "Persisted Caddyfile is missing %s but no setup domain is stored — "
+                "re-run the setup wizard to regenerate the proxy config.",
+                " and ".join(missing),
             )
             return False
 
@@ -213,12 +267,13 @@ async def ensure_security_headers(db: AsyncSession) -> bool:
         CADDYFILE_PATH.write_text(regenerated)
         reloaded = await reload_caddy(regenerated)
         logger.warning(
-            "Persisted Caddyfile lacked the security headers and was regenerated "
-            "for domain %s (live reload: %s).",
+            "Persisted Caddyfile was missing %s and was regenerated for domain %s "
+            "(live reload: %s).",
+            " and ".join(missing),
             domain,
             "ok" if reloaded else "deferred to next Caddy start",
         )
         return True
     except Exception:
-        logger.warning("Caddyfile security-header check failed", exc_info=True)
+        logger.warning("Caddyfile currency check failed", exc_info=True)
         return False

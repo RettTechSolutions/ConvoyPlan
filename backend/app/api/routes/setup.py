@@ -103,7 +103,7 @@ async def run_setup(data: SetupRequest, db: AsyncSession = Depends(get_db)):
 
     # Write Caddyfile to shared volume (persists across restarts). Note that
     # this file is authoritative from here on — Caddy's entrypoint prefers it
-    # over its env-var fallback — so `caddy_config.ensure_security_headers()`
+    # over its env-var fallback — so `caddy_config.ensure_caddyfile_current()`
     # re-checks it on every backend start and regenerates it if it ever falls
     # behind the current hardening baseline.
     caddyfile = generate_caddyfile(data.domain, data.tls_mode, data.acme_email)

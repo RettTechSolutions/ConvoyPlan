@@ -451,7 +451,7 @@ convoy.example.de {
 
 
 @pytest.mark.asyncio
-async def test_ensure_security_headers_rewrites_legacy_caddyfile(tmp_path, monkeypatch):
+async def test_caddyfile_retrofit_rewrites_legacy_caddyfile(tmp_path, monkeypatch):
     caddyfile = tmp_path / "Caddyfile"
     caddyfile.write_text("convoy.example.de {\n    reverse_proxy frontend:3000\n}\n")
     monkeypatch.setattr(caddy_config, "CADDYFILE_PATH", caddyfile)
@@ -462,14 +462,14 @@ async def test_ensure_security_headers_rewrites_legacy_caddyfile(tmp_path, monke
     reload_mock = AsyncMock(return_value=True)
     monkeypatch.setattr(caddy_config, "reload_caddy", reload_mock)
 
-    assert await caddy_config.ensure_security_headers(MagicMock()) is True
+    assert await caddy_config.ensure_caddyfile_current(MagicMock()) is True
     assert caddy_config.has_security_headers(caddyfile.read_text())
     assert "wss://convoy.example.de" in caddyfile.read_text()
     reload_mock.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_ensure_security_headers_leaves_a_current_caddyfile_alone(tmp_path, monkeypatch):
+async def test_caddyfile_retrofit_leaves_a_current_caddyfile_alone(tmp_path, monkeypatch):
     caddyfile = tmp_path / "Caddyfile"
     caddyfile.write_text(generate_caddyfile("convoy.example.de", "auto", "a@b.de"))
     monkeypatch.setattr(caddy_config, "CADDYFILE_PATH", caddyfile)
@@ -477,20 +477,61 @@ async def test_ensure_security_headers_leaves_a_current_caddyfile_alone(tmp_path
     reload_mock = AsyncMock(return_value=True)
     monkeypatch.setattr(caddy_config, "reload_caddy", reload_mock)
 
-    assert await caddy_config.ensure_security_headers(MagicMock()) is False
+    assert await caddy_config.ensure_caddyfile_current(MagicMock()) is False
     assert caddyfile.read_text() == before
     reload_mock.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_ensure_security_headers_noop_without_persisted_caddyfile(tmp_path, monkeypatch):
-    """Env-var mode: Caddy generates its own (already hardened) config."""
-    monkeypatch.setattr(caddy_config, "CADDYFILE_PATH", tmp_path / "absent")
-    assert await caddy_config.ensure_security_headers(MagicMock()) is False
+async def test_caddyfile_retrofit_ergaenzt_fehlende_mcp_routen(tmp_path, monkeypatch):
+    """Eine Installation aus der Zeit vor dem MCP-Server hat die Header, aber
+    nicht die Routen an der Wurzel. Ohne Nachrüstung landete /mcp beim
+    Frontend — der MCP-Server wäre nur auf Neuinstallationen erreichbar."""
+    caddyfile = tmp_path / "Caddyfile"
+    # Der Stand von vorher: gehärtet, aber ohne die MCP-Pfade.
+    veraltet = generate_caddyfile("convoy.example.de", "auto", "a@b.de")
+    for route in caddy_config.REQUIRED_MCP_ROUTES:
+        block_start = veraltet.index(f"    {route} {{")
+        block_end = veraltet.index("    }\n", block_start) + len("    }\n")
+        veraltet = veraltet[:block_start] + veraltet[block_end:]
+    caddyfile.write_text(veraltet)
+    assert caddy_config.has_security_headers(veraltet)
+    assert not caddy_config.has_mcp_routes(veraltet)
+
+    monkeypatch.setattr(caddy_config, "CADDYFILE_PATH", caddyfile)
+    monkeypatch.setattr(
+        caddy_config, "_persisted_setup_values",
+        AsyncMock(return_value=("convoy.example.de", "auto", "a@b.de")),
+    )
+    monkeypatch.setattr(caddy_config, "reload_caddy", AsyncMock(return_value=True))
+
+    assert await caddy_config.ensure_caddyfile_current(MagicMock()) is True
+    assert caddy_config.has_mcp_routes(caddyfile.read_text())
+
+
+def test_generierte_config_leitet_die_mcp_pfade_ans_backend():
+    """RFC 9728 verlangt die Metadaten an der Wurzel — unter /api/ fände sie
+    kein Client. Und /mcp darf nicht gepuffert werden, weil Streamable HTTP
+    mit einem SSE-Stream antworten kann."""
+    config = generate_caddyfile("convoy.example.de", "auto", "a@b.de")
+    assert caddy_config.has_mcp_routes(config)
+    mcp_block = config[config.index("handle /mcp {"):]
+    assert "flush_interval -1" in mcp_block[: mcp_block.index("}")+80]
+    # Die Reihenfolge zählt: der Auffang-handle ans Frontend muss zuletzt stehen.
+    assert config.index("handle /.well-known/oauth-*") < config.index(
+        "handle {\n        reverse_proxy frontend:3000"
+    )
 
 
 @pytest.mark.asyncio
-async def test_ensure_security_headers_never_raises(tmp_path, monkeypatch):
+async def test_caddyfile_retrofit_noop_without_persisted_caddyfile(tmp_path, monkeypatch):
+    """Env-var mode: Caddy generates its own (already hardened) config."""
+    monkeypatch.setattr(caddy_config, "CADDYFILE_PATH", tmp_path / "absent")
+    assert await caddy_config.ensure_caddyfile_current(MagicMock()) is False
+
+
+@pytest.mark.asyncio
+async def test_caddyfile_retrofit_never_raises(tmp_path, monkeypatch):
     """A broken proxy config must not stop the backend from booting."""
     caddyfile = tmp_path / "Caddyfile"
     caddyfile.write_text("no headers here")
@@ -498,7 +539,7 @@ async def test_ensure_security_headers_never_raises(tmp_path, monkeypatch):
     monkeypatch.setattr(
         caddy_config, "_persisted_setup_values", AsyncMock(side_effect=RuntimeError("db down"))
     )
-    assert await caddy_config.ensure_security_headers(MagicMock()) is False
+    assert await caddy_config.ensure_caddyfile_current(MagicMock()) is False
 
 
 # ── Upstream-quota throttles (demo sessions) ──────────────────────────────────

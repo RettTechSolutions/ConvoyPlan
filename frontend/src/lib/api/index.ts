@@ -1158,6 +1158,49 @@ export interface LicenseStatus {
     error: string | null;
 }
 
+export interface McpScopeInfo {
+    scope: string;
+    label: string;
+}
+
+export interface McpOrgChoice {
+    id: string;
+    name: string;
+    slug: string;
+    role: string;
+    /** Welche der angefragten Berechtigungen diese Organisation hergibt. */
+    grantable_scopes: string[];
+}
+
+export interface McpConsentRequest {
+    client_id: string;
+    /** Selbstauskunft aus der Registrierung — siehe client_name_verified. */
+    client_name: string;
+    /**
+     * Immer false. Der Name stammt aus der Client-Registrierung, und
+     * registrieren darf sich jeder. Die Oberfläche muss ihn entsprechend
+     * kennzeichnen; verlässlich ist nur redirect_host.
+     */
+    client_name_verified: boolean;
+    /** Der überprüfte Host der registrierten Redirect-URI. */
+    redirect_host: string;
+    requested_scopes: McpScopeInfo[];
+    organizations: McpOrgChoice[];
+    /** Wann die Anfrage verfällt (ISO-8601). */
+    expires_at: string;
+}
+
+export const mcpApi = {
+    readConsentRequest: (request: string) =>
+        api.get<McpConsentRequest>(`/api/mcp/consent?request=${encodeURIComponent(request)}`),
+    decide: (request: string, approve: boolean, organization_id: string | null) =>
+        api.post<{ redirect_url: string }>('/api/mcp/consent', {
+            request,
+            approve,
+            organization_id,
+        }),
+};
+
 export const licenseApi = {
     getStatus: () => api.get<LicenseStatus>('/api/license/status'),
     activate: (license_key: string) =>
