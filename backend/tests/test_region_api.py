@@ -9,6 +9,7 @@ Die DB ist eine AsyncSession — auch hier Dependency-Override von `get_db`
 gegen einen AsyncMock statt eines synchronen `db.query(...)`.
 """
 import os
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import pytest
@@ -109,11 +110,16 @@ async def test_preview_requires_superadmin():
 
 
 @pytest.mark.asyncio
-async def test_preview_credits_reclaimable_heap_of_running_graphhopper(monkeypatch):
-    """Regressionstest fuer Korrektur 3: ~8 GB frei + ~10 GB Bedarf fuer DACH
-    duerfen NICHT als 'reicht nicht' fuer die aktuell laufende Region gelten,
-    weil der laufende GraphHopper-Heap waehrend des Imports verkleinert wird
-    und diesen Speicher zurueckgibt."""
+async def test_preview_credits_reclaimable_heap_only_with_pause_routing(monkeypatch):
+    """Der Heap des laufenden GraphHopper zaehlt NUR im Wartungsmodus.
+
+    Frueher wurde er immer gutgeschrieben, mit der Begruendung, der Updater
+    verkleinere GraphHopper waehrend des Imports — was er nie tat
+    (_stop_graphhopper laeuft erst in Phase 4, nach dem Import). Das Panel
+    meldete deshalb "knapp", waehrend der Updater gegen den wirklich freien
+    Speicher deckelte: Am 16.09.2026 wurden aus -Xmx14g 7075m, und der Wechsel
+    starb nach sechs geladenen Extracts an OutOfMemoryError. Panel und Updater
+    muessen dieselbe Zahl nennen."""
     from app.services import host_metrics
     from app.config import settings
 
@@ -131,15 +137,24 @@ async def test_preview_credits_reclaimable_heap_of_running_graphhopper(monkeypat
     test_app = _make_app_with_superadmin()
     transport = ASGITransport(app=test_app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.post(
+        ohne = await client.post(
             "/api/admin/region/preview",
             json={"urls": [URL]},
             headers={"Authorization": "Bearer x"},
         )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["ram_reclaimable_bytes"] == int(8 * GB)
-    assert body["verdict"] != "reicht nicht"
+        mit = await client.post(
+            "/api/admin/region/preview",
+            json={"urls": [URL], "pause_routing": True},
+            headers={"Authorization": "Bearer x"},
+        )
+    assert ohne.status_code == 200 and mit.status_code == 200
+    # Ohne Wartungsmodus haelt GraphHopper seinen Speicher — nichts gutzuschreiben.
+    assert ohne.json()["ram_reclaimable_bytes"] == 0
+    # Und die Begruendung sagt, wo der fehlende Speicher herkaeme.
+    assert "pausiertem Routing" in ohne.json()["reason"]
+    # Mit Wartungsmodus wird er wirklich frei — also zaehlt er.
+    assert mit.json()["ram_reclaimable_bytes"] == int(8 * GB)
+    assert mit.json()["verdict"] != "reicht nicht"
 
 
 @pytest.mark.asyncio
@@ -207,13 +222,18 @@ def test_reclaimable_heap_bytes_falls_back_to_zero_when_unparsable(monkeypatch):
     from app.api.routes.region import _reclaimable_heap_bytes
 
     monkeypatch.setattr(settings, "java_opts", "-Xms1g -XX:+UseG1GC")  # kein -Xmx
-    assert _reclaimable_heap_bytes() == 0
+    assert _reclaimable_heap_bytes(True) == 0
 
     monkeypatch.setattr(settings, "java_opts", "-Xmx8x -Xms1g")  # unbekannte Einheit
-    assert _reclaimable_heap_bytes() == 0
+    assert _reclaimable_heap_bytes(True) == 0
 
     monkeypatch.setattr(settings, "java_opts", "")  # leer
-    assert _reclaimable_heap_bytes() == 0
+    assert _reclaimable_heap_bytes(True) == 0
+
+    # Ohne Wartungsmodus wird gar nichts gutgeschrieben, auch bei lesbarem -Xmx:
+    # Der laufende GraphHopper gibt seinen Heap dann nicht her.
+    monkeypatch.setattr(settings, "java_opts", "-Xmx8g -Xms1g")
+    assert _reclaimable_heap_bytes(False) == 0
 
 
 # ── Task 5: Auslösen, Status, Abbruch, Liste, aktuelle Region ────────────────
@@ -885,7 +905,7 @@ async def test_switch_schreibt_sortierte_quellenliste(monkeypatch):
                         _async_size_per_url({_DE: 4 * GB, _PL: 2 * GB}))
     geschrieben = {}
 
-    def _fake_write(url, filename, java_opts, actor_email, sources=""):
+    def _fake_write(url, filename, java_opts, actor_email, sources="", **kwargs):
         geschrieben.update(url=url, filename=filename, sources=sources)
 
     monkeypatch.setattr(region_switch, "write_request", _fake_write)
@@ -938,7 +958,7 @@ async def test_switch_entdoppelt_vor_dem_schreiben(monkeypatch, tmp_path):
     monkeypatch.setattr(geofabrik, "head_size_bytes", _async_size(int(2 * GB)))
     written = {}
 
-    def _fake_write(url, filename, java_opts, requested_by, sources=""):
+    def _fake_write(url, filename, java_opts, requested_by, sources="", **kwargs):
         written.update(
             url=url, filename=filename, sources=sources, requested_by=requested_by
         )
@@ -1466,3 +1486,127 @@ async def test_current_region_nennt_auch_eine_einzelne_region(tmp_path, monkeypa
 
     assert resp.status_code == 200
     assert resp.json()["sources"] == ["europe/germany/berlin"]
+
+
+# ── Wartungsmodus und Terminierung ──────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_switch_reicht_wartungsmodus_an_den_updater_durch(monkeypatch):
+    """Ohne dieses Flag in der Anforderung bliebe der Wartungsmodus eine
+    Anzeige im Panel: Der Updater entscheidet daran, ob er GraphHopper VOR dem
+    Import anhaelt und damit dessen Heap freimacht."""
+    monkeypatch.setattr(geofabrik, "head_size_bytes", _async_size(int(GB)))
+    geschrieben = {}
+
+    def _fake_write(url, filename, java_opts, actor_email, sources="",
+                    pause_routing=False, scheduled_for=None):
+        geschrieben.update(pause_routing=pause_routing, scheduled_for=scheduled_for)
+
+    monkeypatch.setattr(region_switch, "write_request", _fake_write)
+    monkeypatch.setattr(region_switch, "is_busy", lambda: False)
+    monkeypatch.setattr(os.path, "exists", lambda p: False)
+
+    test_app = _make_app_with_superadmin_and_db()
+    async with AsyncClient(transport=ASGITransport(app=test_app),
+                           base_url="http://test") as client:
+        resp = await client.post("/api/admin/region",
+                                 json={"urls": [URL], "pause_routing": True},
+                                 headers={"Authorization": "Bearer x"})
+    assert resp.status_code == 202
+    assert geschrieben["pause_routing"] is True
+    # Ohne Termin bleibt der Wechsel sofort faellig — das ist der Normalfall.
+    assert geschrieben["scheduled_for"] is None
+
+
+@pytest.mark.asyncio
+async def test_switch_nimmt_zeitpunkt_entgegen(monkeypatch):
+    """Ein Wechsel laesst sich auf einen Zeitpunkt legen — der Grund fuer das
+    Feature: Einen Routing-Ausfall im Wartungsmodus legt man in die Nacht."""
+    monkeypatch.setattr(geofabrik, "head_size_bytes", _async_size(int(GB)))
+    geschrieben = {}
+
+    def _fake_write(url, filename, java_opts, actor_email, sources="",
+                    pause_routing=False, scheduled_for=None):
+        geschrieben.update(scheduled_for=scheduled_for)
+
+    monkeypatch.setattr(region_switch, "write_request", _fake_write)
+    monkeypatch.setattr(region_switch, "is_busy", lambda: False)
+    monkeypatch.setattr(os.path, "exists", lambda p: False)
+
+    wann = datetime.now(timezone.utc) + timedelta(hours=6)
+    test_app = _make_app_with_superadmin_and_db()
+    async with AsyncClient(transport=ASGITransport(app=test_app),
+                           base_url="http://test") as client:
+        resp = await client.post(
+            "/api/admin/region",
+            json={"urls": [URL], "pause_routing": True,
+                  "scheduled_for": wann.isoformat()},
+            headers={"Authorization": "Bearer x"})
+    assert resp.status_code == 202
+    assert abs((geschrieben["scheduled_for"] - wann).total_seconds()) < 1
+
+
+@pytest.mark.asyncio
+async def test_switch_lehnt_zeitpunkt_in_der_vergangenheit_ab(monkeypatch):
+    """Ein rueckwaerts liegender Termin ist ein Vertipper, kein Wunsch nach
+    'sofort' — und liefe im Wartungsmodus unangekuendigt mitten in den
+    Betrieb."""
+    monkeypatch.setattr(geofabrik, "head_size_bytes", _async_size(int(GB)))
+    monkeypatch.setattr(region_switch, "is_busy", lambda: False)
+    monkeypatch.setattr(os.path, "exists", lambda p: False)
+
+    wann = datetime.now(timezone.utc) - timedelta(hours=2)
+    test_app = _make_app_with_superadmin_and_db()
+    async with AsyncClient(transport=ASGITransport(app=test_app),
+                           base_url="http://test") as client:
+        resp = await client.post(
+            "/api/admin/region",
+            json={"urls": [URL], "scheduled_for": wann.isoformat()},
+            headers={"Authorization": "Bearer x"})
+    assert resp.status_code == 400
+    assert "Vergangenheit" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_switch_lehnt_zu_fernen_zeitpunkt_ab(monkeypatch):
+    """Die Anforderungsdatei belegt den Wechselkanal, solange sie liegt
+    (is_busy) — ein Termin in ferner Zukunft sperrte das Panel bis dahin."""
+    monkeypatch.setattr(geofabrik, "head_size_bytes", _async_size(int(GB)))
+    monkeypatch.setattr(region_switch, "is_busy", lambda: False)
+    monkeypatch.setattr(os.path, "exists", lambda p: False)
+
+    wann = datetime.now(timezone.utc) + timedelta(days=90)
+    test_app = _make_app_with_superadmin_and_db()
+    async with AsyncClient(transport=ASGITransport(app=test_app),
+                           base_url="http://test") as client:
+        resp = await client.post(
+            "/api/admin/region",
+            json={"urls": [URL], "scheduled_for": wann.isoformat()},
+            headers={"Authorization": "Bearer x"})
+    assert resp.status_code == 400
+    assert "30 Tage" in resp.json()["detail"]
+
+
+def test_zeitpunkt_ohne_zeitzone_gilt_als_utc():
+    """Ein Zeitstempel ohne Offset wird als UTC gelesen, nicht als Ortszeit des
+    Servers. Andernfalls verschoebe sich ein naechtlicher Wartungslauf je nach
+    Serverzeitzone um Stunden — im Wartungsmodus mitten in den Betrieb."""
+    from app.api.routes.region import _validated_schedule
+
+    naiv = (datetime.now(timezone.utc) + timedelta(hours=3)).replace(tzinfo=None)
+    ergebnis = _validated_schedule(naiv)
+    assert ergebnis is not None
+    assert ergebnis.tzinfo is not None
+    assert abs((ergebnis - naiv.replace(tzinfo=timezone.utc)).total_seconds()) < 1
+
+
+def test_gerade_verstrichener_zeitpunkt_gilt_als_sofort():
+    """Innerhalb der Toleranz wird kein Termin daraus: Der Updater soll den
+    Wechsel sofort abarbeiten, statt ihn als 'geplant' im Panel stehen zu
+    lassen, waehrend er laengst laeuft."""
+    from app.api.routes.region import _validated_schedule
+
+    eben = datetime.now(timezone.utc) - timedelta(seconds=30)
+    assert _validated_schedule(eben) is None
+    assert _validated_schedule(None) is None

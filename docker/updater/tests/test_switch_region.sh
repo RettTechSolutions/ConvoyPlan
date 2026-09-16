@@ -34,6 +34,16 @@ case "$sub" in
       if [ -n "${STOP_CALLS_FILE:-}" ] && printf '%s\n' "$@" | grep -qw 'stop'; then
           echo $(( $(cat "$STOP_CALLS_FILE" 2>/dev/null || echo 0) + 1 )) > "$STOP_CALLS_FILE"
       fi
+      # Der angehaltene Container gibt seinen Speicher frei — im Wartungsmodus
+      # der ganze Zweck der Uebung. Ohne diese Nachbildung bliebe MemAvailable
+      # in der statischen Testdatei stehen und der Modus waere nicht pruefbar.
+      if [ -n "${STUB_FREE_KB_ON_STOP:-}" ] && [ -n "${REGION_MEMINFO:-}" ] \
+         && printf '%s\n' "$@" | grep -qw 'stop'; then
+          awk -v add="$STUB_FREE_KB_ON_STOP" \
+              '/^MemAvailable:/{printf "MemAvailable:   %d kB\n", $2 + add; next} {print}' \
+              "$REGION_MEMINFO" > "$REGION_MEMINFO.new" \
+            && mv "$REGION_MEMINFO.new" "$REGION_MEMINFO"
+      fi
       # Der GraphHopper-Container bekommt bei jedem erfolgreichen
       # `up --force-recreate` eine NEUE ID — nur so kann der Test pruefen, dass
       # switch-region.sh den Austausch wirklich nachweist (Wichtig 3).
@@ -199,6 +209,9 @@ chmod +x "$BIN/docker" "$BIN/curl" "$BIN/mv"
 export PATH="$BIN:$PATH"
 
 REQ_JSON='{"url": "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf", "filename": "berlin-latest.osm.pbf", "java_opts": "-Xmx3g -XX:MaxRAMPercentage=75.0", "requested_by": "a@b.c", "requested_at": "2026-09-03T10:00:00+00:00"}'
+# Dieselbe Anforderung mit pausiertem Routing: GraphHopper wird VOR dem Import
+# gestoppt, damit sein Heap dem Import zur Verfuegung steht.
+REQ_PAUSE='{"url": "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf", "filename": "berlin-latest.osm.pbf", "java_opts": "-Xmx3g -XX:MaxRAMPercentage=75.0", "pause_routing": "1", "requested_by": "a@b.c", "requested_at": "2026-09-16T10:00:00+00:00"}'
 
 # Legt eine frische Ablage an und gibt ihr Wurzelverzeichnis aus.
 setup_case() {
@@ -595,17 +608,75 @@ grep -q "Abgebrochen — die bisherige Region läuft unverändert weiter." "$D/s
 [ "$(compose_seq "$D/calls.txt")" = "" ]; check $? "kein Schwenk stattgefunden"
 [ ! -e "$D/status/region.cancel" ]; check $? "Abbruchdatei entfernt"
 
-echo "── Fall 18: Heap wird auf den verfuegbaren Host-RAM gedeckelt ──────────"
+# Zeilennummer des ersten Treffers — fuer Reihenfolge-Beweise in calls.txt.
+line_of() { grep -n "$2" "$1" 2>/dev/null | head -1 | cut -d: -f1; }
+
+echo "── Fall 18: Deckelung INNERHALB des Sicherheitsaufschlags laeuft durch ──"
 # Spec §3: Der Updater uebernimmt den vom Backend gerechneten Heap nicht
-# ungeprueft. Hier: 3 GB angefordert, 2,5 GB verfuegbar, 1 GB Reserve — bleiben
-# 1,5 GB, angehoben auf das Minimum von 2 GB.
+# ungeprueft. Der angeforderte Wert enthaelt 20 % Aufschlag
+# (region_estimate._SAFETY_MARGIN); ihn zu verlieren macht den Import eng,
+# nicht unmoeglich — deshalb wird hier gedeckelt und weitergemacht.
+# 3 GB angefordert (Rohbedarf 2560 MB), 3824 MB verfuegbar, 1 GB Reserve —
+# bleiben 2800 MB, also zwischen Rohbedarf und Wunsch.
 D="$(setup_case case18)"; printf '%s' "$REQ_JSON" > "$D/status/region_request.json"
-printf 'MemTotal:       4194304 kB\nMemAvailable:   2621440 kB\n' > "$D/meminfo"
+printf 'MemTotal:       8388608 kB\nMemAvailable:   3915776 kB\n' > "$D/meminfo"
 run_case "$D"
 [ "$(phase_of "$D/status/region_status.json")" = "done" ]; check $? "Endphase done"
-grep -q "^JAVA_OPTS=-Xmx2048m -XX:MaxRAMPercentage=75.0$" "$D/osm/.region"; check $? "gedeckelter Heap steht in .region ($(grep '^JAVA_OPTS=' "$D/osm/.region"))"
-grep -q "JAVA_OPTS=-Xmx2048m" "$D/calls.txt"; check $? "auch der Import laeuft mit gedeckeltem Heap"
+grep -q "^JAVA_OPTS=-Xmx2800m -XX:MaxRAMPercentage=75.0$" "$D/osm/.region"; check $? "gedeckelter Heap steht in .region ($(grep '^JAVA_OPTS=' "$D/osm/.region"))"
+grep -q "JAVA_OPTS=-Xmx2800m" "$D/calls.txt"; check $? "auch der Import laeuft mit gedeckeltem Heap"
 grep -q "Heap gedeckelt" "$D/status/region.log"; check $? "Deckelung wird protokolliert"
+
+echo "── Fall 18b: Deckelung UNTER den Rohbedarf bricht vor dem Download ab ───"
+# Der Fall, der am 16.09. eine halbe Stunde verbrannte: -Xmx14g angefordert,
+# 7075m gedeckelt — nicht einmal die Haelfte des Rohbedarfs. Damals lud der
+# Wechsel erst sechs Extracts und starb dann im Import. Hier in klein:
+# 3 GB angefordert (Rohbedarf 2560 MB), 2560 MB verfuegbar, davon 1 GB
+# Reserve — bleiben 1536, angehoben auf das Minimum von 2048. Zu wenig.
+D="$(setup_case case18b)"; printf '%s' "$REQ_JSON" > "$D/status/region_request.json"
+printf 'MemTotal:       4194304 kB\nMemAvailable:   2621440 kB\n' > "$D/meminfo"
+run_case "$D"
+[ "$(cat "$D/rc")" != 0 ]; check $? "Exit ungleich 0"
+[ "$(phase_of "$D/status/region_status.json")" = "failed" ]; check $? "Endphase failed"
+grep -q "Zu wenig Arbeitsspeicher" "$D/status/region.log"; check $? "Meldung nennt den Arbeitsspeicher"
+grep -q "512 MB Heap" "$D/status/region.log"; check $? "Meldung nennt den Fehlbetrag"
+grep -q "pausiertem Routing" "$D/status/region.log"; check $? "Meldung weist auf den Wartungsmodus hin"
+[ "$(cat "$D/dl_calls" 2>/dev/null || echo 0)" = 0 ]; check $? "nichts heruntergeladen — der Abbruch kommt VOR Phase 2"
+[ "$(cat "$D/graph/edges")" = "ALT" ]; check $? "alter Graph unangetastet"
+grep -q "stop graphhopper" "$D/calls.txt" 2>/dev/null; [ $? -ne 0 ]; check $? "GraphHopper gar nicht erst angefasst"
+
+echo "── Fall 18c: Wartungsmodus macht denselben Wechsel moeglich ─────────────"
+# Dieselbe Lage wie 18b, nur mit pausiertem Routing: Der laufende GraphHopper
+# haelt laut .region -Xmx8g. Gibt er die frei, stehen 2560 + 8192 - 1024 MB
+# bereit — mehr als genug. Genau dafuer gibt es den Modus.
+D="$(setup_case case18c)"
+printf '%s' "$REQ_PAUSE" > "$D/status/region_request.json"
+printf 'MemTotal:       12582912 kB\nMemAvailable:   2621440 kB\n' > "$D/meminfo"
+run_case "$D" STUB_FREE_KB_ON_STOP=8388608
+[ "$(cat "$D/rc")" = 0 ]; check $? "Exit 0"
+[ "$(phase_of "$D/status/region_status.json")" = "done" ]; check $? "Endphase done"
+grep -q "Wartungsmodus: Routing pausiert" "$D/status/region.log"; check $? "Wartungsmodus wird protokolliert"
+[ "$(line_of "$D/calls.txt" "stop graphhopper")" -lt "$(line_of "$D/calls.txt" "GH_COMMAND=import")" ]; check $? "GraphHopper steht, BEVOR der Import startet"
+[ "$(grep -c "stop graphhopper" "$D/calls.txt")" = 1 ]; check $? "nur einmal gestoppt — Phase 4 findet ihn schon stehend vor"
+[ "$(cat "$D/graph/edges")" = "NEU" ]; check $? "neuer Graph ist aktiv"
+! grep -q "Heap gedeckelt (Import)" "$D/status/region.log"; check $? "Import laeuft ungedeckelt mit dem angeforderten Heap"
+
+echo "── Fall 18d: scheitert der Import, kommt die alte Region zurueck ────────"
+# Der Preis des Wartungsmodus: Zwischen Stopp und Schwenk ist das Routing aus.
+# Stirbt der Import in diesem Fenster, MUSS die Notbremse den Container mit der
+# alten Region wieder hochfahren — sonst bliebe die Routenplanung dauerhaft weg.
+D="$(setup_case case18d)"
+printf '%s' "$REQ_PAUSE" > "$D/status/region_request.json"
+run_case "$D" STUB_IMPORT_FAIL=1
+[ "$(cat "$D/rc")" != 0 ]; check $? "Exit ungleich 0"
+[ "$(phase_of "$D/status/region_status.json")" = "failed" ]; check $? "Endphase failed"
+grep -q "alte Region wird wieder gestartet" "$D/status/region.log"; check $? "Meldung sagt, dass die alte Region zurueckkommt"
+# Die Notbremse in _on_exit faehrt mit `up -d` hoch, NICHT mit
+# --force-recreate: Der Container wurde nur angehalten, seine Konfiguration
+# (und damit die unveraenderte .region) ist die richtige.
+grep -q "compose .* up -d graphhopper" "$D/calls.txt"; check $? "Notbremse faehrt GraphHopper wieder hoch"
+[ "$(line_of "$D/calls.txt" "stop graphhopper")" -lt "$(line_of "$D/calls.txt" "up -d graphhopper")" ]; check $? "erst gestoppt, dann wieder hochgefahren"
+[ "$(cat "$D/graph/edges")" = "ALT" ]; check $? "alter Graph unangetastet"
+grep -q "^OSM_FILENAME=dach-latest.osm.pbf$" "$D/osm/.region"; check $? "alte .region unveraendert"
 
 echo "── Fall 19: 'compose stop' laesst den Container laufen (R1, vor Phase 4) ─"
 # _stop_graphhopper vertraute frueher blind dem Rueckgabewert von `compose

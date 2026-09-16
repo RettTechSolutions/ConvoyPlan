@@ -127,7 +127,8 @@ def _write_atomic_exclusive(path: str, data: str) -> None:
 
 
 def write_request(url: str, filename: str, java_opts: str, actor_email: str,
-                  sources: str = "") -> None:
+                  sources: str = "", pause_routing: bool = False,
+                  scheduled_for: datetime | None = None) -> None:
     """Schreibt eine Regionswechsel-Anforderung ins geteilte Volume.
 
     Reihenfolge bewusst wie in trigger_update(): Erst die Log-Zeile, dann die
@@ -158,16 +159,38 @@ def write_request(url: str, filename: str, java_opts: str, actor_email: str,
         # Bestandteilsliste, aus der der Updater die N Extracts laedt und
         # zusammenfuehrt. Der Default haelt bestehende Aufrufer gueltig.
         "sources": sources,
+        # Beide Felder bewusst als STRING, nicht als Boolean bzw. Zahl: Der
+        # Updater liest die Datei ohne python3/jq (docker:cli-Image, siehe
+        # _json_str in switch-region.sh) und ist auf flache String-Werte
+        # ausgelegt. Ein zweiter Parser fuer `true` und fuer Zahlen waere dort
+        # mehr Angriffsflaeche als Nutzen.
+        "pause_routing": "1" if pause_routing else "",
         "requested_by": actor_email,
         "requested_at": datetime.now(timezone.utc).isoformat(),
     }
+    if scheduled_for is not None:
+        # Der ISO-Zeitstempel ist fuer Panel und Protokoll, die Epoch-Sekunden
+        # sind fuer den Updater: Dessen Alpine-busybox-`date` parst ISO-8601 mit
+        # Zeitzonen-Offset nicht verlaesslich, Zahlen vergleicht jede Shell
+        # (region-hook.sh, region_switch_due).
+        payload["scheduled_for"] = scheduled_for.isoformat()
+        payload["scheduled_for_epoch"] = str(int(scheduled_for.timestamp()))
     # Erste Log-Zeile sofort, damit das Terminal nicht leer bleibt, waehrend
     # der Updater bis zu 10 s schlaeft — analog trigger_update(). Unkritisch:
     # schlaegt das fehl, faehrt die eigentliche Anforderung trotzdem fort.
     try:
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        if scheduled_for is not None:
+            # Die EINZIGE Logzeile zu einem geplanten Wechsel, bis er anlaeuft:
+            # region-hook.sh schweigt bewusst, solange die Anforderung wartet
+            # (sie prueft im Sekundentakt und wuerde das Log sonst zumuellen).
+            when = scheduled_for.strftime("%d.%m.%Y %H:%M UTC")
+            head = (f"[{ts}] Regionswechsel geplant für {when} — der Updater "
+                    f"startet ihn automatisch.")
+        else:
+            head = f"[{ts}] Regionswechsel angefordert — warte auf Updater…"
         with open(_path(LOG_FILE), "w") as f:
-            f.write(f"[{ts}] Regionswechsel angefordert — warte auf Updater…\n")
+            f.write(head + "\n")
     except OSError:
         # Siehe Kommentar oben: nur die Terminal-Anzeige betroffen, nicht die
         # Anforderung selbst. Der Aufrufer bemerkt hoechstens ein zunaechst
@@ -186,6 +209,10 @@ def write_request(url: str, filename: str, java_opts: str, actor_email: str,
 # Was das Panel anzeigt, solange die Anforderung im Volume liegt und der
 # Updater sie noch nicht aufgegriffen hat.
 QUEUED_MESSAGE = "Angefordert — wartet darauf, dass der Updater sie aufgreift."
+SCHEDULED_MESSAGE = (
+    "Geplant — der Updater startet den Wechsel zum gewählten Zeitpunkt. "
+    "Bis dahin läuft die bisherige Region unverändert weiter."
+)
 
 
 def _read_status_file() -> dict:
@@ -211,6 +238,25 @@ def _requested_at() -> str | None:
     return value if isinstance(value, str) else None
 
 
+def _request_field(key: str) -> str | None:
+    """Ein String-Feld aus der wartenden Anforderung, falls lesbar."""
+    try:
+        with open(_path(REQUEST_FILE)) as f:
+            value = json.load(f).get(key)
+    except (OSError, ValueError):
+        return None
+    return value if isinstance(value, str) else None
+
+
+def _scheduled_for() -> str | None:
+    """Der geplante Zeitpunkt der wartenden Anforderung, falls einer gesetzt ist.
+
+    Nur der ISO-Zeitstempel; die Epoch-Sekunden daneben sind fuer den Updater
+    gedacht (siehe write_request) und haben im Panel nichts verloren.
+    """
+    return _request_field("scheduled_for") or None
+
+
 def read_status() -> dict:
     """Der Zustand eines Regionswechsels — aus ZWEI Quellen, nicht einer.
 
@@ -228,6 +274,18 @@ def read_status() -> dict:
     Anforderung ohne Lock vor, ist sie angefordert und noch nicht begonnen.
     """
     if os.path.exists(_path(REQUEST_FILE)) and not os.path.exists(_path(LOCK_FILE)):
+        # Ein auf einen Zeitpunkt gelegter Wechsel ist NICHT dasselbe wie einer,
+        # der auf den naechsten Poll wartet: Er liegt womoeglich Stunden da.
+        # Als `queued` gemeldet zeigte das Panel dauerhaft "wartet auf den
+        # Updater" und der Operator hielte es fuer eine Stoerung.
+        scheduled = _scheduled_for()
+        if scheduled:
+            return {
+                "phase": "scheduled",
+                "message": SCHEDULED_MESSAGE,
+                "scheduled_for": scheduled,
+                "pause_routing": _request_field("pause_routing") == "1",
+            }
         status = {"phase": "queued", "message": QUEUED_MESSAGE}
         at = _requested_at()
         if at:

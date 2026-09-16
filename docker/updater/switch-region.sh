@@ -92,6 +92,9 @@ REGION_STOP_TIMEOUT="${REGION_STOP_TIMEOUT:-30}"
 REGION_MEMINFO="${REGION_MEMINFO:-/proc/meminfo}"
 REGION_HEAP_RESERVE_MB="${REGION_HEAP_RESERVE_MB:-1024}"  # für Kernel, Page-Cache, die übrigen Container
 REGION_HEAP_MIN_MB="${REGION_HEAP_MIN_MB:-2048}"          # nie unter diesen Wert deckeln
+# Wie lange nach dem Anhalten von GraphHopper auf den freigegebenen Speicher
+# gewartet wird, bevor der Import-Heap bemessen wird (Wartungsmodus).
+REGION_MEM_SETTLE_TIMEOUT="${REGION_MEM_SETTLE_TIMEOUT:-60}"
 
 OWNS_LOCK=0        # 1, sobald dieses Skript das Lock hält
 FINISHED=0         # 1 nach erfolgreichem Abschluss
@@ -381,6 +384,89 @@ _mem_available_mb() {
 # Import wird gemessen, während der alte GraphHopper noch läuft; für den
 # produktiven Heap in .region erst, nachdem er gestoppt wurde — beides ist
 # genau der Zustand, in dem der jeweilige Heap tatsächlich gebraucht wird.
+# Der -Xmx-Wert, den der laufende GraphHopper haelt — aus der .region der
+# AKTIVEN Region, derselben Datei, aus der ihn auch sein Entrypoint liest.
+# Genau dieser Anteil wird im Wartungsmodus frei, wenn der Container vor dem
+# Import stoppt. Fehlt die Datei (Ersteinstieg) oder der Wert, wird 0
+# geliefert: lieber zu wenig gutschreiben als einen Import losschicken, der
+# auf Speicher hofft, den niemand belegt hat.
+_running_gh_heap_mb() {
+    local opts tok mb
+    [ -f "$REGION_FILE" ] || { printf '0'; return 0; }
+    opts="$(sed -n 's/^JAVA_OPTS=//p' "$REGION_FILE" 2>/dev/null | head -1)"
+    for tok in $opts; do
+        case "$tok" in
+            -Xmx*) if mb="$(_xmx_mb "$tok")"; then printf '%s' "$mb"; return 0; fi ;;
+        esac
+    done
+    printf '0'
+}
+
+# Der Anteil des angeforderten Heaps, der wirklich gebraucht wird — ohne den
+# Sicherheitsaufschlag. Das Backend rechnet den Bedarf als
+# `(Grundlast + 1,1 * Extract) * 1,2` (region_estimate.estimate_ram_bytes,
+# _SAFETY_MARGIN = 1,2) und schickt das Ergebnis als -Xmx mit. Die 20 % sind
+# Reserve: Sie zu verlieren macht den Import eng, nicht unmoeglich. Was
+# darunter liegt, ist der gerechnete Rohbedarf — darunter ist er aussichtslos.
+_raw_need_mb() { printf '%s' $(( $1 * 10 / 12 )); }
+
+# Wieviel Heap dem Import gegenueber diesem Rohbedarf fehlt — MB, 0 wenn er
+# reicht.
+#
+# Warum das VOR dem Download geprueft wird: _capped_java_opts deckelt still auf
+# das, was da ist. Beim Wechsel auf DACH+Italien+Balkan wurden aus angeforderten
+# -Xmx14g so 7075m — nicht einmal die Haelfte des Rohbedarfs. Der Wechsel lud
+# 20 Minuten, verschmolz sechs Extracts und starb dann nach zwoelf Minuten an
+# OutOfMemoryError. Eine Deckelung INNERHALB des Aufschlags laeuft weiterhin
+# durch (sie steht als "Heap gedeckelt" im Log, das ist die Warnung); erst
+# unterhalb des Rohbedarfs bricht der Wechsel hier ab, statt die Zeit zu
+# verbrennen und es dem Operator eine halbe Stunde spaeter zu sagen.
+_heap_shortfall_mb() {
+    local want_opts="$1" gh_mb="$2" tok mb want_mb="" need_mb avail_mb cap_mb
+    for tok in $want_opts; do
+        case "$tok" in
+            -Xmx*) if mb="$(_xmx_mb "$tok")"; then want_mb="$mb"; fi ;;
+        esac
+    done
+    # Kein lesbares -Xmx: nichts zu pruefen, die Deckelung laesst es ohnehin
+    # unangetastet (sie meldet das dort als Warnung).
+    [ -n "$want_mb" ] || { printf '0'; return 0; }
+    if ! avail_mb="$(_mem_available_mb)"; then
+        printf '0'   # ohne /proc/meminfo wird auch nicht gedeckelt
+        return 0
+    fi
+    need_mb="$(_raw_need_mb "$want_mb")"
+    cap_mb=$(( avail_mb + gh_mb - REGION_HEAP_RESERVE_MB ))
+    [ "$cap_mb" -lt "$REGION_HEAP_MIN_MB" ] && cap_mb="$REGION_HEAP_MIN_MB"
+    if [ "$need_mb" -gt "$cap_mb" ]; then
+        printf '%s' $(( need_mb - cap_mb ))
+        return 0
+    fi
+    printf '0'
+}
+
+# Wartet, bis MemAvailable den Bedarf deckt — nach dem Anhalten von
+# GraphHopper im Wartungsmodus.
+#
+# Warum nicht einfach den -Xmx des gestoppten Containers dazurechnen: Das waere
+# geraten. Zeigt MemAvailable den Speicher bereits, zaehlte man ihn doppelt und
+# deckelte auf mehr, als die Maschine hat — der Import liefe dann in den
+# OOM-Killer des Kernels statt in einen sauberen Java-Fehler. Hier wird deshalb
+# gemessen statt gerechnet: `docker stop` kehrt zurueck, sobald der Container
+# als beendet gilt; bis der Kernel die Seiten abgeraeumt und in MemAvailable
+# ausgewiesen hat, koennen Momente vergehen. Kommt der Speicher nicht, faellt
+# das dem Aufrufer auf — nicht dem Import eine Viertelstunde spaeter.
+_await_freed_memory() {
+    local need_mb="$1" waited=0 avail_mb
+    while :; do
+        avail_mb="$(_mem_available_mb)" || return 0   # ohne meminfo wird ohnehin nicht gedeckelt
+        [ "$avail_mb" -ge "$need_mb" ] && return 0
+        [ "$waited" -ge "$REGION_MEM_SETTLE_TIMEOUT" ] && return 1
+        sleep "$REGION_POLL_SLEEP"
+        waited=$(( waited + REGION_POLL_STEP ))
+    done
+}
+
 _capped_java_opts() {
     local opts="$1" purpose="$2" tok mb avail_mb cap_mb xmx_mb="" xmx_capped=0 out=""
     if ! avail_mb="$(_mem_available_mb)"; then
@@ -702,6 +788,21 @@ REQUESTED_BY="$(_json_str requested_by "$REQ")"
 # Leer bei einer Einzelregion; sonst die sortierte, |-getrennte Liste der
 # Bestandteile, die zu EINER Karte verschmolzen werden.
 SOURCES="$(_json_str sources "$REQ")"
+# Wartungsmodus: GraphHopper wird VOR dem Import gestoppt, statt waehrenddessen
+# weiterzulaufen. Das Routing faellt fuer die Dauer des Imports aus — dafuer
+# steht dessen Heap dem Import zur Verfuegung. Ohne diesen Modus deckelt
+# _capped_java_opts gegen den Speicher, der NEBEN dem laufenden GraphHopper
+# frei ist; bei grossen Karten liegt der angeforderte Heap um Faktor zwei
+# darueber und der Import stirbt Minuten spaeter an OutOfMemoryError.
+#
+# Als String "1" statt als JSON-Boolean: _json_str liest ausschliesslich
+# String-Werte (siehe Kommentar dort), und ein zweiter Parser fuer `true`
+# waere mehr Angriffsflaeche als Nutzen. Das Backend schreibt entsprechend.
+PAUSE_ROUTING="$(_json_str pause_routing "$REQ")"
+case "$PAUSE_ROUTING" in
+    1|"") ;;
+    *) fail "Anforderung unlesbar: pause_routing muss \"1\" oder leer sein, war \"$PAUSE_ROUTING\"." ;;
+esac
 # Phasenzahl haengt davon ab, ob zusammengefuehrt wird — sonst saehe der
 # Operator bei einer Kombination zweimal "Phase 3".
 if [ -n "$SOURCES" ]; then
@@ -785,6 +886,14 @@ abort_if_cancelled
 if [ -d "$OLD" ] && [ -n "$(ls -A "$OLD" 2>/dev/null)" ]; then
     fail "Ein früherer Rollback ist unvollständig; Bestand liegt in ${OLD} — bitte prüfen und entfernen, bevor ein neuer Regionswechsel gestartet wird."
 fi
+
+# Abbruch VOR der ersten Netzanfrage. Ein auf einen Zeitpunkt gelegter Wechsel
+# kann abbestellt worden sein, waehrend er im Volume lag: region-hook.sh startet
+# dieses Skript dann absichtlich trotzdem, damit der Abbruch hier durch dieselbe
+# Maschinerie laeuft wie jeder andere — mit Statusmeldung und aufgeraeumten
+# Sperrdateien. Ohne diese Zeile fragte es dafuer erst Geofabrik nach Groessen,
+# die niemand mehr braucht.
+abort_if_cancelled
 
 # ── Phase 1: Prüfen ─────────────────────────────────────────────────────────
 if [ -n "$SOURCES" ]; then
@@ -875,6 +984,20 @@ for dir in "$OSM_DIR" "$GRAPH_DIR"; do
         fail "Zu wenig Plattenplatz unter $dir: $NEEDED Bytes benötigt, $free frei."
     fi
 done
+
+# Speicher in derselben Phase wie die Platte — und aus demselben Grund: Was der
+# Wechsel braucht, gehoert geprueft, BEVOR Gigabyte fliessen. Im Wartungsmodus
+# zaehlt der Heap des laufenden GraphHopper mit, weil er vor dem Import
+# freigegeben wird; ohne ihn nicht, denn dann laeuft er die ganze Zeit weiter.
+GH_HEAP_MB=0
+[ "$PAUSE_ROUTING" = 1 ] && GH_HEAP_MB="$(_running_gh_heap_mb)"
+HEAP_SHORT_MB="$(_heap_shortfall_mb "$JAVA_OPTS" "$GH_HEAP_MB")"
+if [ "${HEAP_SHORT_MB:-0}" -gt 0 ] 2>/dev/null; then
+    if [ "$PAUSE_ROUTING" = 1 ]; then
+        fail "Zu wenig Arbeitsspeicher: dem Import fehlen rund ${HEAP_SHORT_MB} MB Heap, auch mit pausiertem Routing. Diese Karte lässt sich auf dieser Maschine nicht bauen — weniger Regionen wählen oder Arbeitsspeicher aufrüsten."
+    fi
+    fail "Zu wenig Arbeitsspeicher: dem Import fehlen rund ${HEAP_SHORT_MB} MB Heap, solange GraphHopper weiterläuft. Mit pausiertem Routing stünden zusätzlich $(_running_gh_heap_mb) MB zur Verfügung — den Wechsel dann mit dieser Option erneut anfordern."
+fi
 abort_if_cancelled
 
 # ── Phase 2: Laden ──────────────────────────────────────────────────────────
@@ -1079,16 +1202,64 @@ if [ -n "$SOURCES" ]; then
 fi
 
 # ── Phase 3: Importieren ────────────────────────────────────────────────────
-phase "importing" "Phase ${_PH_IMPORT}: Baue Routing-Graph (läuft im Hintergrund, Routing bleibt aktiv)…"
 rm -rf "$STAGING"
+# Volumes aufloesen, SOLANGE GraphHopper laeuft: _resolve_volumes liest die
+# Mounts aus dem Container. Ein gestoppter Container beantwortet `inspect`
+# zwar weiterhin, aber die Reihenfolge hier zu erzwingen ist billiger als
+# sich darauf zu verlassen.
 _resolve_volumes
-# Import-Heap gegen den Speicher deckeln, der JETZT — mit noch laufendem
-# GraphHopper — tatsächlich frei ist.
+if [ "$PAUSE_ROUTING" = 1 ]; then
+    # Der Kern des Wartungsmodus. Erst stoppen, dann deckeln: _capped_java_opts
+    # liest MemAvailable, und solange GraphHopper laeuft, haelt dessen JVM den
+    # angeforderten Heap — eine Deckelung davor rechnete gegen die Haelfte des
+    # Speichers, den der Import gleich haben wird.
+    log "Wartungsmodus: Routing pausiert, damit der Import den Speicher des laufenden GraphHopper nutzen kann."
+    phase "importing" "Phase ${_PH_IMPORT}: Halte Routing an und baue den Graph…"
+    if ! _stop_graphhopper; then
+        # Laeuft er weiter, bleibt sein Heap belegt und der Import ginge mit
+        # derselben zu kleinen Deckelung los, die den Wartungsmodus ueberhaupt
+        # noetig gemacht hat — dann lieber gar nicht erst anfangen. Die
+        # Notbremse in _on_exit faehrt ihn wieder hoch.
+        fail "GraphHopper ließ sich nicht anhalten — ohne freien Speicher wird der Import nicht gestartet. Die bisherige Region läuft weiter."
+    fi
+    # Gemessen statt gerechnet (Begruendung bei _await_freed_memory). Zielmarke
+    # ist der Rohbedarf plus die Reserve — genau die Schwelle, an der Phase 1
+    # diesen Wechsel ueberhaupt durchgelassen hat.
+    _want_mb=""
+    for _t in $JAVA_OPTS; do
+        case "$_t" in -Xmx*) if _m="$(_xmx_mb "$_t")"; then _want_mb="$_m"; fi ;; esac
+    done
+    if [ -n "$_want_mb" ]; then
+        _need_mb=$(( $(_raw_need_mb "$_want_mb") + REGION_HEAP_RESERVE_MB ))
+        if ! _await_freed_memory "$_need_mb"; then
+            log "WARNUNG: Nach ${REGION_MEM_SETTLE_TIMEOUT}s weist der Host erst $(_mem_available_mb) MB als verfügbar aus, gebraucht werden ${_need_mb} MB."
+            # Jetzt haelt GraphHopper den Speicher nicht mehr — bleibt es
+            # trotzdem zu wenig, belegt ihn etwas anderes, und der Import waere
+            # so aussichtslos wie ohne den Modus. Dieselbe Pruefung wie in
+            # Phase 1, nur ohne Gutschrift: Der Container steht bereits.
+            _short_mb="$(_heap_shortfall_mb "$JAVA_OPTS" 0)"
+            if [ "${_short_mb:-0}" -gt 0 ] 2>/dev/null; then
+                fail "Zu wenig Arbeitsspeicher: auch mit pausiertem Routing fehlen dem Import rund ${_short_mb} MB Heap. Die alte Region wird wieder gestartet."
+            fi
+        fi
+    fi
+    phase "importing" "Phase ${_PH_IMPORT}: Baue Routing-Graph (Routing pausiert bis zum Ende des Wechsels)…"
+else
+    phase "importing" "Phase ${_PH_IMPORT}: Baue Routing-Graph (läuft im Hintergrund, Routing bleibt aktiv)…"
+fi
+# Import-Heap gegen den Speicher deckeln, der JETZT tatsächlich frei ist — im
+# Wartungsmodus also einschließlich dessen, was GraphHopper eben freigegeben hat.
 IMPORT_JAVA_OPTS="$(_capped_java_opts "$JAVA_OPTS" "Import")"
 if ! _import_graph; then
     rm -rf "$STAGING"
     if [ "$IMPORT_CANCELLED" = 1 ]; then
         fail "Abgebrochen — die bisherige Region läuft unverändert weiter."
+    fi
+    if [ "$PAUSE_ROUTING" = 1 ]; then
+        # GraphHopper steht noch; hochgefahren wird er von der Notbremse in
+        # _on_exit, die dafuer prueft, dass im Graph-Verzeichnis ein
+        # vollstaendiger (hier: unberuehrter alter) Graph liegt.
+        fail "Graph-Bau fehlgeschlagen (häufigste Ursache: zu wenig Heap). Die alte Region wird wieder gestartet."
     fi
     fail "Graph-Bau fehlgeschlagen (häufigste Ursache: zu wenig Heap). Die alte Region läuft weiter."
 fi

@@ -67,6 +67,19 @@
     // Liste ("einfach DACH"), Suchtreffer FÜGEN HINZU.
     let selectedList = $state<RegionEntry[]>([]);
 
+    // ── Wartungsmodus und Terminierung ───────────────────────────────────────
+    // Ohne pausiertes Routing hält der laufende GraphHopper seinen Heap
+    // während des Imports fest. Bei einer großen kombinierten Karte fehlt dem
+    // Import dann bis zur Hälfte des veranschlagten Speichers, und er stirbt
+    // nach Stunden an OutOfMemoryError. Der Schalter macht diesen Speicher
+    // frei — zum Preis einer Pause in der Routenplanung.
+    let pauseRouting = $state(false);
+    // Wert eines <input type="datetime-local">: lokale Zeit ohne Zone. Leer
+    // bedeutet "sofort". Vor allem für den Wartungsmodus gedacht — einen
+    // Routing-Ausfall legt man in die Nacht.
+    let scheduledLocal = $state('');
+    let scheduleError = $state('');
+
     // ── Vorab-Rechnung ───────────────────────────────────────────────────────
     let preview = $state<RegionPreview | null>(null);
     let previewLoading = $state(false);
@@ -101,8 +114,13 @@
     // haengt, verschwinden Phasenkarte UND Terminal direkt nach dem Klick.
     // Genau das war der Befund: Der Operator loest den Wechsel aus und sieht
     // nicht, dass einer laeuft.
+    // 'scheduled' MUSS hier stehen: Ein auf die Nacht gelegter Wechsel wartet
+    // womöglich stundenlang. Fehlte die Phase, zeigte das Panel in dieser Zeit
+    // gar nichts an — der Operator hätte keinen Beleg, dass sein Wechsel
+    // vorgemerkt ist, und keinen Knopf, ihn wieder abzubestellen.
     const ACTIVE_PHASES: RegionPhase[] = [
-        'queued', 'checking', 'downloading', 'merging', 'importing', 'switching', 'cleaning',
+        'queued', 'scheduled', 'checking', 'downloading', 'merging', 'importing',
+        'switching', 'cleaning',
     ];
     // 'merging' bewusst NICHT abbrechbar: switch-region.sh prueft region.cancel
     // erst nach dem Merge wieder, ein Knopf waere hier ohne Wirkung.
@@ -112,17 +130,25 @@
     // sein Aufraeumen entfernt Anforderung, Lock und Marke gemeinsam. Das
     // Backend loescht die Anforderung bewusst NICHT selbst: Es koennte sie
     // genau dann wegziehen, wenn der Updater sie schon gelesen hat.
-    const CANCELLABLE_PHASES: RegionPhase[] = ['queued', 'checking', 'downloading', 'importing'];
+    // 'scheduled' ist abbrechbar wie 'queued' — und muss es sein: Ein Wechsel,
+    // der erst in Stunden losläuft, ist genau der, den man noch abbestellen
+    // will. Der Abbruch legt region.cancel ab; region-hook.sh startet
+    // switch-region.sh daraufhin sofort (statt bis zum Termin zu warten),
+    // damit dort dieselbe Aufräum- und Meldemaschinerie läuft wie sonst.
+    const CANCELLABLE_PHASES: RegionPhase[] = [
+        'queued', 'scheduled', 'checking', 'downloading', 'importing',
+    ];
     const PHASE_LABELS: Record<RegionPhase, string> = {
         idle: 'Bereit',
         queued: 'Angefordert — wartet auf den Updater',
+        scheduled: 'Geplant — wartet auf den gewählten Zeitpunkt',
         checking: 'Phase 1/5 — Prüfe Verfügbarkeit und Plattenplatz',
         downloading: 'Phase 2/5 — Lade Extract herunter',
         // Nur bei kombinierten Regionen (mehr als ein Bestandteil) — daher
         // ohne eigene Ordinalzahl, um keine falsche Gesamtschrittzahl zu
         // suggerieren (Einzelauswahl durchläuft diese Phase nie).
         merging: 'Führe Extracts zu einer Karte zusammen',
-        importing: 'Phase 3/5 — Baue Routing-Graph (Routing bleibt währenddessen aktiv)',
+        importing: 'Phase 3/5 — Baue Routing-Graph',
         switching: 'Phase 4/5 — Schwenke auf die neue Region',
         cleaning: 'Phase 5/5 — Räume alte Daten auf',
         done: 'Abgeschlossen',
@@ -333,7 +359,9 @@
         previewError = '';
         previewLoading = true;
         try {
-            preview = await regionApi.preview(selectedList.map((e) => e.url));
+            preview = await regionApi.preview(selectedList.map((e) => e.url), {
+                pauseRouting,
+            });
         } catch (e: unknown) {
             previewError = e instanceof Error ? e.message : 'Vorab-Rechnung fehlgeschlagen';
         } finally {
@@ -344,18 +372,42 @@
     async function startSwitch() {
         if (selectedList.length === 0 || blocked || switching) return;
         switchError = '';
+        scheduleError = '';
+        let scheduledFor: string | undefined;
+        if (scheduledLocal) {
+            // `datetime-local` liefert lokale Zeit ohne Zone; `new Date(...)`
+            // liest sie als solche und `toISOString()` macht daraus UTC. Damit
+            // meint der Server genau den Zeitpunkt, den der Operator vor sich
+            // sieht — auch wenn der Server in einer anderen Zone steht.
+            const when = new Date(scheduledLocal);
+            if (Number.isNaN(when.getTime())) {
+                scheduleError = 'Der gewählte Zeitpunkt ist ungültig.';
+                return;
+            }
+            scheduledFor = when.toISOString();
+        }
         switching = true;
         try {
-            await regionApi.switch(selectedList.map((e) => e.url));
+            await regionApi.switch(selectedList.map((e) => e.url), {
+                pauseRouting,
+                scheduledFor,
+            });
             showPicker = false;
             selectedList = [];
             preview = null;
+            scheduledLocal = '';
             dismissed = false;
             await startLogStream();
             await refreshStatus();
         } catch (e: unknown) {
             if (e instanceof ApiError && e.status === 409) {
                 switchError = 'Es läuft bereits ein Update oder Regionswechsel.';
+            } else if (e instanceof ApiError && e.status === 400) {
+                // Der Server prüft den Termin (Vergangenheit, zu weit voraus)
+                // und begründet die Ablehnung — die Begründung gehört an das
+                // Feld, auf das sie sich bezieht, nicht in die allgemeine
+                // Fehlerzeile.
+                scheduleError = e.message;
             } else {
                 switchError = e instanceof Error ? e.message : 'Regionswechsel konnte nicht gestartet werden';
             }
@@ -428,7 +480,20 @@
                 {PHASE_LABELS[status.phase]}
             </span>
             {#if status.at}<span class="hint">{new Date(status.at).toLocaleString('de-DE')}</span>{/if}
+            {#if status.phase === 'scheduled' && status.scheduled_for}
+                <span class="hint">
+                    ab {new Date(status.scheduled_for).toLocaleString('de-DE')}
+                    {#if status.pause_routing}— Routing pausiert dann während des Imports{/if}
+                </span>
+            {/if}
         </div>
+
+        {#if status.phase === 'scheduled'}
+            <p class="reassurance">
+                Bis zum gewählten Zeitpunkt läuft die bisherige Region unverändert weiter.
+                Der Wechsel lässt sich bis dahin jederzeit abbrechen.
+            </p>
+        {/if}
 
         {#if status.phase === 'failed'}
             <p class="reassurance">
@@ -629,10 +694,17 @@
                                     <span class="update-label">RAM verfügbar</span>
                                     <span>
                                         {bytes(preview.ram_available_bytes)}
-                                        <span class="hint">
-                                            + {bytes(preview.ram_reclaimable_bytes)} durch Verkleinern des laufenden
-                                            GraphHopper während des Imports (effektiv {bytes(preview.ram_effective_available_bytes)})
-                                        </span>
+                                        {#if preview.ram_reclaimable_bytes > 0}
+                                            <span class="hint">
+                                                + {bytes(preview.ram_reclaimable_bytes)} aus dem angehaltenen
+                                                GraphHopper (effektiv {bytes(preview.ram_effective_available_bytes)})
+                                            </span>
+                                        {:else}
+                                            <span class="hint">
+                                                Der laufende GraphHopper hält seinen Speicher während des Imports.
+                                                Mit pausiertem Routing stünde mehr zur Verfügung.
+                                            </span>
+                                        {/if}
                                     </span>
                                 </div>
                                 <div class="update-row">
@@ -659,9 +731,47 @@
                             </div>
                             <p class="hint" style="margin-top:.5rem">{preview.reason}</p>
 
+                            <div class="switch-options">
+                                <label class="switch-option">
+                                    <input
+                                        type="checkbox"
+                                        bind:checked={pauseRouting}
+                                        onchange={refreshPreview}
+                                    />
+                                    <span>
+                                        <strong>Routing während des Imports pausieren</strong>
+                                        <span class="hint">
+                                            GraphHopper wird angehalten, bevor der Graph gebaut wird —
+                                            sein Speicher steht dann dem Import zur Verfügung. Ohne das
+                                            sind große kombinierte Karten auf dieser Maschine unter
+                                            Umständen nicht baubar. Keine Routenplanung, bis der
+                                            Wechsel durch ist.
+                                        </span>
+                                    </span>
+                                </label>
+                                <label class="switch-option">
+                                    <span class="update-label">Startzeitpunkt</span>
+                                    <span>
+                                        <input type="datetime-local" bind:value={scheduledLocal} />
+                                        <span class="hint">
+                                            {#if scheduledLocal}
+                                                Der Updater startet den Wechsel automatisch. Bis dahin
+                                                läuft die bisherige Region unverändert weiter.
+                                            {:else}
+                                                Leer lassen, um sofort zu starten. Ein pausiertes Routing
+                                                legt man besser in die Nacht.
+                                            {/if}
+                                        </span>
+                                    </span>
+                                </label>
+                            </div>
+                            {#if scheduleError}
+                                <div class="error-bar">{scheduleError} <button onclick={() => (scheduleError = '')}>✕</button></div>
+                            {/if}
+
                             <div class="switch-actions">
                                 <button class="btn-primary" disabled={blocked || switching} onclick={startSwitch}>
-                                    {switching ? '…' : 'Wechsel starten'}
+                                    {switching ? '…' : scheduledLocal ? 'Wechsel einplanen' : 'Wechsel starten'}
                                 </button>
                                 <button class="btn-secondary" onclick={closePicker}>Abbrechen</button>
                             </div>
@@ -756,6 +866,30 @@
         font-weight: 500;
     }
     .switch-actions { display: flex; gap: .5rem; margin-top: .75rem; flex-wrap: wrap; }
+
+    .switch-options {
+        display: flex;
+        flex-direction: column;
+        gap: .6rem;
+        margin-top: .75rem;
+        padding-top: .75rem;
+        border-top: 1px solid var(--border);
+    }
+    /* Kontrollkästchen bzw. Beschriftung oben, Text daneben — bei mehrzeiligen
+       Erklärungen bleibt die Bedienung sonst in der Mitte des Absatzes hängen. */
+    .switch-option { display: flex; gap: .5rem; align-items: flex-start; cursor: pointer; }
+    .switch-option > span { display: flex; flex-direction: column; gap: .15rem; }
+    .switch-option input[type="checkbox"] { margin-top: .2rem; flex: none; }
+    .switch-option input[type="datetime-local"] {
+        padding: .3rem .4rem;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        background: var(--bg);
+        color: inherit;
+        font: inherit;
+        width: fit-content;
+    }
+    .switch-option > .update-label { flex: none; min-width: 8.5rem; padding-top: .35rem; }
 
     .region-picker { margin-top: 1rem; padding-top: .75rem; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: .6rem; }
     .quick-picks { display: flex; gap: .4rem; flex-wrap: wrap; }
