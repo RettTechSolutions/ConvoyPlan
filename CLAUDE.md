@@ -2,56 +2,45 @@
 
 ## Repos
 
-Dieses Projekt besteht aus zwei Git-Repositories:
+| Repo | Zweck |
+|---|---|
+| **ConvoyPlan** (dieses Repo) — https://github.com/RettTechSolutions/ConvoyPlan | App (Backend, Frontend, Docker) |
+| **convoyplan-website** — https://github.com/RettTechSolutions/convoyplan-website | Marketingsite (Astro) |
 
-| Repo | Pfad | Zweck |
-|---|---|---|
-| **ConvoyPlan** (dieses Repo) | `[/Users/working_chris/github/ConvoyPlan](https://github.com/RettTechSolutions/ConvoyPlan)` | App (Backend, Frontend, Docker) |
-| **convoyplan-website** | `[/Users/working_chris/github/convoyplan-website](https://github.com/RettTechSolutions/convoyplan-website)` | Marketingsite (Astro, Cloudflare-Deploy) |
-| **convoyplan-Lizenzmanager** | `[/Users/working_chris/github/convoyplan-website](https://github.com/RettTechSolutions/ConvoyPlan-Lizenzmanager)` | Lizenztool zur Lizenz Erstellung anhand der UUID die während der Installation generiert wird  |
-| **convoyplan-Documentation** | `[/Users/working_chris/github/convoyplan-website](https://github.com/RettTechSolutions/ConvoyPlan-Documentation)` | Umfassende Dokumentation mit Wiki |
-
+Weitere, nicht-öffentliche Repos und die Zuordnung lokaler Arbeitskopien stehen
+in `CLAUDE.local.md` (nicht eingecheckt, siehe `.gitignore`).
 
 ## Installer-Scripts
 
-Die Installer-Scripts liegen im ConvoyPlan-Repo als Quelle der Wahrheit:
+`scripts/install.sh` (Linux) und `scripts/install.ps1` (Windows) sind die Quelle
+der Wahrheit für die Installation. `https://convoyplan.de/install.sh` und
+`https://convoyplan.de/install.ps1` sind Weiterleitungen auf die Raw-Dateien aus
+diesem Repo — eine Änderung hier ist nach dem Push auf `main` sofort wirksam,
+ein Sync in ein anderes Repo ist nicht nötig.
 
-- `scripts/install.sh` — Linux-Installer
-- `scripts/install.ps1` — Windows-Installer
-
-`https://convoyplan.de/install.sh` und `https://convoyplan.de/install.ps1` sind **HTTP-302-Weiterleitungen** (via `public/_redirects` im Website-Repo) auf die Raw-GitHub-URLs:
-
-```
-https://raw.githubusercontent.com/RettTechSolutions/ConvoyPlan/main/scripts/install.sh
-https://raw.githubusercontent.com/RettTechSolutions/ConvoyPlan/main/scripts/install.ps1
-```
-
-**Kein Sync nötig** — Änderungen in `scripts/install.sh` oder `scripts/install.ps1` sind sofort nach dem Push auf `main` über convoyplan.de erreichbar.
-
-Nur wenn sich Repo-Name, Branch oder Dateipfad ändern: `public/_redirects` im Website-Repo aktualisieren und deployen.
+Die Weiterleitungen selbst liegen im Website-Repo; ihre Einrichtung ist in
+`.github/repo-setup-checklist.md` beschrieben und nur für Maintainer relevant.
 
 ## Deployment
 
-- **App (ConvoyPlan):** Produktiv auf **`web.convoyplan.de`** (extern erreichbar). Docker Compose.
-- **Website (convoyplan-website):** Statisches Astro-Build auf **Cloudflare** (Workers Static Assets
-  via `@astrojs/cloudflare`), Deploy über die Git-Integration von Cloudflare Workers Builds.
-  Der frühere SFTP-Deploy auf Webspace bei united-domains ist entfallen, ebenso die
-  `public/.htaccess` — Weiterleitungen liegen jetzt in `public/_redirects`, Header in
-  `public/_headers`. Details im CLAUDE.md des Website-Repos.
+Die Produktivinstanz läuft über Docker Compose (`docker-compose.yml`); der
+Updater in `docker/updater/` rollt neue Images aus. Die Marketingsite wird aus
+dem Website-Repo heraus als statisches Astro-Build deployt.
 
 ### API-Docs (Swagger/OpenAPI)
 
-`/docs`, `/redoc` und `/openapi.json` sind in Produktion **standardmäßig deaktiviert** (404).
-Da `web.convoyplan.de` extern erreichbar ist, werden sie **bevorzugt per API-Key** abgesichert
-statt offen aktiviert:
+`/docs`, `/redoc` und `/openapi.json` sind in Produktion **standardmäßig deaktiviert**
+(404). Eine extern erreichbare Instanz sollte sie **per API-Key** absichern statt
+offen zu schalten:
 
-- **`DOCS_API_KEY=<geheim>`** (empfohlen): Docs sind erreichbar, aber geschützt. Aufruf einmalig
-  über `https://web.convoyplan.de/docs?key=<geheim>` — der Key wird in einem HttpOnly-Cookie
-  gemerkt, danach laden `/docs`, `/redoc` und `/openapi.json` nahtlos. Programmatischer Zugriff
-  via Header `X-API-Key: <geheim>`.
+- **`DOCS_API_KEY=<geheim>`** (empfohlen): Docs sind erreichbar, aber geschützt.
+  Der Browser-Einstieg läuft über `/docs`, das ohne gültiges Cookie ein
+  Anmeldeformular zeigt; nach erfolgreicher Eingabe merkt ein HttpOnly-Cookie
+  die Freigabe. Programmatischer Zugriff via Header `X-API-Key: <geheim>`.
 - **`ENABLE_DOCS=true`**: Docs offen erreichbar (ohne Key) — nur für Dev/intern.
 
-Siehe `backend/app/config.py` (`docs_api_key`, `enable_docs`) und `backend/app/main.py`.
+Siehe `backend/app/config.py` (`docs_api_key`, `enable_docs`) und
+`backend/app/main.py`.
 
 ### MCP-Server (KI-Schnittstelle)
 
@@ -78,3 +67,24 @@ Anwenderdoku: `wiki/MCP-Server.md`.
 Die ASGI-Verdrahtung in `app/mcp/mount.py` hängt an internen Details des SDK —
 `mcp` ist deshalb exakt gepinnt, und `tests/test_mcp_auth.py` prüft das beobachtbare
 Verhalten. Bei einem SDK-Upgrade zuerst dort nachsehen.
+
+## Test-Konventionen
+
+Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste:
+
+- **Backend** — `ruff check app/` und `pytest tests/` (`backend/`). Tests sind
+  `async` (`asyncio_mode = "auto"`), sprechen die App über
+  `AsyncClient(transport=ASGITransport(app=app))` an und brauchen eine
+  PostGIS-Datenbank (`DATABASE_URL`). Autouse-Fixtures in `tests/conftest.py`
+  schalten Rate-Limiting, HIBP-Abfrage und Update-Check ab; ein Test, der genau
+  das prüft, aktiviert es selbst wieder.
+- **Frontend** — `npm run check` (svelte-check) in `frontend/`.
+- **Shell** — die Suiten unter `docker/updater/tests/` und für den
+  GraphHopper-Entrypoint; sie tragen den Regionswechsel und laufen im Job
+  `Shell – Updater und Entrypoint`.
+- **Container** — Trivy scannt alle fünf Images (`backend`, `frontend`,
+  `graphhopper`, `updater`, `osmium`) auf HIGH/CRITICAL mit verfügbarem Fix.
+  Ausnahmen gehören mit Begründung in `.trivyignore`.
+
+Neue Tests liegen neben den bestehenden in `backend/tests/` und werden nach dem
+geprüften Verhalten benannt (`test_<thema>.py`), nicht nach der Implementierung.
