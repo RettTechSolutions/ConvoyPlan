@@ -5,10 +5,17 @@
     import { orgStore } from '$lib/stores/org';
     import { orgAuthApi } from '$lib/api';
     import { setActiveSlug } from '$lib/api/client';
+    import { sicheresZiel } from '$lib/redirect';
     import AppLogo from '$lib/components/AppLogo.svelte';
     import LegalFooter from '$lib/components/LegalFooter.svelte';
 
     const slug = $derived(($page.params as Record<string, string>).slug);
+    // Standardziel ist der Plan; ein mitgegebenes `redirect` bringt den
+    // Benutzer zurück auf die Seite, die ihn zur Anmeldung geschickt hat
+    // (siehe $lib/redirect — fremde Ziele werden dort verworfen).
+    const zielNachLogin = $derived(
+        sicheresZiel($page.url.searchParams.get('redirect')) ?? `/o/${slug}/plan`
+    );
     let orgName = $state('');
     let email = $state('');
     let password = $state('');
@@ -53,7 +60,7 @@
         // vorhandenes Cookie sagt für sich genommen nichts über seine
         // Gültigkeit, und lesen kann das Portal es ohnehin nicht.
         if (await orgStore.load(slug)) {
-            goto(`/o/${slug}/plan`);
+            goto(zielNachLogin);
             return;
         }
 
@@ -83,7 +90,7 @@
             // HttpOnly-Cookie gesetzt; das access_token in der Antwort ist
             // für API-Clients da und wird hier bewusst nicht angefasst.
             if (await orgStore.load(slug)) {
-                goto(`/o/${slug}/plan`);
+                goto(zielNachLogin);
             } else {
                 error = 'Anmeldung fehlgeschlagen';
             }
@@ -101,7 +108,7 @@
         try {
             await orgAuthApi.mfaVerify(mfaToken, mfaCode);
             if (await orgStore.load(slug)) {
-                goto(`/o/${slug}/plan`);
+                goto(zielNachLogin);
             } else {
                 error = 'Anmeldung fehlgeschlagen';
             }

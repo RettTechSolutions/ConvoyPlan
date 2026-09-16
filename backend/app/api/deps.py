@@ -130,16 +130,26 @@ def _credential(request: Request, header_token: str | None) -> str | None:
     if token is None:
         return None
 
-    if request.method.upper() not in cookies.SAFE_METHODS:
-        if request.headers.get(cookies.CSRF_HEADER) != cookies.CSRF_VALUE:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=(
-                    "Diese Anfrage wurde ohne den erforderlichen "
-                    f"{cookies.CSRF_HEADER}-Kopf gestellt."
-                ),
-            )
+    _csrf_pruefen(request)
     return token
+
+
+def _csrf_pruefen(request: Request) -> None:
+    """Für eine Anmeldung aus dem Cookie: ändernde Methoden brauchen den Kopf.
+
+    Eigene Funktion, weil es inzwischen zwei Wege zum Cookie gibt (siehe
+    ``get_current_person``) und ein CSRF-Schutz, den der zweite Weg vergisst,
+    kein CSRF-Schutz mehr ist."""
+    if request.method.upper() in cookies.SAFE_METHODS:
+        return
+    if request.headers.get(cookies.CSRF_HEADER) != cookies.CSRF_VALUE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Diese Anfrage wurde ohne den erforderlichen "
+                f"{cookies.CSRF_HEADER}-Kopf gestellt."
+            ),
+        )
 
 
 def get_token_data(
@@ -185,10 +195,7 @@ def decode_stream_token(token: str) -> TokenData:
     return _decode_token(token, allow_stream=True)
 
 
-async def get_current_user(
-    token_data: TokenData = Depends(get_token_data),
-    db: AsyncSession = Depends(get_db),
-) -> User:
+async def _benutzer_zum_token(token_data: TokenData, db: AsyncSession) -> User:
     result = await db.execute(select(User).where(User.id == token_data.user_id))
     user = result.scalar_one_or_none()
     if user is None:
@@ -197,6 +204,99 @@ async def get_current_user(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account deactivated")
     _ensure_token_current(token_data, user)
     return user
+
+
+async def get_current_user(
+    token_data: TokenData = Depends(get_token_data),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    return await _benutzer_zum_token(token_data, db)
+
+
+def _alle_sitzungen(request: Request) -> list[str]:
+    """Jedes Sitzungstoken, das der Browser mitschickt — global und je Org."""
+    tokens = []
+    global_token = request.cookies.get(cookies.SESSION_COOKIE)
+    if global_token:
+        tokens.append(global_token)
+    for slug in cookies.session_slugs(request):
+        token = request.cookies.get(cookies.cookie_name(slug))
+        if token:
+            tokens.append(token)
+    return tokens
+
+
+async def get_current_person(
+    request: Request,
+    token: str | None = Depends(oauth2_optional),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """Wer da ist — unabhängig davon, in welcher Organisation.
+
+    ``get_current_user`` braucht eine *bestimmte* Sitzung: den Bearer-Header
+    oder das Cookie, auf das ``X-Org-Slug`` zeigt. Für Seiten innerhalb einer
+    Organisation ist das richtig, der Slug steht dort in der URL.
+
+    Für den MCP-Consent-Screen ist es verkehrt herum. Der liegt unter
+    ``/oauth/consent``, außerhalb jeder Organisation, und schickt deshalb
+    keinen ``X-Org-Slug`` mit — die Anfrage fiel damit auf die *globale*
+    Sitzung zurück, und die bekommt nur, wer sich ohne ``org_slug`` anmeldet,
+    also ein Superadmin. Ein gewöhnliches Mitglied stand mit gültiger
+    Anmeldung vor einem 401. Dabei wählt man die Organisation auf genau
+    diesem Bildschirm erst aus; ihn vorab an eine zu binden hieße, die
+    Antwort vor der Frage zu verlangen.
+
+    Deshalb zählt hier nur die Person. Gesucht wird in allen mitgeschickten
+    Sitzungen. Führen sie auf **verschiedene** Personen, wird nicht geraten —
+    das ist dieselbe Mehrdeutigkeit, die ``cookies.token_from_cookie``
+    bewusst nicht auflöst, und eine geratene Zustimmung wäre schlimmer als
+    eine Rückfrage."""
+    # Der gewohnte Weg zuerst: Bearer-Header oder die per Kopf gewählte
+    # Sitzung. Trägt der nicht, ist das noch kein Nein — ein abgelaufenes
+    # globales Cookie im Browser darf ein gültiges Org-Cookie nicht
+    # verdecken. Ein fehlender CSRF-Kopf dagegen ist eine Absage und bleibt
+    # eine.
+    credential = _credential(request, token)
+    if credential is not None:
+        try:
+            return await _benutzer_zum_token(_decode_token(credential), db)
+        except HTTPException as exc:
+            if exc.status_code != status.HTTP_401_UNAUTHORIZED:
+                raise
+
+    tokens = _alle_sitzungen(request)
+    if not tokens:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    _csrf_pruefen(request)
+
+    je_person: dict[uuid.UUID, TokenData] = {}
+    for roh in tokens:
+        try:
+            token_data = _decode_token(roh)
+        except HTTPException:
+            continue  # abgelaufen oder fremd signiert — zählt wie nicht da
+        je_person.setdefault(token_data.user_id, token_data)
+
+    if not je_person:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if len(je_person) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "In diesem Browser sind mehrere Konten angemeldet. Für welches "
+                "der Zugriff gelten soll, lässt sich hier nicht erkennen — "
+                "bitte in den anderen Konten abmelden und erneut beginnen."
+            ),
+        )
+    return await _benutzer_zum_token(next(iter(je_person.values())), db)
 
 
 # Type alias for org-scoped dependencies

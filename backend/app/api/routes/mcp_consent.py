@@ -20,14 +20,13 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
-from app.config import settings
+from app.api.deps import get_current_person
 from app.database import get_db
 from app.mcp import scopes as scope_svc
 from app.models.oauth_client import OAuthClient
 from app.models.organization import Organization, UserOrganization
 from app.models.user import User
-from app.services import audit, oauth_provider, oauth_tokens
+from app.services import audit, mcp_config, oauth_provider, oauth_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -79,8 +78,19 @@ class ConsentResult(BaseModel):
     redirect_url: str
 
 
-def _require_enabled() -> None:
-    if not settings.mcp_enabled:
+async def _require_enabled(db: AsyncSession) -> None:
+    """Der *geltende* Zustand — Datenbank schlägt Umgebungsvariable.
+
+    Stand hier ``settings.mcp_enabled``, also allein die Umgebungsvariable.
+    Das war richtig, solange es den Schalter im Portal nicht gab; seither ist
+    es falsch, und zwar auf die unangenehme Art: Der Consent-Router hängt
+    nicht am Laufzeitschalter (``main.py`` montiert ihn fest, außerhalb von
+    ``mcp_mount.mount``), er hat den Wechsel auf die Datenbank also nicht
+    mitbekommen. Auf einer Instanz mit ``MCP_ENABLED=false`` in der ``.env``
+    und dem Schalter im Portal auf „an" zeigte das Portal einen aktiven
+    MCP-Server, während der Zustimmungsbildschirm mit 404 antwortete — der
+    Verbindungsaufbau jedes Clients endete dort, für alle Benutzer."""
+    if not await mcp_config.is_mcp_enabled(db):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Der MCP-Zugang ist auf dieser Instanz nicht aktiviert",
@@ -143,11 +153,11 @@ async def _memberships(db: AsyncSession, user: User) -> list[tuple[Organization,
 @router.get("/consent", response_model=ConsentRequestInfo)
 async def read_consent_request(
     request: str,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_person),
     db: AsyncSession = Depends(get_db),
 ) -> ConsentRequestInfo:
     """Worum der Client bittet — für die Anzeige auf dem Consent-Screen."""
-    _require_enabled()
+    await _require_enabled(db)
     authz = _decode_or_400(request)
 
     client = await _client_for(db, authz)
@@ -187,11 +197,11 @@ async def read_consent_request(
 async def decide_consent(
     decision: ConsentDecision,
     http_request: Request,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_person),
     db: AsyncSession = Depends(get_db),
 ) -> ConsentResult:
     """Zustimmen oder ablehnen; liefert die Redirect-URL zurück zum Client."""
-    _require_enabled()
+    await _require_enabled(db)
     authz = _decode_or_400(decision.request)
     issuer = oauth_tokens.issuer_url()
     # Vor jeder Verzweigung: auch die Absage führt zu einer Weiterleitung und

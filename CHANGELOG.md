@@ -23,6 +23,18 @@ ursprünglichen SemVer-Nummern.
 
 ### Fixed
 
+- **Der Zustimmungsbildschirm der KI-Schnittstelle war unbenutzbar — gleich doppelt.** Wer einen MCP-Client verbinden wollte, kam bis zur Anmeldung und dort nicht weiter. Zwei unabhängige Ursachen, jede für sich schon ausreichend:
+
+  **Der Schalter wurde am Bildschirm nicht gelesen.** Die Zustimmungsstrecke prüfte weiterhin die Umgebungsvariable `MCP_ENABLED` statt den Schalter im Portal — sie hängt als eigener Router in der Anwendung und hat den Wechsel auf die Datenbank nicht mitbekommen. Auf einer Instanz mit `MCP_ENABLED=false` in der `.env` und dem Schalter auf „an" zeigte das Portal einen aktiven MCP-Server, während der Bildschirm mit 404 antwortete. Für alle Benutzer, auch Superadmins. Jetzt gilt auch hier: Portal schlägt `.env`, in beide Richtungen.
+
+  **Nur Superadmins kamen überhaupt an den Bildschirm.** Er liegt unter `/oauth/consent` und damit außerhalb jeder Organisation, schickt also keine Angabe mit, welche Organisationssitzung gemeint ist. Die Anfrage fiel damit auf die *globale* Sitzung zurück — und die bekommt nur, wer sich ohne Organisation anmeldet, also ein Superadmin. Ein gewöhnliches Mitglied stand mit gültiger Anmeldung vor „nicht angemeldet".
+
+  Das war auch im Ansatz verkehrt herum: Die Organisation wird auf genau diesem Bildschirm erst *ausgewählt*. Ihn vorher an eine zu binden hieße, die Antwort vor der Frage zu verlangen. Er erkennt jetzt die **Person**, unabhängig von der Organisation, und bietet danach alle Organisationen zur Auswahl an, in denen sie Mitglied ist. Sind im selben Browser **verschiedene Personen** angemeldet, wird nicht geraten, sondern nachgefragt — eine geratene Zustimmung wäre schlimmer als eine Rückfrage. Der CSRF-Schutz gilt auf dem neuen Weg unverändert.
+
+- **Nach der Anmeldung ging der angefangene Vorgang verloren.** Wer nicht angemeldet auf einer Seite landete, wurde zur Startseite geschickt — mitsamt einem Vermerk, wohin es danach zurückgehen sollte. Gelesen hat den Vermerk nur nie jemand: weder die Startseite noch die Organisationsanmeldung werteten ihn aus. Nach dem Anmelden landete man in der App, und der angefangene Vorgang war weg; beim MCP-Verbinden hieß das: von vorn im Client beginnen.
+
+  Das Ziel wird jetzt durch die Anmeldekette durchgereicht. Es darf dabei nur auf diese Instanz zeigen — ein Anmeldeformular, das auf eine fremde Domain weiterleitet, wäre eine Open-Redirect-Lücke (CWE-601).
+
 - **Der Schalter für die KI-Schnittstelle kümmert sich jetzt auch um den Reverse Proxy.** Bisher tat er nur das halbe Ding: er schaltete die Routen im Backend frei, ans Weiterleiten von außen kam er nicht heran. Bei einer Installation, die von vor dieser Schnittstelle stammt, kennt der Proxy die Pfade nicht — das Portal zeigte dann **„An" samt Verbindungsadresse, und ein Aufruf von außen landete beim Frontend**. Sichtbar war davon nirgends etwas; man musste sich per SSH auf den Server schalten, um das überhaupt zu bemerken.
 
   Der Reiter **System → KI-Schnittstelle** prüft den Proxy jetzt mit und sagt im Klartext, was fehlt. Der neue Knopf **Proxy reparieren** stellt die Weiterleitung her — er schreibt eine dauerhafte Proxy-Konfiguration und lädt sie sofort nach, ohne Neustart und ohne Serverzugriff. Beim Einschalten läuft die Auffrischung ohnehin automatisch mit.
