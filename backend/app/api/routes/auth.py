@@ -459,7 +459,7 @@ async def logout(request: Request, response: Response):
     Bewusst ohne Anmeldepflicht: ein Abmelden, das an einem abgelaufenen
     Token scheitert, ließe das Cookie stehen — und der Aufrufer bekommt hier
     nichts, was er nicht schon hätte."""
-    slug = request.headers.get(cookies.ORG_SLUG_HEADER)
+    slug = cookies.angefragter_slug(request)
     if slug:
         cookies.clear_session_cookie(response, slug)
     else:

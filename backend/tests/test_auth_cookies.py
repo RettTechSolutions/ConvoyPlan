@@ -381,3 +381,76 @@ async def test_logout_braucht_keine_gueltige_sitzung():
         client.cookies.set("cp_session", "laengst-abgelaufener-mist")
         resp = await client.post("/api/auth/logout")
     assert resp.status_code == 200
+
+
+# ── Der Slug aus dem Kopf ist unbesehene Eingabe ─────────────────────────
+# Gefunden von CodeQL auf dieser PR: "Construction of a cookie using
+# user-supplied input". Einschleusen ließ sich nichts — CPythons Morsel
+# lehnt illegale Schlüssel ab —, aber es lehnt sie mit einer CookieError ab,
+# und die kam am Abmelde-Endpunkt als 500 heraus.
+
+
+@pytest.mark.parametrize(
+    "boese",
+    [
+        "a; Path=/; HttpOnly",   # Cookie-Attribut anhängen
+        "a=b",                   # Trennzeichen
+        "a\nSet-Cookie: x=y",    # Header-Umbruch
+        "GROSS",                 # Slugs sind klein
+        "-vorne",                # Bindestrich am Rand
+        "hinten-",
+        "mit leer",
+        "a" * 81,                # länger als ein Slug sein kann
+        "",
+    ],
+)
+def test_unbrauchbarer_slug_wird_nicht_als_slug_anerkannt(boese):
+    assert cookies.ist_gueltiger_slug(boese) is False
+
+
+@pytest.mark.parametrize("gut", ["a", "org-a", "feuerwehr-muenchen-1", "x1", "a" * 80])
+def test_echte_slugs_werden_anerkannt(gut):
+    assert cookies.ist_gueltiger_slug(gut) is True
+
+
+def test_cookie_name_wirft_statt_still_etwas_anderes_zu_bauen():
+    """Ein ungültiger Slug ist an dieser Stelle ein Programmierfehler. Still
+    auf das globale Cookie auszuweichen wäre die schlechtere Antwort: dann
+    setzte ein Tippfehler im Aufrufer die falsche Sitzung."""
+    with pytest.raises(ValueError):
+        cookies.cookie_name("a; Path=/")
+
+
+def test_boeser_kopf_zaehlt_wie_kein_kopf():
+    from tests.fake_request import fake_request
+
+    req = fake_request(
+        headers={"X-Org-Slug": "a; Path=/; HttpOnly"},
+        cookies={"cp_session": "global", "cp_session__a": "org"},
+    )
+    assert cookies.angefragter_slug(req) is None
+    # Fällt auf die globale Sitzung zurück — also auf genau das, was der
+    # Aufrufer auch ohne den Kopf bekäme. Kein Zugewinn durch Unsinn.
+    assert cookies.token_from_cookie(req) == "global"
+
+
+def test_session_slugs_ueberspringt_was_kein_slug_ist():
+    """Die Namen kommen aus dem Browser, nicht zwingend von diesem Server."""
+    from tests.fake_request import fake_request
+
+    req = fake_request(cookies={"cp_session__gut": "x", "cp_session__BOESE=y": "z"})
+    assert cookies.session_slugs(req) == ["gut"]
+
+
+async def test_abmelden_mit_praeparieretem_kopf_bricht_nicht():
+    """Der eigentliche Fund: vorher 500, jetzt eine normale Antwort."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url=BASE) as client:
+        client.cookies.set("cp_session", "global")
+        resp = await client.post(
+            "/api/auth/logout", headers={"X-Org-Slug": "a; Path=/; HttpOnly"}
+        )
+    assert resp.status_code == 200
+    # Wie ohne Kopf: es wird alles abgemeldet, nicht selektiv nach Unsinn.
+    assert any(
+        c.startswith("cp_session=") for c in resp.headers.get_list("set-cookie")
+    )

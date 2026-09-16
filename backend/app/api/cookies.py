@@ -42,6 +42,8 @@ Der ``Authorization: Bearer``-Weg bleibt daneben bestehen — für API-Clients,
 Skripte und die Tests. Er ist nicht das Problem gewesen; das Problem war,
 das Token dafür im Browser zu lagern.
 """
+import re
+
 from fastapi import Request, Response
 
 from app.config import settings
@@ -62,11 +64,47 @@ Das gilt nur, solange sie tatsächlich nichts verändern — ein ``GET``, das
 etwas schreibt, wäre hier die Lücke und nicht diese Liste."""
 
 
+# Ein Organisations-Slug, so wie ``Organization._slugify`` ihn erzeugt:
+# Kleinbuchstaben, Ziffern und Bindestriche, keiner am Rand, höchstens 80
+# Zeichen. Geprüft wird das hier noch einmal, weil der Slug aus einem
+# **Header** kommt und damit aus der Hand des Aufrufers.
+#
+# Ohne die Prüfung landet er ungeprüft in einem Cookie-Namen. Einschleusen
+# ließe sich darüber nichts — CPythons ``Morsel.set`` lehnt illegale Schlüssel
+# ab —, aber es lehnt sie mit einer ``CookieError`` ab, und die kam am
+# Abmelde-Endpunkt als **500** heraus. Ein Kopf, den jeder setzen kann und
+# der den Endpunkt zerlegt, ist kein Schönheitsfehler.
+_SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+_SLUG_MAX = 80
+
+
+def ist_gueltiger_slug(org_slug: str | None) -> bool:
+    return bool(org_slug) and len(org_slug) <= _SLUG_MAX and _SLUG.match(org_slug) is not None
+
+
 def cookie_name(org_slug: str | None) -> str:
-    """Der Cookie-Name für eine Organisation, oder der globale."""
+    """Der Cookie-Name für eine Organisation, oder der globale.
+
+    Ein Slug, der keiner ist, wirft — das ist ein Programmierfehler und darf
+    nicht still zu einem anderen Cookie werden. Wer mit unbesehenen Daten
+    umgeht, nimmt ``angefragter_slug()``."""
     if not org_slug:
         return SESSION_COOKIE
+    if not ist_gueltiger_slug(org_slug):
+        raise ValueError(f"Kein gültiger Organisations-Slug: {org_slug!r}")
     return f"{SESSION_COOKIE}__{org_slug}"
+
+
+def angefragter_slug(request: Request) -> str | None:
+    """Der Slug aus dem ``X-Org-Slug``-Kopf — oder None.
+
+    None heißt hier „keine Organisation genannt", und ein unbrauchbarer Kopf
+    wird genauso behandelt. Fail-closed: aus etwas, das kein Slug sein kann,
+    entsteht keine Sitzung."""
+    slug = request.headers.get(ORG_SLUG_HEADER)
+    if slug is None:
+        return None
+    return slug if ist_gueltiger_slug(slug) else None
 
 
 def cookie_secure() -> bool:
@@ -111,12 +149,16 @@ def clear_session_cookie(response: Response, org_slug: str | None = None) -> Non
 
 
 def session_slugs(request: Request) -> list[str]:
-    """Die Slugs aller Organisationssitzungen, die der Browser mitschickt."""
+    """Die Slugs aller Organisationssitzungen, die der Browser mitschickt.
+
+    Die Namen kommen aus dem Browser und sind damit nicht mehr zwingend die,
+    die dieser Server gesetzt hat. Was kein gültiger Slug ist, fliegt raus,
+    bevor daraus wieder ein Cookie-Name gebaut wird."""
     praefix = f"{SESSION_COOKIE}__"
     return [
         name[len(praefix):]
         for name in request.cookies
-        if name.startswith(praefix) and len(name) > len(praefix)
+        if name.startswith(praefix) and ist_gueltiger_slug(name[len(praefix):])
     ]
 
 
@@ -126,6 +168,9 @@ def token_from_cookie(request: Request) -> str | None:
     Die Auswahl trifft der ``X-Org-Slug``-Header; ohne ihn gilt die globale
     Sitzung. Es wird bewusst **nicht** geraten: schickt der Browser mehrere
     Organisationssitzungen und nennt niemand eine, ist die Anfrage
-    mehrdeutig — und eine geratene Anmeldung ist schlimmer als gar keine."""
-    slug = request.headers.get(ORG_SLUG_HEADER)
-    return request.cookies.get(cookie_name(slug))
+    mehrdeutig — und eine geratene Anmeldung ist schlimmer als gar keine.
+
+    Ein Kopf, der kein gültiger Slug ist, zählt wie keiner (siehe
+    ``angefragter_slug``) und führt damit auf die globale Sitzung — also auf
+    genau das, was der Aufrufer auch ohne den Kopf bekäme."""
+    return request.cookies.get(cookie_name(angefragter_slug(request)))
