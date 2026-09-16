@@ -9,6 +9,12 @@ on:
   # verlangt die Required Checks darauf. Ohne diesen Trigger würden Einträge in
   # der Queue endlos auf ihre Checks warten.
   merge_group:
+  # Wöchentlich, nur für die beiden Sicherheits-Jobs (die übrigen tragen dafür
+  # `if: github.event_name != 'schedule'`). Neue CVEs erscheinen unabhängig
+  # davon, ob jemand etwas pusht — ohne diesen Lauf merkt eine ruhige Woche
+  # nichts davon, und die Ausnahmen in .trivyignore altern unbeobachtet.
+  schedule:
+    - cron: "17 5 * * 1"
 
 # Least privilege: jobs only read the repo. No job needs write access to
 # contents, packages, deployments, etc. Overrides the permissive default
@@ -19,6 +25,8 @@ permissions:
 jobs:
   backend-lint-test:
     name: Backend – Lint & Tests
+    # Kein Sicherheits-Job — beim wöchentlichen Lauf übersprungen.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
 
     services:
@@ -73,6 +81,8 @@ jobs:
 
   frontend-check:
     name: Frontend – Type Check
+    # Kein Sicherheits-Job — beim wöchentlichen Lauf übersprungen.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
 
     steps:
@@ -92,6 +102,8 @@ jobs:
 
   docker-build:
     name: Docker – Build check
+    # Kein Sicherheits-Job — beim wöchentlichen Lauf übersprungen.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
 
     steps:
@@ -196,6 +208,8 @@ jobs:
 
   shell-tests:
     name: Shell – Updater und Entrypoint
+    # Kein Sicherheits-Job — beim wöchentlichen Lauf übersprungen.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     # Diese Suiten pruefen die Skripte, die den Regionswechsel tragen —
@@ -228,6 +242,8 @@ jobs:
 
   region-switch:
     name: Region – Wechsel end-to-end (Berlin)
+    # Kein Sicherheits-Job — beim wöchentlichen Lauf übersprungen.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
     # Einziger Test, der die fünf Phasen von docker/updater/switch-region.sh
     # gegeneinander prüft, statt sie per docker-Stub zu simulieren (siehe
@@ -414,6 +430,8 @@ jobs:
 
   region-merge:
     name: Region – Grenzrouting bei zusammengeführten Extracts
+    # Kein Sicherheits-Job — beim wöchentlichen Lauf übersprungen.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     # Beantwortet fortlaufend die Frage, die vor dem Entwurf einmalig als

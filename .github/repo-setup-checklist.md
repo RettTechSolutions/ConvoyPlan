@@ -136,3 +136,21 @@ Branch-Protection/Rulesets und Repo-Settings (`Allow auto-merge`, Labels) sind
 Administrations-Einstellungen, die ein Token mit `administration: write` bzw.
 einen Admin-Klick erfordern. Sie sind hier als Code/Checkliste hinterlegt, damit
 sie versioniert, reproduzierbar und nachvollziehbar sind.
+
+## Installer-Weiterleitungen (`convoyplan.de/install.sh`)
+
+`scripts/install.sh` und `scripts/install.ps1` in diesem Repo sind die Quelle der
+Wahrheit. Die kurzen Download-URLs auf der Marketingsite sind HTTP-302-Weiter-
+leitungen, konfiguriert in `public/_redirects` des Website-Repos:
+
+```
+https://convoyplan.de/install.sh   →  raw.githubusercontent.com/<org>/<repo>/main/scripts/install.sh
+https://convoyplan.de/install.ps1  →  raw.githubusercontent.com/<org>/<repo>/main/scripts/install.ps1
+```
+
+Daraus folgt: **kein Sync nötig.** Eine Änderung an den Skripten ist nach dem
+Merge nach `main` sofort über die kurzen URLs erreichbar.
+
+Nachziehen muss man `public/_redirects` nur, wenn sich **Repo-Name, Default-Branch
+oder Dateipfad** ändern — sonst zeigen die kurzen URLs ins Leere, und zwar ohne
+dass in diesem Repo irgendein Check rot wird.

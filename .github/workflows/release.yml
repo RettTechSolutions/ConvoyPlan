@@ -16,9 +16,10 @@ on:
       - "v*.*.*"
   workflow_dispatch:
 
+# Least privilege pro Job: nur der Signier-Job bekommt id-token, nur der
+# Release-Job Schreibrecht auf contents.
 permissions:
-  contents: write
-  packages: write
+  contents: read
 
 # Serialize releases so two runs can never push :latest concurrently and race.
 concurrency:
@@ -29,6 +30,12 @@ jobs:
   build-and-push:
     name: Build & push Docker images
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      # Nur fuer `cosign sign`: der Job tauscht das OIDC-Token gegen ein
+      # kurzlebiges Fulcio-Zertifikat. Kein privater Schluessel im Spiel.
+      id-token: write
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -56,6 +63,13 @@ jobs:
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "prerelease=${prerelease}" >> "$GITHUB_OUTPUT"
           echo "Resolved APP_VERSION=${version} (prerelease=${prerelease})"
+
+      # GHCR-Repositorynamen muessen klein geschrieben sein. metadata-action
+      # macht das fuer seine Tags selbst; die cosign-Aufrufe unten brauchen den
+      # Namen aber roh.
+      - name: Repositoryname in Kleinbuchstaben
+        id: repo
+        run: echo "lowercase=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
@@ -166,6 +180,7 @@ jobs:
           done
 
       - name: Build and push backend
+        id: build-backend
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: ./backend
@@ -178,6 +193,7 @@ jobs:
             APP_VERSION=${{ steps.appver.outputs.version }}
 
       - name: Build and push frontend
+        id: build-frontend
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: ./frontend
@@ -190,6 +206,7 @@ jobs:
             APP_VERSION=${{ steps.appver.outputs.version }}
 
       - name: Build and push graphhopper
+        id: build-graphhopper
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: ./graphhopper
@@ -199,6 +216,7 @@ jobs:
           labels: ${{ steps.meta-graphhopper.outputs.labels }}
 
       - name: Build and push updater
+        id: build-updater
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: ./docker/updater
@@ -208,6 +226,7 @@ jobs:
           labels: ${{ steps.meta-updater.outputs.labels }}
 
       - name: Build and push osmium
+        id: build-osmium
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: ./docker/osmium
@@ -216,10 +235,55 @@ jobs:
           tags: ${{ steps.meta-osmium.outputs.tags }}
           labels: ${{ steps.meta-osmium.outputs.labels }}
 
+      # ── Signatur (Sigstore/cosign, keyless) ─────────────────────────────
+      # Ohne Signatur heisst "Image mit dem richtigen Tag" nur: irgendjemand
+      # mit Schreibrecht auf GHCR hat es dort abgelegt. Der Updater auf jeder
+      # Kundeninstallation zieht genau danach — und haelt dabei den nackten
+      # Docker-Socket. Ein kompromittiertes Repo-Token waere damit Root auf
+      # jeder Installation mit Auto-Update.
+      #
+      # Keyless: die Identitaet ist dieser Workflow (OIDC-Token von GitHub),
+      # kein privater Schluessel liegt irgendwo herum. Signiert wird der
+      # Digest, nicht der Tag — Tags sind beweglich, Digests nicht. Die
+      # Signatur gilt damit fuer alle Tags, die auf denselben Digest zeigen.
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign images (keyless)
+        env:
+          # GHCR verlangt Kleinbuchstaben; ${{ github.repository }} traegt sie
+          # nicht zwingend. metadata-action normalisiert selbst, hier nicht.
+          REPO_LC: ${{ steps.repo.outputs.lowercase }}
+          DIGEST_BACKEND: ${{ steps.build-backend.outputs.digest }}
+          DIGEST_FRONTEND: ${{ steps.build-frontend.outputs.digest }}
+          DIGEST_GRAPHHOPPER: ${{ steps.build-graphhopper.outputs.digest }}
+          DIGEST_UPDATER: ${{ steps.build-updater.outputs.digest }}
+          DIGEST_OSMIUM: ${{ steps.build-osmium.outputs.digest }}
+        run: |
+          set -euo pipefail
+          for entry in \
+            "backend=${DIGEST_BACKEND}" \
+            "frontend=${DIGEST_FRONTEND}" \
+            "graphhopper=${DIGEST_GRAPHHOPPER}" \
+            "updater=${DIGEST_UPDATER}" \
+            "osmium=${DIGEST_OSMIUM}"
+          do
+            name="${entry%%=*}"
+            digest="${entry#*=}"
+            if [ -z "$digest" ]; then
+              echo "::error::Kein Digest fuer $name — build-push-action hat keinen geliefert"
+              exit 1
+            fi
+            echo "Signiere ghcr.io/${REPO_LC}/${name}@${digest}"
+            cosign sign --yes "ghcr.io/${REPO_LC}/${name}@${digest}"
+          done
+
   github-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     needs: build-and-push
+    permissions:
+      contents: write
     if: startsWith(github.ref, 'refs/tags/')
 
     steps:

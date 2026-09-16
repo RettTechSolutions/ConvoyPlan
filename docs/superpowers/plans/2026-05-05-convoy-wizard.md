@@ -395,7 +395,7 @@ Erwartetes Ergebnis: Build ohne Fehler, Container läuft auf Port 3000.
 - [ ] **Schritt 2: Manueller Test — Vollständiger Flow**
 
 1. Browser öffnen: `http://localhost:3000`
-2. Login mit `christoph@zeitler.tech` / `MarschPlan2026!`
+2. Login mit `maintainer@example.org` / `<superadmin-passwort>`
 3. Klick auf `+ Neu` → Modal erscheint (nur Name, Startzeit, Geschwindigkeit)
 4. Name eingeben → `Erstellen & Punkte setzen →` klicken
 5. Wizard erscheint in Sidebar: **Schritt 1 – Startpunkt**

@@ -21,6 +21,13 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Die Kurve „aktive Nutzer" in der Systemübersicht stand seit der Cookie-Umstellung auf null.** Die Middleware, die Portalnutzung mitschreibt, zog sich die Anmeldung selbst aus dem `Authorization`-Header — und den schickt das Portal seit der Umstellung nicht mehr. Jeder Aufruf wurde damit als anonym gezählt: die Last- und Fehlerkurven stimmten weiter, die Nutzerzahlen zeigten dauerhaft niemanden. Die Middleware liest die Sitzung jetzt aus derselben Quelle wie der Rest der Anwendung, also Header **oder** Cookie.
+
+  Das ist derselbe Fehler, der zuvor schon die lesenden Endpunkte der Systemübersicht getroffen hatte — dieselbe Ursache, eine andere Stelle. Deshalb prüft ein Test jetzt nicht mehr nur den Einzelfall, sondern die **Klasse**: er durchsucht den Backend-Code und schlägt fehl, sobald sich irgendwo wieder jemand die Anmeldung selbst aus dem Header holt, statt den gemeinsamen Weg zu nehmen. Ein Test für den Einzelfall hätte den zweiten Vorfall nicht verhindert.
+
+- **Werkzeugaufrufe der KI-Schnittstelle zählten als Portalnutzung.** MCP-Tokens sind mit demselben Schlüssel signiert und tragen eine Benutzer-ID; die Middleware nahm sie deshalb für eine Anmeldung im Portal. Ein Modell, das im Minutentakt Werkzeuge aufruft, stand damit in der Kurve „aktive Nutzer" — die Menschen zählen soll. Gilt auch für die kurzlebigen Tickets, mit denen Live-Karte und Fortschrittsanzeige ihre Verbindung aufbauen.
 ### Added
 
 - **Die KI-Schnittstelle lässt sich jetzt im Admin-Portal ein- und ausschalten** — unter **System → KI-Schnittstelle**, ohne Neustart. Bisher ging das nur über `MCP_ENABLED` in der `.env`, also nur mit Zugriff auf den Server und einem Neustart des Backends.

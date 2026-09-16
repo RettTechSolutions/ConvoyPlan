@@ -83,6 +83,33 @@ def _decode_token(token: str, *, allow_stream: bool = False) -> TokenData:
         raise credentials_exception
 
 
+def credential_from_request(request: Request) -> str | None:
+    """Das vorgelegte Token — Header oder Sitzungs-Cookie, ohne jede Prüfung.
+
+    Für Aufrufer **ohne** Dependency-Injection, konkret die Middleware. Sie
+    trifft keine Entscheidung: kein CSRF-Kopf verlangt, keine Signatur
+    geprüft, kein Datenbankzugriff. Wer autorisieren will, nimmt
+    ``get_token_data()``.
+
+    Der Grund, warum es diese Funktion gibt: eine Middleware, die sich das
+    Token selbst aus dem ``Authorization``-Header zieht, hört still auf zu
+    funktionieren, sobald die Anmeldung woanders liegt — genau das ist der
+    Anmeldung im Cookie zweimal passiert (``require_system_read`` und
+    ``ActivityMiddleware``). Beide Wege gehören an eine Stelle."""
+    token = _bearer_from_header(request)
+    if token:
+        return token
+    return cookies.token_from_cookie(request)
+
+
+def _bearer_from_header(request: Request) -> str | None:
+    """Das Token aus ``Authorization: Bearer …``, oder None."""
+    auth = request.headers.get("authorization")
+    if not auth or not auth.lower().startswith("bearer "):
+        return None
+    return auth[7:].strip() or None
+
+
 def _credential(request: Request, header_token: str | None) -> str | None:
     """Das vorzulegende Token — aus dem Header oder aus dem Sitzungs-Cookie.
 
