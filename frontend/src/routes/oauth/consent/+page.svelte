@@ -55,14 +55,48 @@
         }
     });
 
+    /**
+     * Prüft, ob eine Zieladresse angesteuert werden darf.
+     *
+     * Die Adresse kommt vom eigenen Backend, das sie aus einem signierten
+     * Ticket gebaut hat, dessen redirect_uri wiederum gegen die registrierten
+     * URIs des Clients geprüft wurde. Trotzdem wird hier noch einmal geprüft:
+     * eine ungeprüfte Weiterleitung auf genau dem Bildschirm, auf dem jemand
+     * gerade Zugriff erteilt, ist die klassische Open-Redirect-Lücke
+     * (CWE-601) — und eine Sicherheitszusage, die an drei Stellen weiter oben
+     * hängt, ist beim nächsten Umbau weg.
+     *
+     * Zugelassen ist dasselbe wie bei der Registrierung: HTTPS, und HTTP nur
+     * auf Loopback für lokal laufende Programme (RFC 8252).
+     */
+    function isAllowedRedirect(raw: string): boolean {
+        let url: URL;
+        try {
+            url = new URL(raw);
+        } catch {
+            return false;
+        }
+        if (url.protocol === 'https:') return true;
+        if (url.protocol === 'http:') {
+            return ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(url.hostname);
+        }
+        return false;
+    }
+
     async function decide(approve: boolean) {
         if (working) return;
         working = true;
         error = '';
         try {
             const result = await mcpApi.decide(ticket, approve, approve ? selectedOrgId : null);
+            if (!isAllowedRedirect(result.redirect_url)) {
+                error =
+                    'Die Zieladresse des Programms ist nicht zulässig. Es wurde nichts erteilt.';
+                working = false;
+                return;
+            }
             // Zurück zum Client — der übernimmt ab hier den Token-Tausch.
-            window.location.href = result.redirect_url;
+            window.location.assign(result.redirect_url);
         } catch (e) {
             error = e instanceof Error ? e.message : 'Die Entscheidung konnte nicht übermittelt werden.';
             working = false;

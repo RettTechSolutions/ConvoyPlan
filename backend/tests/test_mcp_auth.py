@@ -556,3 +556,65 @@ async def test_client_secret_liegt_verschluesselt_in_der_datenbank():
             assert row.client_secret_encrypted
             assert secret not in row.client_secret_encrypted
         await purge_clients([reg["client_id"]])
+
+
+@pytest.mark.asyncio
+async def test_consent_lehnt_eine_nachtraeglich_entfernte_zieladresse_ab():
+    """Zwischen Ausstellung und Einlösung des Tickets kann sich die
+    Registrierung ändern. Wird die Zieladresse entfernt, darf ein noch
+    offener Consent-Screen nicht mehr dorthin zurückführen — sonst hinge die
+    Zusage allein an der Signatur des Tickets (CWE-601)."""
+    from app.models.oauth_client import OAuthClient
+
+    async with seeded() as fx, mcp_app() as (_app, client):
+        reg = await _register(client)
+        _verifier, challenge = pkce_pair()
+        ticket = await fixtures.authorize(client, reg, challenge)
+
+        async with AsyncSessionLocal() as db:
+            row = await db.get(OAuthClient, reg["client_id"])
+            row.redirect_uris = ["https://inzwischen-etwas-anderes.invalid/cb"]
+            await db.commit()
+
+        bearer = fixtures.convoyplan_access_token(fx.planer, fx.org_a)
+        for approve in (True, False):
+            resp = await client.post(
+                "/api/mcp/consent",
+                json={
+                    "request": ticket,
+                    "approve": approve,
+                    "organization_id": str(fx.org_a.id) if approve else None,
+                },
+                headers={"Authorization": f"Bearer {bearer}"},
+            )
+            assert resp.status_code == 400, f"approve={approve}: {resp.text}"
+            assert "nicht registriert" in resp.json()["detail"]
+        await purge_clients([reg["client_id"]])
+
+
+@pytest.mark.asyncio
+async def test_consent_lehnt_einen_widerrufenen_client_ab():
+    from app.models.oauth_client import OAuthClient
+
+    async with seeded() as fx, mcp_app() as (_app, client):
+        reg = await _register(client)
+        _verifier, challenge = pkce_pair()
+        ticket = await fixtures.authorize(client, reg, challenge)
+
+        async with AsyncSessionLocal() as db:
+            row = await db.get(OAuthClient, reg["client_id"])
+            row.revoked = True
+            await db.commit()
+
+        bearer = fixtures.convoyplan_access_token(fx.planer, fx.org_a)
+        resp = await client.post(
+            "/api/mcp/consent",
+            json={
+                "request": ticket,
+                "approve": True,
+                "organization_id": str(fx.org_a.id),
+            },
+            headers={"Authorization": f"Bearer {bearer}"},
+        )
+        assert resp.status_code == 400
+        await purge_clients([reg["client_id"]])

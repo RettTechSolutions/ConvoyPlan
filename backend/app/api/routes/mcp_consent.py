@@ -98,6 +98,36 @@ def _decode_or_400(ticket: str) -> dict:
     return request
 
 
+async def _client_for(db: AsyncSession, authz: dict) -> OAuthClient:
+    """Den Client der Anfrage laden und die Zieladresse gegenprüfen.
+
+    Das Ticket ist signiert, die ``redirect_uri`` darin hat der Server also
+    selbst hineingeschrieben, nachdem das SDK sie gegen die registrierten
+    URIs geprüft hat. Trotzdem wird hier erneut geprüft, aus zwei Gründen:
+
+    Erstens hängt die Zusage sonst allein an der Signatur — eine Eigenschaft
+    drei Dateien entfernt, die beim nächsten Umbau niemand mehr im Blick hat.
+    Eine ungeprüfte Weiterleitung auf genau dem Bildschirm, auf dem jemand
+    Zugriff erteilt, ist die klassische Open-Redirect-Lücke (CWE-601).
+
+    Zweitens kann sich die Registrierung zwischen Ausstellung und Einlösung
+    des Tickets geändert haben. Wird eine URI entfernt oder der Client
+    widerrufen, soll ein noch offener Consent-Screen nicht mehr dorthin
+    zurückführen.
+    """
+    client = await db.get(OAuthClient, authz["client_id"])
+    if client is None or client.revoked:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Unbekannter Client"
+        )
+    if authz["redirect_uri"] not in (client.redirect_uris or []):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Die Zieladresse ist für diesen Client nicht registriert",
+        )
+    return client
+
+
 async def _memberships(db: AsyncSession, user: User) -> list[tuple[Organization, str]]:
     rows = (
         await db.execute(
@@ -120,11 +150,7 @@ async def read_consent_request(
     _require_enabled()
     authz = _decode_or_400(request)
 
-    client = await db.get(OAuthClient, authz["client_id"])
-    if client is None or client.revoked:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Unbekannter Client"
-        )
+    client = await _client_for(db, authz)
 
     requested = authz.get("scopes") or list(scope_svc.SCOPES_SUPPORTED)
     known = [s for s in scope_svc.ALL_SCOPES if s in set(requested)]
@@ -168,6 +194,9 @@ async def decide_consent(
     _require_enabled()
     authz = _decode_or_400(decision.request)
     issuer = oauth_tokens.issuer_url()
+    # Vor jeder Verzweigung: auch die Absage führt zu einer Weiterleitung und
+    # darf deshalb nur an eine registrierte Adresse gehen.
+    client = await _client_for(db, authz)
 
     if not decision.approve:
         await audit.record(
@@ -222,12 +251,6 @@ async def decide_consent(
                 f"Die Rolle „{membership.role}“ in dieser Organisation gibt keinen "
                 "der angefragten Zugriffe her"
             ),
-        )
-
-    client = await db.get(OAuthClient, authz["client_id"])
-    if client is None or client.revoked:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Unbekannter Client"
         )
 
     code = await oauth_provider.mint_authorization_code(
