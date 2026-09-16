@@ -9,6 +9,11 @@
 # Env: COMPOSE_PROJECT_NAME (default: convoyplan)
 #      STACK_FILE_PATH       (host path to docker-compose.yml — auto-detected if missing)
 #      UPDATE_INTERVAL      (default: 300)
+#      UPDATE_VERIFY_SIGNATURES (default: true — Sigstore-Signatur jedes
+#                            Ziel-Images pruefen, bevor gezogen wird. Auf
+#                            false setzen fuer Air-Gapped-Installationen ohne
+#                            Zugang zu Rekor/Fulcio.)
+#      UPDATE_SIGNATURE_IDENTITY / UPDATE_SIGNATURE_ISSUER (Fork-Overrides)
 set -euo pipefail
 
 INTERVAL="${UPDATE_INTERVAL:-300}"
@@ -470,12 +475,96 @@ _rollback_backend() {
     return 1
 }
 
+# ── Signaturpruefung der Ziel-Images (Sigstore/cosign) ───────────────────────
+# Dieser Container haelt den nackten Docker-Socket. Was er zieht und startet,
+# laeuft als root auf dem Host. Ein Tag allein sagt darueber nichts aus: er
+# bedeutet nur, dass irgendjemand mit Schreibrecht auf die Registry ihn dort
+# gesetzt hat. Die Signatur sagt, WER das Image gebaut hat — naemlich ein
+# Workflow dieses Repositories, keyless ueber GitHubs OIDC-Token
+# (.github/workflows/release.yml und nightly-images.yml).
+#
+# Schlaegt die Pruefung fehl, bleibt die Installation auf dem alten Stand und
+# die Superadmins bekommen eine Mail (deploy_alert.json → backend
+# app/services/deploy_alert.py).
+#
+# Air-Gapped: ohne Zugang zu Rekor/Fulcio kann cosign nicht pruefen. Dafuer
+# UPDATE_VERIFY_SIGNATURES=false — eine bewusste, dokumentierte Entscheidung
+# des Betreibers, kein stiller Fallback.
+VERIFY_SIGNATURES="${UPDATE_VERIFY_SIGNATURES:-true}"
+# Identitaet und Aussteller sind ueberschreibbar, damit ein Fork seine eigenen
+# Images verifizieren kann, ohne das Skript zu patchen.
+SIGNATURE_IDENTITY="${UPDATE_SIGNATURE_IDENTITY:-^https://github.com/RettTechSolutions/ConvoyPlan/}"
+SIGNATURE_ISSUER="${UPDATE_SIGNATURE_ISSUER:-https://token.actions.githubusercontent.com}"
+
+_signature_check_enabled() {
+    case "$(printf '%s' "${VERIFY_SIGNATURES}" | tr '[:upper:]' '[:lower:]')" in
+        0|false|no|off) return 1 ;;
+        *)              return 0 ;;
+    esac
+}
+
+# Prueft die fuenf Ziel-Images des aktiven Kanals. 0 = alle gut (oder Pruefung
+# abgeschaltet), 1 = mindestens eines nicht verifizierbar.
+#
+# Geprueft wird der Tag, nicht der Digest: das ist genau der Ref, den
+# `docker compose pull` gleich aufloest. Zwischen Pruefung und Pull bleibt
+# theoretisch ein Fenster von Sekunden, in dem sich der Tag verschieben
+# koennte — wer das kann, muesste das neue Image aber ebenfalls signieren,
+# sonst faellt es beim naechsten Durchlauf auf.
+_verify_target_images() {
+    if ! _signature_check_enabled; then
+        log "Signaturpruefung abgeschaltet (UPDATE_VERIFY_SIGNATURES=${VERIFY_SIGNATURES}) — Images werden ungeprueft gezogen."
+        return 0
+    fi
+
+    if ! command -v cosign >/dev/null 2>&1; then
+        log "FEHLER: cosign nicht im Updater-Image gefunden — Signaturen nicht pruefbar, Update abgebrochen."
+        _write_deploy_alert "image_signature_invalid" \
+            "cosign fehlt im Updater-Image; die Signaturen der neuen Images konnten nicht geprueft werden. Das Update wurde abgebrochen, die Installation laeuft unveraendert weiter." \
+            "${UPDATER_IMAGE:-unbekannt}" ""
+        return 1
+    fi
+
+    local img failed=""
+    for img in "${BACKEND_IMAGE:-}" "${FRONTEND_IMAGE:-}" "${GRAPHHOPPER_IMAGE:-}" \
+               "${UPDATER_IMAGE:-}" "${REGION_MERGE_IMAGE:-}"; do
+        [ -z "${img}" ] && continue
+        if cosign verify \
+                --certificate-identity-regexp "${SIGNATURE_IDENTITY}" \
+                --certificate-oidc-issuer "${SIGNATURE_ISSUER}" \
+                "${img}" >/dev/null 2>&1; then
+            log "Signatur ok: ${img}"
+        else
+            log "FEHLER: keine gueltige Signatur fuer ${img}"
+            failed="${failed}${failed:+, }${img}"
+        fi
+    done
+
+    if [ -n "${failed}" ]; then
+        log "Update abgebrochen — nicht verifizierbare Images: ${failed}"
+        _write_deploy_alert "image_signature_invalid" \
+            "Die Signaturpruefung ist fehlgeschlagen. Das Update wurde NICHT installiert, die Installation laeuft unveraendert weiter. Pruefe, ob die Images aus einem Workflow dieses Repositories stammen." \
+            "${failed}" ""
+        return 1
+    fi
+
+    log "Alle Ziel-Images tragen eine gueltige Signatur."
+    return 0
+}
+
 do_update() {
     log "Starte Image-Update (Kanal: $(read_channel))…"
 
     # Image-Tags des aktiven Kanals exportieren (:latest / :beta / :nightly),
     # damit docker compose pull/up die richtigen Refs interpoliert.
     _apply_channel_images
+
+    # Vor dem ersten Pull: stammen die Ziel-Images wirklich aus diesem Repo?
+    # Fehlschlag heisst abbrechen, nicht warnen — ein unsigniertes Image hier
+    # durchzuwinken waere root auf dem Host.
+    if ! _verify_target_images; then
+        return 1
+    fi
 
     # Self-repair: den VOR diesem Deploy laufenden Backend-Image-Stand merken
     # (per Image-ID, damit ein verschobenes Tag den Rollback nicht aushebelt)

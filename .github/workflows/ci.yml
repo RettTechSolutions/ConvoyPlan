@@ -263,6 +263,12 @@ jobs:
       # Default von 300s könnte das bis zu 5 Minuten kosten, bevor Phase 1
       # überhaupt beginnt.
       UPDATE_INTERVAL: "15"
+      # Die Images in diesem Job werden lokal aus dem PR-Stand gebaut und sind
+      # deshalb nicht signiert — die Signaturpruefung des Updaters wuerde
+      # jeden Auto-Update-Zyklus abbrechen und alle 15s einen Alarm schreiben.
+      # Genau der Fall, fuer den der Schalter da ist (siehe
+      # docker/updater/update-images.sh, _verify_target_images).
+      UPDATE_VERIFY_SIGNATURES: "false"
       # Ersteinstieg bewusst NICHT auf Berlin: eine von Berlin verschiedene,
       # winzige Region hält den Erststart kurz und macht den späteren Wechsel
       # zu einem echten Regionswechsel (altes Extract/alter Graph müssen
