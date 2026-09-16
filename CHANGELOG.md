@@ -31,6 +31,16 @@ ursprünglichen SemVer-Nummern.
 
   Zwei Grenzen benennt das Portal statt sie zu verschweigen: ohne hinterlegte Setup-Werte lässt sich keine Konfiguration erzeugen (dann erscheint der Knopf gar nicht), und wenn die Verwaltungsschnittstelle des Proxys nicht antwortet, ist der Zustand **unbekannt** — das steht dann so da und wird nicht als Fehler ausgegeben.
 
+- **„Proxy reparieren" scheiterte auf gewachsenen Installationen mit „Permission denied".** Bei Instanzen, deren Daten-Volume aus der Zeit stammt, als das Backend noch als `root` lief, gehört das gemeinsame Verzeichnis `/certs` weiterhin `root`: Docker überträgt die Besitzrechte aus dem Abbild nur beim allerersten Mount eines leeren Volumes. Das Backend läuft längst als eigener Benutzer und kam dort nicht mehr zum Schreiben — lautlos bei jedem Start, und sichtbar als roter Balken, sobald jemand den Knopf drückte. Betroffen war davon auch der Zertifikats-Upload des Setup-Assistenten, aus demselben Grund.
+
+  Drei Dinge ändern sich. **Erstens** ersetzt das Backend die Konfigurationsdatei jetzt, statt sie zu überschreiben — damit genügt Schreibrecht auf das Verzeichnis, und eine Datei, die noch einem früheren Benutzer gehört, steht nicht mehr im Weg. Nebenbei kann ein abgebrochener Schreibvorgang kein halbes Caddyfile mehr hinterlassen, mit dem der Proxy beim nächsten Start nicht hochkäme.
+
+  **Zweitens** gibt der Knopf nicht mehr auf, wenn das Schreiben scheitert: die Routen landen trotzdem im laufenden Proxy, denn dafür braucht es keine Datei. Die Schnittstelle ist danach von außen erreichbar. Das Portal sagt allerdings klar, dass ein Neustart des Proxy-Containers sie wieder verliert, und bietet den Knopf weiter an — statt einen grünen Haken zu zeigen, der nur die halbe Wahrheit wäre.
+
+  **Drittens** rückt der Proxy-Container die Besitzrechte auf `/certs` beim Start selbst gerade. Er ist der einzige Prozess an diesem Volume, der die nötigen Rechte hat. Damit heilt sich das Problem **mit dem nächsten Update von allein** — ohne SSH-Zugriff auf den Server.
+
+  Die Fehlermeldung stellt außerdem keine Rückfrage mehr („Läuft der Backend-Container mit Schreibrecht auf /certs?"), die sich ohne Serverzugang gar nicht beantworten ließ, sondern nennt die Ursache und was die Instanz selbst dagegen tut.
+
 ### Fixed
 
 - **Die Kurve „aktive Nutzer" in der Systemübersicht stand seit der Cookie-Umstellung auf null.** Die Middleware, die Portalnutzung mitschreibt, zog sich die Anmeldung selbst aus dem `Authorization`-Header — und den schickt das Portal seit der Umstellung nicht mehr. Jeder Aufruf wurde damit als anonym gezählt: die Last- und Fehlerkurven stimmten weiter, die Nutzerzahlen zeigten dauerhaft niemanden. Die Middleware liest die Sitzung jetzt aus derselben Quelle wie der Rest der Anwendung, also Header **oder** Cookie.

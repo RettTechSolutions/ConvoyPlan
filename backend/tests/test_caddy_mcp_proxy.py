@@ -11,6 +11,8 @@ Konfiguration ansieht und nicht die Datei auf der Platte. Genau der Fall — die
 Datei stimmt, der Container läuft noch mit der alten Konfiguration — war der
 echte.
 """
+import errno
+import re
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -135,69 +137,216 @@ async def test_unbekannter_zustand_loest_keine_reparatur_aus():
 # ── Die Reparatur ────────────────────────────────────────────────────────
 
 
+@pytest.fixture
+def certs(tmp_path, monkeypatch):
+    """Ein echtes /certs im Temp-Verzeichnis.
+
+    Bewusst kein gepatchtes ``write_text``: die interessante Eigenschaft des
+    Schreibwegs ist, *wie* die Datei ersetzt wird, und das sähe ein Mock nicht."""
+    monkeypatch.setattr(caddy_config, "CERTS_DIR", tmp_path)
+    monkeypatch.setattr(caddy_config, "CADDYFILE_PATH", tmp_path / "Caddyfile")
+    return tmp_path
+
+
+def _setup_werte(vorhanden: bool = True):
+    return patch.object(
+        caddy_config, "_persisted_setup_values",
+        AsyncMock(return_value=("web.example.de", "auto", "a@b.de") if vorhanden else None),
+    )
+
+
 async def test_reparatur_ohne_setup_werte_scheitert_mit_begruendung():
     db = AsyncMock()
-    with patch.object(caddy_config, "_persisted_setup_values", AsyncMock(return_value=None)):
-        erfolg, text = await caddy_config.repair_mcp_routes(db)
-    assert erfolg is False
-    assert "Setup-Assistenten" in text
+    with _setup_werte(False):
+        ergebnis = await caddy_config.repair_mcp_routes(db)
+    assert ergebnis.erfolg is False
+    assert "Setup-Assistenten" in ergebnis.meldung
 
 
-async def test_reparatur_schreibt_und_laedt_nach():
+async def test_reparatur_schreibt_und_laedt_nach(certs):
     db = AsyncMock()
-    geschrieben: dict[str, str] = {}
     with (
-        patch.object(
-            caddy_config, "_persisted_setup_values",
-            AsyncMock(return_value=("web.example.de", "auto", "a@b.de")),
-        ),
-        patch.object(Path, "mkdir", lambda self, **kw: None),
-        patch.object(Path, "write_text", lambda self, text, **kw: geschrieben.update(t=text)),
+        _setup_werte(),
         patch.object(caddy_config, "reload_caddy", AsyncMock(return_value=True)),
         patch.object(caddy_config, "mcp_routes_live", AsyncMock(return_value=True)),
     ):
-        erfolg, text = await caddy_config.repair_mcp_routes(db)
+        ergebnis = await caddy_config.repair_mcp_routes(db)
 
-    assert erfolg is True, text
+    assert ergebnis.erfolg is True, ergebnis.meldung
+    assert ergebnis.dauerhaft is True
     # Beides muss passieren: die Datei überlebt den Neustart, das Nachladen
     # wirkt sofort. Eines allein wäre eine halbe Reparatur.
-    assert caddy_config.has_mcp_routes(geschrieben["t"])
-    assert "web.example.de" in geschrieben["t"]
+    geschrieben = (certs / "Caddyfile").read_text()
+    assert caddy_config.has_mcp_routes(geschrieben)
+    assert "web.example.de" in geschrieben
 
 
-async def test_reparatur_meldet_fehlschlag_wenn_die_pfade_danach_fehlen():
+async def test_reparatur_meldet_fehlschlag_wenn_die_pfade_danach_fehlen(certs):
     """Geschrieben, geladen — und trotzdem nicht da. Das darf nicht als
     Erfolg durchgehen, sonst sucht der Betreiber an der falschen Stelle."""
     db = AsyncMock()
     with (
-        patch.object(
-            caddy_config, "_persisted_setup_values",
-            AsyncMock(return_value=("web.example.de", "auto", "a@b.de")),
-        ),
-        patch.object(Path, "mkdir", lambda self, **kw: None),
-        patch.object(Path, "write_text", lambda self, text, **kw: None),
+        _setup_werte(),
         patch.object(caddy_config, "reload_caddy", AsyncMock(return_value=True)),
         patch.object(caddy_config, "mcp_routes_live", AsyncMock(return_value=False)),
     ):
-        erfolg, text = await caddy_config.repair_mcp_routes(db)
-    assert erfolg is False
-    assert "fehlen" in text
+        ergebnis = await caddy_config.repair_mcp_routes(db)
+    assert ergebnis.erfolg is False
+    assert "fehlen" in ergebnis.meldung
 
 
-async def test_reparatur_meldet_wenn_caddy_nicht_nachlaedt():
+async def test_reparatur_meldet_wenn_caddy_nicht_nachlaedt(certs):
     db = AsyncMock()
     with (
-        patch.object(
-            caddy_config, "_persisted_setup_values",
-            AsyncMock(return_value=("web.example.de", "auto", "a@b.de")),
-        ),
-        patch.object(Path, "mkdir", lambda self, **kw: None),
-        patch.object(Path, "write_text", lambda self, text, **kw: None),
+        _setup_werte(),
         patch.object(caddy_config, "reload_caddy", AsyncMock(return_value=False)),
     ):
-        erfolg, text = await caddy_config.repair_mcp_routes(db)
-    assert erfolg is False
-    assert "nächsten Start" in text
+        ergebnis = await caddy_config.repair_mcp_routes(db)
+    assert ergebnis.erfolg is False
+    assert "nächsten Start" in ergebnis.meldung
+
+
+# ── Wenn /certs dem Backend nicht gehört ─────────────────────────────────
+#
+# Der Fall aus der Produktion: das Volume stammt aus der Zeit, als das Backend
+# noch als root lief, und gehört seitdem root. „Proxy reparieren" endete mit
+# „Permission denied" — und ließ eine Instanz zurück, deren MCP-Endpunkt
+# unerreichbar blieb, obwohl das Nachladen gar keine Datei braucht.
+
+
+def _eacces():
+    return patch.object(
+        caddy_config, "_caddyfile_schreiben",
+        MagicMock(side_effect=PermissionError(errno.EACCES, "Permission denied")),
+    )
+
+
+async def test_ohne_schreibrecht_wird_trotzdem_nachgeladen(certs):
+    """Erreichbar schlagen zwei Zeilen Fehlermeldung."""
+    db = AsyncMock()
+    reload = AsyncMock(return_value=True)
+    with (
+        _setup_werte(),
+        _eacces(),
+        patch.object(caddy_config, "reload_caddy", reload),
+        patch.object(caddy_config, "mcp_routes_live", AsyncMock(return_value=True)),
+    ):
+        ergebnis = await caddy_config.repair_mcp_routes(db)
+
+    reload.assert_awaited_once()
+    assert ergebnis.erfolg is True, ergebnis.meldung
+
+
+async def test_ohne_schreibrecht_ist_die_reparatur_nicht_dauerhaft(certs):
+    """…und sagt das auch. Ein grüner Haken wäre hier gelogen: der nächste
+    Neustart des Caddy-Containers wirft die Routen weg."""
+    db = AsyncMock()
+    with (
+        _setup_werte(),
+        _eacces(),
+        patch.object(caddy_config, "reload_caddy", AsyncMock(return_value=True)),
+        patch.object(caddy_config, "mcp_routes_live", AsyncMock(return_value=True)),
+    ):
+        ergebnis = await caddy_config.repair_mcp_routes(db)
+
+    assert ergebnis.dauerhaft is False
+    assert "Neustart" in ergebnis.meldung
+    # Keine Rückfrage an jemanden, der sich dafür per SSH einloggen müsste,
+    # sondern die Ursache und was die Instanz selbst dagegen tut.
+    assert "/certs" in ergebnis.meldung
+    assert "Update" in ergebnis.meldung
+
+
+async def test_weder_schreiben_noch_laden_ist_ein_fehlschlag(certs):
+    db = AsyncMock()
+    with (
+        _setup_werte(),
+        _eacces(),
+        patch.object(caddy_config, "reload_caddy", AsyncMock(return_value=False)),
+    ):
+        ergebnis = await caddy_config.repair_mcp_routes(db)
+    assert ergebnis.erfolg is False
+    assert "/certs" in ergebnis.meldung
+
+
+async def test_der_start_laedt_auch_nach_wenn_er_nicht_schreiben_darf(certs):
+    """Der eigentliche Grund, warum die betroffene Instanz nie von selbst
+    genas: der Retrofit beim Start warf beim Schreibfehler hin und ließ das
+    Nachladen aus — obwohl genau das ohne Datei auskommt und allein schon die
+    Schnittstelle erreichbar gemacht hätte. Bei *jedem* Start aufs Neue."""
+    (certs / "Caddyfile").write_text("# eine Caddyfile von vor dem MCP-Server\n")
+    reload = AsyncMock(return_value=True)
+    with (
+        _setup_werte(),
+        _eacces(),
+        patch.object(caddy_config, "reload_caddy", reload),
+    ):
+        hinterlegt = await caddy_config.ensure_caddyfile_current(AsyncMock())
+
+    reload.assert_awaited_once()
+    geladen = reload.await_args.args[0]
+    assert caddy_config.has_mcp_routes(geladen)
+    # …und meldet trotzdem nicht „erledigt": hinterlegt ist nichts.
+    assert hinterlegt is False
+
+
+async def test_nach_erfolglosem_schreiben_bleibt_der_knopf_erreichbar():
+    """Sonst wäre der Zustand „läuft, aber nicht hinterlegt" eine Sackgasse:
+    die Diagnose meldete laufende Routen, das Portal verstecke den Knopf, und
+    der nächste Neustart nähme die Routen wieder mit."""
+    befund = await _diagnose(
+        live=True,
+        datei_text="# eine Caddyfile ohne MCP-Routen\n",
+        setup=True,
+    )
+    assert befund.routen_aktiv is True
+    assert befund.datei_hat_routen is False
+    assert befund.reparierbar is True
+
+
+# ── Der Schreibweg selbst ────────────────────────────────────────────────
+
+
+def test_die_datei_wird_ersetzt_und_nicht_beschrieben(certs):
+    """Der Grund, warum os.replace und nicht write_text: eine Datei, die
+    jemand anderem gehört, lässt sich ersetzen, solange das Verzeichnis
+    stimmt — überschreiben lässt sie sich nicht. Beobachtbar an der Inode."""
+    ziel = certs / "Caddyfile"
+    ziel.write_text("alt")
+    vorher = ziel.stat().st_ino
+
+    caddy_config._caddyfile_schreiben("neu")
+
+    assert ziel.read_text() == "neu"
+    assert ziel.stat().st_ino != vorher
+
+
+def test_schreiben_laesst_keine_temporaerdateien_zurueck(certs):
+    caddy_config._caddyfile_schreiben("neu")
+    assert [p.name for p in certs.iterdir()] == ["Caddyfile"]
+
+
+def test_ein_abgebrochener_schreibvorgang_laesst_die_alte_datei_stehen(certs):
+    """Ein halbes Caddyfile fällt erst beim nächsten Caddy-Start auf — also
+    dann, wenn niemand hinsieht."""
+    ziel = certs / "Caddyfile"
+    ziel.write_text("funktionierende alte Konfiguration")
+
+    with (
+        patch.object(caddy_config.os, "replace", side_effect=OSError("kaputt")),
+        pytest.raises(OSError),
+    ):
+        caddy_config._caddyfile_schreiben("neu")
+
+    assert ziel.read_text() == "funktionierende alte Konfiguration"
+    assert [p.name for p in certs.iterdir()] == ["Caddyfile"]
+
+
+def test_die_geschriebene_datei_ist_lesbar(certs):
+    """mkstemp legt mit 0600 an. Caddy läuft zwar als root, aber eine
+    Konfigurationsdatei, die nur ihr Erzeuger lesen kann, ist eine Falle."""
+    caddy_config._caddyfile_schreiben("neu")
+    assert (certs / "Caddyfile").stat().st_mode & 0o044
 
 
 # ── Die beiden Pfadlisten dürfen nicht auseinanderlaufen ─────────────────
@@ -214,3 +363,45 @@ def test_ein_erzeugtes_caddyfile_traegt_alle_pfade():
     has_mcp_routes auch erkannt werden."""
     caddyfile = caddy_config.generate_caddyfile("web.example.de", "auto", "a@b.de")
     assert caddy_config.has_mcp_routes(caddyfile)
+
+
+# ── Die Voraussetzung dafür, dass das Backend überhaupt schreiben kann ───
+#
+# Auf gewachsenen Installationen gehört /certs noch root, weil Docker die
+# Besitzrechte aus dem Image nur beim ersten Mount eines leeren Volumes
+# überträgt. Caddys Entrypoint rückt das beim Start gerade — er ist der
+# einzige Prozess an diesem Volume, der als root läuft. Beides hier geprüft,
+# weil beides aus Versehen wieder verschwindet: der Mount, wenn jemand aus
+# Vorsicht ein :ro ergänzt, und die uid, wenn sie im Dockerfile wandert.
+
+_REPO = Path(__file__).resolve().parents[2]
+
+
+def _backend_uid() -> str:
+    dockerfile = (_REPO / "backend" / "Dockerfile").read_text()
+    treffer = re.search(r"useradd --uid (\d+)", dockerfile)
+    assert treffer, "backend/Dockerfile legt appuser nicht mehr per --uid an"
+    return treffer.group(1)
+
+
+def test_der_entrypoint_zieht_die_rechte_auf_den_benutzer_des_backends():
+    """Eine abweichende uid wäre fatal *und* unsichtbar: der chown liefe
+    durch, das Backend bliebe ausgesperrt."""
+    entrypoint = (_REPO / "caddy" / "entrypoint.sh").read_text()
+    uid = _backend_uid()
+    assert f"chown -R {uid}:{uid} /certs" in entrypoint
+
+
+def test_caddy_mountet_certs_nicht_nur_lesend():
+    """Sonst scheitert der chown still und alles bleibt beim Alten."""
+    compose = (_REPO / "docker-compose.yml").read_text()
+    assert "cert_uploads:/certs:ro" not in compose
+
+
+def test_der_chown_haelt_caddy_nicht_vom_starten_ab():
+    """`set -e` steht ganz oben. Ohne aufgefangenen Fehlschlag brächte ein
+    Dateisystem ohne chown den Reverse Proxy gar nicht erst hoch — aus einer
+    fehlenden MCP-Route würde eine unerreichbare Instanz."""
+    entrypoint = (_REPO / "caddy" / "entrypoint.sh").read_text()
+    zeile = next(z for z in entrypoint.splitlines() if "chown -R" in z)
+    assert zeile.rstrip().endswith("\\") or "||" in zeile

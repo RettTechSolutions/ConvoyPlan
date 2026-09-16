@@ -226,7 +226,12 @@ services:
       - ${CADDY_ENTRYPOINT_PATH:-./caddy/entrypoint.sh}:/entrypoint.sh:ro
       - caddy_data:/data
       - caddy_config:/config
-      - cert_uploads:/certs:ro
+      # Schreibend, obwohl Caddy hier nur liest: sein Entrypoint zieht beim
+      # Start die Besitzrechte auf den Benutzer des Backends gerade (uid 1001).
+      # Nötig auf Installationen, deren Volume aus der Zeit stammt, als das
+      # Backend noch als root lief. Ein zusätzliches Risiko entsteht kaum —
+      # Caddy liest aus diesem Volume ohnehin den privaten TLS-Schlüssel.
+      - cert_uploads:/certs
     entrypoint: ["/bin/sh", "/entrypoint.sh"]
     depends_on:
       - frontend

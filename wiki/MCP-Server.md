@@ -46,6 +46,24 @@ Der Reiter **System → KI-Schnittstelle** prüft das jetzt mit und sagt es: ste
 
 Geprüft wird dabei die **laufende** Konfiguration über Caddys Admin-API, nicht eine Datei auf der Platte. Das ist der Unterschied, der zählt: die Datei kann längst stimmen, während der Caddy-Container noch mit der alten Konfiguration läuft.
 
+#### „Die Schnittstelle ist erreichbar, aber nicht dauerhaft hinterlegt"
+
+Auf Installationen, die aus der Zeit stammen, als das Backend noch als `root`
+lief, gehört das gemeinsame Verzeichnis `/certs` weiterhin `root` — Docker
+überträgt die Besitzrechte aus dem Abbild nur beim allerersten Mount eines
+leeren Volumes. Das Backend läuft seitdem als eigener Benutzer und darf dort
+nicht mehr schreiben.
+
+Der Knopf bringt die Routen in diesem Fall trotzdem in den laufenden Proxy —
+das Nachladen braucht keine Datei — und sagt dazu, dass ein Neustart des
+Proxy-Containers sie wieder verliert. Der Proxy zieht die Besitzrechte beim
+nächsten Start selbst gerade, das passiert also spätestens mit dem nächsten
+Update von allein. Danach genügt ein erneuter Klick, und die Konfiguration ist
+dauerhaft hinterlegt. **Kein SSH-Zugriff nötig.**
+
+Solange das aussteht, bleibt der Knopf sichtbar, obwohl die Schnittstelle
+erreichbar ist — der Hinweis daneben sagt, warum.
+
 Zwei Fälle kann der Knopf nicht lösen:
 
 - **Die Setup-Werte fehlen** (Domain, TLS-Modus stehen nicht in der Datenbank). Daraus lässt sich keine Konfiguration erzeugen — dann hilft nur der Setup-Assistent. Das Portal bietet den Knopf in diesem Fall gar nicht erst an.

@@ -1469,8 +1469,17 @@
         mcpToggleSuccess = '';
         try {
             mcpStatus = await mcpAdminApi.repairProxy();
-            mcpToggleSuccess = 'Der Reverse Proxy leitet die MCP-Pfade jetzt ans Backend.';
-            setTimeout(() => { mcpToggleSuccess = ''; }, 6000);
+            // Der Text kommt vom Backend, nicht von hier: eine Reparatur kann
+            // gelingen, ohne dauerhaft zu sein (Routen geladen, Konfiguration
+            // nicht hinterlegt). Ein festverdrahtetes „jetzt erledigt" wäre in
+            // genau dem Fall falsch. Bleibt dann auch stehen — der Satz will
+            // gelesen werden.
+            mcpToggleSuccess =
+                mcpStatus.proxy_repair_note ??
+                'Der Reverse Proxy leitet die MCP-Pfade jetzt ans Backend.';
+            if (!mcpStatus.proxy_repairable) {
+                setTimeout(() => { mcpToggleSuccess = ''; }, 6000);
+            }
         } catch (e) {
             mcpToggleError = e instanceof Error ? e.message : 'Reparatur fehlgeschlagen';
         } finally {
@@ -2791,14 +2800,19 @@
                      er nicht heran. -->
                 {#if mcpStatus.proxy_hint}
                     <div class="license-status-row" style="margin-top:.75rem">
-                        {#if mcpStatus.proxy_routes_live === false}
+                        {#if mcpStatus.proxy_routes_live === false || mcpStatus.proxy_repairable}
                             <span class="badge badge-warn">Proxy</span>
                         {:else}
                             <span class="badge">Proxy</span>
                         {/if}
                         <span class="hint" style="margin-left:.5rem">{mcpStatus.proxy_hint}</span>
                     </div>
-                    {#if mcpStatus.proxy_repairable && mcpStatus.proxy_routes_live === false}
+                    <!-- Nur an proxy_repairable geknüpft, nicht zusätzlich an
+                         „Routen fehlen": leiten sie bereits weiter, ohne dass
+                         die Konfiguration hinterlegt ist, muss der Knopf
+                         erreichbar bleiben — sonst überlebt der Zustand den
+                         nächsten Neustart nicht und niemand käme mehr heran. -->
+                    {#if mcpStatus.proxy_repairable}
                         <button
                             class="btn-primary"
                             style="margin-top:.5rem"

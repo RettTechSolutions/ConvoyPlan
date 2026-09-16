@@ -1252,6 +1252,8 @@ export interface McpStatus {
     proxy_repairable: boolean;
     /** Klartext für den Betreiber, oder null wenn alles passt. */
     proxy_hint: string | null;
+    /** Was der Reparatur-Knopf erreicht hat — nur dessen Antwort trägt es. */
+    proxy_repair_note?: string | null;
 }
 
 export interface McpClient {

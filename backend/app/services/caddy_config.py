@@ -19,8 +19,11 @@ ISO 27001 A.8.26 (application security requirements).
 
 from __future__ import annotations
 
+import errno
 import logging
 import os
+import tempfile
+from contextlib import suppress
 from pathlib import Path
 
 from dataclasses import dataclass
@@ -239,8 +242,17 @@ class ProxyBefund:
         """Ob eine Reparatur aus dem Portal heraus etwas ausrichten kann.
 
         Ohne die Setup-Werte (Domain, TLS-Modus) lässt sich kein Caddyfile
-        erzeugen — dann hilft nur der Setup-Assistent oder die Datei von Hand."""
-        return self.routen_aktiv is not True and self.setup_werte_vorhanden
+        erzeugen — dann hilft nur der Setup-Assistent oder die Datei von Hand.
+
+        Laufende Routen allein genügen nicht: trägt die hinterlegte Datei sie
+        nicht, verliert der nächste Caddy-Neustart sie wieder. Genau dieser
+        Zustand entsteht, wenn die Reparatur zwar nachladen, aber nicht
+        schreiben konnte — der Knopf muss dann erreichbar bleiben."""
+        if not self.setup_werte_vorhanden:
+            return False
+        if self.routen_aktiv is not True:
+            return True
+        return self.persistierte_datei and self.datei_hat_routen is False
 
 
 async def _live_config() -> str | None:
@@ -288,12 +300,78 @@ async def diagnose_proxy(db: AsyncSession) -> ProxyBefund:
     )
 
 
-async def repair_mcp_routes(db: AsyncSession) -> tuple[bool, str]:
-    """Die MCP-Routen in den Proxy bringen. Gibt (Erfolg, Begründung).
+@dataclass(frozen=True)
+class Reparatur:
+    """Was die Proxy-Reparatur erreicht hat.
+
+    ``erfolg`` und ``dauerhaft`` sind zwei Fragen, nicht eine: die Routen
+    können im laufenden Proxy stehen, ohne dass sich die Konfiguration
+    hinterlegen ließ. Das ist kein Fehlschlag — die Schnittstelle ist danach
+    erreichbar —, aber auch kein fertiger Zustand, denn der nächste Neustart
+    des Caddy-Containers wirft sie weg. Wer beides in ein Bool presst, muss
+    sich für eine Lüge entscheiden."""
+
+    erfolg: bool
+    dauerhaft: bool
+    meldung: str
+
+
+def _caddyfile_schreiben(inhalt: str) -> None:
+    """Das Caddyfile atomar ersetzen.
+
+    Über eine Temporärdatei im Zielverzeichnis und ``os.replace``. Zwei Gründe:
+
+    Erstens hinterlässt ein abgebrochener Schreibvorgang so kein halbes
+    Caddyfile — mit dem käme Caddy beim nächsten Start nicht hoch, und zwar
+    genau dann, wenn niemand hinsieht.
+
+    Zweitens ersetzt ``os.replace`` eine Datei, die einem anderen Benutzer
+    gehört, solange das *Verzeichnis* beschreibbar ist. Auf gewachsenen
+    Installationen gehört ``/certs/Caddyfile`` oft noch einem früheren, als
+    root laufenden Backend; ``write_text`` scheiterte dort mit EACCES, obwohl
+    an den Rechten nichts auszusetzen war.
+    """
+    CERTS_DIR.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=CERTS_DIR, prefix=".Caddyfile.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(inhalt)
+        # mkstemp legt mit 0600 an; Caddy soll die Datei lesen können, auch
+        # wenn es einmal nicht als root laufen sollte.
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, CADDYFILE_PATH)
+    except BaseException:
+        with suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
+def _rechte_hinweis(exc: OSError) -> str:
+    """Warum das Schreiben scheiterte, in einem Satz für den Betreiber.
+
+    Bei EACCES ist die Ursache bekannt und die Frage „läuft der Container mit
+    Schreibrecht?" nur eine Rückfrage, die niemand ohne SSH beantworten kann —
+    also lieber sagen, was die Instanz selbst dagegen tut."""
+    if exc.errno == errno.EACCES:
+        return (
+            "Das Verzeichnis /certs gehört noch einem anderen Benutzer als dem "
+            "Backend — ein Überbleibsel aus der Zeit, als das Backend als root "
+            "lief. Der Caddy-Container zieht die Besitzrechte beim nächsten "
+            "Update gerade; danach genügt ein erneuter Klick."
+        )
+    return f"Das Schreiben scheiterte mit: {exc.strerror}."
+
+
+async def repair_mcp_routes(db: AsyncSession) -> Reparatur:
+    """Die MCP-Routen in den Proxy bringen.
 
     Schreibt ein frisch erzeugtes Caddyfile nach ``/certs/Caddyfile`` und lädt
-    es über die Admin-API nach. Beides ist nötig: das Laden wirkt sofort, die
+    es über die Admin-API nach. Beides ist gewollt: das Laden wirkt sofort, die
     Datei sorgt dafür, dass es einen Caddy-Neustart übersteht.
+
+    Scheitert nur das Schreiben, wird trotzdem nachgeladen. Ein erreichbarer
+    MCP-Endpunkt, der einen Neustart nicht überlebt, ist mehr wert als eine
+    Fehlermeldung — und der Unterschied steht in der Rückmeldung.
 
     Anders als ``ensure_caddyfile_current`` steigt diese Funktion **nicht**
     aus, wenn noch keine persistierte Datei existiert. Genau dieser Fall — der
@@ -304,42 +382,58 @@ async def repair_mcp_routes(db: AsyncSession) -> tuple[bool, str]:
     dem Portal und nicht beim Start."""
     werte = await _persisted_setup_values(db)
     if werte is None:
-        return False, (
+        return Reparatur(False, False, (
             "Die Setup-Werte (Domain, TLS-Modus) stehen nicht in der Datenbank — "
             "daraus lässt sich keine Proxy-Konfiguration erzeugen. Bitte den "
             "Setup-Assistenten erneut durchlaufen."
-        )
+        ))
 
     domain, tls_mode, acme_email = werte
     caddyfile = generate_caddyfile(domain, tls_mode, acme_email)
+
+    schreibfehler: OSError | None = None
     try:
-        CERTS_DIR.mkdir(parents=True, exist_ok=True)
-        CADDYFILE_PATH.write_text(caddyfile)
+        _caddyfile_schreiben(caddyfile)
     except OSError as exc:
+        schreibfehler = exc
         logger.warning("Caddyfile konnte nicht geschrieben werden: %s", exc)
-        return False, (
-            f"Die Proxy-Konfiguration ließ sich nicht schreiben ({exc.strerror}). "
-            "Läuft der Backend-Container mit Schreibrecht auf /certs?"
-        )
 
     if not await reload_caddy(caddyfile):
-        return False, (
-            "Die Konfiguration wurde geschrieben, aber Caddy hat sie nicht "
+        if schreibfehler is not None:
+            return Reparatur(False, False, (
+                "Die Proxy-Konfiguration ließ sich weder hinterlegen noch "
+                f"nachladen. {_rechte_hinweis(schreibfehler)} Caddys Admin-API "
+                "war zudem nicht erreichbar."
+            ))
+        return Reparatur(False, False, (
+            "Die Konfiguration wurde hinterlegt, aber Caddy hat sie nicht "
             "übernommen — die Admin-API war nicht erreichbar. Sie greift beim "
             "nächsten Start des Caddy-Containers."
-        )
+        ))
 
     if await mcp_routes_live() is False:
         # Geschrieben, geladen, und trotzdem fehlen die Pfade: dann stimmt an
         # der erzeugten Konfiguration etwas nicht, und das soll nicht als
         # Erfolg durchgehen.
-        return False, (
+        return Reparatur(False, False, (
             "Die Konfiguration wurde übernommen, die MCP-Pfade fehlen aber "
             "weiterhin. Bitte die Logs des Backends und von Caddy ansehen."
+        ))
+
+    if schreibfehler is not None:
+        logger.info(
+            "MCP-Routen im laufenden Proxy hergestellt (Domain %s), aber nicht "
+            "hinterlegt", domain,
         )
+        return Reparatur(True, False, (
+            "Die MCP-Pfade sind jetzt im laufenden Proxy aktiv — die "
+            "Schnittstelle ist von außen erreichbar. Dauerhaft hinterlegen "
+            f"ließ sich die Konfiguration nicht. {_rechte_hinweis(schreibfehler)} "
+            "Bis dahin verliert ein Neustart des Caddy-Containers die Routen."
+        ))
 
     logger.info("MCP-Routen im Proxy hergestellt (Domain %s)", domain)
-    return True, "Der Reverse Proxy leitet die MCP-Pfade jetzt ans Backend."
+    return Reparatur(True, True, "Der Reverse Proxy leitet die MCP-Pfade jetzt ans Backend.")
 
 
 async def _persisted_setup_values(db: AsyncSession) -> tuple[str, str, str] | None:
@@ -399,16 +493,33 @@ async def ensure_caddyfile_current(db: AsyncSession) -> bool:
 
         domain, tls_mode, acme_email = values
         regenerated = generate_caddyfile(domain, tls_mode, acme_email)
-        CADDYFILE_PATH.write_text(regenerated)
+
+        # Schreiben und Nachladen sind unabhängig voneinander. Gehört /certs
+        # noch einem früheren, als root laufenden Backend, scheitert das
+        # Schreiben — und vor dieser Trennung blieb dann auch das Nachladen
+        # aus. Eine solche Instanz hat den Retrofit bei jedem einzelnen Start
+        # verpasst, obwohl er nur über die Admin-API hätte laufen müssen.
+        try:
+            _caddyfile_schreiben(regenerated)
+            hinterlegt = True
+        except OSError as exc:
+            hinterlegt = False
+            logger.warning(
+                "Persisted Caddyfile could not be rewritten (%s) — applying the "
+                "config via the admin API only; it will not survive a Caddy "
+                "restart until the ownership of /certs is corrected.", exc,
+            )
+
         reloaded = await reload_caddy(regenerated)
         logger.warning(
             "Persisted Caddyfile was missing %s and was regenerated for domain %s "
-            "(live reload: %s).",
+            "(persisted: %s, live reload: %s).",
             " and ".join(missing),
             domain,
+            "ok" if hinterlegt else "failed",
             "ok" if reloaded else "deferred to next Caddy start",
         )
-        return True
+        return hinterlegt
     except Exception:
         logger.warning("Caddyfile currency check failed", exc_info=True)
         return False
