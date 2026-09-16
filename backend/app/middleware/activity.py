@@ -1,9 +1,15 @@
 """Middleware, die Portalnutzung für die Systemübersicht mitschreibt.
 
 Pro Request werden zwei Dinge festgehalten: Antwortzeit/Statuscode (für die
-Last- und Fehlerkurve) und — sofern ein Bearer-Token mitkommt — die Benutzer-ID
+Last- und Fehlerkurve) und — sofern eine Sitzung mitkommt — die Benutzer-ID
 samt Nutzergruppe (für „wie viele Nutzer waren im Portal"). Beides landet nur in
 einem Prozess-Dictionary; geschrieben wird erst durch den Metrik-Collector.
+
+Die Sitzung wird über ``deps.credential_from_request()`` geholt, also aus dem
+``Authorization``-Header **oder** dem Sitzungs-Cookie. Das ist nicht kosmetisch:
+seit die Anmeldung im HttpOnly-Cookie liegt, schickt das Portal keinen Header
+mehr, und eine Middleware, die nur den Header liest, zählt jede Portalnutzung
+als anonym — die Kurve „aktive Nutzer" stünde dauerhaft auf null.
 
 Die Gruppe ergibt sich aus dem Token: `is_demo` kennzeichnet eine Demo-Sitzung,
 `is_superadmin` (immer ohne Organisation ausgestellt) das Admin-Portal, alles
@@ -26,6 +32,7 @@ import jwt as _jwt
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
+from app.api import deps
 from app.config import settings
 from app.services import activity
 
@@ -40,10 +47,11 @@ _IGNORED_PREFIXES = (
 
 
 def _user_from_token(request: Request) -> tuple[uuid.UUID, uuid.UUID | None, str] | None:
-    auth = request.headers.get("authorization")
-    if not auth or not auth.lower().startswith("bearer "):
-        return None
-    token = auth[7:].strip()
+    # Dieselbe Quelle wie die Endpunkt-Dependencies: Header oder Cookie. Der
+    # CSRF-Kopf wird hier ausdrücklich nicht verlangt — diese Middleware
+    # entscheidet nichts, sie zählt nur, und eine Anfrage, die der Endpunkt
+    # gleich mit 403 abweist, hat trotzdem stattgefunden.
+    token = deps.credential_from_request(request)
     if not token:
         return None
     try:
@@ -52,6 +60,12 @@ def _user_from_token(request: Request) -> tuple[uuid.UUID, uuid.UUID | None, str
         return None
     # Halbauthentifizierte MFA-Tokens sind keine Portalnutzung.
     if payload.get("mfa_pending"):
+        return None
+    # Ebensowenig ein MCP-Token: es ist mit demselben Schlüssel signiert und
+    # trägt ein sub, würde hier also als Portalbesuch durchgehen. Ein Modell,
+    # das im Minutentakt Werkzeuge aufruft, stünde dann in der Kurve
+    # „aktive Nutzer" — die zählt Menschen im Portal.
+    if payload.get("typ") not in (None, "access"):
         return None
     try:
         user_id = uuid.UUID(payload["sub"])

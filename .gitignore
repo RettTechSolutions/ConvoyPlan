@@ -66,6 +66,9 @@ logs/
 # Claude Code — lokale IDE-Konfiguration (MCP-Server, Pfade, etc.)
 .claude/
 
+# Maintainer-lokale Notizen (private Repos, Pfade der Arbeitskopien, Infra)
+CLAUDE.local.md
+
 # Claude Code / Superpowers internal tooling
 .superpowers/
 .remember/
