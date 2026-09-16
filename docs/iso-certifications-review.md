@@ -158,7 +158,7 @@ Diese Punkte sind für die Zertifizierung mindestens so wichtig wie der Code:
 - **ISMS-Grundlagen**: Scope-Definition, Informationssicherheits-Leitlinie, Risikobewertung + Risikobehandlungsplan, **Statement of Applicability (SoA)**.
 - **Asset- & Daten-Inventar** inkl. Datenklassifizierung (welche personenbezogenen Daten, wo, wie lange).
 - **Zugriffskontroll-Policy** + Joiner/Mover/Leaver-Prozess (auch für interne Admins/Superadmins).
-- **Lieferanten-Management**: GraphHopper, Open-Meteo, OSM/Overpass, SMTP-Provider, Hosting (`s-lx04-docker`/Portainer), GitHub. Auftragsverarbeitungs-Verträge (Sub-Prozessoren) für 27701/DSGVO.
+- **Lieferanten-Management**: GraphHopper, Open-Meteo, OSM/Overpass, SMTP-Provider, Hosting (eigener Docker-Host/Portainer), GitHub. Auftragsverarbeitungs-Verträge (Sub-Prozessoren) für 27701/DSGVO.
 - **Incident-Management-Prozess** (Erkennung, Meldung, Eskalation, 72-h-DSGVO-Meldepflicht).
 - **Business Continuity / Disaster Recovery Plan** (RTO/RPO) — Basis für ISO 22301.
 - **Change-Management** (teilweise durch Git/CI abgedeckt — formalisieren).
