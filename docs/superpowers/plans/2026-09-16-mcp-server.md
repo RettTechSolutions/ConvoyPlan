@@ -180,109 +180,121 @@ Einschränkung: der Dry-Run lief gegen Python 3.11, das Image nutzt 3.14. Die Wh
 
 Access-Tokens bleiben **zustandslose JWTs** (wie die bestehende Auth) und liegen in keiner Tabelle. Persistiert werden nur Clients, Codes und Refresh-Tokens.
 
-- [ ] `oauth_clients`: `client_id` (PK), `client_secret_hash` (bcrypt, NULL für Public Clients), `redirect_uris` (JSON), `client_name`, `grant_types`, `token_endpoint_auth_method`, `scope`, `created_at`, `client_secret_expires_at`, `revoked`
-- [ ] `oauth_codes`: `code_hash` (PK), `client_id`, `user_id`, `organization_id`, `scopes`, `code_challenge`, `redirect_uri`, `redirect_uri_provided_explicitly`, `resource`, `expires_at`, `consumed_at`
-- [ ] `oauth_refresh_tokens`: `token_hash` (PK), `family_id`, `client_id`, `user_id`, `organization_id`, `scopes`, `resource`, `expires_at`, `revoked`, `rotated_from`, `created_at`, `last_used_at`
-- [ ] Codes werden **gehasht** gespeichert, nie im Klartext — gleiche Begründung wie bei `ApiKey.key_hash`
-- [ ] Alembic-Migration; Down-Pfad testen
-- [ ] Aufräumjob für abgelaufene Codes und Refresh-Tokens in `app/jobs/` (die Retention-Mechanik existiert bereits — dort andocken)
+- [x] `oauth_clients`: `client_id` (PK), `client_secret_encrypted` (Fernet, NULL für Public Clients), `redirect_uris` (JSON), `client_name`, `grant_types`, `token_endpoint_auth_method`, `scope`, `created_at`, `client_secret_expires_at`, `last_used_at`, `revoked`
+  > **Abweichung vom Entwurf:** geplant war ein bcrypt-Hash. Das geht nicht: das SDK vergleicht das Client-Secret am Token-Endpunkt selbst im Klartext (`hmac.compare_digest`), und es setzt bei einer Registrierung ohne Angabe `client_secret_post` als Standard — ein Hash hätte damit *jeden* Token-Request abgewiesen. Stattdessen Fernet-verschlüsselt, also zurückholbar, nach demselben Muster wie `User.mfa_secret` (`app/services/crypto.py`).
+- [x] `oauth_codes`: `code_hash` (PK), `client_id`, `user_id`, `organization_id`, `scopes`, `code_challenge`, `redirect_uri`, `redirect_uri_provided_explicitly`, `resource`, `expires_at`, `consumed_at`
+- [x] `oauth_refresh_tokens`: `token_hash` (PK), `family_id`, `client_id`, `user_id`, `organization_id`, `scopes`, `resource`, `expires_at`, `revoked`, `rotated_at`, `created_at`, `last_used_at`
+  > Statt `rotated_from` ein `rotated_at`: die Kette rückwärts zu verlinken bringt nichts, weil ohnehin immer die ganze Familie stirbt — gebraucht wird nur die Frage „ist dieses Token schon rotiert?".
+- [x] Codes werden **gehasht** gespeichert, nie im Klartext — gleiche Begründung wie bei `ApiKey.key_hash`
+- [x] Alembic-Migration; Down-Pfad testen
+- [x] Aufräumjob für abgelaufene Codes und Refresh-Tokens in `app/jobs/` (die Retention-Mechanik existiert bereits — dort andocken)
 
 **Acceptance:** `alembic upgrade head` und `downgrade -1` laufen gegen eine frische und eine bestehende DB durch.
 
 ### Task 1.2: Scopes definieren
 
-- [ ] `convoy:read` → Mindestrolle `beobachter`
-- [ ] `fleet:status` → Mindestrolle `fahrer` (Fahrzeugstatus und Positionen setzen)
-- [ ] `convoy:write` → Mindestrolle `planer` (anlegen, ändern, Route berechnen)
-- [ ] Hierarchie: `convoy:write` impliziert `fleet:status` impliziert `convoy:read` — die Spec verlangt ausdrücklich, dass der Server Scope-Hierarchien bei der Prüfung berücksichtigt
-- [ ] **Kein** Scope für Löschen, Admin oder Instanz-Ebene
-- [ ] `scopes_supported` in der Protected Resource Metadata = minimaler Satz für Grundfunktion (`convoy:read`), nicht die Gesamtmenge — so verlangt es die Scope-Minimierung der Spec
-- [ ] Einheitentest: für jede Rolle die Menge der zulässigen Scopes
+- [x] `convoy:read` → Mindestrolle `beobachter`
+- [x] `fleet:status` → Mindestrolle `fahrer` (Fahrzeugstatus und Positionen setzen)
+- [x] `convoy:write` → Mindestrolle `planer` (anlegen, ändern, Route berechnen)
+- [x] Hierarchie: `convoy:write` impliziert `fleet:status` impliziert `convoy:read` — die Spec verlangt ausdrücklich, dass der Server Scope-Hierarchien bei der Prüfung berücksichtigt
+- [x] **Kein** Scope für Löschen, Admin oder Instanz-Ebene
+- [x] `scopes_supported` in der Protected Resource Metadata = minimaler Satz für Grundfunktion (`convoy:read`), nicht die Gesamtmenge — so verlangt es die Scope-Minimierung der Spec
+- [x] Einheitentest: für jede Rolle die Menge der zulässigen Scopes
 
 ### Task 1.3: Token-Dienst
 
-- [ ] `mint_access_token(user, org, scopes, resource)` → JWT mit `typ="mcp"`, `sub`, `aud`=Resource-URI, `org_id`, `scope` (Leerzeichen-getrennt), `tv` (`token_version`), `client_id`, kurzer `exp` (Default **15 min**)
-- [ ] `mint_refresh_token(...)` → Zufallswert, nur Hash in die DB, Default-TTL **30 Tage**, **rotierend**: jeder Einlöseversuch gibt ein neues aus und invalidiert das alte
-- [ ] **Wiederverwendungserkennung:** wird ein bereits rotiertes Refresh-Token noch einmal vorgelegt, die **gesamte Familie** widerrufen (Standard-Gegenmaßnahme gegen Token-Diebstahl)
-- [ ] `TokenVerifier.verify_token`: `typ="mcp"` prüfen, Signatur, `exp`, `aud` gegen die eigene Resource-URI, `token_version` gegen den Benutzer, Benutzer aktiv, Mitgliedschaft in der Org **weiterhin** vorhanden und Rolle nicht unter den Scopes zurückgefallen
-- [ ] Ein `token_version`-Bump (Passwortwechsel, „überall abmelden") entwertet auch MCP-Tokens — das ist gewollt und bekommt einen Test
-- [ ] **Widerruf von Access-Tokens** ist mit zustandslosen JWTs nur über `token_version` möglich. Deshalb 15 Minuten TTL, und die Admin-Aktion „Verbindung trennen" widerruft die Refresh-Familie. Das verbleibende Fenster von ≤15 min wird in `wiki/MCP-Server.md` benannt statt versteckt
+- [x] `mint_access_token(user, org, scopes, resource)` → JWT mit `typ="mcp"`, `sub`, `aud`=Resource-URI, `org_id`, `scope` (Leerzeichen-getrennt), `tv` (`token_version`), `client_id`, kurzer `exp` (Default **15 min**)
+- [x] `mint_refresh_token(...)` → Zufallswert, nur Hash in die DB, Default-TTL **30 Tage**, **rotierend**: jeder Einlöseversuch gibt ein neues aus und invalidiert das alte
+- [x] **Wiederverwendungserkennung:** wird ein bereits rotiertes Refresh-Token noch einmal vorgelegt, die **gesamte Familie** widerrufen (Standard-Gegenmaßnahme gegen Token-Diebstahl)
+- [x] `TokenVerifier.verify_token`: `typ="mcp"` prüfen, Signatur, `exp`, `aud` gegen die eigene Resource-URI, `token_version` gegen den Benutzer, Benutzer aktiv, Mitgliedschaft in der Org **weiterhin** vorhanden und Rolle nicht unter den Scopes zurückgefallen
+- [x] Ein `token_version`-Bump (Passwortwechsel, „überall abmelden") entwertet auch MCP-Tokens — das ist gewollt und bekommt einen Test
+- [x] **Widerruf von Access-Tokens** ist mit zustandslosen JWTs nur über `token_version` möglich. Deshalb 15 Minuten TTL, und die Admin-Aktion „Verbindung trennen" widerruft die Refresh-Familie. Das verbleibende Fenster von ≤15 min wird in `wiki/MCP-Server.md` benannt statt versteckt
 
 ### Task 1.4: `OAuthAuthorizationServerProvider`
 
 Zehn Methoden gegen die Tabellen aus 1.1.
 
-- [ ] `register_client` — DCR. Nur wenn `MCP_ALLOW_DCR=true`. `redirect_uris` validieren: HTTPS, oder `http://127.0.0.1[:port]/…` bzw. `http://localhost…` für lokale Clients; **keine** offenen Redirects, kein Wildcard
-- [ ] `get_client` — Lookup; widerrufene und abgelaufene Clients geben `None`
-- [ ] `authorize` — **kein** Code hier. PKCE-Parameter, `redirect_uri`, `state`, `scopes` und `resource` in einem kurzlebigen Request-Datensatz ablegen und `https://<domain>/oauth/consent?rid=<opaque>` zurückgeben. `resource` gegen die eigene kanonische URI prüfen und bei Abweichung ablehnen
-- [ ] `load_authorization_code` / `exchange_authorization_code` — PKCE `S256` verifizieren, `redirect_uri` exakt gegenprüfen, Einmalverwendung durchsetzen (`consumed_at`); ein zweiter Einlöseversuch widerruft zusätzlich die daraus entstandene Token-Familie
-- [ ] `load_refresh_token` / `exchange_refresh_token` — Rotation und Wiederverwendungserkennung aus 1.3; angeforderte Scopes dürfen die ursprünglichen nie überschreiten
-- [ ] `load_access_token` / `revoke_token` — `RevocationOptions(enabled=True)`
-- [ ] `exchange_identity_assertion` — nicht unterstützt, `identity_assertion_enabled=False`
-- [ ] Jede Methode bekommt einen Test, die Fehlerpfade zuerst
+- [x] `register_client` — DCR. Nur wenn `MCP_ALLOW_DCR=true`. `redirect_uris` validieren: HTTPS, oder `http://127.0.0.1[:port]/…` bzw. `http://localhost…` für lokale Clients; **keine** offenen Redirects, kein Wildcard
+- [x] `get_client` — Lookup; widerrufene und abgelaufene Clients geben `None`
+- [x] `authorize` — **kein** Code hier. `resource` gegen die eigene kanonische URI prüfen und bei Abweichung mit `invalid_target` ablehnen, dann auf `https://<domain>/oauth/consent?request=<ticket>` weiterleiten
+  > **Abweichung:** statt eines Datensatzes in einer vierten Tabelle ist das Ticket ein signiertes, kurzlebiges JWT (`typ="mcp_authz"`). Die Anfrage lebt nur die Minuten bis zur Zustimmung und enthält nichts Geheimes — der `code_challenge` ist öffentlich, das ist der Sinn von PKCE. Ohne Zeile gibt es auch nichts aufzuräumen, und die Signatur verhindert eine selbstgebaute Anfrage mit nie registrierter `redirect_uri`.
+- [x] `load_authorization_code` / `exchange_authorization_code` — PKCE `S256` verifizieren, `redirect_uri` exakt gegenprüfen, Einmalverwendung durchsetzen (`consumed_at`); ein zweiter Einlöseversuch widerruft zusätzlich die daraus entstandene Token-Familie
+- [x] `load_refresh_token` / `exchange_refresh_token` — Rotation und Wiederverwendungserkennung aus 1.3; angeforderte Scopes dürfen die ursprünglichen nie überschreiten
+- [x] `load_access_token` / `revoke_token` — `RevocationOptions(enabled=True)`
+- [x] `exchange_identity_assertion` — nicht unterstützt, `identity_assertion_enabled=False`
+- [x] Jede Methode bekommt einen Test, die Fehlerpfade zuerst
 
 ### Task 1.5: Consent-Strecke
 
 Der Punkt, an dem das Ganze ein Produkt statt eines Protokolls wird.
 
-- [ ] `GET /api/mcp/consent/{rid}` — liefert Client-Name, angeforderte Scopes (deutsch ausformuliert), die wählbaren Organisationen des angemeldeten Benutzers und die Ablaufzeit der Anfrage
-- [ ] `POST /api/mcp/consent/{rid}` — verlangt eine **gültige ConvoyPlan-Sitzung** (regulärer Bearer-Token, also inklusive MFA), prüft die Mitgliedschaft in der gewählten Org, mintet den Code und gibt die vollständige Redirect-URL zurück
-- [ ] Die Redirect-URL trägt `code`, `state` **und `iss`** (RFC 9207)
-- [ ] `authorization_response_iss_parameter_supported: true` in der AS-Metadata — dafür den vom SDK gebauten `OAuthMetadata`-Datensatz nach `build_metadata()` ergänzen, bevor der Handler registriert wird
-- [ ] Frontend `/oauth/consent`: nicht angemeldet → bestehende Login-Strecke mit `redirect`-Parameter; angemeldet → Zustimmungsdialog mit Org-Auswahl, „Zulassen" / „Ablehnen"
-- [ ] **`client_name` stammt aus der DCR-Registrierung und ist damit vom Anfragenden frei wählbar.** Er wird escaped ausgegeben und sichtbar als *unbestätigt* gekennzeichnet; die `redirect_uri`-Domain wird daneben angezeigt, weil sie das Einzige ist, was tatsächlich überprüft wurde. Das ist die Gegenmaßnahme gegen den Confused-Deputy-Fall, den die Spec für dynamisch registrierte Clients ausdrücklich nennt
-- [ ] „Ablehnen" → Redirect mit `error=access_denied` **und `iss`**
-- [ ] Jede erteilte Zustimmung landet im `audit_log` (Benutzer, Org, Client, Scopes, IP)
+- [x] `GET /api/mcp/consent?request=<ticket>` — liefert Client-Name, den geprüften Redirect-Host, die angefragten Scopes (deutsch ausformuliert), die wählbaren Organisationen samt der Scopes, die die jeweilige Rolle dort hergibt, und die Ablaufzeit der Anfrage
+- [x] `POST /api/mcp/consent` — verlangt eine **gültige ConvoyPlan-Sitzung** (regulärer Bearer-Token, also inklusive MFA), prüft die Mitgliedschaft in der gewählten Org, mintet den Code und gibt die vollständige Redirect-URL zurück
+- [x] Die Redirect-URL trägt `code`, `state` **und `iss`** (RFC 9207)
+- [x] `authorization_response_iss_parameter_supported: true` in der AS-Metadata
+  > **Abweichung:** nachträglich patchen geht nicht — der fertige Handler steckt in einer CORS-Hülle und ist von außen nicht verlässlich erreichbar. Stattdessen baut `mount.py` die Metadata selbst über `build_metadata()` und registriert eine eigene Route, die die des SDK ersetzt.
+- [x] Frontend `/oauth/consent`: nicht angemeldet → bestehende Login-Strecke mit `redirect`-Parameter; angemeldet → Zustimmungsdialog mit Org-Auswahl, „Zulassen" / „Ablehnen"
+- [x] **`client_name` stammt aus der DCR-Registrierung und ist damit vom Anfragenden frei wählbar.** Er wird escaped ausgegeben und sichtbar als *unbestätigt* gekennzeichnet; die `redirect_uri`-Domain wird daneben angezeigt, weil sie das Einzige ist, was tatsächlich überprüft wurde. Das ist die Gegenmaßnahme gegen den Confused-Deputy-Fall, den die Spec für dynamisch registrierte Clients ausdrücklich nennt
+- [x] „Ablehnen" → Redirect mit `error=access_denied` **und `iss`**
+- [x] Jede erteilte Zustimmung landet im `audit_log` (Benutzer, Org, Client, Scopes, IP)
 
 ### Task 1.6: Montage und Konfiguration
 
-- [ ] `config.py`: `mcp_enabled` (Default `False`), `mcp_public_url` (Default aus `app_base_url` + `/mcp`), `mcp_access_token_ttl`, `mcp_refresh_token_ttl`, `mcp_allow_dcr`
-- [ ] Bei `mcp_enabled=False` wird **nichts** montiert — keine Routen, keine Well-Known-Dokumente
-- [ ] Montage nach der in 0.1 gewählten Form; Session-Manager in `_lifespan`
-- [ ] `license_guard.py`: `/mcp` und `/.well-known/oauth-` in `_EXEMPT_PREFIXES`. **Begründung:** MCP ist reines POST; die Middleware würde ohne Lizenz auch das Lesen blockieren, während die REST-API im Demo-Modus lesend offen bleibt. Die Lizenzprüfung wandert stattdessen in die Tool-Schicht (Task 2.4), womit dieselbe Semantik gilt: lesen ja, schreiben nein
-- [ ] CORS in `main.py`: `Mcp-Session-Id` und `MCP-Protocol-Version` in `allow_headers`, `Mcp-Session-Id` in `expose_headers` — sonst scheitern browserbasierte Clients wie der MCP Inspector
-- [ ] `.env.example` dokumentieren, im Stil der Datei
+- [x] `config.py`: `mcp_enabled` (Default `False`), `mcp_public_url` (Default aus `app_base_url` + `/mcp`), `mcp_access_token_ttl`, `mcp_refresh_token_ttl`, `mcp_allow_dcr`
+- [x] Bei `mcp_enabled=False` wird **nichts** montiert — keine Routen, keine Well-Known-Dokumente
+- [x] Montage nach der in 0.1 gewählten Form; Session-Manager in `_lifespan`
+- [x] `license_guard.py`: `/mcp` und `/.well-known/oauth-` in `_EXEMPT_PREFIXES`. **Begründung:** MCP ist reines POST; die Middleware würde ohne Lizenz auch das Lesen blockieren, während die REST-API im Demo-Modus lesend offen bleibt. Die Lizenzprüfung wandert stattdessen in die Tool-Schicht (Task 2.4), womit dieselbe Semantik gilt: lesen ja, schreiben nein
+- [x] CORS in `main.py`: `Mcp-Session-Id` und `MCP-Protocol-Version` in `allow_headers`, `Mcp-Session-Id` in `expose_headers` — sonst scheitern browserbasierte Clients wie der MCP Inspector
+- [x] `.env.example` dokumentieren, im Stil der Datei
 
 ### Task 1.7: Caddy
 
 Heute leitet Caddy ausschließlich `/api/*` und `/ws/*` ans Backend; alles andere geht ans Frontend. `/mcp` und die Well-Known-Pfade müssen an der **Wurzel** liegen (RFC 9728), lassen sich also nicht unter `/api/` verstecken.
 
-- [ ] `caddy/entrypoint.sh`: `handle /mcp` und `handle /.well-known/oauth-*` → `backend:$BACKEND_PORT`, mit `flush_interval -1` für den MCP-Handle (Streamable HTTP kann SSE zurückgeben und darf nicht gepuffert werden)
-- [ ] `backend/app/services/caddy_config.py`: dieselben Handles im generierten Caddyfile
-- [ ] **Retrofit:** Bestandsinstallationen haben ein persistiertes `/certs/Caddyfile`. Die vorhandene Reparaturmechanik (`caddy_config.py`, analog zur Nachrüstung der Security-Header) muss die MCP-Handles ebenfalls nachtragen — sonst läuft MCP nur auf Neuinstallationen
-- [ ] Warnhinweis in `caddy/entrypoint.sh` analog zum bestehenden Header-Check
-- [ ] Test für den Generator und für den Reparaturpfad
+- [x] `caddy/entrypoint.sh`: `handle /mcp` und `handle /.well-known/oauth-*` → `backend:$BACKEND_PORT`, mit `flush_interval -1` für den MCP-Handle (Streamable HTTP kann SSE zurückgeben und darf nicht gepuffert werden)
+- [x] `backend/app/services/caddy_config.py`: dieselben Handles im generierten Caddyfile
+- [x] **Retrofit:** Bestandsinstallationen haben ein persistiertes `/certs/Caddyfile`. Die vorhandene Reparaturmechanik (`caddy_config.py`, analog zur Nachrüstung der Security-Header) muss die MCP-Handles ebenfalls nachtragen — sonst läuft MCP nur auf Neuinstallationen
+- [x] Warnhinweis in `caddy/entrypoint.sh` analog zum bestehenden Header-Check
+- [x] Test für den Generator und für den Reparaturpfad
 
 ### Task 1.8: Lesende Tools
 
 Jedes Tool löst über `app/mcp/context.py` aus dem `AccessToken` eine `OrgCtx` auf und ruft dann dieselben Service-Funktionen wie die REST-Route — **nicht** die eigene API über HTTP.
 
-- [ ] `konvois_auflisten`, `konvoi_details`, `unterkonvois_auflisten`
-- [ ] `fahrzeuge_auflisten`, `fahrzeug_details`
-- [ ] `wegpunkte_auflisten`
-- [ ] `route_abrufen` (die **gespeicherte** Route; Berechnung ist ein Schreib-Tool)
-- [ ] `fahrzeugpositionen_abrufen`, `konvoi_status`
-- [ ] Alle verlangen `convoy:read`; Positionen zusätzlich prüfen, ob die Org Live-Tracking aktiviert hat
-- [ ] Antworten sind kompakte, modelllesbare Strukturen — keine rohen ORM-Dumps, keine internen UUID-Ketten ohne Kontext, Zeiten als ISO-8601 mit Zeitzone
-- [ ] Tool-Beschreibungen nennen die Domäne beim Namen (Konvoi, Marschbefehl, Leitstelle), damit das Modell nicht raten muss
+- [x] `konvois_auflisten`, `konvoi_details`, `unterkonvois_auflisten`
+- [x] `fahrzeuge_auflisten`, `fahrzeug_details`
+- [x] `wegpunkte_auflisten`
+- [x] `route_abrufen` (die **gespeicherte** Route; Berechnung ist ein Schreib-Tool)
+- [x] `fahrzeugpositionen_abrufen`, `konvoi_status`
+- [x] Alle verlangen `convoy:read`
+  > **Planannahme war falsch:** einen Schalter „Live-Tracking für diese Organisation" gibt es im Datenmodell nicht — Tracking hängt an der Lizenz und am Konvoi, nicht an der Org. Es gibt also nichts zusätzlich zu prüfen; die Mandantentrennung über `organization_id` ist die vollständige Zugriffskontrolle.
+- [x] Antworten sind kompakte, modelllesbare Strukturen — keine rohen ORM-Dumps, keine internen UUID-Ketten ohne Kontext, Zeiten als ISO-8601
+  > Nicht durchweg mit Zeitzone: Marsch- und Wegpunktzeiten liegen im Datenmodell bewusst als naive Ortszeit (`timestamp without time zone`, siehe Migration 0030), und daran wird hier nichts umgedeutet. Mit Zeitzone kommen die Zeiten, die sie in der Datenbank tragen (z. B. `gemeldet_um` bei Positionen).
+- [x] Tool-Beschreibungen nennen die Domäne beim Namen (Konvoi, Marschbefehl), damit das Modell nicht raten muss
+- [x] Werkzeugfehler erreichen das Modell: `McpError` leitet von `ToolError` ab, sonst ersetzt das SDK jede Meldung durch ein nacktes „Error executing tool …"
 
 ### Task 1.9: Sicherheitstests
 
 Diese Liste ist die Abnahme für Phase 1.
 
-- [ ] Unauthentisiertes `POST /mcp` → 401 mit korrektem `WWW-Authenticate` inkl. `resource_metadata` und `scope`
-- [ ] PRM-Dokument liegt exakt auf `/.well-known/oauth-protected-resource/mcp` und nennt den eigenen Issuer
-- [ ] Token mit fremdem `aud` → 401
-- [ ] ConvoyPlan-Access-Token (`typ="access"`) an `/mcp` → 401
-- [ ] MCP-Token (`typ="mcp"`) an `/api/convoys` → 401
-- [ ] PKCE-Verifier falsch → Token-Request abgelehnt
-- [ ] Code zweimal eingelöst → zweiter Versuch abgelehnt **und** Familie widerrufen
-- [ ] `redirect_uri` nicht registriert → `authorize` abgelehnt, **kein** Redirect
-- [ ] Rotiertes Refresh-Token erneut vorgelegt → gesamte Familie tot
-- [ ] Token für Org A sieht keine Daten von Org B
-- [ ] `token_version`-Bump entwertet bestehende MCP-Tokens
-- [ ] Registrierte Toolliste stimmt exakt mit der Positivliste überein; insbesondere existiert kein Tool, das einen Konvoi, ein Fahrzeug, einen Wegpunkt oder eine Route löscht
-- [ ] Mit `MCP_ENABLED=false` antworten `/mcp` und beide Well-Known-Pfade mit 404
+- [x] Unauthentisiertes `POST /mcp` → 401 mit korrektem `WWW-Authenticate` inkl. `resource_metadata` und `scope`
+  > Das `scope` liefert das SDK nicht mit. `ScopeAnnouncingAuthMiddleware` in `mount.py` ergänzt es — ohne die Angabe müsste ein Client raten oder vorsichtshalber alles anfordern, was der geforderten Rechteminimierung zuwiderläuft.
+- [x] PRM-Dokument liegt exakt auf `/.well-known/oauth-protected-resource/mcp` und nennt den eigenen Issuer
+- [x] Token mit fremdem `aud` → 401
+- [x] ConvoyPlan-Access-Token (`typ="access"`) an `/mcp` → 401
+- [x] MCP-Token (`typ="mcp"`) an `/api/convoys` → 401
+- [x] PKCE-Verifier falsch → Token-Request abgelehnt
+- [x] Code zweimal eingelöst → zweiter Versuch abgelehnt **und** Familie widerrufen
+- [x] `redirect_uri` nicht registriert → `authorize` abgelehnt, **kein** Redirect
+- [x] Client-Secret liegt verschlüsselt und nicht im Klartext in der Datenbank
+- [x] Widerrufener oder abgelaufener Client wird nicht mehr aufgelöst
+- [x] Entzogene Mitgliedschaft entwertet ein bestehendes Token sofort
+- [x] Herabgestufte Rolle nimmt einem bestehenden Token das Schreibrecht, ohne dass es neu ausgestellt werden muss
+- [x] Rotiertes Refresh-Token erneut vorgelegt → gesamte Familie tot
+- [x] Token für Org A sieht keine Daten von Org B
+- [x] `token_version`-Bump entwertet bestehende MCP-Tokens
+- [x] Registrierte Toolliste stimmt exakt mit der Positivliste überein; insbesondere existiert kein Tool, das einen Konvoi, ein Fahrzeug, einen Wegpunkt oder eine Route löscht
+- [x] Mit `MCP_ENABLED=false` antworten `/mcp` und beide Well-Known-Pfade mit 404
 
 ---
 

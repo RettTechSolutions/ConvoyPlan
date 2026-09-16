@@ -7,11 +7,13 @@ the `retention` cron container via `python -m app.jobs.retention`.
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import delete
+from sqlalchemy import and_ as sa_and, delete, or_ as sa_or
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.audit_log import AuditLog
+from app.models.oauth_code import OAuthCode
+from app.models.oauth_refresh_token import OAuthRefreshToken
 from app.models.organization import Organization
 from app.models.share_link import ConvoyShareLink
 from app.models.user import User
@@ -50,6 +52,41 @@ async def purge_expired_share_links(db: AsyncSession, grace_days: int) -> int:
         delete(ConvoyShareLink).where(
             ConvoyShareLink.revoked.is_(True),
             ConvoyShareLink.created_at < _cutoff(days=grace_days),
+        )
+    )
+    return result.rowcount or 0
+
+
+async def purge_expired_oauth_codes(db: AsyncSession) -> int:
+    """Autorisierungscodes aufräumen, sobald sie abgelaufen sind.
+
+    Kein Karenzfenster: ein abgelaufener Code ist wertlos, und ein bereits
+    eingelöster ist es erst recht. Der Replay-Schutz leidet nicht darunter —
+    er greift über die Lebensdauer des Codes (Minuten), nicht über die Zeile."""
+    result = await db.execute(delete(OAuthCode).where(OAuthCode.expires_at < _cutoff()))
+    return result.rowcount or 0
+
+
+async def purge_expired_oauth_refresh_tokens(db: AsyncSession, grace_days: int) -> int:
+    """Abgelaufene, rotierte und widerrufene Refresh-Tokens aufräumen.
+
+    Rotierte und widerrufene Zeilen bleiben die Karenzzeit stehen, damit die
+    Wiederverwendungserkennung ein gestohlenes Token in dieser Spanne noch als
+    solches erkennt statt es nur als unbekannt abzulehnen. Abgelaufene Tokens
+    brauchen diese Schonfrist nicht: sie werden ohnehin abgewiesen."""
+    result = await db.execute(
+        delete(OAuthRefreshToken).where(
+            sa_or(
+                OAuthRefreshToken.expires_at < _cutoff(),
+                sa_and(
+                    OAuthRefreshToken.rotated_at.is_not(None),
+                    OAuthRefreshToken.rotated_at < _cutoff(days=grace_days),
+                ),
+                sa_and(
+                    OAuthRefreshToken.revoked.is_(True),
+                    OAuthRefreshToken.created_at < _cutoff(days=grace_days),
+                ),
+            )
         )
     )
     return result.rowcount or 0
@@ -183,6 +220,14 @@ async def run_all(db: AsyncSession) -> dict[str, int]:
         # Kontaktangaben aus dem Demo-Start halten länger als die Sitzung, aber
         # nicht unbegrenzt.
         "demo_leads": await purge_old_demo_leads(db, settings.retention_demo_leads_days),
+        # MCP/OAuth: Codes sind Minuten gültig, Refresh-Tokens Wochen. Beide
+        # werden immer aufgeräumt, auch wenn MCP_ENABLED zwischenzeitlich
+        # abgeschaltet wurde — sonst blieben Zeilen einer früheren Nutzung
+        # unbegrenzt liegen.
+        "oauth_codes": await purge_expired_oauth_codes(db),
+        "oauth_refresh_tokens": await purge_expired_oauth_refresh_tokens(
+            db, settings.retention_oauth_tokens_grace_days
+        ),
     }
     await db.commit()
     if any(counts.values()):
