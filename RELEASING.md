@@ -147,6 +147,37 @@ the `FIX` component of the latest *stable* tag).
 
 ---
 
+## Image Signatures (Sigstore / cosign)
+
+Every image pushed by `release.yml` and `nightly-images.yml` is signed
+**keyless** with cosign. The signing identity is the workflow itself (an OIDC
+token from GitHub Actions exchanged for a short-lived Fulcio certificate) —
+there is no private key in the repo, in a secret, or on anyone's laptop, and
+nothing to rotate.
+
+Signed is the **digest**, not the tag. Tags move, digests don't, so one
+signature covers every tag pointing at that manifest.
+
+Verify a published image:
+
+```bash
+cosign verify \
+  --certificate-identity-regexp '^https://github.com/RettTechSolutions/ConvoyPlan/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/retttechsolutions/convoyplan/backend:latest
+```
+
+The same five images are covered: `backend`, `frontend`, `graphhopper`,
+`updater`, `osmium`.
+
+> **Note:** the `--certificate-identity-regexp` deliberately matches the whole
+> repository, not one workflow file — `release.yml` and `nightly-images.yml`
+> both sign, and a rename must not silently invalidate every signature. It does
+> mean any workflow *in this repository* can sign, which is why changes under
+> `.github/workflows/` belong under review.
+
+---
+
 ## Deploying an Update (Production / Portainer)
 
 ### Docker Compose (direct server)
