@@ -38,6 +38,31 @@ MCP_ENABLED=true
 
 Die Einstellung aus dem Portal hat Vorrang; die Umgebungsvariable gilt, solange im Portal nichts eingestellt wurde. Der Reiter **MCP** zeigt anschließend den Zustand, die Verbindungsadresse und die erteilten Zugänge.
 
+### Wenn der Schalter auf „An" steht und trotzdem nichts geht
+
+Der Schalter mountet die Routen **im Backend**. Ob der Reverse Proxy sie von außen auch dorthin leitet, ist eine zweite Frage — und bei einer Installation, die von vor dieser Schnittstelle stammt, lautet die Antwort oft nein. Das Portal zeigte dann „An" samt Verbindungsadresse, und ein Aufruf von außen landete beim Frontend.
+
+Der Reiter **System → KI-Schnittstelle** prüft das jetzt mit und sagt es: steht dort eine Zeile **Proxy** mit einem Hinweis, leitet der Proxy die Pfade nicht weiter. Der Knopf **Proxy reparieren** stellt sie her — er schreibt eine dauerhafte Proxy-Konfiguration und lädt sie sofort nach, ohne Neustart und ohne Zugriff auf den Server.
+
+Geprüft wird dabei die **laufende** Konfiguration über Caddys Admin-API, nicht eine Datei auf der Platte. Das ist der Unterschied, der zählt: die Datei kann längst stimmen, während der Caddy-Container noch mit der alten Konfiguration läuft.
+
+Zwei Fälle kann der Knopf nicht lösen:
+
+- **Die Setup-Werte fehlen** (Domain, TLS-Modus stehen nicht in der Datenbank). Daraus lässt sich keine Konfiguration erzeugen — dann hilft nur der Setup-Assistent. Das Portal bietet den Knopf in diesem Fall gar nicht erst an.
+- **Caddys Admin-API antwortet nicht.** Dann ist der Zustand schlicht unbekannt; das Portal sagt das so, statt einen Fehler zu behaupten. Prüfen lässt es sich mit einem Aufruf von außen:
+
+```
+curl -i -X POST https://<domain>/mcp -H 'Content-Type: application/json' -d '{}'
+```
+
+| Antwort | Bedeutung |
+|---|---|
+| **401** mit `WWW-Authenticate` | Alles richtig — ein Client kann sich jetzt anmelden. |
+| **404 als JSON** (`{"detail":"Not Found"}`) | Der Proxy leitet weiter, die Schnittstelle ist nur abgeschaltet. |
+| **404 als HTML** | Der Proxy leitet **nicht** weiter — die Anfrage ist beim Frontend gelandet. |
+
+---
+
 > **Ausgeschaltet heißt wirklich ausgeschaltet.** Der Schalter entfernt die Routen, statt sie mit einer Fehlerseite zu bedecken: es gibt dann weder `/mcp` noch die Discovery-Dokumente — nicht als 404 eines Handlers, sondern weil keine Route passt. Genau das war der Grund, warum es lange nur eine Umgebungsvariable gab; die Zusage gilt mit dem Knopf unverändert weiter und wird von einem Test festgehalten.
 >
 > **Was das Ausschalten nicht tut:** bereits ausgestellte Zugriffstoken ungültig machen. Die laufen ins Leere, weil der Endpunkt fehlt, bleiben aber Tokens. Wer sie wirklich entziehen will, trennt die Verbindungen im Reiter **MCP**.

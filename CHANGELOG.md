@@ -23,6 +23,16 @@ ursprünglichen SemVer-Nummern.
 
 ### Fixed
 
+- **Der Schalter für die KI-Schnittstelle kümmert sich jetzt auch um den Reverse Proxy.** Bisher tat er nur das halbe Ding: er schaltete die Routen im Backend frei, ans Weiterleiten von außen kam er nicht heran. Bei einer Installation, die von vor dieser Schnittstelle stammt, kennt der Proxy die Pfade nicht — das Portal zeigte dann **„An" samt Verbindungsadresse, und ein Aufruf von außen landete beim Frontend**. Sichtbar war davon nirgends etwas; man musste sich per SSH auf den Server schalten, um das überhaupt zu bemerken.
+
+  Der Reiter **System → KI-Schnittstelle** prüft den Proxy jetzt mit und sagt im Klartext, was fehlt. Der neue Knopf **Proxy reparieren** stellt die Weiterleitung her — er schreibt eine dauerhafte Proxy-Konfiguration und lädt sie sofort nach, ohne Neustart und ohne Serverzugriff. Beim Einschalten läuft die Auffrischung ohnehin automatisch mit.
+
+  Geprüft wird die **laufende** Konfiguration, nicht eine Datei auf der Platte. Das ist der Unterschied, der den Fehler überhaupt erst sichtbar macht: die Datei kann längst stimmen, während der Proxy-Container noch mit der alten Konfiguration läuft — genau dieser Fall lag vor.
+
+  Zwei Grenzen benennt das Portal statt sie zu verschweigen: ohne hinterlegte Setup-Werte lässt sich keine Konfiguration erzeugen (dann erscheint der Knopf gar nicht), und wenn die Verwaltungsschnittstelle des Proxys nicht antwortet, ist der Zustand **unbekannt** — das steht dann so da und wird nicht als Fehler ausgegeben.
+
+### Fixed
+
 - **Die Kurve „aktive Nutzer" in der Systemübersicht stand seit der Cookie-Umstellung auf null.** Die Middleware, die Portalnutzung mitschreibt, zog sich die Anmeldung selbst aus dem `Authorization`-Header — und den schickt das Portal seit der Umstellung nicht mehr. Jeder Aufruf wurde damit als anonym gezählt: die Last- und Fehlerkurven stimmten weiter, die Nutzerzahlen zeigten dauerhaft niemanden. Die Middleware liest die Sitzung jetzt aus derselben Quelle wie der Rest der Anwendung, also Header **oder** Cookie.
 
   Das ist derselbe Fehler, der zuvor schon die lesenden Endpunkte der Systemübersicht getroffen hatte — dieselbe Ursache, eine andere Stelle. Deshalb prüft ein Test jetzt nicht mehr nur den Einzelfall, sondern die **Klasse**: er durchsucht den Backend-Code und schlägt fehl, sobald sich irgendwo wieder jemand die Anmeldung selbst aus dem Header holt, statt den gemeinsamen Weg zu nehmen. Ein Test für den Einzelfall hätte den zweiten Vorfall nicht verhindert.
