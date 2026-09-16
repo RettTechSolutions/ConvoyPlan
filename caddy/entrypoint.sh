@@ -1,6 +1,24 @@
 #!/bin/sh
 set -e
 
+# ── Besitzrechte auf /certs geraderücken ─────────────────────────────────
+# Das Backend läuft als appuser (uid 1001, siehe backend/Dockerfile) und
+# schreibt in dieses Volume: die hochgeladenen Zertifikate des Setup-
+# Assistenten und die hinterlegte Caddyfile. Auf Installationen, deren Volume
+# entstand, als das Backend noch als root lief, gehören Verzeichnis und
+# Dateien weiterhin root — Docker überträgt die Besitzrechte aus dem Image nur
+# beim *ersten* Mount eines leeren Volumes. Dort scheitert seitdem jeder
+# Schreibversuch des Backends mit EACCES, lautlos beim Start und sichtbar,
+# sobald jemand im Portal „Proxy reparieren" drückt.
+#
+# Caddy ist der einzige Prozess am Volume, der als root läuft, also rückt er
+# das hier gerade. Idempotent, und ein Fehlschlag darf den Proxy nicht am
+# Starten hindern — dann bleibt es beim alten Zustand statt bei gar keinem.
+if [ -d /certs ]; then
+    chown -R 1001:1001 /certs 2>/dev/null \
+        || echo "[caddy] WARNING: konnte die Besitzrechte auf /certs nicht setzen — das Backend kann dort womöglich nicht schreiben" >&2
+fi
+
 # If setup wizard wrote a Caddyfile to the shared volume, use it directly.
 if [ -f "/certs/Caddyfile" ]; then
     echo "[caddy] Using persisted Caddyfile from /certs/Caddyfile"

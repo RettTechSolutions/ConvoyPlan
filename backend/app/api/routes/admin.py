@@ -1890,6 +1890,10 @@ class McpStatusResponse(BaseModel):
     proxy_routes_live: bool | None = None
     proxy_repairable: bool = False
     proxy_hint: str | None = None
+    # Nur der Reparatur-Endpunkt füllt das: was der eben gedrückte Knopf
+    # erreicht hat. Eine Reparatur kann gelingen, ohne dauerhaft zu sein,
+    # und dann soll nicht bloß ein grüner Haken erscheinen.
+    proxy_repair_note: str | None = None
 
 
 class McpClientResponse(BaseModel):
@@ -1989,6 +1993,13 @@ def _proxy_hinweis(befund) -> str | None:
     gerade den Schalter umgelegt hat und nicht weiß, warum trotzdem nichts
     geht."""
     if befund.routen_aktiv is True:
+        if befund.persistierte_datei and befund.datei_hat_routen is False:
+            return (
+                "Der Reverse Proxy leitet die MCP-Pfade zwar ans Backend, seine "
+                "hinterlegte Konfiguration kennt sie aber nicht — ein Neustart "
+                "des Caddy-Containers verliert sie wieder. „Proxy reparieren\u201c "
+                "versucht erneut, sie dauerhaft zu hinterlegen."
+            )
         return None
     if befund.routen_aktiv is None:
         return (
@@ -2036,17 +2047,23 @@ async def repair_mcp_proxy(
     soll."""
     from app.services import caddy_config
 
-    erfolg, begruendung = await caddy_config.repair_mcp_routes(db)
+    ergebnis = await caddy_config.repair_mcp_routes(db)
     await audit.record(
         db, "admin.mcp.proxy_repaired", request=request, actor_id=current.id,
         actor_email=current.email,
-        detail={"erfolg": erfolg, "begruendung": begruendung},
+        detail={
+            "erfolg": ergebnis.erfolg,
+            "dauerhaft": ergebnis.dauerhaft,
+            "begruendung": ergebnis.meldung,
+        },
     )
-    if not erfolg:
-        raise HTTPException(
-            status_code=503, detail=begruendung
-        )
-    return await mcp_status(db=db, _=current)
+    if not ergebnis.erfolg:
+        raise HTTPException(status_code=503, detail=ergebnis.meldung)
+    status = await mcp_status(db=db, _=current)
+    # Auch der gelungene Fall bekommt seinen Satz: „erreichbar, aber nicht
+    # hinterlegt" sähe sonst wie ein vollständiger Erfolg aus.
+    status.proxy_repair_note = ergebnis.meldung
+    return status
 
 
 class McpToggleRequest(BaseModel):
