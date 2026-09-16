@@ -1,19 +1,13 @@
 import asyncio
 import logging
-import secrets
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
-from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-import jwt as _jwt
-from jwt.exceptions import InvalidTokenError
 
-from app.api import cookies
+from app.api import docs_ui
 from app.api.routes import (
     auth, convoys, vehicles, routing, organizations,
     tracking, weather, overpass, status, users, leitstellen, traffic, geocoding,
@@ -202,16 +196,11 @@ async def _lifespan(_app: FastAPI):
 # default so the API surface is not exposed publicly; enable them either openly
 # via ENABLE_DOCS=true or — preferred for externally reachable hosts —
 # protected by setting DOCS_API_KEY (which implies the docs are served).
-_DOCS_COOKIE = "convoyplan_docs_key"
-_OPENAPI_URL = "/openapi.json"
-_docs_enabled = (
-    settings.enable_docs
-    or bool(settings.docs_api_key)
-    or settings.app_env.lower() in _DEV_ENVS
-)
+# Gate, Anmeldeformular und Cookie liegen in app/api/docs_ui.py.
+_docs_enabled = docs_ui.docs_enabled()
 
-# We render the docs ourselves (see _docs/_redoc/_openapi below) so they can be
-# gated behind DOCS_API_KEY, so the built-in routes are always disabled here.
+# We render the docs ourselves (docs_ui.register below) so they can be gated
+# behind DOCS_API_KEY, so the built-in routes are always disabled here.
 app = FastAPI(
     title="ConvoyPlan API",
     version=settings.app_version,
@@ -225,91 +214,9 @@ app = FastAPI(
     lifespan=_lifespan,
 )
 
-
-_DOCS_COOKIE_TTL = timedelta(hours=8)
-
-
-def _issue_docs_cookie() -> str:
-    """Mint a short-lived, signed session token for the docs UI. It marks the
-    browser as authorised after a successful key check — the API key itself is
-    never stored client-side, only this server-signed (JWT_SECRET) claim."""
-    expire = datetime.now(timezone.utc) + _DOCS_COOKIE_TTL
-    return _jwt.encode(
-        {"docs": True, "exp": expire}, settings.jwt_secret, algorithm=settings.jwt_algorithm
-    )
-
-
-def _docs_cookie_valid(token: str) -> bool:
-    try:
-        payload = _jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-    except InvalidTokenError:
-        return False
-    return bool(payload.get("docs"))
-
-
-def _guard_docs(request: Request) -> bool:
-    """Authorise a docs request. Returns True if the key came from the query
-    string (so the caller should persist a session cookie). Raises 401 when a
-    key is configured but the request did not supply a matching credential."""
-    expected = settings.docs_api_key
-    if not expected:
-        return False  # unprotected (dev convenience)
-    # Raw key via query string or header → valid; remember via cookie if it
-    # came from the query string so the browser can load the assets afterwards.
-    raw = request.query_params.get("key") or request.headers.get("x-api-key")
-    if raw and secrets.compare_digest(raw, expected):
-        return request.query_params.get("key") == raw
-    # Previously authorised browser session: signed, expiring token cookie.
-    cookie = request.cookies.get(_DOCS_COOKIE)
-    if cookie and _docs_cookie_valid(cookie):
-        return False
-    raise HTTPException(
-        status_code=401,
-        detail="Docs-Zugriff erfordert einen gültigen API-Key (z. B. /docs?key=…).",
-    )
-
-
-def _set_docs_cookie(response, request: Request) -> None:
-    del request  # Signatur bleibt, das Schema kommt jetzt aus der Konfiguration
-    response.set_cookie(
-        _DOCS_COOKIE,
-        _issue_docs_cookie(),
-        max_age=int(_DOCS_COOKIE_TTL.total_seconds()),
-        httponly=True,
-        samesite="lax",
-        # Nicht mehr aus request.url.scheme: hinter dem Reverse Proxy spricht
-        # das Backend unverschlüsselt und uvicorn läuft ohne --proxy-headers,
-        # das Schema wäre in Produktion also immer "http" und das Cookie nie
-        # Secure. Dieselbe Ableitung wie beim Sitzungs-Cookie.
-        secure=cookies.cookie_secure(),
-    )
-
-
 if _docs_enabled:
+    docs_ui.register(app)
 
-    @app.get("/openapi.json", include_in_schema=False)
-    async def _openapi(request: Request):
-        from_query = _guard_docs(request)
-        resp = JSONResponse(app.openapi())
-        if from_query:
-            _set_docs_cookie(resp, request)
-        return resp
-
-    @app.get("/docs", include_in_schema=False)
-    async def _docs(request: Request) -> HTMLResponse:
-        from_query = _guard_docs(request)
-        resp = get_swagger_ui_html(openapi_url=_OPENAPI_URL, title="ConvoyPlan API — Swagger UI")
-        if from_query:
-            _set_docs_cookie(resp, request)
-        return resp
-
-    @app.get("/redoc", include_in_schema=False)
-    async def _redoc(request: Request) -> HTMLResponse:
-        from_query = _guard_docs(request)
-        resp = get_redoc_html(openapi_url=_OPENAPI_URL, title="ConvoyPlan API — ReDoc")
-        if from_query:
-            _set_docs_cookie(resp, request)
-        return resp
 
 def _resolve_cors_origins() -> list[str]:
     """Determine the allowed CORS origins.

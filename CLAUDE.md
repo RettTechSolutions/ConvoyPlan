@@ -45,13 +45,14 @@ Nur wenn sich Repo-Name, Branch oder Dateipfad ändern: `public/_redirects` im W
 Da `web.convoyplan.de` extern erreichbar ist, werden sie **bevorzugt per API-Key** abgesichert
 statt offen aktiviert:
 
-- **`DOCS_API_KEY=<geheim>`** (empfohlen): Docs sind erreichbar, aber geschützt. Aufruf einmalig
-  über `https://web.convoyplan.de/docs?key=<geheim>` — der Key wird in einem HttpOnly-Cookie
-  gemerkt, danach laden `/docs`, `/redoc` und `/openapi.json` nahtlos. Programmatischer Zugriff
-  via Header `X-API-Key: <geheim>`.
+- **`DOCS_API_KEY=<geheim>`** (empfohlen): Docs sind erreichbar, aber geschützt.
+  Der Browser-Einstieg läuft über `/docs`, das ohne gültiges Cookie ein
+  Anmeldeformular zeigt; nach erfolgreicher Eingabe merkt ein HttpOnly-Cookie
+  die Freigabe. Programmatischer Zugriff via Header `X-API-Key: <geheim>`.
 - **`ENABLE_DOCS=true`**: Docs offen erreichbar (ohne Key) — nur für Dev/intern.
 
-Siehe `backend/app/config.py` (`docs_api_key`, `enable_docs`) und `backend/app/main.py`.
+Ein `?key=…` im Query-String wird nicht akzeptiert. Siehe `backend/app/api/docs_ui.py`
+(Türsteher, Formular, Cookie) und `backend/app/config.py` (`docs_api_key`, `enable_docs`).
 
 ### MCP-Server (KI-Schnittstelle)
 
