@@ -3,7 +3,6 @@
     import { goto } from '$app/navigation';
     import { authApi } from '$lib/api';
     import { demoFailure, formatRetryAt } from '$lib/demo-error';
-    import { orgStore } from '$lib/stores/org';
     import AppLogo from '$lib/components/AppLogo.svelte';
 
     // 'checking' → Demo-Verfügbarkeit wird geprüft, 'form' → Kontaktangabe,
@@ -42,7 +41,8 @@
                 first_name: firstName.trim() || undefined,
                 last_name: lastName.trim() || undefined,
             });
-            orgStore.setToken(result.org_slug, result.access_token);
+            // Die Demo-Sitzung liegt bereits als HttpOnly-Cookie vor; der
+            // Org-Wächter im Ziel-Layout liest sie über /api/auth/me.
             goto(`/o/${result.org_slug}/plan${result.resumed ? '?resumed=1' : ''}`, { replaceState: true });
         } catch (err) {
             const failure = demoFailure(err);

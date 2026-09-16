@@ -5,12 +5,13 @@ from datetime import datetime, timedelta, timezone
 
 import bcrypt
 import pyotp
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
 import jwt as _jwt
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api import cookies
 from app.api.deps import TokenData, get_current_user, get_token_data, require_superadmin
 from app.config import settings
 from app.database import get_db
@@ -199,7 +200,12 @@ class LoginResponse(BaseModel):
     response_model=LoginResponse,
     dependencies=[Depends(rate_limit("login", max_attempts=10, window_seconds=300))],
 )
-async def login(data: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
+async def login(
+    data: LoginRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
     try:
         result = await db.execute(select(User).where(User.email == data.email))
         user = result.scalar_one_or_none()
@@ -235,6 +241,7 @@ async def login(data: LoginRequest, request: Request, db: AsyncSession = Depends
                 db, audit.LOGIN_SUCCESS, request=request, actor_id=user.id,
                 actor_email=user.email, org_id=org.id, detail={"scope": "org"},
             )
+            cookies.set_session_cookie(response, token, org.slug)
             return LoginResponse(access_token=token)
 
         else:
@@ -255,6 +262,7 @@ async def login(data: LoginRequest, request: Request, db: AsyncSession = Depends
                 db, audit.LOGIN_SUCCESS, request=request, actor_id=user.id,
                 actor_email=user.email, detail={"scope": "superadmin"},
             )
+            cookies.set_session_cookie(response, token)
             return LoginResponse(access_token=token)
 
     except HTTPException as exc:
@@ -324,6 +332,7 @@ def _reject_demo_user(current_user: "User") -> None:
 async def change_password(
     data: PasswordChangeRequest,
     request: Request,
+    response: Response,
     current_user: User = Depends(get_current_user),
     token_data: TokenData = Depends(get_token_data),
     db: AsyncSession = Depends(get_db),
@@ -351,7 +360,113 @@ async def change_password(
         str(token_data.org_id) if token_data.org_id else None,
         token_data.org_slug, token_data.role, current_user.token_version,
     )
+    # Die Versionsnummer ist gerade gestiegen: alle anderen Sitzungen dieses
+    # Kontos sind damit ungültig, auch die Cookies in anderen Organisationen.
+    # Die *hier* laufende Sitzung bekommt das neue Token, sonst würde sich
+    # jemand durch das Ändern seines Passworts selbst aussperren.
+    cookies.set_session_cookie(response, new_token, token_data.org_slug)
     return {"status": "ok", "access_token": new_token}
+
+
+class MeResponse(BaseModel):
+    """Wer gerade angemeldet ist — aus Sicht des Servers.
+
+    Das Portal hat diese Angaben früher selbst aus dem JWT gelesen
+    (``atob(token.split('.')[1])``). Seit das Token im HttpOnly-Cookie liegt,
+    kommt JavaScript nicht mehr an den Inhalt — und das ist der Punkt der
+    Übung. Also sagt es der Server.
+
+    Das ist nebenbei die ehrlichere Quelle: die Rolle im Token ist der Stand
+    vom Anmeldezeitpunkt, die hier ist der von eben. Wem die Rolle
+    heruntergestuft wurde, sieht das jetzt beim nächsten Laden statt in bis
+    zu sieben Tagen."""
+
+    user_id: str
+    email: str
+    is_superadmin: bool
+    org_id: str | None = None
+    org_slug: str | None = None
+    org_name: str | None = None
+    role: str | None = None
+    is_demo: bool = False
+
+
+@router.get("/me", response_model=MeResponse)
+async def me(
+    token_data: TokenData = Depends(get_token_data),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Die eigene Identität für das Portal.
+
+    ``get_current_user`` hat Konto, Aktivität und Token-Version bereits
+    geprüft; ist eines davon nicht mehr gültig, kommt hier gar keine Antwort,
+    sondern 401 — und genau daran erkennt das Portal, dass es zur Anmeldung
+    schicken muss."""
+    org_name = None
+    role = token_data.role
+    if token_data.org_id:
+        org = await db.get(Organization, token_data.org_id)
+        if org is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Organisation existiert nicht mehr",
+            )
+        org_name = org.name
+        # Die Rolle frisch aus der Mitgliedschaft, nicht aus dem Token. Wer
+        # aus der Organisation entfernt wurde, ist hier nicht mehr angemeldet.
+        membership = (
+            await db.execute(
+                select(UserOrganization).where(
+                    UserOrganization.user_id == current_user.id,
+                    UserOrganization.organization_id == token_data.org_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if membership is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Kein Mitglied dieser Organisation",
+            )
+        role = membership.role
+
+    return MeResponse(
+        user_id=str(current_user.id),
+        email=current_user.email,
+        is_superadmin=current_user.is_superadmin,
+        org_id=str(token_data.org_id) if token_data.org_id else None,
+        org_slug=token_data.org_slug,
+        org_name=org_name,
+        role=role,
+        is_demo=token_data.is_demo,
+    )
+
+
+@router.post("/logout")
+async def logout(request: Request, response: Response):
+    """Die Sitzung dieses Browsers beenden.
+
+    Früher genügte dafür ein ``localStorage.removeItem`` im Frontend — ein
+    HttpOnly-Cookie kann sich das Portal aber nicht selbst wegnehmen, das
+    muss der Server tun.
+
+    Ohne ``X-Org-Slug`` wird die globale Sitzung gelöscht **und** alle
+    Organisationssitzungen, die der Browser mitschickt: „abmelden" ohne
+    nähere Angabe heißt, dass danach niemand mehr angemeldet ist, und ein
+    Rest, der irgendwo weiterlebt, wäre genau die Überraschung, die man an
+    dieser Stelle nicht will.
+
+    Bewusst ohne Anmeldepflicht: ein Abmelden, das an einem abgelaufenen
+    Token scheitert, ließe das Cookie stehen — und der Aufrufer bekommt hier
+    nichts, was er nicht schon hätte."""
+    slug = cookies.angefragter_slug(request)
+    if slug:
+        cookies.clear_session_cookie(response, slug)
+    else:
+        cookies.clear_session_cookie(response)
+        for vorhandener in cookies.session_slugs(request):
+            cookies.clear_session_cookie(response, vorhandener)
+    return {"status": "ok"}
 
 
 # ── Stream ticket (SSE / WebSocket auth) ───────────────────────────────────────
@@ -546,7 +661,12 @@ class MfaVerifyRequest(BaseModel):
     response_model=LoginResponse,
     dependencies=[Depends(rate_limit("mfa-verify", max_attempts=10, window_seconds=300))],
 )
-async def mfa_verify(data: MfaVerifyRequest, request: Request, db: AsyncSession = Depends(get_db)):
+async def mfa_verify(
+    data: MfaVerifyRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
     """Exchange an mfa_pending token + TOTP code for a full JWT."""
     payload = decode_mfa_pending_token(data.mfa_token)
     user_id_str = payload.get("sub")
@@ -594,6 +714,7 @@ async def mfa_verify(data: MfaVerifyRequest, request: Request, db: AsyncSession 
             actor_email=user.email, detail={"scope": "superadmin", "mfa": True},
         )
 
+    cookies.set_session_cookie(response, token, org_slug or None)
     return LoginResponse(access_token=token)
 
 
@@ -695,6 +816,7 @@ async def demo_session_info(
 async def create_demo_session(
     data: DemoSessionRequest,
     request: Request,
+    response: Response,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
@@ -747,6 +869,7 @@ async def create_demo_session(
                 actor_id=user.id, actor_email=user.email, org_id=org.id,
                 detail={"slug": org.slug, "expires_at": expires.isoformat()},
             )
+            cookies.set_session_cookie(response, token, org.slug)
             return DemoSessionResponse(
                 access_token=token, org_slug=org.slug,
                 expires_at=expires.isoformat(), resumed=True,
@@ -840,6 +963,7 @@ async def create_demo_session(
         detail={"slug": slug, "expires_at": expire.isoformat()},
     )
 
+    cookies.set_session_cookie(response, token, slug)
     return DemoSessionResponse(access_token=token, org_slug=slug, expires_at=expire.isoformat())
 
 

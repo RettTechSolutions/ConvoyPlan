@@ -10,15 +10,71 @@ export function setActiveSlug(slug: string | null): void {
     _activeSlug = slug;
 }
 
-export function getToken(): string | null {
-	if (typeof localStorage === 'undefined') return null;
-	// Org-scoped token hat Vorrang
-	if (_activeSlug) {
-		const orgToken = localStorage.getItem(`token__${_activeSlug}`);
-		if (orgToken) return orgToken;
+export function getActiveSlug(): string | null {
+	return _activeSlug;
+}
+
+/**
+ * Die Anmeldung liegt im HttpOnly-Cookie, nicht mehr im `localStorage`.
+ *
+ * Vorher stand das Zugriffstoken unter `token` bzw. `token__<slug>` im
+ * `localStorage` und wurde hier in jeden `Authorization`-Header geschrieben.
+ * Damit konnte es aber auch jedes andere Skript auf der Seite lesen — und
+ * ein siebentägig gültiges Token, das einmal abgeflossen ist, ist eine Woche
+ * lang eine vollwertige Anmeldung von einem beliebigen Rechner aus.
+ *
+ * Jetzt schickt der Browser das Cookie von sich aus mit (`credentials`), und
+ * JavaScript kommt an den Wert nicht mehr heran. Der Preis sind zwei Header:
+ *
+ * - `X-Org-Slug` wählt aus, welche Organisationssitzung gemeint ist — es gibt
+ *   eine je Organisation, weil man sich in ConvoyPlan pro Organisation
+ *   getrennt anmeldet. Der Slug steht ohnehin in der URL, er ist kein
+ *   Geheimnis; er zeigt nur auf das richtige Cookie.
+ * - `X-Requested-With` ist der CSRF-Schutz. Ein Cookie schickt der Browser
+ *   auch dann mit, wenn eine fremde Seite die Anfrage auslöst; einen eigenen
+ *   Header kann fremdes JavaScript aber nur nach einem CORS-Preflight setzen,
+ *   und den beantwortet das Backend nur für den eigenen Ursprung. Ein
+ *   Formular-POST von außen kann ihn gar nicht setzen.
+ */
+const CSRF_HEADER = 'X-Requested-With';
+const CSRF_VALUE = 'ConvoyPlan';
+const ORG_SLUG_HEADER = 'X-Org-Slug';
+
+/**
+ * Die Header, die eine Anfrage mit Cookie-Anmeldung braucht.
+ *
+ * Exportiert für die wenigen Stellen, die `fetch` direkt aufrufen, weil
+ * sie etwas brauchen, was `api` nicht kann — ein `AbortSignal` etwa. Wer
+ * sie vergisst, bekommt bei ändernden Methoden ein 403 statt einer stillen
+ * Fehlfunktion; das ist Absicht.
+ */
+export function authHeaders(base: Record<string, string> = {}): Record<string, string> {
+	const headers: Record<string, string> = { ...base, [CSRF_HEADER]: CSRF_VALUE };
+	if (_activeSlug) headers[ORG_SLUG_HEADER] = _activeSlug;
+	return headers;
+}
+
+/**
+ * Hinterlassenschaften der alten Token-Ablage entfernen.
+ *
+ * Wer schon angemeldet war, hat die Tokens noch im `localStorage` liegen.
+ * Gelesen werden sie nicht mehr, aber liegenlassen hieße: das, was hier
+ * gerade aus der Reichweite von Skripten geholt wurde, bleibt daneben noch
+ * bis zu sieben Tage in ihrer Reichweite liegen. Wird beim Start einmal
+ * aufgeräumt.
+ */
+export function purgeLegacyTokens(): void {
+	if (typeof localStorage === 'undefined') return;
+	try {
+		const keys: string[] = [];
+		for (let i = 0; i < localStorage.length; i++) {
+			const key = localStorage.key(i);
+			if (key === 'token' || key?.startsWith('token__')) keys.push(key);
+		}
+		for (const key of keys) localStorage.removeItem(key);
+	} catch {
+		/* Privater Modus o. ä. — dann gibt es auch nichts aufzuräumen. */
 	}
-	// Fallback: globaler Superadmin-Token
-	return localStorage.getItem('token');
 }
 
 /**
@@ -28,12 +84,11 @@ export function getToken(): string | null {
  * Returns null if not authenticated or the request fails.
  */
 export async function getStreamTicket(): Promise<string | null> {
-	const token = getToken();
-	if (!token) return null;
 	try {
 		const res = await fetch(`${getBaseUrl()}/api/auth/stream-ticket`, {
 			method: 'POST',
-			headers: { Authorization: `Bearer ${token}` },
+			credentials: 'same-origin',
+			headers: authHeaders(),
 		});
 		if (!res.ok) return null;
 		const data = await res.json().catch(() => null);
@@ -95,14 +150,16 @@ async function request<T>(
 	path: string,
 	options: RequestInit = {}
 ): Promise<T> {
-	const token = getToken();
-	const headers: Record<string, string> = {
+	const headers = authHeaders({
 		'Content-Type': 'application/json',
 		...(options.headers as Record<string, string>),
-	};
-	if (token) headers['Authorization'] = `Bearer ${token}`;
+	});
 
-	const res = await fetch(`${getBaseUrl()}${path}`, { ...options, headers });
+	const res = await fetch(`${getBaseUrl()}${path}`, {
+		...options,
+		credentials: 'same-origin',
+		headers,
+	});
 	if (!res.ok) throw await toApiError(res, 'Request failed');
 	if (res.status === 204) return undefined as T;
 	return res.json();
@@ -125,10 +182,10 @@ export const api = {
  * `<a href>` cannot carry the Authorization header.
  */
 export async function downloadFile(path: string, filename: string): Promise<void> {
-	const token = getToken();
-	const headers: Record<string, string> = {};
-	if (token) headers['Authorization'] = `Bearer ${token}`;
-	const res = await fetch(`${getBaseUrl()}${path}`, { headers });
+	const res = await fetch(`${getBaseUrl()}${path}`, {
+		credentials: 'same-origin',
+		headers: authHeaders(),
+	});
 	if (!res.ok) throw await toApiError(res, 'Download fehlgeschlagen');
 	const blob = await res.blob();
 	const url = URL.createObjectURL(blob);
@@ -143,15 +200,13 @@ export async function downloadFile(path: string, filename: string): Promise<void
 }
 
 export async function uploadFile<T>(path: string, file: File): Promise<T> {
-	const token = getToken();
-	const headers: Record<string, string> = {};
-	if (token) headers['Authorization'] = `Bearer ${token}`;
 	// Do NOT set Content-Type — browser sets multipart/form-data + boundary automatically
 	const formData = new FormData();
 	formData.append('file', file);
 	const res = await fetch(`${getBaseUrl()}${path}`, {
 		method: 'POST',
-		headers,
+		credentials: 'same-origin',
+		headers: authHeaders(),
 		body: formData,
 	});
 	if (!res.ok) throw await toApiError(res, 'Request failed');

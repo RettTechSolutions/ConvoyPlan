@@ -1,11 +1,11 @@
 /**
  * Version store — fetches /api/version once and caches the result.
  *
- * The token is attached when one is present: /api/version is public, but it
- * only reveals the exact build (git-describe string + commit SHA) to
- * authenticated callers. Anonymous visitors get the release version only.
+ * Die Sitzung wird mitgeschickt, falls eine besteht: /api/version ist
+ * öffentlich, verrät den exakten Build (git-describe + Commit-SHA) aber nur
+ * an angemeldete Aufrufer. Anonyme Besucher bekommen nur die Release-Version.
  */
-import { getBaseUrl, getToken } from '$lib/api/client';
+import { getBaseUrl, authHeaders } from '$lib/api/client';
 
 interface VersionData {
     sha: string | null;
@@ -27,9 +27,9 @@ function createVersionStore(): VersionStore {
     async function load(): Promise<void> {
         if (loaded) return;
         try {
-            const token = getToken();
             const resp = await fetch(`${getBaseUrl()}/api/version`, {
-                headers: token ? { Authorization: `Bearer ${token}` } : {},
+                credentials: 'same-origin',
+                headers: authHeaders(),
             });
             if (resp.ok) {
                 const json = await resp.json() as Partial<VersionData>;

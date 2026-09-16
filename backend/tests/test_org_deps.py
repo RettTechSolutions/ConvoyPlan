@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from app.api.deps import get_token_data, get_org_context
 from app.models.organization import Organization, UserOrganization
 from app.models.user import User
+from tests.fake_request import fake_request
 
 
 def _make_token(user_id, org_id=None, org_slug=None, role=None, is_superadmin=False):
@@ -28,7 +29,7 @@ def test_get_token_data_org_scoped():
     user_id = uuid.uuid4()
     org_id = uuid.uuid4()
     token = _make_token(user_id, org_id=org_id, org_slug="test-org", role="planer")
-    td = get_token_data(token)
+    td = get_token_data(fake_request(), token)
     assert td.user_id == user_id
     assert td.org_id == org_id
     assert td.org_slug == "test-org"
@@ -39,7 +40,7 @@ def test_get_token_data_org_scoped():
 def test_get_token_data_superadmin():
     user_id = uuid.uuid4()
     token = _make_token(user_id, is_superadmin=True)
-    td = get_token_data(token)
+    td = get_token_data(fake_request(), token)
     assert td.user_id == user_id
     assert td.org_id is None
     assert td.is_superadmin is True
@@ -47,7 +48,7 @@ def test_get_token_data_superadmin():
 
 def test_get_token_data_invalid_raises():
     with pytest.raises(HTTPException) as exc:
-        get_token_data("not.a.token")
+        get_token_data(fake_request(), "not.a.token")
     assert exc.value.status_code == 401
 
 
@@ -74,7 +75,7 @@ async def test_get_org_context_success():
     mem_result.scalar_one_or_none.return_value = membership
     db.execute.return_value = mem_result
 
-    result_user, result_org, result_role = await get_org_context(token=token, raw_api_key=None, db=db)
+    result_user, result_org, result_role = await get_org_context(fake_request(), token=token, raw_api_key=None, db=db)
     assert result_role == "planer"
     assert result_org is org
 
@@ -82,7 +83,7 @@ async def test_get_org_context_success():
 @pytest.mark.asyncio
 async def test_get_org_context_no_credential_raises():
     with pytest.raises(HTTPException) as exc:
-        await get_org_context(token=None, raw_api_key=None, db=AsyncMock())
+        await get_org_context(fake_request(), token=None, raw_api_key=None, db=AsyncMock())
     assert exc.value.status_code == 401
 
 
@@ -90,7 +91,7 @@ async def test_get_org_context_no_credential_raises():
 async def test_get_org_context_no_org_id_raises():
     token = _make_token(uuid.uuid4(), org_id=None)
     with pytest.raises(HTTPException) as exc:
-        await get_org_context(token=token, raw_api_key=None, db=AsyncMock())
+        await get_org_context(fake_request(), token=token, raw_api_key=None, db=AsyncMock())
     assert exc.value.status_code == 403
 
 
@@ -110,7 +111,7 @@ async def test_get_org_context_not_member_raises():
     db.execute.return_value = mem_result
 
     with pytest.raises(HTTPException) as exc:
-        await get_org_context(token=token, raw_api_key=None, db=db)
+        await get_org_context(fake_request(), token=token, raw_api_key=None, db=db)
     assert exc.value.status_code == 403
 
 
@@ -139,8 +140,7 @@ async def test_get_org_context_api_key_success(monkeypatch):
     db = AsyncMock()
     db.get.side_effect = [org, owner]
 
-    result_user, result_org, result_role = await get_org_context(
-        token=None, raw_api_key="cvp_abcd_secret", db=db
+    result_user, result_org, result_role = await get_org_context(fake_request(), token=None, raw_api_key="cvp_abcd_secret", db=db
     )
     assert result_user is owner
     assert result_org is org
@@ -157,5 +157,5 @@ async def test_get_org_context_api_key_invalid_raises(monkeypatch):
     monkeypatch.setattr(deps_mod.api_key_svc, "resolve_key", fake_resolve)
 
     with pytest.raises(HTTPException) as exc:
-        await get_org_context(token=None, raw_api_key="cvp_bad_key", db=AsyncMock())
+        await get_org_context(fake_request(), token=None, raw_api_key="cvp_bad_key", db=AsyncMock())
     assert exc.value.status_code == 401

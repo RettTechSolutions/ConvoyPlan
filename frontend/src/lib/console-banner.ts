@@ -2,7 +2,7 @@
  * Konsolen-Startbanner — ASCII-Art plus Debug-Infos beim App-Start.
  * Wird einmalig aus dem Root-Layout (onMount, nur Browser) aufgerufen.
  */
-import { getBaseUrl, getToken } from '$lib/api/client';
+import { getBaseUrl, authHeaders } from '$lib/api/client';
 
 const ASCII_ART = String.raw`
   ____                                ____  _
@@ -64,11 +64,11 @@ export function printConsoleBanner(): void {
 
 	// Backend-Infos asynchron nachreichen, sobald verfügbar (non-blocking)
 	// /api/version ist öffentlich, verrät den exakten Build (git-describe +
-	// Commit-SHA) aber nur an angemeldete Aufrufer — daher Token mitschicken,
-	// falls vorhanden.
-	const versionToken = getToken();
+	// Commit-SHA) aber nur an angemeldete Aufrufer — daher die Sitzung
+	// mitschicken, falls eine besteht.
 	fetch(`${getBaseUrl()}/api/version`, {
-		headers: versionToken ? { Authorization: `Bearer ${versionToken}` } : {},
+		credentials: 'same-origin',
+		headers: authHeaders(),
 	})
 		.then((r) => (r.ok ? r.json() : null))
 		.then((v: { version?: string; sha?: string; latest?: string; update_available?: boolean } | null) => {

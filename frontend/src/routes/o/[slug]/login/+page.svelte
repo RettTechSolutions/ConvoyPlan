@@ -49,16 +49,12 @@
     onMount(async () => {
         setActiveSlug(slug);
 
-        // Bereits eingeloggt? Weiterleiten
-        const existing = orgStore.getToken(slug);
-        if (existing) {
-            try {
-                const payload = JSON.parse(atob(existing.split('.')[1]));
-                if (payload.exp * 1000 > Date.now() && payload.org_slug === slug) {
-                    goto(`/o/${slug}/plan`);
-                    return;
-                }
-            } catch { /* abgelaufen oder ungültig */ }
+        // Bereits eingeloggt? Weiterleiten. Das weiß nur der Server — ein
+        // vorhandenes Cookie sagt für sich genommen nichts über seine
+        // Gültigkeit, und lesen kann das Portal es ohnehin nicht.
+        if (await orgStore.load(slug)) {
+            goto(`/o/${slug}/plan`);
+            return;
         }
 
         // Org-Name für Anzeige (Überschrift + Tab-Titel) laden
@@ -83,10 +79,13 @@
                 mfaToken = data.mfa_token;
                 return;
             }
-            if (data.access_token) {
-                orgStore.setToken(slug, data.access_token);
-                orgStore.setFromToken(slug, orgName, data.access_token);
+            // Das Backend hat die Sitzung im selben Schritt als
+            // HttpOnly-Cookie gesetzt; das access_token in der Antwort ist
+            // für API-Clients da und wird hier bewusst nicht angefasst.
+            if (await orgStore.load(slug)) {
                 goto(`/o/${slug}/plan`);
+            } else {
+                error = 'Anmeldung fehlgeschlagen';
             }
         } catch (e: unknown) {
             error = e instanceof Error ? e.message : 'Login fehlgeschlagen';
@@ -100,11 +99,11 @@
         loading = true;
         error = '';
         try {
-            const data = await orgAuthApi.mfaVerify(mfaToken, mfaCode);
-            if (data.access_token) {
-                orgStore.setToken(slug, data.access_token);
-                orgStore.setFromToken(slug, orgName, data.access_token);
+            await orgAuthApi.mfaVerify(mfaToken, mfaCode);
+            if (await orgStore.load(slug)) {
                 goto(`/o/${slug}/plan`);
+            } else {
+                error = 'Anmeldung fehlgeschlagen';
             }
         } catch (e: unknown) {
             error = e instanceof Error ? e.message : 'Ungültiger Code';

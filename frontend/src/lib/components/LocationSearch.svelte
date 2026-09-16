@@ -5,7 +5,7 @@
 	// sonst automatisch Photon (komoot). Beide sind auf Tipp-während-Suchen
 	// (Autocomplete) ausgelegt und liefern für Teil-Adressen aus dem abgedeckten
 	// Gebiet (DACH) gute Treffer — der Bias dorthin sitzt im Backend.
-	import { getBaseUrl, getToken } from '$lib/api/client';
+	import { getBaseUrl, authHeaders } from '$lib/api/client';
 	import type { GeocodeResponse } from '$lib/api';
 
 	interface Suggestion {
@@ -74,11 +74,11 @@
 	async function run(q: string) {
 		controller = new AbortController();
 		try {
-			const token = getToken();
 			const url = `${getBaseUrl()}/api/geocode/search?q=${encodeURIComponent(q)}&limit=6`;
 			const res = await fetch(url, {
 				signal: controller.signal,
-				headers: token ? { Authorization: `Bearer ${token}` } : {}
+				credentials: 'same-origin',
+				headers: authHeaders()
 			});
 			if (!res.ok) throw new Error(`HTTP ${res.status}`);
 			const data: GeocodeResponse = await res.json();

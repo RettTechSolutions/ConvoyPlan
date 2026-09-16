@@ -10,6 +10,7 @@ from app.api.deps import get_org_context, require_system_read
 from app.models.api_key import SCOPE_ORGANIZATION, SCOPE_SYSTEM
 from app.models.user import User
 from app.services import api_key as svc
+from tests.fake_request import fake_request
 
 
 def test_generate_key_roundtrip():
@@ -193,5 +194,5 @@ async def test_org_context_rejects_system_key(resolves_to):
     """Mirror image: a system key carries no org and must not act on tenant data."""
     resolves_to(_fake_key(SCOPE_SYSTEM))
     with pytest.raises(HTTPException) as exc:
-        await get_org_context(token=None, raw_api_key="cvp_x_y", db=AsyncMock())
+        await get_org_context(fake_request(), token=None, raw_api_key="cvp_x_y", db=AsyncMock())
     assert exc.value.status_code == 403

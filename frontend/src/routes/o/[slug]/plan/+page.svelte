@@ -21,7 +21,7 @@
 	// svelte-dnd-action keys items by a top-level `id`; ConvoyVehicleItem has none,
 	// so we attach the vehicle id for the march-order drag list.
 	type DndConvoyVehicle = ConvoyVehicleItem & { id: string };
-	import { getToken } from '$lib/api/client';
+	import { authHeaders } from '$lib/api/client';
 	import type { FeatureCollection, Geometry } from 'geojson';
 	import { dndzone } from 'svelte-dnd-action';
 	import { themeStore } from '$lib/stores/theme';
@@ -77,16 +77,7 @@
 	// Demo flag decoded from the JWT payload (null for regular sessions). The
 	// displayed expiry comes from the server (demoExpiresAt) — the superadmin
 	// can extend a session, so the token's exp claim is only a ceiling.
-	const demoSession = $derived.by(() => {
-		const slug = ($page.params as Record<string, string>).slug;
-		const token = orgStore.getToken(slug);
-		if (!token) return null;
-		try {
-			const payload = JSON.parse(atob(token.split('.')[1]));
-			if (!payload.is_demo) return null;
-			return { isDemo: true };
-		} catch { return null; }
-	});
+	const demoSession = $derived($orgStore?.is_demo ? { isDemo: true } : null);
 	let demoExpiresAt = $state<Date | null>(null);
 	// Der Demo-Start hat die noch laufende Sitzung zurückgegeben statt eine neue
 	// angelegt (`?resumed=1`) — das Banner sagt es, sonst wundert sich der
@@ -187,13 +178,11 @@
 		}
 		pwWorking = true;
 		try {
-			const res = await authApi.changePassword(pwForm.current, pwForm.next);
-			// Backend rotates the token version on password change; keep this
-			// session valid by storing the freshly issued token.
-			if (res.access_token) {
-				const slug = ($page.params as Record<string, string>).slug;
-				orgStore.setToken(slug, res.access_token);
-			}
+			// Das Backend erhöht beim Passwortwechsel die Token-Version (alle
+			// anderen Sitzungen sind damit ungültig) und erneuert im selben
+			// Schritt das Sitzungs-Cookie dieser Sitzung. Hier ist deshalb
+			// nichts mehr zu speichern.
+			await authApi.changePassword(pwForm.current, pwForm.next);
 			pwForm = { current: '', next: '', confirm: '' };
 			pwSuccess = 'Passwort geändert.';
 			setTimeout(() => { pwSuccess = ''; }, 4000);
@@ -966,10 +955,9 @@
 	function kwHasZusatz(kw: KanalwechselEntry): boolean {
 		return !!kw.zusatz_kanaele?.length && kw.typ !== 'abmelden';
 	}
-	function logout() {
+	async function logout() {
 		const slug = ($page.params as Record<string, string>).slug;
-		orgStore.removeToken(slug);
-		orgStore.clear();
+		await orgStore.logout(slug);
 		goto(`/o/${slug}/login`);
 	}
 
@@ -1069,9 +1057,9 @@
 	async function downloadExport(format: 'gpx' | 'json' | 'pdf') {
 		if (!selected) return;
 		try {
-			const token = getToken();
 			const res = await fetch(`/api/convoys/${selected.id}/export/${format}`, {
-				headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+				credentials: 'same-origin',
+				headers: authHeaders(),
 			});
 			if (!res.ok) { error = `Export fehlgeschlagen (${res.status})`; return; }
 			const blob = await res.blob();

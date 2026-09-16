@@ -1,4 +1,6 @@
 import { writable } from 'svelte/store';
+import { authApi } from '$lib/api';
+import { setActiveSlug } from '$lib/api/client';
 
 export interface OrgContext {
     slug: string;
@@ -6,27 +8,63 @@ export interface OrgContext {
     org_name: string;
     user_id: string;
     user_role: 'beobachter' | 'fahrer' | 'planer' | 'admin';
+    /** Eine Demo-Organisation — früher die `is_demo`-Claim im Token. */
+    is_demo: boolean;
 }
 
+/**
+ * Wer in welcher Organisation angemeldet ist.
+ *
+ * Diese Angaben kamen früher aus dem JWT, das im `localStorage` lag — das
+ * Portal hat den Payload selbst dekodiert (`atob`). Seit die Sitzung im
+ * HttpOnly-Cookie steckt, kommt JavaScript an den Inhalt nicht mehr heran,
+ * und genau das ist der Zweck: was kein Skript lesen kann, kann auch keines
+ * wegtragen.
+ *
+ * Also fragt der Store beim Server nach (`/api/auth/me`). Das ist nebenbei
+ * die richtigere Quelle — die Rolle im Token war der Stand vom Anmelden, die
+ * vom Server ist der von eben. Wer aus einer Organisation entfernt oder
+ * herabgestuft wurde, merkt das jetzt beim nächsten Laden statt in bis zu
+ * sieben Tagen.
+ */
 function createOrgStore() {
     const { subscribe, set } = writable<OrgContext | null>(null);
 
     return {
         subscribe,
 
-        /** Wird vom o/[slug]/+layout.svelte aufgerufen */
-        setFromToken(slug: string, orgName: string, token: string): void {
+        /**
+         * Die Sitzung dieser Organisation beim Server erfragen.
+         *
+         * Gibt den Kontext zurück, wenn eine gültige Sitzung besteht, sonst
+         * `null` — und `null` heißt für den Aufrufer: zur Anmeldung. Es wird
+         * bewusst nicht zwischen „kein Cookie", „abgelaufen" und „nicht mehr
+         * Mitglied" unterschieden; das Ergebnis ist in allen drei Fällen
+         * dasselbe.
+         */
+        async load(slug: string): Promise<OrgContext | null> {
+            setActiveSlug(slug);
             try {
-                const payload = JSON.parse(atob(token.split('.')[1]));
-                set({
+                const me = await authApi.me();
+                // Das Cookie gehört zu einer anderen Organisation, als die
+                // URL behauptet — dann ist es für diese Seite keine Sitzung.
+                if (!me.org_id || me.org_slug !== slug) {
+                    set(null);
+                    return null;
+                }
+                const ctx: OrgContext = {
                     slug,
-                    org_id: payload.org_id,
-                    org_name: orgName,
-                    user_id: payload.sub,
-                    user_role: payload.role ?? 'beobachter',
-                });
+                    org_id: me.org_id,
+                    org_name: me.org_name ?? slug,
+                    user_id: me.user_id,
+                    user_role: (me.role ?? 'beobachter') as OrgContext['user_role'],
+                    is_demo: me.is_demo,
+                };
+                set(ctx);
+                return ctx;
             } catch {
                 set(null);
+                return null;
             }
         },
 
@@ -34,19 +72,16 @@ function createOrgStore() {
             set(null);
         },
 
-        getToken(slug: string): string | null {
-            if (typeof localStorage === 'undefined') return null;
-            return localStorage.getItem(`token__${slug}`);
-        },
-
-        setToken(slug: string, token: string): void {
-            if (typeof localStorage === 'undefined') return;
-            localStorage.setItem(`token__${slug}`, token);
-        },
-
-        removeToken(slug: string): void {
-            if (typeof localStorage === 'undefined') return;
-            localStorage.removeItem(`token__${slug}`);
+        /** Die Sitzung dieser Organisation serverseitig beenden. */
+        async logout(slug: string): Promise<void> {
+            setActiveSlug(slug);
+            try {
+                await authApi.logout();
+            } catch {
+                /* Auch ein gescheitertes Abmelden darf die Oberfläche nicht
+                   festhalten — der Kontext ist danach in jedem Fall weg. */
+            }
+            set(null);
         },
     };
 }

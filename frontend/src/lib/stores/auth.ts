@@ -1,68 +1,87 @@
 import { writable } from 'svelte/store';
 import { authApi } from '$lib/api';
+import { setActiveSlug } from '$lib/api/client';
 
 interface AuthState {
-    token: string | null;
+    /**
+     * `false`, solange der Server noch nicht geantwortet hat.
+     *
+     * Dieser dritte Zustand ist neu und nötig: früher stand das Token im
+     * `localStorage` und war damit *synchron* verfügbar — das Root-Layout
+     * konnte `auth.init()` vor dem ersten `onMount` der Kinder aufrufen.
+     * Eine Sitzung im HttpOnly-Cookie lässt sich nur durch eine Anfrage
+     * feststellen, und die dauert. Wer „angemeldet?" fragt, bevor `ready`
+     * gesetzt ist, bekäme sonst ein falsches Nein und würde zur Anmeldung
+     * umleiten, obwohl die Sitzung besteht.
+     */
+    ready: boolean;
+    is_authenticated: boolean;
     is_superadmin: boolean;
+    email: string | null;
 }
 
-function parseToken(token: string): { is_superadmin: boolean } {
-    try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        return { is_superadmin: !!payload.is_superadmin };
-    } catch {
-        return { is_superadmin: false };
-    }
-}
+const LEER: AuthState = {
+    ready: false,
+    is_authenticated: false,
+    is_superadmin: false,
+    email: null,
+};
 
 function createAuthStore() {
-    const { subscribe, set } = writable<AuthState>({ token: null, is_superadmin: false });
+    const { subscribe, set } = writable<AuthState>(LEER);
 
-    const init = () => {
-        const token = localStorage.getItem('token');
-        if (token) {
-            set({ token, ...parseToken(token) });
-        } else {
-            set({ token: null, is_superadmin: false });
+    /** Die organisationslose (Superadmin-)Sitzung beim Server erfragen. */
+    const init = async (): Promise<boolean> => {
+        setActiveSlug(null);
+        try {
+            const me = await authApi.me();
+            set({
+                ready: true,
+                is_authenticated: true,
+                is_superadmin: me.is_superadmin,
+                email: me.email,
+            });
+            return true;
+        } catch {
+            set({ ...LEER, ready: true });
+            return false;
         }
     };
 
-    /** Store a token that was already validated (e.g. after MFA verify). */
-    const setToken = (token: string) => {
-        localStorage.setItem('token', token);
-        set({ token, ...parseToken(token) });
-    };
-
     /**
-     * Standard credential-based login.
-     * Returns `{ mfa_required: true, mfa_token }` when MFA is enabled —
-     * the caller must then call `mfaVerify()` and pass the result to `setToken()`.
+     * Anmeldung ohne Organisation (Superadmin).
+     *
+     * Die Antwort trägt weiterhin ein `access_token` — für Skripte und
+     * API-Clients, die den Bearer-Weg nutzen. Das Portal rührt es nicht an:
+     * die Sitzung steht im selben Antwort-Schritt bereits als HttpOnly-Cookie,
+     * und ein zweites Mal daneben im `localStorage` wäre genau das, was diese
+     * Umstellung abgeschafft hat.
      */
     const login = async (email: string, password: string) => {
         const data = await authApi.login(email, password);
         if (data.mfa_required && data.mfa_token) {
             return { mfa_required: true as const, mfa_token: data.mfa_token };
         }
-        if (data.access_token) {
-            setToken(data.access_token);
-        }
+        await init();
         return { mfa_required: false as const };
     };
 
     const mfaVerify = async (mfa_token: string, code: string) => {
-        const data = await authApi.mfaVerify(mfa_token, code);
-        if (data.access_token) {
-            setToken(data.access_token);
+        await authApi.mfaVerify(mfa_token, code);
+        await init();
+    };
+
+    const logout = async () => {
+        setActiveSlug(null);
+        try {
+            await authApi.logout();
+        } catch {
+            /* Siehe orgStore.logout — die Oberfläche meldet trotzdem ab. */
         }
+        set({ ...LEER, ready: true });
     };
 
-    const logout = () => {
-        localStorage.removeItem('token');
-        set({ token: null, is_superadmin: false });
-    };
-
-    return { subscribe, init, login, mfaVerify, setToken, logout };
+    return { subscribe, init, login, mfaVerify, logout };
 }
 
 export const auth = createAuthStore();
-export const isLoggedIn = { subscribe: (fn: (v: boolean) => void) => auth.subscribe((s) => fn(!!s.token)) };

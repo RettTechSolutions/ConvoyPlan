@@ -283,7 +283,7 @@ from app.api.routes.auth import (  # noqa: E402
 
 def test_token_carries_version_and_parses():
     sub = str(uuid.uuid4())
-    td = deps.get_token_data(create_token(sub, False, token_version=7))
+    td = deps.get_token_data(fake_request(), create_token(sub, False, token_version=7))
     assert td.token_version == 7
 
 
@@ -294,7 +294,7 @@ def test_mfa_pending_token_rejected_as_access_token():
     accepted by get_token_data / get_current_user (CWE-287 MFA bypass)."""
     pending = create_mfa_pending_token(str(uuid.uuid4()), org_slug="acme")
     with pytest.raises(HTTPException) as exc:
-        deps.get_token_data(pending)
+        deps.get_token_data(fake_request(), pending)
     assert exc.value.status_code == 401
 
 
@@ -319,7 +319,7 @@ def test_legacy_token_without_typ_still_accepted():
         settings.jwt_secret,
         algorithm=settings.jwt_algorithm,
     )
-    td = deps.get_token_data(legacy)  # must not raise
+    td = deps.get_token_data(fake_request(), legacy)  # must not raise
     assert td.token_version == 0
 
 
@@ -327,15 +327,15 @@ def test_legacy_token_without_typ_still_accepted():
 
 def test_stream_ticket_rejected_by_regular_api():
     """A stream ticket (typ=stream) must NOT be usable as a normal access token."""
-    td = deps.get_token_data(create_token(str(uuid.uuid4()), False, token_version=3))
+    td = deps.get_token_data(fake_request(), create_token(str(uuid.uuid4()), False, token_version=3))
     ticket = create_stream_ticket(td)
     with pytest.raises(HTTPException) as exc:
-        deps.get_token_data(ticket)
+        deps.get_token_data(fake_request(), ticket)
     assert exc.value.status_code == 401
 
 
 def test_stream_ticket_accepted_by_stream_decoder():
-    td = deps.get_token_data(create_token(str(uuid.uuid4()), False, token_version=3))
+    td = deps.get_token_data(fake_request(), create_token(str(uuid.uuid4()), False, token_version=3))
     ticket = create_stream_ticket(td)
     out = deps.decode_stream_token(ticket)
     assert out.user_id == td.user_id
@@ -545,6 +545,7 @@ async def test_caddyfile_retrofit_never_raises(tmp_path, monkeypatch):
 # ── Upstream-quota throttles (demo sessions) ──────────────────────────────────
 
 from app.api import quota  # noqa: E402
+from tests.fake_request import fake_request
 
 
 def _quota_request(ip: str = "203.0.113.7"):

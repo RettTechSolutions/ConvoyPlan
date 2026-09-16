@@ -1,13 +1,14 @@
 import uuid
 
 import jwt as _jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import APIKeyHeader, OAuth2PasswordBearer
 from jwt.exceptions import InvalidTokenError
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api import cookies
 from app.config import settings
 from app.database import get_db
 from app.models.api_key import SCOPE_ORGANIZATION, SCOPE_SYSTEM
@@ -15,10 +16,10 @@ from app.models.organization import Organization, UserOrganization
 from app.models.user import User
 from app.services import api_key as api_key_svc
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
-# Optional variants for endpoints that accept either a bearer token or an
-# organization-scoped API key. auto_error=False so a missing one is not fatal
-# on its own — get_org_context decides based on which credential is present.
+# Durchgehend auto_error=False: ob eine fehlende Anmeldung ein Fehler ist,
+# entscheidet nicht mehr das Sicherheitsschema, sondern _credential() — dort
+# kommt nach dem Header noch das Sitzungs-Cookie als zweite Quelle in Frage,
+# und ein vorschnelles 401 der Schemaebene läge davor.
 oauth2_optional = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -82,18 +83,67 @@ def _decode_token(token: str, *, allow_stream: bool = False) -> TokenData:
         raise credentials_exception
 
 
-def get_token_data(token: str = Depends(oauth2_scheme)) -> TokenData:
-    return _decode_token(token)
+def _credential(request: Request, header_token: str | None) -> str | None:
+    """Das vorzulegende Token — aus dem Header oder aus dem Sitzungs-Cookie.
+
+    Der ``Authorization``-Header hat Vorrang und verhält sich wie bisher; er
+    ist der Weg für API-Clients, Skripte und die Tests. Fehlt er, gilt das
+    HttpOnly-Cookie, das der Browser von sich aus mitschickt — das ist der
+    Weg des Portals, seit das Token dort nicht mehr im ``localStorage``
+    liegt (siehe ``app/api/cookies.py``).
+
+    Kommt die Anmeldung aus dem Cookie, greift zusätzlich der CSRF-Schutz:
+    ändernde Methoden brauchen den festen ``X-Requested-With``-Kopf. Der
+    Header-Weg braucht ihn nicht — wer einen ``Authorization``-Header setzen
+    kann, ist ohnehin kein fremder Ursprung."""
+    if header_token:
+        return header_token
+
+    token = cookies.token_from_cookie(request)
+    if token is None:
+        return None
+
+    if request.method.upper() not in cookies.SAFE_METHODS:
+        if request.headers.get(cookies.CSRF_HEADER) != cookies.CSRF_VALUE:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "Diese Anfrage wurde ohne den erforderlichen "
+                    f"{cookies.CSRF_HEADER}-Kopf gestellt."
+                ),
+            )
+    return token
 
 
-def get_optional_token_data(token: str | None = Depends(oauth2_optional)) -> TokenData | None:
+def get_token_data(
+    request: Request, token: str | None = Depends(oauth2_optional)
+) -> TokenData:
+    credential = _credential(request, token)
+    if not credential:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return _decode_token(credential)
+
+
+def get_optional_token_data(
+    request: Request, token: str | None = Depends(oauth2_optional)
+) -> TokenData | None:
     """Identify the caller on endpoints that are public but reveal more to a
     signed-in user (e.g. /api/version). Returns None for anonymous callers and
     for a token that does not validate — it never rejects the request."""
-    if not token:
+    try:
+        credential = _credential(request, token)
+    except HTTPException:
+        # Ein fehlender CSRF-Kopf macht den Aufrufer hier anonym statt die
+        # Anfrage zu kippen — diese Endpunkte sind öffentlich.
+        return None
+    if not credential:
         return None
     try:
-        return _decode_token(token)
+        return _decode_token(credential)
     except HTTPException:
         return None
 
@@ -158,6 +208,7 @@ async def _api_key_org_context(raw_key: str, db: AsyncSession) -> OrgCtx:
 
 
 async def get_org_context(
+    request: Request,
     token: str | None = Depends(oauth2_optional),
     raw_api_key: str | None = Depends(api_key_header),
     db: AsyncSession = Depends(get_db),
@@ -166,13 +217,14 @@ async def get_org_context(
     if raw_api_key:
         return await _api_key_org_context(raw_api_key, db)
 
-    if not token:
+    credential = _credential(request, token)
+    if not credential:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    token_data = _decode_token(token)
+    token_data = _decode_token(credential)
     if not token_data.org_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Org context required")
 

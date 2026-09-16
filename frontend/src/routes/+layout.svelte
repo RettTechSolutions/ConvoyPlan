@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
+	import { purgeLegacyTokens } from '$lib/api/client';
 	import { brandingStore, setGlobalBranding, type Branding } from '$lib/stores/branding';
 	import { themeStore } from '$lib/stores/theme';
 	import { versionStore } from '$lib/stores/version.svelte';
@@ -28,14 +29,23 @@
 	let setupChecked = $state(false);
 	let demoMode = $state(false);
 
-	// Auth synchron initialisieren — muss vor jedem onMount der Kind-Komponenten
-	// verfügbar sein, da Svelte onMount von innen nach außen aufruft.
+	// Das Theme bleibt synchron — es kommt weiterhin aus dem localStorage und
+	// muss vor dem ersten Rendern stehen, sonst blitzt der helle Modus auf.
 	if (typeof localStorage !== 'undefined') {
-		auth.init();
 		themeStore.init();
+		// Reste der alten Token-Ablage entfernen. Seit die Sitzung im
+		// HttpOnly-Cookie liegt, werden sie nicht mehr gelesen — liegenbleiben
+		// sollen sie trotzdem nicht, sonst wäre das Token weiter in Reichweite
+		// jedes Skripts, genau das, was die Umstellung beseitigt hat.
+		purgeLegacyTokens();
 	}
 
 	onMount(async () => {
+		// Die Sitzung lässt sich nur noch beim Server erfragen, das geht nicht
+		// synchron. Die Kind-Komponenten warten deshalb auf `ready` im Store,
+		// statt sich auf einen sofort vorhandenen Token zu verlassen.
+		auth.init();
+
 		printConsoleBanner();
 
 		// Load build version info (public, non-blocking)
@@ -72,12 +82,17 @@
 
 	$effect(() => {
 		if (!setupChecked) return;
+		// Erst entscheiden, wenn der Server geantwortet hat: solange `ready`
+		// aus ist, ist „nicht angemeldet" nur der Anfangszustand und kein
+		// Befund — wer hier schon umleitet, wirft jeden Angemeldeten beim
+		// Laden auf die Anmeldemaske.
+		if (!$auth.ready) return;
 		const isPublic = isPublicPath($page.url.pathname);
-		if (!isPublic && !$auth.token) {
+		if (!isPublic && !$auth.is_authenticated) {
 			goto('/admin');
 			return;
 		}
-		if ($auth.token && !isPublic) {
+		if ($auth.is_authenticated && !isPublic) {
 			fetch('/api/license/mode')
 				.then(r => r.ok ? r.json() : null)
 				.then(data => { if (data) demoMode = data.demo_mode === true; })

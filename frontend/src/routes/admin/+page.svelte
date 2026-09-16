@@ -48,6 +48,11 @@
     }
 
     onMount(async () => {
+        // Die Sitzung steckt im HttpOnly-Cookie und lässt sich nur beim Server
+        // erfragen. Früher stand der Token synchron im localStorage und war
+        // hier schon da; jetzt muss gewartet werden — sonst zeigte diese Seite
+        // jedem Angemeldeten erst einmal die Anmeldemaske.
+        await auth.init();
         if ($auth.is_superadmin) {
             authed = true;
             await initPortal();
@@ -71,8 +76,10 @@
         await initPortal();
     }
 
-    function logout() {
-        auth.logout();
+    async function logout() {
+        // Serverseitig: das HttpOnly-Cookie kann sich das Portal nicht selbst
+        // wegnehmen.
+        await auth.logout();
         authed = false;
     }
 
@@ -3287,7 +3294,7 @@
         </div>
     </div>
 {/if}
-{:else}
+{:else if $auth.ready}
     <SuperadminLogin onsuccess={handleAuthenticated} />
 {/if}
 

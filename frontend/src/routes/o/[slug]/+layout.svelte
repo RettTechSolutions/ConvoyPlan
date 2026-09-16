@@ -4,7 +4,6 @@
     import { onMount, onDestroy } from 'svelte';
     import { orgStore } from '$lib/stores/org';
     import { setActiveSlug } from '$lib/api/client';
-    import { orgAuthApi } from '$lib/api';
     import { setOrgBranding, clearOrgBranding, type Branding } from '$lib/stores/branding';
 
     let { children } = $props();
@@ -41,39 +40,16 @@
             return;
         }
 
-        const token = orgStore.getToken(slug);
-        if (!token) {
+        // Die Sitzung steckt im HttpOnly-Cookie — ob sie gilt, weiß nur der
+        // Server. Ablauf, Organisation und Mitgliedschaft prüft er in einem
+        // Zug; das frühere Dekodieren des Tokens im Browser prüfte nur, was
+        // beim Anmelden galt.
+        const ctx = await orgStore.load(slug);
+        if (!ctx) {
             goto(`/o/${slug}/login`);
             return;
         }
-
-        // Token-Payload prüfen
-        try {
-            const payload = JSON.parse(atob(token.split('.')[1]));
-            const exp = payload.exp * 1000;
-            if (Date.now() > exp) {
-                orgStore.removeToken(slug);
-                goto(`/o/${slug}/login`);
-                return;
-            }
-            if (payload.org_slug !== slug) {
-                goto(`/o/${slug}/login`);
-                return;
-            }
-
-            // Org-Name nachladen für den Store
-            setActiveSlug(slug);
-            let orgName = payload.org_slug; // Fallback
-            try {
-                const orgInfo = await orgAuthApi.lookup(slug);
-                orgName = orgInfo.name;
-            } catch { /* ignorieren */ }
-
-            orgStore.setFromToken(slug, orgName, token);
-            ready = true;
-        } catch {
-            goto(`/o/${slug}/login`);
-        }
+        ready = true;
     });
 </script>
 
