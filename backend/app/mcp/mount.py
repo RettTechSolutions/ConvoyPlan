@@ -31,10 +31,14 @@ Produktion.
 import contextlib
 import json
 import logging
+import uuid
 
 from fastapi import FastAPI
 from mcp.server import MCPServer
-from mcp.server.auth.middleware.auth_context import AuthContextMiddleware
+from mcp.server.auth.middleware.auth_context import (
+    AuthContextMiddleware,
+    get_access_token,
+)
 from mcp.server.auth.middleware.bearer_auth import BearerAuthBackend, RequireAuthMiddleware
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 from mcp.server.auth.handlers.metadata import MetadataHandler
@@ -57,13 +61,13 @@ from starlette.types import Send
 
 from app.config import settings
 from app.database import get_db_session
-from app.mcp import WRITE_TOOLS
+from app.mcp import ALLOWED_TOOLS, WRITE_TOOLS
 from app.mcp import scopes as scope_svc
 from app.mcp import resources as mcp_resources
 from app.mcp import subscriptions as mcp_subs
 from app.mcp import tools_read, tools_write, widgets as mcp_widgets
 from app.middleware.license_guard import is_licensed
-from app.services import mcp_config, oauth_tokens
+from app.services import mcp_config, oauth_tokens, org_mcp_policy
 from app.services.oauth_provider import ConvoyPlanOAuthProvider
 
 logger = logging.getLogger(__name__)
@@ -257,6 +261,80 @@ class LicenseGatedToolsMiddleware:
         return result
 
 
+class OrgPolicyToolsMiddleware:
+    """Zeigt nur die Werkzeuge, die die Organisation der Verbindung freigibt.
+
+    Die Richtlinie einer Organisation (``services/org_mcp_policy.py``) deckelt
+    zwei Dinge: welche **Bereiche** der Fachdaten eine Verbindung berührt und
+    ob sie über das Lesen hinausgeht. Was dabei herausfällt, verschwindet hier
+    aus der Liste, statt angeboten und beim Aufruf abgelehnt zu werden — aus
+    demselben Grund wie bei der Lizenz: ein Modell, das ein Werkzeug sieht,
+    probiert es aus, und eine Absage nach dem Versuch ist eine schlechtere
+    Auskunft als ein Werkzeug, das es nicht gibt.
+
+    Maßgeblich ist die Prüfung im Aufruf (``McpContext.require_werkzeug``).
+    Diese Schicht ist Auskunft, nicht Absicherung: ein Client, der einen Namen
+    von früher kennt, kommt an ihr vorbei — und dann an der anderen nicht.
+
+    Gelesen wird bei **jeder** Auflistung. Ändert ein Org-Admin die Freigabe,
+    sieht die nächste Auflistung den neuen Stand; Clients fragen nach einer
+    ``notifications/tools/list_changed`` ohnehin neu, und ohne diese Meldung
+    spätestens bei der nächsten Sitzung.
+    """
+
+    async def __call__(self, ctx, call_next):
+        result = await call_next(ctx)
+        if ctx.method != "tools/list":
+            return result
+
+        policy = await self._policy()
+        if policy is None:
+            # Organisation nicht bestimmbar: die Liste bleibt, wie sie ist.
+            # Etwas auszublenden, wofür wir die Grundlage nicht kennen, hieße
+            # bei einem Datenbankausfall alle Werkzeuge verschwinden zu lassen
+            # — und verboten ist dadurch nichts, das entscheidet der Aufruf.
+            return result
+
+        erlaubt = {w for w in ALLOWED_TOOLS if policy.erlaubt_werkzeug(w)}
+
+        if isinstance(result, dict):
+            tools = result.get("tools")
+            if tools is None:
+                return result
+            result["tools"] = [t for t in tools if _tool_name(t) in erlaubt]
+            return result
+
+        tools = getattr(result, "tools", None)
+        if tools is None:
+            return result
+        result.tools = [t for t in tools if _tool_name(t) in erlaubt]
+        return result
+
+    @staticmethod
+    async def _policy():
+        """Die Richtlinie der Organisation dieses Tokens, oder None."""
+        token = get_access_token()
+        if token is None:
+            return None
+        raw_org = (token.claims or {}).get("org_id")
+        if not raw_org:
+            return None
+        try:
+            org_id = uuid.UUID(raw_org)
+        except (TypeError, ValueError):
+            return None
+        try:
+            async with get_db_session() as db:
+                return await org_mcp_policy.fuer_org(db, org_id)
+        except Exception:
+            logger.warning(
+                "MCP: Richtlinie der Organisation nicht lesbar — "
+                "Werkzeugliste bleibt ungefiltert",
+                exc_info=True,
+            )
+            return None
+
+
 class ScopeAnnouncingAuthMiddleware(RequireAuthMiddleware):
     """Wie ``RequireAuthMiddleware``, aber mit ``scope`` in der Challenge.
 
@@ -362,7 +440,7 @@ def build_server() -> MCPServer:
         version=settings.app_version,
         token_verifier=ConvoyPlanTokenVerifier(),
         auth=auth_settings,
-        middleware=[LicenseGatedToolsMiddleware()],
+        middleware=[LicenseGatedToolsMiddleware(), OrgPolicyToolsMiddleware()],
         # Der eigene Bus statt des mitgelieferten: der ``ListenHandler`` des
         # SDK honoriert jede angefragte Resource-URI ohne Prüfung. Die
         # Mandantentrennung in der Zustellung steckt deshalb im Bus — siehe

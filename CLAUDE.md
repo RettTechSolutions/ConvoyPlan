@@ -60,6 +60,36 @@ entsteht erst durch die Zustimmung eines angemeldeten Benutzers auf `/oauth/cons
 und gilt für genau eine Organisation, gedeckelt durch dessen Rolle. Kein Werkzeug
 löscht Daten. Jeder schreibende Aufruf landet im Audit-Log mit Quelle `mcp`.
 
+#### Die Richtlinie je Organisation
+
+Über dem Instanzschalter liegt eine zweite Ebene: **jede Organisation nimmt erst
+teil, wenn ihr Admin sie einschaltet** (`services/org_mcp_policy.py`, Tabelle
+`organization_mcp_policies`, Portal: Org-Admin → **KI-Zugriff**). Keine Zeile heißt
+aus — der Standard steht damit an *einer* Stelle (`org_mcp_policy.AUS`) und nicht in
+einem `server_default`. Migration `0042` schaltet nur die Organisationen ein, an denen
+schon eine aktive Verbindung hängt, mit genau deren Scopes; alles andere bleibt aus.
+
+Zwei Achsen, die als **Und** wirken: **Bereiche** (`app/mcp/areas.py` — Konvois,
+Fahrzeuge, Wegpunkte, Routen, Status) sagen *worauf*, die Scopes sagen *wie weit*.
+`convoy:read` ist dabei keine Wahl, sondern Voraussetzung: ohne ihn käme ein Token
+nicht an `AuthSettings.required_scopes` vorbei, also ergänzt `setzen()` ihn bei jeder
+eingeschalteten Richtlinie.
+
+Die Freigabe kennt **keine Scope-Hierarchie** — das ist der Unterschied zu
+`mcp/scopes.py`. Dort sagt die Hierarchie, was ein erteiltes *Recht* einschließt; hier
+geht es darum, was eine Organisation *freigeben will*, und „planen ja, Positionen
+nein" muss ausdrückbar bleiben. Aus demselben Grund greift `policy.zuschneiden()` im
+Consent **nach** `effective()`: davor brächte `convoy:write` ein `fleet:status` mit.
+
+Durchgesetzt wird an vier Stellen, und die maßgebliche ist die dritte:
+Zustimmungsbildschirm, `tools/list` (`OrgPolicyToolsMiddleware`), **jeder Aufruf**
+(`McpContext.require_werkzeug`, aus `mcp_context(werkzeug=…)` heraus) und die
+Resources/Abos (`require_bereich`). Die Prüfung sitzt zentral in `mcp_context`, weil 23
+Prüfungen in 23 Werkzeugen genau eine sind, die jemand beim 24. vergisst; der Preis ist,
+dass jedes Werkzeug seinen Namen durchreicht, und genau das hält
+`tests/test_org_mcp_policy.py` per AST gegen den Quelltext — zusammen mit der Regel,
+dass jedes Werkzeug einen Bereich hat oder in `GRUNDWERKZEUGE` steht.
+
 Bei den Scopes (`app/mcp/scopes.py`) sind zwei Listen auseinanderzuhalten, die einmal
 eine waren: `SCOPES_SUPPORTED` weist aus, *was es gibt* (Protected Resource Metadata),
 `REQUIRED_SCOPES` ist die Schwelle des Endpunkts. Steht die volle Liste versehentlich

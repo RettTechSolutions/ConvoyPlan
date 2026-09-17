@@ -40,6 +40,7 @@ import anyio.lowlevel
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.shared.subscriptions import ResourceUpdated, ServerEvent
 
+from app.mcp import areas
 from app.mcp.context import McpError, mcp_context
 from app.mcp.scopes import SCOPE_READ
 from app.services.tracking import tracking_manager
@@ -226,6 +227,11 @@ async def live_payload(org_id: str, konvoi_id: str) -> dict:
 
     async with mcp_context() as ctx:
         ctx.require(SCOPE_READ)
+        # Live-Positionen sind der empfindlichste Teil: an ihnen hängen die
+        # Standorte von Besatzungen. Eine Organisation, die den Bereich Status
+        # nicht freigibt, gibt ihn auch hier nicht her — sonst wäre das Abo
+        # der Weg an der Freigabe vorbei.
+        ctx.require_bereich(areas.BEREICH_STATUS)
         try:
             gefragte_org = uuid.UUID(org_id)
         except ValueError:

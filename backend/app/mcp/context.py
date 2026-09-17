@@ -19,10 +19,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db_session
+from app.mcp import areas
 from app.mcp import scopes as scope_svc
 from app.models.organization import Organization, UserOrganization
 from app.models.user import User
-from app.services import audit, rate_limit
+from app.services import audit, org_mcp_policy, rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,10 @@ class McpContext:
     scopes: list[str]
     client_id: str
     db: AsyncSession
+    # Was die Organisation über die KI-Schnittstelle überhaupt hergibt. Bei
+    # jedem Aufruf frisch gelesen, nicht aus dem Token — ein Entzug wirkt
+    # damit sofort (siehe ``services/org_mcp_policy.py``).
+    policy: org_mcp_policy.Policy = org_mcp_policy.AUS
 
     @property
     def org_ctx(self) -> tuple[User, Organization, str]:
@@ -118,6 +123,65 @@ class McpContext:
                 "weiterhin lesen."
             )
 
+    def require_aktiv(self) -> None:
+        """Erzwingen, dass die Organisation die KI-Schnittstelle überhaupt nutzt."""
+        if not self.policy.enabled:
+            raise McpError(
+                f"Die Organisation „{self.organization.name}“ hat den Zugriff über "
+                "die KI-Schnittstelle abgeschaltet. Ein Administrator dieser "
+                "Organisation kann ihn im Portal unter „KI-Zugriff“ wieder "
+                "freigeben. Weitere Versuche über diese Verbindung führen zum "
+                "selben Ergebnis."
+            )
+
+    def require_bereich(self, bereich: str) -> None:
+        """Einen Bereich gegen die Freigabe der Organisation prüfen.
+
+        Für Resources, die zu keinem Werkzeug gehören — die Exporte und der
+        Live-Strom. Ohne diese Prüfung wäre eine Resource der Nebeneingang zu
+        genau den Daten, die ein gesperrter Bereich draußen halten soll."""
+        self.require_aktiv()
+        if bereich not in self.policy.bereiche:
+            frei = ", ".join(
+                areas.BEREICH_LABELS.get(b, b) for b in self.policy.bereiche
+            )
+            raise McpError(
+                f"Die Organisation „{self.organization.name}“ hat den Bereich "
+                f"„{areas.BEREICH_LABELS.get(bereich, bereich)}“ nicht für die "
+                "KI-Schnittstelle freigegeben. Freigegeben ist: "
+                f"{frei or '(nichts)'}. Diese Angaben sind über diese "
+                "Verbindung nicht zu bekommen — auch nicht über ein anderes "
+                "Werkzeug."
+            )
+
+    def require_werkzeug(self, werkzeug: str) -> None:
+        """Ein Werkzeug gegen die Richtlinie der Organisation prüfen.
+
+        Die maßgebliche Prüfung. Die Werkzeugliste blendet aus, was hier
+        durchfiele (``mcp/mount.py``), und der Zustimmungsbildschirm bietet es
+        gar nicht erst an — aber beide sind Komfort. Ein Client, der sich den
+        Namen eines Werkzeugs merkt, das er einmal gesehen hat, ruft es
+        trotzdem auf; abgelehnt wird er hier.
+
+        Ausdrücklich **ohne** die Scope-Hierarchie: eine Organisation, die
+        Schreiben freigibt, hat damit keine Statusmeldungen freigegeben."""
+        self.require_aktiv()
+        bereich = areas.bereich_fuer(werkzeug)
+        if bereich is not None:
+            self.require_bereich(bereich)
+        noetig = scope_svc.required_for_tool(werkzeug)
+        if noetig is not None and noetig not in self.policy.scopes:
+            freigegeben = ", ".join(
+                scope_svc.SCOPE_LABELS.get(s, s) for s in self.policy.scopes
+            )
+            raise McpError(
+                f"Die Organisation „{self.organization.name}“ hat für die "
+                f"KI-Schnittstelle nur freigegeben: {freigegeben or '(nichts)'}. "
+                f"„{scope_svc.SCOPE_LABELS.get(noetig, noetig)}“ gehört nicht "
+                "dazu — das ist eine Einstellung der Organisation, keine Frage "
+                "der eigenen Rolle."
+            )
+
     def require(self, scope: str) -> None:
         """Einen Scope erzwingen.
 
@@ -158,14 +222,21 @@ def translate(exc: HTTPException) -> McpError:
 
 
 @asynccontextmanager
-async def mcp_context():
+async def mcp_context(werkzeug: str | None = None):
     """Den Kontext des laufenden Tool-Aufrufs herstellen.
 
     Der ``AccessToken`` kommt aus der Middleware-Kette des SDK; Benutzer,
-    Organisation und Rolle werden bei **jedem** Aufruf frisch aus der
-    Datenbank gelesen. Das ist Absicht: eine entzogene Mitgliedschaft oder
-    eine herabgestufte Rolle wirkt damit sofort und nicht erst, wenn das
-    Token abläuft."""
+    Organisation, Rolle **und die Richtlinie der Organisation** werden bei
+    jedem Aufruf frisch aus der Datenbank gelesen. Das ist Absicht: eine
+    entzogene Mitgliedschaft, eine herabgestufte Rolle oder ein im Portal
+    abgeschalteter KI-Zugriff wirken damit sofort und nicht erst, wenn das
+    Token abläuft.
+
+    ``werkzeug`` ist der Name des aufrufenden Werkzeugs. Er ist der Grund,
+    warum die Richtlinienprüfung hier und nicht in jedem Werkzeug einzeln
+    steht: 23 Prüfungen, die jemand beim 24. Werkzeug vergisst, sind keine
+    Prüfung. ``tests/test_org_mcp_policy.py`` hält dagegen, dass jedes
+    registrierte Werkzeug seinen eigenen Namen übergibt."""
     token = get_access_token()
     if token is None:
         # Sollte nie passieren — RequireAuthMiddleware lässt nichts ohne
@@ -225,14 +296,28 @@ async def mcp_context():
                 "Das Benutzerkonto ist nicht mehr Mitglied dieser Organisation."
             )
 
-        # Die Scopes fallen auf das zurück, was die *aktuelle* Rolle hergibt.
-        effective = scope_svc.grantable(token.scopes, membership.role)
+        policy = await org_mcp_policy.fuer_org(db, org_id)
 
-        yield McpContext(
+        # Die Scopes fallen auf das zurück, was die *aktuelle* Rolle hergibt —
+        # und darüber hinaus auf das, was die Organisation freigibt. Zwei
+        # Obergrenzen, beide unabhängig: eine Rolle erteilt nichts, was die
+        # Organisation nicht freigegeben hat, und eine freigebige Organisation
+        # hebt keine Rolle an.
+        effective = [
+            s
+            for s in scope_svc.grantable(token.scopes, membership.role)
+            if s in policy.scopes
+        ]
+
+        ctx = McpContext(
             user=user,
             organization=organization,
             role=membership.role,
             scopes=effective,
             client_id=token.client_id,
             db=db,
+            policy=policy,
         )
+        if werkzeug is not None:
+            ctx.require_werkzeug(werkzeug)
+        yield ctx

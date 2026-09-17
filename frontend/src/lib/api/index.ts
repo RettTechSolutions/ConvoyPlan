@@ -1190,6 +1190,18 @@ export interface McpOrgChoice {
     name: string;
     slug: string;
     role: string;
+    /**
+     * Ob die Organisation den Zugriff über die KI-Schnittstelle überhaupt
+     * freigegeben hat. Standard ist nein — dann hilft auch die Rolle nicht,
+     * und die Organisation steht nur als Erklärung in der Liste.
+     */
+    mcp_enabled: boolean;
+    /**
+     * Welche Ausschnitte der Fachdaten diese Organisation freigibt. Nicht
+     * wählbar, sondern eine Einstellung der Organisation — steht dort, weil
+     * es die Verbindung genauso begrenzt wie die Berechtigungen.
+     */
+    bereiche: { bereich: string; label: string }[];
     /** Welche der angefragten Berechtigungen diese Organisation hergibt. */
     grantable_scopes: string[];
     /**
@@ -1236,6 +1248,51 @@ export const mcpApi = {
             organization_id,
             scopes,
         }),
+};
+
+/** Ein anzukreuzendes Kästchen samt Beschriftung, vom Server geliefert. */
+export interface McpWahlmoeglichkeit {
+    wert: string;
+    label: string;
+}
+
+export interface OrgMcpPolicy {
+    enabled: boolean;
+    scopes: string[];
+    bereiche: string[];
+    /** Ob je etwas eingestellt wurde — trennt „abgeschaltet" von „nie angefasst". */
+    konfiguriert: boolean;
+    /** Der Schalter des Betreibers. Ohne ihn nützt die eigene Freigabe nichts. */
+    instanz_aktiv: boolean;
+    verbindungs_url: string;
+    verfuegbare_scopes: McpWahlmoeglichkeit[];
+    verfuegbare_bereiche: McpWahlmoeglichkeit[];
+    /** Steht nicht zur Wahl: ohne ihn käme keine Verbindung zustande. */
+    basis_scope: string;
+    aktive_verbindungen: number;
+    updated_at: string | null;
+}
+
+export interface OrgMcpConnection {
+    family_id: string;
+    client_id: string;
+    /** Selbstauskunft aus der Registrierung, ungeprüft. */
+    client_name: string;
+    user_id: string;
+    user_email: string | null;
+    scopes: string[];
+    created_at: string;
+    last_used_at: string | null;
+    expires_at: string;
+}
+
+export const orgMcpApi = {
+    read: () => api.get<OrgMcpPolicy>('/api/org/mcp'),
+    save: (policy: { enabled: boolean; scopes: string[]; bereiche: string[] }) =>
+        api.put<OrgMcpPolicy>('/api/org/mcp', policy),
+    listConnections: () => api.get<OrgMcpConnection[]>('/api/org/mcp/connections'),
+    disconnect: (familyId: string) =>
+        api.delete<void>(`/api/org/mcp/connections/${familyId}`),
 };
 
 export interface McpStatus {

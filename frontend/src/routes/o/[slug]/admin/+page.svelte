@@ -8,13 +8,13 @@
     import { orgStore } from '$lib/stores/org';
     import { orgLeistellenApi, orgsApi, convoysApi, trackingApi, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type OrgMember } from '$lib/api';
     import { brandingStore, applyBranding, setOrgBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
-    import { orgBrandingApi, type BrandingUpdate } from '$lib/api';
+    import { orgBrandingApi, orgMcpApi, type BrandingUpdate, type OrgMcpPolicy, type OrgMcpConnection } from '$lib/api';
 
     // ── Slug ─────────────────────────────────────────────────────────────────
     const slug = $derived(($page.params as Record<string, string>).slug);
 
     // ── Tab ──────────────────────────────────────────────────────────────────
-    let activeTab = $state<'mitglieder' | 'leitstellen' | 'gps' | 'branding'>('mitglieder');
+    let activeTab = $state<'mitglieder' | 'leitstellen' | 'gps' | 'branding' | 'ki'>('mitglieder');
 
     // ── Auth guard ───────────────────────────────────────────────────────────
     onMount(async () => {
@@ -247,6 +247,94 @@
         return d.toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
     }
 
+    // ── KI-Zugriff (MCP) ──────────────────────────────────────────────────────
+    //
+    // Zwei Schalter übereinander: der Betreiber der Instanz gibt die
+    // Schnittstelle frei (`instanz_aktiv`), diese Organisation entscheidet, ob
+    // sie sie benutzt. Standard ist aus — deshalb wird hier nichts
+    // vorausgewählt, was nicht vom Server kommt.
+    let kiPolicy = $state<OrgMcpPolicy | null>(null);
+    let kiForm = $state({ enabled: false, scopes: [] as string[], bereiche: [] as string[] });
+    let kiConnections = $state<OrgMcpConnection[]>([]);
+    let kiLoading = $state(false);
+    let kiSaving = $state(false);
+    let kiError = $state('');
+    let kiSuccess = $state('');
+
+    // Der Basis-Scope steht nicht zur Wahl: ohne ihn käme keine Verbindung
+    // zustande. Er wird angezeigt, aber nicht als Kästchen.
+    const kiWaehlbareScopes = $derived(
+        kiPolicy?.verfuegbare_scopes.filter((s) => s.wert !== kiPolicy?.basis_scope) ?? []
+    );
+    const kiGeaendert = $derived(
+        !!kiPolicy &&
+            (kiForm.enabled !== kiPolicy.enabled ||
+                [...kiForm.scopes].sort().join(' ') !== [...kiPolicy.scopes].sort().join(' ') ||
+                [...kiForm.bereiche].sort().join(' ') !== [...kiPolicy.bereiche].sort().join(' '))
+    );
+
+    function kiUebernehmen(policy: OrgMcpPolicy) {
+        kiPolicy = policy;
+        kiForm = {
+            enabled: policy.enabled,
+            scopes: [...policy.scopes],
+            bereiche: [...policy.bereiche],
+        };
+    }
+
+    async function loadKi() {
+        kiLoading = true;
+        kiError = '';
+        try {
+            const [policy, connections] = await Promise.all([
+                orgMcpApi.read(),
+                orgMcpApi.listConnections(),
+            ]);
+            kiUebernehmen(policy);
+            kiConnections = connections;
+        } catch (e: unknown) {
+            kiError = e instanceof Error ? e.message : 'KI-Einstellungen konnten nicht geladen werden';
+        } finally {
+            kiLoading = false;
+        }
+    }
+
+    function kiToggle(liste: 'scopes' | 'bereiche', wert: string, an: boolean) {
+        const vorhanden = kiForm[liste];
+        kiForm = {
+            ...kiForm,
+            [liste]: an ? [...new Set([...vorhanden, wert])] : vorhanden.filter((e) => e !== wert),
+        };
+    }
+
+    async function saveKi() {
+        kiSaving = true;
+        kiError = '';
+        kiSuccess = '';
+        try {
+            kiUebernehmen(await orgMcpApi.save(kiForm));
+            kiSuccess = kiForm.enabled
+                ? 'Gespeichert. Die Freigabe wirkt sofort — auch auf bestehende Verbindungen.'
+                : 'Gespeichert. Bestehende Verbindungen laufen ab sofort ins Leere.';
+            setTimeout(() => { kiSuccess = ''; }, 6000);
+        } catch (e: unknown) {
+            kiError = e instanceof Error ? e.message : 'Speichern fehlgeschlagen';
+        } finally {
+            kiSaving = false;
+        }
+    }
+
+    async function kiTrennen(verbindung: OrgMcpConnection) {
+        if (!confirm(`Verbindung von „${verbindung.client_name}" trennen?`)) return;
+        kiError = '';
+        try {
+            await orgMcpApi.disconnect(verbindung.family_id);
+            kiConnections = kiConnections.filter((c) => c.family_id !== verbindung.family_id);
+        } catch (e: unknown) {
+            kiError = e instanceof Error ? e.message : 'Trennen fehlgeschlagen';
+        }
+    }
+
     // ── Branding ──────────────────────────────────────────────────────────────
     let brandingForm = $state<BrandingUpdate>({
         app_name: BRANDING_DEFAULTS.app_name,
@@ -389,6 +477,7 @@
         <button class="tab" class:active={activeTab === 'leitstellen'} onclick={() => (activeTab = 'leitstellen')}>Leitstellen</button>
         <button class="tab" class:active={activeTab === 'gps'} onclick={() => { activeTab = 'gps'; loadGpsShares(); }}>GPS-Freigaben</button>
         <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>Branding</button>
+        <button class="tab" class:active={activeTab === 'ki'} onclick={() => { activeTab = 'ki'; loadKi(); }}>KI-Zugriff</button>
     </div>
 
     <!-- ── Mitglieder ── -->
@@ -576,6 +665,145 @@
                 </table>
             {/if}
         </div>
+    {/if}
+
+    <!-- ── KI-Zugriff (MCP) ── -->
+    {#if activeTab === 'ki'}
+        {#if kiError}
+            <div class="error-bar">{kiError} <button onclick={() => (kiError = '')}>✕</button></div>
+        {/if}
+        {#if kiSuccess}
+            <div class="success-bar">{kiSuccess}</div>
+        {/if}
+
+        {#if kiLoading || !kiPolicy}
+            <div class="section"><p class="hint">Lade…</p></div>
+        {:else}
+            <div class="section">
+                <div class="section-header">
+                    <strong>KI-Zugriff auf diese Organisation</strong>
+                    <button class="btn-small" onclick={loadKi}>↺</button>
+                </div>
+
+                <p class="hint" style="margin:-.25rem 0 1rem">
+                    Ein KI-Assistent (ChatGPT, Claude und andere) kann auf Konvois, Fahrzeuge und
+                    Routen dieser Organisation zugreifen — aber nur, wenn ein Mitglied die
+                    Verbindung ausdrücklich erteilt hat, und nur im Umfang, den Sie hier freigeben.
+                    <strong>Standardmäßig ist der Zugriff aus.</strong>
+                </p>
+
+                {#if !kiPolicy.instanz_aktiv}
+                    <p class="ki-warnung">
+                        Der Betreiber dieser Instanz hat die KI-Schnittstelle abgeschaltet. Was Sie
+                        hier einstellen, wird gespeichert und greift, sobald er sie einschaltet —
+                        bis dahin kommt keine Verbindung zustande.
+                    </p>
+                {/if}
+
+                <label class="ki-schalter">
+                    <input
+                        type="checkbox"
+                        checked={kiForm.enabled}
+                        onchange={(e) => (kiForm = { ...kiForm, enabled: e.currentTarget.checked })}
+                    />
+                    <span>KI-Zugriff für diese Organisation erlauben</span>
+                </label>
+
+                <fieldset class="ki-gruppe" disabled={!kiForm.enabled}>
+                    <legend>Worauf — die freigegebenen Bereiche</legend>
+                    <p class="hint" style="margin:0 0 .5rem">
+                        Was nicht angekreuzt ist, ist über die Schnittstelle nicht zu bekommen:
+                        weder lesend noch schreibend, und auch nicht über einen Umweg.
+                    </p>
+                    {#each kiPolicy.verfuegbare_bereiche as bereich (bereich.wert)}
+                        <label class="ki-option">
+                            <input
+                                type="checkbox"
+                                checked={kiForm.bereiche.includes(bereich.wert)}
+                                onchange={(e) => kiToggle('bereiche', bereich.wert, e.currentTarget.checked)}
+                            />
+                            <span>{bereich.label}</span>
+                        </label>
+                    {/each}
+                </fieldset>
+
+                <fieldset class="ki-gruppe" disabled={!kiForm.enabled}>
+                    <legend>Wie weit — lesen oder schreiben</legend>
+                    <p class="hint" style="margin:0 0 .5rem">
+                        Lesen ist die Grundlage und lässt sich nicht abwählen — ohne sie käme keine
+                        Verbindung zustande. Alles Weitere kommt nur dazu, wenn Sie es freigeben.
+                        Löschen kann die Schnittstelle in keinem Fall.
+                    </p>
+                    <label class="ki-option ki-option-fest">
+                        <input type="checkbox" checked disabled />
+                        <span>
+                            {kiPolicy.verfuegbare_scopes.find((s) => s.wert === kiPolicy?.basis_scope)?.label ?? kiPolicy.basis_scope}
+                            <em>— immer</em>
+                        </span>
+                    </label>
+                    {#each kiWaehlbareScopes as scope (scope.wert)}
+                        <label class="ki-option">
+                            <input
+                                type="checkbox"
+                                checked={kiForm.scopes.includes(scope.wert)}
+                                onchange={(e) => kiToggle('scopes', scope.wert, e.currentTarget.checked)}
+                            />
+                            <span>{scope.label}</span>
+                        </label>
+                    {/each}
+                </fieldset>
+
+                <p class="hint" style="margin:.75rem 0">
+                    Die Rolle des Mitglieds bleibt die zweite Grenze: ein Beobachter kann auch bei
+                    voller Freigabe nichts Schreibendes erteilen.
+                    {#if kiPolicy.updated_at}
+                        Zuletzt geändert: {formatTimestamp(kiPolicy.updated_at)}.
+                    {/if}
+                </p>
+
+                <button class="btn-primary" disabled={kiSaving || !kiGeaendert} onclick={saveKi}>
+                    {kiSaving ? 'Speichere…' : 'Speichern'}
+                </button>
+            </div>
+
+            <div class="section">
+                <div class="section-header">
+                    <strong>Bestehende Verbindungen ({kiConnections.length})</strong>
+                </div>
+                <p class="hint" style="margin:-.25rem 0 .75rem">
+                    Eine Zeile je erteilter Zustimmung. Den Zugriff abzuschalten trennt sie nicht —
+                    sie laufen dann nur ins Leere. „Trennen" nimmt die Zustimmung endgültig zurück;
+                    ein gerade ausgegebenes Zugriffstoken gilt noch bis zu 15 Minuten.
+                </p>
+                <table class="user-table">
+                    <thead>
+                        <tr>
+                            <th>Programm</th>
+                            <th>Erteilt von</th>
+                            <th>Berechtigungen</th>
+                            <th>Zuletzt benutzt</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {#each kiConnections as verbindung (verbindung.family_id)}
+                            <tr>
+                                <td>{verbindung.client_name}</td>
+                                <td>{verbindung.user_email ?? '—'}</td>
+                                <td class="hint">{verbindung.scopes.join(', ')}</td>
+                                <td>{verbindung.last_used_at ? formatTimestamp(verbindung.last_used_at) : 'nie'}</td>
+                                <td class="actions-cell">
+                                    <button class="btn-small danger" onclick={() => kiTrennen(verbindung)}>Trennen</button>
+                                </td>
+                            </tr>
+                        {/each}
+                        {#if kiConnections.length === 0}
+                            <tr><td colspan="5" class="hint" style="text-align:center">Keine Verbindungen.</td></tr>
+                        {/if}
+                    </tbody>
+                </table>
+            </div>
+        {/if}
     {/if}
 
     <!-- ── Branding ── -->
@@ -863,6 +1091,14 @@
     /* Konto / MFA tab */
     .update-row { display: flex; align-items: center; gap: .75rem; }
     .update-label { font-size: var(--text-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+    .ki-schalter { display: flex; align-items: center; gap: .5rem; font-weight: 600; color: var(--text-1); margin-bottom: 1rem; cursor: pointer; }
+    .ki-gruppe { border: 1px solid var(--border); border-radius: 6px; padding: .75rem 1rem 1rem; margin-bottom: 1rem; }
+    .ki-gruppe:disabled { opacity: .5; }
+    .ki-gruppe legend { font-size: var(--text-sm); font-weight: 600; color: var(--text-1); padding: 0 .35rem; }
+    .ki-option { display: flex; align-items: center; gap: .5rem; padding: .2rem 0; font-size: var(--text-sm); color: var(--text-2); cursor: pointer; }
+    .ki-option-fest { cursor: default; }
+    .ki-option em { color: var(--text-muted); font-style: normal; font-size: var(--text-xs); }
+    .ki-warnung { background: rgba(243,156,18,.12); border: 1px solid rgba(243,156,18,.35); border-radius: 4px; padding: .5rem .75rem; font-size: var(--text-sm); color: var(--text-2); margin-bottom: 1rem; }
     .badge { display: inline-block; padding: .15rem .55rem; border-radius: 10px; font-size: var(--text-xs); font-weight: 600; }
     .badge-ok { background: rgba(39,174,96,.15); color: #27ae60; }
     .badge-warn { background: rgba(243,156,18,.15); color: #e67e22; }
