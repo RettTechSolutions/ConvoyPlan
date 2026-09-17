@@ -105,6 +105,8 @@ Der `retention`-Container purgt periodisch abgelaufene Daten:
 | `RETENTION_AUDIT_DAYS` | `365` | Audit-Log-Einträge älter als … löschen |
 | `RETENTION_SHARE_LINKS_DAYS` | `30` | Widerrufene Share-Links älter als … löschen |
 | `RETENTION_DEMO_LEADS_DAYS` | `180` | Kontaktangaben aus dem Demo-Start älter als … löschen |
+| `RETENTION_OAUTH_TOKENS_GRACE_DAYS` | `30` | Rotierte und widerrufene MCP-Refresh-Tokens älter als … löschen |
+| `RETENTION_OAUTH_CLIENTS_DAYS` | `7` | Verwaiste MCP-Registrierungen älter als … löschen |
 
 Im selben Durchgang laufen zwei Aufgaben ohne eigene Variable: Abgelaufene
 Demo-Sitzungen samt ihrer Daten werden gelöscht (Frist im Admin-Portal), und

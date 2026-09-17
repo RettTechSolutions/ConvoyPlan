@@ -7,11 +7,12 @@ the `retention` cron container via `python -m app.jobs.retention`.
 import logging
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import and_ as sa_and, delete, or_ as sa_or
+from sqlalchemy import and_ as sa_and, delete, exists, func, or_ as sa_or
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.audit_log import AuditLog
+from app.models.oauth_client import OAuthClient
 from app.models.oauth_code import OAuthCode
 from app.models.oauth_refresh_token import OAuthRefreshToken
 from app.models.organization import Organization
@@ -89,6 +90,56 @@ async def purge_expired_oauth_refresh_tokens(db: AsyncSession, grace_days: int) 
             )
         )
     )
+    return result.rowcount or 0
+
+
+# Karenz für das Aufräumen von Hand im Adminportal. Zwischen der
+# Registrierung und der Zustimmung steht die Anmeldung des Benutzers — in
+# dieser Spanne trägt die Zeile weder Token noch Code und sähe wie Müll aus.
+# Eine Stunde ist großzügig für einen Anmeldevorgang und kurz genug, dass der
+# Knopf sich nicht wirkungslos anfühlt.
+ORPHAN_CLIENT_MANUAL_GRACE_HOURS = 1
+
+
+def orphan_client_filter(cutoff: datetime):
+    """Was als „verwaiste Registrierung" zählt.
+
+    Drei Bedingungen, jede davon nötig:
+
+    * **Kein Refresh-Token mehr** — auch kein rotiertes oder widerrufenes. Die
+      stehen absichtlich ihre Karenzzeit lang herum, damit die
+      Wiederverwendungserkennung greift; ein Löschen des Clients nähme sie per
+      ``ON DELETE CASCADE`` mit und entwertete genau diesen Schutz.
+    * **Kein Autorisierungscode mehr** — sonst träfe es einen Fluss, der
+      gerade zwischen Zustimmung und Token-Tausch steht.
+    * **Alt genug** — gerechnet ab dem letzten Lebenszeichen
+      (``last_used_at``, ersatzweise ``created_at``).
+
+    Die Sperre (``revoked``) steht bewusst *nicht* darin: sie ist kein
+    eigenes Kriterium. Ein gesperrter Client mit lebenden Tokens bleibt
+    stehen, ein unbenutzter ohne Tokens geht — in beide Richtungen
+    entscheidet, ob an der Zeile noch etwas hängt.
+    """
+    return sa_and(
+        ~exists().where(OAuthRefreshToken.client_id == OAuthClient.client_id),
+        ~exists().where(OAuthCode.client_id == OAuthClient.client_id),
+        func.coalesce(OAuthClient.last_used_at, OAuthClient.created_at) < cutoff,
+    )
+
+
+async def purge_orphaned_oauth_clients(db: AsyncSession, cutoff: datetime) -> int:
+    """Client-Registrierungen löschen, an denen nichts mehr hängt.
+
+    Bei Selbstregistrierung (RFC 7591) legt jeder Verbindungsversuch eine
+    Zeile an — auch der abgebrochene, und ein Programm, das sich bei jedem
+    Anlauf neu registriert, legt deren viele an. Ohne dieses Aufräumen wächst
+    die Liste im Portal unbegrenzt und die wenigen Registrierungen, die
+    wirklich etwas tragen, gehen darin unter.
+
+    Läuft im Durchgang **nach** den Tokens und Codes: was dort gerade
+    weggeräumt wurde, fällt so im selben Lauf mit, statt einen Durchgang
+    länger liegenzubleiben."""
+    result = await db.execute(delete(OAuthClient).where(orphan_client_filter(cutoff)))
     return result.rowcount or 0
 
 
@@ -227,6 +278,11 @@ async def run_all(db: AsyncSession) -> dict[str, int]:
         "oauth_codes": await purge_expired_oauth_codes(db),
         "oauth_refresh_tokens": await purge_expired_oauth_refresh_tokens(
             db, settings.retention_oauth_tokens_grace_days
+        ),
+        # Zuletzt die Registrierungen: erst nachdem Codes und Tokens weg sind,
+        # ist zu sehen, an welchen Zeilen wirklich nichts mehr hängt.
+        "oauth_clients": await purge_orphaned_oauth_clients(
+            db, _cutoff(days=settings.retention_oauth_clients_days)
         ),
     }
     await db.commit()

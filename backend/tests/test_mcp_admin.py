@@ -244,3 +244,98 @@ async def test_gesperrter_client_kann_sich_nicht_neu_autorisieren():
         })
         assert resp.status_code >= 400
         await purge_clients([reg["client_id"]])
+
+
+# ── Aufräumen verwaister Registrierungen ─────────────────────────────────
+
+
+async def _zurueckdatieren(client_id: str, *, stunden: int) -> None:
+    """Eine Registrierung künstlich altern lassen.
+
+    Die Karenzzeit ist der einzige Teil der Bedingung, der sich nicht ohne
+    Warten herstellen lässt — also wird hier die Zeile alt gemacht statt der
+    Test langsam."""
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import update
+
+    async with AsyncSessionLocal() as db:
+        await db.execute(
+            update(OAuthClient)
+            .where(OAuthClient.client_id == client_id)
+            .values(created_at=datetime.now(timezone.utc) - timedelta(hours=stunden))
+        )
+        await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_aufraeumen_entfernt_eine_registrierung_ohne_verbindung():
+    """Der Grund für den Knopf: bei Selbstregistrierung legt jeder
+    Verbindungsversuch eine Zeile an, auch der abgebrochene."""
+    async with seeded() as fx, mcp_app() as (_app, mcp_client):
+        reg = await register_client(mcp_client)
+        await _zurueckdatieren(reg["client_id"], stunden=48)
+        admin_token = await _superadmin_token(fx)
+
+        async with await _admin_client(admin_token) as client:
+            resp = await client.post("/api/admin/mcp/clients/cleanup")
+            assert resp.status_code == 200
+            assert resp.json()["removed"] >= 1
+
+        async with AsyncSessionLocal() as db:
+            assert await db.get(OAuthClient, reg["client_id"]) is None
+
+
+@pytest.mark.asyncio
+async def test_aufraeumen_laesst_eine_tragende_registrierung_stehen():
+    """Was eine Verbindung trägt, ist nicht verwaist — auch wenn es alt ist.
+
+    Sonst wäre das Aufräumen ein Zugangsentzug mit anderem Namen."""
+    async with seeded() as fx, mcp_app() as (_app, mcp_client):
+        reg, _token = await connect(mcp_client, fx.planer, fx.org_a)
+        await _zurueckdatieren(reg["client_id"], stunden=24 * 365)
+        admin_token = await _superadmin_token(fx)
+
+        async with await _admin_client(admin_token) as client:
+            assert (await client.post("/api/admin/mcp/clients/cleanup")).status_code == 200
+
+        async with AsyncSessionLocal() as db:
+            assert await db.get(OAuthClient, reg["client_id"]) is not None
+        await purge_clients([reg["client_id"]])
+
+
+@pytest.mark.asyncio
+async def test_aufraeumen_verschont_einen_laufenden_verbindungsversuch():
+    """Zwischen Registrierung und Zustimmung steht die Anmeldung des
+    Benutzers. In dieser Spanne trägt die Zeile nichts und sähe wie Müll aus
+    — dafür ist die Karenzzeit da."""
+    async with seeded() as fx, mcp_app() as (_app, mcp_client):
+        reg = await register_client(mcp_client)  # eben erst, nicht zurückdatiert
+        admin_token = await _superadmin_token(fx)
+
+        async with await _admin_client(admin_token) as client:
+            assert (await client.post("/api/admin/mcp/clients/cleanup")).status_code == 200
+
+        async with AsyncSessionLocal() as db:
+            assert await db.get(OAuthClient, reg["client_id"]) is not None
+        await purge_clients([reg["client_id"]])
+
+
+@pytest.mark.asyncio
+async def test_client_liste_zeigt_vorher_an_was_das_aufraeumen_traefe():
+    """Das Portal soll die Zeilen kennzeichnen, die der Knopf mitnimmt —
+    andernfalls bliebe nur, es hinterher an der Zahl abzulesen."""
+    async with seeded() as fx, mcp_app() as (_app, mcp_client):
+        verwaist = await register_client(mcp_client)
+        await _zurueckdatieren(verwaist["client_id"], stunden=48)
+        verbunden, _token = await connect(mcp_client, fx.planer, fx.org_a)
+        await _zurueckdatieren(verbunden["client_id"], stunden=48)
+        admin_token = await _superadmin_token(fx)
+
+        async with await _admin_client(admin_token) as client:
+            eintraege = (await client.get("/api/admin/mcp/clients")).json()
+
+        nach_id = {e["client_id"]: e for e in eintraege}
+        assert nach_id[verwaist["client_id"]]["orphaned"] is True
+        assert nach_id[verbunden["client_id"]]["orphaned"] is False
+        await purge_clients([verwaist["client_id"], verbunden["client_id"]])

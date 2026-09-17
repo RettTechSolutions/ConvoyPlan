@@ -1913,6 +1913,14 @@ class McpClientResponse(BaseModel):
     last_used_at: datetime | None
     revoked: bool
     active_connections: int
+    # Ob „Verwaiste entfernen" diese Zeile mitnähme: keine Tokens, keine
+    # Codes, alt genug. Steht in der Antwort, damit das Portal zeigen kann,
+    # was der Knopf tut, statt es hinterher an der Zahl ablesen zu lassen.
+    orphaned: bool
+
+
+class McpCleanupResponse(BaseModel):
+    removed: int
 
 
 class McpConnectionResponse(BaseModel):
@@ -2180,6 +2188,7 @@ async def list_mcp_clients(
             )
         ).all()
     )
+    verwaist = await _orphaned_client_ids(db)
 
     return [
         McpClientResponse(
@@ -2194,9 +2203,73 @@ async def list_mcp_clients(
             last_used_at=row.last_used_at,
             revoked=row.revoked,
             active_connections=counts.get(row.client_id, 0),
+            orphaned=row.client_id in verwaist,
         )
         for row in rows
     ]
+
+
+def _orphan_cutoff() -> datetime:
+    """Ab wann eine Registrierung im Portal als verwaist gilt."""
+    from app.services import retention
+
+    return datetime.now(timezone.utc) - timedelta(
+        hours=retention.ORPHAN_CLIENT_MANUAL_GRACE_HOURS
+    )
+
+
+async def _orphaned_client_ids(db: AsyncSession) -> set[str]:
+    """Die client_ids, die „Verwaiste entfernen" jetzt löschen würde.
+
+    Dieselbe Bedingung wie der Aufräum-Endpunkt und wie der nächtliche
+    Durchgang — deshalb aus ``retention`` geholt und nicht hier noch einmal
+    formuliert. Zwei Fassungen derselben Regel liefen unweigerlich
+    auseinander, und die Oberfläche zeigte dann etwas anderes an, als der
+    Knopf tut."""
+    from app.services import retention
+
+    OAuthClient, _OAuthRefreshToken = _mcp_models()
+    rows = await db.execute(
+        select(OAuthClient.client_id).where(retention.orphan_client_filter(_orphan_cutoff()))
+    )
+    return set(rows.scalars().all())
+
+
+@router.post("/mcp/clients/cleanup", response_model=McpCleanupResponse)
+async def cleanup_mcp_clients(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    """Verwaiste Registrierungen entfernen.
+
+    Bei Selbstregistrierung legt **jeder** Verbindungsversuch eine Zeile an,
+    auch der abgebrochene. Ein Programm, das sich bei jedem Anlauf neu
+    registriert, hinterlässt entsprechend viele — und sie stehen bleiben zu
+    lassen wäre nicht nur unordentlich: in einer Liste aus Dutzenden
+    Karteileichen sieht niemand mehr, welche Registrierung tatsächlich etwas
+    trägt.
+
+    Entfernt wird nur, woran nichts mehr hängt (keine Tokens, keine Codes)
+    und was älter ist als die Karenzzeit — ein gerade laufender
+    Verbindungsversuch soll den Knopf überleben. Nichts davon entzieht einen
+    Zugang: eine Registrierung *ist* keiner. Dasselbe passiert ohnehin im
+    nächtlichen Durchgang (``RETENTION_OAUTH_CLIENTS_DAYS``); der Knopf ist
+    die ungeduldige Fassung davon."""
+    from app.services import retention
+
+    entfernt = await retention.purge_orphaned_oauth_clients(db, _orphan_cutoff())
+    await db.commit()
+    if entfernt:
+        await audit.record(
+            db,
+            "mcp.clients.cleanup",
+            request=request,
+            actor_id=current.id,
+            actor_email=current.email,
+            detail={"entfernt": entfernt},
+        )
+    return McpCleanupResponse(removed=entfernt)
 
 
 @router.delete("/mcp/clients/{client_id}", status_code=204)
