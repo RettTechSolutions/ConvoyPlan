@@ -200,6 +200,8 @@ openssl rand -hex 32
 | `RETENTION_POSITIONS_HOURS` | `24` | Live-Positionen älter als dieser Wert werden gelöscht |
 | `RETENTION_AUDIT_DAYS` | `365` | Audit-Log-Einträge älter als dieser Wert werden gelöscht |
 | `RETENTION_SHARE_LINKS_DAYS` | `30` | Widerrufene Share-Links älter als dieser Wert werden gelöscht |
+| `RETENTION_OAUTH_TOKENS_GRACE_DAYS` | `30` | Karenz für tote MCP-Refresh-Tokens — kürzer setzen schwächt die Wiederverwendungserkennung |
+| `RETENTION_OAUTH_CLIENTS_DAYS` | `7` | Verwaiste MCP-Registrierungen (ohne Tokens und Codes) älter als dieser Wert werden gelöscht |
 | `BACKUP_DIR` | `./backups` | Zielverzeichnis für `scripts/backup.sh` |
 | `BACKUP_RETENTION_DAYS` | `30` | Aufbewahrungsdauer der Backups |
 

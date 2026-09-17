@@ -164,6 +164,19 @@ Im Admin-Portal unter **MCP**:
 
 Zusätzlich entzieht jede Maßnahme, die ohnehin alle Sitzungen beendet (Passwortwechsel, „überall abmelden", Deaktivieren des Kontos, Entzug der Mitgliedschaft), auch die MCP-Zugänge.
 
+### Verwaiste Registrierungen aufräumen
+
+Die Liste **Registrierte Programme** wächst schneller, als man erwartet: bei Selbstregistrierung legt **jeder** Verbindungsversuch eine Zeile an — auch der abgebrochene, und manche Programme registrieren sich bei jedem Anlauf neu. Nach ein paar Versuchen stehen dort ein Dutzend gleich aussehender Einträge, von denen einer etwas trägt.
+
+Als **verwaist** gilt eine Zeile, an der nichts mehr hängt: keine Verbindung, kein laufender Verbindungsversuch, und älter als eine Stunde. Solche Zeilen sind gekennzeichnet, und der Knopf **„… verwaiste entfernen"** löscht genau sie.
+
+Zwei Punkte dazu:
+
+- **Das ist kein Zugangsentzug.** Eine Registrierung *ist* kein Zugang — der entsteht erst durch die Zustimmung eines Benutzers. Was eine Verbindung trägt, bleibt deshalb stehen, auch wenn es alt ist und auch wenn es gesperrt ist.
+- **Es passiert ohnehin von selbst.** Der nächtliche Aufräumdurchgang macht dasselbe, nur mit größerer Frist (`RETENTION_OAUTH_CLIENTS_DAYS`, Standard 7 Tage). Der Knopf nimmt das vorweg, wenn man die Liste jetzt lesbar haben will.
+
+Eine gelöschte Registrierung hält niemanden fern: das Programm registriert sich beim nächsten Versuch neu und bekommt eine neue Kennung. Wer ein Programm *fernhalten* will, sperrt es — oder schaltet die Selbstregistrierung ab (`MCP_ALLOW_DCR=false`).
+
 > ### Das Zeitfenster beim Widerruf
 >
 > Ein Widerruf wirkt auf die Verbindung **sofort**: das Programm kann sich keinen neuen Zugang mehr holen. Ein bereits ausgestelltes Zugriffstoken bleibt aber noch bis zu seinem Ablauf gültig — standardmäßig **15 Minuten** (`MCP_ACCESS_TOKEN_TTL_MINUTES`).

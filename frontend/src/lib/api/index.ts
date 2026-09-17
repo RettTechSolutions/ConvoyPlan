@@ -1287,6 +1287,11 @@ export interface McpClient {
     last_used_at: string | null;
     revoked: boolean;
     active_connections: number;
+    /**
+     * Ob „Verwaiste entfernen" diese Zeile mitnähme — keine Tokens, keine
+     * Codes, alt genug. Das Portal zeigt damit vorher an, was der Knopf tut.
+     */
+    orphaned: boolean;
 }
 
 export interface McpConnection {
@@ -1325,6 +1330,16 @@ export const mcpAdminApi = {
      */
     repairProxy: () => api.post<McpStatus>('/api/admin/mcp/proxy-repair', {}),
     listClients: () => api.get<McpClient[]>('/api/admin/mcp/clients'),
+    /**
+     * Verwaiste Registrierungen entfernen (`orphaned`).
+     *
+     * Entzieht keinen Zugang: eine Registrierung ist keiner. Was noch ein
+     * Token oder einen Code trägt, bleibt stehen, ebenso alles aus der
+     * letzten Stunde — ein laufender Verbindungsversuch soll den Knopf
+     * überleben.
+     */
+    cleanupClients: () =>
+        api.post<{ removed: number }>('/api/admin/mcp/clients/cleanup', {}),
     revokeClient: (clientId: string) =>
         api.delete(`/api/admin/mcp/clients/${encodeURIComponent(clientId)}`),
     listConnections: () => api.get<McpConnection[]>('/api/admin/mcp/connections'),

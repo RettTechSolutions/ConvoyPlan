@@ -1546,6 +1546,7 @@
     let mcpLoading = $state(false);
     let mcpBusy = $state('');
     let mcpUrlCopied = $state(false);
+    let mcpCleanupNote = $state('');
 
     async function loadMcp() {
         mcpLoading = true;
@@ -1591,6 +1592,32 @@
             await loadMcp();
         } catch (e) {
             mcpError = e instanceof Error ? e.message : 'Die Verbindung konnte nicht getrennt werden.';
+        } finally {
+            mcpBusy = '';
+        }
+    }
+
+    const mcpVerwaiste = $derived(mcpClients.filter((c) => c.orphaned));
+
+    async function cleanupMcpClients() {
+        const anzahl = mcpVerwaiste.length;
+        if (!anzahl) return;
+        if (!confirm(
+            `${anzahl} verwaiste ${anzahl === 1 ? 'Registrierung' : 'Registrierungen'} entfernen?\n\n` +
+            'Betroffen ist nur, woran nichts mehr hängt: keine Verbindung, kein laufender ' +
+            'Verbindungsversuch. Kein Zugang wird dadurch entzogen — eine Registrierung ist keiner.'
+        )) return;
+        mcpBusy = 'cleanup';
+        mcpError = '';
+        try {
+            const { removed } = await mcpAdminApi.cleanupClients();
+            await loadMcp();
+            mcpCleanupNote = removed === 0
+                ? 'Es war nichts zu entfernen.'
+                : `${removed} ${removed === 1 ? 'Registrierung' : 'Registrierungen'} entfernt.`;
+            setTimeout(() => (mcpCleanupNote = ''), 6000);
+        } catch (e) {
+            mcpError = e instanceof Error ? e.message : 'Die Registrierungen konnten nicht entfernt werden.';
         } finally {
             mcpBusy = '';
         }
@@ -2119,7 +2146,19 @@
 
         <!-- ── Registrierte Clients ── -->
         <div class="section">
-            <div class="section-header"><strong>Registrierte Programme</strong></div>
+            <div class="section-header">
+                <strong>Registrierte Programme</strong>
+                {#if mcpVerwaiste.length > 0}
+                    <button
+                        class="btn-small"
+                        onclick={cleanupMcpClients}
+                        disabled={mcpBusy === 'cleanup'}
+                        title="Registrierungen ohne Verbindung und ohne laufenden Verbindungsversuch löschen"
+                    >
+                        {mcpBusy === 'cleanup' ? '…' : `${mcpVerwaiste.length} verwaiste entfernen`}
+                    </button>
+                {/if}
+            </div>
             <p class="hint" style="margin:.2rem 0 .8rem">
                 Bei aktivierter Selbstregistrierung kann sich jedes Programm eintragen, das die
                 Instanz erreicht — der angegebene Name ist deshalb <strong>ungeprüft</strong>.
@@ -2127,6 +2166,17 @@
                 Eine Registrierung allein verschafft keinen Zugriff; dafür braucht es die
                 Zustimmung eines angemeldeten Benutzers.
             </p>
+            {#if mcpClients.length > 0}
+                <p class="hint" style="margin:0 0 .8rem">
+                    Weil <em>jeder</em> Verbindungsversuch eine Zeile anlegt, auch der abgebrochene,
+                    bleiben Karteileichen zurück. Als <strong>verwaist</strong> gilt eine Zeile, an
+                    der nichts mehr hängt: keine Verbindung, kein laufender Verbindungsversuch. Sie
+                    verschwinden ohnehin von selbst — der Knopf nimmt das vorweg.
+                </p>
+            {/if}
+            {#if mcpCleanupNote}
+                <p class="hint" style="margin:0 0 .8rem">{mcpCleanupNote}</p>
+            {/if}
             {#if mcpClients.length === 0}
                 <p class="hint">Es hat sich noch kein Programm registriert.</p>
             {:else}
@@ -2146,6 +2196,7 @@
                                     <td>
                                         {client.client_name}
                                         {#if client.revoked}<span class="badge badge-warn">gesperrt</span>{/if}
+                                        {#if client.orphaned}<span class="badge badge-muted" title="Trägt weder Verbindung noch laufenden Verbindungsversuch — wird beim Aufräumen entfernt">verwaist</span>{/if}
                                     </td>
                                     <td><code>{client.redirect_uris.join(', ')}</code></td>
                                     <td>{mcpDatum(client.created_at)}</td>
@@ -4001,6 +4052,8 @@
     .badge-ok { background: rgba(107,127,77,.2); color: #a8c070; border: 1px solid rgba(107,127,77,.4); }
     .badge-update { background: rgba(210,120,30,.2); color: #e8a050; border: 1px solid rgba(210,120,30,.4); }
     .badge-warn { background: rgba(180,60,40,.15); color: var(--color-primary); border: 1px solid rgba(180,60,40,.3); }
+    /* „verwaist" ist ein Ordnungshinweis, keine Warnung — gedämpft statt rot. */
+    .badge-muted { background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border); }
     .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(255,255,255,.3); border-top-color: white; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: .3rem; }
     .update-terminal {
         margin-top: .75rem;

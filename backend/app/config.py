@@ -126,6 +126,12 @@ class Settings(BaseSettings):
     # die Wiederverwendungserkennung ein gestohlenes Token als Diebstahlsignal
     # statt es bloß als unbekannt abzulehnen.
     retention_oauth_tokens_grace_days: int = 30
+    # Verwaiste Client-Registrierungen des MCP-Servers. Bei
+    # Selbstregistrierung (DCR) legt *jeder* Verbindungsversuch eine Zeile an,
+    # auch der abgebrochene — und die bliebe sonst für immer stehen. Gelöscht
+    # wird nur, was keine Tokens und keine Codes mehr trägt; eine benutzte
+    # Registrierung fällt erst darunter, wenn auch ihre Tokens weg sind.
+    retention_oauth_clients_days: int = 7
 
     # ── MCP-Server ────────────────────────────────────────────────────────
     # Stellt die Fachdaten der Organisation als Model-Context-Protocol-Server
