@@ -81,6 +81,13 @@ geht es darum, was eine Organisation *freigeben will*, und „planen ja, Positio
 nein" muss ausdrückbar bleiben. Aus demselben Grund greift `policy.zuschneiden()` im
 Consent **nach** `effective()`: davor brächte `convoy:write` ein `fleet:status` mit.
 
+Im Adminportal listet der Reiter **MCP** alle Organisationen mit ihrem Zustand
+(`GET /api/admin/mcp/organizations`, LEFT JOIN auf die Richtlinien — ein Join über
+`organization_mcp_policies` ließe die Mehrheit weg, denn keine Zeile ist der Normalfall).
+Die Liste ist **rein lesend**: wer die Instanz betreibt, sieht *dass* eine Organisation
+teilnimmt, entscheidet aber nicht über ihre Einsatzdaten. Genau dafür gibt es die zweite
+Ebene.
+
 Durchgesetzt wird an vier Stellen, und die maßgebliche ist die dritte:
 Zustimmungsbildschirm, `tools/list` (`OrgPolicyToolsMiddleware`), **jeder Aufruf**
 (`McpContext.require_werkzeug`, aus `mcp_context(werkzeug=…)` heraus) und die

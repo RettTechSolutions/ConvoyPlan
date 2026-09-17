@@ -1318,6 +1318,13 @@ export interface McpStatus {
     registered_clients: number;
     active_connections: number;
     /**
+     * Wie viele Organisationen die Schnittstelle nutzen — und wie viele es
+     * überhaupt gibt. Der Instanzschalter sagt darüber nichts: eingeschaltet
+     * heißt nur, dass es `/mcp` gibt, nicht dass jemand teilnimmt.
+     */
+    organizations_enabled: number;
+    organizations_total: number;
+    /**
      * Ob der Reverse Proxy die MCP-Pfade ans Backend leitet.
      *
      * `null` heißt „nicht feststellbar" (Caddys Admin-API antwortet nicht) und
@@ -1365,8 +1372,31 @@ export interface McpConnection {
     expires_at: string;
 }
 
+/** Was eine Organisation über die KI-Schnittstelle hergibt — nur zum Ansehen. */
+export interface McpOrgPolicy {
+    organization_id: string;
+    name: string;
+    slug: string;
+    is_demo: boolean;
+    enabled: boolean;
+    scopes: string[];
+    bereiche: string[];
+    /** Ob je etwas eingestellt wurde — trennt „abgeschaltet" von „nie angefasst". */
+    konfiguriert: boolean;
+    active_connections: number;
+    updated_at: string | null;
+}
+
 export const mcpAdminApi = {
     status: () => api.get<McpStatus>('/api/admin/mcp/status'),
+    /**
+     * Alle Organisationen mit ihrem KI-Zugriff — auch die abgeschalteten.
+     *
+     * Rein lesend: einstellen kann es nur der Admin der Organisation. Wer die
+     * Instanz betreibt, sieht *dass* eine Organisation teilnimmt und in
+     * welchem Umfang, entscheidet aber nicht über ihre Einsatzdaten.
+     */
+    listOrganizations: () => api.get<McpOrgPolicy[]>('/api/admin/mcp/organizations'),
     /** Die Schnittstelle ein- oder ausschalten. Wirkt sofort, ohne Neustart. */
     setEnabled: (enabled: boolean) =>
         api.put<McpStatus>('/api/admin/settings/mcp', { enabled }),
