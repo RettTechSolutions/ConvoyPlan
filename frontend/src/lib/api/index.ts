@@ -850,8 +850,12 @@ export type RegionPhase =
     // 'scheduled': Die Anforderung trägt einen Zeitpunkt und wartet darauf —
     // womöglich stundenlang. Als 'queued' gemeldet stünde im Panel dauerhaft
     // "wartet auf den Updater", was nach Störung aussieht statt nach Plan.
+    //
+    // 'cancelled': Der Wechsel wurde vom Bediener abbestellt. Eigene Phase,
+    // weil der Updater das frueher als 'failed' meldete — das Panel zeigte
+    // einen roten Fehlerbalken ueber einer Aktion, die genau so gewollt war.
     | 'idle' | 'queued' | 'scheduled' | 'checking' | 'downloading' | 'merging'
-    | 'importing' | 'switching' | 'cleaning' | 'done' | 'failed';
+    | 'importing' | 'switching' | 'cleaning' | 'done' | 'failed' | 'cancelled';
 
 export interface RegionStatus {
     phase: RegionPhase;

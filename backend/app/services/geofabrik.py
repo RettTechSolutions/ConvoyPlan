@@ -5,6 +5,7 @@ herunterlädt. `validate_region_url` ist deshalb eine Sicherheitsgrenze
 (Allowlist), keine Formalie.
 """
 
+import asyncio
 import re
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlparse
@@ -22,6 +23,69 @@ _MAX_REDIRECTS = 5
 # Umleitungsziel) — hier soll ausschliesslich echten Weiterleitungen gefolgt
 # werden.
 _REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
+
+# ── Wiederholungen ──────────────────────────────────────────────────────────
+# Jede Abfrage hier haengt an einem fremden Server, und `-latest.osm.pbf` wird
+# grundsaetzlich auf einen Spiegel weitergeleitet (siehe head_size_bytes) —
+# die Kette ist also laenger als ein Aufruf und entsprechend anfaellig. Ohne
+# Wiederholung riss ein einzelner Aussetzer die ganze Vorab-Rechnung ab: bei
+# einer kombinierten Region aus sechs Bestandteilen genuegte EINE hakende
+# Abfrage, und im Panel stand „Geofabrik ist gerade nicht erreichbar" ueber
+# einer Karte, der nichts fehlte (genau so im Betrieb am 16.09.2026 gesehen).
+_RETRY_ATTEMPTS = 3
+# Pausen ZWISCHEN den Versuchen, also eine weniger als Versuche. Tests setzen
+# sie auf (0, 0) (autouse-Fixture in tests/conftest.py) — ein Test, der die
+# Wartezeit selbst prueft, setzt sie zurueck.
+_RETRY_BACKOFF_SECONDS = (1.0, 3.0)
+# Statuscodes, hinter denen kein dauerhaftes Problem DIESER URL steckt,
+# sondern eine Drosselung oder ein hakender Spiegel. Alles andere (404, 403,
+# 410 …) ist eine Aussage ueber die angefragte Region selbst und wird nicht
+# wiederholt — dreimal dieselbe 404 zu holen macht sie nicht wahrer.
+_RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+# Wieviele Groessenabfragen gleichzeitig laufen duerfen (siehe head_sizes).
+_MAX_PARALLEL_HEADS = 4
+
+
+class _TransientError(Exception):
+    """Intern: ein Fehlversuch, der einen weiteren Versuch rechtfertigt.
+
+    Bewusst NICHT nach aussen sichtbar: Aufrufer sehen am Ende entweder das
+    Ergebnis, einen `ValueError` (die Anfrage selbst taugt nicht) oder einen
+    `ConnectionError` (Geofabrik taugt gerade nicht) — dieselben zwei Faelle
+    wie bisher, die die Route in 400 bzw. 503 uebersetzt.
+    """
+
+
+async def _with_retry(einmal, beschreibung: str):
+    """Ruft `einmal()` bis zu `_RETRY_ATTEMPTS` mal auf.
+
+    Wiederholt wird ausschliesslich bei `_TransientError`. Ein `ValueError`
+    (Allowlist, unbrauchbare Antwort) und ein direkt geworfener
+    `ConnectionError` kommen unveraendert durch — sie werden von einem
+    zweiten Versuch nicht besser.
+
+    Die Meldung nennt am Ende den letzten Grund. Das ist der Unterschied zur
+    frueheren Fassung: Dort hiess jede Stoerung gleich, und bei sechs
+    Bestandteilen stand im Panel nicht, welcher von ihnen gehakt hat.
+    """
+    letzter = "unbekannt"
+    for versuch in range(_RETRY_ATTEMPTS):
+        try:
+            return await einmal()
+        except _TransientError as exc:
+            letzter = str(exc)
+            if versuch + 1 >= _RETRY_ATTEMPTS:
+                break
+            pause = _RETRY_BACKOFF_SECONDS[
+                min(versuch, len(_RETRY_BACKOFF_SECONDS) - 1)
+            ]
+            if pause:
+                await asyncio.sleep(pause)
+    raise ConnectionError(
+        f"{beschreibung} ({_RETRY_ATTEMPTS} Versuche, zuletzt: {letzter}). "
+        f"Bitte später erneut versuchen."
+    )
+
 
 # Zeichen-Allowlist fuer den Pfad: ein oder mehrere Segmente, jedes
 # beginnend mit Kleinbuchstabe oder Ziffer, danach zusaetzlich "-" und ".".
@@ -147,22 +211,8 @@ def validate_region_url(url: str) -> str:
     return f"https://{_HOST}{parsed.path}"
 
 
-async def head_size_bytes(url: str) -> int:
-    """Groesse des Extracts, ohne es zu laden. Folgt Weiterleitungen kontrolliert.
-
-    Angefragt wird ausschliesslich die von `validate_region_url`
-    rekonstruierte URL, niemals das rohe Argument. Das rohe `url` wird
-    deshalb direkt ueberschrieben — so ist es unterhalb dieser Zeile gar
-    nicht mehr erreichbar und kann nicht versehentlich weiterverwendet
-    werden. Frueher wurde der Rueckgabewert verworfen und `client.head(url)`
-    mit dem Originalstring aufgerufen; die Rekonstruktion aus Runde 3 wirkte
-    damit an der einzigen Stelle nicht, an der sie gebraucht wird.
-
-    Async (Fix-Runde 1 zu Task 4): der bisherige synchrone `httpx.Client`
-    blockierte den Event-Loop bis zu `timeout` Sekunden lang — und damit
-    saemtliche anderen gleichzeitigen Anfragen des Backends, nicht nur diese.
-    `httpx.AsyncClient` ist im Rest des Backends ohnehin der durchgaengige
-    Standard (siehe z. B. app/services/weather.py, routing.py, geocoding.py).
+async def _head_final_response(client, url: str):
+    """Folgt der Weiterleitungskette und liefert die LETZTE Antwort.
 
     Weiterleitungen (Fix-Runde 5, Produktionsfehler): Geofabrik beantwortet
     `-latest.osm.pbf` grundsaetzlich mit `302` auf die tagesaktuelle,
@@ -195,50 +245,59 @@ async def head_size_bytes(url: str) -> int:
         wuerde bedeuten, jeden aktuellen und kuenftigen Geofabrik-Spiegel
         zu kennen und zu pflegen — genau die Bruechigkeit, die
         `validate_region_url` an anderer Stelle bewusst vermeidet.
-      - Aus der (finalen oder jeder Zwischen-)Antwort wird ausschliesslich
-        `Content-Length` gelesen, niemals ein Body geholt (`HEAD` bleibt
-        durchgaengig) und niemals die tatsaechlich kontaktierte URL
-        zurueckgegeben oder geloggt: `current_url` unten ist eine rein
-        lokale Variable, die diese Funktion nie verlaesst. Die URL, die an
-        den Updater geht, bleibt unveraendert die von `validate_region_url`
-        rekonstruierte `https://download.geofabrik.de/…`-Adresse — der
-        Updater bekommt nie einen Spiegelserver-Pfad zu Gesicht. Genau
-        diese Trennung (Umleitungsweg nur fuer die Groessenabfrage nutzen,
-        niemals fuer den Download-Auftrag) ist die Bedingung, unter der das
-        Folgen von Weiterleitungen hier sicher ist, ohne die urspruengliche
+      - Es wird niemals ein Body geholt (`HEAD` bleibt durchgaengig) und
+        niemals die tatsaechlich kontaktierte URL zurueckgegeben oder
+        geloggt: `current_url` unten ist eine rein lokale Variable, die
+        diese Funktion nie verlaesst. Die URL, die an den Updater geht,
+        bleibt unveraendert die von `validate_region_url` rekonstruierte
+        `https://download.geofabrik.de/…`-Adresse — der Updater bekommt nie
+        einen Spiegelserver-Pfad zu Gesicht. Genau diese Trennung
+        (Umleitungsweg nur fuer die Groessenabfrage nutzen, niemals fuer den
+        Download-Auftrag) ist die Bedingung, unter der das Folgen von
+        Weiterleitungen hier sicher ist, ohne die urspruengliche
         Sicherheitsabsicht (kein Primitiv fuer beliebige Downloads) zu
         unterlaufen.
+
+    Ein Transportfehler wird als `_TransientError` gemeldet, damit
+    `_with_retry` es noch einmal versuchen kann. Gefangen wird
+    `httpx.HTTPError`, nicht nur `ConnectError`/`TimeoutException`: Deren
+    Geschwister `ReadError`, `RemoteProtocolError` und `ProxyError` traten
+    frueher als nackter 500 samt Stacktrace nach aussen — beobachtbar
+    ausgerechnet dann, wenn ein Spiegel mitten in der Antwort abbricht.
     """
-    url = validate_region_url(url)
     current_url = url
-    try:
-        async with httpx.AsyncClient(follow_redirects=False, timeout=15) as client:
-            for _ in range(_MAX_REDIRECTS + 1):
-                resp = await client.head(current_url)
-                if resp.status_code not in _REDIRECT_STATUS_CODES:
-                    break
-                location = resp.headers.get("location")
-                if not location:
-                    raise ValueError(
-                        "Weiterleitung ohne Ziel-Adresse (Location-Header "
-                        "fehlt)."
-                    )
-                next_url = urljoin(current_url, location)
-                if urlparse(next_url).scheme != "https":
-                    raise ValueError(
-                        "Weiterleitung auf eine unverschlüsselte Adresse "
-                        "(kein https) ist nicht zulässig."
-                    )
-                current_url = next_url
-            else:
-                raise ValueError(
-                    f"Zu viele Weiterleitungen (mehr als {_MAX_REDIRECTS})."
-                )
-    except (httpx.ConnectError, httpx.TimeoutException) as exc:
-        raise ConnectionError(
-            "Geofabrik ist gerade nicht erreichbar. Bitte spaeter erneut "
-            "versuchen."
-        ) from exc
+    for _ in range(_MAX_REDIRECTS + 1):
+        try:
+            resp = await client.head(current_url)
+        except httpx.HTTPError as exc:
+            raise _TransientError(f"{type(exc).__name__}: {exc}") from exc
+        if resp.status_code not in _REDIRECT_STATUS_CODES:
+            return resp
+        location = resp.headers.get("location")
+        if not location:
+            raise ValueError(
+                "Weiterleitung ohne Ziel-Adresse (Location-Header fehlt)."
+            )
+        next_url = urljoin(current_url, location)
+        if urlparse(next_url).scheme != "https":
+            raise ValueError(
+                "Weiterleitung auf eine unverschlüsselte Adresse "
+                "(kein https) ist nicht zulässig."
+            )
+        current_url = next_url
+    raise ValueError(f"Zu viele Weiterleitungen (mehr als {_MAX_REDIRECTS}).")
+
+
+async def _head_size_once(url: str) -> int:
+    """Ein Versuch: Groesse des Extracts hinter der (bereits validierten) URL."""
+    async with httpx.AsyncClient(follow_redirects=False, timeout=15) as client:
+        resp = await _head_final_response(client, url)
+    if resp.status_code in _RETRYABLE_STATUS:
+        # Kein Urteil ueber die Region, sondern ueber den Moment: Drosselung
+        # oder ein hakender Spiegel. Frueher wurde daraus sofort ein 400
+        # ("Extract nicht abrufbar (HTTP 502)") — eine Fehlermeldung, die dem
+        # Bediener seine Auswahl vorwarf, obwohl an ihr nichts falsch war.
+        raise _TransientError(f"HTTP {resp.status_code}")
     if resp.status_code != 200:
         raise ValueError(f"Extract nicht abrufbar (HTTP {resp.status_code}).")
     content_length = resp.headers.get("content-length")
@@ -247,7 +306,86 @@ async def head_size_bytes(url: str) -> int:
             "Antwort enthält keine Content-Length; Extract-Größe nicht "
             "ermittelbar."
         )
-    return int(content_length)
+    try:
+        size = int(content_length)
+    except ValueError as exc:
+        # `int()` wuerde hier einen ValueError mit der rohen Python-Meldung
+        # werfen ("invalid literal for int() with base 10: …"), und die Route
+        # reicht jeden ValueError als 400 mit genau diesem Text durch.
+        raise ValueError(
+            f"Content-Length ist keine Zahl: {content_length!r}."
+        ) from exc
+    if size < 0:
+        raise ValueError(f"Content-Length ist negativ: {size}.")
+    return size
+
+
+async def head_size_bytes(url: str) -> int:
+    """Groesse des Extracts, ohne es zu laden. Folgt Weiterleitungen kontrolliert.
+
+    Angefragt wird ausschliesslich die von `validate_region_url`
+    rekonstruierte URL, niemals das rohe Argument. Das rohe `url` wird
+    deshalb direkt ueberschrieben — so ist es unterhalb dieser Zeile gar
+    nicht mehr erreichbar und kann nicht versehentlich weiterverwendet
+    werden. Frueher wurde der Rueckgabewert verworfen und `client.head(url)`
+    mit dem Originalstring aufgerufen; die Rekonstruktion aus Runde 3 wirkte
+    damit an der einzigen Stelle nicht, an der sie gebraucht wird.
+
+    Async (Fix-Runde 1 zu Task 4): der bisherige synchrone `httpx.Client`
+    blockierte den Event-Loop bis zu `timeout` Sekunden lang — und damit
+    saemtliche anderen gleichzeitigen Anfragen des Backends, nicht nur diese.
+    `httpx.AsyncClient` ist im Rest des Backends ohnehin der durchgaengige
+    Standard (siehe z. B. app/services/weather.py, routing.py, geocoding.py).
+
+    Die Weiterleitungskette steht in `_head_final_response`, die Wiederholung
+    bei Stoerungen in `_with_retry`. Die Meldung nennt die Region: Bei einer
+    kombinierten Karte laufen sechs dieser Abfragen, und „Geofabrik ist
+    gerade nicht erreichbar" ohne Angabe, welche davon, half niemandem.
+    """
+    url = validate_region_url(url)
+    region = path_from_pbf_url(url) or url
+    return await _with_retry(
+        lambda: _head_size_once(url),
+        f"Geofabrik ist gerade nicht erreichbar ({region})",
+    )
+
+
+async def head_sizes(urls: list[str]) -> list[int]:
+    """Groessen mehrerer Extracts — in der Reihenfolge der Eingabe.
+
+    Bis zu `_MAX_PARALLEL_HEADS` Abfragen laufen gleichzeitig. Der Grund ist
+    nicht Eleganz, sondern eine Zeitgrenze: Nacheinander summierten sich bei
+    sechs Bestandteilen sechs Ketten aus Anfrage, Weiterleitung und
+    Spiegel-Antwort — in Summe bis zu 90 Sekunden Zeitlimit, und mit den
+    Wiederholungen von `_with_retry` noch mehr. Ein Panel, das eine halbe
+    Minute nichts sagt, sieht kaputt aus, und der Browser gibt irgendwann von
+    selbst auf.
+
+    Der Deckel ist Absicht: 555 Regionen sind auswaehlbar, und ohne ihn
+    riefe eine mutwillige Auswahl hunderte gleichzeitige Verbindungen gegen
+    einen fremden Server auf.
+
+    Scheitert ein Bestandteil, scheitert die ganze Abfrage — die Summe ueber
+    fuenf von sechs Extracts waere eine falsche Zahl, kein Teilergebnis. Die
+    Ausnahme des ERSTEN Bestandteils in Eingabereihenfolge wird geworfen,
+    damit die Meldung nicht davon abhaengt, welche Abfrage zufaellig zuerst
+    fertig war.
+    """
+    if not urls:
+        return []
+    sperre = asyncio.Semaphore(_MAX_PARALLEL_HEADS)
+
+    async def _eine(u: str) -> int:
+        async with sperre:
+            return await head_size_bytes(u)
+
+    ergebnisse = await asyncio.gather(
+        *(_eine(u) for u in urls), return_exceptions=True
+    )
+    for ergebnis in ergebnisse:
+        if isinstance(ergebnis, BaseException):
+            raise ergebnis
+    return list(ergebnisse)
 
 
 @dataclass(frozen=True)
@@ -265,6 +403,49 @@ class RegionEntry:
 # das Attribut direkt zuruecksetzen (monkeypatch.setattr(geofabrik,
 # "_region_index_cache", None)).
 _region_index_cache: list[RegionEntry] | None = None
+
+
+async def _index_once() -> list[dict]:
+    """Ein Versuch: `index-v1.json` holen und die Feature-Liste herausgeben."""
+    async with httpx.AsyncClient(timeout=30) as client:
+        try:
+            resp = await client.get(_INDEX_URL)
+        except httpx.HTTPError as exc:
+            raise _TransientError(f"{type(exc).__name__}: {exc}") from exc
+    if resp.status_code in _RETRYABLE_STATUS:
+        raise _TransientError(f"HTTP {resp.status_code}")
+    if resp.status_code != 200:
+        # Kein Wiederholungsfall: Ein 404 oder 403 auf den Index bleibt auch
+        # beim dritten Versuch einer. Trotzdem ein ConnectionError und kein
+        # ValueError — an der Anfrage liegt es nicht, die Adresse ist eine
+        # Konstante dieses Moduls.
+        raise ConnectionError(
+            f"Geofabrik-Index ist gerade nicht abrufbar (HTTP "
+            f"{resp.status_code})."
+        )
+    try:
+        daten = resp.json()
+        features = daten["features"]
+    except (ValueError, KeyError, TypeError) as exc:
+        # Eine Fehlerseite eines Proxys, eine halbe Antwort, ein geaendertes
+        # Format: Frueher schlug das als nackter 500 mit Stacktrace durch,
+        # weil `resp.json()["features"]` ungeprueft blieb. Ein zweiter Versuch
+        # ist es wert — eine abgeschnittene Antwort ist der haeufigste Grund.
+        raise _TransientError(f"Antwort unbrauchbar ({type(exc).__name__})") from exc
+    if not isinstance(features, list):
+        raise _TransientError("Antwort unbrauchbar (features ist keine Liste)")
+    return features
+
+
+async def _fetch_index_features() -> list[dict]:
+    """Die Feature-Liste des Geofabrik-Index, mit Wiederholung bei Stoerungen.
+
+    Gemeinsame Grundlage von `list_regions()` (wertet `properties` aus) und
+    `region_outlines()` (wertet `geometry` aus). Vorher stand derselbe
+    Abruf zweimal im Modul — und mit ihm zweimal dieselbe Luecke: ein
+    `resp.json()`, das jede nicht-JSON-Antwort in einen 500 verwandelte.
+    """
+    return await _with_retry(_index_once, "Geofabrik-Index ist gerade nicht abrufbar")
 
 
 async def list_regions() -> list["RegionEntry"]:
@@ -289,18 +470,16 @@ async def list_regions() -> list["RegionEntry"]:
     if _region_index_cache is not None:
         return _region_index_cache
 
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(_INDEX_URL)
-        resp.raise_for_status()
-    except httpx.HTTPError as exc:
-        raise ConnectionError(
-            "Geofabrik-Index ist gerade nicht abrufbar. Bitte spaeter erneut "
-            "versuchen."
-        ) from exc
-
-    features = resp.json()["features"]
-    by_id = {f["properties"]["id"]: f["properties"] for f in features}
+    features = await _fetch_index_features()
+    # Eintraege ohne `properties.id` werden uebergangen statt den ganzen Abruf
+    # zu sprengen: Vorher war das ein KeyError und damit ein 500 ueber der
+    # gesamten Regionsliste — wegen eines einzigen unvollstaendigen Features
+    # haette niemand mehr eine Region auswaehlen koennen.
+    by_id: dict[str, dict] = {}
+    for f in features:
+        props = f.get("properties") if isinstance(f, dict) else None
+        if isinstance(props, dict) and isinstance(props.get("id"), str):
+            by_id[props["id"]] = props
 
     def _path(entry_id: str) -> str:
         # Lauft die parent-Kette hoch bis zum Kontinent. `seen` schuetzt vor
@@ -310,7 +489,7 @@ async def list_regions() -> list["RegionEntry"]:
         seen: set[str] = set()
         current = by_id.get(entry_id)
         while current is not None and current["id"] not in seen:
-            names.append(current["name"])
+            names.append(str(current.get("name") or current["id"]))
             seen.add(current["id"])
             current = by_id.get(current.get("parent"))
         return " › ".join(reversed(names))
@@ -318,13 +497,14 @@ async def list_regions() -> list["RegionEntry"]:
     entries = [
         RegionEntry(
             id=props["id"],
-            name=props["name"],
+            name=str(props.get("name") or props["id"]),
             path=_path(props["id"]),
             url=props["urls"]["pbf"],
             size_bytes=None,
         )
         for props in by_id.values()
-        if "pbf" in props.get("urls", {})
+        if isinstance(props.get("urls"), dict)
+        and isinstance(props["urls"].get("pbf"), str)
     ]
     # Kein Dead Code, auch wenn eine statische Analyse das Modul-Attribut
     # sonst nirgends verwendet sieht: Es wird ueber `global` (Zeile oben,
@@ -367,21 +547,19 @@ async def region_outlines(paths: list[str]) -> dict[str, dict]:
     if not wanted:
         return {}
 
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(_INDEX_URL)
-        resp.raise_for_status()
-    except httpx.HTTPError as exc:
-        raise ConnectionError(
-            "Geofabrik-Index ist gerade nicht abrufbar. Bitte spaeter erneut "
-            "versuchen."
-        ) from exc
+    features = await _fetch_index_features()
 
     out: dict[str, dict] = {}
-    for feature in resp.json().get("features", []):
-        pbf = feature.get("properties", {}).get("urls", {}).get("pbf")
-        geometry = feature.get("geometry")
-        if not pbf or not geometry:
+    for feature in features:
+        # Durchgaengig defensiv: `feature["properties"]` kann im JSON auch
+        # `null` sein, und `.get("properties", {})` liefert dann None statt
+        # eines Dicts — der naechste `.get()` waere ein AttributeError und
+        # damit ein 500 fuer die ganze Kartenmaske.
+        props = feature.get("properties") if isinstance(feature, dict) else None
+        urls = props.get("urls") if isinstance(props, dict) else None
+        pbf = urls.get("pbf") if isinstance(urls, dict) else None
+        geometry = feature.get("geometry") if isinstance(feature, dict) else None
+        if not isinstance(pbf, str) or not geometry:
             continue
         path = path_from_pbf_url(pbf)
         if path in wanted:

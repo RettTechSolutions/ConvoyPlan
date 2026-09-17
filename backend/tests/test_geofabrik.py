@@ -1,3 +1,4 @@
+import asyncio
 import os
 
 import pytest
@@ -454,8 +455,10 @@ def test_path_from_pbf_url_lehnt_fremden_host_und_fehlendes_suffix_ab():
 
 def _index_client(features):
     class _FakeResponse:
-        def raise_for_status(self):
-            pass
+        # `status_code` statt `raise_for_status()`: _index_once prueft den Code
+        # selbst, weil es 429/5xx (wiederholen) von 404/403 (nicht wiederholen)
+        # unterscheiden muss — `raise_for_status()` wirft fuer beide dasselbe.
+        status_code = 200
 
         def json(self):
             return {"type": "FeatureCollection", "features": features}
@@ -558,3 +561,351 @@ async def test_region_outlines_meldet_connectionerror_bei_netzfehler(monkeypatch
 
     with pytest.raises(ConnectionError):
         await geofabrik.region_outlines(["europe/dach"])
+
+
+# ── Wiederholungen und Sammelabfrage ────────────────────────────────────────
+#
+# Befund aus dem Betrieb (16.09.2026): Im Panel stand „Geofabrik ist gerade
+# nicht erreichbar" ueber einer Karte, der nichts fehlte. Ursache war keine
+# echte Stoerung, sondern eine einzelne hakende Abfrage von sechs — ohne
+# Wiederholung, und mit einer Meldung, die nicht sagte, welche.
+
+
+class _ScriptedHeadClient:
+    """Fake-Client, der je `head()`-Aufruf das naechste Element der Liste
+    abarbeitet: eine Exception wird geworfen, alles andere zurueckgegeben."""
+
+    def __init__(self, script, calls):
+        self._script = list(script)
+        self._calls = calls
+
+    def __call__(self, *a, **k):
+        return self
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def head(self, url):
+        self._calls.append(url)
+        naechste = self._script.pop(0)
+        if isinstance(naechste, BaseException):
+            raise naechste
+        return naechste
+
+
+class _Resp:
+    def __init__(self, status_code, headers=None):
+        self.status_code = status_code
+        self.headers = headers or {}
+
+
+@pytest.mark.asyncio
+async def test_head_size_bytes_wiederholt_nach_transportfehler(monkeypatch):
+    """Ein Aussetzer beim ersten Versuch darf die Vorab-Rechnung nicht kippen."""
+    import httpx as httpx_module
+
+    from app.services import geofabrik
+
+    calls = []
+    monkeypatch.setattr(
+        geofabrik.httpx, "AsyncClient",
+        _ScriptedHeadClient(
+            [httpx_module.ReadError("abgebrochen"), _Resp(200, {"content-length": "42"})],
+            calls,
+        ),
+    )
+
+    assert await geofabrik.head_size_bytes(
+        "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+    ) == 42
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_head_size_bytes_faengt_auch_readerror_ab(monkeypatch):
+    """`ReadError`, `RemoteProtocolError` und `ProxyError` sind KEINE
+    Unterklassen von `ConnectError`/`TimeoutException`.
+
+    Frueher wurden nur diese beiden gefangen — ein Spiegel, der mitten in der
+    Antwort abbricht, schlug damit als nackter 500 samt Stacktrace durch."""
+    import httpx as httpx_module
+
+    from app.services import geofabrik
+
+    calls = []
+    monkeypatch.setattr(
+        geofabrik.httpx, "AsyncClient",
+        _ScriptedHeadClient(
+            [httpx_module.RemoteProtocolError("halbe Antwort")] * geofabrik._RETRY_ATTEMPTS,
+            calls,
+        ),
+    )
+
+    with pytest.raises(ConnectionError):
+        await geofabrik.head_size_bytes(
+            "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+        )
+    assert len(calls) == geofabrik._RETRY_ATTEMPTS
+
+
+@pytest.mark.asyncio
+async def test_head_size_bytes_wiederholt_nach_502_vom_spiegel(monkeypatch):
+    """Ein 502 ist kein Urteil ueber die gewaehlte Region.
+
+    Vorher wurde daraus sofort ein ValueError ("Extract nicht abrufbar
+    (HTTP 502)") und damit ein 400 — eine Fehlermeldung, die dem Bediener
+    seine Auswahl vorwarf, obwohl an ihr nichts falsch war."""
+    from app.services import geofabrik
+
+    calls = []
+    monkeypatch.setattr(
+        geofabrik.httpx, "AsyncClient",
+        _ScriptedHeadClient(
+            [_Resp(502), _Resp(200, {"content-length": "7"})], calls
+        ),
+    )
+
+    assert await geofabrik.head_size_bytes(
+        "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+    ) == 7
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_head_size_bytes_wiederholt_404_nicht(monkeypatch):
+    """Eine entfallene Region bleibt auch beim dritten Versuch entfallen —
+    und der Fehler gehoert dem Aufrufer als 400, nicht als 503."""
+    from app.services import geofabrik
+
+    calls = []
+    monkeypatch.setattr(
+        geofabrik.httpx, "AsyncClient", _ScriptedHeadClient([_Resp(404)], calls)
+    )
+
+    with pytest.raises(ValueError):
+        await geofabrik.head_size_bytes(
+            "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+        )
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_fehlermeldung_nennt_die_betroffene_region(monkeypatch):
+    """Bei sechs Bestandteilen ist „Geofabrik nicht erreichbar" ohne Angabe,
+    welcher gehakt hat, keine Auskunft."""
+    import httpx as httpx_module
+
+    from app.services import geofabrik
+
+    monkeypatch.setattr(
+        geofabrik.httpx, "AsyncClient",
+        _ScriptedHeadClient(
+            [httpx_module.ConnectError("weg")] * geofabrik._RETRY_ATTEMPTS, []
+        ),
+    )
+
+    with pytest.raises(ConnectionError) as exc:
+        await geofabrik.head_size_bytes(
+            "https://download.geofabrik.de/europe/montenegro-latest.osm.pbf"
+        )
+    assert "europe/montenegro" in str(exc.value)
+
+
+@pytest.mark.asyncio
+async def test_head_size_bytes_lehnt_unlesbare_content_length_ab(monkeypatch):
+    from app.services import geofabrik
+
+    monkeypatch.setattr(
+        geofabrik.httpx, "AsyncClient",
+        _ScriptedHeadClient([_Resp(200, {"content-length": "viele"})], []),
+    )
+
+    with pytest.raises(ValueError) as exc:
+        await geofabrik.head_size_bytes(
+            "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+        )
+    # Nicht die rohe Python-Meldung ("invalid literal for int() ..."), die die
+    # Route ungefiltert als 400-Text weiterreichen wuerde.
+    assert "Content-Length" in str(exc.value)
+
+
+@pytest.mark.asyncio
+async def test_head_sizes_haelt_die_eingabereihenfolge(monkeypatch):
+    """Die Abfragen laufen gleichzeitig, das Ergebnis folgt trotzdem der
+    Eingabe — sonst landete die Groesse der einen Region bei der anderen."""
+    from app.services import geofabrik
+
+    groessen = {
+        "https://download.geofabrik.de/europe/dach-latest.osm.pbf": 3,
+        "https://download.geofabrik.de/europe/italy-latest.osm.pbf": 2,
+        "https://download.geofabrik.de/europe/albania-latest.osm.pbf": 1,
+    }
+
+    async def _size(url):
+        # Die kleinste Region antwortet zuerst — ohne Ordnung im Ergebnis
+        # faenden sich die Werte vertauscht wieder.
+        await asyncio.sleep(0.01 * groessen[url])
+        return groessen[url]
+
+    monkeypatch.setattr(geofabrik, "head_size_bytes", _size)
+
+    assert await geofabrik.head_sizes(list(groessen)) == [3, 2, 1]
+
+
+@pytest.mark.asyncio
+async def test_head_sizes_laeuft_gleichzeitig(monkeypatch):
+    """Nacheinander summierten sich bei sechs Bestandteilen sechs Zeitlimits."""
+    from app.services import geofabrik
+
+    laufend = 0
+    hoechststand = 0
+
+    async def _size(url):
+        nonlocal laufend, hoechststand
+        laufend += 1
+        hoechststand = max(hoechststand, laufend)
+        await asyncio.sleep(0.02)
+        laufend -= 1
+        return 1
+
+    monkeypatch.setattr(geofabrik, "head_size_bytes", _size)
+
+    urls = [f"https://download.geofabrik.de/europe/r{i}-latest.osm.pbf" for i in range(4)]
+    assert await geofabrik.head_sizes(urls) == [1, 1, 1, 1]
+    assert hoechststand > 1
+
+
+@pytest.mark.asyncio
+async def test_head_sizes_deckelt_die_gleichzeitigkeit(monkeypatch):
+    """555 Regionen sind auswaehlbar — ohne Deckel liefe eine mutwillige
+    Auswahl als hunderte gleichzeitige Verbindungen gegen einen fremden
+    Server."""
+    from app.services import geofabrik
+
+    laufend = 0
+    hoechststand = 0
+
+    async def _size(url):
+        nonlocal laufend, hoechststand
+        laufend += 1
+        hoechststand = max(hoechststand, laufend)
+        await asyncio.sleep(0.01)
+        laufend -= 1
+        return 1
+
+    monkeypatch.setattr(geofabrik, "head_size_bytes", _size)
+
+    urls = [f"https://download.geofabrik.de/europe/r{i}-latest.osm.pbf" for i in range(20)]
+    await geofabrik.head_sizes(urls)
+    assert hoechststand <= geofabrik._MAX_PARALLEL_HEADS
+
+
+@pytest.mark.asyncio
+async def test_head_sizes_meldet_den_ersten_fehlschlag_der_eingabe(monkeypatch):
+    """Sonst haengt die Meldung davon ab, welche Abfrage zufaellig zuerst
+    fertig wurde — bei jedem Aufruf eine andere."""
+    from app.services import geofabrik
+
+    async def _size(url):
+        if "italy" in url:
+            await asyncio.sleep(0.02)
+            raise ConnectionError("Italien hakt")
+        if "albania" in url:
+            raise ConnectionError("Albanien hakt")
+        return 1
+
+    monkeypatch.setattr(geofabrik, "head_size_bytes", _size)
+
+    with pytest.raises(ConnectionError) as exc:
+        await geofabrik.head_sizes([
+            "https://download.geofabrik.de/europe/dach-latest.osm.pbf",
+            "https://download.geofabrik.de/europe/italy-latest.osm.pbf",
+            "https://download.geofabrik.de/europe/albania-latest.osm.pbf",
+        ])
+    assert "Italien" in str(exc.value)
+
+
+@pytest.mark.asyncio
+async def test_head_sizes_ohne_urls_fragt_nicht_an(monkeypatch):
+    from app.services import geofabrik
+
+    async def _size(url):  # pragma: no cover — darf nicht aufgerufen werden
+        raise AssertionError("keine Abfrage erwartet")
+
+    monkeypatch.setattr(geofabrik, "head_size_bytes", _size)
+    assert await geofabrik.head_sizes([]) == []
+
+
+# ── Index: unbrauchbare Antworten ───────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_index_wiederholt_nach_unbrauchbarer_antwort(monkeypatch):
+    """Eine Proxy-Fehlerseite statt JSON war frueher ein 500 mit Stacktrace:
+    `resp.json()["features"]` stand ungeprueft da."""
+    from app.services import geofabrik
+
+    monkeypatch.setattr(geofabrik, "_region_index_cache", None)
+    versuche = []
+
+    class _Resp:
+        def __init__(self, kaputt):
+            self.status_code = 200
+            self._kaputt = kaputt
+
+        def json(self):
+            if self._kaputt:
+                raise ValueError("kein JSON")
+            return {"features": [{
+                "properties": {
+                    "id": "dach", "name": "DACH",
+                    "urls": {"pbf": "https://download.geofabrik.de/europe/dach-latest.osm.pbf"},
+                },
+            }]}
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def get(self, url):
+            versuche.append(url)
+            return _Resp(len(versuche) == 1)
+
+    monkeypatch.setattr(geofabrik.httpx, "AsyncClient", _Client)
+
+    entries = await geofabrik.list_regions()
+    monkeypatch.setattr(geofabrik, "_region_index_cache", None)
+    assert len(versuche) == 2
+    assert [e.id for e in entries] == ["dach"]
+
+
+@pytest.mark.asyncio
+async def test_list_regions_uebergeht_unvollstaendige_eintraege(monkeypatch):
+    """Ein einzelnes Feature ohne `properties.id` war ein KeyError — und damit
+    ein 500 ueber der GESAMTEN Auswahlliste."""
+    from app.services import geofabrik
+
+    monkeypatch.setattr(geofabrik, "_region_index_cache", None)
+    features = [
+        {"properties": None},
+        {"properties": {"name": "ohne id"}},
+        {"properties": {"id": "leer", "name": "ohne urls"}},
+        {"properties": {
+            "id": "dach", "name": "DACH",
+            "urls": {"pbf": "https://download.geofabrik.de/europe/dach-latest.osm.pbf"},
+        }},
+    ]
+    monkeypatch.setattr(geofabrik.httpx, "AsyncClient", _index_client(features))
+
+    entries = await geofabrik.list_regions()
+    monkeypatch.setattr(geofabrik, "_region_index_cache", None)
+    assert [e.id for e in entries] == ["dach"]

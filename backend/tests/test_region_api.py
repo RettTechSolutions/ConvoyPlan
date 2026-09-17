@@ -506,8 +506,10 @@ async def test_geofabrik_list_regions_builds_path_from_parent_chain_and_uses_pbf
     ]
 
     class _FakeResponse:
-        def raise_for_status(self):
-            pass
+        # `status_code` statt `raise_for_status()`: _index_once prueft den Code
+        # selbst, weil es 429/5xx (wiederholen) von 404/403 (nicht wiederholen)
+        # unterscheiden muss — `raise_for_status()` wirft fuer beide dasselbe.
+        status_code = 200
 
         def json(self):
             return {"type": "FeatureCollection", "features": features}
@@ -690,8 +692,10 @@ async def test_geofabrik_list_regions_skips_entry_without_pbf_url(monkeypatch):
     ]
 
     class _FakeResponse:
-        def raise_for_status(self):
-            pass
+        # `status_code` statt `raise_for_status()`: _index_once prueft den Code
+        # selbst, weil es 429/5xx (wiederholen) von 404/403 (nicht wiederholen)
+        # unterscheiden muss — `raise_for_status()` wirft fuer beide dasselbe.
+        status_code = 200
 
         def json(self):
             return {"type": "FeatureCollection", "features": features}
@@ -1032,6 +1036,46 @@ async def test_region_log_liefert_die_letzte_zeile_ohne_umbruch(tmp_path, monkey
     assert "data: [2026-09-05 10:57:24] Extract nicht abrufbar: europe/dach" in resp.text
 
 
+@pytest.mark.asyncio
+async def test_region_log_endet_auch_bei_abbruch(tmp_path, monkeypatch):
+    """`cancelled` ist eine Endphase.
+
+    Fehlte sie in der Abbruchbedingung des Stroms, blieb er nach einem
+    abgebrochenen Wechsel bis zu seinem Zeitlimit von einer Stunde offen — das
+    Panel zeigte ueber einem laengst beendeten Wechsel weiter einen blinkenden
+    Cursor, und der Browser hielt die Verbindung."""
+    log = tmp_path / "region.log"
+    log.write_text("[2026-09-16 17:47:15] Abgebrochen — die bisherige Region läuft weiter\n")
+    monkeypatch.setattr(region_switch, "log_path", lambda: str(log))
+    monkeypatch.setattr(region_switch, "read_status", lambda: {"phase": "cancelled"})
+
+    transport = ASGITransport(app=_stream_app(monkeypatch))
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/admin/region/log?token=ticket")
+
+    assert "event: done" in resp.text
+    # Nicht der Zeitlimit-Ausgang: der Strom endet, weil der Wechsel vorbei ist.
+    assert "data: timeout" not in resp.text
+
+
+@pytest.mark.asyncio
+async def test_region_status_reicht_abbruch_unveraendert_durch(monkeypatch):
+    """Der Updater schreibt `cancelled`, das Panel faerbt danach das Abzeichen
+    — das Backend darf die Phase also nicht auf `failed` einebnen."""
+    monkeypatch.setattr(
+        region_switch, "read_status",
+        lambda: {"phase": "cancelled", "message": "Abgebrochen"},
+    )
+    test_app = _make_app_with_superadmin()
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get(
+            "/api/admin/region/status", headers={"Authorization": "Bearer x"}
+        )
+    assert resp.status_code == 200
+    assert resp.json()["phase"] == "cancelled"
+
+
 # ── Regionsumriss fuer die Kartenmaske (GET /api/region/outline) ────────────
 #
 # Der Befund dahinter: Nach einem Regionswechsel im Panel rechnete GraphHopper
@@ -1044,8 +1088,10 @@ async def test_region_log_liefert_die_letzte_zeile_ohne_umbruch(tmp_path, monkey
 def _fake_index(features):
     """Ersetzt den HTTP-Aufruf auf index-v1.json durch feste Features."""
     class _FakeResponse:
-        def raise_for_status(self):
-            pass
+        # `status_code` statt `raise_for_status()`: _index_once prueft den Code
+        # selbst, weil es 429/5xx (wiederholen) von 404/403 (nicht wiederholen)
+        # unterscheiden muss — `raise_for_status()` wirft fuer beide dasselbe.
+        status_code = 200
 
         def json(self):
             return {"type": "FeatureCollection", "features": features}

@@ -154,6 +154,23 @@ fail() {
     exit 1
 }
 
+# Ein vom Bediener angeforderter Abbruch ist KEIN Fehlschlag. Beides lief
+# frueher ueber fail(): Das Panel zeigte einen roten "Fehlgeschlagen"-Balken
+# samt "Verloren sind nur Zeit und Plattenplatz" ueber einer Aktion, die genau
+# so gewollt war, und region-hook.sh schrieb daraufhin "Regionswechsel
+# fehlgeschlagen" ins Updater-Log. Beobachtet am 16.09.2026, nachdem ein auf
+# die Nacht gelegter Wechsel abbestellt wurde.
+#
+# Eigene Endphase, eigener Rueckgabecode 0 — aufgeraeumt wird identisch, das
+# erledigt _on_exit. FAILED_REPORTED=1 heisst hier wie dort "ein Endstatus
+# steht bereits geschrieben", damit die Notbremse keinen zweiten darueberlegt.
+CANCEL_MESSAGE="Abgebrochen — die bisherige Region läuft unverändert weiter."
+cancelled_stop() {
+    FAILED_REPORTED=1
+    phase "cancelled" "$CANCEL_MESSAGE"
+    exit 0
+}
+
 _on_exit() {
     local rc=$?
     # Notbremse: Bricht das Skript ab, WÄHREND GraphHopper für den Graph-Tausch
@@ -202,7 +219,7 @@ trap 'exit 143' TERM INT
 cancelled() { [ -f "$CANCEL" ]; }
 abort_if_cancelled() {
     if cancelled; then
-        fail "Abgebrochen — die bisherige Region läuft unverändert weiter."
+        cancelled_stop
     fi
 }
 
@@ -777,7 +794,20 @@ _rollback_to_old_region() {
 }
 
 # ════════════════════════════════════════════════════════════════════════════
-[ -f "$REQ" ] || exit 0
+if [ ! -f "$REQ" ]; then
+    # Eine Abbruchmarke OHNE Anforderung ist gegenstandslos — und eine Falle:
+    # Aufgeraeumt wird sie sonst nirgends (_release laeuft nur, wenn dieses
+    # Skript das Lock haelt, und ohne Anforderung nimmt es keins), sie bliebe
+    # also liegen und wuerde den NAECHSTEN Wechsel in der Sekunde seines
+    # Aufgreifens abbrechen — ohne dass jemand einen Abbruch angefordert haette.
+    # Das Lock wird dabei geachtet: Haelt es ein anderer Lauf, gehoert ihm auch
+    # die Marke (er raeumt sie mit _release weg).
+    if [ -f "$CANCEL" ] && [ ! -f "$LOCK" ]; then
+        log "Verwaiste Abbruchmarke ohne Anforderung entfernt."
+        rm -f "$CANCEL"
+    fi
+    exit 0
+fi
 touch "$LOCK" 2>/dev/null
 chmod 0644 "$LOCK" 2>/dev/null || true
 OWNS_LOCK=1
@@ -810,6 +840,20 @@ if [ -n "$SOURCES" ]; then
     _PH_IMPORT="4/6"; _PH_SWITCH="5/6"; _PH_CLEAN="6/6"
 else
     _PH_IMPORT="3/5"; _PH_SWITCH="4/5"; _PH_CLEAN="5/5"
+fi
+
+# Abbruch VOR allem anderen. Ein geplanter Wechsel kann abbestellt worden sein,
+# waehrend er im Volume lag — region-hook.sh startet dieses Skript dann
+# absichtlich sofort, damit der Abbruch durch dieselbe Aufraeum- und
+# Meldemaschinerie laeuft wie jeder andere. Frueher stand die erste Pruefung
+# erst hinter der Allowlist und hinter der Zeile "Regionswechsel angefordert
+# von …": Im Log stand dann eine Anforderung, die niemand mehr wollte, direkt
+# ueber ihrem eigenen Abbruch — und eine inzwischen unlesbare Anforderung
+# haette den Abbruch in einen Fehlschlag verwandelt, obwohl nichts mehr zu tun
+# war als aufzuraeumen.
+if cancelled; then
+    log "Abbruch angefordert — die vorgemerkte Anforderung von ${REQUESTED_BY:-unbekannt} wird verworfen."
+    cancelled_stop
 fi
 
 log "Regionswechsel angefordert von ${REQUESTED_BY:-unbekannt}: ${URL:-<leer>}"
@@ -1254,7 +1298,7 @@ IMPORT_JAVA_OPTS="$(_capped_java_opts "$JAVA_OPTS" "Import")"
 if ! _import_graph; then
     rm -rf "$STAGING"
     if [ "$IMPORT_CANCELLED" = 1 ]; then
-        fail "Abgebrochen — die bisherige Region läuft unverändert weiter."
+        cancelled_stop
     fi
     if [ "$PAUSE_ROUTING" = 1 ]; then
         # GraphHopper steht noch; hochgefahren wird er von der Notbremse in
@@ -1266,7 +1310,7 @@ if ! _import_graph; then
 fi
 if cancelled; then
     rm -rf "$STAGING"
-    fail "Abgebrochen — die bisherige Region läuft unverändert weiter."
+    cancelled_stop
 fi
 
 # ── Phase 4: Schwenken (ab hier kein Abbruch mehr) ──────────────────────────

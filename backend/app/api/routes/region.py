@@ -158,7 +158,10 @@ async def preview(body: RegionUrls, _: User = Depends(require_superadmin)):
         # Nach der Validierung entdoppeln, damit zwei Schreibweisen derselben
         # URL zusammenfallen — validate_region_url() rekonstruiert sie kanonisch.
         urls = list(dict.fromkeys(geofabrik.validate_region_url(u) for u in body.urls))
-        sizes = [await geofabrik.head_size_bytes(u) for u in urls]
+        # Gleichzeitig statt nacheinander (siehe geofabrik.head_sizes): bei
+        # sechs Bestandteilen summierten sich sonst sechs Zeitlimits, und
+        # das Panel wartete eine halbe Minute auf eine Vorab-Rechnung.
+        sizes = await geofabrik.head_sizes(urls)
         extract = region_estimate.sum_extract_bytes(sizes)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
@@ -399,7 +402,10 @@ async def switch_region(
         # Nach der Validierung entdoppeln, damit zwei Schreibweisen derselben
         # URL zusammenfallen — validate_region_url() rekonstruiert sie kanonisch.
         urls = list(dict.fromkeys(geofabrik.validate_region_url(u) for u in body.urls))
-        sizes = [await geofabrik.head_size_bytes(u) for u in urls]
+        # Gleichzeitig statt nacheinander (siehe geofabrik.head_sizes): bei
+        # sechs Bestandteilen summierten sich sonst sechs Zeitlimits, und
+        # das Panel wartete eine halbe Minute auf eine Vorab-Rechnung.
+        sizes = await geofabrik.head_sizes(urls)
         extract = region_estimate.sum_extract_bytes(sizes)
     except ValueError as exc:
         await _audit_switch_rejected(db, request, user, roh, str(exc))
@@ -582,7 +588,7 @@ async def stream_region_log(
 
             # Endphase erst NACH dem Ausliefern des Zuwachses pruefen, sonst
             # fehlen die letzten Zeilen des Laufs.
-            if region_switch.read_status().get("phase") in ("done", "failed"):
+            if region_switch.read_status().get("phase") in region_switch.END_PHASES:
                 # Eine letzte Zeile ohne abschliessenden Umbruch gehoert noch
                 # dazu — der Updater ist fertig, es kommt nichts mehr nach.
                 if pending.strip():

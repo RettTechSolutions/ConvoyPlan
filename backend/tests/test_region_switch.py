@@ -219,3 +219,50 @@ def test_read_status_haelt_sich_ans_lock_auch_bei_geplantem_wechsel(tmp_path, mo
     (tmp_path / "region_status.json").write_text(
         json.dumps({"phase": "importing", "message": "Baue Routing-Graph…"}))
     assert region_switch.read_status()["phase"] == "importing"
+
+
+def test_write_request_entfernt_eine_verwaiste_abbruchmarke(tmp_path, monkeypatch):
+    """Eine liegengebliebene Abbruchmarke haette den frisch angeforderten
+    Wechsel in der Sekunde seines Aufgreifens beendet — der Updater prueft sie
+    vor allem anderen. Sie kann nur einen laengst beendeten Wechsel meinen:
+    dass das exklusive Anlegen der Anforderung geklappt hat, ist der Beleg,
+    dass gerade keine andere aussteht."""
+    monkeypatch.setattr(region_switch, "VOLUME", str(tmp_path))
+    (tmp_path / region_switch.CANCEL_FILE).write_text("von vorgestern")
+
+    region_switch.write_request(
+        url="https://download.geofabrik.de/europe/dach-latest.osm.pbf",
+        filename="dach-latest.osm.pbf",
+        java_opts="-Xmx8g",
+        actor_email="a@b.c",
+    )
+
+    assert not (tmp_path / region_switch.CANCEL_FILE).exists()
+    assert (tmp_path / region_switch.REQUEST_FILE).exists()
+
+
+def test_write_request_laesst_die_abbruchmarke_einer_wartenden_anforderung(
+    tmp_path, monkeypatch
+):
+    """Die Gegenprobe zur Reihenfolge: Wer einen geplanten Wechsel abbestellt
+    und danach einen neuen anfordert, bekommt fuer den neuen ein 409 — die
+    Abbestellung des alten darf dieser Fehlversuch nicht mitnehmen, sonst
+    liefe der abbestellte Wechsel zu seinem Termin doch los."""
+    monkeypatch.setattr(region_switch, "VOLUME", str(tmp_path))
+    region_switch.write_request(
+        url="https://download.geofabrik.de/europe/dach-latest.osm.pbf",
+        filename="dach-latest.osm.pbf",
+        java_opts="-Xmx8g",
+        actor_email="a@b.c",
+    )
+    region_switch.request_cancel()
+
+    with pytest.raises(FileExistsError):
+        region_switch.write_request(
+            url="https://download.geofabrik.de/europe/berlin-latest.osm.pbf",
+            filename="berlin-latest.osm.pbf",
+            java_opts="-Xmx3g",
+            actor_email="a@b.c",
+        )
+
+    assert (tmp_path / region_switch.CANCEL_FILE).exists()
