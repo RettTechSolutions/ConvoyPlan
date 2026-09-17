@@ -115,7 +115,10 @@ Der Reverse Proxy braucht Routen für `/mcp` und die OAuth-Pfade an der Wurzel d
 3. Das Programm öffnet den Browser auf der ConvoyPlan-Anmeldung.
 4. **Anmelden** — mit dem eigenen Konto, inklusive MFA, falls eingerichtet.
 5. **Organisation wählen.** Der Zugang gilt nur für diese.
-6. **Zustimmen.** Erst damit entsteht ein Zugang.
+6. **Rechte ankreuzen.** Vorausgewählt ist, was das Programm verlangt hat. Was
+   die eigene Rolle darüber hinaus hergibt, steht darunter zum Ankreuzen —
+   und was sie nicht hergibt, ist durchgestrichen und wird nicht erteilt.
+7. **Zustimmen.** Erst damit entsteht ein Zugang.
 
 Auf dem Zustimmungsbildschirm stehen zwei Angaben nebeneinander, und der Unterschied ist wichtig:
 
@@ -217,9 +220,11 @@ MCP_ALLOW_CIMD=true
 
 ## Wenn die Rechte nicht reichen
 
-Ein Zugang beginnt mit dem schmalsten Recht (`convoy:read`). Versucht ein Programm etwas, wofür das nicht genügt, bekommt es keine nichtssagende Fehlermeldung, sondern die Auskunft, **welches** Recht fehlt — und fordert es von sich aus nach. Für den Benutzer heißt das: eine Nachfrage im Browser, kein Neu-Einrichten der Verbindung.
+Versucht ein Programm etwas, wofür sein Zugang nicht genügt, bekommt es keine nichtssagende Fehlermeldung, sondern die Auskunft, **welches** Recht fehlt. Programme, die das beherrschen, fordern es daraufhin von sich aus nach — für den Benutzer heißt das: eine Nachfrage im Browser, kein Neu-Einrichten der Verbindung.
 
-Was dabei erteilt werden kann, deckelt weiterhin die Rolle. Ein *beobachter* kann `convoy:write` auch dann nicht nachfordern, wenn das Programm danach fragt.
+Nicht jedes Programm kann das. **ChatGPT etwa fragt einmalig beim Verbinden** und später nicht mehr. Deshalb lassen sich die Rechte schon auf dem Zustimmungsbildschirm ankreuzen: Wer weiß, dass er im Chat auch etwas anlegen oder ändern will, setzt dort gleich den Haken bei *Konvois und Fahrzeuge anlegen und ändern*. Ohne diesen Haken bleibt die Verbindung lesend, und der Versuch endet mit dem Hinweis, dass sie neu erteilt werden muss.
+
+Was erteilt werden kann, deckelt in jedem Fall die Rolle. Ein *beobachter* bekommt `convoy:write` nicht — weder durch Ankreuzen noch durch Nachfordern, und auch dann nicht, wenn das Programm ausdrücklich danach fragt.
 
 ---
 

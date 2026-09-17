@@ -324,10 +324,12 @@ def build_server() -> MCPServer:
     auth_settings = AuthSettings(
         issuer_url=AnyHttpUrl(oauth_tokens.issuer_url()),
         resource_server_url=resource_url,
-        # Der minimale Satz für die Grundfunktion. Breitere Scopes fordert
-        # der Client per Step-up nach — so will es die Scope-Minimierung
-        # der Spec.
-        required_scopes=list(scope_svc.SCOPES_SUPPORTED),
+        # Die Schwelle des Endpunkts, nicht die eines Werkzeugs: ohne
+        # ``convoy:read`` kommt ein Token gar nicht erst durch. Ausdrücklich
+        # **nicht** ``SCOPES_SUPPORTED`` — das weist aus, was diese Resource
+        # versteht, und stünde es hier, verlangte jeder einzelne Aufruf
+        # sämtliche Scopes und ein lesendes Token käme nirgends mehr an.
+        required_scopes=list(scope_svc.REQUIRED_SCOPES),
         # RFC 8707: ein Token, das für eine andere Instanz ausgestellt wurde,
         # wird hier abgelehnt.
         validate_token_resource=True,

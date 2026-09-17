@@ -293,9 +293,18 @@ async def authorize(
 
 
 async def consent(
-    client: AsyncClient, ticket: str, user: User, org: Organization, *, approve: bool = True
+    client: AsyncClient,
+    ticket: str,
+    user: User,
+    org: Organization,
+    *,
+    approve: bool = True,
+    scopes: list[str] | None = None,
 ) -> str:
-    """Auf dem Consent-Screen zustimmen und den Autorisierungscode holen."""
+    """Auf dem Consent-Screen zustimmen und den Autorisierungscode holen.
+
+    ``scopes`` ist die Auswahl des Menschen auf dem Bildschirm. ``None``
+    heißt „nichts angekreuzt oder abgewählt" und erteilt das Angefragte."""
     bearer = convoyplan_access_token(user, org)
     resp = await client.post(
         "/api/mcp/consent",
@@ -303,6 +312,7 @@ async def consent(
             "request": ticket,
             "approve": approve,
             "organization_id": str(org.id) if approve else None,
+            "scopes": scopes,
         },
         headers={"Authorization": f"Bearer {bearer}"},
     )
@@ -336,15 +346,24 @@ async def exchange_code(
 
 
 async def connect(
-    client: AsyncClient, user: User, org: Organization, scopes: list[str] | None = None
+    client: AsyncClient,
+    user: User,
+    org: Organization,
+    scopes: list[str] | None = None,
+    *,
+    zustimmung: list[str] | None = None,
 ) -> tuple[dict, dict]:
     """Registrieren, autorisieren, zustimmen, Token holen — in einem Rutsch.
+
+    ``scopes`` ist, was der Client verlangt; ``zustimmung`` das, was der
+    Mensch auf dem Bildschirm ankreuzt. Ohne ``zustimmung`` bleibt es beim
+    Angefragten.
 
     Gibt (Registrierung, Token-Antwort) zurück."""
     reg = await register_client(client, scope=" ".join(scopes) if scopes else None)
     verifier, challenge = pkce_pair()
     ticket = await authorize(client, reg, challenge, scopes)
-    code = await consent(client, ticket, user, org)
+    code = await consent(client, ticket, user, org, scopes=zustimmung)
     result = await exchange_code(client, reg, code, verifier)
     assert result["status"] == 200, result
     return reg, result["body"]

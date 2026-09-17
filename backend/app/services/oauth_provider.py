@@ -354,7 +354,10 @@ class ConvoyPlanOAuthProvider(
         # Angefragte Scopes gegen den bekannten Vorrat prüfen. Die endgültige
         # Zuteilung macht die Consent-Strecke anhand der Rolle des Benutzers —
         # hier fällt nur auf, wenn jemand etwas Unbekanntes verlangt.
-        requested = params.scopes or list(scope_svc.SCOPES_SUPPORTED)
+        # Ohne Angabe bleibt es beim Minimum. ``SCOPES_SUPPORTED`` wäre hier
+        # falsch: das weist aus, was die Resource versteht, und ein Client,
+        # der nichts verlangt, soll nicht alles bekommen.
+        requested = params.scopes or list(scope_svc.REQUIRED_SCOPES)
         unknown = [s for s in requested if s not in scope_svc.ALL_SCOPES]
         if unknown:
             raise AuthorizeError("invalid_scope", f"Unbekannte Scopes: {', '.join(unknown)}")

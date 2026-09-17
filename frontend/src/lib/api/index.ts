@@ -1192,6 +1192,13 @@ export interface McpOrgChoice {
     role: string;
     /** Welche der angefragten Berechtigungen diese Organisation hergibt. */
     grantable_scopes: string[];
+    /**
+     * Was die Rolle darüber hinaus hergäbe, das Programm aber nicht
+     * angefragt hat. Anzukreuzen, nicht vorausgewählt — manche Clients
+     * (ChatGPT etwa) fragen einmalig beim Verbinden und können später nicht
+     * nachfordern.
+     */
+    optional_scopes: string[];
 }
 
 export interface McpConsentRequest {
@@ -1207,6 +1214,8 @@ export interface McpConsentRequest {
     /** Der überprüfte Host der registrierten Redirect-URI. */
     redirect_host: string;
     requested_scopes: McpScopeInfo[];
+    /** Beschriftungen der Berechtigungen, die das Programm nicht angefragt hat. */
+    optional_scopes: McpScopeInfo[];
     organizations: McpOrgChoice[];
     /** Wann die Anfrage verfällt (ISO-8601). */
     expires_at: string;
@@ -1215,11 +1224,17 @@ export interface McpConsentRequest {
 export const mcpApi = {
     readConsentRequest: (request: string) =>
         api.get<McpConsentRequest>(`/api/mcp/consent?request=${encodeURIComponent(request)}`),
-    decide: (request: string, approve: boolean, organization_id: string | null) =>
+    decide: (
+        request: string,
+        approve: boolean,
+        organization_id: string | null,
+        scopes: string[] | null = null
+    ) =>
         api.post<{ redirect_url: string }>('/api/mcp/consent', {
             request,
             approve,
             organization_id,
+            scopes,
         }),
 };
 

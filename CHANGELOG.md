@@ -23,6 +23,14 @@ ursprünglichen SemVer-Nummern.
 
 ### Added
 
+- **Die KI-Schnittstelle lässt sich jetzt auch von ChatGPT sinnvoll benutzen.** Bisher hätte eine Verbindung aus ChatGPT für immer nur lesen können: Die Instanz wies als verfügbare Berechtigung ausschließlich `convoy:read` aus, weil ein Programm Schreibrechte bei Bedarf nachfordern können soll. ChatGPT fragt aber einmalig beim Verbinden und danach nicht mehr — „Füge Fahrzeug XY dem Konvoi hinzu" wäre dort also stets an einem Rechtefehler gescheitert, ohne einen Weg, das zu ändern.
+
+  Der **Zustimmungsbildschirm zeigt die Rechte deshalb jetzt als Ankreuzfelder**: vorausgewählt ist, was das Programm verlangt hat; darunter steht ankreuzbar, was die eigene Rolle darüber hinaus hergibt. Abwählen geht ebenso. Die Rolle bleibt dabei die Obergrenze — ein *beobachter* bekommt Schreibrechte auch durch Ankreuzen nicht.
+
+- **`konvois_auflisten` filtert nach Zeitraum, Status und Name.** „Welche Konvois stehen nächste Woche an?" ist damit eine Abfrage statt eines Komplettabzugs, den ein Modell selbst durchsieht. Ein abgeschnittenes Ergebnis sagt außerdem, dass es abgeschnitten ist.
+
+- **Neues Werkzeug `organisation_details`.** Sagt, für welche Organisation eine Verbindung gilt, welche Rolle der angemeldete Benutzer dort hat und welche Werkzeuge mit den erteilten Rechten tatsächlich durchgehen — bisher war beides nur durch Ausprobieren zu klären.
+
 - **Die Instanz sagt jetzt selbst, was sie ist — für Suchmaschinen und KI-Agenten.** Wer `https://<DOMAIN>/` abrief, bekam bis hierher ein Logo, ein Eingabefeld und einen Knopf: rund 40 Zeichen Text im ausgelieferten HTML. Für einen Menschen reicht das, für ein Sprachmodell ist es eine leere Seite — und genau dort entscheidet sich, ob ConvoyPlan überhaupt als Antwort in Frage kommt, wenn jemand seine KI nach einer Konvoiplanung fragt.
 
   Neu unter der eigenen Domain jeder Instanz: **`/llms.txt`** als Einstieg (samt der Aussage, wann ein Agent ConvoyPlan aufrufen soll **und wann nicht**), **`/agents.md`**, **`/auth.md`** und **`/api.md`** als Anleitung, **`/openapi.json`** als maschinenlesbare Beschreibung der anmeldefreien Endpunkte, eine **Sitemap**, eine **robots.txt** mit ausdrücklicher Erlaubnis für die großen KI-Crawler, die **Well-Known-Dokumente** (A2A Agent Card, Agent Skills, ARD-Katalog, MCP Server Card, API-Katalog nach RFC 9727, Resource-Metadaten nach RFC 9728) und **`/ask`**, das Fragen über ConvoyPlan mit passenden Seiten beantwortet — auf Wunsch als Stream.

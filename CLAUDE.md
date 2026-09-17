@@ -60,6 +60,20 @@ entsteht erst durch die Zustimmung eines angemeldeten Benutzers auf `/oauth/cons
 und gilt für genau eine Organisation, gedeckelt durch dessen Rolle. Kein Werkzeug
 löscht Daten. Jeder schreibende Aufruf landet im Audit-Log mit Quelle `mcp`.
 
+Bei den Scopes (`app/mcp/scopes.py`) sind zwei Listen auseinanderzuhalten, die einmal
+eine waren: `SCOPES_SUPPORTED` weist aus, *was es gibt* (Protected Resource Metadata),
+`REQUIRED_SCOPES` ist die Schwelle des Endpunkts. Steht die volle Liste versehentlich
+an der zweiten Stelle, verlangt `RequireAuthMiddleware` von jedem Token sämtliche
+Scopes und weist jede lesende Verbindung ab. Erteilt wird ausgeschrieben
+(`effective()`), weil dieselbe Middleware ohne Hierarchie prüft — ein Token mit nur
+`convoy:write` käme sonst nicht einmal an `/mcp` vorbei.
+
+Welche Rechte eine Verbindung bekommt, entscheidet der Mensch auf dem
+Zustimmungsbildschirm, nicht der Client: er kreuzt an, was seine Rolle hergibt. Das ist
+kein Komfort, sondern Voraussetzung dafür, dass ChatGPT mehr als lesen kann — es fragt
+einmalig beim Verbinden und fordert nie nach. Hintergrund und offene Punkte der
+ChatGPT-Anbindung: `docs/superpowers/plans/2026-09-17-chatgpt-app.md`.
+
 Code in `backend/app/mcp/` (Werkzeuge, Scopes, Montage), `backend/app/services/
 oauth_provider.py` und `oauth_tokens.py`. Verwaltung im Admin-Portal unter **MCP**.
 Anwenderdoku: `wiki/MCP-Server.md`.

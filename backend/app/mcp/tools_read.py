@@ -11,14 +11,16 @@ in Metern, Dauern in Sekunden — benannt, damit die Einheit nicht geraten
 werden muss.
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, time
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from app.mcp import WRITE_TOOLS
 from app.mcp import subscriptions as live
 from app.mcp.context import McpError, mcp_context
-from app.mcp.scopes import SCOPE_READ
+from app.mcp.scopes import SCOPE_LABELS, SCOPE_READ, TOOL_SCOPES, satisfies
+from app.middleware.license_guard import is_licensed
 from app.models.convoy import Convoy, ConvoyVehicle
 from app.models.route import Route
 from app.models.vehicle import Vehicle
@@ -29,6 +31,40 @@ from app.services import geometry as geo_svc
 
 def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value is not None else None
+
+
+# Wie viele Konvois eine Auflistung höchstens zurückgibt. Kein Sicherheits-,
+# sondern ein Kontextlimit: was darüber hinausgeht, liest kein Modell mehr
+# sinnvoll, es verdrängt nur den Gesprächsverlauf.
+MAX_TREFFER = 200
+
+
+def _zeitpunkt(raw: str, feld: str, *, tagesende: bool = False) -> datetime:
+    """Eine Zeitangabe aus einem Werkzeugaufruf in einen Zeitpunkt übersetzen.
+
+    Erlaubt ist ISO-8601, mit oder ohne Uhrzeit. Ein reines Datum meint bei
+    der oberen Grenze das **Ende** des Tages — „bis 21.09." ohne diesen
+    Griff schlösse den 21. aus, und niemand meint das so.
+
+    Eine Zonenangabe wird abgeschnitten, nicht umgerechnet: ``start_time``
+    ist in ConvoyPlan die Ortszeit der Instanz (siehe ``models/convoy.py``).
+    Ein Modell, das gewohnheitsmäßig ein „Z" anhängt, soll damit nicht die
+    Marschzeiten um zwei Stunden verschieben."""
+    text = raw.strip()
+    try:
+        wert = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        raise McpError(
+            f"„{raw}“ ist für {feld} keine lesbare Zeitangabe. Erwartet wird "
+            "ISO-8601, also etwa 2026-09-21 oder 2026-09-21T06:30."
+        )
+    wert = wert.replace(tzinfo=None)
+    # Ein reines Datum kommt als Mitternacht an; nur dann greift die
+    # Ausdehnung auf das Tagesende — bei 2026-09-21T00:00 wäre sie falsch,
+    # aber unterscheidbar ist das nur am Text.
+    if tagesende and len(text) <= 10:
+        wert = datetime.combine(wert.date(), time.max)
+    return wert
 
 
 def _convoy_brief(convoy: Convoy) -> dict:
@@ -216,25 +252,141 @@ def register(mcp) -> None:
     """Die lesenden Werkzeuge am Server anmelden."""
 
     @mcp.tool()
-    async def konvois_auflisten() -> dict:
-        """Listet alle Konvois (Marschkolonnen) der Organisation, neueste zuerst.
+    async def konvois_auflisten(
+        von: str | None = None,
+        bis: str | None = None,
+        status: str | None = None,
+        suche: str | None = None,
+        nur_hauptkonvois: bool = False,
+        limit: int = 50,
+    ) -> dict:
+        """Listet die Konvois (Marschkolonnen) der Organisation.
+
+        Ohne Angaben kommen die zuletzt angelegten Konvois, neueste zuerst.
+        Die Filter sind dafür da, dass eine Frage nach einem Zeitraum nicht
+        über den gesamten Bestand beantwortet werden muss: „Welche Konvois
+        stehen nächste Woche an?" ist `von`/`bis`, nicht alles abrufen und
+        selbst aussortieren.
 
         Gibt je Konvoi eine Kurzfassung zurück. Für Wegpunkte, Marschbefehl
         und die Fahrzeugliste anschließend `konvoi_details` aufrufen.
+
+        Args:
+            von: Nur Konvois, die ab diesem Zeitpunkt starten (ISO-8601,
+                Datum genügt). Konvois ohne Startzeit fallen bei jeder
+                Zeitangabe heraus — sie sind zeitlich nicht eingeplant.
+            bis: Nur Konvois, die bis zu diesem Zeitpunkt starten. Ein reines
+                Datum meint den ganzen Tag.
+            status: planning | active | completed.
+            suche: Textteil im Namen des Konvois, Groß-/Kleinschreibung egal.
+            nur_hauptkonvois: Unterkonvois (Teilkolonnen) auslassen.
+            limit: Höchstzahl der Treffer, Standard 50, Obergrenze 200.
         """
         async with mcp_context() as ctx:
             ctx.require(SCOPE_READ)
-            rows = (
-                await ctx.db.execute(
-                    _convoy_query(ctx.organization.id).order_by(Convoy.created_at.desc())
+            query = _convoy_query(ctx.organization.id)
+            zeitlich = False
+
+            if von is not None:
+                query = query.where(Convoy.start_time >= _zeitpunkt(von, "von"))
+                zeitlich = True
+            if bis is not None:
+                query = query.where(
+                    Convoy.start_time <= _zeitpunkt(bis, "bis", tagesende=True)
                 )
+                zeitlich = True
+            if status is not None:
+                query = query.where(Convoy.status == status)
+            if suche:
+                query = query.where(Convoy.name.ilike(f"%{suche}%"))
+            if nur_hauptkonvois:
+                query = query.where(Convoy.parent_convoy_id.is_(None))
+
+            # Nach einem Zeitraum gefragt heißt: in zeitlicher Reihenfolge
+            # geantwortet. „Was steht an?" will den nächsten Marsch zuerst,
+            # nicht den zuletzt angelegten.
+            query = query.order_by(
+                Convoy.start_time.asc() if zeitlich else Convoy.created_at.desc()
+            )
+
+            grenze = max(1, min(limit, MAX_TREFFER))
+            # Einen über die Grenze hinaus holen, um „da ist noch mehr"
+            # sagen zu können, ohne zweimal zu zählen.
+            rows = (
+                await ctx.db.execute(query.limit(grenze + 1))
             ).scalars().all()
+            weitere = len(rows) > grenze
+            rows = rows[:grenze]
+
             for c in rows:
                 live.merke_konvoi(c.id, c.organization_id)
-            return {
+            antwort = {
                 "organisation": ctx.organization.name,
                 "anzahl": len(rows),
                 "konvois": [_convoy_brief(c) for c in rows],
+            }
+            if weitere:
+                antwort["hinweis"] = (
+                    f"Es gibt mehr als {grenze} Treffer; angezeigt werden die "
+                    "ersten. Filter enger setzen oder limit erhöhen "
+                    f"(höchstens {MAX_TREFFER})."
+                )
+            return antwort
+
+    @mcp.tool()
+    async def organisation_details() -> dict:
+        """Mit welcher Organisation diese Verbindung arbeitet und was sie darf.
+
+        Beantwortet zwei Fragen, die sonst nur durch Ausprobieren zu klären
+        sind: auf wessen Daten die Werkzeuge zugreifen — eine Verbindung gilt
+        für **genau eine** Organisation, auch wenn der Benutzer mehreren
+        angehört — und welche Werkzeuge mit den erteilten Rechten überhaupt
+        durchgehen.
+
+        Vor einem schreibenden Aufruf lohnt sich der Blick: fehlt das Recht,
+        steht das hier, statt dass der Aufruf daran scheitert.
+        """
+        async with mcp_context() as ctx:
+            ctx.require(SCOPE_READ)
+            konvois = (
+                await ctx.db.execute(
+                    select(Convoy.id).where(Convoy.organization_id == ctx.organization.id)
+                )
+            ).scalars().all()
+            fahrzeuge = (
+                await ctx.db.execute(
+                    select(Vehicle.id).where(Vehicle.org_id == ctx.organization.id)
+                )
+            ).scalars().all()
+            # Die Werkzeuge, die mit diesen Scopes durchgehen. Gelesen aus
+            # derselben Tabelle, die die Transportschicht benutzt — eine
+            # zweite Liste hier liefe beim nächsten neuen Werkzeug auseinander.
+            #
+            # Die Lizenz kommt dazu, weil ``tools/list`` ohne sie die
+            # schreibenden Werkzeuge gar nicht erst zeigt (``mount.py``).
+            # Sie hier trotzdem aufzuzählen hieße, einem Modell etwas
+            # anzubieten, das es nirgends findet.
+            lizenziert = await is_licensed()
+            erlaubt = sorted(
+                name
+                for name, scope in TOOL_SCOPES.items()
+                if satisfies(ctx.scopes, scope)
+                and (lizenziert or name not in WRITE_TOOLS)
+            )
+            return {
+                "organisation": ctx.organization.name,
+                "eigene_rolle": ctx.role,
+                "erteilte_rechte": [
+                    {"scope": s, "bedeutung": SCOPE_LABELS.get(s, s)} for s in ctx.scopes
+                ],
+                "verfuegbare_werkzeuge": erlaubt,
+                "konvois_anzahl": len(konvois),
+                "fahrzeuge_anzahl": len(fahrzeuge),
+                "hinweis": (
+                    "Diese Verbindung gilt nur für diese Organisation. Kein "
+                    "Werkzeug löscht Daten; jeder schreibende Aufruf wird "
+                    "protokolliert."
+                ),
             }
 
     @mcp.tool()

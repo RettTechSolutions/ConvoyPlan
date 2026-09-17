@@ -50,6 +50,13 @@ class OrgChoice(BaseModel):
     # der der Benutzer nur beobachtet, kann kein Schreibrecht erteilen — das
     # soll er vor dem Klick sehen und nicht danach.
     grantable_scopes: list[str]
+    # Was die Rolle darüber hinaus hergäbe, der Client aber nicht verlangt
+    # hat. Das Angebot existiert, weil nicht jeder Client nachfordern kann,
+    # was er zunächst nicht angefragt hat: ChatGPT etwa liest die
+    # ``scopes_supported`` der Resource und bleibt sonst bei dem, was es
+    # beim Verbinden erfragt hat. Ohne dieses Feld wäre eine Verbindung für
+    # immer lesend, obwohl die Rolle mehr hergibt.
+    optional_scopes: list[str]
 
 
 class ConsentRequestInfo(BaseModel):
@@ -62,6 +69,10 @@ class ConsentRequestInfo(BaseModel):
     # Angabe darüber, wohin der Zugriff geht.
     redirect_host: str
     requested_scopes: list[ScopeInfo]
+    # Die Beschriftungen zu den Scopes, die der Client *nicht* verlangt hat.
+    # Welche davon eine Organisation tatsächlich hergibt, steht in
+    # ``OrgChoice.optional_scopes`` — hier stehen nur die Texte dazu.
+    optional_scopes: list[ScopeInfo]
     organizations: list[OrgChoice]
     # Wann die Anfrage verfällt. Der Benutzer soll nicht erst nach dem Klick
     # erfahren, dass er zu lange gebraucht hat.
@@ -72,6 +83,12 @@ class ConsentDecision(BaseModel):
     request: str
     approve: bool
     organization_id: uuid.UUID | None = None
+    # Was der Benutzer angekreuzt hat. ``None`` heißt „keine Auswahl
+    # getroffen" und erteilt das Angefragte — so verhalten sich ältere
+    # Oberflächen und Tests weiter wie bisher. Die Auswahl kann nur
+    # *innerhalb* der Rolle liegen; ``grantable()`` schneidet sie darauf
+    # zurecht, nicht diese Zeile.
+    scopes: list[str] | None = None
 
 
 class ConsentResult(BaseModel):
@@ -162,8 +179,9 @@ async def read_consent_request(
 
     client = await _client_for(db, authz)
 
-    requested = authz.get("scopes") or list(scope_svc.SCOPES_SUPPORTED)
+    requested = authz.get("scopes") or list(scope_svc.REQUIRED_SCOPES)
     known = [s for s in scope_svc.ALL_SCOPES if s in set(requested)]
+    weitere = [s for s in scope_svc.ALL_SCOPES if s not in set(known)]
 
     orgs = [
         OrgChoice(
@@ -172,6 +190,7 @@ async def read_consent_request(
             slug=org.slug,
             role=role,
             grantable_scopes=scope_svc.grantable(known, role),
+            optional_scopes=scope_svc.grantable(weitere, role),
         )
         for org, role in await _memberships(db, user)
     ]
@@ -187,6 +206,9 @@ async def read_consent_request(
         redirect_host=_redirect_host(authz["redirect_uri"]),
         requested_scopes=[
             ScopeInfo(scope=s, label=scope_svc.SCOPE_LABELS.get(s, s)) for s in known
+        ],
+        optional_scopes=[
+            ScopeInfo(scope=s, label=scope_svc.SCOPE_LABELS.get(s, s)) for s in weitere
         ],
         organizations=orgs,
         expires_at=datetime.fromtimestamp(authz["exp"], tz=timezone.utc),
@@ -252,14 +274,26 @@ async def decide_consent(
             detail="Kein Mitglied dieser Organisation",
         )
 
-    requested = authz.get("scopes") or list(scope_svc.SCOPES_SUPPORTED)
-    granted = scope_svc.grantable(requested, membership.role)
+    requested = authz.get("scopes") or list(scope_svc.REQUIRED_SCOPES)
+    # Die Auswahl des Benutzers schlägt die Anfrage des Clients — nach oben
+    # wie nach unten. Nach unten ist das OAuth-Alltag (RFC 6749 §3.3: der
+    # Server darf weniger erteilen als verlangt). Nach oben ist es der Punkt,
+    # an dem ein Mensch einem Client mehr gibt, als der zu fragen wusste;
+    # dass er es *wusste*, ist der Unterschied zu einer stillen Ausweitung,
+    # und die Token-Antwort nennt dem Client den erteilten Umfang ohnehin.
+    #
+    # Die Rolle bleibt die Obergrenze: ``grantable()`` schneidet die Auswahl
+    # auf das zurecht, was die Mitgliedschaft hergibt. Ein Client, der sich
+    # hier ``convoy:write`` in die Anfrage schreibt, kommt damit bei einem
+    # Beobachter keinen Schritt weiter.
+    gewaehlt = requested if decision.scopes is None else decision.scopes
+    granted = scope_svc.effective(gewaehlt, membership.role)
     if not granted:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=(
                 f"Die Rolle „{membership.role}“ in dieser Organisation gibt keinen "
-                "der angefragten Zugriffe her"
+                "der ausgewählten Zugriffe her"
             ),
         )
 

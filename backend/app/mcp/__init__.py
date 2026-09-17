@@ -26,6 +26,7 @@ Montiert wird nur, wenn ``settings.mcp_enabled`` gesetzt ist.
 # Route oder einen Benutzer löscht.
 READ_TOOLS: tuple[str, ...] = (
     # Lesend (Phase 1)
+    "organisation_details",
     "konvois_auflisten",
     "konvoi_details",
     "unterkonvois_auflisten",
