@@ -65,7 +65,8 @@ async def test_ohne_superadmin_kein_zugriff():
         token = convoyplan_access_token(fx.planer, fx.org_a)  # kein Superadmin
         async with await _admin_client(token) as client:
             for pfad in ("/api/admin/mcp/status", "/api/admin/mcp/clients",
-                         "/api/admin/mcp/connections"):
+                         "/api/admin/mcp/connections",
+                         "/api/admin/mcp/organizations"):
                 resp = await client.get(pfad)
                 assert resp.status_code == 403, f"{pfad}: {resp.status_code}"
 
@@ -339,3 +340,108 @@ async def test_client_liste_zeigt_vorher_an_was_das_aufraeumen_traefe():
         assert nach_id[verwaist["client_id"]]["orphaned"] is True
         assert nach_id[verbunden["client_id"]]["orphaned"] is False
         await purge_clients([verwaist["client_id"], verbunden["client_id"]])
+
+
+# ── Welche Organisationen teilnehmen ─────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_organisationsliste_zeigt_freigabe_und_verbindungen():
+    """Die Frage, die der Betreiber stellt: wer nutzt das eigentlich?
+
+    Der Instanzschalter beantwortet sie nicht — eingeschaltet heißt nur, dass
+    es ``/mcp`` gibt, nicht dass jemand teilnimmt."""
+    from app.mcp import areas
+    from app.mcp import scopes as scope_svc
+    from app.services import org_mcp_policy
+
+    async with seeded() as fx, mcp_app() as (_app, mcp_client):
+        reg, _token = await connect(mcp_client, fx.planer, fx.org_a)
+
+        # Organisation B nimmt nicht teil; die Fixture gibt beide frei, also
+        # hier ausdrücklich zurückdrehen.
+        async with AsyncSessionLocal() as db:
+            await org_mcp_policy.setzen(
+                db, fx.org_b.id, enabled=False, scopes=[], bereiche=[]
+            )
+            await org_mcp_policy.setzen(
+                db,
+                fx.org_a.id,
+                enabled=True,
+                scopes=[scope_svc.SCOPE_WRITE],
+                bereiche=[areas.BEREICH_KONVOIS, areas.BEREICH_ROUTEN],
+            )
+            await db.commit()
+
+        admin_token = await _superadmin_token(fx)
+        async with await _admin_client(admin_token) as client:
+            zeilen = (await client.get("/api/admin/mcp/organizations")).json()
+            status = (await client.get("/api/admin/mcp/status")).json()
+
+        nach_id = {z["organization_id"]: z for z in zeilen}
+
+        a = nach_id[str(fx.org_a.id)]
+        assert a["enabled"] is True
+        assert a["konfiguriert"] is True
+        assert a["bereiche"] == [areas.BEREICH_KONVOIS, areas.BEREICH_ROUTEN]
+        # convoy:read ist Voraussetzung und kommt beim Speichern dazu.
+        assert a["scopes"] == [scope_svc.SCOPE_READ, scope_svc.SCOPE_WRITE]
+        assert a["active_connections"] == 1
+
+        b = nach_id[str(fx.org_b.id)]
+        assert b["enabled"] is False
+        assert b["scopes"] == []
+        assert b["active_connections"] == 0
+
+        # Die Zählung im Status stimmt mit der Liste überein — zwei Zahlen für
+        # dasselbe, nebeneinander im Portal, dürfen nicht auseinanderlaufen.
+        assert status["organizations_total"] == len(zeilen)
+        assert status["organizations_enabled"] == sum(1 for z in zeilen if z["enabled"])
+
+        await purge_clients([reg["client_id"]])
+
+
+@pytest.mark.asyncio
+async def test_organisation_ohne_richtlinie_steht_als_standard_aus_in_der_liste():
+    """Keine Zeile heißt aus — und die Liste muss sie trotzdem zeigen.
+
+    Ein LEFT JOIN, kein Join über die Richtlinien: sonst fehlte genau die
+    Mehrheit der Organisationen, und der Betreiber suchte im Nichts nach der
+    Erklärung, warum eine Anbindung nicht zustande kommt."""
+    from app.models.org_mcp_policy import OrganizationMcpPolicy
+
+    async with seeded() as fx:
+        async with AsyncSessionLocal() as db:
+            zeile = await db.get(OrganizationMcpPolicy, fx.org_b.id)
+            await db.delete(zeile)
+            await db.commit()
+
+        admin_token = await _superadmin_token(fx)
+        async with await _admin_client(admin_token) as client:
+            zeilen = (await client.get("/api/admin/mcp/organizations")).json()
+
+        b = next(z for z in zeilen if z["organization_id"] == str(fx.org_b.id))
+        assert b["enabled"] is False
+        assert b["konfiguriert"] is False
+        assert b["name"] == fx.org_b.name
+
+
+@pytest.mark.asyncio
+async def test_freigegebene_organisationen_stehen_oben():
+    """Die Liste wird gelesen, um etwas zu finden, nicht um sie durchzugehen."""
+    from app.services import org_mcp_policy
+
+    async with seeded() as fx:
+        async with AsyncSessionLocal() as db:
+            await org_mcp_policy.setzen(
+                db, fx.org_a.id, enabled=False, scopes=[], bereiche=[]
+            )
+            await db.commit()
+
+        admin_token = await _superadmin_token(fx)
+        async with await _admin_client(admin_token) as client:
+            zeilen = (await client.get("/api/admin/mcp/organizations")).json()
+
+        freigegeben = [i for i, z in enumerate(zeilen) if z["enabled"]]
+        gesperrt = [i for i, z in enumerate(zeilen) if not z["enabled"]]
+        assert not freigegeben or not gesperrt or max(freigegeben) < min(gesperrt)

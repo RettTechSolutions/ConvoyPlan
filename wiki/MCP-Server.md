@@ -76,6 +76,19 @@ Im selben Tab steht die Liste der **bestehenden Verbindungen** dieser
 Organisation. Den Zugriff abzuschalten trennt sie nicht — sie laufen dann ins
 Leere. Wer sie wirklich los sein will, trennt sie dort einzeln.
 
+### Was der Betreiber davon sieht
+
+Im Admin-Portal unter **MCP** steht eine Übersicht aller Organisationen: ob sie
+den KI-Zugriff freigegeben haben, welche Bereiche und Rechte, und wie viele
+Verbindungen daran hängen. Abgeschaltete Organisationen sind eingeklappt und
+über *Alle anzeigen* zu erreichen — dort steht dann auch die Antwort auf die
+häufigste Rückfrage, warum eine Anbindung nicht zustande kommt.
+
+Die Übersicht ist **nur zum Ansehen**. Der Betreiber der Instanz schaltet die
+Schnittstelle als Ganzes ein oder aus; über die Einsatzdaten einer einzelnen
+Organisation entscheidet deren Admin. Eine Zeile mit `0` Verbindungen und
+„frei" heißt: es wäre möglich, es hat nur noch niemand verbunden.
+
 ### Wenn der Schalter auf „An" steht und trotzdem nichts geht
 
 Zwei Dinge können es sein: der Reverse Proxy (unten) oder der

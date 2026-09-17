@@ -115,7 +115,15 @@ def _liste(roh: str, erlaubte: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(e for e in erlaubte if e in vorhanden)
 
 
-def _aus_zeile(zeile: OrganizationMcpPolicy) -> Policy:
+def aus_zeile(zeile: OrganizationMcpPolicy | None) -> Policy:
+    """Eine gespeicherte Zeile in die geltende Richtlinie übersetzen.
+
+    ``None`` heißt keine Zeile und damit aus. Öffentlich, weil das Adminportal
+    Organisationen und Richtlinien in *einer* Abfrage verbindet (LEFT JOIN) und
+    das Ergebnis selbst übersetzen muss — eine Abfrage je Organisation wäre bei
+    dreißig Organisationen dreißig Rundreisen."""
+    if zeile is None:
+        return AUS
     return Policy(
         enabled=zeile.enabled,
         scopes=_liste(zeile.scopes or "", scope_svc.ALL_SCOPES),
@@ -127,7 +135,7 @@ def _aus_zeile(zeile: OrganizationMcpPolicy) -> Policy:
 async def fuer_org(db: AsyncSession, org_id: uuid.UUID) -> Policy:
     """Die geltende Richtlinie einer Organisation. Keine Zeile heißt aus."""
     zeile = await db.get(OrganizationMcpPolicy, org_id)
-    return AUS if zeile is None else _aus_zeile(zeile)
+    return aus_zeile(zeile)
 
 
 async def fuer_orgs(
@@ -146,7 +154,7 @@ async def fuer_orgs(
             )
         )
     ).scalars().all()
-    gefunden = {z.organization_id: _aus_zeile(z) for z in zeilen}
+    gefunden = {z.organization_id: aus_zeile(z) for z in zeilen}
     return {org_id: gefunden.get(org_id, AUS) for org_id in org_ids}
 
 

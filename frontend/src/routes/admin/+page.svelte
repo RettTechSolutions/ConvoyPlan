@@ -6,7 +6,7 @@
     import { auth } from '$lib/stores/auth';
     import EmailTemplateEditor from '$lib/components/EmailTemplateEditor.svelte';
     import { getStreamTicket } from '$lib/api/client';
-    import { adminApi, mfaApi, leistellenApi, licenseApi, mcpAdminApi, regionApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoStats, type DemoSessionInfo, type DemoLeadInfo, type DemoIpLock, type DemoIpAllowlistEntry, type RegionStatus, type RegionPhase, type McpStatus, type McpClient, type McpConnection } from '$lib/api';
+    import { adminApi, mfaApi, leistellenApi, licenseApi, mcpAdminApi, regionApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoStats, type DemoSessionInfo, type DemoLeadInfo, type DemoIpLock, type DemoIpAllowlistEntry, type RegionStatus, type RegionPhase, type McpStatus, type McpClient, type McpConnection, type McpOrgPolicy } from '$lib/api';
     import { brandingStore, applyBranding, normalizeBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
     import SuperadminLogin from '$lib/components/SuperadminLogin.svelte';
@@ -1548,18 +1548,32 @@
     let mcpUrlCopied = $state(false);
     let mcpCleanupNote = $state('');
 
+    // Alle Organisationen mit ihrem KI-Zugriff. Nur zum Ansehen — einstellen
+    // kann es allein der Admin der Organisation.
+    let mcpOrgs = $state<McpOrgPolicy[]>([]);
+    // Abgeschaltete Organisationen sind auf einer großen Instanz die Mehrheit
+    // und verdrängen die interessanten Zeilen. Eingeklappt, aber vorhanden:
+    // „warum kommt die Anbindung bei denen nicht zustande?" ist die häufigere
+    // Frage, und die Antwort ist genau diese Zeile.
+    let mcpZeigeAlleOrgs = $state(false);
+    const mcpSichtbareOrgs = $derived(
+        mcpZeigeAlleOrgs ? mcpOrgs : mcpOrgs.filter((o) => o.enabled)
+    );
+
     async function loadMcp() {
         mcpLoading = true;
         mcpError = '';
         try {
-            const [status, clients, connections] = await Promise.all([
+            const [status, clients, connections, orgs] = await Promise.all([
                 mcpAdminApi.status(),
                 mcpAdminApi.listClients(),
                 mcpAdminApi.listConnections(),
+                mcpAdminApi.listOrganizations(),
             ]);
             mcpStatus = status;
             mcpClients = clients;
             mcpConnections = connections;
+            mcpOrgs = orgs;
         } catch (e) {
             mcpError = e instanceof Error ? e.message : 'MCP-Daten konnten nicht geladen werden.';
         } finally {
@@ -1639,6 +1653,27 @@
         } finally {
             mcpBusy = '';
         }
+    }
+
+    // Die Beschriftungen kommen absichtlich nicht vom Server: diese Tabelle
+    // ist eine Übersicht, keine Einstellung. Wer einstellt, sieht die
+    // ausführlichen Texte im Org-Adminbereich.
+    const MCP_BEREICH_KURZ: Record<string, string> = {
+        konvois: 'Konvois',
+        fahrzeuge: 'Fahrzeuge',
+        wegpunkte: 'Wegpunkte',
+        routen: 'Routen',
+        status: 'Status',
+    };
+    const MCP_SCOPE_KURZ: Record<string, string> = {
+        'convoy:read': 'lesen',
+        'fleet:status': 'Status melden',
+        'convoy:write': 'schreiben',
+    };
+
+    function mcpListe(werte: string[], namen: Record<string, string>): string {
+        if (werte.length === 0) return '—';
+        return werte.map((w) => namen[w] ?? w).join(', ');
     }
 
     function mcpDatum(iso: string | null): string {
@@ -2065,6 +2100,13 @@
                         <span class="kpi-sub">je erteilter Zustimmung eine</span>
                     </div>
                     <div class="kpi">
+                        <span class="kpi-value">
+                            {mcpStatus.organizations_enabled} / {mcpStatus.organizations_total}
+                        </span>
+                        <span class="kpi-label">Organisationen mit Zugriff</span>
+                        <span class="kpi-sub">standardmäßig aus, der Org-Admin schaltet frei</span>
+                    </div>
+                    <div class="kpi">
                         <span class="kpi-value">{mcpStatus.access_token_ttl_minutes} min</span>
                         <span class="kpi-label">Zugriffstoken gültig</span>
                         <span class="kpi-sub">so lange wirkt ein Widerruf verzögert</span>
@@ -2097,6 +2139,83 @@
                 {/if}
             {:else if mcpLoading}
                 <p class="hint">Wird geladen …</p>
+            {/if}
+        </div>
+
+        <!-- ── Organisationen und ihr KI-Zugriff ── -->
+        <div class="section">
+            <div class="section-header">
+                <strong>
+                    Organisationen mit KI-Zugriff
+                    ({mcpOrgs.filter((o) => o.enabled).length} von {mcpOrgs.length})
+                </strong>
+                {#if mcpOrgs.some((o) => !o.enabled)}
+                    <button class="btn-small" onclick={() => (mcpZeigeAlleOrgs = !mcpZeigeAlleOrgs)}>
+                        {mcpZeigeAlleOrgs ? 'Nur freigegebene' : 'Alle anzeigen'}
+                    </button>
+                {/if}
+            </div>
+            <p class="hint" style="margin:-.25rem 0 .75rem">
+                Ob eine Organisation über die Schnittstelle erreichbar ist, entscheidet ihr
+                eigener Admin — im Org-Adminbereich unter „KI-Zugriff“, und standardmäßig ist
+                das aus. Diese Übersicht ist deshalb <strong>nur zum Ansehen</strong>: Sie
+                betreiben die Instanz, über die Einsatzdaten einer Organisation entscheidet
+                sie selbst.
+            </p>
+
+            {#if mcpOrgs.length === 0}
+                <p class="hint">Es gibt keine Organisationen.</p>
+            {:else}
+                <table class="user-table">
+                    <thead>
+                        <tr>
+                            <th>Organisation</th>
+                            <th>KI-Zugriff</th>
+                            <th>Bereiche</th>
+                            <th>Rechte</th>
+                            <th>Verbindungen</th>
+                            <th>Geändert</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {#each mcpSichtbareOrgs as org (org.organization_id)}
+                            <tr>
+                                <td>
+                                    {org.name}
+                                    {#if org.is_demo}
+                                        <span class="badge badge-muted" title="Demo-Organisation, wird nach Ablauf gelöscht">Demo</span>
+                                    {/if}
+                                </td>
+                                <td>
+                                    {#if org.enabled}
+                                        <span class="badge badge-ok">frei</span>
+                                    {:else}
+                                        <span class="badge badge-muted">aus</span>
+                                        {#if !org.konfiguriert}
+                                            <span class="hint" title="Es wurde nie etwas eingestellt — der Standard gilt">(Standard)</span>
+                                        {/if}
+                                    {/if}
+                                </td>
+                                <td class="hint">{mcpListe(org.bereiche, MCP_BEREICH_KURZ)}</td>
+                                <td class="hint">{mcpListe(org.scopes, MCP_SCOPE_KURZ)}</td>
+                                <td>
+                                    {org.active_connections}
+                                    {#if org.active_connections > 0 && !org.enabled}
+                                        <span class="badge badge-update" title="Die Verbindungen bestehen noch, laufen aber ins Leere">ruht</span>
+                                    {/if}
+                                </td>
+                                <td class="hint">{mcpDatum(org.updated_at)}</td>
+                            </tr>
+                        {/each}
+                        {#if mcpSichtbareOrgs.length === 0}
+                            <tr>
+                                <td colspan="6" class="hint" style="text-align:center">
+                                    Keine Organisation hat den KI-Zugriff freigegeben.
+                                </td>
+                            </tr>
+                        {/if}
+                    </tbody>
+                </table>
             {/if}
         </div>
 

@@ -1885,6 +1885,12 @@ class McpStatusResponse(BaseModel):
     tool_calls_per_minute: int
     registered_clients: int
     active_connections: int
+    # Wie viele Organisationen die Schnittstelle nutzen — und wie viele es
+    # überhaupt gibt. Der Instanzschalter allein sagt nichts darüber aus:
+    # eingeschaltet heißt nur, dass es /mcp gibt, nicht dass jemand
+    # teilnimmt (siehe services/org_mcp_policy.py).
+    organizations_enabled: int
+    organizations_total: int
     # Der Reverse Proxy. Ohne diese Angaben zeigte das Portal „An" samt
     # Verbindungsadresse, während von außen nichts erreichbar ist — der
     # Schalter mountet nur die Routen im Backend, ans Weiterleiten kommt er
@@ -1937,6 +1943,30 @@ class McpConnectionResponse(BaseModel):
     expires_at: datetime
 
 
+class McpOrgPolicyResponse(BaseModel):
+    """Was eine Organisation über die KI-Schnittstelle hergibt.
+
+    Nur zum Ansehen. Einstellen kann es allein der Admin der Organisation
+    (``api/routes/org_mcp.py``) — wer die Instanz betreibt, sieht *dass*
+    eine Organisation teilnimmt und in welchem Umfang, entscheidet aber
+    nicht über ihre Einsatzdaten. Genau dafür gibt es die zweite Ebene.
+    """
+
+    organization_id: uuid.UUID
+    name: str
+    slug: str
+    is_demo: bool
+    enabled: bool
+    scopes: list[str]
+    bereiche: list[str]
+    # Ob je etwas eingestellt wurde. Trennt „bewusst abgeschaltet" von
+    # „nie angefasst" — bei einem Standard, der aus ist, sind das zwei
+    # verschiedene Zustände und nur einer davon braucht ein Gespräch.
+    konfiguriert: bool
+    active_connections: int
+    updated_at: datetime | None = None
+
+
 def _mcp_models():
     """Die MCP-Modelle erst beim Aufruf importieren.
 
@@ -1982,6 +2012,16 @@ async def mcp_status(
             _active_connection_filter(OAuthRefreshToken)
         )
     )
+    from app.models.org_mcp_policy import OrganizationMcpPolicy
+
+    orgs_gesamt = await db.scalar(select(func.count()).select_from(Organization))
+    orgs_aktiv = await db.scalar(
+        select(func.count())
+        .select_from(OrganizationMcpPolicy)
+        .join(Organization, Organization.id == OrganizationMcpPolicy.organization_id)
+        .where(OrganizationMcpPolicy.enabled.is_(True))
+    )
+
     befund = await caddy_config.diagnose_proxy(db)
     return McpStatusResponse(
         proxy_routes_live=befund.routen_aktiv,
@@ -2001,6 +2041,8 @@ async def mcp_status(
         tool_calls_per_minute=settings.mcp_tool_calls_per_minute,
         registered_clients=clients or 0,
         active_connections=connections or 0,
+        organizations_enabled=orgs_aktiv or 0,
+        organizations_total=orgs_gesamt or 0,
     )
 
 
@@ -2313,6 +2355,81 @@ async def revoke_mcp_client(
         target_id=client_id,
         detail={"client_name": client.client_name, "familien": len(familien)},
     )
+
+
+@router.get("/mcp/organizations", response_model=list[McpOrgPolicyResponse])
+async def list_mcp_organizations(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_superadmin),
+):
+    """Welche Organisationen die KI-Schnittstelle nutzen — und in welchem Umfang.
+
+    **Alle** Organisationen, nicht nur die eingeschalteten. Eine Liste, die
+    nur die Teilnehmer zeigt, beantwortet die häufigere Frage nicht: „warum
+    kommt die Anbindung bei denen nicht zustande?" — die Antwort steht hier
+    dann als Zeile mit „aus", statt dass jemand sie im Nichts sucht.
+
+    Ohne Zeile in ``organization_mcp_policies`` gilt der Standard, und der
+    ist aus. Deshalb ein LEFT JOIN und keine Abfrage über die Richtlinien:
+    andernfalls fehlte genau die Mehrheit der Organisationen.
+
+    Rein lesend. Einstellen kann es nur der Admin der Organisation.
+    """
+    from app.models.org_mcp_policy import OrganizationMcpPolicy
+    from app.services import org_mcp_policy as policy_svc
+
+    _OAuthClient, OAuthRefreshToken = _mcp_models()
+
+    # Verbindungen je Organisation in einem Zugriff statt einer Abfrage je
+    # Zeile — bei dreißig Organisationen wären das dreißig Rundreisen.
+    verbindungen = dict(
+        (
+            await db.execute(
+                select(
+                    OAuthRefreshToken.organization_id,
+                    func.count(func.distinct(OAuthRefreshToken.family_id)),
+                )
+                .where(_active_connection_filter(OAuthRefreshToken))
+                .group_by(OAuthRefreshToken.organization_id)
+            )
+        ).all()
+    )
+
+    zeilen = (
+        await db.execute(
+            select(Organization, OrganizationMcpPolicy)
+            .join(
+                OrganizationMcpPolicy,
+                OrganizationMcpPolicy.organization_id == Organization.id,
+                isouter=True,
+            )
+            # Wer teilnimmt, zuerst — danach alphabetisch. Die Liste wird im
+            # Portal gelesen, um etwas zu finden, nicht um sie durchzugehen.
+            .order_by(
+                func.coalesce(OrganizationMcpPolicy.enabled, False).desc(),
+                Organization.name,
+            )
+        )
+    ).all()
+
+    antwort = []
+    for org, zeile in zeilen:
+        policy = policy_svc.aus_zeile(zeile)
+        antwort.append(
+            McpOrgPolicyResponse(
+                organization_id=org.id,
+                name=org.name,
+                slug=org.slug,
+                is_demo=org.is_demo,
+                enabled=policy.enabled,
+                scopes=list(policy.scopes),
+                bereiche=list(policy.bereiche),
+                konfiguriert=policy.gesetzt,
+                active_connections=verbindungen.get(org.id, 0),
+                updated_at=zeile.updated_at if zeile else None,
+            )
+        )
+    return antwort
 
 
 @router.get("/mcp/connections", response_model=list[McpConnectionResponse])
