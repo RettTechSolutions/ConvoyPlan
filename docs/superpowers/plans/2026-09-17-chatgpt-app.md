@@ -232,12 +232,18 @@ Zwei Stellen mussten dafür nachziehen:
       prüfen. **Manuell** — ein Klick im Portal, kein Deployment.
 - [ ] **Verbindung im ChatGPT Developer Mode herstellen** (Settings → Apps →
       Advanced → Developer mode, „Create App", Endpunkt eintragen, Tools
-      einlesen). Erfordert ChatGPT Pro/Team/Enterprise/Edu. **Manuell, nicht
+      einlesen). Erfordert ChatGPT Pro, Plus, Business, Enterprise oder
+      Education. **Manuell, nicht
       automatisierbar.**
 - [ ] Dabei prüfen: Welche Scopes fragt ChatGPT tatsächlich an? Kommt der
       Zustimmungsbildschirm im Popup sauber durch? Wird `refresh_token`
       benutzt?
 - [ ] **Testkatalog abarbeiten** (Abschnitt 6).
+- [x] **Anwenderdoku für den Developer Mode**: `wiki/ChatGPT-verbinden.md`.
+      Eigene Seite statt eines Abschnitts in `MCP-Server.md`, weil ChatGPT drei
+      Dinge verlangt, die kein anderer Client verlangt: Developer Mode, das
+      Einschalten je Unterhaltung und den Haken bei den Schreibrechten, der sich
+      nicht nachholen lässt.
 
 ### Danach
 

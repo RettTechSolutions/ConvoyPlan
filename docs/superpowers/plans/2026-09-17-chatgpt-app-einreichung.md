@@ -149,7 +149,8 @@ Developer Mode (Abschnitt 4).
 
 Die Schritte 1–3 sind Voraussetzung für alles Weitere und lassen sich nicht
 automatisieren — sie brauchen ein ChatGPT-Konto mit Developer Mode
-(Pro, Team, Enterprise oder Edu).
+(Pro, Plus, Business, Enterprise oder Education), und die Einrichtung läuft
+im Browser.
 
 ---
 

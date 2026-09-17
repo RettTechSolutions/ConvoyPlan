@@ -23,6 +23,10 @@ ursprünglichen SemVer-Nummern.
 
 ### Added
 
+- **Anleitung: ConvoyPlan in ChatGPT verbinden** (`wiki/ChatGPT-verbinden.md`, im Wiki verlinkt). Der Weg dorthin heißt Developer Mode und nicht App-Verzeichnis — ein Verzeichniseintrag könnte immer nur auf *eine* Adresse zeigen und wäre für jede andere Instanz wertlos.
+
+  Die Seite nennt die drei Stolpersteine beim Namen, an denen die Anbindung sonst scheitert: das fehlende `/mcp` am Ende der Adresse, die Verbindung, die **je Unterhaltung** eingeschaltet werden muss, und der **Haken bei den Schreibrechten** beim Zustimmen — den ChatGPT später nicht nachfordern kann, anders als andere Programme. Dazu eine Fehlersuchtabelle, was schreibende Aktionen bedeuten und was es heißt, dass gelesene Daten die Instanz verlassen.
+
 - **Nutzungsbedingungen unter `/terms`.** Die Instanz lieferte Datenschutz und Kontakt aus, aber keine Nutzungsbedingungen — die fragt jede App-Einreichung ab, und für ein Werkzeug, das Einsatzfahrten plant, gehört der Gewährleistungsausschluss ohnehin sichtbar hin. Die Seite fasst die Lizenzlage aus `LICENSE` und `COMMERCIAL_LICENSE.md` zusammen, trennt Hersteller- von Betreiberpflichten und ordnet die KI-Schnittstelle ein. Wie die übrigen Informationsseiten mit Markdown-Zwilling (`/terms.md`), in Sitemap und `llms.txt`.
 
   Sie ersetzt keine juristische Prüfung und sagt das selbst: verbindlich sind die Lizenztexte, der Hersteller und der Betreiber der jeweiligen Instanz.
