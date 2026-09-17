@@ -167,6 +167,20 @@ openssl rand -hex 32
 > `merged-<hash>.osm.pbf`-Dateinamen abzulesen. Bei nur einer Region entfällt
 > die Zeile, da der Dateiname (z. B. `dach-latest.osm.pbf`) die Auskunft
 > bereits enthält.
+>
+> **Wartungsmodus und Terminierung:** Seit `2026.6.0` lässt sich beim Wechsel
+> die Option „Routing während des Imports pausieren" aktivieren. GraphHopper
+> wird dabei angehalten, **bevor** der Graph gebaut wird, statt erst danach —
+> sein Speicher steht damit dem Import zur Verfügung, wodurch große
+> kombinierte Karten auf Maschinen mit knappem Arbeitsspeicher überhaupt erst
+> baubar werden. Der Preis: keine Routenplanung, bis der Wechsel durch ist.
+> Zusätzlich lässt sich unter „Startzeitpunkt" ein Termin für den Wechsel
+> setzen (höchstens 30 Tage voraus, in der Vergangenheit abgelehnt) — sinnvoll
+> in Kombination mit pausiertem Routing, wenn der Ausfall in eine
+> nutzungsarme Zeit fallen soll. Ein geplanter Wechsel übersteht einen
+> Neustart des Updaters und lässt sich bis zum Anlauf abbrechen; ohne Termin
+> startet der Wechsel sofort. Die Speicherprüfung läuft dabei vor dem
+> Download, nicht erst nach zwölf Minuten Import.
 
 ### Sicherheit und Datenschutz
 
