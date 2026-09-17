@@ -8,7 +8,7 @@
  * Alle URLs entstehen aus dem `origin` der Anfrage — eine Instanz unter
  * feuerwehr.example darf sich nicht als convoyplan.de ausgeben.
  */
-import { PRODUCT, SAME_AS, FAQ, PLANS } from './facts';
+import { PRODUCT, SAME_AS, FAQ, PLANS, FEATURES } from './facts';
 
 export function buildJsonLd(origin: string): string {
 	const base = origin.replace(/\/$/, '');
@@ -78,15 +78,7 @@ export function buildJsonLd(origin: string): string {
 			publisher: { '@id': org },
 			author: { '@id': org },
 			softwareHelp: { '@type': 'CreativeWork', url: PRODUCT.wiki },
-			featureList: [
-				'Kartenbasierte Marschplanung mit OpenStreetMap und GraphHopper',
-				'Wegpunkte, Kontrollpunkte und automatisch empfohlene technische Halte',
-				'Fahrzeug- und Verbandsverwaltung mit Rollenmodell',
-				'Live-Tracking per WebSocket mit Fahrzeugstatus',
-				'Marschbefehl-Export als PDF, GPX und JSON',
-				'Multi-Tenancy mit Datenisolation je Organisation',
-				'REST-API und MCP-Server für programmatischen Zugriff'
-			],
+			featureList: FEATURES.map((f) => f.title),
 			offers: PLANS.map((plan) => ({
 				'@type': 'Offer',
 				name: plan.name,

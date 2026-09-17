@@ -8,8 +8,17 @@
  * Agent, der einem toten Endpunkt folgt, ist schlechter dran als einer, der
  * gar keinen findet.
  */
-import { PRODUCT, USE_WHEN, USE_NOT_WHEN, CAPABILITIES, SCOPES, FAQ, PLANS } from '$lib/agent/facts';
-import { PAGES } from '$lib/agent/pages';
+import {
+	PRODUCT,
+	USE_WHEN,
+	USE_NOT_WHEN,
+	CAPABILITIES,
+	SCOPES,
+	FAQ,
+	PLANS,
+	FEATURES
+} from '$lib/agent/facts';
+import { PAGES, pageFor } from '$lib/agent/pages';
 
 export interface AgentContext {
 	/** Origin dieser Instanz, ohne abschließenden Schrägstrich. */
@@ -184,7 +193,7 @@ ${SCOPES.map((s) => `- \`${s.name}\` — ${s.description}`).join('\n')}
 
 export function indexMd(ctx: AgentContext): string {
 	const { base } = ctx;
-	return `# ${PRODUCT.name}
+	return `# ${pageFor('/')?.title ?? PRODUCT.name}
 
 ${line(PRODUCT.tagline)}
 
@@ -199,13 +208,7 @@ ${when(ctx.demoEnabled, `\nOhne Konto führt \`${base}/demo\` in eine eigene tem
 
 ## Was ConvoyPlan kann
 
-- Kartenbasierte Marschplanung mit OpenStreetMap, MapLibre GL und selbst gehostetem GraphHopper-Routing
-- Wegpunkte, Kontrollpunkte und automatisch empfohlene technische Halte mit Zeitplanung
-- Fahrzeug- und Verbandsverwaltung, Rollenmodell, vollständige Datentrennung je Organisation
-- Live-Tracking per WebSocket mit Fahrzeugstatus und Projektion auf die Route
-- Marschbefehl als PDF sowie GPX- und JSON-Export
-- Wetter- und Verkehrsdaten entlang der Route
-- REST-API und MCP-Server für den programmatischen Zugriff
+${FEATURES.map((f) => `- **${f.title}** — ${line(f.summary)}`).join('\n')}
 
 ## Weiter
 

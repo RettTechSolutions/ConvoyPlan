@@ -46,6 +46,66 @@ export const SAME_AS: readonly string[] = [
 	'https://github.com/RettTechSolutions'
 ];
 
+export interface Feature {
+	readonly id: string;
+	/** Kurze Überschrift — Kachel auf der Startseite und `featureList` im JSON-LD. */
+	readonly title: string;
+	/** Ein Satz dazu, für die Kachel und die Liste in `/index.md`. */
+	readonly summary: string;
+}
+
+/**
+ * Was die Anwendung kann, einmal. Die Startseite baut daraus ihre Kacheln,
+ * `indexMd()` seine Liste und das JSON-LD seine `featureList`.
+ *
+ * Vorher stand dieselbe Aufzählung dreimal in drei Formulierungen im Repo —
+ * mit dem absehbaren Ergebnis, dass eine Änderung zwei Fassungen vergisst.
+ */
+export const FEATURES: readonly Feature[] = [
+	{
+		id: 'routing',
+		title: 'Kartenbasierte Routenplanung',
+		summary:
+			'Die Route berechnet ein mitgelieferter GraphHopper-Dienst auf Basis von OpenStreetMap — ohne externen Kartendienst. Wetter- und Verkehrslage entlang der Strecke sind zuschaltbar.'
+	},
+	{
+		id: 'zeitplan',
+		title: 'Zeitplan mit technischen Halten',
+		summary:
+			'Wegpunkte, Kontrollpunkte und automatisch empfohlene technische Halte bekommen Ankunfts- und Abfahrtszeiten, an denen sich alle Besatzungen ausrichten können.'
+	},
+	{
+		id: 'fahrzeuge',
+		title: 'Fahrzeuge und Marschordnung',
+		summary:
+			'Fahrzeug- und Verbandsstammdaten mit Rollenmodell; Unterkonvois und die Reihenfolge in der Kolonne lassen sich frei sortieren.'
+	},
+	{
+		id: 'tracking',
+		title: 'Live-Tracking per WebSocket',
+		summary:
+			'Während der Fahrt zeigt die Karte, wo die Fahrzeuge stehen, welchen Marschstatus sie gemeldet haben und wie weit die Kolonne auf der Route gekommen ist.'
+	},
+	{
+		id: 'marschbefehl',
+		title: 'Marschbefehl und Export',
+		summary:
+			'Am Ende steht der fertige Marschbefehl als PDF. Route und Wegpunkte gehen zusätzlich als GPX oder JSON an Navigationsgeräte und Fremdsysteme.'
+	},
+	{
+		id: 'mandanten',
+		title: 'Getrennte Organisationen',
+		summary:
+			'Mehrere Organisationen teilen sich eine Instanz, ohne die Daten der jeweils anderen zu sehen. Der gesamte Stack läuft über Docker Compose auf eigener Hardware.'
+	},
+	{
+		id: 'schnittstellen',
+		title: 'REST-API und MCP-Server',
+		summary:
+			'Was die Oberfläche kann, geht auch programmatisch: dokumentierte REST-API mit API-Keys und ein zuschaltbarer MCP-Server für KI-Agenten.'
+	}
+];
+
 /**
  * Wofür ein Agent ConvoyPlan aufrufen soll — und wofür ausdrücklich nicht.
  *
