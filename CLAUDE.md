@@ -83,6 +83,12 @@ nachgeladen**. Damit die Ansichten Daten bekommen, geben alle Werkzeuge
 `dict[str, Any]` zurück statt `dict` — nur so leitet das SDK ein Ausgabeschema ab und
 liefert `structuredContent`.
 
+Jedes Werkzeug trägt Verhaltenszusagen (`app/mcp/annotations.py`). Sie sind
+unverbindlich — Rechte entscheiden Scopes und Rolle —, aber sie können still falsch
+werden: Wer ein Werkzeug von lesend auf schreibend umbaut, muss die Annotation
+mitziehen. `tests/test_mcp_widgets.py` hält `read_only_hint` gegen `WRITE_TOOLS` und
+verbietet `destructive_hint` an jedem Werkzeug.
+
 Der CIMD-Schalter sitzt wie der Hauptschalter im Portal (`mcp_config.is_cimd_allowed`,
 Datenbank schlägt Umgebung). Die AS-Metadata wird deshalb je Anfrage fertiggestellt und
 nicht beim Start — stünde die Ankündigung im vorgebauten Dokument, bliebe sie bis zum
@@ -103,7 +109,11 @@ programmatisch anspricht: `/llms.txt`, `/agents.md`, `/auth.md`, `/api.md`,
 `/openapi.json`, `/sitemap.xml`, `/robots.txt`, die Well-Known-Dokumente
 (`agent-card.json`, `agent-skills/index.json`, `ard.json`, `mcp/server-card.json`,
 `api-catalog`), `/ask` (NLWeb) und die Seiten `/about`, `/pricing`, `/developers`,
-`/docs`, `/contact`, `/privacy`.
+`/docs`, `/contact`, `/privacy`, `/terms`.
+
+Dazu `/.well-known/openai-apps-challenge`, sobald `OPENAI_APPS_CHALLENGE` gesetzt ist —
+der Nachweis der Domain für eine ChatGPT-App-Einreichung. Ohne Eintrag gibt es den Pfad
+nicht; Hintergrund in `docs/superpowers/plans/2026-09-17-chatgpt-app-einreichung.md`.
 
 Alles davon **liegt im Frontend**, nicht im Backend: Caddy reicht nur `/api/*`, `/mcp`,
 `/.well-known/oauth-*` und die OAuth-Endpunkte ans Backend durch, der Rest geht ans

@@ -29,7 +29,7 @@ from sqlalchemy.orm import selectinload
 from app.mcp import WRITE_TOOLS
 from app.mcp import subscriptions as live
 from app.mcp.context import McpError, mcp_context
-from app.mcp import widgets
+from app.mcp import annotations, widgets
 from app.mcp.scopes import SCOPE_LABELS, SCOPE_READ, TOOL_SCOPES, satisfies
 from app.middleware.license_guard import is_licensed
 from app.models.convoy import Convoy, ConvoyVehicle
@@ -267,7 +267,8 @@ def register(mcp) -> None:
             widgets.URI_KONVOI_LISTE,
             laeuft="Konvois werden gesucht …",
             fertig="Konvois gefunden",
-        )
+        ),
+        annotations=annotations.lesend("Konvois auflisten"),
     )
     async def konvois_auflisten(
         von: str | None = None,
@@ -350,7 +351,7 @@ def register(mcp) -> None:
                 )
             return antwort
 
-    @mcp.tool()
+    @mcp.tool(annotations=annotations.lesend("Organisation und Rechte"))
     async def organisation_details() -> dict[str, Any]:
         """Mit welcher Organisation diese Verbindung arbeitet und was sie darf.
 
@@ -411,7 +412,8 @@ def register(mcp) -> None:
             widgets.URI_KONVOI_UEBERSICHT,
             laeuft="Konvoi wird geladen …",
             fertig="Konvoi geladen",
-        )
+        ),
+        annotations=annotations.lesend("Konvoi ansehen"),
     )
     async def konvoi_details(konvoi_id: str) -> dict[str, Any]:
         """Alle Stammdaten eines Konvois: Marschbefehl, Fahrzeuge, Eckdaten.
@@ -423,7 +425,7 @@ def register(mcp) -> None:
             ctx.require(SCOPE_READ)
             return _convoy_full(await _load_convoy(ctx, konvoi_id))
 
-    @mcp.tool()
+    @mcp.tool(annotations=annotations.lesend("Unterkonvois auflisten"))
     async def unterkonvois_auflisten(konvoi_id: str) -> dict[str, Any]:
         """Listet die Unterkonvois (Teilkolonnen) eines Konvois.
 
@@ -446,7 +448,7 @@ def register(mcp) -> None:
                 "unterkonvois": [_convoy_brief(c) for c in rows],
             }
 
-    @mcp.tool()
+    @mcp.tool(annotations=annotations.lesend("Fahrzeuge auflisten"))
     async def fahrzeuge_auflisten() -> dict[str, Any]:
         """Listet den Fahrzeugbestand der Organisation.
 
@@ -468,7 +470,7 @@ def register(mcp) -> None:
                 "fahrzeuge": [_vehicle(v) for v in rows],
             }
 
-    @mcp.tool()
+    @mcp.tool(annotations=annotations.lesend("Fahrzeug ansehen"))
     async def fahrzeug_details(fahrzeug_id: str) -> dict[str, Any]:
         """Stammdaten eines einzelnen Fahrzeugs.
 
@@ -495,7 +497,7 @@ def register(mcp) -> None:
                 )
             return _vehicle(vehicle)
 
-    @mcp.tool()
+    @mcp.tool(annotations=annotations.lesend("Wegpunkte auflisten"))
     async def wegpunkte_auflisten(konvoi_id: str) -> dict[str, Any]:
         """Die Wegpunkte eines Konvois in Marschreihenfolge.
 
@@ -532,7 +534,7 @@ def register(mcp) -> None:
                 ],
             }
 
-    @mcp.tool()
+    @mcp.tool(annotations=annotations.lesend("Route abrufen"))
     async def route_abrufen(konvoi_id: str, mit_geometrie: bool = False) -> dict[str, Any]:
         """Die gespeicherte Route eines Konvois.
 
@@ -568,7 +570,7 @@ def register(mcp) -> None:
                 data["geometrie_geojson"] = geo_svc.linestring_to_geojson(route.geometry)
             return data
 
-    @mcp.tool()
+    @mcp.tool(annotations=annotations.lesend("Fahrzeugpositionen abrufen"))
     async def fahrzeugpositionen_abrufen(konvoi_id: str) -> dict[str, Any]:
         """Die zuletzt gemeldeten Positionen der Fahrzeuge eines Konvois.
 
@@ -590,7 +592,8 @@ def register(mcp) -> None:
             widgets.URI_KONVOI_STATUS,
             laeuft="Marschstatus wird abgefragt …",
             fertig="Marschstatus abgefragt",
-        )
+        ),
+        annotations=annotations.lesend("Marschstatus ansehen"),
     )
     async def konvoi_status(konvoi_id: str) -> dict[str, Any]:
         """Der Marschstatus eines Konvois, je Fahrzeug und zusammengefasst.

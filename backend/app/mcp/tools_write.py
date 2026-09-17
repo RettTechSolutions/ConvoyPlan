@@ -27,6 +27,7 @@ from app.api.routes import routing as routing_routes
 from app.api.routes import tracking as tracking_routes
 from app.api.routes import vehicles as vehicle_routes
 from app.config import settings
+from app.mcp import annotations
 from app.mcp.context import McpContext, McpError, mcp_context, translate
 from app.mcp.scopes import SCOPE_FLEET_STATUS, SCOPE_WRITE
 from app.mcp.tools_read import _load_convoy, _vehicle
@@ -78,7 +79,7 @@ def register(mcp) -> None:
 
     # ── Konvois ──────────────────────────────────────────────────────────
 
-    @mcp.tool()
+    @mcp.tool(annotations=annotations.schreibend("Konvoi anlegen", idempotent=False))
     async def konvoi_anlegen(
         name: str,
         start_lat: float | None = None,
@@ -129,7 +130,7 @@ def register(mcp) -> None:
                 "konvoi": {"id": str(result["id"]), "name": result["name"]},
             }
 
-    @mcp.tool()
+    @mcp.tool(annotations=annotations.schreibend("Konvoi ändern", idempotent=True))
     async def konvoi_aktualisieren(
         konvoi_id: str,
         name: str | None = None,
@@ -204,7 +205,7 @@ def register(mcp) -> None:
 
     # ── Fahrzeuge ────────────────────────────────────────────────────────
 
-    @mcp.tool()
+    @mcp.tool(annotations=annotations.schreibend("Fahrzeug anlegen", idempotent=False))
     async def fahrzeug_anlegen(
         name: str,
         funkrufname: str | None = None,
@@ -251,7 +252,7 @@ def register(mcp) -> None:
                 "fahrzeug_id": fahrzeug_id,
             }
 
-    @mcp.tool()
+    @mcp.tool(annotations=annotations.schreibend("Fahrzeug ändern", idempotent=True))
     async def fahrzeug_aktualisieren(
         fahrzeug_id: str,
         name: str | None = None,
@@ -304,7 +305,7 @@ def register(mcp) -> None:
 
     # ── Zuordnung und Marschfolge ────────────────────────────────────────
 
-    @mcp.tool()
+    @mcp.tool(annotations=annotations.schreibend("Fahrzeug zuordnen", idempotent=False))
     async def fahrzeug_zu_konvoi_hinzufuegen(
         konvoi_id: str,
         fahrzeug_id: str,
@@ -342,7 +343,7 @@ def register(mcp) -> None:
             await ctx.db.commit()
             return await _quittung(ctx, konvoi_id, "Fahrzeug zugeordnet.")
 
-    @mcp.tool()
+    @mcp.tool(annotations=annotations.schreibend("Fahrzeugzuordnung lösen", idempotent=True))
     async def fahrzeug_aus_konvoi_entfernen(konvoi_id: str, fahrzeug_id: str) -> dict[str, Any]:
         """Löst die Zuordnung eines Fahrzeugs zu einem Konvoi.
 
@@ -402,7 +403,7 @@ def register(mcp) -> None:
                 "rueckgaengig_mit": "fahrzeug_zu_konvoi_hinzufuegen",
             }
 
-    @mcp.tool()
+    @mcp.tool(annotations=annotations.schreibend("Marschordnung ändern", idempotent=True))
     async def konvoi_fahrzeuge_umsortieren(
         konvoi_id: str, fahrzeug_ids_in_reihenfolge: list[str]
     ) -> dict[str, Any]:
@@ -444,7 +445,7 @@ def register(mcp) -> None:
 
     # ── Wegpunkte ────────────────────────────────────────────────────────
 
-    @mcp.tool()
+    @mcp.tool(annotations=annotations.schreibend("Wegpunkt anlegen", idempotent=False))
     async def wegpunkt_anlegen(
         konvoi_id: str,
         name: str,
@@ -496,7 +497,7 @@ def register(mcp) -> None:
                 "konvoi": _kurzfassung(convoy),
             }
 
-    @mcp.tool()
+    @mcp.tool(annotations=annotations.schreibend("Wegpunkt ändern", idempotent=True))
     async def wegpunkt_aktualisieren(
         konvoi_id: str,
         wegpunkt_id: str,
@@ -555,7 +556,7 @@ def register(mcp) -> None:
                 ctx, konvoi_id, f"Wegpunkt geändert: {', '.join(sorted(payload))}."
             )
 
-    @mcp.tool()
+    @mcp.tool(annotations=annotations.schreibend("Wegpunkte umsortieren", idempotent=True))
     async def wegpunkte_umsortieren(
         konvoi_id: str, wegpunkt_ids_in_reihenfolge: list[str]
     ) -> dict[str, Any]:
@@ -592,7 +593,7 @@ def register(mcp) -> None:
 
     # ── Route ────────────────────────────────────────────────────────────
 
-    @mcp.tool()
+    @mcp.tool(annotations=annotations.schreibend("Route berechnen", idempotent=True))
     async def route_berechnen(konvoi_id: str) -> dict[str, Any]:
         """Berechnet die Route des Konvois über die Wegpunkte neu.
 
@@ -629,7 +630,7 @@ def register(mcp) -> None:
 
     # ── Marschstatus ─────────────────────────────────────────────────────
 
-    @mcp.tool()
+    @mcp.tool(annotations=annotations.schreibend("Fahrzeugstatus melden", idempotent=True))
     async def fahrzeugstatus_setzen(
         konvoi_id: str,
         fahrzeug_id: str,

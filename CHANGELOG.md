@@ -23,6 +23,14 @@ ursprünglichen SemVer-Nummern.
 
 ### Added
 
+- **Nutzungsbedingungen unter `/terms`.** Die Instanz lieferte Datenschutz und Kontakt aus, aber keine Nutzungsbedingungen — die fragt jede App-Einreichung ab, und für ein Werkzeug, das Einsatzfahrten plant, gehört der Gewährleistungsausschluss ohnehin sichtbar hin. Die Seite fasst die Lizenzlage aus `LICENSE` und `COMMERCIAL_LICENSE.md` zusammen, trennt Hersteller- von Betreiberpflichten und ordnet die KI-Schnittstelle ein. Wie die übrigen Informationsseiten mit Markdown-Zwilling (`/terms.md`), in Sitemap und `llms.txt`.
+
+  Sie ersetzt keine juristische Prüfung und sagt das selbst: verbindlich sind die Lizenztexte, der Hersteller und der Betreiber der jeweiligen Instanz.
+
+- **Nachweis der Domain für eine ChatGPT-App-Einreichung.** Wer diese Instanz bei OpenAI einreicht, muss belegen, dass ihm die Domain gehört. Das Token aus der Einreichungsmaske kommt in `OPENAI_APPS_CHALLENGE` und liegt dann unter `/.well-known/openai-apps-challenge` bereit. Ohne Eintrag existiert der Pfad nicht — kein Platzhalter, keine leere Antwort.
+
+- **Alle MCP-Werkzeuge sagen jetzt, wie sie sich verhalten** (`readOnlyHint`, `destructiveHint`, `openWorldHint`, dazu ein sprechender Titel). Die Zusage, auf die es ankommt: **kein Werkzeug ist als zerstörend markiert**, weil keines etwas löscht. Drei Tests halten das fest — unter anderem, dass `read_only_hint` mit der Positivliste der schreibenden Werkzeuge übereinstimmt, damit ein Umbau die Annotation nicht still falsch stehen lässt.
+
 - **ChatGPT zeigt ConvoyPlan-Daten jetzt als Ansicht statt als Textblock.** Drei Oberflächen kommen mit: die **Konvoi-Liste** (Abmarschzeit, Umfang, Status), die **Konvoi-Übersicht** (Marschbefehl und Fahrzeuge in Marschordnung) und der **Marschstatus** (Zusammenfassung und Status je Fahrzeug, Ausfälle zuerst).
 
   Der Server funktioniert ohne sie unverändert — ein Programm, das keine Oberflächen kennt, bekommt dieselbe Antwort wie bisher. Die Ansichten laden **nichts** von außen nach: kein Skript, kein Zeichensatz, kein Bild. Das Fenster spannt ChatGPT auf und die Daten darin gehören einer BOS-Organisation; was dort nachgeladen würde, säße als dritte Partei in genau dieser Sichtlinie. Dieselbe Zusage steht als Test.

@@ -210,6 +210,9 @@ services:
       # Instanz, die ausschließlich intern läuft und nichts über sich erzählen
       # soll. Die Anwendung selbst ändert sich dadurch nicht.
       AGENT_DISCOVERY: ${AGENT_DISCOVERY:-true}
+      # Nachweis der Domain gegenüber OpenAI, falls diese Instanz als
+      # ChatGPT-App eingereicht wird. Leer heißt: den Pfad gibt es nicht.
+      OPENAI_APPS_CHALLENGE: ${OPENAI_APPS_CHALLENGE:-}
     depends_on:
       - backend
 

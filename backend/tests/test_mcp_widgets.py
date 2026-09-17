@@ -93,3 +93,44 @@ async def test_alle_werkzeuge_liefern_ein_ausgabeschema():
     einen Textblock zerlegen zu lassen."""
     for tool in await _server().list_tools():
         assert tool.output_schema, f"{tool.name} hat kein Ausgabeschema"
+
+
+# ── Verhaltenszusagen an den Werkzeugen ──────────────────────────────────
+#
+# Die Annotationen sind unverbindlich — ein Client darf ihnen nicht vertrauen,
+# wo es um Rechte geht. Sie sind trotzdem eine Zusage, und eine, die still
+# falsch werden kann: Wer ein Werkzeug von lesend auf schreibend umbaut und
+# die Annotation stehen lässt, erzählt jedem Client das Gegenteil.
+
+
+@pytest.mark.asyncio
+async def test_jedes_werkzeug_sagt_wie_es_sich_verhaelt():
+    for tool in await _server().list_tools():
+        assert tool.annotations is not None, f"{tool.name} ohne Annotation"
+        assert tool.annotations.title, f"{tool.name} ohne sprechenden Titel"
+
+
+@pytest.mark.asyncio
+async def test_kein_werkzeug_gibt_sich_als_zerstoerend_aus():
+    """Die Positivliste in anderer Form.
+
+    Es gibt kein Werkzeug, das einen Konvoi, ein Fahrzeug, einen Wegpunkt oder
+    eine Route löscht. Stünde hier eines mit ``destructive_hint``, wäre
+    entweder die Annotation falsch oder die Zusage gebrochen — beides gehört
+    gesehen."""
+    for tool in await _server().list_tools():
+        assert tool.annotations.destructive_hint is not True, tool.name
+
+
+@pytest.mark.asyncio
+async def test_lesend_und_schreibend_stimmen_mit_der_positivliste_ueberein():
+    """Zwei Quellen derselben Wahrheit, gegeneinander gehalten: die Liste der
+    schreibenden Werkzeuge und das, was jedes Werkzeug über sich sagt."""
+    from app.mcp import WRITE_TOOLS
+
+    for tool in await _server().list_tools():
+        erwartet = tool.name not in WRITE_TOOLS
+        assert tool.annotations.read_only_hint is erwartet, (
+            f"{tool.name}: read_only_hint={tool.annotations.read_only_hint}, "
+            f"steht {'nicht ' if erwartet else ''}in WRITE_TOOLS"
+        )

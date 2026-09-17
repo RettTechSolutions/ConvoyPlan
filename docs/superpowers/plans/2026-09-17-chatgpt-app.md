@@ -253,11 +253,14 @@ Zwei Stellen mussten dafür nachziehen:
       Grundlage, auf der eine Oberfläche überhaupt Daten sieht.
 - [ ] Die Oberflächen im Developer Mode ansehen. Gerendert wurden sie bisher
       nur gegen Beispieldaten, nicht in ChatGPT selbst.
-- [ ] App-Metadaten, Datenschutz, Nutzungsbedingungen, Support-URL. Die Seiten
-      existieren bereits unter `/privacy`, `/contact` und `/developers` jeder
-      Instanz (siehe `wiki/Agenten-Auskunft.md`); für eine öffentliche
-      Einreichung müssen sie auf eine feste Instanz zeigen.
-- [ ] Veröffentlichung im Workspace, danach öffentlich.
+- [x] **App-Metadaten, Nutzungsbedingungen, Domainnachweis** — eigenes
+      Dokument: `2026-09-17-chatgpt-app-einreichung.md`. `/terms` gab es nicht
+      und ist neu; `/.well-known/openai-apps-challenge` liefert den Nachweis
+      der Domain, sobald ein Token gesetzt ist.
+- [ ] Veröffentlichung im Workspace, danach öffentlich. **Achtung:** Ein
+      öffentlicher Verzeichniseintrag nennt *eine* Serveradresse und nützt
+      damit keinem Betreiber mit eigener Instanz. Warum das so ist und was
+      stattdessen der Weg ist, steht in Abschnitt 1 des Einreichungsdokuments.
 
 ### Später (eigenes Vorhaben)
 
