@@ -300,7 +300,7 @@ def register(mcp) -> None:
             nur_hauptkonvois: Unterkonvois (Teilkolonnen) auslassen.
             limit: Höchstzahl der Treffer, Standard 50, Obergrenze 200.
         """
-        async with mcp_context() as ctx:
+        async with mcp_context("konvois_auflisten") as ctx:
             ctx.require(SCOPE_READ)
             query = _convoy_query(ctx.organization.id)
             zeitlich = False
@@ -364,7 +364,7 @@ def register(mcp) -> None:
         Vor einem schreibenden Aufruf lohnt sich der Blick: fehlt das Recht,
         steht das hier, statt dass der Aufruf daran scheitert.
         """
-        async with mcp_context() as ctx:
+        async with mcp_context("organisation_details") as ctx:
             ctx.require(SCOPE_READ)
             konvois = (
                 await ctx.db.execute(
@@ -421,7 +421,7 @@ def register(mcp) -> None:
         Args:
             konvoi_id: Die ID aus `konvois_auflisten`.
         """
-        async with mcp_context() as ctx:
+        async with mcp_context("konvoi_details") as ctx:
             ctx.require(SCOPE_READ)
             return _convoy_full(await _load_convoy(ctx, konvoi_id))
 
@@ -432,7 +432,7 @@ def register(mcp) -> None:
         Args:
             konvoi_id: Die ID des übergeordneten Konvois.
         """
-        async with mcp_context() as ctx:
+        async with mcp_context("unterkonvois_auflisten") as ctx:
             ctx.require(SCOPE_READ)
             parent = await _load_convoy(ctx, konvoi_id)
             rows = (
@@ -455,7 +455,7 @@ def register(mcp) -> None:
         Das sind die Stammdaten, unabhängig davon, ob ein Fahrzeug gerade
         einem Konvoi zugeordnet ist.
         """
-        async with mcp_context() as ctx:
+        async with mcp_context("fahrzeuge_auflisten") as ctx:
             ctx.require(SCOPE_READ)
             rows = (
                 await ctx.db.execute(
@@ -477,7 +477,7 @@ def register(mcp) -> None:
         Args:
             fahrzeug_id: Die ID aus `fahrzeuge_auflisten`.
         """
-        async with mcp_context() as ctx:
+        async with mcp_context("fahrzeug_details") as ctx:
             ctx.require(SCOPE_READ)
             try:
                 parsed = uuid.UUID(fahrzeug_id)
@@ -504,7 +504,7 @@ def register(mcp) -> None:
         Args:
             konvoi_id: Die ID des Konvois.
         """
-        async with mcp_context() as ctx:
+        async with mcp_context("wegpunkte_auflisten") as ctx:
             ctx.require(SCOPE_READ)
             convoy = await _load_convoy(ctx, konvoi_id)
             rows = (
@@ -547,7 +547,7 @@ def register(mcp) -> None:
                 Standardmäßig aus, weil er sehr lang wird und für die meisten
                 Fragen (Dauer, Länge) nicht gebraucht wird.
         """
-        async with mcp_context() as ctx:
+        async with mcp_context("route_abrufen") as ctx:
             ctx.require(SCOPE_READ)
             convoy = await _load_convoy(ctx, konvoi_id)
             route = (
@@ -577,7 +577,7 @@ def register(mcp) -> None:
         Args:
             konvoi_id: Die ID des Konvois.
         """
-        async with mcp_context() as ctx:
+        async with mcp_context("fahrzeugpositionen_abrufen") as ctx:
             ctx.require(SCOPE_READ)
             convoy = await _load_convoy(ctx, konvoi_id)
             positionen = await _positionen(ctx, convoy)
@@ -605,7 +605,7 @@ def register(mcp) -> None:
         Args:
             konvoi_id: Die ID des Konvois.
         """
-        async with mcp_context() as ctx:
+        async with mcp_context("konvoi_status") as ctx:
             ctx.require(SCOPE_READ)
             convoy = await _load_convoy(ctx, konvoi_id)
             zusammenfassung, fahrzeuge = _status(convoy)

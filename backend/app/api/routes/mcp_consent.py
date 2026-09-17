@@ -22,11 +22,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_person
 from app.database import get_db
+from app.mcp import areas
 from app.mcp import scopes as scope_svc
 from app.models.oauth_client import OAuthClient
 from app.models.organization import Organization, UserOrganization
 from app.models.user import User
-from app.services import audit, mcp_config, oauth_provider, oauth_tokens
+from app.services import (
+    audit,
+    mcp_config,
+    oauth_provider,
+    oauth_tokens,
+    org_mcp_policy,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,11 +48,26 @@ class ScopeInfo(BaseModel):
     label: str
 
 
+class BereichInfo(BaseModel):
+    bereich: str
+    label: str
+
+
 class OrgChoice(BaseModel):
     id: uuid.UUID
     name: str
     slug: str
     role: str
+    # Ob die Organisation die KI-Schnittstelle überhaupt nutzt. Standardmäßig
+    # nein — und dann ist hier Schluss, unabhängig von der Rolle. Die
+    # Oberfläche zeigt die Organisation trotzdem an, grau und mit Begründung:
+    # sie einfach wegzulassen erzeugte die Frage „wo ist meine Org hin?", auf
+    # die niemand eine Antwort fände.
+    mcp_enabled: bool
+    # Welche Ausschnitte der Fachdaten diese Organisation freigibt. Steht auf
+    # dem Zustimmungsbildschirm, weil es die Verbindung genauso begrenzt wie
+    # die Scopes — nur ist es nichts, was der Benutzer dort wählen könnte.
+    bereiche: list[BereichInfo]
     # Welche der angefragten Scopes diese Organisation hergibt. Eine Org, in
     # der der Benutzer nur beobachtet, kann kein Schreibrecht erteilen — das
     # soll er vor dem Klick sehen und nicht danach.
@@ -183,17 +205,33 @@ async def read_consent_request(
     known = [s for s in scope_svc.ALL_SCOPES if s in set(requested)]
     weitere = [s for s in scope_svc.ALL_SCOPES if s not in set(known)]
 
-    orgs = [
-        OrgChoice(
-            id=org.id,
-            name=org.name,
-            slug=org.slug,
-            role=role,
-            grantable_scopes=scope_svc.grantable(known, role),
-            optional_scopes=scope_svc.grantable(weitere, role),
+    mitgliedschaften = await _memberships(db, user)
+    richtlinien = await org_mcp_policy.fuer_orgs(
+        db, [org.id for org, _role in mitgliedschaften]
+    )
+
+    orgs = []
+    for org, role in mitgliedschaften:
+        policy = richtlinien.get(org.id, org_mcp_policy.AUS)
+        # Zwei Obergrenzen nacheinander: erst die Rolle des Menschen, dann die
+        # Freigabe seiner Organisation. Ein Admin, dessen Organisation nur
+        # Lesen freigibt, kann kein Schreibrecht erteilen — und soll das vor
+        # dem Klick sehen, nicht in einer Fehlermeldung danach.
+        orgs.append(
+            OrgChoice(
+                id=org.id,
+                name=org.name,
+                slug=org.slug,
+                role=role,
+                mcp_enabled=policy.enabled,
+                bereiche=[
+                    BereichInfo(bereich=b, label=areas.BEREICH_LABELS.get(b, b))
+                    for b in policy.bereiche
+                ],
+                grantable_scopes=policy.zuschneiden(scope_svc.grantable(known, role)),
+                optional_scopes=policy.zuschneiden(scope_svc.grantable(weitere, role)),
+            )
         )
-        for org, role in await _memberships(db, user)
-    ]
 
     return ConsentRequestInfo(
         client_id=client.client_id,
@@ -274,6 +312,17 @@ async def decide_consent(
             detail="Kein Mitglied dieser Organisation",
         )
 
+    policy = await org_mcp_policy.fuer_org(db, decision.organization_id)
+    if not policy.enabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Diese Organisation hat den Zugriff über die KI-Schnittstelle "
+                "nicht freigegeben. Ein Administrator der Organisation kann ihn "
+                "im Portal unter „KI-Zugriff“ einschalten."
+            ),
+        )
+
     requested = authz.get("scopes") or list(scope_svc.REQUIRED_SCOPES)
     # Die Auswahl des Benutzers schlägt die Anfrage des Clients — nach oben
     # wie nach unten. Nach unten ist das OAuth-Alltag (RFC 6749 §3.3: der
@@ -287,13 +336,19 @@ async def decide_consent(
     # hier ``convoy:write`` in die Anfrage schreibt, kommt damit bei einem
     # Beobachter keinen Schritt weiter.
     gewaehlt = requested if decision.scopes is None else decision.scopes
-    granted = scope_svc.effective(gewaehlt, membership.role)
+    # Und darüber die Freigabe der Organisation. Sie wirkt **nach** dem
+    # Ausschreiben der Hierarchie, nicht davor: ``effective()`` ergänzt, was
+    # ein Recht einschließt, und genau das ist die Stelle, an der sonst
+    # ``convoy:write`` ein ``fleet:status`` mitbrächte, das die Organisation
+    # nicht freigegeben hat.
+    granted = policy.zuschneiden(scope_svc.effective(gewaehlt, membership.role))
     if not granted:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=(
-                f"Die Rolle „{membership.role}“ in dieser Organisation gibt keinen "
-                "der ausgewählten Zugriffe her"
+                f"Die Rolle „{membership.role}“ in dieser Organisation und ihre "
+                "Freigabe für die KI-Schnittstelle geben keinen der "
+                "ausgewählten Zugriffe her"
             ),
         )
 
@@ -313,7 +368,11 @@ async def decide_consent(
         org_id=decision.organization_id,
         target_type="oauth_client",
         target_id=authz["client_id"],
-        detail={"scopes": granted, "client_name": client.client_name},
+        detail={
+            "scopes": granted,
+            "bereiche": list(policy.bereiche),
+            "client_name": client.client_name,
+        },
     )
     await db.commit()
 

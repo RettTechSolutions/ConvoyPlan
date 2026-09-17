@@ -7,11 +7,16 @@ nicht über HTTP auf die eigene API.
 Aufbau:
 
 - ``scopes``  — die drei Scopes als Projektion der Rollenhierarchie
+- ``areas``   — die Bereiche: welcher Ausschnitt der Fachdaten je Werkzeug
 - ``context`` — vom ``AccessToken`` zur ``OrgCtx`` (Benutzer, Org, Rolle)
 - ``tools_read`` / ``tools_write`` — die Werkzeuge selbst
 - ``mount``   — ASGI-Verdrahtung in die FastAPI-App
 
-Montiert wird nur, wenn ``settings.mcp_enabled`` gesetzt ist.
+Zwei Schalter entscheiden über den Zugriff, und sie beantworten verschiedene
+Fragen: ``services/mcp_config`` sagt, ob es die Schnittstelle auf dieser
+**Instanz** gibt (abgeschaltet ist keine Route montiert);
+``services/org_mcp_policy`` sagt, ob eine **Organisation** daran teilnimmt und
+in welchem Umfang — standardmäßig gar nicht.
 """
 
 # ── Positivliste der Werkzeuge ───────────────────────────────────────────

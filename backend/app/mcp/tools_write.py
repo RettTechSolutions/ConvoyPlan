@@ -104,7 +104,7 @@ def register(mcp) -> None:
             marschform: geschlossener_verband | einzelgruppen | individuell.
             auftrag: Auftrag im Sinne des Marschbefehls.
         """
-        async with mcp_context() as ctx:
+        async with mcp_context("konvoi_anlegen") as ctx:
             ctx.require(SCOPE_WRITE)
             payload: dict = {"name": name, "marschform": marschform, "auftrag": auftrag}
             if start_lat is not None and start_lon is not None:
@@ -168,7 +168,7 @@ def register(mcp) -> None:
             ziel_lat: Breitengrad des Zielpunkts.
             ziel_lon: Längengrad des Zielpunkts.
         """
-        async with mcp_context() as ctx:
+        async with mcp_context("konvoi_aktualisieren") as ctx:
             ctx.require(SCOPE_WRITE)
             felder = {
                 "name": name, "status": status, "marschform": marschform,
@@ -229,7 +229,7 @@ def register(mcp) -> None:
             gewicht_kg: Zulässiges Gesamtgewicht in Kilogramm.
             antrieb: combustion (Verbrenner) oder electric (E-Fahrzeug).
         """
-        async with mcp_context() as ctx:
+        async with mcp_context("fahrzeug_anlegen") as ctx:
             ctx.require(SCOPE_WRITE)
             data = VehicleCreate(
                 name=name, callsign=funkrufname, license_plate=kennzeichen,
@@ -273,7 +273,7 @@ def register(mcp) -> None:
             laenge_cm: Fahrzeuglänge in Zentimetern.
             gewicht_kg: Zulässiges Gesamtgewicht in Kilogramm.
         """
-        async with mcp_context() as ctx:
+        async with mcp_context("fahrzeug_aktualisieren") as ctx:
             ctx.require(SCOPE_WRITE)
             felder = {
                 "name": name, "callsign": funkrufname, "license_plate": kennzeichen,
@@ -320,7 +320,7 @@ def register(mcp) -> None:
             sonderfunktion: spitzenfuehrer | schliessender | sanitaet | ablauffuehrer.
             mobiltelefon: Erreichbarkeit der Besatzung unterwegs.
         """
-        async with mcp_context() as ctx:
+        async with mcp_context("fahrzeug_zu_konvoi_hinzufuegen") as ctx:
             ctx.require(SCOPE_WRITE)
             await _run(
                 convoy_routes.add_vehicle_to_convoy(
@@ -356,7 +356,7 @@ def register(mcp) -> None:
             konvoi_id: Die ID des Konvois.
             fahrzeug_id: Die ID des Fahrzeugs, dessen Zuordnung gelöst wird.
         """
-        async with mcp_context() as ctx:
+        async with mcp_context("fahrzeug_aus_konvoi_entfernen") as ctx:
             ctx.require(SCOPE_WRITE)
             # Vorher nachsehen, damit die Quittung sagen kann, *was* gelöst
             # wurde — nicht nur, dass etwas gelöst wurde.
@@ -416,7 +416,7 @@ def register(mcp) -> None:
             konvoi_id: Die ID des Konvois.
             fahrzeug_ids_in_reihenfolge: Alle Fahrzeug-IDs, erstes zuerst.
         """
-        async with mcp_context() as ctx:
+        async with mcp_context("konvoi_fahrzeuge_umsortieren") as ctx:
             ctx.require(SCOPE_WRITE)
             items = [
                 ConvoyVehicleReorderItem(
@@ -468,7 +468,7 @@ def register(mcp) -> None:
             haltegrund: fuel | rest | maintenance | other.
             notiz: Freitext zum Wegpunkt.
         """
-        async with mcp_context() as ctx:
+        async with mcp_context("wegpunkt_anlegen") as ctx:
             ctx.require(SCOPE_WRITE)
             convoy = await _load_convoy(ctx, konvoi_id)
             naechster = max((w.order_index for w in convoy.waypoints), default=-1) + 1
@@ -522,7 +522,7 @@ def register(mcp) -> None:
             haltegrund: fuel | rest | maintenance | other.
             notiz: Freitext zum Wegpunkt.
         """
-        async with mcp_context() as ctx:
+        async with mcp_context("wegpunkt_aktualisieren") as ctx:
             ctx.require(SCOPE_WRITE)
             if (lat is None) != (lon is None):
                 raise McpError(
@@ -566,7 +566,7 @@ def register(mcp) -> None:
             konvoi_id: Die ID des Konvois.
             wegpunkt_ids_in_reihenfolge: Alle Wegpunkt-IDs, erster zuerst.
         """
-        async with mcp_context() as ctx:
+        async with mcp_context("wegpunkte_umsortieren") as ctx:
             ctx.require(SCOPE_WRITE)
             items = [
                 WaypointReorderItem(id=_uuid(wid, "Wegpunkt-ID"), order_index=index)
@@ -604,7 +604,7 @@ def register(mcp) -> None:
         Args:
             konvoi_id: Die ID des Konvois.
         """
-        async with mcp_context() as ctx:
+        async with mcp_context("route_berechnen") as ctx:
             ctx.require(SCOPE_WRITE)
             # Dasselbe Kontingent wie an der REST-API — gezählt wird hier nur,
             # weil die FastAPI-Dependency im MCP-Pfad nicht greift.
@@ -651,7 +651,7 @@ def register(mcp) -> None:
                 Bei breakdown: total | limited.
             notiz: Kurze Erläuterung, z. B. „Reifenschaden".
         """
-        async with mcp_context() as ctx:
+        async with mcp_context("fahrzeugstatus_setzen") as ctx:
             ctx.require(SCOPE_FLEET_STATUS)
             await _run(
                 tracking_routes.update_vehicle_status(

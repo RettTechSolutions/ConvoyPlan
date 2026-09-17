@@ -208,13 +208,40 @@
                                 disabled={org.grantable_scopes.length + org.optional_scopes.length === 0}
                             >
                                 {org.name} — Rolle: {org.role}
-                                {org.grantable_scopes.length + org.optional_scopes.length === 0
-                                    ? ' (keine passenden Rechte)'
-                                    : ''}
+                                {!org.mcp_enabled
+                                    ? ' (KI-Zugriff nicht freigegeben)'
+                                    : org.grantable_scopes.length + org.optional_scopes.length === 0
+                                      ? ' (keine passenden Rechte)'
+                                      : ''}
                             </option>
                         {/each}
                     </select>
                 </label>
+
+                {#if selectedOrg && !selectedOrg.mcp_enabled}
+                    <!--
+                        Der Standard. Die Organisation steht trotzdem in der Liste:
+                        sie wegzulassen erzeugte die Frage „wo ist meine Org hin?",
+                        auf die niemand eine Antwort fände.
+                    -->
+                    <p class="error">
+                        „{selectedOrg.name}“ hat den Zugriff über die KI-Schnittstelle nicht
+                        freigegeben. Ein Administrator dieser Organisation kann ihn im
+                        Org-Adminbereich unter „KI-Zugriff“ einschalten.
+                    </p>
+                {:else if selectedOrg}
+                    <p class="hint">
+                        „{selectedOrg.name}“ gibt für die KI-Schnittstelle diese Bereiche frei —
+                        alles andere bleibt auch mit den Rechten unten außen vor:
+                    </p>
+                    <ul class="scopes withheld">
+                        {#each selectedOrg.bereiche as b (b.bereich)}
+                            <li>{b.label}</li>
+                        {:else}
+                            <li>— keine</li>
+                        {/each}
+                    </ul>
+                {/if}
 
                 <p class="lead">
                     Das Programm bekommt damit diese Rechte — den Haken entfernen bei
@@ -267,8 +294,8 @@
 
                 {#if withheld.length > 0}
                     <p class="hint">
-                        Angefragt, aber durch deine Rolle „{selectedOrg?.role}“ nicht gedeckt
-                        und deshalb <strong>nicht</strong> erteilt:
+                        Angefragt, aber durch deine Rolle „{selectedOrg?.role}“ oder die Freigabe
+                        der Organisation nicht gedeckt und deshalb <strong>nicht</strong> erteilt:
                     </p>
                     <ul class="scopes withheld">
                         {#each withheld as s (s.scope)}

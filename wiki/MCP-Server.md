@@ -38,6 +38,44 @@ MCP_ENABLED=true
 
 Die Einstellung aus dem Portal hat Vorrang; die Umgebungsvariable gilt, solange im Portal nichts eingestellt wurde. Der Reiter **MCP** zeigt anschließend den Zustand, die Verbindungsadresse und die erteilten Zugänge.
 
+### Und dann noch je Organisation
+
+Der Schalter oben sagt, ob es die Schnittstelle auf dieser Instanz **gibt**. Ob
+eine einzelne Organisation daran teilnimmt, entscheidet deren eigener Admin —
+im **Org-Adminbereich unter „KI-Zugriff"**, und **standardmäßig ist er aus**.
+
+Das ist keine doppelte Absicherung aus Vorsicht, sondern eine Trennung: wer
+eine Instanz für mehrere BOS-Organisationen betreibt, entscheidet nicht über
+deren Einsatzdaten. Eine frisch angelegte Organisation nimmt deshalb nicht
+teil, auch auf einer Instanz, auf der die Schnittstelle längst läuft.
+
+Der Org-Admin stellt dort drei Dinge ein:
+
+| Einstellung | Bedeutung |
+|---|---|
+| **KI-Zugriff erlauben** | Der Schalter der Organisation. Aus heißt: kein Werkzeug, keine Resource, kein Abo — auch für bestehende Verbindungen, ab dem nächsten Aufruf. |
+| **Bereiche** | *Worauf.* Konvois und Marschbefehle, Fahrzeuge, Wegpunkte, Routen, Live-Positionen und Marschstatus — einzeln an- und abwählbar. Was nicht angekreuzt ist, ist über die Schnittstelle nicht zu bekommen, auch nicht über ein anderes Werkzeug. |
+| **Lesen / Status / Schreiben** | *Wie weit.* Lesen ist die Grundlage und lässt sich nicht abwählen — ohne sie käme keine Verbindung zustande. Statusmeldungen und Schreiben kommen nur dazu, wenn sie freigegeben sind. Gelöscht wird in keinem Fall. |
+
+Die beiden Achsen wirken als **Und**: ein Werkzeug steht zur Verfügung, wenn
+sein Bereich freigegeben *und* sein Zugriff erlaubt ist. Die Rolle des
+Mitglieds bleibt die zweite Grenze darüber — ein Beobachter kann auch bei
+voller Freigabe nichts Schreibendes erteilen.
+
+Ein Assistent sieht dabei nur, was übrig bleibt: was die Organisation nicht
+freigibt, steht gar nicht erst in seiner Werkzeugliste. Das ist Absicht — ein
+Modell, das ein Werkzeug sieht, probiert es aus, und eine Absage nach dem
+Versuch ist eine schlechtere Auskunft als ein Werkzeug, das es nicht gibt.
+
+> **Beim Update auf diese Version** bleiben Organisationen eingeschaltet, an
+> denen bereits eine aktive Verbindung hängt — mit genau den Rechten, die dort
+> in Gebrauch sind. Eine laufende Anbindung soll nicht wortlos abreißen. Alle
+> übrigen Organisationen stehen auf aus.
+
+Im selben Tab steht die Liste der **bestehenden Verbindungen** dieser
+Organisation. Den Zugriff abzuschalten trennt sie nicht — sie laufen dann ins
+Leere. Wer sie wirklich los sein will, trennt sie dort einzeln.
+
 ### Wenn der Schalter auf „An" steht und trotzdem nichts geht
 
 Zwei Dinge können es sein: der Reverse Proxy (unten) oder der
@@ -143,7 +181,12 @@ Die Rechte des Zugangs sind eine Projektion der Rolle in der gewählten Organisa
 | `fleet:status` | fahrer | zusätzlich Fahrzeugstatus und Positionen melden |
 | `convoy:write` | planer | zusätzlich anlegen, ändern und Routen berechnen |
 
-Geprüft wird bei **jedem** Aufruf frisch gegen die Datenbank. Wird eine Mitgliedschaft entzogen oder eine Rolle herabgestuft, wirkt das sofort — nicht erst, wenn der Zugang abläuft.
+Darüber liegt die Freigabe der Organisation (siehe *Und dann noch je
+Organisation*). Sie deckelt beides: die Bereiche und die Berechtigungen. Was
+die Organisation nicht freigibt, bekommt auch ein Admin nicht erteilt — und
+was sie später zurücknimmt, ist mit dem nächsten Aufruf zu.
+
+Geprüft wird bei **jedem** Aufruf frisch gegen die Datenbank. Wird eine Mitgliedschaft entzogen, eine Rolle herabgestuft oder eine Freigabe zurückgenommen, wirkt das sofort — nicht erst, wenn der Zugang abläuft.
 
 ---
 
@@ -157,7 +200,13 @@ Lesende Aufrufe werden bewusst **nicht** protokolliert. Ein Modell liest im Minu
 
 ## Zugang entziehen
 
-Im Admin-Portal unter **MCP**:
+Im **Org-Adminbereich unter „KI-Zugriff"** (für die eigene Organisation):
+
+- **KI-Zugriff abschalten** — wirkt sofort auf alle Verbindungen dieser Organisation. Sie bleiben stehen und laufen ins Leere; wieder einschalten stellt sie ohne Zutun her.
+- **Einzelne Bereiche oder Berechtigungen zurücknehmen** — wirkt ebenso sofort, ohne die Verbindung zu beenden.
+- **Verbindung trennen** — nimmt eine erteilte Zustimmung endgültig zurück.
+
+Im Admin-Portal unter **MCP** (für die ganze Instanz):
 
 - **Verbindung trennen** — entzieht einem Benutzer den Zugang für ein bestimmtes Programm.
 - **Programm sperren** — trennt alle seine Verbindungen und verhindert eine neue Autorisierung.

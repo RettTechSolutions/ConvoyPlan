@@ -30,11 +30,14 @@ from mcp.shared.auth import OAuthClientInformationFull
 from pydantic import AnyUrl
 
 from app.api import cookies
+from app.mcp import areas
+from app.mcp import scopes as scope_svc
 from app.api.routes.auth import create_token
 from app.config import settings
 from app.database import get_db
 from app.main import app
 from app.models.oauth_client import OAuthClient
+from app.models.org_mcp_policy import OrganizationMcpPolicy
 from app.models.organization import Organization, UserOrganization
 from app.models.settings import SystemSetting
 from app.models.user import User
@@ -86,13 +89,21 @@ def _setting(wert: str | None) -> MagicMock | None:
     return s
 
 
-def _db(*, user=None, schalter=None, mitgliedschaften=(), client=None) -> AsyncMock:
+def _db(
+    *, user=None, schalter=None, mitgliedschaften=(), client=None, freigabe=True
+) -> AsyncMock:
     """Eine Datenbank, die nach der *gefragten* Tabelle antwortet.
 
     Bewusst nicht über eine Liste von Rückgaben in Aufrufreihenfolge: die
     Reihenfolge hängt hier daran, wann FastAPI welche Dependency auflöst, und
     ein Test, der bei jeder Umstellung kippt, prüft am Ende die Reihenfolge
-    statt das Verhalten."""
+    statt das Verhalten.
+
+    ``freigabe`` ist die MCP-Richtlinie der Organisation. Hier steht sie auf
+    „alles frei", weil diese Datei den Zugang zum Zustimmungsbildschirm prüft
+    und nicht die Richtlinie — die hat ihre eigenen Tests in
+    ``test_org_mcp_policy.py``. Ohne den Eintrag scheiterte jede Zustimmung
+    hier an einer Organisation, die gar nicht teilnimmt."""
     db = AsyncMock()
 
     async def execute(stmt, *a, **k):
@@ -109,8 +120,16 @@ def _db(*, user=None, schalter=None, mitgliedschaften=(), client=None) -> AsyncM
             r.all.return_value = []
         return r
 
+    policy = MagicMock(spec=OrganizationMcpPolicy)
+    policy.enabled = freigabe
+    policy.scopes = " ".join(scope_svc.ALL_SCOPES) if freigabe else ""
+    policy.bereiche = " ".join(areas.ALL_BEREICHE) if freigabe else ""
+
+    async def get(modell, *a, **k):
+        return policy if modell is OrganizationMcpPolicy else client
+
     db.execute = AsyncMock(side_effect=execute)
-    db.get = AsyncMock(return_value=client)
+    db.get = AsyncMock(side_effect=get)
     return db
 
 

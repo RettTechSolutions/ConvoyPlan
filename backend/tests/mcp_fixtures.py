@@ -25,12 +25,15 @@ from sqlalchemy import delete
 from app.api.routes import mcp_consent as mcp_consent_router
 from app.config import settings
 from app.database import AsyncSessionLocal, engine
+from app.mcp import areas
 from app.mcp import mount as mcp_mount
+from app.mcp import scopes as scope_svc
 from app.services import oauth_tokens
 from app.models.convoy import Convoy, ConvoyVehicle
 from app.models.oauth_client import OAuthClient
 from app.models.oauth_code import OAuthCode
 from app.models.oauth_refresh_token import OAuthRefreshToken
+from app.models.org_mcp_policy import OrganizationMcpPolicy
 from app.models.organization import Organization, UserOrganization
 from app.models.user import User
 from app.models.vehicle import Vehicle
@@ -129,7 +132,13 @@ async def seeded():
 
     ``planer`` ist Planer in Organisation A **und** Mitglied in B — so lässt
     sich prüfen, dass ein Token für A trotzdem nichts aus B sieht. Die
-    Mandantentrennung hängt am Token, nicht an der Kontoberechtigung."""
+    Mandantentrennung hängt am Token, nicht an der Kontoberechtigung.
+
+    Beide Organisationen bekommen eine **voll freigegebene** MCP-Richtlinie.
+    Ohne sie käme keiner dieser Tests über den ersten Werkzeugaufruf hinaus:
+    der Standard einer Organisation ist aus (``services/org_mcp_policy.py``).
+    Was die Richtlinie *einschränkt*, prüft ``tests/test_org_mcp_policy.py``
+    — dort wird sie eigens zurückgedreht."""
     marker = uuid.uuid4().hex[:8]
     fx = Fixtures()
     async with AsyncSessionLocal() as db:
@@ -164,6 +173,19 @@ async def seeded():
                     organization_id=fx.org_a.id,
                     role="beobachter",
                 ),
+            ]
+        )
+
+        # Voll freigegeben: alle Bereiche, alle Scopes.
+        db.add_all(
+            [
+                OrganizationMcpPolicy(
+                    organization_id=org_id,
+                    enabled=True,
+                    scopes=" ".join(scope_svc.ALL_SCOPES),
+                    bereiche=" ".join(areas.ALL_BEREICHE),
+                )
+                for org_id in (fx.org_a.id, fx.org_b.id)
             ]
         )
 
@@ -215,6 +237,11 @@ async def seeded():
             )
             await db.execute(delete(Vehicle).where(Vehicle.org_id.in_(org_ids)))
             await db.execute(delete(Convoy).where(Convoy.organization_id.in_(org_ids)))
+            await db.execute(
+                delete(OrganizationMcpPolicy).where(
+                    OrganizationMcpPolicy.organization_id.in_(org_ids)
+                )
+            )
             await db.execute(
                 delete(UserOrganization).where(
                     UserOrganization.organization_id.in_(org_ids)
