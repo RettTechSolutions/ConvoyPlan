@@ -81,6 +81,10 @@
 </style>
 
 <script>
+/* __WIDGET__ */
+</script>
+
+<script>
 (function () {
   var wurzel = document.getElementById('wurzel');
 
@@ -130,7 +134,27 @@
     }
   }
 
-  var werkzeug = { esc: esc, zeitpunkt: zeitpunkt };
+  /**
+   * Der Status eines Konvois als Text und als Farbe.
+   *
+   * Steht hier und nicht im Widget, weil zwei Ansichten dieselbe Abbildung
+   * brauchen — und die zweite sie schon einmal beim Nachbarn gesucht hat,
+   * was der Rahmen nicht merkt und der Browser mit einer leeren Fläche
+   * quittiert.
+   */
+  function konvoiStatus(wert) {
+    return { planning: 'In Planung', active: 'Läuft', completed: 'Abgeschlossen' }[wert]
+      || wert || '—';
+  }
+
+  function konvoiKlasse(wert) {
+    return { active: 'gut', completed: '' }[wert] || 'warn';
+  }
+
+  var werkzeug = {
+    esc: esc, zeitpunkt: zeitpunkt,
+    konvoiStatus: konvoiStatus, konvoiKlasse: konvoiKlasse
+  };
 
   function neu() {
     var d = daten();
@@ -155,8 +179,4 @@
   window.addEventListener('openai:set_globals', neu);
   neu();
 })();
-</script>
-
-<script>
-/* __WIDGET__ */
 </script>

@@ -10,8 +10,8 @@ window.CONVOYPLAN_ZEICHNEN = function (d, w) {
 
   var kopf =
     '<div class="cp-kopf"><span class="cp-titel">' + w.esc(d.konvoi) + '</span>' +
-    '<span class="cp-marke ' + klasseFuer(d.konvoi_status) + '">' +
-    w.esc(konvoiStatus(d.konvoi_status)) + '</span></div>';
+    '<span class="cp-marke ' + w.konvoiKlasse(d.konvoi_status) + '">' +
+    w.esc(w.konvoiStatus(d.konvoi_status)) + '</span></div>';
 
   var schluessel = Object.keys(zusammenfassung);
   var kacheln = schluessel.length
@@ -58,8 +58,4 @@ function fahrzeugKlasse(wert) {
 
 function gewicht(wert) {
   return { breakdown: 3, technical_halt: 2, planned: 1 }[wert] || 0;
-}
-
-function konvoiStatus(wert) {
-  return { planning: 'In Planung', active: 'Läuft', completed: 'Abgeschlossen' }[wert] || wert || '—';
 }

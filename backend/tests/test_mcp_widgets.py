@@ -10,6 +10,8 @@ ein Verweis auf eine Oberfläche, die es nicht gibt (der Client zeigt dann
 nichts und sagt nicht warum), und ein Nachladen von außen (das fiele
 niemandem auf, es säße nur plötzlich ein Dritter in der Sichtlinie).
 """
+import re
+
 import pytest
 from mcp.server import MCPServer
 
@@ -82,6 +84,60 @@ async def test_jede_oberflaeche_bringt_ihre_zeichenfunktion_mit():
         assert "openai:set_globals" in html
         # Der Platzhalter muss ersetzt sein und nicht bloß danebenstehen.
         assert "/* __WIDGET__ */" not in html
+
+
+@pytest.mark.asyncio
+async def test_die_zeichenfunktion_steht_bevor_der_rahmen_sie_ruft():
+    """Der Rahmen zeichnet sofort, nicht erst auf Zuruf.
+
+    ChatGPT setzt die Globals, bevor das Dokument läuft; der erste Aufruf
+    von ``neu()`` ist dann schon der echte. Steht das Widget im HTML
+    dahinter, gibt es die Zeichenfunktion zu diesem Zeitpunkt noch nicht —
+    und weil der Rahmen den Fehler auffängt, sieht man davon nur eine
+    Fläche mit einer Entschuldigung."""
+    for uri in widgets._WIDGETS:
+        html = widgets.html_fuer(uri)
+        assert html.index("CONVOYPLAN_ZEICHNEN =") < html.index("neu();"), uri
+
+
+# Aufrufe wie ``if (`` oder ``Object.keys(`` sind keine eigenen Funktionen.
+_JS_EINGEBAUT = {
+    "if", "for", "while", "switch", "catch", "function", "return", "typeof",
+    "Object", "String", "Number", "Boolean", "Array", "Date", "Math", "JSON",
+    "isNaN", "parseInt", "parseFloat",
+}
+
+
+def _aufgerufen(js: str) -> set[str]:
+    """Namen, die im Widget als Funktion aufgerufen werden.
+
+    Ohne führenden Punkt: ``f.map(…)`` gehört dem Objekt, ``kennzahl(…)``
+    muss das Widget selbst mitbringen."""
+    gefunden = re.findall(r"(?<![.\w$])([A-Za-z_$][\w$]*)\s*\(", js)
+    return set(gefunden) - _JS_EINGEBAUT
+
+
+def _deklariert(js: str) -> set[str]:
+    return set(re.findall(r"function\s+([A-Za-z_$][\w$]*)\s*\(", js)) | set(
+        re.findall(r"var\s+([A-Za-z_$][\w$]*)\s*=\s*function", js)
+    )
+
+
+@pytest.mark.asyncio
+async def test_jedes_widget_bringt_alles_mit_was_es_aufruft():
+    """Ein Widget ist eine Datei, kein Nachbarschaftsverhältnis.
+
+    Gegen den Fall, der einmal genau so passiert ist: Ein Widget ruft eine
+    Hilfsfunktion auf, die nur im Nachbar-Widget steht. Beim Lesen des Diffs
+    fällt das nicht auf, beim Bauen fällt es nicht auf, und im Betrieb bleibt
+    die Fläche leer — der Rahmen fängt die Ausnahme ab.
+
+    Was beide Widgets brauchen, gehört in den Rahmen und kommt über ``w``;
+    dort steht es einmal und wird hier nicht verlangt."""
+    for uri, (datei, _n, _b) in widgets._WIDGETS.items():
+        js = (widgets._ORDNER / datei).read_text(encoding="utf-8")
+        fehlend = _aufgerufen(js) - _deklariert(js)
+        assert not fehlend, f"{datei} ruft {sorted(fehlend)} auf, ohne es zu kennen"
 
 
 @pytest.mark.asyncio

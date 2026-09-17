@@ -77,9 +77,13 @@ ChatGPT-Anbindung: `docs/superpowers/plans/2026-09-17-chatgpt-app.md`.
 Für Clients mit Oberfläche (ChatGPT Apps SDK) liegen drei Ansichten in
 `app/mcp/widgets.py` samt `widgets/`. Sie sind **Zugabe, nicht Voraussetzung**: kein
 Werkzeug braucht sie, und ihr Inhalt ist eine leere Vorlage — die Daten kommen erst
-aus dem Werkzeugaufruf. Zwei Regeln hält `tests/test_mcp_widgets.py` fest: jeder
-`_meta`-Verweis zeigt auf eine Resource, die es gibt, und **nichts wird von außen
-nachgeladen**. Damit die Ansichten Daten bekommen, geben alle Werkzeuge
+aus dem Werkzeugaufruf. Vier Regeln hält `tests/test_mcp_widgets.py` fest: jeder
+`_meta`-Verweis zeigt auf eine Resource, die es gibt, **nichts wird von außen
+nachgeladen**, die Zeichenfunktion steht im HTML **vor** dem Aufruf durch den Rahmen,
+und jedes Widget bringt mit, was es aufruft. Die letzten beiden sind nachgetragen, weil
+beide Fälle eingetreten sind und beide dasselbe ergeben: eine leere Fläche, deren
+Ausnahme der Rahmen abfängt. Was zwei Widgets brauchen, gehört deshalb in `rahmen.html`
+und kommt über `w`. Damit die Ansichten Daten bekommen, geben alle Werkzeuge
 `dict[str, Any]` zurück statt `dict` — nur so leitet das SDK ein Ausgabeschema ab und
 liefert `structuredContent`.
 
