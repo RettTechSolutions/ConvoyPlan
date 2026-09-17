@@ -89,6 +89,12 @@ werden: Wer ein Werkzeug von lesend auf schreibend umbaut, muss die Annotation
 mitziehen. `tests/test_mcp_widgets.py` hält `read_only_hint` gegen `WRITE_TOOLS` und
 verbietet `destructive_hint` an jedem Werkzeug.
 
+Der Aussteller (`oauth_tokens.issuer_url()`) ist **eine** Zeichenkette, normalisiert über
+`AnyHttpUrl` — dieselbe, die Pydantic ins Metadatendokument schreibt. Wer sie dort
+„vereinfacht", baut die Lücke wieder ein, an der ChatGPT einmal abgebrochen ist: RFC 9207
+verlangt den `iss`-Parameter zeichengenau gleich dem Aussteller aus der Metadata, und ein
+Test, der dabei `rstrip("/")` benutzt, prüft genau das Falsche.
+
 Der CIMD-Schalter sitzt wie der Hauptschalter im Portal (`mcp_config.is_cimd_allowed`,
 Datenbank schlägt Umgebung). Die AS-Metadata wird deshalb je Anfrage fertiggestellt und
 nicht beim Start — stünde die Ankündigung im vorgebauten Dokument, bliebe sie bis zum

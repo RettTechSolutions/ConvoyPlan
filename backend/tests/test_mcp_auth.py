@@ -65,7 +65,52 @@ async def test_authorization_server_metadata_kuendigt_iss_an():
         body = (await client.get("/.well-known/oauth-authorization-server")).json()
         assert body["authorization_response_iss_parameter_supported"] is True
         assert body["code_challenge_methods_supported"] == ["S256"]
-        assert body["issuer"].rstrip("/") == BASE_URL
+        # Ohne rstrip: Genau dieses Wegschneiden hat jahrelang verdeckt, dass
+        # das Dokument „https://host/" ausweist, während der iss-Parameter
+        # „https://host" trug. Für einen Client, der RFC 9207 ernst nimmt,
+        # sind das zwei verschiedene Aussteller.
+        assert body["issuer"] == oauth_tokens.issuer_url()
+
+
+@pytest.mark.asyncio
+async def test_iss_in_der_antwort_ist_zeichengleich_mit_der_metadata():
+    """RFC 9207 lässt dem Client keinen Spielraum.
+
+    Er **muss** den ``iss``-Parameter der Autorisierungsantwort gegen den
+    Aussteller aus dem Metadatendokument halten und bei Abweichung abbrechen.
+    Wir kündigen mit ``authorization_response_iss_parameter_supported`` an,
+    dass er das kann — also müssen beide Zeichenketten identisch sein, nicht
+    nur gleichbedeutend.
+
+    Der Test vergleicht deshalb, was zwei verschiedene Wege ausliefern: das
+    Dokument, das Pydantic aus ``AuthSettings`` serialisiert, und den
+    Parameter, den die Zustimmungsstrecke an die Weiterleitung hängt. Liefen
+    sie auseinander, verbänden sich nachsichtige Clients weiterhin und
+    strenge nicht mehr — ein Fehlerbild, das man ohne diesen Test erst beim
+    Benutzer sieht."""
+    async with seeded() as fx, mcp_app() as (_app, client):
+        aus_der_metadata = (
+            await client.get("/.well-known/oauth-authorization-server")
+        ).json()["issuer"]
+
+        reg = await register_client(client)
+        _verifier, challenge = pkce_pair()
+        ticket = await authorize(client, reg, challenge)
+        bearer = convoyplan_access_token(fx.planer, fx.org_a)
+        resp = await client.post(
+            "/api/mcp/consent",
+            json={
+                "request": ticket,
+                "approve": True,
+                "organization_id": str(fx.org_a.id),
+            },
+            headers={"Authorization": f"Bearer {bearer}"},
+        )
+        assert resp.status_code == 200, resp.text
+        aus_der_antwort = parse_qs(urlparse(resp.json()["redirect_url"]).query)["iss"][0]
+
+        assert aus_der_antwort == aus_der_metadata
+        await purge_clients([reg["client_id"]])
 
 
 # ── Der ungeschützte Zugriff ─────────────────────────────────────────────
