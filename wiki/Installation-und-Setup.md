@@ -181,6 +181,19 @@ openssl rand -hex 32
 > Neustart des Updaters und lässt sich bis zum Anlauf abbrechen; ohne Termin
 > startet der Wechsel sofort. Die Speicherprüfung läuft dabei vor dem
 > Download, nicht erst nach zwölf Minuten Import.
+>
+> **Abbruch:** Ein abgebrochener Wechsel wird als **„Abgebrochen"** gemeldet,
+> nicht als „Fehlgeschlagen" — der Unterschied ist der zwischen einer erfüllten
+> Absicht und einer Störung. Die bisherige
+> Region läuft in beiden Fällen unverändert weiter. Abbrechen lässt sich bis
+> einschließlich Phase 3 (Graph-Bau); ab dem Schwenk ist kein Abbruch mehr
+> vorgesehen.
+>
+> **Wenn Geofabrik hakt:** Die Größenabfrage vor dem Wechsel läuft für alle
+> Bestandteile gleichzeitig und wiederholt einen Fehlversuch zweimal (1 s, 3 s
+> Pause). Bleibt sie erfolglos, nennt die Meldung die betroffene Region. Sie
+> betrifft ausschließlich die Vorab-Rechnung — die geladene Karte und das
+> Routing sind davon nicht berührt.
 
 ### Sicherheit und Datenschutz
 

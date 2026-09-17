@@ -423,13 +423,49 @@ run_case "$D"
 [ ! -e "$D/status/region_status.json" ]; check $? "kein Status geschrieben"
 
 echo "── Fall 6: Abbruch durch den Nutzer ────────────────────────────────────"
+# Ein abbestellter Wechsel ist KEIN Fehlschlag: eigene Endphase 'cancelled'
+# und Rueckgabecode 0. Vorher lief beides ueber fail(), das Panel zeigte einen
+# roten "Fehlgeschlagen"-Balken ueber einer Aktion, die genau so gewollt war,
+# und region-hook.sh haengte "Regionswechsel fehlgeschlagen" ans Log.
 D="$(setup_case case6)"; printf '%s' "$REQ_JSON" > "$D/status/region_request.json"
 : > "$D/status/region.cancel"
 run_case "$D"
-[ "$(phase_of "$D/status/region_status.json")" = "failed" ]; check $? "Endphase failed"
+[ "$(phase_of "$D/status/region_status.json")" = "cancelled" ]; check $? "Endphase cancelled (nicht failed)"
+[ "$(cat "$D/rc")" = 0 ]; check $? "Exit 0 — der Aufrufer meldet keinen Fehlschlag"
+grep -q "Abgebrochen — die bisherige Region läuft unverändert weiter." "$D/status/region.log"; check $? "Abbruch-Meldung im Log"
 [ "$(cat "$D/graph/edges")" = "ALT" ]; check $? "alter Graph unangetastet"
 [ ! -e "$D/status/region.cancel" ]; check $? "Abbruchdatei entfernt"
 [ ! -e "$D/status/region_request.json" ] && [ ! -e "$D/status/region.lock" ]; check $? "Sperrdateien entfernt"
+
+echo "── Fall 6b: abbestellte Anforderung wird nicht erst noch geprueft ───────"
+# Der Abbruch steht VOR der Allowlist. Eine Anforderung, die inzwischen
+# unlesbar ist (hier: ohne URL), darf den Abbruch nicht in einen Fehlschlag
+# verwandeln — zu tun ist ohnehin nur noch aufraeumen.
+D="$(setup_case case6b)"
+printf '{"url": "", "filename": "", "java_opts": "-Xmx3g", "requested_by": "a@b.c"}' \
+    > "$D/status/region_request.json"
+: > "$D/status/region.cancel"
+run_case "$D"
+[ "$(phase_of "$D/status/region_status.json")" = "cancelled" ]; check $? "Endphase cancelled trotz unlesbarer Anforderung"
+grep -q "Abbruch angefordert" "$D/status/region.log"; check $? "Abbruch statt Allowlist-Fehler im Log"
+[ ! -e "$D/status/region_request.json" ] && [ ! -e "$D/status/region.lock" ]; check $? "Sperrdateien entfernt"
+
+echo "── Fall 6c: verwaiste Abbruchmarke ohne Anforderung ────────────────────"
+# Sie wird sonst nirgends aufgeraeumt und wuerde den NAECHSTEN Wechsel in der
+# Sekunde seines Aufgreifens abbrechen — ohne dass jemand das angefordert hat.
+D="$(setup_case case6c)"; : > "$D/status/region.cancel"
+run_case "$D"
+[ "$(cat "$D/rc")" = 0 ]; check $? "Exit 0"
+[ ! -e "$D/status/region.cancel" ]; check $? "verwaiste Abbruchmarke entfernt"
+[ ! -e "$D/status/region_status.json" ]; check $? "kein Status geschrieben"
+
+echo "── Fall 6d: fremdes Lock schuetzt die Abbruchmarke ─────────────────────"
+# Haelt ein anderer Lauf das Lock, gehoert ihm auch die Marke — er raeumt sie
+# selbst weg. Sie ihm wegzuziehen hiesse, seinen Abbruch zu unterschlagen.
+D="$(setup_case case6d)"; : > "$D/status/region.cancel"; : > "$D/status/region.lock"
+run_case "$D"
+[ -f "$D/status/region.cancel" ]; check $? "fremde Abbruchmarke unangetastet"
+[ -f "$D/status/region.lock" ]; check $? "fremdes Lock unangetastet"
 
 echo "── Fall 7: 'import' unbekannt → Rückfall auf 'server' ──────────────────"
 D="$(setup_case case7)"; printf '%s' "$REQ_JSON" > "$D/status/region_request.json"
@@ -600,7 +636,8 @@ echo "── Fall 17: Abbruch mitten im Import ───────────
 # spaeter an der naechsten Phasengrenze.
 D="$(setup_case case17)"; printf '%s' "$REQ_JSON" > "$D/status/region_request.json"
 run_case "$D" STUB_CANCEL_ON_IMPORT="$D/status/region.cancel"
-[ "$(phase_of "$D/status/region_status.json")" = "failed" ]; check $? "Endphase failed"
+[ "$(phase_of "$D/status/region_status.json")" = "cancelled" ]; check $? "Endphase cancelled"
+[ "$(cat "$D/rc")" = 0 ]; check $? "Exit 0 — Abbruch ist kein Fehlschlag"
 grep -q "Abbruch angefordert — der Import-Container wird gestoppt" "$D/status/region.log"; check $? "Abbruch wirkt waehrend des Imports"
 grep -qE "docker rm -f convoyplan-region-import-[0-9]+" "$D/calls.txt"; check $? "Import-Container wird entfernt"
 grep -q "Abgebrochen — die bisherige Region läuft unverändert weiter." "$D/status/region.log"; check $? "Abbruch-Meldung statt Heap-Fehlschlag"

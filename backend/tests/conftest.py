@@ -55,6 +55,23 @@ def disable_breach_check():
 
 
 @pytest.fixture(autouse=True)
+def no_geofabrik_backoff():
+    """Wartezeiten zwischen den Geofabrik-Wiederholungen abschalten.
+
+    `geofabrik._with_retry` pausiert in Produktion 1 s und 3 s zwischen den
+    Versuchen. In Tests wären das pro Fehlerfall vier Sekunden Schlaf, in
+    denen nichts geprüft wird. Ein Test, der genau diese Wartezeit prüft,
+    setzt sie selbst wieder.
+    """
+    from app.services import geofabrik
+
+    previous = geofabrik._RETRY_BACKOFF_SECONDS
+    geofabrik._RETRY_BACKOFF_SECONDS = (0, 0)
+    yield
+    geofabrik._RETRY_BACKOFF_SECONDS = previous
+
+
+@pytest.fixture(autouse=True)
 def disable_update_check():
     """Disable the GitHub release update check so the /api/version endpoint
     never hits the network during tests."""

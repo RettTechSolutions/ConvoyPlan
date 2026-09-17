@@ -153,10 +153,18 @@
         cleaning: 'Phase 5/5 — Räume alte Daten auf',
         done: 'Abgeschlossen',
         failed: 'Fehlgeschlagen',
+        // Kein Fehler, sondern eine erfüllte Absicht — deshalb eigene Phase
+        // und ein neutrales Abzeichen statt des roten Warn-Abzeichens.
+        cancelled: 'Abgebrochen',
     };
 
     const busy = $derived(!dismissed && ACTIVE_PHASES.includes(status.phase));
-    const finished = $derived(!dismissed && (status.phase === 'done' || status.phase === 'failed'));
+    // 'cancelled' MUSS hier stehen: Sonst verschwinden Phasenkarte und Terminal
+    // in dem Moment, in dem der Abbruch greift — der Bediener bekäme nie zu
+    // sehen, dass sein Abbruch tatsächlich durchgelaufen ist, und hätte keinen
+    // „Schließen"-Knopf.
+    const ENDED: RegionPhase[] = ['done', 'failed', 'cancelled'];
+    const finished = $derived(!dismissed && ENDED.includes(status.phase));
     const showSwitchPanel = $derived(busy || finished);
     const canCancel = $derived(busy && CANCELLABLE_PHASES.includes(status.phase));
     const blocked = $derived(preview?.verdict === 'reicht nicht');
@@ -268,7 +276,18 @@
             return;
         }
         try {
-            currentPreview = await regionApi.preview([current.url]);
+            // ALLE Bestandteile, nicht nur `current.url`. Bei einer
+            // zusammengesetzten Karte ist `OSM_DOWNLOAD_URL` in `.region` nur
+            // der erste Bestandteil (region.py schreibt `urls[0]`) — die Karte
+            // wies deshalb für eine Kombination aus sechs Extracts die Größe
+            // eines einzigen aus: im Betrieb „5,8 GB" (DACH) über einer Karte,
+            // die DACH, Italien, Kroatien, Slowenien, Montenegro und Albanien
+            // enthielt. `sources` ist die vollständige Auskunft und bei einer
+            // Einzelregion genau ein Eintrag, also derselbe Aufruf wie bisher.
+            const urls = current.sources?.length
+                ? current.sources.map(quickPickUrl)
+                : [current.url];
+            currentPreview = await regionApi.preview(urls);
         } catch (e: unknown) {
             currentPreview = null;
             currentPreviewError = e instanceof Error ? e.message : 'nicht abrufbar';
@@ -475,6 +494,7 @@
                 class:badge-update={busy}
                 class:badge-ok={status.phase === 'done'}
                 class:badge-warn={status.phase === 'failed'}
+                class:badge-neutral={status.phase === 'cancelled'}
             >
                 {#if busy}<span class="spinner"></span>{/if}
                 {PHASE_LABELS[status.phase]}
@@ -499,6 +519,10 @@
             <p class="reassurance">
                 Die bisherige Region läuft unverändert weiter. Verloren sind nur Zeit und Plattenplatz.
             </p>
+        {:else if status.phase === 'cancelled'}
+            <p class="reassurance">
+                Der Wechsel wurde abgebrochen — die bisherige Region läuft unverändert weiter.
+            </p>
         {/if}
 
         <div class="update-terminal" bind:this={logContainer}>
@@ -511,7 +535,7 @@
             {#if busy && logSource}
                 <div class="log-cursor">▌</div>
             {:else if !busy}
-                <div class="log-line log-done">─── {status.phase === 'failed' ? 'Fehlgeschlagen' : 'Fertig'} ───</div>
+                <div class="log-line log-done">─── {PHASE_LABELS[status.phase] ?? 'Fertig'} ───</div>
             {/if}
         </div>
         {#if logError}
@@ -561,7 +585,9 @@
                     </div>
                 {/if}
                 <div class="update-row">
-                    <span class="update-label">Extract-Größe</span>
+                    <span class="update-label">
+                        Extract-Größe{#if current.sources && current.sources.length > 1} (Summe){/if}
+                    </span>
                     <span>{currentPreview ? bytes(currentPreview.extract_bytes) : '–'}</span>
                 </div>
                 <div class="update-row">
@@ -832,6 +858,9 @@
     .badge-ok { background: rgba(107,127,77,.2); color: #a8c070; border: 1px solid rgba(107,127,77,.4); }
     .badge-update { background: rgba(210,120,30,.2); color: #e8a050; border: 1px solid rgba(210,120,30,.4); }
     .badge-warn { background: rgba(180,60,40,.15); color: var(--color-primary); border: 1px solid rgba(180,60,40,.3); }
+    /* Abgebrochen ist weder gut noch schlecht — grau, damit es nicht wie ein
+       Fehlschlag aussieht und nicht wie ein Erfolg. */
+    .badge-neutral { background: rgba(140,140,140,.15); color: var(--text-2); border: 1px solid rgba(140,140,140,.35); }
     .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(255,255,255,.3); border-top-color: currentColor; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: .3rem; }
     @keyframes spin { to { transform: rotate(360deg); } }
 

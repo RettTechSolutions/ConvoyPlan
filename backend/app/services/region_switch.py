@@ -204,7 +204,31 @@ def write_request(url: str, filename: str, java_opts: str, actor_email: str,
     # beschreibbar) werden unveraendert durchgereicht, damit der Aufrufer
     # (die Route) sie wie bei trigger_update in 409 bzw. 503 uebersetzen kann.
     _write_atomic_exclusive(_path(REQUEST_FILE), json.dumps(payload))
+    # Erst NACH dem exklusiven Anlegen: Dass es geklappt hat, ist der Beleg,
+    # dass gerade keine andere Anforderung aussteht — eine noch herumliegende
+    # Abbruchmarke kann sich also nur auf einen laengst beendeten Wechsel
+    # beziehen. Liegen bliebe sie nach einem harten Abbruch des Updaters
+    # zwischen seinen beiden Aufraeumschritten; der naechste Wechsel wuerde
+    # dann in der Sekunde seines Aufgreifens "abgebrochen", ohne dass jemand
+    # das angefordert haette. Umgekehrte Reihenfolge waere falsch: Scheitert
+    # das Anlegen (eine Anforderung steht noch aus), haetten wir gerade deren
+    # Abbestellung geloescht und sie liefe zu ihrem Termin doch los.
+    try:
+        os.remove(_path(CANCEL_FILE))
+    except OSError:
+        # Der Normalfall: Es liegt keine da. Und liegt doch eine, die sich
+        # nicht entfernen laesst, ist das kein Grund, die geschriebene
+        # Anforderung zurueckzunehmen — der Updater raeumt sie beim Aufgreifen
+        # ohnehin mit ab.
+        pass
 
+
+# Endphasen: Danach kommt vom Updater nichts mehr, der Log-Strom
+# (GET /api/admin/region/log) darf schliessen. `cancelled` gehoert dazu und
+# fehlte anfangs — ein abgebrochener Wechsel liess den Strom bis zu seinem
+# Zeitlimit von einer Stunde offen, und das Panel zeigte ueber einem laengst
+# beendeten Wechsel weiter einen blinkenden Cursor.
+END_PHASES = ("done", "failed", "cancelled")
 
 # Was das Panel anzeigt, solange die Anforderung im Volume liegt und der
 # Updater sie noch nicht aufgegriffen hat.
