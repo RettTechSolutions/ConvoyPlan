@@ -37,10 +37,26 @@ SCOPE_IMPLIES: dict[str, frozenset[str]] = {
     SCOPE_READ: frozenset({SCOPE_READ}),
 }
 
-# Was die Protected Resource Metadata als scopes_supported ausweist. Die Spec
-# will hier den *minimalen* Satz für die Grundfunktion sehen, nicht die
-# Gesamtmenge — breitere Scopes fordert der Client per Step-up nach.
-SCOPES_SUPPORTED: list[str] = [SCOPE_READ]
+# Was ein Token mindestens tragen muss, um überhaupt an ``/mcp`` zu kommen.
+# Das ist die Schwelle des Endpunkts, nicht die eines einzelnen Werkzeugs:
+# jenseits davon entscheidet ``ctx.require()`` je Aufruf.
+REQUIRED_SCOPES: list[str] = [SCOPE_READ]
+
+# Was die Protected Resource Metadata als ``scopes_supported`` ausweist:
+# alles, was diese Resource versteht (RFC 9728 §2).
+#
+# Hier stand lange nur ``convoy:read`` — mit der Überlegung, ein Client solle
+# das Schreibrecht per Step-up nachfordern statt es vorsorglich zu verlangen.
+# Das setzt voraus, dass der Client Step-up beherrscht. Clients, die das nicht
+# tun, lesen diese Liste als „mehr gibt es nicht", fragen nur ``convoy:read``
+# an und bleiben auf immer lesend — ein Benutzer, der im Chat ein Fahrzeug
+# zuordnen will, bekommt dann eine Fehlermeldung statt eines Fahrzeugs, und
+# keinen Weg, das zu ändern.
+#
+# Die Liste sagt deshalb, was es gibt. Was davon *erteilt* wird, entscheidet
+# unverändert der Mensch auf dem Zustimmungsbildschirm, gedeckelt durch seine
+# Rolle (``grantable()``). Ein breiteres Angebot ist kein breiterer Zugriff.
+SCOPES_SUPPORTED: list[str] = list(ALL_SCOPES)
 
 # Menschenlesbare Beschreibungen für den Consent-Screen. Ein Benutzer, der
 # "convoy:write" liest, hat nichts verstanden.
@@ -83,6 +99,25 @@ def grantable(requested: list[str] | set[str] | tuple[str, ...], role: str) -> l
     return [s for s in ALL_SCOPES if s in allowed and s in set(requested)]
 
 
+def effective(chosen: list[str] | set[str] | tuple[str, ...], role: str) -> list[str]:
+    """Was tatsächlich in einem Token landen soll — erteilbar *und* ausgeschrieben.
+
+    Zwei Schritte, beide nötig:
+
+    Erstens deckelt ``grantable()`` die Auswahl auf die Rolle. Zweitens wird
+    ausgeschrieben, was ein Scope einschließt. Das zweite ist keine Kosmetik:
+    ``RequireAuthMiddleware`` prüft den geforderten Scope mit ``in`` gegen die
+    Liste im Token, ohne jede Hierarchie. Ein Token, das nur
+    ``convoy:write`` trüge, käme damit an ``/mcp`` nicht einmal vorbei — der
+    Endpunkt verlangt ``convoy:read``, und dass Schreiben Lesen einschließt,
+    weiß dort niemand.
+
+    Ausschreiben erweitert dabei nie über die Rolle hinaus: ein Scope schließt
+    nur Scopes mit *niedrigerer* Mindestrolle ein (``SCOPE_IMPLIES`` gegen
+    ``SCOPE_MIN_ROLE`` gelesen). Wer schreiben darf, darf ohnehin lesen."""
+    return [s for s in ALL_SCOPES if s in expand(grantable(chosen, role))]
+
+
 # ── Welcher Scope für welches Werkzeug ───────────────────────────────────
 #
 # Dieselbe Zuordnung, die die Werkzeuge selbst über ``ctx.require()``
@@ -97,6 +132,7 @@ def grantable(requested: list[str] | set[str] | tuple[str, ...], role: str) -> l
 # stehen, und kein Eintrag darf auf ein Werkzeug zeigen, das es nicht gibt.
 TOOL_SCOPES: dict[str, str] = {
     # Lesend
+    "organisation_details": SCOPE_READ,
     "konvois_auflisten": SCOPE_READ,
     "konvoi_details": SCOPE_READ,
     "unterkonvois_auflisten": SCOPE_READ,

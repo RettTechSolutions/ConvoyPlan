@@ -97,6 +97,24 @@ export const PAGES: readonly PageEntry[] = [
 		keywords: ['datenschutz', 'privacy', 'dsgvo', 'gdpr', 'daten', 'löschen', 'auskunft']
 	},
 	{
+		path: '/terms',
+		title: 'Nutzungsbedingungen',
+		summary:
+			'Unter welchen Bedingungen ConvoyPlan genutzt werden darf: AGPL, kommerzielle Lizenz, Gewährleistung und die KI-Schnittstelle.',
+		markdown: '/terms.md',
+		priority: '0.7',
+		keywords: [
+			'nutzungsbedingungen',
+			'terms',
+			'agb',
+			'lizenz',
+			'license',
+			'agpl',
+			'gewährleistung',
+			'haftung'
+		]
+	},
+	{
 		path: '/status',
 		title: 'Systemstatus',
 		summary: 'Öffentliche Statusseite dieser Instanz: Erreichbarkeit der Dienste und Komponenten.',
@@ -119,5 +137,6 @@ export const DISCOVERY_ONLY_PAGES: readonly string[] = [
 	'/developers',
 	'/docs',
 	'/contact',
-	'/privacy'
+	'/privacy',
+	'/terms'
 ];

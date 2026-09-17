@@ -16,6 +16,10 @@
     let loading = $state(true);
     let working = $state(false);
 
+    // Die angekreuzten Berechtigungen. Zurückgesetzt bei jedem Wechsel der
+    // Organisation, weil eine andere Rolle anderes hergibt.
+    let selectedScopes = $state<string[]>([]);
+
     const selectedOrg = $derived(
         info?.organizations.find((o) => o.id === selectedOrgId) ?? null
     );
@@ -32,6 +36,29 @@
             ? info.requested_scopes.filter((s) => !selectedOrg.grantable_scopes.includes(s.scope))
             : []
     );
+    // Was die Rolle darüber hinaus hergäbe. Unangekreuzt — es steht hier,
+    // weil ein Programm, das nur lesend anfragt, sonst für immer lesend
+    // bleibt: nicht jeder Client kann später nachfordern.
+    const optional = $derived(
+        info && selectedOrg
+            ? info.optional_scopes.filter((s) => selectedOrg.optional_scopes.includes(s.scope))
+            : []
+    );
+
+    // Die Vorauswahl ist das, was das Programm angefragt hat und die Rolle
+    // hergibt. Als Effekt und nicht als onchange am <select>: die Auswahl
+    // hängt an der Organisation, und wann deren Bindung gegenüber einem
+    // Event-Handler greift, ist nichts, worauf man eine Rechtevergabe
+    // stützen sollte.
+    $effect(() => {
+        selectedScopes = grantable.map((s) => s.scope);
+    });
+
+    function toggleScope(scope: string, on: boolean) {
+        selectedScopes = on
+            ? [...new Set([...selectedScopes, scope])]
+            : selectedScopes.filter((s) => s !== scope);
+    }
 
     onMount(async () => {
         if (!ticket) {
@@ -91,7 +118,12 @@
         working = true;
         error = '';
         try {
-            const result = await mcpApi.decide(ticket, approve, approve ? selectedOrgId : null);
+            const result = await mcpApi.decide(
+                ticket,
+                approve,
+                approve ? selectedOrgId : null,
+                approve ? selectedScopes : null
+            );
             if (!isAllowedRedirect(result.redirect_url)) {
                 error =
                     'Die Zieladresse des Programms ist nicht zulässig. Es wurde nichts erteilt.';
@@ -164,22 +196,74 @@
                     <span>Organisation</span>
                     <select bind:value={selectedOrgId} disabled={working}>
                         {#each info.organizations as org (org.id)}
-                            <option value={org.id} disabled={org.grantable_scopes.length === 0}>
+                            <!--
+                                Auswählbar, sobald die Rolle *irgendetwas*
+                                hergibt — auch wenn das Programm nur nach
+                                Rechten gefragt hat, die sie nicht deckt:
+                                dann lässt sich immer noch das ankreuzen,
+                                was sie hergibt.
+                            -->
+                            <option
+                                value={org.id}
+                                disabled={org.grantable_scopes.length + org.optional_scopes.length === 0}
+                            >
                                 {org.name} — Rolle: {org.role}
-                                {org.grantable_scopes.length === 0 ? ' (keine passenden Rechte)' : ''}
+                                {org.grantable_scopes.length + org.optional_scopes.length === 0
+                                    ? ' (keine passenden Rechte)'
+                                    : ''}
                             </option>
                         {/each}
                     </select>
                 </label>
 
-                <p class="lead">Das Programm erhält damit das Recht:</p>
-                <ul class="scopes">
+                <p class="lead">
+                    Das Programm bekommt damit diese Rechte — den Haken entfernen bei
+                    allem, was es nicht bekommen soll:
+                </p>
+                <ul class="scopes choice">
                     {#each grantable as s (s.scope)}
-                        <li>{s.label}</li>
+                        <li>
+                            <label>
+                                <input
+                                    type="checkbox"
+                                    checked={selectedScopes.includes(s.scope)}
+                                    onchange={(e) =>
+                                        toggleScope(s.scope, e.currentTarget.checked)}
+                                    disabled={working}
+                                />
+                                <span>{s.label}</span>
+                            </label>
+                        </li>
                     {:else}
-                        <li class="muted">— nichts, siehe unten</li>
+                        <li class="muted">
+                            — nichts davon, was das Programm angefragt hat, siehe unten
+                        </li>
                     {/each}
                 </ul>
+
+                {#if optional.length > 0}
+                    <p class="hint">
+                        Nicht angefragt, deine Rolle „{selectedOrg?.role}“ gäbe es aber her.
+                        Nur ankreuzen, wenn das Programm damit etwas tun soll — manche
+                        Programme können später nicht nachfragen:
+                    </p>
+                    <ul class="scopes choice">
+                        {#each optional as s (s.scope)}
+                            <li>
+                                <label>
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedScopes.includes(s.scope)}
+                                        onchange={(e) =>
+                                            toggleScope(s.scope, e.currentTarget.checked)}
+                                        disabled={working}
+                                    />
+                                    <span>{s.label}</span>
+                                </label>
+                            </li>
+                        {/each}
+                    </ul>
+                {/if}
 
                 {#if withheld.length > 0}
                     <p class="hint">
@@ -206,10 +290,15 @@
                 <button class="secondary" onclick={() => decide(false)} disabled={working}>
                     Ablehnen
                 </button>
+                <!--
+                    Nichts angekreuzt heißt nichts zu erteilen. Der Server
+                    lehnt das ohnehin ab (403); hier bleibt der Knopf aus,
+                    damit niemand erst über eine Fehlermeldung darauf kommt.
+                -->
                 <button
                     class="primary"
                     onclick={() => decide(true)}
-                    disabled={working || grantable.length === 0}
+                    disabled={working || selectedScopes.length === 0}
                 >
                     {working ? 'Einen Moment …' : 'Zugriff erlauben'}
                 </button>
@@ -261,6 +350,9 @@
     .field > span { display: block; font-size: 0.875rem; margin-bottom: 0.25rem; }
     .field select { width: 100%; padding: 0.5rem; border: 1px solid var(--border, #d8dde3); border-radius: 0.375rem; }
     .scopes { margin: 0.25rem 0 0; padding-left: 1.25rem; }
+    .scopes.choice { list-style: none; padding-left: 0; }
+    .scopes.choice label { display: flex; gap: 0.5rem; align-items: flex-start; cursor: pointer; }
+    .scopes.choice input { margin-top: 0.2rem; }
     .scopes.withheld { color: var(--text-muted, #667); text-decoration: line-through; }
     .actions { display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1.5rem; }
     .actions button { padding: 0.55rem 1.1rem; border-radius: 0.375rem; border: 1px solid transparent; cursor: pointer; }

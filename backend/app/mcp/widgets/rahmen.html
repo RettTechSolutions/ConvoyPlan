@@ -1,0 +1,162 @@
+<!--
+  Der gemeinsame Rahmen aller ConvoyPlan-Widgets.
+
+  Hier steht alles, was für jedes Widget gleich ist und genau einmal richtig
+  sein muss: das Auspacken der Werkzeugantwort, das Maskieren fremder Texte
+  und die Farben. Die einzelnen Widgets steuern nur `zeichnen(daten)` bei.
+
+  Kein Skript und kein Zeichensatz von außerhalb: Das Widget läuft in einem
+  fremden Fenster (ChatGPT) über Daten einer BOS-Organisation. Was hier
+  nachgeladen würde, wäre eine dritte Partei in genau dieser Sichtlinie.
+-->
+<div id="wurzel" class="cp-leer">Daten werden geladen …</div>
+
+<style>
+  :root {
+    --cp-text: #14181d;
+    --cp-schwach: #5b6470;
+    --cp-rand: #dfe3e8;
+    --cp-flaeche: #ffffff;
+    --cp-hervor: #f4f6f8;
+    --cp-akzent: #1f5fa8;
+    --cp-warn: #9a5b00;
+    --cp-gut: #1c6b3f;
+    --cp-aus: #a12a1f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --cp-text: #e8ecf1;
+      --cp-schwach: #9aa4b1;
+      --cp-rand: #333b45;
+      --cp-flaeche: #171b20;
+      --cp-hervor: #20262d;
+      --cp-akzent: #6ba6e8;
+      --cp-warn: #e0a84a;
+      --cp-gut: #5cc389;
+      --cp-aus: #ef7f72;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--cp-text);
+    background: transparent;
+  }
+  .cp-leer { color: var(--cp-schwach); padding: 12px 2px; }
+  .cp-karte {
+    border: 1px solid var(--cp-rand);
+    border-radius: 10px;
+    background: var(--cp-flaeche);
+    padding: 12px 14px;
+  }
+  .cp-karte + .cp-karte { margin-top: 8px; }
+  .cp-kopf { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+  .cp-titel { font-weight: 600; font-size: 15px; }
+  .cp-schwach { color: var(--cp-schwach); }
+  .cp-klein { font-size: 12.5px; }
+  .cp-zeile { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 4px; }
+  .cp-marke {
+    display: inline-block; padding: 1px 8px; border-radius: 999px;
+    font-size: 12px; border: 1px solid var(--cp-rand); background: var(--cp-hervor);
+    white-space: nowrap;
+  }
+  .cp-marke.gut { color: var(--cp-gut); border-color: currentColor; }
+  .cp-marke.warn { color: var(--cp-warn); border-color: currentColor; }
+  .cp-marke.aus { color: var(--cp-aus); border-color: currentColor; }
+  .cp-gitter { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-top: 10px; }
+  .cp-kennzahl { background: var(--cp-hervor); border-radius: 8px; padding: 8px 10px; }
+  .cp-kennzahl b { display: block; font-size: 18px; font-weight: 650; }
+  table.cp { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+  table.cp th, table.cp td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--cp-rand); vertical-align: top; }
+  table.cp th { color: var(--cp-schwach); font-weight: 600; font-size: 12px; }
+  table.cp tr:last-child td { border-bottom: 0; }
+  dl.cp { margin: 10px 0 0; display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 13px; }
+  dl.cp dt { color: var(--cp-schwach); }
+  dl.cp dd { margin: 0; }
+  @media (max-width: 420px) {
+    dl.cp { grid-template-columns: 1fr; gap: 0 0; }
+    dl.cp dt { margin-top: 6px; }
+  }
+</style>
+
+<script>
+(function () {
+  var wurzel = document.getElementById('wurzel');
+
+  /**
+   * Fremden Text maskieren.
+   *
+   * Konvoi- und Fahrzeugnamen kommen aus der Datenbank einer Organisation
+   * und sind Freitext. Sie ungeprüft als HTML einzusetzen wäre eine
+   * Skriptlücke — in einem Fenster, das ChatGPT aufspannt, und über Daten,
+   * die nicht dem Betrachter gehören.
+   */
+  function esc(wert) {
+    if (wert === null || wert === undefined) return '';
+    return String(wert)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  /**
+   * Die Werkzeugantwort aus den Globals holen.
+   *
+   * `window.openai.toolOutput` ist dokumentiert als das `structuredContent`
+   * der Antwort — in Beispielen taucht daneben aber auch die verpackte Form
+   * `toolOutput.result.structuredContent` auf. Weil beide Lesarten im Umlauf
+   * sind und ein falscher Griff nur eine leere Fläche ergäbe, wird hier
+   * ausgepackt, was da ist, statt auf eine Form zu wetten.
+   */
+  function daten() {
+    var o = (window.openai && window.openai.toolOutput) || null;
+    if (!o) return null;
+    if (o.result && o.result.structuredContent) return o.result.structuredContent;
+    if (o.structuredContent) return o.structuredContent;
+    return o;
+  }
+
+  function zeitpunkt(iso) {
+    if (!iso) return null;
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso);
+    try {
+      return d.toLocaleString('de-DE', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      });
+    } catch (e) {
+      return String(iso);
+    }
+  }
+
+  var werkzeug = { esc: esc, zeitpunkt: zeitpunkt };
+
+  function neu() {
+    var d = daten();
+    if (!d) {
+      wurzel.className = 'cp-leer';
+      wurzel.textContent = 'Keine Daten empfangen.';
+      return;
+    }
+    try {
+      wurzel.className = '';
+      wurzel.innerHTML = window.CONVOYPLAN_ZEICHNEN(d, werkzeug);
+    } catch (e) {
+      // Lieber eine ehrliche Notiz als eine halb gezeichnete Fläche, die
+      // aussieht, als wären das alle Fahrzeuge.
+      wurzel.className = 'cp-leer';
+      wurzel.textContent = 'Diese Ansicht konnte nicht aufgebaut werden.';
+    }
+  }
+
+  // Die Globals stehen beim ersten Lauf noch nicht zwingend bereit; ChatGPT
+  // meldet jede Änderung über dieses Ereignis nach.
+  window.addEventListener('openai:set_globals', neu);
+  neu();
+})();
+</script>
+
+<script>
+/* __WIDGET__ */
+</script>

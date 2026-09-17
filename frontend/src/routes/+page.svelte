@@ -168,6 +168,7 @@
             <a href="/docs">Dokumentation</a>
             <a href="/contact">Kontakt</a>
             <a href="/privacy">Datenschutz</a>
+            <a href="/terms">Nutzungsbedingungen</a>
             <a href="/status">Systemstatus</a>
         </nav>
         <p class="agent-hint">

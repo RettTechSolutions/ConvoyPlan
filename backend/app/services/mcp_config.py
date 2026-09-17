@@ -24,16 +24,41 @@ from app.config import settings
 from app.models.settings import SystemSetting
 
 MCP_ENABLED_KEY = "mcp.enabled"
+# Client ID Metadata Documents (CIMD). Zweiter Schalter, weil er eine andere
+# Frage beantwortet als ``mcp.enabled``: nicht *ob* es die Schnittstelle gibt,
+# sondern ob sich ein Programm über ein abrufbares Dokument ausweisen darf,
+# statt sich zu registrieren. Das ist der Weg, den OpenAI für ChatGPT
+# bevorzugt — und zugleich der, bei dem diese Instanz eine Adresse abruft,
+# die der Anfragende bestimmt. Deshalb bleibt er getrennt schaltbar und
+# standardmäßig aus (siehe ``MCP_ALLOW_CIMD`` in ``app/config.py``).
+MCP_ALLOW_CIMD_KEY = "mcp.allow_cimd"
+
+
+async def _raw(db: AsyncSession, key: str) -> str | None:
+    """Der rohe Wert eines Schalters ("true"/"false"), oder None.
+
+    Alles, was nicht eindeutig ist, gilt als „nicht gesetzt" — dann greift
+    die Umgebungsvariable. Ein kaputter Wert in der Zeile soll nicht
+    stillschweigend als „aus" durchgehen, wenn die Umgebung „an" sagt."""
+    result = await db.execute(select(SystemSetting).where(SystemSetting.key == key))
+    setting = result.scalar_one_or_none()
+    value = setting.value if setting else None
+    return value if value in ("true", "false") else None
+
+
+async def _set(db: AsyncSession, key: str, enabled: bool) -> None:
+    result = await db.execute(select(SystemSetting).where(SystemSetting.key == key))
+    setting = result.scalar_one_or_none()
+    if setting:
+        setting.value = "true" if enabled else "false"
+    else:
+        db.add(SystemSetting(key=key, value="true" if enabled else "false"))
+    await db.commit()
 
 
 async def get_mcp_enabled_setting(db: AsyncSession) -> str | None:
     """Der rohe Wert aus der Datenbank ("true"/"false"), oder None."""
-    result = await db.execute(
-        select(SystemSetting).where(SystemSetting.key == MCP_ENABLED_KEY)
-    )
-    setting = result.scalar_one_or_none()
-    value = setting.value if setting else None
-    return value if value in ("true", "false") else None
+    return await _raw(db, MCP_ENABLED_KEY)
 
 
 async def is_mcp_enabled(db: AsyncSession) -> bool:
@@ -46,12 +71,24 @@ async def is_mcp_enabled(db: AsyncSession) -> bool:
 
 async def set_mcp_enabled(db: AsyncSession, enabled: bool) -> None:
     """Den Schalter dauerhaft umlegen."""
-    result = await db.execute(
-        select(SystemSetting).where(SystemSetting.key == MCP_ENABLED_KEY)
-    )
-    setting = result.scalar_one_or_none()
-    if setting:
-        setting.value = "true" if enabled else "false"
-    else:
-        db.add(SystemSetting(key=MCP_ENABLED_KEY, value="true" if enabled else "false"))
-    await db.commit()
+    await _set(db, MCP_ENABLED_KEY, enabled)
+
+
+async def get_cimd_setting(db: AsyncSession) -> str | None:
+    """Der rohe CIMD-Wert aus der Datenbank, oder None."""
+    return await _raw(db, MCP_ALLOW_CIMD_KEY)
+
+
+async def is_cimd_allowed(db: AsyncSession) -> bool:
+    """Ob sich Programme per Metadatendokument ausweisen dürfen.
+
+    Wie bei ``mcp.enabled``: Datenbank schlägt Umgebungsvariable."""
+    db_value = await get_cimd_setting(db)
+    if db_value is not None:
+        return db_value == "true"
+    return settings.mcp_allow_cimd
+
+
+async def set_cimd_allowed(db: AsyncSession, enabled: bool) -> None:
+    """Den CIMD-Schalter dauerhaft umlegen."""
+    await _set(db, MCP_ALLOW_CIMD_KEY, enabled)

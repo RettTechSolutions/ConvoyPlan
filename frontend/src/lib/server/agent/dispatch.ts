@@ -121,6 +121,7 @@ const ROUTES: Record<string, Builder> = {
 	'/about.md': (c) => markdown(docs.aboutMd(c)),
 	'/contact.md': (c) => markdown(docs.contactMd(c)),
 	'/privacy.md': (c) => markdown(docs.privacyMd(c)),
+	'/terms.md': (c) => markdown(docs.termsMd(c)),
 	'/pricing.md': (c) => markdown(docs.pricingMd(c)),
 	'/developers.md': (c) => markdown(docs.developersMd(c)),
 	'/developer.md': (c) => markdown(docs.developersMd(c)),
@@ -152,6 +153,28 @@ const ROUTES: Record<string, Builder> = {
 		json(docs.apiCatalogJson(c), 'application/linkset+json;profile="https://www.rfc-editor.org/info/rfc9727"')
 };
 
+/**
+ * Der Nachweis, dass diese Domain uns gehört — für die Einreichung als
+ * ChatGPT-App.
+ *
+ * OpenAI verlangt vor der Aufnahme ins Verzeichnis einen Beleg, dass der
+ * Einreichende den Host des MCP-Servers kontrolliert: unter
+ * `/.well-known/openai-apps-challenge` muss ein Token liegen, das die
+ * Einreichungsmaske ausgibt. Geprüft wird die **Wurzel** des Hosts, der Pfad
+ * des MCP-Endpunkts spielt keine Rolle.
+ *
+ * Ohne gesetztes Token gibt es den Pfad **nicht** — kein leerer Körper, keine
+ * 200 mit Platzhalter. Dieselbe Regel wie beim Rest des Verteilers: nichts
+ * ankündigen, was es auf dieser Instanz nicht gibt. Eine Instanz, die nie
+ * eine App einreicht, soll auch nichts davon erkennen lassen.
+ */
+export function openaiChallenge(): string | null {
+	const raw = (env.OPENAI_APPS_CHALLENGE ?? '').trim();
+	return raw === '' ? null : raw;
+}
+
+const OPENAI_CHALLENGE_PATH = '/.well-known/openai-apps-challenge';
+
 /** Pfad ohne abschließenden Schrägstrich, damit `/llms.txt/` dasselbe trifft. */
 export const normalize = (pathname: string): string =>
 	pathname !== '/' && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
@@ -159,6 +182,7 @@ export const normalize = (pathname: string): string =>
 /** Ob dieser Pfad dem Verteiler gehört — ohne Netzwerkaufruf beantwortbar. */
 export function handles(pathname: string): boolean {
 	const path = normalize(pathname);
+	if (path === OPENAI_CHALLENGE_PATH) return openaiChallenge() !== null;
 	return path in ROUTES || path === '/ask' || path === '/openapi.json' || path === '/api';
 }
 
@@ -260,6 +284,14 @@ export async function dispatch(
 
 	const builder = ROUTES[path];
 	if (builder) return builder(ctx);
+
+	if (path === OPENAI_CHALLENGE_PATH) {
+		const token = openaiChallenge();
+		// `handles()` hat das bereits geprüft; ein zweites Mal, weil sich die
+		// Einstellung zwischen beiden Aufrufen ändern kann und ein `null` hier
+		// sonst als "null" im Körper landete.
+		return token === null ? null : text(token, 'text/plain');
+	}
 
 	if (path === '/openapi.json') return publicOpenapi(fetchFn, ctx);
 

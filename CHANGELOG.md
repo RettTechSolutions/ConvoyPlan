@@ -23,6 +23,32 @@ ursprünglichen SemVer-Nummern.
 
 ### Added
 
+- **Nutzungsbedingungen unter `/terms`.** Die Instanz lieferte Datenschutz und Kontakt aus, aber keine Nutzungsbedingungen — die fragt jede App-Einreichung ab, und für ein Werkzeug, das Einsatzfahrten plant, gehört der Gewährleistungsausschluss ohnehin sichtbar hin. Die Seite fasst die Lizenzlage aus `LICENSE` und `COMMERCIAL_LICENSE.md` zusammen, trennt Hersteller- von Betreiberpflichten und ordnet die KI-Schnittstelle ein. Wie die übrigen Informationsseiten mit Markdown-Zwilling (`/terms.md`), in Sitemap und `llms.txt`.
+
+  Sie ersetzt keine juristische Prüfung und sagt das selbst: verbindlich sind die Lizenztexte, der Hersteller und der Betreiber der jeweiligen Instanz.
+
+- **Nachweis der Domain für eine ChatGPT-App-Einreichung.** Wer diese Instanz bei OpenAI einreicht, muss belegen, dass ihm die Domain gehört. Das Token aus der Einreichungsmaske kommt in `OPENAI_APPS_CHALLENGE` und liegt dann unter `/.well-known/openai-apps-challenge` bereit. Ohne Eintrag existiert der Pfad nicht — kein Platzhalter, keine leere Antwort.
+
+- **Alle MCP-Werkzeuge sagen jetzt, wie sie sich verhalten** (`readOnlyHint`, `destructiveHint`, `openWorldHint`, dazu ein sprechender Titel). Die Zusage, auf die es ankommt: **kein Werkzeug ist als zerstörend markiert**, weil keines etwas löscht. Drei Tests halten das fest — unter anderem, dass `read_only_hint` mit der Positivliste der schreibenden Werkzeuge übereinstimmt, damit ein Umbau die Annotation nicht still falsch stehen lässt.
+
+- **ChatGPT zeigt ConvoyPlan-Daten jetzt als Ansicht statt als Textblock.** Drei Oberflächen kommen mit: die **Konvoi-Liste** (Abmarschzeit, Umfang, Status), die **Konvoi-Übersicht** (Marschbefehl und Fahrzeuge in Marschordnung) und der **Marschstatus** (Zusammenfassung und Status je Fahrzeug, Ausfälle zuerst).
+
+  Der Server funktioniert ohne sie unverändert — ein Programm, das keine Oberflächen kennt, bekommt dieselbe Antwort wie bisher. Die Ansichten laden **nichts** von außen nach: kein Skript, kein Zeichensatz, kein Bild. Das Fenster spannt ChatGPT auf und die Daten darin gehören einer BOS-Organisation; was dort nachgeladen würde, säße als dritte Partei in genau dieser Sichtlinie. Dieselbe Zusage steht als Test.
+
+  Damit die Ansichten überhaupt Daten bekommen, antworten **alle** Werkzeuge jetzt zusätzlich strukturiert (`structuredContent`) statt nur als Text. Davon hat auch jedes andere Programm etwas: die Felder sind benannt, statt aus einem Textblock gefischt zu werden. Der Textteil bleibt daneben bestehen.
+
+- **Der Ausweis per Metadatendokument (CIMD) lässt sich im Portal schalten.** Bisher ging das nur über `MCP_ALLOW_CIMD` in der `.env` und einen Neustart. Der Schalter sitzt jetzt unter **System → KI-Schnittstelle** direkt unter dem Hauptschalter und wirkt sofort; die Umgebungsvariable ist nur noch der Ausgangswert.
+
+  Das ist der Ausweisweg, den **ChatGPT bevorzugt** — ohne ihn fällt es auf die Selbstregistrierung zurück. Standardmäßig bleibt er trotzdem aus: eingeschaltet ruft die Instanz eine Adresse ab, die der Anfragende bestimmt. Zudrehen wirkt sofort und auch gegen einen bereits gefüllten Zwischenspeicher, weil die Prüfung davor steht.
+
+- **Die KI-Schnittstelle lässt sich jetzt auch von ChatGPT sinnvoll benutzen.** Bisher hätte eine Verbindung aus ChatGPT für immer nur lesen können: Die Instanz wies als verfügbare Berechtigung ausschließlich `convoy:read` aus, weil ein Programm Schreibrechte bei Bedarf nachfordern können soll. ChatGPT fragt aber einmalig beim Verbinden und danach nicht mehr — „Füge Fahrzeug XY dem Konvoi hinzu" wäre dort also stets an einem Rechtefehler gescheitert, ohne einen Weg, das zu ändern.
+
+  Der **Zustimmungsbildschirm zeigt die Rechte deshalb jetzt als Ankreuzfelder**: vorausgewählt ist, was das Programm verlangt hat; darunter steht ankreuzbar, was die eigene Rolle darüber hinaus hergibt. Abwählen geht ebenso. Die Rolle bleibt dabei die Obergrenze — ein *beobachter* bekommt Schreibrechte auch durch Ankreuzen nicht.
+
+- **`konvois_auflisten` filtert nach Zeitraum, Status und Name.** „Welche Konvois stehen nächste Woche an?" ist damit eine Abfrage statt eines Komplettabzugs, den ein Modell selbst durchsieht. Ein abgeschnittenes Ergebnis sagt außerdem, dass es abgeschnitten ist.
+
+- **Neues Werkzeug `organisation_details`.** Sagt, für welche Organisation eine Verbindung gilt, welche Rolle der angemeldete Benutzer dort hat und welche Werkzeuge mit den erteilten Rechten tatsächlich durchgehen — bisher war beides nur durch Ausprobieren zu klären.
+
 - **Die Instanz sagt jetzt selbst, was sie ist — für Suchmaschinen und KI-Agenten.** Wer `https://<DOMAIN>/` abrief, bekam bis hierher ein Logo, ein Eingabefeld und einen Knopf: rund 40 Zeichen Text im ausgelieferten HTML. Für einen Menschen reicht das, für ein Sprachmodell ist es eine leere Seite — und genau dort entscheidet sich, ob ConvoyPlan überhaupt als Antwort in Frage kommt, wenn jemand seine KI nach einer Konvoiplanung fragt.
 
   Neu unter der eigenen Domain jeder Instanz: **`/llms.txt`** als Einstieg (samt der Aussage, wann ein Agent ConvoyPlan aufrufen soll **und wann nicht**), **`/agents.md`**, **`/auth.md`** und **`/api.md`** als Anleitung, **`/openapi.json`** als maschinenlesbare Beschreibung der anmeldefreien Endpunkte, eine **Sitemap**, eine **robots.txt** mit ausdrücklicher Erlaubnis für die großen KI-Crawler, die **Well-Known-Dokumente** (A2A Agent Card, Agent Skills, ARD-Katalog, MCP Server Card, API-Katalog nach RFC 9727, Resource-Metadaten nach RFC 9728) und **`/ask`**, das Fragen über ConvoyPlan mit passenden Seiten beantwortet — auf Wunsch als Stream.
