@@ -129,6 +129,8 @@ Auf dem Zustimmungsbildschirm stehen zwei Angaben nebeneinander, und der Untersc
 
 **Zustimmen nur, wenn du dieses Programm gerade selbst verbunden hast und die Zieladresse dazu passt.**
 
+> **ChatGPT** braucht ein paar Schritte mehr — Developer Mode, Einschalten je Unterhaltung, und den Haken bei den Schreibrechten, den es später nicht nachholen kann. Dafür gibt es eine eigene Seite: [ConvoyPlan in ChatGPT verbinden](ChatGPT-verbinden).
+
 ---
 
 ## Berechtigungen
@@ -234,6 +236,8 @@ Manche Programme können zu einer Antwort mehr zeigen als Text. ConvoyPlan liefe
 | **Konvoi-Liste** — Abmarschzeit, Umfang, Status je Konvoi | „Welche Konvois habe ich?" |
 | **Konvoi-Übersicht** — Marschbefehl und Fahrzeuge in Marschordnung | „Zeig mir den Konvoi nach München" |
 | **Marschstatus** — Zusammenfassung und Status je Fahrzeug, Ausfälle zuerst | „Wie ist der Stand?" |
+
+Wie die Verbindung dorthin entsteht: [ConvoyPlan in ChatGPT verbinden](ChatGPT-verbinden).
 
 Drei Dinge, die dazugehören:
 

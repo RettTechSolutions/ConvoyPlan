@@ -159,6 +159,7 @@ Resource-Metadaten zeigt.
 - [Rollen und Berechtigungen](${PRODUCT.wiki}/Rollen)
 - [Installation und Setup](${PRODUCT.wiki}/Installation-und-Setup)
 - [MCP-Server](${PRODUCT.wiki}/MCP-Server)
+- [ConvoyPlan in ChatGPT verbinden](${PRODUCT.wiki}/ChatGPT-verbinden)
 - [Sicherheit und Datenschutz](${PRODUCT.wiki}/Sicherheit-und-Datenschutz)
 `;
 	}
@@ -530,6 +531,7 @@ auf dieser Instanz.
 - [agents.md](${base}/agents.md) — Kurzanleitung für KI-Agenten
 - [MCP-Server](${PRODUCT.wiki}/MCP-Server) — Endpunkt \`${base}/mcp\`
   (${ctx.mcpEnabled ? 'eingeschaltet' : 'abgeschaltet'})
+- [In ChatGPT verbinden](${PRODUCT.wiki}/ChatGPT-verbinden) — Schritt für Schritt
 - [llms.txt](${base}/llms.txt)
 
 Die interaktive Swagger-UI (\`/docs\`) ist in Produktion standardmäßig abgeschaltet und
