@@ -28,7 +28,7 @@
 	// die noch keine haben — Interessenten, Suchmaschinen und KI-Agenten.
 	const PUBLIC_ROUTES = [
 		'/share', '/track', '/setup', '/o/', '/admin', '/status',
-		'/about', '/contact', '/privacy', '/pricing', '/developers', '/docs'
+		'/about', '/contact', '/privacy', '/terms', '/pricing', '/developers', '/docs'
 	];
 	const isPublicPath = (path: string) =>
 		path === '/' || PUBLIC_ROUTES.some((r) => path.startsWith(r));

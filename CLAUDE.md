@@ -60,6 +60,40 @@ entsteht erst durch die Zustimmung eines angemeldeten Benutzers auf `/oauth/cons
 und gilt für genau eine Organisation, gedeckelt durch dessen Rolle. Kein Werkzeug
 löscht Daten. Jeder schreibende Aufruf landet im Audit-Log mit Quelle `mcp`.
 
+Bei den Scopes (`app/mcp/scopes.py`) sind zwei Listen auseinanderzuhalten, die einmal
+eine waren: `SCOPES_SUPPORTED` weist aus, *was es gibt* (Protected Resource Metadata),
+`REQUIRED_SCOPES` ist die Schwelle des Endpunkts. Steht die volle Liste versehentlich
+an der zweiten Stelle, verlangt `RequireAuthMiddleware` von jedem Token sämtliche
+Scopes und weist jede lesende Verbindung ab. Erteilt wird ausgeschrieben
+(`effective()`), weil dieselbe Middleware ohne Hierarchie prüft — ein Token mit nur
+`convoy:write` käme sonst nicht einmal an `/mcp` vorbei.
+
+Welche Rechte eine Verbindung bekommt, entscheidet der Mensch auf dem
+Zustimmungsbildschirm, nicht der Client: er kreuzt an, was seine Rolle hergibt. Das ist
+kein Komfort, sondern Voraussetzung dafür, dass ChatGPT mehr als lesen kann — es fragt
+einmalig beim Verbinden und fordert nie nach. Hintergrund und offene Punkte der
+ChatGPT-Anbindung: `docs/superpowers/plans/2026-09-17-chatgpt-app.md`.
+
+Für Clients mit Oberfläche (ChatGPT Apps SDK) liegen drei Ansichten in
+`app/mcp/widgets.py` samt `widgets/`. Sie sind **Zugabe, nicht Voraussetzung**: kein
+Werkzeug braucht sie, und ihr Inhalt ist eine leere Vorlage — die Daten kommen erst
+aus dem Werkzeugaufruf. Zwei Regeln hält `tests/test_mcp_widgets.py` fest: jeder
+`_meta`-Verweis zeigt auf eine Resource, die es gibt, und **nichts wird von außen
+nachgeladen**. Damit die Ansichten Daten bekommen, geben alle Werkzeuge
+`dict[str, Any]` zurück statt `dict` — nur so leitet das SDK ein Ausgabeschema ab und
+liefert `structuredContent`.
+
+Jedes Werkzeug trägt Verhaltenszusagen (`app/mcp/annotations.py`). Sie sind
+unverbindlich — Rechte entscheiden Scopes und Rolle —, aber sie können still falsch
+werden: Wer ein Werkzeug von lesend auf schreibend umbaut, muss die Annotation
+mitziehen. `tests/test_mcp_widgets.py` hält `read_only_hint` gegen `WRITE_TOOLS` und
+verbietet `destructive_hint` an jedem Werkzeug.
+
+Der CIMD-Schalter sitzt wie der Hauptschalter im Portal (`mcp_config.is_cimd_allowed`,
+Datenbank schlägt Umgebung). Die AS-Metadata wird deshalb je Anfrage fertiggestellt und
+nicht beim Start — stünde die Ankündigung im vorgebauten Dokument, bliebe sie bis zum
+nächsten Neustart falsch.
+
 Code in `backend/app/mcp/` (Werkzeuge, Scopes, Montage), `backend/app/services/
 oauth_provider.py` und `oauth_tokens.py`. Verwaltung im Admin-Portal unter **MCP**.
 Anwenderdoku: `wiki/MCP-Server.md`.
@@ -75,7 +109,11 @@ programmatisch anspricht: `/llms.txt`, `/agents.md`, `/auth.md`, `/api.md`,
 `/openapi.json`, `/sitemap.xml`, `/robots.txt`, die Well-Known-Dokumente
 (`agent-card.json`, `agent-skills/index.json`, `ard.json`, `mcp/server-card.json`,
 `api-catalog`), `/ask` (NLWeb) und die Seiten `/about`, `/pricing`, `/developers`,
-`/docs`, `/contact`, `/privacy`.
+`/docs`, `/contact`, `/privacy`, `/terms`.
+
+Dazu `/.well-known/openai-apps-challenge`, sobald `OPENAI_APPS_CHALLENGE` gesetzt ist —
+der Nachweis der Domain für eine ChatGPT-App-Einreichung. Ohne Eintrag gibt es den Pfad
+nicht; Hintergrund in `docs/superpowers/plans/2026-09-17-chatgpt-app-einreichung.md`.
 
 Alles davon **liegt im Frontend**, nicht im Backend: Caddy reicht nur `/api/*`, `/mcp`,
 `/.well-known/oauth-*` und die OAuth-Endpunkte ans Backend durch, der Rest geht ans

@@ -190,8 +190,13 @@ async def loese_cimd_auf(client_id: str) -> OAuthClientInformationFull | None:
     Aufrufer behandelt das wie einen unbekannten Client. Die Gründe stehen
     im Log, nicht in der Antwort: einem Anfragenden zu erklären, warum genau
     sein Dokument abgelehnt wurde, hilft vor allem beim Sondieren."""
-    if not settings.mcp_allow_cimd:
-        return None
+    # Der *geltende* Zustand, nicht allein die Umgebungsvariable: der
+    # Schalter sitzt im Admin-Portal und soll ohne Neustart wirken. Wird er
+    # zugedreht, während ein Dokument im Zwischenspeicher liegt, ist die
+    # Abfrage hier trotzdem die erste — der Cache wird gar nicht erreicht.
+    async with get_db_session() as db:
+        if not await mcp_config.is_cimd_allowed(db):
+            return None
 
     zwischengespeichert = _cimd_cache.get(client_id)
     if zwischengespeichert is not None and _cimd_cache_gueltig(zwischengespeichert):
@@ -354,7 +359,10 @@ class ConvoyPlanOAuthProvider(
         # Angefragte Scopes gegen den bekannten Vorrat prüfen. Die endgültige
         # Zuteilung macht die Consent-Strecke anhand der Rolle des Benutzers —
         # hier fällt nur auf, wenn jemand etwas Unbekanntes verlangt.
-        requested = params.scopes or list(scope_svc.SCOPES_SUPPORTED)
+        # Ohne Angabe bleibt es beim Minimum. ``SCOPES_SUPPORTED`` wäre hier
+        # falsch: das weist aus, was die Resource versteht, und ein Client,
+        # der nichts verlangt, soll nicht alles bekommen.
+        requested = params.scopes or list(scope_svc.REQUIRED_SCOPES)
         unknown = [s for s in requested if s not in scope_svc.ALL_SCOPES]
         if unknown:
             raise AuthorizeError("invalid_scope", f"Unbekannte Scopes: {', '.join(unknown)}")

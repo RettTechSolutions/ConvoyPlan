@@ -1514,6 +1514,32 @@
             mcpToggleSaving = false;
         }
     }
+    /**
+     * Ausweis per Metadatendokument (CIMD) erlauben oder verbieten.
+     *
+     * Eigener Schalter und nicht Teil von `toggleMcp`, weil es eine andere
+     * Frage ist: nicht ob es die Schnittstelle gibt, sondern ob diese Instanz
+     * beim Verbinden eine fremde Adresse abruft. Wer das nicht will, kann
+     * die Schnittstelle trotzdem betreiben — dann eben mit DCR.
+     */
+    async function toggleMcpCimd() {
+        if (!mcpStatus) return;
+        mcpCimdSaving = true;
+        mcpToggleError = '';
+        mcpToggleSuccess = '';
+        try {
+            mcpStatus = await mcpAdminApi.setAllowCimd(!mcpStatus.allow_cimd);
+            mcpToggleSuccess = mcpStatus.allow_cimd
+                ? 'Ausweis per Metadatendokument erlaubt — ChatGPT bevorzugt diesen Weg.'
+                : 'Ausweis per Metadatendokument abgeschaltet — es bleibt bei der Selbstregistrierung.';
+            setTimeout(() => { mcpToggleSuccess = ''; }, 5000);
+        } catch (e) {
+            mcpToggleError = e instanceof Error ? e.message : 'Fehler beim Speichern';
+        } finally {
+            mcpCimdSaving = false;
+        }
+    }
+    let mcpCimdSaving = $state(false);
     let mcpClients = $state<McpClient[]>([]);
     let mcpConnections = $state<McpConnection[]>([]);
     let mcpError = $state('');
@@ -2870,6 +2896,54 @@
                     <p class="hint">
                         Diese Einstellung stammt aus dem Portal und überschreibt
                         <code>MCP_ENABLED={mcpStatus.env_enabled}</code> aus der <code>.env</code>.
+                    </p>
+                {/if}
+
+                {#if mcpStatus.enabled}
+                    <div class="section-header" style="margin-top:1.25rem">
+                        <strong>Ausweis per Metadatendokument (CIMD)</strong>
+                    </div>
+                    <p class="hint">
+                        Normalerweise <em>registriert</em> sich ein KI-Programm vorher bei dieser
+                        Instanz. Mit CIMD weist es sich stattdessen mit einer HTTPS-Adresse aus,
+                        unter der sein Metadatendokument liegt. <strong>ChatGPT bevorzugt diesen
+                        Weg</strong>; ohne ihn bleibt es bei der Selbstregistrierung, die
+                        weiterhin funktioniert.
+                    </p>
+                    <p class="hint">
+                        <strong>Der Preis:</strong> diese Instanz ruft beim Verbinden eine Adresse
+                        ab, die der Anfragende bestimmt. Erlaubt sind nur HTTPS-Adressen, keine
+                        privaten oder Link-Local-Ziele, keine Weiterleitungen, mit harten
+                        Zeit- und Größengrenzen. Wer auch das nicht möchte, lässt den Schalter aus.
+                    </p>
+
+                    <div style="display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; margin:.75rem 0">
+                        <button
+                            class={mcpStatus.allow_cimd ? 'btn-small danger' : 'btn-small'}
+                            onclick={toggleMcpCimd}
+                            disabled={mcpCimdSaving}
+                        >
+                            {mcpCimdSaving
+                                ? '…'
+                                : mcpStatus.allow_cimd
+                                    ? 'Metadatendokumente nicht mehr annehmen'
+                                    : 'Metadatendokumente annehmen'}
+                        </button>
+                        <span class="hint">
+                            derzeit {mcpStatus.allow_cimd ? 'erlaubt' : 'aus'}
+                        </span>
+                    </div>
+
+                    {#if mcpStatus.cimd_source === 'db' && mcpStatus.env_allow_cimd !== mcpStatus.allow_cimd}
+                        <p class="hint">
+                            Diese Einstellung stammt aus dem Portal und überschreibt
+                            <code>MCP_ALLOW_CIMD={mcpStatus.env_allow_cimd}</code> aus der
+                            <code>.env</code>.
+                        </p>
+                    {/if}
+                    <p class="hint">
+                        Eine Änderung wirkt sofort. Programme, die das Discovery-Dokument
+                        zwischenspeichern, sehen sie allerdings erst nach bis zu einer Stunde.
                     </p>
                 {/if}
             {:else}

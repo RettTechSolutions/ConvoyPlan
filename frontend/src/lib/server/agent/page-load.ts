@@ -14,12 +14,13 @@ import { renderMarkdown } from './render';
 import { pageFor } from '$lib/agent/pages';
 import type { InfoPageData } from '$lib/agent/info';
 
-type DocName = 'about' | 'contact' | 'privacy' | 'pricing' | 'developers' | 'docs';
+type DocName = 'about' | 'contact' | 'privacy' | 'terms' | 'pricing' | 'developers' | 'docs';
 
 const BUILDERS: Record<DocName, (ctx: AgentContext) => string> = {
 	about: docs.aboutMd,
 	contact: docs.contactMd,
 	privacy: docs.privacyMd,
+	terms: docs.termsMd,
 	pricing: docs.pricingMd,
 	developers: docs.developersMd,
 	docs: docs.docsMd

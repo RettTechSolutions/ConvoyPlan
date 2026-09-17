@@ -271,6 +271,7 @@ zusätzlich eine kommerzielle Lizenz.
 - [Entwickler und Agenten](${base}/developers)
 - [Kontakt](${base}/contact)
 - [Datenschutz](${base}/privacy)
+- [Nutzungsbedingungen](${base}/terms)
 `;
 }
 
@@ -353,6 +354,93 @@ für seine Produktseite liegt unter ${PRODUCT.website}/datenschutz.
 
 - [Über ConvoyPlan](${base}/about) · [Kontakt](${base}/contact)
 - Sicherheitsrichtlinie: ${PRODUCT.repository}/blob/main/SECURITY.md
+`;
+}
+
+export function termsMd(ctx: AgentContext): string {
+	const { base } = ctx;
+	return `# Nutzungsbedingungen
+
+Diese Seite fasst zusammen, unter welchen Bedingungen ConvoyPlan genutzt werden darf.
+**Verbindlich sind die Lizenztexte im Quelltext**, nicht diese Zusammenfassung: die
+[AGPL-3.0](${PRODUCT.licenseUrl}) und, wo sie nicht ausreicht, die
+[kommerzielle Lizenz](${PRODUCT.repository}/blob/main/COMMERCIAL_LICENSE.md).
+
+## Zwei Parteien, zwei Verantwortungen
+
+ConvoyPlan ist self-hosted, und daraus folgt die wichtigste Unterscheidung dieser Seite:
+
+- **${PRODUCT.legalName}** stellt die Software her und lizenziert sie. Auf die Daten
+  dieser Instanz hat der Hersteller keinen Zugriff.
+- **Der Betreiber dieser Instanz** verantwortet ihren Betrieb — Verfügbarkeit, Zugänge,
+  Sicherung und den Umgang mit den Daten darin. Wer ${base} nutzt, tut das nach dessen
+  Regeln.
+
+Diese Seite betrifft die **Software**. Ein Dienstleistungsvertrag zwischen Betreiber und
+seinen Nutzern ist etwas anderes und steht hier nicht.
+
+## Wann die AGPL genügt
+
+Ohne weitere Vereinbarung gilt die AGPL-3.0. Sie deckt insbesondere ab:
+
+- **Self-Hosting für den eigenen Bedarf** — eine Organisation betreibt ConvoyPlan
+  intern und veröffentlicht keine veränderte Fassung.
+- **Entwicklung und Erprobung** — lokale Instanzen ohne Produktionsbetrieb.
+- **Freie Projekte**, die vollständig unter einer AGPL-verträglichen Lizenz stehen.
+
+Die AGPL verlangt im Gegenzug, eigene Änderungen unter derselben Lizenz zugänglich zu
+machen — auch dann, wenn die geänderte Fassung nur als Dienst über das Netz angeboten
+wird. Das ist der Unterschied zur GPL und der Grund, warum sie hier steht.
+
+## Wann eine kommerzielle Lizenz nötig ist
+
+- ConvoyPlan wird in ein **proprietäres Produkt** eingebettet.
+- ConvoyPlan wird **als Dienst für Dritte** betrieben, ohne die Quelltextpflicht zu
+  erfüllen.
+- Änderungen sollen **nicht veröffentlicht** werden.
+- Die AGPL ist aus internen oder rechtlichen Gründen nicht erfüllbar.
+
+Eine kommerzielle Lizenz wird je juristischer Person vereinbart, nicht je Benutzer. Sie
+erlaubt **nicht**, ConvoyPlan weiterzulizenzieren oder weiterzuverkaufen, und sie schließt
+keine Nutzung des Namens „${PRODUCT.name}" oder der Logos für eigene Produkte ein.
+Anfragen: ${PRODUCT.email}
+
+## Gewährleistung
+
+Die Software wird bereitgestellt **wie besehen, ohne Gewähr** — so steht es in der AGPL,
+und so gilt es. Insbesondere gibt es ohne eine ausdrückliche, schriftliche Vereinbarung
+keinen Anspruch auf Verfügbarkeit, Reaktionszeiten oder Fehlerbehebung.
+
+Das ist bei einem Werkzeug für Einsatzorganisationen ausdrücklich zu lesen: **ConvoyPlan
+plant Märsche, es führt sie nicht.** Die Verantwortung für eine Fahrt, für die Einhaltung
+der Straßenverkehrsordnung und für jede Entscheidung unterwegs liegt bei den
+Einsatzkräften und ihrer Führung — nicht bei einer Software und nicht bei einem
+Sprachmodell, das sie über die Schnittstelle bedient.
+
+## KI-Schnittstelle
+
+Ist der MCP-Server dieser Instanz eingeschaltet, kann ein KI-Programm nach ausdrücklicher
+Zustimmung eines angemeldeten Benutzers auf die Fachdaten **einer** Organisation
+zugreifen. Dabei gilt:
+
+- Der Zugriff ist durch die Rolle des zustimmenden Benutzers gedeckelt.
+- **Was ein Modell liest, verlässt diese Instanz** und geht an den Anbieter des
+  KI-Programms. Wer das nicht will, erteilt keine Zustimmung — oder der Betreiber
+  schaltet die Schnittstelle ab.
+- Kein Werkzeug der Schnittstelle löscht Daten.
+
+Einzelheiten: [Agenten und Entwickler](${base}/developers) · [Datenschutz](${base}/privacy)
+
+## Diese Seite
+
+Sie beschreibt die Lizenzlage der Software. Rechtlich verbindliche Geschäftsbedingungen
+für ein konkretes Vertragsverhältnis stellt ${PRODUCT.legalName} unter
+${PRODUCT.website} bereit; für den Betrieb dieser Instanz ihr Betreiber.
+
+## Weiter
+
+- [Preise und Lizenzen](${base}/pricing) · [Datenschutz](${base}/privacy) · [Kontakt](${base}/contact)
+- Lizenztexte: ${PRODUCT.repository}/blob/main/LICENSE · ${PRODUCT.repository}/blob/main/COMMERCIAL_LICENSE.md
 `;
 }
 

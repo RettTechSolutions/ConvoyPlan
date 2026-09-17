@@ -61,9 +61,9 @@ from app.mcp import WRITE_TOOLS
 from app.mcp import scopes as scope_svc
 from app.mcp import resources as mcp_resources
 from app.mcp import subscriptions as mcp_subs
-from app.mcp import tools_read, tools_write
+from app.mcp import tools_read, tools_write, widgets as mcp_widgets
 from app.middleware.license_guard import is_licensed
-from app.services import oauth_tokens
+from app.services import mcp_config, oauth_tokens
 from app.services.oauth_provider import ConvoyPlanOAuthProvider
 
 logger = logging.getLogger(__name__)
@@ -324,10 +324,12 @@ def build_server() -> MCPServer:
     auth_settings = AuthSettings(
         issuer_url=AnyHttpUrl(oauth_tokens.issuer_url()),
         resource_server_url=resource_url,
-        # Der minimale Satz für die Grundfunktion. Breitere Scopes fordert
-        # der Client per Step-up nach — so will es die Scope-Minimierung
-        # der Spec.
-        required_scopes=list(scope_svc.SCOPES_SUPPORTED),
+        # Die Schwelle des Endpunkts, nicht die eines Werkzeugs: ohne
+        # ``convoy:read`` kommt ein Token gar nicht erst durch. Ausdrücklich
+        # **nicht** ``SCOPES_SUPPORTED`` — das weist aus, was diese Resource
+        # versteht, und stünde es hier, verlangte jeder einzelne Aufruf
+        # sämtliche Scopes und ein lesendes Token käme nirgends mehr an.
+        required_scopes=list(scope_svc.REQUIRED_SCOPES),
         # RFC 8707: ein Token, das für eine andere Instanz ausgestellt wurde,
         # wird hier abgelehnt.
         validate_token_resource=True,
@@ -370,6 +372,7 @@ def build_server() -> MCPServer:
     tools_read.register(mcp)
     tools_write.register(mcp)
     mcp_resources.register(mcp)
+    mcp_widgets.register(mcp)
     mcp_subs.register(mcp)
     return mcp
 
@@ -393,13 +396,32 @@ def _authorization_server_metadata_route(auth_settings: AuthSettings) -> Route:
         auth_settings.revocation_options or RevocationOptions(),
     )
     metadata.authorization_response_iss_parameter_supported = True
-    # Client ID Metadata Documents ankündigen, sobald sie eingeschaltet sind.
-    # Ohne die Angabe versucht es kein Client, und die Funktion läge brach.
-    if settings.mcp_allow_cimd:
-        metadata.client_id_metadata_document_supported = True
+
+    async def _handle(request):
+        """Das Dokument je Anfrage fertigstellen.
+
+        Client ID Metadata Documents werden angekündigt, sobald sie
+        eingeschaltet sind — ohne die Angabe versucht es kein Client, und die
+        Funktion läge brach. Der Schalter dafür sitzt im Admin-Portal und
+        wirkt ohne Neustart (``app/services/mcp_config.py``); stünde die
+        Angabe wie zuvor im beim Start gebauten Dokument, bliebe sie bis zum
+        nächsten Neustart falsch.
+
+        Bleibt eine Einschränkung, die kein Server auflösen kann: der Handler
+        setzt ``Cache-Control: max-age=3600``. Ein Client, der das Dokument
+        vorhält, sieht eine Änderung erst danach."""
+        async with get_db_session() as db:
+            cimd = await mcp_config.is_cimd_allowed(db)
+        dokument = (
+            metadata.model_copy(update={"client_id_metadata_document_supported": True})
+            if cimd
+            else metadata
+        )
+        return await MetadataHandler(dokument).handle(request)
+
     return Route(
         "/.well-known/oauth-authorization-server",
-        endpoint=cors_middleware(MetadataHandler(metadata).handle, ["GET", "OPTIONS"]),
+        endpoint=cors_middleware(_handle, ["GET", "OPTIONS"]),
         methods=["GET", "OPTIONS"],
     )
 

@@ -115,7 +115,10 @@ Der Reverse Proxy braucht Routen für `/mcp` und die OAuth-Pfade an der Wurzel d
 3. Das Programm öffnet den Browser auf der ConvoyPlan-Anmeldung.
 4. **Anmelden** — mit dem eigenen Konto, inklusive MFA, falls eingerichtet.
 5. **Organisation wählen.** Der Zugang gilt nur für diese.
-6. **Zustimmen.** Erst damit entsteht ein Zugang.
+6. **Rechte ankreuzen.** Vorausgewählt ist, was das Programm verlangt hat. Was
+   die eigene Rolle darüber hinaus hergibt, steht darunter zum Ankreuzen —
+   und was sie nicht hergibt, ist durchgestrichen und wird nicht erteilt.
+7. **Zustimmen.** Erst damit entsteht ein Zugang.
 
 Auf dem Zustimmungsbildschirm stehen zwei Angaben nebeneinander, und der Unterschied ist wichtig:
 
@@ -207,19 +210,46 @@ Die Selbstregistrierung (`MCP_ALLOW_DCR`) hat einen bekannten Haken: **jedes** P
 
 Der Nachfolger heißt **Client ID Metadata Documents**. Statt sich einzutragen, nennt ein Programm als Kennung eine HTTPS-Adresse, unter der sein Steckbrief liegt — der Server holt ihn dort ab. Die Kennung ist damit selbst überprüfbar: sie sagt, wem das Programm gehört.
 
-Das ist standardmäßig **aus**, und zwar bewusst. Eingeschaltet ruft der Server eine Adresse ab, **die der Client bestimmt** — die klassische Zutat für einen Angriff auf das interne Netz. Abgesichert ist das: nur HTTPS, keine internen, privaten oder Link-Local-Adressen (jede aufgelöste, nicht nur die erste), keine Weiterleitungen, harte Zeit- und Größengrenzen. Trotzdem bleibt es eine Entscheidung des Betreibers:
+**ChatGPT bevorzugt diesen Weg.** Ohne ihn fällt es auf die Selbstregistrierung zurück, die weiterhin funktioniert — die Anbindung scheitert daran also nicht, sie läuft nur über die schwächere Kennung.
 
-```
-MCP_ALLOW_CIMD=true
-```
+Das ist standardmäßig **aus**, und zwar bewusst. Eingeschaltet ruft der Server eine Adresse ab, **die der Client bestimmt** — die klassische Zutat für einen Angriff auf das interne Netz. Abgesichert ist das: nur HTTPS, keine internen, privaten oder Link-Local-Adressen (jede aufgelöste, nicht nur die erste), keine Weiterleitungen, harte Zeit- und Größengrenzen. Trotzdem bleibt es eine Entscheidung des Betreibers.
+
+Der Schalter sitzt im Admin-Portal unter **System → KI-Schnittstelle**, direkt unter dem Hauptschalter, und wirkt ohne Neustart. `MCP_ALLOW_CIMD` in der `.env` ist nur noch der Ausgangswert — was im Portal eingestellt ist, schlägt ihn.
+
+Zwei Dinge dazu:
+
+- **Zudrehen wirkt sofort.** Die Prüfung steht vor dem Zwischenspeicher; ein bereits abgeholter Steckbrief hilft danach niemandem mehr.
+- **Aufdrehen sieht ein Client unter Umständen verzögert.** Das Discovery-Dokument, in dem die Instanz CIMD ankündigt, darf eine Stunde zwischengespeichert werden. Wer gerade verbindet und nichts davon merkt, versucht es nach einer Stunde erneut.
+
+Bestehende Verbindungen sind von beidem nicht betroffen — sie hängen an ihren Tokens, nicht am Ausweisweg.
+
+---
+
+## Oberflächen in ChatGPT
+
+Manche Programme können zu einer Antwort mehr zeigen als Text. ConvoyPlan liefert dafür drei Ansichten mit, die ChatGPT im Gespräch einblendet:
+
+| Ansicht | erscheint bei |
+|---|---|
+| **Konvoi-Liste** — Abmarschzeit, Umfang, Status je Konvoi | „Welche Konvois habe ich?" |
+| **Konvoi-Übersicht** — Marschbefehl und Fahrzeuge in Marschordnung | „Zeig mir den Konvoi nach München" |
+| **Marschstatus** — Zusammenfassung und Status je Fahrzeug, Ausfälle zuerst | „Wie ist der Stand?" |
+
+Drei Dinge, die dazugehören:
+
+- **Der Server funktioniert ohne sie vollständig.** Ein Programm, das keine Oberflächen kennt — Claude Desktop etwa —, bekommt unverändert dieselbe Antwort wie bisher. Es gibt nichts, was nur in einer Ansicht steht.
+- **Die Ansichten laden nichts nach.** Kein Skript, kein Zeichensatz, kein Bild von einer fremden Adresse. Das Fenster spannt ChatGPT auf, die Daten darin gehören der Organisation; was dort nachgeladen würde, säße als dritte Partei in genau dieser Sichtlinie.
+- **Sie tragen keine eigenen Rechte.** Eine Ansicht ist eine leere Vorlage; die Daten kommen aus dem Werkzeugaufruf, und der geht durch dieselbe Prüfung wie jeder andere.
 
 ---
 
 ## Wenn die Rechte nicht reichen
 
-Ein Zugang beginnt mit dem schmalsten Recht (`convoy:read`). Versucht ein Programm etwas, wofür das nicht genügt, bekommt es keine nichtssagende Fehlermeldung, sondern die Auskunft, **welches** Recht fehlt — und fordert es von sich aus nach. Für den Benutzer heißt das: eine Nachfrage im Browser, kein Neu-Einrichten der Verbindung.
+Versucht ein Programm etwas, wofür sein Zugang nicht genügt, bekommt es keine nichtssagende Fehlermeldung, sondern die Auskunft, **welches** Recht fehlt. Programme, die das beherrschen, fordern es daraufhin von sich aus nach — für den Benutzer heißt das: eine Nachfrage im Browser, kein Neu-Einrichten der Verbindung.
 
-Was dabei erteilt werden kann, deckelt weiterhin die Rolle. Ein *beobachter* kann `convoy:write` auch dann nicht nachfordern, wenn das Programm danach fragt.
+Nicht jedes Programm kann das. **ChatGPT etwa fragt einmalig beim Verbinden** und später nicht mehr. Deshalb lassen sich die Rechte schon auf dem Zustimmungsbildschirm ankreuzen: Wer weiß, dass er im Chat auch etwas anlegen oder ändern will, setzt dort gleich den Haken bei *Konvois und Fahrzeuge anlegen und ändern*. Ohne diesen Haken bleibt die Verbindung lesend, und der Versuch endet mit dem Hinweis, dass sie neu erteilt werden muss.
+
+Was erteilt werden kann, deckelt in jedem Fall die Rolle. Ein *beobachter* bekommt `convoy:write` nicht — weder durch Ankreuzen noch durch Nachfordern, und auch dann nicht, wenn das Programm ausdrücklich danach fragt.
 
 ---
 
