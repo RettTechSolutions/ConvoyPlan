@@ -23,6 +23,12 @@ ursprünglichen SemVer-Nummern.
 
 ### Fixed
 
+- **Zwei der drei Ansichten in ChatGPT blieben leer.** Der Rahmen zeichnet, sobald die Werkzeugantwort da ist — und ChatGPT setzt sie, bevor das Dokument läuft. Das Widget stand im HTML aber **hinter** dem Rahmen und war zu diesem Zeitpunkt noch nicht geladen; der erste Zeichenversuch lief deshalb ins Leere. Dass überhaupt etwas zu sehen war, lag daran, dass ChatGPT die Globals manchmal noch einmal nachmeldet. Das Widget steht jetzt vorne.
+
+  Unabhängig davon rief die Statusansicht eine Hilfsfunktion auf, die nur in der Konvoi-Übersicht stand — in ihrer eigenen Datei gab es sie nicht, und sie scheiterte damit bei **jedem** Aufruf. Beide Ansichten benutzen jetzt dieselbe Abbildung aus `rahmen.html`.
+
+  Beides blieb unbemerkt, weil der Rahmen die Ausnahme abfängt und eine ruhige Fläche hinterlässt statt einer Fehlermeldung — und weil die Tests bis jetzt nur geprüft haben, ob eine Zeichenfunktion *vorhanden* ist, nicht ob sie *durchläuft*. Zwei Tests halten jetzt beides fest.
+
 - **ChatGPT brach die Verbindung nach dem Zustimmen ab.** Die Instanz wies sich im Metadatendokument als `https://<domain>/` aus, hängte an die Weiterleitung nach der Zustimmung aber `iss=https://<domain>` — ohne Schrägstrich. RFC 9207 verlangt vom Programm, diesen Wert **zeichengenau** gegen den Aussteller aus der Metadata zu halten und sonst abzubrechen; ConvoyPlan kündigt ausdrücklich an, dass man sich darauf verlassen kann.
 
   Nachsichtige Programme wie Claude Desktop haben die Abweichung übersehen, ChatGPT nicht — und von außen sah beides gleich aus: eine Verbindung, die mit „Es ist ein Problem aufgetreten" endet. Der Aussteller entsteht jetzt an einer Stelle und in einer Schreibweise.
@@ -174,6 +180,8 @@ ursprünglichen SemVer-Nummern.
 ### Changed
 
 - **Rolle und Organisation kommen jetzt vom Server statt aus dem Token.** Die Oberfläche hat diese Angaben bisher selbst aus dem JWT gelesen. Da sie im Cookie nicht mehr lesbar sind, fragt sie den Server (neu: `GET /api/auth/me`) — und bekommt damit den Stand von eben statt den vom Anmeldezeitpunkt. Wem die Rolle heruntergestuft oder die Mitgliedschaft entzogen wurde, merkt das jetzt beim nächsten Laden statt in bis zu sieben Tagen. Neu ist außerdem `POST /api/auth/logout`: ein HttpOnly-Cookie kann sich die Oberfläche nicht selbst wegnehmen, das muss der Server tun.
+
+- **Anleitung: was passiert, wenn eine ChatGPT-Registrierung wegfällt.** Wird die Registrierung im Portal gesperrt oder als verwaist entfernt, meldet die Anmeldung `Client ID … not found`. Andere Programme registrieren sich an dieser Stelle neu; ChatGPT nicht — es bleibt bei seiner gespeicherten Kennung, und auch das Bearbeiten der Verbindung ändert daran nichts. Die Fehlertabelle in `wiki/ChatGPT-verbinden.md` nennt beides samt Abhilfe (Verbindung löschen und neu anlegen), `wiki/MCP-Server.md` verweist von der Aufräumfunktion dorthin.
 
 
 ## [2026.6.0] – 2026-09-16

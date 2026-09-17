@@ -12,7 +12,8 @@ window.CONVOYPLAN_ZEICHNEN = function (d, w) {
   var kopf =
     '<div class="cp-kopf">' +
     '<span class="cp-titel">' + w.esc(d.name) + '</span>' +
-    '<span class="cp-marke ' + klasseFuer(d.status) + '">' + w.esc(status(d.status)) + '</span>' +
+    '<span class="cp-marke ' + w.konvoiKlasse(d.status) + '">' +
+    w.esc(w.konvoiStatus(d.status)) + '</span>' +
     '</div>';
 
   var kennzahlen =
@@ -57,14 +58,6 @@ window.CONVOYPLAN_ZEICHNEN = function (d, w) {
 function kennzahl(wert, beschriftung) {
   return '<div class="cp-kennzahl"><b>' + wert + '</b><span class="cp-klein cp-schwach">' +
     beschriftung + '</span></div>';
-}
-
-function status(wert) {
-  return { planning: 'In Planung', active: 'Läuft', completed: 'Abgeschlossen' }[wert] || wert || '—';
-}
-
-function klasseFuer(wert) {
-  return { active: 'gut', completed: '' }[wert] || 'warn';
 }
 
 function marschform(wert) {

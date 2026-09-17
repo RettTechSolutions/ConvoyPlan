@@ -224,7 +224,7 @@ Zwei Punkte dazu:
 - **Das ist kein Zugangsentzug.** Eine Registrierung *ist* kein Zugang — der entsteht erst durch die Zustimmung eines Benutzers. Was eine Verbindung trägt, bleibt deshalb stehen, auch wenn es alt ist und auch wenn es gesperrt ist.
 - **Es passiert ohnehin von selbst.** Der nächtliche Aufräumdurchgang macht dasselbe, nur mit größerer Frist (`RETENTION_OAUTH_CLIENTS_DAYS`, Standard 7 Tage). Der Knopf nimmt das vorweg, wenn man die Liste jetzt lesbar haben will.
 
-Eine gelöschte Registrierung hält niemanden fern: das Programm registriert sich beim nächsten Versuch neu und bekommt eine neue Kennung. Wer ein Programm *fernhalten* will, sperrt es — oder schaltet die Selbstregistrierung ab (`MCP_ALLOW_DCR=false`).
+Eine gelöschte Registrierung hält niemanden fern: das Programm registriert sich beim nächsten Versuch neu und bekommt eine neue Kennung. Mit einer Ausnahme, die man kennen sollte: **ChatGPT** registriert sich nicht von selbst neu, sondern bleibt bei seiner gespeicherten Kennung und meldet einen Fehler — dort muss die Verbindung neu angelegt werden (siehe [ChatGPT verbinden](ChatGPT-verbinden#wenn-es-nicht-funktioniert)). Wer ein Programm *fernhalten* will, sperrt es — oder schaltet die Selbstregistrierung ab (`MCP_ALLOW_DCR=false`).
 
 > ### Das Zeitfenster beim Widerruf
 >
