@@ -4,7 +4,14 @@ Der überwiegende Teil dieser Datei prüft Ablehnungen. Das ist Absicht: bei
 CIMD ruft der Server eine Adresse ab, die der Anfragende bestimmt — die
 interessante Frage ist nicht, ob ein gültiges Dokument durchgeht, sondern ob
 alles andere hängenbleibt.
-"""
+
+Die Datei kam lange ohne Datenbank aus — bis der Schalter aus der Umgebung
+ins Portal gewandert ist. Seither liest ``loese_cimd_auf()`` den geltenden
+Zustand aus ``system_settings``, und damit braucht **jeder** Test hier eine
+Datenbank, auch die reinen Ablehnungsfälle: die Prüfung steht ganz vorn und
+läuft vor allem anderen. Dazu gehört ``reset_db_engine`` — ohne die Fixture
+behält der Verbindungspool die Event-Loop des ersten Tests und der zweite
+scheitert mit „attached to a different loop"."""
 import ipaddress
 from unittest.mock import AsyncMock, patch
 
@@ -13,6 +20,9 @@ import pytest
 from app.config import settings
 from app.services import oauth_provider, safe_fetch
 from app.services.safe_fetch import UnsafeUrlError
+from tests.mcp_fixtures import (
+    reset_db_engine,  # noqa: F401 — autouse-Fixture, per Import aktiviert
+)
 
 GUELTIG = "https://client.invalid/mcp-client.json"
 
