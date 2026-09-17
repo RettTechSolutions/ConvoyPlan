@@ -18,9 +18,11 @@
     // Seitenkatalog, aus dem auch Sitemap und `/index.md` ihren Titel ziehen.
     const pageTitle = pageFor('/')?.title ?? PRODUCT.name;
 
-    // Der Status-Link steht schon im LegalFooter unter der Anmeldekarte; er
-    // würde hier ein zweites Mal auftauchen.
-    const navPages = PAGES.filter((p) => p.path !== '/' && p.path !== '/status');
+    // Datenschutz und Systemstatus stehen schon im LegalFooter unter der
+    // Anmeldekarte und würden hier ein zweites Mal auftauchen — seit #492
+    // sogar mit demselben Ziel.
+    const IM_LEGALFOOTER = ['/privacy', '/status'];
+    const navPages = PAGES.filter((p) => p.path !== '/' && !IM_LEGALFOOTER.includes(p.path));
 
     // $derived, nicht const: `data` ist reaktiv, und eine Navigation auf
     // dieselbe Route soll Canonical und JSON-LD mitziehen.
