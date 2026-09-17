@@ -26,6 +26,7 @@ from app.api.routes import mcp_consent as mcp_consent_router
 from app.config import settings
 from app.database import AsyncSessionLocal, engine
 from app.mcp import mount as mcp_mount
+from app.services import oauth_tokens
 from app.models.convoy import Convoy, ConvoyVehicle
 from app.models.oauth_client import OAuthClient
 from app.models.oauth_code import OAuthCode
@@ -320,7 +321,10 @@ async def consent(
     redirect_url = resp.json()["redirect_url"]
     params = parse_qs(urlparse(redirect_url).query)
     # RFC 9207: der Absender gehört in jede Antwort, auch in die Absage.
-    assert params["iss"] == [BASE_URL], params
+    # Zeichengenau gegen den Aussteller, nicht gegen BASE_URL: RFC 9207 lässt
+    # dem Client keinen Spielraum, und genau diese Nachlässigkeit hat die
+    # Abweichung zwischen Metadata und iss-Parameter lange verdeckt.
+    assert params["iss"] == [oauth_tokens.issuer_url()], params
     if not approve:
         assert params["error"] == ["access_denied"]
         return ""

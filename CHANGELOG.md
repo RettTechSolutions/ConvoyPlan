@@ -21,6 +21,16 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Fixed
+
+- **ChatGPT brach die Verbindung nach dem Zustimmen ab.** Die Instanz wies sich im Metadatendokument als `https://<domain>/` aus, hängte an die Weiterleitung nach der Zustimmung aber `iss=https://<domain>` — ohne Schrägstrich. RFC 9207 verlangt vom Programm, diesen Wert **zeichengenau** gegen den Aussteller aus der Metadata zu halten und sonst abzubrechen; ConvoyPlan kündigt ausdrücklich an, dass man sich darauf verlassen kann.
+
+  Nachsichtige Programme wie Claude Desktop haben die Abweichung übersehen, ChatGPT nicht — und von außen sah beides gleich aus: eine Verbindung, die mit „Es ist ein Problem aufgetreten" endet. Der Aussteller entsteht jetzt an einer Stelle und in einer Schreibweise.
+
+  Der bisherige Test hat die Abweichung mit einem `rstrip("/")` weggeschnitten und damit genau das verdeckt, worauf es ankommt. Zwei Tests halten jetzt fest, dass Metadata und `iss`-Parameter identisch sind — nicht gleichbedeutend.
+
+  **Bestehende Zugriffstokens werden dadurch ungültig** (sie tragen den alten Aussteller). Verbundene Programme holen sich binnen 15 Minuten selbständig ein neues; niemand muss etwas neu erteilen.
+
 ### Added
 
 - **Anleitung: ConvoyPlan in ChatGPT verbinden** (`wiki/ChatGPT-verbinden.md`, im Wiki verlinkt). Der Weg dorthin heißt Developer Mode und nicht App-Verzeichnis — ein Verzeichniseintrag könnte immer nur auf *eine* Adresse zeigen und wäre für jede andere Instanz wertlos.

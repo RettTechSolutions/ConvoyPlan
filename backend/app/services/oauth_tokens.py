@@ -24,6 +24,7 @@ from datetime import datetime, timedelta, timezone
 
 import jwt as _jwt
 from jwt.exceptions import InvalidTokenError
+from pydantic import AnyHttpUrl
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -63,8 +64,25 @@ def public_resource_url() -> str:
 
 
 def issuer_url() -> str:
-    """Der Issuer des Authorization Servers — die Instanz selbst."""
-    return settings.app_base_url.rstrip("/")
+    """Der Issuer des Authorization Servers — die Instanz selbst.
+
+    In genau der Schreibweise, die auch im Metadatendokument steht, und
+    deshalb über ``AnyHttpUrl`` normalisiert: Das Dokument entsteht aus
+    ``AuthSettings.issuer_url`` (siehe ``app/mcp/mount.py``), und Pydantic
+    hängt einer nackten Domain dort einen Schrägstrich an. Ohne diese Zeile
+    weist die Instanz ``https://host/`` aus und schickt im
+    ``iss``-Parameter ``https://host`` — zwei verschiedene Zeichenketten für
+    denselben Aussteller.
+
+    Das ist kein Schönheitsfehler. RFC 9207 verlangt vom Client, ``iss``
+    **zeichengenau** gegen den Aussteller aus der Metadata zu halten und die
+    Anmeldung sonst abzubrechen; wir kündigen mit
+    ``authorization_response_iss_parameter_supported`` ausdrücklich an, dass
+    er sich darauf verlassen kann. Ein nachsichtiger Client übersieht die
+    Abweichung, ein strenger bricht ab — und beides sieht von außen gleich
+    aus, bis jemand einen strengen benutzt.
+    """
+    return str(AnyHttpUrl(settings.app_base_url.rstrip("/")))
 
 
 # ── Access-Tokens ────────────────────────────────────────────────────────
