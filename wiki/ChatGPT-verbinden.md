@@ -193,6 +193,8 @@ Einzelheiten unter [Sicherheit und Datenschutz](Sicherheit-und-Datenschutz) und
 | Kein Schreibrecht zum Ankreuzen | Rolle gibt es nicht her | Rolle in der Organisation prüfen ([Rollen](Rollen)) |
 | Schreibende Werkzeuge fehlen ganz | Instanz ohne gültige Lizenz | [Lizenz und Demo-Modus](Lizenz-und-Demo-Modus) |
 | „Zu viele Werkzeugaufrufe" | Modell in einer Schleife | kurz warten; die Grenze steht im Adminportal |
+| „Client ID … not found" nach der Weiterleitung | Die Registrierung ist im Adminportal gesperrt oder als verwaist entfernt worden | Verbindung in ChatGPT **löschen und neu anlegen** |
+| Fehler bleibt, obwohl die Verbindung bearbeitet wurde | ChatGPT behält beim Bearbeiten seine gespeicherte Kennung | Löschen und neu anlegen — nur dabei registriert es sich neu |
 
 Hilft nichts davon, sagt die Instanz selbst, was sie kann: frag im Gespräch
 „Mit welcher Organisation bist du verbunden und was darfst du?" — die Antwort
@@ -208,6 +210,13 @@ nennt Organisation, Rolle, erteilte Rechte und die verfügbaren Werkzeuge.
   etwas eingetragen ist.
 
 Der zweite Weg ist der verlässliche: Er liegt in der Hand des Betreibers.
+
+> **Der Papierkorb im Portal sperrt, er löscht nicht.** ChatGPT merkt sich seine
+> Kennung aus der Registrierung und benutzt sie stur weiter — auf eine gesperrte
+> oder inzwischen aufgeräumte Kennung antwortet die Instanz mit „Client ID …
+> not found". Anders als andere Programme registriert ChatGPT sich dann **nicht**
+> von selbst neu. Wer die Verbindung wiederhaben will, legt sie in ChatGPT neu
+> an, statt die bestehende zu bearbeiten.
 
 ---
 

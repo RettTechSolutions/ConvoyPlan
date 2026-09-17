@@ -175,6 +175,8 @@ ursprünglichen SemVer-Nummern.
 
 - **Rolle und Organisation kommen jetzt vom Server statt aus dem Token.** Die Oberfläche hat diese Angaben bisher selbst aus dem JWT gelesen. Da sie im Cookie nicht mehr lesbar sind, fragt sie den Server (neu: `GET /api/auth/me`) — und bekommt damit den Stand von eben statt den vom Anmeldezeitpunkt. Wem die Rolle heruntergestuft oder die Mitgliedschaft entzogen wurde, merkt das jetzt beim nächsten Laden statt in bis zu sieben Tagen. Neu ist außerdem `POST /api/auth/logout`: ein HttpOnly-Cookie kann sich die Oberfläche nicht selbst wegnehmen, das muss der Server tun.
 
+- **Anleitung: was passiert, wenn eine ChatGPT-Registrierung wegfällt.** Wird die Registrierung im Portal gesperrt oder als verwaist entfernt, meldet die Anmeldung `Client ID … not found`. Andere Programme registrieren sich an dieser Stelle neu; ChatGPT nicht — es bleibt bei seiner gespeicherten Kennung, und auch das Bearbeiten der Verbindung ändert daran nichts. Die Fehlertabelle in `wiki/ChatGPT-verbinden.md` nennt beides samt Abhilfe (Verbindung löschen und neu anlegen), `wiki/MCP-Server.md` verweist von der Aufräumfunktion dorthin.
+
 
 ## [2026.6.0] – 2026-09-16
 
