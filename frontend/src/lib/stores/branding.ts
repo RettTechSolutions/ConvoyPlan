@@ -30,7 +30,55 @@ export const BRANDING_DEFAULTS: Branding = {
     color_text_muted: '#7f8c8d',
 };
 
-export function applyBranding(b: Branding): void {
+/**
+ * Farben gelten in genau der Form, die das Backend beim Schreiben erzwingt
+ * (`#RRGGBB`, siehe `backend/app/schemas/branding.py`). Alles andere ist
+ * keine Farbe, sondern ein Fehler weiter oben.
+ */
+const HEX_FARBE = /^#[0-9A-Fa-f]{6}$/;
+
+const farbe = (wert: unknown, standard: string): string =>
+    typeof wert === 'string' && HEX_FARBE.test(wert.trim()) ? wert.trim() : standard;
+
+const text = (wert: unknown, standard: string): string =>
+    typeof wert === 'string' && wert.trim() !== '' ? wert.trim() : standard;
+
+const url = (wert: unknown): string | null =>
+    typeof wert === 'string' && wert.trim() !== '' ? wert.trim() : null;
+
+/**
+ * Was von `/api/branding` kommt, ist nicht zwingend vollständig: ein
+ * Datensatz aus einer älteren Version, ein Feld, das eine Migration noch
+ * nicht gefüllt hat, oder eine Antwort, die gar kein Branding ist.
+ *
+ * Ungeprüft ist das kein harmloser Schönheitsfehler. `setProperty` nimmt
+ * jeden String entgegen, auch `"undefined"` — die Custom Property wird
+ * ungültig, und `background: var(--color-primary)` fällt ersatzlos aus.
+ * Der Anmeldeknopf ist dann weiß auf Weiß, also unsichtbar. Deshalb wird
+ * jedes Feld einzeln gegen den Standard geprüft, statt dem Objekt als
+ * Ganzem zu glauben.
+ */
+export function normalizeBranding(roh: unknown): Branding {
+    const b = (roh ?? {}) as Partial<Record<keyof Branding, unknown>>;
+    const d = BRANDING_DEFAULTS;
+    return {
+        app_name: text(b.app_name, d.app_name),
+        logo_main_url: url(b.logo_main_url),
+        logo_horizontal_url: url(b.logo_horizontal_url),
+        color_primary: farbe(b.color_primary, d.color_primary),
+        color_primary_hover: farbe(b.color_primary_hover, d.color_primary_hover),
+        color_accent: farbe(b.color_accent, d.color_accent),
+        color_bg: farbe(b.color_bg, d.color_bg),
+        color_surface: farbe(b.color_surface, d.color_surface),
+        color_nav_bg: farbe(b.color_nav_bg, d.color_nav_bg),
+        color_nav_text: farbe(b.color_nav_text, d.color_nav_text),
+        color_text: farbe(b.color_text, d.color_text),
+        color_text_muted: farbe(b.color_text_muted, d.color_text_muted)
+    };
+}
+
+export function applyBranding(roh: unknown): void {
+    const b = normalizeBranding(roh);
     const root = document.documentElement;
     root.style.setProperty('--color-primary', b.color_primary);
     root.style.setProperty('--color-primary-hover', b.color_primary_hover);
@@ -55,8 +103,14 @@ export const brandingStore = writable<Branding>(BRANDING_DEFAULTS);
 let globalBranding: Branding = BRANDING_DEFAULTS;
 let orgBrandingActive = false;
 
-/** Root-Layout: Plattform-Branding setzen (überschreibt nie ein aktives Org-Branding). */
-export function setGlobalBranding(b: Branding): void {
+/**
+ * Root-Layout: Plattform-Branding setzen (überschreibt nie ein aktives
+ * Org-Branding). Geprüft wird hier, nicht erst in `applyBranding`: aus dem
+ * Store liest auch `AppLogo`, und ein fehlender `app_name` stünde sonst als
+ * „undefined" in der Kopfzeile.
+ */
+export function setGlobalBranding(roh: unknown): void {
+    const b = normalizeBranding(roh);
     globalBranding = b;
     if (orgBrandingActive) return;
     brandingStore.set(b);
@@ -64,7 +118,8 @@ export function setGlobalBranding(b: Branding): void {
 }
 
 /** Org-Layout: effektives Branding einer Organisation aktivieren. */
-export function setOrgBranding(b: Branding): void {
+export function setOrgBranding(roh: unknown): void {
+    const b = normalizeBranding(roh);
     orgBrandingActive = true;
     brandingStore.set(b);
     applyBranding(b);
