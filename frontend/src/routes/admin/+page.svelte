@@ -7,7 +7,7 @@
     import EmailTemplateEditor from '$lib/components/EmailTemplateEditor.svelte';
     import { getStreamTicket } from '$lib/api/client';
     import { adminApi, mfaApi, leistellenApi, licenseApi, mcpAdminApi, regionApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoStats, type DemoSessionInfo, type DemoLeadInfo, type DemoIpLock, type DemoIpAllowlistEntry, type RegionStatus, type RegionPhase, type McpStatus, type McpClient, type McpConnection } from '$lib/api';
-    import { brandingStore, applyBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
+    import { brandingStore, applyBranding, normalizeBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
     import SuperadminLogin from '$lib/components/SuperadminLogin.svelte';
     import SystemOverview from '$lib/components/SystemOverview.svelte';
@@ -1390,8 +1390,8 @@
         brandingSaving = true;
         try {
             const result = await brandingApi.update(brandingForm);
-            brandingStore.set({ ...result });
-            applyBranding({ ...result });
+            brandingStore.set(normalizeBranding(result));
+            applyBranding(result);
             brandingForm = {
                 app_name: result.app_name,
                 color_primary: result.color_primary,
@@ -1437,7 +1437,7 @@
         if (!file) return;
         logoMainPreview = URL.createObjectURL(file);
         brandingApi.uploadLogo('main', file)
-            .then(result => { brandingStore.set({ ...result }); applyBranding({ ...result }); })
+            .then(result => { brandingStore.set(normalizeBranding(result)); applyBranding(result); })
             .catch(() => { brandingError = 'Logo-Upload fehlgeschlagen'; });
     }
 
@@ -1446,7 +1446,7 @@
         if (!file) return;
         logoHorizPreview = URL.createObjectURL(file);
         brandingApi.uploadLogo('horizontal', file)
-            .then(result => { brandingStore.set({ ...result }); applyBranding({ ...result }); })
+            .then(result => { brandingStore.set(normalizeBranding(result)); applyBranding(result); })
             .catch(() => { brandingError = 'Logo-Upload fehlgeschlagen'; });
     }
 

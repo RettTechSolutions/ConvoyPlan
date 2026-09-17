@@ -1,22 +1,37 @@
 <!--
   Rechtliche Pflichtlinks (Impressum/Datenschutz) plus der Verweis auf die
-  öffentliche Statusseite. Die Rechtsseiten werden zentral auf der Marketing-
-  Website convoyplan.de gepflegt; die App verweist darauf.
+  öffentliche Statusseite. Das Impressum des Herstellers wird zentral auf der
+  Marketing-Website convoyplan.de gepflegt; die App verweist darauf.
+
+  Beim Datenschutz ist die Herstellerseite das falsche Ziel: sie beschreibt,
+  was convoyplan.de verarbeitet. Wer auf einer fremden Instanz steht, will
+  wissen, was *diese* Instanz verarbeitet — und dass deren Betreiber der
+  Verantwortliche im Sinne der DSGVO ist, nicht der Hersteller. Genau das
+  steht unter `/privacy`. Die Seite gehört zur Agenten-Auskunft und existiert
+  ohne sie nicht; dann bleibt nur der Verweis auf den Hersteller.
 
   `showStatus` blendet den Status-Link dort aus, wo er ins Leere zeigen würde —
   namentlich auf der Statusseite selbst.
 -->
 <script lang="ts">
+	import { page } from '$app/stores';
+
 	interface Props {
 		showStatus?: boolean;
 	}
 	let { showStatus = true }: Props = $props();
+
+	const eigeneDatenschutzseite = $derived($page.data.agentDiscovery === true);
 </script>
 
 <footer class="legal-footer">
 	<a href="https://convoyplan.de/impressum" target="_blank" rel="noopener">Impressum</a>
 	<span aria-hidden="true">·</span>
-	<a href="https://convoyplan.de/datenschutz" target="_blank" rel="noopener">Datenschutz</a>
+	{#if eigeneDatenschutzseite}
+		<a href="/privacy">Datenschutz</a>
+	{:else}
+		<a href="https://convoyplan.de/datenschutz" target="_blank" rel="noopener">Datenschutz</a>
+	{/if}
 	{#if showStatus}
 		<span aria-hidden="true">·</span>
 		<a href="/status">Systemstatus</a>

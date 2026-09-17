@@ -4,7 +4,7 @@
 	import { page } from '$app/stores';
 	import { auth } from '$lib/stores/auth';
 	import { purgeLegacyTokens } from '$lib/api/client';
-	import { brandingStore, setGlobalBranding, type Branding } from '$lib/stores/branding';
+	import { brandingStore, setGlobalBranding } from '$lib/stores/branding';
 	import { themeStore } from '$lib/stores/theme';
 	import { versionStore } from '$lib/stores/version.svelte';
 	import { formatVersion } from '$lib/version';
@@ -61,10 +61,10 @@
 		try {
 			const resp = await fetch('/api/branding');
 			if (resp.ok) {
-				const data = await resp.json() as Branding;
 				// Überschreibt nie ein bereits aktives Org-Branding (das Org-Layout
 				// mountet vor dem Root-Layout und kann schneller geladen haben).
-				setGlobalBranding(data);
+				// Was die Antwort enthält, prüft `setGlobalBranding` selbst.
+				setGlobalBranding(await resp.json());
 			}
 		} catch {
 			// Keep defaults

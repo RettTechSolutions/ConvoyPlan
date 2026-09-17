@@ -4,7 +4,7 @@
     import { onMount, onDestroy } from 'svelte';
     import { orgStore } from '$lib/stores/org';
     import { setActiveSlug } from '$lib/api/client';
-    import { setOrgBranding, clearOrgBranding, type Branding } from '$lib/stores/branding';
+    import { setOrgBranding, clearOrgBranding } from '$lib/stores/branding';
 
     let { children } = $props();
     let ready = $state(false);
@@ -15,7 +15,7 @@
         try {
             const resp = await fetch(`/api/branding/org/${encodeURIComponent(slug)}`);
             if (resp.ok) {
-                setOrgBranding(await resp.json() as Branding);
+                setOrgBranding(await resp.json());
             }
         } catch {
             // Plattform-Branding behalten
