@@ -101,11 +101,12 @@ Bestand gehalten:
 | Streamable HTTP unter stabiler URL | **erfüllt** | `https://web.convoyplan.de/mcp` |
 | HTTPS, kein stdio | **erfüllt** | |
 | OAuth 2.1 mit PKCE | **erfüllt** | `S256`, Refresh-Tokens rollierend |
-| Client-Registrierung | **erfüllt über DCR** | CIMD ist implementiert, aber per `MCP_ALLOW_CIMD` **aus**; OpenAI bevorzugt CIMD |
+| Client-Registrierung | **erfüllt** | DCR läuft; CIMD ist implementiert und jetzt im Portal schaltbar (Standard weiter aus). OpenAI bevorzugt CIMD |
 | Scope-Aushandlung über `scopes_supported` | **war der Bruch** | siehe unten |
 | Step-up bei `insufficient_scope` | teilweise | ConvoyPlan antwortet auf Transportebene mit `403` + Challenge; ChatGPT erwartet zusätzlich `_meta["mcp/www_authenticate"]` am Werkzeugergebnis. Das SDK (`mcp==2.2.0`) kennt kein `securitySchemes` am Werkzeug |
 | Handlungsorientierte Namen und Beschreibungen | **erfüllt** | |
-| Apps-SDK-UI (`openai/outputTemplate`) | offen | ausdrücklich optional |
+| Apps-SDK-UI (`openai/outputTemplate`) | **erfüllt** | drei Ansichten, siehe 4.4; der Server läuft unverändert ohne sie |
+| `structuredContent` am Werkzeugergebnis | **erfüllt** | Voraussetzung dafür, dass eine Oberfläche Daten sieht — siehe 4.5 |
 
 ### 3.1 Der Bruch: die Verbindung wäre für immer lesend gewesen
 
@@ -162,16 +163,73 @@ dort hat, welche Rechte erteilt sind und welche Werkzeuge damit — und mit der
 Lizenz dieser Instanz — tatsächlich durchgehen. Beantwortet zwei Fragen, die
 sonst nur durch Ausprobieren zu klären waren.
 
+### 4.4 Oberflächen für ChatGPT
+
+Drei Ansichten in `app/mcp/widgets.py`: **Konvoi-Liste** (zu
+`konvois_auflisten`), **Konvoi-Übersicht** mit Marschbefehl und Fahrzeugen in
+Marschordnung (zu `konvoi_details`) und **Marschstatus** mit Ausfällen zuerst
+(zu `konvoi_status`).
+
+Drei Festlegungen dazu:
+
+- **Zugabe, nicht Voraussetzung.** Ein Client ohne Oberflächen bekommt
+  unverändert dieselbe Antwort. Es gibt kein Werkzeug, das ohne Ansicht nicht
+  ginge, und keines, dessen Ergebnis nur dort steht.
+- **Nichts wird nachgeladen** — kein Skript, kein Zeichensatz, kein Bild.
+  Deshalb auch kein Bauschritt und kein Framework: Handarbeit in einer Datei.
+  Als Test festgehalten, weil es sonst beim nächsten Umbau still verloren geht.
+- **Der Rahmen ist geteilt.** Auspacken der Antwort und Maskieren fremder
+  Texte stehen genau einmal in `widgets/rahmen.html`. Beides sind Stellen, an
+  denen ein Fehler nicht auffällt: eine leere Fläche oder eine Skriptlücke.
+
+Das Auspacken ist dabei bewusst tolerant. Die Dokumentation beschreibt
+`window.openai.toolOutput` als das `structuredContent`; in Beispielen steht
+daneben `toolOutput.result.structuredContent`. Beide Lesarten sind im Umlauf,
+also wird ausgepackt, was da ist, statt auf eine Form zu wetten.
+
+### 4.5 Alle Werkzeuge antworten strukturiert
+
+Die Rückgabetypen lauten jetzt `dict[str, Any]` statt `dict`. Erst damit
+leitet das SDK ein Ausgabeschema ab und liefert die Antwort zusätzlich als
+`structuredContent` — genau das Feld, das eine Oberfläche liest. Mit bloßem
+`dict` weigert sich das SDK ausdrücklich („not serializable for structured
+output"), und ohne Schema bleibt `structuredContent` leer.
+
+Der Textteil bleibt daneben bestehen; ein Client ohne Schemaunterstützung
+verliert nichts. Ein Modell gewinnt: die Felder sind benannt, statt aus einem
+Textblock gefischt zu werden.
+
+### 4.6 CIMD ist schaltbar
+
+`MCP_ALLOW_CIMD` brauchte einen Neustart. Der Schalter sitzt jetzt im Portal
+neben dem Hauptschalter, mit demselben Vorrang (Datenbank schlägt Umgebung)
+und demselben Standard: **aus**. Eingeschaltet ruft die Instanz eine Adresse
+ab, die der Anfragende bestimmt; das bleibt eine Entscheidung des Betreibers
+und keine Voreinstellung.
+
+Zwei Stellen mussten dafür nachziehen:
+
+- Die Prüfung in `loese_cimd_auf()` steht **vor** dem Zwischenspeicher.
+  Stünde sie dahinter, liefe ein einmal abgerufenes Dokument nach dem
+  Zudrehen weiter — als Test festgehalten.
+- Die AS-Metadata entsteht je Anfrage statt beim Start. Sonst bliebe die
+  Ankündigung bis zum nächsten Neustart falsch. Was bleibt: der Handler setzt
+  `Cache-Control: max-age=3600`, ein Client sieht eine Änderung also unter
+  Umständen erst nach einer Stunde.
+
 ---
 
 ## 5. Offen
 
 ### Als Nächstes
 
-- [ ] **CIMD einschalten** (`MCP_ALLOW_CIMD=true`) und gegen ChatGPT prüfen.
-      Implementiert und getestet (`tests/test_mcp_cimd.py`, inklusive
-      SSRF-Schutz), nur nicht aktiv. OpenAI bevorzugt CIMD vor DCR; DCR
-      funktioniert weiterhin als Rückfallweg.
+- [x] **CIMD schaltbar gemacht.** Lag als Umgebungsvariable vor, die einen
+      Neustart brauchte; sitzt jetzt als Schalter im Portal neben dem
+      Hauptschalter (`mcp_config.is_cimd_allowed`, Datenbank schlägt
+      Umgebung). Standard bleibt aus — eingeschaltet ruft die Instanz eine
+      Adresse ab, die der Anfragende bestimmt.
+- [ ] **Den Schalter auf der Produktivinstanz umlegen** und gegen ChatGPT
+      prüfen. **Manuell** — ein Klick im Portal, kein Deployment.
 - [ ] **Verbindung im ChatGPT Developer Mode herstellen** (Settings → Apps →
       Advanced → Developer mode, „Create App", Endpunkt eintragen, Tools
       einlesen). Erfordert ChatGPT Pro/Team/Enterprise/Edu. **Manuell, nicht
@@ -188,8 +246,13 @@ sonst nur durch Ausprobieren zu klären waren.
       noch einen Weg, `_meta` an einen Werkzeugfehler zu hängen. Vor einem
       SDK-Sprung nicht sinnvoll anzufassen; die Ankreuzfelder lösen den
       Anwendungsfall bis dahin vollständig.
-- [ ] Apps-SDK-UI (Konvoiübersicht, Fahrzeugliste, Statusanzeige) — optional,
-      der Server funktioniert ohne.
+- [x] **Apps-SDK-Oberflächen** für Konvoi-Liste, Konvoi-Übersicht und
+      Marschstatus (`app/mcp/widgets.py`). Handarbeit ohne Bauschritt und
+      ohne Nachladen von außen; der Server funktioniert unverändert ohne sie.
+      Dafür geben alle Werkzeuge jetzt `structuredContent` zurück — die
+      Grundlage, auf der eine Oberfläche überhaupt Daten sieht.
+- [ ] Die Oberflächen im Developer Mode ansehen. Gerendert wurden sie bisher
+      nur gegen Beispieldaten, nicht in ChatGPT selbst.
 - [ ] App-Metadaten, Datenschutz, Nutzungsbedingungen, Support-URL. Die Seiten
       existieren bereits unter `/privacy`, `/contact` und `/developers` jeder
       Instanz (siehe `wiki/Agenten-Auskunft.md`); für eine öffentliche

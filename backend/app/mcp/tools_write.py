@@ -18,6 +18,7 @@ Prüfung, Kontingente, Audit-Eintrag mit Quelle ``mcp`` und eine Antwort, die
 ein Modell lesen kann.
 """
 import uuid
+from typing import Any
 
 from fastapi import HTTPException
 
@@ -86,7 +87,7 @@ def register(mcp) -> None:
         ziel_lon: float | None = None,
         marschform: str | None = None,
         auftrag: str | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Legt einen neuen Konvoi (Marschkolonne) in der Organisation an.
 
         Start- und Zielpunkt sind optional, werden aber für `route_berechnen`
@@ -144,7 +145,7 @@ def register(mcp) -> None:
         start_lon: float | None = None,
         ziel_lat: float | None = None,
         ziel_lon: float | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Ändert Stammdaten und Marschbefehl eines Konvois.
 
         Nur die angegebenen Felder werden geändert; alles andere bleibt, wie
@@ -212,7 +213,7 @@ def register(mcp) -> None:
         laenge_cm: int | None = None,
         gewicht_kg: int | None = None,
         antrieb: str = "combustion",
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Legt ein Fahrzeug im Bestand der Organisation an.
 
         Das Fahrzeug gehört danach der Organisation, ist aber noch keinem
@@ -259,7 +260,7 @@ def register(mcp) -> None:
         hoehe_cm: int | None = None,
         laenge_cm: int | None = None,
         gewicht_kg: int | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Ändert die Stammdaten eines Fahrzeugs.
 
         Args:
@@ -309,7 +310,7 @@ def register(mcp) -> None:
         fahrzeug_id: str,
         sonderfunktion: str | None = None,
         mobiltelefon: str | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Ordnet ein Fahrzeug einem Konvoi zu, ans Ende der Marschfolge.
 
         Args:
@@ -342,7 +343,7 @@ def register(mcp) -> None:
             return await _quittung(ctx, konvoi_id, "Fahrzeug zugeordnet.")
 
     @mcp.tool()
-    async def fahrzeug_aus_konvoi_entfernen(konvoi_id: str, fahrzeug_id: str) -> dict:
+    async def fahrzeug_aus_konvoi_entfernen(konvoi_id: str, fahrzeug_id: str) -> dict[str, Any]:
         """Löst die Zuordnung eines Fahrzeugs zu einem Konvoi.
 
         **Das Fahrzeug wird nicht gelöscht.** Es bleibt im Bestand der
@@ -404,7 +405,7 @@ def register(mcp) -> None:
     @mcp.tool()
     async def konvoi_fahrzeuge_umsortieren(
         konvoi_id: str, fahrzeug_ids_in_reihenfolge: list[str]
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Setzt die Marschfolge eines Konvois neu.
 
         Es müssen **alle** Fahrzeuge des Konvois genannt werden, in der
@@ -453,7 +454,7 @@ def register(mcp) -> None:
         haltedauer_min: int = 0,
         haltegrund: str | None = None,
         notiz: str | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Fügt einem Konvoi einen Wegpunkt hinzu, ans Ende der Reihenfolge.
 
         Args:
@@ -506,7 +507,7 @@ def register(mcp) -> None:
         haltedauer_min: int | None = None,
         haltegrund: str | None = None,
         notiz: str | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Ändert einen Wegpunkt.
 
         Args:
@@ -557,7 +558,7 @@ def register(mcp) -> None:
     @mcp.tool()
     async def wegpunkte_umsortieren(
         konvoi_id: str, wegpunkt_ids_in_reihenfolge: list[str]
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Setzt die Reihenfolge der Wegpunkte eines Konvois neu.
 
         Args:
@@ -592,7 +593,7 @@ def register(mcp) -> None:
     # ── Route ────────────────────────────────────────────────────────────
 
     @mcp.tool()
-    async def route_berechnen(konvoi_id: str) -> dict:
+    async def route_berechnen(konvoi_id: str) -> dict[str, Any]:
         """Berechnet die Route des Konvois über die Wegpunkte neu.
 
         Braucht einen gesetzten Start- und Zielpunkt. Die Berechnung kostet
@@ -635,7 +636,7 @@ def register(mcp) -> None:
         status: str,
         stufe: str | None = None,
         notiz: str | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Meldet den Marschstatus eines Fahrzeugs im Konvoi.
 
         Technische Halte und Ausfälle lösen einen Alarm an die Konvoiführung

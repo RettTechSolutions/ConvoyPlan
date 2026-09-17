@@ -23,6 +23,16 @@ ursprünglichen SemVer-Nummern.
 
 ### Added
 
+- **ChatGPT zeigt ConvoyPlan-Daten jetzt als Ansicht statt als Textblock.** Drei Oberflächen kommen mit: die **Konvoi-Liste** (Abmarschzeit, Umfang, Status), die **Konvoi-Übersicht** (Marschbefehl und Fahrzeuge in Marschordnung) und der **Marschstatus** (Zusammenfassung und Status je Fahrzeug, Ausfälle zuerst).
+
+  Der Server funktioniert ohne sie unverändert — ein Programm, das keine Oberflächen kennt, bekommt dieselbe Antwort wie bisher. Die Ansichten laden **nichts** von außen nach: kein Skript, kein Zeichensatz, kein Bild. Das Fenster spannt ChatGPT auf und die Daten darin gehören einer BOS-Organisation; was dort nachgeladen würde, säße als dritte Partei in genau dieser Sichtlinie. Dieselbe Zusage steht als Test.
+
+  Damit die Ansichten überhaupt Daten bekommen, antworten **alle** Werkzeuge jetzt zusätzlich strukturiert (`structuredContent`) statt nur als Text. Davon hat auch jedes andere Programm etwas: die Felder sind benannt, statt aus einem Textblock gefischt zu werden. Der Textteil bleibt daneben bestehen.
+
+- **Der Ausweis per Metadatendokument (CIMD) lässt sich im Portal schalten.** Bisher ging das nur über `MCP_ALLOW_CIMD` in der `.env` und einen Neustart. Der Schalter sitzt jetzt unter **System → KI-Schnittstelle** direkt unter dem Hauptschalter und wirkt sofort; die Umgebungsvariable ist nur noch der Ausgangswert.
+
+  Das ist der Ausweisweg, den **ChatGPT bevorzugt** — ohne ihn fällt es auf die Selbstregistrierung zurück. Standardmäßig bleibt er trotzdem aus: eingeschaltet ruft die Instanz eine Adresse ab, die der Anfragende bestimmt. Zudrehen wirkt sofort und auch gegen einen bereits gefüllten Zwischenspeicher, weil die Prüfung davor steht.
+
 - **Die KI-Schnittstelle lässt sich jetzt auch von ChatGPT sinnvoll benutzen.** Bisher hätte eine Verbindung aus ChatGPT für immer nur lesen können: Die Instanz wies als verfügbare Berechtigung ausschließlich `convoy:read` aus, weil ein Programm Schreibrechte bei Bedarf nachfordern können soll. ChatGPT fragt aber einmalig beim Verbinden und danach nicht mehr — „Füge Fahrzeug XY dem Konvoi hinzu" wäre dort also stets an einem Rechtefehler gescheitert, ohne einen Weg, das zu ändern.
 
   Der **Zustimmungsbildschirm zeigt die Rechte deshalb jetzt als Ankreuzfelder**: vorausgewählt ist, was das Programm verlangt hat; darunter steht ankreuzbar, was die eigene Rolle darüber hinaus hergibt. Abwählen geht ebenso. Die Rolle bleibt dabei die Obergrenze — ein *beobachter* bekommt Schreibrechte auch durch Ankreuzen nicht.

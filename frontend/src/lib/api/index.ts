@@ -1246,6 +1246,12 @@ export interface McpStatus {
     /** Was in MCP_ENABLED steht. Zeigt an, worauf ein Zurücksetzen fiele. */
     env_enabled: boolean;
     allow_dcr: boolean;
+    /** Ob sich Programme per Metadatendokument ausweisen dürfen (CIMD). */
+    allow_cimd: boolean;
+    /** Woher dieser Zustand kommt — "db" (im Portal gesetzt) oder "env". */
+    cimd_source: 'db' | 'env';
+    /** Was in MCP_ALLOW_CIMD steht. Zeigt an, worauf ein Zurücksetzen fiele. */
+    env_allow_cimd: boolean;
     /** Die Adresse, die ein Client als Remote-MCP-Server einträgt. */
     connection_url: string;
     issuer_url: string;
@@ -1302,6 +1308,15 @@ export const mcpAdminApi = {
     /** Die Schnittstelle ein- oder ausschalten. Wirkt sofort, ohne Neustart. */
     setEnabled: (enabled: boolean) =>
         api.put<McpStatus>('/api/admin/settings/mcp', { enabled }),
+    /**
+     * Ausweis per Metadatendokument (CIMD) erlauben oder verbieten.
+     *
+     * Wirkt sofort. Eingeschaltet ruft die Instanz beim Verbinden eine
+     * Adresse ab, die der Anfragende bestimmt — abgesichert in
+     * `safe_fetch.py`, aber eine Fläche, die es ohne den Schalter nicht gibt.
+     */
+    setAllowCimd: (enabled: boolean) =>
+        api.put<McpStatus>('/api/admin/settings/mcp/cimd', { enabled }),
     /**
      * Die MCP-Pfade im Reverse Proxy herstellen — ohne Zugriff auf den Server.
      *

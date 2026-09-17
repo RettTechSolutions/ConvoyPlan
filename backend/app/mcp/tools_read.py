@@ -9,9 +9,19 @@ Text, also kostet jedes überflüssige Feld Kontext und jede rohe UUID ohne
 Bedeutung stiftet Verwirrung. Zeiten gehen als ISO-8601 raus, Entfernungen
 in Metern, Dauern in Sekunden — benannt, damit die Einheit nicht geraten
 werden muss.
+
+Die Werkzeuge geben ``dict[str, Any]`` zurück und nicht ``dict``. Der
+Unterschied ist nicht kosmetisch: nur mit der genaueren Angabe leitet das SDK
+ein Ausgabeschema ab und liefert die Antwort zusätzlich als
+``structuredContent`` — als Struktur statt nur als Text. Clients mit
+Oberfläche lesen genau das (siehe ``app/mcp/widgets.py``), und ein Modell
+bekommt die Felder benannt statt sie aus einem Textblock zu fischen. Der
+Textteil bleibt daneben bestehen, ein Client ohne Schema verliert also
+nichts.
 """
 import uuid
 from datetime import datetime, time
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -19,6 +29,7 @@ from sqlalchemy.orm import selectinload
 from app.mcp import WRITE_TOOLS
 from app.mcp import subscriptions as live
 from app.mcp.context import McpError, mcp_context
+from app.mcp import widgets
 from app.mcp.scopes import SCOPE_LABELS, SCOPE_READ, TOOL_SCOPES, satisfies
 from app.middleware.license_guard import is_licensed
 from app.models.convoy import Convoy, ConvoyVehicle
@@ -251,7 +262,13 @@ async def _load_convoy(ctx, convoy_id: str) -> Convoy:
 def register(mcp) -> None:
     """Die lesenden Werkzeuge am Server anmelden."""
 
-    @mcp.tool()
+    @mcp.tool(
+        meta=widgets.meta(
+            widgets.URI_KONVOI_LISTE,
+            laeuft="Konvois werden gesucht …",
+            fertig="Konvois gefunden",
+        )
+    )
     async def konvois_auflisten(
         von: str | None = None,
         bis: str | None = None,
@@ -259,7 +276,7 @@ def register(mcp) -> None:
         suche: str | None = None,
         nur_hauptkonvois: bool = False,
         limit: int = 50,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Listet die Konvois (Marschkolonnen) der Organisation.
 
         Ohne Angaben kommen die zuletzt angelegten Konvois, neueste zuerst.
@@ -334,7 +351,7 @@ def register(mcp) -> None:
             return antwort
 
     @mcp.tool()
-    async def organisation_details() -> dict:
+    async def organisation_details() -> dict[str, Any]:
         """Mit welcher Organisation diese Verbindung arbeitet und was sie darf.
 
         Beantwortet zwei Fragen, die sonst nur durch Ausprobieren zu klären
@@ -389,8 +406,14 @@ def register(mcp) -> None:
                 ),
             }
 
-    @mcp.tool()
-    async def konvoi_details(konvoi_id: str) -> dict:
+    @mcp.tool(
+        meta=widgets.meta(
+            widgets.URI_KONVOI_UEBERSICHT,
+            laeuft="Konvoi wird geladen …",
+            fertig="Konvoi geladen",
+        )
+    )
+    async def konvoi_details(konvoi_id: str) -> dict[str, Any]:
         """Alle Stammdaten eines Konvois: Marschbefehl, Fahrzeuge, Eckdaten.
 
         Args:
@@ -401,7 +424,7 @@ def register(mcp) -> None:
             return _convoy_full(await _load_convoy(ctx, konvoi_id))
 
     @mcp.tool()
-    async def unterkonvois_auflisten(konvoi_id: str) -> dict:
+    async def unterkonvois_auflisten(konvoi_id: str) -> dict[str, Any]:
         """Listet die Unterkonvois (Teilkolonnen) eines Konvois.
 
         Args:
@@ -424,7 +447,7 @@ def register(mcp) -> None:
             }
 
     @mcp.tool()
-    async def fahrzeuge_auflisten() -> dict:
+    async def fahrzeuge_auflisten() -> dict[str, Any]:
         """Listet den Fahrzeugbestand der Organisation.
 
         Das sind die Stammdaten, unabhängig davon, ob ein Fahrzeug gerade
@@ -446,7 +469,7 @@ def register(mcp) -> None:
             }
 
     @mcp.tool()
-    async def fahrzeug_details(fahrzeug_id: str) -> dict:
+    async def fahrzeug_details(fahrzeug_id: str) -> dict[str, Any]:
         """Stammdaten eines einzelnen Fahrzeugs.
 
         Args:
@@ -473,7 +496,7 @@ def register(mcp) -> None:
             return _vehicle(vehicle)
 
     @mcp.tool()
-    async def wegpunkte_auflisten(konvoi_id: str) -> dict:
+    async def wegpunkte_auflisten(konvoi_id: str) -> dict[str, Any]:
         """Die Wegpunkte eines Konvois in Marschreihenfolge.
 
         Args:
@@ -510,7 +533,7 @@ def register(mcp) -> None:
             }
 
     @mcp.tool()
-    async def route_abrufen(konvoi_id: str, mit_geometrie: bool = False) -> dict:
+    async def route_abrufen(konvoi_id: str, mit_geometrie: bool = False) -> dict[str, Any]:
         """Die gespeicherte Route eines Konvois.
 
         Berechnet nichts — liefert nur, was zuletzt berechnet wurde. Ist noch
@@ -546,7 +569,7 @@ def register(mcp) -> None:
             return data
 
     @mcp.tool()
-    async def fahrzeugpositionen_abrufen(konvoi_id: str) -> dict:
+    async def fahrzeugpositionen_abrufen(konvoi_id: str) -> dict[str, Any]:
         """Die zuletzt gemeldeten Positionen der Fahrzeuge eines Konvois.
 
         Args:
@@ -562,8 +585,14 @@ def register(mcp) -> None:
                 "positionen": positionen,
             }
 
-    @mcp.tool()
-    async def konvoi_status(konvoi_id: str) -> dict:
+    @mcp.tool(
+        meta=widgets.meta(
+            widgets.URI_KONVOI_STATUS,
+            laeuft="Marschstatus wird abgefragt …",
+            fertig="Marschstatus abgefragt",
+        )
+    )
+    async def konvoi_status(konvoi_id: str) -> dict[str, Any]:
         """Der Marschstatus eines Konvois, je Fahrzeug und zusammengefasst.
 
         Zeigt, welche Fahrzeuge unterwegs, angekommen, im technischen Halt

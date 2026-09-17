@@ -207,3 +207,110 @@ async def test_get_client_trennt_die_beiden_wege():
     ) as aufloeser:
         assert await provider.get_client(GUELTIG) is None
         aufloeser.assert_awaited_once_with(GUELTIG)
+
+
+# ── Der Laufzeitschalter ─────────────────────────────────────────────────
+#
+# CIMD hing bis hierher allein an ``MCP_ALLOW_CIMD``: beim Start entschieden,
+# danach unveränderlich. Wer ChatGPT anbinden wollte, musste die ``.env``
+# anfassen und neu starten. Der Schalter im Portal nimmt das ab — und
+# derselbe Vorrang gilt wie bei ``mcp.enabled``: die Zeile schlägt die
+# Umgebung, in beide Richtungen.
+
+
+@pytest.mark.asyncio
+async def test_portalschalter_kann_cimd_gegen_die_umgebung_einschalten(monkeypatch):
+    from app.database import AsyncSessionLocal
+    from app.services import mcp_config
+
+    monkeypatch.setattr(settings, "mcp_allow_cimd", False)
+    async with AsyncSessionLocal() as db:
+        await mcp_config.set_cimd_allowed(db, True)
+    try:
+        abrufer = AsyncMock(return_value=_dokument())
+        with patch.object(safe_fetch, "fetch_json", abrufer):
+            assert await oauth_provider.loese_cimd_auf(GUELTIG) is not None
+        abrufer.assert_awaited_once()
+    finally:
+        await _schalter_aufraeumen()
+
+
+@pytest.mark.asyncio
+async def test_portalschalter_kann_cimd_gegen_die_umgebung_abschalten(monkeypatch):
+    """Die wichtigere Richtung: zudrehen muss den Netzzugriff verhindern,
+    auch wenn die Umgebung ihn erlaubt."""
+    from app.database import AsyncSessionLocal
+    from app.services import mcp_config
+
+    monkeypatch.setattr(settings, "mcp_allow_cimd", True)
+    async with AsyncSessionLocal() as db:
+        await mcp_config.set_cimd_allowed(db, False)
+    try:
+        abrufer = AsyncMock(return_value=_dokument())
+        with patch.object(safe_fetch, "fetch_json", abrufer):
+            assert await oauth_provider.loese_cimd_auf(GUELTIG) is None
+        abrufer.assert_not_awaited()
+    finally:
+        await _schalter_aufraeumen()
+
+
+@pytest.mark.asyncio
+async def test_abgeschaltet_hilft_auch_ein_gefuellter_zwischenspeicher_nicht():
+    """Die Prüfung steht vor dem Cache. Stünde sie dahinter, liefe ein
+    einmal abgerufenes Dokument nach dem Zudrehen weiter."""
+    from app.database import AsyncSessionLocal
+    from app.services import mcp_config
+
+    abrufer = AsyncMock(return_value=_dokument())
+    with patch.object(safe_fetch, "fetch_json", abrufer):
+        assert await oauth_provider.loese_cimd_auf(GUELTIG) is not None
+
+    async with AsyncSessionLocal() as db:
+        await mcp_config.set_cimd_allowed(db, False)
+    try:
+        assert await oauth_provider.loese_cimd_auf(GUELTIG) is None
+    finally:
+        await _schalter_aufraeumen()
+
+
+@pytest.mark.asyncio
+async def test_die_metadaten_kuendigen_cimd_nach_dem_geltenden_zustand_an(monkeypatch):
+    """Ohne die Ankündigung versucht es kein Client — die Funktion läge brach.
+
+    Geprüft wird über den Endpunkt, nicht über die gebaute Struktur: das
+    Dokument entstand früher beim Start, und genau deshalb hätte ein
+    Umschalten im Portal daran nichts geändert."""
+    from app.database import AsyncSessionLocal
+    from app.services import mcp_config
+    from tests.mcp_fixtures import mcp_app
+
+    monkeypatch.setattr(settings, "mcp_allow_cimd", False)
+    try:
+        async with mcp_app() as (_app, client):
+            body = (await client.get("/.well-known/oauth-authorization-server")).json()
+            assert not body.get("client_id_metadata_document_supported")
+
+            async with AsyncSessionLocal() as db:
+                await mcp_config.set_cimd_allowed(db, True)
+
+            # Dieselbe, weiterhin laufende App — kein Neustart dazwischen.
+            body = (await client.get("/.well-known/oauth-authorization-server")).json()
+            assert body["client_id_metadata_document_supported"] is True
+    finally:
+        await _schalter_aufraeumen()
+
+
+async def _schalter_aufraeumen() -> None:
+    """Die Einstellungszeile wieder entfernen — sonst färbt sie auf den
+    nächsten Test ab, der sich auf die Umgebung verlässt."""
+    from sqlalchemy import delete
+
+    from app.database import AsyncSessionLocal
+    from app.models.settings import SystemSetting
+    from app.services import mcp_config
+
+    async with AsyncSessionLocal() as db:
+        await db.execute(
+            delete(SystemSetting).where(SystemSetting.key == mcp_config.MCP_ALLOW_CIMD_KEY)
+        )
+        await db.commit()

@@ -74,6 +74,20 @@ kein Komfort, sondern Voraussetzung dafür, dass ChatGPT mehr als lesen kann —
 einmalig beim Verbinden und fordert nie nach. Hintergrund und offene Punkte der
 ChatGPT-Anbindung: `docs/superpowers/plans/2026-09-17-chatgpt-app.md`.
 
+Für Clients mit Oberfläche (ChatGPT Apps SDK) liegen drei Ansichten in
+`app/mcp/widgets.py` samt `widgets/`. Sie sind **Zugabe, nicht Voraussetzung**: kein
+Werkzeug braucht sie, und ihr Inhalt ist eine leere Vorlage — die Daten kommen erst
+aus dem Werkzeugaufruf. Zwei Regeln hält `tests/test_mcp_widgets.py` fest: jeder
+`_meta`-Verweis zeigt auf eine Resource, die es gibt, und **nichts wird von außen
+nachgeladen**. Damit die Ansichten Daten bekommen, geben alle Werkzeuge
+`dict[str, Any]` zurück statt `dict` — nur so leitet das SDK ein Ausgabeschema ab und
+liefert `structuredContent`.
+
+Der CIMD-Schalter sitzt wie der Hauptschalter im Portal (`mcp_config.is_cimd_allowed`,
+Datenbank schlägt Umgebung). Die AS-Metadata wird deshalb je Anfrage fertiggestellt und
+nicht beim Start — stünde die Ankündigung im vorgebauten Dokument, bliebe sie bis zum
+nächsten Neustart falsch.
+
 Code in `backend/app/mcp/` (Werkzeuge, Scopes, Montage), `backend/app/services/
 oauth_provider.py` und `oauth_tokens.py`. Verwaltung im Admin-Portal unter **MCP**.
 Anwenderdoku: `wiki/MCP-Server.md`.

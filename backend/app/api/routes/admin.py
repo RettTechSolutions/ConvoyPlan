@@ -1871,6 +1871,12 @@ class McpStatusResponse(BaseModel):
     source: str
     env_enabled: bool
     allow_dcr: bool
+    # Client ID Metadata Documents: der zweite Schalter. Mit denselben drei
+    # Angaben wie oben, aus demselben Grund — wer im Portal einen Haken
+    # setzt, soll sehen, ob er gerade die Umgebung überstimmt.
+    allow_cimd: bool
+    cimd_source: str
+    env_allow_cimd: bool
     # Die Adresse, die ein Client als Remote-MCP-Server einträgt.
     connection_url: str
     issuer_url: str
@@ -1958,6 +1964,7 @@ async def mcp_status(
 
     OAuthClient, OAuthRefreshToken = _mcp_models()
     db_wert = await mcp_config.get_mcp_enabled_setting(db)
+    cimd_wert = await mcp_config.get_cimd_setting(db)
 
     clients = await db.scalar(
         select(func.count()).select_from(OAuthClient).where(OAuthClient.revoked.is_(False))
@@ -1975,6 +1982,9 @@ async def mcp_status(
         enabled=db_wert == "true" if db_wert is not None else settings.mcp_enabled,
         source="db" if db_wert is not None else "env",
         env_enabled=settings.mcp_enabled,
+        allow_cimd=cimd_wert == "true" if cimd_wert is not None else settings.mcp_allow_cimd,
+        cimd_source="db" if cimd_wert is not None else "env",
+        env_allow_cimd=settings.mcp_allow_cimd,
         allow_dcr=settings.mcp_allow_dcr,
         connection_url=oauth_tokens.public_resource_url(),
         issuer_url=oauth_tokens.issuer_url(),
@@ -2107,6 +2117,41 @@ async def update_mcp_enabled(
         db, "admin.settings.mcp_updated", request=request, actor_id=current.id,
         actor_email=current.email,
         detail={"enabled": data.enabled, "wirksam": geaendert},
+    )
+    return await mcp_status(db=db, _=current)
+
+
+@router.put("/settings/mcp/cimd", response_model=McpStatusResponse)
+async def update_mcp_allow_cimd(
+    data: McpToggleRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    """Ausweis per Metadatendokument erlauben oder verbieten — ohne Neustart.
+
+    Eingeschaltet darf sich ein Programm mit einer HTTPS-Adresse ausweisen,
+    unter der sein Metadatendokument liegt, statt sich vorher zu registrieren.
+    OpenAI bevorzugt diesen Weg für ChatGPT; ohne ihn bleibt die
+    Selbstregistrierung (DCR), die weiterhin funktioniert.
+
+    **Was dabei mitgekauft wird:** Diese Instanz ruft dann eine Adresse ab,
+    die der Anfragende bestimmt. ``app/services/safe_fetch.py`` hält das eng
+    (nur HTTPS, keine privaten oder Link-Local-Adressen, keine
+    Weiterleitungen, harte Zeitgrenzen, Größenlimit); DNS-Rebinding bleibt
+    als Restrisiko. Wer das nicht tragen will, lässt den Schalter aus.
+
+    Ausschalten wirkt sofort: die Prüfung steht **vor** dem Zwischenspeicher,
+    ein bereits abgerufenes Dokument hilft danach niemandem mehr. Bestehende
+    Verbindungen bleiben bestehen — sie hängen an ihren Tokens, nicht am
+    Ausweisweg. Wer auch die loswerden will, trennt sie im Reiter MCP."""
+    from app.services import mcp_config
+
+    await mcp_config.set_cimd_allowed(db, data.enabled)
+    await audit.record(
+        db, "admin.settings.mcp_cimd_updated", request=request, actor_id=current.id,
+        actor_email=current.email,
+        detail={"enabled": data.enabled},
     )
     return await mcp_status(db=db, _=current)
 

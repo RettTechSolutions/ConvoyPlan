@@ -296,3 +296,25 @@ async def test_organisation_details_zeigt_fremde_organisation_nicht():
         assert antwort["organisation"] == fx.org_b.name
         assert antwort["fahrzeuge_anzahl"] == 0
         await purge_clients([reg["client_id"]])
+
+
+@pytest.mark.asyncio
+async def test_werkzeuge_antworten_strukturiert_und_als_text():
+    """Beides, nicht eines von beidem.
+
+    Die Oberflächen (`app/mcp/widgets.py`) lesen `structuredContent`; ein
+    Client ohne Schemaunterstützung liest weiterhin den Textteil. Fiele der
+    Textteil weg, verlöre der zweite alles — fiele die Struktur weg, zeigten
+    die Oberflächen eine leere Fläche."""
+    async with seeded() as fx, mcp_app() as (_app, client):
+        reg, token = await connect(client, fx.planer, fx.org_a)
+        session = await mcp_session(client, token["access_token"])
+        antwort = await call(
+            client, token["access_token"], session, "tools/call",
+            {"name": "konvois_auflisten", "arguments": {}},
+        )
+        result = antwort["result"]
+        assert result["structuredContent"]["organisation"] == fx.org_a.name
+        assert result["content"][0]["type"] == "text"
+        assert fx.org_a.name in result["content"][0]["text"]
+        await purge_clients([reg["client_id"]])
