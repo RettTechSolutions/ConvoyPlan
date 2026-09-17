@@ -88,6 +88,13 @@ Die Texte stehen in `lib/server/agent/documents.ts`, die Produktfakten in
 entstehen aus derselben Quelle** (`render.ts` rendert dasselbe Dokument, das unter
 `/<seite>.md` ausgeliefert wird) — wer eine Seite ändert, ändert beide Fassungen.
 
+Die Startseite ist die Ausnahme von `render.ts`: sie trägt die Anmeldekarte und bleibt
+deshalb eine Svelte-Seite (`routes/+page.svelte`). Deckungsgleich mit `/index.md` bleibt
+sie über die Fakten statt über den Renderer — Titel aus `PAGES`, Untertitel und
+Fließtext aus `PRODUCT`, Kacheln aus `FEATURES`. Dieselbe `FEATURES`-Liste füllt die
+`featureList` im JSON-LD und die Aufzählung in `indexMd()`; Produktprosa gehört deshalb
+nach `facts.ts` und nicht ins Markup.
+
 Zwei Regeln, die den Aufwand erklären:
 
 - **Nichts ankündigen, was es auf dieser Instanz nicht gibt.** Die Dokumente werden je

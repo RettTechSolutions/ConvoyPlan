@@ -6,12 +6,21 @@
     import { orgAuthApi, authApi } from '$lib/api';
     import AppLogo from '$lib/components/AppLogo.svelte';
     import LegalFooter from '$lib/components/LegalFooter.svelte';
-    import { PRODUCT } from '$lib/agent/facts';
+    import { PRODUCT, FEATURES } from '$lib/agent/facts';
+    import { PAGES, pageFor } from '$lib/agent/pages';
     import { buildJsonLd } from '$lib/agent/jsonld';
     import { registerWebMcpTools } from '$lib/agent/webmcp';
     import type { PageData } from './$types';
 
     let { data }: { data: PageData } = $props();
+
+    // Titel, Überschrift und og:title sind dasselbe — der Eintrag aus dem
+    // Seitenkatalog, aus dem auch Sitemap und `/index.md` ihren Titel ziehen.
+    const pageTitle = pageFor('/')?.title ?? PRODUCT.name;
+
+    // Der Status-Link steht schon im LegalFooter unter der Anmeldekarte; er
+    // würde hier ein zweites Mal auftauchen.
+    const navPages = PAGES.filter((p) => p.path !== '/' && p.path !== '/status');
 
     // $derived, nicht const: `data` ist reaktiv, und eine Navigation auf
     // dieselbe Route soll Canonical und JSON-LD mitziehen.
@@ -62,14 +71,14 @@
 </script>
 
 <svelte:head>
-    <title>ConvoyPlan — Marschplanung für Einsatzorganisationen</title>
-    <meta name="description" content="ConvoyPlan plant Marschverbände und Konvois von Einsatzorganisationen: kartenbasierte Routenplanung, Zeitplan mit technischen Halten, Live-Tracking und Marschbefehl-Export. Self-hosted." />
+    <title>{pageTitle}</title>
+    <meta name="description" content={PRODUCT.tagline} />
     <link rel="canonical" href={canonical} />
     {#if data.agentDiscovery}
         <link rel="alternate" type="text/markdown" href="{data.base}/index.md" title="Markdown-Fassung dieser Seite" />
         <link rel="alternate" type="text/plain" href="{data.base}/llms.txt" title="llms.txt" />
         <meta property="og:type" content="website" />
-        <meta property="og:title" content="ConvoyPlan — Marschplanung für Einsatzorganisationen" />
+        <meta property="og:title" content={pageTitle} />
         <meta property="og:description" content={PRODUCT.tagline} />
         <meta property="og:url" content={canonical} />
         <meta property="og:site_name" content="ConvoyPlan" />
@@ -87,7 +96,12 @@
     {/if}
 </svelte:head>
 
-<div class="login-container" class:standalone={!data.agentDiscovery}>
+<!--
+    Die Anmeldekarte gibt es in beiden Fassungen der Seite — als rechte Spalte
+    der Startseite und, mit abgeschalteter Agenten-Auskunft, als einziges
+    Element auf leerem Schirm. Ein Snippet statt zweier Kopien.
+-->
+{#snippet loginCard()}
     <div class="login-card">
         <div class="login-logo">
             <AppLogo variant="main" height={170} />
@@ -129,56 +143,74 @@
 
         <LegalFooter />
     </div>
-</div>
+{/snippet}
 
 {#if data.agentDiscovery}
     <!--
-        Der beschreibende Teil der Startseite. Er steht bewusst im
-        serverseitig gerenderten HTML: davor bestand diese Seite aus einem
-        Logo und einem Eingabefeld, und wer sie ohne JavaScript oder als
-        Crawler abrief, sah praktisch nichts. Das H1 ist zugleich die
-        Überschrift, die der Seite bis dahin fehlte.
+        Die Startseite trägt zwei Aufgaben gleichzeitig: Einstieg für die
+        eigenen Leute und einzige Seite, die eine Instanz unaufgefordert über
+        sich selbst ausliefert. Der beschreibende Teil steht deshalb im
+        serverseitig gerenderten HTML — ohne ihn besteht die Seite aus einem
+        Logo und einem Eingabefeld, und ein Crawler sieht nichts.
+
+        Er ist als Seite gebaut und nicht als Textblock unter der Karte:
+        Anmeldung und Beschreibung stehen nebeneinander, der Rest sind
+        Kacheln. Was drinsteht, kommt aus `lib/agent/facts.ts` — derselben
+        Quelle, aus der `/index.md` und das JSON-LD entstehen.
     -->
-    <section class="intro" aria-labelledby="intro-title">
-        <h1 id="intro-title">ConvoyPlan — Marschplanung für Einsatzorganisationen</h1>
-        <p class="lead">{PRODUCT.tagline}</p>
-        <p>
-            ConvoyPlan ist eine selbst gehostete Web-Anwendung für die strukturierte Planung und
-            Durchführung von Marschverbänden und Konvoifahrten. Die Routen berechnet ein
-            mitgelieferter GraphHopper-Dienst auf Basis von OpenStreetMap; Wegpunkte,
-            Kontrollpunkte und technische Halte bekommen dabei automatisch einen Zeitplan, an dem
-            sich alle Besatzungen ausrichten können. Während der Fahrt zeigt das Live-Tracking per
-            WebSocket, wo die Fahrzeuge stehen und welchen Marschstatus sie gemeldet haben. Am
-            Ende steht der fertige Marschbefehl als PDF, GPX oder JSON.
-        </p>
-        <p>
-            Die Anwendung läuft vollständig on-premise über Docker Compose und setzt keinen
-            Cloud-Dienst voraus. Mehrere Organisationen teilen sich eine Instanz, ohne die Daten
-            der jeweils anderen zu sehen: Zugang gibt es über den Organisations-Code oben.
-            {#if data.demoHint}
-                Wer ConvoyPlan zuerst ansehen will, startet über „Demo ausprobieren" eine eigene
-                temporäre Umgebung mit Beispieldaten — ohne Konto und ohne Berührung mit
-                Produktivdaten.
-            {/if}
-        </p>
-        <nav class="intro-nav" aria-label="Weitere Informationen">
-            <a href="/about">Über ConvoyPlan</a>
-            <a href="/pricing">Preise und Lizenzen</a>
-            <a href="/developers">Entwickler und API</a>
-            <a href="/docs">Dokumentation</a>
-            <a href="/contact">Kontakt</a>
-            <a href="/privacy">Datenschutz</a>
-            <a href="/status">Systemstatus</a>
-        </nav>
-        <p class="agent-hint">
-            Für KI-Agenten und Programme: <a href="/llms.txt">llms.txt</a> ·
-            <a href="/agents.md">agents.md</a> · <a href="/auth.md">auth.md</a> ·
-            <a href="/openapi.json">openapi.json</a>
-        </p>
-    </section>
+    <main class="landing">
+        <section class="hero">
+            <div class="hero-login">
+                {@render loginCard()}
+            </div>
+
+            <div class="hero-copy">
+                <p class="eyebrow">Self-hosted · Docker Compose · {PRODUCT.license}</p>
+                <h1>{pageTitle}</h1>
+                <p class="lead">{PRODUCT.tagline}</p>
+                <p>{PRODUCT.description}</p>
+                {#if data.demoHint}
+                    <p class="hero-demo">
+                        Ohne Konto ansehen: „Demo ausprobieren" legt eine eigene temporäre Umgebung
+                        mit Beispieldaten an, ohne Berührung mit Produktivdaten.
+                    </p>
+                {/if}
+            </div>
+        </section>
+
+        <section class="features" aria-labelledby="features-title">
+            <h2 id="features-title">Was ConvoyPlan kann</h2>
+            <ul class="feature-grid">
+                {#each FEATURES as feature (feature.id)}
+                    <li class="feature">
+                        <h3>{feature.title}</h3>
+                        <p>{feature.summary}</p>
+                    </li>
+                {/each}
+            </ul>
+        </section>
+
+        <footer class="landing-foot">
+            <nav class="foot-nav" aria-label="Weitere Informationen">
+                {#each navPages as entry (entry.path)}
+                    <a href={entry.path}>{entry.title}</a>
+                {/each}
+            </nav>
+            <p class="agent-hint">
+                Für KI-Agenten und Programme: <a href="/llms.txt">llms.txt</a> ·
+                <a href="/agents.md">agents.md</a> · <a href="/auth.md">auth.md</a> ·
+                <a href="/openapi.json">openapi.json</a>
+            </p>
+        </footer>
+    </main>
+{:else}
+    <div class="login-container">
+        {@render loginCard()}
+    </div>
 {/if}
 
 <style>
+    /* ── Anmeldekarte ──────────────────────────────────────────────────── */
     .login-container {
         display: flex;
         align-items: center;
@@ -186,17 +218,10 @@
         /* 100dvh statt 100vh: auf iOS entspricht 100vh der Höhe bei eingeklappter
            Toolbar — die Karte würde sonst außermittig sitzen. Safe-Area-Insets als
            Padding, damit der Hintergrund bis unter Statusleiste/Toolbar reicht. */
-        /* Ohne den Beschreibungsteil darunter füllt die Karte weiterhin den
-           Schirm; mit ihm wäre sie sonst die einzige sichtbare Seite und der
-           Text stünde unter der Falz. */
-        min-height: 70vh;
-        min-height: 70dvh;
-        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-        background: var(--bg);
-    }
-    .login-container.standalone {
         min-height: 100vh;
         min-height: 100dvh;
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        background: var(--bg);
     }
     .login-card {
         background: var(--surface-1);
@@ -284,35 +309,140 @@
         color: var(--text-2);
         margin: .5rem 0 0;
     }
-    .intro {
-        max-width: 48rem;
-        margin: 0 auto;
-        padding: 0 1rem 4rem;
+
+    /* ── Startseite ────────────────────────────────────────────────────── */
+    .landing {
+        --landing-width: 68rem;
+        min-height: 100vh;
+        min-height: 100dvh;
+        background: var(--bg);
         color: var(--text-1);
-        line-height: 1.6;
-        font-size: var(--text-base);
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
     }
-    .intro h1 {
-        font-size: 1.5rem;
-        margin: 0 0 .5rem;
+    .hero, .features, .landing-foot {
+        max-width: var(--landing-width);
+        margin: 0 auto;
+        padding-left: 1rem;
+        padding-right: 1rem;
     }
-    .intro .lead {
-        font-size: var(--text-lg);
-        color: var(--text-2);
+    .hero {
+        display: grid;
+        gap: clamp(2rem, 5vw, 3.5rem);
+        align-items: center;
+        padding-top: clamp(1.5rem, 5vh, 3.5rem);
+        padding-bottom: clamp(2.5rem, 7vh, 4.5rem);
+    }
+    /* Auf schmalem Schirm zuerst die Karte: wer hier landet, will sich in aller
+       Regel anmelden, nicht lesen. Auf breitem Schirm steht beides
+       nebeneinander, die Karte rechts. */
+    .hero-login { display: flex; justify-content: center; }
+    .hero-copy { max-width: 42rem; }
+    .eyebrow {
+        margin: 0 0 .6rem;
+        font-size: var(--text-xs);
+        font-weight: 600;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+    }
+    .hero-copy h1 {
+        margin: 0 0 .6rem;
+        font-size: clamp(1.6rem, 1.1rem + 2vw, 2.4rem);
+        line-height: 1.15;
+        letter-spacing: -.01em;
+    }
+    .hero-copy .lead {
         margin: 0 0 1rem;
+        font-size: clamp(1.02rem, .95rem + .5vw, 1.2rem);
+        line-height: 1.45;
+        color: var(--text-1);
     }
-    .intro p { margin: 0 0 1rem; }
-    .intro-nav {
+    .hero-copy p {
+        margin: 0 0 1rem;
+        line-height: 1.65;
+        font-size: var(--text-base);
+        color: var(--text-2);
+    }
+    .hero-demo {
+        border-left: 2px solid var(--color-primary);
+        padding-left: .75rem;
+    }
+
+    .features {
+        border-top: 1px solid var(--border);
+        padding-top: clamp(2rem, 5vh, 3rem);
+        padding-bottom: clamp(2rem, 5vh, 3rem);
+    }
+    .features h2 {
+        margin: 0 0 1.25rem;
+        font-size: var(--text-lg);
+        letter-spacing: -.01em;
+    }
+    .feature-grid {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    }
+    .feature {
+        background: var(--surface-1);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 1.1rem 1.15rem;
+        box-shadow: var(--shadow);
+    }
+    /* Der Strich ersetzt das Icon, das es für diese Kacheln nicht gibt — er
+       gibt dem Raster eine Kante, ohne eine Bilddatei zu erfinden. */
+    .feature::before {
+        content: '';
+        display: block;
+        width: 1.75rem;
+        height: 2px;
+        border-radius: 2px;
+        background: var(--color-primary);
+        margin-bottom: .75rem;
+    }
+    .feature h3 {
+        margin: 0 0 .35rem;
+        font-size: var(--text-base);
+        font-weight: 600;
+        line-height: 1.3;
+    }
+    .feature p {
+        margin: 0;
+        font-size: var(--text-sm);
+        line-height: 1.55;
+        color: var(--text-2);
+    }
+
+    .landing-foot {
+        border-top: 1px solid var(--border);
+        padding-top: 1.5rem;
+        padding-bottom: 3rem;
+    }
+    .foot-nav {
         display: flex;
         flex-wrap: wrap;
-        gap: .4rem 1rem;
-        margin-bottom: 1rem;
+        gap: .4rem 1.25rem;
+        margin-bottom: .75rem;
         font-size: var(--text-sm);
     }
-    .intro-nav a, .agent-hint a { color: var(--color-primary); text-decoration: none; }
-    .intro-nav a:hover, .agent-hint a:hover { text-decoration: underline; }
+    .foot-nav a, .agent-hint a { color: var(--color-primary); text-decoration: none; }
+    .foot-nav a:hover, .agent-hint a:hover { text-decoration: underline; }
     .agent-hint {
+        margin: 0;
         font-size: var(--text-sm);
         color: var(--text-muted);
+    }
+
+    @media (min-width: 900px) {
+        .hero {
+            grid-template-columns: minmax(0, 1fr) 24rem;
+            min-height: min(80vh, 44rem);
+        }
+        .hero-copy { grid-column: 1; grid-row: 1; }
+        .hero-login { grid-column: 2; grid-row: 1; justify-content: flex-end; }
     }
 </style>
