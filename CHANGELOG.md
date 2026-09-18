@@ -47,6 +47,14 @@ ursprünglichen SemVer-Nummern.
 
 ### Added
 
+- **Der QR-Code eines Tracking-Links lässt sich wieder anzeigen, herunterladen und drucken.** Bisher gab es ihn genau einmal: direkt nach dem Anlegen, zum Abfotografieren vom Bildschirm. Wer den Dialog schloss, hatte den Link zwar noch in der Liste, aber keinen Code mehr — beim nächsten Fahrer blieb nur Abtippen. Jede aktive Zeile hat jetzt einen **QR**-Knopf, und sowohl dort als auch beim frisch erstellten Link stehen **PNG herunterladen** und **Drucken** bereit.
+
+  Der Ausdruck ist ein eigenes Blatt — Konvoi, Rolle des Links, QR-Code, Adresse — und nicht die Planungsseite mit Karte und Listen. Es hängt dafür am `body` und der Rest der Seite wird im Druck ausgenommen; bliebe er nur unsichtbar, stünde sein Layout weiter im Dokument und hinge als leere Folgeseiten hinterher. Kein zweites Fenster, das ein Popup-Blocker abfangen könnte.
+
+  Dieselbe Anzeige gibt es **in der Tracking-Ansicht selbst** unter **📱 Link weitergeben (QR)** — bei einem Fahrer-Link **Link für Mitfahrer**. Wer den Link offen hat, reicht ihn weiter, ohne acht Zeichen über den Fahrzeuginnenraum zu diktieren. Was der Code bedeutet, hängt an der Rolle und steht daneben: Der Fahrer-Link gibt Schreibzugriff weiter, der Viewer-Link nur den Blick auf den Verband. Der QR trägt dabei nur `…/track/<slug>`, nie das Sitzungstoken aus dem `sessionStorage`.
+
+  Gespeichert wird dafür nichts, und der Server liefert nichts Neues aus: Die Adresse steht ohnehin schon in der Liste — beim Fahrer sogar in der Adresszeile. **Ein Passwort ist nirgends davon zu sehen** — nicht im QR-Code, nicht auf dem Ausdruck. Es bleibt bei der einen Anzeige unmittelbar nach dem Anlegen; der Ausdruck sagt stattdessen, dass es getrennt mitgeteilt wird, und der Dialog sagt bei einem geschützten Link ausdrücklich, dass es hier nicht zu holen ist. Widerrufene Links bekommen keinen Knopf.
+
 - **Verwaiste MCP-Registrierungen werden aufgeräumt.** Bei Selbstregistrierung legt *jeder* Verbindungsversuch eine Zeile an — auch der abgebrochene, und Programme, die sich bei jedem Anlauf neu registrieren, hinterlassen entsprechend viele. Die Liste im Admin-Portal bestand dadurch nach kurzer Zeit überwiegend aus Karteileichen, in denen die eine Registrierung, die tatsächlich etwas trägt, nicht mehr zu finden war.
 
   Solche Zeilen sind jetzt als **verwaist** gekennzeichnet und lassen sich mit einem Knopf entfernen; unabhängig davon räumt der nächtliche Durchgang sie nach `RETENTION_OAUTH_CLIENTS_DAYS` (Standard 7 Tage) weg. Verwaist heißt: keine Tokens, keine Autorisierungscodes, älter als die Karenzzeit. Was eine Verbindung trägt, bleibt stehen — auch gesperrt, auch alt. Das ist kein Zugangsentzug mit anderem Namen: eine Registrierung *ist* kein Zugang, und ein laufender Verbindungsversuch überlebt das Aufräumen.

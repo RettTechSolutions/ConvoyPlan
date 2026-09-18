@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import QRCode from 'qrcode';
+	import QrShare from '$lib/components/QrShare.svelte';
 	import {
 		shareLinksApi,
 		type ShareLink,
@@ -9,7 +9,11 @@
 		type ShareLinkScope,
 	} from '$lib/api';
 
-	let { convoyId, onClose }: { convoyId: string; onClose: () => void } = $props();
+	let {
+		convoyId,
+		convoyName = '',
+		onClose,
+	}: { convoyId: string; convoyName?: string; onClose: () => void } = $props();
 
 	let links = $state<ShareLink[]>([]);
 	let loading = $state(true);
@@ -21,8 +25,11 @@
 	let passwordInput = $state('');
 
 	let lastCreated = $state<ShareLinkCreated | null>(null);
-	let lastQrDataUrl = $state('');
 	let copyHint = $state('');
+
+	// QR-Code eines bereits bestehenden Links. Die Adresse steht schon in der
+	// Liste (`url`); gezeichnet wird daraus im Browser.
+	let qrLink = $state<ShareLink | null>(null);
 
 	async function load() {
 		loading = true;
@@ -47,7 +54,6 @@
 			};
 			const created = await shareLinksApi.create(convoyId, body);
 			lastCreated = created;
-			lastQrDataUrl = await QRCode.toDataURL(created.url, { width: 240, margin: 1 });
 			passwordInput = '';
 			passwordMode = 'none';
 			scope = 'track';
@@ -64,10 +70,8 @@
 		busy = true;
 		try {
 			await shareLinksApi.revoke(convoyId, id);
-			if (lastCreated?.id === id) {
-				lastCreated = null;
-				lastQrDataUrl = '';
-			}
+			if (lastCreated?.id === id) lastCreated = null;
+			if (qrLink?.id === id) qrLink = null;
 			await load();
 		} catch (e) {
 			error = (e as Error).message;
@@ -86,6 +90,35 @@
 		}
 	}
 
+	function closeQr() {
+		qrLink = null;
+	}
+
+	function scopeLabel(scope: string) {
+		return scope === 'driver' ? '🚗 Fahrer' : '👁 Viewer';
+	}
+
+	/** Was auf dem Ausdruck unter der Überschrift steht. */
+	function rollenzeile(scope: string) {
+		return scope === 'driver'
+			? 'Fahrer-Link: Fahrzeug wählen, Position und Status senden'
+			: 'Nur ansehen: Verband live verfolgen';
+	}
+
+	/** Der Hinweis am Fuß des Ausdrucks — nie das Passwort selbst. */
+	function druckhinweis(link: ShareLink) {
+		return link.requires_password
+			? 'Dieser Zugang ist passwortgeschützt. Das Passwort wird getrennt mitgeteilt — es steht nicht auf diesem Blatt und nicht im QR-Code.'
+			: 'Dieser Zugang ist ohne Passwort erreichbar. Blatt entsprechend behandeln.';
+	}
+
+	function onKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape' && qrLink) {
+			e.stopPropagation();
+			closeQr();
+		}
+	}
+
 	function fmtDate(iso: string | null) {
 		if (!iso) return '–';
 		return new Date(iso).toLocaleString('de-DE');
@@ -93,6 +126,8 @@
 
 	onMount(load);
 </script>
+
+<svelte:window onkeydown={onKeydown} />
 
 <div class="sl-backdrop" onclick={onClose} role="presentation">
 	<div class="sl-modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
@@ -152,11 +187,13 @@
 				<section class="sl-result">
 					<h3>Neuer Link bereit</h3>
 					<div class="sl-result-grid">
-						<div class="sl-qr">
-							{#if lastQrDataUrl}
-								<img src={lastQrDataUrl} alt="QR-Code" />
-							{/if}
-						</div>
+						<QrShare
+							url={lastCreated.url}
+							filename="tracking-{lastCreated.slug}"
+							printTitle="{convoyName || 'Konvoi'} — Live-Tracking"
+							printSubtitle={rollenzeile(lastCreated.scope)}
+							printNote={druckhinweis(lastCreated)}
+						/>
 						<div class="sl-result-info">
 							<label>URL</label>
 							<div class="sl-copy-row">
@@ -203,17 +240,18 @@
 								<tr class:revoked={link.revoked}>
 									<td><code>{link.slug}</code></td>
 									<td>
-										<span class="sl-badge" class:driver={link.scope === 'driver'}>
-											{link.scope === 'driver' ? '🚗 Fahrer' : '👁 Viewer'}
-										</span>
+										<span class="sl-badge" class:driver={link.scope === 'driver'}>{scopeLabel(link.scope)}</span>
 									</td>
 									<td>{link.requires_password ? '🔒' : '—'}</td>
 									<td>{fmtDate(link.created_at)}</td>
 									<td>{fmtDate(link.last_accessed_at)}</td>
 									<td>{link.access_count}</td>
 									<td>{link.revoked ? 'widerrufen' : 'aktiv'}</td>
-									<td>
+									<td class="sl-actions">
 										{#if !link.revoked}
+											<button class="sl-btn-small" onclick={() => (qrLink = link)} title="QR-Code anzeigen">
+												QR
+											</button>
 											<button class="sl-btn-small danger" onclick={() => revoke(link.id)} disabled={busy}>
 												Widerrufen
 											</button>
@@ -229,6 +267,38 @@
 	</div>
 </div>
 
+{#if qrLink}
+	<div class="sl-backdrop sl-qr-backdrop" onclick={closeQr} role="presentation">
+		<div class="sl-modal sl-qr-modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+			<header>
+				<h2>QR-Code · {qrLink.slug}</h2>
+				<button class="sl-close" onclick={closeQr} aria-label="Schließen">✕</button>
+			</header>
+			<div class="sl-body sl-qr-body">
+				<span class="sl-badge" class:driver={qrLink.scope === 'driver'}>{scopeLabel(qrLink.scope)}</span>
+				<QrShare
+					url={qrLink.url}
+					filename="tracking-{qrLink.slug}"
+					printTitle="{convoyName || 'Konvoi'} — Live-Tracking"
+					printSubtitle={rollenzeile(qrLink.scope)}
+					printNote={druckhinweis(qrLink)}
+					size={260}
+				/>
+				<div class="sl-copy-row">
+					<input class="sl-input" readonly value={qrLink.url} />
+					<button class="sl-btn-secondary" onclick={() => copy(qrLink!.url)}>Kopieren</button>
+				</div>
+				{#if copyHint}
+					<p class="sl-copy-hint">{copyHint}</p>
+				{/if}
+				{#if qrLink.requires_password}
+					<p class="sl-warn">🔒 Dieser Link ist passwortgeschützt. Das Passwort wurde nur bei der Erstellung angezeigt und lässt sich nicht erneut abrufen — wer es nicht mehr hat, erstellt einen neuen Link.</p>
+				{/if}
+			</div>
+		</div>
+	</div>
+{/if}
+
 <style>
 	.sl-backdrop {
 		position: fixed; inset: 0; background: rgba(0, 0, 0, .55); z-index: 1000;
@@ -237,7 +307,7 @@
 	}
 	.sl-modal {
 		background: white; color: #1a1a1a; border-radius: 10px;
-		width: 100%; max-width: 720px; margin: auto; display: flex; flex-direction: column;
+		width: 100%; max-width: 820px; margin: auto; display: flex; flex-direction: column;
 		max-height: 90vh; box-shadow: 0 12px 48px rgba(0, 0, 0, .45);
 	}
 	header {
@@ -273,25 +343,32 @@
 	.sl-btn-secondary { padding: .5rem .9rem; border-radius: 5px; border: 1.5px solid #ccc; background: white; color: #333; cursor: pointer; font-size: .85rem; white-space: nowrap; }
 	.sl-btn-secondary:hover { background: #f0f0f0; }
 
-	.sl-btn-small { padding: .25rem .5rem; border-radius: 4px; border: 1px solid #ccc; background: white; color: #444; cursor: pointer; font-size: .78rem; }
+	.sl-btn-small { padding: .25rem .5rem; border-radius: 4px; border: 1px solid #ccc; background: white; color: #444; cursor: pointer; font-size: .78rem; white-space: nowrap; }
+	.sl-btn-small:hover:not(:disabled) { background: #f0f0f0; }
 	.sl-btn-small.danger { color: #b91c1c; border-color: #f4b4b4; }
 	.sl-btn-small.danger:hover { background: #fef2f2; }
 
 	.sl-result { border: 1px solid #d6e4ef; background: #f4f9fd; border-radius: 8px; padding: 1rem; }
 	.sl-result-grid { display: flex; gap: 1rem; flex-wrap: wrap; }
-	.sl-qr { flex: 0 0 auto; background: white; padding: .5rem; border-radius: 6px; border: 1px solid #ddd; }
-	.sl-qr img { display: block; width: 200px; height: 200px; }
 	.sl-result-info { flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: .4rem; }
 	.sl-result-info label { font-size: .75rem; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: .05em; margin-top: .25rem; }
 	.sl-hint { font-weight: 400; text-transform: none; letter-spacing: 0; color: #b45309; }
 	.sl-copy-row { display: flex; gap: .4rem; }
 	.sl-copy-hint { color: #16a34a; font-size: .8rem; margin: .25rem 0 0; }
 
+	.sl-list { overflow-x: auto; }
 	.sl-list table { width: 100%; border-collapse: collapse; font-size: .85rem; }
 	.sl-list th, .sl-list td { padding: .4rem .5rem; border-bottom: 1px solid #eee; text-align: left; }
 	.sl-list th { color: #666; font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
 	.sl-list tr.revoked { color: #999; text-decoration: line-through; }
 	.sl-list code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .88rem; }
+
+	.sl-actions { display: flex; gap: .35rem; justify-content: flex-end; }
+	.sl-qr-backdrop { z-index: 1010; }
+	.sl-qr-modal { max-width: 420px; }
+	.sl-qr-body { align-items: center; text-align: center; gap: .75rem; }
+	.sl-qr-body .sl-copy-row, .sl-qr-body .sl-warn { width: 100%; }
+	.sl-qr-body .sl-warn { margin: 0; text-align: left; }
 
 	.sl-muted { color: #777; font-size: .88rem; }
 	.sl-error { color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: .5rem .75rem; font-size: .85rem; margin: 0; }
