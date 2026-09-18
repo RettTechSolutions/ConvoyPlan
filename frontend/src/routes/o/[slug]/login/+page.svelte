@@ -4,7 +4,6 @@
     import { onMount } from 'svelte';
     import { orgStore } from '$lib/stores/org';
     import { orgAuthApi } from '$lib/api';
-    import { setActiveSlug } from '$lib/api/client';
     import { sicheresZiel } from '$lib/redirect';
     import AppLogo from '$lib/components/AppLogo.svelte';
     import LegalFooter from '$lib/components/LegalFooter.svelte';
@@ -54,8 +53,6 @@
     }
 
     onMount(async () => {
-        setActiveSlug(slug);
-
         // Bereits eingeloggt? Weiterleiten. Das weiß nur der Server — ein
         // vorhandenes Cookie sagt für sich genommen nichts über seine
         // Gültigkeit, und lesen kann das Portal es ohnehin nicht.
@@ -79,7 +76,6 @@
         loading = true;
         error = '';
         try {
-            setActiveSlug(slug);
             const data = await orgAuthApi.loginOrg(email, password, slug);
             if (data.mfa_required && data.mfa_token) {
                 mfaRequired = true;

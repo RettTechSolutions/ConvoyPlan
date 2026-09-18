@@ -3,15 +3,50 @@ export function getBaseUrl(): string {
 	return '';
 }
 
-let _activeSlug: string | null = null;
+/**
+ * Welche Sitzung eine Anfrage meint.
+ *
+ * `'seite'` (Standard) — die Organisation, auf deren Seite der Aufruf
+ * geschieht. `null` — ausdrücklich die organisationslose (Superadmin-)
+ * Sitzung; das brauchen genau die Aufrufe des `auth`-Stores.
+ */
+export type Sitzung = 'seite' | null;
 
-/** Wird vom Org-Guard-Layout gesetzt bevor API-Calls gemacht werden */
-export function setActiveSlug(slug: string | null): void {
-    _activeSlug = slug;
+// Dieselbe Form, die `Organization._slugify` erzeugt und die das Backend in
+// `cookies.ist_gueltiger_slug` noch einmal prüft.
+const ORG_PFAD = /^\/o\/([a-z0-9]+(?:-[a-z0-9]+)*)(?:\/|$)/;
+const SLUG_MAX = 80;
+
+/**
+ * Ein Organisations-Slug am Anfang des Pfades: `/o/<slug>/…`, sonst `null`.
+ *
+ * Was nicht wie ein Slug aussieht, wird gar nicht erst angekündigt und führt
+ * damit auf die globale Sitzung — also auf genau das, was ohne den Kopf
+ * ohnehin gälte. Das Backend verfährt mit einem unbrauchbaren Kopf genauso.
+ */
+export function orgSlugAusPfad(pfad: string): string | null {
+	const slug = ORG_PFAD.exec(pfad)?.[1];
+	return slug && slug.length <= SLUG_MAX ? slug : null;
 }
 
+/**
+ * Die Organisation, um die es gerade geht — aus der Adresszeile.
+ *
+ * Vorher stand sie in einer Modulvariablen, die das Org-Layout vor seinen
+ * Aufrufen setzte. Das war eine Wette auf die Reihenfolge der `onMount`s,
+ * und die ging verloren: das Org-Layout mountet **vor** dem Wurzel-Layout,
+ * dessen `auth.init()` die Variable auf `null` zurücksetzte — danach ging
+ * jede Anfrage der Seite ohne `X-Org-Slug` hinaus und landete auf der
+ * globalen Sitzung. Wer zusätzlich als Superadmin angemeldet war, bekam
+ * deshalb „Org context required", alle anderen ein 401; sichtbar wurde es
+ * beim harten Laden einer Org-Seite (Tracking-Ansicht im neuen Tab, F5).
+ *
+ * Die Adresse ist die ehrlichere Quelle: sie gilt für *diese* Anfrage,
+ * überlebt keinen Seitenwechsel und kennt keine Reihenfolge.
+ */
 export function getActiveSlug(): string | null {
-	return _activeSlug;
+	if (typeof location === 'undefined') return null;
+	return orgSlugAusPfad(location.pathname);
 }
 
 /**
@@ -48,9 +83,13 @@ const ORG_SLUG_HEADER = 'X-Org-Slug';
  * sie vergisst, bekommt bei ändernden Methoden ein 403 statt einer stillen
  * Fehlfunktion; das ist Absicht.
  */
-export function authHeaders(base: Record<string, string> = {}): Record<string, string> {
+export function authHeaders(
+	base: Record<string, string> = {},
+	sitzung: Sitzung = 'seite'
+): Record<string, string> {
 	const headers: Record<string, string> = { ...base, [CSRF_HEADER]: CSRF_VALUE };
-	if (_activeSlug) headers[ORG_SLUG_HEADER] = _activeSlug;
+	const slug = sitzung === null ? null : getActiveSlug();
+	if (slug) headers[ORG_SLUG_HEADER] = slug;
 	return headers;
 }
 
@@ -148,12 +187,16 @@ async function toApiError(res: Response, fallback: string): Promise<ApiError> {
 
 async function request<T>(
 	path: string,
-	options: RequestInit = {}
+	options: RequestInit = {},
+	sitzung: Sitzung = 'seite'
 ): Promise<T> {
-	const headers = authHeaders({
-		'Content-Type': 'application/json',
-		...(options.headers as Record<string, string>),
-	});
+	const headers = authHeaders(
+		{
+			'Content-Type': 'application/json',
+			...(options.headers as Record<string, string>),
+		},
+		sitzung
+	);
 
 	const res = await fetch(`${getBaseUrl()}${path}`, {
 		...options,
@@ -165,15 +208,21 @@ async function request<T>(
 	return res.json();
 }
 
+/**
+ * Der letzte Parameter ist überall `sitzung` und fast überall wegzulassen:
+ * gemeint ist die Organisation aus der Adresse. Ausdrücklich `null` setzt
+ * nur, wer die organisationslose Sitzung meint (siehe `authApi.me`).
+ */
 export const api = {
-	get: <T>(path: string) => request<T>(path),
-	post: <T>(path: string, body: unknown) =>
-		request<T>(path, { method: 'POST', body: JSON.stringify(body) }),
-	put: <T>(path: string, body: unknown) =>
-		request<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
-	patch: <T>(path: string, body: unknown) =>
-		request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
-	delete: <T = void>(path: string) => request<T>(path, { method: 'DELETE' }),
+	get: <T>(path: string, sitzung: Sitzung = 'seite') => request<T>(path, {}, sitzung),
+	post: <T>(path: string, body: unknown, sitzung: Sitzung = 'seite') =>
+		request<T>(path, { method: 'POST', body: JSON.stringify(body) }, sitzung),
+	put: <T>(path: string, body: unknown, sitzung: Sitzung = 'seite') =>
+		request<T>(path, { method: 'PUT', body: JSON.stringify(body) }, sitzung),
+	patch: <T>(path: string, body: unknown, sitzung: Sitzung = 'seite') =>
+		request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }, sitzung),
+	delete: <T = void>(path: string, sitzung: Sitzung = 'seite') =>
+		request<T>(path, { method: 'DELETE' }, sitzung),
 };
 
 /**

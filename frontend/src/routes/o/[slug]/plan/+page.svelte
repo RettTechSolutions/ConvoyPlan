@@ -957,7 +957,7 @@
 	}
 	async function logout() {
 		const slug = ($page.params as Record<string, string>).slug;
-		await orgStore.logout(slug);
+		await orgStore.logout();
 		goto(`/o/${slug}/login`);
 	}
 
