@@ -3,6 +3,7 @@
 	import { page } from '$app/stores';
 	import MapView from '$lib/components/MapView.svelte';
 	import AppLogo from '$lib/components/AppLogo.svelte';
+	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
 	import TrackingPwaHead from '$lib/components/TrackingPwaHead.svelte';
 	import {
 		trackApi, isTrackGate,
@@ -16,6 +17,8 @@
 	import { routeCoords } from '$lib/tracking/eta';
 	import { buildRoutePoints, computeConvoyProgress, formatDistance, type RoutePoint } from '$lib/tracking/progress';
 	import { notifySignal } from '$lib/tracking/notify';
+	import type { ConnectionState } from '$lib/tracking/connection';
+	import { createLiveSocket, CLOSE_UNAUTHORIZED, type LiveSocket } from '$lib/tracking/socket';
 
 	const slug = $derived($page.params.slug!);
 
@@ -29,12 +32,12 @@
 
 	let activeTab = $state<'fahrzeuge' | 'zeitplan'>('fahrzeuge');
 	let sidebarOpen = $state(false);
-	let connected = $state(false);
+	let wsState = $state<ConnectionState>('idle');
 
 	let livePositions = $state<Map<string, VehiclePosition>>(new Map());
 	// Live vehicle status overrides received via WebSocket (vehicle_id → status).
 	let liveStatuses = $state<Map<string, string>>(new Map());
-	let ws: WebSocket | null = null;
+	let live: LiveSocket | null = null;
 	let mapView = $state<ReturnType<typeof MapView>>();
 
 	// ── Driver mode (scope === 'driver'): pick a vehicle & send GPS/status ──
@@ -144,13 +147,26 @@
 
 	function connectWs(token?: string) {
 		if (typeof window === 'undefined') return;
-		const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-		const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
-		ws = new WebSocket(`${proto}//${window.location.host}/api/ws/track/${slug}${tokenParam}`);
-		ws.onopen = () => { connected = true; };
-		ws.onmessage = (ev) => {
-			try {
-				const msg = JSON.parse(ev.data);
+		live?.close();
+		live = createLiveSocket({
+			// Bei jedem Versuch neu gebildet: nach einer Passworteingabe steht ein
+			// neues Sitzungs-Token im `sessionStorage`, und der Neuaufbau soll es
+			// benutzen statt des abgelaufenen aus dem ersten Aufruf.
+			url: () => {
+				const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+				const current = loadStoredToken() ?? token;
+				const tokenParam = current ? `?token=${encodeURIComponent(current)}` : '';
+				return `${proto}//${window.location.host}/api/ws/track/${slug}${tokenParam}`;
+			},
+			onState: (state) => { wsState = state; },
+			onFatal: (code) => {
+				// 4001: die Sitzung des Passwortlinks ist abgelaufen — zurück zur
+				// Abfrage statt endlos gegen eine geschlossene Tür zu klopfen.
+				if (code === CLOSE_UNAUTHORIZED) { clearToken(); void load(); return; }
+				error = 'Dieser Tracking-Link ist nicht mehr gültig.';
+			},
+			onMessage: (raw) => {
+				const msg = raw as Record<string, unknown> & { type?: string; vehicle_id?: unknown; lat?: unknown };
 				if (msg.type === 'status_update') {
 					if (typeof msg.vehicle_id === 'string' && typeof msg.vehicle_status === 'string') {
 						const next = new Map(liveStatuses);
@@ -171,16 +187,15 @@
 				const next = new Map(livePositions);
 				next.set(msg.vehicle_id, {
 					vehicle_id: msg.vehicle_id,
-					lat: msg.lat, lon: msg.lon,
-					speed_kmh: msg.speed_kmh ?? null,
-					heading: msg.heading ?? null,
+					lat: msg.lat, lon: msg.lon as number,
+					speed_kmh: (msg.speed_kmh as number | null) ?? null,
+					heading: (msg.heading as number | null) ?? null,
 					recorded_at: new Date().toISOString(),
 				});
 				livePositions = next;
-			} catch { /* ignore */ }
-		};
-		ws.onclose = () => { connected = false; };
-		ws.onerror = () => { connected = false; /* silent — UI keeps last snapshot */ };
+			},
+		});
+		live.connect();
 	}
 
 	function fmtTime(iso: string | null) {
@@ -190,12 +205,12 @@
 
 	// ── Driver actions ──────────────────────────────────────────────────────
 	function wsReady(): boolean {
-		return ws?.readyState === WebSocket.OPEN;
+		return live?.canSend() ?? false;
 	}
 
 	function sendDriverPosition(lat: number, lon: number, speedKmh?: number, heading?: number) {
 		if (!wsReady() || !myVehicleId) return;
-		ws!.send(JSON.stringify({ vehicle_id: myVehicleId, lat, lon, speed_kmh: speedKmh, heading }));
+		live!.send({ vehicle_id: myVehicleId, lat, lon, speed_kmh: speedKmh, heading });
 		// Optimistic local marker so the driver sees themselves immediately.
 		const next = new Map(livePositions);
 		next.set(myVehicleId, { vehicle_id: myVehicleId, lat, lon, speed_kmh: speedKmh ?? null, heading: heading ?? null, recorded_at: new Date().toISOString() });
@@ -241,7 +256,7 @@
 
 	function sendDriverStatus(status: string, level: string | null = null, note: string | null = null) {
 		if (!wsReady() || !myVehicleId) { driverError = 'Keine Verbindung – Status nicht gesendet'; return; }
-		ws!.send(JSON.stringify({ type: 'status', vehicle_id: myVehicleId, vehicle_status: status, status_level: level, status_note: note }));
+		live!.send({ type: 'status', vehicle_id: myVehicleId, vehicle_status: status, status_level: level, status_note: note });
 		// Optimistic local update.
 		const next = new Map(liveStatuses);
 		next.set(myVehicleId, status);
@@ -350,11 +365,25 @@
 		}
 	});
 
-	onMount(load);
+	// Netz zurück oder Seite wieder im Vordergrund: sofort neu verbinden, statt
+	// die Backoff-Wartezeit abzusitzen. Genau das sind die Momente nach einem
+	// Tunnel oder nach dem Entsperren des Telefons.
+	function wakeSocket() { live?.wake(); }
+	function handleVisible() { if (document.visibilityState === 'visible') wakeSocket(); }
+
+	onMount(() => {
+		window.addEventListener('online', wakeSocket);
+		document.addEventListener('visibilitychange', handleVisible);
+		void load();
+	});
 	onDestroy(() => {
 		if (geoWatcher !== null) navigator.geolocation.clearWatch(geoWatcher);
 		releaseWakeLock();
-		ws?.close();
+		if (typeof window !== 'undefined') {
+			window.removeEventListener('online', wakeSocket);
+			document.removeEventListener('visibilitychange', handleVisible);
+		}
+		live?.close();
 	});
 </script>
 
@@ -365,7 +394,7 @@
 	<div class="topbar">
 		<button class="hamburger" onclick={() => (sidebarOpen = !sidebarOpen)} aria-label="Menü">☰</button>
 		<span class="topbar-name">{data?.name ?? gate?.convoy_name ?? 'Tracking'}</span>
-		<div class="ws-dot" class:connected title={connected ? 'Verbunden' : 'Nicht verbunden'}></div>
+		<span class="topbar-live"><LiveIndicator state={wsState} dotOnly /></span>
 	</div>
 
 	<!-- Sidebar backdrop (mobile) -->
@@ -382,12 +411,16 @@
 				{#if data?.organization}<div class="org-name">{data.organization}</div>{/if}
 			</div>
 			{#if data}
-				<div class="ws-indicator" class:connected title={connected ? 'Verbunden' : 'Nicht verbunden'}>
-					<span class="ws-dot" class:connected></span>
-					<span class="ws-label">{connected ? 'Live' : 'Getrennt'}</span>
-				</div>
+				<LiveIndicator state={wsState} />
 			{/if}
 		</div>
+
+		<!-- Ein widerrufener Link schliesst den Kanal endgültig. Ohne Hinweis
+		     stünde nur „Getrennt" da, und die Karte zeigte den letzten Stand
+		     weiter, als wäre er aktuell. -->
+		{#if data && error}
+			<div class="link-error">{error}</div>
+		{/if}
 
 		{#if loading}
 			<div class="tab-content"><p class="hint">Lade…</p></div>
@@ -588,10 +621,6 @@
 	.org-name { font-size: var(--text-xs); color: var(--text-muted); margin-top: .1rem; }
 
 	/* WS indicator */
-	.ws-indicator { display: flex; align-items: center; gap: .35rem; font-size: var(--text-xs); color: var(--text-muted); flex-shrink: 0; }
-	.ws-dot { width: 8px; height: 8px; border-radius: 50%; background: #e74c3c; flex-shrink: 0; }
-	.ws-dot.connected { background: #27ae60; animation: pulse 2s infinite; }
-	.ws-label { white-space: nowrap; }
 
 	/* Info block (start time) */
 	.info-block { padding: .75rem 1rem; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: .15rem; flex-shrink: 0; }
@@ -603,6 +632,7 @@
 	.gate form { display: flex; flex-direction: column; gap: .5rem; margin-top: .75rem; }
 	.gate input { padding: .55rem .7rem; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); }
 	.error-text { color: var(--color-primary); font-size: var(--text-sm); margin-top: .5rem; }
+	.link-error { background: var(--color-primary-hover); color: #fff; padding: .4rem .75rem; font-size: var(--text-xs); flex-shrink: 0; word-break: break-word; }
 
 	.btn-primary { width: 100%; padding: .5rem 1rem; background: var(--color-primary); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: var(--text-sm); }
 	.btn-primary:disabled { opacity: .5; cursor: not-allowed; }
@@ -690,7 +720,7 @@
 		.topbar { display: flex; align-items: center; gap: .75rem; padding: .75rem 1rem; background: var(--sidebar-bg); color: var(--text-1); border-bottom: 1px solid var(--border); position: fixed; top: 0; left: 0; right: 0; z-index: 50; height: 48px; box-sizing: border-box; }
 		.hamburger { background: none; border: none; color: var(--text-1); font-size: 1.3rem; cursor: pointer; padding: 0; }
 		.topbar-name { flex: 1; font-size: var(--text-sm); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-		.topbar .ws-dot { margin-left: auto; }
+		.topbar .topbar-live { margin-left: auto; display: flex; align-items: center; }
 
 		.app { flex-direction: column; padding-top: 48px; }
 		.sidebar { position: fixed; top: 48px; left: 0; bottom: 0; z-index: 40; transform: translateX(-100%); transition: transform .25s ease; width: 300px; overflow-y: hidden; }
