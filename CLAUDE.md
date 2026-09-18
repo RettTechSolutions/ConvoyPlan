@@ -213,7 +213,17 @@ Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste
   PostGIS-Datenbank (`DATABASE_URL`). Autouse-Fixtures in `tests/conftest.py`
   schalten Rate-Limiting, HIBP-Abfrage und Update-Check ab; ein Test, der genau
   das prüft, aktiviert es selbst wieder.
-- **Frontend** — `npm run check` (svelte-check) in `frontend/`.
+- **Frontend** — `npm run check` (svelte-check) und `npm run test:e2e`
+  (Playwright, Job `Frontend – E2E (Playwright)`) in `frontend/`. Die Tests
+  liegen in `frontend/e2e/` und starten sich ihre Server selbst: den **gebauten**
+  Stand der App (`build` + `preview`, nicht `vite dev` — der übersetzt beim ersten
+  Zugriff und lässt parallele Tests in den Zeitablauf laufen) und eine schlanke
+  Komponentenhülle (`e2e/harness/`) für alles, was in der App hinter der Anmeldung
+  sitzt. Ein Backend braucht es nicht: `mockTrack` beantwortet die Tracking-API,
+  die Hülle stubbt `$lib/api`, und `blockExternal` bricht alles ab, was nicht von
+  der Testinstanz kommt — ohne das hängen die Tests ohne Netz an den Kartenkacheln.
+  Die Hülle ist **kein** Teil des Produktionsbaus; eine Testroute unter `src/routes/`
+  wäre eine, die mit ausgeliefert wird.
 - **Shell** — die Suiten unter `docker/updater/tests/` und für den
   GraphHopper-Entrypoint; sie tragen den Regionswechsel und laufen im Job
   `Shell – Updater und Entrypoint`.
@@ -223,3 +233,8 @@ Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste
 
 Neue Tests liegen neben den bestehenden in `backend/tests/` und werden nach dem
 geprüften Verhalten benannt (`test_<thema>.py`), nicht nach der Implementierung.
+Dasselbe gilt vorne: Was in `frontend/e2e/` geprüft wird, ist eine Zusage an den
+Anwender — dass der QR-Code die Adresse und **kein** Sitzungstoken trägt, dass
+weder Passwort noch Seiteninhalt auf dem Ausdruck landen, dass ein widerrufener
+Link keinen QR-Knopf hat. Solche Zusagen sieht man einem Bildschirmfoto nicht an,
+und still falsch werden sie trotzdem.

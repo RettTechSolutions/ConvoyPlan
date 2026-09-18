@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="de">
+	<head>
+		<meta charset="utf-8" />
+		<title>ConvoyPlan – Komponentenhülle (E2E)</title>
+		<style>
+			body { margin: 0; font-family: system-ui, sans-serif; background: #4b5f6e; }
+			/* Steht für die Planungsseite darunter: Karte und Listen machen die
+			   Seite lang. Der Ausdruck darf davon nichts mitnehmen. */
+			.filler { height: 4000px; background: repeating-linear-gradient(#eee, #eee 40px, #ddd 40px, #ddd 80px); }
+		</style>
+	</head>
+	<body>
+		<div id="app"></div>
+		<div class="filler">Lange Seite (steht für Karte und Listen)</div>
+		<script type="module" src="./main.ts"></script>
+	</body>
+</html>
