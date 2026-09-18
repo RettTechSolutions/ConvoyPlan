@@ -489,35 +489,46 @@
 						</div>
 					{/if}
 
-					<!-- Weitergabe an Mitfahrer: der Link, den man ohnehin offen hat,
-					     als QR zum Abscannen vom Nachbargerät. -->
-					<div class="share-block">
-						<button class="btn-ghost" onclick={() => (shareOpen = !shareOpen)} aria-expanded={shareOpen}>
-							{shareOpen ? '▾' : '▸'} 📱 Link für Mitfahrer (QR)
-						</button>
-						{#if shareOpen}
-							<p class="hint hint-warn">
-								Wer diesen Code scannt, kann ebenfalls ein Fahrzeug wählen und Position
-								und Status senden. Nur an die eigene Besatzung weitergeben.
-							</p>
-							{#if hasPassword}
-								<p class="hint">Zusätzlich wird das Passwort gebraucht — getrennt mitteilen, nicht neben den Code schreiben.</p>
-							{/if}
-							<QrShare
-								url={trackUrl}
-								filename="tracking-{slug}"
-								printTitle="{data.name} — Live-Tracking"
-								printSubtitle="Fahrer-Link: Fahrzeug wählen, Position und Status senden"
-								printNote={hasPassword
-									? 'Dieser Zugang ist passwortgeschützt. Das Passwort wird getrennt mitgeteilt — es steht nicht auf diesem Blatt und nicht im QR-Code.'
-									: 'Dieser Zugang ist ohne Passwort erreichbar. Blatt entsprechend behandeln.'}
-								size={180}
-								dark
-							/>
-						{/if}
-					</div>
 				</div>
 			{/if}
+
+			<!-- Weitergabe: der Link, den man ohnehin offen hat, als QR zum
+			     Abscannen vom Nachbargerät. Für beide Rollen — was der Code
+			     bedeutet, unterscheidet sich, nicht ob es ihn gibt. -->
+			<div class="share-block">
+				<button class="btn-ghost" onclick={() => (shareOpen = !shareOpen)} aria-expanded={shareOpen}>
+					{shareOpen ? '▾' : '▸'} 📱 {isDriver ? 'Link für Mitfahrer (QR)' : 'Link weitergeben (QR)'}
+				</button>
+				{#if shareOpen}
+					{#if isDriver}
+						<p class="hint hint-warn">
+							Wer diesen Code scannt, kann ebenfalls ein Fahrzeug wählen und Position
+							und Status senden. Nur an die eigene Besatzung weitergeben.
+						</p>
+					{:else}
+						<p class="hint">
+							Wer diesen Code scannt, sieht denselben Verband live — Positionen, Status
+							und Zeitplan. Senden kann er nichts.
+						</p>
+					{/if}
+					{#if hasPassword}
+						<p class="hint">Zusätzlich wird das Passwort gebraucht — getrennt mitteilen, nicht neben den Code schreiben.</p>
+					{/if}
+					<QrShare
+						url={trackUrl}
+						filename="tracking-{slug}"
+						printTitle="{data.name} — Live-Tracking"
+						printSubtitle={isDriver
+							? 'Fahrer-Link: Fahrzeug wählen, Position und Status senden'
+							: 'Nur ansehen: Verband live verfolgen'}
+						printNote={hasPassword
+							? 'Dieser Zugang ist passwortgeschützt. Das Passwort wird getrennt mitgeteilt — es steht nicht auf diesem Blatt und nicht im QR-Code.'
+							: 'Dieser Zugang ist ohne Passwort erreichbar. Blatt entsprechend behandeln.'}
+						size={180}
+						dark
+					/>
+				{/if}
+			</div>
 
 			<!-- Tabs -->
 			<div class="tabs">
@@ -676,8 +687,11 @@
 	.hint { font-size: var(--text-xs); color: var(--text-muted); font-style: italic; margin: 0; line-height: 1.4; }
 	.hint.hint-warn { color: #f1c40f; font-style: normal; }
 
-	/* Weitergabe an Mitfahrer */
-	.share-block { display: flex; flex-direction: column; gap: .5rem; margin-top: .25rem; }
+	/* Weitergabe des Links (beide Rollen) */
+	.share-block {
+		display: flex; flex-direction: column; gap: .5rem; flex-shrink: 0;
+		padding: .75rem 1rem; border-bottom: 1px solid var(--border);
+	}
 	.btn-ghost {
 		align-self: flex-start; padding: .35rem .6rem; background: none;
 		border: 1px solid var(--border); border-radius: 6px; color: var(--text-1);

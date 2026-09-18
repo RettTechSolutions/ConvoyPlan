@@ -111,10 +111,14 @@ Fahrer-Link für die Besatzungen und ein Viewer-Link für die Leitung.
 > **Nicht** enthalten: Fahrzeugdetails wie Kennzeichen, Abmessungen und
 > Kraftstoffdaten, interne Notizen und der Marschbefehl-Volltext.
 
-Bei einem **Fahrer-Link** kommt oben der Block **„Meine Position (Fahrer)"**
-hinzu: Fahrzeugauswahl, GPS-Übertragung, Statusmeldung inklusive technischem
-Halt und Ausfall sowie **📱 Link für Mitfahrer (QR)**, um den geöffneten Link
-im Fahrzeug weiterzureichen – siehe [Live-Tracking](Live-Tracking). Ohne HTTPS steht kein
+In beiden Rollen steht in der Seitenleiste **📱 Link weitergeben (QR)** (bei
+einem Fahrer-Link: **Link für Mitfahrer**), um den geöffneten Link vom
+Nachbargerät abscannen zu lassen – siehe
+[Live-Tracking](Live-Tracking#den-link-weitergeben-qr).
+
+Bei einem **Fahrer-Link** kommt oben zusätzlich der Block **„Meine Position
+(Fahrer)"** hinzu: Fahrzeugauswahl, GPS-Übertragung und Statusmeldung inklusive
+technischem Halt und Ausfall – siehe [Live-Tracking](Live-Tracking). Ohne HTTPS steht kein
 GPS zur Verfügung; die Position lässt sich dann per Tippen auf die Karte setzen.
 
 Die Ansicht lässt sich als PWA auf den Homescreen legen; sie fragt beim Start

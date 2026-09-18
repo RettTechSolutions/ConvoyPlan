@@ -43,18 +43,28 @@ Ohne GPS-Signal oder ohne Standortfreigabe:
 1. Auf der Karte auf die aktuelle Position tippen
 2. Die gemeldete Position wird manuell gesetzt und übertragen
 
-### Link an Mitfahrer weitergeben
+---
 
-Im Fahrer-Block steht **📱 Link für Mitfahrer (QR)**. Aufgeklappt zeigt er den
-QR-Code der geöffneten Tracking-Adresse — zum Abscannen vom Nachbargerät, damit
-im Fahrzeug niemand eine achtstellige Zeichenfolge abtippen muss. Dazu die
-gewohnten Knöpfe **PNG herunterladen** und **Drucken**.
+## Den Link weitergeben (QR)
 
-> **Der Code ist der Fahrer-Link.** Wer ihn scannt, kann ebenfalls ein Fahrzeug
-> wählen und Position und Status senden — also nur an die eigene Besatzung
-> weitergeben, nicht an Umstehende. Ist der Link passwortgeschützt, braucht der
-> Empfänger zusätzlich das Passwort; es steckt **nicht** im QR-Code und ist
-> getrennt mitzuteilen.
+In jeder Tracking-Ansicht steht in der Seitenleiste **📱 Link weitergeben (QR)** —
+bei einem Fahrer-Link heißt derselbe Knopf **📱 Link für Mitfahrer (QR)**.
+Aufgeklappt zeigt er den QR-Code der geöffneten Adresse, zum Abscannen vom
+Nachbargerät, dazu **PNG herunterladen** und **Drucken**. Niemand muss eine
+achtstellige Zeichenfolge diktieren.
+
+Was der Code bedeutet, hängt an der Rolle des Links — dass es ihn gibt, nicht:
+
+| Rolle | Wer ihn scannt … |
+|---|---|
+| **Nur ansehen** (Viewer) | sieht denselben Verband live: Positionen, Status, Zeitplan. Senden kann er nichts. |
+| **Fahrer** | kann zusätzlich ein Fahrzeug wählen und Position und Status senden. |
+
+> **Der Code *ist* der Link.** Bei einem Fahrer-Link gibt er damit Schreibzugriff
+> weiter — nur an die eigene Besatzung, nicht an Umstehende. Ist der Link
+> passwortgeschützt, braucht der Empfänger zusätzlich das Passwort; es steckt
+> **nicht** im QR-Code und auch nicht auf dem Ausdruck, sondern ist getrennt
+> mitzuteilen. Der Hinweis in der Ansicht sagt beides an Ort und Stelle.
 
 ---
 
