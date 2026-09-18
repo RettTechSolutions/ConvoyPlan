@@ -119,7 +119,7 @@ jobs:
     # verlangt, dass Programm und Browser aus demselben Stand kommen. Wer
     # `@playwright/test` hebt, hebt hier mit.
     container:
-      image: mcr.microsoft.com/playwright:v1.56.1-noble
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
