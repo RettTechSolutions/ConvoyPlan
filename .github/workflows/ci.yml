@@ -106,32 +106,29 @@ jobs:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     # Die Suite braucht rund eine Minute. Ein Deckel darüber, damit ein
-    # hängender Installationsschritt nicht stundenlang einen Runner belegt,
-    # statt als Fehlschlag sichtbar zu werden.
+    # hängender Schritt nicht stundenlang einen Runner belegt, statt als
+    # Fehlschlag sichtbar zu werden.
     timeout-minutes: 15
+    # Im Playwright-Image steckt Chromium bereits — es gibt nichts zu
+    # installieren. `npx playwright install` blieb auf dem Runner nach dem
+    # Download beim Entpacken stehen, ohne Ausgabe und ohne Abbruch, unter
+    # Node 26 (neuer als das, wogegen Playwright 1.56 getestet ist). Das Image
+    # bringt auch ein dazu passendes Node mit.
+    #
+    # Die Marke muss zur Fassung in `frontend/package.json` passen: Playwright
+    # verlangt, dass Programm und Browser aus demselben Stand kommen. Wer
+    # `@playwright/test` hebt, hebt hier mit.
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
-        with:
-          node-version: "26"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
         run: cd frontend && npm ci
 
       # Nur Chromium: Die Tests prüfen Verhalten (Druckblatt, QR-Inhalt,
       # Rollentexte), nicht die Darstellung in mehreren Programmen.
-      #
-      # Ohne `--with-deps`: Das Runner-Image bringt die Systembibliotheken für
-      # Chromium schon mit, und der Zusatz ruft `apt-get` auf — der wartet auf
-      # dem Runner auf das dpkg-Lock der Hintergrundaktualisierung und blieb
-      # dabei stehen, bis der Job ins Zeitlimit lief.
-      - name: Install Chromium
-        run: cd frontend && npx playwright install chromium
-
       - name: End-to-end tests
         run: cd frontend && npm run test:e2e
 
