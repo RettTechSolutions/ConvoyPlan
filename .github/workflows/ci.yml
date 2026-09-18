@@ -105,6 +105,10 @@ jobs:
     # Kein Sicherheits-Job — beim wöchentlichen Lauf übersprungen.
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
+    # Die Suite braucht rund eine Minute. Ein Deckel darüber, damit ein
+    # hängender Installationsschritt nicht stundenlang einen Runner belegt,
+    # statt als Fehlschlag sichtbar zu werden.
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -120,8 +124,13 @@ jobs:
 
       # Nur Chromium: Die Tests prüfen Verhalten (Druckblatt, QR-Inhalt,
       # Rollentexte), nicht die Darstellung in mehreren Programmen.
+      #
+      # Ohne `--with-deps`: Das Runner-Image bringt die Systembibliotheken für
+      # Chromium schon mit, und der Zusatz ruft `apt-get` auf — der wartet auf
+      # dem Runner auf das dpkg-Lock der Hintergrundaktualisierung und blieb
+      # dabei stehen, bis der Job ins Zeitlimit lief.
       - name: Install Chromium
-        run: cd frontend && npx playwright install --with-deps chromium
+        run: cd frontend && npx playwright install chromium
 
       - name: End-to-end tests
         run: cd frontend && npm run test:e2e
