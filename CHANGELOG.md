@@ -23,6 +23,14 @@ ursprünglichen SemVer-Nummern.
 
 ### Fixed
 
+- **Die Tracking-Ansicht zeigte „Getrennt", obwohl nichts getrennt war.** Zwei Ursachen, die sich zu einer Anzeige addierten.
+
+  Erstens hing der Live-Kanal am Erstabruf: Konvoi, Route und Positionen standen in **einem** `Promise.all`, und erst danach wurde die WebSocket aufgebaut. Blieb eine der drei Anfragen hängen — `fetch` kennt von sich aus kein Zeitlimit —, passierte gar nichts mehr: keine Fahrzeugliste, kein Kanal, dauerhaft „Laden…" und daneben „Getrennt", obwohl noch kein einziger Verbindungsversuch gelaufen war. Die drei Abrufe scheitern jetzt jeder für sich, haben ein Zeitlimit und eine Schaltfläche *Erneut laden* samt Begründung — und der Kanal baut sich vor ihnen auf, unabhängig von ihrem Ausgang.
+
+  Zweitens kannte die Anzeige nur „verbunden" und „getrennt". Damit stand „Getrennt" auch während des Aufbaus und in jeder Sekunde einer Wiederverbindung da, also genau dann, wenn sie nichts aussagt. Jetzt unterscheidet sie **Live**, **Still** (Verbindung steht, nur nichts los), **Verbindet…** und **Getrennt** — letzteres erst, wenn der Aufbau zehn Sekunden lang nicht klappt. Dieselben Begriffe benutzt die Begleit-App.
+
+- **Der öffentliche Tracking-Link verband sich nach einem Abriss nie wieder.** Ein Tunnel, ein Netzwechsel, ein gesperrtes Telefon — und die Karte fror ein, bis jemand die Seite neu lud. Der Kanal baut sich jetzt selbst wieder auf (wachsender Abstand, sofort bei zurückkehrendem Netz oder beim Zurückholen der Seite) und erkennt tote Verbindungen an ausbleibenden Meldungen. Ein widerrufener Link führt zu einem Hinweis statt zu endlosen Versuchen, ein abgelaufener Passwortlink zurück zur Passwortabfrage.
+
 - **Zwei der drei Ansichten in ChatGPT blieben leer.** Der Rahmen zeichnet, sobald die Werkzeugantwort da ist — und ChatGPT setzt sie, bevor das Dokument läuft. Das Widget stand im HTML aber **hinter** dem Rahmen und war zu diesem Zeitpunkt noch nicht geladen; der erste Zeichenversuch lief deshalb ins Leere. Dass überhaupt etwas zu sehen war, lag daran, dass ChatGPT die Globals manchmal noch einmal nachmeldet. Das Widget steht jetzt vorne.
 
   Unabhängig davon rief die Statusansicht eine Hilfsfunktion auf, die nur in der Konvoi-Übersicht stand — in ihrer eigenen Datei gab es sie nicht, und sie scheiterte damit bei **jedem** Aufruf. Beide Ansichten benutzen jetzt dieselbe Abbildung aus `rahmen.html`.

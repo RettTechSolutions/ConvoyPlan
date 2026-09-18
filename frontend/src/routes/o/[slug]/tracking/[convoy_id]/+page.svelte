@@ -3,11 +3,13 @@
 	import { page } from '$app/stores';
 	import MapView from '$lib/components/MapView.svelte';
 	import AppLogo from '$lib/components/AppLogo.svelte';
+	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
 	import { convoysApi, trackingApi, type Convoy, type VehiclePosition, type RouteResult } from '$lib/api';
+	import { ApiError } from '$lib/api/client';
 	import {
 		livePositions, vehicleStatuses, trackingAlerts, connectTracking, disconnectTracking,
-		sendPosition, trackingActive, gpsRevoked, acknowledgeAlert, dismissAlert, acknowledgeAllAlerts,
-		type VehicleStatusInfo,
+		sendPosition, trackingActive, trackingConnection, gpsRevoked, acknowledgeAlert, dismissAlert,
+		acknowledgeAllAlerts, type VehicleStatusInfo,
 	} from '$lib/stores/tracking';
 	import {
 		STATUS_LABELS, STATUS_COLORS, STATUS_ICONS, HALT_LEVEL_LABELS, BREAKDOWN_LEVEL_LABELS,
@@ -37,6 +39,9 @@
 	// [lat, lon] — wird von onMapMove gesetzt.
 	let mapCenter = $state<[number, number]>([50.7, 11.5]);
 	let error = $state('');
+	// Läuft der Erstabruf noch? Trennt „lädt gerade" von „ist fehlgeschlagen" —
+	// beides stand vorher als „Laden…" da, auch dauerhaft.
+	let loading = $state(true);
 	let mapView = $state<ReturnType<typeof MapView>>();
 	// When true, the map stays locked/centered on my vehicle as it moves.
 	let followMyVehicle = $state(false);
@@ -175,30 +180,83 @@
 		}
 	});
 
-	onMount(async () => {
+	// Obergrenze für den Erstabruf. `fetch` läuft ohne Zeitlimit: eine Anfrage,
+	// die nie antwortet, hinterliess vorher eine Ansicht, die für immer „Laden…"
+	// anzeigte — ohne Fehler, ohne zweiten Versuch.
+	const LOAD_TIMEOUT_MS = 15000;
+
+	function withTimeout<T>(promise: Promise<T>, ms = LOAD_TIMEOUT_MS): Promise<T> {
+		return new Promise<T>((resolve, reject) => {
+			const timer = setTimeout(() => reject(new Error('Zeitüberschreitung')), ms);
+			promise.then(
+				(value) => { clearTimeout(timer); resolve(value); },
+				(err) => { clearTimeout(timer); reject(err); },
+			);
+		});
+	}
+
+	/**
+	 * Stammdaten holen — jede Quelle für sich.
+	 *
+	 * Vorher hingen Konvoi, Route und Positionen in **einem** `Promise.all`, und
+	 * daran hing auch der Live-Kanal. Eine einzige hakende Anfrage nahm damit
+	 * alles mit: keine Fahrzeugliste, keine Verbindung, und in der Kopfzeile
+	 * stand „Getrennt", obwohl gar nichts versucht worden war. Jetzt scheitert
+	 * jede Quelle allein, und der Kanal hängt an keiner davon (siehe `onMount`).
+	 */
+	async function loadConvoyData() {
+		loading = true;
+		error = '';
+		const [convoyResult, routeResult, positionsResult] = await Promise.allSettled([
+			withTimeout(convoysApi.get(convoyId)),
+			withTimeout(convoysApi.getRoute(convoyId)).then(r => { route = r ?? null; }),
+			withTimeout(trackingApi.getPositions(convoyId)).then(positions => {
+				livePositions.set(new Map(positions.map(p => [p.vehicle_id, p])));
+			}),
+		]);
+		loading = false;
+
+		if (convoyResult.status !== 'fulfilled') {
+			// Mit Begründung: „konnte nicht geladen werden" allein lässt im Einsatz
+			// offen, ob die Sitzung abgelaufen ist, der Server klemmt oder das Netz.
+			error = `Marschverband konnte nicht geladen werden${loadReason(convoyResult.reason)}`;
+			return;
+		}
+		convoy = convoyResult.value;
+		// Seed live status map from the loaded convoy so the picker reflects DB state.
+		vehicleStatuses.set(new Map((convoy?.convoy_vehicles ?? []).map((cv): [string, VehicleStatusInfo] => [
+			cv.vehicle.id, { status: cv.vehicle_status, level: cv.status_level, note: cv.status_note },
+		])));
+		restoreSession();
+
+		// Route und Positionen sind Beiwerk: ohne sie fehlt die Linie bzw. der
+		// letzte gespeicherte Stand, der Live-Kanal liefert trotzdem. Gesagt wird
+		// es trotzdem — eine Karte ohne Route ist sonst ein Rätsel.
+		const fehlend = [
+			routeResult.status === 'rejected' ? 'Route' : null,
+			positionsResult.status === 'rejected' ? 'letzte Positionen' : null,
+		].filter((x): x is string => x !== null);
+		if (fehlend.length) error = `Nicht geladen: ${fehlend.join(' und ')}.`;
+	}
+
+	/** Begründung eines fehlgeschlagenen Abrufs, soweit vorzeigbar. */
+	function loadReason(reason: unknown): string {
+		if (reason instanceof ApiError) return `: ${reason.detail ?? `HTTP ${reason.status}`}`;
+		if (reason instanceof Error && reason.message) return `: ${reason.message}`;
+		return '';
+	}
+
+	onMount(() => {
 		requestWakeLock();
 		document.addEventListener('visibilitychange', handleVisibility);
 		netOnline = navigator.onLine;
 		window.addEventListener('online', handleNet);
 		window.addEventListener('offline', handleNet);
 		document.addEventListener('fullscreenchange', handleFullscreenChange);
-		try {
-			[convoy] = await Promise.all([
-				convoysApi.get(convoyId),
-				convoysApi.getRoute(convoyId).then(r => { route = r ?? null; }),
-				trackingApi.getPositions(convoyId).then(positions => {
-					livePositions.set(new Map(positions.map(p => [p.vehicle_id, p])));
-				}),
-			]);
-			// Seed live status map from the loaded convoy so the picker reflects DB state.
-			vehicleStatuses.set(new Map((convoy?.convoy_vehicles ?? []).map((cv): [string, VehicleStatusInfo] => [
-				cv.vehicle.id, { status: cv.vehicle_status, level: cv.status_level, note: cv.status_note },
-			])));
-			connectTracking(convoyId);
-			restoreSession();
-		} catch {
-			error = 'Marschverband konnte nicht geladen werden';
-		}
+		// Zuerst der Live-Kanal, unabhängig von den Stammdaten: er ist der Teil,
+		// der im Einsatz zählt, und er braucht nichts von ihnen.
+		connectTracking(convoyId);
+		void loadConvoyData();
 	});
 
 	onDestroy(() => {
@@ -216,9 +274,11 @@
 
 	// Restore a previously active assignment after a reload. If the saved vehicle
 	// is still part of the convoy, re-select it and resume transmitting.
+	let sessionRestored = false;
 	function restoreSession() {
 		try {
-			if (!savedSessionRaw) return;
+			if (!savedSessionRaw || sessionRestored) return;
+			sessionRestored = true;
 			const saved = JSON.parse(savedSessionRaw) as { vehicleId: string };
 			const known = (convoy?.convoy_vehicles ?? []).some((cv) => cv.vehicle.id === saved.vehicleId);
 			if (!known) { localStorage.removeItem(SESSION_KEY); return; }
@@ -496,7 +556,7 @@
 	<div class="topbar">
 		<button class="hamburger" onclick={() => (sidebarOpen = !sidebarOpen)} aria-label="Menü">☰</button>
 		<span class="topbar-name">{convoy?.name ?? 'Tracking'}</span>
-		<div class="ws-dot" class:connected={$trackingActive} title={$trackingActive ? 'Verbunden' : 'Nicht verbunden'}></div>
+		<span class="topbar-live"><LiveIndicator state={$trackingConnection} dotOnly /></span>
 	</div>
 
 	<!-- Sidebar backdrop (mobile) -->
@@ -514,14 +574,11 @@
 		<div class="sidebar-header">
 			<div class="logo-wrap">
 				<AppLogo width={null} />
-				<div class="convoy-name">{convoy?.name ?? 'Laden…'}</div>
+				<div class="convoy-name">{convoy?.name ?? (loading ? 'Laden…' : 'Marschverband')}</div>
 				{#if convoy?.organization}<div class="org-name">{convoy.organization}</div>{/if}
 			</div>
 			<div class="header-right">
-				<div class="ws-indicator" class:connected={$trackingActive} title={$trackingActive ? 'Verbunden' : 'Nicht verbunden'}>
-					<span class="ws-dot" class:connected={$trackingActive}></span>
-					<span class="ws-label">{$trackingActive ? 'Live' : 'Getrennt'}</span>
-				</div>
+				<LiveIndicator state={$trackingConnection} />
 				<button class="collapse-btn" onclick={() => (sidebarCollapsed = true)} aria-label="Menü einklappen" title="Menü einklappen">‹</button>
 			</div>
 		</div>
@@ -529,7 +586,8 @@
 		{#if error}
 			<div class="error-bar">
 				<span>{error}</span>
-				<button onclick={() => (error = '')}>✕</button>
+				<button class="retry" onclick={() => loadConvoyData()} disabled={loading}>Erneut laden</button>
+				<button onclick={() => (error = '')} aria-label="Meldung schließen">✕</button>
 			</div>
 		{/if}
 
@@ -859,15 +917,12 @@
 	.collapse-btn { background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border); border-radius: 6px; width: 26px; height: 22px; cursor: pointer; line-height: 1; font-size: 1rem; }
 	.collapse-btn:hover { color: var(--text-1); }
 
-	/* WS indicator */
-	.ws-indicator { display: flex; align-items: center; gap: .35rem; font-size: var(--text-xs); color: var(--text-muted); flex-shrink: 0; }
-	.ws-dot { width: 8px; height: 8px; border-radius: 50%; background: #e74c3c; flex-shrink: 0; }
-	.ws-dot.connected { background: #27ae60; animation: pulse 2s infinite; }
-	.ws-label { white-space: nowrap; }
-
 	/* Error bar */
 	.error-bar { background: var(--color-primary-hover); color: white; padding: .4rem .75rem; font-size: var(--text-xs); margin: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; flex-shrink: 0; word-break: break-word; }
+	.error-bar span { flex: 1; }
 	.error-bar button { background: none; border: none; color: white; cursor: pointer; font-size: 1rem; flex-shrink: 0; line-height: 1; padding: 0; }
+	.error-bar button.retry { font-size: var(--text-xs); text-decoration: underline; white-space: nowrap; }
+	.error-bar button.retry:disabled { opacity: .6; cursor: default; }
 
 	/* Position block */
 	.position-block { padding: .75rem 1rem; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: .5rem; flex-shrink: 0; }
@@ -1008,7 +1063,7 @@
 		.topbar { display: flex; align-items: center; gap: .75rem; padding: .75rem 1rem; background: var(--sidebar-bg); color: var(--text-1); border-bottom: 1px solid var(--border); position: fixed; top: 0; left: 0; right: 0; z-index: 50; height: 48px; box-sizing: border-box; }
 		.hamburger { background: none; border: none; color: var(--text-1); font-size: 1.3rem; cursor: pointer; padding: 0; }
 		.topbar-name { flex: 1; font-size: var(--text-sm); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-		.topbar .ws-dot { margin-left: auto; }
+		.topbar .topbar-live { margin-left: auto; display: flex; align-items: center; }
 
 		.app { flex-direction: column; padding-top: 48px; }
 		.sidebar { position: fixed; top: 48px; left: 0; bottom: 0; z-index: 40; transform: translateX(-100%); transition: transform .25s ease; width: min(320px, 85vw); min-width: 0; overflow-y: hidden; }

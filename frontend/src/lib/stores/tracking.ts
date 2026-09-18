@@ -1,6 +1,7 @@
-import { writable } from 'svelte/store';
+import { derived, writable } from 'svelte/store';
 import type { VehiclePosition } from '$lib/api';
 import { getStreamTicket } from '$lib/api/client';
+import { createConnectionTracker, type ConnectionState } from '$lib/tracking/connection';
 
 /** Live status (incl. sub-level and note) received over the WebSocket. */
 export interface VehicleStatusInfo {
@@ -25,9 +26,19 @@ export const livePositions = writable<Map<string, VehiclePosition>>(new Map());
 export const vehicleStatuses = writable<Map<string, VehicleStatusInfo>>(new Map());
 /** Rolling log of incoming TH / breakdown alerts (newest first). */
 export const trackingAlerts = writable<TrackingAlert[]>([]);
-export const trackingActive = writable(false);
+/**
+ * Zustand des Live-Kanals für die Anzeige.
+ *
+ * Feiner als „an/aus": ein laufender Verbindungsaufbau ist kein „Getrennt".
+ * Siehe `$lib/tracking/connection`.
+ */
+export const trackingConnection = writable<ConnectionState>('idle');
+/** Kanal steht wirklich. Grundlage für alles, was echte Zustellung voraussetzt. */
+export const trackingActive = derived(trackingConnection, ($state) => $state === 'open');
 /** Vehicle id whose GPS sharing was just reset by an admin (signal for the sender to stop). */
 export const gpsRevoked = writable<string | null>(null);
+
+const connection = createConnectionTracker((state) => trackingConnection.set(state));
 
 let alertSeq = 0;
 
@@ -71,6 +82,7 @@ export async function connectTracking(convoyId: string) {
 	// previous convoy. Auto-reconnects go through openSocket() and keep them.
 	trackingAlerts.set([]);
 	desiredConvoyId = convoyId;
+	connection.connecting();
 	ensureOnlineHandler();
 	ensureWatchdog();
 	ensureHeartbeat();
@@ -94,7 +106,7 @@ async function openSocket(convoyId: string) {
 	let ticket: string | null = null;
 	try { ticket = await getStreamTicket(); } catch { ticket = null; }
 	if (myGen !== connectionGen || desiredConvoyId !== convoyId) return; // superseded
-	if (!ticket) { trackingActive.set(false); scheduleReconnect(convoyId); return; }
+	if (!ticket) { connection.connecting(); scheduleReconnect(convoyId); return; }
 
 	// WebSocket connects through the same origin (e.g. via Caddy reverse-proxy).
 	// For local dev without Caddy set VITE_WS_HOST=localhost:8000 in .env.local.
@@ -113,7 +125,7 @@ async function openSocket(convoyId: string) {
 			socket.onclose = null;
 			try { socket.close(); } catch { /* ignore */ }
 			if (ws === socket) ws = null;
-			trackingActive.set(false);
+			connection.connecting();
 			scheduleReconnect(convoyId);
 		}
 	}, OPEN_TIMEOUT_MS);
@@ -172,14 +184,20 @@ async function openSocket(convoyId: string) {
 		}
 	};
 
-	socket.onopen = () => { clearTimeout(openTimer); lastMessageAt = Date.now(); trackingActive.set(true); };
-	socket.onerror = () => trackingActive.set(false);
+	socket.onopen = () => { clearTimeout(openTimer); lastMessageAt = Date.now(); connection.open(); };
+	// Ein Fehler eines längst ersetzten oder bewusst geschlossenen Sockets darf
+	// die Anzeige nicht mehr anfassen — sonst stünde nach `disconnectTracking`
+	// wieder „Verbindet…" da.
+	socket.onerror = () => {
+		if (myGen !== connectionGen || ws !== socket) return;
+		connection.connecting();
+	};
 	socket.onclose = () => {
 		clearTimeout(openTimer);
 		// Ignore close events from a socket that has been replaced or from a
 		// connection that was intentionally torn down (disconnect/reconnect).
 		if (myGen !== connectionGen || ws !== socket) return;
-		trackingActive.set(false);
+		connection.connecting();
 		scheduleReconnect(convoyId);
 	};
 }
@@ -220,7 +238,7 @@ function ensureHeartbeat() {
 			try { socket.send(JSON.stringify({ type: 'ping' })); } catch { /* ignore */ }
 			// No reply within the timeout → treat as offline and force a reconnect.
 			if (lastMessageAt && Date.now() - lastMessageAt > HEARTBEAT_TIMEOUT_MS) {
-				trackingActive.set(false);
+				connection.connecting();
 				const convoyId = desiredConvoyId;
 				socket.onclose = null;
 				try { socket.close(); } catch { /* ignore */ }
@@ -257,8 +275,8 @@ export function disconnectTracking() {
 	}
 	const _ws = ws;
 	ws = null; // clear first so reconnect logic doesn't fire
-	if (_ws) { _ws.onclose = null; _ws.close(); }
-	trackingActive.set(false);
+	if (_ws) { _ws.onclose = null; _ws.onerror = null; _ws.close(); }
+	connection.idle();
 	livePositions.set(new Map());
 }
 

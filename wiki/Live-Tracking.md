@@ -180,6 +180,28 @@ mehr eintrifft.
 - Ist sie zurück, meldet ein Banner *Wieder online*, und die Übertragung läuft
   weiter.
 
+### Die Anzeige in der Kopfzeile
+
+Der Punkt neben dem Konvoinamen kennt vier Zustände statt zwei — ein
+Verbindungsaufbau ist kein Abriss, und Stille ist keiner:
+
+| Anzeige | Bedeutung |
+|---|---|
+| **Live** (grün) | Verbindung steht, Meldungen kommen an |
+| **Still** (gelb) | Verbindung steht, seit über einer Minute keine Meldung — normal bei stehendem Konvoi |
+| **Verbindet…** (gelb) | Aufbau läuft oder ein Abriss wird gerade überbrückt |
+| **Getrennt** (rot) | Der Aufbau scheitert seit über zehn Sekunden |
+
+Der Kanal baut sich **unabhängig von den Stammdaten** auf: hakt der Abruf von
+Konvoi, Route oder Positionen, läuft die Live-Verfolgung trotzdem an. Scheitert
+er, steht die Begründung in der Kopfzeile, samt Schaltfläche *Erneut laden*.
+
+Die öffentliche Tracking-Ansicht verbindet sich nach einem Abriss selbständig
+neu — mit wachsendem Abstand zwischen den Versuchen und sofort, sobald das Netz
+zurück ist oder die Seite wieder in den Vordergrund kommt. Ein widerrufener
+Link führt zu einem Hinweis statt zu endlosen Versuchen; bei einem abgelaufenen
+Passwortlink erscheint wieder die Passwortabfrage.
+
 ---
 
 ## Tracking als Planer / Beobachter
