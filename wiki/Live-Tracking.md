@@ -43,6 +43,19 @@ Ohne GPS-Signal oder ohne Standortfreigabe:
 1. Auf der Karte auf die aktuelle Position tippen
 2. Die gemeldete Position wird manuell gesetzt und übertragen
 
+### Link an Mitfahrer weitergeben
+
+Im Fahrer-Block steht **📱 Link für Mitfahrer (QR)**. Aufgeklappt zeigt er den
+QR-Code der geöffneten Tracking-Adresse — zum Abscannen vom Nachbargerät, damit
+im Fahrzeug niemand eine achtstellige Zeichenfolge abtippen muss. Dazu die
+gewohnten Knöpfe **PNG herunterladen** und **Drucken**.
+
+> **Der Code ist der Fahrer-Link.** Wer ihn scannt, kann ebenfalls ein Fahrzeug
+> wählen und Position und Status senden — also nur an die eigene Besatzung
+> weitergeben, nicht an Umstehende. Ist der Link passwortgeschützt, braucht der
+> Empfänger zusätzlich das Passwort; es steckt **nicht** im QR-Code und ist
+> getrennt mitzuteilen.
+
 ---
 
 ## Fahrzeugstatus melden

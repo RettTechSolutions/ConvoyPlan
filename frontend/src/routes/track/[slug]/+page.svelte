@@ -4,6 +4,7 @@
 	import MapView from '$lib/components/MapView.svelte';
 	import AppLogo from '$lib/components/AppLogo.svelte';
 	import TrackingPwaHead from '$lib/components/TrackingPwaHead.svelte';
+	import QrShare from '$lib/components/QrShare.svelte';
 	import {
 		trackApi, isTrackGate,
 		type TrackPayload, type TrackGate, type TrackPosition, type VehiclePosition,
@@ -26,6 +27,17 @@
 
 	let pwInput = $state('');
 	let pwBusy = $state(false);
+	// Ob dieser Link ein Passwort verlangt: entweder stand die Maske da, oder es
+	// liegt ein Sitzungstoken vor — das gibt es nur nach einer Eingabe. Nach dem
+	// Öffnen verrät die Nutzlast selbst nichts mehr darüber.
+	let hasPassword = $state(false);
+
+	// Weitergabe an Mitfahrer. Die Adresse ohne Query und Fragment — das
+	// Sitzungstoken steht im sessionStorage und gehört in keinen QR-Code.
+	let shareOpen = $state(false);
+	let trackUrl = $derived(
+		typeof window === 'undefined' ? '' : `${window.location.origin}/track/${slug}`
+	);
 
 	let activeTab = $state<'fahrzeuge' | 'zeitplan'>('fahrzeuge');
 	let sidebarOpen = $state(false);
@@ -100,9 +112,11 @@
 			if (isTrackGate(result)) {
 				gate = result;
 				data = null;
+				hasPassword = true;
 			} else {
 				gate = null;
 				data = result;
+				hasPassword = !!token;
 				const initial = new Map<string, VehiclePosition>();
 				for (const p of result.positions) initial.set(p.vehicle_id, positionToVehicle(p));
 				livePositions = initial;
@@ -474,6 +488,34 @@
 							{/if}
 						</div>
 					{/if}
+
+					<!-- Weitergabe an Mitfahrer: der Link, den man ohnehin offen hat,
+					     als QR zum Abscannen vom Nachbargerät. -->
+					<div class="share-block">
+						<button class="btn-ghost" onclick={() => (shareOpen = !shareOpen)} aria-expanded={shareOpen}>
+							{shareOpen ? '▾' : '▸'} 📱 Link für Mitfahrer (QR)
+						</button>
+						{#if shareOpen}
+							<p class="hint hint-warn">
+								Wer diesen Code scannt, kann ebenfalls ein Fahrzeug wählen und Position
+								und Status senden. Nur an die eigene Besatzung weitergeben.
+							</p>
+							{#if hasPassword}
+								<p class="hint">Zusätzlich wird das Passwort gebraucht — getrennt mitteilen, nicht neben den Code schreiben.</p>
+							{/if}
+							<QrShare
+								url={trackUrl}
+								filename="tracking-{slug}"
+								printTitle="{data.name} — Live-Tracking"
+								printSubtitle="Fahrer-Link: Fahrzeug wählen, Position und Status senden"
+								printNote={hasPassword
+									? 'Dieser Zugang ist passwortgeschützt. Das Passwort wird getrennt mitgeteilt — es steht nicht auf diesem Blatt und nicht im QR-Code.'
+									: 'Dieser Zugang ist ohne Passwort erreichbar. Blatt entsprechend behandeln.'}
+								size={180}
+								dark
+							/>
+						{/if}
+					</div>
 				</div>
 			{/if}
 
@@ -632,6 +674,16 @@
 	.map-hint-bar { position: absolute; top: 1rem; left: 50%; transform: translateX(-50%); z-index: 10; background: rgba(15,27,36,.9); color: white; padding: .5rem 1.2rem; border-radius: 20px; font-size: var(--text-sm); pointer-events: none; white-space: nowrap; }
 
 	.hint { font-size: var(--text-xs); color: var(--text-muted); font-style: italic; margin: 0; line-height: 1.4; }
+	.hint.hint-warn { color: #f1c40f; font-style: normal; }
+
+	/* Weitergabe an Mitfahrer */
+	.share-block { display: flex; flex-direction: column; gap: .5rem; margin-top: .25rem; }
+	.btn-ghost {
+		align-self: flex-start; padding: .35rem .6rem; background: none;
+		border: 1px solid var(--border); border-radius: 6px; color: var(--text-1);
+		font-size: var(--text-xs); font-weight: 600; cursor: pointer; font-family: inherit;
+	}
+	.btn-ghost:hover { border-color: var(--color-primary); }
 
 	/* Tabs */
 	.tabs { display: flex; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--border); padding: .25rem .5rem; gap: .25rem; flex-shrink: 0; }

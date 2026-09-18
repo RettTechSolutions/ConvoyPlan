@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
-	import QRCode from 'qrcode';
+	import { onMount } from 'svelte';
+	import QrShare from '$lib/components/QrShare.svelte';
 	import {
 		shareLinksApi,
 		type ShareLink,
@@ -25,19 +25,11 @@
 	let passwordInput = $state('');
 
 	let lastCreated = $state<ShareLinkCreated | null>(null);
-	let lastQrDataUrl = $state('');
 	let copyHint = $state('');
 
-	// QR-Code eines bereits bestehenden Links. Der Link selbst steht in der
-	// Liste (`url`), der Code wird daraus im Browser neu gezeichnet — gespeichert
-	// wird er nirgends.
+	// QR-Code eines bereits bestehenden Links. Die Adresse steht schon in der
+	// Liste (`url`); gezeichnet wird daraus im Browser.
 	let qrLink = $state<ShareLink | null>(null);
-	let qrDataUrl = $state('');
-
-	// Der Ausdruck ist ein eigenes Blatt, das nur im Druck sichtbar wird — so
-	// bleibt der Rest der Planungsseite (Karte, Listen) draußen, ohne ein
-	// zweites Fenster zu öffnen, das ein Popup-Blocker abfangen könnte.
-	let printSheet = $state<{ link: ShareLink; dataUrl: string } | null>(null);
 
 	async function load() {
 		loading = true;
@@ -62,7 +54,6 @@
 			};
 			const created = await shareLinksApi.create(convoyId, body);
 			lastCreated = created;
-			lastQrDataUrl = await QRCode.toDataURL(created.url, { width: 600, margin: 1 });
 			passwordInput = '';
 			passwordMode = 'none';
 			scope = 'track';
@@ -79,11 +70,8 @@
 		busy = true;
 		try {
 			await shareLinksApi.revoke(convoyId, id);
-			if (lastCreated?.id === id) {
-				lastCreated = null;
-				lastQrDataUrl = '';
-			}
-			if (qrLink?.id === id) closeQr();
+			if (lastCreated?.id === id) lastCreated = null;
+			if (qrLink?.id === id) qrLink = null;
 			await load();
 		} catch (e) {
 			error = (e as Error).message;
@@ -102,49 +90,26 @@
 		}
 	}
 
-	async function showQr(link: ShareLink) {
-		qrLink = link;
-		qrDataUrl = '';
-		error = '';
-		try {
-			qrDataUrl = await QRCode.toDataURL(link.url, { width: 600, margin: 1 });
-		} catch (e) {
-			error = (e as Error).message;
-			qrLink = null;
-		}
-	}
-
 	function closeQr() {
 		qrLink = null;
-		qrDataUrl = '';
-	}
-
-	function downloadPng(link: ShareLink, dataUrl: string) {
-		if (!dataUrl) return;
-		const a = document.createElement('a');
-		a.href = dataUrl;
-		a.download = `tracking-${link.slug}.png`;
-		a.click();
-	}
-
-	async function printPng(link: ShareLink, dataUrl: string) {
-		if (!dataUrl) return;
-		printSheet = { link, dataUrl };
-		await tick();
-		window.print();
-	}
-
-	// Das Blatt wird an <body> gehängt, damit der Druckstil den Rest der Seite
-	// per `display: none` wegnehmen kann: bliebe er nur unsichtbar, stünde sein
-	// Layout weiter im Dokument und die Planungsseite (Karte, lange Listen)
-	// hinge als leere Folgeseiten hinter dem Ausdruck.
-	function portal(node: HTMLElement) {
-		document.body.appendChild(node);
-		return { destroy: () => node.remove() };
 	}
 
 	function scopeLabel(scope: string) {
 		return scope === 'driver' ? '🚗 Fahrer' : '👁 Viewer';
+	}
+
+	/** Was auf dem Ausdruck unter der Überschrift steht. */
+	function rollenzeile(scope: string) {
+		return scope === 'driver'
+			? 'Fahrer-Link: Fahrzeug wählen, Position und Status senden'
+			: 'Nur ansehen: Verband live verfolgen';
+	}
+
+	/** Der Hinweis am Fuß des Ausdrucks — nie das Passwort selbst. */
+	function druckhinweis(link: ShareLink) {
+		return link.requires_password
+			? 'Dieser Zugang ist passwortgeschützt. Das Passwort wird getrennt mitgeteilt — es steht nicht auf diesem Blatt und nicht im QR-Code.'
+			: 'Dieser Zugang ist ohne Passwort erreichbar. Blatt entsprechend behandeln.';
 	}
 
 	function onKeydown(e: KeyboardEvent) {
@@ -162,7 +127,7 @@
 	onMount(load);
 </script>
 
-<svelte:window onkeydown={onKeydown} onafterprint={() => (printSheet = null)} />
+<svelte:window onkeydown={onKeydown} />
 
 <div class="sl-backdrop" onclick={onClose} role="presentation">
 	<div class="sl-modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
@@ -222,11 +187,13 @@
 				<section class="sl-result">
 					<h3>Neuer Link bereit</h3>
 					<div class="sl-result-grid">
-						<div class="sl-qr">
-							{#if lastQrDataUrl}
-								<img src={lastQrDataUrl} alt="QR-Code" />
-							{/if}
-						</div>
+						<QrShare
+							url={lastCreated.url}
+							filename="tracking-{lastCreated.slug}"
+							printTitle="{convoyName || 'Konvoi'} — Live-Tracking"
+							printSubtitle={rollenzeile(lastCreated.scope)}
+							printNote={druckhinweis(lastCreated)}
+						/>
 						<div class="sl-result-info">
 							<label>URL</label>
 							<div class="sl-copy-row">
@@ -243,14 +210,6 @@
 							{#if copyHint}
 								<p class="sl-copy-hint">{copyHint}</p>
 							{/if}
-							<div class="sl-qr-actions">
-								<button class="sl-btn-secondary" onclick={() => downloadPng(lastCreated!, lastQrDataUrl)} disabled={!lastQrDataUrl}>
-									PNG herunterladen
-								</button>
-								<button class="sl-btn-secondary" onclick={() => printPng(lastCreated!, lastQrDataUrl)} disabled={!lastQrDataUrl}>
-									Drucken
-								</button>
-							</div>
 						</div>
 					</div>
 				</section>
@@ -290,7 +249,7 @@
 									<td>{link.revoked ? 'widerrufen' : 'aktiv'}</td>
 									<td class="sl-actions">
 										{#if !link.revoked}
-											<button class="sl-btn-small" onclick={() => showQr(link)} title="QR-Code anzeigen">
+											<button class="sl-btn-small" onclick={() => (qrLink = link)} title="QR-Code anzeigen">
 												QR
 											</button>
 											<button class="sl-btn-small danger" onclick={() => revoke(link.id)} disabled={busy}>
@@ -308,24 +267,6 @@
 	</div>
 </div>
 
-{#if printSheet}
-	<div class="sl-print cp-print-sheet" use:portal>
-		<h1>{convoyName || 'Konvoi'} — Live-Tracking</h1>
-		<p class="sl-print-role">
-			{printSheet.link.scope === 'driver'
-				? 'Fahrer-Link: Fahrzeug wählen, Position und Status senden'
-				: 'Nur ansehen: Verband live verfolgen'}
-		</p>
-		<img src={printSheet.dataUrl} alt="" />
-		<p class="sl-print-url">{printSheet.link.url}</p>
-		{#if printSheet.link.requires_password}
-			<p class="sl-print-note">Dieser Zugang ist passwortgeschützt. Das Passwort wird getrennt mitgeteilt — es steht nicht auf diesem Blatt und nicht im QR-Code.</p>
-		{:else}
-			<p class="sl-print-note">Dieser Zugang ist ohne Passwort erreichbar. Blatt entsprechend behandeln.</p>
-		{/if}
-	</div>
-{/if}
-
 {#if qrLink}
 	<div class="sl-backdrop sl-qr-backdrop" onclick={closeQr} role="presentation">
 		<div class="sl-modal sl-qr-modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
@@ -335,13 +276,14 @@
 			</header>
 			<div class="sl-body sl-qr-body">
 				<span class="sl-badge" class:driver={qrLink.scope === 'driver'}>{scopeLabel(qrLink.scope)}</span>
-				<div class="sl-qr sl-qr-big">
-					{#if qrDataUrl}
-						<img src={qrDataUrl} alt="QR-Code für {qrLink.url}" />
-					{:else}
-						<p class="sl-muted">Zeichne…</p>
-					{/if}
-				</div>
+				<QrShare
+					url={qrLink.url}
+					filename="tracking-{qrLink.slug}"
+					printTitle="{convoyName || 'Konvoi'} — Live-Tracking"
+					printSubtitle={rollenzeile(qrLink.scope)}
+					printNote={druckhinweis(qrLink)}
+					size={260}
+				/>
 				<div class="sl-copy-row">
 					<input class="sl-input" readonly value={qrLink.url} />
 					<button class="sl-btn-secondary" onclick={() => copy(qrLink!.url)}>Kopieren</button>
@@ -352,14 +294,6 @@
 				{#if qrLink.requires_password}
 					<p class="sl-warn">🔒 Dieser Link ist passwortgeschützt. Das Passwort wurde nur bei der Erstellung angezeigt und lässt sich nicht erneut abrufen — wer es nicht mehr hat, erstellt einen neuen Link.</p>
 				{/if}
-				<div class="sl-qr-actions">
-					<button class="sl-btn-secondary" onclick={() => downloadPng(qrLink!, qrDataUrl)} disabled={!qrDataUrl}>
-						PNG herunterladen
-					</button>
-					<button class="sl-btn-secondary" onclick={() => printPng(qrLink!, qrDataUrl)} disabled={!qrDataUrl}>
-						Drucken
-					</button>
-				</div>
 			</div>
 		</div>
 	</div>
@@ -416,8 +350,6 @@
 
 	.sl-result { border: 1px solid #d6e4ef; background: #f4f9fd; border-radius: 8px; padding: 1rem; }
 	.sl-result-grid { display: flex; gap: 1rem; flex-wrap: wrap; }
-	.sl-qr { flex: 0 0 auto; background: white; padding: .5rem; border-radius: 6px; border: 1px solid #ddd; }
-	.sl-qr img { display: block; width: 200px; height: 200px; }
 	.sl-result-info { flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: .4rem; }
 	.sl-result-info label { font-size: .75rem; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: .05em; margin-top: .25rem; }
 	.sl-hint { font-weight: 400; text-transform: none; letter-spacing: 0; color: #b45309; }
@@ -437,26 +369,6 @@
 	.sl-qr-body { align-items: center; text-align: center; gap: .75rem; }
 	.sl-qr-body .sl-copy-row, .sl-qr-body .sl-warn { width: 100%; }
 	.sl-qr-body .sl-warn { margin: 0; text-align: left; }
-	.sl-qr-big img { width: 260px; height: 260px; }
-	.sl-qr-actions { display: flex; gap: .5rem; }
-
-	/* Auf dem Schirm gibt es das Blatt nicht; im Druck ist es das Einzige, was
-	   sichtbar bleibt. `visibility` statt `display`, damit die Kette bis zum
-	   Blatt hinunter wieder sichtbar geschaltet werden kann. */
-	.sl-print { display: none; }
-	@media print {
-		:global(body > *:not(.cp-print-sheet)) { display: none !important; }
-		:global(body) { background: #fff !important; }
-		.sl-print {
-			display: block; width: 100%; padding: 1.5cm 1cm; box-sizing: border-box;
-			text-align: center; color: #000; font-family: inherit;
-		}
-		.sl-print h1 { font-size: 20pt; margin: 0 0 .3cm; }
-		.sl-print-role { font-size: 12pt; margin: 0 0 .8cm; }
-		.sl-print img { width: 9cm; height: 9cm; }
-		.sl-print-url { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13pt; margin: .6cm 0 0; word-break: break-all; }
-		.sl-print-note { font-size: 10pt; margin: .8cm auto 0; max-width: 12cm; }
-	}
 
 	.sl-muted { color: #777; font-size: .88rem; }
 	.sl-error { color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: .5rem .75rem; font-size: .85rem; margin: 0; }
