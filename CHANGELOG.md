@@ -39,6 +39,10 @@ ursprünglichen SemVer-Nummern.
 
 ### Added
 
+- **Der QR-Code eines Tracking-Links lässt sich wieder anzeigen.** Bisher gab es ihn genau einmal: direkt nach dem Anlegen. Wer den Dialog schloss, hatte den Link zwar noch in der Liste, aber keinen Code mehr — beim nächsten Fahrer, der ihn abscannen sollte, blieb nur Abtippen. Jede aktive Zeile hat jetzt einen **QR**-Knopf; der Code wird im Browser aus der Adresse gezeichnet und lässt sich als PNG herunterladen, etwa für einen Ausdruck im Fahrzeug oder an der Halle.
+
+  Gespeichert wird dafür nichts, und der Server liefert nichts Neues aus: Die Adresse steht ohnehin schon in der Liste. **Ein Passwort ist dort nicht zu sehen** — es bleibt bei der einen Anzeige unmittelbar nach dem Anlegen, der QR-Code trägt nur den Link. Bei einem geschützten Link sagt der Dialog das ausdrücklich, damit niemand ihn an dieser Stelle sucht. Widerrufene Links bekommen keinen Knopf.
+
 - **Verwaiste MCP-Registrierungen werden aufgeräumt.** Bei Selbstregistrierung legt *jeder* Verbindungsversuch eine Zeile an — auch der abgebrochene, und Programme, die sich bei jedem Anlauf neu registrieren, hinterlassen entsprechend viele. Die Liste im Admin-Portal bestand dadurch nach kurzer Zeit überwiegend aus Karteileichen, in denen die eine Registrierung, die tatsächlich etwas trägt, nicht mehr zu finden war.
 
   Solche Zeilen sind jetzt als **verwaist** gekennzeichnet und lassen sich mit einem Knopf entfernen; unabhängig davon räumt der nächtliche Durchgang sie nach `RETENTION_OAUTH_CLIENTS_DAYS` (Standard 7 Tage) weg. Verwaist heißt: keine Tokens, keine Autorisierungscodes, älter als die Karenzzeit. Was eine Verbindung trägt, bleibt stehen — auch gesperrt, auch alt. Das ist kein Zugangsentzug mit anderem Namen: eine Registrierung *ist* kein Zugang, und ein laufender Verbindungsversuch überlebt das Aufräumen.

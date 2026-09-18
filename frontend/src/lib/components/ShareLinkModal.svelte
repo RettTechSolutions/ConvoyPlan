@@ -24,6 +24,12 @@
 	let lastQrDataUrl = $state('');
 	let copyHint = $state('');
 
+	// QR-Code eines bereits bestehenden Links. Der Link selbst steht in der
+	// Liste (`url`), der Code wird daraus im Browser neu gezeichnet — gespeichert
+	// wird er nirgends.
+	let qrLink = $state<ShareLink | null>(null);
+	let qrDataUrl = $state('');
+
 	async function load() {
 		loading = true;
 		error = '';
@@ -68,6 +74,7 @@
 				lastCreated = null;
 				lastQrDataUrl = '';
 			}
+			if (qrLink?.id === id) closeQr();
 			await load();
 		} catch (e) {
 			error = (e as Error).message;
@@ -86,6 +93,38 @@
 		}
 	}
 
+	async function showQr(link: ShareLink) {
+		qrLink = link;
+		qrDataUrl = '';
+		error = '';
+		try {
+			qrDataUrl = await QRCode.toDataURL(link.url, { width: 600, margin: 1 });
+		} catch (e) {
+			error = (e as Error).message;
+			qrLink = null;
+		}
+	}
+
+	function closeQr() {
+		qrLink = null;
+		qrDataUrl = '';
+	}
+
+	function downloadQr() {
+		if (!qrLink || !qrDataUrl) return;
+		const a = document.createElement('a');
+		a.href = qrDataUrl;
+		a.download = `tracking-${qrLink.slug}.png`;
+		a.click();
+	}
+
+	function onKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape' && qrLink) {
+			e.stopPropagation();
+			closeQr();
+		}
+	}
+
 	function fmtDate(iso: string | null) {
 		if (!iso) return '–';
 		return new Date(iso).toLocaleString('de-DE');
@@ -93,6 +132,8 @@
 
 	onMount(load);
 </script>
+
+<svelte:window onkeydown={onKeydown} />
 
 <div class="sl-backdrop" onclick={onClose} role="presentation">
 	<div class="sl-modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
@@ -212,8 +253,11 @@
 									<td>{fmtDate(link.last_accessed_at)}</td>
 									<td>{link.access_count}</td>
 									<td>{link.revoked ? 'widerrufen' : 'aktiv'}</td>
-									<td>
+									<td class="sl-actions">
 										{#if !link.revoked}
+											<button class="sl-btn-small" onclick={() => showQr(link)} title="QR-Code anzeigen">
+												QR
+											</button>
 											<button class="sl-btn-small danger" onclick={() => revoke(link.id)} disabled={busy}>
 												Widerrufen
 											</button>
@@ -229,6 +273,42 @@
 	</div>
 </div>
 
+{#if qrLink}
+	<div class="sl-backdrop sl-qr-backdrop" onclick={closeQr} role="presentation">
+		<div class="sl-modal sl-qr-modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+			<header>
+				<h2>QR-Code · {qrLink.slug}</h2>
+				<button class="sl-close" onclick={closeQr} aria-label="Schließen">✕</button>
+			</header>
+			<div class="sl-body sl-qr-body">
+				<span class="sl-badge" class:driver={qrLink.scope === 'driver'}>
+					{qrLink.scope === 'driver' ? '🚗 Fahrer' : '👁 Viewer'}
+				</span>
+				<div class="sl-qr sl-qr-big">
+					{#if qrDataUrl}
+						<img src={qrDataUrl} alt="QR-Code für {qrLink.url}" />
+					{:else}
+						<p class="sl-muted">Zeichne…</p>
+					{/if}
+				</div>
+				<div class="sl-copy-row">
+					<input class="sl-input" readonly value={qrLink.url} />
+					<button class="sl-btn-secondary" onclick={() => copy(qrLink!.url)}>Kopieren</button>
+				</div>
+				{#if copyHint}
+					<p class="sl-copy-hint">{copyHint}</p>
+				{/if}
+				{#if qrLink.requires_password}
+					<p class="sl-warn">🔒 Dieser Link ist passwortgeschützt. Das Passwort wurde nur bei der Erstellung angezeigt und lässt sich nicht erneut abrufen — wer es nicht mehr hat, erstellt einen neuen Link.</p>
+				{/if}
+				<div class="sl-qr-actions">
+					<button class="sl-btn-secondary" onclick={downloadQr} disabled={!qrDataUrl}>PNG herunterladen</button>
+				</div>
+			</div>
+		</div>
+	</div>
+{/if}
+
 <style>
 	.sl-backdrop {
 		position: fixed; inset: 0; background: rgba(0, 0, 0, .55); z-index: 1000;
@@ -237,7 +317,7 @@
 	}
 	.sl-modal {
 		background: white; color: #1a1a1a; border-radius: 10px;
-		width: 100%; max-width: 720px; margin: auto; display: flex; flex-direction: column;
+		width: 100%; max-width: 820px; margin: auto; display: flex; flex-direction: column;
 		max-height: 90vh; box-shadow: 0 12px 48px rgba(0, 0, 0, .45);
 	}
 	header {
@@ -273,7 +353,8 @@
 	.sl-btn-secondary { padding: .5rem .9rem; border-radius: 5px; border: 1.5px solid #ccc; background: white; color: #333; cursor: pointer; font-size: .85rem; white-space: nowrap; }
 	.sl-btn-secondary:hover { background: #f0f0f0; }
 
-	.sl-btn-small { padding: .25rem .5rem; border-radius: 4px; border: 1px solid #ccc; background: white; color: #444; cursor: pointer; font-size: .78rem; }
+	.sl-btn-small { padding: .25rem .5rem; border-radius: 4px; border: 1px solid #ccc; background: white; color: #444; cursor: pointer; font-size: .78rem; white-space: nowrap; }
+	.sl-btn-small:hover:not(:disabled) { background: #f0f0f0; }
 	.sl-btn-small.danger { color: #b91c1c; border-color: #f4b4b4; }
 	.sl-btn-small.danger:hover { background: #fef2f2; }
 
@@ -287,11 +368,21 @@
 	.sl-copy-row { display: flex; gap: .4rem; }
 	.sl-copy-hint { color: #16a34a; font-size: .8rem; margin: .25rem 0 0; }
 
+	.sl-list { overflow-x: auto; }
 	.sl-list table { width: 100%; border-collapse: collapse; font-size: .85rem; }
 	.sl-list th, .sl-list td { padding: .4rem .5rem; border-bottom: 1px solid #eee; text-align: left; }
 	.sl-list th { color: #666; font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
 	.sl-list tr.revoked { color: #999; text-decoration: line-through; }
 	.sl-list code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .88rem; }
+
+	.sl-actions { display: flex; gap: .35rem; justify-content: flex-end; }
+	.sl-qr-backdrop { z-index: 1010; }
+	.sl-qr-modal { max-width: 420px; }
+	.sl-qr-body { align-items: center; text-align: center; gap: .75rem; }
+	.sl-qr-body .sl-copy-row, .sl-qr-body .sl-warn { width: 100%; }
+	.sl-qr-body .sl-warn { margin: 0; text-align: left; }
+	.sl-qr-big img { width: 260px; height: 260px; }
+	.sl-qr-actions { display: flex; gap: .5rem; }
 
 	.sl-muted { color: #777; font-size: .88rem; }
 	.sl-error { color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: .5rem .75rem; font-size: .85rem; margin: 0; }

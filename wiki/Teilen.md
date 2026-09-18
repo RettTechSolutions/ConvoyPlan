@@ -71,6 +71,14 @@ Der Teilen-Dialog listet alle Links des Konvois mit:
 | **Erstellt** / **Letzter Zugriff** / **Aufrufe** | Wann angelegt, wann zuletzt benutzt, wie oft |
 | **Status** | *aktiv* oder *widerrufen* |
 
+**QR** öffnet den QR-Code eines bestehenden Links erneut — zum Abfotografieren
+vom Bildschirm oder als PNG zum Ausdrucken (etwa für einen Aushang in der
+Fahrzeughalle). Der Code entsteht dabei im Browser aus der Link-Adresse; es
+wird nichts zusätzlich gespeichert und es kommt nichts hinzu, was ein
+Empfänger nicht ohnehin mit dem Link bekäme. **Ein Passwort taucht dort nicht
+auf** — auch nicht im QR-Code: Es ist nur unmittelbar nach dem Anlegen sichtbar
+(siehe oben) und bleibt es. Widerrufene Links haben keinen QR-Knopf.
+
 **Widerrufen** macht einen Link sofort ungültig. Er bleibt zur Nachvollziehbarkeit
 in der Liste stehen und wird nach **30 Tagen** vom Retention-Container endgültig
 gelöscht (`RETENTION_SHARE_LINKS_DAYS`). Erstellen und Widerrufen werden im
