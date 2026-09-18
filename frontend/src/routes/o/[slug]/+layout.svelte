@@ -3,7 +3,6 @@
     import { page } from '$app/stores';
     import { onMount, onDestroy } from 'svelte';
     import { orgStore } from '$lib/stores/org';
-    import { setActiveSlug } from '$lib/api/client';
     import { setOrgBranding, clearOrgBranding } from '$lib/stores/branding';
 
     let { children } = $props();
@@ -35,7 +34,6 @@
 
         // Login-Seite braucht keinen Token-Check
         if (isLoginPage) {
-            setActiveSlug(slug);
             ready = true;
             return;
         }

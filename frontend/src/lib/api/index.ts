@@ -1,4 +1,4 @@
-import { api, uploadFile, downloadFile, getStreamTicket } from './client';
+import { api, uploadFile, downloadFile, getStreamTicket, type Sitzung } from './client';
 import type { Geometry } from 'geojson';
 
 export interface Point { lat: number; lon: number }
@@ -216,10 +216,11 @@ export const authApi = {
 	 * oder abgelaufener Sitzung (401); genau daran erkennen die Stores, dass
 	 * zur Anmeldung geschickt werden muss.
 	 */
-	me: () => api.get<MeResult>('/api/auth/me'),
+	me: (sitzung: Sitzung = 'seite') => api.get<MeResult>('/api/auth/me', sitzung),
 	/** Die Sitzung serverseitig beenden — ein HttpOnly-Cookie kann sich das
 	 *  Portal nicht selbst wegnehmen. */
-	logout: () => api.post<{ status: string }>('/api/auth/logout', {}),
+	logout: (sitzung: Sitzung = 'seite') =>
+		api.post<{ status: string }>('/api/auth/logout', {}, sitzung),
 	register: (email: string, password: string) => api.post('/api/auth/register', { email, password }),
 	login: (email: string, password: string) =>
 		api.post<LoginResult>('/api/auth/login', { email, password }),

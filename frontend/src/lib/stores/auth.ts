@@ -1,6 +1,5 @@
 import { writable } from 'svelte/store';
 import { authApi } from '$lib/api';
-import { setActiveSlug } from '$lib/api/client';
 
 interface AuthState {
     /**
@@ -30,11 +29,16 @@ const LEER: AuthState = {
 function createAuthStore() {
     const { subscribe, set } = writable<AuthState>(LEER);
 
-    /** Die organisationslose (Superadmin-)Sitzung beim Server erfragen. */
+    /** Die organisationslose (Superadmin-)Sitzung beim Server erfragen.
+     *
+     * Ausdrücklich `null`: gemeint ist genau diese Sitzung, auch wenn die
+     * Seite gerade zu einer Organisation gehört — das Wurzel-Layout ruft
+     * `init()` auf jeder Seite auf, auch unter `/o/<slug>/`. Früher stellte
+     * es dafür die gemeinsame Slug-Variable um und nahm damit allen
+     * folgenden Anfragen der Seite ihre Organisation weg. */
     const init = async (): Promise<boolean> => {
-        setActiveSlug(null);
         try {
-            const me = await authApi.me();
+            const me = await authApi.me(null);
             set({
                 ready: true,
                 is_authenticated: true,
@@ -72,9 +76,10 @@ function createAuthStore() {
     };
 
     const logout = async () => {
-        setActiveSlug(null);
         try {
-            await authApi.logout();
+            // Ohne Organisation: das Backend löscht dann die globale Sitzung
+            // **und** jede mitgeschickte Org-Sitzung.
+            await authApi.logout(null);
         } catch {
             /* Siehe orgStore.logout — die Oberfläche meldet trotzdem ab. */
         }

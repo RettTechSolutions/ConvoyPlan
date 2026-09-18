@@ -109,3 +109,75 @@ export async function qrInhalt(page: Page, bildSelektor: string): Promise<string
 		return treffer.data;
 	}, bildSelektor);
 }
+
+/** Ein Marschverband, wie `GET /api/convoys/<id>` ihn liefert. */
+export function convoyPayload(id: string) {
+	return {
+		id,
+		name: 'Verlegung Nord',
+		organization: 'THW OV Musterstadt',
+		start_time: '2026-09-18T14:00:00Z',
+		waypoints: [],
+		convoy_vehicles: [
+			{
+				position: 1,
+				vehicle_status: 'planned',
+				status_level: null,
+				status_note: null,
+				vehicle: { id: 'v1', name: 'MTW 1', callsign: 'Heros 12/19' },
+			},
+		],
+	};
+}
+
+/**
+ * Das Org-Portal mit der Kernregel des Backends: **welche Sitzung gilt,
+ * entscheidet der `X-Org-Slug`-Kopf.** Fehlt er, zählt die organisationslose
+ * (Superadmin-)Sitzung — die ist eine gültige Anmeldung, kommt aber an keine
+ * Organisationsdaten heran und bekommt dort 403 „Org context required"
+ * (`deps.get_org_context`). Genau dieser Unterschied macht eine Anfrage ohne
+ * Kopf im Test sichtbar, statt sie stillschweigend gelingen zu lassen.
+ */
+export async function mockOrgPortal(
+	page: Page,
+	opts: { slug: string; convoyId: string },
+) {
+	const orgKopf = (route: Parameters<Parameters<Page['route']>[1]>[0]) =>
+		route.request().headers()['x-org-slug'] ?? null;
+
+	await page.route('**/api/setup/status', (route) => route.fulfill({ json: { setup_required: false } }));
+	await page.route('**/api/license/mode', (route) => route.fulfill({ json: { demo_mode: false } }));
+	await page.route('**/api/branding**', (route) => route.fulfill({ json: {} }));
+	await page.route('**/api/auth/stream-ticket', (route) => route.fulfill({ json: { ticket: 'test-ticket' } }));
+
+	await page.route('**/api/auth/me', (route) => {
+		if (orgKopf(route) !== opts.slug) {
+			// Die globale Sitzung: angemeldet, aber ohne Organisation.
+			route.fulfill({
+				json: {
+					user_id: 'u1', email: 'super@example.org', is_superadmin: true,
+					org_id: null, org_slug: null, org_name: null, role: null, is_demo: false,
+				},
+			});
+			return;
+		}
+		route.fulfill({
+			json: {
+				user_id: 'u2', email: 'planer@example.org', is_superadmin: false,
+				org_id: 'o1', org_slug: opts.slug, org_name: 'THW OV Musterstadt',
+				role: 'planer', is_demo: false,
+			},
+		});
+	});
+
+	await page.route(`**/api/convoys/${opts.convoyId}**`, (route) => {
+		if (orgKopf(route) !== opts.slug) {
+			route.fulfill({ status: 403, json: { detail: 'Org context required' } });
+			return;
+		}
+		const pfad = new URL(route.request().url()).pathname;
+		if (pfad.endsWith('/route')) return void route.fulfill({ json: null });
+		if (pfad.endsWith('/positions')) return void route.fulfill({ json: [] });
+		route.fulfill({ json: convoyPayload(opts.convoyId) });
+	});
+}

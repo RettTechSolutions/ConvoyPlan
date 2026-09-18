@@ -1,6 +1,5 @@
 import { writable } from 'svelte/store';
 import { authApi } from '$lib/api';
-import { setActiveSlug } from '$lib/api/client';
 
 export interface OrgContext {
     slug: string;
@@ -43,7 +42,10 @@ function createOrgStore() {
          * dasselbe.
          */
         async load(slug: string): Promise<OrgContext | null> {
-            setActiveSlug(slug);
+            // Welche Sitzung die Anfrage meint, steht in der Adresse — und
+            // diese Stelle wird nur für die Organisation aufgerufen, auf
+            // deren Seite man gerade ist. Dass beides zusammenpasst, prüft
+            // der Vergleich mit `me.org_slug` gleich darunter.
             try {
                 const me = await authApi.me();
                 // Das Cookie gehört zu einer anderen Organisation, als die
@@ -72,9 +74,11 @@ function createOrgStore() {
             set(null);
         },
 
-        /** Die Sitzung dieser Organisation serverseitig beenden. */
-        async logout(slug: string): Promise<void> {
-            setActiveSlug(slug);
+        /** Die Sitzung dieser Organisation serverseitig beenden.
+         *
+         * Ohne Parameter: gemeint ist die Organisation dieser Seite, und die
+         * steht in der Adresse. */
+        async logout(): Promise<void> {
             try {
                 await authApi.logout();
             } catch {
