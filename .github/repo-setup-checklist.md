@@ -25,6 +25,7 @@ müssen einmalig von einem Repo-Admin ausgeführt werden. Reihenfolge einhalten.
    - **Required Status Checks** (müssen grün sein, bevor gemergt werden kann):
      - `Backend – Lint & Tests`
      - `Frontend – Type Check`
+     - `Frontend – E2E (Playwright)`
      - `Docker – Build check`
      - `Security – Dependency Audit`
    - **Merge Queue** — Merges laufen seriell durch eine Warteschlange: GitHub
@@ -33,6 +34,11 @@ müssen einmalig von einem Repo-Admin ausgeführt werden. Reihenfolge einhalten.
      `ci.yml`) und mergt erst bei Grün. Dadurch ist **kein manuelles „Update
      branch" mehr nötig**, auch wenn sich `main` laufend ändert — genau das
      Szenario vieler gleichzeitiger Dependabot-PRs.
+     > Der E2E-Job trägt ein `timeout-minutes` im Workflow — das ist die
+     > Voraussetzung dafür, dass er als Required Check gefahrlos ist: Die Queue
+     > wartet sonst `check_response_timeout_minutes` (60) auf einen Job, der
+     > steht. Genau das ist einmal passiert, als `npx playwright install` nach
+     > dem Download hängenblieb.
    - **Strict up-to-date ist dafür deaktiviert** — die Queue testet ohnehin
      jeden PR gegen den aktuellen Stand von `main` (stärkere Garantie).
    - **Nur Squash-Merge** erlaubt (auch in der Queue).

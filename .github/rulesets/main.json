@@ -47,6 +47,7 @@
         "required_status_checks": [
           { "context": "Backend – Lint & Tests" },
           { "context": "Frontend – Type Check" },
+          { "context": "Frontend – E2E (Playwright)" },
           { "context": "Docker – Build check" },
           { "context": "Security – Dependency Audit" }
         ]
