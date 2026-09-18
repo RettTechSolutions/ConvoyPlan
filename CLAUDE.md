@@ -228,6 +228,13 @@ Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste
   dem Runner nach dem Download beim Entpacken stehenblieb — ohne Ausgabe, ohne
   Abbruch. Dessen Marke muss zur Fassung von `@playwright/test` passen: Wer die
   Abhängigkeit hebt, hebt die Marke in `ci.yml` mit.
+
+  **Lokal** braucht es den Browser einmalig: `npx playwright install chromium`
+  in `frontend/`. Bleibt der Befehl nach dem Download ohne Ausgabe stehen, liegt
+  es an der Node-Fassung — dann entweder eine ältere nehmen oder die Suite im
+  selben Image fahren wie die CI:
+  `docker run --rm -v "$PWD":/w -w /w/frontend mcr.microsoft.com/playwright:v1.56.1-noble
+  sh -c 'npm ci && npm run test:e2e'`.
 - **Shell** — die Suiten unter `docker/updater/tests/` und für den
   GraphHopper-Entrypoint; sie tragen den Regionswechsel und laufen im Job
   `Shell – Updater und Entrypoint`.
