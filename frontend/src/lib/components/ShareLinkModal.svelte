@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import QRCode from 'qrcode';
 	import {
 		shareLinksApi,
@@ -9,7 +9,11 @@
 		type ShareLinkScope,
 	} from '$lib/api';
 
-	let { convoyId, onClose }: { convoyId: string; onClose: () => void } = $props();
+	let {
+		convoyId,
+		convoyName = '',
+		onClose,
+	}: { convoyId: string; convoyName?: string; onClose: () => void } = $props();
 
 	let links = $state<ShareLink[]>([]);
 	let loading = $state(true);
@@ -29,6 +33,11 @@
 	// wird er nirgends.
 	let qrLink = $state<ShareLink | null>(null);
 	let qrDataUrl = $state('');
+
+	// Der Ausdruck ist ein eigenes Blatt, das nur im Druck sichtbar wird — so
+	// bleibt der Rest der Planungsseite (Karte, Listen) draußen, ohne ein
+	// zweites Fenster zu öffnen, das ein Popup-Blocker abfangen könnte.
+	let printSheet = $state<{ link: ShareLink; dataUrl: string } | null>(null);
 
 	async function load() {
 		loading = true;
@@ -53,7 +62,7 @@
 			};
 			const created = await shareLinksApi.create(convoyId, body);
 			lastCreated = created;
-			lastQrDataUrl = await QRCode.toDataURL(created.url, { width: 240, margin: 1 });
+			lastQrDataUrl = await QRCode.toDataURL(created.url, { width: 600, margin: 1 });
 			passwordInput = '';
 			passwordMode = 'none';
 			scope = 'track';
@@ -110,12 +119,32 @@
 		qrDataUrl = '';
 	}
 
-	function downloadQr() {
-		if (!qrLink || !qrDataUrl) return;
+	function downloadPng(link: ShareLink, dataUrl: string) {
+		if (!dataUrl) return;
 		const a = document.createElement('a');
-		a.href = qrDataUrl;
-		a.download = `tracking-${qrLink.slug}.png`;
+		a.href = dataUrl;
+		a.download = `tracking-${link.slug}.png`;
 		a.click();
+	}
+
+	async function printPng(link: ShareLink, dataUrl: string) {
+		if (!dataUrl) return;
+		printSheet = { link, dataUrl };
+		await tick();
+		window.print();
+	}
+
+	// Das Blatt wird an <body> gehängt, damit der Druckstil den Rest der Seite
+	// per `display: none` wegnehmen kann: bliebe er nur unsichtbar, stünde sein
+	// Layout weiter im Dokument und die Planungsseite (Karte, lange Listen)
+	// hinge als leere Folgeseiten hinter dem Ausdruck.
+	function portal(node: HTMLElement) {
+		document.body.appendChild(node);
+		return { destroy: () => node.remove() };
+	}
+
+	function scopeLabel(scope: string) {
+		return scope === 'driver' ? '🚗 Fahrer' : '👁 Viewer';
 	}
 
 	function onKeydown(e: KeyboardEvent) {
@@ -133,7 +162,7 @@
 	onMount(load);
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<svelte:window onkeydown={onKeydown} onafterprint={() => (printSheet = null)} />
 
 <div class="sl-backdrop" onclick={onClose} role="presentation">
 	<div class="sl-modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
@@ -214,6 +243,14 @@
 							{#if copyHint}
 								<p class="sl-copy-hint">{copyHint}</p>
 							{/if}
+							<div class="sl-qr-actions">
+								<button class="sl-btn-secondary" onclick={() => downloadPng(lastCreated!, lastQrDataUrl)} disabled={!lastQrDataUrl}>
+									PNG herunterladen
+								</button>
+								<button class="sl-btn-secondary" onclick={() => printPng(lastCreated!, lastQrDataUrl)} disabled={!lastQrDataUrl}>
+									Drucken
+								</button>
+							</div>
 						</div>
 					</div>
 				</section>
@@ -244,9 +281,7 @@
 								<tr class:revoked={link.revoked}>
 									<td><code>{link.slug}</code></td>
 									<td>
-										<span class="sl-badge" class:driver={link.scope === 'driver'}>
-											{link.scope === 'driver' ? '🚗 Fahrer' : '👁 Viewer'}
-										</span>
+										<span class="sl-badge" class:driver={link.scope === 'driver'}>{scopeLabel(link.scope)}</span>
 									</td>
 									<td>{link.requires_password ? '🔒' : '—'}</td>
 									<td>{fmtDate(link.created_at)}</td>
@@ -273,6 +308,24 @@
 	</div>
 </div>
 
+{#if printSheet}
+	<div class="sl-print cp-print-sheet" use:portal>
+		<h1>{convoyName || 'Konvoi'} — Live-Tracking</h1>
+		<p class="sl-print-role">
+			{printSheet.link.scope === 'driver'
+				? 'Fahrer-Link: Fahrzeug wählen, Position und Status senden'
+				: 'Nur ansehen: Verband live verfolgen'}
+		</p>
+		<img src={printSheet.dataUrl} alt="" />
+		<p class="sl-print-url">{printSheet.link.url}</p>
+		{#if printSheet.link.requires_password}
+			<p class="sl-print-note">Dieser Zugang ist passwortgeschützt. Das Passwort wird getrennt mitgeteilt — es steht nicht auf diesem Blatt und nicht im QR-Code.</p>
+		{:else}
+			<p class="sl-print-note">Dieser Zugang ist ohne Passwort erreichbar. Blatt entsprechend behandeln.</p>
+		{/if}
+	</div>
+{/if}
+
 {#if qrLink}
 	<div class="sl-backdrop sl-qr-backdrop" onclick={closeQr} role="presentation">
 		<div class="sl-modal sl-qr-modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
@@ -281,9 +334,7 @@
 				<button class="sl-close" onclick={closeQr} aria-label="Schließen">✕</button>
 			</header>
 			<div class="sl-body sl-qr-body">
-				<span class="sl-badge" class:driver={qrLink.scope === 'driver'}>
-					{qrLink.scope === 'driver' ? '🚗 Fahrer' : '👁 Viewer'}
-				</span>
+				<span class="sl-badge" class:driver={qrLink.scope === 'driver'}>{scopeLabel(qrLink.scope)}</span>
 				<div class="sl-qr sl-qr-big">
 					{#if qrDataUrl}
 						<img src={qrDataUrl} alt="QR-Code für {qrLink.url}" />
@@ -302,7 +353,12 @@
 					<p class="sl-warn">🔒 Dieser Link ist passwortgeschützt. Das Passwort wurde nur bei der Erstellung angezeigt und lässt sich nicht erneut abrufen — wer es nicht mehr hat, erstellt einen neuen Link.</p>
 				{/if}
 				<div class="sl-qr-actions">
-					<button class="sl-btn-secondary" onclick={downloadQr} disabled={!qrDataUrl}>PNG herunterladen</button>
+					<button class="sl-btn-secondary" onclick={() => downloadPng(qrLink!, qrDataUrl)} disabled={!qrDataUrl}>
+						PNG herunterladen
+					</button>
+					<button class="sl-btn-secondary" onclick={() => printPng(qrLink!, qrDataUrl)} disabled={!qrDataUrl}>
+						Drucken
+					</button>
 				</div>
 			</div>
 		</div>
@@ -383,6 +439,24 @@
 	.sl-qr-body .sl-warn { margin: 0; text-align: left; }
 	.sl-qr-big img { width: 260px; height: 260px; }
 	.sl-qr-actions { display: flex; gap: .5rem; }
+
+	/* Auf dem Schirm gibt es das Blatt nicht; im Druck ist es das Einzige, was
+	   sichtbar bleibt. `visibility` statt `display`, damit die Kette bis zum
+	   Blatt hinunter wieder sichtbar geschaltet werden kann. */
+	.sl-print { display: none; }
+	@media print {
+		:global(body > *:not(.cp-print-sheet)) { display: none !important; }
+		:global(body) { background: #fff !important; }
+		.sl-print {
+			display: block; width: 100%; padding: 1.5cm 1cm; box-sizing: border-box;
+			text-align: center; color: #000; font-family: inherit;
+		}
+		.sl-print h1 { font-size: 20pt; margin: 0 0 .3cm; }
+		.sl-print-role { font-size: 12pt; margin: 0 0 .8cm; }
+		.sl-print img { width: 9cm; height: 9cm; }
+		.sl-print-url { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13pt; margin: .6cm 0 0; word-break: break-all; }
+		.sl-print-note { font-size: 10pt; margin: .8cm auto 0; max-width: 12cm; }
+	}
 
 	.sl-muted { color: #777; font-size: .88rem; }
 	.sl-error { color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; padding: .5rem .75rem; font-size: .85rem; margin: 0; }

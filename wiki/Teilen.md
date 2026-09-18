@@ -25,6 +25,11 @@ Fahrzeuge, Kräfte anderer Organisationen im gemeinsamen Marschverband.
 Der fertige Link hat die Form `https://<deine-instanz>/track/<slug>`. Der Slug
 ist eine zufällige 8-stellige Zeichenfolge aus Buchstaben und Ziffern.
 
+Direkt nach dem Anlegen zeigt der Dialog den QR-Code und daneben **PNG
+herunterladen** und **Drucken**. Der Ausdruck ist ein eigenes Blatt: Konvoi,
+Rolle des Links, QR-Code und Adresse — ohne Karte, ohne Fahrzeugliste, ohne
+Passwort.
+
 > **Ein Fahrer-Link ist ein Schreibzugriff.** Jeder, der ihn hat, kann für ein
 > beliebiges Fahrzeug des Konvois Position und Status senden. Der Dialog weist
 > beim Anlegen ausdrücklich darauf hin und **empfiehlt für Fahrer-Links ein
@@ -71,13 +76,17 @@ Der Teilen-Dialog listet alle Links des Konvois mit:
 | **Erstellt** / **Letzter Zugriff** / **Aufrufe** | Wann angelegt, wann zuletzt benutzt, wie oft |
 | **Status** | *aktiv* oder *widerrufen* |
 
-**QR** öffnet den QR-Code eines bestehenden Links erneut — zum Abfotografieren
-vom Bildschirm oder als PNG zum Ausdrucken (etwa für einen Aushang in der
-Fahrzeughalle). Der Code entsteht dabei im Browser aus der Link-Adresse; es
-wird nichts zusätzlich gespeichert und es kommt nichts hinzu, was ein
-Empfänger nicht ohnehin mit dem Link bekäme. **Ein Passwort taucht dort nicht
-auf** — auch nicht im QR-Code: Es ist nur unmittelbar nach dem Anlegen sichtbar
-(siehe oben) und bleibt es. Widerrufene Links haben keinen QR-Knopf.
+**QR** öffnet den QR-Code eines bestehenden Links erneut, mit denselben beiden
+Knöpfen wie beim Anlegen: **PNG herunterladen** und **Drucken**. Der Code
+entsteht dabei im Browser aus der Link-Adresse; es wird nichts zusätzlich
+gespeichert und es kommt nichts hinzu, was ein Empfänger nicht ohnehin mit dem
+Link bekäme. **Ein Passwort taucht dort nicht auf** — auch nicht im QR-Code und
+nicht auf dem Ausdruck: Es ist nur unmittelbar nach dem Anlegen sichtbar (siehe
+oben) und bleibt es. Widerrufene Links haben keinen QR-Knopf.
+
+> Ein ausgehängter QR-Code ist der Link. Wer am Aushang vorbeikommt, hat ihn —
+> bei einem Fahrer-Link also Schreibzugriff. Für Aushänge deshalb ein Passwort
+> setzen und es getrennt bekanntgeben; der Ausdruck weist selbst darauf hin.
 
 **Widerrufen** macht einen Link sofort ungültig. Er bleibt zur Nachvollziehbarkeit
 in der Liste stehen und wird nach **30 Tagen** vom Retention-Container endgültig

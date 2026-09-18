@@ -2070,7 +2070,7 @@
 {/if}
 
 {#if showShareLinkModal && selected}
-	<ShareLinkModal convoyId={selected.id} onClose={() => (showShareLinkModal = false)} />
+	<ShareLinkModal convoyId={selected.id} convoyName={selected.name} onClose={() => (showShareLinkModal = false)} />
 {/if}
 
 <!-- ── Onboarding-Tutorial für Erstbesucher (Org & Demo) ──────────── -->
