@@ -1,7 +1,34 @@
 import type { Page } from '@playwright/test';
 
+/** Ein Fahrzeug, wie die Tracking-Nutzlast es führt. */
+export type TrackFahrzeug = {
+	id: string;
+	name: string;
+	callsign: string | null;
+	sonderfunktion: string | null;
+	vehicle_status: string;
+	position: number;
+	staerke_soll_fuehrer: number | null;
+	staerke_soll_unterfuehrer: number | null;
+	staerke_soll_mannschaften: number | null;
+	staerke_ist_fuehrer: number | null;
+	staerke_ist_unterfuehrer: number | null;
+	staerke_ist_mannschaften: number | null;
+};
+
+/** Ein Fahrzeug ohne jede Stärkeangabe — der Normalfall vor der ersten Meldung. */
+export function fahrzeug(teil: Partial<TrackFahrzeug> = {}): TrackFahrzeug {
+	return {
+		id: 'v1', name: 'MTW 1', callsign: 'Heros 12/19',
+		sonderfunktion: 'Führung', vehicle_status: 'planned', position: 1,
+		staerke_soll_fuehrer: null, staerke_soll_unterfuehrer: null, staerke_soll_mannschaften: null,
+		staerke_ist_fuehrer: null, staerke_ist_unterfuehrer: null, staerke_ist_mannschaften: null,
+		...teil,
+	};
+}
+
 /** Antwort von `GET /api/track/<slug>` für eine geöffnete Ansicht. */
-export function trackPayload(scope: 'track' | 'driver') {
+export function trackPayload(scope: 'track' | 'driver', fahrzeuge?: TrackFahrzeug[]) {
 	return {
 		name: 'Verlegung Nord',
 		organization: 'THW OV Musterstadt',
@@ -16,12 +43,7 @@ export function trackPayload(scope: 'track' | 'driver') {
 		geojson: null,
 		distance_m: 42000,
 		kanalwechsel: [],
-		vehicles: [
-			{
-				id: 'v1', name: 'MTW 1', callsign: 'Heros 12/19',
-				sonderfunktion: 'Führung', vehicle_status: 'planned', position: 1,
-			},
-		],
+		vehicles: fahrzeuge ?? [fahrzeug()],
 		positions: [],
 	};
 }
@@ -47,7 +69,7 @@ export async function blockExternal(page: Page) {
  */
 export async function mockTrack(
 	page: Page,
-	opts: { scope: 'track' | 'driver'; password?: string },
+	opts: { scope: 'track' | 'driver'; password?: string; fahrzeuge?: TrackFahrzeug[] },
 ) {
 	let freigeschaltet = !opts.password;
 
@@ -68,7 +90,7 @@ export async function mockTrack(
 			});
 			return;
 		}
-		await route.fulfill({ json: trackPayload(opts.scope) });
+		await route.fulfill({ json: trackPayload(opts.scope, opts.fahrzeuge) });
 	});
 }
 
@@ -110,23 +132,35 @@ export async function qrInhalt(page: Page, bildSelektor: string): Promise<string
 	}, bildSelektor);
 }
 
+/** Ein Fahrzeug im Verband, wie `GET /api/convoys/<id>` es führt. */
+export function konvoiFahrzeug(teil: Record<string, unknown> = {}) {
+	const { vehicle, ...rest } = teil as { vehicle?: Record<string, unknown> };
+	return {
+		position: 1,
+		vehicle_status: 'planned',
+		status_level: null,
+		status_note: null,
+		staerke_soll_fuehrer: null,
+		staerke_soll_unterfuehrer: null,
+		staerke_soll_mannschaften: null,
+		staerke_ist_fuehrer: null,
+		staerke_ist_unterfuehrer: null,
+		staerke_ist_mannschaften: null,
+		staerke_gemeldet_at: null,
+		...rest,
+		vehicle: { id: 'v1', name: 'MTW 1', callsign: 'Heros 12/19', ...(vehicle ?? {}) },
+	};
+}
+
 /** Ein Marschverband, wie `GET /api/convoys/<id>` ihn liefert. */
-export function convoyPayload(id: string) {
+export function convoyPayload(id: string, fahrzeuge?: ReturnType<typeof konvoiFahrzeug>[]) {
 	return {
 		id,
 		name: 'Verlegung Nord',
 		organization: 'THW OV Musterstadt',
 		start_time: '2026-09-18T14:00:00Z',
 		waypoints: [],
-		convoy_vehicles: [
-			{
-				position: 1,
-				vehicle_status: 'planned',
-				status_level: null,
-				status_note: null,
-				vehicle: { id: 'v1', name: 'MTW 1', callsign: 'Heros 12/19' },
-			},
-		],
+		convoy_vehicles: fahrzeuge ?? [konvoiFahrzeug()],
 	};
 }
 
@@ -140,7 +174,7 @@ export function convoyPayload(id: string) {
  */
 export async function mockOrgPortal(
 	page: Page,
-	opts: { slug: string; convoyId: string },
+	opts: { slug: string; convoyId: string; fahrzeuge?: ReturnType<typeof konvoiFahrzeug>[] },
 ) {
 	const orgKopf = (route: Parameters<Parameters<Page['route']>[1]>[0]) =>
 		route.request().headers()['x-org-slug'] ?? null;
@@ -178,6 +212,6 @@ export async function mockOrgPortal(
 		const pfad = new URL(route.request().url()).pathname;
 		if (pfad.endsWith('/route')) return void route.fulfill({ json: null });
 		if (pfad.endsWith('/positions')) return void route.fulfill({ json: [] });
-		route.fulfill({ json: convoyPayload(opts.convoyId) });
+		route.fulfill({ json: convoyPayload(opts.convoyId, opts.fahrzeuge) });
 	});
 }

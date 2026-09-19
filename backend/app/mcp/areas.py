@@ -44,7 +44,7 @@ BEREICH_LABELS: dict[str, str] = {
     BEREICH_FAHRZEUGE: "Fahrzeuge und ihre Zuordnung zum Konvoi",
     BEREICH_WEGPUNKTE: "Wegpunkte und Marschstrecke",
     BEREICH_ROUTEN: "Routen abrufen und berechnen",
-    BEREICH_STATUS: "Live-Positionen und Marschstatus",
+    BEREICH_STATUS: "Live-Positionen, Marschstatus und Mannschaftsstärke",
 }
 
 # Werkzeuge ohne Bereich — immer verfügbar, solange die Verbindung überhaupt
@@ -80,6 +80,9 @@ TOOL_BEREICHE: dict[str, str] = {
     "fahrzeugpositionen_abrufen": BEREICH_STATUS,
     "konvoi_status": BEREICH_STATUS,
     "fahrzeugstatus_setzen": BEREICH_STATUS,
+    # Die Mannschaftsstärke gehört zur Lage, nicht zum Fuhrpark: sie sagt,
+    # wer gerade unterwegs ist, und ändert sich mit jeder Meldung.
+    "fahrzeugstaerke_melden": BEREICH_STATUS,
 }
 
 # Was eine frisch eingeschaltete Organisation bekommt, solange niemand etwas

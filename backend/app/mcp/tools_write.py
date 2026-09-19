@@ -39,6 +39,7 @@ from app.schemas.convoy import (
 )
 from app.schemas.vehicle import VehicleCreate, VehicleUpdate
 from app.schemas.waypoint import WaypointCreate, WaypointReorderItem, WaypointUpdate
+from app.services import staerke as staerke_svc
 
 
 def _uuid(raw: str, was: str) -> uuid.UUID:
@@ -629,6 +630,63 @@ def register(mcp) -> None:
             }
 
     # ── Marschstatus ─────────────────────────────────────────────────────
+
+    @mcp.tool(annotations=annotations.schreibend("Mannschaftsstärke melden", idempotent=True))
+    async def fahrzeugstaerke_melden(
+        konvoi_id: str,
+        fahrzeug_id: str,
+        fuehrer: int = 0,
+        unterfuehrer: int = 0,
+        mannschaften: int = 0,
+    ) -> dict[str, Any]:
+        """Meldet die Mannschaftsstärke eines Fahrzeugs im Konvoi.
+
+        Notation Führer/Unterführer/Mannschaften//Gesamt, also etwa 0/1/8//9.
+        Die Gesamtzahl wird gerechnet und darf nicht mitgegeben werden.
+
+        Eine Meldung mit lauter Nullen heißt „Fahrzeug fährt unbesetzt" und ist
+        etwas anderes als gar keine Meldung. Wer die Stärke nicht kennt, meldet
+        sie nicht, statt Nullen zu schicken.
+
+        Args:
+            konvoi_id: Die ID des Konvois.
+            fahrzeug_id: Die ID des Fahrzeugs.
+            fuehrer: Anzahl Führer an Bord (0–99).
+            unterfuehrer: Anzahl Unterführer an Bord (0–99).
+            mannschaften: Anzahl Mannschaften an Bord (0–99).
+        """
+        async with mcp_context("fahrzeugstaerke_melden") as ctx:
+            ctx.require(SCOPE_FLEET_STATUS)
+            await _run(
+                tracking_routes.update_vehicle_staerke(
+                    convoy_id=_uuid(konvoi_id, "Konvoi-ID"),
+                    vehicle_id=_uuid(fahrzeug_id, "Fahrzeug-ID"),
+                    data=tracking_routes.StaerkeUpdate(
+                        fuehrer=fuehrer, unterfuehrer=unterfuehrer, mannschaften=mannschaften
+                    ),
+                    db=ctx.db,
+                    current_user=ctx.user,
+                )
+            )
+            gesamt = staerke_svc.gesamt(fuehrer, unterfuehrer, mannschaften)
+            await ctx.audit(
+                "fahrzeugstaerke_melden",
+                target_type="convoy",
+                target_id=konvoi_id,
+                detail={
+                    "fahrzeug_id": fahrzeug_id,
+                    "staerke": f"{fuehrer}/{unterfuehrer}/{mannschaften}",
+                },
+            )
+            await ctx.db.commit()
+            return {
+                "ergebnis": f"Stärke {fuehrer}/{unterfuehrer}/{mannschaften}//{gesamt} gemeldet.",
+                "fahrzeug_id": fahrzeug_id,
+                "fuehrer": fuehrer,
+                "unterfuehrer": unterfuehrer,
+                "mannschaften": mannschaften,
+                "gesamt": gesamt,
+            }
 
     @mcp.tool(annotations=annotations.schreibend("Fahrzeugstatus melden", idempotent=True))
     async def fahrzeugstatus_setzen(

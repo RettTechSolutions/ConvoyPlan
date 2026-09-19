@@ -9,8 +9,12 @@
 	import {
 		livePositions, vehicleStatuses, trackingAlerts, connectTracking, disconnectTracking,
 		sendPosition, trackingActive, trackingConnection, gpsRevoked, acknowledgeAlert, dismissAlert,
-		acknowledgeAllAlerts, type VehicleStatusInfo,
+		acknowledgeAllAlerts, vehicleStaerken, type VehicleStatusInfo,
 	} from '$lib/stores/tracking';
+	import StaerkeBadge from '$lib/components/StaerkeBadge.svelte';
+	import {
+		formatStaerke, verbandsStaerke, type StaerkeFelder,
+	} from '$lib/tracking/staerke';
 	import {
 		STATUS_LABELS, STATUS_COLORS, STATUS_ICONS, HALT_LEVEL_LABELS, BREAKDOWN_LEVEL_LABELS,
 		statusColor, statusLabel, levelLabel, type HaltLevel, type BreakdownLevel,
@@ -134,6 +138,23 @@
 	);
 
 	// Effective status (live WebSocket value falls back to the stored convoy value).
+	/** Stärkefelder eines Fahrzeugs, mit der neuesten Live-Meldung obenauf. */
+	function staerkeVon(cv: StaerkeFelder & { vehicle: { id: string } }): StaerkeFelder {
+		const live = $vehicleStaerken.get(cv.vehicle.id);
+		if (!live) return cv;
+		return {
+			...cv,
+			staerke_ist_fuehrer: live.fuehrer,
+			staerke_ist_unterfuehrer: live.unterfuehrer,
+			staerke_ist_mannschaften: live.mannschaften,
+		};
+	}
+
+	/** Gesamtstärke des Verbands — Summe der Meldungen, dazu die Zahl der offenen. */
+	const gesamtStaerke = $derived(
+		verbandsStaerke((convoy?.convoy_vehicles ?? []).map((cv) => staerkeVon(cv)))
+	);
+
 	function statusOf(cv: { vehicle: { id: string }; vehicle_status: string; status_level?: string | null }): string {
 		return $vehicleStatuses.get(cv.vehicle.id)?.status ?? cv.vehicle_status;
 	}
@@ -633,6 +654,19 @@
 			{#if activeTab === 'fahrzeuge'}
 				<!-- Read-only vehicle list: marking stays, only the status colors change. -->
 				<div class="section">
+					{#if (convoy?.convoy_vehicles ?? []).length > 0}
+						<div class="verbandsstaerke" data-testid="verbandsstaerke">
+							<span class="vs-label">Verbandsstärke</span>
+							<span class="vs-wert">
+								{gesamtStaerke.offen === (convoy?.convoy_vehicles ?? []).length
+									? '–/–/–'
+									: formatStaerke(gesamtStaerke.gemeldet)}
+							</span>
+							{#if gesamtStaerke.offen > 0}
+								<span class="vs-offen">{gesamtStaerke.offen} ohne Meldung</span>
+							{/if}
+						</div>
+					{/if}
 					{#each (convoy?.convoy_vehicles ?? []) as cv}
 						{@const st = statusOf(cv)}
 						{@const lvl = levelOf(cv)}
@@ -643,9 +677,12 @@
 								{#if cv.vehicle.callsign}<span class="tag">{cv.vehicle.callsign}</span>{/if}
 								{#if $livePositions.has(cv.vehicle.id)}<span class="live-badge">LIVE</span>{/if}
 							</div>
-							<span class="status-chip" style="color:{statusColor(st)};border-color:{statusColor(st)}">
-								{statusLabel(st)}{#if levelLabel(st, lvl)} · {levelLabel(st, lvl)}{/if}
-							</span>
+							<div class="veh-right">
+								<StaerkeBadge fahrzeugId={cv.vehicle.id} felder={staerkeVon(cv)} />
+								<span class="status-chip" style="color:{statusColor(st)};border-color:{statusColor(st)}">
+									{statusLabel(st)}{#if levelLabel(st, lvl)} · {levelLabel(st, lvl)}{/if}
+								</span>
+							</div>
 						</div>
 					{/each}
 					{#if (convoy?.convoy_vehicles ?? []).length === 0}
@@ -954,6 +991,11 @@
 
 	/* Vehicle rows */
 	.vehicle-row { display: flex; align-items: center; justify-content: space-between; padding: .35rem 0; border-bottom: 1px solid var(--border); gap: .4rem; }
+	.veh-right { display: flex; align-items: center; gap: .45rem; flex-shrink: 0; }
+	.verbandsstaerke { display: flex; align-items: baseline; gap: .45rem; padding: .3rem 0 .5rem; border-bottom: 1px solid var(--border); font-size: .8rem; }
+	.vs-label { color: var(--text-muted); }
+	.vs-wert { font-weight: 700; font-variant-numeric: tabular-nums; }
+	.vs-offen { margin-left: auto; color: var(--text-muted); font-size: .75rem; }
 	.veh-left { display: flex; align-items: center; gap: .3rem; flex: 1; min-width: 0; }
 	.status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 	.vname { font-size: var(--text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

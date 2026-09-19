@@ -21,6 +21,16 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Added
+
+- **Fahrzeuge melden ihre Mannschaftsstärke, die Konvoiführung liest sie ab.** Im Fahrer-Link stehen unter den Kurz-Stati drei Felder — Führer, Unterführer, Mannschaften; die Gesamtzahl rechnet ConvoyPlan und speichert sie nicht, damit sie nicht von ihren Summanden abweichen kann. Gemeldet wird auf Knopfdruck, nicht beim Tippen.
+
+  In der Tracking-Ansicht steht die Stärke je Fahrzeug in der Notation `0/1/8//9` und darüber die Verbandsstärke. Sie unterscheidet zwei Fälle, die eine Zahl allein verwischt: **nicht gemeldet** (`–/–/–`, zählt nicht in die Summe, wird als offene Meldung ausgewiesen) und **unbesetzt** (`0/0/0//0`, eine Aussage). Wer in der Planung eine **Sollstärke** hinterlegt, sieht Abweichungen hervorgehoben — das Soll ändert dabei nie die Meldung der Besatzung, und die Meldung nie das Soll.
+
+  Gespeichert wird eine Zahl, kein Name: zu keiner Meldung steht in ConvoyPlan, wer an Bord ist.
+
+  Über den MCP-Server geht dasselbe: `fahrzeugstaerke_melden` (Scope `fleet:status`, Bereich *Status*) meldet, `konvoi_status` liest Stärke je Fahrzeug und Verbandsstärke zurück. Auch dort bleibt „nicht gemeldet" `null` und wird nicht zu `0/0/0` — ein Modell, das beides gleich gezeigt bekäme, erzählte es auch gleich weiter.
+
 ### Fixed
 
 - **Die Tracking-Ansicht zeigte „Getrennt", obwohl nichts getrennt war.** Zwei Ursachen, die sich zu einer Anzeige addierten.
