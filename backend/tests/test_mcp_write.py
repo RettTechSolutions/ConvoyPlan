@@ -471,3 +471,94 @@ async def test_wegpunkte_bleiben_beim_umsortieren_vollstaendig():
             )
         assert anzahl == 3, "beim Umsortieren darf kein Wegpunkt verlorengehen"
         await purge_clients([reg["client_id"]])
+
+
+# ── Mannschaftsstärke ────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_staerke_melden_schreibt_und_rechnet_die_gesamtzahl():
+    async with seeded() as fx, mcp_app() as (_app, client):
+        reg, token, session = await _sitzung(client, fx.planer, fx.org_a)
+        antwort = await _werkzeug(client, token, session, "fahrzeugstaerke_melden", {
+            "konvoi_id": str(fx.convoy_a.id), "fahrzeug_id": str(fx.vehicle_a.id),
+            "fuehrer": 0, "unterfuehrer": 1, "mannschaften": 8,
+        })
+        assert tool_payload(antwort)["gesamt"] == 9
+
+        async with AsyncSessionLocal() as db:
+            cv = await db.get(ConvoyVehicle, (fx.convoy_a.id, fx.vehicle_a.id))
+            assert (cv.staerke_ist_fuehrer, cv.staerke_ist_unterfuehrer, cv.staerke_ist_mannschaften) == (0, 1, 8)
+            assert cv.staerke_gemeldet_at is not None
+        await purge_clients([reg["client_id"]])
+
+
+@pytest.mark.asyncio
+async def test_nur_lese_scope_reicht_fuer_die_staerke_nicht():
+    """Eine Stärkemeldung ist dasselbe wie eine Statusmeldung: sie ändert die
+    Lage, die die Führung sieht. Lesen allein trägt das nicht."""
+    async with seeded() as fx, mcp_app() as (_app, client):
+        reg, token, session = await _sitzung(
+            client, fx.planer, fx.org_a, [scope_svc.SCOPE_READ]
+        )
+        antwort = await _roh(client, token, session, "fahrzeugstaerke_melden", {
+            "konvoi_id": str(fx.convoy_a.id), "fahrzeug_id": str(fx.vehicle_a.id),
+            "fuehrer": 0, "unterfuehrer": 1, "mannschaften": 8,
+        })
+        assert antwort.status_code == 403, antwort.text
+        assert scope_svc.SCOPE_FLEET_STATUS in antwort.headers["www-authenticate"]
+        await purge_clients([reg["client_id"]])
+
+
+@pytest.mark.asyncio
+async def test_unplausible_staerke_wird_abgewiesen():
+    async with seeded() as fx, mcp_app() as (_app, client):
+        reg, token, session = await _sitzung(client, fx.planer, fx.org_a)
+        antwort = await _werkzeug(client, token, session, "fahrzeugstaerke_melden", {
+            "konvoi_id": str(fx.convoy_a.id), "fahrzeug_id": str(fx.vehicle_a.id),
+            "fuehrer": 0, "unterfuehrer": 1, "mannschaften": 500,
+        })
+        assert antwort["result"]["isError"] is True
+        # Sonst wäre der Test auch grün, solange es das Werkzeug gar nicht gibt.
+        listing = await call(client, token, session, "tools/list")
+        assert "fahrzeugstaerke_melden" in {t["name"] for t in listing["result"]["tools"]}
+
+        async with AsyncSessionLocal() as db:
+            cv = await db.get(ConvoyVehicle, (fx.convoy_a.id, fx.vehicle_a.id))
+            assert cv.staerke_ist_mannschaften is None
+        await purge_clients([reg["client_id"]])
+
+
+@pytest.mark.asyncio
+async def test_konvoi_status_haelt_ungemeldet_und_unbesetzt_auseinander():
+    """Die Zusage aus der Oberfläche, noch einmal für das Modell: ein
+    schweigendes Fahrzeug darf nicht als Null-Besatzung herauskommen."""
+    async with seeded() as fx, mcp_app() as (_app, client):
+        reg, token, session = await _sitzung(client, fx.planer, fx.org_a)
+
+        vorher = tool_payload(
+            await _werkzeug(client, token, session, "konvoi_status", {
+                "konvoi_id": str(fx.convoy_a.id),
+            })
+        )
+        assert vorher["fahrzeuge"][0]["staerke"]["ist"] is None
+        assert vorher["fahrzeuge"][0]["staerke"]["gesamt"] is None
+        assert vorher["staerke"]["offen"] == 1
+        assert vorher["staerke"]["gesamt"] is None
+
+        await _werkzeug(client, token, session, "fahrzeugstaerke_melden", {
+            "konvoi_id": str(fx.convoy_a.id), "fahrzeug_id": str(fx.vehicle_a.id),
+            "fuehrer": 0, "unterfuehrer": 0, "mannschaften": 0,
+        })
+
+        nachher = tool_payload(
+            await _werkzeug(client, token, session, "konvoi_status", {
+                "konvoi_id": str(fx.convoy_a.id),
+            })
+        )
+        # Unbesetzt gemeldet: eine Aussage, keine fehlende Meldung.
+        assert nachher["fahrzeuge"][0]["staerke"]["ist"] == "0/0/0"
+        assert nachher["fahrzeuge"][0]["staerke"]["gesamt"] == 0
+        assert nachher["staerke"]["offen"] == 0
+        assert nachher["staerke"]["gesamt"] == 0
+        await purge_clients([reg["client_id"]])

@@ -34,6 +34,7 @@ from app.schemas.share_link import (
 )
 from app.services import geometry as geo_svc
 from app.services import share_links as share_links_svc
+from app.services import staerke as staerke_svc
 from app.services import vehicle_status as vs
 from app.services.tracking import tracking_manager
 
@@ -105,6 +106,12 @@ async def _build_payload(convoy_id: uuid.UUID, db: AsyncSession, scope: str = "t
             sonderfunktion=cv.sonderfunktion,
             vehicle_status=cv.vehicle_status,
             position=cv.position,
+            staerke_soll_fuehrer=cv.staerke_soll_fuehrer,
+            staerke_soll_unterfuehrer=cv.staerke_soll_unterfuehrer,
+            staerke_soll_mannschaften=cv.staerke_soll_mannschaften,
+            staerke_ist_fuehrer=cv.staerke_ist_fuehrer,
+            staerke_ist_unterfuehrer=cv.staerke_ist_unterfuehrer,
+            staerke_ist_mannschaften=cv.staerke_ist_mannschaften,
         )
         for cv in sorted(convoy.convoy_vehicles, key=lambda c: c.position)
     ]
@@ -278,6 +285,42 @@ async def _ingest_driver_status(convoy_uuid: uuid.UUID, msg: dict) -> None:
         })
 
 
+async def _ingest_driver_staerke(convoy_uuid: uuid.UUID, msg: dict) -> None:
+    """Persist + broadcast a crew strength sent by a "driver" share-link holder.
+
+    Wie beim Status: die Berechtigung entstand beim Verbinden, das Fahrzeug muss
+    zu diesem Verband gehören. Eine unplausible Meldung wird verworfen statt
+    beantwortet — der Kanal ist einseitig, und die alte Zahl ist allemal besser
+    als eine falsche.
+    """
+    try:
+        vehicle_id = uuid.UUID(str(msg.get("vehicle_id")))
+        werte = staerke_svc.normalisieren(
+            msg.get("fuehrer"), msg.get("unterfuehrer"), msg.get("mannschaften")
+        )
+    except (TypeError, ValueError):
+        return
+    if werte is None:
+        return  # eine Meldung ohne jede Zahl ist keine
+    fuehrer, unterfuehrer, mannschaften = werte
+
+    async with AsyncSessionLocal() as db:
+        cv = await db.get(ConvoyVehicle, (convoy_uuid, vehicle_id))
+        if cv is None:
+            return  # vehicle is not part of this convoy → ignore
+        cv.staerke_ist_fuehrer = fuehrer
+        cv.staerke_ist_unterfuehrer = unterfuehrer
+        cv.staerke_ist_mannschaften = mannschaften
+        cv.staerke_gemeldet_at = datetime.now(timezone.utc)
+        await db.commit()
+
+    await tracking_manager.broadcast(str(convoy_uuid), {
+        "type": "staerke_update", "vehicle_id": str(vehicle_id),
+        "fuehrer": fuehrer, "unterfuehrer": unterfuehrer, "mannschaften": mannschaften,
+        "gesamt": fuehrer + unterfuehrer + mannschaften,
+    })
+
+
 @ws_router.websocket("/{slug}")
 async def track_ws(slug: str, ws: WebSocket, token: str | None = Query(default=None)):
     async with AsyncSessionLocal() as db:
@@ -306,6 +349,8 @@ async def track_ws(slug: str, ws: WebSocket, token: str | None = Query(default=N
                 continue
             if raw.get("type") == "status":
                 await _ingest_driver_status(convoy_uuid, raw)
+            elif raw.get("type") == "staerke":
+                await _ingest_driver_staerke(convoy_uuid, raw)
             else:
                 await _ingest_driver_position(convoy_uuid, raw)
     except WebSocketDisconnect:

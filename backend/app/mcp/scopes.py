@@ -154,8 +154,10 @@ TOOL_SCOPES: dict[str, str] = {
     "wegpunkt_aktualisieren": SCOPE_WRITE,
     "wegpunkte_umsortieren": SCOPE_WRITE,
     "route_berechnen": SCOPE_WRITE,
-    # Marschstatus melden ist das, was eine Besatzung unterwegs tut.
+    # Marschstatus und Mannschaftsstärke melden ist das, was eine Besatzung
+    # unterwegs tut.
     "fahrzeugstatus_setzen": SCOPE_FLEET_STATUS,
+    "fahrzeugstaerke_melden": SCOPE_FLEET_STATUS,
 }
 
 

@@ -2,10 +2,11 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas.vehicle import VehicleResponse
 from app.schemas.waypoint import WaypointResponse
+from app.services.staerke import MAX_JE_ROLLE
 
 
 class PointSchema(BaseModel):
@@ -72,6 +73,13 @@ class ConvoyVehicleItem(BaseModel):
     status_changed_at: datetime | None = None
     sonderfunktion: str | None = None
     mobile_phone: str | None = None
+    staerke_soll_fuehrer: int | None = None
+    staerke_soll_unterfuehrer: int | None = None
+    staerke_soll_mannschaften: int | None = None
+    staerke_ist_fuehrer: int | None = None
+    staerke_ist_unterfuehrer: int | None = None
+    staerke_ist_mannschaften: int | None = None
+    staerke_gemeldet_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
@@ -113,12 +121,27 @@ class AddVehicleRequest(BaseModel):
     position: int = 0
     sonderfunktion: str | None = None
     mobile_phone: str | None = None
+    staerke_soll_fuehrer: int | None = Field(None, ge=0, le=MAX_JE_ROLLE)
+    staerke_soll_unterfuehrer: int | None = Field(None, ge=0, le=MAX_JE_ROLLE)
+    staerke_soll_mannschaften: int | None = Field(None, ge=0, le=MAX_JE_ROLLE)
 
 
 class UpdateVehicleInConvoyRequest(BaseModel):
-    position: int | None = None
+    """Was der Planer an einem Fahrzeug *im Verband* ändert.
+
+    Die Marschfolge steht bewusst nicht darin — die hat mit
+    ``PATCH .../vehicles/reorder`` einen eigenen Weg, der die Positionen
+    lückenlos hält. Zwei Wege auf dieselbe Spalte wären einer zu viel.
+
+    Nur genannte Felder werden geschrieben (``exclude_unset``), sonst löschte
+    ein Formular, das nur die Stärke schickt, die Sonderfunktion mit.
+    """
+
     sonderfunktion: str | None = None
     mobile_phone: str | None = None
+    staerke_soll_fuehrer: int | None = Field(None, ge=0, le=MAX_JE_ROLLE)
+    staerke_soll_unterfuehrer: int | None = Field(None, ge=0, le=MAX_JE_ROLLE)
+    staerke_soll_mannschaften: int | None = Field(None, ge=0, le=MAX_JE_ROLLE)
 
 
 class ConvoyVehicleReorderItem(BaseModel):

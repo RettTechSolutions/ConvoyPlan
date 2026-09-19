@@ -38,6 +38,7 @@ from app.models.vehicle import Vehicle
 from app.models.vehicle_position import VehiclePosition
 from app.models.waypoint import Waypoint
 from app.services import geometry as geo_svc
+from app.services import staerke as staerke_svc
 
 
 def _iso(value: datetime | None) -> str | None:
@@ -200,12 +201,35 @@ async def _positionen(ctx, convoy: Convoy) -> list[dict]:
     ]
 
 
-def _status(convoy: Convoy) -> tuple[dict[str, int], list[dict]]:
-    """Zusammenfassung und Einzelstatus der Fahrzeuge eines Konvois."""
+def _staerke_notation(
+    fuehrer: int | None, unterfuehrer: int | None, mannschaften: int | None
+) -> str | None:
+    """„0/1/8" — oder None, wenn nichts vorliegt.
+
+    None statt „0/0/0": ein Fahrzeug, das noch nichts gemeldet hat, ist nicht
+    dasselbe wie eines, das unbesetzt fährt. Ein Modell, das beides gleich
+    gezeigt bekäme, würde es auch gleich weitererzählen."""
+    werte = staerke_svc.normalisieren(fuehrer, unterfuehrer, mannschaften)
+    return None if werte is None else "/".join(str(w) for w in werte)
+
+
+def _status(convoy: Convoy) -> tuple[dict[str, int], list[dict], dict]:
+    """Zusammenfassung, Einzelstatus und Mannschaftsstärke eines Konvois."""
     zusammenfassung: dict[str, int] = {}
     fahrzeuge = []
+    summe = [0, 0, 0]
+    gemeldet = 0
+    offen = 0
     for cv in sorted(convoy.convoy_vehicles, key=lambda c: c.position):
         zusammenfassung[cv.vehicle_status] = zusammenfassung.get(cv.vehicle_status, 0) + 1
+        ist = staerke_svc.normalisieren(
+            cv.staerke_ist_fuehrer, cv.staerke_ist_unterfuehrer, cv.staerke_ist_mannschaften
+        )
+        if ist is None:
+            offen += 1
+        else:
+            gemeldet += 1
+            summe = [a + b for a, b in zip(summe, ist)]
         fahrzeuge.append(
             {
                 "position": cv.position,
@@ -216,9 +240,26 @@ def _status(convoy: Convoy) -> tuple[dict[str, int], list[dict]]:
                 "status_stufe": cv.status_level,
                 "status_notiz": cv.status_note,
                 "status_seit": _iso(cv.status_changed_at),
+                "staerke": {
+                    "soll": _staerke_notation(
+                        cv.staerke_soll_fuehrer,
+                        cv.staerke_soll_unterfuehrer,
+                        cv.staerke_soll_mannschaften,
+                    ),
+                    "ist": None if ist is None else "/".join(str(w) for w in ist),
+                    "gesamt": None if ist is None else sum(ist),
+                    "gemeldet_seit": _iso(cv.staerke_gemeldet_at),
+                },
             }
         )
-    return zusammenfassung, fahrzeuge
+    staerke = {
+        # Ohne eine einzige Meldung bleibt die Verbandsstärke unbekannt — 0
+        # wäre hier die falsche Auskunft, nicht die vorsichtige.
+        "gemeldet": "/".join(str(w) for w in summe) if gemeldet else None,
+        "gesamt": sum(summe) if gemeldet else None,
+        "offen": offen,
+    }
+    return zusammenfassung, fahrzeuge, staerke
 
 
 def _convoy_query(org_id: uuid.UUID):
@@ -608,10 +649,11 @@ def register(mcp) -> None:
         async with mcp_context("konvoi_status") as ctx:
             ctx.require(SCOPE_READ)
             convoy = await _load_convoy(ctx, konvoi_id)
-            zusammenfassung, fahrzeuge = _status(convoy)
+            zusammenfassung, fahrzeuge, staerke = _status(convoy)
             return {
                 "konvoi": convoy.name,
                 "konvoi_status": convoy.status,
                 "zusammenfassung": zusammenfassung,
+                "staerke": staerke,
                 "fahrzeuge": fahrzeuge,
             }

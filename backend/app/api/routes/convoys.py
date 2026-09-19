@@ -17,6 +17,7 @@ from app.schemas.convoy import (
     ConvoyResponse,
     ConvoyUpdate,
     ConvoyVehicleReorderItem,
+    UpdateVehicleInConvoyRequest,
 )
 from app.schemas.waypoint import WaypointCreate, WaypointReorderItem, WaypointResponse, WaypointUpdate
 from app.services import audit
@@ -246,10 +247,48 @@ async def add_vehicle_to_convoy(
         position=next_position,
         sonderfunktion=data.sonderfunktion,
         mobile_phone=data.mobile_phone,
+        staerke_soll_fuehrer=data.staerke_soll_fuehrer,
+        staerke_soll_unterfuehrer=data.staerke_soll_unterfuehrer,
+        staerke_soll_mannschaften=data.staerke_soll_mannschaften,
     )
     db.add(cv)
     await db.commit()
     return {"status": "added"}
+
+
+@router.patch("/{convoy_id}/vehicles/{vehicle_id}")
+async def update_vehicle_in_convoy(
+    convoy_id: uuid.UUID,
+    vehicle_id: uuid.UUID,
+    data: UpdateVehicleInConvoyRequest,
+    ctx: OrgCtx = Depends(get_org_context),
+    db: AsyncSession = Depends(get_db),
+):
+    """Planungsangaben eines Fahrzeugs im Verband ändern — Sonderfunktion,
+    Erreichbarkeit, Sollstärke.
+
+    Die *gemeldete* Stärke steht hier nicht zur Wahl: sie gehört der Besatzung
+    und kommt über den Tracking-Weg herein.
+    """
+    user, org, role = ctx
+    convoy = await get_convoy_access(convoy_id, user, db, require="write", role=role)
+    if convoy.organization_id != org.id:
+        raise HTTPException(status_code=404, detail="Convoy not found")
+
+    result = await db.execute(
+        select(ConvoyVehicle).where(
+            ConvoyVehicle.convoy_id == convoy_id,
+            ConvoyVehicle.vehicle_id == vehicle_id,
+        )
+    )
+    cv = result.scalar_one_or_none()
+    if not cv:
+        raise HTTPException(status_code=404, detail="Vehicle not in convoy")
+
+    for feld, wert in data.model_dump(exclude_unset=True).items():
+        setattr(cv, feld, wert)
+    await db.commit()
+    return {"status": "updated"}
 
 
 @router.delete("/{convoy_id}/vehicles/{vehicle_id}", status_code=status.HTTP_204_NO_CONTENT)

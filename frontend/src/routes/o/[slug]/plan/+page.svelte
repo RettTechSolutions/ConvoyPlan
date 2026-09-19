@@ -17,6 +17,7 @@
 		type FuelAnalysis, type FuelStation, type Waypoint, type RoadPreference,
 		type KanalwechselEntry, type ConvoyVehicleItem,
 	} from '$lib/api';
+	import { MAX_JE_ROLLE, gesamt, sollAus } from '$lib/tracking/staerke';
 
 	// svelte-dnd-action keys items by a top-level `id`; ConvoyVehicleItem has none,
 	// so we attach the vehicle id for the march-order drag list.
@@ -340,6 +341,22 @@
 		convoyList = convoyList.map(c => c.id === selected!.id ? selected! : c);
 		convoys.set(convoyList);
 		activeConvoy.set(selected);
+	}
+
+	/**
+	 * Sollstärke eines Fahrzeugs im Verband speichern.
+	 *
+	 * Geschrieben wird nur das Soll — die gemeldete Stärke gehört der Besatzung
+	 * und kommt über den Tracking-Weg herein. Deshalb steht sie nicht im Rumpf.
+	 */
+	async function saveSollStaerke(vehicleId: string, feld: string, wert: string) {
+		if (!selected) return;
+		const zahl = wert.trim() === '' ? null : Math.min(Math.max(Math.round(Number(wert)), 0), MAX_JE_ROLLE);
+		if (zahl !== null && !Number.isFinite(zahl)) return;
+		try {
+			await convoysApi.updateVehicleInConvoy(selected.id, vehicleId, { [feld]: zahl });
+			await refreshConvoy();
+		} catch { error = 'Sollstärke konnte nicht gespeichert werden'; }
 	}
 
 	// ── Convoy CRUD ─────────────────────────────────────────────────
@@ -1477,6 +1494,45 @@
 								{/each}
 							</ul>
 							<p class="hint" style="margin-top:.4rem">Ziehen zum Umsortieren · Position 1 = Spitzenführer, letztes Fahrzeug = Schließender</p>
+
+							<!-- Sollstärke: bewusst außerhalb der Ziehliste. Zahlenfelder in einem
+							     ziehbaren Element lassen sich am Telefon kaum treffen. -->
+							<div class="section-header" style="margin-top:.75rem"><strong>Sollstärke (Führer/Unterführer/Mannschaften)</strong></div>
+							<table class="soll-tabelle">
+								<thead>
+									<tr><th>Fahrzeug</th><th>F</th><th>U</th><th>M</th><th>Gesamt</th></tr>
+								</thead>
+								<tbody>
+									{#each selected.convoy_vehicles as cv (cv.vehicle.id)}
+										{@const soll = sollAus(cv)}
+										<tr>
+											<td class="soll-name">{cv.vehicle.callsign || cv.vehicle.name}</td>
+											<td><input
+												type="number" min="0" max={MAX_JE_ROLLE}
+												aria-label="Führer {cv.vehicle.name}"
+												value={cv.staerke_soll_fuehrer ?? ''}
+												onchange={(e) => saveSollStaerke(cv.vehicle.id, 'staerke_soll_fuehrer', e.currentTarget.value)}
+											/></td>
+											<td><input
+												type="number" min="0" max={MAX_JE_ROLLE}
+												aria-label="Unterführer {cv.vehicle.name}"
+												value={cv.staerke_soll_unterfuehrer ?? ''}
+												onchange={(e) => saveSollStaerke(cv.vehicle.id, 'staerke_soll_unterfuehrer', e.currentTarget.value)}
+											/></td>
+											<td><input
+												type="number" min="0" max={MAX_JE_ROLLE}
+												aria-label="Mannschaften {cv.vehicle.name}"
+												value={cv.staerke_soll_mannschaften ?? ''}
+												onchange={(e) => saveSollStaerke(cv.vehicle.id, 'staerke_soll_mannschaften', e.currentTarget.value)}
+											/></td>
+											<td class="soll-gesamt">{soll ? gesamt(soll) : '–'}</td>
+										</tr>
+									{/each}
+								</tbody>
+							</table>
+							<p class="hint" style="margin-top:.4rem">
+								Leer heißt „nicht geplant“. Was die Besatzungen unterwegs melden, steht in der Tracking-Ansicht daneben.
+							</p>
 						{/if}
 					</div>
 				{/if}
@@ -2573,4 +2629,12 @@
 	.demo-restrict-note a { color: var(--accent, #3498db); font-weight: 600; text-decoration: none; display: inline-block; margin-top: .35rem; }
 	.demo-restrict-note a:hover { text-decoration: underline; }
 	.ev-tag { background: #16a34a; color: #fff; }
+	/* Sollstärke-Tabelle in der Planung */
+	.soll-tabelle { width: 100%; border-collapse: collapse; font-size: .8rem; }
+	.soll-tabelle th { text-align: center; font-weight: 600; color: var(--text-muted); padding: .2rem; }
+	.soll-tabelle th:first-child { text-align: left; }
+	.soll-tabelle td { padding: .15rem .2rem; border-top: 1px solid var(--border); }
+	.soll-name { max-width: 10rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.soll-tabelle input { width: 3rem; padding: .2rem; text-align: center; font-variant-numeric: tabular-nums; }
+	.soll-gesamt { text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
 </style>

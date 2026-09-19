@@ -60,6 +60,14 @@ class TrackVehicle(BaseModel):
     sonderfunktion: str | None = None
     vehicle_status: str | None = None
     position: int
+    # Mannschaftsstärke: Soll aus der Planung, Ist aus der Meldung unterwegs.
+    # None bleibt None — die Ansicht muss „nicht gemeldet" anzeigen können.
+    staerke_soll_fuehrer: int | None = None
+    staerke_soll_unterfuehrer: int | None = None
+    staerke_soll_mannschaften: int | None = None
+    staerke_ist_fuehrer: int | None = None
+    staerke_ist_unterfuehrer: int | None = None
+    staerke_ist_mannschaften: int | None = None
 
 
 class TrackWaypoint(BaseModel):

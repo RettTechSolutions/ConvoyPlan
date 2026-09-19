@@ -6,6 +6,8 @@
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
 	import TrackingPwaHead from '$lib/components/TrackingPwaHead.svelte';
 	import QrShare from '$lib/components/QrShare.svelte';
+	import StaerkeBadge from '$lib/components/StaerkeBadge.svelte';
+	import { MAX_JE_ROLLE, istAus, type Staerke, type StaerkeFelder } from '$lib/tracking/staerke';
 	import {
 		trackApi, isTrackGate,
 		type TrackPayload, type TrackGate, type TrackPosition, type VehiclePosition,
@@ -49,6 +51,9 @@
 	let livePositions = $state<Map<string, VehiclePosition>>(new Map());
 	// Live vehicle status overrides received via WebSocket (vehicle_id → status).
 	let liveStatuses = $state<Map<string, string>>(new Map());
+	// Stärkemeldungen, die während der geöffneten Ansicht hereinkommen —
+	// sie schlagen die Zahlen aus der Nutzlast beim Laden.
+	let liveStaerken = $state<Map<string, Staerke>>(new Map());
 	let live: LiveSocket | null = null;
 	let mapView = $state<ReturnType<typeof MapView>>();
 
@@ -91,6 +96,18 @@
 		return liveStatuses.get(v.id) ?? v.vehicle_status ?? 'planned';
 	}
 
+	/** Die Stärkefelder eines Fahrzeugs, mit der neuesten Live-Meldung obenauf. */
+	function staerkeVon(v: StaerkeFelder & { id: string }): StaerkeFelder {
+		const live = liveStaerken.get(v.id);
+		if (!live) return v;
+		return {
+			...v,
+			staerke_ist_fuehrer: live.fuehrer,
+			staerke_ist_unterfuehrer: live.unterfuehrer,
+			staerke_ist_mannschaften: live.mannschaften,
+		};
+	}
+
 	function tokenStorageKey(s: string) { return `track_token_${s}`; }
 
 	function loadStoredToken(): string | undefined {
@@ -124,6 +141,7 @@
 				for (const p of result.positions) initial.set(p.vehicle_id, positionToVehicle(p));
 				livePositions = initial;
 				liveStatuses = new Map();
+				liveStaerken = new Map();
 				connectWs(token);
 				restoreDriverSession();
 			}
@@ -186,6 +204,19 @@
 						const next = new Map(liveStatuses);
 						next.set(msg.vehicle_id, msg.vehicle_status);
 						liveStatuses = next;
+					}
+					return;
+				}
+				if (msg.type === 'staerke_update') {
+					if (
+						typeof msg.vehicle_id === 'string' && typeof msg.fuehrer === 'number' &&
+						typeof msg.unterfuehrer === 'number' && typeof msg.mannschaften === 'number'
+					) {
+						const next = new Map(liveStaerken);
+						next.set(msg.vehicle_id, {
+							fuehrer: msg.fuehrer, unterfuehrer: msg.unterfuehrer, mannschaften: msg.mannschaften,
+						});
+						liveStaerken = next;
 					}
 					return;
 				}
@@ -266,6 +297,40 @@
 	function handleMapTap(lat: number, lon: number) {
 		if (!transmitting || !manualMode || !myVehicleId) return;
 		sendDriverPosition(lat, lon);
+	}
+
+	// Eingabe der Mannschaftsstärke. Bewusst **nicht** aus dem Soll vorbelegt:
+	// eine vorausgefüllte Zahl wird im Einsatz bestätigt statt gezählt, und
+	// genau das soll die Meldung nicht sein.
+	let staerkeEingabe = $state({ fuehrer: 0, unterfuehrer: 0, mannschaften: 0 });
+	let staerkeQuittung = $state(false);
+
+	function klemm(wert: number | null | undefined): number {
+		const zahl = Math.round(Number(wert ?? 0));
+		if (!Number.isFinite(zahl)) return 0;
+		return Math.min(Math.max(zahl, 0), MAX_JE_ROLLE);
+	}
+
+	const staerkeSumme = $derived(
+		klemm(staerkeEingabe.fuehrer) + klemm(staerkeEingabe.unterfuehrer) + klemm(staerkeEingabe.mannschaften)
+	);
+
+	function sendDriverStaerke() {
+		if (!myVehicleId) { driverError = 'Bitte zuerst ein Fahrzeug auswählen'; return; }
+		if (!wsReady()) { driverError = 'Keine Verbindung – Stärke nicht gesendet'; return; }
+		const werte = {
+			fuehrer: klemm(staerkeEingabe.fuehrer),
+			unterfuehrer: klemm(staerkeEingabe.unterfuehrer),
+			mannschaften: klemm(staerkeEingabe.mannschaften),
+		};
+		driverError = '';
+		live!.send({ type: 'staerke', vehicle_id: myVehicleId, ...werte });
+		// Optimistisch: die eigene Meldung steht sofort in der eigenen Liste.
+		const next = new Map(liveStaerken);
+		next.set(myVehicleId, werte);
+		liveStaerken = next;
+		staerkeQuittung = true;
+		setTimeout(() => { staerkeQuittung = false; }, 2500);
 	}
 
 	function sendDriverStatus(status: string, level: string | null = null, note: string | null = null) {
@@ -472,7 +537,7 @@
 				<div class="driver-block">
 					<div class="info-label">Meine Position (Fahrer)</div>
 					{#if driverError}<p class="error-text">{driverError}</p>{/if}
-					<select bind:value={myVehicleId} disabled={transmitting}>
+					<select aria-label="Fahrzeug" bind:value={myVehicleId} disabled={transmitting}>
 						<option value="">Fahrzeug wählen…</option>
 						{#each availableVehicles as v}
 							<option value={v.id}>{v.name}{v.callsign ? ` (${v.callsign})` : ''}</option>
@@ -519,6 +584,30 @@
 									<input class="note-input" placeholder="Beschreibung (optional)" bind:value={pendingNote} maxlength="200" />
 								</div>
 							{/if}
+						</div>
+
+						<div class="staerke-melden">
+							<div class="sub-label">Mannschaftsstärke melden</div>
+							<div class="staerke-felder">
+								<label class="staerke-feld">
+									<span>Führer</span>
+									<input type="number" min="0" max={MAX_JE_ROLLE} bind:value={staerkeEingabe.fuehrer} />
+								</label>
+								<label class="staerke-feld">
+									<span>Unterführer</span>
+									<input type="number" min="0" max={MAX_JE_ROLLE} bind:value={staerkeEingabe.unterfuehrer} />
+								</label>
+								<label class="staerke-feld">
+									<span>Mannschaften</span>
+									<input type="number" min="0" max={MAX_JE_ROLLE} bind:value={staerkeEingabe.mannschaften} />
+								</label>
+								<div class="staerke-feld staerke-summe">
+									<span>Gesamt</span>
+									<output>{staerkeSumme}</output>
+								</div>
+							</div>
+							<button class="btn-primary" onclick={sendDriverStaerke}>👥 Stärke melden</button>
+							{#if staerkeQuittung}<p class="hint hint-active">Stärke gemeldet</p>{/if}
 						</div>
 					{/if}
 
@@ -583,9 +672,12 @@
 									{#if v.sonderfunktion}<span class="tag">{v.sonderfunktion}</span>{/if}
 									{#if livePositions.has(v.id)}<span class="live-badge">LIVE</span>{/if}
 								</div>
-								<span class="status-label" style="color:{STATUS_COLORS[statusOf(v)] ?? '#95a5a6'}">
-									{STATUS_LABELS[statusOf(v)] ?? statusOf(v)}
-								</span>
+								<div class="veh-right">
+									<StaerkeBadge fahrzeugId={v.id} felder={staerkeVon(v)} />
+									<span class="status-label" style="color:{STATUS_COLORS[statusOf(v)] ?? '#95a5a6'}">
+										{STATUS_LABELS[statusOf(v)] ?? statusOf(v)}
+									</span>
+								</div>
 							</div>
 						{/each}
 						{#if data.vehicles.length === 0}
@@ -741,6 +833,12 @@
 
 	/* Vehicle rows */
 	.vehicle-row { display: flex; align-items: center; justify-content: space-between; padding: .35rem 0; border-bottom: 1px solid var(--border); gap: .4rem; }
+	.staerke-melden { margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--border); }
+	.staerke-felder { display: flex; gap: .4rem; margin: .35rem 0 .5rem; }
+	.staerke-feld { display: flex; flex-direction: column; gap: .15rem; flex: 1; min-width: 0; font-size: .7rem; }
+	.staerke-feld input { width: 100%; padding: .3rem; text-align: center; font-variant-numeric: tabular-nums; }
+	.staerke-summe output { display: block; padding: .3rem; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+	.veh-right { display: flex; align-items: center; gap: .45rem; flex-shrink: 0; }
 	.veh-left { display: flex; align-items: center; gap: .3rem; flex: 1; min-width: 0; }
 	.status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 	.vname { font-size: var(--text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

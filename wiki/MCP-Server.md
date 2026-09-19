@@ -8,9 +8,11 @@ ConvoyPlan kann seine Fachdaten über einen **Model-Context-Protocol-Server** be
 
 ## Was der Server kann
 
-**Lesen** (neun Werkzeuge): Konvois und Unterkonvois auflisten, Konvoi-Details samt aller sieben Abschnitte des Marschbefehls, Fahrzeugbestand und Einzelfahrzeug, Wegpunkte in Marschreihenfolge, die gespeicherte Route, zuletzt gemeldete Positionen, Marschstatus je Fahrzeug.
+**Lesen** (neun Werkzeuge): Konvois und Unterkonvois auflisten, Konvoi-Details samt aller sieben Abschnitte des Marschbefehls, Fahrzeugbestand und Einzelfahrzeug, Wegpunkte in Marschreihenfolge, die gespeicherte Route, zuletzt gemeldete Positionen, Marschstatus und Mannschaftsstärke je Fahrzeug.
 
-**Schreiben** (zwölf Werkzeuge, nur mit gültiger Lizenz): Konvoi und Fahrzeug anlegen und ändern, Fahrzeuge zuordnen und wieder lösen, Marschfolge setzen, Wegpunkte anlegen, ändern und umsortieren, Route berechnen, Fahrzeugstatus melden.
+**Schreiben** (dreizehn Werkzeuge, nur mit gültiger Lizenz): Konvoi und Fahrzeug anlegen und ändern, Fahrzeuge zuordnen und wieder lösen, Marschfolge setzen, Wegpunkte anlegen, ändern und umsortieren, Route berechnen, Fahrzeugstatus und Mannschaftsstärke melden.
+
+Die Stärke meldet `fahrzeugstaerke_melden` in der Notation Führer/Unterführer/Mannschaften; die Gesamtzahl rechnet der Server und nimmt sie nicht entgegen. `konvoi_status` gibt sie je Fahrzeug und als Verbandsstärke zurück. Ein Fahrzeug **ohne** Meldung steht dort als `null` — nicht als `0/0/0`, das eine Meldung wäre und „unbesetzt" hieße. Melden braucht den Scope `fleet:status`, Lesen `convoy:read`; beides zusätzlich den freigegebenen Bereich *Live-Positionen, Marschstatus und Mannschaftsstärke*.
 
 **Dokumente** (Resources): Marschbefehl als PDF, Route als GPX, Konvoi als JSON — dieselben Exporte wie im Portal.
 
@@ -54,7 +56,7 @@ Der Org-Admin stellt dort drei Dinge ein:
 | Einstellung | Bedeutung |
 |---|---|
 | **KI-Zugriff erlauben** | Der Schalter der Organisation. Aus heißt: kein Werkzeug, keine Resource, kein Abo — auch für bestehende Verbindungen, ab dem nächsten Aufruf. |
-| **Bereiche** | *Worauf.* Konvois und Marschbefehle, Fahrzeuge, Wegpunkte, Routen, Live-Positionen und Marschstatus — einzeln an- und abwählbar. Was nicht angekreuzt ist, ist über die Schnittstelle nicht zu bekommen, auch nicht über ein anderes Werkzeug. |
+| **Bereiche** | *Worauf.* Konvois und Marschbefehle, Fahrzeuge, Wegpunkte, Routen, Live-Positionen, Marschstatus und Mannschaftsstärke — einzeln an- und abwählbar. Was nicht angekreuzt ist, ist über die Schnittstelle nicht zu bekommen, auch nicht über ein anderes Werkzeug. |
 | **Lesen / Status / Schreiben** | *Wie weit.* Lesen ist die Grundlage und lässt sich nicht abwählen — ohne sie käme keine Verbindung zustande. Statusmeldungen und Schreiben kommen nur dazu, wenn sie freigegeben sind. Gelöscht wird in keinem Fall. |
 
 Die beiden Achsen wirken als **Und**: ein Werkzeug steht zur Verfügung, wenn
@@ -191,7 +193,7 @@ Die Rechte des Zugangs sind eine Projektion der Rolle in der gewählten Organisa
 | Berechtigung | ab Rolle | erlaubt |
 |---|---|---|
 | `convoy:read` | beobachter | Konvois, Fahrzeuge, Wegpunkte, Routen und Positionen lesen |
-| `fleet:status` | fahrer | zusätzlich Fahrzeugstatus und Positionen melden |
+| `fleet:status` | fahrer | zusätzlich Fahrzeugstatus, Positionen und Mannschaftsstärke melden |
 | `convoy:write` | planer | zusätzlich anlegen, ändern und Routen berechnen |
 
 Darüber liegt die Freigabe der Organisation (siehe *Und dann noch je
@@ -310,7 +312,7 @@ Manche Programme können zu einer Antwort mehr zeigen als Text. ConvoyPlan liefe
 |---|---|
 | **Konvoi-Liste** — Abmarschzeit, Umfang, Status je Konvoi | „Welche Konvois habe ich?" |
 | **Konvoi-Übersicht** — Marschbefehl und Fahrzeuge in Marschordnung | „Zeig mir den Konvoi nach München" |
-| **Marschstatus** — Zusammenfassung und Status je Fahrzeug, Ausfälle zuerst | „Wie ist der Stand?" |
+| **Marschstatus** — Zusammenfassung, Status und Mannschaftsstärke je Fahrzeug, Ausfälle zuerst | „Wie ist der Stand?" |
 
 Wie die Verbindung dorthin entsteht: [ConvoyPlan in ChatGPT verbinden](ChatGPT-verbinden).
 

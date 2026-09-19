@@ -71,6 +71,18 @@ class ConvoyVehicle(Base):
     status_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     sonderfunktion: Mapped[str | None] = mapped_column(String(50), nullable=True)  # spitzenführer|schließender|sanitaet|ablaufführer
     mobile_phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    # Mannschaftsstärke in der Notation Führer/Unterführer/Mannschaften//Gesamt
+    # (0/1/8//9). Soll kommt aus der Planung, Ist aus der Meldung unterwegs; die
+    # Gesamtzahl wird gerechnet und nie gespeichert (app/services/staerke.py).
+    # NULL heißt "nicht angegeben" — 0 heißt "niemand". Die Führung muss das
+    # unterscheiden können, deshalb sind die Spalten nullable statt default 0.
+    staerke_soll_fuehrer: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    staerke_soll_unterfuehrer: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    staerke_soll_mannschaften: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    staerke_ist_fuehrer: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    staerke_ist_unterfuehrer: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    staerke_ist_mannschaften: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    staerke_gemeldet_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     convoy: Mapped["Convoy"] = relationship(back_populates="convoy_vehicles")
     vehicle: Mapped["Vehicle"] = relationship(back_populates="convoy_vehicles")

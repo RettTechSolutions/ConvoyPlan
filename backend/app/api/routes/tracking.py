@@ -16,6 +16,7 @@ from app.models.convoy import ConvoyVehicle
 from app.models.user import User
 from app.models.vehicle import Vehicle
 from app.models.vehicle_position import VehiclePosition
+from app.services import staerke as staerke_svc
 from app.services import vehicle_status as vs
 from app.services.tracking import tracking_manager
 
@@ -77,6 +78,18 @@ class VehicleStatusUpdate(BaseModel):
         elif self.status_level is not None and self.status_level not in allowed:
             raise ValueError(f"status_level for {self.vehicle_status} must be one of {sorted(allowed)}")
         return self
+
+
+class StaerkeUpdate(BaseModel):
+    """Eine gemeldete Mannschaftsstärke.
+
+    Die Gesamtzahl kommt nicht von außen — sie wird gerechnet. Die Grenzen
+    stehen in ``services/staerke.py``, damit der Fahrer-Link dieselben prüft.
+    """
+
+    fuehrer: int = Field(0, ge=0, le=staerke_svc.MAX_JE_ROLLE)
+    unterfuehrer: int = Field(0, ge=0, le=staerke_svc.MAX_JE_ROLLE)
+    mannschaften: int = Field(0, ge=0, le=staerke_svc.MAX_JE_ROLLE)
 
 
 @router.get("/convoys/{convoy_id}/positions")
@@ -201,6 +214,48 @@ async def update_vehicle_status(
             "ts": cv.status_changed_at.isoformat(),
         })
     return {"status": "ok"}
+
+
+@router.patch("/convoys/{convoy_id}/vehicles/{vehicle_id}/staerke")
+async def update_vehicle_staerke(
+    convoy_id: uuid.UUID,
+    vehicle_id: uuid.UUID,
+    data: StaerkeUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Mannschaftsstärke eines Fahrzeugs setzen.
+
+    Denselben Weg nimmt die Besatzung über den Fahrer-Link; hier kommt er für
+    die Führung dazu, die eine per Funk durchgegebene Stärke nachträgt.
+    """
+    await get_convoy_access(convoy_id, current_user, db, require="fahrer")
+    result = await db.execute(
+        select(ConvoyVehicle).where(
+            ConvoyVehicle.convoy_id == convoy_id,
+            ConvoyVehicle.vehicle_id == vehicle_id,
+        )
+    )
+    cv = result.scalar_one_or_none()
+    if not cv:
+        raise HTTPException(status_code=404, detail="Fahrzeug nicht im Verband")
+
+    cv.staerke_ist_fuehrer = data.fuehrer
+    cv.staerke_ist_unterfuehrer = data.unterfuehrer
+    cv.staerke_ist_mannschaften = data.mannschaften
+    cv.staerke_gemeldet_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    gesamt = staerke_svc.gesamt(data.fuehrer, data.unterfuehrer, data.mannschaften)
+    await tracking_manager.broadcast(str(convoy_id), {
+        "type": "staerke_update",
+        "vehicle_id": str(vehicle_id),
+        "fuehrer": data.fuehrer,
+        "unterfuehrer": data.unterfuehrer,
+        "mannschaften": data.mannschaften,
+        "gesamt": gesamt,
+    })
+    return {"status": "ok", "gesamt": gesamt}
 
 
 @router.delete("/convoys/{convoy_id}/vehicles/{vehicle_id}/position")

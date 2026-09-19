@@ -117,7 +117,7 @@ export const USE_WHEN: readonly string[] = [
 	'Ein Nutzer plant eine Fahrt mehrerer Fahrzeuge im Verband (Marschverband, Konvoi, Kolonne) und braucht Route, Marschgeschwindigkeit, Zeitplan und technische Halte.',
 	'Wegpunkte, Kontrollpunkte oder Tankhalte einer bereits geplanten Kolonne sollen ergänzt, umsortiert oder neu berechnet werden.',
 	'Der aktuelle Stand einer laufenden Fahrt wird gebraucht: Fahrzeugpositionen, Marschstatus, erreichte Wegpunkte.',
-	'Eine Besatzung meldet unterwegs ihren Fahrzeugstatus oder ihre Position.',
+	'Eine Besatzung meldet unterwegs ihren Fahrzeugstatus, ihre Position oder ihre Mannschaftsstärke.',
 	'Fahrzeug- oder Verbandsstammdaten einer Organisation sollen gelesen oder gepflegt werden.',
 	'Ein Marschbefehl soll als PDF, GPX oder JSON exportiert werden.'
 ];
@@ -160,16 +160,16 @@ export const CAPABILITIES: readonly Capability[] = [
 	},
 	{
 		id: 'positionen-lesen',
-		name: 'Live-Positionen und Marschstatus lesen',
+		name: 'Live-Positionen, Marschstatus und Stärke lesen',
 		description:
-			'Aktuelle Fahrzeugpositionen, Projektion auf die Route und den Status einer laufenden Fahrt abfragen.',
+			'Aktuelle Fahrzeugpositionen, Projektion auf die Route, Status und gemeldete Mannschaftsstärke einer laufenden Fahrt abfragen.',
 		scope: 'convoy:read'
 	},
 	{
 		id: 'status-melden',
-		name: 'Fahrzeugstatus melden',
+		name: 'Fahrzeugstatus und Mannschaftsstärke melden',
 		description:
-			'Den Marschstatus eines Fahrzeugs setzen — das, was eine Besatzung unterwegs tut.',
+			'Den Marschstatus und die Mannschaftsstärke eines Fahrzeugs setzen — das, was eine Besatzung unterwegs tut.',
 		scope: 'fleet:status'
 	},
 	{

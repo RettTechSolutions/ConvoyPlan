@@ -65,6 +65,15 @@ export interface ConvoyVehicleItem {
 	vehicle: Vehicle; position: number; vehicle_status: string;
 	status_level: string | null; status_note: string | null; status_changed_at: string | null;
 	sonderfunktion: string | null; mobile_phone: string | null;
+	// Mannschaftsstärke (siehe $lib/tracking/staerke): null heißt „nicht
+	// angegeben", 0 heißt „niemand" — die beiden nie gleichsetzen.
+	staerke_soll_fuehrer: number | null;
+	staerke_soll_unterfuehrer: number | null;
+	staerke_soll_mannschaften: number | null;
+	staerke_ist_fuehrer: number | null;
+	staerke_ist_unterfuehrer: number | null;
+	staerke_ist_mannschaften: number | null;
+	staerke_gemeldet_at: string | null;
 }
 
 export interface Convoy {
@@ -263,6 +272,18 @@ export const convoysApi = {
 	delete: (id: string) => api.delete(`/api/convoys/${id}`),
 	addVehicle: (id: string, vehicleId: string, position: number, sonderfunktion?: string, mobile_phone?: string) =>
 		api.post(`/api/convoys/${id}/vehicles`, { vehicle_id: vehicleId, position, sonderfunktion, mobile_phone }),
+	/** Planungsangaben eines Fahrzeugs im Verband — nur genannte Felder ändern sich. */
+	updateVehicleInConvoy: (
+		id: string,
+		vehicleId: string,
+		data: {
+			sonderfunktion?: string | null;
+			mobile_phone?: string | null;
+			staerke_soll_fuehrer?: number | null;
+			staerke_soll_unterfuehrer?: number | null;
+			staerke_soll_mannschaften?: number | null;
+		},
+	) => api.patch(`/api/convoys/${id}/vehicles/${vehicleId}`, data),
 	removeVehicle: (id: string, vehicleId: string) =>
 		api.delete(`/api/convoys/${id}/vehicles/${vehicleId}`),
 	reorderVehicles: (id: string, items: { vehicle_id: string; position: number }[]) =>
@@ -310,6 +331,14 @@ export const trackingApi = {
 			status_level,
 			status_note,
 		}),
+	/** Gemeldete Mannschaftsstärke setzen — für die Führung, die eine Funkmeldung nachträgt. */
+	updateVehicleStaerke: (
+		convoyId: string,
+		vehicleId: string,
+		staerke: { fuehrer: number; unterfuehrer: number; mannschaften: number },
+	) => api.patch<{ status: string; gesamt: number }>(
+		`/api/convoys/${convoyId}/vehicles/${vehicleId}/staerke`, staerke,
+	),
 	/** GPS-Freigabe eines Fahrzeugs beenden (Position löschen). suppress=false beim Selbst-Stopp. */
 	clearVehiclePosition: (convoyId: string, vehicleId: string, suppress = true) =>
 		api.delete(`/api/convoys/${convoyId}/vehicles/${vehicleId}/position?suppress=${suppress}`),
@@ -440,6 +469,13 @@ export const shareLinksApi = {
 export interface TrackVehicle {
 	id: string; name: string; callsign: string | null;
 	sonderfunktion: string | null; vehicle_status: string | null; position: number;
+	// Mannschaftsstärke: Soll aus der Planung, Ist aus der Meldung unterwegs.
+	staerke_soll_fuehrer: number | null;
+	staerke_soll_unterfuehrer: number | null;
+	staerke_soll_mannschaften: number | null;
+	staerke_ist_fuehrer: number | null;
+	staerke_ist_unterfuehrer: number | null;
+	staerke_ist_mannschaften: number | null;
 }
 export interface TrackPosition {
 	vehicle_id: string; lat: number; lon: number;
