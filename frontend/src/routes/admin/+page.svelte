@@ -4410,13 +4410,16 @@
     .key-reveal-row code { word-break: break-all; flex: 1; min-width: 200px; }
 
     /* Modal */
-    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 100; }
-    .modal { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; width: 600px; max-width: 95vw; max-height: 90vh; display: flex; flex-direction: column; color: var(--text-1); box-shadow: 0 8px 32px rgba(0,0,0,.3); }
+    /* `100dvh` statt `vh`: iOS Safari rechnet `vh` gegen die Anzeigefläche mit
+       eingefahrener Adressleiste — ein Dialog über die volle `vh`-Höhe endet
+       hinter der Leiste. `vh` bleibt als Rückfall für Browser ohne `dvh`. */
+    .modal-backdrop { position: fixed; inset: 0; height: 100vh; height: 100dvh; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; padding: 1rem; padding-bottom: calc(1rem + env(safe-area-inset-bottom)); z-index: 100; }
+    .modal { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; width: 600px; max-width: 100%; max-height: 100%; display: flex; flex-direction: column; color: var(--text-1); box-shadow: 0 8px 32px rgba(0,0,0,.3); }
     .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 1rem; border-bottom: 1px solid var(--border); }
     .modal-header h2 { margin: 0; font-size: var(--text-base); }
     .modal-header button { background: none; border: none; font-size: 1.1rem; cursor: pointer; color: var(--text-muted); }
     .modal-header button:hover { color: var(--text-1); }
-    .modal-body { padding: 1rem; overflow-y: auto; flex: 1; }
+    .modal-body { padding: 1rem; overflow-y: auto; overscroll-behavior: contain; flex: 1; min-height: 0; }
     .modal-footer { padding: .75rem 1rem; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: .5rem; }
     .ls-form { display: flex; flex-direction: column; gap: .75rem; }
     .ls-form label { display: flex; flex-direction: column; gap: .3rem; font-size: var(--text-sm); font-weight: 600; color: var(--text-2); }
@@ -4636,17 +4639,13 @@
         .license-input-row { flex-wrap: wrap; }
         .license-input { min-width: 0; }
 
-        /* Modal: edge-to-edge, footer wraps. */
-        .modal {
-            width: 100%;
-            max-width: calc(100vw - 1rem);
-            max-height: calc(100dvh - 1rem);
-        }
+        /* Modal: edge-to-edge, footer wraps. Die Begrenzung auf die sichtbare
+           Fläche und der sichere Abstand unten sitzen im Hintergrund
+           (.modal-backdrop), damit sie für beide Größen gleich gelten. */
+        .modal-backdrop { padding: .5rem; padding-bottom: calc(.5rem + env(safe-area-inset-bottom)); }
+        .modal { width: 100%; }
         .modal-body { padding: .75rem; }
-        .modal-footer {
-            flex-wrap: wrap;
-            padding-bottom: calc(.75rem + env(safe-area-inset-bottom));
-        }
+        .modal-footer { flex-wrap: wrap; }
         .modal-footer > * { flex: 1 1 auto; min-width: 0; }
 
         .update-terminal { font-size: 11px; max-height: 200px; }

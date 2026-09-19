@@ -178,16 +178,20 @@
 
 <style>
 	.cl-backdrop {
-		position: fixed; inset: 0; z-index: 2000;
+		position: fixed; inset: 0; height: 100vh; height: 100dvh; z-index: 2000;
 		background: rgba(0,0,0,.55);
 		display: flex; align-items: center; justify-content: center;
 		padding: 1rem;
+		padding-bottom: calc(1rem + env(safe-area-inset-bottom));
 	}
 	.cl-modal {
 		background: var(--surface-1, #fff);
 		color: var(--text-1, #1a1a1a);
 		width: min(560px, 100%);
+		/* `dvh` statt `vh`: auf iOS endet ein Dialog über die volle `vh`-Höhe
+		   hinter der Adressleiste. `vh` bleibt als Rückfall. */
 		max-height: 85vh;
+		max-height: 85dvh;
 		border-radius: 14px;
 		box-shadow: 0 12px 48px rgba(0,0,0,.5);
 		display: flex; flex-direction: column;

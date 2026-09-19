@@ -6,6 +6,7 @@
 	import LocationSearch from '$lib/components/LocationSearch.svelte';
 	import InfoPill from '$lib/components/InfoPill.svelte';
 	import ShareLinkModal from '$lib/components/ShareLinkModal.svelte';
+	import ConvoyFormModal from '$lib/components/ConvoyFormModal.svelte';
 	import { get } from 'svelte/store';
 	import { page } from '$app/stores';
 	import { orgStore } from '$lib/stores/org';
@@ -2105,32 +2106,12 @@
 
 <!-- ── Modal: Neuer Marschverband ─────────────────────────────────── -->
 {#if showConvoyForm}
-	<div class="modal-backdrop" onclick={() => (showConvoyForm = false)}>
-		<div class="modal" onclick={(e) => e.stopPropagation()}>
-			<h2>Neuer Marschverband</h2>
-			<form onsubmit={(e) => { e.preventDefault(); createConvoy(); }}>
-				<label>Name *<input bind:value={newConvoy.name} required placeholder="z.B. KatS-Verband Bayern 1" /></label>
-				<label>Startzeit (optional)<input type="datetime-local" bind:value={newConvoy.start_time} /></label>
-				<label>Geschw. innerorts (km/h)<input type="number" bind:value={newConvoy.speed_urban_kmh} min="10" max="60" /></label>
-				<label>Geschw. außerorts (km/h)<input type="number" bind:value={newConvoy.speed_rural_kmh} min="30" max="100" /></label>
-				<label>Straßenpräferenz
-					<select bind:value={newConvoy.road_preference}>
-						<option value="standard">Standard (meidet Ortschaften, gut ausgebaute Straßen)</option>
-						<option value="schnell">Schnellste Route</option>
-						<option value="kuerzeste">Kürzeste Route</option>
-					</select>
-				</label>
-				<label>Fahrzeugabstand Innerorts (m)<input type="number" bind:value={newConvoy.spacing_urban_m} min="5" max="200" /></label>
-				<label>Fahrzeugabstand Außerorts (m)<input type="number" bind:value={newConvoy.spacing_rural_m} min="10" max="500" /></label>
-				<label>Fahrzeugabstand Autobahn (m)<input type="number" bind:value={newConvoy.spacing_motorway_m} min="10" max="500" /></label>
-				<p class="hint" style="margin:.25rem 0">Weitere Felder (Lage, Auftrag, Funkgruppe…) kannst du nach dem Erstellen im Plan-Tab ergänzen.</p>
-				<div class="modal-actions">
-					<button type="button" onclick={() => (showConvoyForm = false)}>Abbrechen</button>
-					<button type="submit" class="btn-primary">Erstellen & Punkte setzen →</button>
-				</div>
-			</form>
-		</div>
-	</div>
+	<ConvoyFormModal
+		modus="neu"
+		form={newConvoy}
+		onSubmit={createConvoy}
+		onClose={() => (showConvoyForm = false)}
+	/>
 {/if}
 
 {#if showShareLinkModal && selected}
@@ -2151,46 +2132,14 @@
 
 <!-- ── Modal: Marschverband bearbeiten ──────────────────────────── -->
 {#if showEditConvoyForm}
-	<div class="modal-backdrop" onclick={() => (showEditConvoyForm = false)}>
-		<div class="modal" onclick={(e) => e.stopPropagation()}>
-			<h2>Marschverband bearbeiten</h2>
-			<form onsubmit={(e) => { e.preventDefault(); saveConvoyEdit(); }}>
-				<label>Name *<input bind:value={editConvoy.name} required /></label>
-				<label>Organisation
-					<select bind:value={editConvoy.organization_id} onchange={() => {
-						const org = organizations.find(o => o.id === editConvoy.organization_id);
-						editConvoy.organization = org?.name ?? '';
-					}}>
-						<option value="">– keine –</option>
-						{#each organizations as org}
-							<option value={org.id}>{org.name}</option>
-						{/each}
-					</select>
-				</label>
-				<label>Startzeit (optional)<input type="datetime-local" bind:value={editConvoy.start_time} /></label>
-				<label>Geschw. innerorts (km/h)<input type="number" bind:value={editConvoy.speed_urban_kmh} min="10" max="60" /></label>
-				<label>Geschw. außerorts (km/h)<input type="number" bind:value={editConvoy.speed_rural_kmh} min="30" max="100" /></label>
-				<label>Straßenpräferenz
-					<select bind:value={editConvoy.road_preference}>
-						<option value="standard">Standard (meidet Ortschaften, gut ausgebaute Straßen)</option>
-						<option value="schnell">Schnellste Route</option>
-						<option value="kuerzeste">Kürzeste Route</option>
-						{#if editConvoy.road_preference === 'bundesstrasse' || editConvoy.road_preference === 'landstrasse'}
-							<option value={editConvoy.road_preference}>Veraltet — bitte neu wählen</option>
-						{/if}
-					</select>
-				</label>
-				<label>Fahrzeugabstand Innerorts (m)<input type="number" bind:value={editConvoy.spacing_urban_m} min="5" max="200" /></label>
-				<label>Fahrzeugabstand Außerorts (m)<input type="number" bind:value={editConvoy.spacing_rural_m} min="10" max="500" /></label>
-				<label>Fahrzeugabstand Autobahn (m)<input type="number" bind:value={editConvoy.spacing_motorway_m} min="10" max="500" /></label>
-				<div class="modal-actions">
-					<button type="button" class="btn-danger" onclick={deleteConvoy}>Löschen</button>
-					<button type="button" onclick={() => (showEditConvoyForm = false)}>Abbrechen</button>
-					<button type="submit" class="btn-primary">Speichern</button>
-				</div>
-			</form>
-		</div>
-	</div>
+	<ConvoyFormModal
+		modus="bearbeiten"
+		form={editConvoy}
+		{organizations}
+		onSubmit={saveConvoyEdit}
+		onClose={() => (showEditConvoyForm = false)}
+		onDelete={deleteConvoy}
+	/>
 {/if}
 
 <style>
@@ -2240,11 +2189,11 @@
 	.btn-small.active { background: var(--color-primary); }
 
 	.export-grid { display: flex; flex-direction: column; gap: .4rem; margin-top: .4rem; }
-	/* Marschbefehl Modal — Selektoren mit .modal-Prefix, damit sie die späteren
-	   generischen .modal-Regeln (max-width 420px, padding 2rem, label-Margins)
-	   sicher überschreiben. */
-	.befehl-backdrop { align-items: flex-start; padding: 2rem 1rem; overflow-y: auto; }
-	.modal.befehl-modal { background: white; color: #1a1a1a; border-radius: 10px; width: 100%; max-width: 720px; margin: auto; padding: 0; display: flex; flex-direction: column; max-height: 90vh; overflow: hidden; box-shadow: 0 12px 48px rgba(0,0,0,.45); }
+	/* Marschbefehl Modal. Der .modal-Prefix bleibt an den Selektoren: er hielt
+	   früher die generischen .modal-Regeln ab und trennt heute die Regeln des
+	   Befehlsdialogs sichtbar vom nackten Hintergrund. */
+	.befehl-backdrop { align-items: flex-start; padding: 2rem 1rem; padding-bottom: calc(2rem + env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; }
+	.modal.befehl-modal { background: white; color: #1a1a1a; border-radius: 10px; width: 100%; max-width: 720px; margin: auto; padding: 0; display: flex; flex-direction: column; max-height: 100%; overflow: hidden; box-shadow: 0 12px 48px rgba(0,0,0,.45); }
 	.befehl-modal-header { display: flex; align-items: center; gap: .75rem; padding: 1.1rem 1.5rem; background: #0F1B24; flex-shrink: 0; }
 	.befehl-modal-header h2 { margin: 0; font-size: 1.15rem; color: white; }
 	.befehl-convoy-name { flex: 1; font-size: .85rem; color: rgba(255,255,255,.65); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2350,20 +2299,13 @@
 	   default bottom margin so it sits flush inside the compact hint bar. */
 	.map-hint-search :global(.search-wrap) { margin-bottom: 0; }
 
-	/* Modal */
-	.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; z-index: 100; }
-	.modal { background: white; border-radius: 8px; padding: 2rem; width: 100%; max-width: 420px; color: #333; }
-	.modal h2 { margin: 0 0 1.25rem; }
-	.modal label { display: flex; flex-direction: column; gap: .25rem; margin-bottom: .75rem; font-size: .85rem; font-weight: 600; }
-	.modal input, .modal select { padding: .5rem; border: 1px solid #ccc; border-radius: 4px; font-size: 1rem; }
-	.modal-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: 1rem; flex-wrap: wrap; }
-	.modal-actions .btn-danger { background: #b91c1c; color: white; border-color: #b91c1c; margin-right: auto; }
-	.modal-actions .btn-danger:hover { background: #991b1b; }
-	.modal-actions button { padding: .5rem 1rem; border-radius: 4px; cursor: pointer; border: 1px solid #ccc; }
-	.modal-actions .btn-primary { background: #0F1B24; color: white; border-color: #0F1B24; }
-	.modal { max-height: 90vh; overflow-y: auto; }
-	.modal label textarea { padding: .5rem; border: 1px solid #ccc; border-radius: 4px; font-size: .9rem; resize: vertical; }
-	.modal label small { font-weight: 400; color: #888; font-size: .78rem; }
+	/* Modal — hier bleibt nur der Hintergrund; der einzige Dialog dieser Seite
+	   mit eigenem Aufbau ist der Marschbefehl (siehe .befehl-modal). Die Masken
+	   „Neuer/Bearbeiten Marschverband" liegen in ConvoyFormModal.svelte.
+	   `100dvh` statt `vh`: iOS Safari misst `vh` gegen die Anzeigefläche mit
+	   eingefahrener Adressleiste, ein Dialog über die volle Höhe endet also
+	   hinter der Leiste. `vh` bleibt als Rückfall. */
+	.modal-backdrop { position: fixed; inset: 0; height: 100vh; height: 100dvh; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; z-index: 100; }
 
 	.convoy-vehicle-row { flex-direction: row; gap: .4rem; }
 	.veh-left { display: flex; align-items: center; gap: .35rem; flex: 1; min-width: 0; }
@@ -2573,12 +2515,9 @@
 			cursor: not-allowed;
 		}
 
-		/* Modal: edge-to-edge with safe insets */
-		.modal {
-			max-width: calc(100vw - 2rem);
-			padding: 1.25rem;
-			margin: .75rem;
-		}
+		/* Marschbefehl-Dialog: bis an den Rand, mit sicherem Abstand. */
+		.befehl-backdrop { padding: .75rem; padding-bottom: calc(.75rem + env(safe-area-inset-bottom)); }
+		.modal.befehl-modal { max-width: 100%; }
 	}
 
 	.kw-section { margin-top: .75rem; }

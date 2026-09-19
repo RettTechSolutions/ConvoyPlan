@@ -300,15 +300,20 @@
 {/if}
 
 <style>
+	/* `100dvh` statt `vh`: iOS Safari rechnet `vh` gegen die Anzeigefläche mit
+	   eingefahrener Adressleiste — ein Dialog über die volle `vh`-Höhe endet
+	   hinter der Leiste. `vh` bleibt als Rückfall für Browser ohne `dvh`. */
 	.sl-backdrop {
-		position: fixed; inset: 0; background: rgba(0, 0, 0, .55); z-index: 1000;
+		position: fixed; inset: 0; height: 100vh; height: 100dvh;
+		background: rgba(0, 0, 0, .55); z-index: 1000;
 		display: flex; align-items: flex-start; justify-content: center;
-		padding: 2rem 1rem; overflow-y: auto;
+		padding: 2rem 1rem; padding-bottom: calc(2rem + env(safe-area-inset-bottom));
+		overflow-y: auto; overscroll-behavior: contain;
 	}
 	.sl-modal {
 		background: white; color: #1a1a1a; border-radius: 10px;
 		width: 100%; max-width: 820px; margin: auto; display: flex; flex-direction: column;
-		max-height: 90vh; box-shadow: 0 12px 48px rgba(0, 0, 0, .45);
+		max-height: 100%; box-shadow: 0 12px 48px rgba(0, 0, 0, .45);
 	}
 	header {
 		display: flex; align-items: center; gap: .75rem;
