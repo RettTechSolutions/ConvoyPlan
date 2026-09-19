@@ -16,6 +16,7 @@ from app.schemas.convoy import (
     ConvoyCreate,
     ConvoyResponse,
     ConvoyUpdate,
+    ConvoyVehicleItem,
     ConvoyVehicleReorderItem,
     UpdateVehicleInConvoyRequest,
 )
@@ -64,15 +65,13 @@ def _serialize_convoy(convoy: Convoy) -> dict:
         "versorgung": convoy.versorgung,
         "funkgruppe": convoy.funkgruppe,
         "anlagen": convoy.anlagen,
+        # Ganze Zeile statt Feldauswahl: `ConvoyVehicleItem` hat für jedes Feld
+        # einen Vorgabewert, also fällt ein hier vergessenes nicht auf — die
+        # Antwort enthält es dann als `null`, und das Eingetragene sieht beim
+        # nächsten Laden aus wie nie gespeichert. Genau so verschwand die
+        # Sollstärke, während sie in der Datenbank stand.
         "convoy_vehicles": [
-            {
-                "vehicle": cv.vehicle,
-                "position": cv.position,
-                "vehicle_status": cv.vehicle_status,
-                "sonderfunktion": cv.sonderfunktion,
-                "mobile_phone": cv.mobile_phone,
-            }
-            for cv in convoy.convoy_vehicles
+            ConvoyVehicleItem.model_validate(cv) for cv in convoy.convoy_vehicles
         ],
         "waypoints": [
             {**w.__dict__, **geo_svc.waypoint_coords(w)}
@@ -256,6 +255,48 @@ async def add_vehicle_to_convoy(
     return {"status": "added"}
 
 
+# Vor den Platzhalter-Routen: Starlette nimmt die erste passende, und
+# `/{convoy_id}/vehicles/{vehicle_id}` passt auch auf `…/vehicles/reorder`.
+# Stünde dieser Block darunter, liefe jedes Umsortieren in den PATCH für ein
+# einzelnes Fahrzeug und dort gegen 422 ("reorder" ist keine UUID).
+@router.patch("/{convoy_id}/vehicles/reorder", response_model=ConvoyResponse)
+async def reorder_convoy_vehicles(
+    convoy_id: uuid.UUID,
+    items: list[ConvoyVehicleReorderItem],
+    ctx: OrgCtx = Depends(get_org_context),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reorder the march sequence (Marschfolge) of vehicles in a convoy."""
+    user, org, role = ctx
+    convoy = await get_convoy_access(convoy_id, user, db, require="write", role=role)
+    if convoy.organization_id != org.id:
+        raise HTTPException(status_code=404, detail="Convoy not found")
+
+    result = await db.execute(
+        select(ConvoyVehicle).where(ConvoyVehicle.convoy_id == convoy_id)
+    )
+    by_vehicle = {cv.vehicle_id: cv for cv in result.scalars().all()}
+
+    if len(items) != len(by_vehicle):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Expected {len(by_vehicle)} vehicles, got {len(items)}",
+        )
+    if len({i.vehicle_id for i in items}) != len(items):
+        raise HTTPException(status_code=400, detail="Duplicate vehicle_id values in request")
+    if len({i.position for i in items}) != len(items):
+        raise HTTPException(status_code=400, detail="Duplicate position values in request")
+    if any(i.vehicle_id not in by_vehicle for i in items):
+        raise HTTPException(status_code=400, detail="Unknown vehicle_id in request")
+
+    for item in items:
+        by_vehicle[item.vehicle_id].position = item.position
+    await db.commit()
+
+    refreshed = await db.execute(_convoy_query_for_org(org.id).where(Convoy.id == convoy_id))
+    return _serialize_convoy(refreshed.scalar_one())
+
+
 @router.patch("/{convoy_id}/vehicles/{vehicle_id}")
 async def update_vehicle_in_convoy(
     convoy_id: uuid.UUID,
@@ -323,42 +364,6 @@ async def remove_vehicle_from_convoy(
     await db.commit()
 
 
-@router.patch("/{convoy_id}/vehicles/reorder", response_model=ConvoyResponse)
-async def reorder_convoy_vehicles(
-    convoy_id: uuid.UUID,
-    items: list[ConvoyVehicleReorderItem],
-    ctx: OrgCtx = Depends(get_org_context),
-    db: AsyncSession = Depends(get_db),
-):
-    """Reorder the march sequence (Marschfolge) of vehicles in a convoy."""
-    user, org, role = ctx
-    convoy = await get_convoy_access(convoy_id, user, db, require="write", role=role)
-    if convoy.organization_id != org.id:
-        raise HTTPException(status_code=404, detail="Convoy not found")
-
-    result = await db.execute(
-        select(ConvoyVehicle).where(ConvoyVehicle.convoy_id == convoy_id)
-    )
-    by_vehicle = {cv.vehicle_id: cv for cv in result.scalars().all()}
-
-    if len(items) != len(by_vehicle):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Expected {len(by_vehicle)} vehicles, got {len(items)}",
-        )
-    if len({i.vehicle_id for i in items}) != len(items):
-        raise HTTPException(status_code=400, detail="Duplicate vehicle_id values in request")
-    if len({i.position for i in items}) != len(items):
-        raise HTTPException(status_code=400, detail="Duplicate position values in request")
-    if any(i.vehicle_id not in by_vehicle for i in items):
-        raise HTTPException(status_code=400, detail="Unknown vehicle_id in request")
-
-    for item in items:
-        by_vehicle[item.vehicle_id].position = item.position
-    await db.commit()
-
-    refreshed = await db.execute(_convoy_query_for_org(org.id).where(Convoy.id == convoy_id))
-    return _serialize_convoy(refreshed.scalar_one())
 
 
 # --- Waypoints ---

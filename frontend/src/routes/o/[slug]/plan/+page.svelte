@@ -1532,6 +1532,7 @@
 								</tbody>
 							</table>
 							<p class="hint" style="margin-top:.4rem">
+								Gespeichert wird beim Verlassen des Feldes — es gibt keinen Knopf dafür.
 								Leer heißt „nicht geplant“. Was die Besatzungen unterwegs melden, steht in der Tracking-Ansicht daneben.
 							</p>
 						{/if}
