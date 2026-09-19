@@ -26,13 +26,10 @@
 	import { authHeaders } from '$lib/api/client';
 	import type { FeatureCollection, Geometry } from 'geojson';
 	import { dndzone } from 'svelte-dnd-action';
-	import { themeStore } from '$lib/stores/theme';
-	import { versionStore } from '$lib/stores/version.svelte';
 	import { pwaStore } from '$lib/stores/pwa';
-	import InstallButton from '$lib/components/InstallButton.svelte';
 	import OnboardingTutorial from '$lib/components/OnboardingTutorial.svelte';
+	import SidebarFooter from '$lib/components/SidebarFooter.svelte';
 	import { tutorialStore } from '$lib/stores/tutorial';
-	import { feedbackStore } from '$lib/stores/feedback';
 	import QRCode from 'qrcode';
 
 	// ── State ──────────────────────────────────────────────────────────
@@ -86,11 +83,6 @@
 	// angelegt (`?resumed=1`) — das Banner sagt es, sonst wundert sich der
 	// Besucher über die Daten, die er beim letzten Mal angelegt hat.
 	const demoResumed = $derived($page.url.searchParams.get('resumed') === '1');
-
-	// Theme toggle
-	function toggleTheme() {
-	    themeStore.toggle();
-	}
 
 	// Import state
 	let importFile = $state<File | null>(null);
@@ -1901,35 +1893,7 @@
 				{/if}
 			</div>
 		{/if}
-	<div class="sidebar-footer" data-tour="sidebar-footer">
-		<button class="theme-toggle" onclick={toggleTheme} aria-label="Theme umschalten">
-			{$themeStore === 'dark' ? '☀' : '☾'}
-			<span>{$themeStore === 'dark' ? 'Light' : 'Dark'}</span>
-		</button>
-		<button class="theme-toggle" onclick={() => tutorialStore.open()} aria-label="Tutorial starten" title="Tutorial / Hilfe">
-			?
-			<span>Hilfe</span>
-		</button>
-		<!-- Neben der Hilfe und nicht als schwebender Knopf über der Karte:
-		     dort verdeckte er genau das, worüber gemeldet wird. -->
-		<button class="theme-toggle" onclick={() => feedbackStore.open('bug')} aria-label="Fehler melden oder Funktion vorschlagen" title="Fehler melden / Funktion vorschlagen">
-			🐞
-			<span>Melden</span>
-		</button>
-		<InstallButton />
-		<span class="app-version">
-			v{__APP_VERSION__}
-			{#if versionStore.data.update_available}
-				<a
-					class="update-hint"
-					href="https://github.com/RettTechSolutions/ConvoyPlan/releases/latest"
-					target="_blank"
-					rel="noopener noreferrer"
-					title="Neue Version {versionStore.data.latest} verfügbar"
-				>· Update verfügbar</a>
-			{/if}
-		</span>
-	</div>
+	<SidebarFooter />
 	</aside>
 
 	<!-- ── Karte ─────────────────────────────────────────────────────── -->
@@ -2548,13 +2512,6 @@
 	.kw-befehl-table tr.kw-detail td { color: #444; }
 	.kw-befehl-table .kw-detail-label { color: #777; }
 	.kw-befehl-table .kw-zk code { background: #eef0f4; color: #222; }
-
-	.sidebar-footer { flex-shrink: 0; border-top: 1px solid var(--border); padding: .75rem 1rem; display: flex; align-items: center; justify-content: space-between; }
-	.theme-toggle { display: flex; align-items: center; gap: .4rem; background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--text-2); font-size: var(--text-sm); padding: .25rem .5rem; cursor: pointer; }
-	.theme-toggle:hover { background: var(--surface-2); }
-	.app-version { font-size: var(--text-xs); color: var(--text-muted); }
-	.app-version .update-hint { color: #f59e0b; font-weight: 600; text-decoration: none; }
-	.app-version .update-hint:hover { text-decoration: underline; }
 
 	/* ── Feedback-driven additions ──────────────────────────────────── */
 	.field-label { display: block; font-size: var(--text-xs); color: var(--text-muted); margin-bottom: .15rem; }

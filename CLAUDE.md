@@ -291,7 +291,10 @@ Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste
   die Hülle stubbt `$lib/api`, und `blockExternal` bricht alles ab, was nicht von
   der Testinstanz kommt — ohne das hängen die Tests ohne Netz an den Kartenkacheln.
   Die Hülle ist **kein** Teil des Produktionsbaus; eine Testroute unter `src/routes/`
-  wäre eine, die mit ausgeliefert wird. Der Job läuft im **Playwright-Image**
+  wäre eine, die mit ausgeliefert wird. Ihre Vite-Konfiguration spiegelt den
+  `<style>`-Block aus `src/app.html` in die Seite und setzt `__APP_VERSION__` —
+  ein Test, der Geometrie misst, misst sonst gegen Farben und Schriftgrößen, die
+  es in der App gar nicht gibt. Der Job läuft im **Playwright-Image**
   (`mcr.microsoft.com/playwright:v1.63.0-noble`), weil `npx playwright install` auf
   dem Runner nach dem Download beim Entpacken stehenblieb — ohne Ausgabe, ohne
   Abbruch. Dessen Marke muss zur Fassung von `@playwright/test` passen: Wer die
