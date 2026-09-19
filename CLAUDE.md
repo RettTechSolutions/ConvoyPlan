@@ -54,6 +54,42 @@ ist. Die Entscheidung selbst steht in `decide.sh`, getrennt von der
 Registry-Abfrage, und wird von `tests/test_image_wiederverwendung.sh` ohne
 Docker und ohne Registry geprüft.
 
+### Der Routing-Graph und der Deploy
+
+Zwei Dateien entscheiden hier, und man muss sie auseinanderhalten.
+`.graph_fingerprint` (Region + Encoded Values) schreibt `graphhopper/
+entrypoint.sh` **vor** dem Import — er sagt, *wofür* ein Graph gebaut wurde, und
+belegt **nicht**, dass er fertig ist. `edges` legt GraphHopper erst bei einem
+vollständigen Graphen an; das ist der Vollständigkeitsbeleg, und alle drei
+Stellen benutzen inzwischen ihn.
+
+Am 2026-09-19 fehlte diese Unterscheidung und das Routing war weg: Ein
+Auto-Deploy (nightly, mehrmals täglich) traf einen laufenden Import und ließ
+einen Torso zurück — Bruchstücke plus den `location_index` eines anderen
+Graphen, dazu einen passenden Fingerprint. Der Entrypoint sah „Fingerprint
+stimmt", ließ alles liegen, GraphHopper importierte 13 Minuten neu, las den
+fremden Index und starb an `location index was opened with incorrect graph`.
+`restart: unless-stopped` fing von vorn an.
+
+Drei Stellen, jede mit eigenem Test:
+
+- **`graphhopper/entrypoint.sh`** wirft ein Verzeichnis ohne `edges` weg und baut
+  neu (`tests/test_entrypoint_graph_zustand.sh`). Der Wipe ist weiter
+  `rm -rf "$GRAPH_DIR"/*` und fasst damit Punktdateien **nicht** an — auf
+  `.staging`/`.old` verlässt sich der Regionswechsel; wer hier auf `find -delete`
+  oder `dotglob` umstellt, löscht einem laufenden Wechsel den halb gebauten
+  Graphen.
+- **`docker/updater/graphhopper-deploy.sh`** nimmt den Dienst aus dem Deploy,
+  solange er baut, und zieht ihn danach nach. Von **beiden** Updater-Varianten
+  gesourct — dieselbe Begründung wie bei `region-hook.sh`. Gedeckelt durch
+  `GH_IMPORT_GRACE` (4 h), sonst schnitte ein Container, der aus einem anderen
+  Grund nie fertig wird, den Dienst dauerhaft von Updates ab.
+  `tests/test_graphhopper_import_deploy.sh` prüft die Entscheidung ohne Docker
+  und die Verdrahtung in `update-images.sh` mit.
+- **`switch-region.sh`**, Notbremse in `_on_exit`: startet GraphHopper nur gegen
+  ein Verzeichnis mit Fingerprint **und** `edges` (`test_switch_region.sh`,
+  Fall 12b).
+
 ### API-Docs (Swagger/OpenAPI)
 
 `/docs`, `/redoc` und `/openapi.json` sind in Produktion **standardmäßig deaktiviert**

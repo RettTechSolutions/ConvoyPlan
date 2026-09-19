@@ -182,12 +182,18 @@ _on_exit() {
         # Vor dem Hochfahren prüfen, ob $GRAPH_DIR überhaupt ein vollständiger
         # Graph ist. Ist der Rollback vorher selbst teilweise gescheitert (z. B.
         # ein `mv` aus .old, siehe _restore_old_graph), kann das Verzeichnis
-        # leer oder unvollständig sein — der Entrypoint sähe dort einen
-        # Fingerprint-Mismatch, würfe alles per `rm -rf` weg und baute über
-        # Stunden neu, ohne dass es jemand mitbekommt. .graph_fingerprint
-        # schreibt der Entrypoint als letzten Schritt eines fertigen Graphen;
-        # seine Existenz ist der billigste verfügbare Beleg für Vollständigkeit.
-        if [ -s "$GRAPH_DIR/.graph_fingerprint" ]; then
+        # leer oder unvollständig sein — der Entrypoint würfe dort alles per
+        # `rm -rf` weg und baute über Stunden neu, ohne dass es jemand
+        # mitbekommt.
+        #
+        # Beides wird geprüft, und `edges` ist dabei das eigentliche Argument:
+        # .graph_fingerprint schreibt der Entrypoint, BEVOR der Import beginnt,
+        # ein Torso trägt ihn also passend. Genau daran hing der Ausfall vom
+        # 2026-09-19. `edges` legt GraphHopper erst bei einem fertigen Graphen
+        # an — dieselbe Datei, an der der Entrypoint inzwischen selbst einen
+        # Torso erkennt und an der der Updater einen laufenden Import ablesen
+        # kann (docker/updater/graphhopper-deploy.sh).
+        if [ -s "$GRAPH_DIR/.graph_fingerprint" ] && [ -f "$GRAPH_DIR/edges" ]; then
             log "GraphHopper ist noch gestoppt — starte ihn wieder."
             _compose up -d graphhopper >> "$LOG" 2>&1 || \
                 log "FEHLER: GraphHopper konnte nicht wieder gestartet werden — manueller Eingriff nötig."
@@ -195,7 +201,7 @@ _on_exit() {
         else
             # Ein stehender Container, den ein Mensch bewusst wieder startet,
             # ist besser als ein unangekündigter Mehrstunden-Neuaufbau.
-            log "FEHLER: Graph-Verzeichnis (${GRAPH_DIR}) ist unvollständig (kein .graph_fingerprint) — GraphHopper wird NICHT automatisch gestartet. Alter Bestand liegt vermutlich noch in ${OLD} — bitte manuell prüfen und erst dann den Container starten."
+            log "FEHLER: Graph-Verzeichnis (${GRAPH_DIR}) ist unvollständig (kein .graph_fingerprint oder kein edges) — GraphHopper wird NICHT automatisch gestartet. Alter Bestand liegt vermutlich noch in ${OLD} — bitte manuell prüfen und erst dann den Container starten."
             phase "failed" "Notbremse: Graph-Verzeichnis unvollständig, GraphHopper bleibt bewusst gestoppt — manueller Eingriff nötig (Bestand ggf. in ${OLD})."
             FAILED_REPORTED=1
         fi

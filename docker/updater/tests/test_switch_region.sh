@@ -131,14 +131,24 @@ EOF
 # Rueckgabewert 0 zu verschweigen.
 cat > "$BIN/mv" <<EOF
 #!/usr/bin/env bash
-if [ "\${STUB_MV_FAIL_FROM_OLD:-0}" = 1 ]; then
+if [ "\${STUB_MV_FAIL_FROM_OLD:-0}" != 0 ]; then
     # Nur Zuege AUS .old heraus (Rücktausch) scheitern lassen, nicht die
     # Zuege HINEIN (der Tausch selbst) — sonst kaeme der Test gar nicht erst
     # bis zum Rollback. Das letzte Argument ist das Ziel und bleibt aussen vor.
+    #
+    # "1" laesst jeden Zug aus .old scheitern (leeres Graph-Verzeichnis, Fall
+    # 12); ein Dateiname laesst genau diese Datei zurueckbleiben und erzeugt
+    # damit einen TORSO — Rest des Bestands samt Fingerprint, aber ohne die
+    # genannte Datei (Fall 12b).
     args=("\$@"); n=\${#args[@]}
     for (( i = 0; i < n - 1; i++ )); do
         case "\${args[\$i]}" in
-            */.old/*) echo "mv: simulierter Fehler: \${args[\$i]}" >&2; exit 1 ;;
+            */.old/*)
+                if [ "\${STUB_MV_FAIL_FROM_OLD}" = 1 ] || \
+                   [ "\${args[\$i]##*/}" = "\${STUB_MV_FAIL_FROM_OLD}" ]; then
+                    echo "mv: simulierter Fehler: \${args[\$i]}" >&2; exit 1
+                fi
+                ;;
         esac
     done
 fi
@@ -586,6 +596,21 @@ grep -q "Rücktausch von Graph und .region ist fehlgeschlagen" "$D/status/region
 ! grep -qE 'up -d graphhopper$' "$D/calls.txt"; check $? "Notbremse startet GraphHopper NICHT gegen ein unvollstaendiges Graph-Verzeichnis"
 grep -q "wird NICHT automatisch gestartet" "$D/status/region.log"; check $? "Notbremse meldet den Verzicht auf den Autostart"
 grep -q "$D/graph/.old" "$D/status/region.log"; check $? "Meldung nennt den Ablageort des alten Bestands"
+
+echo "── Fall 12b: Torso nach Rollback — Fingerprint da, Kantendatei fehlt ───"
+# Der Fall, der am 2026-09-19 das Routing gekostet hat, hier auf dem
+# Regionswechsel-Pfad: Das Graph-Verzeichnis ist NICHT leer und trägt einen
+# passenden .graph_fingerprint — der Entrypoint schreibt ihn, bevor der Import
+# beginnt, er belegt also keine Vollständigkeit. Die Notbremse in _on_exit prüft
+# deshalb zusätzlich `edges`. Täte sie es nicht, führe sie GraphHopper gegen
+# einen Torso hoch, und der endet verlässlich in der Crash-Schleife
+# ("location index was opened with incorrect graph").
+D="$(setup_case case12b)"; printf '%s' "$REQ_JSON" > "$D/status/region_request.json"
+run_case "$D" STUB_HEALTH=starting STUB_MV_FAIL_FROM_OLD=edges
+[ -s "$D/graph/.graph_fingerprint" ]; check $? "der Fingerprint ist zurueckgekommen (und beweist nichts)"
+[ ! -e "$D/graph/edges" ]; check $? "die Kantendatei fehlt — genau der Torso"
+! grep -qE 'up -d graphhopper$' "$D/calls.txt"; check $? "Notbremse startet GraphHopper NICHT gegen einen Torso"
+grep -q "wird NICHT automatisch gestartet" "$D/status/region.log"; check $? "Notbremse meldet den Verzicht auf den Autostart"
 
 echo "── Fall 13: Import liefert 0, hinterlaesst aber keinen Graphen ─────────"
 # Wichtig 1: Ohne Nachweis liefe die Tausch-Schleife nullmal durch und liesse

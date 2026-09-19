@@ -41,6 +41,20 @@ log() {
 # shellcheck source=./region-hook.sh
 source /region-hook.sh
 
+# GraphHopper-Deploy: laufenden Graph-Import nicht abwuergen. Ebenfalls gemeinsam
+# mit update-images.sh, Begruendung und Voraussetzungen im Kopf der Datei.
+# gh_deploy_graphhopper() ist der Teil, der sich zwischen den beiden Updatern
+# unterscheidet: hier ein Bau aus dem Checkout, in update-images.sh ein Tausch
+# gegen das gezogene Image. GIT_SHA kommt aus dem Checkout und nicht aus der
+# Deploy-Variablen $REMOTE — das Nachholen laeuft Stunden spaeter, und dann ist
+# der Checkout der einzige verlaessliche Beleg fuer den installierten Stand.
+gh_deploy_graphhopper() {
+    GIT_SHA="$(git -C "${REPO_DIR}" rev-parse HEAD 2>/dev/null || echo unknown)" \
+        docker compose "${COMPOSE_FILES[@]}" up -d --build graphhopper 2>&1 | tee -a "${LOG_FILE}"
+}
+# shellcheck source=./graphhopper-deploy.sh
+source /graphhopper-deploy.sh
+
 # ── Self-repair: health gate + rollback (source/build path) ──────────────────
 # A deploy counts as good only once the backend actually reports HEALTHY, not
 # merely "started". If the freshly built backend never turns healthy (e.g. it
@@ -231,6 +245,11 @@ while true; do
     continue
   fi
 
+  # Zurueckgestellten GraphHopper-Deploy nachholen, sobald der Import durch ist
+  # — vor dem Ziel-Check, damit ein fertiger Graph nicht bis zum naechsten
+  # Update auf seinen Stand wartet.
+  _deploy_deferred_graphhopper
+
   CHANNEL="$(read_channel)"
 
   if [ "${CHANNEL}" = "nightly" ]; then
@@ -301,9 +320,13 @@ while true; do
     PREV_DEPLOYED="${DEPLOYED}"
     # Get all services except the updater itself (to avoid killing this container)
     SERVICES=$(docker compose "${COMPOSE_FILES[@]}" config --services 2>/dev/null | grep -v '^updater$' | tr '\n' ' ')
+    # Gebaut und getauscht wird nur, was getauscht werden DARF:
+    # _plan_deploy_services nimmt graphhopper heraus, solange dort ein Import
+    # laeuft (Begruendung im Kopf von graphhopper-deploy.sh).
+    _plan_deploy_services "${SERVICES}"
     if git -C "${REPO_DIR}" reset --hard "${REMOTE}" 2>&1 | tee -a "${LOG_FILE}" && \
        git -C "${REPO_DIR}" clean -fd 2>&1 | tee -a "${LOG_FILE}" && \
-       GIT_SHA="${REMOTE}" docker compose "${COMPOSE_FILES[@]}" up -d --build ${SERVICES} 2>&1 | tee -a "${LOG_FILE}"; then
+       GIT_SHA="${REMOTE}" docker compose "${COMPOSE_FILES[@]}" up -d --build ${DEPLOY_SERVICES} 2>&1 | tee -a "${LOG_FILE}"; then
 
       # Self-repair health gate: the API must actually come up, not just start.
       if _wait_backend_healthy "${DEPLOY_HEALTH_TIMEOUT}"; then
