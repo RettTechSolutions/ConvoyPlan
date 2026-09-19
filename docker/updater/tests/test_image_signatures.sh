@@ -31,8 +31,13 @@ fi
 # -i ist zwingend: ohne offenes stdin liest `bash -s` das Here-Document gar
 # nicht und der Container endet sofort mit 0 — der Test galt dann als
 # bestanden, ohne eine einzige Zusicherung geprueft zu haben.
+# Jede Datei, die die Updater-Skripte per `source` einbinden, muss hier
+# mitgemountet werden — sonst stirbt das Skript am `source`, noch bevor die
+# geprueften Meldungen entstehen, und der Test zeigt einen Fehlschlag an ganz
+# anderer Stelle.
 docker run --rm \
     -v "${UPDATER_DIR}/region-hook.sh:/region-hook.sh:ro" \
+    -v "${UPDATER_DIR}/graphhopper-deploy.sh:/graphhopper-deploy.sh:ro" \
     -v "${UPDATER_DIR}/update-images.sh:/update-images.sh:ro" \
     -i bash:5.2 bash -s <<'INNER'
 set -uo pipefail

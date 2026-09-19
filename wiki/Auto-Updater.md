@@ -74,6 +74,24 @@ Ein Backend-Image, das älter als der DB-Migrationsstand ist (z. B. ein versehen
 
 ---
 
+## Routing-Graph: kein Deploy mitten im Import
+
+GraphHopper baut aus den OSM-Daten einen Routing-Graphen. Bei den größeren Kartenregionen dauert das 45–75 Minuten, und in dieser Zeit routet die Instanz nicht. Ein Deploy, der den Container mitten darin austauscht, hinterlässt Bruchstücke im Graph-Volume — der Import beginnt anschließend von vorn.
+
+Der Updater nimmt den `graphhopper`-Dienst deshalb aus dem Deploy heraus, solange dort ein Import läuft, und zieht ihn nach, sobald der Graph fertig ist. Im Update-Log steht dann:
+
+```
+GraphHopper baut gerade den Routing-Graphen (kein /data/graph/edges) — dieser
+Dienst wird aus dem Deploy herausgenommen und nach dem Import nachgezogen;
+alle anderen werden aktualisiert.
+```
+
+Alle übrigen Dienste werden normal aktualisiert; das Update gilt als erfolgreich. Nach spätestens vier Stunden ohne fertigen Graphen wird der Dienst trotzdem mitgetauscht — sonst käme ein Container, der aus einem anderen Grund nie fertig wird (zu wenig Speicher, volle Platte), nie an das Update, das den Fehler behebt.
+
+Bleibt trotzdem ein unvollständiger Graph zurück (Host-Neustart, abgeschossener Container), erkennt GraphHopper das beim nächsten Start selbst, räumt das Verzeichnis und baut neu. Das kostet den Import erneut, aber die Instanz routet danach wieder statt in einer Neustart-Schleife zu hängen.
+
+---
+
 ## Host-Watchdog
 
 Ein systemd-Timer (`scripts/updater-watchdog.sh`) räumt verwaiste Updater-Container auf und startet abgestürzte Updater neu. Er wird vom Linux-Installer eingerichtet.

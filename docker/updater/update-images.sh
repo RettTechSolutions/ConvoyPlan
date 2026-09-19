@@ -552,6 +552,21 @@ _verify_target_images() {
     return 0
 }
 
+# GraphHopper-Deploy: laufenden Graph-Import nicht abwuergen. Gemeinsame Logik
+# mit update.sh, Begruendung und Voraussetzungen im Kopf der Datei.
+# gh_deploy_graphhopper() ist der Teil, der sich zwischen den beiden Updatern
+# unterscheidet: hier ein Tausch gegen das gezogene Image, in update.sh ein Bau
+# aus dem Checkout.
+gh_deploy_graphhopper() {
+    # Kanal-Tags neu setzen: Das Nachholen laeuft Stunden nach dem Deploy, und
+    # zwischenzeitlich kann der Kanal im Panel umgestellt worden sein.
+    _apply_channel_images
+    docker compose -p "${COMPOSE_PROJECT}" -f "${COMPOSE_FILE}" \
+        up -d --no-build graphhopper 2>&1 | tee -a "${LOG_FILE}"
+}
+# shellcheck source=./graphhopper-deploy.sh
+source /graphhopper-deploy.sh
+
 do_update() {
     log "Starte Image-Update (Kanal: $(read_channel))…"
 
@@ -592,9 +607,15 @@ do_update() {
     # detached restart helper at the end, to avoid self-kill mid-orchestration.
     non_updater=$(echo "${all_services}" | tr ' ' '\n' | grep -v '^updater$' | tr '\n' ' ')
 
+    # Ziehen darf der Pull alles — er laedt nur in den lokalen Cache und fasst
+    # keinen laufenden Container an. Getauscht wird dagegen nur, was getauscht
+    # werden DARF: _plan_deploy_services nimmt graphhopper heraus, solange dort
+    # ein Import laeuft (Begruendung am Funktionskopf).
+    _plan_deploy_services "${non_updater}"
+
     log "Pulling: ${all_services}"
     if docker compose -p "${COMPOSE_PROJECT}" -f "${COMPOSE_FILE}" pull ${all_services} 2>&1 | tee -a "${LOG_FILE}" && \
-       docker compose -p "${COMPOSE_PROJECT}" -f "${COMPOSE_FILE}" up -d --no-build ${non_updater} 2>&1 | tee -a "${LOG_FILE}"; then
+       docker compose -p "${COMPOSE_PROJECT}" -f "${COMPOSE_FILE}" up -d --no-build ${DEPLOY_SERVICES} 2>&1 | tee -a "${LOG_FILE}"; then
 
         # Self-repair health gate: the API must actually come up, not just start.
         # A backend that crash-loops (e.g. an image older than the DB schema)
@@ -773,6 +794,11 @@ while true; do
         sleep "${TRIGGER_POLL}"
         continue
     fi
+
+    # Zurueckgestellten GraphHopper-Deploy nachholen, sobald der Import durch
+    # ist — vor dem Ziel-Check, damit ein fertiger Graph nicht bis zum naechsten
+    # Kanal-Ziel auf sein Image wartet.
+    _deploy_deferred_graphhopper
 
     # Automatic update when the channel's target (release tag / main HEAD) moved
     check_target_and_update

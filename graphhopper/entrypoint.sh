@@ -116,7 +116,15 @@ else
     echo "OSM-Daten vorhanden: $OSM_FILE"
 fi
 
-# â”€â”€ GraphHopper-Konfiguration generieren â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── GRAPH_ZUSTAND_ANFANG ────────────────────────────────────────────────────
+# Testmarke (inhaltlich verankert, nicht an Zeilennummern): graphhopper/tests/
+# test_entrypoint_graph_zustand.sh schneidet den Block von hier bis zur
+# Endmarke heraus und sourct ihn isoliert, um die Wipe-Entscheidung ohne
+# Java-Start und ohne echten Graphen zu pruefen. Beide Marken beim Refactoring
+# erhalten oder den Test mitziehen — und ihre Namen NICHT im Kommentartext
+# wiederholen, sonst schneidet der Test an der falschen Zeile ab.
+
+# ── GraphHopper-Konfiguration generieren ────────────────────────────────────
 # road_class + max_speed: vom Backend als Routen-Details angefragt (Fahrzeit-
 # Berechnung innerorts/außerorts) und im Custom Model der Straßenpräferenzen
 # verwendet. max_height: Höhenbeschränkung aus den Fahrzeugdaten.
@@ -151,6 +159,25 @@ if [ -n "$(ls -A "$GRAPH_DIR" 2>/dev/null | grep -vE '^\.(graph_fingerprint|enco
         # Frisch geladene OSM-Datei neben einem bereits vorhandenen Graphen:
         # der Graph stammt aus anderen Daten und passt nicht mehr dazu.
         REBUILD_REASON="Neue OSM-Daten geladen"
+    elif [ ! -f "$GRAPH_DIR/edges" ]; then
+        # Verzeichnis nicht leer, aber ohne Kantendatei: Rest eines
+        # abgebrochenen Imports. Der Fingerprint allein beweist hier nichts —
+        # er wird UNTEN geschrieben, also bevor der Import ueberhaupt
+        # beginnt. Ein Abbruch danach (Deploy, OOM, Host-Neustart) laesst ihn
+        # passend zurueck, waehrend vom Graphen nur Bruchstuecke liegen.
+        #
+        # Genau das ist am 2026-09-19 passiert: uebrig war ein location_index
+        # eines anderen Graphen. GraphHopper importiert dann 13 Minuten neu,
+        # laedt in postProcessing den alten Index, findet die Pruefsumme
+        # falsch — "location index was opened with incorrect graph" — und
+        # endet. `restart: unless-stopped` startet neu: Endlosschleife, ohne
+        # Routing, mit voller CPU. Ein Wipe kostet einen Neuaufbau, das
+        # Nichterkennen kostet alle.
+        #
+        # `edges` als Beleg: GraphHopper legt die Kantendatei bei JEDEM
+        # vollstaendigen Graphen an, und docker/updater/switch-region.sh
+        # benutzt dieselbe Datei als Vollstaendigkeitsmerkmal.
+        REBUILD_REASON="Unvollstaendiger Graph aus abgebrochenem Import"
     fi
     if [ -n "$REBUILD_REASON" ]; then
         echo "================================================================"
@@ -162,6 +189,7 @@ if [ -n "$(ls -A "$GRAPH_DIR" 2>/dev/null | grep -vE '^\.(graph_fingerprint|enco
 fi
 printf '%s' "$FINGERPRINT" > "$FINGERPRINT_FILE"
 rm -f "$LEGACY_FINGERPRINT_FILE"
+# ── GRAPH_ZUSTAND_ENDE ──────────────────────────────────────────────────────
 
 CONFIG_FILE="/tmp/graphhopper-config.yml"
 cat > "$CONFIG_FILE" << CONF
