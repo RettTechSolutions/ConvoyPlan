@@ -9,6 +9,7 @@
 	import ShareLinkModal from '$lib/components/ShareLinkModal.svelte';
 	import FeedbackModal from '$lib/components/FeedbackModal.svelte';
 	import ConvoyFormModal from '$lib/components/ConvoyFormModal.svelte';
+	import SidebarFooter from '$lib/components/SidebarFooter.svelte';
 	import { feedbackStore } from '$lib/stores/feedback';
 
 	const welche = new URLSearchParams(location.search).get('k') ?? 'share';
@@ -30,7 +31,15 @@
 	let konvoiOffen = $state(true);
 </script>
 
-{#if welche === 'feedback'}
+{#if welche === 'fuss'}
+	<!-- Die Seitenleiste der Planung, nur so viel davon wie die Fußzeile sieht:
+	     feste Breite und `overflow: hidden` — daran schnitt der überlaufende
+	     Versionstext vorher ab. -->
+	<div class="leiste" data-theme="dark">
+		<div class="leiste-inhalt">Inhalt der Planung (steht für Listen und Formulare)</div>
+		<SidebarFooter />
+	</div>
+{:else if welche === 'feedback'}
 	<FeedbackModal />
 {:else if welche === 'konvoi'}
 	{#if konvoiOffen}
@@ -46,3 +55,17 @@
 {:else}
 	<ShareLinkModal convoyId="demo" convoyName="THW OV Musterstadt – Verlegung Nord" onClose={() => {}} />
 {/if}
+
+<style>
+	/* Maße aus `plan/+page.svelte`: .sidebar */
+	.leiste {
+		width: 340px;
+		height: 420px;
+		background: var(--sidebar-bg);
+		color: var(--text-1);
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+	.leiste-inhalt { flex: 1; padding: 1rem; font-size: .85rem; color: var(--text-2); }
+</style>
