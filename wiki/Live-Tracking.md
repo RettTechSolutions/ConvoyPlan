@@ -117,6 +117,26 @@ Fahrzeug. Geschrieben wird die Stärke in der üblichen Notation:
 Die Führung sieht die Meldung neben dem Fahrzeug in der Liste, dazu die
 **Verbandsstärke** als Summe über alle Fahrzeuge.
 
+### Eine Funkmeldung nachtragen
+
+Nicht jede Besatzung hat den Fahrer-Link offen — durchgegeben wird die Stärke
+dann über Funk. In der angemeldeten Tracking-Ansicht trägt die Führung sie
+nach: im Reiter **Fahrzeuge** auf das **✎** neben der Stärke des Fahrzeugs,
+Zahlen eintragen, **Stärke eintragen**. Die Meldung steht sofort bei allen
+offenen Ansichten.
+
+Wer selbst in einem Fahrzeug sitzt und die Ansicht angemeldet offen hat, meldet
+seine eigene Stärke im Reiter **Status** unter *Mannschaftsstärke melden* —
+für das Fahrzeug, das oben unter *Meine Position* gewählt ist.
+
+Beides braucht mindestens die Rolle **Fahrer**; ein *Beobachter* sieht die
+Stärke, kann sie aber nicht setzen. Wessen Meldung es war, hält ConvoyPlan
+nicht fest — eingetragen ist eingetragen.
+
+Die Felder starten bei einer bereits gemeldeten Stärke, damit sich eine
+Korrektur nicht neu tippen lässt, sonst bei null — **nie** beim Soll: eine
+vorausgefüllte Planzahl wird im Einsatz bestätigt statt gezählt.
+
 Zwei Dinge hält die Anzeige auseinander:
 
 - **Noch nichts gemeldet** steht als `–/–/–` da und zählt nicht in die Summe;
@@ -244,7 +264,9 @@ Passwortlink erscheint wieder die Passwortabfrage.
 3. Ein Klick auf einen Marker zeigt Fahrzeugdetails (Name, Funkrufname, Status,
    letzte Meldung)
 4. Der Reiter **Fahrzeuge** listet den Verband mit Status und letzter Meldung
-5. Die Ansicht aktualisiert sich fortlaufend ohne Neuladen
+5. Ab der Rolle **Fahrer** lässt sich dort die [Mannschaftsstärke](#eine-funkmeldung-nachtragen)
+   nachtragen, die über Funk hereinkam
+6. Die Ansicht aktualisiert sich fortlaufend ohne Neuladen
 
 ---
 

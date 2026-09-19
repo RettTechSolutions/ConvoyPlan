@@ -263,6 +263,69 @@ async def test_nachtrag_weist_unplausible_zahlen_ab(verband, gesendet, monkeypat
     assert cv.staerke_ist_mannschaften is None
 
 
+
+class _FakeErgebnis:
+    def __init__(self, zeile):
+        self._zeile = zeile
+
+    def scalar_one_or_none(self):
+        return self._zeile
+
+
+class _FakeDb:
+    """Gerade so viel Datenbank, wie der Endpunkt anfasst."""
+
+    def __init__(self, zeile):
+        self._zeile = zeile
+        self.commits = 0
+
+    async def execute(self, *_args, **_kwargs):
+        return _FakeErgebnis(self._zeile)
+
+    async def commit(self):
+        self.commits += 1
+
+
+async def test_nachtrag_verlangt_mindestens_die_rolle_fahrer(gesendet, monkeypatch):
+    """Ein Beobachter trägt keine Stärke nach.
+
+    Die Schwelle steht ausdrücklich im Test, weil die Tracking-Ansicht ihren
+    Knopf danach ein- und ausblendet. Sänke sie hier auf ``read``, bliebe vorne
+    alles wie es war — und das Verstecken sähe weiter aus wie ein Schutz, der es
+    nie war. Was ``fahrer`` gegenüber ``beobachter`` bedeutet, hält
+    ``test_guards.py`` fest; hier geht es um *diesen* Endpunkt.
+    """
+    from app.api.guards import ROLE_ORDER
+
+    verlangt: list[str] = []
+
+    async def _access(*_args, require: str = "read", **_kwargs):
+        verlangt.append(require)
+        return SimpleNamespace(id=uuid.uuid4())
+
+    monkeypatch.setattr(tracking_module, "get_convoy_access", _access)
+
+    cv = SimpleNamespace(
+        staerke_ist_fuehrer=None,
+        staerke_ist_unterfuehrer=None,
+        staerke_ist_mannschaften=None,
+        staerke_gemeldet_at=None,
+    )
+    antwort = await tracking_module.update_vehicle_staerke(
+        uuid.uuid4(),
+        uuid.uuid4(),
+        tracking_module.StaerkeUpdate(fuehrer=0, unterfuehrer=1, mannschaften=8),
+        db=_FakeDb(cv),
+        current_user=SimpleNamespace(id=uuid.uuid4()),
+    )
+
+    assert verlangt == ["fahrer"]
+    assert ROLE_ORDER["beobachter"] < ROLE_ORDER["fahrer"]
+    # Und der Weg dahinter stimmt noch: geschrieben und weitergesagt.
+    assert antwort["gesamt"] == 9
+    assert gesendet[-1]["type"] == "staerke_update"
+
+
 # ── Ablesen: was in der Tracking-Ansicht ankommt ──────────────────────────────
 
 async def test_tracking_ansicht_zeigt_soll_und_ist(verband):

@@ -164,6 +164,14 @@ export function convoyPayload(id: string, fahrzeuge?: ReturnType<typeof konvoiFa
 	};
 }
 
+/** Eine abgefangene Stärkemeldung aus `PATCH …/vehicles/<id>/staerke`. */
+export type StaerkeMeldung = {
+	fahrzeugId: string;
+	fuehrer: number;
+	unterfuehrer: number;
+	mannschaften: number;
+};
+
 /**
  * Das Org-Portal mit der Kernregel des Backends: **welche Sitzung gilt,
  * entscheidet der `X-Org-Slug`-Kopf.** Fehlt er, zählt die organisationslose
@@ -174,8 +182,16 @@ export function convoyPayload(id: string, fahrzeuge?: ReturnType<typeof konvoiFa
  */
 export async function mockOrgPortal(
 	page: Page,
-	opts: { slug: string; convoyId: string; fahrzeuge?: ReturnType<typeof konvoiFahrzeug>[] },
-) {
+	opts: {
+		slug: string;
+		convoyId: string;
+		fahrzeuge?: ReturnType<typeof konvoiFahrzeug>[];
+		/** Rolle der angemeldeten Sitzung. Unter `fahrer` darf nichts gemeldet werden. */
+		rolle?: 'beobachter' | 'fahrer' | 'planer' | 'admin';
+	},
+): Promise<StaerkeMeldung[]> {
+	// Was an `PATCH …/staerke` hinausging — die Liste wächst im Test mit.
+	const staerkeMeldungen: StaerkeMeldung[] = [];
 	const orgKopf = (route: Parameters<Parameters<Page['route']>[1]>[0]) =>
 		route.request().headers()['x-org-slug'] ?? null;
 
@@ -199,7 +215,7 @@ export async function mockOrgPortal(
 			json: {
 				user_id: 'u2', email: 'planer@example.org', is_superadmin: false,
 				org_id: 'o1', org_slug: opts.slug, org_name: 'THW OV Musterstadt',
-				role: 'planer', is_demo: false,
+				role: opts.rolle ?? 'planer', is_demo: false,
 			},
 		});
 	});
@@ -212,6 +228,15 @@ export async function mockOrgPortal(
 		const pfad = new URL(route.request().url()).pathname;
 		if (pfad.endsWith('/route')) return void route.fulfill({ json: null });
 		if (pfad.endsWith('/positions')) return void route.fulfill({ json: [] });
+		if (pfad.endsWith('/staerke')) {
+			const fahrzeugId = pfad.split('/vehicles/')[1]!.replace('/staerke', '');
+			const werte = JSON.parse(route.request().postData() ?? '{}');
+			staerkeMeldungen.push({ fahrzeugId, ...werte });
+			const gesamt = (werte.fuehrer ?? 0) + (werte.unterfuehrer ?? 0) + (werte.mannschaften ?? 0);
+			return void route.fulfill({ json: { status: 'ok', gesamt } });
+		}
 		route.fulfill({ json: convoyPayload(opts.convoyId, opts.fahrzeuge) });
 	});
+
+	return staerkeMeldungen;
 }
