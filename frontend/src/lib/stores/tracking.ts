@@ -2,6 +2,7 @@ import { derived, writable } from 'svelte/store';
 import type { VehiclePosition } from '$lib/api';
 import { getStreamTicket } from '$lib/api/client';
 import { createConnectionTracker, type ConnectionState } from '$lib/tracking/connection';
+import type { Staerke } from '$lib/tracking/staerke';
 
 /** Live status (incl. sub-level and note) received over the WebSocket. */
 export interface VehicleStatusInfo {
@@ -24,6 +25,13 @@ export interface TrackingAlert {
 
 export const livePositions = writable<Map<string, VehiclePosition>>(new Map());
 export const vehicleStatuses = writable<Map<string, VehicleStatusInfo>>(new Map());
+/**
+ * Live gemeldete Mannschaftsstärken je Fahrzeug.
+ *
+ * Nur *gemeldete* — ein Fahrzeug, das schweigt, steht hier nicht drin und
+ * darf in der Anzeige nicht als 0 erscheinen (siehe `$lib/tracking/staerke`).
+ */
+export const vehicleStaerken = writable<Map<string, Staerke>>(new Map());
 /** Rolling log of incoming TH / breakdown alerts (newest first). */
 export const trackingAlerts = writable<TrackingAlert[]>([]);
 /**
@@ -143,6 +151,9 @@ async function openSocket(convoyId: string) {
 			level?: string | null;
 			note?: string | null;
 			ts?: string;
+			fuehrer?: number;
+			unterfuehrer?: number;
+			mannschaften?: number;
 		};
 		if (data.type === 'pong') {
 			// Heartbeat reply — the timestamp above is all we need.
@@ -156,6 +167,18 @@ async function openSocket(convoyId: string) {
 				});
 				return new Map(m);
 			});
+		} else if (data.type === 'staerke_update') {
+			if (
+				typeof data.fuehrer === 'number' && typeof data.unterfuehrer === 'number' &&
+				typeof data.mannschaften === 'number'
+			) {
+				vehicleStaerken.update((m) => {
+					m.set(data.vehicle_id, {
+						fuehrer: data.fuehrer!, unterfuehrer: data.unterfuehrer!, mannschaften: data.mannschaften!,
+					});
+					return new Map(m);
+				});
+			}
 		} else if (data.type === 'alert') {
 			trackingAlerts.update((list) => [
 				{

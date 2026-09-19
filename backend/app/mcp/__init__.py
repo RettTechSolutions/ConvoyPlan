@@ -63,6 +63,7 @@ WRITE_TOOLS: tuple[str, ...] = (
     "wegpunkte_umsortieren",
     "route_berechnen",
     "fahrzeugstatus_setzen",
+    "fahrzeugstaerke_melden",
 )
 
 ALLOWED_TOOLS = ALLOWED_TOOLS + WRITE_TOOLS

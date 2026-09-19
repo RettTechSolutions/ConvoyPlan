@@ -99,6 +99,39 @@ Zu beiden lässt sich eine kurze Bemerkung mitgeben (max. 200 Zeichen), etwa
 
 ---
 
+## Mannschaftsstärke melden
+
+Unter den Status-Schaltflächen steht **Mannschaftsstärke melden** mit drei
+Feldern — *Führer*, *Unterführer*, *Mannschaften*. Die Gesamtzahl rechnet
+ConvoyPlan selbst; gemeldet wird erst auf Knopfdruck, Zwischenstände bleiben im
+Fahrzeug. Geschrieben wird die Stärke in der üblichen Notation:
+
+```
+0/1/8//9
+│ │ │   └─ Gesamt (gerechnet)
+│ │ └───── Mannschaften
+│ └─────── Unterführer
+└───────── Führer
+```
+
+Die Führung sieht die Meldung neben dem Fahrzeug in der Liste, dazu die
+**Verbandsstärke** als Summe über alle Fahrzeuge.
+
+Zwei Dinge hält die Anzeige auseinander:
+
+- **Noch nichts gemeldet** steht als `–/–/–` da und zählt nicht in die Summe;
+  darunter steht, wie viele Fahrzeuge noch offen sind.
+- **`0/0/0//0`** ist eine Meldung — das Fahrzeug fährt unbesetzt.
+
+Ist im Marschbefehl eine **Sollstärke** geplant (Planung → *Im Verband* →
+*Sollstärke*), steht sie klein daneben, und eine Abweichung wird hervorgehoben.
+Das Soll ändert nur die Planung, nie die Meldung der Besatzung.
+
+> Die Stärke ist eine Zahl, kein Name: ConvoyPlan speichert zu keiner Meldung,
+> **wer** an Bord ist.
+
+---
+
 ## Alarm bei technischem Halt und Ausfall
 
 Fordert ein Fahrzeug einen technischen Halt an oder meldet einen Ausfall,
