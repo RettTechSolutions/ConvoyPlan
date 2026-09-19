@@ -362,3 +362,96 @@ async def test_unplausibles_soll_wird_abgewiesen(verband, monkeypatch):
     assert resp.status_code == 422
     cv = await _cv(verband)
     assert cv.staerke_soll_mannschaften is None
+
+
+# ── Zurücklesen: was eingetragen wurde, muss wieder herauskommen ──────────────
+#
+# Die Tests darüber prüfen die Datenbankzeile. Genau dort stand die Sollstärke
+# auch, als die Planung sie nach jedem Neuladen leer zeigte: die Antwort auf
+# `GET /api/convoys/{id}` führte die Spalten gar nicht. Weil im Schema jedes
+# Feld einen Vorgabewert hat, sah das Ergebnis aus wie „nichts eingetragen"
+# statt wie ein Fehler. Deshalb stehen die folgenden Tests am Draht, nicht an
+# der Zeile.
+
+
+async def _hole_verband(ids):
+    from httpx import ASGITransport, AsyncClient
+
+    from app.api.deps import get_org_context
+
+    async def _ctx():
+        async with AsyncSessionLocal() as db:
+            return (await db.get(User, ids.user_id), await db.get(Organization, ids.org_id), "planer")
+
+    app.dependency_overrides[get_org_context] = _ctx
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            return await client.get(f"/api/convoys/{ids.convoy_id}")
+    finally:
+        app.dependency_overrides.clear()
+
+
+async def test_eingetragene_sollstaerke_steht_beim_naechsten_laden_noch_da(verband, monkeypatch):
+    await _patch_im_verband(
+        verband,
+        {"staerke_soll_fuehrer": 0, "staerke_soll_unterfuehrer": 1, "staerke_soll_mannschaften": 8},
+        monkeypatch,
+    )
+
+    resp = await _hole_verband(verband)
+
+    assert resp.status_code == 200
+    fahrzeug = resp.json()["convoy_vehicles"][0]
+    assert fahrzeug["staerke_soll_fuehrer"] == 0
+    assert fahrzeug["staerke_soll_unterfuehrer"] == 1
+    assert fahrzeug["staerke_soll_mannschaften"] == 8
+
+
+async def test_gemeldete_staerke_steht_ebenfalls_im_verband(verband):
+    # Die Planungsansicht stellt Soll und Ist nebeneinander; beides kommt aus
+    # derselben Antwort.
+    async with AsyncSessionLocal() as db:
+        cv = await db.get(ConvoyVehicle, (verband.convoy_id, verband.vehicle_id))
+        cv.staerke_ist_fuehrer, cv.staerke_ist_unterfuehrer, cv.staerke_ist_mannschaften = 0, 1, 6
+        cv.status_level, cv.status_note = "dringend", "Reifenschaden"
+        await db.commit()
+
+    fahrzeug = (await _hole_verband(verband)).json()["convoy_vehicles"][0]
+
+    assert (
+        fahrzeug["staerke_ist_fuehrer"],
+        fahrzeug["staerke_ist_unterfuehrer"],
+        fahrzeug["staerke_ist_mannschaften"],
+    ) == (0, 1, 6)
+    assert fahrzeug["status_level"] == "dringend"
+    assert fahrzeug["status_note"] == "Reifenschaden"
+
+
+async def test_kein_feld_der_zeile_faellt_beim_ausliefern_unter_den_tisch(verband):
+    """Der Wächter gegen die nächste vergessene Spalte.
+
+    Das Schema hat für jedes Feld einen Vorgabewert, eine Lücke sieht man der
+    Antwort deshalb nicht an. Hier wird jedes Feld mit einem Wert belegt, der
+    nicht der Vorgabe entspricht — kommt eines als `null` zurück, fehlt es in
+    der Auslieferung.
+    """
+    from app.schemas.convoy import ConvoyVehicleItem
+
+    async with AsyncSessionLocal() as db:
+        cv = await db.get(ConvoyVehicle, (verband.convoy_id, verband.vehicle_id))
+        cv.vehicle_status = "en_route"
+        cv.status_level, cv.status_note = "standard", "unterwegs"
+        cv.sonderfunktion, cv.mobile_phone = "spitzenfuehrer", "0170 1234567"
+        cv.staerke_soll_fuehrer, cv.staerke_soll_unterfuehrer, cv.staerke_soll_mannschaften = 1, 2, 3
+        cv.staerke_ist_fuehrer, cv.staerke_ist_unterfuehrer, cv.staerke_ist_mannschaften = 4, 5, 6
+        await db.commit()
+
+    fahrzeug = (await _hole_verband(verband)).json()["convoy_vehicles"][0]
+
+    leer = [
+        feld
+        for feld in ConvoyVehicleItem.model_fields
+        if feld not in {"vehicle", "position", "status_changed_at", "staerke_gemeldet_at"}
+        and fahrzeug.get(feld) is None
+    ]
+    assert leer == []
