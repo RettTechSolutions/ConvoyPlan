@@ -33,6 +33,18 @@
 				overscroll-behavior: none;
 			}
 
+			/* iOS Safari zoomt beim Antippen in jedes Eingabefeld hinein, dessen
+			   Schrift kleiner als 16px ist — und zoomt danach nicht von selbst
+			   zurück. Weil `overflow-x: clip` (oben) das Zurückschieben der
+			   vergrößerten Seite verhindert, bleibt sie verschoben stehen.
+			   Deshalb auf Geräten ohne Maus eine Untergrenze von 16px.
+			   `!important`, weil jede Komponentenregel (`.ls-form input`,
+			   `.sf-select`, …) spezifischer ist als dieser Elementselektor;
+			   `max(…, 1em)` lässt absichtlich größere Schriften unangetastet. */
+			@media (pointer: coarse) {
+				input, select, textarea { font-size: max(16px, 1em) !important; }
+			}
+
 			:root {
 				/* Typography scale */
 				--text-xs:   .72rem;

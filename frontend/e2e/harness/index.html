@@ -4,6 +4,9 @@
 		<meta charset="utf-8" />
 		<title>ConvoyPlan – Komponentenhülle (E2E)</title>
 		<style>
+			/* Wie in `src/app.html`: die Komponenten sind darauf geschrieben,
+			   und ohne die Regel misst die Hülle anders als die App. */
+			*, *::before, *::after { box-sizing: border-box; }
 			body { margin: 0; font-family: system-ui, sans-serif; background: #4b5f6e; }
 			/* Steht für die Planungsseite darunter: Karte und Listen machen die
 			   Seite lang. Der Ausdruck darf davon nichts mitnehmen. */

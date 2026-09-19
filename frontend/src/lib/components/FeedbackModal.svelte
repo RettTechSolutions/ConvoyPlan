@@ -319,11 +319,14 @@
 	.overlay {
 		position: fixed;
 		inset: 0;
+		height: 100vh;
+		height: 100dvh;
 		z-index: 4000;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		padding: 1rem;
+		padding-bottom: calc(1rem + env(safe-area-inset-bottom));
 	}
 	/* Während der Bildschirmaufnahme: unsichtbar und unantastbar, aber gemountet. */
 	.overlay.versteckt {
@@ -345,7 +348,10 @@
 		border-radius: 10px;
 		box-shadow: 0 18px 50px rgba(0, 0, 0, 0.3);
 		width: min(620px, 100%);
+		/* `dvh` statt `vh`: auf iOS endet ein Dialog über die volle `vh`-Höhe
+		   hinter der Adressleiste. `vh` bleibt als Rückfall. */
 		max-height: min(90vh, 900px);
+		max-height: min(90dvh, 900px);
 		display: flex;
 		flex-direction: column;
 	}
