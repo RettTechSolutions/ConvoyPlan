@@ -265,7 +265,7 @@ Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste
   der Testinstanz kommt — ohne das hängen die Tests ohne Netz an den Kartenkacheln.
   Die Hülle ist **kein** Teil des Produktionsbaus; eine Testroute unter `src/routes/`
   wäre eine, die mit ausgeliefert wird. Der Job läuft im **Playwright-Image**
-  (`mcr.microsoft.com/playwright:v1.56.1-noble`), weil `npx playwright install` auf
+  (`mcr.microsoft.com/playwright:v1.63.0-noble`), weil `npx playwright install` auf
   dem Runner nach dem Download beim Entpacken stehenblieb — ohne Ausgabe, ohne
   Abbruch. Dessen Marke muss zur Fassung von `@playwright/test` passen: Wer die
   Abhängigkeit hebt, hebt die Marke in `ci.yml` mit.
@@ -274,7 +274,7 @@ Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste
   in `frontend/`. Bleibt der Befehl nach dem Download ohne Ausgabe stehen, liegt
   es an der Node-Fassung — dann entweder eine ältere nehmen oder die Suite im
   selben Image fahren wie die CI:
-  `docker run --rm -v "$PWD":/w -w /w/frontend mcr.microsoft.com/playwright:v1.56.1-noble
+  `docker run --rm -v "$PWD":/w -w /w/frontend mcr.microsoft.com/playwright:v1.63.0-noble
   sh -c 'npm ci && npm run test:e2e'`.
 - **Shell** — die Suiten unter `docker/updater/tests/` und für den
   GraphHopper-Entrypoint; sie tragen den Regionswechsel und laufen im Job

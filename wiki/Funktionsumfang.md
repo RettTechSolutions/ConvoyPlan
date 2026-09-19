@@ -31,7 +31,7 @@ Vollständige Feature-Übersicht von ConvoyPlan mit Umsetzungsstatus. Eine kompa
 | Rollen | Admin, Planer, Fahrer und Beobachter | ✅ |
 | MFA / TOTP | Zwei-Faktor-Authentifizierung per TOTP im Org-Admin-Panel einrichtbar | ✅ |
 | SMTP-Dienst | Passwort-E-Mails direkt aus dem Admin-Panel versenden | ✅ |
-| Tracking-Links | Freigabe ohne Login als **Viewer** (nur ansehen) oder **Fahrer** (darf ohne Konto ein Fahrzeug wählen und Position/Status senden), optional passwortgeschützt, einzeln widerrufbar mit Zugriffszähler | ✅ |
+| Tracking-Links | Freigabe ohne Login als **Viewer** (nur ansehen) oder **Fahrer** (darf ohne Konto ein Fahrzeug wählen und Position/Status senden), optional passwortgeschützt, einzeln widerrufbar mit Zugriffszähler, als QR-Code anzeigbar/druckbar zur Weitergabe an Mitfahrer | ✅ |
 | Branding | Eigenes App-Logo, Farben und Name über Admin-UI konfigurierbar | ✅ |
 | Leitstellen | Leitstellen und Kanalwechselpunkte entlang der Route | ✅ |
 | Org-Leitstellen | Org-eigene Leitstellen mit Vorschlags-/Freigabe-Workflow, Übersichtskarte und Auswahl fertiger Verwaltungsgrenzen (Kreise/kreisfreie Städte in DE, Bezirke in AT, Kantone in CH/LI) | ✅ |
