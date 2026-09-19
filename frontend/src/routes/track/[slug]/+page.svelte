@@ -7,7 +7,8 @@
 	import TrackingPwaHead from '$lib/components/TrackingPwaHead.svelte';
 	import QrShare from '$lib/components/QrShare.svelte';
 	import StaerkeBadge from '$lib/components/StaerkeBadge.svelte';
-	import { MAX_JE_ROLLE, istAus, type Staerke, type StaerkeFelder } from '$lib/tracking/staerke';
+	import StaerkeForm from '$lib/components/StaerkeForm.svelte';
+	import { type Staerke, type StaerkeFelder } from '$lib/tracking/staerke';
 	import {
 		trackApi, isTrackGate,
 		type TrackPayload, type TrackGate, type TrackPosition, type VehiclePosition,
@@ -299,38 +300,24 @@
 		sendDriverPosition(lat, lon);
 	}
 
-	// Eingabe der Mannschaftsstärke. Bewusst **nicht** aus dem Soll vorbelegt:
-	// eine vorausgefüllte Zahl wird im Einsatz bestätigt statt gezählt, und
-	// genau das soll die Meldung nicht sein.
-	let staerkeEingabe = $state({ fuehrer: 0, unterfuehrer: 0, mannschaften: 0 });
-	let staerkeQuittung = $state(false);
-
-	function klemm(wert: number | null | undefined): number {
-		const zahl = Math.round(Number(wert ?? 0));
-		if (!Number.isFinite(zahl)) return 0;
-		return Math.min(Math.max(zahl, 0), MAX_JE_ROLLE);
-	}
-
-	const staerkeSumme = $derived(
-		klemm(staerkeEingabe.fuehrer) + klemm(staerkeEingabe.unterfuehrer) + klemm(staerkeEingabe.mannschaften)
-	);
-
-	function sendDriverStaerke() {
-		if (!myVehicleId) { driverError = 'Bitte zuerst ein Fahrzeug auswählen'; return; }
-		if (!wsReady()) { driverError = 'Keine Verbindung – Stärke nicht gesendet'; return; }
-		const werte = {
-			fuehrer: klemm(staerkeEingabe.fuehrer),
-			unterfuehrer: klemm(staerkeEingabe.unterfuehrer),
-			mannschaften: klemm(staerkeEingabe.mannschaften),
-		};
+	/**
+	 * Die eigene Stärke melden. Die Eingabe steckt in `StaerkeForm`, hier steht
+	 * nur der Weg: der Fahrer-Link spricht über seinen WebSocket, nicht über die
+	 * angemeldete API — er hat keine Sitzung.
+	 *
+	 * Gibt `false` zurück, wenn nichts hinausging; dann bleibt die Quittung im
+	 * Formular aus, statt einen Versand zu bestätigen, den es nicht gab.
+	 */
+	function sendDriverStaerke(werte: Staerke): boolean {
+		if (!myVehicleId) { driverError = 'Bitte zuerst ein Fahrzeug auswählen'; return false; }
+		if (!wsReady()) { driverError = 'Keine Verbindung – Stärke nicht gesendet'; return false; }
 		driverError = '';
 		live!.send({ type: 'staerke', vehicle_id: myVehicleId, ...werte });
 		// Optimistisch: die eigene Meldung steht sofort in der eigenen Liste.
 		const next = new Map(liveStaerken);
 		next.set(myVehicleId, werte);
 		liveStaerken = next;
-		staerkeQuittung = true;
-		setTimeout(() => { staerkeQuittung = false; }, 2500);
+		return true;
 	}
 
 	function sendDriverStatus(status: string, level: string | null = null, note: string | null = null) {
@@ -586,29 +573,12 @@
 							{/if}
 						</div>
 
-						<div class="staerke-melden">
-							<div class="sub-label">Mannschaftsstärke melden</div>
-							<div class="staerke-felder">
-								<label class="staerke-feld">
-									<span>Führer</span>
-									<input type="number" min="0" max={MAX_JE_ROLLE} bind:value={staerkeEingabe.fuehrer} />
-								</label>
-								<label class="staerke-feld">
-									<span>Unterführer</span>
-									<input type="number" min="0" max={MAX_JE_ROLLE} bind:value={staerkeEingabe.unterfuehrer} />
-								</label>
-								<label class="staerke-feld">
-									<span>Mannschaften</span>
-									<input type="number" min="0" max={MAX_JE_ROLLE} bind:value={staerkeEingabe.mannschaften} />
-								</label>
-								<div class="staerke-feld staerke-summe">
-									<span>Gesamt</span>
-									<output>{staerkeSumme}</output>
-								</div>
-							</div>
-							<button class="btn-primary" onclick={sendDriverStaerke}>👥 Stärke melden</button>
-							{#if staerkeQuittung}<p class="hint hint-active">Stärke gemeldet</p>{/if}
-						</div>
+						<!--
+							Die Eingabe steht in derselben Komponente wie in der
+							Tracking-Ansicht der Führung — eine Meldung sieht an beiden
+							Stellen gleich aus, weil sie dieselbe ist.
+						-->
+						<StaerkeForm onMelden={sendDriverStaerke} testid="staerke-form-fahrer" />
 					{/if}
 
 				</div>
@@ -833,11 +803,6 @@
 
 	/* Vehicle rows */
 	.vehicle-row { display: flex; align-items: center; justify-content: space-between; padding: .35rem 0; border-bottom: 1px solid var(--border); gap: .4rem; }
-	.staerke-melden { margin-top: .6rem; padding-top: .6rem; border-top: 1px solid var(--border); }
-	.staerke-felder { display: flex; gap: .4rem; margin: .35rem 0 .5rem; }
-	.staerke-feld { display: flex; flex-direction: column; gap: .15rem; flex: 1; min-width: 0; font-size: .7rem; }
-	.staerke-feld input { width: 100%; padding: .3rem; text-align: center; font-variant-numeric: tabular-nums; }
-	.staerke-summe output { display: block; padding: .3rem; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
 	.veh-right { display: flex; align-items: center; gap: .45rem; flex-shrink: 0; }
 	.veh-left { display: flex; align-items: center; gap: .3rem; flex: 1; min-width: 0; }
 	.status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }

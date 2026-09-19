@@ -12,8 +12,10 @@
 		acknowledgeAllAlerts, vehicleStaerken, type VehicleStatusInfo,
 	} from '$lib/stores/tracking';
 	import StaerkeBadge from '$lib/components/StaerkeBadge.svelte';
+	import StaerkeForm from '$lib/components/StaerkeForm.svelte';
+	import { orgStore } from '$lib/stores/org';
 	import {
-		formatStaerke, verbandsStaerke, type StaerkeFelder,
+		formatStaerke, istAus, verbandsStaerke, type Staerke, type StaerkeFelder,
 	} from '$lib/tracking/staerke';
 	import {
 		STATUS_LABELS, STATUS_COLORS, STATUS_ICONS, HALT_LEVEL_LABELS, BREAKDOWN_LEVEL_LABELS,
@@ -154,6 +156,52 @@
 	const gesamtStaerke = $derived(
 		verbandsStaerke((convoy?.convoy_vehicles ?? []).map((cv) => staerkeVon(cv)))
 	);
+
+	// Welche Fahrzeugzeile ihr Eingabefeld offen hat — höchstens eine.
+	let staerkeOffenFuer = $state<string | null>(null);
+
+	/**
+	 * Darf hier gemeldet werden? `PATCH …/staerke` verlangt die Rolle `fahrer`;
+	 * ein Beobachter bekäme 403 und soll den Knopf nicht erst gezeigt bekommen.
+	 * Das hier ist Anzeige, nicht Schutz — der steht hinten (`guards.py`).
+	 */
+	const darfMelden = $derived($orgStore != null && $orgStore.user_role !== 'beobachter');
+
+	/** Die eigene, bereits gemeldete Stärke — Ausgangsstand für eine Korrektur. */
+	const meineStaerke = $derived.by(() => {
+		const cv = (convoy?.convoy_vehicles ?? []).find((c) => c.vehicle.id === myVehicleId);
+		return cv ? istAus(staerkeVon(cv)) : null;
+	});
+
+	/**
+	 * Eine Stärkemeldung setzen — die eigene aus dem Reiter *Status* oder eine
+	 * über Funk durchgegebene, die die Führung hier für ein fremdes Fahrzeug
+	 * nachträgt. Derselbe Aufruf für beides: in der Meldung steht die Stärke,
+	 * nicht wer sie getippt hat.
+	 *
+	 * Anders als im Fahrer-Link geht das **nicht** über den Live-Kanal: der
+	 * trägt hier nur Positionen, und `PATCH …/staerke` schreibt die Zahlen fest
+	 * und verteilt sie von sich aus an alle offenen Ansichten.
+	 */
+	async function meldeStaerke(vehicleId: string, werte: Staerke): Promise<boolean> {
+		// Optimistisch wie beim Status — die Liste soll sofort stimmen.
+		const vorher = $vehicleStaerken.get(vehicleId) ?? null;
+		vehicleStaerken.update((m) => { m.set(vehicleId, werte); return new Map(m); });
+		try {
+			await trackingApi.updateVehicleStaerke(convoyId, vehicleId, werte);
+			staerkeOffenFuer = null;
+			return true;
+		} catch {
+			// Zurücknehmen: eine Zahl, die nur auf diesem Schirm steht, ist
+			// schlimmer als gar keine — die Führung hielte sie für gemeldet.
+			vehicleStaerken.update((m) => {
+				if (vorher) m.set(vehicleId, vorher); else m.delete(vehicleId);
+				return new Map(m);
+			});
+			error = 'Stärke konnte nicht gemeldet werden';
+			return false;
+		}
+	}
 
 	function statusOf(cv: { vehicle: { id: string }; vehicle_status: string; status_level?: string | null }): string {
 		return $vehicleStatuses.get(cv.vehicle.id)?.status ?? cv.vehicle_status;
@@ -615,7 +663,9 @@
 		<!-- Meine Position -->
 		<div class="position-block">
 			<div class="position-label">Meine Position</div>
-			<select bind:value={myVehicleId} disabled={transmitting}>
+			<!-- Die Beschriftung steht daneben, nicht als `label` daran — für alles,
+			     was die Ansicht nicht sieht, muss sie trotzdem am Feld stehen. -->
+			<select aria-label="Meine Position" bind:value={myVehicleId} disabled={transmitting}>
 				<option value="">Fahrzeug wählen…</option>
 				{#each availableVehicles as cv}
 					<option value={cv.vehicle.id}>{cv.vehicle.name}{cv.vehicle.callsign ? ` (${cv.vehicle.callsign})` : ''}</option>
@@ -670,6 +720,8 @@
 					{#each (convoy?.convoy_vehicles ?? []) as cv}
 						{@const st = statusOf(cv)}
 						{@const lvl = levelOf(cv)}
+						{@const fzLabel = cv.vehicle.callsign || cv.vehicle.name}
+						{@const offen = staerkeOffenFuer === cv.vehicle.id}
 						<div class="vehicle-row">
 							<div class="veh-left">
 								<span class="status-dot" style="background:{statusColor(st)}"></span>
@@ -679,11 +731,40 @@
 							</div>
 							<div class="veh-right">
 								<StaerkeBadge fahrzeugId={cv.vehicle.id} felder={staerkeVon(cv)} />
+								{#if darfMelden}
+									<!--
+										Eigener Knopf statt eines anklickbaren Abzeichens: das
+										Abzeichen steht auch im Fahrer-Link, wo es nichts zu
+										klicken gibt, und eine Anzeige, die mal aufgeht und mal
+										nicht, ist keine.
+									-->
+									<button
+										class="staerke-edit"
+										class:offen
+										aria-expanded={offen}
+										aria-label="Stärke für {fzLabel} eintragen"
+										title="Über Funk gemeldete Stärke für {fzLabel} eintragen"
+										data-testid="staerke-edit-{cv.vehicle.id}"
+										onclick={() => (staerkeOffenFuer = offen ? null : cv.vehicle.id)}
+									>✎</button>
+								{/if}
 								<span class="status-chip" style="color:{statusColor(st)};border-color:{statusColor(st)}">
 									{statusLabel(st)}{#if levelLabel(st, lvl)} · {levelLabel(st, lvl)}{/if}
 								</span>
 							</div>
 						</div>
+						{#if offen}
+							<div class="staerke-panel">
+								<StaerkeForm
+									titel="Stärke {fzLabel} (Funkmeldung)"
+									knopf="👥 Stärke eintragen"
+									quittungstext="Stärke eingetragen"
+									vorgabe={istAus(staerkeVon(cv))}
+									testid="staerke-form-{cv.vehicle.id}"
+									onMelden={(werte) => meldeStaerke(cv.vehicle.id, werte)}
+								/>
+							</div>
+						{/if}
 					{/each}
 					{#if (convoy?.convoy_vehicles ?? []).length === 0}
 						<p class="hint">Keine Fahrzeuge im Verband</p>
@@ -745,6 +826,21 @@
 								</div>
 							{/if}
 						</div>
+						{#if darfMelden}
+							<!--
+								Dieselbe Eingabe wie im Fahrer-Link — wer die Ansicht
+								angemeldet offen hat, sitzt genauso in einem Fahrzeug.
+								`#key`, damit ein Wechsel des Fahrzeugs die Felder neu
+								aus dessen Meldung füllt statt die alten Zahlen zu behalten.
+							-->
+							{#key myVehicleId}
+								<StaerkeForm
+									vorgabe={meineStaerke}
+									testid="staerke-form-eigen"
+									onMelden={(werte) => meldeStaerke(myVehicleId, werte)}
+								/>
+							{/key}
+						{/if}
 					{/if}
 				</div>
 
@@ -996,6 +1092,11 @@
 	.vs-label { color: var(--text-muted); }
 	.vs-wert { font-weight: 700; font-variant-numeric: tabular-nums; }
 	.vs-offen { margin-left: auto; color: var(--text-muted); font-size: .75rem; }
+	/* Stärke nachtragen: unauffällig, bis man sie braucht — die Liste ist
+	   zuerst eine Lage und erst danach ein Formular. */
+	.staerke-edit { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 0 .15rem; font-size: .8rem; line-height: 1; border-radius: 4px; }
+	.staerke-edit:hover, .staerke-edit.offen { color: var(--color-primary); background: var(--bg-hover, rgba(255,255,255,.06)); }
+	.staerke-panel { padding: 0 0 .5rem; border-bottom: 1px solid var(--border); }
 	.veh-left { display: flex; align-items: center; gap: .3rem; flex: 1; min-width: 0; }
 	.status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 	.vname { font-size: var(--text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

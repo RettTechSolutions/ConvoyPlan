@@ -136,3 +136,100 @@ test.describe('Verbandsstärke in der Tracking-Ansicht', () => {
 		await expect(summe).toContainText('1 ohne Meldung');
 	});
 });
+
+test.describe('Stärke nachtragen (Tracking-Ansicht)', () => {
+	const SLUG_ORG = 'thw-musterstadt';
+	const CONVOY = '11111111-1111-1111-1111-111111111111';
+
+	/** Zwei Fahrzeuge: eines mit Soll und Meldung, eines nur mit Soll. */
+	function verband() {
+		return [
+			konvoiFahrzeug({
+				position: 1,
+				staerke_soll_fuehrer: 0, staerke_soll_unterfuehrer: 1, staerke_soll_mannschaften: 8,
+				staerke_ist_fuehrer: 0, staerke_ist_unterfuehrer: 1, staerke_ist_mannschaften: 6,
+				vehicle: { id: 'v1', name: 'LF 10', callsign: 'Florian 1' },
+			}),
+			konvoiFahrzeug({
+				position: 2,
+				staerke_soll_fuehrer: 0, staerke_soll_unterfuehrer: 1, staerke_soll_mannschaften: 8,
+				vehicle: { id: 'v2', name: 'MTW 2', callsign: 'Florian 2' },
+			}),
+		];
+	}
+
+	async function oeffnenAlsOrg(page: Page, rolle?: 'beobachter' | 'fahrer' | 'planer' | 'admin') {
+		await blockExternal(page);
+		const meldungen = await mockOrgPortal(page, {
+			slug: SLUG_ORG, convoyId: CONVOY, fahrzeuge: verband(), rolle,
+		});
+		await page.goto(`/o/${SLUG_ORG}/tracking/${CONVOY}`, { waitUntil: 'domcontentloaded' });
+		return meldungen;
+	}
+
+	test('die Führung trägt eine über Funk gemeldete Stärke für ein fremdes Fahrzeug nach', async ({ page }) => {
+		const meldungen = await oeffnenAlsOrg(page);
+
+		await page.getByTestId('staerke-edit-v2').click();
+		const form = page.getByTestId('staerke-form-v2');
+		await form.getByLabel('Führer', { exact: true }).fill('0');
+		await form.getByLabel('Unterführer', { exact: true }).fill('1');
+		await form.getByLabel('Mannschaften', { exact: true }).fill('7');
+
+		// Tippen ist keine Meldung — auch hier nicht.
+		expect(meldungen).toHaveLength(0);
+
+		await form.getByRole('button', { name: /Stärke eintragen/ }).click();
+
+		await expect.poll(() => meldungen.length).toBe(1);
+		// An das Fahrzeug der Zeile, nicht an das erste im Verband.
+		expect(meldungen[0]).toEqual({ fahrzeugId: 'v2', fuehrer: 0, unterfuehrer: 1, mannschaften: 7 });
+		// Die Liste zeigt die Meldung sofort, ohne Neuladen.
+		await expect(staerke(page, 'v2')).toContainText('0/1/7//8');
+		// Und die Summe zählt sie mit: 0/1/6 + 0/1/7.
+		await expect(page.getByTestId('verbandsstaerke')).toContainText('0/2/13//15');
+	});
+
+	test('die Felder starten bei der bestehenden Meldung — und ohne eine bei null, nicht beim Soll', async ({ page }) => {
+		await oeffnenAlsOrg(page);
+
+		// v1 hat gemeldet: die Korrektur beginnt bei dem, was gemeldet wurde.
+		await page.getByTestId('staerke-edit-v1').click();
+		const gemeldet = page.getByTestId('staerke-form-v1');
+		await expect(gemeldet.getByLabel('Mannschaften', { exact: true })).toHaveValue('6');
+
+		// v2 hat nur ein Soll (0/1/8). Stünde es in den Feldern, wäre die
+		// bequemste Antwort „wie geplant" — und die Meldung wertlos.
+		await page.getByTestId('staerke-edit-v2').click();
+		const offen = page.getByTestId('staerke-form-v2');
+		await expect(offen.getByLabel('Unterführer', { exact: true })).toHaveValue('0');
+		await expect(offen.getByLabel('Mannschaften', { exact: true })).toHaveValue('0');
+	});
+
+	test('ein Beobachter sieht die Stärke, kann sie aber nicht setzen', async ({ page }) => {
+		await oeffnenAlsOrg(page, 'beobachter');
+
+		await expect(staerke(page, 'v1')).toContainText('0/1/6//7');
+		await expect(page.getByTestId('staerke-edit-v1')).toHaveCount(0);
+
+		await page.getByRole('button', { name: 'Status', exact: true }).click();
+		await expect(page.getByTestId('staerke-form-eigen')).toHaveCount(0);
+	});
+
+	test('die eigene Stärke geht an das unter „Meine Position" gewählte Fahrzeug', async ({ page }) => {
+		const meldungen = await oeffnenAlsOrg(page);
+
+		await page.getByLabel('Meine Position').selectOption('v2');
+		await page.getByRole('button', { name: 'Status', exact: true }).click();
+
+		const form = page.getByTestId('staerke-form-eigen');
+		await form.getByLabel('Führer', { exact: true }).fill('1');
+		await form.getByLabel('Unterführer', { exact: true }).fill('0');
+		await form.getByLabel('Mannschaften', { exact: true }).fill('5');
+		await form.getByRole('button', { name: /Stärke melden/ }).click();
+
+		await expect.poll(() => meldungen.length).toBe(1);
+		expect(meldungen[0]).toEqual({ fahrzeugId: 'v2', fuehrer: 1, unterfuehrer: 0, mannschaften: 5 });
+		await expect(form.getByText('Stärke gemeldet')).toBeVisible();
+	});
+});
