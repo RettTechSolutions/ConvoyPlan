@@ -41,6 +41,13 @@ _EXEMPT_PREFIXES = (
     # die Lizenz zwischenzeitlich abgelaufen ist — sonst hinge eine
     # datenschutzrechtliche Pflicht am Lizenzstatus.
     "/api/auth/demo-followup/unsubscribe",
+    # Eine Fehlermeldung muss auch dann abgeschickt werden können, wenn die
+    # Instanz gerade im Demo-Modus hängt — das ist der Zustand, in dem am
+    # ehesten jemand melden will, und „Bitte Lizenz eingeben" wäre darauf die
+    # unbrauchbarste Antwort. Gilt nur für das Melden: das Sichten liegt unter
+    # /api/admin/feedback und bleibt lesend (GET geht ohnehin durch) und
+    # ansonsten lizenzpflichtig.
+    "/api/feedback",
     "/api/license/",
     "/api/setup",
     "/api/track/",

@@ -1567,3 +1567,107 @@ export const orgAuthApi = {
     requestPasswordReset: (email: string, org_slug: string) =>
         api.post<{ status: string }>('/api/auth/password-reset', { email, org_slug }),
 };
+
+// ── Meldungen: Fehler und Wünsche ────────────────────────────────────────────
+
+export type FeedbackKind = 'bug' | 'feature';
+export type FeedbackSeverity = 'niedrig' | 'normal' | 'hoch' | 'kritisch';
+export type FeedbackStatus =
+	| 'neu'
+	| 'gesichtet'
+	| 'geplant'
+	| 'in_arbeit'
+	| 'erledigt'
+	| 'abgelehnt'
+	| 'duplikat';
+
+export interface FeedbackPayload {
+	kind: FeedbackKind;
+	title: string;
+	description: string;
+	severity: FeedbackSeverity;
+	page_url?: string | null;
+	user_agent?: string | null;
+	app_version?: string | null;
+	viewport?: string | null;
+	/** Data-URL (PNG, JPEG oder WebP) — siehe `FeedbackModal.svelte`. */
+	screenshot?: string | null;
+}
+
+export interface FeedbackSubmitted {
+	id: string;
+	kind: FeedbackKind;
+	created_at: string;
+}
+
+export interface FeedbackReport {
+	id: string;
+	kind: FeedbackKind;
+	title: string;
+	description: string;
+	severity: FeedbackSeverity;
+	priority: FeedbackSeverity;
+	status: FeedbackStatus;
+	org_id: string | null;
+	org_slug: string | null;
+	org_name: string | null;
+	org_vorhanden: boolean;
+	user_id: string | null;
+	reporter_email: string | null;
+	reporter_name: string | null;
+	reporter_role: string | null;
+	is_demo: boolean;
+	page_url: string | null;
+	user_agent: string | null;
+	app_version: string | null;
+	viewport: string | null;
+	has_screenshot: boolean;
+	screenshot_bytes: number | null;
+	admin_note: string | null;
+	handled_by_email: string | null;
+	handled_at: string | null;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface FeedbackStats {
+	gesamt: number;
+	offen: number;
+	bugs_offen: number;
+	features_offen: number;
+	kritisch_offen: number;
+	neu_7_tage: number;
+	je_status: Record<string, number>;
+}
+
+export const feedbackApi = {
+	submit: (data: FeedbackPayload) => api.post<FeedbackSubmitted>('/api/feedback', data),
+};
+
+export interface FeedbackFilter {
+	kind?: FeedbackKind | '';
+	status?: FeedbackStatus | '';
+	offen?: boolean;
+}
+
+export const feedbackAdminApi = {
+	list: (filter: FeedbackFilter = {}) => {
+		const q = new URLSearchParams();
+		if (filter.kind) q.set('kind', filter.kind);
+		if (filter.status) q.set('status', filter.status);
+		if (filter.offen) q.set('offen', 'true');
+		const qs = q.toString();
+		// Ausdrücklich die organisationslose Sitzung: das Adminportal liegt
+		// außerhalb jeder Organisation, und ein mitgeschickter `X-Org-Slug`
+		// zeigte dort auf ein Cookie, das es nicht gibt.
+		return api.get<FeedbackReport[]>(`/api/admin/feedback${qs ? `?${qs}` : ''}`, null);
+	},
+	stats: () => api.get<FeedbackStats>('/api/admin/feedback/stats', null),
+	update: (
+		id: string,
+		data: { status?: FeedbackStatus; priority?: FeedbackSeverity; admin_note?: string }
+	) => api.patch<FeedbackReport>(`/api/admin/feedback/${id}`, data, null),
+	remove: (id: string) => api.delete(`/api/admin/feedback/${id}`, null),
+	/** Die Adresse des Bildschirmfotos — hinter der Superadmin-Sitzung. */
+	screenshotUrl: (id: string) => `/api/admin/feedback/${id}/screenshot`,
+};

@@ -56,3 +56,42 @@ export const shareLinksApi = {
 	}),
 	revoke: async (): Promise<void> => {},
 };
+
+// ── Melde-Dialog ─────────────────────────────────────────────────────────────
+
+export type FeedbackKind = 'bug' | 'feature';
+export type FeedbackSeverity = 'niedrig' | 'normal' | 'hoch' | 'kritisch';
+
+export interface FeedbackPayload {
+	kind: FeedbackKind;
+	title: string;
+	description: string;
+	severity: FeedbackSeverity;
+	page_url?: string | null;
+	user_agent?: string | null;
+	app_version?: string | null;
+	viewport?: string | null;
+	screenshot?: string | null;
+}
+
+/**
+ * Legt ab, was der Dialog abgeschickt hätte.
+ *
+ * Genau darum geht es im Test: nicht, ob ein Aufruf stattfand, sondern **was
+ * in ihm stand**. Eine Zusage wie „mitgeschickt wird nur, was der Ausklapper
+ * nennt" lässt sich an einem Bildschirmfoto nicht ablesen.
+ */
+declare global {
+	interface Window {
+		__letzteMeldung?: FeedbackPayload;
+		__meldungen?: number;
+	}
+}
+
+export const feedbackApi = {
+	submit: async (data: FeedbackPayload) => {
+		window.__letzteMeldung = data;
+		window.__meldungen = (window.__meldungen ?? 0) + 1;
+		return { id: 'f-1', kind: data.kind, created_at: '2026-09-19T10:00:00Z' };
+	},
+};

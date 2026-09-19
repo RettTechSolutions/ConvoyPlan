@@ -34,6 +34,13 @@ CONVOY_UPDATED = "convoy.updated"
 CONVOY_DELETED = "convoy.deleted"
 SHARE_LINK_CREATED = "convoy.share_link.created"
 SHARE_LINK_REVOKED = "convoy.share_link.revoked"
+# Meldungen aus der Anwendung. Das Eingehen wird mitgeschrieben, weil der
+# Melde-Dialog der einzige Weg ist, auf dem ein beliebiges Mitglied Text und
+# ein Bild auf die Instanz legen kann — wer das missbraucht, soll auffindbar
+# sein. Statuswechsel und Löschungen, weil sie fremde Aussagen betreffen.
+FEEDBACK_SUBMITTED = "feedback.submitted"
+FEEDBACK_UPDATED = "admin.feedback.updated"
+FEEDBACK_DELETED = "admin.feedback.deleted"
 # MCP: jeder schreibende Werkzeugaufruf. Ein eigener Präfix, damit sich im
 # Audit-Log auf einen Blick trennen lässt, was ein Mensch im Portal getan hat
 # und was ein Sprachmodell über die Schnittstelle. Für ein BOS-Produkt ist

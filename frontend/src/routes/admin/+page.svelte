@@ -6,7 +6,7 @@
     import { auth } from '$lib/stores/auth';
     import EmailTemplateEditor from '$lib/components/EmailTemplateEditor.svelte';
     import { getStreamTicket } from '$lib/api/client';
-    import { adminApi, mfaApi, leistellenApi, licenseApi, mcpAdminApi, regionApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoStats, type DemoSessionInfo, type DemoLeadInfo, type DemoIpLock, type DemoIpAllowlistEntry, type RegionStatus, type RegionPhase, type McpStatus, type McpClient, type McpConnection, type McpOrgPolicy } from '$lib/api';
+    import { adminApi, mfaApi, leistellenApi, licenseApi, mcpAdminApi, regionApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoStats, type DemoSessionInfo, type DemoLeadInfo, type DemoIpLock, type DemoIpAllowlistEntry, type RegionStatus, type RegionPhase, type McpStatus, type McpClient, type McpConnection, type McpOrgPolicy, feedbackAdminApi, type FeedbackReport, type FeedbackStats, type FeedbackStatus, type FeedbackSeverity, type FeedbackKind } from '$lib/api';
     import { brandingStore, applyBranding, normalizeBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
     import SuperadminLogin from '$lib/components/SuperadminLogin.svelte';
@@ -20,7 +20,126 @@
     let authed = $state(false);
 
     // ── Tab ──────────────────────────────────────────────────────────────────
-    let activeTab = $state<'benutzer' | 'organisationen' | 'api-keys' | 'mcp' | 'leitstellen' | 'branding' | 'demo' | 'uebersicht' | 'system'>('benutzer');
+    let activeTab = $state<'benutzer' | 'organisationen' | 'api-keys' | 'mcp' | 'meldungen' | 'leitstellen' | 'branding' | 'demo' | 'uebersicht' | 'system'>('benutzer');
+
+    // ── Meldungen (Fehler und Wünsche aus der Anwendung) ─────────────────────
+    // Zwei Abfragen statt einer: die Kennzahlen zählen über den *ganzen*
+    // Bestand, die Liste zeigt den gefilterten Ausschnitt. Beides aus einer
+    // Antwort zu rechnen hieße, die Kacheln beim Filtern mitwandern zu lassen
+    // — und dann sagt „3 offen" nur noch etwas über den Filter aus.
+    let feedbackItems = $state<FeedbackReport[]>([]);
+    let feedbackStats = $state<FeedbackStats | null>(null);
+    let feedbackLoading = $state(false);
+    let feedbackError = $state('');
+    let feedbackDetail = $state<FeedbackReport | null>(null);
+    let feedbackNote = $state('');
+    let feedbackBusy = $state(false);
+    // Standard: nur, was noch auf dem Tisch liegt. Wer das Archiv sehen will,
+    // klickt es an — umgekehrt hätte man beim Öffnen des Reiters erst einmal
+    // erledigte Meldungen vor sich.
+    let feedbackNurOffen = $state(true);
+    let feedbackKind = $state<FeedbackKind | ''>('');
+    let feedbackStatusFilter = $state<FeedbackStatus | ''>('');
+
+    const FEEDBACK_STATUS_LABEL: Record<string, string> = {
+        neu: 'Neu',
+        gesichtet: 'Gesichtet',
+        geplant: 'Geplant',
+        in_arbeit: 'In Arbeit',
+        erledigt: 'Erledigt',
+        abgelehnt: 'Abgelehnt',
+        duplikat: 'Duplikat',
+    };
+    const FEEDBACK_STUFE_LABEL: Record<string, string> = {
+        niedrig: 'Niedrig',
+        normal: 'Normal',
+        hoch: 'Hoch',
+        kritisch: 'Kritisch',
+    };
+    const FEEDBACK_STATUS: FeedbackStatus[] = ['neu', 'gesichtet', 'geplant', 'in_arbeit', 'erledigt', 'abgelehnt', 'duplikat'];
+    const FEEDBACK_STUFEN: FeedbackSeverity[] = ['niedrig', 'normal', 'hoch', 'kritisch'];
+
+    /** Nur die Kennzahlen — für den Zähler am Reiter, bevor jemand ihn anklickt.
+     *  Eine offene Meldung, die man erst sieht, wenn man nachsieht, ist der
+     *  Grund, warum Rückmeldekanäle einschlafen. */
+    async function loadFeedbackStats() {
+        try {
+            feedbackStats = await feedbackAdminApi.stats();
+        } catch {
+            // Der Zähler ist Beiwerk; ein Fehler hier darf das Portal nicht aufhalten.
+        }
+    }
+
+    async function loadFeedback() {
+        feedbackLoading = true;
+        feedbackError = '';
+        try {
+            const [liste, zahlen] = await Promise.all([
+                feedbackAdminApi.list({
+                    kind: feedbackKind || undefined,
+                    status: feedbackStatusFilter || undefined,
+                    offen: feedbackNurOffen && !feedbackStatusFilter,
+                }),
+                feedbackAdminApi.stats(),
+            ]);
+            feedbackItems = liste;
+            feedbackStats = zahlen;
+            // Die geöffnete Meldung auf den frischen Stand ziehen — oder
+            // schließen, wenn sie aus dem Filter gefallen ist.
+            if (feedbackDetail) {
+                feedbackDetail = liste.find(m => m.id === feedbackDetail!.id) ?? null;
+            }
+        } catch (e) {
+            feedbackError = (e as Error).message;
+        } finally {
+            feedbackLoading = false;
+        }
+    }
+
+    function openFeedback(item: FeedbackReport) {
+        feedbackDetail = item;
+        feedbackNote = item.admin_note ?? '';
+    }
+
+    async function patchFeedback(data: { status?: FeedbackStatus; priority?: FeedbackSeverity; admin_note?: string }) {
+        if (!feedbackDetail) return;
+        feedbackBusy = true;
+        feedbackError = '';
+        try {
+            const aktualisiert = await feedbackAdminApi.update(feedbackDetail.id, data);
+            feedbackDetail = aktualisiert;
+            feedbackItems = feedbackItems.map(m => (m.id === aktualisiert.id ? aktualisiert : m));
+            // Die Kennzahlen hängen am Status — nach einem Wechsel stimmen sie
+            // sonst bis zum nächsten Reiterwechsel nicht mehr.
+            feedbackStats = await feedbackAdminApi.stats();
+        } catch (e) {
+            feedbackError = (e as Error).message;
+        } finally {
+            feedbackBusy = false;
+        }
+    }
+
+    async function deleteFeedback(item: FeedbackReport) {
+        if (!confirm(`Meldung „${item.title}" endgültig löschen? Das Bildschirmfoto wird mitgelöscht.`)) return;
+        feedbackBusy = true;
+        try {
+            await feedbackAdminApi.remove(item.id);
+            feedbackItems = feedbackItems.filter(m => m.id !== item.id);
+            if (feedbackDetail?.id === item.id) feedbackDetail = null;
+            feedbackStats = await feedbackAdminApi.stats();
+        } catch (e) {
+            feedbackError = (e as Error).message;
+        } finally {
+            feedbackBusy = false;
+        }
+    }
+
+    function feedbackDatum(iso: string): string {
+        return new Date(iso).toLocaleString('de-DE', {
+            day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit',
+        });
+    }
+
 
     // ── Users ────────────────────────────────────────────────────────────────
     let users = $state<AdminUser[]>([]);
@@ -64,7 +183,7 @@
         await loadUsers();
         await loadLeitstellen();
         await loadBranding();
-        await Promise.all([loadGithubTokenStatus(), loadTrafficKeys(), loadUpdateStatus(), loadUpdateChannel(), loadUpdateMode(), loadMfaStatus(), loadSmtpSettings(), loadDemoSettings()]);
+        await Promise.all([loadGithubTokenStatus(), loadTrafficKeys(), loadUpdateStatus(), loadUpdateChannel(), loadUpdateMode(), loadMfaStatus(), loadSmtpSettings(), loadDemoSettings(), loadFeedbackStats()]);
         await loadRegionStatus();
         startRegionStatusPolling();
     }
@@ -1699,6 +1818,10 @@
         <button class="tab" class:active={activeTab === 'organisationen'} onclick={() => { activeTab = 'organisationen'; loadOrgs(); }}>Organisationen</button>
         <button class="tab" class:active={activeTab === 'api-keys'} onclick={() => { activeTab = 'api-keys'; loadApiKeyOrgs(); }}>API-Keys</button>
         <button class="tab" class:active={activeTab === 'mcp'} onclick={() => { activeTab = 'mcp'; loadMcp(); }}>MCP</button>
+        <button class="tab" class:active={activeTab === 'meldungen'} onclick={() => { activeTab = 'meldungen'; loadFeedback(); }}>
+            Meldungen
+            {#if feedbackStats && feedbackStats.offen > 0}<span class="tab-zaehler">{feedbackStats.offen}</span>{/if}
+        </button>
         <button class="tab" class:active={activeTab === 'leitstellen'} onclick={() => (activeTab = 'leitstellen')}>Leitstellen</button>
         <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>Branding</button>
         <button class="tab" class:active={activeTab === 'demo'} onclick={() => { activeTab = 'demo'; loadDemoSettings(); }}>Demo</button>
@@ -2335,6 +2458,210 @@
                             {/each}
                     </tbody>
                 </table>
+            {/if}
+        </div>
+    {/if}
+
+    {#if activeTab === 'meldungen'}
+        {#if feedbackError}
+            <div class="error-bar">{feedbackError} <button onclick={() => (feedbackError = '')}>✕</button></div>
+        {/if}
+
+        <div class="section">
+            <div class="section-header">
+                <strong>Meldungen aus der Anwendung</strong>
+                <button class="btn-small" onclick={loadFeedback} disabled={feedbackLoading} title="Aktualisieren">⟳</button>
+            </div>
+            <p class="hint" style="margin:.2rem 0 .8rem">
+                Was Anwender über den Melden-Knopf in der Anwendung abschicken — Fehler und
+                Wünsche. Jede Meldung trägt Seite, Browser und Fassung mit, oft ein
+                Bildschirmfoto. Sichtbar ist das nur hier.
+            </p>
+
+            {#if feedbackStats}
+                <div class="kpi-grid">
+                    <div class="kpi" class:kpi-attention={feedbackStats.kritisch_offen > 0}>
+                        <span class="kpi-value">{feedbackStats.offen}</span>
+                        <span class="kpi-label">Offen</span>
+                        <span class="kpi-sub">von {feedbackStats.gesamt} insgesamt</span>
+                    </div>
+                    <div class="kpi">
+                        <span class="kpi-value">{feedbackStats.bugs_offen}</span>
+                        <span class="kpi-label">Fehler offen</span>
+                        <span class="kpi-sub">nicht erledigt, abgelehnt oder Duplikat</span>
+                    </div>
+                    <div class="kpi">
+                        <span class="kpi-value">{feedbackStats.features_offen}</span>
+                        <span class="kpi-label">Wünsche offen</span>
+                        <span class="kpi-sub">Vorschläge aus dem Einsatz</span>
+                    </div>
+                    <div class="kpi" class:kpi-attention={feedbackStats.kritisch_offen > 0}>
+                        <span class="kpi-value">{feedbackStats.kritisch_offen}</span>
+                        <span class="kpi-label">Kritisch offen</span>
+                        <span class="kpi-sub">Priorität „kritisch", noch offen</span>
+                    </div>
+                    <div class="kpi">
+                        <span class="kpi-value">{feedbackStats.neu_7_tage}</span>
+                        <span class="kpi-label">Neu (7 Tage)</span>
+                        <span class="kpi-sub">unabhängig vom Status</span>
+                    </div>
+                </div>
+            {/if}
+
+            <div class="meldungs-filter">
+                <label class="checkbox-label">
+                    <input type="checkbox" bind:checked={feedbackNurOffen} onchange={loadFeedback} disabled={!!feedbackStatusFilter} />
+                    Nur offene
+                </label>
+                <select bind:value={feedbackKind} onchange={loadFeedback} aria-label="Art">
+                    <option value="">Alle Arten</option>
+                    <option value="bug">Fehler</option>
+                    <option value="feature">Wünsche</option>
+                </select>
+                <select bind:value={feedbackStatusFilter} onchange={loadFeedback} aria-label="Status">
+                    <option value="">Alle Status</option>
+                    {#each FEEDBACK_STATUS as st}
+                        <option value={st}>{FEEDBACK_STATUS_LABEL[st]}{#if feedbackStats}&nbsp;({feedbackStats.je_status[st] ?? 0}){/if}</option>
+                    {/each}
+                </select>
+            </div>
+
+            {#if feedbackLoading}
+                <p class="hint">Wird geladen …</p>
+            {:else if feedbackItems.length === 0}
+                <p class="hint">
+                    {feedbackNurOffen && !feedbackKind && !feedbackStatusFilter
+                        ? 'Keine offenen Meldungen. Entweder läuft alles rund oder niemand meldet — der Melden-Knopf sitzt in der Planungsansicht unten links.'
+                        : 'Zu diesem Filter gibt es keine Meldungen.'}
+                </p>
+            {:else}
+                <div class="meldungs-layout">
+                    <ul class="meldungs-liste">
+                        {#each feedbackItems as item}
+                            <li>
+                                <button
+                                    class="meldungs-zeile"
+                                    class:aktiv={feedbackDetail?.id === item.id}
+                                    onclick={() => openFeedback(item)}
+                                >
+                                    <span class="m-kopf">
+                                        <span class="m-art" title={item.kind === 'bug' ? 'Fehler' : 'Wunsch'}>
+                                            {item.kind === 'bug' ? '🐞' : '💡'}
+                                        </span>
+                                        <span class="m-titel">{item.title}</span>
+                                        <span class="badge {item.status === 'neu' ? 'badge-update' : item.status === 'erledigt' ? 'badge-ok' : 'badge-muted'}">
+                                            {FEEDBACK_STATUS_LABEL[item.status] ?? item.status}
+                                        </span>
+                                    </span>
+                                    <span class="m-meta">
+                                        <span class="prio prio-{item.priority}">{FEEDBACK_STUFE_LABEL[item.priority] ?? item.priority}</span>
+                                        <span>{item.org_name ?? '—'}</span>
+                                        {#if item.is_demo}<span class="tag">Demo</span>{/if}
+                                        {#if item.has_screenshot}<span class="tag" title="Mit Bildschirmfoto">📷</span>{/if}
+                                        <span>{feedbackDatum(item.created_at)}</span>
+                                    </span>
+                                </button>
+                            </li>
+                        {/each}
+                    </ul>
+
+                    <div class="meldungs-detail">
+                        {#if !feedbackDetail}
+                            <p class="hint">Eine Meldung auswählen, um Beschreibung, Umgebung und Bildschirmfoto zu sehen.</p>
+                        {:else}
+                            <div class="d-kopf">
+                                <h3>{feedbackDetail.kind === 'bug' ? '🐞' : '💡'} {feedbackDetail.title}</h3>
+                                <button class="btn-small" onclick={() => (feedbackDetail = null)} title="Schließen">✕</button>
+                            </div>
+
+                            <div class="d-steuerung">
+                                <label>
+                                    <span>Status</span>
+                                    <select
+                                        value={feedbackDetail.status}
+                                        disabled={feedbackBusy}
+                                        onchange={(e) => patchFeedback({ status: (e.currentTarget as HTMLSelectElement).value as FeedbackStatus })}
+                                    >
+                                        {#each FEEDBACK_STATUS as st}
+                                            <option value={st}>{FEEDBACK_STATUS_LABEL[st]}</option>
+                                        {/each}
+                                    </select>
+                                </label>
+                                <label>
+                                    <span>Priorität</span>
+                                    <select
+                                        value={feedbackDetail.priority}
+                                        disabled={feedbackBusy}
+                                        onchange={(e) => patchFeedback({ priority: (e.currentTarget as HTMLSelectElement).value as FeedbackSeverity })}
+                                    >
+                                        {#each FEEDBACK_STUFEN as stufe}
+                                            <option value={stufe}>{FEEDBACK_STUFE_LABEL[stufe]}</option>
+                                        {/each}
+                                    </select>
+                                </label>
+                                <span class="d-gemeldet">
+                                    Gemeldet als <strong>{FEEDBACK_STUFE_LABEL[feedbackDetail.severity] ?? feedbackDetail.severity}</strong>
+                                </span>
+                            </div>
+
+                            <p class="d-beschreibung">{feedbackDetail.description}</p>
+
+                            {#if feedbackDetail.has_screenshot}
+                                <div class="d-bild">
+                                    <a href={feedbackAdminApi.screenshotUrl(feedbackDetail.id)} target="_blank" rel="noopener">
+                                        <img src={feedbackAdminApi.screenshotUrl(feedbackDetail.id)} alt="Bildschirmfoto zur Meldung" />
+                                    </a>
+                                    <span class="hint">Klicken öffnet das Bild in voller Größe.</span>
+                                </div>
+                            {/if}
+
+                            <dl class="d-umgebung">
+                                <dt>Melder</dt>
+                                <dd>
+                                    {feedbackDetail.reporter_name || '—'}
+                                    {#if feedbackDetail.reporter_email}<br /><span class="mono">{feedbackDetail.reporter_email}</span>{/if}
+                                    {#if feedbackDetail.reporter_role}<br /><span class="tag">{feedbackDetail.reporter_role}</span>{/if}
+                                </dd>
+                                <dt>Organisation</dt>
+                                <dd>
+                                    {feedbackDetail.org_name ?? '—'}
+                                    {#if feedbackDetail.org_slug}<span class="mono"> ({feedbackDetail.org_slug})</span>{/if}
+                                    {#if !feedbackDetail.org_vorhanden && feedbackDetail.org_slug}
+                                        <br /><span class="hint">gelöscht — Angaben sind eine Kopie aus der Meldung</span>
+                                    {/if}
+                                </dd>
+                                <dt>Seite</dt>
+                                <dd class="mono">{feedbackDetail.page_url ?? '—'}</dd>
+                                <dt>Browser</dt>
+                                <dd class="mono">{feedbackDetail.user_agent ?? '—'}</dd>
+                                <dt>Fassung</dt>
+                                <dd class="mono">{feedbackDetail.app_version ?? '—'}{#if feedbackDetail.viewport} · {feedbackDetail.viewport}{/if}</dd>
+                                <dt>Eingegangen</dt>
+                                <dd>{feedbackDatum(feedbackDetail.created_at)}</dd>
+                                {#if feedbackDetail.handled_by_email}
+                                    <dt>Zuletzt bearbeitet</dt>
+                                    <dd>
+                                        <span class="mono">{feedbackDetail.handled_by_email}</span>
+                                        {#if feedbackDetail.handled_at}<br />{feedbackDatum(feedbackDetail.handled_at)}{/if}
+                                    </dd>
+                                {/if}
+                            </dl>
+
+                            <label class="d-notiz">
+                                <span>Interne Notiz</span>
+                                <textarea bind:value={feedbackNote} rows="3" maxlength="8000" placeholder="Einordnung, Ticketnummer, Rückfrage …"></textarea>
+                            </label>
+                            <div class="d-aktionen">
+                                <button class="btn-small primary" disabled={feedbackBusy} onclick={() => patchFeedback({ admin_note: feedbackNote })}>
+                                    Notiz speichern
+                                </button>
+                                <button class="btn-danger-small" disabled={feedbackBusy} onclick={() => feedbackDetail && deleteFeedback(feedbackDetail)}>
+                                    Löschen
+                                </button>
+                            </div>
+                        {/if}
+                    </div>
+                </div>
             {/if}
         </div>
     {/if}
@@ -4168,6 +4495,46 @@
     .kpi-attention .kpi-value { color: var(--color-primary); }
 
     .badge { display: inline-block; padding: .15rem .5rem; border-radius: 3px; font-size: var(--text-xs); font-weight: 600; }
+
+    /* ── Meldungen ──────────────────────────────────────────────────────── */
+    .tab-zaehler { display: inline-block; margin-left: .35rem; padding: .05rem .35rem; border-radius: 999px; background: var(--color-primary); color: #fff; font-size: .65rem; font-weight: 700; line-height: 1.5; }
+    .meldungs-filter { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin: .9rem 0 .75rem; }
+    .meldungs-filter select { padding: .3rem .5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-1); color: var(--text-1); font-size: var(--text-sm); }
+    /* Liste links, Detail rechts — erst ab Tablettbreite. Darunter stehen beide
+       untereinander, sonst wird das Bildschirmfoto unlesbar schmal. */
+    .meldungs-layout { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+    @media (min-width: 900px) { .meldungs-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); align-items: start; } }
+    .meldungs-liste { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .35rem; max-height: 34rem; overflow-y: auto; }
+    .meldungs-zeile { width: 100%; text-align: left; display: flex; flex-direction: column; gap: .25rem; padding: .55rem .65rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); color: var(--text-1); cursor: pointer; font: inherit; }
+    .meldungs-zeile:hover { background: var(--surface-1); }
+    .meldungs-zeile.aktiv { border-color: var(--color-primary); background: var(--surface-1); }
+    .m-kopf { display: flex; align-items: center; gap: .4rem; }
+    .m-titel { flex: 1; min-width: 0; font-size: var(--text-sm); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .m-meta { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; font-size: var(--text-xs); color: var(--text-muted); }
+    .prio { padding: .05rem .35rem; border-radius: 3px; border: 1px solid var(--border); font-weight: 600; }
+    .prio-hoch { color: #d97706; border-color: rgba(217,119,6,.45); }
+    .prio-kritisch { color: var(--color-primary); border-color: rgba(180,60,40,.5); }
+    .meldungs-detail { border: 1px solid var(--border); border-radius: 8px; padding: .9rem; background: var(--surface-2); }
+    .d-kopf { display: flex; align-items: flex-start; justify-content: space-between; gap: .5rem; }
+    .d-kopf h3 { margin: 0 0 .5rem; font-size: var(--text-base); line-height: 1.35; overflow-wrap: anywhere; }
+    .d-steuerung { display: flex; gap: .75rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: .75rem; }
+    .d-steuerung label { display: flex; flex-direction: column; gap: .2rem; font-size: var(--text-xs); color: var(--text-muted); }
+    .d-steuerung select { padding: .3rem .5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-1); color: var(--text-1); font-size: var(--text-sm); }
+    .d-gemeldet { font-size: var(--text-xs); color: var(--text-muted); padding-bottom: .35rem; }
+    /* `pre-wrap`: die Beschreibung kommt oft als nummerierte Schrittfolge —
+       ohne die Zeilenumbrüche wird daraus ein Absatz und die Reihenfolge
+       unlesbar. */
+    .d-beschreibung { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--text-sm); line-height: 1.55; color: var(--text-1); background: var(--surface-1); border: 1px solid var(--border); border-radius: 6px; padding: .6rem .7rem; margin: 0 0 .75rem; }
+    .d-bild { margin-bottom: .75rem; }
+    .d-bild img { width: 100%; max-height: 22rem; object-fit: contain; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-1); display: block; }
+    .d-bild .hint { display: block; margin-top: .25rem; font-size: var(--text-xs); }
+    .d-umgebung { display: grid; grid-template-columns: 7rem minmax(0, 1fr); gap: .25rem .7rem; margin: 0 0 .75rem; font-size: var(--text-xs); }
+    .d-umgebung dt { color: var(--text-muted); }
+    .d-umgebung dd { margin: 0; color: var(--text-2); overflow-wrap: anywhere; }
+    .d-umgebung .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .d-notiz { display: flex; flex-direction: column; gap: .25rem; font-size: var(--text-xs); color: var(--text-muted); }
+    .d-notiz textarea { width: 100%; padding: .45rem .55rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-1); color: var(--text-1); font: inherit; font-size: var(--text-sm); resize: vertical; }
+    .d-aktionen { display: flex; gap: .5rem; margin-top: .5rem; }
     .badge-ok { background: rgba(107,127,77,.2); color: #a8c070; border: 1px solid rgba(107,127,77,.4); }
     .badge-update { background: rgba(210,120,30,.2); color: #e8a050; border: 1px solid rgba(210,120,30,.4); }
     .badge-warn { background: rgba(180,60,40,.15); color: var(--color-primary); border: 1px solid rgba(180,60,40,.3); }

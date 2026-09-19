@@ -203,6 +203,47 @@ Docstrings erklären hier Entscheidungen, und die gehören nicht in ein offenes 
 existiert, und keiner hängt an einem Guard. Wer dort etwas ändert, sieht zuerst in diesem
 Test nach.
 
+### Meldungen aus der Anwendung (Fehler und Wünsche)
+
+Der Melde-Knopf sitzt in der Planungsansicht (Seitenleiste, neben *Hilfe*) und
+im Org-Admin. Der Dialog hängt **einmal** im Org-Layout
+(`routes/o/[slug]/+layout.svelte`) und wird über `stores/feedback.ts` geöffnet —
+ein Store und keine Prop-Kette, weil Auslöser und Dialog nicht beieinander
+stehen.
+
+Das Bildschirmfoto entsteht im Browser (`lib/screenshot.ts`) über
+`getDisplayMedia`, Einfügen oder Dateiauswahl und geht als **Data-URL im
+JSON-Körper** mit, nicht als zweiter Multipart-Aufruf: sonst stünde die Meldung
+zwischen beiden Aufrufen ohne ihr Bild da, und zwar genau dann, wenn das Netz
+wackelt. Kein `html2canvas` — ein Nachzeichner malt das DOM nach, und bei Karte,
+Schriften und überlagerten Ebenen kommt dabei etwas anderes heraus als auf dem
+Schirm stand.
+
+Erkannt wird das Format an den **Magic Bytes** (`services/feedback.py`), nicht
+am angegebenen Typ, und SVG ist ausgeschlossen — ein Bildschirmfoto ist nie
+eines, und es ist das einzige Bildformat, das Skript trägt. Abgelegt wird unter
+`/uploads/feedback/`, ausgeliefert nur über
+`GET /api/admin/feedback/{id}/screenshot`: ein ratbarer Pfad unter `/uploads/`
+wäre für die ganze Instanz lesbar, und auf einem Bild aus dem Einsatz stehen
+Einsatzdaten.
+
+Melden und Sichten liegen in **einer** Datei (`api/routes/feedback.py`, zwei
+Router). Die Herkunft einer Meldung kommt aus der Sitzung, nie aus dem Körper;
+`melder()` probiert dafür erst `get_org_context` und fällt auf
+`get_current_person` zurück, weil der Dialog auch außerhalb einer Organisation
+aufgeht. `/api/feedback` steht in `_EXEMPT_PREFIXES` des Lizenzwächters — der
+Demo-Modus ist der Zustand, in dem am ehesten jemand melden will.
+
+Zwei Einschätzungen, die getrennt bleiben: `severity` gehört dem Melder und wird
+nicht angefasst, `priority` dem Betreiber. In einem Feld verlöre man die erste
+beim ersten Triage-Klick, und genau die sagt, wie schlimm es sich *im Einsatz*
+angefühlt hat.
+
+`frontend/e2e/feedback-melden.spec.ts` hält die Zusage fest, die man der
+Oberfläche nicht ansieht: der abgeschickte Aufruf enthält die Felder, die der
+Ausklapper „Was mitgeschickt wird" nennt — und kein Feld mehr. Anwenderdoku:
+`wiki/Meldungen.md`.
+
 ## Test-Konventionen
 
 Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste:
