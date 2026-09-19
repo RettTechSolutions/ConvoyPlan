@@ -5,15 +5,15 @@ Organisation oder ein gelöschter Benutzer nimmt die Meldung nicht mit. Was
 dann fehlt, sind die Verweise; die Textkopien von Name, Kürzel und Adresse
 stehen daneben und bleiben lesbar.
 
-Revision ID: 0043
-Revises: 0042
+Revision ID: 0044
+Revises: 0043
 Create Date: 2026-09-19
 """
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0043"
-down_revision = "0042"
+revision = "0044"
+down_revision = "0043"
 branch_labels = None
 depends_on = None
 

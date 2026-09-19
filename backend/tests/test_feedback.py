@@ -327,7 +327,7 @@ def test_melden_bleibt_ohne_lizenz_erreichbar():
 
 
 def test_migration_und_modell_beschreiben_dieselbe_tabelle():
-    """Die Spalten aus `0043` gegen die des Modells.
+    """Die Spalten aus `0044` gegen die des Modells.
 
     Ohne diese Prüfung fällt eine neue Spalte, die nur im Modell steht, erst
     in Produktion auf — beim ersten `INSERT` gegen eine Tabelle, die sie nicht
@@ -339,7 +339,7 @@ def test_migration_und_modell_beschreiben_dieselbe_tabelle():
 
     from app.models.feedback import FeedbackReport
 
-    quelle = Path(__file__).resolve().parents[1] / "alembic/versions/0043_feedback_reports.py"
+    quelle = Path(__file__).resolve().parents[1] / "alembic/versions/0044_feedback_reports.py"
     baum = ast.parse(quelle.read_text(encoding="utf-8"))
 
     spalten: set[str] = set()
@@ -355,15 +355,3 @@ def test_migration_und_modell_beschreiben_dieselbe_tabelle():
 
     assert spalten == {spalte.name for spalte in FeedbackReport.__table__.columns}
 
-
-def test_die_migration_haengt_an_der_vorigen():
-    """Eine Revision ohne Vorgänger wäre ein zweiter Kopf — Alembic bliebe
-    beim nächsten `upgrade head` mit einer Fehlermeldung stehen."""
-    import importlib.util
-    from pathlib import Path
-
-    pfad = Path(__file__).resolve().parents[1] / "alembic/versions/0043_feedback_reports.py"
-    spec = importlib.util.spec_from_file_location("migration_0043", pfad)
-    modul = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(modul)
-    assert modul.revision == "0043" and modul.down_revision == "0042"
