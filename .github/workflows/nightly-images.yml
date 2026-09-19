@@ -15,6 +15,14 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: >-
+          Auch die unveraenderten Images neu bauen. Der Normalfall ist "aus":
+          ein Bau ohne Aenderung kostet auf jeder Installation einen
+          Container-Tausch.
+        type: boolean
+        default: false
 
 # Least privilege pro Job: Schreibrechte stehen beim Job, nicht global.
 permissions:
@@ -152,35 +160,55 @@ jobs:
             GIT_SHA=${{ github.sha }}
             APP_VERSION=${{ steps.appver.outputs.version }}
 
-      - name: Build and push graphhopper
+      # ── Die drei statischen Images ──────────────────────────────────────
+      # graphhopper, updater und osmium haengen nicht am Anwendungscode: ihre
+      # Verzeichnisse aendern sich selten, gebaut wurden sie bisher trotzdem
+      # bei jedem Lauf. Jeder Bau erzeugt einen neuen Digest — Commit-SHA und
+      # Zeitstempel stehen als Label in der Image-Konfiguration, und die
+      # gehoert zum Digest. Der Updater auf den Installationen sieht eine neue
+      # Image-ID und tauscht den Container: bei GraphHopper mit minutenlangem
+      # Routing-Ausfall fuer das erneute Laden des Graphen, ohne dass sich am
+      # Image ein Byte geaendert haette.
+      #
+      # Die Aktion baut deshalb nur bei einem Grund (Quelltext, Base-Image,
+      # Alter) und laesst den beweglichen Tag sonst stehen, wo er steht.
+      # Begruendung und Entscheidungslogik: .github/actions/build-or-reuse/.
+
+      - name: graphhopper bauen oder weiterverwenden
         id: build-graphhopper
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        uses: ./.github/actions/build-or-reuse
         with:
+          image: ghcr.io/${{ steps.repo.outputs.lowercase }}/graphhopper
           context: ./graphhopper
-          push: true
-          pull: false   # vorab gezogenes Base-Image aus dem lokalen Cache nutzen
+          source-path: graphhopper
+          channel-tag: nightly
           tags: ${{ steps.meta-graphhopper.outputs.tags }}
           labels: ${{ steps.meta-graphhopper.outputs.labels }}
+          force: ${{ inputs.force_rebuild || false }}
 
-      - name: Build and push updater
+      - name: updater bauen oder weiterverwenden
         id: build-updater
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        uses: ./.github/actions/build-or-reuse
         with:
+          image: ghcr.io/${{ steps.repo.outputs.lowercase }}/updater
           context: ./docker/updater
-          push: true
-          pull: false   # vorab gezogenes Base-Image aus dem lokalen Cache nutzen
+          source-path: docker/updater
+          channel-tag: nightly
           tags: ${{ steps.meta-updater.outputs.tags }}
           labels: ${{ steps.meta-updater.outputs.labels }}
+          force: ${{ inputs.force_rebuild || false }}
 
-      - name: Build and push osmium
+      - name: osmium bauen oder weiterverwenden
         id: build-osmium
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        uses: ./.github/actions/build-or-reuse
         with:
+          image: ghcr.io/${{ steps.repo.outputs.lowercase }}/osmium
           context: ./docker/osmium
-          push: true
-          pull: false   # vorab gezogenes Base-Image aus dem lokalen Cache nutzen
+          source-path: docker/osmium
+          channel-tag: nightly
           tags: ${{ steps.meta-osmium.outputs.tags }}
           labels: ${{ steps.meta-osmium.outputs.labels }}
+          force: ${{ inputs.force_rebuild || false }}
 
       # ── Signatur (Sigstore/cosign, keyless) ─────────────────────────────
       # Ohne Signatur heisst "Image mit dem richtigen Tag" nur: irgendjemand
@@ -206,20 +234,33 @@ jobs:
           DIGEST_GRAPHHOPPER: ${{ steps.build-graphhopper.outputs.digest }}
           DIGEST_UPDATER: ${{ steps.build-updater.outputs.digest }}
           DIGEST_OSMIUM: ${{ steps.build-osmium.outputs.digest }}
+          # Ob die drei statischen Images in DIESEM Lauf wirklich gebaut
+          # wurden — siehe .github/actions/build-or-reuse.
+          REBUILT_GRAPHHOPPER: ${{ steps.build-graphhopper.outputs.rebuilt }}
+          REBUILT_UPDATER: ${{ steps.build-updater.outputs.rebuilt }}
+          REBUILT_OSMIUM: ${{ steps.build-osmium.outputs.rebuilt }}
         run: |
           set -euo pipefail
+          # backend und frontend werden immer gebaut (der Commit-SHA steckt als
+          # Build-Arg im Image), die drei anderen nur bei Bedarf. Ein
+          # weiterverwendetes Image braucht keine zweite Signatur: cosign
+          # signiert den DIGEST, und genau der ist unveraendert — ein erneuter
+          # Aufruf legte nur einen weiteren Eintrag ins Transparenzlog.
           for entry in \
-            "backend=${DIGEST_BACKEND}" \
-            "frontend=${DIGEST_FRONTEND}" \
-            "graphhopper=${DIGEST_GRAPHHOPPER}" \
-            "updater=${DIGEST_UPDATER}" \
-            "osmium=${DIGEST_OSMIUM}"
+            "backend|${DIGEST_BACKEND}|true" \
+            "frontend|${DIGEST_FRONTEND}|true" \
+            "graphhopper|${DIGEST_GRAPHHOPPER}|${REBUILT_GRAPHHOPPER}" \
+            "updater|${DIGEST_UPDATER}|${REBUILT_UPDATER}" \
+            "osmium|${DIGEST_OSMIUM}|${REBUILT_OSMIUM}"
           do
-            name="${entry%%=*}"
-            digest="${entry#*=}"
+            IFS='|' read -r name digest rebuilt <<<"${entry}"
             if [ -z "$digest" ]; then
-              echo "::error::Kein Digest fuer $name — build-push-action hat keinen geliefert"
+              echo "::error::Kein Digest fuer $name — weder gebaut noch vorgefunden"
               exit 1
+            fi
+            if [ "$rebuilt" != "true" ]; then
+              echo "Ueberspringe $name — unveraendert, ${digest} traegt die Signatur seines Baus."
+              continue
             fi
             echo "Signiere ghcr.io/${REPO_LC}/${name}@${digest}"
             cosign sign --yes "ghcr.io/${REPO_LC}/${name}@${digest}"

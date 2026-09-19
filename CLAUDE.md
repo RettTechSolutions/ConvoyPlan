@@ -27,6 +27,33 @@ Die Produktivinstanz läuft über Docker Compose (`docker-compose.yml`); der
 Updater in `docker/updater/` rollt neue Images aus. Die Marketingsite wird aus
 dem Website-Repo heraus als statisches Astro-Build deployt.
 
+### Images werden nur gebaut, wenn es einen Grund gibt
+
+`graphhopper`, `updater` und `osmium` hängen nicht am Anwendungscode. Gebaut
+wurden sie trotzdem bei jedem Lauf — und jeder Bau erzeugt einen neuen Digest,
+weil `metadata-action` Commit-SHA und Zeitstempel als Label in die
+Image-Konfiguration schreibt und die zum Digest gehört. Der Updater vergleicht
+Image-IDs, sieht eine neue und tauscht den Container: bei GraphHopper mit
+minutenlangem Routing-Ausfall für das erneute Laden des Graphen, im
+Nightly-Kanal mehrmals täglich, ohne dass sich ein Byte geändert hätte.
+
+`.github/actions/build-or-reuse/` entscheidet deshalb vor jedem dieser drei
+Bauten. Gebaut wird bei geändertem Quelltext (Tree-Hash des Verzeichnisses,
+liegt als `de.convoyplan.source-tree` im Image), bei bewegtem Base-Image
+(Digest der letzten `FROM`-Zeile, `de.convoyplan.base-digest`) oder wenn das
+veröffentlichte Image älter als `max-age-days` ist — das Auffangnetz für
+Paketupdates, die den Base-Digest nicht bewegen. Sonst bleibt der bewegliche
+Tag (`latest`/`beta`/`nightly`) stehen, wo er steht, und genau das ist der
+Punkt: nur er wird auf den Installationen gezogen.
+
+Zwei Folgen, die man kennen muss. Ein weiterverwendetes Image bekommt in einem
+Release **keine** Versionstags — es zieht sie niemand, `_apply_channel_images`
+in `update-images.sh` schreibt jede Angabe auf den Kanaltag um. Und es wird
+nicht erneut signiert, weil `cosign` den Digest signiert und der unverändert
+ist. Die Entscheidung selbst steht in `decide.sh`, getrennt von der
+Registry-Abfrage, und wird von `tests/test_image_wiederverwendung.sh` ohne
+Docker und ohne Registry geprüft.
+
 ### API-Docs (Swagger/OpenAPI)
 
 `/docs`, `/redoc` und `/openapi.json` sind in Produktion **standardmäßig deaktiviert**

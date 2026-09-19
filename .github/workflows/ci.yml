@@ -260,7 +260,7 @@ jobs:
       - name: Alle Shell-Suiten ausfuehren
         run: |
           rc=0
-          for t in docker/updater/tests/test_*.sh graphhopper/tests/test_*.sh; do
+          for t in docker/updater/tests/test_*.sh graphhopper/tests/test_*.sh .github/actions/*/tests/test_*.sh; do
             echo "::group::$t"
             if bash "$t"; then
               echo "$t: GRUEN"

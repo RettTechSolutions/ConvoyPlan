@@ -1,0 +1,157 @@
+name: Image bauen oder weiterverwenden
+description: >-
+  Baut ein Image nur, wenn es einen Grund dafuer gibt — geaenderter Quelltext,
+  bewegtes Base-Image oder Alter. Sonst bleibt der veroeffentlichte Digest
+  stehen, und damit laufen die Container auf den Installationen weiter.
+
+inputs:
+  image:
+    description: Image ohne Tag, klein geschrieben (ghcr.io/owner/repo/graphhopper)
+    required: true
+  context:
+    description: Build-Kontext; darin liegt auch das Dockerfile (./graphhopper)
+    required: true
+  source-path:
+    description: Pfad im Repository, dessen Tree-Hash den Quellstand bestimmt
+    required: true
+  channel-tag:
+    description: >-
+      Der bewegliche Tag, der geprueft und bei Wiederverwendung unberuehrt
+      gelassen wird (latest, beta oder nightly). Er zeigt dann weiter auf den
+      bisherigen Digest — genau das ist der Punkt.
+    required: true
+  tags:
+    description: Tag-Liste aus docker/metadata-action; nur beim echten Bau gesetzt
+    required: true
+  labels:
+    description: Label-Liste aus docker/metadata-action
+    required: true
+  max-age-days:
+    description: Spaetestens nach so vielen Tagen wird auch ohne Aenderung gebaut
+    default: '7'
+  force:
+    description: '"true" baut ohne weitere Pruefung'
+    default: 'false'
+
+outputs:
+  digest:
+    description: Digest des Images — frisch gebaut oder unveraendert uebernommen
+    value: ${{ steps.ergebnis.outputs.digest }}
+  rebuilt:
+    description: '"true", wenn wirklich gebaut wurde'
+    value: ${{ steps.pruefen.outputs.build }}
+
+runs:
+  using: composite
+  steps:
+    - name: Ist ein Bau noetig?
+      id: pruefen
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        CONTEXT: ${{ inputs.context }}
+        SOURCE_PATH: ${{ inputs.source-path }}
+        CHANNEL_TAG: ${{ inputs.channel-tag }}
+        MAX_AGE_DAYS: ${{ inputs.max-age-days }}
+        FORCE: ${{ inputs.force }}
+      run: |
+        set -uo pipefail
+        ref="${IMAGE}:${CHANNEL_TAG}"
+
+        # Der Tree-Hash eines Verzeichnisses aendert sich genau dann, wenn sich
+        # darin eine Datei aendert — kein Zeitstempel, kein Commit-SHA, nichts,
+        # was sich ohne Inhaltsaenderung bewegt. Deshalb er und nicht
+        # `git diff` gegen irgendeinen Referenzpunkt.
+        if ! TREE="$(git rev-parse "HEAD:${SOURCE_PATH}" 2>/dev/null)"; then
+          echo "::error::Tree-Hash fuer ${SOURCE_PATH} nicht ermittelbar."
+          exit 1
+        fi
+
+        # Base-Image aus der letzten FROM-Zeile lesen statt als Eingabe zu
+        # verlangen: eine Angabe weniger, die beim naechsten Image jemand
+        # vergisst oder stehen laesst, wenn sich das Dockerfile aendert.
+        DOCKERFILE="${CONTEXT%/}/Dockerfile"
+        BASE="$(awk 'toupper($1) == "FROM" { img = $2 } END { print img }' "${DOCKERFILE}")"
+        BASE_DIGEST=""
+        case "${BASE}" in
+          ''|*'$'*)
+            echo "Base-Image in ${DOCKERFILE} nicht eindeutig ('${BASE}') — Base-Vergleich entfaellt, die Altersgrenze faengt es auf." ;;
+          *)
+            BASE_DIGEST="$(docker buildx imagetools inspect "${BASE}" --format '{{ .Manifest.Digest }}' 2>/dev/null)" || BASE_DIGEST="" ;;
+        esac
+
+        # imagetools liest Manifest und Konfiguration, keine Layer: das
+        # veroeffentlichte Image wird hier NICHT heruntergeladen.
+        META="$(docker buildx imagetools inspect "${ref}" --format '{{ json .Image }}' 2>/dev/null)" || META=""
+        DIGEST="$(docker buildx imagetools inspect "${ref}" --format '{{ .Manifest.Digest }}' 2>/dev/null)" || DIGEST=""
+
+        # Die Form von `.Image` haengt davon ab, ob unter dem Tag ein einzelnes
+        # Manifest oder eine Liste liegt — Attestierungen machen daraus eine.
+        # Deshalb kein fester Pfad, sondern der erste Treffer im Dokument.
+        _label() {
+          [ -n "${META}" ] || return 0
+          printf '%s' "${META}" | jq -r --arg k "$1" \
+            '[.. | objects | .Labels? // empty | .[$k] // empty] | first // empty' 2>/dev/null
+        }
+        PREV_TREE="$(_label de.convoyplan.source-tree)"
+        PREV_BASE="$(_label de.convoyplan.base-digest)"
+        CREATED=""
+        if [ -n "${META}" ]; then
+          CREATED="$(printf '%s' "${META}" | jq -r '[.. | objects | .created? // empty] | first // empty' 2>/dev/null)"
+        fi
+
+        HAVE_IMAGE=false
+        if [ -n "${META}" ] && [ -n "${DIGEST}" ]; then HAVE_IMAGE=true; fi
+
+        GRUND="$(TREE="${TREE}" PREV_TREE="${PREV_TREE}" BASE="${BASE}" \
+                 BASE_DIGEST="${BASE_DIGEST}" PREV_BASE="${PREV_BASE}" \
+                 CREATED="${CREATED}" HAVE_IMAGE="${HAVE_IMAGE}" \
+                 bash "${GITHUB_ACTION_PATH}/decide.sh")"
+
+        {
+          echo "tree=${TREE}"
+          echo "base-digest=${BASE_DIGEST}"
+          echo "digest=${DIGEST}"
+        } >> "${GITHUB_OUTPUT}"
+
+        name="${IMAGE##*/}"
+        if [ -n "${GRUND}" ]; then
+          echo "build=true" >> "${GITHUB_OUTPUT}"
+          echo "::notice title=${name}::Wird gebaut — ${GRUND}."
+        else
+          echo "build=false" >> "${GITHUB_OUTPUT}"
+          echo "::notice title=${name}::Unveraendert — ${ref} bleibt auf ${DIGEST}. Kein neuer Digest heisst: kein Container-Neustart auf den Installationen."
+        fi
+
+    - name: Bauen und hochladen
+      id: bauen
+      if: steps.pruefen.outputs.build == 'true'
+      uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+      with:
+        context: ${{ inputs.context }}
+        push: true
+        pull: false   # vorab gezogenes Base-Image aus dem lokalen Cache nutzen
+        tags: ${{ inputs.tags }}
+        # Die beiden eigenen Label sind die Merkzettel fuer den naechsten Lauf:
+        # ohne sie muesste er raten, ob sich etwas geaendert hat.
+        labels: |
+          ${{ inputs.labels }}
+          de.convoyplan.source-tree=${{ steps.pruefen.outputs.tree }}
+          de.convoyplan.base-digest=${{ steps.pruefen.outputs.base-digest }}
+
+    - name: Digest festhalten
+      id: ergebnis
+      shell: bash
+      env:
+        GEBAUT: ${{ steps.pruefen.outputs.build }}
+        DIGEST_NEU: ${{ steps.bauen.outputs.digest }}
+        DIGEST_ALT: ${{ steps.pruefen.outputs.digest }}
+        IMAGE: ${{ inputs.image }}
+      run: |
+        set -uo pipefail
+        if [ "${GEBAUT}" = "true" ]; then digest="${DIGEST_NEU}"; else digest="${DIGEST_ALT}"; fi
+        if [ -z "${digest}" ]; then
+          echo "::error::Kein Digest fuer ${IMAGE} — weder gebaut noch vorgefunden."
+          exit 1
+        fi
+        echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
