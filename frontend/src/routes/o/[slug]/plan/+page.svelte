@@ -30,6 +30,7 @@
 	import InstallButton from '$lib/components/InstallButton.svelte';
 	import OnboardingTutorial from '$lib/components/OnboardingTutorial.svelte';
 	import { tutorialStore } from '$lib/stores/tutorial';
+	import { feedbackStore } from '$lib/stores/feedback';
 	import QRCode from 'qrcode';
 
 	// ── State ──────────────────────────────────────────────────────────
@@ -1850,6 +1851,12 @@
 		<button class="theme-toggle" onclick={() => tutorialStore.open()} aria-label="Tutorial starten" title="Tutorial / Hilfe">
 			?
 			<span>Hilfe</span>
+		</button>
+		<!-- Neben der Hilfe und nicht als schwebender Knopf über der Karte:
+		     dort verdeckte er genau das, worüber gemeldet wird. -->
+		<button class="theme-toggle" onclick={() => feedbackStore.open('bug')} aria-label="Fehler melden oder Funktion vorschlagen" title="Fehler melden / Funktion vorschlagen">
+			🐞
+			<span>Melden</span>
 		</button>
 		<InstallButton />
 		<span class="app-version">

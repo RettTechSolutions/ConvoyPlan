@@ -4,6 +4,7 @@
     import { onMount, onDestroy } from 'svelte';
     import { orgStore } from '$lib/stores/org';
     import { setOrgBranding, clearOrgBranding } from '$lib/stores/branding';
+    import FeedbackModal from '$lib/components/FeedbackModal.svelte';
 
     let { children } = $props();
     let ready = $state(false);
@@ -61,4 +62,8 @@
 
 {#if ready}
     {@render children()}
+    <!-- Der Melde-Dialog hängt hier und nicht auf jeder Seite einzeln: er
+         soll überall in der Anwendung derselbe sein, und `ready` heißt, dass
+         eine Sitzung besteht — ohne die nimmt das Backend keine Meldung an. -->
+    <FeedbackModal />
 {/if}

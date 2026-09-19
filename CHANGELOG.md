@@ -47,6 +47,18 @@ ursprünglichen SemVer-Nummern.
 
 ### Added
 
+- **Fehler melden und Funktionen vorschlagen — aus der Anwendung heraus, mit Bildschirmfoto.** In der Planungsansicht sitzt unten links neben *Hilfe* ein **Melden**-Knopf, im Org-Admin oben rechts. Der Dialog kennt zwei Arten, *Fehler* und *Wunsch*, und nimmt mit, was zur Einordnung nötig ist: Seite, Browser, Fassung, Fenstergröße, Konto und Organisation.
+
+  Der wertvollste Teil ist das **Bildschirmfoto**, und es gibt es auf drei Wegen: **aufnehmen** über die Bildschirmfreigabe des Browsers (der Dialog blendet sich dafür selbst aus — sonst zeigte das Bild den Dialog statt des Fehlers), **einfügen** mit Strg+V, oder als **Datei wählen**. Keine Fremdbibliothek: Nachzeichner wie `html2canvas` malen das DOM nach, und gerade bei dem, worüber sich jemand beschwert — Karte, Schriften, überlagerte Ebenen — kommt dabei etwas anderes heraus als auf dem Schirm stand. Ein Bildschirmfoto, das etwas anderes zeigt als der Bildschirm, ist schlimmer als keines.
+
+  **Was mitgeht, steht im Dialog** — ausklappbar, mit den tatsächlichen Werten, statt still im Hintergrund. Genau das hält `frontend/e2e/feedback-melden.spec.ts` fest: der abgeschickte Aufruf enthält die genannten Felder und **kein Feld mehr**.
+
+  Im Adminportal gibt es dafür den Reiter **Meldungen**: Kennzahlen (offen, Fehler, Wünsche, kritisch, neu in sieben Tagen), Filter nach Art und Status, links die Liste, rechts die Meldung mit Beschreibung, Bildschirmfoto, Umgebung und interner Notiz. Status und Priorität setzt der Betreiber; **die Einschätzung des Melders bleibt daneben stehen** und wird nicht überschrieben — sie sagt, wie schlimm es sich im Einsatz angefühlt hat. Am Reiter hängt die Zahl der offenen Meldungen, schon bevor jemand hineinsieht: ein Rückmeldekanal, in den man erst hineinsehen muss, um zu merken, dass etwas darin liegt, schläft ein.
+
+  Zwei Entscheidungen, die man sonst für Nachlässigkeit halten könnte: Das Melden ist **von der Lizenzprüfung ausgenommen** — der Demo-Modus ist der Zustand, in dem am ehesten jemand melden will, und „Bitte Lizenz eingeben" wäre darauf die unbrauchbarste Antwort. Und **Demo-Sitzungen dürfen melden**: sie laufen als erste in das, was noch nicht rund ist.
+
+  Gelesen wird das alles **nur vom Betreiber der Instanz**. Bildschirmfotos liegen nicht unter einem ratbaren Pfad in `/uploads`, sondern hinter `GET /api/admin/feedback/{id}/screenshot`; auf einem Bild aus dem Einsatz stehen Einsatzdaten. Eine gelöschte Organisation reißt keine offene Fehlermeldung mit — Verweise stehen auf `SET NULL`, Name und Kürzel daneben als Textkopie. Anwenderdoku: `wiki/Meldungen.md`.
+
 - **Der QR-Code eines Tracking-Links lässt sich wieder anzeigen, herunterladen und drucken.** Bisher gab es ihn genau einmal: direkt nach dem Anlegen, zum Abfotografieren vom Bildschirm. Wer den Dialog schloss, hatte den Link zwar noch in der Liste, aber keinen Code mehr — beim nächsten Fahrer blieb nur Abtippen. Jede aktive Zeile hat jetzt einen **QR**-Knopf, und sowohl dort als auch beim frisch erstellten Link stehen **PNG herunterladen** und **Drucken** bereit.
 
   Der Ausdruck ist ein eigenes Blatt — Konvoi, Rolle des Links, QR-Code, Adresse — und nicht die Planungsseite mit Karte und Listen. Es hängt dafür am `body` und der Rest der Seite wird im Druck ausgenommen; bliebe er nur unsichtbar, stünde sein Layout weiter im Dokument und hinge als leere Folgeseiten hinterher. Kein zweites Fenster, das ein Popup-Blocker abfangen könnte.

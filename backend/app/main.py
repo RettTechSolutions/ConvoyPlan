@@ -17,6 +17,7 @@ from app.api.routes import org_leitstellen as org_leitstellen_router
 from app.api.routes import admin as admin_router
 from app.api.routes import branding as branding_router
 from app.api.routes import email_template as email_template_router
+from app.api.routes import feedback as feedback_router
 from app.api.routes import license as license_router
 from app.api.routes import region as region_router
 from app.api.routes import setup as setup_router
@@ -295,6 +296,9 @@ app.include_router(org_leitstellen_router.router, prefix="/api")
 app.include_router(branding_router.router, prefix="/api")
 app.include_router(org_branding_router.router, prefix="/api")
 app.include_router(email_template_router.router, prefix="/api")
+# Melden und Auswerten liegen im selben Modul — siehe dessen Kopfkommentar.
+app.include_router(feedback_router.router, prefix="/api")
+app.include_router(feedback_router.admin_router, prefix="/api")
 app.include_router(license_router.router, prefix="/api")
 app.include_router(share_links_router.router, prefix="/api")
 app.include_router(track_router.router, prefix="/api")

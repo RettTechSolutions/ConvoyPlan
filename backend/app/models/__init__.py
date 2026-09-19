@@ -12,6 +12,7 @@ from app.models.oauth_client import OAuthClient
 from app.models.oauth_code import OAuthCode
 from app.models.oauth_refresh_token import OAuthRefreshToken
 from app.models.org_mcp_policy import OrganizationMcpPolicy
+from app.models.feedback import FeedbackReport
 from app.models.demo_ip_allowlist import DemoIpAllowlistEntry
 from app.models.demo_lead import DemoLead
 from app.models.demo_origin import DemoOrigin
@@ -22,6 +23,6 @@ __all__ = [
     "Convoy", "ConvoyVehicle", "Waypoint", "Route",
     "VehiclePosition", "ConvoyShareLink", "AuditLog", "ApiKey",
     "OAuthClient", "OAuthCode", "OAuthRefreshToken", "OrganizationMcpPolicy",
-    "DemoOrigin", "DemoIpAllowlistEntry", "DemoLead",
+    "DemoOrigin", "DemoIpAllowlistEntry", "DemoLead", "FeedbackReport",
     "SystemMetricSample", "SystemMetricDaily", "UserActivityDay",
 ]

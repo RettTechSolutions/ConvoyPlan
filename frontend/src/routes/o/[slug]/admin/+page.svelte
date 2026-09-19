@@ -6,6 +6,7 @@
     import LeitstellenOverviewMap from '$lib/components/LeitstellenOverviewMap.svelte';
     import LeitstellenTable from '$lib/components/LeitstellenTable.svelte';
     import { orgStore } from '$lib/stores/org';
+    import { feedbackStore } from '$lib/stores/feedback';
     import { orgLeistellenApi, orgsApi, convoysApi, trackingApi, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type OrgMember } from '$lib/api';
     import { brandingStore, applyBranding, setOrgBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { orgBrandingApi, orgMcpApi, type BrandingUpdate, type OrgMcpPolicy, type OrgMcpConnection } from '$lib/api';
@@ -469,7 +470,10 @@
 <div class="admin-page">
     <div class="admin-header">
         <h1>Org-Admin — {$orgStore?.org_name ?? ''}</h1>
-        <a href="/o/{slug}/plan" class="back-link">← Plan</a>
+        <div class="kopf-aktionen">
+            <button class="melden-link" onclick={() => feedbackStore.open('bug')}>🐞 Melden</button>
+            <a href="/o/{slug}/plan" class="back-link">← Plan</a>
+        </div>
     </div>
 
     <div class="tab-bar">
@@ -1002,6 +1006,9 @@
        Kopfzeile, Reiterleiste und Kartenraster. */
     .admin-page { max-width: var(--admin-width, 1120px); margin: 0 auto; padding: 2rem 1rem; }
     .admin-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; }
+    .kopf-aktionen { display: flex; align-items: center; gap: .75rem; }
+    .melden-link { background: none; border: 1px solid var(--border); border-radius: 6px; padding: .3rem .6rem; cursor: pointer; color: var(--text-2); font-size: var(--text-sm); }
+    .melden-link:hover { color: var(--text-1); }
     h1 { margin: 0; font-size: var(--text-lg); }
     .back-link { color: var(--text-2); font-size: var(--text-sm); text-decoration: none; }
     .back-link:hover { color: var(--text-1); }
