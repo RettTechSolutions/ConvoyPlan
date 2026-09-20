@@ -19,7 +19,12 @@ USER node
 
 COPY --from=builder --chown=node:node /app/build ./build
 COPY --from=builder --chown=node:node /app/package*.json ./
-RUN npm ci --omit=dev
+# adapter-node bundles everything except what package.json lists under
+# `dependencies` — those are resolved from node_modules at runtime. So that list
+# must hold exactly what the server imports (maplibre-gl, qrcode,
+# svelte-dnd-action); build-time packages such as the PWA plugin belong in
+# devDependencies, or they drag Vite, TypeScript and Babel into this image.
+RUN npm ci --omit=dev --ignore-scripts
 
 # npm is only needed for the install above — the container runs `node build` at
 # runtime, never npm. Remove the image-bundled npm CLI so its vendored deps

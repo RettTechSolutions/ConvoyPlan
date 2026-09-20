@@ -188,6 +188,15 @@ services:
       OSM_DOWNLOAD_URL: ${OSM_DOWNLOAD_URL:-https://download.geofabrik.de/europe/dach-latest.osm.pbf}
       OSM_FILENAME: ${OSM_FILENAME:-dach-latest.osm.pbf}
       JAVA_OPTS: ${JAVA_OPTS:--Xmx8g -Xms1g -XX:+UseG1GC}
+      # Speicherzugriff der SERVER-Phase. MMAP (Standard) blendet den fertigen
+      # Graphen ein: der Kernel haelt ihn im Seitencache und gibt ihn unter
+      # Druck frei, die JVM bleibt weit unter -Xmx. RAM_STORE = altes
+      # Verhalten (Graph komplett im Heap). Der Import baut immer mit
+      # RAM_STORE und JAVA_OPTS — siehe graphhopper/entrypoint.sh.
+      GH_DATAACCESS: ${GH_DATAACCESS:-MMAP}
+      # Zusaetzliche JVM-Optionen nur fuer die Server-Phase; leer = Default
+      # aus dem Entrypoint (Heap im Leerlauf zurueckgeben, bei OOM beenden).
+      GH_SERVER_JAVA_OPTS: ${GH_SERVER_JAVA_OPTS:-}
     volumes:
       - osm_data:/data/osm
       - gh_graph:/data/graph
@@ -296,6 +305,8 @@ services:
       OSM_DOWNLOAD_URL: ${OSM_DOWNLOAD_URL:-https://download.geofabrik.de/europe/dach-latest.osm.pbf}
       OSM_FILENAME: ${OSM_FILENAME:-dach-latest.osm.pbf}
       JAVA_OPTS: ${JAVA_OPTS:--Xmx8g -Xms1g -XX:+UseG1GC}
+      GH_DATAACCESS: ${GH_DATAACCESS:-MMAP}
+      GH_SERVER_JAVA_OPTS: ${GH_SERVER_JAVA_OPTS:-}
       BACKEND_IMAGE: ${BACKEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/backend:latest}
       FRONTEND_IMAGE: ${FRONTEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/frontend:latest}
       GRAPHHOPPER_IMAGE: ${GRAPHHOPPER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/graphhopper:latest}

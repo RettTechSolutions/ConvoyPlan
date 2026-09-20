@@ -1,0 +1,11 @@
+# Was nicht ins Laufzeitimage gehoert: die Tests laufen in der CI gegen den
+# Checkout (ci.yml, Job Backend), nie aus dem Container heraus; Caches und
+# lokale Umgebungsdateien sind je Rechner und haetten im Image nichts verloren.
+tests/
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+.ruff_cache/
+.env
+.env.*
+*.pyc

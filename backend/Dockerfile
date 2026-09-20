@@ -2,9 +2,13 @@ FROM python:3.14-slim
 
 WORKDIR /app
 
+# Nur die Sicherheitsaktualisierungen des Basisimages, keine weiteren Pakete:
+# Alle Python-Abhaengigkeiten kommen als fertige Wheels (cp314, amd64 und
+# arm64), Shapely bringt sein GEOS selbst mit. Das frueher installierte
+# libgdal-dev hat nie ein Import gebraucht — es zog nur die komplette
+# GDAL/PROJ/HDF5/NetCDF-Kette samt Header in das Laufzeitimage, ein
+# Vielfaches der eigentlichen Anwendung, jedes Byte davon Trivy-Angriffsflaeche.
 RUN apt-get update && apt-get upgrade -y \
-    && apt-get install -y --no-install-recommends \
-    libgdal-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -13,8 +17,12 @@ COPY requirements.txt .
 # MANIFEST.in exclusion bypass fixed in 83.0.0) to a patched release. This
 # is the copy actually importable/usable by anything in the image. See
 # .trivyignore for why the scan still flags a residual finding after this.
+# --only-binary=:all: macht die Wheel-Zusage oben pruefbar: Faellt ein Paket
+# beim naechsten Hebung auf ein Quellpaket zurueck, bricht der Bau hier mit
+# einer klaren Meldung ab, statt still nach einem Compiler und Headern zu
+# suchen, die es in diesem Image absichtlich nicht gibt.
 RUN pip install --no-cache-dir --upgrade "setuptools>=83.0.0" \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir --only-binary=:all: -r requirements.txt
 
 COPY . .
 
