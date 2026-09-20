@@ -35,7 +35,7 @@ ConvoyPlan ist eine selbst gehostete Web-Anwendung, die Einsatzorganisationen (B
 - 🗺️ **Kartenbasierte Marschplanung** mit OpenStreetMap, MapLibre GL und selbst gehostetem GraphHopper-Routing – Standard DACH-Raum (DE, AT, CH, LI), im Admin-Panel auf beliebige Geofabrik-Regionen erweiterbar und mehrere Regionen zu einer Karte kombinierbar.
 - 🚒 **Fahrzeug- und Verbandsverwaltung** mit Wegpunkten, Kontrollpunkten, technischen Halten und automatischer Zeitplanung.
 - 📄 **Marschbefehl-PDF** sowie GPX- und JSON-Export für Weitergabe und Nachbearbeitung.
-- 📡 **Live-Tracking per WebSocket** mit Fahrzeugstatus, Projektion auf die Route und Wegpunkt-/Kanalwechsel-Meldungen.
+- 📡 **Live-Tracking per WebSocket** mit Fahrzeugstatus, Mannschaftsstärke, Projektion auf die Route und Wegpunkt-/Kanalwechsel-Meldungen.
 - 🌤️ **Wetter- und Verkehrsdaten** über Open-Meteo, Overpass, Autobahn-API, offene Feeds und optional HERE/TomTom.
 - 🏢 **Multi-Tenancy** mit Org-Code-Slug, org-spezifischem Branding, Rollenmodell und vollständiger Datenisolation.
 - 🔒 **Sicherheit & Datenschutz** – MFA/TOTP, Security-Härtung, Audit-Log, DSGVO-Werkzeuge, Backup/Restore.
@@ -124,6 +124,7 @@ Die Markdown-Quellen dazu liegen im Ordner [`wiki/`](wiki/). Bei jedem Push auf 
 | [Marschbefehl & Export](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Marschbefehl-Export) | PDF-Marschbefehl sowie GPX-/JSON-Export |
 | [Rollen & Berechtigungen](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Rollen) | Rollenmodell und Zugriffsrechte |
 | [Teilen](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Teilen) | Öffentliche Freigabelinks ohne Login |
+| [Fehler melden & Wünsche](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Meldungen) | Melde-Knopf in der App mit Bildschirmfoto, Auswertung im Adminportal |
 | [Systemübersicht](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Systemuebersicht) | Hardware-, Container- und Nutzungskennzahlen, System-API-Keys, PRTG-Anbindung, öffentliche Statusseite |
 | [Verkehrsdaten](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Verkehrsdaten) | Baustellen/Sperrungen und Live-Verkehrslage einrichten |
 | [Multi-Tenancy](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Multi-Tenancy) | Organisationen, Org-Code-Slug, Datenisolation |
