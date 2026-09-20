@@ -135,9 +135,18 @@ openssl rand -hex 32
 |---|---|---|
 | `OSM_DOWNLOAD_URL` | `https://download.geofabrik.de/europe/dach-latest.osm.pbf` | Download-URL der OSM-PBF-Datei |
 | `OSM_FILENAME` | `dach-latest.osm.pbf` | Dateiname im persistenten OSM-Volume |
-| `JAVA_OPTS` | `-Xmx8g -Xms1g -XX:+UseG1GC` | JVM-Speicherkonfiguration |
+| `JAVA_OPTS` | `-Xmx8g -Xms1g -XX:+UseG1GC` | JVM-Speicherkonfiguration für den **Graph-Import** |
+| `GH_DATAACCESS` | `MMAP` | Speicherzugriff des laufenden Routing-Servers: `MMAP` (Graph im Seitencache des Kernels, JVM bleibt klein) oder `RAM_STORE` (Graph komplett im Java-Heap) |
+| `GH_SERVER_JAVA_OPTS` | *(leer = Standard)* | Zusätzliche JVM-Optionen nur für den Server; Standard gibt ungenutzten Heap im Leerlauf zurück und beendet die JVM bei `OutOfMemoryError` |
 
 > Richtwerte: DACH `-Xmx8g`, Deutschland `-Xmx6g`, Bayern `-Xmx3g`, Berlin `-Xmx1g`.
+> Sie gelten für den Import. Im Betrieb liegt der Graph mit `GH_DATAACCESS=MMAP`
+> im Seitencache statt im Heap — der Speicher wird also nur belegt, solange
+> er nicht anderweitig gebraucht wird, und die JVM bleibt deutlich unter `-Xmx`.
+> Wer genug RAM hat und die Einlesezeit nach einem Neustart vermeiden will,
+> setzt `GH_DATAACCESS=RAM_STORE`. MMAP blendet den Graphen in 1-MB-Segmenten
+> ein; ein 14-GB-Graph braucht damit rund 14 000 Mappings, der Linux-Standard
+> `vm.max_map_count=65530` reicht also bis weit über 50 GB Graph.
 
 > **Regionswechsel:** Die Variablen hier gelten nur für den **Erststart**. Zum
 > Wechseln der Kartenregion im laufenden Betrieb gibt es seit `2026.4.0` die

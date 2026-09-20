@@ -326,10 +326,15 @@ Graphen statt auf dem Heap als Memory-Mapped-Datei halten
 Hälfte, der Page-Cache übernimmt; der Import wird deutlich langsamer, das
 Routing bei kaltem Cache etwas. Dazu `vm.max_map_count` auf dem Host.
 
-Das ist eine Zeile im Entrypoint (`GH_DATAACCESS`, Standard `RAM_STORE`), und
-sie hilft **auch** auf Host B: mit MMAP passt auf einen 16-GB-Routing-Host eine
-Region, die heute nicht passt. Beides zusammen ist die Aufstellung mit der
-meisten Luft.
+Das ist eine Zeile im Entrypoint (`GH_DATAACCESS`), und sie hilft **auch** auf
+Host B: mit MMAP passt auf einen 16-GB-Routing-Host eine Region, die heute nicht
+passt. Beides zusammen ist die Aufstellung mit der meisten Luft.
+
+*Nachtrag:* Umgesetzt, mit `MMAP` als Standard und mit einem Kniff, der den
+langsamen Import erspart — der Entrypoint baut den Graphen in einer eigenen
+Phase mit `RAM_STORE` und `JAVA_OPTS` und startet erst danach den Server per
+MMAP (`graphhopper/entrypoint.sh`, `tests/test_entrypoint_start_phasen.sh`).
+`GH_DATAACCESS=RAM_STORE` stellt das alte Verhalten her.
 
 ---
 

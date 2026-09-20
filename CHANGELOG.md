@@ -31,6 +31,16 @@ ursprünglichen SemVer-Nummern.
 
   Über den MCP-Server geht dasselbe: `fahrzeugstaerke_melden` (Scope `fleet:status`, Bereich *Status*) meldet, `konvoi_status` liest Stärke je Fahrzeug und Verbandsstärke zurück. Auch dort bleibt „nicht gemeldet" `null` und wird nicht zu `0/0/0` — ein Modell, das beides gleich gezeigt bekäme, erzählte es auch gleich weiter.
 
+### Changed
+
+- **Die Installation braucht deutlich weniger Speicher und Platz.** Drei Stellen, jede für sich.
+
+  Der Routing-Server hält den fertigen Graphen nicht mehr im Java-Heap, sondern blendet ihn ein (`GH_DATAACCESS=MMAP`, Standard): der Kernel hält ihn im Seitencache und gibt ihn unter Speicherdruck frei, statt dass die JVM bis `-Xmx` wächst und nie wieder etwas zurückgibt. `JAVA_OPTS` bemisst nur noch den Import, der dafür als eigener Schritt vor dem Server läuft (`graphhopper/entrypoint.sh`). Der Server bekommt zusätzlich einen Kollektor, der ungenutzten Heap im Leerlauf zurückgibt, und beendet sich bei `OutOfMemoryError`, statt mit gesundem `/health` nicht mehr zu routen. `GH_DATAACCESS=RAM_STORE` stellt das alte Verhalten her.
+
+  Das Backend-Image kommt ohne `libgdal-dev` aus — kein Import hat es je gebraucht, es zog nur die komplette GDAL/PROJ/HDF5-Kette in das Laufzeitimage. Alle Abhängigkeiten werden als fertige Wheels installiert (`--only-binary`), und die Tests bleiben draußen (`.dockerignore`).
+
+  Das Frontend-Image installiert zur Laufzeit nur noch, was der Server wirklich lädt (`maplibre-gl`, `qrcode`, `svelte-dnd-action`): der PWA-Plugin, `workbox-window` und Typdefinitionen sind Bauzeit-Abhängigkeiten und stehen jetzt auch so in `package.json` — die Laufzeit-`node_modules` schrumpfen von rund 230 MB auf unter 50 MB, und Vite, TypeScript, Babel und esbuild sind aus dem ausgelieferten Image verschwunden.
+
 ### Fixed
 
 - **Die Tracking-Ansicht zeigte „Getrennt", obwohl nichts getrennt war.** Zwei Ursachen, die sich zu einer Anzeige addierten.

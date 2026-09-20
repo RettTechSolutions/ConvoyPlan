@@ -90,6 +90,20 @@ Drei Stellen, jede mit eigenem Test:
   ein Verzeichnis mit Fingerprint **und** `edges` (`test_switch_region.sh`,
   Fall 12b).
 
+### Speicher: Import im Heap, Betrieb per MMAP
+
+`graphhopper/entrypoint.sh` startet in **zwei Phasen**, wenn `GH_COMMAND=server`
+und kein `edges` da ist: erst `import` mit `RAM_STORE` und nur `JAVA_OPTS`, dann
+`server` mit `GH_DATAACCESS` (Standard `MMAP`) und zusätzlich
+`GH_SERVER_JAVA_OPTS`. `-Xmx` in `JAVA_OPTS` bemisst also den **Import** — darauf
+beziehen sich Installer, Wiki und der Regionswechsel (`region.py` erzeugt es aus
+der RAM-Schätzung) —, im Betrieb liegt der Graph im Seitencache und die JVM
+bleibt weit darunter. Das Dateiformat ist bei beiden Zugriffsarten dasselbe.
+`GH_COMMAND=import` (Regionswechsel) bleibt einphasig mit `RAM_STORE`. Wer die
+Server-Phase anders konfiguriert, setzt `GH_SERVER_JAVA_OPTS` komplett, nicht
+ergänzend; die Vorgabe (Heap im Leerlauf zurückgeben, bei OOM beenden) steht nur
+im Entrypoint.
+
 ### API-Docs (Swagger/OpenAPI)
 
 `/docs`, `/redoc` und `/openapi.json` sind in Produktion **standardmäßig deaktiviert**

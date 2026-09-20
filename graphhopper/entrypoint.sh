@@ -191,11 +191,49 @@ printf '%s' "$FINGERPRINT" > "$FINGERPRINT_FILE"
 rm -f "$LEGACY_FINGERPRINT_FILE"
 # ── GRAPH_ZUSTAND_ENDE ──────────────────────────────────────────────────────
 
+# ── Speicherzugriff auf den Graphen ─────────────────────────────────────────
+# Zwei Phasen, zwei Zugriffsarten. Der IMPORT haelt den Graphen im Heap
+# (RAM_STORE): dort entscheidet -Xmx aus JAVA_OPTS, und genau darauf beziehen
+# sich die Richtwerte in Installer, Wiki und Regionswechsel. Der SERVER dagegen
+# blendet die fertigen Graphdateien nur ein (MMAP): der Kernel haelt sie im
+# Seitencache und gibt sie unter Speicherdruck wieder frei, statt dass die JVM
+# bis -Xmx waechst und nie wieder etwas zurueckgibt. Fuer einen Routing-Dienst,
+# der die meiste Zeit auf die naechste Anfrage wartet, ist das der Unterschied
+# zwischen "8 GB dauerhaft belegt" und "belegt, was gerade gebraucht wird".
+# Das Dateiformat ist bei beiden dasselbe — ein mit RAM_STORE gebauter Graph
+# wird per MMAP geladen, ohne Umbau.
+#
+# GH_DATAACCESS=RAM_STORE stellt das alte Verhalten her: mehr RAM, dafuer keine
+# Einlesezeit bei kaltem Seitencache. Der Import bleibt davon unberuehrt.
+GH_DATAACCESS="${GH_DATAACCESS:-MMAP}"
+
+# JVM-Optionen NUR fuer die Server-Phase, zusaetzlich zu JAVA_OPTS:
+#  - G1PeriodicGCInterval: G1 raeumt im Leerlauf auf und gibt ungenutzten Heap
+#    an das Betriebssystem zurueck (JEP 346). Ohne die Option bleibt die Spitze
+#    einer einzigen langen Anfrage bis zum naechsten Neustart belegt. Bei einem
+#    anderen Kollektor in JAVA_OPTS ist die Option wirkungslos, aber erlaubt.
+#  - ExitOnOutOfMemoryError: eine JVM nach OutOfMemoryError beantwortet
+#    /health weiter, routet aber nichts mehr und dreht in der GC. Beenden
+#    laesst `restart: unless-stopped` sie sauber neu starten — der fertige
+#    Graph liegt ja da, der Neustart kostet Sekunden statt eines Imports.
+# Fuer den Import gilt beides nicht: dort ist ein OutOfMemoryError ohnehin das
+# Ende des Prozesses, und ein Kollektor, der Speicher zurueckgibt, hilft einem
+# Lauf nicht, der ihn bis zum Schluss braucht.
+GH_SERVER_JAVA_OPTS="${GH_SERVER_JAVA_OPTS:--XX:G1PeriodicGCInterval=300000 -XX:+ExitOnOutOfMemoryError}"
+
+# Nur fuer Tests ueberschreibbar (siehe graphhopper/tests/) — im Container immer
+# der Default, dasselbe Muster wie REGION_SOURCE_SCRIPT.
+GH_JAR="${GH_JAR:-/graphhopper/graphhopper.jar}"
 CONFIG_FILE="/tmp/graphhopper-config.yml"
-cat > "$CONFIG_FILE" << CONF
+
+# $1: Zugriffsart (RAM_STORE oder MMAP). Wird je Phase neu geschrieben, weil
+# sich die beiden Laeufe genau in dieser einen Zeile unterscheiden sollen.
+write_config() {
+    cat > "$CONFIG_FILE" << CONF
 graphhopper:
   datareader.file: $OSM_FILE
   graph.location: $GRAPH_DIR
+  graph.dataaccess.default_type: $1
 
   import.osm.ignored_highways:
     - footway
@@ -226,9 +264,33 @@ server:
     - type: http
       port: 8990
 CONF
+}
 
-# â”€â”€ GraphHopper starten â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-echo "Starte GraphHopper ($GH_COMMAND, Graph-Cache: $GRAPH_DIR)..."
+# ── GraphHopper starten ─────────────────────────────────────────────────────
+# `server` baut einen fehlenden Graphen zwar selbst, aber im selben Prozess und
+# mit derselben Zugriffsart wie das spaetere Routing. Deshalb laeuft der Import
+# hier als eigener Schritt voraus: mit RAM_STORE (ein MMAP-Import dauert ein
+# Vielfaches) und mit JAVA_OPTS allein, und erst der Server bekommt die
+# sparsamen Einstellungen. `edges` ist dabei dasselbe Vollstaendigkeitsmerkmal
+# wie im Block darueber, in graphhopper-deploy.sh und in switch-region.sh.
+if [ "$GH_COMMAND" = "server" ] && [ ! -f "$GRAPH_DIR/edges" ]; then
+    write_config RAM_STORE
+    echo "Baue Routing-Graph (import, RAM_STORE, Graph-Cache: $GRAPH_DIR)..."
+    java $JAVA_OPTS -jar "$GH_JAR" import "$CONFIG_FILE"
+fi
+
+if [ "$GH_COMMAND" = "server" ]; then
+    write_config "$GH_DATAACCESS"
+    echo "Starte GraphHopper (server, $GH_DATAACCESS, Graph-Cache: $GRAPH_DIR)..."
+    exec java $JAVA_OPTS $GH_SERVER_JAVA_OPTS \
+        -jar "$GH_JAR" \
+        server "$CONFIG_FILE"
+fi
+
+# Jeder andere Unterbefehl (der Regionswechsel ruft `import` direkt) laeuft wie
+# bisher: eine Phase, RAM_STORE, nur JAVA_OPTS.
+write_config RAM_STORE
+echo "Starte GraphHopper ($GH_COMMAND, RAM_STORE, Graph-Cache: $GRAPH_DIR)..."
 exec java $JAVA_OPTS \
-    -jar /graphhopper/graphhopper.jar \
+    -jar "$GH_JAR" \
     "$GH_COMMAND" "$CONFIG_FILE"
