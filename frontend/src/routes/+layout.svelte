@@ -26,8 +26,13 @@
 	// /about … /privacy beschreiben das Produkt, nicht die Organisation. Sie
 	// stehen hinter keiner Anmeldung, weil sie genau denen etwas sagen sollen,
 	// die noch keine haben — Interessenten, Suchmaschinen und KI-Agenten.
+	// /demo ist genau das: der Einstieg für Leute *ohne* Zugang. Stünde er
+	// nicht hier, schickte dieser Wächter jeden Interessenten auf /admin —
+	// die Anmeldemaske, an der er sich gerade nicht anmelden kann. Dasselbe
+	// gilt für /demo/abmelden: der Link steht in einer E-Mail, wer ihn
+	// anklickt, hat keine Sitzung mehr.
 	const PUBLIC_ROUTES = [
-		'/share', '/track', '/setup', '/o/', '/admin', '/status',
+		'/share', '/track', '/setup', '/o/', '/admin', '/status', '/demo',
 		'/about', '/contact', '/privacy', '/terms', '/pricing', '/developers', '/docs'
 	];
 	const isPublicPath = (path: string) =>
