@@ -30,6 +30,7 @@ from app.services import pdf as pdf_svc
 from app.services import fuel as fuel_svc
 from app.services import overpass as overpass_svc
 from app.services import importer as importer_svc
+from app.services import waypoint_order
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/convoys", tags=["routing"])
@@ -46,6 +47,14 @@ def _safe_filename(name: str) -> str:
 
 
 _MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB — guard against DoS via huge uploads
+
+
+def _waypoint_latlon(wp) -> tuple[float, float] | None:
+    """(lat, lon) eines Wegpunkts, oder None, wenn er keine Lage hat."""
+    c = geo_svc.waypoint_coords(wp)
+    if c["lat"] is None or c["lon"] is None:
+        return None
+    return c["lat"], c["lon"]
 
 
 def _out_of_bounds_message(point_index: int | None, total_points: int) -> str:
@@ -390,14 +399,11 @@ async def calculate_route(
     if not start or not end:
         raise HTTPException(status_code=400, detail="Convoy start/end point not set")
 
-    # Load any previously stored route up front. Its geometry lets us order the
-    # waypoints by their real position along the route before re-routing. The
-    # frontend appends recommended Technische Halte / Tankstopps to the END of
-    # the waypoint list (highest order_index), even though they physically lie
-    # in the middle of the route. Without re-ordering, the router would visit
-    # them last and detour back and forth — the reported ~700 km jump on
-    # recalculation. Projecting onto the prior route fixes the order so the new
-    # route stays clean.
+    # Load any previously stored route up front: its geometry is what slots the
+    # automatically appended Technische Halte / Tankstopps into their real
+    # position (see app/services/waypoint_order.py). Everything else keeps the
+    # order somebody dragged it into — the route follows the list, not the other
+    # way round.
     existing_route = (
         await db.execute(select(Route).where(Route.convoy_id == convoy_id))
     ).scalar_one_or_none()
@@ -406,21 +412,20 @@ async def calculate_route(
         prev_line = geo_svc.linestring_to_geojson(existing_route.geometry)
         prev_coords = (prev_line or {}).get("coordinates", []) if prev_line else []
 
-    positioned: list[tuple[Any, dict]] = []
-    for wp in convoy.waypoints:
-        coords = geo_svc.waypoint_coords(wp)
-        if coords["lat"] is not None and coords["lon"] is not None:
-            positioned.append((wp, coords))
+    ordered = waypoint_order.visiting_order(
+        convoy.waypoints, _waypoint_latlon, prev_coords
+    )
+    # Die Liste zeigt danach dieselbe Folge, in der gefahren wird — das ist die
+    # einzige Stelle, an der die Berechnung `order_index` anfasst.
+    for index, wp in enumerate(ordered):
+        wp.order_index = index
 
-    if prev_coords and len(positioned) > 1:
-        positioned.sort(
-            key=lambda pc: fuel_svc.project_onto_route(prev_coords, pc[1]["lat"], pc[1]["lon"])
-        )
-    else:
-        positioned.sort(key=lambda pc: pc[0].order_index)
+    positioned: list[tuple[Any, tuple[float, float]]] = [
+        (wp, c) for wp in ordered if (c := _waypoint_latlon(wp)) is not None
+    ]
 
     points = [start]
-    points.extend({"lat": c["lat"], "lon": c["lon"]} for _, c in positioned)
+    points.extend({"lat": lat, "lon": lon} for _, (lat, lon) in positioned)
     points.append(end)
 
     # Determine worst-case vehicle constraints
@@ -492,28 +497,23 @@ async def calculate_route(
         )
         db.add(route)
 
-    # Order waypoints by their real position along the new route, then build a
-    # distance-proportional schedule. Projecting first means both the visiting
-    # order and each leg's travel time reflect the actual route: a waypoint's
-    # ETA lands at the same fraction of the total drive time as its position
-    # along the route. The previous "total ÷ (waypoints + 1)" even split pushed
-    # every waypoint towards the middle regardless of distance — e.g. a single
-    # waypoint at 40 % of the route was scheduled at 50 % of the drive time.
+    # Distance-proportional schedule: each leg's travel time is its share of the
+    # whole route, so a waypoint's ETA lands at the same fraction of the drive
+    # time as its position along the route. The previous "total ÷ (waypoints +
+    # 1)" even split pushed every waypoint towards the middle regardless of
+    # distance — e.g. a single waypoint at 40 % of the route was scheduled at
+    # 50 % of the drive time. Die Kilometrierung kommt aus der Projektion, die
+    # Reihenfolge nicht: gefahren wird die Liste.
     route_coords = route_data["geometry"].get("coordinates", [])
     total_distance_m = route_data["distance_m"]
     route_planned_departure = None
     route_planned_arrival = None
 
-    projected: list[tuple[float, Any]] = []
-    if route_coords and convoy.waypoints:
-        for wp in convoy.waypoints:
-            c = geo_svc.waypoint_coords(wp)
-            if c["lat"] is not None and c["lon"] is not None:
-                d = fuel_svc.project_onto_route(route_coords, c["lat"], c["lon"])
-                projected.append((d, wp))
-        projected.sort(key=lambda x: x[0])
-        for new_idx, (_, wp) in enumerate(projected):
-            wp.order_index = new_idx
+    cumulative: list[float] = []
+    if route_coords and positioned:
+        cumulative = waypoint_order.cumulative_along_route(
+            route_coords, [c for _, c in positioned]
+        )
 
     if convoy.start_time:
         # Work in naive wall-clock (see migration 0029/0030): the schedule times
@@ -525,12 +525,12 @@ async def calculate_route(
             else convoy.start_time.replace(tzinfo=None)
         )
         route_planned_departure = start_dt
-        if projected:
-            waypoints_sorted = [wp for _, wp in projected]
+        if cumulative:
+            waypoints_sorted = [wp for wp, _ in positioned]
             # Per-leg distances along the route: Start→WP1, WP1→WP2, …
             seg_distances: list[float] = []
             prev = 0.0
-            for cum, _ in projected:
+            for cum in cumulative:
                 seg_distances.append(max(0.0, cum - prev))
                 prev = cum
             seg_durations = schedule_svc.split_duration_by_distance(

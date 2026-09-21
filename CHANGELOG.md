@@ -43,6 +43,14 @@ ursprünglichen SemVer-Nummern.
 
 ### Fixed
 
+- **Ein Umsortieren der Wegpunkte änderte die Route nicht und war nach der Berechnung wieder weg.** Die Reihenfolge ließ sich ziehen und wurde auch gespeichert — die Routenberechnung ignorierte sie und schrieb sie anschließend zurück auf den alten Stand.
+
+  Der Grund war ein Kreis: Die Berechnung sortierte die Wegpunkte für die Anfrage nach ihrer Lage entlang der **vorherigen** Route und leitete danach den `order_index` wieder aus der **neuen** Route ab. Die neue konnte deshalb gar nicht anders aussehen als die alte, und die von Hand gezogene Reihenfolge ging zweimal verloren: einmal auf dem Hinweg, einmal auf dem Rückweg. Was von Hand sortiert wurde, gilt jetzt — gefahren wird die Liste, nicht umgekehrt.
+
+  Die Projektion auf die vorherige Route bleibt dort, wofür sie gedacht war: Die automatisch vorgeschlagenen **Technischen Halte und Tankstopps** hängt die Oberfläche ans Listenende, obwohl sie in der Mitte liegen. Nur dieser Lauf am Ende wird eingeordnet, und nur einmal — danach steht so ein Halt in der Liste und lässt sich verschieben wie jeder andere Wegpunkt. Der Umweg von mehreren hundert Kilometern, gegen den die Projektion eingeführt wurde, kommt damit nicht zurück.
+
+  Der Zeitplan rechnet weiter mit der tatsächlichen Kilometrierung, nur sortiert sie nichts mehr um. Fährt die Route ein Stück doppelt, steigt sie trotzdem monoton, statt eine negative Teilstrecke und damit eine rückwärts laufende Ankunftszeit zu ergeben.
+
 - **Die Tracking-Ansicht zeigte „Getrennt", obwohl nichts getrennt war.** Zwei Ursachen, die sich zu einer Anzeige addierten.
 
   Erstens hing der Live-Kanal am Erstabruf: Konvoi, Route und Positionen standen in **einem** `Promise.all`, und erst danach wurde die WebSocket aufgebaut. Blieb eine der drei Anfragen hängen — `fetch` kennt von sich aus kein Zeitlimit —, passierte gar nichts mehr: keine Fahrzeugliste, kein Kanal, dauerhaft „Laden…" und daneben „Getrennt", obwohl noch kein einziger Verbindungsversuch gelaufen war. Die drei Abrufe scheitern jetzt jeder für sich, haben ein Zeitlimit und eine Schaltfläche *Erneut laden* samt Begründung — und der Kanal baut sich vor ihnen auf, unabhängig von ihrem Ausgang.
