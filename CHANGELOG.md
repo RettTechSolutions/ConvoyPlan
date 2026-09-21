@@ -31,6 +31,14 @@ ursprünglichen SemVer-Nummern.
 
   Über den MCP-Server geht dasselbe: `fahrzeugstaerke_melden` (Scope `fleet:status`, Bereich *Status*) meldet, `konvoi_status` liest Stärke je Fahrzeug und Verbandsstärke zurück. Auch dort bleibt „nicht gemeldet" `null` und wird nicht zu `0/0/0` — ein Modell, das beides gleich gezeigt bekäme, erzählte es auch gleich weiter.
 
+- **Die Regelbesatzung steht am Fahrzeug und muss nicht in jedem Konvoi neu getippt werden.** Das Fahrzeugformular nimmt sie beim Anlegen *und* beim Bearbeiten entgegen, in derselben Notation wie überall: Führer/Unterführer/Mannschaften, die Gesamtzahl daneben. Sie ist ein Stammdatum — mit wem dieses Fahrzeug üblicherweise ausrückt.
+
+  Beim Hinzufügen zu einem Konvoi wird sie als **Sollstärke** übernommen, und zwar einmalig: Wer die Regelbesatzung später pflegt, schreibt damit keinen fertig geplanten Verband um. Bringt der Aufruf selbst eine der drei Zahlen mit, gilt diese — eine Angabe für *diesen* Marsch wird nicht aus den Stammdaten aufgefüllt.
+
+  Leer heißt „nicht angegeben" und nicht „niemand": ein Fahrzeug ohne Eintrag fährt nicht nachweislich unbesetzt. `0/0/0` ist dagegen eine Aussage. Ein geleertes Feld löscht eine frühere Angabe — bis hierher überging das Bearbeiten jedes geleerte Feld, sodass auch ein einmal eingetragener Funkrufname oder ein Tankvolumen nicht mehr wegzubekommen war.
+
+  Über den MCP-Server ebenso: `fahrzeug_anlegen` und `fahrzeug_aktualisieren` nehmen die drei Zahlen entgegen, `fahrzeuge_auflisten` weist sie aus.
+
 ### Changed
 
 - **Die Installation braucht deutlich weniger Speicher und Platz.** Drei Stellen, jede für sich.
