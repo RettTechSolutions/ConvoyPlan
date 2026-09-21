@@ -1,4 +1,4 @@
-"""Tests für den Backfill in Migration 0045.
+"""Tests für den Backfill in Migration 0046.
 
 Die Migration schreibt gespeicherte Nutzdaten um: sie entscheidet, welche
 Wegpunkte des Bestands als „noch nicht einsortiert" gelten. Trifft sie daneben,
@@ -12,10 +12,10 @@ from pathlib import Path
 
 MIGRATION = (
     Path(__file__).resolve().parents[1]
-    / "alembic" / "versions" / "0045_wegpunkt_platzierung.py"
+    / "alembic" / "versions" / "0046_wegpunkt_platzierung.py"
 )
 
-_spec = importlib.util.spec_from_file_location("migration_0045", MIGRATION)
+_spec = importlib.util.spec_from_file_location("migration_0046", MIGRATION)
 m = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(m)
 

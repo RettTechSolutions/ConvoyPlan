@@ -5,7 +5,7 @@ Reihenfolge wieder da, und die Route war unverändert. Ursache war ein Kreis —
 die Anfrage wurde entlang der *alten* Route sortiert, die Antwort schrieb
 `order_index` aus der *neuen* zurück. Diese Tests halten beide Enden fest.
 
-Wer eingeordnet wird, sagt seit Migration 0045 `pending_placement` und nicht
+Wer eingeordnet wird, sagt seit Migration 0046 `pending_placement` und nicht
 mehr die Position in der Liste.
 """
 

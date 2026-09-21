@@ -121,7 +121,7 @@ anhand ihrer Projektion auf die **vorherige** Route — und nur einmal: danach
 steht so ein Halt mitten in der Liste und ist ein Wegpunkt wie jeder andere.
 
 Wer eingeordnet wird, sagt die Spalte `pending_placement` und **nicht** die
-Position in der Liste (Migration `0045`). Zuerst wurde geraten — „der
+Position in der Liste (Migration `0046`). Zuerst wurde geraten — „der
 zusammenhängende Lauf von `technical_stop` am Listenende" —, und das traf den
 Normalfall, verschob aber auch einen Technischen Halt, den jemand bewusst als
 *letzten* Wegpunkt gesetzt hatte. Die Marke kommt von der Herkunft: gesetzt beim

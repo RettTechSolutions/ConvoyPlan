@@ -30,7 +30,7 @@ class Waypoint(Base):
     # Von der Anwendung vorgeschlagen (Technischer Halt, Tankstopp) und noch
     # nicht einsortiert. Die nächste Routenberechnung ordnet ihn entlang der
     # vorherigen Route ein und löscht die Marke — siehe
-    # app/services/waypoint_order.py und Migration 0045.
+    # app/services/waypoint_order.py und Migration 0046.
     pending_placement: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=false()
     )

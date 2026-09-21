@@ -16,7 +16,7 @@ Konvoi erst an ihnen vorbei bis zum letzten Wegpunkt und dann zurück — der
 gemeldete Umweg von mehreren hundert Kilometern.
 
 Wer eingeordnet wird, sagt `pending_placement` und **nicht** die Position in der
-Liste (Migration 0045). Vorher wurde geraten: „der zusammenhängende Lauf von
+Liste (Migration 0046). Vorher wurde geraten: „der zusammenhängende Lauf von
 `technical_stop` am Ende". Das traf den Normalfall, verschob aber auch einen
 Technischen Halt, den jemand bewusst als *letzten* Wegpunkt gesetzt hatte. Die
 Marke kommt von der Herkunft: gesetzt beim Anlegen eines Vorschlags, gelöscht,
