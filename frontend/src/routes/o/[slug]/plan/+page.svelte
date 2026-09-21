@@ -672,22 +672,27 @@
   }
 
   async function handleDndFinalize(e: CustomEvent) {
+    const convoy = selected;
+    if (!convoy) return;
     const reordered: Waypoint[] = (e.detail.items as Waypoint[]).map(
       (wp, i) => ({ ...wp, order_index: i })
     );
     dndWaypoints = reordered;
-    const prevWaypoints = selected!.waypoints;
-    selected = { ...selected!, waypoints: reordered };
-    activeConvoy.set(selected!);
+    const prevWaypoints = convoy.waypoints;
+    selected = { ...convoy, waypoints: reordered };
+    activeConvoy.set(selected);
     try {
       await convoysApi.reorderWaypoints(
-        selected!.id,
+        convoy.id,
         reordered.map((wp) => ({ id: wp.id, order_index: wp.order_index })),
       );
     } catch {
+      // Ohne Meldung sähe es aus, als sei die Zeile beim Loslassen nur
+      // zurückgesprungen — gespeichert ist sie dann aber nicht.
       dndWaypoints = prevWaypoints;
-      selected = { ...selected!, waypoints: prevWaypoints };
-      activeConvoy.set(selected!);
+      selected = { ...convoy, waypoints: prevWaypoints };
+      activeConvoy.set(selected);
+      error = 'Reihenfolge konnte nicht gespeichert werden';
     }
   }
 

@@ -104,6 +104,32 @@ Server-Phase anders konfiguriert, setzt `GH_SERVER_JAVA_OPTS` komplett, nicht
 ergänzend; die Vorgabe (Heap im Leerlauf zurückgeben, bei OOM beenden) steht nur
 im Entrypoint.
 
+### Die Wegpunktreihenfolge gehört dem Menschen
+
+`order_index` ist die Wahrheit, und `calculate_route` leitet ihn **nicht** aus der
+fertigen Route ab. Einmal tat sie es, und dabei schloss sich ein Kreis: die Punkte
+gingen nach ihrer Lage entlang der *alten* Route in die Anfrage, und danach wurde
+`order_index` aus der *neuen* zurückgeschrieben. Ein Umsortieren von Hand ging
+zweimal verloren — es kam nie in die Anfrage hinein und wurde nach der Antwort
+überschrieben; die Route blieb, wie sie war, die Liste sprang zurück.
+
+Die Ausnahme sind die automatisch vorgeschlagenen Halte: das Frontend hängt
+Technische Halte und Tankstopps ans **Ende** der Liste, obwohl sie in der Mitte
+liegen, und ohne Einordnen führe der Konvoi an ihnen vorbei und wieder zurück
+(der gemeldete Umweg von mehreren hundert Kilometern). Eingeordnet wird deshalb
+genau der zusammenhängende Lauf von `technical_stop`-Wegpunkten am Listenende,
+anhand seiner Projektion auf die **vorherige** Route — und nur einmal: danach
+steht der Halt mitten in der Liste und ist ein Wegpunkt wie jeder andere. Die
+Entscheidung steht in `app/services/waypoint_order.py`, getrennt von Datenbank
+und Routing-Dienst, und wird von `tests/test_wegpunkt_reihenfolge.py` ohne beides
+geprüft.
+
+Die Kilometrierung für den Zeitplan kommt weiter aus der Projektion, sortiert aber
+nichts mehr um. Sie wird monoton gehalten (`cumulative_along_route`): wo die Route
+ein Stück doppelt befährt, trifft die Suche nach dem nächsten Streckenpunkt sonst
+die falsche Vorbeifahrt, und aus der negativen Teilstrecke wird eine rückwärts
+laufende Ankunftszeit.
+
 ### API-Docs (Swagger/OpenAPI)
 
 `/docs`, `/redoc` und `/openapi.json` sind in Produktion **standardmäßig deaktiviert**
