@@ -150,6 +150,15 @@ def _vehicle(vehicle: Vehicle) -> dict:
         "laenge_cm": vehicle.length_cm,
         "gewicht_kg": vehicle.weight_kg,
         "antrieb": vehicle.propulsion,
+        # Regelbesatzung aus den Stammdaten („0/1/8"), None wenn keine
+        # hinterlegt ist. Sie sagt, womit dieses Fahrzeug üblicherweise
+        # ausrückt — nicht, wer in einem bestimmten Konvoi geplant ist; das
+        # steht im Status des Konvois.
+        "regelbesatzung": _staerke_notation(
+            vehicle.staerke_soll_fuehrer,
+            vehicle.staerke_soll_unterfuehrer,
+            vehicle.staerke_soll_mannschaften,
+        ),
     }
     # Nur die Felder der tatsächlichen Antriebsart mitschicken — ein
     # E-Fahrzeug mit "tank_kapazitaet_l: null" lädt nur zu Fehlschlüssen ein.
