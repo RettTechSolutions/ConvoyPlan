@@ -57,6 +57,10 @@ ursprünglichen SemVer-Nummern.
 
 ### Fixed
 
+- **Der Demo-Einstieg landete auf der Anmeldemaske.** Wer `/demo` aufrief, wurde nach `/admin` umgeleitet — auf die eine Seite, an der er sich mangels Zugang gerade nicht anmelden kann. Der Wächter im Wurzel-Layout schickt jeden nicht angemeldeten Aufruf eines nicht-öffentlichen Pfades dorthin, und `/demo` stand nicht auf der Liste der öffentlichen Pfade. Dasselbe traf den Abmeldelink aus der Nachfrage-E-Mail (`/demo/abmelden`): Wer abbestellt, hat keine Sitzung mehr — das ist dort der Normalfall.
+
+  Die Demo-Seite selbst war nie defekt, sie wurde nur nicht erreicht. Sichtbar wird so ein Fehler erst im Zusammenspiel mit dem Layout darüber; `frontend/e2e/demo-einstieg.spec.ts` ruft die Seiten deshalb als echten Seitenaufbau ohne Sitzung auf und hält fest, dass keine davon auf `/admin` führt.
+
 - **Ein Umsortieren der Wegpunkte änderte die Route nicht und war nach der Berechnung wieder weg.** Die Reihenfolge ließ sich ziehen und wurde auch gespeichert — die Routenberechnung ignorierte sie und schrieb sie anschließend zurück auf den alten Stand.
 
   Der Grund war ein Kreis: Die Berechnung sortierte die Wegpunkte für die Anfrage nach ihrer Lage entlang der **vorherigen** Route und leitete danach den `order_index` wieder aus der **neuen** Route ab. Die neue konnte deshalb gar nicht anders aussehen als die alte, und die von Hand gezogene Reihenfolge ging zweimal verloren: einmal auf dem Hinweg, einmal auf dem Rückweg. Was von Hand sortiert wurde, gilt jetzt — gefahren wird die Liste, nicht umgekehrt.
