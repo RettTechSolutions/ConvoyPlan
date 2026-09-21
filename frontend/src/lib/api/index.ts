@@ -65,6 +65,9 @@ export interface Waypoint {
 	planned_arrival: string | null; planned_departure: string | null;
 	hold_duration_min: number; halt_purpose: string | null;
 	notes: string | null; order_index: number;
+	// Von der Anwendung vorgeschlagen und noch nicht einsortiert — die nächste
+	// Routenberechnung gibt ihm seinen Platz entlang der Route.
+	pending_placement?: boolean;
 }
 
 export interface ConvoyVehicleItem {

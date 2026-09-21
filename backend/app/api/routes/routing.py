@@ -400,10 +400,10 @@ async def calculate_route(
         raise HTTPException(status_code=400, detail="Convoy start/end point not set")
 
     # Load any previously stored route up front: its geometry is what slots the
-    # automatically appended Technische Halte / Tankstopps into their real
-    # position (see app/services/waypoint_order.py). Everything else keeps the
-    # order somebody dragged it into — the route follows the list, not the other
-    # way round.
+    # proposed Technische Halte / Tankstopps — those still flagged
+    # `pending_placement` — into their real position (see
+    # app/services/waypoint_order.py). Everything else keeps the order somebody
+    # dragged it into: the route follows the list, not the other way round.
     existing_route = (
         await db.execute(select(Route).where(Route.convoy_id == convoy_id))
     ).scalar_one_or_none()
@@ -416,9 +416,13 @@ async def calculate_route(
         convoy.waypoints, _waypoint_latlon, prev_coords
     )
     # Die Liste zeigt danach dieselbe Folge, in der gefahren wird — das ist die
-    # einzige Stelle, an der die Berechnung `order_index` anfasst.
+    # einzige Stelle, an der die Berechnung `order_index` anfasst. Jeder
+    # Wegpunkt hat damit einen Platz, auch der, für den es hier keine
+    # Bezugspunkte gab: die Route ist gleich um ihn herum gebaut, und eine
+    # Marke, die nie verfiele, ließe ihn bei jedem Lauf erneut wandern.
     for index, wp in enumerate(ordered):
         wp.order_index = index
+        wp.pending_placement = False
 
     positioned: list[tuple[Any, tuple[float, float]]] = [
         (wp, c) for wp in ordered if (c := _waypoint_latlon(wp)) is not None

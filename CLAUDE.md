@@ -116,13 +116,28 @@ zweimal verloren — es kam nie in die Anfrage hinein und wurde nach der Antwort
 Die Ausnahme sind die automatisch vorgeschlagenen Halte: das Frontend hängt
 Technische Halte und Tankstopps ans **Ende** der Liste, obwohl sie in der Mitte
 liegen, und ohne Einordnen führe der Konvoi an ihnen vorbei und wieder zurück
-(der gemeldete Umweg von mehreren hundert Kilometern). Eingeordnet wird deshalb
-genau der zusammenhängende Lauf von `technical_stop`-Wegpunkten am Listenende,
-anhand seiner Projektion auf die **vorherige** Route — und nur einmal: danach
-steht der Halt mitten in der Liste und ist ein Wegpunkt wie jeder andere. Die
-Entscheidung steht in `app/services/waypoint_order.py`, getrennt von Datenbank
+(der gemeldete Umweg von mehreren hundert Kilometern). Eingeordnet werden sie
+anhand ihrer Projektion auf die **vorherige** Route — und nur einmal: danach
+steht so ein Halt mitten in der Liste und ist ein Wegpunkt wie jeder andere.
+
+Wer eingeordnet wird, sagt die Spalte `pending_placement` und **nicht** die
+Position in der Liste (Migration `0046`). Zuerst wurde geraten — „der
+zusammenhängende Lauf von `technical_stop` am Listenende" —, und das traf den
+Normalfall, verschob aber auch einen Technischen Halt, den jemand bewusst als
+*letzten* Wegpunkt gesetzt hatte. Die Marke kommt von der Herkunft: gesetzt beim
+Anlegen eines Vorschlags (nur die beiden Stellen im Frontend setzen sie),
+gelöscht, sobald der Wegpunkt einen Platz hat — durch die Routenberechnung,
+durch Ziehen in der Liste oder durch ein ausdrücklich gesetztes `order_index`.
+Dass sie **verfällt**, ist kein Detail: eine Marke, die bliebe, ließe denselben
+Halt bei jedem Lauf erneut wandern, auch dorthin, wo ihn gerade jemand weggezogen
+hat.
+
+Die Entscheidung steht in `app/services/waypoint_order.py`, getrennt von Datenbank
 und Routing-Dienst, und wird von `tests/test_wegpunkt_reihenfolge.py` ohne beides
-geprüft.
+geprüft — samt den drei Stellen, an denen die Marke verfällt. Der Backfill der
+Migration steht aus demselben Grund als Funktion daneben und nicht in einer
+`WHERE`-Bedingung (`tests/test_wegpunkt_platzierung_migration.py`, wie bei
+`0039`): er entscheidet über Bestandsdaten.
 
 Die Kilometrierung für den Zeitplan kommt weiter aus der Projektion, sortiert aber
 nichts mehr um. Sie wird monoton gehalten (`cumulative_along_route`): wo die Route

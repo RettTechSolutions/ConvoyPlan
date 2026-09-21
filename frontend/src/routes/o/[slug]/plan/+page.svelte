@@ -897,7 +897,11 @@
 			lat: station.lat,
 			lon: station.lon,
 			hold_duration_min: holdMin,
+			// Ans Ende gehängt, aber noch ohne Platz: der Stopp liegt mitten auf
+			// der Strecke, und `order_index` sagt hier nur „zuletzt angelegt".
+			// Die folgende Berechnung ordnet ihn entlang der Route ein.
 			order_index: selected.waypoints.length,
+			pending_placement: true,
 			notes: `Tankstopp bei km ${stopKm} – ${station.brand ?? station.name}${station.opening_hours ? ' · ' + station.opening_hours : ''}`,
 		});
 		showFuelStations = false;
@@ -964,7 +968,9 @@
 				lat: halt.stop_position?.lat ?? null,
 				lon: halt.stop_position?.lon ?? null,
 				hold_duration_min: halt.duration_min,
+				// Wie beim Tankstopp: angehängt, aber noch nicht einsortiert.
 				order_index: selected.waypoints.length,
+				pending_placement: true,
 			});
 			await refreshConvoy();
 		} catch { error = 'Fehler beim Hinzufügen des Halts'; }

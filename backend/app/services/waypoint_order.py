@@ -4,37 +4,37 @@
 seinen Platz gezogen hat. Die Route folgt ihm, und die Berechnung schreibt ihn
 **nicht** aus der fertigen Route zurück. Genau das tat sie einmal, und dabei
 schloss sich ein Kreis: die neue Route entstand aus der Sortierung entlang der
-**alten**, und danach wurde die Reihenfolge wieder aus der neuen Route
-gewonnen. Ein Umsortieren von Hand ging dabei zweimal verloren — es kam nie in
-die Anfrage hinein und wurde nach der Antwort überschrieben. Die Route blieb,
-wie sie war, die Liste sprang zurück.
+**alten**, und danach wurde die Reihenfolge wieder aus der neuen gewonnen. Ein
+Umsortieren von Hand ging dabei zweimal verloren — es kam nie in die Anfrage
+hinein und wurde nach der Antwort überschrieben. Die Route blieb, wie sie war,
+die Liste sprang zurück.
 
-Die eine Ausnahme sind die automatisch vorgeschlagenen Halte (Technischer Halt,
-Lenkpause, Tankstopp). Das Frontend hängt sie ans **Ende** der Liste, obwohl sie
-geografisch in der Mitte liegen; ohne Einsortieren führe der Konvoi erst an
-ihnen vorbei bis zum letzten Wegpunkt und dann zurück — der gemeldete Umweg von
-mehreren hundert Kilometern. Eingeordnet wird deshalb genau der zusammenhängende
-Lauf von `technical_stop`-Wegpunkten am Listenende, anhand seiner Projektion auf
-die **vorherige** Route. Danach steht so ein Halt mitten in der Liste und ist
-von da an ein Wegpunkt wie jeder andere: verschiebbar und nicht mehr betroffen.
+Die eine Ausnahme sind die Wegpunkte, die die Anwendung selbst vorgeschlagen
+hat (Technischer Halt, Lenkpause, Tankstopp). Das Frontend hängt sie ans Ende
+der Liste, obwohl sie geografisch in der Mitte liegen; ohne Einordnen führe der
+Konvoi erst an ihnen vorbei bis zum letzten Wegpunkt und dann zurück — der
+gemeldete Umweg von mehreren hundert Kilometern.
+
+Wer eingeordnet wird, sagt `pending_placement` und **nicht** die Position in der
+Liste (Migration 0046). Vorher wurde geraten: „der zusammenhängende Lauf von
+`technical_stop` am Ende". Das traf den Normalfall, verschob aber auch einen
+Technischen Halt, den jemand bewusst als *letzten* Wegpunkt gesetzt hatte. Die
+Marke kommt von der Herkunft: gesetzt beim Anlegen eines Vorschlags, gelöscht,
+sobald der Wegpunkt einen Platz hat — durch diese Einordnung, durch Ziehen in
+der Liste oder durch ein ausdrücklich gesetztes `order_index`.
 """
 
 from typing import Any, Callable, Sequence
 
 from app.services.fuel import project_onto_route
 
-TECHNICAL_STOP = "technical_stop"
-
 Coords = tuple[float, float]
 CoordsOf = Callable[[Any], Coords | None]
 
 
-def _trailing_technical_stops(ordered: list[Any]) -> int:
-    """Index, ab dem die Liste nur noch aus Technischen Halten besteht."""
-    split = len(ordered)
-    while split > 0 and getattr(ordered[split - 1], "type", None) == TECHNICAL_STOP:
-        split -= 1
-    return split
+def is_pending(wp: Any) -> bool:
+    """Wartet dieser Wegpunkt noch auf seinen Platz in der Reihenfolge?"""
+    return bool(getattr(wp, "pending_placement", False))
 
 
 def visiting_order(
@@ -44,24 +44,22 @@ def visiting_order(
 ) -> list[Any]:
     """Alle Wegpunkte in der Reihenfolge, in der sie angefahren werden.
 
-    Grundlage ist `order_index`. Nur die am Ende angehängten Technischen Halte
+    Grundlage ist `order_index`. Nur die als unplatziert markierten Wegpunkte
     werden entlang *prev_route_coords* eingeordnet, und auch das nur, wenn es
-    eine vorherige Route und davor mindestens einen anderen Wegpunkt gibt —
-    ohne Bezugspunkte bliebe die Projektion eine Vermutung.
+    eine vorherige Route und mindestens einen platzierten Wegpunkt mit Lage
+    gibt — ohne Bezugspunkte bliebe die Projektion eine Vermutung.
     """
     ordered = sorted(waypoints, key=lambda wp: getattr(wp, "order_index", 0) or 0)
     if not prev_route_coords:
         return ordered
 
-    split = _trailing_technical_stops(ordered)
-    if split == 0 or split == len(ordered):
+    anchors = [wp for wp in ordered if not is_pending(wp)]
+    floats = [wp for wp in ordered if is_pending(wp)]
+    if not anchors or not floats:
         return ordered
 
-    anchors = ordered[:split]
-    floats = ordered[split:]
-
-    # Kilometrierung der festen Wegpunkte: je Einfügestelle (hinter dem i-ten
-    # Anker) die Strecke, ab der ein Halt dahinter gehört.
+    # Kilometrierung der platzierten Wegpunkte: je Einfügestelle (hinter dem
+    # i-ten Anker) die Strecke, ab der ein Vorschlag dahinter gehört.
     slots: list[tuple[int, float]] = []
     for index, wp in enumerate(anchors):
         c = coords_of(wp)

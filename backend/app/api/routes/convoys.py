@@ -447,6 +447,9 @@ async def update_waypoint(
     update_data = data.model_dump(exclude_none=True, exclude={"lat", "lon"})
     for key, value in update_data.items():
         setattr(wp, key, value)
+    if "order_index" in update_data:
+        # Wer einen Platz ausdrücklich angibt, hat platziert.
+        wp.pending_placement = False
     if data.lat is not None and data.lon is not None:
         wp.location = geo_svc.point_to_wkt(data.lat, data.lon)
     await db.commit()
@@ -503,6 +506,9 @@ async def reorder_waypoints(
         if item.id not in existing:
             raise HTTPException(status_code=404, detail=f"Waypoint {item.id} not found in convoy")
         existing[item.id].order_index = item.order_index
+        # Die Reihenfolge kommt hier von einem Menschen; auch ein vorgeschlagener
+        # Halt ist danach platziert und wird nicht erneut einsortiert.
+        existing[item.id].pending_placement = False
 
     await db.commit()
 
