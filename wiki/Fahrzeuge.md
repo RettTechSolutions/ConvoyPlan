@@ -48,6 +48,12 @@ der Tabelle *Sollstärke* änderbar (Tab **Fahrzeuge**, unterhalb der
 Marschfolge).
 
 Bleiben die Felder leer, heißt das **nicht angegeben** — nicht „unbesetzt".
+Wer ein Feld beim Bearbeiten leert, löscht die Angabe wieder; `0/0/0` ist
+dagegen eine Aussage und bedeutet „fährt unbesetzt". Das gilt für die übrigen
+Fahrzeugdaten genauso: **was im Formular steht, wird gespeichert** — ein
+geleertes Feld löscht den alten Wert. (Ausgenommen sind **Name** und
+**Antriebsart**; sie müssen gesetzt bleiben.)
+
 Eine später geänderte Regelbesatzung gilt für neue Zuweisungen; bereits
 geplante Konvois behalten ihre Sollstärke, damit ein fertiger Marschbefehl
 nicht nachträglich anders aussieht.

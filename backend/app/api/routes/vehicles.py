@@ -107,7 +107,21 @@ async def update_vehicle(
     user, org, role = ctx
     _require_min_role(role, "planer")
     vehicle = await _get_org_vehicle(vehicle_id, org.id, db)
-    for key, value in data.model_dump(exclude_none=True).items():
+    # `exclude_unset` statt `exclude_none`: ein ausdrücklich mitgeschicktes
+    # `null` löscht das Feld. Sonst bliebe eine einmal eingetragene Angabe für
+    # immer stehen — das Formular schickt ein geleertes Feld als `null`, und
+    # ein Stammdatum, das man nicht mehr leeren kann, ist eine Einbahnstraße.
+    # Was gar nicht genannt wird, bleibt unangetastet; ein Aufruf mit nur einem
+    # Feld ändert also weiterhin nur dieses.
+    felder = data.model_dump(exclude_unset=True)
+    # Zwei Spalten machen das nicht mit: `name` und `propulsion` sind NOT NULL.
+    # Für sie heißt ein mitgeschicktes `null` „nicht ändern" und nicht
+    # „leeren" — sonst quittierte der Endpunkt eine leere Namenszeile mit einem
+    # Serverfehler statt mit einer Fehlermeldung.
+    for pflichtfeld in ("name", "propulsion"):
+        if felder.get(pflichtfeld) is None:
+            felder.pop(pflichtfeld, None)
+    for key, value in felder.items():
         setattr(vehicle, key, value)
     await db.commit()
     await db.refresh(vehicle)

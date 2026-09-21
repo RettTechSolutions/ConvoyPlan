@@ -2007,7 +2007,8 @@
 	<p class="hint">
 		Gilt dauerhaft für dieses Fahrzeug und wird beim Hinzufügen zu einem Konvoi
 		als Sollstärke übernommen — dort ist sie für den einzelnen Marsch noch änderbar.
-		Leer heißt „nicht angegeben“.
+		Leer heißt „nicht angegeben“; ein geleertes Feld löscht eine frühere Angabe.
+		„0/0/0“ ist dagegen eine Aussage: das Fahrzeug fährt unbesetzt.
 	</p>
 {/snippet}
 

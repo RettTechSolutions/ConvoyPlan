@@ -23,7 +23,7 @@ from app.models.organization import Organization, UserOrganization
 from app.models.user import User
 from app.models.vehicle import Vehicle
 from app.schemas.convoy import AddVehicleRequest
-from app.schemas.vehicle import VehicleCreate
+from app.schemas.vehicle import VehicleCreate, VehicleUpdate
 
 
 @pytest.fixture(autouse=True)
@@ -80,6 +80,19 @@ async def _anlegen(bestand, **felder) -> uuid.UUID:
             db=db,
         )
         return fahrzeug.id
+
+
+async def _aendern(bestand, fahrzeug_id: uuid.UUID, **felder) -> Vehicle:
+    """Stammdaten ändern — genannt wird nur, was im Aufruf steht."""
+    async with AsyncSessionLocal() as db:
+        await vehicle_routes.update_vehicle(
+            vehicle_id=fahrzeug_id,
+            data=VehicleUpdate(**felder),
+            ctx=bestand.ctx,
+            db=db,
+        )
+    async with AsyncSessionLocal() as db:
+        return await db.get(Vehicle, fahrzeug_id)
 
 
 async def _zuordnen(bestand, fahrzeug_id: uuid.UUID, **felder) -> ConvoyVehicle:
@@ -225,3 +238,90 @@ async def test_spaetere_stammdatenpflege_laesst_den_geplanten_verband_stehen(bes
     async with AsyncSessionLocal() as db:
         cv = await db.get(ConvoyVehicle, (bestand.convoy_id, fahrzeug_id))
     assert cv.staerke_soll_mannschaften == 8
+
+
+# ── Ändern und Löschen ────────────────────────────────────────────────────────
+#
+# Ein Stammdatum, das sich eintragen, aber nicht mehr leeren lässt, ist eine
+# Einbahnstraße: „0/0/0" (niemand) wäre dann die einzige Art, eine falsch
+# eingetragene Besatzung loszuwerden — und sie sagt etwas anderes.
+
+async def test_ausdrueckliches_null_loescht_die_regelbesatzung(bestand):
+    fahrzeug_id = await _anlegen(
+        bestand,
+        staerke_soll_fuehrer=0,
+        staerke_soll_unterfuehrer=1,
+        staerke_soll_mannschaften=8,
+    )
+
+    fahrzeug = await _aendern(
+        bestand,
+        fahrzeug_id,
+        staerke_soll_fuehrer=None,
+        staerke_soll_unterfuehrer=None,
+        staerke_soll_mannschaften=None,
+    )
+
+    assert fahrzeug.staerke_soll_fuehrer is None
+    assert fahrzeug.staerke_soll_unterfuehrer is None
+    assert fahrzeug.staerke_soll_mannschaften is None
+
+
+async def test_nicht_genanntes_feld_bleibt_stehen(bestand):
+    # Der Unterschied zum Löschen: was der Aufruf gar nicht erwähnt, ist keine
+    # Aussage. Sonst räumte ein Umbenennen die halbe Fahrzeugkarte ab.
+    fahrzeug_id = await _anlegen(
+        bestand,
+        staerke_soll_fuehrer=0,
+        staerke_soll_unterfuehrer=1,
+        staerke_soll_mannschaften=8,
+    )
+
+    fahrzeug = await _aendern(bestand, fahrzeug_id, callsign="Florian 1")
+
+    assert fahrzeug.callsign == "Florian 1"
+    assert (
+        fahrzeug.staerke_soll_fuehrer,
+        fahrzeug.staerke_soll_unterfuehrer,
+        fahrzeug.staerke_soll_mannschaften,
+    ) == (0, 1, 8)
+
+
+async def test_null_ist_nicht_dasselbe_wie_geloescht(bestand):
+    # 0/0/0 bleibt eine Aussage („fährt unbesetzt") und darf beim Speichern
+    # nicht als „nichts angegeben" verschwinden.
+    fahrzeug_id = await _anlegen(bestand)
+
+    fahrzeug = await _aendern(
+        bestand,
+        fahrzeug_id,
+        staerke_soll_fuehrer=0,
+        staerke_soll_unterfuehrer=0,
+        staerke_soll_mannschaften=0,
+    )
+
+    assert (
+        fahrzeug.staerke_soll_fuehrer,
+        fahrzeug.staerke_soll_unterfuehrer,
+        fahrzeug.staerke_soll_mannschaften,
+    ) == (0, 0, 0)
+
+
+async def test_pflichtfelder_lassen_sich_nicht_leeren(bestand):
+    """`name` und `propulsion` sind NOT NULL.
+
+    Für sie heißt ein mitgeschicktes ``null`` „nicht ändern". Ohne diese
+    Ausnahme endete ein geleertes Namensfeld nicht in einer Fehlermeldung,
+    sondern in einem Serverfehler beim Schreiben.
+    """
+    fahrzeug_id = await _anlegen(bestand, callsign="Florian 1")
+    async with AsyncSessionLocal() as db:
+        vorher = await db.get(Vehicle, fahrzeug_id)
+        name, antrieb = vorher.name, vorher.propulsion
+
+    fahrzeug = await _aendern(bestand, fahrzeug_id, name=None, propulsion=None, callsign=None)
+
+    assert fahrzeug.name == name
+    assert fahrzeug.propulsion == antrieb
+    # Das nullbare Feld daneben wird sehr wohl geleert.
+    assert fahrzeug.callsign is None
