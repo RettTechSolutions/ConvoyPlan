@@ -13,6 +13,11 @@ class WaypointCreate(BaseModel):
     halt_purpose: str | None = None  # fuel | rest | maintenance | other
     notes: str | None = None
     order_index: int = 0
+    # Ein von der Anwendung *vorgeschlagener* Halt (Technischer Halt,
+    # Tankstopp): `order_index` ist nur ein Anhängen ans Listenende, die
+    # nächste Routenberechnung ordnet ihn entlang der Route ein. Wer einen
+    # Wegpunkt selbst setzt, lässt das Feld weg.
+    pending_placement: bool = False
 
 
 class WaypointUpdate(BaseModel):
@@ -40,6 +45,7 @@ class WaypointResponse(BaseModel):
     halt_purpose: str | None = None
     notes: str | None
     order_index: int
+    pending_placement: bool = False
 
     model_config = {"from_attributes": True}
 

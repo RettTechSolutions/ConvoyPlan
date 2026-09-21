@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 from geoalchemy2 import Geometry
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -27,5 +27,12 @@ class Waypoint(Base):
     halt_purpose: Mapped[str | None] = mapped_column(String(50))
     notes: Mapped[str | None] = mapped_column(Text)
     order_index: Mapped[int] = mapped_column(Integer, default=0)
+    # Von der Anwendung vorgeschlagen (Technischer Halt, Tankstopp) und noch
+    # nicht einsortiert. Die nächste Routenberechnung ordnet ihn entlang der
+    # vorherigen Route ein und löscht die Marke — siehe
+    # app/services/waypoint_order.py und Migration 0045.
+    pending_placement: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false()
+    )
 
     convoy: Mapped["Convoy"] = relationship(back_populates="waypoints")
