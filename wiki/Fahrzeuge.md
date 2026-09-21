@@ -32,6 +32,32 @@
 
 > Die Kraftstoffdaten werden für die automatische **Kraftstoffanalyse** und die Empfehlung eines Tankstopps verwendet.
 
+### Regelbesatzung
+
+| Feld | Beschreibung |
+|------|-------------|
+| **F** | Führer der üblichen Besatzung |
+| **U** | Unterführer |
+| **M** | Mannschaften |
+
+Die Regelbesatzung gehört zum Fahrzeug und wird einmal eingetragen — in der
+Notation `Führer/Unterführer/Mannschaften`, also etwa `0/1/8` für eine
+Gesamtstärke von 9. Wird das Fahrzeug einem Konvoi zugewiesen, übernimmt
+ConvoyPlan sie dort als **Sollstärke**; für den einzelnen Marsch bleibt sie in
+der Tabelle *Sollstärke* änderbar (Tab **Fahrzeuge**, unterhalb der
+Marschfolge).
+
+Bleiben die Felder leer, heißt das **nicht angegeben** — nicht „unbesetzt".
+Wer ein Feld beim Bearbeiten leert, löscht die Angabe wieder; `0/0/0` ist
+dagegen eine Aussage und bedeutet „fährt unbesetzt". Das gilt für die übrigen
+Fahrzeugdaten genauso: **was im Formular steht, wird gespeichert** — ein
+geleertes Feld löscht den alten Wert. (Ausgenommen sind **Name** und
+**Antriebsart**; sie müssen gesetzt bleiben.)
+
+Eine später geänderte Regelbesatzung gilt für neue Zuweisungen; bereits
+geplante Konvois behalten ihre Sollstärke, damit ein fertiger Marschbefehl
+nicht nachträglich anders aussieht.
+
 ---
 
 ## Fahrzeug einem Konvoi zuweisen
@@ -40,6 +66,7 @@
 2. Wechsle zum Tab **Fahrzeuge**
 3. Klicke auf **Fahrzeug hinzufügen** und wähle ein Fahrzeug aus
 4. Lege die **Sonderfunktion** und die **Position** in der Formation fest
+5. Die **Sollstärke** steht bereits da, wenn das Fahrzeug eine Regelbesatzung hat
 
 ### Sonderfunktionen
 

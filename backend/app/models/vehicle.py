@@ -27,6 +27,16 @@ class Vehicle(Base):
     battery_capacity_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
     consumption_kwh_100km: Mapped[float | None] = mapped_column(Float, nullable=True)
     current_charge_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Regelbesatzung des Fahrzeugs in der Notation Führer/Unterführer/
+    # Mannschaften (0/1/8) — ein Stammdatum: mit wem dieses Fahrzeug
+    # üblicherweise ausrückt. Beim Zuordnen zu einem Konvoi wird sie in dessen
+    # Sollstärke übernommen (app/api/routes/convoys.py); danach lebt die
+    # Planung eigenständig weiter, eine spätere Änderung hier schreibt keine
+    # bestehende Marschfolge um. NULL heißt „nicht angegeben", 0 heißt
+    # „niemand" — dieselbe Unterscheidung wie in ConvoyVehicle.
+    staerke_soll_fuehrer: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    staerke_soll_unterfuehrer: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    staerke_soll_mannschaften: Mapped[int | None] = mapped_column(Integer, nullable=True)
     order_index: Mapped[int] = mapped_column(Integer, default=0)
     owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     # Direct org scoping — prevents vehicles from leaking across orgs when a user is member of multiple orgs

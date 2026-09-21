@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.services.staerke import MAX_JE_ROLLE
+
 
 class VehicleCreate(BaseModel):
     name: str
@@ -21,6 +23,12 @@ class VehicleCreate(BaseModel):
     battery_capacity_kwh: float | None = None
     consumption_kwh_100km: float | None = None
     current_charge_kwh: float | None = None
+    # Regelbesatzung (Führer/Unterführer/Mannschaften). Sie steht schon beim
+    # Anlegen hier, damit die Sollstärke nicht in jedem Konvoi neu getippt
+    # wird; beim Zuordnen übernimmt `add_vehicle_to_convoy` sie in die Planung.
+    staerke_soll_fuehrer: int | None = Field(default=None, ge=0, le=MAX_JE_ROLLE)
+    staerke_soll_unterfuehrer: int | None = Field(default=None, ge=0, le=MAX_JE_ROLLE)
+    staerke_soll_mannschaften: int | None = Field(default=None, ge=0, le=MAX_JE_ROLLE)
 
 
 class VehicleUpdate(VehicleCreate):
@@ -51,6 +59,9 @@ class VehicleResponse(BaseModel):
     battery_capacity_kwh: float | None = None
     consumption_kwh_100km: float | None = None
     current_charge_kwh: float | None = None
+    staerke_soll_fuehrer: int | None = None
+    staerke_soll_unterfuehrer: int | None = None
+    staerke_soll_mannschaften: int | None = None
     order_index: int = 0
     range_km: float | None = None
     range_uses_defaults: bool = False

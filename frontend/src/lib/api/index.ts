@@ -15,6 +15,12 @@ export interface Vehicle {
 	propulsion: Propulsion;
 	tank_capacity_l: number | null; fuel_consumption_l100km: number | null; current_fuel_l: number | null;
 	battery_capacity_kwh: number | null; consumption_kwh_100km: number | null; current_charge_kwh: number | null;
+	// Regelbesatzung (siehe $lib/tracking/staerke): mit wem das Fahrzeug
+	// üblicherweise ausrückt. Beim Hinzufügen zu einem Konvoi übernimmt das
+	// Backend sie als dessen Sollstärke; null heißt „nicht angegeben".
+	staerke_soll_fuehrer: number | null;
+	staerke_soll_unterfuehrer: number | null;
+	staerke_soll_mannschaften: number | null;
 	order_index: number; range_km: number | null; range_uses_defaults: boolean;
 }
 
