@@ -399,7 +399,13 @@ Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste
   sh -c 'npm ci && npm run test:e2e'`.
 - **Shell** — die Suiten unter `docker/updater/tests/` und für den
   GraphHopper-Entrypoint; sie tragen den Regionswechsel und laufen im Job
-  `Shell – Updater und Entrypoint`.
+  `Shell – Updater und Entrypoint`. Derselbe Job fährt auch die beiden Suiten
+  unter `.github/`, die **Shell in einer YAML-Datei** prüfen: die Entscheidung
+  in `.github/actions/build-or-reuse/` und den Nachweisschritt des Region-Jobs
+  (`.github/workflows/tests/`). Beide **schneiden ihr Original aus der
+  YAML-Datei heraus**, statt es nachzubauen — ein Nachbau prüft die Kopie. Wer
+  dort einen weiteren Test anlegt, braucht nichts zu verdrahten: der Job
+  sammelt `test_*.sh` aus allen vier Verzeichnissen ein.
 - **Container** — Trivy scannt alle fünf Images (`backend`, `frontend`,
   `graphhopper`, `updater`, `osmium`) auf HIGH/CRITICAL mit verfügbarem Fix.
   Ausnahmen gehören mit Begründung in `.trivyignore`.
