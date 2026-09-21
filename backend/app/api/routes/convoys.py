@@ -224,7 +224,8 @@ async def add_vehicle_to_convoy(
             Vehicle.org_id == org.id,
         )
     )
-    if vehicle_result.scalar_one_or_none() is None:
+    vehicle = vehicle_result.scalar_one_or_none()
+    if vehicle is None:
         raise HTTPException(status_code=404, detail="Vehicle not found")
 
     # Determine the march position server-side instead of trusting the client.
@@ -240,15 +241,35 @@ async def add_vehicle_to_convoy(
         raise HTTPException(status_code=409, detail="Vehicle already in convoy")
     next_position = max((cv.position for cv in existing_cvs), default=-1) + 1
 
+    # Sollstärke: was der Aufruf mitbringt, sonst die Regelbesatzung aus den
+    # Fahrzeugstammdaten. „Sonst" heißt: **keine** der drei Zahlen ist
+    # angegeben. Eine Teilangabe ist eine Aussage über diesen Verband und wird
+    # nicht aus den Stammdaten aufgefüllt — sonst stünde im Marschbefehl eine
+    # Zahl, die niemand für ihn eingetragen hat.
+    #
+    # Kopiert wird einmal, beim Zuordnen. Die Zeile lebt danach eigenständig:
+    # wer die Stammdaten pflegt, schreibt keinen fertig geplanten Verband um.
+    soll = (
+        data.staerke_soll_fuehrer,
+        data.staerke_soll_unterfuehrer,
+        data.staerke_soll_mannschaften,
+    )
+    if all(wert is None for wert in soll):
+        soll = (
+            vehicle.staerke_soll_fuehrer,
+            vehicle.staerke_soll_unterfuehrer,
+            vehicle.staerke_soll_mannschaften,
+        )
+
     cv = ConvoyVehicle(
         convoy_id=convoy_id,
         vehicle_id=data.vehicle_id,
         position=next_position,
         sonderfunktion=data.sonderfunktion,
         mobile_phone=data.mobile_phone,
-        staerke_soll_fuehrer=data.staerke_soll_fuehrer,
-        staerke_soll_unterfuehrer=data.staerke_soll_unterfuehrer,
-        staerke_soll_mannschaften=data.staerke_soll_mannschaften,
+        staerke_soll_fuehrer=soll[0],
+        staerke_soll_unterfuehrer=soll[1],
+        staerke_soll_mannschaften=soll[2],
     )
     db.add(cv)
     await db.commit()

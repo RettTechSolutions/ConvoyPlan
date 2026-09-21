@@ -18,7 +18,7 @@
 		type FuelAnalysis, type FuelStation, type Waypoint, type RoadPreference,
 		type KanalwechselEntry, type ConvoyVehicleItem,
 	} from '$lib/api';
-	import { MAX_JE_ROLLE, gesamt, sollAus } from '$lib/tracking/staerke';
+	import { MAX_JE_ROLLE, formatStaerke, gesamt, sollAus } from '$lib/tracking/staerke';
 
 	// svelte-dnd-action keys items by a top-level `id`; ConvoyVehicleItem has none,
 	// so we attach the vehicle id for the march-order drag list.
@@ -135,7 +135,7 @@
 	let showShareLinkModal = $state(false);
 	let showSubConvoyForm = $state(false);
 	function emptyVehicleForm() {
-		return { name:'', callsign:'', license_plate:'', height_cm:'', weight_kg:'', length_cm:'', convoy_role:'', propulsion:'combustion', tank_capacity_l:'', fuel_consumption_l100km:'', current_fuel_l:'', battery_capacity_kwh:'', consumption_kwh_100km:'', current_charge_kwh:'' };
+		return { name:'', callsign:'', license_plate:'', height_cm:'', weight_kg:'', length_cm:'', convoy_role:'', propulsion:'combustion', tank_capacity_l:'', fuel_consumption_l100km:'', current_fuel_l:'', battery_capacity_kwh:'', consumption_kwh_100km:'', current_charge_kwh:'', staerke_soll_fuehrer:'', staerke_soll_unterfuehrer:'', staerke_soll_mannschaften:'' };
 	}
 	let newVehicle = $state(emptyVehicleForm());
 	let editingVehicleId = $state<string | null>(null);
@@ -434,14 +434,41 @@
 	let vehicleFormError = $state('');
 	let addToConvoyOnCreate = $state(true);
 
+	/**
+	 * Die Regelbesatzung, wie sie gerade im Fahrzeugformular steht — oder
+	 * `null`, solange kein Feld ausgefüllt ist. Dieselbe Unterscheidung wie
+	 * hinten: leer heißt „nicht angegeben", 0/0/0 heißt „niemand".
+	 *
+	 * Die Felder des Formulars stehen als Zeichenkette da, kommen aber aus
+	 * `<input type="number">` als Zahl zurück — die Umrechnung muss deshalb
+	 * beides vertragen.
+	 */
+	function regelbesatzungAusForm(form: ReturnType<typeof emptyVehicleForm>) {
+		const zahl = (wert: string | number | null | undefined) => {
+			if (wert === '' || wert == null) return null;
+			const n = Number(wert);
+			return Number.isFinite(n) ? n : null;
+		};
+		return sollAus({
+			staerke_soll_fuehrer: zahl(form.staerke_soll_fuehrer),
+			staerke_soll_unterfuehrer: zahl(form.staerke_soll_unterfuehrer),
+			staerke_soll_mannschaften: zahl(form.staerke_soll_mannschaften),
+		});
+	}
+
 	// Validate the realistic ranges the backend also enforces, but with a clear
 	// German message instead of a raw 422. Height especially had no lower bound
 	// and accepted nonsense values silently.
-	function validateVehicleForm(form: { height_cm: string; weight_kg: string; length_cm: string }): string | null {
+	function validateVehicleForm(form: ReturnType<typeof emptyVehicleForm>): string | null {
 		const checks: [string, string, number, number, string][] = [
 			['height_cm', 'Fahrzeughöhe', 100, 450, 'cm'],
 			['weight_kg', 'Gewicht', 100, 100000, 'kg'],
 			['length_cm', 'Länge', 100, 3000, 'cm'],
+			// Dieselben Grenzen wie hinten (`staerke.MAX_JE_ROLLE`) — sonst nähme
+			// das Formular an, was der Endpunkt mit 422 zurückwiese.
+			['staerke_soll_fuehrer', 'Führer der Regelbesatzung', 0, MAX_JE_ROLLE, 'Personen'],
+			['staerke_soll_unterfuehrer', 'Unterführer der Regelbesatzung', 0, MAX_JE_ROLLE, 'Personen'],
+			['staerke_soll_mannschaften', 'Mannschaften der Regelbesatzung', 0, MAX_JE_ROLLE, 'Personen'],
 		];
 		for (const [key, label, min, max, unit] of checks) {
 			const raw = (form as Record<string, string>)[key];
@@ -493,6 +520,9 @@
 			battery_capacity_kwh: electric ? num(form.battery_capacity_kwh) : null,
 			consumption_kwh_100km: electric ? num(form.consumption_kwh_100km) : null,
 			current_charge_kwh: electric ? num(form.current_charge_kwh) : null,
+			staerke_soll_fuehrer: num(form.staerke_soll_fuehrer),
+			staerke_soll_unterfuehrer: num(form.staerke_soll_unterfuehrer),
+			staerke_soll_mannschaften: num(form.staerke_soll_mannschaften),
 		};
 	}
 
@@ -514,6 +544,9 @@
 			battery_capacity_kwh: v.battery_capacity_kwh != null ? String(v.battery_capacity_kwh) : '',
 			consumption_kwh_100km: v.consumption_kwh_100km != null ? String(v.consumption_kwh_100km) : '',
 			current_charge_kwh: v.current_charge_kwh != null ? String(v.current_charge_kwh) : '',
+			staerke_soll_fuehrer: v.staerke_soll_fuehrer != null ? String(v.staerke_soll_fuehrer) : '',
+			staerke_soll_unterfuehrer: v.staerke_soll_unterfuehrer != null ? String(v.staerke_soll_unterfuehrer) : '',
+			staerke_soll_mannschaften: v.staerke_soll_mannschaften != null ? String(v.staerke_soll_mannschaften) : '',
 		};
 	}
 
@@ -1383,6 +1416,8 @@
 									<input placeholder="Verbrauch (l/100 km)" type="number" step="0.1" min="0" bind:value={newVehicle.fuel_consumption_l100km} />
 									<input placeholder="Aktueller Füllstand (Liter)" type="number" step="0.1" min="0" bind:value={newVehicle.current_fuel_l} />
 								{/if}
+								<hr style="border-color:rgba(255,255,255,.15);margin:.2rem 0" />
+								{@render regelbesatzungFelder(newVehicle, 'neu')}
 								{#if selected}
 									<label class="checkbox-row">
 										<input type="checkbox" bind:checked={addToConvoyOnCreate} />
@@ -1399,6 +1434,7 @@
 							onfinalize={handleVehicleDndFinalize}
 						>
 							{#each dndVehicles as v (v.id)}
+								{@const besatzung = sollAus(v)}
 								<li class="vehicle-item" style="flex-direction:column;align-items:stretch;gap:.3rem">
 									{#if editingVehicleId === v.id}
 										<form class="inline-form" onsubmit={(e) => { e.preventDefault(); saveEditVehicle(); }}>
@@ -1426,6 +1462,8 @@
 												<input placeholder="Verbrauch (l/100 km)" type="number" step="0.1" min="0" bind:value={editVehicleForm.fuel_consumption_l100km} />
 												<input placeholder="Aktueller Füllstand (Liter)" type="number" step="0.1" min="0" bind:value={editVehicleForm.current_fuel_l} />
 											{/if}
+											<hr style="border-color:rgba(255,255,255,.15);margin:.2rem 0" />
+											{@render regelbesatzungFelder(editVehicleForm, 'bearbeiten')}
 											<div style="display:flex;gap:.4rem">
 												<button type="submit" style="flex:1">Speichern</button>
 												<button type="button" class="btn-small danger" onclick={() => editingVehicleId = null}>Abbrechen</button>
@@ -1438,6 +1476,7 @@
 												{#if v.callsign}<span class="tag">{v.callsign}</span>{/if}
 												{#if v.license_plate}<span class="tag">{v.license_plate}</span>{/if}
 												{#if v.propulsion === 'electric'}<span class="tag ev-tag" title="Elektrofahrzeug">🔋 E</span>{/if}
+												{#if besatzung}<span class="tag" title="Regelbesatzung (Führer/Unterführer/Mannschaften)">👥 {formatStaerke(besatzung)}</span>{/if}
 												{#if v.range_km != null}
 													<span class="tag" class:fuel-tag={!v.range_uses_defaults} class:fuel-tag-default={v.range_uses_defaults} title={v.range_uses_defaults ? (v.propulsion === 'electric' ? 'Reichweite basiert auf Standardwerten (20 kWh/100km, 60 kWh)' : 'Reichweite basiert auf Standardwerten (7,5 l/100km, 70 l)') : ''}>{v.propulsion === 'electric' ? '🔌' : '⛽'} {v.range_uses_defaults ? '~' : ''}{v.range_km} km</span>
 												{/if}
@@ -1948,6 +1987,35 @@
 		/>
 	</main>
 </div>
+
+<!--
+  Regelbesatzung im Fahrzeugformular — dieselben drei Felder beim Anlegen und
+  beim Bearbeiten. Ein Schnipsel statt zweier Kopien: Beschriftung und Grenzen
+  driften sonst auseinander, und was hier eingetragen wird, steht später als
+  Sollstärke im Marschbefehl.
+-->
+{#snippet regelbesatzungFelder(form: ReturnType<typeof emptyVehicleForm>, kennung: string)}
+	{@const besatzung = regelbesatzungAusForm(form)}
+	<div class="field-label" style="margin-bottom:.1rem">Regelbesatzung (Führer/Unterführer/Mannschaften)</div>
+	<div class="besatzung-felder" data-testid="regelbesatzung-{kennung}">
+		<label>F
+			<input type="number" min="0" max={MAX_JE_ROLLE} aria-label="Führer der Regelbesatzung" bind:value={form.staerke_soll_fuehrer} />
+		</label>
+		<label>U
+			<input type="number" min="0" max={MAX_JE_ROLLE} aria-label="Unterführer der Regelbesatzung" bind:value={form.staerke_soll_unterfuehrer} />
+		</label>
+		<label>M
+			<input type="number" min="0" max={MAX_JE_ROLLE} aria-label="Mannschaften der Regelbesatzung" bind:value={form.staerke_soll_mannschaften} />
+		</label>
+		<span class="besatzung-summe" aria-label="Gesamtstärke">{besatzung ? gesamt(besatzung) : '–'}</span>
+	</div>
+	<p class="hint">
+		Gilt dauerhaft für dieses Fahrzeug und wird beim Hinzufügen zu einem Konvoi
+		als Sollstärke übernommen — dort ist sie für den einzelnen Marsch noch änderbar.
+		Leer heißt „nicht angegeben“; ein geleertes Feld löscht eine frühere Angabe.
+		„0/0/0“ ist dagegen eine Aussage: das Fahrzeug fährt unbesetzt.
+	</p>
+{/snippet}
 
 <!-- ── Modal: Marschbefehl ausfüllen ──────────────────────────────── -->
 {#if showBefehlModal}
@@ -2546,4 +2614,9 @@
 	.soll-name { max-width: 10rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.soll-tabelle input { width: 3rem; padding: .2rem; text-align: center; font-variant-numeric: tabular-nums; }
 	.soll-gesamt { text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+	/* Regelbesatzung im Fahrzeugformular */
+	.besatzung-felder { display: flex; align-items: center; gap: .4rem; }
+	.besatzung-felder label { display: flex; align-items: center; gap: .25rem; font-size: var(--text-xs); color: var(--text-muted); }
+	.besatzung-felder input { width: 3rem; padding: .25rem; text-align: center; font-variant-numeric: tabular-nums; }
+	.besatzung-summe { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
 </style>

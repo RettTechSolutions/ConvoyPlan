@@ -215,6 +215,9 @@ def register(mcp) -> None:
         laenge_cm: int | None = None,
         gewicht_kg: int | None = None,
         antrieb: str = "combustion",
+        regelbesatzung_fuehrer: int | None = None,
+        regelbesatzung_unterfuehrer: int | None = None,
+        regelbesatzung_mannschaften: int | None = None,
     ) -> dict[str, Any]:
         """Legt ein Fahrzeug im Bestand der Organisation an.
 
@@ -229,6 +232,11 @@ def register(mcp) -> None:
             laenge_cm: Fahrzeuglänge in Zentimetern (für die Kolonnenlänge).
             gewicht_kg: Zulässiges Gesamtgewicht in Kilogramm.
             antrieb: combustion (Verbrenner) oder electric (E-Fahrzeug).
+            regelbesatzung_fuehrer: Führer der üblichen Besatzung (0/1/8 → 0).
+            regelbesatzung_unterfuehrer: Unterführer der üblichen Besatzung.
+            regelbesatzung_mannschaften: Mannschaften der üblichen Besatzung.
+                Die drei Zahlen sind ein Stammdatum; beim Zuordnen zu einem
+                Konvoi werden sie als Sollstärke übernommen.
         """
         async with mcp_context("fahrzeug_anlegen") as ctx:
             ctx.require(SCOPE_WRITE)
@@ -236,6 +244,9 @@ def register(mcp) -> None:
                 name=name, callsign=funkrufname, license_plate=kennzeichen,
                 height_cm=hoehe_cm, length_cm=laenge_cm, weight_kg=gewicht_kg,
                 propulsion=antrieb,
+                staerke_soll_fuehrer=regelbesatzung_fuehrer,
+                staerke_soll_unterfuehrer=regelbesatzung_unterfuehrer,
+                staerke_soll_mannschaften=regelbesatzung_mannschaften,
             )
             result = await _run(
                 vehicle_routes.create_vehicle(data=data, ctx=ctx.org_ctx, db=ctx.db)
@@ -262,6 +273,9 @@ def register(mcp) -> None:
         hoehe_cm: int | None = None,
         laenge_cm: int | None = None,
         gewicht_kg: int | None = None,
+        regelbesatzung_fuehrer: int | None = None,
+        regelbesatzung_unterfuehrer: int | None = None,
+        regelbesatzung_mannschaften: int | None = None,
     ) -> dict[str, Any]:
         """Ändert die Stammdaten eines Fahrzeugs.
 
@@ -273,12 +287,20 @@ def register(mcp) -> None:
             hoehe_cm: Fahrzeughöhe in Zentimetern.
             laenge_cm: Fahrzeuglänge in Zentimetern.
             gewicht_kg: Zulässiges Gesamtgewicht in Kilogramm.
+            regelbesatzung_fuehrer: Führer der üblichen Besatzung.
+            regelbesatzung_unterfuehrer: Unterführer der üblichen Besatzung.
+            regelbesatzung_mannschaften: Mannschaften der üblichen Besatzung.
+                Sie gilt ab jetzt für neue Zuordnungen; bereits geplante
+                Konvois behalten ihre Sollstärke.
         """
         async with mcp_context("fahrzeug_aktualisieren") as ctx:
             ctx.require(SCOPE_WRITE)
             felder = {
                 "name": name, "callsign": funkrufname, "license_plate": kennzeichen,
                 "height_cm": hoehe_cm, "length_cm": laenge_cm, "weight_kg": gewicht_kg,
+                "staerke_soll_fuehrer": regelbesatzung_fuehrer,
+                "staerke_soll_unterfuehrer": regelbesatzung_unterfuehrer,
+                "staerke_soll_mannschaften": regelbesatzung_mannschaften,
             }
             payload = {k: v for k, v in felder.items() if v is not None}
             if not payload:
