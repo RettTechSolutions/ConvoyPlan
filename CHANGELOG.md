@@ -41,6 +41,12 @@ ursprünglichen SemVer-Nummern.
 
   Das Frontend-Image installiert zur Laufzeit nur noch, was der Server wirklich lädt (`maplibre-gl`, `qrcode`, `svelte-dnd-action`): der PWA-Plugin, `workbox-window` und Typdefinitionen sind Bauzeit-Abhängigkeiten und stehen jetzt auch so in `package.json` — die Laufzeit-`node_modules` schrumpfen von rund 230 MB auf unter 50 MB, und Vite, TypeScript, Babel und esbuild sind aus dem ausgelieferten Image verschwunden.
 
+### Changed
+
+- **Der Region-Job der CI sagt jetzt, warum er umfällt.** Sein Nachweisschritt griff direkt nach dem Regionswechsel per `docker compose exec` auf GraphHopper zu. Startet der Container in genau diesem Moment neu — `restart: unless-stopped` und `-XX:+ExitOnOutOfMemoryError` erlauben das jederzeit —, endet der Zugriff mit `exit 137` und **einer einzigen Zeile Ausgabe**, weil der Schritt an seiner eigenen Fehlerbehandlung vorbei stirbt. Am 2026-09-21 war das so, gleichzeitig auch auf `main`, und es ließ sich nicht entscheiden, ob der Runner schuld war oder der Regionswechsel wirklich kaputt ist.
+
+  Der Zugriff wird jetzt eine Minute lang wiederholt, und wenn er dann immer noch nicht geht, gibt der Job Containerzustand (`OOMKilled`, `ExitCode`, `RestartCount`), Speicherlage und die letzten GraphHopper-Logs aus. Die Zusicherungen selbst bleiben unverändert scharf: geprüft wird weiterhin, dass `.region` auf Berlin zeigt und eine Route herauskommt — eine Wiederholung, die eine falsche Region oder eine tote Route durchwinkt, wäre kein Härten, sondern ein abgeschalteter Test. Genau das hält `.github/workflows/tests/test_region_beleg_diagnose.sh` fest; er schneidet den Schritt aus `ci.yml` heraus und fährt ihn gegen Attrappen, ohne Container und ohne Netz.
+
 ### Fixed
 
 - **Ein Umsortieren der Wegpunkte änderte die Route nicht und war nach der Berechnung wieder weg.** Die Reihenfolge ließ sich ziehen und wurde auch gespeichert — die Routenberechnung ignorierte sie und schrieb sie anschließend zurück auf den alten Stand.

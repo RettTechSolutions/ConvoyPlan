@@ -254,13 +254,22 @@ jobs:
     # niemand startet, altert genauso still wie ungetesteter Code — und der
     # naechste, der eines dieser Skripte anfasst, haette den Bruch nicht
     # bemerkt. Deshalb dieser Job.
+    #
+    # Zwei der eingesammelten Suiten liegen unter .github/ und pruefen keinen
+    # Anwendungscode, sondern Shell, die in einer YAML-Datei steht: die
+    # Entscheidung in build-or-reuse und den Nachweisschritt des Region-Jobs
+    # weiter unten. Beide schneiden ihr Original heraus, statt es nachzubauen —
+    # ein Nachbau prueft die Kopie. Shell in einem Workflow wird von nichts
+    # anderem geprueft und faellt sonst erst im Lauf auf, wo sie niemand mehr
+    # in Ruhe untersuchen kann.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Alle Shell-Suiten ausfuehren
         run: |
           rc=0
-          for t in docker/updater/tests/test_*.sh graphhopper/tests/test_*.sh .github/actions/*/tests/test_*.sh; do
+          for t in docker/updater/tests/test_*.sh graphhopper/tests/test_*.sh \
+                   .github/actions/*/tests/test_*.sh .github/workflows/tests/test_*.sh; do
             echo "::group::$t"
             if bash "$t"; then
               echo "$t: GRUEN"
@@ -420,16 +429,70 @@ jobs:
 
       - name: "Beleg 1/3: GraphHopper routet tatsächlich in der neuen Region"
         run: |
-          region_content="$(docker compose exec -T graphhopper cat /data/osm/.region)"
+          # `region_status.json` steht auf "done", sobald switch-region.sh den
+          # neuen Container hochgefahren und einmal gesund gesehen hat. Gesund
+          # heißt aber nicht unantastbar: `restart: unless-stopped` und
+          # `-XX:+ExitOnOutOfMemoryError` (graphhopper/entrypoint.sh) können ihn
+          # danach jederzeit ersetzen. Ein `docker compose exec`, dem der
+          # Container unter den Händen weggenommen wird, endet mit 137 (SIGKILL)
+          # — und zwar wortlos, weil der Schritt an seiner eigenen
+          # Fehlerbehandlung vorbei stirbt.
+          #
+          # Genau das war am 2026-09-21 rot, gleichzeitig auch auf `main`, und
+          # niemand konnte sagen warum. Die Zusicherungen unten bleiben
+          # unverändert scharf: geprüft wird weiterhin, dass `.region` auf
+          # Berlin zeigt und eine Route herauskommt. Wiederholt wird nur der
+          # *Zugriff*, und wenn er endgültig nicht geht, sagt der Job warum.
+          diagnose() {
+            echo "::group::Diagnose: Zustand von GraphHopper und Runner"
+            docker compose ps || true
+            cid="$(docker compose ps -q graphhopper || true)"
+            if [ -n "$cid" ]; then
+              docker inspect "$cid" --format \
+                'Status={{.State.Status}} OOMKilled={{.State.OOMKilled}} ExitCode={{.State.ExitCode}} RestartCount={{.RestartCount}}' || true
+            else
+              echo "Kein GraphHopper-Container vorhanden."
+            fi
+            free -m || true
+            docker compose logs --no-color --tail 200 graphhopper || true
+            echo "::endgroup::"
+          }
+
+          region_content=""
+          for versuch in 1 2 3 4 5 6; do
+            if region_content="$(docker compose exec -T graphhopper cat /data/osm/.region 2>&1)"; then
+              break
+            fi
+            echo "Versuch ${versuch}/6: GraphHopper nicht ansprechbar (${region_content}) — 10 s warten."
+            region_content=""
+            sleep 10
+          done
+          if [ -z "$region_content" ]; then
+            echo "::error::/data/osm/.region ließ sich nicht lesen — GraphHopper war über eine Minute lang nicht ansprechbar."
+            diagnose
+            exit 1
+          fi
+
           echo "$region_content"
           echo "$region_content" | grep -q '^OSM_FILENAME=berlin-latest\.osm\.pbf$' || {
             echo "::error::/data/osm/.region zeigt nicht auf Berlin — nur 'Container gesund' beweist das nicht."
+            diagnose
             exit 1
           }
-          response="$(curl -fsS 'http://127.0.0.1:8989/route?point=52.5200,13.4050&point=52.5000,13.3800&profile=car&locale=de')"
+
+          response=""
+          for versuch in 1 2 3 4 5 6; do
+            if response="$(curl -fsS 'http://127.0.0.1:8989/route?point=52.5200,13.4050&point=52.5000,13.3800&profile=car&locale=de')"; then
+              break
+            fi
+            echo "Versuch ${versuch}/6: Routen-Endpunkt antwortet nicht — 10 s warten."
+            response=""
+            sleep 10
+          done
           echo "$response" | grep -q '"paths"' || {
             echo "::error::Routenanfrage innerhalb Berlins ist fehlgeschlagen."
             echo "$response"
+            diagnose
             exit 1
           }
           echo "Routenanfrage innerhalb Berlins erfolgreich."
