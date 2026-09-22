@@ -803,7 +803,7 @@
 
 	/* Vehicle rows */
 	/*
-	   Die Zeile darf umbrechen. Am Telefon ist die Leiste `min(320px, 85vw)`
+	   Die Zeile darf umbrechen. Am Telefon ist die Leiste `min(400px, 90vw)`
 	   breit; Name, Funkrufname, Sonderfunktion, „LIVE", Stärke und Status
 	   passen dort nicht nebeneinander. Ohne Umbruch schrumpfte allein
 	   `.vname` — alles dahinter steht auf `flex-shrink: 0`, lief über und
@@ -863,7 +863,13 @@
 		.topbar .topbar-live { margin-left: auto; display: flex; align-items: center; }
 
 		.app { flex-direction: column; padding-top: 48px; }
-		.sidebar { position: fixed; top: 48px; left: 0; bottom: 0; z-index: 40; transform: translateX(-100%); transition: transform .25s ease; width: 300px; overflow-y: hidden; }
+		/* Breite der Schublade: `min(400px, 90vw)`. 320 px waren an einem
+		   heutigen Telefon zu wenig — eine Fahrzeugzeile trägt Name,
+		   Funkrufname, Sonderfunktion, „LIVE", Stärke und Status, und die
+		   Leiste ist die Arbeitsfläche, nicht die Karte dahinter. Der
+		   sichtbare Rest bleibt breit genug, um die Schublade durch Tippen
+		   auf den Hintergrund wieder zu schließen. */
+		.sidebar { position: fixed; top: 48px; left: 0; bottom: 0; z-index: 40; transform: translateX(-100%); transition: transform .25s ease; width: min(400px, 90vw); overflow-y: hidden; }
 		.sidebar.open { transform: translateX(0); box-shadow: 4px 0 24px rgba(0,0,0,.5); }
 		.sidebar-backdrop { display: block; position: fixed; inset: 0; top: 48px; background: rgba(0,0,0,.4); z-index: 39; border: none; cursor: pointer; }
 		.map-area { flex: 1; }

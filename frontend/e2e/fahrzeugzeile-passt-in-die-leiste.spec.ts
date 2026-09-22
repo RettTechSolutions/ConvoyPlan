@@ -6,12 +6,13 @@ import {
 /**
  * Die Zusage: **in der Fahrzeugliste verdeckt nichts etwas anderes.**
  *
- * Am Telefon ist die Seitenleiste eine Schublade von `min(320px, 85vw)`. In
+ * Am Telefon ist die Seitenleiste eine Schublade von `min(400px, 90vw)`. In
  * eine Zeile gehören Name, Funkrufname, Sonderfunktion, „LIVE", die Stärke und
- * der Status — nebeneinander sind das mehr als 320 px. Solange die Zeile nicht
- * umbrechen durfte, schrumpfte nur der Name; alles dahinter lief weiter und
- * legte sich über die rechte Hälfte: das „LIVE"-Abzeichen stand mitten in der
- * Stärke, und beides war unlesbar.
+ * der Status — auf einem gewöhnlichen Telefon mehr, als nebeneinander passt;
+ * die breitere Schublade verschiebt diese Grenze nur, sie hebt sie nicht auf.
+ * Solange die Zeile nicht umbrechen durfte, schrumpfte nur der Name; alles
+ * dahinter lief weiter und legte sich über die rechte Hälfte: das
+ * „LIVE"-Abzeichen stand mitten in der Stärke, und beides war unlesbar.
  *
  * Geprüft wird deshalb Geometrie, nicht Text — ein `toContainText` sieht eine
  * Überlagerung nicht, und ein Bildschirmfoto sieht sie nur, wenn jemand
