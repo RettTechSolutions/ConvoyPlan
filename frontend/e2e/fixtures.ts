@@ -27,8 +27,24 @@ export function fahrzeug(teil: Partial<TrackFahrzeug> = {}): TrackFahrzeug {
 	};
 }
 
+/**
+ * Eine gemeldete Position — daran erkennt die Fahrzeugliste ein Fahrzeug als
+ * „LIVE". Beide Ansichten führen dieselben Felder (`TrackPosition` bzw.
+ * `VehiclePosition`).
+ */
+export function position(fahrzeugId = 'v1') {
+	return {
+		vehicle_id: fahrzeugId, lat: 52.5, lon: 13.4,
+		speed_kmh: 42, heading: 90, recorded_at: '2026-09-18T14:05:00Z',
+	};
+}
+
 /** Antwort von `GET /api/track/<slug>` für eine geöffnete Ansicht. */
-export function trackPayload(scope: 'track' | 'driver', fahrzeuge?: TrackFahrzeug[]) {
+export function trackPayload(
+	scope: 'track' | 'driver',
+	fahrzeuge?: TrackFahrzeug[],
+	positionen?: ReturnType<typeof position>[],
+) {
 	return {
 		name: 'Verlegung Nord',
 		organization: 'THW OV Musterstadt',
@@ -44,7 +60,7 @@ export function trackPayload(scope: 'track' | 'driver', fahrzeuge?: TrackFahrzeu
 		distance_m: 42000,
 		kanalwechsel: [],
 		vehicles: fahrzeuge ?? [fahrzeug()],
-		positions: [],
+		positions: positionen ?? [],
 	};
 }
 
@@ -69,7 +85,12 @@ export async function blockExternal(page: Page) {
  */
 export async function mockTrack(
 	page: Page,
-	opts: { scope: 'track' | 'driver'; password?: string; fahrzeuge?: TrackFahrzeug[] },
+	opts: {
+		scope: 'track' | 'driver';
+		password?: string;
+		fahrzeuge?: TrackFahrzeug[];
+		positionen?: ReturnType<typeof position>[];
+	},
 ) {
 	let freigeschaltet = !opts.password;
 
@@ -90,7 +111,7 @@ export async function mockTrack(
 			});
 			return;
 		}
-		await route.fulfill({ json: trackPayload(opts.scope, opts.fahrzeuge) });
+		await route.fulfill({ json: trackPayload(opts.scope, opts.fahrzeuge, opts.positionen) });
 	});
 }
 
@@ -186,6 +207,8 @@ export async function mockOrgPortal(
 		slug: string;
 		convoyId: string;
 		fahrzeuge?: ReturnType<typeof konvoiFahrzeug>[];
+		/** Schon gemeldete Positionen — die Liste zeigt diese Fahrzeuge als „LIVE". */
+		positionen?: ReturnType<typeof position>[];
 		/** Rolle der angemeldeten Sitzung. Unter `fahrer` darf nichts gemeldet werden. */
 		rolle?: 'beobachter' | 'fahrer' | 'planer' | 'admin';
 	},
@@ -227,7 +250,7 @@ export async function mockOrgPortal(
 		}
 		const pfad = new URL(route.request().url()).pathname;
 		if (pfad.endsWith('/route')) return void route.fulfill({ json: null });
-		if (pfad.endsWith('/positions')) return void route.fulfill({ json: [] });
+		if (pfad.endsWith('/positions')) return void route.fulfill({ json: opts.positionen ?? [] });
 		if (pfad.endsWith('/staerke')) {
 			const fahrzeugId = pfad.split('/vehicles/')[1]!.replace('/staerke', '');
 			const werte = JSON.parse(route.request().postData() ?? '{}');
