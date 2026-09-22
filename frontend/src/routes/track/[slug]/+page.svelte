@@ -802,12 +802,23 @@
 	.section { margin-bottom: .75rem; }
 
 	/* Vehicle rows */
-	.vehicle-row { display: flex; align-items: center; justify-content: space-between; padding: .35rem 0; border-bottom: 1px solid var(--border); gap: .4rem; }
-	.veh-right { display: flex; align-items: center; gap: .45rem; flex-shrink: 0; }
-	.veh-left { display: flex; align-items: center; gap: .3rem; flex: 1; min-width: 0; }
+	/*
+	   Die Zeile darf umbrechen. Am Telefon ist die Leiste `min(320px, 85vw)`
+	   breit; Name, Funkrufname, Sonderfunktion, „LIVE", Stärke und Status
+	   passen dort nicht nebeneinander. Ohne Umbruch schrumpfte allein
+	   `.vname` — alles dahinter steht auf `flex-shrink: 0`, lief über und
+	   legte sich über die rechte Hälfte (das „LIVE"-Abzeichen mitten in der
+	   Stärke). `flex: 1 1 auto` statt `flex: 1` lässt der linken Seite ihre
+	   Inhaltsbreite, damit die rechte **als Ganzes** in die zweite Zeile
+	   rutscht statt einzelne Abzeichen abzuschneiden; `margin-left: auto`
+	   hält sie dort rechtsbündig. Geprüft in
+	   `e2e/fahrzeugzeile-passt-in-die-leiste.spec.ts`. */
+	.vehicle-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; padding: .35rem 0; border-bottom: 1px solid var(--border); gap: .15rem .4rem; }
+	.veh-right { display: flex; align-items: center; gap: .45rem; flex-shrink: 0; margin-left: auto; }
+	.veh-left { display: flex; flex-wrap: wrap; align-items: center; gap: .15rem .3rem; flex: 1 1 auto; min-width: 0; }
 	.status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 	.vname { font-size: var(--text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-	.tag { display: inline-block; padding: .05rem .3rem; background: var(--surface-2); border-radius: 3px; font-size: var(--text-xs); flex-shrink: 0; color: var(--text-2); }
+	.tag { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: .05rem .3rem; background: var(--surface-2); border-radius: 3px; font-size: var(--text-xs); flex-shrink: 0; color: var(--text-2); }
 	.live-badge { background: #27ae60; color: white; border-radius: 3px; padding: .05rem .3rem; font-size: var(--text-xs); font-weight: 700; flex-shrink: 0; animation: pulse 1.5s infinite; }
 	.status-label { font-size: var(--text-xs); font-weight: 600; white-space: nowrap; flex-shrink: 0; }
 

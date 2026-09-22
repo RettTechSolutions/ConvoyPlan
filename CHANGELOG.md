@@ -57,6 +57,12 @@ ursprünglichen SemVer-Nummern.
 
 ### Fixed
 
+- **In der Fahrzeugliste der Tracking-Ansicht lagen die Angaben am Telefon übereinander.** Das „LIVE"-Abzeichen stand mitten in der Mannschaftsstärke, der Fahrzeugname war auf einen Strich zusammengeschoben — betroffen waren die Tracking-Ansicht und der Fahrer-Link gleichermaßen.
+
+  Die Zeile durfte nicht umbrechen. In der Schublade am Telefon (`min(320px, 85vw)`) passen Name, Funkrufname, Sonderfunktion, „LIVE", Stärke und Status nicht nebeneinander; schrumpfen durfte aber allein der Name, alles dahinter lief über und legte sich über die rechte Hälfte. Jetzt rutscht die rechte Gruppe als Ganzes in eine zweite Zeile, statt einzelne Abzeichen abzuschneiden — im Einsatz ist die halbe Stärkeangabe schlimmer als eine Zeile mehr.
+
+  `frontend/e2e/fahrzeugzeile-passt-in-die-leiste.spec.ts` misst dafür Kästen statt Text: dass zwei Angaben sich überdecken, sieht ein `toContainText` nicht, und ein Bildschirmfoto nur, wenn jemand hinschaut.
+
 - **Der Demo-Einstieg landete auf der Anmeldemaske.** Wer `/demo` aufrief, wurde nach `/admin` umgeleitet — auf die eine Seite, an der er sich mangels Zugang gerade nicht anmelden kann. Der Wächter im Wurzel-Layout schickt jeden nicht angemeldeten Aufruf eines nicht-öffentlichen Pfades dorthin, und `/demo` stand nicht auf der Liste der öffentlichen Pfade. Dasselbe traf den Abmeldelink aus der Nachfrage-E-Mail (`/demo/abmelden`): Wer abbestellt, hat keine Sitzung mehr — das ist dort der Normalfall.
 
   Die Demo-Seite selbst war nie defekt, sie wurde nur nicht erreicht. Sichtbar wird so ein Fehler erst im Zusammenspiel mit dem Layout darüber; `frontend/e2e/demo-einstieg.spec.ts` ruft die Seiten deshalb als echten Seitenaufbau ohne Sitzung auf und hält fest, dass keine davon auf `/admin` führt.
