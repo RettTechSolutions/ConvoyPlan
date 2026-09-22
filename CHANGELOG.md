@@ -61,7 +61,7 @@ ursprünglichen SemVer-Nummern.
 
   Die Zeile durfte nicht umbrechen. In der Schublade am Telefon (`min(320px, 85vw)`) passen Name, Funkrufname, Sonderfunktion, „LIVE", Stärke und Status nicht nebeneinander; schrumpfen durfte aber allein der Name, alles dahinter lief über und legte sich über die rechte Hälfte. Jetzt rutscht die rechte Gruppe als Ganzes in eine zweite Zeile, statt einzelne Abzeichen abzuschneiden — im Einsatz ist die halbe Stärkeangabe schlimmer als eine Zeile mehr.
 
-  Dazu ist die Schublade am Telefon breiter geworden — `min(400px, 90vw)` statt 320 px bzw. 300 px, in beiden Ansichten derselbe Wert. Die Leiste ist dort die Arbeitsfläche; die Karte dahinter braucht nur so viel Rand, dass ein Tippen darauf die Schublade wieder schließt.
+  Dazu ist die Schublade am Telefon breiter geworden — `min(400px, 90vw)` statt 320 px, 300 px und 88 vw: ein Wert für Tracking-Ansicht, Fahrer-Link **und** Planung, wo vorher drei standen. Die Leiste ist dort die Arbeitsfläche; die Karte dahinter braucht nur so viel Rand, dass ein Tippen darauf die Schublade wieder schließt.
 
   `frontend/e2e/fahrzeugzeile-passt-in-die-leiste.spec.ts` misst dafür Kästen statt Text: dass zwei Angaben sich überdecken, sieht ein `toContainText` nicht, und ein Bildschirmfoto nur, wenn jemand hinschaut.
 

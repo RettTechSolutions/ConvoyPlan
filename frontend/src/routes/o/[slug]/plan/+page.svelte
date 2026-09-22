@@ -2508,8 +2508,13 @@
 			left: 0;
 			bottom: auto;
 			height: calc(100dvh - 52px - env(safe-area-inset-top));
-			/* Cap to viewport so 88vw never produces a sub-pixel scrollbar on narrow screens. */
-			width: min(320px, 88vw);
+			/* Dieselbe Breite wie die Schublade der Tracking-Ansicht: am Telefon
+			   ist die Leiste die Arbeitsfläche, nicht der Rand der Karte. Der
+			   sichtbare Rest bleibt breit genug, um sie durch Tippen auf den
+			   Hintergrund wieder zu schließen.
+			   `max-width: 100vw` fängt weiter ab, dass 90vw auf schmalen
+			   Schirmen eine Teilpixel-Bildlaufleiste erzeugt. */
+			width: min(400px, 90vw);
 			min-width: 0;
 			max-width: 100vw;
 			z-index: 300;
