@@ -154,3 +154,53 @@ export function maneuverFrom(
 		far: false, direct, aheadM,
 	};
 }
+
+/** Eine Zeile der Hinweisliste im Seitenmenü. */
+export interface StepRow {
+	step: RouteStep;
+	arrow: string;
+	text: string;
+	/** „km 12,4" — die Stelle auf der Route, wie im Roadbook. */
+	km: string;
+	/**
+	 * Gegen die **Verbandsspitze**: gefahren, das nächste oder noch voraus.
+	 * `null` ohne Live-Position — dann steht die Liste ohne Stand da, statt
+	 * einen zu erfinden.
+	 */
+	state: 'passed' | 'next' | 'ahead' | null;
+	/** Nur beim nächsten: Meter von der Spitze bis dorthin. */
+	aheadM: number | null;
+}
+
+/**
+ * Alle Hinweise der Route als Liste, mit Stand gegen die Spitze.
+ *
+ * Anders als der Pfeil auf der Karte ist das keine Anweisung, sondern eine
+ * Übersicht für Beobachter: Wo steht die Spitze, was kommt als Nächstes? Der
+ * Bezugspunkt wird deshalb ausdrücklich genannt („Spitze"), und „Geradeaus"
+ * bleibt in der Liste — dort sagt ein Straßenwechsel etwas.
+ */
+export function stepRows(steps: readonly RouteStep[], frontM: number | null): StepRow[] {
+	const known = frontM !== null && Number.isFinite(frontM);
+	let nextSeen = false;
+	return steps.map((step) => {
+		let state: StepRow['state'] = null;
+		let aheadM: number | null = null;
+		if (known) {
+			if (step.m + PASSED_M <= frontM!) state = 'passed';
+			else if (!nextSeen) {
+				state = 'next';
+				aheadM = Math.max(0, step.m - frontM!);
+				nextSeen = true;
+			} else state = 'ahead';
+		}
+		return {
+			step,
+			arrow: stepArrow(step.sign),
+			text: stepText(step),
+			km: `km ${(step.m / 1000).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`,
+			state,
+			aheadM,
+		};
+	});
+}

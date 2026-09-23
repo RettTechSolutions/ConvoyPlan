@@ -27,13 +27,19 @@ function eigenePosition(m: number) {
 
 async function oeffnen(
 	page: Page,
-	opts: { scope: 'track' | 'driver'; eigenesFahrzeug?: boolean; m?: number; mitHinweisen?: boolean },
+	opts: {
+		scope: 'track' | 'driver';
+		eigenesFahrzeug?: boolean;
+		m?: number;
+		mitHinweisen?: boolean;
+		ohnePosition?: boolean;
+	},
 ) {
 	await blockExternal(page);
 	await page.route('**/api/track/*', async (route) => {
 		await route.fulfill({
 			json: {
-				...trackPayload(opts.scope, [fahrzeug()], [eigenePosition(opts.m ?? 4000)]),
+				...trackPayload(opts.scope, [fahrzeug()], opts.ohnePosition ? [] : [eigenePosition(opts.m ?? 4000)]),
 				geojson: GEOJSON,
 				...(opts.mitHinweisen === false ? {} : { route_steps: ROUTE_STEPS }),
 			},
@@ -84,5 +90,44 @@ test.describe('Abbiegehinweise in der Tracking-Ansicht', () => {
 		await oeffnen(page, { scope: 'driver', eigenesFahrzeug: true, mitHinweisen: false });
 
 		await expect(page.getByTestId('manoever')).toHaveCount(0);
+	});
+});
+
+test.describe('Hinweisliste im Seitenmenü', () => {
+	test('Beobachter sehen alle Hinweise mit dem Stand der Spitze', async ({ page }) => {
+		await oeffnen(page, { scope: 'track', m: 4000 });
+		await page.getByRole('button', { name: 'Route', exact: true }).click();
+
+		const liste = page.getByTestId('hinweisliste');
+		const zeilen = liste.getByRole('listitem');
+		await expect(zeilen).toHaveCount(3);
+		await expect(page.getByText('Stand ab der Verbandsspitze')).toBeVisible();
+
+		// Der Start liegt hinter der Spitze, die Abzweigung ist das Nächste.
+		await expect(zeilen.nth(0)).toContainText('passiert');
+		const naechste = liste.locator('[aria-current="step"]');
+		await expect(naechste).toHaveCount(1);
+		await expect(naechste).toContainText('Rechts abbiegen auf Ringstraße');
+		await expect(naechste).toContainText('km 5,6');
+		await expect(naechste).toContainText('Spitze in 1,6 km');
+		await expect(zeilen.nth(2)).toContainText('Ziel erreicht');
+		await expect(zeilen.nth(2)).not.toContainText('passiert');
+	});
+
+	test('ohne Live-Position steht die Liste ohne Stand da', async ({ page }) => {
+		await oeffnen(page, { scope: 'track', ohnePosition: true });
+		await page.getByRole('button', { name: 'Route', exact: true }).click();
+
+		await expect(page.getByText('Noch keine Live-Position — ohne Stand')).toBeVisible();
+		await expect(page.getByTestId('hinweisliste').getByRole('listitem')).toHaveCount(3);
+		await expect(page.getByTestId('hinweisliste').locator('[aria-current="step"]')).toHaveCount(0);
+		await expect(page.getByTestId('hinweisliste')).not.toContainText('passiert');
+	});
+
+	test('ohne Hinweise gibt es keinen Reiter „Route"', async ({ page }) => {
+		await oeffnen(page, { scope: 'track', mitHinweisen: false });
+
+		await expect(page.getByRole('button', { name: 'Fahrzeuge', exact: true })).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Route', exact: true })).toHaveCount(0);
 	});
 });

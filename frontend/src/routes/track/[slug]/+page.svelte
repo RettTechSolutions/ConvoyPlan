@@ -19,7 +19,7 @@
 		statusColor, statusLabel,
 	} from '$lib/tracking/status';
 	import { distanceAlongRoute, routeCoords } from '$lib/tracking/eta';
-	import { maneuverFrom } from '$lib/tracking/maneuver';
+	import { maneuverFrom, stepRows } from '$lib/tracking/maneuver';
 	import { buildRoutePoints, computeConvoyProgress, formatDistance, type RoutePoint } from '$lib/tracking/progress';
 	import { notifySignal } from '$lib/tracking/notify';
 	import type { ConnectionState } from '$lib/tracking/connection';
@@ -46,7 +46,7 @@
 		typeof window === 'undefined' ? '' : `${window.location.origin}/track/${slug}`
 	);
 
-	let activeTab = $state<'fahrzeuge' | 'zeitplan'>('fahrzeuge');
+	let activeTab = $state<'fahrzeuge' | 'zeitplan' | 'route'>('fahrzeuge');
 	let sidebarOpen = $state(false);
 	let wsState = $state<ConnectionState>('idle');
 
@@ -92,7 +92,12 @@
 
 	// Only offer the schedule tab when at least one waypoint has a planned time.
 	let hasSchedule = $derived((data?.waypoints ?? []).some((w) => w.planned_arrival));
-	$effect(() => { if (!hasSchedule) activeTab = 'fahrzeuge'; });
+	$effect(() => { if (!hasSchedule && activeTab === 'zeitplan') activeTab = 'fahrzeuge'; });
+
+	// Die Abbiegehinweise als Liste — für alle, auch für Beobachter. Der Stand
+	// bezieht sich auf die Verbandsspitze und sagt das dazu.
+	let hasSteps = $derived((data?.route_steps ?? []).length > 0);
+	$effect(() => { if (!hasSteps && activeTab === 'route') activeTab = 'fahrzeuge'; });
 
 	function statusOf(v: { id: string; vehicle_status: string | null }): string {
 		return liveStatuses.get(v.id) ?? v.vehicle_status ?? 'planned';
@@ -434,6 +439,15 @@
 		return maneuverFrom(steps, routeLine, at, distanceAlongRoute(routeLine, at));
 	});
 
+	let stepList = $derived(
+		stepRows(data?.route_steps ?? [], progress && progress.count > 0 ? progress.frontM : null)
+	);
+
+	/** Rollt das nächste Manöver beim Öffnen des Reiters ins Bild — einmal, nicht bei jeder Meldung. */
+	function scrollIfNext(node: HTMLElement, isNext: boolean) {
+		if (isNext) node.scrollIntoView({ block: 'center' });
+	}
+
 	let pointEventPassed = $derived(
 		pointEvent && progress ? progress.alongM.filter((m) => m >= pointEvent!.m).length : 0
 	);
@@ -644,6 +658,9 @@
 				{#if hasSchedule}
 					<button class="tab" class:active={activeTab === 'zeitplan'} onclick={() => (activeTab = 'zeitplan')}>Zeitplan</button>
 				{/if}
+				{#if hasSteps}
+					<button class="tab" class:active={activeTab === 'route'} onclick={() => (activeTab = 'route')}>Route</button>
+				{/if}
 			</div>
 
 			<div class="tab-content">
@@ -669,6 +686,38 @@
 						{#if data.vehicles.length === 0}
 							<p class="hint">Keine Fahrzeuge im Verband</p>
 						{/if}
+					</div>
+				{:else if activeTab === 'route'}
+					<div class="section">
+						{#if progress && progress.count > 0}
+							<p class="hint">Stand ab der Verbandsspitze</p>
+						{:else}
+							<p class="hint">Noch keine Live-Position — ohne Stand</p>
+						{/if}
+						<ol class="step-list" data-testid="hinweisliste">
+							{#each stepList as row}
+								<li
+									class="step-row"
+									class:passed={row.state === 'passed'}
+									class:next={row.state === 'next'}
+									aria-current={row.state === 'next' ? 'step' : undefined}
+									use:scrollIfNext={row.state === 'next'}
+								>
+									<span class="step-arrow" aria-hidden="true">{row.arrow}</span>
+									<div class="step-body">
+										<span class="step-text">{row.text}</span>
+										<span class="step-meta">
+											{row.km}
+											{#if row.state === 'next' && row.aheadM !== null}
+												· <strong>Spitze in {formatDistance(row.aheadM)}</strong>
+											{:else if row.state === 'passed'}
+												· passiert
+											{/if}
+										</span>
+									</div>
+								</li>
+							{/each}
+						</ol>
 					</div>
 				{:else if activeTab === 'zeitplan'}
 					<div class="section">
@@ -852,6 +901,16 @@
 	.status-label { font-size: var(--text-xs); font-weight: 600; white-space: nowrap; flex-shrink: 0; }
 
 	/* Schedule table */
+	/* Hinweisliste (Reiter „Route") */
+	.step-list { list-style: none; margin: 0; padding: 0; }
+	.step-row { display: flex; align-items: flex-start; gap: .6rem; padding: .5rem .25rem; border-bottom: 1px solid var(--border); font-size: var(--text-sm); }
+	.step-row.passed { opacity: .45; }
+	.step-row.next { background: var(--surface-2); border-left: 3px solid var(--color-primary); padding-left: .4rem; }
+	.step-arrow { font-size: 1.2rem; line-height: 1.2; min-width: 1.4rem; text-align: center; flex-shrink: 0; }
+	.step-body { display: flex; flex-direction: column; min-width: 0; }
+	.step-text { color: var(--text-1); overflow-wrap: anywhere; }
+	.step-meta { color: var(--text-muted); font-size: var(--text-xs); }
+
 	.schedule-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
 	.schedule-table th, .schedule-table td { padding: .5rem; text-align: left; border-bottom: 1px solid var(--border); }
 	.schedule-table th { color: var(--text-muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; }
