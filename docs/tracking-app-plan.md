@@ -37,11 +37,47 @@ und `positions[]` (letzte bekannte Koordinaten je Fahrzeug).
 
 ### WebSocket-Nachrichten
 
-Vom Server: `position`, `status_update`, `alert`, `position_cleared`, `pong`.
-Vom Client (**nur** bei `scope = "driver"`): Positions-Frames und
-`{"type":"status", …}`. Bei `scope = "track"` werden eingehende Frames
-serverseitig verworfen — die Leseberechtigung ist also nicht nur UI-seitig
-durchgesetzt.
+Vom Server: `hello`, `position`, `status_update`, `staerke_update`, `alert`,
+`position_cleared`, `pong` — und `ack`, nur an den Absender.
+Vom Client (**nur** bei `scope = "driver"`): Positions-Frames,
+`{"type":"status", …}` und `{"type":"staerke", …}`. Bei `scope = "track"`
+werden eingehende Frames serverseitig verworfen — die Leseberechtigung ist also
+nicht nur UI-seitig durchgesetzt.
+
+#### Quittungen (Protokoll 2)
+
+Gleich nach dem Verbinden schickt der Server
+`{"type":"hello","protocol":2,"features":["ack"]}` — wie die Belegung nur an
+Verbindungen mit Gerätekennung (`client=`). Fehlt dieser Frame, spricht der
+Client mit einem älteren Server und bekommt keine Quittungen — dann bleibt nur
+das eigene Echo im Broadcast.
+
+Trägt ein Status- oder Stärke-Frame eine `client_id` (Text, 1–64 Zeichen),
+antwortet der Server dem Absender:
+
+```jsonc
+{ "type": "ack", "client_id": "…", "frame": "status", "result": "ok",
+  "applied": { "vehicle_status": "arrived", "status_level": null, "status_note": null },
+  "ts": "2026-09-23T07:47:12+00:00" }
+
+{ "type": "ack", "client_id": "…", "frame": "status", "result": "rejected",
+  "reason": "invalid-level" }
+```
+
+Gründe: `invalid-vehicle`, `unknown-status`, `invalid-level`, `invalid-staerke`,
+`vehicle-not-in-convoy`, `vehicle-taken` (ein anderes Gerät hält das Fahrzeug —
+zusätzlich zu `belegung_abgelehnt`), `read-only` (Lese-Link), `server-error`.
+
+- **Höchstens einmal.** Eine `client_id`, die der Server in den letzten 10 min
+  schon gesehen hat, wird nicht erneut verarbeitet; der Client bekommt die
+  Quittung des ersten Durchlaufs. Ein nachgeschickter technischer Halt löst so
+  keinen zweiten Alarm aus. `server-error` wird nicht gemerkt — derselbe Frame
+  darf es noch einmal versuchen.
+- **Ohne `client_id` ändert sich nichts.** Keine Quittung, kein Zusatzframe —
+  die PWA und ältere Apps merken nichts davon.
+- Positionen werden nicht quittiert: Die nächste überschreibt sie ohnehin.
+- Die Merkliste lebt im Prozess (`TrackingManager`), wie die Verbindungen
+  selbst. Mit mehreren Workern müssten beide in einen gemeinsamen Speicher.
 
 ### Statussystem (`backend/app/services/vehicle_status.py`, `frontend/src/lib/tracking/status.ts`)
 
