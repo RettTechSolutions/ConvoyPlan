@@ -65,6 +65,10 @@ ursprünglichen SemVer-Nummern.
 
 ### Fixed
 
+- **Ein Fahrzeug sendet jetzt nur noch von einem Gerät gleichzeitig.** Wurde ein Fahrzeug in der Begleit-App gewählt, ließ es sich auf der Tracking-Seite im Browser noch einmal auswählen — beide schrieben in dieselbe Positionszeile, die Karte sprang zwischen zwei Standorten. Der bisherige Schutz im Web („hat schon eine Position = vergeben") kannte nur der Browser, und eine Position blieb liegen, sobald niemand mehr sendete — das Fahrzeug war danach dauerhaft als „belegt" ausgegraut.
+
+  Die Belegung sitzt jetzt am Server und gilt für Fahrer-Link, Begleit-App und angemeldetes Tracking gleichermaßen: Wer ein Fahrzeug wählt, belegt es, alle anderen Geräte sehen sofort „belegt" und können es nicht mehr wählen. Frei wird ein Fahrzeug, sobald das Gerät abwählt, die Seite schließt oder den Konvoi verlässt, nach fünf Minuten ohne Meldung (ein kurzes Funkloch gibt nicht frei) oder sofort über „GPS-Freigabe zurücksetzen" in der Fahrzeugliste. War ein anderes Gerät schneller, nimmt die Ansicht die eigene Wahl zurück und sagt, dass das Fahrzeug bereits von einem anderen Gerät sendet.
+
 - **Das Backend-Image bringt die Schriften für PDF-Exporte wieder selbst mit.** Marschbefehl, Systembericht und jetzt das Roadbook laden DejaVu aus `/usr/share/fonts`. Das Slim-Image hat keine Schriften — sie kamen bisher unbemerkt über `libgdal-dev` → `fontconfig` mit, und das ist mit #521 entfallen. `fonts-dejavu-core` steht jetzt ausdrücklich im Dockerfile, und der Bau bricht ab, wenn die Dateien fehlen, statt dass erst der erste Export mit einem Serverfehler endet.
 
 - **In der Fahrzeugliste der Tracking-Ansicht lagen die Angaben am Telefon übereinander.** Das „LIVE"-Abzeichen stand mitten in der Mannschaftsstärke, der Fahrzeugname war auf einen Strich zusammengeschoben — betroffen waren die Tracking-Ansicht und der Fahrer-Link gleichermaßen.
