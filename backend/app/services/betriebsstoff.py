@@ -6,9 +6,12 @@ Ansicht selbst, was im Tank ist und wie weit es reicht — gespeichert wird nur,
 was gemeldet wurde, wie bei der Stärke (``staerke.py``).
 
 Hier liegen die Grenzen einmal für alle Wege, auf denen eine Meldung
-hereinkommt. Die Companion-App prüft dieselben (``app/src/vehicle/fuel.ts``
-dort); weicht eine Seite ab, nimmt die App an, was der Server still verwirft.
+hereinkommt. Die Companion-App prüft dieselben (``buildBetriebsstoffFrame`` in
+``packages/track-api/src/driver.ts`` dort); weicht eine Seite ab, nimmt die
+App an, was der Server still verwirft.
 """
+
+import math
 
 # Ein Wechsellader liegt um 40 l/100 km, ein Kran darüber. 150 fängt die
 # vertippte Null ab, ohne einen realen Fall auszuschließen.
@@ -30,7 +33,7 @@ def _zahl(name: str, wert, *, ganz: bool) -> float | int | None:
             if not wert.is_integer():
                 raise ValueError(f"{name}: ganze Zahl erwartet")
             wert = int(wert)
-    elif wert != wert:  # NaN
+    elif math.isnan(wert):
         raise ValueError(f"{name}: Zahl erwartet")
     return wert
 
