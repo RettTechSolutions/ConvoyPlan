@@ -21,6 +21,8 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+## [2026.7.0] – 2026-09-23
+
 ### Added
 
 - **Fahrzeuge melden ihre Betriebsstofflage, die Konvoiführung sieht Füllstand und Reichweite.** Die Companion-App schickt über den Fahrer-Link Füllstand (%), Verbrauch (l/100 km) und Tankvolumen (l) als neuen Frame `{"type": "betriebsstoff", …}`; der Server prüft die Grenzen (Verbrauch über 0 bis 150, Tank über 0 bis 1500, Füllstand 0–100), verwirft eine unplausible Meldung ganz und sendet `betriebsstoff_update` an alle offenen Ansichten. Eine neue Meldung ersetzt die vorige vollständig; ein leerer Tank ist eine Meldung, „nicht gemeldet" bleibt `null`.
@@ -32,10 +34,6 @@ ursprünglichen SemVer-Nummern.
   Über den MCP-Server ebenso: `fahrzeug_betriebsstoff_melden` (Scope `fleet:status`, Bereich *Status*) meldet, meist genügt der Füllstand. `konvoi_status` liest je Fahrzeug Füllstand und Reichweite und für den Verband, wer knapp ist und wer nichts gemeldet hat. Der Bereich heißt jetzt *Live-Positionen, Marschstatus, Mannschaftsstärke und Betriebsstoff*.
 
   Wie Status und Stärke wird auch die Betriebsstoffmeldung dem Absender quittiert, wenn sie eine `client_id` trägt: höchstens einmal verarbeitet, bei einer Ablehnung mit Grund (`invalid-betriebsstoff`, `vehicle-not-in-convoy`, `vehicle-taken` …). Der Server kündigt das eigens an (`hello` mit `"ack-betriebsstoff"` in `features`), damit ein Client gegen einen Server, der nur Status und Stärke quittiert, nicht auf eine Quittung wartet, die nie kommt.
-
-## [2026.7.0] – 2026-09-23
-
-### Added
 
 - **Ein Fahrzeug sendet nur noch von einem Gerät.** Bisher ließ sich derselbe Wagen in der Begleit-App und auf der Trackingseite im Browser gleichzeitig wählen; beide schrieben in dieselbe Positionszeile, und die Karte sprang zwischen zwei Standorten. Die Belegung sitzt jetzt am Server und gilt für Fahrer-Link, Begleit-App und angemeldetes Tracking zugleich: Ein Gerät weist sich mit `?client=` aus, belegt beim Wählen, hält die Belegung mit jedem Frame und gibt beim Abwählen frei. Nach fünf Minuten ohne Frame oder per „GPS-Freigabe zurücksetzen" wird das Fahrzeug frei — ein Verbindungsabriss allein gibt nicht frei, das Funkloch ist der Normalfall. Fremde Frames werden verworfen, und nur der Absender erfährt es. Im Web steht ein belegtes Fahrzeug gesperrt mit „belegt" in der Wahl.
 
