@@ -33,6 +33,7 @@ from app.schemas.share_link import (
     TrackWaypoint,
 )
 from app.services import betriebsstoff as betriebsstoff_svc
+from app.services import belegung
 from app.services import geometry as geo_svc
 from app.services import share_links as share_links_svc
 from app.services import staerke as staerke_svc
@@ -365,10 +366,25 @@ async def _ingest_driver_betriebsstoff(convoy_uuid: uuid.UUID, msg: dict) -> Non
     await tracking_manager.broadcast(
         str(convoy_uuid), betriebsstoff_svc.update_nachricht(vehicle_id, werte, gemeldet_at)
     )
+def _fahrzeug_aus(raw: dict) -> str | None:
+    try:
+        return str(uuid.UUID(str(raw.get("vehicle_id"))))
+    except (TypeError, ValueError):
+        return None
+
+
+async def _im_verband(convoy_uuid: uuid.UUID, vehicle_id: str) -> bool:
+    async with AsyncSessionLocal() as db:
+        return await db.get(ConvoyVehicle, (convoy_uuid, uuid.UUID(vehicle_id))) is not None
 
 
 @ws_router.websocket("/{slug}")
-async def track_ws(slug: str, ws: WebSocket, token: str | None = Query(default=None)):
+async def track_ws(
+    slug: str,
+    ws: WebSocket,
+    token: str | None = Query(default=None),
+    client: str | None = Query(default=None),
+):
     async with AsyncSessionLocal() as db:
         result = await db.execute(
             select(ConvoyShareLink).where(ConvoyShareLink.slug == slug)
@@ -386,18 +402,44 @@ async def track_ws(slug: str, ws: WebSocket, token: str | None = Query(default=N
         convoy_uuid = link.convoy_id
         is_driver = link.scope == "driver"
 
-    await tracking_manager.connect(convoy_id, ws)
+    # Ohne Kennung: ein Client von vor der Belegung. Er sendet weiter wie bisher,
+    # belegt aber, was er sendet (services/belegung.py).
+    kennung = belegung.kennung_pruefen(client)
+    durchsetzen = kennung is not None
+    kennung = kennung or belegung.alt_kennung()
+    # Fahrzeuge, die schon als Teil des Verbands bestätigt sind — erspart die
+    # Abfrage bei jeder Position.
+    bekannt: set[str] = set()
+
+    await tracking_manager.connect(convoy_id, ws, mit_kennung=durchsetzen)
+    if durchsetzen:
+        await belegung.stand_senden(convoy_id, kennung, ws)
     try:
         while True:
             raw = await ws.receive_json()
             # Viewer links are read-only — drained frames (heartbeats) are ignored.
             if not is_driver or not isinstance(raw, dict):
                 continue
-            if raw.get("type") == "status":
+            vehicle_id = _fahrzeug_aus(raw)
+            if vehicle_id is None:
+                continue
+            typ = raw.get("type")
+            if typ == "freigeben":
+                await belegung.freigeben(convoy_id, vehicle_id, kennung)
+                continue
+            if vehicle_id not in bekannt:
+                if not await _im_verband(convoy_uuid, vehicle_id):
+                    continue  # nicht in diesem Verband → nichts zu belegen
+                bekannt.add(vehicle_id)
+            if not await belegung.pruefen(convoy_id, vehicle_id, kennung, ws, durchsetzen):
+                continue
+            if typ == "belegen":
+                continue
+            if typ == "status":
                 await _ingest_driver_status(convoy_uuid, raw)
-            elif raw.get("type") == "staerke":
+            elif typ == "staerke":
                 await _ingest_driver_staerke(convoy_uuid, raw)
-            elif raw.get("type") == "betriebsstoff":
+            elif typ == "betriebsstoff":
                 await _ingest_driver_betriebsstoff(convoy_uuid, raw)
             else:
                 await _ingest_driver_position(convoy_uuid, raw)

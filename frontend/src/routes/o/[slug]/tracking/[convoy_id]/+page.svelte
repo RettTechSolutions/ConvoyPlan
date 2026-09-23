@@ -9,8 +9,10 @@
 	import {
 		livePositions, vehicleStatuses, trackingAlerts, connectTracking, disconnectTracking,
 		sendPosition, trackingActive, trackingConnection, gpsRevoked, acknowledgeAlert, dismissAlert,
-		acknowledgeAllAlerts, vehicleStaerken, vehicleBetriebsstoff, type VehicleStatusInfo,
+		acknowledgeAllAlerts, vehicleStaerken, vehicleBetriebsstoff, fremdBelegt, belegungAbgelehnt,
+		fahrzeugWaehlen, type VehicleStatusInfo,
 	} from '$lib/stores/tracking';
+	import { BELEGT_HINWEIS } from '$lib/tracking/belegung';
 	import BetriebsstoffBadge from '$lib/components/BetriebsstoffBadge.svelte';
 	import BetriebsstoffForm from '$lib/components/BetriebsstoffForm.svelte';
 	import StaerkeBadge from '$lib/components/StaerkeBadge.svelte';
@@ -257,13 +259,33 @@
 
 	let activeAlerts = $derived($trackingAlerts.filter((a) => !a.acknowledged));
 
-	// Vehicles still available to pick: a vehicle that is already being transmitted
-	// (live) is considered "taken" and hidden — except the one I picked myself.
-	let availableVehicles = $derived(
-		(convoy?.convoy_vehicles ?? []).filter(
-			(cv) => cv.vehicle.id === myVehicleId || !$livePositions.has(cv.vehicle.id)
-		)
-	);
+	// Ein Fahrzeug, das ein anderes Gerät gewählt hat (App, Fahrer-Link, zweiter
+	// Tab), steht im Wähler, lässt sich aber nicht nehmen. Früher entschied das
+	// eine vorhandene Position — die bleibt aber liegen, wenn niemand mehr sendet.
+	function belegtVonAnderem(vehicleId: string): boolean {
+		return vehicleId !== myVehicleId && $fremdBelegt.has(vehicleId);
+	}
+
+	// Die Wahl belegt das Fahrzeug für dieses Gerät (`$lib/tracking/belegung`).
+	$effect(() => { fahrzeugWaehlen(myVehicleId); });
+
+	// Ein anderes Gerät war schneller: Wahl zurücknehmen, Senden beenden.
+	$effect(() => {
+		const abgelehnt = $belegungAbgelehnt;
+		if (!abgelehnt) return;
+		belegungAbgelehnt.set(null);
+		if (abgelehnt !== myVehicleId) return;
+		if (transmitting) stopTransmitting();
+		myVehicleId = '';
+		error = BELEGT_HINWEIS;
+	});
+
+	// Tab zu: sofort freigeben, damit das Fahrzeug nicht fünf Minuten „belegt"
+	// steht. Aus dem Zurück-Cache wiederhergestellt: wieder belegen.
+	function freigebenBeimVerlassen() { fahrzeugWaehlen(''); }
+	function belegenBeimZurueckkehren(e: PageTransitionEvent) {
+		if (e.persisted) fahrzeugWaehlen(myVehicleId);
+	}
 
 	// An admin reset the GPS sharing for my vehicle → stop transmitting locally.
 	$effect(() => {
@@ -355,6 +377,8 @@
 		window.addEventListener('online', handleNet);
 		window.addEventListener('offline', handleNet);
 		document.addEventListener('fullscreenchange', handleFullscreenChange);
+		window.addEventListener('pagehide', freigebenBeimVerlassen);
+		window.addEventListener('pageshow', belegenBeimZurueckkehren);
 		// Zuerst der Live-Kanal, unabhängig von den Stammdaten: er ist der Teil,
 		// der im Einsatz zählt, und er braucht nichts von ihnen.
 		connectTracking(convoyId);
@@ -371,6 +395,8 @@
 		window.removeEventListener('online', handleNet);
 		window.removeEventListener('offline', handleNet);
 		document.removeEventListener('fullscreenchange', handleFullscreenChange);
+		window.removeEventListener('pagehide', freigebenBeimVerlassen);
+		window.removeEventListener('pageshow', belegenBeimZurueckkehren);
 		if (backOnlineTimer) { clearTimeout(backOnlineTimer); backOnlineTimer = null; }
 	});
 
@@ -700,8 +726,10 @@
 			     was die Ansicht nicht sieht, muss sie trotzdem am Feld stehen. -->
 			<select aria-label="Meine Position" bind:value={myVehicleId} disabled={transmitting}>
 				<option value="">Fahrzeug wählen…</option>
-				{#each availableVehicles as cv}
-					<option value={cv.vehicle.id}>{cv.vehicle.name}{cv.vehicle.callsign ? ` (${cv.vehicle.callsign})` : ''}</option>
+				{#each convoy?.convoy_vehicles ?? [] as cv}
+					<option value={cv.vehicle.id} disabled={belegtVonAnderem(cv.vehicle.id)}>
+						{cv.vehicle.name}{cv.vehicle.callsign ? ` (${cv.vehicle.callsign})` : ''}{belegtVonAnderem(cv.vehicle.id) ? ' – belegt' : ''}
+					</option>
 				{/each}
 			</select>
 			{#if !transmitting}
