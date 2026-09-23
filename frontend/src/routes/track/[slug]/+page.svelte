@@ -56,6 +56,11 @@
 	let livePositions = $state<Map<string, VehiclePosition>>(new Map());
 	// Live vehicle status overrides received via WebSocket (vehicle_id → status).
 	let liveStatuses = $state<Map<string, string>>(new Map());
+	/**
+	 * Quittungen der Führung aus dem Kanal (`alarm_quittiert`), je Fahrzeug. Ein
+	 * neuer Status räumt sie ab — er ist ein neuer Alarm oder keiner mehr.
+	 */
+	let liveQuittungen = $state<Map<string, { von: string; at: string }>>(new Map());
 	// Stärkemeldungen, die während der geöffneten Ansicht hereinkommen —
 	// sie schlagen die Zahlen aus der Nutzlast beim Laden.
 	let liveStaerken = $state<Map<string, Staerke>>(new Map());
@@ -93,6 +98,19 @@
 	let myStatus = $derived.by(() => {
 		const v = (data?.vehicles ?? []).find((x) => x.id === myVehicleId);
 		return v ? statusOf(v) : 'planned';
+	});
+
+	// Hat die Führung meinen Alarm gesehen? Live aus dem Kanal, sonst aus dem
+	// Abruf — der aber nur, solange seither kein neuer Status kam.
+	let myQuittung = $derived.by(() => {
+		if (myStatus !== 'technical_halt' && myStatus !== 'breakdown') return null;
+		const live = liveQuittungen.get(myVehicleId);
+		if (live) return live;
+		if (liveStatuses.has(myVehicleId)) return null;
+		const v = (data?.vehicles ?? []).find((x) => x.id === myVehicleId);
+		return v?.alarm_quittiert_von && v.alarm_quittiert_at
+			? { von: v.alarm_quittiert_von, at: v.alarm_quittiert_at }
+			: null;
 	});
 
 	// vehicle id → label for live markers on the map
@@ -167,6 +185,7 @@
 				for (const p of result.positions) initial.set(p.vehicle_id, positionToVehicle(p));
 				livePositions = initial;
 				liveStatuses = new Map();
+				liveQuittungen = new Map();
 				liveStaerken = new Map();
 				liveBetriebsstoff = new Map();
 				connectWs(token);
@@ -233,6 +252,22 @@
 						const next = new Map(liveStatuses);
 						next.set(msg.vehicle_id, msg.vehicle_status);
 						liveStatuses = next;
+						if (liveQuittungen.has(msg.vehicle_id)) {
+							const ohne = new Map(liveQuittungen);
+							ohne.delete(msg.vehicle_id);
+							liveQuittungen = ohne;
+						}
+					}
+					return;
+				}
+				if (msg.type === 'alarm_quittiert') {
+					if (
+						typeof msg.vehicle_id === 'string' && typeof msg.quittiert_von === 'string' &&
+						typeof msg.quittiert_at === 'string'
+					) {
+						liveQuittungen = new Map(liveQuittungen).set(msg.vehicle_id, {
+							von: msg.quittiert_von, at: msg.quittiert_at,
+						});
 					}
 					return;
 				}
@@ -619,6 +654,15 @@
 						<button class="btn-stop" onclick={stopTransmitting}>⏹ Senden stoppen</button>
 					{/if}
 
+					{#if myVehicleId && (myStatus === 'technical_halt' || myStatus === 'breakdown')}
+						<p class="alarm-quittung" class:offen={!myQuittung} data-testid="alarm-quittung">
+							{#if myQuittung}
+								✓ Von der Führung quittiert: {myQuittung.von}, {fmtTime(myQuittung.at)}
+							{:else}
+								Noch nicht von der Führung quittiert.
+							{/if}
+						</p>
+					{/if}
 					{#if myVehicleId}
 						<div class="status-grid">
 							{#each ['planned', 'en_route', 'arrived'] as st}
@@ -1027,4 +1071,7 @@
 		   Manöver genau über „−". */
 		.top-stack { top: calc(48px + .5rem); left: .75rem; right: 3.5rem; transform: none; width: auto; max-width: none; align-items: flex-start; }
 	}
+	/* Quittung der Führung für den eigenen Alarm */
+	.alarm-quittung { margin: .4rem 0; font-size: .85rem; color: #27ae60; }
+	.alarm-quittung.offen { color: #e67e22; }
 </style>

@@ -32,6 +32,7 @@ from app.schemas.share_link import (
     TrackVehicle,
     TrackWaypoint,
 )
+from app.services import alarm_quittung
 from app.services import betriebsstoff as betriebsstoff_svc
 from app.services import belegung
 from app.services import geometry as geo_svc
@@ -118,6 +119,9 @@ async def _build_payload(convoy_id: uuid.UUID, db: AsyncSession, scope: str = "t
             propulsion=cv.vehicle.propulsion or "combustion",
             tank_capacity_l=cv.vehicle.tank_capacity_l,
             fuel_consumption_l100km=cv.vehicle.fuel_consumption_l100km,
+            alarm_ts=alarm_quittung.alarm_ts(cv),
+            alarm_quittiert_at=cv.alarm_quittiert_at,
+            alarm_quittiert_von=cv.alarm_quittiert_von,
             battery_capacity_kwh=cv.vehicle.battery_capacity_kwh,
             consumption_kwh_100km=cv.vehicle.consumption_kwh_100km,
             betriebsstoff_verbrauch=cv.betriebsstoff_verbrauch,
@@ -253,6 +257,7 @@ async def _ingest_driver_position(convoy_uuid: uuid.UUID, msg: dict) -> None:
         if cv.vehicle_status == "planned":
             cv.vehicle_status = "en_route"
             cv.status_changed_at = datetime.now(timezone.utc)
+            alarm_quittung.zuruecksetzen(cv)
             auto_status = "en_route"
         await db.commit()
 
@@ -300,6 +305,8 @@ async def _ingest_driver_status(convoy_uuid: uuid.UUID, msg: dict) -> dict:
         cv.status_level = level
         cv.status_note = note
         cv.status_changed_at = datetime.now(timezone.utc)
+        # Ein neuer Status ist ein neuer Alarm — oder keiner mehr.
+        alarm_quittung.zuruecksetzen(cv)
         await db.commit()
         ts = cv.status_changed_at.isoformat()
         vehicle = await db.get(Vehicle, vehicle_id)
@@ -384,7 +391,15 @@ async def _ingest_driver_staerke(convoy_uuid: uuid.UUID, msg: dict) -> dict:
 # ``ack-betriebsstoff`` steht eigens dabei: Ein Server, der Status und Stärke
 # schon quittiert, den Betriebsstoff-Frame aber noch nicht kennt, sagte sonst
 # ebenfalls „ack" — und die App wartete auf eine Quittung, die nie kommt.
-HELLO = {"type": "hello", "protocol": 2, "features": ["ack", "ack-betriebsstoff"]}
+#
+# ``alarm-quittung`` ebenso: Erst dann darf ein Client den Knopf „Quittieren"
+# an den Server schicken und auf ``alarm_quittiert`` warten
+# (``_alarm_quittieren``).
+HELLO = {
+    "type": "hello",
+    "protocol": 2,
+    "features": ["ack", "ack-betriebsstoff", "alarm-quittung"],
+}
 
 # Welche Frames eine Quittung bekommen, und wer sie verarbeitet.
 _QUITTIERT = ("status", "staerke", "betriebsstoff")
@@ -487,6 +502,26 @@ async def _ingest_driver_betriebsstoff(convoy_uuid: uuid.UUID, msg: dict) -> dic
     }
 
 
+async def _alarm_quittieren(
+    convoy_uuid: uuid.UUID, convoy_id: str, raw: dict, kennung: str
+) -> dict:
+    """Ein Gerät am Fahrer-Link quittiert den Alarm eines anderen Fahrzeugs.
+
+    Wer quittiert hat, sagt das Fahrzeug, das dieses Gerät belegt — seine
+    Kennung, wie sie auch im Alarm steht. Ein Gerät ohne Fahrzeug (Führung,
+    die nur mitliest) heißt „Fahrer-Link". Ein Text vom Client wird nicht
+    genommen: Sonst stünde bei der Besatzung, wen immer das Gerät behauptet.
+    """
+    eigene = belegung.belegungen.gehalten(convoy_id, kennung)
+    von = "Fahrer-Link"
+    if eigene:
+        async with AsyncSessionLocal() as db:
+            fahrzeug = await db.get(Vehicle, uuid.UUID(eigene[0]))
+            if fahrzeug is not None:
+                von = fahrzeug.callsign or fahrzeug.name
+    return await alarm_quittung.quittieren(convoy_uuid, raw, von, eigene)
+
+
 def _fahrzeug_aus(raw: dict) -> str | None:
     try:
         return str(uuid.UUID(str(raw.get("vehicle_id"))))
@@ -546,12 +581,20 @@ async def track_ws(
             if not isinstance(raw, dict):
                 continue
             kind = raw.get("type")
-            client_id = _client_id(raw) if kind in _QUITTIERT else None
+            client_id = _client_id(raw) if kind in (*_QUITTIERT, "alarm_quittieren") else None
             # Viewer links are read-only — drained frames (heartbeats) are ignored.
             # Wer ausdrücklich nach einer Quittung fragt, erfährt, warum nichts geschah.
             if not is_driver:
                 if client_id is not None:
                     await ws.send_json(_ack(client_id, kind, _rejected("read-only")))
+                continue
+            if kind == "alarm_quittieren":
+                # Vor der Belegung: ``vehicle_id`` ist hier das **alarmierende**
+                # Fahrzeug, nicht das eigene — es zu belegen, nähme es der
+                # Besatzung weg, die gerade liegengeblieben ist.
+                ergebnis = await _alarm_quittieren(convoy_uuid, convoy_id, raw, kennung)
+                if client_id is not None:
+                    await ws.send_json(_ack(client_id, kind, ergebnis))
                 continue
             vehicle_id = _fahrzeug_aus(raw)
             if vehicle_id is None:

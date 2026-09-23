@@ -22,6 +22,9 @@ export type TrackFahrzeug = {
 	betriebsstoff_verbrauch?: number | null;
 	betriebsstoff_tank?: number | null;
 	betriebsstoff_fuellstand?: number | null;
+	alarm_ts?: string | null;
+	alarm_quittiert_at?: string | null;
+	alarm_quittiert_von?: string | null;
 };
 
 /** Ein Fahrzeug ohne jede Stärkeangabe — der Normalfall vor der ersten Meldung. */

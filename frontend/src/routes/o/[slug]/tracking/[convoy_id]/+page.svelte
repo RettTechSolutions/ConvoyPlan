@@ -9,6 +9,7 @@
 	import {
 		livePositions, vehicleStatuses, trackingAlerts, connectTracking, disconnectTracking,
 		sendPosition, trackingActive, trackingConnection, gpsRevoked, acknowledgeAlert, dismissAlert,
+		alarmQuittungen,
 		acknowledgeAllAlerts, vehicleStaerken, vehicleBetriebsstoff, fremdBelegt, belegungAbgelehnt,
 		fahrzeugWaehlen, type VehicleStatusInfo,
 	} from '$lib/stores/tracking';
@@ -258,6 +259,20 @@
 	});
 
 	let activeAlerts = $derived($trackingAlerts.filter((a) => !a.acknowledged));
+
+	// Hat die Führung den Alarm meines Fahrzeugs gesehen? Live aus dem Kanal,
+	// sonst vom Fahrzeug selbst — dann aber nur, solange kein neuerer Status
+	// kam: Der wäre ein neuer Alarm, und die alte Quittung gälte ihm nicht.
+	let myQuittung = $derived.by(() => {
+		if (myStatus !== 'technical_halt' && myStatus !== 'breakdown') return null;
+		const live = $alarmQuittungen.get(myVehicleId);
+		if (live) return { von: live.von, at: live.at };
+		if ($vehicleStatuses.has(myVehicleId)) return null;
+		const cv = (convoy?.convoy_vehicles ?? []).find((c) => c.vehicle.id === myVehicleId);
+		return cv?.alarm_quittiert_von && cv.alarm_quittiert_at
+			? { von: cv.alarm_quittiert_von, at: cv.alarm_quittiert_at }
+			: null;
+	});
 
 	// Ein Fahrzeug, das ein anderes Gerät gewählt hat (App, Fahrer-Link, zweiter
 	// Tab), steht im Wähler, lässt sich aber nicht nehmen. Früher entschied das
@@ -854,6 +869,15 @@
 				<!-- Mein Status: Kurz-Stati zur Kommunikation mit der Konvoiführung -->
 				<div class="section">
 					<div class="section-title">Mein Status</div>
+					{#if myVehicleId && (myStatus === 'technical_halt' || myStatus === 'breakdown')}
+						<p class="alarm-quittung" class:offen={!myQuittung} data-testid="alarm-quittung">
+							{#if myQuittung}
+								✓ Von der Führung quittiert: {myQuittung.von}, {formatTime(myQuittung.at)}
+							{:else}
+								Noch nicht von der Führung quittiert.
+							{/if}
+						</p>
+					{/if}
 					{#if !myVehicleId}
 						<p class="hint">Wähle oben unter „Meine Position“ ein Fahrzeug, um deinen Status zu melden.</p>
 					{:else}
@@ -945,6 +969,7 @@
 										</span>
 										{#if a.note}<span class="alert-note">„{a.note}“</span>{/if}
 										<span class="alert-time">{formatTime(a.ts)}</span>
+										{#if a.quittiert_von}<span class="alert-time">Quittiert von {a.quittiert_von}</span>{/if}
 									</div>
 								</div>
 								<div class="alert-actions">
@@ -1193,6 +1218,10 @@
 	.tag { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: .05rem .3rem; background: var(--surface-2); border-radius: 3px; font-size: var(--text-xs); flex-shrink: 0; color: var(--text-2); }
 	.live-badge { background: #27ae60; color: white; border-radius: 3px; padding: .05rem .3rem; font-size: var(--text-xs); font-weight: 700; flex-shrink: 0; animation: pulse 1.5s infinite; }
 	.status-chip { font-size: var(--text-xs); font-weight: 600; padding: .15rem .4rem; border: 1.5px solid; border-radius: 999px; white-space: nowrap; flex-shrink: 0; }
+
+	/* Quittung der Führung für den eigenen Alarm */
+	.alarm-quittung { margin: 0 0 .6rem; font-size: .85rem; color: #27ae60; }
+	.alarm-quittung.offen { color: #e67e22; }
 
 	/* Status tab — Mein Status */
 	.status-grid { display: flex; flex-wrap: wrap; gap: .5rem; }

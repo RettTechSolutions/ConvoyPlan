@@ -222,6 +222,26 @@ Im Reiter **Status** listet der Abschnitt **Meldungen** alle aktiven
 Anforderungen; **Alle quittieren** räumt sie gesammelt ab. Quittierte Meldungen
 bleiben bis zur Erledigung sichtbar.
 
+### Die Quittung erreicht die Besatzung
+
+**Quittieren** gilt nicht nur für den eigenen Browser. Die Quittung geht an den
+Server und steht danach bei allen:
+
+- In der **Tracking-Ansicht** anderer Führungskräfte steht unter der Meldung
+  **Quittiert von …** mit Namen. Quittieren muss sie niemand ein zweites Mal.
+- Die **Besatzung**, die den Alarm ausgelöst hat, sieht unter **Mein Status**
+  „Von der Führung quittiert: …“ mit Uhrzeit. Bis dahin steht dort „Noch nicht
+  von der Führung quittiert.“ So weiß das liegengebliebene Fahrzeug, dass die
+  Meldung angekommen **und gesehen** ist.
+- In der **Companion-App** gilt dasselbe, am Telefon wie in CarPlay.
+
+Wer quittiert hat, steht dabei so da, wie es der Server weiß: in der
+Tracking-Ansicht mit dem Namen des Kontos, am Fahrer-Link mit dem Fahrzeug, das
+das Gerät gewählt hat (sonst „Fahrer-Link“). Es zählt die **erste** Quittung.
+Meldet das Fahrzeug danach einen neuen Status, ist die Quittung erledigt; ein
+neuer Alarm muss neu quittiert werden. Den Alarm des eigenen Fahrzeugs kann man
+nicht quittieren, und ein Link **nur zum Ansehen** quittiert gar nicht.
+
 ---
 
 ## Wegpunkte und Leitstellenwechsel

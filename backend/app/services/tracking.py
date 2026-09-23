@@ -158,6 +158,23 @@ class TrackingManager:
         for ws in dead:
             self.disconnect(convoy_id, ws)
 
+    async def broadcast_neu(self, convoy_id: str, data: dict):
+        """Ein Ereignis im Verband, das nur Clients mit Gerätekennung kennen.
+
+        Wie ``broadcast`` — mit den Beobachtern —, aber an WebSockets nur, wo
+        eine Kennung mitkam. Aus demselben Grund wie ``broadcast_belegung``:
+        Die angemeldete Weboberfläche älterer Fassung las jede unbekannte
+        Nachricht als Position, und eine App aus dem Store kennt den Typ nicht."""
+        for listener in self._listeners:
+            try:
+                listener(convoy_id, data)
+            except Exception:
+                logger.warning(
+                    "Broadcast-Beobachter hat geworfen (convoy_id=%s) — ignoriert",
+                    convoy_id, exc_info=True,
+                )
+        await self.broadcast_belegung(convoy_id, data)
+
     async def broadcast_belegung(self, convoy_id: str, data: dict):
         """Wie ``broadcast``, aber nur an Verbindungen mit Gerätekennung.
 

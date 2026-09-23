@@ -129,6 +129,15 @@ class Belegungen:
             if cid == convoy_id and zuletzt >= grenze and kennung != ausser
         )
 
+    def gehalten(self, convoy_id: str, kennung: str) -> list[str]:
+        """Fahrzeuge, die ``kennung`` selbst hält — für „wer hat quittiert"."""
+        grenze = self._uhr() - self._ablauf_s
+        return sorted(
+            vehicle_id
+            for (cid, vehicle_id), (halter, zuletzt) in self._halter.items()
+            if cid == convoy_id and zuletzt >= grenze and halter == kennung
+        )
+
     def leeren(self) -> None:
         self._halter.clear()
 

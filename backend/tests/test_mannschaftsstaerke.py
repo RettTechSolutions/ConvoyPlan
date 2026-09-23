@@ -79,6 +79,7 @@ def test_endpunkt_nimmt_die_leermeldung_an():
 # und was über den Draht geht. Mit einer Attrappe prüfte man die Attrappe.
 
 import uuid
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from sqlalchemy import delete
@@ -508,6 +509,8 @@ async def test_kein_feld_der_zeile_faellt_beim_ausliefern_unter_den_tisch(verban
         cv.staerke_soll_fuehrer, cv.staerke_soll_unterfuehrer, cv.staerke_soll_mannschaften = 1, 2, 3
         cv.staerke_ist_fuehrer, cv.staerke_ist_unterfuehrer, cv.staerke_ist_mannschaften = 4, 5, 6
         cv.betriebsstoff_verbrauch, cv.betriebsstoff_tank, cv.betriebsstoff_fuellstand = 28.5, 150, 40
+        cv.alarm_quittiert_at = datetime.now(timezone.utc)
+        cv.alarm_quittiert_von = "Florian 1/11"
         await db.commit()
 
     fahrzeug = (await _hole_verband(verband)).json()["convoy_vehicles"][0]

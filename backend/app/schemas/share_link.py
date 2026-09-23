@@ -68,6 +68,12 @@ class TrackVehicle(BaseModel):
     staerke_ist_fuehrer: int | None = None
     staerke_ist_unterfuehrer: int | None = None
     staerke_ist_mannschaften: int | None = None
+    # Der laufende Alarm (Techn. Halt, Ausfall) — sein Beginn, derselbe Wert wie
+    # ``ts`` im ``alert`` —, und ob die Führung ihn quittiert hat. Damit sieht
+    # auch ein Gerät, das erst nach dem Alarm verbindet, beides.
+    alarm_ts: datetime | None = None
+    alarm_quittiert_at: datetime | None = None
+    alarm_quittiert_von: str | None = None
     # Kraftstoff-Stammdaten aus der Planung — das „Soll" zur Meldung darunter,
     # wie die Sollstärke zur gemeldeten. Die App belegt damit vor, sodass die
     # Besatzung unterwegs nur noch den Füllstand einstellt.

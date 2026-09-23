@@ -16,6 +16,7 @@ from app.models.convoy import ConvoyVehicle
 from app.models.user import User
 from app.models.vehicle import Vehicle
 from app.models.vehicle_position import VehiclePosition
+from app.services import alarm_quittung
 from app.services import betriebsstoff as betriebsstoff_svc
 from app.services import belegung
 from app.services import staerke as staerke_svc
@@ -210,6 +211,7 @@ async def update_vehicle_status(
     cv.status_level = data.status_level
     cv.status_note = data.status_note
     cv.status_changed_at = datetime.now(timezone.utc)
+    alarm_quittung.zuruecksetzen(cv)
     await db.commit()
 
     await tracking_manager.broadcast(str(convoy_id), {
@@ -382,6 +384,36 @@ async def _belegung_bearbeiten(
     await belegung.pruefen(convoy_id, str(vehicle_id), kennung, ws, durchsetzen)
 
 
+async def _alarm_quittieren(
+    convoy_id: str, user: User, ws: WebSocket, raw: dict, kennung: str
+) -> None:
+    """Quittung am angemeldeten Kanal — mit Fahrer-Recht, wie jede Meldung.
+
+    Wer quittiert hat, ist hier der Nutzer: sein Name, sonst seine Adresse.
+    Die Antwort geht als ``ack`` an den Absender, sofern er eine ``client_id``
+    mitschickt; ``alarm_quittiert`` an alle kommt aus dem Service.
+    """
+    client_id = raw.get("client_id")
+    client_id = client_id if isinstance(client_id, str) and 0 < len(client_id) <= 64 else None
+    async with AsyncSessionLocal() as db:
+        try:
+            await get_convoy_access(uuid.UUID(convoy_id), user, db, require="fahrer")
+        except HTTPException:
+            ergebnis = {"result": "rejected", "reason": "read-only"}
+        else:
+            ergebnis = None
+    if ergebnis is None:
+        name = " ".join(t for t in (user.first_name, user.last_name) if t) or user.email
+        # Wie am Fahrer-Link: Den Alarm des Fahrzeugs, das dieses Gerät selbst
+        # belegt, quittiert es nicht.
+        eigene = belegung.belegungen.gehalten(convoy_id, kennung)
+        ergebnis = await alarm_quittung.quittieren(uuid.UUID(convoy_id), raw, name, eigene)
+    if client_id is not None:
+        await ws.send_json(
+            {"type": "ack", "client_id": client_id, "frame": "alarm_quittieren", **ergebnis}
+        )
+
+
 @router.websocket("/ws/tracking/{convoy_id}")
 async def tracking_ws(
     convoy_id: str,
@@ -432,6 +464,9 @@ async def tracking_ws(
             # quickly. Reply with a pong and skip position handling.
             if isinstance(raw, dict) and raw.get("type") == "ping":
                 await ws.send_json({"type": "pong"})
+                continue
+            if isinstance(raw, dict) and raw.get("type") == "alarm_quittieren":
+                await _alarm_quittieren(convoy_id, user, ws, raw, kennung)
                 continue
             if isinstance(raw, dict) and raw.get("type") in ("belegen", "freigeben"):
                 await _belegung_bearbeiten(convoy_id, user, ws, raw, kennung, durchsetzen)
