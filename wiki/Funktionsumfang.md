@@ -55,6 +55,7 @@ Vollständige Feature-Übersicht von ConvoyPlan mit Umsetzungsstatus. Eine kompa
 | Sperrungen | Sperrungen und Baustellen aus Overpass API, Autobahn-API (bund.dev), offenen regionalen Feeds (MobiData BW, Berlin VIZ) und optional DATEX-II/mobilithek, entlang der gesamten Route | ✅ |
 | Verkehrslage | Live-Fließgeschwindigkeit/Stau über HERE oder TomTom entlang der Route (optionaler API-Key pro Installation) | ✅ |
 | PDF | Marschbefehl als PDF | ✅ |
+| Roadbook | Übersichtskarte und alle Navigationsanweisungen mit Kilometrierung und Planzeiten als PDF zum Ausdrucken | ✅ |
 | GPX / JSON | Export und Import für Navigation, Dokumentation und Weiterverarbeitung | ✅ |
 | PWA | Installierbare Web-App mit Tile-Caching | ✅ |
 | Native Wrapper | Capacitor-Konfiguration für Android und iOS | ✅ |

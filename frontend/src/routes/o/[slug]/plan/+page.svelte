@@ -1109,19 +1109,25 @@
         .sort((a, b) => a.position - b.position);
     }
   });
-	async function downloadExport(format: 'gpx' | 'json' | 'pdf') {
+	async function downloadExport(format: 'gpx' | 'json' | 'pdf' | 'roadbook') {
 		if (!selected) return;
 		try {
 			const res = await fetch(`/api/convoys/${selected.id}/export/${format}`, {
 				credentials: 'same-origin',
 				headers: authHeaders(),
 			});
-			if (!res.ok) { error = `Export fehlgeschlagen (${res.status})`; return; }
+			if (!res.ok) {
+				// Die Meldung des Backends sagt mehr als der Statuscode — etwa
+				// „Noch keine Route berechnet" beim Roadbook.
+				const detail = await res.json().then((b) => b?.detail).catch(() => null);
+				error = typeof detail === 'string' ? detail : `Export fehlgeschlagen (${res.status})`;
+				return;
+			}
 			const blob = await res.blob();
 			const url = URL.createObjectURL(blob);
 			const a = document.createElement('a');
 			a.href = url;
-			a.download = `${selected.name}.${format}`;
+			a.download = format === 'roadbook' ? `Roadbook ${selected.name}.pdf` : `${selected.name}.${format}`;
 			document.body.appendChild(a);
 			a.click();
 			document.body.removeChild(a);
@@ -1828,6 +1834,7 @@
 							<button class="btn-export" onclick={() => downloadExport('gpx')}>📍 GPX herunterladen</button>
 							<button class="btn-export" onclick={() => downloadExport('json')}>📄 JSON herunterladen</button>
 							<button class="btn-export" onclick={openBefehlModal}>📋 Marschbefehl</button>
+							<button class="btn-export" onclick={() => downloadExport('roadbook')} disabled={!routeGeojson} title={routeGeojson ? 'Karte und alle Navigationsanweisungen als PDF zum Ausdrucken' : 'Zuerst die Route berechnen'}>🧭 Roadbook (PDF)</button>
 							<button class="btn-export" onclick={() => navigator.clipboard.writeText(`${window.location.origin}/share/${selected?.share_token}`)}>🔗 Link kopieren</button>
 						</div>
 						<div data-tour="tracking">
@@ -2274,6 +2281,7 @@
 	.modal-btn-export:disabled { opacity: .5; cursor: not-allowed; }
 	.btn-export { display: block; padding: .45rem .75rem; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); border-radius: 4px; font-size: var(--text-sm); text-decoration: none; cursor: pointer; text-align: left; }
 	.btn-export.active { background: rgba(226,61,40,.3); border-color: var(--color-primary); }
+	.btn-export:disabled { opacity: .5; cursor: not-allowed; }
 
 	.route-actions { margin-top: .75rem; }
 	.route-info { font-size: var(--text-sm); color: var(--text-2); margin: .4rem 0; }

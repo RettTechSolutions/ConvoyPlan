@@ -32,6 +32,9 @@ bcrypt==5.0.0
 httpx==0.28.1
 gpxpy==1.6.2
 fpdf2==2.8.8
+# Übersichtskarte im Roadbook (services/static_map.py). Kam schon als
+# Abhängigkeit von fpdf2 mit; gepinnt, weil der Code es jetzt direkt benutzt.
+Pillow==12.3.0
 pyotp==2.10.0
 # aiosmtplib 5.1.2 fixes GHSA-vxj7-4xrp-5vr4: discard buffered server data
 # before STARTTLS handshake (response-injection attack prevention).
