@@ -496,12 +496,25 @@ export interface TrackWaypointPublic {
 	planned_arrival: string | null; planned_departure: string | null;
 	halt_purpose: string | null;
 }
+/** Ein Abbiegehinweis der Route, auf die Linie gelegt (`services/route_steps.py`). */
+export interface RouteStep {
+	/** Meter ab Start entlang der `geojson`-Linie — vergleichbar mit `distanceAlongRoute()`. */
+	m: number;
+	/** GraphHopper-Vorzeichen: −3…3 abbiegen, 0 geradeaus, 4 Ziel, 5 Zwischenziel, 6 Kreisverkehr. */
+	sign: number;
+	text: string | null;
+	street_name: string | null;
+	exit_number: number | null;
+}
+
 export interface TrackPayload {
 	name: string; organization: string | null; start_time: string | null;
 	scope: ShareLinkScope;
 	waypoints: TrackWaypointPublic[]; geojson: Geometry | null;
 	distance_m: number | null;
 	kanalwechsel?: KanalwechselEntry[];
+	/** Fehlt bei Instanzen vor dieser Änderung. */
+	route_steps?: RouteStep[];
 	vehicles: TrackVehicle[]; positions: TrackPosition[];
 }
 export interface TrackGate {

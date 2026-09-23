@@ -18,7 +18,8 @@
 		STATUS_LABELS, STATUS_COLORS, STATUS_ICONS, HALT_LEVEL_LABELS, BREAKDOWN_LEVEL_LABELS,
 		statusColor, statusLabel,
 	} from '$lib/tracking/status';
-	import { routeCoords } from '$lib/tracking/eta';
+	import { distanceAlongRoute, routeCoords } from '$lib/tracking/eta';
+	import { maneuverFrom } from '$lib/tracking/maneuver';
 	import { buildRoutePoints, computeConvoyProgress, formatDistance, type RoutePoint } from '$lib/tracking/progress';
 	import { notifySignal } from '$lib/tracking/notify';
 	import type { ConnectionState } from '$lib/tracking/connection';
@@ -418,6 +419,21 @@
 		return p ? { point: p, aheadM: p.m - prog.frontM } : null;
 	});
 
+	// ── Abbiegehinweis (nur Fahrer-Link, nur ab der eigenen Position) ────────
+	// Gegen die Verbandsspitze gerechnet hieße „In 300 m rechts" für das
+	// Schlusslicht etwas Falsches, und einen Pfeil befolgt man. Ohne gewähltes
+	// Fahrzeug mit bekannter Position steht deshalb keiner da — auch nicht für
+	// Beobachter. Die Rechnung ist dieselbe wie in der Companion-App.
+	let routeLine = $derived(data?.geojson ? routeCoords(data.geojson) : []);
+	let maneuver = $derived.by(() => {
+		const steps = data?.route_steps;
+		if (!isDriver || !myVehicleId || !steps?.length || routeLine.length < 2) return null;
+		const own = livePositions.get(myVehicleId);
+		if (!own) return null;
+		const at = { lat: own.lat, lon: own.lon };
+		return maneuverFrom(steps, routeLine, at, distanceAlongRoute(routeLine, at));
+	});
+
 	let pointEventPassed = $derived(
 		pointEvent && progress ? progress.alongM.filter((m) => m >= pointEvent!.m).length : 0
 	);
@@ -690,6 +706,18 @@
 				<div class="map-hint-bar">Tippe auf die Karte, um deine Position zu senden</div>
 			{/if}
 
+			<!-- Oben mittig übereinander: erst das eigene Manöver, darunter die
+			     Ankündigung des nächsten Streckenpunkts. -->
+			<div class="top-stack">
+			{#if maneuver}
+				<div class="maneuver" class:far={maneuver.far} data-testid="manoever" role="status">
+					<span class="mv-arrow" aria-hidden="true">{maneuver.arrow}</span>
+					<div class="mv-body">
+						<strong class="mv-distance">{maneuver.distance}{maneuver.direct ? ' Luftlinie' : ''}</strong>
+						<span class="mv-text">{maneuver.text}</span>
+					</div>
+				</div>
+			{/if}
 			<!-- Route-point announcement (Leitstellenwechsel / Wegpunkt erreicht) -->
 			{#if pointEvent}
 				<div class="point-banner" class:done={pointEventDone}>
@@ -710,6 +738,7 @@
 					<span class="np-text">In {formatDistance(nextPoint.aheadM)}: {nextPoint.point.label}</span>
 				</div>
 			{/if}
+			</div>
 			<MapView
 				bind:this={mapView}
 				waypoints={data.waypoints as unknown as Waypoint[]}
@@ -831,17 +860,29 @@
 	.map-area { flex: 1; position: relative; }
 	.map-area.cursor-crosshair :global(.maplibregl-canvas) { cursor: crosshair; }
 
+	/* Oben mittig: Manöver, darunter Banner bzw. nächster Streckenpunkt */
+	.top-stack { position: absolute; top: .75rem; left: 50%; transform: translateX(-50%); z-index: 18; display: flex; flex-direction: column; align-items: center; gap: .4rem; width: max-content; max-width: min(640px, calc(100% - 1.5rem)); pointer-events: none; }
+	.top-stack > * { pointer-events: auto; max-width: 100%; box-sizing: border-box; }
+
+	/* Nächstes Manöver (Fahrer-Link) */
+	.maneuver { display: flex; align-items: center; gap: .7rem; padding: .5rem .9rem; border-radius: 12px; background: var(--color-primary); color: #fff; box-shadow: 0 4px 16px rgba(0,0,0,.4); }
+	.maneuver.far { background: rgba(15,27,36,.92); }
+	.mv-arrow { font-size: 2rem; line-height: 1; font-weight: 700; flex-shrink: 0; min-width: 2rem; text-align: center; }
+	.mv-body { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+	.mv-distance { font-size: var(--text-base, 1rem); }
+	.mv-text { font-size: var(--text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 	/* Route-point announcement banner (Leitstellenwechsel / Wegpunkt) */
-	.point-banner { position: absolute; top: .75rem; left: 50%; transform: translateX(-50%); z-index: 18; display: flex; align-items: center; gap: .6rem; max-width: min(640px, calc(100% - 1.5rem)); padding: .6rem .8rem; border-radius: 12px; background: #3498db; color: #fff; box-shadow: 0 4px 16px rgba(0,0,0,.4); animation: banner-in .25s ease; }
+	.point-banner { display: flex; align-items: center; gap: .6rem; max-width: min(640px, calc(100% - 1.5rem)); padding: .6rem .8rem; border-radius: 12px; background: #3498db; color: #fff; box-shadow: 0 4px 16px rgba(0,0,0,.4); animation: banner-in .25s ease; }
 	.point-banner.done { background: #27ae60; }
 	.pb-icon { font-size: 1.3rem; flex-shrink: 0; }
 	.pb-text { font-size: var(--text-sm); min-width: 0; line-height: 1.3; }
 	.pb-note { font-size: var(--text-xs); opacity: .95; }
 	.pb-btn { background: rgba(0,0,0,.15); color: inherit; border: none; border-radius: 6px; padding: .35rem .6rem; font-weight: 600; cursor: pointer; font-size: var(--text-sm); flex-shrink: 0; }
-	@keyframes banner-in { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+	@keyframes banner-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
 
 	/* Next-upcoming-point pill */
-	.next-point { position: absolute; top: .75rem; left: 50%; transform: translateX(-50%); z-index: 15; display: flex; align-items: center; gap: .45rem; max-width: min(560px, calc(100% - 1.5rem)); padding: .4rem .8rem; border-radius: 18px; background: rgba(15,27,36,.88); color: #fff; font-size: var(--text-sm); box-shadow: 0 2px 10px rgba(0,0,0,.35); pointer-events: none; }
+	.next-point { display: flex; align-items: center; gap: .45rem; max-width: min(560px, calc(100% - 1.5rem)); padding: .4rem .8rem; border-radius: 18px; background: rgba(15,27,36,.88); color: #fff; font-size: var(--text-sm); box-shadow: 0 2px 10px rgba(0,0,0,.35); pointer-events: none; }
 	.np-icon { flex-shrink: 0; }
 	.np-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
@@ -873,7 +914,8 @@
 		.sidebar.open { transform: translateX(0); box-shadow: 4px 0 24px rgba(0,0,0,.5); }
 		.sidebar-backdrop { display: block; position: fixed; inset: 0; top: 48px; background: rgba(0,0,0,.4); z-index: 39; border: none; cursor: pointer; }
 		.map-area { flex: 1; }
-		.point-banner { top: calc(48px + .5rem); }
-		.next-point { top: calc(48px + .5rem); }
+		/* Rechts bleibt Platz für die Zoomknöpfe der Karte — sonst läge das
+		   Manöver genau über „−". */
+		.top-stack { top: calc(48px + .5rem); left: .75rem; right: 3.5rem; transform: none; width: auto; max-width: none; align-items: flex-start; }
 	}
 </style>
