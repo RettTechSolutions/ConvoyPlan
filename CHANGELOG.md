@@ -23,6 +23,10 @@ ursprünglichen SemVer-Nummern.
 
 ### Added
 
+- **Die Abbiegehinweise fahren mit: `/api/track/{slug}` liefert sie als `route_steps`.** Jeder Hinweis trägt den Meter, an dem das Manöver auf der Linie liegt — gemessen entlang der ausgelieferten Geometrie, nicht aus GraphHoppers Teilstrecken aufsummiert, damit ein Empfänger, der seinen Standort auf dieselbe Linie projiziert, auf den Meter genau vergleichen kann. Die ConvoyPlan Companion-App zeigt daraus im Fahrermodus, auf dem Sperrbildschirm und am Autodisplay das nächste Manöver.
+
+  Der Meter wird bei der Routenberechnung mit den Roadbook-Anweisungen gespeichert; eine Migration braucht es nicht. Routen, die vorher berechnet wurden, bekommen ihn ersatzweise aus den Teilstrecken, auf die Linienlänge gestreckt — genauer wird es nach einer Neuberechnung. Importierte Routen haben keine Hinweise.
+
 - **Roadbook: die Route zum Ausdrucken.** Im Export-Tab erzeugt **🧭 Roadbook (PDF)** eine Übersichtskarte mit Start, Ziel und nummerierten Wegpunkten und darunter jede Navigationsanweisung der Route — Richtungspfeil, Abbiegehinweis mit Straßennummer, Kilometrierung ab Start und Strecke bis zur nächsten Anweisung. Wegpunkte stehen mit ihrer Nummer von der Karte, Planzeiten und Haltedauer in der Liste, das Ziel mit der geplanten Ankunft.
 
   Die Anweisungen entstehen bei der Routenberechnung und werden mit der Route gespeichert (Migration `0047`), damit der Ausdruck genau die geplante Route beschreibt. Bestehende Routen brauchen dafür einmal eine Neuberechnung. Die Karte rendert der Server aus OSM-Kacheln (`ROADBOOK_TILE_URL`); ohne Kachelserver entsteht das Roadbook trotzdem, dann mit der Route auf neutralem Grund.

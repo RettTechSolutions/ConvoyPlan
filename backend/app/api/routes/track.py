@@ -33,6 +33,7 @@ from app.schemas.share_link import (
     TrackWaypoint,
 )
 from app.services import geometry as geo_svc
+from app.services import route_steps as route_steps_svc
 from app.services import share_links as share_links_svc
 from app.services import staerke as staerke_svc
 from app.services import vehicle_status as vs
@@ -127,15 +128,25 @@ async def _build_payload(convoy_id: uuid.UUID, db: AsyncSession, scope: str = "t
         for p in positions
     ]
 
+    geojson = geo_svc.linestring_to_geojson(route.geometry) if route else None
+    # Aus derselben Linie, die ausgeliefert wird — nur dann passen die Meter
+    # zu dem, was der Empfänger daraus misst.
+    steps = (
+        route_steps_svc.track_steps(route.instructions, (geojson or {}).get("coordinates", []))
+        if route
+        else []
+    )
+
     return TrackPublic(
         name=convoy.name,
         organization=convoy.organization,
         start_time=convoy.start_time,
         scope=scope,
         waypoints=waypoints,
-        geojson=geo_svc.linestring_to_geojson(route.geometry) if route else None,
+        geojson=geojson,
         distance_m=route.distance_m if route else None,
         kanalwechsel=(route.kanalwechsel or []) if route else [],
+        route_steps=steps,
         vehicles=vehicles,
         positions=track_positions,
     )
