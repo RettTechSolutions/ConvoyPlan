@@ -78,6 +78,34 @@ test.describe('Betriebsstoff in der Fahrzeugliste', () => {
 		await expect(lage(page)).not.toHaveAttribute('title', /Reichweite/);
 	});
 
+	test('bei einem E-Fahrzeug rechnet die Reichweite mit den kWh-Stammdaten', async ({ page }) => {
+		await oeffnen(page, [
+			fahrzeug({
+				propulsion: 'electric', battery_capacity_kwh: 80, consumption_kwh_100km: 20,
+				betriebsstoff_fuellstand: 60,
+			}),
+		]);
+
+		await expect(lage(page)).toContainText('🔌');
+		await expect(lage(page)).toContainText('60 %');
+		// 48 kWh bei 20 kWh/100 km — und in kWh benannt, nicht in Litern.
+		await expect(lage(page)).toHaveAttribute('title', /^Akku: Ladestand 60 %/);
+		await expect(lage(page)).toHaveAttribute('title', /48 kWh von 80 kWh \(Stammdaten\)/);
+		await expect(lage(page)).toHaveAttribute('title', /Reichweite etwa 240 km/);
+		await expect(lage(page)).not.toHaveAttribute('title', / l\b|l\/100/);
+	});
+
+	test('bei einem E-Fahrzeug zählen Liter in der Meldung nicht', async ({ page }) => {
+		await oeffnen(page, [
+			fahrzeug({
+				propulsion: 'electric', battery_capacity_kwh: 80, consumption_kwh_100km: 20,
+				betriebsstoff_tank: 200, betriebsstoff_verbrauch: 30, betriebsstoff_fuellstand: 60,
+			}),
+		]);
+
+		await expect(lage(page)).toHaveAttribute('title', /Reichweite etwa 240 km/);
+	});
+
 	test('eine Meldung aus dem Kanal erscheint ohne Neuladen', async ({ page }) => {
 		await page.routeWebSocket(/\/api\/ws\/track\//, (ws) => {
 			ws.send(JSON.stringify({

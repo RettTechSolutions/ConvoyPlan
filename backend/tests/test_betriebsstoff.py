@@ -276,6 +276,31 @@ async def test_stammdaten_stehen_als_soll_daneben(verband):
     assert fz.tank_capacity_l == 300.0
 
 
+async def test_e_fahrzeug_bringt_seine_kwh_mit(verband):
+    # Ein E-Fahrzeug führt seine Stammdaten in eigenen kWh-Feldern; die
+    # Literfelder bleiben leer, wie die Planung sie speichert. Die App rechnet
+    # aus Kapazität, Verbrauch und gemeldetem Ladestand die Reichweite.
+    async with AsyncSessionLocal() as db:
+        fz = await db.get(Vehicle, verband.vehicle_id)
+        fz.propulsion = "electric"
+        fz.tank_capacity_l, fz.fuel_consumption_l100km = None, None
+        fz.battery_capacity_kwh, fz.consumption_kwh_100km = 82.0, 21.5
+        await db.commit()
+
+    await track_module._ingest_driver_betriebsstoff(
+        verband.convoy_id, {"vehicle_id": str(verband.vehicle_id), "fuellstand": 60}
+    )
+
+    async with AsyncSessionLocal() as db:
+        payload = await track_module._build_payload(verband.convoy_id, db)
+
+    fahrzeug = payload.vehicles[0]
+    assert fahrzeug.propulsion == "electric"
+    assert (fahrzeug.battery_capacity_kwh, fahrzeug.consumption_kwh_100km) == (82.0, 21.5)
+    assert (fahrzeug.tank_capacity_l, fahrzeug.fuel_consumption_l100km) == (None, None)
+    assert (fahrzeug.betriebsstoff_fuellstand, fahrzeug.betriebsstoff_tank) == (60, None)
+
+
 
 # ── Angemeldeter Weg: die Führung trägt eine Funkmeldung nach ─────────────────
 

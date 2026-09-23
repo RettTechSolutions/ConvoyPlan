@@ -17,6 +17,8 @@ export type TrackFahrzeug = {
 	propulsion?: string;
 	tank_capacity_l?: number | null;
 	fuel_consumption_l100km?: number | null;
+	battery_capacity_kwh?: number | null;
+	consumption_kwh_100km?: number | null;
 	betriebsstoff_verbrauch?: number | null;
 	betriebsstoff_tank?: number | null;
 	betriebsstoff_fuellstand?: number | null;

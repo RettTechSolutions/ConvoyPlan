@@ -228,9 +228,12 @@ def _betriebsstoff(cv) -> dict | None:
 
     Stammdaten allein sind keine Lage: Ohne Meldung kommt None zurück, nicht
     der geplante Tank. Fehlen Tank oder Verbrauch in der Meldung, rechnet die
-    Reichweite mit den Stammdaten und sagt das dazu — außer bei einem
-    E-Fahrzeug, dessen Stammdaten in kWh stehen; Prozent gegen Liter ergäbe
-    eine erfundene Reichweite."""
+    Reichweite mit den Stammdaten und sagt das dazu.
+
+    Ein E-Fahrzeug meldet nur den Ladestand. Seine Reichweite kommt aus den
+    kWh-Stammdaten (Akkukapazität, Verbrauch je 100 km) und steht unter
+    eigenen Schlüsseln — Liter, die doch in der Meldung stünden, gegen kWh
+    gerechnet ergäben eine erfundene Reichweite."""
     verbrauch, tank, fuellstand = (
         cv.betriebsstoff_verbrauch, cv.betriebsstoff_tank, cv.betriebsstoff_fuellstand
     )
@@ -239,14 +242,32 @@ def _betriebsstoff(cv) -> dict | None:
 
     fahrzeug = cv.vehicle
     elektrisch = fahrzeug is not None and fahrzeug.propulsion == "electric"
+    if elektrisch:
+        kapazitaet = fahrzeug.battery_capacity_kwh or None
+        verbrauch_kwh = fahrzeug.consumption_kwh_100km or None
+        reichweite = betriebsstoff_svc.reichweite_km(verbrauch_kwh, kapazitaet, fuellstand)
+        return {
+            "fuellstand_prozent": fuellstand,
+            "akku_kapazitaet_kwh": kapazitaet,
+            "verbrauch_kwh_100km": verbrauch_kwh,
+            "kwh_im_akku": (
+                None if kapazitaet is None or fuellstand is None
+                else round(kapazitaet * fuellstand / 100, 1)
+            ),
+            "reichweite_km": None if reichweite is None else round(reichweite),
+            "elektrisch": True,
+            "knapp": fuellstand is not None and fuellstand <= betriebsstoff_svc.KNAPP_AB_PROZENT,
+            "gemeldet_seit": _iso(cv.betriebsstoff_gemeldet_at),
+        }
+
     tank_stamm = verbrauch_stamm = False
-    if not elektrisch and fahrzeug is not None:
+    if fahrzeug is not None:
         if tank is None and fahrzeug.tank_capacity_l:
             tank, tank_stamm = fahrzeug.tank_capacity_l, True
         if verbrauch is None and fahrzeug.fuel_consumption_l100km:
             verbrauch, verbrauch_stamm = fahrzeug.fuel_consumption_l100km, True
 
-    reichweite = None if elektrisch else betriebsstoff_svc.reichweite_km(verbrauch, tank, fuellstand)
+    reichweite = betriebsstoff_svc.reichweite_km(verbrauch, tank, fuellstand)
     return {
         "fuellstand_prozent": fuellstand,
         "tank_l": tank,
@@ -254,11 +275,11 @@ def _betriebsstoff(cv) -> dict | None:
         "verbrauch_l_100km": verbrauch,
         "verbrauch_aus_stammdaten": verbrauch_stamm,
         "liter_im_tank": (
-            None if elektrisch or tank is None or fuellstand is None
+            None if tank is None or fuellstand is None
             else round(tank * fuellstand / 100, 1)
         ),
         "reichweite_km": None if reichweite is None else round(reichweite),
-        "elektrisch": elektrisch,
+        "elektrisch": False,
         "knapp": fuellstand is not None and fuellstand <= betriebsstoff_svc.KNAPP_AB_PROZENT,
         "gemeldet_seit": _iso(cv.betriebsstoff_gemeldet_at),
     }
