@@ -68,6 +68,32 @@ Was der Code bedeutet, hängt an der Rolle des Links — dass es ihn gibt, nicht
 
 ---
 
+## Ein Fahrzeug, ein Gerät
+
+Wer ein Fahrzeug wählt — in der Begleit-App, über den Fahrer-Link im Browser
+oder in der angemeldeten Tracking-Ansicht —, **belegt** es. Auf allen anderen
+Geräten steht es danach in der Fahrzeugwahl mit dem Zusatz **„belegt"** und lässt
+sich nicht mehr wählen. So senden nie zwei Geräte für dasselbe Fahrzeug, und die
+Karte springt nicht zwischen zwei Standorten.
+
+Frei wird ein Fahrzeug,
+
+- sobald das Gerät ein anderes Fahrzeug oder keins mehr wählt, die Seite schließt
+  oder den Konvoi verlässt,
+- nach **fünf Minuten**, in denen von diesem Gerät nichts mehr kam — etwa nach
+  einem leeren Akku. Ein kurzes Funkloch gibt es **nicht** frei,
+- sofort, wenn die Führung für das Fahrzeug **„GPS-Freigabe zurücksetzen"** wählt.
+
+War ein anderes Gerät schneller, nimmt die Ansicht die Wahl zurück und sagt es:
+*„Dieses Fahrzeug sendet bereits von einem anderen Gerät."* Dann ein anderes
+Fahrzeug wählen oder die Besatzung fragen, wer schon sendet.
+
+> Ältere Fassungen der Begleit-App kennen die Belegung noch nicht. Sie werden
+> nicht abgewiesen, und was sie senden, belegt das Fahrzeug für alle anderen —
+> sie selbst sehen aber nicht, welche Fahrzeuge schon vergeben sind.
+
+---
+
 ## Fahrzeugstatus melden
 
 Die Kurz-Stati liegen im Reiter **Status** unter **„Mein Status"** (ein Fahrzeug

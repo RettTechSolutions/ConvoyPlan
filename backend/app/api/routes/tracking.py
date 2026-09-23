@@ -16,6 +16,7 @@ from app.models.convoy import ConvoyVehicle
 from app.models.user import User
 from app.models.vehicle import Vehicle
 from app.models.vehicle_position import VehiclePosition
+from app.services import belegung
 from app.services import staerke as staerke_svc
 from app.services import vehicle_status as vs
 from app.services.tracking import tracking_manager
@@ -290,6 +291,10 @@ async def clear_vehicle_position(
 
     if suppress:
         tracking_manager.mark_cleared(str(convoy_id), str(vehicle_id))
+        # Die Führung setzt zurück: das Fahrzeug wird sofort frei, wer immer es
+        # hält. Beim Selbst-Stopp bleibt die Belegung — das Fahrzeug ist ja
+        # weiter gewählt; frei wird es mit dem Abwählen (``freigeben``).
+        await belegung.freigeben(str(convoy_id), str(vehicle_id), None)
     await tracking_manager.broadcast(str(convoy_id), {
         "type": "position_cleared",
         "vehicle_id": str(vehicle_id),
@@ -297,11 +302,33 @@ async def clear_vehicle_position(
     return {"status": "ok"}
 
 
+async def _belegung_bearbeiten(
+    convoy_id: str, user: User, ws: WebSocket, raw: dict, kennung: str, durchsetzen: bool
+) -> None:
+    """``belegen``/``freigeben`` am angemeldeten Kanal — mit Fahrer-Recht."""
+    try:
+        vehicle_id = uuid.UUID(str(raw.get("vehicle_id")))
+    except (TypeError, ValueError):
+        return
+    if raw.get("type") == "freigeben":
+        await belegung.freigeben(convoy_id, str(vehicle_id), kennung)
+        return
+    async with AsyncSessionLocal() as db:
+        try:
+            await get_convoy_access(uuid.UUID(convoy_id), user, db, require="fahrer")
+        except HTTPException:
+            return
+        if await db.get(ConvoyVehicle, (uuid.UUID(convoy_id), vehicle_id)) is None:
+            return
+    await belegung.pruefen(convoy_id, str(vehicle_id), kennung, ws, durchsetzen)
+
+
 @router.websocket("/ws/tracking/{convoy_id}")
 async def tracking_ws(
     convoy_id: str,
     ws: WebSocket,
     token: str = Query(...),
+    client: str | None = Query(default=None),
 ):
     try:
         token_data = decode_stream_token(token)
@@ -329,7 +356,15 @@ async def tracking_ws(
             await ws.close(code=4400)
             return
 
-    await tracking_manager.connect(convoy_id, ws)
+    # Belegung wie am Fahrer-Link (services/belegung.py): ohne Kennung ein
+    # älterer Client, der nicht abgewiesen wird, aber belegt, was er sendet.
+    kennung = belegung.kennung_pruefen(client)
+    durchsetzen = kennung is not None
+    kennung = kennung or belegung.alt_kennung()
+
+    await tracking_manager.connect(convoy_id, ws, mit_kennung=durchsetzen)
+    if durchsetzen:
+        await belegung.stand_senden(convoy_id, kennung, ws)
     try:
         while True:
             raw = await ws.receive_json()
@@ -338,6 +373,9 @@ async def tracking_ws(
             # quickly. Reply with a pong and skip position handling.
             if isinstance(raw, dict) and raw.get("type") == "ping":
                 await ws.send_json({"type": "pong"})
+                continue
+            if isinstance(raw, dict) and raw.get("type") in ("belegen", "freigeben"):
+                await _belegung_bearbeiten(convoy_id, user, ws, raw, kennung, durchsetzen)
                 continue
             try:
                 pos = PositionUpdate.model_validate(raw)
@@ -352,6 +390,13 @@ async def tracking_ws(
                 except HTTPException:
                     await ws.close(code=4403)
                     return
+                cv = await db.get(ConvoyVehicle, (uuid.UUID(convoy_id), pos.vehicle_id))
+                if cv is None:
+                    continue
+                if not await belegung.pruefen(
+                    convoy_id, str(pos.vehicle_id), kennung, ws, durchsetzen
+                ):
+                    continue
                 stmt = (
                     pg_insert(VehiclePosition)
                     .values(

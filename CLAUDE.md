@@ -145,6 +145,41 @@ ein Stück doppelt befährt, trifft die Suche nach dem nächsten Streckenpunkt s
 die falsche Vorbeifahrt, und aus der negativen Teilstrecke wird eine rückwärts
 laufende Ankunftszeit.
 
+### Fahrzeugbelegung: ein Fahrzeug, ein Gerät
+
+Wer ein Fahrzeug wählt, belegt es — am Server, für alle drei Oberflächen zugleich:
+Fahrer-Link im Browser, Begleit-App (derselbe Kanal) und angemeldetes Tracking.
+Gemeldet war: KdoW in der App gewählt, im Browser noch einmal wählbar; beide
+schrieben in dieselbe Positionszeile. Der alte Schutz im Web („hat eine Position
+= vergeben") galt nur dort, und eine Position bleibt liegen, wenn niemand mehr
+sendet — das Fahrzeug war danach für immer ausgegraut.
+
+Die Entscheidung steht in `app/services/belegung.py` (`Belegungen`, ohne Netz und
+Uhr geprüft von `tests/test_fahrzeug_belegung.py`), die Verdrahtung in beiden
+WebSocket-Handlern (`track_ws`, `tracking_ws`; am echten Kanal geprüft von
+`tests/test_fahrzeug_belegung_kanal.py`). Ein Gerät weist sich mit `?client=`
+aus; `belegen`/`freigeben` sind eigene Frames, jeder Frame für ein Fahrzeug hält
+die Belegung, nach **fünf Minuten** ohne Frame wird sie frei. Ein
+Verbindungsabriss gibt **nicht** frei — das Funkloch ist der Normalfall.
+„GPS-Freigabe zurücksetzen" (`DELETE …/position` mit `suppress`) gibt sofort frei.
+
+Drei Dinge, die man kennen muss:
+
+- **Clients ohne `client` werden nie abgewiesen** (App-Fassungen aus dem Store),
+  belegen aber, was sie senden. Und sie bekommen **keinen** der neuen
+  Nachrichtentypen: `broadcast_belegung` geht nur an Verbindungen mit Kennung,
+  weil der Store der angemeldeten Ansicht früher jede unbekannte Nachricht als
+  Position las.
+- **Im Speicher, nicht in der Datenbank** — wie die Verbindungen selbst in
+  `tracking_manager`. Nach einem Neustart (Nightly deployt mehrmals täglich)
+  belegt jedes Gerät sein Fahrzeug mit dem `belegen` nach dem Verbindungsaufbau
+  neu; die Clients schicken es auf die `belegungen`-Nachricht hin.
+- Die Gegenstellen sind `frontend/src/lib/tracking/belegung.ts` und in der
+  Begleit-App `packages/track-api/src/belegung.ts` — dasselbe Protokoll, zwei
+  Umsetzungen. Wer eine ändert, zieht die andere mit.
+  `frontend/e2e/fahrzeug-belegung.spec.ts` hält die Zusagen an der Oberfläche fest.
+  Anwenderdoku: `wiki/Live-Tracking.md`, „Ein Fahrzeug, ein Gerät".
+
 ### API-Docs (Swagger/OpenAPI)
 
 `/docs`, `/redoc` und `/openapi.json` sind in Produktion **standardmäßig deaktiviert**
