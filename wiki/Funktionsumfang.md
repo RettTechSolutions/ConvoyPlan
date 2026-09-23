@@ -48,6 +48,8 @@ Vollständige Feature-Übersicht von ConvoyPlan mit Umsetzungsstatus. Eine kompa
 | Mannschaftsstärke | Besatzung meldet Führer/Unterführer/Mannschaften je Fahrzeug (Notation 0/1/8//9), die Führung trägt auch Funkmeldungen nach; Verbandsstärke als Summe, Abgleich mit geplanter Sollstärke ([Details](Live-Tracking)) | ✅ |
 | Alarmierung | Technischer Halt und Ausfall lösen bei allen verbundenen Clients Banner, Ton und Vibration aus; Meldungen sind einzeln oder gesammelt quittierbar | ✅ |
 | Streckenmeldungen | Erreichte Wegpunkte und Leitstellenwechsel werden aus der auf die Route projizierten Konvoiposition angekündigt (Spitze erreicht / Verband vollständig passiert) | ✅ |
+| Abbiegehinweise | Nächstes Manöver ab der eigenen Position im Fahrer-Link, alle Anweisungen mit Kilometrierung im Seitenmenü-Reiter „Route" (Stand ab Verbandsspitze) | ✅ |
+| Fahrzeugbelegung | Ein Fahrzeug sendet je Konvoi nur von einem Gerät gleichzeitig — serverseitig durchgesetzt für Fahrer-Link, Begleit-App und angemeldetes Tracking | ✅ |
 | Verspätungsprognose | Der Zeitplan schätzt aus der Position des vordersten Fahrzeugs die aktuelle Abweichung und verschiebt die Ankunftszeiten aller Wegpunkte | ✅ |
 | Verbindungsüberwachung | Anwendungs-Heartbeat erkennt eine still abgerissene Mobilfunkverbindung binnen Sekunden und meldet sie im Klartext | ✅ |
 | Kartenbedienung | Frei drehbare Karte mit Norden-Rückstellung, Fahrtrichtungs-Modus und Folgen des eigenen Fahrzeugs; Richtungspfeile bleiben zur echten Fahrtrichtung ausgerichtet | ✅ |

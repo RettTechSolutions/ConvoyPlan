@@ -215,6 +215,31 @@ Details zur Berechnung der Übergabepunkte: [Konvoi-Planung](Konvoi-Planung).
 
 ---
 
+## Abbiegehinweise
+
+Wurde die Route **berechnet** (nicht importiert), kennt ConvoyPlan zu jedem
+Manöver Richtung, Straße und die Kilometrierung ab Start — dieselben
+Anweisungen wie im gedruckten [Roadbook](Marschbefehl-Export#roadbook-pdf).
+
+**Im Fahrer-Link** steht oben auf der Karte, direkt neben der
+Streckenpunkt-Ankündigung, das nächste Manöver ab der **eigenen Position**:
+Richtungspfeil, Entfernung, Hinweis — sobald ein Fahrzeug gewählt ist. Ein
+Beobachter-Link zeigt dieses Banner nicht: gegen die Verbandsspitze gerechnet
+gälte „In 300 m rechts" nicht fürs Schlusslicht.
+
+**Im Seitenmenü** listet der Reiter **Route** alle Abbiegehinweise mit
+Kilometrierung wie im Roadbook — für jede Tracking-Ansicht, auch für
+Beobachter. Der Stand bezieht sich auf die **Verbandsspitze**: gefahrene
+Hinweise sind ausgegraut, der nächste ist hervorgehoben und zeigt die
+Entfernung ab der Spitze; die Liste rollt beim Öffnen automatisch dorthin.
+Ohne Live-Position steht sie ohne Stand da.
+
+> Eine **importierte** Route (GPX/GeoJSON) hat keine Abbiegehinweise. Eine
+> Route, die vor diesem Update berechnet wurde, braucht für die Kilometrierung
+> der Hinweise einmal eine Neuberechnung.
+
+---
+
 ## Zeitplan und Verspätungsprognose
 
 Der Reiter **Zeitplan** vergleicht laufend die tatsächlich zurückgelegte
