@@ -360,13 +360,11 @@ async def _ingest_driver_betriebsstoff(convoy_uuid: uuid.UUID, msg: dict) -> Non
         cv.betriebsstoff_fuellstand = fuellstand
         cv.betriebsstoff_gemeldet_at = datetime.now(timezone.utc)
         await db.commit()
-        gemeldet_at = cv.betriebsstoff_gemeldet_at.isoformat()
+        gemeldet_at = cv.betriebsstoff_gemeldet_at
 
-    await tracking_manager.broadcast(str(convoy_uuid), {
-        "type": "betriebsstoff_update", "vehicle_id": str(vehicle_id),
-        "verbrauch": verbrauch, "tank": tank, "fuellstand": fuellstand,
-        "gemeldet_at": gemeldet_at,
-    })
+    await tracking_manager.broadcast(
+        str(convoy_uuid), betriebsstoff_svc.update_nachricht(vehicle_id, werte, gemeldet_at)
+    )
 
 
 @ws_router.websocket("/{slug}")

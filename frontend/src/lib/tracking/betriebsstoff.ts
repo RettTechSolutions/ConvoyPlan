@@ -5,6 +5,11 @@
 // Gespeichert wird nur, was gemeldet wurde; Liter im Tank und Reichweite
 // rechnet jede Ansicht selbst, wie hinten in `app/services/betriebsstoff.py`.
 
+/** Grenzen einer Meldung, gleichlautend zum Backend (`services/betriebsstoff.py`). */
+export const MAX_VERBRAUCH = 150;
+export const MAX_TANK = 1500;
+export const MAX_FUELLSTAND = 100;
+
 /** Ab diesem Füllstand wird die Anzeige zur Warnung. */
 export const KNAPP_AB_PROZENT = 25;
 

@@ -27,6 +27,8 @@ ursprünglichen SemVer-Nummern.
 
   Die Fahrzeugliste in Tracking-Ansicht und Fahrer-Link zeigt ein ⛽ mit dem Füllstand, ab 25 % hervorgehoben; Reichweite und Einzelwerte stehen im Tooltip. Fehlen Tank oder Verbrauch in der Meldung, rechnet die Anzeige mit den Kraftstoff-Stammdaten des Fahrzeugs — die dafür jetzt auch in der Tracking-Nutzlast stehen — und sagt das dazu. Die Meldung schreibt nie in die Stammdaten zurück; die Tankstopp-Planung bleibt, wie sie war.
 
+  Die Führung trägt eine per Funk durchgegebene Lage in der Tracking-Ansicht nach — im selben ✎-Feld wie die Stärke, über `PATCH /api/convoys/{id}/vehicles/{vehicle_id}/betriebsstoff` (Rolle `fahrer`, dieselben Grenzen, dieselbe Nachricht an alle offenen Ansichten).
+
 - **Roadbook: die Route zum Ausdrucken.** Im Export-Tab erzeugt **🧭 Roadbook (PDF)** eine Übersichtskarte mit Start, Ziel und nummerierten Wegpunkten und darunter jede Navigationsanweisung der Route — Richtungspfeil, Abbiegehinweis mit Straßennummer, Kilometrierung ab Start und Strecke bis zur nächsten Anweisung. Wegpunkte stehen mit ihrer Nummer von der Karte, Planzeiten und Haltedauer in der Liste, das Ziel mit der geplanten Ankunft.
 
   Die Anweisungen entstehen bei der Routenberechnung und werden mit der Route gespeichert (Migration `0047`), damit der Ausdruck genau die geplante Route beschreibt. Bestehende Routen brauchen dafür einmal eine Neuberechnung. Die Karte rendert der Server aus OSM-Kacheln (`ROADBOOK_TILE_URL`); ohne Kachelserver entsteht das Roadbook trotzdem, dann mit der Route auf neutralem Grund.

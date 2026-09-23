@@ -192,6 +192,14 @@ export function convoyPayload(id: string, fahrzeuge?: ReturnType<typeof konvoiFa
 }
 
 /** Eine abgefangene Stärkemeldung aus `PATCH …/vehicles/<id>/staerke`. */
+/** Was an `PATCH …/betriebsstoff` ging — samt dem Fahrzeug aus dem Pfad. */
+export type BetriebsstoffMeldung = {
+	fahrzeugId: string;
+	verbrauch: number | null;
+	tank: number | null;
+	fuellstand: number | null;
+};
+
 export type StaerkeMeldung = {
 	fahrzeugId: string;
 	fuehrer: number;
@@ -217,6 +225,12 @@ export async function mockOrgPortal(
 		positionen?: ReturnType<typeof position>[];
 		/** Rolle der angemeldeten Sitzung. Unter `fahrer` darf nichts gemeldet werden. */
 		rolle?: 'beobachter' | 'fahrer' | 'planer' | 'admin';
+		/**
+		 * Wohin nachgetragene Betriebsstoffmeldungen (`PATCH …/betriebsstoff`)
+		 * geschrieben werden. Eine eigene Liste statt eines zweiten
+		 * Rückgabewerts, damit die bestehenden Aufrufer bleiben, wie sie sind.
+		 */
+		betriebsstoffMeldungen?: BetriebsstoffMeldung[];
 	},
 ): Promise<StaerkeMeldung[]> {
 	// Was an `PATCH …/staerke` hinausging — die Liste wächst im Test mit.
@@ -257,6 +271,12 @@ export async function mockOrgPortal(
 		const pfad = new URL(route.request().url()).pathname;
 		if (pfad.endsWith('/route')) return void route.fulfill({ json: null });
 		if (pfad.endsWith('/positions')) return void route.fulfill({ json: opts.positionen ?? [] });
+		if (pfad.endsWith('/betriebsstoff')) {
+			const fahrzeugId = pfad.split('/vehicles/')[1]!.replace('/betriebsstoff', '');
+			const lage = JSON.parse(route.request().postData() ?? '{}');
+			opts.betriebsstoffMeldungen?.push({ fahrzeugId, ...lage });
+			return void route.fulfill({ json: { status: 'ok', gemeldet_at: '2026-09-23T06:00:00+00:00' } });
+		}
 		if (pfad.endsWith('/staerke')) {
 			const fahrzeugId = pfad.split('/vehicles/')[1]!.replace('/staerke', '');
 			const werte = JSON.parse(route.request().postData() ?? '{}');

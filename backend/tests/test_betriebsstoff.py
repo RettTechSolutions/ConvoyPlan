@@ -12,8 +12,11 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy import delete
 
+from app.api.deps import get_current_user
 from app.api.routes import track as track_module
+from app.api.routes import tracking as tracking_module
 from app.database import AsyncSessionLocal, engine
+from app.main import app
 from app.models.convoy import Convoy, ConvoyVehicle
 from app.models.organization import Organization, UserOrganization
 from app.models.user import User
@@ -271,3 +274,108 @@ async def test_stammdaten_stehen_als_soll_daneben(verband):
     # Die Meldung schreibt nicht in die Stammdaten — die Planung rechnet weiter
     # mit dem, was dort eingetragen ist.
     assert fz.tank_capacity_l == 300.0
+
+
+
+# ── Angemeldeter Weg: die Führung trägt eine Funkmeldung nach ─────────────────
+
+async def _patch(ids, body: dict, monkeypatch, fahrzeug_id=None):
+    from httpx import ASGITransport, AsyncClient
+
+    async def _access(*_args, **_kwargs):
+        return SimpleNamespace(id=ids.convoy_id)
+
+    monkeypatch.setattr(tracking_module, "get_convoy_access", _access)
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=ids.user_id)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            return await client.patch(
+                f"/api/convoys/{ids.convoy_id}/vehicles/{fahrzeug_id or ids.vehicle_id}/betriebsstoff",
+                json=body,
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+
+async def test_fuehrung_traegt_die_lage_nach(verband, gesendet, monkeypatch):
+    resp = await _patch(verband, {"verbrauch": 28.46, "tank": 200, "fuellstand": 40}, monkeypatch)
+
+    assert resp.status_code == 200
+    cv = await _cv(verband)
+    # Dieselbe Rundung wie über den Fahrer-Link.
+    assert (cv.betriebsstoff_verbrauch, cv.betriebsstoff_tank, cv.betriebsstoff_fuellstand) == (28.5, 200, 40)
+    # Und dieselbe Nachricht an die offenen Ansichten.
+    assert gesendet == [
+        {
+            "type": "betriebsstoff_update",
+            "vehicle_id": str(verband.vehicle_id),
+            "verbrauch": 28.5,
+            "tank": 200,
+            "fuellstand": 40,
+            "gemeldet_at": cv.betriebsstoff_gemeldet_at.isoformat(),
+        }
+    ]
+
+
+async def test_nachtrag_ersetzt_die_vorige_meldung_ganz(verband, gesendet, monkeypatch):
+    await _patch(verband, {"verbrauch": 30, "tank": 200, "fuellstand": 50}, monkeypatch)
+    await _patch(verband, {"fuellstand": 20}, monkeypatch)
+
+    cv = await _cv(verband)
+    assert (cv.betriebsstoff_verbrauch, cv.betriebsstoff_tank, cv.betriebsstoff_fuellstand) == (None, None, 20)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"verbrauch": None, "tank": None, "fuellstand": None},
+        {"fuellstand": 101},
+        {"tank": 0},
+        {"verbrauch": 151},
+        {"tank": 200.5},
+    ],
+)
+async def test_nachtrag_weist_unplausibles_und_leeres_ab(verband, gesendet, monkeypatch, body):
+    resp = await _patch(verband, body, monkeypatch)
+
+    assert resp.status_code == 422
+    cv = await _cv(verband)
+    assert cv.betriebsstoff_gemeldet_at is None
+    assert gesendet == []
+
+
+async def test_nachtrag_fuer_ein_fahrzeug_ausserhalb_des_verbands(verband, gesendet, monkeypatch):
+    resp = await _patch(verband, {"fuellstand": 50}, monkeypatch, fahrzeug_id=verband.fremd_id)
+
+    assert resp.status_code == 404
+    assert gesendet == []
+
+
+async def test_nachtrag_verlangt_mindestens_die_rolle_fahrer(verband, gesendet, monkeypatch):
+    """Ein Beobachter trägt nichts nach — dieselbe Schwelle wie bei der Stärke.
+
+    Die Tracking-Ansicht blendet ihren Knopf danach aus; sänke die Schwelle hier,
+    sähe das Verstecken weiter aus wie ein Schutz, der es nie war.
+    """
+    from httpx import ASGITransport, AsyncClient
+
+    verlangt: list[str] = []
+
+    async def _access(*_args, require: str = "read", **_kwargs):
+        verlangt.append(require)
+        return SimpleNamespace(id=verband.convoy_id)
+
+    monkeypatch.setattr(tracking_module, "get_convoy_access", _access)
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=verband.user_id)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.patch(
+                f"/api/convoys/{verband.convoy_id}/vehicles/{verband.vehicle_id}/betriebsstoff",
+                json={"fuellstand": 50},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert resp.status_code == 200
+    assert verlangt == ["fahrer"]

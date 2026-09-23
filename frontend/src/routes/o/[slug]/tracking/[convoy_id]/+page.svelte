@@ -12,6 +12,7 @@
 		acknowledgeAllAlerts, vehicleStaerken, vehicleBetriebsstoff, type VehicleStatusInfo,
 	} from '$lib/stores/tracking';
 	import BetriebsstoffBadge from '$lib/components/BetriebsstoffBadge.svelte';
+	import BetriebsstoffForm from '$lib/components/BetriebsstoffForm.svelte';
 	import StaerkeBadge from '$lib/components/StaerkeBadge.svelte';
 	import { betriebsstoffAus, mitStammdaten, type Betriebsstoff, type BetriebsstoffFelder } from '$lib/tracking/betriebsstoff';
 	import StaerkeForm from '$lib/components/StaerkeForm.svelte';
@@ -208,6 +209,29 @@
 				return new Map(m);
 			});
 			error = 'Stärke konnte nicht gemeldet werden';
+			return false;
+		}
+	}
+
+	/**
+	 * Eine per Funk durchgegebene Betriebsstofflage nachtragen. Derselbe Ablauf
+	 * wie bei der Stärke: sofort in der Liste, bei einem Fehler zurückgenommen.
+	 */
+	async function meldeBetriebsstoff(vehicleId: string, lage: Betriebsstoff): Promise<boolean> {
+		const vorher = $vehicleBetriebsstoff.get(vehicleId) ?? null;
+		vehicleBetriebsstoff.update((m) => { m.set(vehicleId, lage); return new Map(m); });
+		try {
+			await trackingApi.updateVehicleBetriebsstoff(convoyId, vehicleId, {
+				verbrauch: lage.verbrauch, tank: lage.tank, fuellstand: lage.fuellstand,
+			});
+			staerkeOffenFuer = null;
+			return true;
+		} catch {
+			vehicleBetriebsstoff.update((m) => {
+				if (vorher) m.set(vehicleId, vorher); else m.delete(vehicleId);
+				return new Map(m);
+			});
+			error = 'Betriebsstoff konnte nicht gemeldet werden';
 			return false;
 		}
 	}
@@ -752,8 +776,8 @@
 										class="staerke-edit"
 										class:offen
 										aria-expanded={offen}
-										aria-label="Stärke für {fzLabel} eintragen"
-										title="Über Funk gemeldete Stärke für {fzLabel} eintragen"
+										aria-label="Stärke und Betriebsstoff für {fzLabel} eintragen"
+										title="Über Funk gemeldete Stärke und Betriebsstofflage für {fzLabel} eintragen"
 										data-testid="staerke-edit-{cv.vehicle.id}"
 										onclick={() => (staerkeOffenFuer = offen ? null : cv.vehicle.id)}
 									>✎</button>
@@ -772,6 +796,23 @@
 									vorgabe={istAus(staerkeVon(cv))}
 									testid="staerke-form-{cv.vehicle.id}"
 									onMelden={(werte) => meldeStaerke(cv.vehicle.id, werte)}
+								/>
+								<!--
+									Im selben Feld und nicht hinter einem zweiten Knopf: die
+									Zeile trägt schon Name, Stärke, Betriebsstoff und Status,
+									und ein weiteres Symbol hätte sie am Telefon gesprengt
+									(e2e/fahrzeugzeile-passt-in-die-leiste.spec.ts).
+								-->
+								<BetriebsstoffForm
+									titel="Betriebsstoff {fzLabel} (Funkmeldung)"
+									knopf="⛽ Betriebsstoff eintragen"
+									quittungstext="Betriebsstoff eingetragen"
+									vorgabe={$vehicleBetriebsstoff.get(cv.vehicle.id) ?? betriebsstoffAus(cv)}
+									stammTank={cv.vehicle.tank_capacity_l}
+									stammVerbrauch={cv.vehicle.fuel_consumption_l100km}
+									elektrisch={cv.vehicle.propulsion === 'electric'}
+									testid="betriebsstoff-form-{cv.vehicle.id}"
+									onMelden={(lage) => meldeBetriebsstoff(cv.vehicle.id, lage)}
 								/>
 							</div>
 						{/if}

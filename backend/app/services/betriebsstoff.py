@@ -73,6 +73,27 @@ def normalisieren(
     return (None if v is None else round(float(v), 1), t, f)
 
 
+def update_nachricht(
+    vehicle_id,
+    werte: tuple[float | None, int | None, int | None],
+    gemeldet_at,
+) -> dict:
+    """Was an die offenen Ansichten geht — eine Stelle für beide Wege.
+
+    Fahrer-Link und Nachtrag der Führung schicken dieselbe Nachricht; stünde sie
+    zweimal da, bekäme die eine irgendwann ein Feld, das der anderen fehlt.
+    """
+    verbrauch, tank, fuellstand = werte
+    return {
+        "type": "betriebsstoff_update",
+        "vehicle_id": str(vehicle_id),
+        "verbrauch": verbrauch,
+        "tank": tank,
+        "fuellstand": fuellstand,
+        "gemeldet_at": gemeldet_at.isoformat(),
+    }
+
+
 def reichweite_km(
     verbrauch: float | None, tank: int | None, fuellstand: int | None
 ) -> float | None:
