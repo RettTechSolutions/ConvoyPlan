@@ -166,7 +166,10 @@ async def calculate_route(
     payload: dict[str, Any] = {
         "points": [[p["lon"], p["lat"]] for p in points],
         "profile": "car",
-        "instructions": False,
+        # Abbiegehinweise fürs Roadbook (services/roadbook.py). Gespeichert
+        # wird nur, was der Ausdruck braucht — siehe compact_instructions().
+        "instructions": True,
+        "locale": "de",
         "points_encoded": False,
         "details": ["road_class", "max_speed"],
     }
@@ -222,4 +225,28 @@ async def calculate_route(
         "geometry": path["points"],
         "road_class_details": path.get("details", {}).get("road_class", []),
         "max_speed_details": path.get("details", {}).get("max_speed", []),
+        "instructions": compact_instructions(path.get("instructions", [])),
     }
+
+
+def compact_instructions(raw: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Reduce GraphHopper's instructions to what the Roadbook prints.
+
+    ``time`` fehlt mit Absicht: das ist GraphHoppers Pkw-Fahrzeit, nicht die
+    des Konvois (``convoy_duration_s``). Auf einem Ausdruck stünde sie neben den
+    Planzeiten der Wegpunkte und widerspräche ihnen.
+    """
+    out: list[dict[str, Any]] = []
+    for ins in raw or []:
+        entry: dict[str, Any] = {
+            "sign": int(ins.get("sign", 0)),
+            "text": str(ins.get("text") or ""),
+            "distance_m": round(float(ins.get("distance") or 0.0), 1),
+        }
+        for key in ("street_name", "street_ref", "street_destination"):
+            if ins.get(key):
+                entry[key] = str(ins[key])
+        if ins.get("exit_number"):
+            entry["exit_number"] = int(ins["exit_number"])
+        out.append(entry)
+    return out

@@ -2,14 +2,22 @@ FROM python:3.14-slim
 
 WORKDIR /app
 
-# Nur die Sicherheitsaktualisierungen des Basisimages, keine weiteren Pakete:
+# Nur die Sicherheitsaktualisierungen des Basisimages, sonst (fast) keine Pakete:
 # Alle Python-Abhaengigkeiten kommen als fertige Wheels (cp314, amd64 und
 # arm64), Shapely bringt sein GEOS selbst mit. Das frueher installierte
 # libgdal-dev hat nie ein Import gebraucht — es zog nur die komplette
 # GDAL/PROJ/HDF5/NetCDF-Kette samt Header in das Laufzeitimage, ein
 # Vielfaches der eigentlichen Anwendung, jedes Byte davon Trivy-Angriffsflaeche.
+#
+# Einzige Ausnahme: fonts-dejavu-core. Marschbefehl, Roadbook und Systembericht
+# (fpdf2) laden DejaVu aus /usr/share/fonts — das Slim-Image hat keine Schriften.
+# Bis #521 kamen sie unbemerkt über libgdal-dev → fontconfig mit. Der `test`
+# lässt den Bau scheitern, statt dass erst der erste PDF-Export mit 500 endet.
 RUN apt-get update && apt-get upgrade -y \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y --no-install-recommends fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/* \
+    && test -f /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf \
+    && test -f /usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf
 
 COPY requirements.txt .
 # Upgrade the base image's baked-in setuptools (70.3.0, CVE-2025-47273 —

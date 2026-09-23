@@ -18,5 +18,9 @@ class Route(Base):
     routing_params: Mapped[dict | None] = mapped_column(JSON)
     gpx_data: Mapped[str | None] = mapped_column(Text)
     kanalwechsel: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Abbiegehinweise aus der letzten Berechnung (routing.compact_instructions).
+    # None heißt: keine vorhanden — Route vor Migration 0047 berechnet oder
+    # importiert. Das Roadbook sagt das dann, statt eine leere Liste zu drucken.
+    instructions: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     convoy: Mapped["Convoy"] = relationship(back_populates="route")

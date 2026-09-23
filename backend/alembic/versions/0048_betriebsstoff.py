@@ -9,15 +9,15 @@ der Stärke (``0043``): Ein ``server_default = 0`` meldete für jedes bestehende
 Fahrzeug einen leeren Tank. Liter im Tank und Reichweite bekommen keine
 Spalte, sie werden gerechnet (``app/services/betriebsstoff.py``).
 
-Revision ID: 0047
-Revises: 0046
+Revision ID: 0048
+Revises: 0047
 Create Date: 2026-09-23
 """
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0047"
-down_revision = "0046"
+revision = "0048"
+down_revision = "0047"
 branch_labels = None
 depends_on = None
 

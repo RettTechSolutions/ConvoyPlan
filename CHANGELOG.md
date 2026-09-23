@@ -27,6 +27,10 @@ ursprünglichen SemVer-Nummern.
 
   Die Fahrzeugliste in Tracking-Ansicht und Fahrer-Link zeigt ein ⛽ mit dem Füllstand, ab 25 % hervorgehoben; Reichweite und Einzelwerte stehen im Tooltip. Fehlen Tank oder Verbrauch in der Meldung, rechnet die Anzeige mit den Kraftstoff-Stammdaten des Fahrzeugs — die dafür jetzt auch in der Tracking-Nutzlast stehen — und sagt das dazu. Die Meldung schreibt nie in die Stammdaten zurück; die Tankstopp-Planung bleibt, wie sie war.
 
+- **Roadbook: die Route zum Ausdrucken.** Im Export-Tab erzeugt **🧭 Roadbook (PDF)** eine Übersichtskarte mit Start, Ziel und nummerierten Wegpunkten und darunter jede Navigationsanweisung der Route — Richtungspfeil, Abbiegehinweis mit Straßennummer, Kilometrierung ab Start und Strecke bis zur nächsten Anweisung. Wegpunkte stehen mit ihrer Nummer von der Karte, Planzeiten und Haltedauer in der Liste, das Ziel mit der geplanten Ankunft.
+
+  Die Anweisungen entstehen bei der Routenberechnung und werden mit der Route gespeichert (Migration `0047`), damit der Ausdruck genau die geplante Route beschreibt. Bestehende Routen brauchen dafür einmal eine Neuberechnung. Die Karte rendert der Server aus OSM-Kacheln (`ROADBOOK_TILE_URL`); ohne Kachelserver entsteht das Roadbook trotzdem, dann mit der Route auf neutralem Grund.
+
 - **Fahrzeuge melden ihre Mannschaftsstärke, die Konvoiführung liest sie ab.** Im Fahrer-Link stehen unter den Kurz-Stati drei Felder — Führer, Unterführer, Mannschaften; die Gesamtzahl rechnet ConvoyPlan und speichert sie nicht, damit sie nicht von ihren Summanden abweichen kann. Gemeldet wird auf Knopfdruck, nicht beim Tippen.
 
   In der Tracking-Ansicht steht die Stärke je Fahrzeug in der Notation `0/1/8//9` und darüber die Verbandsstärke. Sie unterscheidet zwei Fälle, die eine Zahl allein verwischt: **nicht gemeldet** (`–/–/–`, zählt nicht in die Summe, wird als offene Meldung ausgewiesen) und **unbesetzt** (`0/0/0//0`, eine Aussage). Wer in der Planung eine **Sollstärke** hinterlegt, sieht Abweichungen hervorgehoben — das Soll ändert dabei nie die Meldung der Besatzung, und die Meldung nie das Soll.
@@ -60,6 +64,8 @@ ursprünglichen SemVer-Nummern.
   Der Zugriff wird jetzt eine Minute lang wiederholt, und wenn er dann immer noch nicht geht, gibt der Job Containerzustand (`OOMKilled`, `ExitCode`, `RestartCount`), Speicherlage und die letzten GraphHopper-Logs aus. Die Zusicherungen selbst bleiben unverändert scharf: geprüft wird weiterhin, dass `.region` auf Berlin zeigt und eine Route herauskommt — eine Wiederholung, die eine falsche Region oder eine tote Route durchwinkt, wäre kein Härten, sondern ein abgeschalteter Test. Genau das hält `.github/workflows/tests/test_region_beleg_diagnose.sh` fest; er schneidet den Schritt aus `ci.yml` heraus und fährt ihn gegen Attrappen, ohne Container und ohne Netz.
 
 ### Fixed
+
+- **Das Backend-Image bringt die Schriften für PDF-Exporte wieder selbst mit.** Marschbefehl, Systembericht und jetzt das Roadbook laden DejaVu aus `/usr/share/fonts`. Das Slim-Image hat keine Schriften — sie kamen bisher unbemerkt über `libgdal-dev` → `fontconfig` mit, und das ist mit #521 entfallen. `fonts-dejavu-core` steht jetzt ausdrücklich im Dockerfile, und der Bau bricht ab, wenn die Dateien fehlen, statt dass erst der erste Export mit einem Serverfehler endet.
 
 - **In der Fahrzeugliste der Tracking-Ansicht lagen die Angaben am Telefon übereinander.** Das „LIVE"-Abzeichen stand mitten in der Mannschaftsstärke, der Fahrzeugname war auf einen Strich zusammengeschoben — betroffen waren die Tracking-Ansicht und der Fahrer-Link gleichermaßen.
 
