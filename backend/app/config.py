@@ -7,6 +7,10 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 24 * 7  # 7 days
     graphhopper_url: str = "http://localhost:8989"
+    # Kacheln für die Übersichtskarte im Roadbook-PDF (services/static_map.py).
+    # Dieselbe Quelle wie die Karte im Frontend. Leer = ohne Kartenhintergrund,
+    # nur die Route (für Instanzen ohne Internetzugang).
+    roadbook_tile_url: str = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
     caddy_admin_url: str = "http://caddy:2019"
     github_token: str = ""
     github_repo: str = "RettTechSolutions/ConvoyPlan"

@@ -27,6 +27,8 @@ from app.services import routing as routing_svc
 from app.services import schedule as schedule_svc
 from app.services import export as export_svc
 from app.services import pdf as pdf_svc
+from app.services import roadbook as roadbook_svc
+from app.services import static_map as static_map_svc
 from app.services import fuel as fuel_svc
 from app.services import overpass as overpass_svc
 from app.services import importer as importer_svc
@@ -118,6 +120,8 @@ async def _apply_import(
                 route.geometry = from_shape(line, srid=4326)
                 route.distance_m = None
                 route.duration_s = None
+                # Die Hinweise beschrieben die alte Geometrie.
+                route.instructions = None
             else:
                 db.add(Route(
                     convoy_id=convoy_id,
@@ -323,6 +327,24 @@ async def _compute_kanalwechsel(
     return entries
 
 
+def _stored_route_times(convoy: Convoy, route: Route) -> tuple[Any, Any]:
+    """Abmarsch und Ankunft am Ziel für eine gespeicherte Route."""
+    if convoy.start_time is None:
+        return None, None
+    # Work in naive wall-clock (see migration 0029/0030): the schedule times
+    # are stored and displayed as the wall-clock the user entered, without a
+    # timezone the frontend would re-interpret and shift.
+    start_dt = (
+        convoy.start_time
+        if convoy.start_time.tzinfo is None
+        else convoy.start_time.replace(tzinfo=None)
+    )
+    arrival = None
+    if route.duration_s is not None:
+        arrival = schedule_svc.destination_arrival(start_dt, route.duration_s, convoy.waypoints)
+    return start_dt, arrival
+
+
 @router.get("/{convoy_id}/route", response_model=RouteResponse | None)
 async def get_route(
     convoy_id: uuid.UUID,
@@ -351,22 +373,7 @@ async def get_route(
     # Departure + destination ETA, recomputed so a reloaded route shows the same
     # total arrival as right after calculation (drive time + all waypoint holds).
     # Same start_dt basis as the waypoint times → the whole Zeitplan stays consistent.
-    route_planned_departure = None
-    route_planned_arrival = None
-    if convoy.start_time is not None:
-        # Work in naive wall-clock (see migration 0029/0030): the schedule times
-        # are stored and displayed as the wall-clock the user entered, without a
-        # timezone the frontend would re-interpret and shift.
-        start_dt = (
-            convoy.start_time
-            if convoy.start_time.tzinfo is None
-            else convoy.start_time.replace(tzinfo=None)
-        )
-        route_planned_departure = start_dt
-        if route.duration_s is not None:
-            route_planned_arrival = schedule_svc.destination_arrival(
-                start_dt, route.duration_s, convoy.waypoints
-            )
+    route_planned_departure, route_planned_arrival = _stored_route_times(convoy, route)
 
     return RouteResponse(
         id=route.id,
@@ -483,6 +490,12 @@ async def calculate_route(
             convoy.speed_rural_kmh,
         )
 
+    # Abbiegehinweise fürs Roadbook. Die Wegpunkt-IDs kommen hier dazu, weil nur
+    # hier feststeht, welcher Zwischenpunkt welcher war (services/roadbook.py).
+    instructions = roadbook_svc.link_waypoints(
+        route_data.get("instructions", []), [str(wp.id) for wp, _ in positioned]
+    )
+
     # Persist route
     line = LineString(coords)
     route = existing_route
@@ -491,6 +504,7 @@ async def calculate_route(
         route.distance_m = route_data["distance_m"]
         route.duration_s = convoy_duration_s
         route.routing_params = vehicle_params
+        route.instructions = instructions
     else:
         route = Route(
             convoy_id=convoy_id,
@@ -498,6 +512,7 @@ async def calculate_route(
             distance_m=route_data["distance_m"],
             duration_s=convoy_duration_s,
             routing_params=vehicle_params,
+            instructions=instructions,
         )
         db.add(route)
 
@@ -687,6 +702,52 @@ async def export_pdf(
         None, pdf_svc.generate_marschbefehl, convoy, waypoints, vehicles, route, kanalwechsel
     )
     filename = f"Marschbefehl_{_safe_filename(convoy.name.replace(' ', '_'))}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/{convoy_id}/export/roadbook")
+async def export_roadbook(
+    convoy_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Roadbook: Übersichtskarte und alle Navigationsanweisungen als PDF."""
+    convoy = await _load_convoy(convoy_id, current_user, db, require="read")
+    route = (
+        await db.execute(select(Route).where(Route.convoy_id == convoy_id))
+    ).scalar_one_or_none()
+    line = geo_svc.linestring_to_geojson(route.geometry) if route and route.geometry is not None else None
+    coords = (line or {}).get("coordinates", [])
+    if route is None or len(coords) < 2:
+        raise HTTPException(status_code=404, detail="Noch keine Route berechnet")
+
+    located = [(wp, c) for wp in convoy.waypoints if (c := _waypoint_latlon(wp)) is not None]
+    start = geo_svc.wkb_to_point(convoy.start_point)
+    end = geo_svc.wkb_to_point(convoy.end_point)
+    start_ll = (start["lat"], start["lon"]) if start else (coords[0][1], coords[0][0])
+    end_ll = (end["lat"], end["lon"]) if end else (coords[-1][1], coords[-1][0])
+
+    # Ohne Karte gibt es trotzdem ein Roadbook — die Anweisungen sind der Kern.
+    try:
+        map_jpeg = await static_map_svc.render_route_map(
+            coords, roadbook_svc.map_markers(start_ll, end_ll, located)
+        )
+    except Exception:
+        logger.exception("Roadbook map rendering failed for convoy %s", convoy_id)
+        map_jpeg = None
+
+    departure, arrival = _stored_route_times(convoy, route)
+    loop = asyncio.get_running_loop()
+    pdf_bytes = await loop.run_in_executor(
+        None,
+        roadbook_svc.generate_roadbook,
+        convoy, route, [wp for wp, _ in located], map_jpeg, departure, arrival,
+    )
+    filename = f"Roadbook_{_safe_filename(convoy.name.replace(' ', '_'))}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",

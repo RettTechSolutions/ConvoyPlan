@@ -314,7 +314,7 @@ export const convoysApi = {
 	listSubConvoys: (id: string) => api.get<Convoy[]>(`/api/convoys/${id}/sub-convoys`),
 	createSubConvoy: (id: string, data: Record<string, unknown>) =>
 		api.post<Convoy>(`/api/convoys/${id}/sub-convoys`, data),
-	exportUrl: (id: string, format: 'gpx' | 'json' | 'pdf') =>
+	exportUrl: (id: string, format: 'gpx' | 'json' | 'pdf' | 'roadbook') =>
 		`/api/convoys/${id}/export/${format}`,
 	importFile: (id: string, format: 'gpx' | 'geojson', file: File, mode: 'add' | 'replace') =>
 		uploadFile<{ waypoints_imported: number; route_stored: boolean }>(

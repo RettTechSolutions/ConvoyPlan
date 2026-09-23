@@ -41,6 +41,35 @@ Der Marschbefehl ist das offizielle Führungsdokument für den Konvoi. ConvoyPla
 
 ---
 
+## Roadbook (PDF)
+
+Das Roadbook ist die Route zum Ausdrucken: oben eine Übersichtskarte mit Start (**S**), Ziel (**Z**) und den nummerierten Wegpunkten, darunter **jede Navigationsanweisung** der Route — für Beifahrer, Kradmelder oder als Rückfallebene, wenn das Navi ausfällt.
+
+1. Route berechnen (Tab **Plan** → **Route berechnen**)
+2. Tab **Export** → **🧭 Roadbook (PDF)**
+
+Jede Zeile der Tabelle enthält:
+
+| Spalte | Inhalt |
+|---|---|
+| **Nr.** | laufende Nummer der Anweisung |
+| Symbol | Richtungspfeil (↑ geradeaus, → rechts, ↺ Kreisverkehr, ◉ Wegpunkt, ⚑ Ziel …) |
+| **Anweisung** | Abbiegehinweis mit Straßenname und -nummer (z. B. „Rechts abbiegen auf Pragstraße (B 10)"), bei Autobahnen die Zielangabe („Richtung München") |
+| **bei km** | Kilometrierung ab Start, an der das Manöver kommt |
+| **dann** | Strecke bis zur nächsten Anweisung |
+
+Wegpunkte sind farbig hervorgehoben und tragen dieselbe Nummer wie auf der Karte, dazu Typ, geplante Ankunft/Abfahrt, Haltedauer mit Zweck und die Notiz. Die Ziel-Zeile nennt die geplante Ankunft.
+
+**Gut zu wissen:**
+
+- Die Anweisungen entstehen bei der **Routenberechnung** und werden mit der Route gespeichert. Eine Route, die vor diesem Update berechnet wurde, hat noch keine — das Roadbook sagt das und bittet um eine Neuberechnung.
+- Eine **importierte** Route (GPX/GeoJSON) hat keine Anweisungen; das Roadbook zeigt dann nur die Karte.
+- Zeiten stammen aus dem Zeitplan des Konvois (Marschgeschwindigkeiten), nicht aus der Pkw-Fahrzeit des Routers.
+- Den Kartenhintergrund lädt der Server von OpenStreetMap. Ist der Kachelserver nicht erreichbar, enthält die Karte nur die Route auf neutralem Grund. Andere Kachelquelle oder offline: `ROADBOOK_TILE_URL` (leer = ohne Hintergrund).
+- Vor Ort gilt die Beschilderung — die Anweisungen beruhen auf OpenStreetMap-Daten.
+
+---
+
 ## GPX-Export
 
 Der GPX-Export enthält:

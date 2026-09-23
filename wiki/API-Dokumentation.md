@@ -479,6 +479,7 @@ Jede Demo-Nutzung läuft als eigene, befristete Organisation (`is_demo=true`). D
 | `GET` | `/api/convoys/{convoy_id}/export/gpx` | Route als GPX exportieren |
 | `GET` | `/api/convoys/{convoy_id}/export/json` | Route als JSON exportieren |
 | `GET` | `/api/convoys/{convoy_id}/export/pdf` | Marschbefehl als PDF exportieren |
+| `GET` | `/api/convoys/{convoy_id}/export/roadbook` | Roadbook (Karte + Navigationsanweisungen) als PDF |
 | `POST` | `/api/convoys/{convoy_id}/import/gpx` | GPX-Track importieren |
 | `POST` | `/api/convoys/{convoy_id}/import/geojson` | GeoJSON-Route importieren |
 
