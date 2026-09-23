@@ -246,26 +246,35 @@ async def _ingest_driver_position(convoy_uuid: uuid.UUID, msg: dict) -> None:
         })
 
 
-async def _ingest_driver_status(convoy_uuid: uuid.UUID, msg: dict) -> None:
-    """Persist + broadcast a status change sent by a "driver" share-link holder."""
+def _rejected(reason: str) -> dict:
+    return {"result": "rejected", "reason": reason}
+
+
+async def _ingest_driver_status(convoy_uuid: uuid.UUID, msg: dict) -> dict:
+    """Persist + broadcast a status change sent by a "driver" share-link holder.
+
+    Gibt das Ergebnis für die Quittung zurück (``_ack``). Wer keine
+    ``client_id`` mitschickt, bekommt davon nichts zu sehen — für ihn bleibt
+    der Kanal einseitig wie bisher.
+    """
     try:
         vehicle_id = uuid.UUID(str(msg.get("vehicle_id")))
-        status = str(msg["vehicle_status"])
-    except (KeyError, TypeError, ValueError):
-        return
-    if status not in vs.VALID_VEHICLE_STATUSES:
-        return
+    except (TypeError, ValueError):
+        return _rejected("invalid-vehicle")
+    status = msg.get("vehicle_status")
+    if not isinstance(status, str) or status not in vs.VALID_VEHICLE_STATUSES:
+        return _rejected("unknown-status")
     try:
         level = vs.normalize_level(status, msg.get("status_level"))
     except ValueError:
-        return
+        return _rejected("invalid-level")
     note = msg.get("status_note")
     note = str(note)[:200] if isinstance(note, str) and note.strip() else None
 
     async with AsyncSessionLocal() as db:
         cv = await db.get(ConvoyVehicle, (convoy_uuid, vehicle_id))
         if cv is None:
-            return
+            return _rejected("vehicle-not-in-convoy")
         cv.vehicle_status = status
         cv.status_level = level
         cv.status_note = note
@@ -284,9 +293,14 @@ async def _ingest_driver_status(convoy_uuid: uuid.UUID, msg: dict) -> None:
             "type": "alert", "alert_type": status, "vehicle_id": str(vehicle_id),
             "vehicle_label": vehicle_label, "level": level, "note": note, "ts": ts,
         })
+    return {
+        "result": "ok",
+        "applied": {"vehicle_status": status, "status_level": level, "status_note": note},
+        "ts": ts,
+    }
 
 
-async def _ingest_driver_staerke(convoy_uuid: uuid.UUID, msg: dict) -> None:
+async def _ingest_driver_staerke(convoy_uuid: uuid.UUID, msg: dict) -> dict:
     """Persist + broadcast a crew strength sent by a "driver" share-link holder.
 
     Wie beim Status: die Berechtigung entstand beim Verbinden, das Fahrzeug muss
@@ -296,30 +310,102 @@ async def _ingest_driver_staerke(convoy_uuid: uuid.UUID, msg: dict) -> None:
     """
     try:
         vehicle_id = uuid.UUID(str(msg.get("vehicle_id")))
+    except (TypeError, ValueError):
+        return _rejected("invalid-vehicle")
+    try:
         werte = staerke_svc.normalisieren(
             msg.get("fuehrer"), msg.get("unterfuehrer"), msg.get("mannschaften")
         )
     except (TypeError, ValueError):
-        return
+        return _rejected("invalid-staerke")
     if werte is None:
-        return  # eine Meldung ohne jede Zahl ist keine
+        return _rejected("invalid-staerke")  # eine Meldung ohne jede Zahl ist keine
     fuehrer, unterfuehrer, mannschaften = werte
 
     async with AsyncSessionLocal() as db:
         cv = await db.get(ConvoyVehicle, (convoy_uuid, vehicle_id))
         if cv is None:
-            return  # vehicle is not part of this convoy → ignore
+            return _rejected("vehicle-not-in-convoy")
         cv.staerke_ist_fuehrer = fuehrer
         cv.staerke_ist_unterfuehrer = unterfuehrer
         cv.staerke_ist_mannschaften = mannschaften
         cv.staerke_gemeldet_at = datetime.now(timezone.utc)
         await db.commit()
+        ts = cv.staerke_gemeldet_at.isoformat()
 
     await tracking_manager.broadcast(str(convoy_uuid), {
         "type": "staerke_update", "vehicle_id": str(vehicle_id),
         "fuehrer": fuehrer, "unterfuehrer": unterfuehrer, "mannschaften": mannschaften,
         "gesamt": fuehrer + unterfuehrer + mannschaften,
     })
+    return {
+        "result": "ok",
+        "applied": {"fuehrer": fuehrer, "unterfuehrer": unterfuehrer, "mannschaften": mannschaften},
+        "ts": ts,
+    }
+
+
+# ── Quittung ──────────────────────────────────────────────────────────────────
+#
+# Der Fahrer muss wissen, ob seine Meldung angekommen ist. Das Echo im Broadcast
+# sagt es nur ungefähr: Es trägt keinen Absender, bleibt bei einer Ablehnung
+# stumm, und ein Frame, der im Funkloch zwischen Socket und Server verloren ging,
+# sieht aus wie einer, auf den der Server nur noch nicht geantwortet hat.
+#
+# Deshalb antwortet der Server auf Status- und Stärke-Frames mit einer
+# ``client_id`` ausdrücklich — und nur dem Absender. Ohne ``client_id`` bleibt
+# alles wie gehabt; die PWA und ältere Apps merken nichts davon.
+
+# Was der Server auf dieser Verbindung kann. Kommt beim Verbinden als erster
+# Frame, damit ein Client weiß, ob er auf eine Quittung warten darf — ein
+# älterer Server schickt keinen, und dann bleibt nur das Echo.
+HELLO = {"type": "hello", "protocol": 2, "features": ["ack"]}
+
+_CLIENT_ID_MAX = 64
+
+
+def _client_id(raw: dict) -> str | None:
+    """Die Kennung des Frames, wenn er eine brauchbare trägt."""
+    value = raw.get("client_id")
+    if isinstance(value, str) and 0 < len(value) <= _CLIENT_ID_MAX:
+        return value
+    return None
+
+
+def _ack(client_id: str, frame: str, result: dict) -> dict:
+    return {"type": "ack", "client_id": client_id, "frame": frame, **result}
+
+
+async def _ingest_acked(convoy_uuid: uuid.UUID, frame: str, raw: dict, client_id: str) -> dict:
+    """Verarbeitet einen Frame **höchstens einmal** und liefert seine Quittung.
+
+    Schickt der Client denselben Frame erneut — weil die Verbindung abriss, ehe
+    die Quittung ankam —, bekommt er die Quittung des ersten Durchlaufs. Die
+    Meldung selbst wird nicht wiederholt: Ein zweiter technischer Halt wäre ein
+    zweiter Alarm bei allen Beteiligten.
+    """
+    key = (str(convoy_uuid), client_id)
+    known = tracking_manager.claim_ack(key)
+    if known is not None:
+        return await known
+
+    ingest = _ingest_driver_status if frame == "status" else _ingest_driver_staerke
+    try:
+        result = _ack(client_id, frame, await ingest(convoy_uuid, raw))
+    except Exception:
+        # Nicht merken: Ein Fehler hier ist keine Antwort auf den Frame, und
+        # ein erneuter Versuch darf es noch einmal probieren.
+        logger.warning("track_ws: %s-Frame nicht verarbeitet", frame, exc_info=True)
+        failed = _ack(client_id, frame, _rejected("server-error"))
+        tracking_manager.forget_ack(key, failed)
+        return failed
+    except BaseException:
+        # Abgebrochen (Herunterfahren, Verbindungsende): Ohne Freigabe warteten
+        # Duplikate auf ein Ergebnis, das nie kommt.
+        tracking_manager.forget_ack(key, _ack(client_id, frame, _rejected("server-error")))
+        raise
+    tracking_manager.settle_ack(key, result)
+    return result
 
 
 def _fahrzeug_aus(raw: dict) -> str | None:
@@ -370,30 +456,54 @@ async def track_ws(
     await tracking_manager.connect(convoy_id, ws, mit_kennung=durchsetzen)
     if durchsetzen:
         await belegung.stand_senden(convoy_id, kennung, ws)
+    if durchsetzen:
+        # Neue Nachrichtentypen nur an Verbindungen mit Gerätekennung — wie die
+        # Belegung (``tracking_manager.connect``): Wer keine mitbringt, ist älter
+        # als beides und kennt den Typ nicht.
+        await ws.send_json(HELLO)
     try:
         while True:
             raw = await ws.receive_json()
+            if not isinstance(raw, dict):
+                continue
+            kind = raw.get("type")
+            client_id = _client_id(raw) if kind in ("status", "staerke") else None
             # Viewer links are read-only — drained frames (heartbeats) are ignored.
-            if not is_driver or not isinstance(raw, dict):
+            # Wer ausdrücklich nach einer Quittung fragt, erfährt, warum nichts geschah.
+            if not is_driver:
+                if client_id is not None:
+                    await ws.send_json(_ack(client_id, kind, _rejected("read-only")))
                 continue
             vehicle_id = _fahrzeug_aus(raw)
             if vehicle_id is None:
+                if client_id is not None:
+                    await ws.send_json(_ack(client_id, kind, _rejected("invalid-vehicle")))
                 continue
-            typ = raw.get("type")
-            if typ == "freigeben":
+            if kind == "freigeben":
                 await belegung.freigeben(convoy_id, vehicle_id, kennung)
                 continue
             if vehicle_id not in bekannt:
                 if not await _im_verband(convoy_uuid, vehicle_id):
-                    continue  # nicht in diesem Verband → nichts zu belegen
+                    # nicht in diesem Verband → nichts zu belegen
+                    if client_id is not None:
+                        await ws.send_json(
+                            _ack(client_id, kind, _rejected("vehicle-not-in-convoy"))
+                        )
+                    continue
                 bekannt.add(vehicle_id)
             if not await belegung.pruefen(convoy_id, vehicle_id, kennung, ws, durchsetzen):
+                # `belegung_abgelehnt` ist schon beim Absender. Die Quittung sagt
+                # dasselbe noch einmal für die Meldung, die er gerade abgab.
+                if client_id is not None:
+                    await ws.send_json(_ack(client_id, kind, _rejected("vehicle-taken")))
                 continue
-            if typ == "belegen":
+            if kind == "belegen":
                 continue
-            if typ == "status":
+            if client_id is not None:
+                await ws.send_json(await _ingest_acked(convoy_uuid, kind, raw, client_id))
+            elif kind == "status":
                 await _ingest_driver_status(convoy_uuid, raw)
-            elif typ == "staerke":
+            elif kind == "staerke":
                 await _ingest_driver_staerke(convoy_uuid, raw)
             else:
                 await _ingest_driver_position(convoy_uuid, raw)
