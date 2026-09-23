@@ -24,6 +24,11 @@ class TrackingManager:
         # Ereignisse, aber dieses Modul soll nichts von MCP wissen — es läuft
         # auch auf Instanzen, auf denen MCP abgeschaltet ist.
         self._listeners: list[Callable[[str, dict], None]] = []
+        # Verbindungen, die sich mit einer Gerätekennung gemeldet haben. Nur sie
+        # bekommen Belegungsnachrichten (``broadcast_belegung``): ältere Clients
+        # kennen den Typ nicht, und die angemeldete Weboberfläche las jede
+        # unbekannte Nachricht als Position.
+        self._mit_kennung: set[WebSocket] = set()
 
     def add_broadcast_listener(self, listener: "Callable[[str, dict], None]") -> None:
         """Einen Beobachter für jeden Broadcast anmelden.
@@ -42,11 +47,14 @@ class TrackingManager:
     def reset_listeners(self) -> None:
         self._listeners.clear()
 
-    async def connect(self, convoy_id: str, ws: WebSocket):
+    async def connect(self, convoy_id: str, ws: WebSocket, mit_kennung: bool = False):
         await ws.accept()
         self._connections[convoy_id].append(ws)
+        if mit_kennung:
+            self._mit_kennung.add(ws)
 
     def disconnect(self, convoy_id: str, ws: WebSocket):
+        self._mit_kennung.discard(ws)
         try:
             self._connections[convoy_id].remove(ws)
         except ValueError:
@@ -92,6 +100,22 @@ class TrackingManager:
 
         dead: list[WebSocket] = []
         for ws in list(self._connections.get(convoy_id, [])):
+            try:
+                await ws.send_json(data)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self.disconnect(convoy_id, ws)
+
+    async def broadcast_belegung(self, convoy_id: str, data: dict):
+        """Wie ``broadcast``, aber nur an Verbindungen mit Gerätekennung.
+
+        Ohne die Beobachter: eine Belegung ist Bedienzustand der Fahrzeugwahl,
+        kein Ereignis im Verband."""
+        dead: list[WebSocket] = []
+        for ws in list(self._connections.get(convoy_id, [])):
+            if ws not in self._mit_kennung:
+                continue
             try:
                 await ws.send_json(data)
             except Exception:

@@ -3,6 +3,7 @@ import type { VehiclePosition } from '$lib/api';
 import { getStreamTicket } from '$lib/api/client';
 import { createConnectionTracker, type ConnectionState } from '$lib/tracking/connection';
 import type { Staerke } from '$lib/tracking/staerke';
+import { createBelegung, geraeteKennung } from '$lib/tracking/belegung';
 
 /** Live status (incl. sub-level and note) received over the WebSocket. */
 export interface VehicleStatusInfo {
@@ -45,6 +46,27 @@ export const trackingConnection = writable<ConnectionState>('idle');
 export const trackingActive = derived(trackingConnection, ($state) => $state === 'open');
 /** Vehicle id whose GPS sharing was just reset by an admin (signal for the sender to stop). */
 export const gpsRevoked = writable<string | null>(null);
+/**
+ * Fahrzeuge, die ein **anderes** Gerät gewählt hat (App, Fahrer-Link, zweiter
+ * Tab). Sie lassen sich nicht wählen — siehe `$lib/tracking/belegung`.
+ */
+export const fremdBelegt = writable<ReadonlySet<string>>(new Set());
+/** Das eigene Fahrzeug war schon vergeben; die Ansicht nimmt die Wahl zurück. */
+export const belegungAbgelehnt = writable<string | null>(null);
+
+const belegung = createBelegung({
+	send: (frame) => {
+		if (ws?.readyState !== WebSocket.OPEN) return false;
+		try { ws.send(JSON.stringify(frame)); return true; } catch { return false; }
+	},
+	onChange: (fremd) => fremdBelegt.set(fremd),
+	onAbgelehnt: (vehicleId) => belegungAbgelehnt.set(vehicleId),
+});
+
+/** Das eigene Fahrzeug wählen (`''` = keins). Belegt es für dieses Gerät. */
+export function fahrzeugWaehlen(vehicleId: string) {
+	belegung.waehlen(vehicleId);
+}
 
 const connection = createConnectionTracker((state) => trackingConnection.set(state));
 
@@ -121,7 +143,8 @@ async function openSocket(convoyId: string) {
 	const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 	const backendHost = import.meta.env.VITE_WS_HOST ?? window.location.host;
 	const socket = new WebSocket(
-		`${protocol}//${backendHost}/api/ws/tracking/${convoyId}?token=${encodeURIComponent(ticket)}`
+		`${protocol}//${backendHost}/api/ws/tracking/${convoyId}` +
+			`?token=${encodeURIComponent(ticket)}&client=${encodeURIComponent(geraeteKennung())}`
 	);
 	ws = socket;
 
@@ -141,7 +164,9 @@ async function openSocket(convoyId: string) {
 	socket.onmessage = (event) => {
 		// Any frame proves the link is alive → feed the heartbeat.
 		lastMessageAt = Date.now();
-		const data = JSON.parse(event.data) as VehiclePosition & {
+		const parsed = JSON.parse(event.data);
+		if (belegung.handle(parsed)) return;
+		const data = parsed as VehiclePosition & {
 			type?: string;
 			vehicle_status?: string;
 			status_level?: string | null;
@@ -287,6 +312,9 @@ function handleOnline() {
 }
 
 export function disconnectTracking() {
+	// Freigeben, solange der Kanal noch steht — danach ginge der Frame ins Leere.
+	belegung.stop();
+	fremdBelegt.set(new Set());
 	connectionGen++; // invalidate any in-flight connect and pending reconnect
 	desiredConvoyId = null;
 	if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }

@@ -23,6 +23,7 @@
 	import { notifySignal } from '$lib/tracking/notify';
 	import type { ConnectionState } from '$lib/tracking/connection';
 	import { createLiveSocket, CLOSE_UNAUTHORIZED, type LiveSocket } from '$lib/tracking/socket';
+	import { createBelegung, geraeteKennung, BELEGT_HINWEIS } from '$lib/tracking/belegung';
 
 	const slug = $derived($page.params.slug!);
 
@@ -71,10 +72,20 @@
 	let wakeLock: WakeLockSentinel | null = null;
 	const SESSION_KEY = $derived(`cp-track-driver-${slug}`);
 
-	// Vehicles still free to pick (a vehicle already LIVE is "taken" — except mine).
-	let availableVehicles = $derived(
-		(data?.vehicles ?? []).filter((v) => v.id === myVehicleId || !livePositions.has(v.id))
-	);
+	// Fahrzeuge, die ein anderes Gerät gewählt hat — App, zweiter Tab, angemeldete
+	// Ansicht. Der Server führt die Liste (`$lib/tracking/belegung`); sie stehen
+	// im Wähler, lassen sich aber nicht nehmen.
+	let fremdBelegt = $state<ReadonlySet<string>>(new Set());
+	const belegung = createBelegung({
+		send: (frame) => live?.send(frame) ?? false,
+		onChange: (fremd) => { fremdBelegt = fremd; },
+		onAbgelehnt: () => {
+			stopTransmitting();
+			myVehicleId = '';
+			driverError = BELEGT_HINWEIS;
+		},
+	});
+	$effect(() => { if (isDriver) belegung.waehlen(myVehicleId); });
 	let myStatus = $derived.by(() => {
 		const v = (data?.vehicles ?? []).find((x) => x.id === myVehicleId);
 		return v ? statusOf(v) : 'planned';
@@ -188,8 +199,9 @@
 			url: () => {
 				const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 				const current = loadStoredToken() ?? token;
-				const tokenParam = current ? `?token=${encodeURIComponent(current)}` : '';
-				return `${proto}//${window.location.host}/api/ws/track/${slug}${tokenParam}`;
+				const params = new URLSearchParams({ client: geraeteKennung() });
+				if (current) params.set('token', current);
+				return `${proto}//${window.location.host}/api/ws/track/${slug}?${params}`;
 			},
 			onState: (state) => { wsState = state; },
 			onFatal: (code) => {
@@ -199,6 +211,7 @@
 				error = 'Dieser Tracking-Link ist nicht mehr gültig.';
 			},
 			onMessage: (raw) => {
+				if (belegung.handle(raw)) return;
 				const msg = raw as Record<string, unknown> & { type?: string; vehicle_id?: unknown; lat?: unknown };
 				if (msg.type === 'status_update') {
 					if (typeof msg.vehicle_id === 'string' && typeof msg.vehicle_status === 'string') {
@@ -437,16 +450,30 @@
 	function wakeSocket() { live?.wake(); }
 	function handleVisible() { if (document.visibilityState === 'visible') wakeSocket(); }
 
+	// Seite zu oder weg: das Fahrzeug sofort freigeben, damit es in der App
+	// nicht fünf Minuten lang „belegt" steht. Ein Neuladen belegt es wieder.
+	function freigebenBeimVerlassen() { belegung.stop(); }
+	// Aus dem Zurück-Cache wiederhergestellt: die Wahl steht noch da, die Belegung
+	// nicht mehr.
+	function belegenBeimZurueckkehren(e: PageTransitionEvent) {
+		if (e.persisted && isDriver) belegung.waehlen(myVehicleId);
+	}
+
 	onMount(() => {
 		window.addEventListener('online', wakeSocket);
+		window.addEventListener('pagehide', freigebenBeimVerlassen);
+		window.addEventListener('pageshow', belegenBeimZurueckkehren);
 		document.addEventListener('visibilitychange', handleVisible);
 		void load();
 	});
 	onDestroy(() => {
 		if (geoWatcher !== null) navigator.geolocation.clearWatch(geoWatcher);
 		releaseWakeLock();
+		belegung.stop();
 		if (typeof window !== 'undefined') {
 			window.removeEventListener('online', wakeSocket);
+			window.removeEventListener('pagehide', freigebenBeimVerlassen);
+			window.removeEventListener('pageshow', belegenBeimZurueckkehren);
 			document.removeEventListener('visibilitychange', handleVisible);
 		}
 		live?.close();
@@ -526,8 +553,10 @@
 					{#if driverError}<p class="error-text">{driverError}</p>{/if}
 					<select aria-label="Fahrzeug" bind:value={myVehicleId} disabled={transmitting}>
 						<option value="">Fahrzeug wählen…</option>
-						{#each availableVehicles as v}
-							<option value={v.id}>{v.name}{v.callsign ? ` (${v.callsign})` : ''}</option>
+						{#each data.vehicles as v}
+							<option value={v.id} disabled={v.id !== myVehicleId && fremdBelegt.has(v.id)}>
+								{v.name}{v.callsign ? ` (${v.callsign})` : ''}{v.id !== myVehicleId && fremdBelegt.has(v.id) ? ' – belegt' : ''}
+							</option>
 						{/each}
 					</select>
 					{#if !transmitting}
