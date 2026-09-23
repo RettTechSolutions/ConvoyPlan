@@ -68,6 +68,17 @@ class TrackVehicle(BaseModel):
     staerke_ist_fuehrer: int | None = None
     staerke_ist_unterfuehrer: int | None = None
     staerke_ist_mannschaften: int | None = None
+    # Kraftstoff-Stammdaten aus der Planung — das „Soll" zur Meldung darunter,
+    # wie die Sollstärke zur gemeldeten. Die App belegt damit vor, sodass die
+    # Besatzung unterwegs nur noch den Füllstand einstellt.
+    propulsion: str = "combustion"
+    tank_capacity_l: float | None = None
+    fuel_consumption_l100km: float | None = None
+    # Betriebsstofflage aus der Meldung unterwegs — None heißt „nicht gemeldet".
+    betriebsstoff_verbrauch: float | None = None
+    betriebsstoff_tank: int | None = None
+    betriebsstoff_fuellstand: int | None = None
+    betriebsstoff_gemeldet_at: datetime | None = None
 
 
 class TrackWaypoint(BaseModel):

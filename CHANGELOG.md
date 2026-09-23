@@ -23,6 +23,10 @@ ursprünglichen SemVer-Nummern.
 
 ### Added
 
+- **Fahrzeuge melden ihre Betriebsstofflage, die Konvoiführung sieht Füllstand und Reichweite.** Die Companion-App schickt über den Fahrer-Link Füllstand (%), Verbrauch (l/100 km) und Tankvolumen (l) als neuen Frame `{"type": "betriebsstoff", …}`; der Server prüft die Grenzen (Verbrauch über 0 bis 150, Tank über 0 bis 1500, Füllstand 0–100), verwirft eine unplausible Meldung ganz und sendet `betriebsstoff_update` an alle offenen Ansichten. Eine neue Meldung ersetzt die vorige vollständig; ein leerer Tank ist eine Meldung, „nicht gemeldet" bleibt `null`.
+
+  Die Fahrzeugliste in Tracking-Ansicht und Fahrer-Link zeigt ein ⛽ mit dem Füllstand, ab 25 % hervorgehoben; Reichweite und Einzelwerte stehen im Tooltip. Fehlen Tank oder Verbrauch in der Meldung, rechnet die Anzeige mit den Kraftstoff-Stammdaten des Fahrzeugs — die dafür jetzt auch in der Tracking-Nutzlast stehen — und sagt das dazu. Die Meldung schreibt nie in die Stammdaten zurück; die Tankstopp-Planung bleibt, wie sie war.
+
 - **Fahrzeuge melden ihre Mannschaftsstärke, die Konvoiführung liest sie ab.** Im Fahrer-Link stehen unter den Kurz-Stati drei Felder — Führer, Unterführer, Mannschaften; die Gesamtzahl rechnet ConvoyPlan und speichert sie nicht, damit sie nicht von ihren Summanden abweichen kann. Gemeldet wird auf Knopfdruck, nicht beim Tippen.
 
   In der Tracking-Ansicht steht die Stärke je Fahrzeug in der Notation `0/1/8//9` und darüber die Verbandsstärke. Sie unterscheidet zwei Fälle, die eine Zahl allein verwischt: **nicht gemeldet** (`–/–/–`, zählt nicht in die Summe, wird als offene Meldung ausgewiesen) und **unbesetzt** (`0/0/0//0`, eine Aussage). Wer in der Planung eine **Sollstärke** hinterlegt, sieht Abweichungen hervorgehoben — das Soll ändert dabei nie die Meldung der Besatzung, und die Meldung nie das Soll.

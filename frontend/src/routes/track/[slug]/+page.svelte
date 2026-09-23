@@ -6,7 +6,9 @@
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
 	import TrackingPwaHead from '$lib/components/TrackingPwaHead.svelte';
 	import QrShare from '$lib/components/QrShare.svelte';
+	import BetriebsstoffBadge from '$lib/components/BetriebsstoffBadge.svelte';
 	import StaerkeBadge from '$lib/components/StaerkeBadge.svelte';
+	import { betriebsstoffAus, mitStammdaten, type Betriebsstoff, type BetriebsstoffFelder } from '$lib/tracking/betriebsstoff';
 	import StaerkeForm from '$lib/components/StaerkeForm.svelte';
 	import { type Staerke, type StaerkeFelder } from '$lib/tracking/staerke';
 	import {
@@ -55,6 +57,7 @@
 	// Stärkemeldungen, die während der geöffneten Ansicht hereinkommen —
 	// sie schlagen die Zahlen aus der Nutzlast beim Laden.
 	let liveStaerken = $state<Map<string, Staerke>>(new Map());
+	let liveBetriebsstoff = $state<Map<string, Betriebsstoff>>(new Map());
 	let live: LiveSocket | null = null;
 	let mapView = $state<ReturnType<typeof MapView>>();
 
@@ -109,6 +112,11 @@
 		};
 	}
 
+	/** Betriebsstofflage eines Fahrzeugs — die Live-Meldung vor dem geladenen Stand. */
+	function betriebsstoffVon(v: BetriebsstoffFelder & { id: string }): Betriebsstoff | null {
+		return mitStammdaten(liveBetriebsstoff.get(v.id) ?? betriebsstoffAus(v), v);
+	}
+
 	function tokenStorageKey(s: string) { return `track_token_${s}`; }
 
 	function loadStoredToken(): string | undefined {
@@ -143,6 +151,7 @@
 				livePositions = initial;
 				liveStatuses = new Map();
 				liveStaerken = new Map();
+				liveBetriebsstoff = new Map();
 				connectWs(token);
 				restoreDriverSession();
 			}
@@ -218,6 +227,17 @@
 							fuehrer: msg.fuehrer, unterfuehrer: msg.unterfuehrer, mannschaften: msg.mannschaften,
 						});
 						liveStaerken = next;
+					}
+					return;
+				}
+				if (msg.type === 'betriebsstoff_update') {
+					if (typeof msg.vehicle_id === 'string') {
+						const num = (x: unknown) => (typeof x === 'number' ? x : null);
+						const next = new Map(liveBetriebsstoff);
+						next.set(msg.vehicle_id, {
+							verbrauch: num(msg.verbrauch), tank: num(msg.tank), fuellstand: num(msg.fuellstand),
+						});
+						liveBetriebsstoff = next;
 					}
 					return;
 				}
@@ -644,6 +664,7 @@
 								</div>
 								<div class="veh-right">
 									<StaerkeBadge fahrzeugId={v.id} felder={staerkeVon(v)} />
+									<BetriebsstoffBadge fahrzeugId={v.id} lage={betriebsstoffVon(v)} />
 									<span class="status-label" style="color:{STATUS_COLORS[statusOf(v)] ?? '#95a5a6'}">
 										{STATUS_LABELS[statusOf(v)] ?? statusOf(v)}
 									</span>

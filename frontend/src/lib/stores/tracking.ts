@@ -2,6 +2,7 @@ import { derived, writable } from 'svelte/store';
 import type { VehiclePosition } from '$lib/api';
 import { getStreamTicket } from '$lib/api/client';
 import { createConnectionTracker, type ConnectionState } from '$lib/tracking/connection';
+import type { Betriebsstoff } from '$lib/tracking/betriebsstoff';
 import type { Staerke } from '$lib/tracking/staerke';
 
 /** Live status (incl. sub-level and note) received over the WebSocket. */
@@ -32,6 +33,8 @@ export const vehicleStatuses = writable<Map<string, VehicleStatusInfo>>(new Map(
  * darf in der Anzeige nicht als 0 erscheinen (siehe `$lib/tracking/staerke`).
  */
 export const vehicleStaerken = writable<Map<string, Staerke>>(new Map());
+/** Live gemeldete Betriebsstofflage je Fahrzeug (`$lib/tracking/betriebsstoff`). */
+export const vehicleBetriebsstoff = writable<Map<string, Betriebsstoff>>(new Map());
 /** Rolling log of incoming TH / breakdown alerts (newest first). */
 export const trackingAlerts = writable<TrackingAlert[]>([]);
 /**
@@ -154,6 +157,9 @@ async function openSocket(convoyId: string) {
 			fuehrer?: number;
 			unterfuehrer?: number;
 			mannschaften?: number;
+			verbrauch?: number | null;
+			tank?: number | null;
+			fuellstand?: number | null;
 		};
 		if (data.type === 'pong') {
 			// Heartbeat reply — the timestamp above is all we need.
@@ -179,6 +185,17 @@ async function openSocket(convoyId: string) {
 					return new Map(m);
 				});
 			}
+		} else if (data.type === 'betriebsstoff_update') {
+			// Die Meldung ersetzt die vorige ganz — ein fehlendes Feld heißt
+			// „nicht bekannt", nicht „wie vorher" (`_ingest_driver_betriebsstoff`).
+			vehicleBetriebsstoff.update((m) => {
+				m.set(data.vehicle_id, {
+					verbrauch: typeof data.verbrauch === 'number' ? data.verbrauch : null,
+					tank: typeof data.tank === 'number' ? data.tank : null,
+					fuellstand: typeof data.fuellstand === 'number' ? data.fuellstand : null,
+				});
+				return new Map(m);
+			});
 		} else if (data.type === 'alert') {
 			trackingAlerts.update((list) => [
 				{

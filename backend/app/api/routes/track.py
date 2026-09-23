@@ -32,6 +32,7 @@ from app.schemas.share_link import (
     TrackVehicle,
     TrackWaypoint,
 )
+from app.services import betriebsstoff as betriebsstoff_svc
 from app.services import geometry as geo_svc
 from app.services import share_links as share_links_svc
 from app.services import staerke as staerke_svc
@@ -112,6 +113,13 @@ async def _build_payload(convoy_id: uuid.UUID, db: AsyncSession, scope: str = "t
             staerke_ist_fuehrer=cv.staerke_ist_fuehrer,
             staerke_ist_unterfuehrer=cv.staerke_ist_unterfuehrer,
             staerke_ist_mannschaften=cv.staerke_ist_mannschaften,
+            propulsion=cv.vehicle.propulsion or "combustion",
+            tank_capacity_l=cv.vehicle.tank_capacity_l,
+            fuel_consumption_l100km=cv.vehicle.fuel_consumption_l100km,
+            betriebsstoff_verbrauch=cv.betriebsstoff_verbrauch,
+            betriebsstoff_tank=cv.betriebsstoff_tank,
+            betriebsstoff_fuellstand=cv.betriebsstoff_fuellstand,
+            betriebsstoff_gemeldet_at=cv.betriebsstoff_gemeldet_at,
         )
         for cv in sorted(convoy.convoy_vehicles, key=lambda c: c.position)
     ]
@@ -321,6 +329,46 @@ async def _ingest_driver_staerke(convoy_uuid: uuid.UUID, msg: dict) -> None:
     })
 
 
+async def _ingest_driver_betriebsstoff(convoy_uuid: uuid.UUID, msg: dict) -> None:
+    """Persist + broadcast a fuel report sent by a "driver" share-link holder.
+
+    Dieselben Regeln wie bei der Stärke: Das Fahrzeug muss zu diesem Verband
+    gehören, und eine unplausible Meldung wird verworfen statt beantwortet.
+
+    Die Meldung ersetzt die vorige **ganz** — auch eine Angabe, die diesmal
+    fehlt. Die App schickt immer ihren vollständigen Stand; ein fehlendes Feld
+    heißt dort „nicht bekannt", und das soll die Führung auch so sehen, statt
+    einen alten Tank neben einem neuen Füllstand.
+    """
+    try:
+        vehicle_id = uuid.UUID(str(msg.get("vehicle_id")))
+        werte = betriebsstoff_svc.normalisieren(
+            msg.get("verbrauch"), msg.get("tank"), msg.get("fuellstand")
+        )
+    except (TypeError, ValueError):
+        return
+    if werte is None:
+        return  # eine Meldung ohne jede Angabe ist keine
+    verbrauch, tank, fuellstand = werte
+
+    async with AsyncSessionLocal() as db:
+        cv = await db.get(ConvoyVehicle, (convoy_uuid, vehicle_id))
+        if cv is None:
+            return  # vehicle is not part of this convoy → ignore
+        cv.betriebsstoff_verbrauch = verbrauch
+        cv.betriebsstoff_tank = tank
+        cv.betriebsstoff_fuellstand = fuellstand
+        cv.betriebsstoff_gemeldet_at = datetime.now(timezone.utc)
+        await db.commit()
+        gemeldet_at = cv.betriebsstoff_gemeldet_at.isoformat()
+
+    await tracking_manager.broadcast(str(convoy_uuid), {
+        "type": "betriebsstoff_update", "vehicle_id": str(vehicle_id),
+        "verbrauch": verbrauch, "tank": tank, "fuellstand": fuellstand,
+        "gemeldet_at": gemeldet_at,
+    })
+
+
 @ws_router.websocket("/{slug}")
 async def track_ws(slug: str, ws: WebSocket, token: str | None = Query(default=None)):
     async with AsyncSessionLocal() as db:
@@ -351,6 +399,8 @@ async def track_ws(slug: str, ws: WebSocket, token: str | None = Query(default=N
                 await _ingest_driver_status(convoy_uuid, raw)
             elif raw.get("type") == "staerke":
                 await _ingest_driver_staerke(convoy_uuid, raw)
+            elif raw.get("type") == "betriebsstoff":
+                await _ingest_driver_betriebsstoff(convoy_uuid, raw)
             else:
                 await _ingest_driver_position(convoy_uuid, raw)
     except WebSocketDisconnect:

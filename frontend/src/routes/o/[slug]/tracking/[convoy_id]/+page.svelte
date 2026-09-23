@@ -9,9 +9,11 @@
 	import {
 		livePositions, vehicleStatuses, trackingAlerts, connectTracking, disconnectTracking,
 		sendPosition, trackingActive, trackingConnection, gpsRevoked, acknowledgeAlert, dismissAlert,
-		acknowledgeAllAlerts, vehicleStaerken, type VehicleStatusInfo,
+		acknowledgeAllAlerts, vehicleStaerken, vehicleBetriebsstoff, type VehicleStatusInfo,
 	} from '$lib/stores/tracking';
+	import BetriebsstoffBadge from '$lib/components/BetriebsstoffBadge.svelte';
 	import StaerkeBadge from '$lib/components/StaerkeBadge.svelte';
+	import { betriebsstoffAus, mitStammdaten, type Betriebsstoff, type BetriebsstoffFelder } from '$lib/tracking/betriebsstoff';
 	import StaerkeForm from '$lib/components/StaerkeForm.svelte';
 	import { orgStore } from '$lib/stores/org';
 	import {
@@ -150,6 +152,13 @@
 			staerke_ist_unterfuehrer: live.unterfuehrer,
 			staerke_ist_mannschaften: live.mannschaften,
 		};
+	}
+
+	/** Betriebsstofflage eines Fahrzeugs — die Live-Meldung vor dem geladenen Stand. */
+	function betriebsstoffVon(
+		cv: BetriebsstoffFelder & { vehicle: BetriebsstoffFelder & { id: string } },
+	): Betriebsstoff | null {
+		return mitStammdaten($vehicleBetriebsstoff.get(cv.vehicle.id) ?? betriebsstoffAus(cv), cv.vehicle);
 	}
 
 	/** Gesamtstärke des Verbands — Summe der Meldungen, dazu die Zahl der offenen. */
@@ -731,6 +740,7 @@
 							</div>
 							<div class="veh-right">
 								<StaerkeBadge fahrzeugId={cv.vehicle.id} felder={staerkeVon(cv)} />
+								<BetriebsstoffBadge fahrzeugId={cv.vehicle.id} lage={betriebsstoffVon(cv)} />
 								{#if darfMelden}
 									<!--
 										Eigener Knopf statt eines anklickbaren Abzeichens: das

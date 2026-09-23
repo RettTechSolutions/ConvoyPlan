@@ -14,6 +14,12 @@ export type TrackFahrzeug = {
 	staerke_ist_fuehrer: number | null;
 	staerke_ist_unterfuehrer: number | null;
 	staerke_ist_mannschaften: number | null;
+	propulsion?: string;
+	tank_capacity_l?: number | null;
+	fuel_consumption_l100km?: number | null;
+	betriebsstoff_verbrauch?: number | null;
+	betriebsstoff_tank?: number | null;
+	betriebsstoff_fuellstand?: number | null;
 };
 
 /** Ein Fahrzeug ohne jede Stärkeangabe — der Normalfall vor der ersten Meldung. */

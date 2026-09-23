@@ -83,6 +83,12 @@ export interface ConvoyVehicleItem {
 	staerke_ist_unterfuehrer: number | null;
 	staerke_ist_mannschaften: number | null;
 	staerke_gemeldet_at: string | null;
+	// Betriebsstofflage (siehe $lib/tracking/betriebsstoff) — null heißt
+	// „nicht gemeldet", ein Füllstand 0 heißt „leer".
+	betriebsstoff_verbrauch?: number | null;
+	betriebsstoff_tank?: number | null;
+	betriebsstoff_fuellstand?: number | null;
+	betriebsstoff_gemeldet_at?: string | null;
 }
 
 export interface Convoy {
@@ -485,6 +491,13 @@ export interface TrackVehicle {
 	staerke_ist_fuehrer: number | null;
 	staerke_ist_unterfuehrer: number | null;
 	staerke_ist_mannschaften: number | null;
+	propulsion?: string;
+	tank_capacity_l?: number | null;
+	fuel_consumption_l100km?: number | null;
+	betriebsstoff_verbrauch?: number | null;
+	betriebsstoff_tank?: number | null;
+	betriebsstoff_fuellstand?: number | null;
+	betriebsstoff_gemeldet_at?: string | null;
 }
 export interface TrackPosition {
 	vehicle_id: string; lat: number; lon: number;
