@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 
 from app.config import settings
+from app.services import route_steps as route_steps_svc
 
 logger = logging.getLogger(__name__)
 
@@ -225,17 +226,27 @@ async def calculate_route(
         "geometry": path["points"],
         "road_class_details": path.get("details", {}).get("road_class", []),
         "max_speed_details": path.get("details", {}).get("max_speed", []),
-        "instructions": compact_instructions(path.get("instructions", [])),
+        "instructions": compact_instructions(
+            path.get("instructions", []), path["points"].get("coordinates", [])
+        ),
     }
 
 
-def compact_instructions(raw: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def compact_instructions(
+    raw: list[dict[str, Any]], coords: list[list[float]] | None = None
+) -> list[dict[str, Any]]:
     """Reduce GraphHopper's instructions to what the Roadbook prints.
 
     ``time`` fehlt mit Absicht: das ist GraphHoppers Pkw-Fahrzeit, nicht die
     des Konvois (``convoy_duration_s``). Auf einem Ausdruck stünde sie neben den
     Planzeiten der Wegpunkte und widerspräche ihnen.
+
+    ``m`` kommt für die Verfolgung dazu (services/route_steps.py): der Meter
+    auf der Linie, an dem das Manöver liegt. ``interval`` selbst wird nicht
+    gespeichert — ein Index in eine Geometrie, die sich beim nächsten Import
+    ändert, wäre eine zweite, veraltende Wahrheit.
     """
+    along = route_steps_svc.cumulative_m(coords) if coords else []
     out: list[dict[str, Any]] = []
     for ins in raw or []:
         entry: dict[str, Any] = {
@@ -243,6 +254,9 @@ def compact_instructions(raw: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "text": str(ins.get("text") or ""),
             "distance_m": round(float(ins.get("distance") or 0.0), 1),
         }
+        m = route_steps_svc.instruction_m(ins.get("interval"), along)
+        if m is not None:
+            entry["m"] = m
         for key in ("street_name", "street_ref", "street_destination"):
             if ins.get(key):
                 entry[key] = str(ins[key])

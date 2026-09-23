@@ -89,6 +89,21 @@ class TrackPosition(BaseModel):
     recorded_at: datetime
 
 
+class RouteStep(BaseModel):
+    """Ein Fahrhinweis, auf die Linie gelegt (services/route_steps.py)."""
+
+    # Meter ab Start entlang der ausgelieferten `geojson`-Linie (Haversine über
+    # die Stützpunkte) — derselbe Massstab, mit dem die Companion-App den
+    # eigenen Standort projiziert.
+    m: float
+    # GraphHopper-Vorzeichen: -3…3 abbiegen, 0 geradeaus, 4 Ziel,
+    # 5 Zwischenziel, 6 Kreisverkehr, ±7 halten, ±8/-98 wenden.
+    sign: int
+    text: str | None = None
+    street_name: str | None = None
+    exit_number: int | None = None
+
+
 class TrackPublic(BaseModel):
     name: str
     organization: str | None = None
@@ -101,6 +116,9 @@ class TrackPublic(BaseModel):
     # Wegpunkte/Kanalwechsel anhand der Konvoi-Position ankündigen kann.
     distance_m: int | None = None
     kanalwechsel: list[KanalwechselEntry] = []
+    # Abbiegehinweise für die Fahrt, nach `m` aufsteigend. Leer bei importierten
+    # Routen — GPX kennt keine Hinweise.
+    route_steps: list[RouteStep] = []
     vehicles: list[TrackVehicle]
     positions: list[TrackPosition]
 

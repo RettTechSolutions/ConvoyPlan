@@ -500,6 +500,15 @@ Jede Demo-Nutzung läuft als eigene, befristete Organisation (`is_demo=true`). D
 | `GET/POST` | `/api/track/{slug}` | Öffentliche Tracking-App: Status abrufen / Position senden |
 | `WS` | `/api/ws/track/{slug}` | WebSocket der Tracking-App |
 
+**Fahrhinweise:** `GET /api/track/{slug}` liefert neben Route und Kanalwechseln
+`route_steps` — die Abbiegehinweise der Route, nach `m` aufsteigend. Je Eintrag:
+`m` (Meter ab Start entlang der ausgelieferten `geojson`-Linie, Haversine über
+die Stützpunkte), `sign` (GraphHopper-Vorzeichen: −3…3 abbiegen, 0 geradeaus,
+4 Ziel, 5 Zwischenziel, 6 Kreisverkehr, ±7 halten, ±8/−98 wenden), `text`,
+`street_name` (ersatzweise die Straßennummer) und `exit_number`. Leer bei
+importierten Routen. Wer den eigenen Standort auf dieselbe Linie projiziert,
+kann `m` direkt vergleichen — so nutzt es die ConvoyPlan Companion-App.
+
 ---
 
 ## Live-Tracking
