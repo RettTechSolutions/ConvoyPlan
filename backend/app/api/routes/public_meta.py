@@ -161,9 +161,10 @@ PUBLIC_OPERATIONS: dict[tuple[str, str], dict[str, str]] = {
         "operationId": "getSharedTrack",
         "summary": "Kolonne über einen Freigabe-Slug verfolgen",
         "description": (
-            "Liefert Route, Wegpunkte, Fahrzeuge und die zuletzt gemeldeten Positionen einer "
-            "Kolonne, die über einen öffentlichen Freigabe-Link geteilt wurde. Ist der Link "
-            "passwortgeschützt, kommt zunächst nur ein Hinweis darauf zurück."
+            "Liefert Route samt Abbiegehinweisen, Wegpunkte, Fahrzeuge und die zuletzt "
+            "gemeldeten Positionen einer Kolonne, die über einen öffentlichen Freigabe-Link "
+            "geteilt wurde. Ist der Link passwortgeschützt, kommt zunächst nur ein Hinweis "
+            "darauf zurück."
         ),
     },
     ("/api/track/{slug}/auth", "post"): {

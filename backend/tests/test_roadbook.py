@@ -83,6 +83,8 @@ async def test_graphhopper_wird_nach_deutschen_anweisungen_gefragt(monkeypatch):
     assert erste == {
         "sign": 2, "text": "Rechts abbiegen auf B 27", "distance_m": 1500.4,
         "street_name": "Hauptstraße", "street_ref": "B 27",
+        # Der Meter auf der Linie, für die Verfolgung (test_route_steps.py).
+        "m": 0.0,
     }
     # GraphHoppers Pkw-Zeit widerspräche auf dem Ausdruck den Planzeiten.
     assert all("time" not in i for i in daten["instructions"])

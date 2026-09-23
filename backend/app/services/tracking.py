@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 from collections import defaultdict
@@ -16,6 +17,14 @@ class TrackingManager:
     # sent before its app receives the position_cleared event and stops.
     _CLEAR_SUPPRESS_S = 8.0
 
+    # So lange erkennt der Server eine wiederholte Meldung wieder. Ein Fahrer im
+    # Funkloch schickt nach, sobald der Kanal steht — das ist eine Sache von
+    # Minuten, nicht von Stunden.
+    _ACK_TTL_S = 600.0
+    # Obergrenze, damit ein Client mit immer neuen Kennungen den Speicher nicht
+    # füllen kann. Bei Überlauf gehen die ältesten zuerst.
+    _ACK_MAX = 5000
+
     def __init__(self):
         self._connections: dict[str, list[WebSocket]] = defaultdict(list)
         self._cleared: dict[tuple[str, str], float] = {}
@@ -29,6 +38,10 @@ class TrackingManager:
         # kennen den Typ nicht, und die angemeldete Weboberfläche las jede
         # unbekannte Nachricht als Position.
         self._mit_kennung: set[WebSocket] = set()
+        # Quittungen nach (convoy_id, client_id). Ein Future statt des Werts,
+        # damit ein Duplikat, das eintrifft, während das Original noch in der
+        # Datenbank steckt, auf dessen Ergebnis wartet, statt es zu wiederholen.
+        self._acks: dict[tuple[str, str], tuple[float, asyncio.Future]] = {}
 
     def add_broadcast_listener(self, listener: "Callable[[str, dict], None]") -> None:
         """Einen Beobachter für jeden Broadcast anmelden.
@@ -46,6 +59,44 @@ class TrackingManager:
 
     def reset_listeners(self) -> None:
         self._listeners.clear()
+
+    def claim_ack(self, key: tuple[str, str]) -> "asyncio.Future | None":
+        """Reserviert eine Kennung — oder liefert die Quittung, die schon dafür läuft.
+
+        ``None`` heißt: neu, der Aufrufer verarbeitet den Frame und meldet das
+        Ergebnis über ``settle_ack`` (oder gibt die Kennung mit ``forget_ack``
+        wieder frei).
+        """
+        now = time.monotonic()
+        entry = self._acks.get(key)
+        if entry is not None and now - entry[0] <= self._ACK_TTL_S:
+            return entry[1]
+        self._prune_acks(now)
+        self._acks[key] = (now, asyncio.get_running_loop().create_future())
+        return None
+
+    def settle_ack(self, key: tuple[str, str], ack: dict) -> None:
+        entry = self._acks.get(key)
+        if entry is not None and not entry[1].done():
+            entry[1].set_result(ack)
+
+    def forget_ack(self, key: tuple[str, str], ack: dict) -> None:
+        """Gibt eine Kennung frei, ohne ihr Ergebnis zu merken.
+
+        Wer schon auf sie wartet, bekommt ``ack`` — dieselbe Antwort wie das
+        Original — und darf danach erneut versuchen.
+        """
+        entry = self._acks.pop(key, None)
+        if entry is not None and not entry[1].done():
+            entry[1].set_result(ack)
+
+    def _prune_acks(self, now: float) -> None:
+        expired = [k for k, (at, _) in self._acks.items() if now - at > self._ACK_TTL_S]
+        for k in expired:
+            del self._acks[k]
+        # dict hält die Einfügereihenfolge — vorne stehen die ältesten.
+        while len(self._acks) >= self._ACK_MAX:
+            del self._acks[next(iter(self._acks))]
 
     async def connect(self, convoy_id: str, ws: WebSocket, mit_kennung: bool = False):
         await ws.accept()
