@@ -180,6 +180,30 @@ Drei Dinge, die man kennen muss:
   `frontend/e2e/fahrzeug-belegung.spec.ts` hält die Zusagen an der Oberfläche fest.
   Anwenderdoku: `wiki/Live-Tracking.md`, „Ein Fahrzeug, ein Gerät".
 
+### Alarmquittung: die Führung quittiert am Server
+
+Ein technischer Halt oder Ausfall löst `alert` aus; **quittiert** wird er seit
+`0049` am Server und nicht mehr je Gerät. Die Regeln stehen in
+`app/services/alarm_quittung.py`, die Prüfung in
+`tests/test_alarm_quittung.py`, die Zusage an der Oberfläche in
+`frontend/e2e/alarm-quittung.spec.ts`.
+
+- **Die Quittung gehört einem Alarm**, erkannt an seinem Zeitstempel (`ts` im
+  `alert` = `status_changed_at`, als Zeitpunkt verglichen, nicht als Text).
+  **Jeder** Statuswechsel setzt sie zurück — wer eine neue Stelle schreibt, die
+  `vehicle_status` setzt, ruft `alarm_quittung.zuruecksetzen(cv)` mit.
+- `alarm_quittiert` geht über `broadcast_neu`, also **nur an Verbindungen mit
+  Gerätekennung** (und an die Broadcast-Beobachter). Aus demselben Grund wie die
+  Belegung: Der Store der angemeldeten Ansicht las früher jede unbekannte
+  Nachricht als Position.
+- Am Fahrer-Link wird `alarm_quittieren` **vor** der Belegung behandelt: Seine
+  `vehicle_id` ist das alarmierende Fahrzeug, nicht das eigene. Wer quittiert
+  hat, leitet der Server ab (Fahrzeug der Belegung, Name des Kontos), einem Text
+  vom Client glaubt er nicht.
+- Die Gegenstelle in der Begleit-App ist `packages/track-api` und
+  `app/src/alerts/board.ts` im Repo Convoyplan-Companion; `hello` meldet die
+  Fähigkeit als `alarm-quittung`.
+
 ### API-Docs (Swagger/OpenAPI)
 
 `/docs`, `/redoc` und `/openapi.json` sind in Produktion **standardmäßig deaktiviert**

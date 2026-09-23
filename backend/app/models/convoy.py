@@ -91,6 +91,12 @@ class ConvoyVehicle(Base):
     betriebsstoff_tank: Mapped[int | None] = mapped_column(Integer, nullable=True)
     betriebsstoff_fuellstand: Mapped[int | None] = mapped_column(Integer, nullable=True)
     betriebsstoff_gemeldet_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Quittung des laufenden Alarms (Techn. Halt, Ausfall) durch die Führung.
+    # Gilt für den Alarm, der mit ``status_changed_at`` begann; jeder neue
+    # Status setzt beides zurück (app/services/alarm_quittung.py). ``von`` ist
+    # Anzeigetext — ein Name oder die Kennung eines Fahrzeugs.
+    alarm_quittiert_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    alarm_quittiert_von: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
     convoy: Mapped["Convoy"] = relationship(back_populates="convoy_vehicles")
     vehicle: Mapped["Vehicle"] = relationship(back_populates="convoy_vehicles")

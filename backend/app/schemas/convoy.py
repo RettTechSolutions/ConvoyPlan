@@ -71,6 +71,9 @@ class ConvoyVehicleItem(BaseModel):
     status_level: str | None = None
     status_note: str | None = None
     status_changed_at: datetime | None = None
+    # Quittung des laufenden Alarms durch die Führung (services/alarm_quittung.py).
+    alarm_quittiert_at: datetime | None = None
+    alarm_quittiert_von: str | None = None
     sonderfunktion: str | None = None
     mobile_phone: str | None = None
     staerke_soll_fuehrer: int | None = None

@@ -161,7 +161,11 @@ def _status(ids, status="arrived", level=None, client_id="c1", **extra) -> dict:
 
 async def test_der_server_sagt_beim_verbinden_was_er_kann(verband, gesendet):
     ws = await _sprich(verband.fahrer, [])
-    assert {"type": "hello", "protocol": 2, "features": ["ack", "ack-betriebsstoff"]} in ws.sent
+    assert {
+        "type": "hello",
+        "protocol": 2,
+        "features": ["ack", "ack-betriebsstoff", "alarm-quittung"],
+    } in ws.sent
 
 
 async def test_ohne_geraetekennung_kein_hello(verband, gesendet):

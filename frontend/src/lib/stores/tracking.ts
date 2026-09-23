@@ -23,6 +23,20 @@ export interface TrackingAlert {
 	note: string | null;
 	ts: string;
 	acknowledged: boolean;
+	/** Wer den Alarm am Server quittiert hat — `null`, solange es niemand tat. */
+	quittiert_von: string | null;
+}
+
+/** Eine Quittung der Führung für den laufenden Alarm eines Fahrzeugs. */
+export interface AlarmQuittung {
+	alarm_ts: string;
+	von: string;
+	at: string;
+}
+
+/** Derselbe Zeitpunkt, gleich wie geschrieben — der Server vergleicht ebenso. */
+function gleicherZeitpunkt(a: string, b: string): boolean {
+	return Date.parse(a) === Date.parse(b);
 }
 
 export const livePositions = writable<Map<string, VehiclePosition>>(new Map());
@@ -38,6 +52,13 @@ export const vehicleStaerken = writable<Map<string, Staerke>>(new Map());
 export const vehicleBetriebsstoff = writable<Map<string, Betriebsstoff>>(new Map());
 /** Rolling log of incoming TH / breakdown alerts (newest first). */
 export const trackingAlerts = writable<TrackingAlert[]>([]);
+/**
+ * Quittungen der Führung, die über den Kanal kamen — je Fahrzeug die für den
+ * laufenden Alarm. Ein neuer Status des Fahrzeugs räumt sie ab: Er ist ein
+ * neuer Alarm oder keiner mehr. Was vor dem Öffnen quittiert wurde, steht am
+ * Fahrzeug selbst (`alarm_quittiert_von`).
+ */
+export const alarmQuittungen = writable<Map<string, AlarmQuittung>>(new Map());
 /**
  * Zustand des Live-Kanals für die Anzeige.
  *
@@ -114,6 +135,7 @@ export async function connectTracking(convoyId: string) {
 	// Fresh, user-initiated connect → drop any alerts carried over from a
 	// previous convoy. Auto-reconnects go through openSocket() and keep them.
 	trackingAlerts.set([]);
+	alarmQuittungen.set(new Map());
 	desiredConvoyId = convoyId;
 	connection.connecting();
 	ensureOnlineHandler();
@@ -189,7 +211,32 @@ async function openSocket(convoyId: string) {
 		if (data.type === 'pong') {
 			// Heartbeat reply — the timestamp above is all we need.
 			return;
+		} else if (data.type === 'alarm_quittiert') {
+			// Vor dem Positionszweig unten: Der läse jede unbekannte Nachricht als
+			// Position — der Server schickt diese deshalb nur an Verbindungen mit
+			// Gerätekennung, und diese hier hat eine.
+			const q = parsed as { vehicle_id?: unknown; alarm_ts?: unknown; quittiert_von?: unknown; quittiert_at?: unknown };
+			if (
+				typeof q.vehicle_id === 'string' && typeof q.alarm_ts === 'string' &&
+				typeof q.quittiert_von === 'string' && typeof q.quittiert_at === 'string'
+			) {
+				const vehicleId = q.vehicle_id;
+				const quittung: AlarmQuittung = { alarm_ts: q.alarm_ts, von: q.quittiert_von, at: q.quittiert_at };
+				alarmQuittungen.update((m) => new Map(m).set(vehicleId, quittung));
+				trackingAlerts.update((list) => list.map((a) =>
+					a.vehicle_id === vehicleId && gleicherZeitpunkt(a.ts, quittung.alarm_ts)
+						? { ...a, acknowledged: true, quittiert_von: quittung.von }
+						: a
+				));
+			}
+			return;
 		} else if (data.type === 'status_update') {
+			alarmQuittungen.update((m) => {
+				if (!m.has(data.vehicle_id)) return m;
+				const next = new Map(m);
+				next.delete(data.vehicle_id);
+				return next;
+			});
 			vehicleStatuses.update((m) => {
 				m.set(data.vehicle_id, {
 					status: data.vehicle_status!,
@@ -232,6 +279,7 @@ async function openSocket(convoyId: string) {
 					note: data.note ?? null,
 					ts: data.ts ?? new Date().toISOString(),
 					acknowledged: false,
+					quittiert_von: null,
 				},
 				...list,
 			].slice(0, 50));
@@ -354,9 +402,27 @@ export function sendPosition(convoyId: string, vehicleId: string, lat: number, l
 	}
 }
 
-/** Mark a single alert as acknowledged (removes the banner highlight). */
+/**
+ * Quittiert beim Server — für alle sichtbar, auch für die meldende Besatzung.
+ *
+ * Ohne `client_id`: Dieser Store wertet keine `ack`-Antwort aus, und ohne
+ * Kennung schickt der Server keine. Was angekommen ist, sagt `alarm_quittiert`.
+ * Ohne Kanal bleibt es bei der Quittung in diesem Browser.
+ */
+function amServerQuittieren(alert: TrackingAlert) {
+	if (ws?.readyState !== WebSocket.OPEN) return;
+	try {
+		ws.send(JSON.stringify({ type: 'alarm_quittieren', vehicle_id: alert.vehicle_id, alarm_ts: alert.ts }));
+	} catch { /* Kanal gerade weg — die Quittung gilt hier trotzdem */ }
+}
+
+/** Mark a single alert as acknowledged — here and at the server. */
 export function acknowledgeAlert(id: string) {
-	trackingAlerts.update((list) => list.map((a) => (a.id === id ? { ...a, acknowledged: true } : a)));
+	trackingAlerts.update((list) => list.map((a) => {
+		if (a.id !== id) return a;
+		if (!a.acknowledged) amServerQuittieren(a);
+		return { ...a, acknowledged: true };
+	}));
 }
 
 /** Clear an alert from the log entirely. */
@@ -366,5 +432,8 @@ export function dismissAlert(id: string) {
 
 /** Acknowledge every currently active alert. */
 export function acknowledgeAllAlerts() {
-	trackingAlerts.update((list) => list.map((a) => ({ ...a, acknowledged: true })));
+	trackingAlerts.update((list) => list.map((a) => {
+		if (!a.acknowledged) amServerQuittieren(a);
+		return { ...a, acknowledged: true };
+	}));
 }

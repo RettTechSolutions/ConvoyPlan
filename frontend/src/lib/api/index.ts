@@ -73,6 +73,8 @@ export interface Waypoint {
 export interface ConvoyVehicleItem {
 	vehicle: Vehicle; position: number; vehicle_status: string;
 	status_level: string | null; status_note: string | null; status_changed_at: string | null;
+	// Quittung des laufenden Alarms durch die Führung (Server, `alarm_quittung.py`).
+	alarm_quittiert_at?: string | null; alarm_quittiert_von?: string | null;
 	sonderfunktion: string | null; mobile_phone: string | null;
 	// Mannschaftsstärke (siehe $lib/tracking/staerke): null heißt „nicht
 	// angegeben", 0 heißt „niemand" — die beiden nie gleichsetzen.
@@ -494,6 +496,9 @@ export const shareLinksApi = {
 
 export interface TrackVehicle {
 	id: string; name: string; callsign: string | null;
+	// Der laufende Alarm und seine Quittung durch die Führung. Fehlen auf einem
+	// älteren Server — deshalb optional.
+	alarm_ts?: string | null; alarm_quittiert_at?: string | null; alarm_quittiert_von?: string | null;
 	sonderfunktion: string | null; vehicle_status: string | null; position: number;
 	// Mannschaftsstärke: Soll aus der Planung, Ist aus der Meldung unterwegs.
 	staerke_soll_fuehrer: number | null;
