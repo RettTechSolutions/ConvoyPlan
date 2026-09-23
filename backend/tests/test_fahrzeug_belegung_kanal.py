@@ -128,6 +128,11 @@ async def _position(ids, vehicle_id: str):
         )).scalar_one_or_none()
 
 
+async def _beendet(task: asyncio.Task) -> None:
+    """Wartet, bis der Handler nach dem Trennen zurückkehrt — höchstens fünf Sekunden."""
+    await asyncio.wait_for(task, timeout=5)
+
+
 def _pos(vehicle_id: str, lat: float) -> dict:
     return {"vehicle_id": vehicle_id, "lat": lat, "lon": 11.5}
 
@@ -146,7 +151,7 @@ async def test_im_browser_laesst_sich_der_kdow_der_app_nicht_mehr_senden(verband
 
     for ws, task in ((app, app_task), (web, web_task)):
         ws.trennen()
-        await task
+        await _beendet(task)
 
 
 async def test_ein_anderes_fahrzeug_bleibt_fuer_den_browser_frei(verband):
@@ -159,7 +164,7 @@ async def test_ein_anderes_fahrzeug_bleibt_fuer_den_browser_frei(verband):
 
     for ws, task in ((app, app_task), (web, web_task)):
         ws.trennen()
-        await task
+        await _beendet(task)
 
 
 async def test_nach_dem_abwaehlen_ist_der_kdow_wieder_waehlbar(verband):
@@ -176,14 +181,14 @@ async def test_nach_dem_abwaehlen_ist_der_kdow_wieder_waehlbar(verband):
 
     for ws, task in ((app, app_task), (web, web_task)):
         ws.trennen()
-        await task
+        await _beendet(task)
 
 
 async def test_ein_verbindungsabriss_gibt_das_fahrzeug_nicht_frei(verband):
     """Funkloch: die App ist weg, der KdoW bleibt ihrer."""
     app, app_task = await _verbinden(verband.slug, [{"type": "belegen", "vehicle_id": verband.kdow}], APP)
     app.trennen()
-    await app_task
+    await _beendet(app_task)
 
     web, web_task = await _verbinden(verband.slug, [_pos(verband.kdow, 50.0)], WEB)
     assert {"type": "belegung_abgelehnt", "vehicle_id": verband.kdow} in web.empfangen
@@ -195,7 +200,7 @@ async def test_ein_verbindungsabriss_gibt_das_fahrzeug_nicht_frei(verband):
 
     for ws, task in ((web, web_task), (app2, app2_task)):
         ws.trennen()
-        await task
+        await _beendet(task)
 
 
 async def test_eine_app_ohne_kennung_sendet_weiter_und_bekommt_nichts_neues(verband):
@@ -210,11 +215,11 @@ async def test_eine_app_ohne_kennung_sendet_weiter_und_bekommt_nichts_neues(verb
 
     for ws, task in ((web, web_task), (alt, alt_task)):
         ws.trennen()
-        await task
+        await _beendet(task)
 
 
 async def test_ein_fahrzeug_ausserhalb_des_verbands_wird_nicht_belegt(verband):
     web, web_task = await _verbinden(verband.slug, [{"type": "belegen", "vehicle_id": verband.daneben}], WEB)
     assert belegung_modul.belegungen.belegte(str(verband.convoy_id)) == []
     web.trennen()
-    await web_task
+    await _beendet(web_task)

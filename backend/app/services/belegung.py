@@ -35,6 +35,7 @@ außen, und wird von ``tests/test_fahrzeug_belegung.py`` geprüft.
 
 from __future__ import annotations
 
+import logging
 import re
 import time
 import uuid
@@ -43,6 +44,8 @@ from typing import Callable, Literal
 from fastapi import WebSocket
 
 from app.services.tracking import tracking_manager
+
+logger = logging.getLogger(__name__)
 
 #: So lange hält eine Belegung ohne jeden Frame ihres Geräts.
 ABLAUF_S = 300.0
@@ -170,7 +173,9 @@ async def pruefen(
         try:
             await ws.send_json({"type": "belegung_abgelehnt", "vehicle_id": vehicle_id})
         except Exception:
-            pass
+            # Die Verbindung ist schon weg — verworfen ist der Frame trotzdem,
+            # und das Gerät bekommt beim Wiederverbinden den Stand.
+            logger.debug("belegung_abgelehnt nicht zustellbar (convoy_id=%s)", convoy_id, exc_info=True)
     return False
 
 
@@ -189,4 +194,5 @@ async def stand_senden(convoy_id: str, kennung: str, ws: WebSocket) -> None:
             "vehicle_ids": belegungen.belegte(convoy_id, ausser=kennung),
         })
     except Exception:
-        pass
+        # Gleich nach dem Aufbau wieder getrennt — der nächste Aufbau schickt ihn neu.
+        logger.debug("Belegungsstand nicht zustellbar (convoy_id=%s)", convoy_id, exc_info=True)
