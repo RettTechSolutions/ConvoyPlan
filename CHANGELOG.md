@@ -21,6 +21,8 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+## [2026.7.0] – 2026-09-23
+
 ### Added
 
 - **Fahrzeuge melden ihre Betriebsstofflage, die Konvoiführung sieht Füllstand und Reichweite.** Die Companion-App schickt über den Fahrer-Link Füllstand (%), Verbrauch (l/100 km) und Tankvolumen (l) als neuen Frame `{"type": "betriebsstoff", …}`; der Server prüft die Grenzen (Verbrauch über 0 bis 150, Tank über 0 bis 1500, Füllstand 0–100), verwirft eine unplausible Meldung ganz und sendet `betriebsstoff_update` an alle offenen Ansichten. Eine neue Meldung ersetzt die vorige vollständig; ein leerer Tank ist eine Meldung, „nicht gemeldet" bleibt `null`.
@@ -32,6 +34,15 @@ ursprünglichen SemVer-Nummern.
   Über den MCP-Server ebenso: `fahrzeug_betriebsstoff_melden` (Scope `fleet:status`, Bereich *Status*) meldet, meist genügt der Füllstand. `konvoi_status` liest je Fahrzeug Füllstand und Reichweite und für den Verband, wer knapp ist und wer nichts gemeldet hat. Der Bereich heißt jetzt *Live-Positionen, Marschstatus, Mannschaftsstärke und Betriebsstoff*.
 
   Wie Status und Stärke wird auch die Betriebsstoffmeldung dem Absender quittiert, wenn sie eine `client_id` trägt: höchstens einmal verarbeitet, bei einer Ablehnung mit Grund (`invalid-betriebsstoff`, `vehicle-not-in-convoy`, `vehicle-taken` …). Der Server kündigt das eigens an (`hello` mit `"ack-betriebsstoff"` in `features`), damit ein Client gegen einen Server, der nur Status und Stärke quittiert, nicht auf eine Quittung wartet, die nie kommt.
+- **Ein Fahrzeug sendet nur noch von einem Gerät.** Bisher ließ sich derselbe Wagen in der Begleit-App und auf der Trackingseite im Browser gleichzeitig wählen; beide schrieben in dieselbe Positionszeile, und die Karte sprang zwischen zwei Standorten. Die Belegung sitzt jetzt am Server und gilt für Fahrer-Link, Begleit-App und angemeldetes Tracking zugleich: Ein Gerät weist sich mit `?client=` aus, belegt beim Wählen, hält die Belegung mit jedem Frame und gibt beim Abwählen frei. Nach fünf Minuten ohne Frame oder per „GPS-Freigabe zurücksetzen" wird das Fahrzeug frei — ein Verbindungsabriss allein gibt nicht frei, das Funkloch ist der Normalfall. Fremde Frames werden verworfen, und nur der Absender erfährt es. Im Web steht ein belegtes Fahrzeug gesperrt mit „belegt" in der Wahl.
+
+  Clients ohne Kennung — App-Fassungen, die noch nicht aktualisiert sind — werden nie abgewiesen und bekommen keine neuen Nachrichtentypen; was sie senden, belegt ein freies Fahrzeug trotzdem für alle anderen.
+
+- **Der Fahrer-Link quittiert Status- und Stärkemeldungen.** Wer „Angekommen" tippt, erfuhr bisher nur über das eigene Echo im Broadcast, dass die Meldung durch war — ohne Absender, ohne Grund bei einer Ablehnung, und ein im Funkloch verlorener Frame sah aus wie einer, auf den die Antwort noch aussteht. Ab Protokoll 2 meldet sich der Server beim Verbinden mit `hello`, und ein Status- oder Stärke-Frame mit `client_id` bekommt eine Quittung nur an den Absender: `ok` mit den übernommenen Werten oder `rejected` mit Grund (`vehicle-taken`, wenn ein anderes Gerät das Fahrzeug hält).
+
+  Eine wiederholte Meldung wird höchstens einmal verarbeitet: Schickt ein Gerät nach einem Abriss denselben technischen Halt noch einmal, bekommt es die Quittung des ersten Durchlaufs, und bei allen Beteiligten geht **kein zweiter Alarm** los. Ohne `client_id` bleibt der Kanal wie bisher — die PWA und ältere Apps merken nichts davon. Die Begleit-App zeigt die Quittung als Zeile über den Statusknöpfen und eine Ablehnung rot mit Grund.
+
+- **Abbiegehinweise im Fahrer-Link.** `/api/track/{slug}` liefert die Anweisungen des Roadbooks als `route_steps` mit dem Meter, an dem das Manöver auf der Linie liegt. Wer über einen Fahrer-Link ein Fahrzeug gewählt hat, sieht oben auf der Karte das nächste Manöver ab der eigenen Position — Pfeil, Entfernung, Hinweis. Der neue Reiter **Route** im Seitenmenü führt alle Hinweise mit Kilometrierung, auch für Beobachter; der Stand bezieht sich dort ausdrücklich auf die Verbandsspitze.
 
 - **Die Abbiegehinweise fahren mit: `/api/track/{slug}` liefert sie als `route_steps`.** Jeder Hinweis trägt den Meter, an dem das Manöver auf der Linie liegt — gemessen entlang der ausgelieferten Geometrie, nicht aus GraphHoppers Teilstrecken aufsummiert, damit ein Empfänger, der seinen Standort auf dieselbe Linie projiziert, auf den Meter genau vergleichen kann. Die ConvoyPlan Companion-App zeigt daraus im Fahrermodus, auf dem Sperrbildschirm und am Autodisplay das nächste Manöver — und die Tracking-Ansicht im Browser ebenso: Wer über einen Fahrer-Link ein Fahrzeug gewählt hat, sieht oben auf der Karte Pfeil, Entfernung und Hinweis ab der eigenen Position, darunter wie bisher den nächsten Streckenpunkt. Beobachter-Links zeigen kein Manöver: gegen die Verbandsspitze gerechnet gälte „In 300 m rechts" für das Schlusslicht nicht. Stattdessen führt das Seitenmenü einen Reiter **Route** mit allen Hinweisen samt Kilometrierung — für alle, die den Link öffnen. Gefahrene Hinweise sind ausgegraut, der nächste ist hervorgehoben und nennt die Entfernung ab der Verbandsspitze; ohne Live-Position steht die Liste ohne Stand da.
 
@@ -858,7 +869,8 @@ Das ruft den Update-Modus auf: räumt verwaiste Updater-Container auf, zieht all
 - Capacitor configuration for Android/iOS native wrapper.
 - Docker Compose setup with GraphHopper OSM pre-download.
 
-[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.6.0...HEAD
+[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.7.0...HEAD
+[2026.7.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.6.1...v2026.7.0
 [2026.6.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.5.2...v2026.6.0
 [2026.5.2]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.5.1...v2026.5.2
 [2026.5.1]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.5.0...v2026.5.1
