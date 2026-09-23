@@ -74,6 +74,13 @@ class TrackVehicle(BaseModel):
     propulsion: str = "combustion"
     tank_capacity_l: float | None = None
     fuel_consumption_l100km: float | None = None
+    # Dasselbe für ein E-Fahrzeug, in kWh. Eigene Felder statt der Literfelder:
+    # Die Planung führt beides getrennt, und eine Ansicht, die nur Liter kennt,
+    # darf eine Akkukapazität nie als Tank lesen. Gemeldet wird beim
+    # E-Fahrzeug nur der Ladestand in Prozent — Kapazität und Verbrauch stehen
+    # hier, damit die Reichweite daraus gerechnet werden kann.
+    battery_capacity_kwh: float | None = None
+    consumption_kwh_100km: float | None = None
     # Betriebsstofflage aus der Meldung unterwegs — None heißt „nicht gemeldet".
     betriebsstoff_verbrauch: float | None = None
     betriebsstoff_tank: int | None = None

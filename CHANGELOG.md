@@ -21,6 +21,10 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Added
+
+- **Die Tracking-Nutzlast führt die Akku-Stammdaten eines E-Fahrzeugs.** `battery_capacity_kwh` und `consumption_kwh_100km` stehen jetzt je Fahrzeug neben `tank_capacity_l` und `fuel_consumption_l100km` in `GET /api/track/{slug}`. Die Companion-App rechnet damit aus dem gemeldeten Ladestand die Reichweite eines E-Fahrzeugs. Bisher kannte sie nur die Literfelder, und die sind beim E-Fahrzeug leer. Die Meldung selbst bleibt, wie sie ist: Beim E-Fahrzeug geht nur der Ladestand in Prozent über den Kanal.
+
 ## [2026.7.0] – 2026-09-23
 
 ### Added

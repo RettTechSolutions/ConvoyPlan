@@ -505,6 +505,9 @@ export interface TrackVehicle {
 	propulsion?: string;
 	tank_capacity_l?: number | null;
 	fuel_consumption_l100km?: number | null;
+	// E-Fahrzeug: Akku-Stammdaten in kWh bzw. kWh/100 km.
+	battery_capacity_kwh?: number | null;
+	consumption_kwh_100km?: number | null;
 	betriebsstoff_verbrauch?: number | null;
 	betriebsstoff_tank?: number | null;
 	betriebsstoff_fuellstand?: number | null;
