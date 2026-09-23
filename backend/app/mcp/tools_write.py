@@ -39,6 +39,7 @@ from app.schemas.convoy import (
 )
 from app.schemas.vehicle import VehicleCreate, VehicleUpdate
 from app.schemas.waypoint import WaypointCreate, WaypointReorderItem, WaypointUpdate
+from app.services import betriebsstoff as betriebsstoff_svc
 from app.services import staerke as staerke_svc
 
 
@@ -708,6 +709,81 @@ def register(mcp) -> None:
                 "unterfuehrer": unterfuehrer,
                 "mannschaften": mannschaften,
                 "gesamt": gesamt,
+            }
+
+    @mcp.tool(annotations=annotations.schreibend("Betriebsstoff melden", idempotent=True))
+    async def fahrzeug_betriebsstoff_melden(
+        konvoi_id: str,
+        fahrzeug_id: str,
+        fuellstand_prozent: int | None = None,
+        tank_l: int | None = None,
+        verbrauch_l_100km: float | None = None,
+    ) -> dict[str, Any]:
+        """Meldet die Betriebsstofflage eines Fahrzeugs im Konvoi.
+
+        Meist genügt der Füllstand: Tankvolumen und Verbrauch kennt ConvoyPlan
+        aus den Stammdaten des Fahrzeugs und rechnet die Reichweite damit, wenn
+        sie hier fehlen. Die Meldung ersetzt die vorige **ganz** — eine Angabe,
+        die hier fehlt, ist danach „nicht gemeldet", nicht „wie vorher".
+
+        Ein Füllstand von 0 heißt „Tank leer" und ist eine dringende Meldung.
+        Wer den Füllstand nicht kennt, lässt ihn weg, statt 0 zu schicken.
+        Die Stammdaten des Fahrzeugs ändert diese Meldung nicht.
+
+        Args:
+            konvoi_id: Die ID des Konvois.
+            fahrzeug_id: Die ID des Fahrzeugs.
+            fuellstand_prozent: Füllstand (bei E-Fahrzeugen Ladestand) in Prozent, 0–100.
+            tank_l: Nutzbares Tankvolumen in ganzen Litern, über 0 bis 1500.
+            verbrauch_l_100km: Durchschnittsverbrauch in l/100 km, über 0 bis 150.
+        """
+        async with mcp_context("fahrzeug_betriebsstoff_melden") as ctx:
+            ctx.require(SCOPE_FLEET_STATUS)
+            # Vorab geprüft, damit das Modell einen Satz bekommt statt eines
+            # Validierungsfehlers — dieselben Regeln wie an den anderen Wegen.
+            try:
+                werte = betriebsstoff_svc.normalisieren(verbrauch_l_100km, tank_l, fuellstand_prozent)
+            except ValueError as exc:
+                raise McpError(f"Unplausible Betriebsstoffmeldung: {exc}.") from exc
+            if werte is None:
+                raise McpError(
+                    "Ohne Angabe ist das keine Meldung — mindestens den Füllstand angeben."
+                )
+            verbrauch, tank, fuellstand = werte
+            await _run(
+                tracking_routes.update_vehicle_betriebsstoff(
+                    convoy_id=_uuid(konvoi_id, "Konvoi-ID"),
+                    vehicle_id=_uuid(fahrzeug_id, "Fahrzeug-ID"),
+                    data=tracking_routes.BetriebsstoffUpdate(
+                        verbrauch=verbrauch, tank=tank, fuellstand=fuellstand
+                    ),
+                    db=ctx.db,
+                    current_user=ctx.user,
+                )
+            )
+            await ctx.audit(
+                "fahrzeug_betriebsstoff_melden",
+                target_type="convoy",
+                target_id=konvoi_id,
+                detail={
+                    "fahrzeug_id": fahrzeug_id,
+                    "fuellstand_prozent": fuellstand,
+                    "tank_l": tank,
+                    "verbrauch_l_100km": verbrauch,
+                },
+            )
+            await ctx.db.commit()
+            teile = [
+                f"Füllstand {fuellstand} %" if fuellstand is not None else None,
+                f"Tank {tank} l" if tank is not None else None,
+                f"Verbrauch {verbrauch} l/100 km" if verbrauch is not None else None,
+            ]
+            return {
+                "ergebnis": "Betriebsstoff gemeldet: " + ", ".join(t for t in teile if t) + ".",
+                "fahrzeug_id": fahrzeug_id,
+                "fuellstand_prozent": fuellstand,
+                "tank_l": tank,
+                "verbrauch_l_100km": verbrauch,
             }
 
     @mcp.tool(annotations=annotations.schreibend("Fahrzeugstatus melden", idempotent=True))

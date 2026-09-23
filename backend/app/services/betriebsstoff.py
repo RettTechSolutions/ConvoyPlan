@@ -20,6 +20,9 @@ MAX_VERBRAUCH = 150.0
 # im eigenen Tank.
 MAX_TANK = 1500
 MAX_FUELLSTAND = 100
+# Ab diesem Füllstand gilt die Lage als knapp — gleichlautend in der
+# Weboberfläche und in der Companion-App (``KNAPP_AB_PROZENT`` dort).
+KNAPP_AB_PROZENT = 25
 
 
 def _zahl(name: str, wert, *, ganz: bool) -> float | int | None:

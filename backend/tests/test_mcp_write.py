@@ -562,3 +562,118 @@ async def test_konvoi_status_haelt_ungemeldet_und_unbesetzt_auseinander():
         assert nachher["staerke"]["offen"] == 0
         assert nachher["staerke"]["gesamt"] == 0
         await purge_clients([reg["client_id"]])
+
+
+# ── Betriebsstoff ────────────────────────────────────────────────────────────
+
+
+async def _konvoi_status(client, token, session, fx):
+    return tool_payload(
+        await _werkzeug(client, token, session, "konvoi_status", {"konvoi_id": str(fx.convoy_a.id)})
+    )
+
+
+@pytest.mark.asyncio
+async def test_betriebsstoff_melden_schreibt_die_lage():
+    async with seeded() as fx, mcp_app() as (_app, client):
+        reg, token, session = await _sitzung(client, fx.planer, fx.org_a)
+        antwort = tool_payload(await _werkzeug(client, token, session, "fahrzeug_betriebsstoff_melden", {
+            "konvoi_id": str(fx.convoy_a.id), "fahrzeug_id": str(fx.vehicle_a.id),
+            "fuellstand_prozent": 40, "tank_l": 200, "verbrauch_l_100km": 28.46,
+        }))
+        # Dieselbe Rundung wie an den anderen Wegen.
+        assert antwort["verbrauch_l_100km"] == 28.5
+        assert "Füllstand 40 %" in antwort["ergebnis"]
+
+        async with AsyncSessionLocal() as db:
+            cv = await db.get(ConvoyVehicle, (fx.convoy_a.id, fx.vehicle_a.id))
+            assert (cv.betriebsstoff_verbrauch, cv.betriebsstoff_tank, cv.betriebsstoff_fuellstand) == (28.5, 200, 40)
+            assert cv.betriebsstoff_gemeldet_at is not None
+            eintraege = (
+                await db.execute(
+                    select(AuditLog).where(
+                        AuditLog.org_id == fx.org_a.id, AuditLog.action == "mcp.tool.call"
+                    )
+                )
+            ).scalars().all()
+        # Jeder schreibende Aufruf landet im Audit-Log, samt der gemeldeten Werte.
+        assert [e.detail["tool"] for e in eintraege] == ["fahrzeug_betriebsstoff_melden"]
+        assert eintraege[0].detail["fuellstand_prozent"] == 40
+        await purge_clients([reg["client_id"]])
+
+
+@pytest.mark.asyncio
+async def test_nur_lese_scope_reicht_fuer_den_betriebsstoff_nicht():
+    async with seeded() as fx, mcp_app() as (_app, client):
+        reg, token, session = await _sitzung(client, fx.planer, fx.org_a, [scope_svc.SCOPE_READ])
+        antwort = await _roh(client, token, session, "fahrzeug_betriebsstoff_melden", {
+            "konvoi_id": str(fx.convoy_a.id), "fahrzeug_id": str(fx.vehicle_a.id),
+            "fuellstand_prozent": 40,
+        })
+        assert antwort.status_code == 403, antwort.text
+        assert scope_svc.SCOPE_FLEET_STATUS in antwort.headers["www-authenticate"]
+        await purge_clients([reg["client_id"]])
+
+
+@pytest.mark.parametrize(
+    "argumente",
+    [
+        {},  # keine Angabe ist keine Meldung
+        {"fuellstand_prozent": 140},
+        {"tank_l": 0},
+        {"verbrauch_l_100km": 500},
+    ],
+)
+@pytest.mark.asyncio
+async def test_unplausible_oder_leere_betriebsstoffmeldung_wird_abgewiesen(argumente):
+    async with seeded() as fx, mcp_app() as (_app, client):
+        reg, token, session = await _sitzung(client, fx.planer, fx.org_a)
+        antwort = await _werkzeug(client, token, session, "fahrzeug_betriebsstoff_melden", {
+            "konvoi_id": str(fx.convoy_a.id), "fahrzeug_id": str(fx.vehicle_a.id), **argumente,
+        })
+        assert antwort["result"]["isError"] is True
+        listing = await call(client, token, session, "tools/list")
+        assert "fahrzeug_betriebsstoff_melden" in {t["name"] for t in listing["result"]["tools"]}
+
+        async with AsyncSessionLocal() as db:
+            cv = await db.get(ConvoyVehicle, (fx.convoy_a.id, fx.vehicle_a.id))
+            assert cv.betriebsstoff_gemeldet_at is None
+        await purge_clients([reg["client_id"]])
+
+
+@pytest.mark.asyncio
+async def test_konvoi_status_zeigt_betriebsstoff_mit_stammdaten_und_knappheit():
+    """Ohne Meldung null, nicht der geplante Tank; mit Meldung die Reichweite —
+    auch dann, wenn nur der Füllstand gemeldet wurde; und wer knapp ist, steht
+    in der Zusammenfassung."""
+    async with seeded() as fx, mcp_app() as (_app, client):
+        async with AsyncSessionLocal() as db:
+            fz = await db.get(Vehicle, fx.vehicle_a.id)
+            fz.tank_capacity_l, fz.fuel_consumption_l100km = 300.0, 30.0
+            await db.commit()
+        reg, token, session = await _sitzung(client, fx.planer, fx.org_a)
+
+        vorher = await _konvoi_status(client, token, session, fx)
+        assert vorher["fahrzeuge"][0]["betriebsstoff"] is None
+        assert vorher["betriebsstoff"] == {"gemeldet": 0, "offen": 1, "knapp": []}
+
+        await _werkzeug(client, token, session, "fahrzeug_betriebsstoff_melden", {
+            "konvoi_id": str(fx.convoy_a.id), "fahrzeug_id": str(fx.vehicle_a.id),
+            "fuellstand_prozent": 20,
+        })
+
+        nachher = await _konvoi_status(client, token, session, fx)
+        lage = nachher["fahrzeuge"][0]["betriebsstoff"]
+        assert lage["fuellstand_prozent"] == 20
+        assert (lage["tank_l"], lage["tank_aus_stammdaten"]) == (300.0, True)
+        # 60 l bei 30 l/100 km
+        assert lage["reichweite_km"] == 200
+        assert lage["knapp"] is True
+        assert nachher["betriebsstoff"]["gemeldet"] == 1
+        assert [k["fahrzeug_id"] for k in nachher["betriebsstoff"]["knapp"]] == [str(fx.vehicle_a.id)]
+
+        # Die Meldung schreibt nicht in die Stammdaten zurück.
+        async with AsyncSessionLocal() as db:
+            fz = await db.get(Vehicle, fx.vehicle_a.id)
+            assert fz.tank_capacity_l == 300.0
+        await purge_clients([reg["client_id"]])

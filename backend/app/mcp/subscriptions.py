@@ -245,12 +245,13 @@ async def live_payload(org_id: str, konvoi_id: str) -> dict:
 
         convoy = await _load_convoy(ctx, konvoi_id)
         positionen = await _positionen(ctx, convoy)
-        zusammenfassung, fahrzeuge, staerke = _status(convoy)
+        zusammenfassung, fahrzeuge, staerke, betriebsstoff = _status(convoy)
         return {
             "konvoi": convoy.name,
             "konvoi_status": convoy.status,
             "zusammenfassung": zusammenfassung,
             "staerke": staerke,
+            "betriebsstoff": betriebsstoff,
             "fahrzeuge": fahrzeuge,
             "positionen": positionen,
         }
