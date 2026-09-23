@@ -16,6 +16,7 @@ from app.models.convoy import ConvoyVehicle
 from app.models.user import User
 from app.models.vehicle import Vehicle
 from app.models.vehicle_position import VehiclePosition
+from app.services import betriebsstoff as betriebsstoff_svc
 from app.services import belegung
 from app.services import staerke as staerke_svc
 from app.services import vehicle_status as vs
@@ -91,6 +92,28 @@ class StaerkeUpdate(BaseModel):
     fuehrer: int = Field(0, ge=0, le=staerke_svc.MAX_JE_ROLLE)
     unterfuehrer: int = Field(0, ge=0, le=staerke_svc.MAX_JE_ROLLE)
     mannschaften: int = Field(0, ge=0, le=staerke_svc.MAX_JE_ROLLE)
+
+
+class BetriebsstoffUpdate(BaseModel):
+    """Eine nachgetragene Betriebsstofflage.
+
+    Dieselben Regeln wie über den Fahrer-Link (``services/betriebsstoff.py``):
+    fehlende Angaben bleiben ``None`` und heißen „nicht bekannt", eine
+    unplausible Angabe weist die ganze Meldung ab. Anders als dort gibt es hier
+    eine Antwort — also ein 422 statt stillem Verwerfen.
+    """
+
+    verbrauch: float | None = None
+    tank: int | None = None
+    fuellstand: int | None = None
+
+    @model_validator(mode="after")
+    def pruefen(self):
+        werte = betriebsstoff_svc.normalisieren(self.verbrauch, self.tank, self.fuellstand)
+        if werte is None:
+            raise ValueError("Ohne Angabe ist das keine Meldung")
+        self.verbrauch, self.tank, self.fuellstand = werte
+        return self
 
 
 @router.get("/convoys/{convoy_id}/positions")
@@ -257,6 +280,42 @@ async def update_vehicle_staerke(
         "gesamt": gesamt,
     })
     return {"status": "ok", "gesamt": gesamt}
+
+
+@router.patch("/convoys/{convoy_id}/vehicles/{vehicle_id}/betriebsstoff")
+async def update_vehicle_betriebsstoff(
+    convoy_id: uuid.UUID,
+    vehicle_id: uuid.UUID,
+    data: BetriebsstoffUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Betriebsstofflage eines Fahrzeugs setzen.
+
+    Die Besatzung meldet über den Fahrer-Link; hier trägt die Führung nach, was
+    per Funk durchgegeben wurde. Dieselbe Schwelle wie bei der Stärke: wer
+    meldet, muss mindestens ``fahrer`` sein. Die Meldung ersetzt die vorige
+    ganz, wie auf dem anderen Weg auch.
+    """
+    await get_convoy_access(convoy_id, current_user, db, require="fahrer")
+    result = await db.execute(
+        select(ConvoyVehicle).where(
+            ConvoyVehicle.convoy_id == convoy_id,
+            ConvoyVehicle.vehicle_id == vehicle_id,
+        )
+    )
+    cv = result.scalar_one_or_none()
+    if not cv:
+        raise HTTPException(status_code=404, detail="Fahrzeug nicht im Verband")
+
+    werte = (data.verbrauch, data.tank, data.fuellstand)
+    cv.betriebsstoff_verbrauch, cv.betriebsstoff_tank, cv.betriebsstoff_fuellstand = werte
+    cv.betriebsstoff_gemeldet_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    nachricht = betriebsstoff_svc.update_nachricht(vehicle_id, werte, cv.betriebsstoff_gemeldet_at)
+    await tracking_manager.broadcast(str(convoy_id), nachricht)
+    return {"status": "ok", "gemeldet_at": nachricht["gemeldet_at"]}
 
 
 @router.delete("/convoys/{convoy_id}/vehicles/{vehicle_id}/position")

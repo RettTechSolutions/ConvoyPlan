@@ -507,6 +507,7 @@ async def test_kein_feld_der_zeile_faellt_beim_ausliefern_unter_den_tisch(verban
         cv.sonderfunktion, cv.mobile_phone = "spitzenfuehrer", "0170 1234567"
         cv.staerke_soll_fuehrer, cv.staerke_soll_unterfuehrer, cv.staerke_soll_mannschaften = 1, 2, 3
         cv.staerke_ist_fuehrer, cv.staerke_ist_unterfuehrer, cv.staerke_ist_mannschaften = 4, 5, 6
+        cv.betriebsstoff_verbrauch, cv.betriebsstoff_tank, cv.betriebsstoff_fuellstand = 28.5, 150, 40
         await db.commit()
 
     fahrzeug = (await _hole_verband(verband)).json()["convoy_vehicles"][0]
@@ -514,7 +515,9 @@ async def test_kein_feld_der_zeile_faellt_beim_ausliefern_unter_den_tisch(verban
     leer = [
         feld
         for feld in ConvoyVehicleItem.model_fields
-        if feld not in {"vehicle", "position", "status_changed_at", "staerke_gemeldet_at"}
+        if feld not in {
+            "vehicle", "position", "status_changed_at", "staerke_gemeldet_at", "betriebsstoff_gemeldet_at",
+        }
         and fahrzeug.get(feld) is None
     ]
     assert leer == []

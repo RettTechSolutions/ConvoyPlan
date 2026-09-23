@@ -32,6 +32,7 @@ from app.schemas.share_link import (
     TrackVehicle,
     TrackWaypoint,
 )
+from app.services import betriebsstoff as betriebsstoff_svc
 from app.services import belegung
 from app.services import geometry as geo_svc
 from app.services import route_steps as route_steps_svc
@@ -114,6 +115,13 @@ async def _build_payload(convoy_id: uuid.UUID, db: AsyncSession, scope: str = "t
             staerke_ist_fuehrer=cv.staerke_ist_fuehrer,
             staerke_ist_unterfuehrer=cv.staerke_ist_unterfuehrer,
             staerke_ist_mannschaften=cv.staerke_ist_mannschaften,
+            propulsion=cv.vehicle.propulsion or "combustion",
+            tank_capacity_l=cv.vehicle.tank_capacity_l,
+            fuel_consumption_l100km=cv.vehicle.fuel_consumption_l100km,
+            betriebsstoff_verbrauch=cv.betriebsstoff_verbrauch,
+            betriebsstoff_tank=cv.betriebsstoff_tank,
+            betriebsstoff_fuellstand=cv.betriebsstoff_fuellstand,
+            betriebsstoff_gemeldet_at=cv.betriebsstoff_gemeldet_at,
         )
         for cv in sorted(convoy.convoy_vehicles, key=lambda c: c.position)
     ]
@@ -363,14 +371,21 @@ async def _ingest_driver_staerke(convoy_uuid: uuid.UUID, msg: dict) -> dict:
 # stumm, und ein Frame, der im Funkloch zwischen Socket und Server verloren ging,
 # sieht aus wie einer, auf den der Server nur noch nicht geantwortet hat.
 #
-# Deshalb antwortet der Server auf Status- und Stärke-Frames mit einer
+# Deshalb antwortet der Server auf Status-, Stärke- und Betriebsstoff-Frames mit einer
 # ``client_id`` ausdrücklich — und nur dem Absender. Ohne ``client_id`` bleibt
 # alles wie gehabt; die PWA und ältere Apps merken nichts davon.
 
 # Was der Server auf dieser Verbindung kann. Kommt beim Verbinden als erster
 # Frame, damit ein Client weiß, ob er auf eine Quittung warten darf — ein
 # älterer Server schickt keinen, und dann bleibt nur das Echo.
-HELLO = {"type": "hello", "protocol": 2, "features": ["ack"]}
+#
+# ``ack-betriebsstoff`` steht eigens dabei: Ein Server, der Status und Stärke
+# schon quittiert, den Betriebsstoff-Frame aber noch nicht kennt, sagte sonst
+# ebenfalls „ack" — und die App wartete auf eine Quittung, die nie kommt.
+HELLO = {"type": "hello", "protocol": 2, "features": ["ack", "ack-betriebsstoff"]}
+
+# Welche Frames eine Quittung bekommen, und wer sie verarbeitet.
+_QUITTIERT = ("status", "staerke", "betriebsstoff")
 
 _CLIENT_ID_MAX = 64
 
@@ -400,7 +415,11 @@ async def _ingest_acked(convoy_uuid: uuid.UUID, frame: str, raw: dict, client_id
     if known is not None:
         return await known
 
-    ingest = _ingest_driver_status if frame == "status" else _ingest_driver_staerke
+    ingest = {
+        "status": _ingest_driver_status,
+        "staerke": _ingest_driver_staerke,
+        "betriebsstoff": _ingest_driver_betriebsstoff,
+    }[frame]
     try:
         result = _ack(client_id, frame, await ingest(convoy_uuid, raw))
     except Exception:
@@ -417,6 +436,53 @@ async def _ingest_acked(convoy_uuid: uuid.UUID, frame: str, raw: dict, client_id
         raise
     tracking_manager.settle_ack(key, result)
     return result
+
+
+async def _ingest_driver_betriebsstoff(convoy_uuid: uuid.UUID, msg: dict) -> dict:
+    """Persist + broadcast a fuel report sent by a "driver" share-link holder.
+
+    Dieselben Regeln wie bei der Stärke: Das Fahrzeug muss zu diesem Verband
+    gehören, und eine unplausible Meldung wird verworfen — mit ``client_id``
+    samt Quittung und Grund, ohne still.
+
+    Die Meldung ersetzt die vorige **ganz** — auch eine Angabe, die diesmal
+    fehlt. Die App schickt immer ihren vollständigen Stand; ein fehlendes Feld
+    heißt dort „nicht bekannt", und das soll die Führung auch so sehen, statt
+    einen alten Tank neben einem neuen Füllstand.
+    """
+    try:
+        vehicle_id = uuid.UUID(str(msg.get("vehicle_id")))
+    except (TypeError, ValueError):
+        return _rejected("invalid-vehicle")
+    try:
+        werte = betriebsstoff_svc.normalisieren(
+            msg.get("verbrauch"), msg.get("tank"), msg.get("fuellstand")
+        )
+    except (TypeError, ValueError):
+        return _rejected("invalid-betriebsstoff")
+    if werte is None:
+        return _rejected("invalid-betriebsstoff")  # eine Meldung ohne jede Angabe ist keine
+    verbrauch, tank, fuellstand = werte
+
+    async with AsyncSessionLocal() as db:
+        cv = await db.get(ConvoyVehicle, (convoy_uuid, vehicle_id))
+        if cv is None:
+            return _rejected("vehicle-not-in-convoy")
+        cv.betriebsstoff_verbrauch = verbrauch
+        cv.betriebsstoff_tank = tank
+        cv.betriebsstoff_fuellstand = fuellstand
+        cv.betriebsstoff_gemeldet_at = datetime.now(timezone.utc)
+        await db.commit()
+        gemeldet_at = cv.betriebsstoff_gemeldet_at
+
+    await tracking_manager.broadcast(
+        str(convoy_uuid), betriebsstoff_svc.update_nachricht(vehicle_id, werte, gemeldet_at)
+    )
+    return {
+        "result": "ok",
+        "applied": {"verbrauch": verbrauch, "tank": tank, "fuellstand": fuellstand},
+        "ts": gemeldet_at.isoformat(),
+    }
 
 
 def _fahrzeug_aus(raw: dict) -> str | None:
@@ -478,7 +544,7 @@ async def track_ws(
             if not isinstance(raw, dict):
                 continue
             kind = raw.get("type")
-            client_id = _client_id(raw) if kind in ("status", "staerke") else None
+            client_id = _client_id(raw) if kind in _QUITTIERT else None
             # Viewer links are read-only — drained frames (heartbeats) are ignored.
             # Wer ausdrücklich nach einer Quittung fragt, erfährt, warum nichts geschah.
             if not is_driver:
@@ -516,6 +582,8 @@ async def track_ws(
                 await _ingest_driver_status(convoy_uuid, raw)
             elif kind == "staerke":
                 await _ingest_driver_staerke(convoy_uuid, raw)
+            elif kind == "betriebsstoff":
+                await _ingest_driver_betriebsstoff(convoy_uuid, raw)
             else:
                 await _ingest_driver_position(convoy_uuid, raw)
     except WebSocketDisconnect:

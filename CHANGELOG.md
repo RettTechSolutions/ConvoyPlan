@@ -21,6 +21,18 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Added
+
+- **Fahrzeuge melden ihre Betriebsstofflage, die Konvoiführung sieht Füllstand und Reichweite.** Die Companion-App schickt über den Fahrer-Link Füllstand (%), Verbrauch (l/100 km) und Tankvolumen (l) als neuen Frame `{"type": "betriebsstoff", …}`; der Server prüft die Grenzen (Verbrauch über 0 bis 150, Tank über 0 bis 1500, Füllstand 0–100), verwirft eine unplausible Meldung ganz und sendet `betriebsstoff_update` an alle offenen Ansichten. Eine neue Meldung ersetzt die vorige vollständig; ein leerer Tank ist eine Meldung, „nicht gemeldet" bleibt `null`.
+
+  Die Fahrzeugliste in Tracking-Ansicht und Fahrer-Link zeigt ein ⛽ mit dem Füllstand, ab 25 % hervorgehoben; Reichweite und Einzelwerte stehen im Tooltip. Fehlen Tank oder Verbrauch in der Meldung, rechnet die Anzeige mit den Kraftstoff-Stammdaten des Fahrzeugs — die dafür jetzt auch in der Tracking-Nutzlast stehen — und sagt das dazu. Die Meldung schreibt nie in die Stammdaten zurück; die Tankstopp-Planung bleibt, wie sie war.
+
+  Die Führung trägt eine per Funk durchgegebene Lage in der Tracking-Ansicht nach — im selben ✎-Feld wie die Stärke, über `PATCH /api/convoys/{id}/vehicles/{vehicle_id}/betriebsstoff` (Rolle `fahrer`, dieselben Grenzen, dieselbe Nachricht an alle offenen Ansichten).
+
+  Über den MCP-Server ebenso: `fahrzeug_betriebsstoff_melden` (Scope `fleet:status`, Bereich *Status*) meldet, meist genügt der Füllstand. `konvoi_status` liest je Fahrzeug Füllstand und Reichweite und für den Verband, wer knapp ist und wer nichts gemeldet hat. Der Bereich heißt jetzt *Live-Positionen, Marschstatus, Mannschaftsstärke und Betriebsstoff*.
+
+  Wie Status und Stärke wird auch die Betriebsstoffmeldung dem Absender quittiert, wenn sie eine `client_id` trägt: höchstens einmal verarbeitet, bei einer Ablehnung mit Grund (`invalid-betriebsstoff`, `vehicle-not-in-convoy`, `vehicle-taken` …). Der Server kündigt das eigens an (`hello` mit `"ack-betriebsstoff"` in `features`), damit ein Client gegen einen Server, der nur Status und Stärke quittiert, nicht auf eine Quittung wartet, die nie kommt.
+
 ## [2026.7.0] – 2026-09-23
 
 ### Added

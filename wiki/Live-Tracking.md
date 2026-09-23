@@ -178,6 +178,35 @@ Das Soll ändert nur die Planung, nie die Meldung der Besatzung.
 
 ---
 
+## Betriebsstofflage
+
+Die Besatzung meldet über die **Companion-App** (Reiter *Melden*), wie es um
+den Kraftstoff steht: **Füllstand** in Prozent, dazu auf Wunsch **Verbrauch**
+(l/100 km) und **Tankvolumen** (l). In der Fahrzeugliste steht dann neben der
+Stärke ein **⛽** mit dem Füllstand; der Tooltip nennt Liter im Tank, Verbrauch
+und die **Reichweite**. Ab 25 % wird die Anzeige gelb.
+
+Lässt die Meldung Tank oder Verbrauch offen, rechnet die Reichweite mit den
+**Stammdaten** des Fahrzeugs und sagt das dazu. Umgekehrt ändert eine Meldung
+die Stammdaten nicht: Die Planung der Tankstopps rechnet weiter mit dem, was am
+Fahrzeug eingetragen ist. Bei E-Fahrzeugen steht nur der gemeldete Füllstand da —
+Prozent gegen Liter gerechnet ergäbe eine erfundene Reichweite.
+
+Ohne Meldung steht nichts da. Eine neue Meldung ersetzt die vorige ganz; ein
+leerer Tank (0 %) ist eine Meldung und keine Lücke.
+
+### Eine Funkmeldung nachtragen
+
+Meldet eine Besatzung ihren Füllstand über Funk, trägt die Konvoiführung ihn
+nach: im Reiter **Fahrzeuge** auf das **✎** neben dem Fahrzeug — dasselbe Feld,
+in dem auch die Stärke nachgetragen wird. Tank und Verbrauch stehen aus der
+letzten Meldung oder aus den Stammdaten schon drin; meist genügt ein Griff auf
+**¼**, **½**, **¾** oder **Voll** und **Betriebsstoff eintragen**. Die Meldung
+steht sofort bei allen Beteiligten, auch in der Companion-App.
+
+Wie bei der Stärke braucht es dafür mindestens die Rolle **Fahrer**; ein
+Beobachter sieht die Lage, kann sie aber nicht setzen.
+
 ## Alarm bei technischem Halt und Ausfall
 
 Fordert ein Fahrzeug einen technischen Halt an oder meldet einen Ausfall,

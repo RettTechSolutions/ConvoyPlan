@@ -8,11 +8,13 @@ ConvoyPlan kann seine Fachdaten über einen **Model-Context-Protocol-Server** be
 
 ## Was der Server kann
 
-**Lesen** (neun Werkzeuge): Konvois und Unterkonvois auflisten, Konvoi-Details samt aller sieben Abschnitte des Marschbefehls, Fahrzeugbestand und Einzelfahrzeug, Wegpunkte in Marschreihenfolge, die gespeicherte Route, zuletzt gemeldete Positionen, Marschstatus und Mannschaftsstärke je Fahrzeug.
+**Lesen** (neun Werkzeuge): Konvois und Unterkonvois auflisten, Konvoi-Details samt aller sieben Abschnitte des Marschbefehls, Fahrzeugbestand und Einzelfahrzeug, Wegpunkte in Marschreihenfolge, die gespeicherte Route, zuletzt gemeldete Positionen, Marschstatus, Mannschaftsstärke und Betriebsstofflage je Fahrzeug.
 
-**Schreiben** (dreizehn Werkzeuge, nur mit gültiger Lizenz): Konvoi und Fahrzeug anlegen und ändern, Fahrzeuge zuordnen und wieder lösen, Marschfolge setzen, Wegpunkte anlegen, ändern und umsortieren, Route berechnen, Fahrzeugstatus und Mannschaftsstärke melden.
+**Schreiben** (vierzehn Werkzeuge, nur mit gültiger Lizenz): Konvoi und Fahrzeug anlegen und ändern, Fahrzeuge zuordnen und wieder lösen, Marschfolge setzen, Wegpunkte anlegen, ändern und umsortieren, Route berechnen, Fahrzeugstatus, Mannschaftsstärke und Betriebsstoff melden.
 
-Die Stärke meldet `fahrzeugstaerke_melden` in der Notation Führer/Unterführer/Mannschaften; die Gesamtzahl rechnet der Server und nimmt sie nicht entgegen. `konvoi_status` gibt sie je Fahrzeug und als Verbandsstärke zurück. Ein Fahrzeug **ohne** Meldung steht dort als `null` — nicht als `0/0/0`, das eine Meldung wäre und „unbesetzt" hieße. Melden braucht den Scope `fleet:status`, Lesen `convoy:read`; beides zusätzlich den freigegebenen Bereich *Live-Positionen, Marschstatus und Mannschaftsstärke*.
+Die Stärke meldet `fahrzeugstaerke_melden` in der Notation Führer/Unterführer/Mannschaften; die Gesamtzahl rechnet der Server und nimmt sie nicht entgegen. `konvoi_status` gibt sie je Fahrzeug und als Verbandsstärke zurück. Ein Fahrzeug **ohne** Meldung steht dort als `null` — nicht als `0/0/0`, das eine Meldung wäre und „unbesetzt" hieße. Melden braucht den Scope `fleet:status`, Lesen `convoy:read`; beides zusätzlich den freigegebenen Bereich *Live-Positionen, Marschstatus, Mannschaftsstärke und Betriebsstoff*.
+
+Den Betriebsstoff meldet `fahrzeug_betriebsstoff_melden` — meist genügt `fuellstand_prozent`, denn Tankvolumen und Verbrauch kennt ConvoyPlan aus den Stammdaten des Fahrzeugs. Die Meldung ersetzt die vorige ganz und ändert die Stammdaten nicht. `konvoi_status` gibt je Fahrzeug Füllstand, Liter im Tank und Reichweite zurück (mit dem Hinweis, wo die Stammdaten eingesprungen sind) und für den Verband, wer knapp ist (ab 25 %) und wer noch nichts gemeldet hat. Auch hier heißt `null` „nicht gemeldet", ein Füllstand `0` dagegen „leer". Scope und Bereich wie bei der Stärke.
 
 **Dokumente** (Resources): Marschbefehl als PDF, Route als GPX, Konvoi als JSON — dieselben Exporte wie im Portal.
 

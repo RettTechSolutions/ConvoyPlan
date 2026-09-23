@@ -83,6 +83,12 @@ export interface ConvoyVehicleItem {
 	staerke_ist_unterfuehrer: number | null;
 	staerke_ist_mannschaften: number | null;
 	staerke_gemeldet_at: string | null;
+	// Betriebsstofflage (siehe $lib/tracking/betriebsstoff) — null heißt
+	// „nicht gemeldet", ein Füllstand 0 heißt „leer".
+	betriebsstoff_verbrauch?: number | null;
+	betriebsstoff_tank?: number | null;
+	betriebsstoff_fuellstand?: number | null;
+	betriebsstoff_gemeldet_at?: string | null;
 }
 
 export interface Convoy {
@@ -348,6 +354,17 @@ export const trackingApi = {
 	) => api.patch<{ status: string; gesamt: number }>(
 		`/api/convoys/${convoyId}/vehicles/${vehicleId}/staerke`, staerke,
 	),
+	/**
+	 * Betriebsstofflage setzen — für die Führung, die eine Funkmeldung
+	 * nachträgt. Ersetzt die vorige Meldung ganz; `null` heißt „nicht bekannt".
+	 */
+	updateVehicleBetriebsstoff: (
+		convoyId: string,
+		vehicleId: string,
+		lage: { verbrauch: number | null; tank: number | null; fuellstand: number | null },
+	) => api.patch<{ status: string; gemeldet_at: string }>(
+		`/api/convoys/${convoyId}/vehicles/${vehicleId}/betriebsstoff`, lage,
+	),
 	/** GPS-Freigabe eines Fahrzeugs beenden (Position löschen). suppress=false beim Selbst-Stopp. */
 	clearVehiclePosition: (convoyId: string, vehicleId: string, suppress = true) =>
 		api.delete(`/api/convoys/${convoyId}/vehicles/${vehicleId}/position?suppress=${suppress}`),
@@ -485,6 +502,13 @@ export interface TrackVehicle {
 	staerke_ist_fuehrer: number | null;
 	staerke_ist_unterfuehrer: number | null;
 	staerke_ist_mannschaften: number | null;
+	propulsion?: string;
+	tank_capacity_l?: number | null;
+	fuel_consumption_l100km?: number | null;
+	betriebsstoff_verbrauch?: number | null;
+	betriebsstoff_tank?: number | null;
+	betriebsstoff_fuellstand?: number | null;
+	betriebsstoff_gemeldet_at?: string | null;
 }
 export interface TrackPosition {
 	vehicle_id: string; lat: number; lon: number;

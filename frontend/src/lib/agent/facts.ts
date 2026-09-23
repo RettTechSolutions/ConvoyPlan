@@ -160,16 +160,16 @@ export const CAPABILITIES: readonly Capability[] = [
 	},
 	{
 		id: 'positionen-lesen',
-		name: 'Live-Positionen, Marschstatus und Stärke lesen',
+		name: 'Live-Positionen, Marschstatus, Stärke und Betriebsstoff lesen',
 		description:
-			'Aktuelle Fahrzeugpositionen, Projektion auf die Route, Status und gemeldete Mannschaftsstärke einer laufenden Fahrt abfragen.',
+			'Aktuelle Fahrzeugpositionen, Projektion auf die Route, Status, gemeldete Mannschaftsstärke und Betriebsstofflage einer laufenden Fahrt abfragen.',
 		scope: 'convoy:read'
 	},
 	{
 		id: 'status-melden',
-		name: 'Fahrzeugstatus und Mannschaftsstärke melden',
+		name: 'Fahrzeugstatus, Mannschaftsstärke und Betriebsstoff melden',
 		description:
-			'Den Marschstatus und die Mannschaftsstärke eines Fahrzeugs setzen — das, was eine Besatzung unterwegs tut.',
+			'Den Marschstatus, die Mannschaftsstärke und den Füllstand eines Fahrzeugs setzen — das, was eine Besatzung unterwegs tut.',
 		scope: 'fleet:status'
 	},
 	{

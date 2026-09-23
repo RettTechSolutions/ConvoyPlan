@@ -7,9 +7,10 @@ import {
  * Die Zusage: **in der Fahrzeugliste verdeckt nichts etwas anderes.**
  *
  * Am Telefon ist die Seitenleiste eine Schublade von `min(400px, 90vw)`. In
- * eine Zeile gehören Name, Funkrufname, Sonderfunktion, „LIVE", die Stärke und
- * der Status — auf einem gewöhnlichen Telefon mehr, als nebeneinander passt;
- * die breitere Schublade verschiebt diese Grenze nur, sie hebt sie nicht auf.
+ * eine Zeile gehören Name, Funkrufname, Sonderfunktion, „LIVE", die Stärke, der
+ * Betriebsstoff und der Status — auf einem gewöhnlichen Telefon mehr, als
+ * nebeneinander passt; die breitere Schublade verschiebt diese Grenze nur, sie
+ * hebt sie nicht auf.
  * Solange die Zeile nicht umbrechen durfte, schrumpfte nur der Name; alles
  * dahinter lief weiter und legte sich über die rechte Hälfte: das
  * „LIVE"-Abzeichen stand mitten in der Stärke, und beides war unlesbar.
@@ -38,7 +39,7 @@ async function kaesten(page: Page): Promise<Kasten[]> {
 		const zeile = document.querySelector('.vehicle-row');
 		if (!zeile) throw new Error('Keine Fahrzeugzeile gefunden');
 		const teile = [
-			...zeile.querySelectorAll('.vname, .tag, .live-badge, .status-chip, .status-label, [data-testid^="staerke-"]'),
+			...zeile.querySelectorAll('.vname, .tag, .live-badge, .status-chip, .status-label, [data-testid^="staerke-"], [data-testid^="betriebsstoff-"]'),
 		] as HTMLElement[];
 		return teile.map((el) => {
 			const r = el.getBoundingClientRect();
@@ -92,6 +93,7 @@ test.describe('Fahrzeugzeile am Telefon', () => {
 			fahrzeuge: [konvoiFahrzeug({
 				vehicle_status: 'moving',
 				staerke_ist_fuehrer: 0, staerke_ist_unterfuehrer: 1, staerke_ist_mannschaften: 1,
+				betriebsstoff_verbrauch: 30, betriebsstoff_tank: 200, betriebsstoff_fuellstand: 100,
 				vehicle: { id: 'v1', name: NAME, callsign: FUNKRUFNAME },
 			})],
 			positionen: [position('v1')],
@@ -115,6 +117,7 @@ test.describe('Fahrzeugzeile am Telefon', () => {
 				id: 'v1', name: NAME, callsign: FUNKRUFNAME, sonderfunktion: 'Führung',
 				vehicle_status: 'moving',
 				staerke_ist_fuehrer: 0, staerke_ist_unterfuehrer: 1, staerke_ist_mannschaften: 1,
+				betriebsstoff_verbrauch: 30, betriebsstoff_tank: 200, betriebsstoff_fuellstand: 100,
 			})],
 			positionen: [position('v1')],
 		});

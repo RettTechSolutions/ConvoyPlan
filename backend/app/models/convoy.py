@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 from geoalchemy2 import Geometry
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -83,6 +83,14 @@ class ConvoyVehicle(Base):
     staerke_ist_unterfuehrer: Mapped[int | None] = mapped_column(Integer, nullable=True)
     staerke_ist_mannschaften: Mapped[int | None] = mapped_column(Integer, nullable=True)
     staerke_gemeldet_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Betriebsstofflage, wie die Besatzung sie meldet: Verbrauch (l/100 km),
+    # Tankvolumen (l), Füllstand (%). NULL heißt "nicht gemeldet" — ein
+    # Füllstand 0 heißt "leer". Reichweite wird gerechnet, nie gespeichert
+    # (app/services/betriebsstoff.py).
+    betriebsstoff_verbrauch: Mapped[float | None] = mapped_column(Float, nullable=True)
+    betriebsstoff_tank: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    betriebsstoff_fuellstand: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    betriebsstoff_gemeldet_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     convoy: Mapped["Convoy"] = relationship(back_populates="convoy_vehicles")
     vehicle: Mapped["Vehicle"] = relationship(back_populates="convoy_vehicles")

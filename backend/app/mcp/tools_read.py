@@ -38,6 +38,7 @@ from app.models.vehicle import Vehicle
 from app.models.vehicle_position import VehiclePosition
 from app.models.waypoint import Waypoint
 from app.services import geometry as geo_svc
+from app.services import betriebsstoff as betriebsstoff_svc
 from app.services import staerke as staerke_svc
 
 
@@ -222,14 +223,67 @@ def _staerke_notation(
     return None if werte is None else "/".join(str(w) for w in werte)
 
 
-def _status(convoy: Convoy) -> tuple[dict[str, int], list[dict], dict]:
-    """Zusammenfassung, Einzelstatus und Mannschaftsstärke eines Konvois."""
+def _betriebsstoff(cv) -> dict | None:
+    """Die Betriebsstofflage eines Fahrzeugs — oder None, wenn nichts gemeldet ist.
+
+    Stammdaten allein sind keine Lage: Ohne Meldung kommt None zurück, nicht
+    der geplante Tank. Fehlen Tank oder Verbrauch in der Meldung, rechnet die
+    Reichweite mit den Stammdaten und sagt das dazu — außer bei einem
+    E-Fahrzeug, dessen Stammdaten in kWh stehen; Prozent gegen Liter ergäbe
+    eine erfundene Reichweite."""
+    verbrauch, tank, fuellstand = (
+        cv.betriebsstoff_verbrauch, cv.betriebsstoff_tank, cv.betriebsstoff_fuellstand
+    )
+    if verbrauch is None and tank is None and fuellstand is None:
+        return None
+
+    fahrzeug = cv.vehicle
+    elektrisch = fahrzeug is not None and fahrzeug.propulsion == "electric"
+    tank_stamm = verbrauch_stamm = False
+    if not elektrisch and fahrzeug is not None:
+        if tank is None and fahrzeug.tank_capacity_l:
+            tank, tank_stamm = fahrzeug.tank_capacity_l, True
+        if verbrauch is None and fahrzeug.fuel_consumption_l100km:
+            verbrauch, verbrauch_stamm = fahrzeug.fuel_consumption_l100km, True
+
+    reichweite = None if elektrisch else betriebsstoff_svc.reichweite_km(verbrauch, tank, fuellstand)
+    return {
+        "fuellstand_prozent": fuellstand,
+        "tank_l": tank,
+        "tank_aus_stammdaten": tank_stamm,
+        "verbrauch_l_100km": verbrauch,
+        "verbrauch_aus_stammdaten": verbrauch_stamm,
+        "liter_im_tank": (
+            None if elektrisch or tank is None or fuellstand is None
+            else round(tank * fuellstand / 100, 1)
+        ),
+        "reichweite_km": None if reichweite is None else round(reichweite),
+        "elektrisch": elektrisch,
+        "knapp": fuellstand is not None and fuellstand <= betriebsstoff_svc.KNAPP_AB_PROZENT,
+        "gemeldet_seit": _iso(cv.betriebsstoff_gemeldet_at),
+    }
+
+
+def _status(convoy: Convoy) -> tuple[dict[str, int], list[dict], dict, dict]:
+    """Zusammenfassung, Einzelstatus, Mannschaftsstärke und Betriebsstofflage."""
     zusammenfassung: dict[str, int] = {}
     fahrzeuge = []
     summe = [0, 0, 0]
     gemeldet = 0
     offen = 0
+    bs_gemeldet = 0
+    knapp: list[dict] = []
     for cv in sorted(convoy.convoy_vehicles, key=lambda c: c.position):
+        lage = _betriebsstoff(cv)
+        if lage is not None:
+            bs_gemeldet += 1
+            if lage["knapp"]:
+                knapp.append({
+                    "fahrzeug_id": str(cv.vehicle_id),
+                    "name": cv.vehicle.name if cv.vehicle else None,
+                    "fuellstand_prozent": lage["fuellstand_prozent"],
+                    "reichweite_km": lage["reichweite_km"],
+                })
         zusammenfassung[cv.vehicle_status] = zusammenfassung.get(cv.vehicle_status, 0) + 1
         ist = staerke_svc.normalisieren(
             cv.staerke_ist_fuehrer, cv.staerke_ist_unterfuehrer, cv.staerke_ist_mannschaften
@@ -259,6 +313,7 @@ def _status(convoy: Convoy) -> tuple[dict[str, int], list[dict], dict]:
                     "gesamt": None if ist is None else sum(ist),
                     "gemeldet_seit": _iso(cv.staerke_gemeldet_at),
                 },
+                "betriebsstoff": lage,
             }
         )
     staerke = {
@@ -268,7 +323,15 @@ def _status(convoy: Convoy) -> tuple[dict[str, int], list[dict], dict]:
         "gesamt": sum(summe) if gemeldet else None,
         "offen": offen,
     }
-    return zusammenfassung, fahrzeuge, staerke
+    # Die Frage, die eine Führung unterwegs stellt: Wer muss als Nächstes
+    # tanken? „offen" zählt, wer nichts gemeldet hat — über die weiß niemand
+    # etwas, und das darf nicht als „alles gut" durchgehen.
+    betriebsstoff = {
+        "gemeldet": bs_gemeldet,
+        "offen": len(fahrzeuge) - bs_gemeldet,
+        "knapp": knapp,
+    }
+    return zusammenfassung, fahrzeuge, staerke, betriebsstoff
 
 
 def _convoy_query(org_id: uuid.UUID):
@@ -652,17 +715,23 @@ def register(mcp) -> None:
         oder ausgefallen sind — die Frage, die unterwegs am häufigsten
         gestellt wird.
 
+        Dazu je Fahrzeug die gemeldete Mannschaftsstärke und Betriebsstofflage
+        (Füllstand, Reichweite) und für den Verband, wer knapp an Betriebsstoff
+        ist. Ein Fahrzeug ohne Meldung steht dort als ``null`` — unbekannt,
+        nicht leer.
+
         Args:
             konvoi_id: Die ID des Konvois.
         """
         async with mcp_context("konvoi_status") as ctx:
             ctx.require(SCOPE_READ)
             convoy = await _load_convoy(ctx, konvoi_id)
-            zusammenfassung, fahrzeuge, staerke = _status(convoy)
+            zusammenfassung, fahrzeuge, staerke, betriebsstoff = _status(convoy)
             return {
                 "konvoi": convoy.name,
                 "konvoi_status": convoy.status,
                 "zusammenfassung": zusammenfassung,
                 "staerke": staerke,
+                "betriebsstoff": betriebsstoff,
                 "fahrzeuge": fahrzeuge,
             }
