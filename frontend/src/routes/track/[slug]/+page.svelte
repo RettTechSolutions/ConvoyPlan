@@ -8,10 +8,13 @@
 	import QrShare from '$lib/components/QrShare.svelte';
 	import StaerkeBadge from '$lib/components/StaerkeBadge.svelte';
 	import StaerkeForm from '$lib/components/StaerkeForm.svelte';
+	import FuellstandBadge from '$lib/components/FuellstandBadge.svelte';
+	import FuellstandForm from '$lib/components/FuellstandForm.svelte';
+	import { fuellstandAnzeige, mitMeldung, type FuellstandMeldung } from '$lib/tracking/fuellstand';
 	import { type Staerke, type StaerkeFelder } from '$lib/tracking/staerke';
 	import {
 		trackApi, isTrackGate,
-		type TrackPayload, type TrackGate, type TrackPosition, type VehiclePosition,
+		type TrackPayload, type TrackGate, type TrackPosition, type TrackVehicle, type VehiclePosition,
 		type Waypoint,
 	} from '$lib/api';
 	import {
@@ -55,6 +58,8 @@
 	// Stärkemeldungen, die während der geöffneten Ansicht hereinkommen —
 	// sie schlagen die Zahlen aus der Nutzlast beim Laden.
 	let liveStaerken = $state<Map<string, Staerke>>(new Map());
+	// Dasselbe für den Füllstand von Tank bzw. Akku.
+	let liveFuellstaende = $state<Map<string, FuellstandMeldung>>(new Map());
 	let live: LiveSocket | null = null;
 	let mapView = $state<ReturnType<typeof MapView>>();
 
@@ -75,6 +80,7 @@
 	let availableVehicles = $derived(
 		(data?.vehicles ?? []).filter((v) => v.id === myVehicleId || !livePositions.has(v.id))
 	);
+	let myVehicle = $derived((data?.vehicles ?? []).find((x) => x.id === myVehicleId) ?? null);
 	let myStatus = $derived.by(() => {
 		const v = (data?.vehicles ?? []).find((x) => x.id === myVehicleId);
 		return v ? statusOf(v) : 'planned';
@@ -107,6 +113,11 @@
 			staerke_ist_unterfuehrer: live.unterfuehrer,
 			staerke_ist_mannschaften: live.mannschaften,
 		};
+	}
+
+	/** Die Füllstandsfelder eines Fahrzeugs, mit der neuesten Live-Meldung obenauf. */
+	function fuellstandVon(v: TrackVehicle): TrackVehicle {
+		return mitMeldung(v, liveFuellstaende.get(v.id));
 	}
 
 	function tokenStorageKey(s: string) { return `track_token_${s}`; }
@@ -143,6 +154,7 @@
 				livePositions = initial;
 				liveStatuses = new Map();
 				liveStaerken = new Map();
+				liveFuellstaende = new Map();
 				connectWs(token);
 				restoreDriverSession();
 			}
@@ -218,6 +230,17 @@
 							fuehrer: msg.fuehrer, unterfuehrer: msg.unterfuehrer, mannschaften: msg.mannschaften,
 						});
 						liveStaerken = next;
+					}
+					return;
+				}
+				if (msg.type === 'fuellstand_update') {
+					if (typeof msg.vehicle_id === 'string' && typeof msg.prozent === 'number') {
+						const next = new Map(liveFuellstaende);
+						next.set(msg.vehicle_id, {
+							prozent: msg.prozent,
+							gemeldet_at: typeof msg.gemeldet_at === 'string' ? msg.gemeldet_at : null,
+						});
+						liveFuellstaende = next;
 					}
 					return;
 				}
@@ -317,6 +340,24 @@
 		const next = new Map(liveStaerken);
 		next.set(myVehicleId, werte);
 		liveStaerken = next;
+		return true;
+	}
+
+	/**
+	 * Den eigenen Füllstand melden — derselbe Weg wie bei der Stärke, über den
+	 * WebSocket des Fahrer-Links. Das Backend nimmt nur ganze Zahlen von 0 bis
+	 * 100 und verwirft alles andere stillschweigend; `FuellstandForm` liefert
+	 * deshalb schon geklemmt.
+	 */
+	function sendDriverFuellstand(prozent: number): boolean {
+		if (!myVehicleId) { driverError = 'Bitte zuerst ein Fahrzeug auswählen'; return false; }
+		if (!wsReady()) { driverError = 'Keine Verbindung – Füllstand nicht gesendet'; return false; }
+		driverError = '';
+		live!.send({ type: 'fuellstand', vehicle_id: myVehicleId, prozent });
+		// Optimistisch: die eigene Meldung steht sofort in der eigenen Liste.
+		const next = new Map(liveFuellstaende);
+		next.set(myVehicleId, { prozent, gemeldet_at: new Date().toISOString() });
+		liveFuellstaende = next;
 		return true;
 	}
 
@@ -579,6 +620,19 @@
 							Stellen gleich aus, weil sie dieselbe ist.
 						-->
 						<StaerkeForm onMelden={sendDriverStaerke} testid="staerke-form-fahrer" />
+						<!--
+							`#key`, damit ein Wechsel des Fahrzeugs das Feld neu aus
+							dessen Meldung füllt statt die alte Zahl zu behalten.
+						-->
+						{#key myVehicleId}
+							<FuellstandForm
+								titel={myVehicle?.propulsion === 'electric' ? 'Akkustand melden' : 'Tankstand melden'}
+								knopf={myVehicle?.propulsion === 'electric' ? '🔋 Füllstand melden' : '⛽ Füllstand melden'}
+								vorgabe={myVehicle ? (fuellstandVon(myVehicle).fuellstand_ist_prozent ?? null) : null}
+								onMelden={sendDriverFuellstand}
+								testid="fuellstand-form-fahrer"
+							/>
+						{/key}
 					{/if}
 
 				</div>
@@ -634,6 +688,7 @@
 				{#if activeTab === 'fahrzeuge'}
 					<div class="section">
 						{#each data.vehicles as v}
+							{@const fs = fuellstandVon(v)}
 							<div class="vehicle-row">
 								<div class="veh-left">
 									<span class="status-dot" style="background:{STATUS_COLORS[statusOf(v)] ?? '#95a5a6'}"></span>
@@ -648,6 +703,9 @@
 										{STATUS_LABELS[statusOf(v)] ?? statusOf(v)}
 									</span>
 								</div>
+								{#if fuellstandAnzeige(fs)}
+									<div class="veh-fuel"><FuellstandBadge fahrzeugId={v.id} felder={fs} /></div>
+								{/if}
 							</div>
 						{/each}
 						{#if data.vehicles.length === 0}
@@ -821,6 +879,9 @@
 	.tag { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: .05rem .3rem; background: var(--surface-2); border-radius: 3px; font-size: var(--text-xs); flex-shrink: 0; color: var(--text-2); }
 	.live-badge { background: #27ae60; color: white; border-radius: 3px; padding: .05rem .3rem; font-size: var(--text-xs); font-weight: 700; flex-shrink: 0; animation: pulse 1.5s infinite; }
 	.status-label { font-size: var(--text-xs); font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+	/* Der Füllstand bekommt eine eigene Zeile: mit Litern und Reichweite ist er
+	   zu lang für die rechte Hälfte, und dort drängte er die Stärke hinaus. */
+	.veh-fuel { flex: 1 0 100%; min-width: 0; display: flex; padding-left: calc(8px + .3rem); }
 
 	/* Schedule table */
 	.schedule-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }

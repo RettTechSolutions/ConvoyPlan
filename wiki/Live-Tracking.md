@@ -152,6 +152,51 @@ Das Soll ändert nur die Planung, nie die Meldung der Besatzung.
 
 ---
 
+## Füllstand melden (Tank/Akku)
+
+Unter der Stärke steht **Tankstand melden** (bei E-Fahrzeugen **Akkustand
+melden**). Gemeldet wird in **Prozent** — so, wie man die Tankanzeige abliest:
+die Knöpfe **Reserve** (10 %), **¼**, **½**, **¾** und **Voll** füllen das Feld,
+ein genauerer Wert lässt sich als ganze Zahl von 0 bis 100 eintippen. Wie bei
+der Stärke geht die Meldung erst auf **Füllstand melden** hinaus; ein
+versehentlich getippter Knopf ist noch keine Meldung.
+
+Liter bzw. Kilowattstunden und die Reichweite rechnet ConvoyPlan aus den
+[Fahrzeugdaten](Fahrzeuge) (Tankinhalt bzw. Akkukapazität und Verbrauch). In
+der Fahrzeugliste steht dann etwa:
+
+```
+⛽ Tank 50 % · ≈ 40 l · ≈ 320 km
+🔋 Akku 50 % · ≈ 38,5 kWh · ≈ 214 km
+```
+
+Fehlen Tankinhalt oder Verbrauch, entfällt die jeweilige Umrechnung, die
+Prozentangabe bleibt.
+
+Zwei Dinge hält die Anzeige auseinander:
+
+- **Gemeldet** — was die Besatzung unterwegs angegeben hat.
+- **Laut Planung** — noch keine Meldung, aber am Fahrzeug ist ein *aktueller
+  Füllstand* eingetragen, etwa `Tank 45 von 80 l (56 %) · laut Planung`. Er
+  stammt aus der Planung und ist nach den ersten Kilometern überholt.
+
+Ist beides nicht da, steht beim Fahrzeug nichts. **0 %** ist dagegen eine
+Meldung und heißt „leer". Unter **¼** (25 %) wird der Füllstand gelb mit ⚠
+hervorgehoben — Zeit, einen Tankstopp einzuplanen.
+
+Nachtragen funktioniert wie bei der Stärke: In der angemeldeten
+Tracking-Ansicht trägt die Führung einen über Funk durchgegebenen Füllstand im
+Reiter **Fahrzeuge** über das **⛽** (bzw. **🔋**) neben der Stärke ein, und
+wer selbst in einem Fahrzeug sitzt, meldet den eigenen im Reiter **Status**.
+Beides braucht mindestens die Rolle **Fahrer**. Das Feld startet bei einer
+bereits gemeldeten Zahl, sonst leer — nie beim eingetragenen Stand aus der
+Planung.
+
+> Die Meldung ändert den *aktuellen Füllstand* in den Fahrzeugdaten nicht; der
+> bleibt die Planungsgrundlage für die Kraftstoffanalyse.
+
+---
+
 ## Alarm bei technischem Halt und Ausfall
 
 Fordert ein Fahrzeug einen technischen Halt an oder meldet einen Ausfall,
@@ -264,8 +309,8 @@ Passwortlink erscheint wieder die Passwortabfrage.
 3. Ein Klick auf einen Marker zeigt Fahrzeugdetails (Name, Funkrufname, Status,
    letzte Meldung)
 4. Der Reiter **Fahrzeuge** listet den Verband mit Status und letzter Meldung
-5. Ab der Rolle **Fahrer** lässt sich dort die [Mannschaftsstärke](#eine-funkmeldung-nachtragen)
-   nachtragen, die über Funk hereinkam
+5. Ab der Rolle **Fahrer** lassen sich dort die [Mannschaftsstärke](#eine-funkmeldung-nachtragen)
+   und der [Füllstand](#füllstand-melden-tankakku) nachtragen, die über Funk hereinkamen
 6. Die Ansicht aktualisiert sich fortlaufend ohne Neuladen
 
 ---

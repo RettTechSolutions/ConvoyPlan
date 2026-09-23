@@ -32,6 +32,13 @@
 
 > Die Kraftstoffdaten werden für die automatische **Kraftstoffanalyse** und die Empfehlung eines Tankstopps verwendet.
 
+Unterwegs meldet die Besatzung den Füllstand in Prozent über den Fahrer-Link
+([Füllstand melden](Live-Tracking#füllstand-melden-tankakku)). Aus Tankinhalt
+bzw. Akkukapazität und Verbrauch rechnet die Tracking-Ansicht daraus Liter bzw.
+kWh und Reichweite. Der hier eingetragene *aktuelle Füllstand* bleibt davon
+unberührt und erscheint dort nur, solange keine Meldung vorliegt — als
+„laut Planung".
+
 ### Regelbesatzung
 
 | Feld | Beschreibung |

@@ -16,6 +16,7 @@ from app.models.convoy import ConvoyVehicle
 from app.models.user import User
 from app.models.vehicle import Vehicle
 from app.models.vehicle_position import VehiclePosition
+from app.services import fuellstand as fuellstand_svc
 from app.services import staerke as staerke_svc
 from app.services import vehicle_status as vs
 from app.services.tracking import tracking_manager
@@ -90,6 +91,15 @@ class StaerkeUpdate(BaseModel):
     fuehrer: int = Field(0, ge=0, le=staerke_svc.MAX_JE_ROLLE)
     unterfuehrer: int = Field(0, ge=0, le=staerke_svc.MAX_JE_ROLLE)
     mannschaften: int = Field(0, ge=0, le=staerke_svc.MAX_JE_ROLLE)
+
+
+class FuellstandUpdate(BaseModel):
+    """Ein gemeldeter Füllstand von Tank bzw. Akku, in Prozent.
+
+    Die Grenzen stehen in ``services/fuellstand.py``, damit der Fahrer-Link
+    dieselben prüft."""
+
+    prozent: int = Field(..., ge=fuellstand_svc.MIN_PROZENT, le=fuellstand_svc.MAX_PROZENT)
 
 
 @router.get("/convoys/{convoy_id}/positions")
@@ -256,6 +266,44 @@ async def update_vehicle_staerke(
         "gesamt": gesamt,
     })
     return {"status": "ok", "gesamt": gesamt}
+
+
+@router.patch("/convoys/{convoy_id}/vehicles/{vehicle_id}/fuellstand")
+async def update_vehicle_fuellstand(
+    convoy_id: uuid.UUID,
+    vehicle_id: uuid.UUID,
+    data: FuellstandUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Füllstand von Tank bzw. Akku eines Fahrzeugs setzen.
+
+    Wie bei der Stärke: Die Besatzung meldet über den Fahrer-Link, hier trägt
+    die Führung eine per Funk durchgegebene Meldung nach.
+    """
+    await get_convoy_access(convoy_id, current_user, db, require="fahrer")
+    result = await db.execute(
+        select(ConvoyVehicle).where(
+            ConvoyVehicle.convoy_id == convoy_id,
+            ConvoyVehicle.vehicle_id == vehicle_id,
+        )
+    )
+    cv = result.scalar_one_or_none()
+    if not cv:
+        raise HTTPException(status_code=404, detail="Fahrzeug nicht im Verband")
+
+    cv.fuellstand_ist_prozent = data.prozent
+    cv.fuellstand_gemeldet_at = datetime.now(timezone.utc)
+    gemeldet_at = cv.fuellstand_gemeldet_at.isoformat()
+    await db.commit()
+
+    await tracking_manager.broadcast(str(convoy_id), {
+        "type": "fuellstand_update",
+        "vehicle_id": str(vehicle_id),
+        "prozent": data.prozent,
+        "gemeldet_at": gemeldet_at,
+    })
+    return {"status": "ok", "prozent": data.prozent, "gemeldet_at": gemeldet_at}
 
 
 @router.delete("/convoys/{convoy_id}/vehicles/{vehicle_id}/position")

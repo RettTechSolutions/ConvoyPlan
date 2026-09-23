@@ -14,6 +14,16 @@ export type TrackFahrzeug = {
 	staerke_ist_fuehrer: number | null;
 	staerke_ist_unterfuehrer: number | null;
 	staerke_ist_mannschaften: number | null;
+	// Betriebsstoff und Füllstand — fehlen sie, zeigt die Liste keinen Füllstand.
+	propulsion?: 'combustion' | 'electric';
+	tank_capacity_l?: number | null;
+	current_fuel_l?: number | null;
+	fuel_consumption_l100km?: number | null;
+	battery_capacity_kwh?: number | null;
+	current_charge_kwh?: number | null;
+	consumption_kwh_100km?: number | null;
+	fuellstand_ist_prozent?: number | null;
+	fuellstand_gemeldet_at?: string | null;
 };
 
 /** Ein Fahrzeug ohne jede Stärkeangabe — der Normalfall vor der ersten Meldung. */
@@ -168,6 +178,8 @@ export function konvoiFahrzeug(teil: Record<string, unknown> = {}) {
 		staerke_ist_unterfuehrer: null,
 		staerke_ist_mannschaften: null,
 		staerke_gemeldet_at: null,
+		fuellstand_ist_prozent: null,
+		fuellstand_gemeldet_at: null,
 		...rest,
 		vehicle: { id: 'v1', name: 'MTW 1', callsign: 'Heros 12/19', ...(vehicle ?? {}) },
 	};
@@ -193,6 +205,9 @@ export type StaerkeMeldung = {
 	mannschaften: number;
 };
 
+/** Eine abgefangene Füllstandsmeldung aus `PATCH …/vehicles/<id>/fuellstand`. */
+export type FuellstandMeldung = { fahrzeugId: string; prozent: number };
+
 /**
  * Das Org-Portal mit der Kernregel des Backends: **welche Sitzung gilt,
  * entscheidet der `X-Org-Slug`-Kopf.** Fehlt er, zählt die organisationslose
@@ -211,6 +226,10 @@ export async function mockOrgPortal(
 		positionen?: ReturnType<typeof position>[];
 		/** Rolle der angemeldeten Sitzung. Unter `fahrer` darf nichts gemeldet werden. */
 		rolle?: 'beobachter' | 'fahrer' | 'planer' | 'admin';
+		/** Nimmt auf, was an `PATCH …/fuellstand` hinausging. */
+		fuellstandMeldungen?: FuellstandMeldung[];
+		/** `PATCH …/fuellstand` scheitert — für die Rücknahme der optimistischen Anzeige. */
+		fuellstandFehler?: boolean;
 	},
 ): Promise<StaerkeMeldung[]> {
 	// Was an `PATCH …/staerke` hinausging — die Liste wächst im Test mit.
@@ -257,6 +276,17 @@ export async function mockOrgPortal(
 			staerkeMeldungen.push({ fahrzeugId, ...werte });
 			const gesamt = (werte.fuehrer ?? 0) + (werte.unterfuehrer ?? 0) + (werte.mannschaften ?? 0);
 			return void route.fulfill({ json: { status: 'ok', gesamt } });
+		}
+		if (pfad.endsWith('/fuellstand')) {
+			if (opts.fuellstandFehler) {
+				return void route.fulfill({ status: 500, json: { detail: 'Interner Fehler' } });
+			}
+			const fahrzeugId = pfad.split('/vehicles/')[1]!.replace('/fuellstand', '');
+			const { prozent } = JSON.parse(route.request().postData() ?? '{}');
+			opts.fuellstandMeldungen?.push({ fahrzeugId, prozent });
+			return void route.fulfill({
+				json: { status: 'ok', prozent, gemeldet_at: '2026-09-18T14:30:00+00:00' },
+			});
 		}
 		route.fulfill({ json: convoyPayload(opts.convoyId, opts.fahrzeuge) });
 	});

@@ -34,6 +34,7 @@ from app.schemas.share_link import (
 )
 from app.services import geometry as geo_svc
 from app.services import share_links as share_links_svc
+from app.services import fuellstand as fuellstand_svc
 from app.services import staerke as staerke_svc
 from app.services import vehicle_status as vs
 from app.services.tracking import tracking_manager
@@ -134,6 +135,8 @@ async def _build_payload(convoy_id: uuid.UUID, db: AsyncSession, scope: str = "t
             staerke_ist_unterfuehrer=cv.staerke_ist_unterfuehrer,
             staerke_ist_mannschaften=cv.staerke_ist_mannschaften,
             **_betriebsstoff(cv.vehicle),
+            fuellstand_ist_prozent=cv.fuellstand_ist_prozent,
+            fuellstand_gemeldet_at=cv.fuellstand_gemeldet_at,
         )
         for cv in sorted(convoy.convoy_vehicles, key=lambda c: c.position)
     ]
@@ -343,6 +346,34 @@ async def _ingest_driver_staerke(convoy_uuid: uuid.UUID, msg: dict) -> None:
     })
 
 
+async def _ingest_driver_fuellstand(convoy_uuid: uuid.UUID, msg: dict) -> None:
+    """Persist + broadcast a fuel/charge level sent by a "driver" share-link holder.
+
+    Dieselben Regeln wie bei der Stärke: Das Fahrzeug muss zu diesem Verband
+    gehören, und eine unplausible Meldung wird kommentarlos verworfen — die
+    alte Angabe ist allemal besser als eine falsche.
+    """
+    try:
+        vehicle_id = uuid.UUID(str(msg.get("vehicle_id")))
+        prozent = fuellstand_svc.normalisieren(msg.get("prozent"))
+    except (TypeError, ValueError):
+        return
+
+    async with AsyncSessionLocal() as db:
+        cv = await db.get(ConvoyVehicle, (convoy_uuid, vehicle_id))
+        if cv is None:
+            return  # vehicle is not part of this convoy → ignore
+        cv.fuellstand_ist_prozent = prozent
+        cv.fuellstand_gemeldet_at = datetime.now(timezone.utc)
+        gemeldet_at = cv.fuellstand_gemeldet_at.isoformat()
+        await db.commit()
+
+    await tracking_manager.broadcast(str(convoy_uuid), {
+        "type": "fuellstand_update", "vehicle_id": str(vehicle_id),
+        "prozent": prozent, "gemeldet_at": gemeldet_at,
+    })
+
+
 @ws_router.websocket("/{slug}")
 async def track_ws(slug: str, ws: WebSocket, token: str | None = Query(default=None)):
     async with AsyncSessionLocal() as db:
@@ -373,6 +404,8 @@ async def track_ws(slug: str, ws: WebSocket, token: str | None = Query(default=N
                 await _ingest_driver_status(convoy_uuid, raw)
             elif raw.get("type") == "staerke":
                 await _ingest_driver_staerke(convoy_uuid, raw)
+            elif raw.get("type") == "fuellstand":
+                await _ingest_driver_fuellstand(convoy_uuid, raw)
             else:
                 await _ingest_driver_position(convoy_uuid, raw)
     except WebSocketDisconnect:

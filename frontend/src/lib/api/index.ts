@@ -83,6 +83,11 @@ export interface ConvoyVehicleItem {
 	staerke_ist_unterfuehrer: number | null;
 	staerke_ist_mannschaften: number | null;
 	staerke_gemeldet_at: string | null;
+	// Gemeldeter Füllstand von Tank bzw. Akku in Prozent (siehe
+	// $lib/tracking/fuellstand). null heißt „nicht gemeldet", 0 heißt „leer".
+	// Die Stammdaten zum Umrechnen stehen unter `vehicle`.
+	fuellstand_ist_prozent?: number | null;
+	fuellstand_gemeldet_at?: string | null;
 }
 
 export interface Convoy {
@@ -348,6 +353,11 @@ export const trackingApi = {
 	) => api.patch<{ status: string; gesamt: number }>(
 		`/api/convoys/${convoyId}/vehicles/${vehicleId}/staerke`, staerke,
 	),
+	/** Gemeldeten Füllstand (Tank/Akku, Prozent) setzen — ebenfalls für eine nachgetragene Funkmeldung. */
+	updateVehicleFuellstand: (convoyId: string, vehicleId: string, prozent: number) =>
+		api.patch<{ status: string; prozent: number; gemeldet_at: string }>(
+			`/api/convoys/${convoyId}/vehicles/${vehicleId}/fuellstand`, { prozent },
+		),
 	/** GPS-Freigabe eines Fahrzeugs beenden (Position löschen). suppress=false beim Selbst-Stopp. */
 	clearVehiclePosition: (convoyId: string, vehicleId: string, suppress = true) =>
 		api.delete(`/api/convoys/${convoyId}/vehicles/${vehicleId}/position?suppress=${suppress}`),
@@ -485,6 +495,18 @@ export interface TrackVehicle {
 	staerke_ist_fuehrer: number | null;
 	staerke_ist_unterfuehrer: number | null;
 	staerke_ist_mannschaften: number | null;
+	// Betriebsstoff aus den Stammdaten. Belegt ist nur der Satz der eigenen
+	// Antriebsart, der andere steht auf null.
+	propulsion?: Propulsion;
+	tank_capacity_l?: number | null;
+	current_fuel_l?: number | null;
+	fuel_consumption_l100km?: number | null;
+	battery_capacity_kwh?: number | null;
+	current_charge_kwh?: number | null;
+	consumption_kwh_100km?: number | null;
+	// Füllstand, wie die Besatzung ihn meldet — in Prozent, null heißt „nicht gemeldet".
+	fuellstand_ist_prozent?: number | null;
+	fuellstand_gemeldet_at?: string | null;
 }
 export interface TrackPosition {
 	vehicle_id: string; lat: number; lon: number;

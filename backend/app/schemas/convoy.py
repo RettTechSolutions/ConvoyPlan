@@ -80,6 +80,8 @@ class ConvoyVehicleItem(BaseModel):
     staerke_ist_unterfuehrer: int | None = None
     staerke_ist_mannschaften: int | None = None
     staerke_gemeldet_at: datetime | None = None
+    fuellstand_ist_prozent: int | None = None
+    fuellstand_gemeldet_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

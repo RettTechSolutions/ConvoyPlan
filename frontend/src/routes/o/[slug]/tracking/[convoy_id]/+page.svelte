@@ -9,10 +9,13 @@
 	import {
 		livePositions, vehicleStatuses, trackingAlerts, connectTracking, disconnectTracking,
 		sendPosition, trackingActive, trackingConnection, gpsRevoked, acknowledgeAlert, dismissAlert,
-		acknowledgeAllAlerts, vehicleStaerken, type VehicleStatusInfo,
+		acknowledgeAllAlerts, vehicleStaerken, vehicleFuellstaende, type VehicleStatusInfo,
 	} from '$lib/stores/tracking';
 	import StaerkeBadge from '$lib/components/StaerkeBadge.svelte';
 	import StaerkeForm from '$lib/components/StaerkeForm.svelte';
+	import FuellstandBadge from '$lib/components/FuellstandBadge.svelte';
+	import FuellstandForm from '$lib/components/FuellstandForm.svelte';
+	import { fuellstandAnzeige, mitMeldung, type FuellstandFelder } from '$lib/tracking/fuellstand';
 	import { orgStore } from '$lib/stores/org';
 	import {
 		formatStaerke, istAus, verbandsStaerke, type Staerke, type StaerkeFelder,
@@ -199,6 +202,68 @@
 				return new Map(m);
 			});
 			error = 'Stärke konnte nicht gemeldet werden';
+			return false;
+		}
+	}
+
+	/**
+	 * Füllstandsfelder eines Fahrzeugs: die Stammdaten stehen hier unter
+	 * `cv.vehicle`, die Meldung an der Zeile im Verband — und obenauf die
+	 * neueste Live-Meldung.
+	 */
+	function fuellstandVon(cv: Convoy['convoy_vehicles'][number]): FuellstandFelder {
+		return mitMeldung(
+			{
+				...cv.vehicle,
+				fuellstand_ist_prozent: cv.fuellstand_ist_prozent ?? null,
+				fuellstand_gemeldet_at: cv.fuellstand_gemeldet_at ?? null,
+			},
+			$vehicleFuellstaende.get(cv.vehicle.id),
+		);
+	}
+
+	// Welche Fahrzeugzeile ihr Füllstandsfeld offen hat — höchstens eine.
+	let fuellstandOffenFuer = $state<string | null>(null);
+
+	/** Der eigene, bereits gemeldete Füllstand — Ausgangsstand für eine Korrektur. */
+	const meinFuellstand = $derived.by(() => {
+		const cv = (convoy?.convoy_vehicles ?? []).find((c) => c.vehicle.id === myVehicleId);
+		return cv ? (fuellstandVon(cv).fuellstand_ist_prozent ?? null) : null;
+	});
+	const meinAntrieb = $derived(
+		(convoy?.convoy_vehicles ?? []).find((c) => c.vehicle.id === myVehicleId)?.vehicle.propulsion ?? 'combustion'
+	);
+
+	/**
+	 * Einen Füllstand setzen — wie `meldeStaerke`: die eigene Meldung oder eine
+	 * über Funk durchgegebene für ein fremdes Fahrzeug, beides über
+	 * `PATCH …/fuellstand`, das die Meldung an alle offenen Ansichten verteilt.
+	 */
+	async function meldeFuellstand(vehicleId: string, prozent: number): Promise<boolean> {
+		const vorher = $vehicleFuellstaende.get(vehicleId) ?? null;
+		vehicleFuellstaende.update((m) => {
+			m.set(vehicleId, { prozent, gemeldet_at: new Date().toISOString() });
+			return new Map(m);
+		});
+		try {
+			const antwort = await trackingApi.updateVehicleFuellstand(convoyId, vehicleId, prozent);
+			// Die Uhrzeit des Servers statt der eigenen — sie steht auch bei allen anderen.
+			if (antwort?.gemeldet_at) {
+				vehicleFuellstaende.update((m) => {
+					m.set(vehicleId, { prozent, gemeldet_at: antwort.gemeldet_at });
+					return new Map(m);
+				});
+			}
+			fuellstandOffenFuer = null;
+			return true;
+		} catch {
+			// Zurücknehmen, aus demselben Grund wie bei der Stärke: ein Stand,
+			// der nur auf diesem Schirm steht, hielte die Führung für gemeldet.
+			vehicleFuellstaende.update((m) => {
+				if (vorher) m.set(vehicleId, vorher); else m.delete(vehicleId);
+				return new Map(m);
+			});
+			error = 'Füllstand konnte nicht gemeldet werden';
 			return false;
 		}
 	}
@@ -722,6 +787,8 @@
 						{@const lvl = levelOf(cv)}
 						{@const fzLabel = cv.vehicle.callsign || cv.vehicle.name}
 						{@const offen = staerkeOffenFuer === cv.vehicle.id}
+						{@const fs = fuellstandVon(cv)}
+						{@const fsOffen = fuellstandOffenFuer === cv.vehicle.id}
 						<div class="vehicle-row">
 							<div class="veh-left">
 								<span class="status-dot" style="background:{statusColor(st)}"></span>
@@ -745,14 +812,38 @@
 										aria-label="Stärke für {fzLabel} eintragen"
 										title="Über Funk gemeldete Stärke für {fzLabel} eintragen"
 										data-testid="staerke-edit-{cv.vehicle.id}"
-										onclick={() => (staerkeOffenFuer = offen ? null : cv.vehicle.id)}
+										onclick={() => { staerkeOffenFuer = offen ? null : cv.vehicle.id; fuellstandOffenFuer = null; }}
 									>✎</button>
+									<button
+										class="staerke-edit"
+										class:offen={fsOffen}
+										aria-expanded={fsOffen}
+										aria-label="Füllstand für {fzLabel} eintragen"
+										title="Über Funk gemeldeten Füllstand (Tank/Akku) für {fzLabel} eintragen"
+										data-testid="fuellstand-edit-{cv.vehicle.id}"
+										onclick={() => { fuellstandOffenFuer = fsOffen ? null : cv.vehicle.id; staerkeOffenFuer = null; }}
+									>{cv.vehicle.propulsion === 'electric' ? '🔋' : '⛽'}</button>
 								{/if}
 								<span class="status-chip" style="color:{statusColor(st)};border-color:{statusColor(st)}">
 									{statusLabel(st)}{#if levelLabel(st, lvl)} · {levelLabel(st, lvl)}{/if}
 								</span>
 							</div>
+							{#if fuellstandAnzeige(fs)}
+								<div class="veh-fuel"><FuellstandBadge fahrzeugId={cv.vehicle.id} felder={fs} /></div>
+							{/if}
 						</div>
+						{#if fsOffen}
+							<div class="staerke-panel">
+								<FuellstandForm
+									titel="Füllstand {fzLabel} (Funkmeldung)"
+									knopf="{cv.vehicle.propulsion === 'electric' ? '🔋' : '⛽'} Füllstand eintragen"
+									quittungstext="Füllstand eingetragen"
+									vorgabe={fs.fuellstand_ist_prozent ?? null}
+									testid="fuellstand-form-{cv.vehicle.id}"
+									onMelden={(prozent) => meldeFuellstand(cv.vehicle.id, prozent)}
+								/>
+							</div>
+						{/if}
 						{#if offen}
 							<div class="staerke-panel">
 								<StaerkeForm
@@ -838,6 +929,13 @@
 									vorgabe={meineStaerke}
 									testid="staerke-form-eigen"
 									onMelden={(werte) => meldeStaerke(myVehicleId, werte)}
+								/>
+								<FuellstandForm
+									titel={meinAntrieb === 'electric' ? 'Akkustand melden' : 'Tankstand melden'}
+									knopf={meinAntrieb === 'electric' ? '🔋 Füllstand melden' : '⛽ Füllstand melden'}
+									vorgabe={meinFuellstand}
+									testid="fuellstand-form-eigen"
+									onMelden={(prozent) => meldeFuellstand(myVehicleId, prozent)}
 								/>
 							{/key}
 						{/if}
@@ -1108,6 +1206,9 @@
 	.staerke-edit { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 0 .15rem; font-size: .8rem; line-height: 1; border-radius: 4px; }
 	.staerke-edit:hover, .staerke-edit.offen { color: var(--color-primary); background: var(--bg-hover, rgba(255,255,255,.06)); }
 	.staerke-panel { padding: 0 0 .5rem; border-bottom: 1px solid var(--border); }
+	/* Der Füllstand bekommt eine eigene Zeile: mit Litern und Reichweite ist er
+	   zu lang für die rechte Hälfte, und dort drängte er die Stärke hinaus. */
+	.veh-fuel { flex: 1 0 100%; min-width: 0; display: flex; padding-left: calc(8px + .3rem); }
 	.veh-left { display: flex; flex-wrap: wrap; align-items: center; gap: .15rem .3rem; flex: 1 1 auto; min-width: 0; }
 	.status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 	.vname { font-size: var(--text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

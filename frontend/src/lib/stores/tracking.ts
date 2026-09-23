@@ -3,6 +3,7 @@ import type { VehiclePosition } from '$lib/api';
 import { getStreamTicket } from '$lib/api/client';
 import { createConnectionTracker, type ConnectionState } from '$lib/tracking/connection';
 import type { Staerke } from '$lib/tracking/staerke';
+import type { FuellstandMeldung } from '$lib/tracking/fuellstand';
 
 /** Live status (incl. sub-level and note) received over the WebSocket. */
 export interface VehicleStatusInfo {
@@ -32,6 +33,13 @@ export const vehicleStatuses = writable<Map<string, VehicleStatusInfo>>(new Map(
  * darf in der Anzeige nicht als 0 erscheinen (siehe `$lib/tracking/staerke`).
  */
 export const vehicleStaerken = writable<Map<string, Staerke>>(new Map());
+/**
+ * Live gemeldete Füllstände (Tank/Akku, Prozent) je Fahrzeug.
+ *
+ * Wie bei der Stärke nur *gemeldete* — ein Fahrzeug ohne Meldung fällt auf
+ * den eingetragenen Stand aus der Planung zurück (siehe `$lib/tracking/fuellstand`).
+ */
+export const vehicleFuellstaende = writable<Map<string, FuellstandMeldung>>(new Map());
 /** Rolling log of incoming TH / breakdown alerts (newest first). */
 export const trackingAlerts = writable<TrackingAlert[]>([]);
 /**
@@ -154,6 +162,8 @@ async function openSocket(convoyId: string) {
 			fuehrer?: number;
 			unterfuehrer?: number;
 			mannschaften?: number;
+			prozent?: number;
+			gemeldet_at?: string;
 		};
 		if (data.type === 'pong') {
 			// Heartbeat reply — the timestamp above is all we need.
@@ -176,6 +186,13 @@ async function openSocket(convoyId: string) {
 					m.set(data.vehicle_id, {
 						fuehrer: data.fuehrer!, unterfuehrer: data.unterfuehrer!, mannschaften: data.mannschaften!,
 					});
+					return new Map(m);
+				});
+			}
+		} else if (data.type === 'fuellstand_update') {
+			if (typeof data.prozent === 'number') {
+				vehicleFuellstaende.update((m) => {
+					m.set(data.vehicle_id, { prozent: data.prozent!, gemeldet_at: data.gemeldet_at ?? null });
 					return new Map(m);
 				});
 			}

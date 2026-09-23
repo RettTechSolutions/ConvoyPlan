@@ -83,6 +83,11 @@ class ConvoyVehicle(Base):
     staerke_ist_unterfuehrer: Mapped[int | None] = mapped_column(Integer, nullable=True)
     staerke_ist_mannschaften: Mapped[int | None] = mapped_column(Integer, nullable=True)
     staerke_gemeldet_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Gemeldeter Füllstand von Tank bzw. Akku in Prozent (app/services/fuellstand.py).
+    # NULL heißt "nicht gemeldet", 0 heißt "leer". Der eingetragene Stand am
+    # Fahrzeug (vehicles.current_fuel_l) bleibt davon unberührt.
+    fuellstand_ist_prozent: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fuellstand_gemeldet_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     convoy: Mapped["Convoy"] = relationship(back_populates="convoy_vehicles")
     vehicle: Mapped["Vehicle"] = relationship(back_populates="convoy_vehicles")

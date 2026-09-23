@@ -23,6 +23,10 @@ ursprünglichen SemVer-Nummern.
 
 ### Added
 
+- **Fahrzeuge melden ihren Tank- bzw. Ladestand, die Konvoiführung liest ihn ab.** Im Fahrer-Link (und in der Companion-App) meldet die Besatzung den Füllstand in Prozent — so, wie sie ihn abliest: Schnellwahl Reserve, ¼, ½, ¾, voll oder genau. Die Tracking-Ansicht zeigt je Fahrzeug `Tank 50 % · ≈ 40 l · ≈ 320 km`; Liter und Reichweite rechnet ConvoyPlan aus Tankvolumen und Verbrauch in den Stammdaten. Unter 25 % wird der Stand hervorgehoben. Ohne Meldung steht der eingetragene Stand da, ausdrücklich „laut Planung".
+
+  Die Führung trägt eine per Funk durchgegebene Meldung in der Tracking-Ansicht nach (`PATCH …/fuellstand`, ab Rolle Fahrer). Gespeichert wird die Meldung am Fahrzeug im Verband — die Stammdaten des Fahrzeugs ändert der öffentliche Fahrer-Link nicht.
+
 - **Die Tracking-Schnittstelle liefert Tank- bzw. Akkustand je Fahrzeug.** `GET /api/track/{slug}` schickt zu jedem Fahrzeug die Antriebsart und den Satz seiner Antriebsart mit — Tankvolumen, eingetragenen Füllstand und Verbrauch, beim E-Fahrzeug die Akkuwerte. Die Companion-App zeigt daraus in der Fahrzeugübersicht der Verbandsführung `Tank 45 von 80 l (56 %) · ≈ 360 km`. Der Füllstand ist der in den Stammdaten eingetragene Wert, kein Messwert; er sinkt unterwegs nicht.
 
 - **Fahrzeuge melden ihre Mannschaftsstärke, die Konvoiführung liest sie ab.** Im Fahrer-Link stehen unter den Kurz-Stati drei Felder — Führer, Unterführer, Mannschaften; die Gesamtzahl rechnet ConvoyPlan und speichert sie nicht, damit sie nicht von ihren Summanden abweichen kann. Gemeldet wird auf Knopfdruck, nicht beim Tippen.

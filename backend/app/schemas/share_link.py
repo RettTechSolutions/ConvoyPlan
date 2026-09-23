@@ -78,6 +78,10 @@ class TrackVehicle(BaseModel):
     battery_capacity_kwh: float | None = None
     current_charge_kwh: float | None = None
     consumption_kwh_100km: float | None = None
+    # Was die Besatzung unterwegs meldet, in Prozent — Tank oder Akku, je nach
+    # propulsion. None heißt "nicht gemeldet"; dann gilt der eingetragene Stand.
+    fuellstand_ist_prozent: int | None = None
+    fuellstand_gemeldet_at: datetime | None = None
 
 
 class TrackWaypoint(BaseModel):

@@ -46,6 +46,7 @@ Vollständige Feature-Übersicht von ConvoyPlan mit Umsetzungsstatus. Eine kompa
 | Live-Tracking | Positionsupdates per REST und WebSocket | ✅ |
 | Fahrzeugstatus | Geplant, unterwegs, angekommen, technischer Halt (drei Dringlichkeitsstufen) und Ausfall/Störung (zwei Schweregrade), je mit optionaler Bemerkung | ✅ |
 | Mannschaftsstärke | Besatzung meldet Führer/Unterführer/Mannschaften je Fahrzeug (Notation 0/1/8//9), die Führung trägt auch Funkmeldungen nach; Verbandsstärke als Summe, Abgleich mit geplanter Sollstärke ([Details](Live-Tracking)) | ✅ |
+| Füllstandmeldung | Besatzung meldet Tank- bzw. Akkustand in Prozent (Schnellwahl Reserve/¼/½/¾/Voll), Anzeige mit Litern/kWh und Reichweite aus den Fahrzeugdaten, Hervorhebung unter ¼; die Führung trägt Funkmeldungen nach ([Details](Live-Tracking)) | ✅ |
 | Alarmierung | Technischer Halt und Ausfall lösen bei allen verbundenen Clients Banner, Ton und Vibration aus; Meldungen sind einzeln oder gesammelt quittierbar | ✅ |
 | Streckenmeldungen | Erreichte Wegpunkte und Leitstellenwechsel werden aus der auf die Route projizierten Konvoiposition angekündigt (Spitze erreicht / Verband vollständig passiert) | ✅ |
 | Verspätungsprognose | Der Zeitplan schätzt aus der Position des vordersten Fahrzeugs die aktuelle Abweichung und verschiebt die Ankunftszeiten aller Wegpunkte | ✅ |
