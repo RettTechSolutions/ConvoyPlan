@@ -2,6 +2,11 @@
 // und Füllstand (%), wie die Besatzung sie über den Fahrer-Link meldet — aus
 // der Companion-App.
 //
+// Ein E-Fahrzeug meldet nur den Ladestand in Prozent. Kapazität und Verbrauch
+// kommen dann aus seinen kWh-Stammdaten, und alles, was hier „Tank" und
+// „Verbrauch" heißt, steht für diese Lage in kWh und kWh/100 km. Die Rechnung
+// ist dieselbe — sie darf nur nie Liter und kWh mischen.
+//
 // Gespeichert wird nur, was gemeldet wurde; Liter im Tank und Reichweite
 // rechnet jede Ansicht selbst, wie hinten in `app/services/betriebsstoff.py`.
 
@@ -20,6 +25,8 @@ export interface Betriebsstoff {
 	/** Tank bzw. Verbrauch stammen nicht aus der Meldung, sondern aus den Stammdaten. */
 	tankAusStammdaten?: boolean;
 	verbrauchAusStammdaten?: boolean;
+	/** E-Fahrzeug: `tank` ist die Akkukapazität in kWh, `verbrauch` in kWh/100 km. */
+	elektrisch?: boolean;
 }
 
 /** Die Felder, wie Backend-Nutzlasten sie führen. */
@@ -31,6 +38,9 @@ export interface BetriebsstoffFelder {
 	propulsion?: string;
 	tank_capacity_l?: number | null;
 	fuel_consumption_l100km?: number | null;
+	// Akku-Stammdaten eines E-Fahrzeugs.
+	battery_capacity_kwh?: number | null;
+	consumption_kwh_100km?: number | null;
 }
 
 /** Die Meldung aus den Feldern — `null`, wenn nichts gemeldet ist. */
@@ -46,12 +56,28 @@ export function betriebsstoffAus(felder: BetriebsstoffFelder): Betriebsstoff | n
  * Füllt, was die Meldung offen lässt, aus den Stammdaten auf — so rechnet die
  * Reichweite auch, wenn die Besatzung nur den Füllstand meldet.
  *
- * Nur für Verbrenner: Bei einem E-Fahrzeug stehen in den Stammdaten kWh, und
- * ein Füllstand in Prozent gegen Liter gerechnet ergäbe eine erfundene Zahl.
+ * Bei einem E-Fahrzeug kommen Kapazität und Verbrauch **immer** aus den
+ * kWh-Stammdaten: Die Meldung trägt dort nur den Ladestand, und Liter, die
+ * doch darin stünden, gegen kWh gerechnet ergäben eine erfundene Reichweite.
  * Ohne Meldung bleibt es bei `null` — Stammdaten allein sind keine Lage.
  */
 export function mitStammdaten(lage: Betriebsstoff | null, felder: BetriebsstoffFelder): Betriebsstoff | null {
 	if (!lage) return null;
+	if (felder.propulsion === 'electric') {
+		// Ohne Ladestand sagt die Meldung eines E-Fahrzeugs nichts, was die
+		// Zeile tragen könnte — Stammdaten allein sind keine Lage.
+		if (lage.fuellstand === null) return null;
+		const kapazitaet = felder.battery_capacity_kwh || null;
+		const verbrauch = felder.consumption_kwh_100km || null;
+		return {
+			fuellstand: lage.fuellstand,
+			tank: kapazitaet,
+			verbrauch,
+			tankAusStammdaten: kapazitaet !== null,
+			verbrauchAusStammdaten: verbrauch !== null,
+			elektrisch: true,
+		};
+	}
 	if ((felder.propulsion ?? 'combustion') !== 'combustion') return lage;
 	const stammTank = felder.tank_capacity_l ?? null;
 	const stammVerbrauch = felder.fuel_consumption_l100km ?? null;
@@ -64,7 +90,7 @@ export function mitStammdaten(lage: Betriebsstoff | null, felder: BetriebsstoffF
 	};
 }
 
-/** Liter im Tank — `null`, solange Tank oder Füllstand fehlen. */
+/** Liter im Tank (E-Fahrzeug: kWh im Akku) — `null`, solange Tank oder Füllstand fehlen. */
 export function literImTank(b: Betriebsstoff): number | null {
 	if (b.tank === null || b.fuellstand === null) return null;
 	return (b.tank * b.fuellstand) / 100;
@@ -84,24 +110,33 @@ export function istKnapp(b: Betriebsstoff): boolean {
 
 const zahl = (n: number) => n.toLocaleString('de-DE', { maximumFractionDigits: 1 });
 
+/** Einheiten und Wörter je Antrieb. */
+function begriffe(b: Betriebsstoff) {
+	return b.elektrisch
+		? { was: 'Akku', stand: 'Ladestand', inhalt: 'Akku', einheit: 'kWh', verbrauch: 'kWh/100 km' }
+		: { was: 'Betriebsstoff', stand: 'Füllstand', inhalt: 'Tank', einheit: 'l', verbrauch: 'l/100 km' };
+}
+
 /** Kurzform für die Fahrzeugzeile: Füllstand, sonst Reichweite, sonst Tank. */
 export function betriebsstoffKurz(b: Betriebsstoff): string {
 	if (b.fuellstand !== null) return `${b.fuellstand} %`;
 	const km = reichweiteKm(b);
 	if (km !== null) return `${Math.round(km)} km`;
-	return b.tank !== null ? `${b.tank} l Tank` : `${zahl(b.verbrauch!)} l/100 km`;
+	const w = begriffe(b);
+	return b.tank !== null ? `${b.tank} ${w.einheit} ${w.inhalt}` : `${zahl(b.verbrauch!)} ${w.verbrauch}`;
 }
 
 /** Die ganze Meldung in Worten — für den Tooltip und Vorlesehilfen. */
 export function betriebsstoffTitel(b: Betriebsstoff): string {
+	const w = begriffe(b);
 	const teile: string[] = [];
-	if (b.fuellstand !== null) teile.push(`Füllstand ${b.fuellstand} %`);
-	const liter = literImTank(b);
+	if (b.fuellstand !== null) teile.push(`${w.stand} ${b.fuellstand} %`);
+	const inhalt = literImTank(b);
 	const stamm = (ja: boolean | undefined) => (ja ? ' (Stammdaten)' : '');
-	if (liter !== null) teile.push(`${Math.round(liter)} l von ${zahl(b.tank!)} l${stamm(b.tankAusStammdaten)}`);
-	else if (b.tank !== null) teile.push(`Tank ${zahl(b.tank)} l${stamm(b.tankAusStammdaten)}`);
-	if (b.verbrauch !== null) teile.push(`Verbrauch ${zahl(b.verbrauch)} l/100 km${stamm(b.verbrauchAusStammdaten)}`);
+	if (inhalt !== null) teile.push(`${Math.round(inhalt)} ${w.einheit} von ${zahl(b.tank!)} ${w.einheit}${stamm(b.tankAusStammdaten)}`);
+	else if (b.tank !== null) teile.push(`${w.inhalt} ${zahl(b.tank)} ${w.einheit}${stamm(b.tankAusStammdaten)}`);
+	if (b.verbrauch !== null) teile.push(`Verbrauch ${zahl(b.verbrauch)} ${w.verbrauch}${stamm(b.verbrauchAusStammdaten)}`);
 	const km = reichweiteKm(b);
 	if (km !== null) teile.push(`Reichweite etwa ${Math.round(km)} km`);
-	return `Betriebsstoff: ${teile.join(' · ')}`;
+	return `${w.was}: ${teile.join(' · ')}`;
 }

@@ -677,3 +677,31 @@ async def test_konvoi_status_zeigt_betriebsstoff_mit_stammdaten_und_knappheit():
             fz = await db.get(Vehicle, fx.vehicle_a.id)
             assert fz.tank_capacity_l == 300.0
         await purge_clients([reg["client_id"]])
+
+
+async def test_konvoi_status_rechnet_beim_e_fahrzeug_in_kwh():
+    """Ein E-Fahrzeug meldet nur den Ladestand; die Reichweite kommt aus den
+    kWh-Stammdaten und steht unter kWh-Schlüsseln, nicht unter Litern."""
+    async with seeded() as fx, mcp_app() as (_app, client):
+        async with AsyncSessionLocal() as db:
+            fz = await db.get(Vehicle, fx.vehicle_a.id)
+            fz.propulsion = "electric"
+            fz.battery_capacity_kwh, fz.consumption_kwh_100km = 80.0, 20.0
+            await db.commit()
+        reg, token, session = await _sitzung(client, fx.planer, fx.org_a)
+
+        await _werkzeug(client, token, session, "fahrzeug_betriebsstoff_melden", {
+            "konvoi_id": str(fx.convoy_a.id), "fahrzeug_id": str(fx.vehicle_a.id),
+            "fuellstand_prozent": 20,
+        })
+
+        status = await _konvoi_status(client, token, session, fx)
+        lage = status["fahrzeuge"][0]["betriebsstoff"]
+        assert lage["elektrisch"] is True
+        assert (lage["akku_kapazitaet_kwh"], lage["verbrauch_kwh_100km"]) == (80.0, 20.0)
+        # 16 kWh bei 20 kWh/100 km
+        assert (lage["kwh_im_akku"], lage["reichweite_km"]) == (16.0, 80)
+        assert "tank_l" not in lage and "liter_im_tank" not in lage
+        assert lage["knapp"] is True
+        assert status["betriebsstoff"]["knapp"][0]["reichweite_km"] == 80
+        await purge_clients([reg["client_id"]])

@@ -26,7 +26,7 @@
 		title={betriebsstoffTitel(lage)}
 		aria-label={betriebsstoffTitel(lage)}
 	>
-		<span aria-hidden="true">⛽</span>
+		<span aria-hidden="true">{lage.elektrisch ? '🔌' : '⛽'}</span>
 		{betriebsstoffKurz(lage)}
 	</span>
 {/if}
