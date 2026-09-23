@@ -68,6 +68,16 @@ class TrackVehicle(BaseModel):
     staerke_ist_fuehrer: int | None = None
     staerke_ist_unterfuehrer: int | None = None
     staerke_ist_mannschaften: int | None = None
+    # Betriebsstoff aus den Stammdaten — ein eingetragener Wert, kein Messwert;
+    # er sinkt unterwegs nicht. Belegt ist nur der Satz der eigenen Antriebsart,
+    # der andere bleibt None (wie in der MCP-Antwort, ``tools_read.py``).
+    propulsion: str | None = None
+    tank_capacity_l: float | None = None
+    current_fuel_l: float | None = None
+    fuel_consumption_l100km: float | None = None
+    battery_capacity_kwh: float | None = None
+    current_charge_kwh: float | None = None
+    consumption_kwh_100km: float | None = None
 
 
 class TrackWaypoint(BaseModel):

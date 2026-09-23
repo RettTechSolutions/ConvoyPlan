@@ -23,6 +23,8 @@ ursprünglichen SemVer-Nummern.
 
 ### Added
 
+- **Die Tracking-Schnittstelle liefert Tank- bzw. Akkustand je Fahrzeug.** `GET /api/track/{slug}` schickt zu jedem Fahrzeug die Antriebsart und den Satz seiner Antriebsart mit — Tankvolumen, eingetragenen Füllstand und Verbrauch, beim E-Fahrzeug die Akkuwerte. Die Companion-App zeigt daraus in der Fahrzeugübersicht der Verbandsführung `Tank 45 von 80 l (56 %) · ≈ 360 km`. Der Füllstand ist der in den Stammdaten eingetragene Wert, kein Messwert; er sinkt unterwegs nicht.
+
 - **Fahrzeuge melden ihre Mannschaftsstärke, die Konvoiführung liest sie ab.** Im Fahrer-Link stehen unter den Kurz-Stati drei Felder — Führer, Unterführer, Mannschaften; die Gesamtzahl rechnet ConvoyPlan und speichert sie nicht, damit sie nicht von ihren Summanden abweichen kann. Gemeldet wird auf Knopfdruck, nicht beim Tippen.
 
   In der Tracking-Ansicht steht die Stärke je Fahrzeug in der Notation `0/1/8//9` und darüber die Verbandsstärke. Sie unterscheidet zwei Fälle, die eine Zahl allein verwischt: **nicht gemeldet** (`–/–/–`, zählt nicht in die Summe, wird als offene Meldung ausgewiesen) und **unbesetzt** (`0/0/0//0`, eine Aussage). Wer in der Planung eine **Sollstärke** hinterlegt, sieht Abweichungen hervorgehoben — das Soll ändert dabei nie die Meldung der Besatzung, und die Meldung nie das Soll.

@@ -65,6 +65,27 @@ async def _bump_access(db: AsyncSession, link_id: uuid.UUID) -> None:
     await db.commit()
 
 
+def _betriebsstoff(vehicle) -> dict:
+    """Tank- bzw. Akkuangaben für die Tracking-Ansicht.
+
+    Nur der Satz der tatsächlichen Antriebsart: Ein E-Fahrzeug mit einem
+    stehengebliebenen ``tank_capacity_l`` aus der Zeit vor dem Umstellen soll
+    nicht plötzlich einen Tankstand zeigen."""
+    if vehicle.propulsion == "electric":
+        return {
+            "propulsion": "electric",
+            "battery_capacity_kwh": vehicle.battery_capacity_kwh,
+            "current_charge_kwh": vehicle.current_charge_kwh,
+            "consumption_kwh_100km": vehicle.consumption_kwh_100km,
+        }
+    return {
+        "propulsion": vehicle.propulsion or "combustion",
+        "tank_capacity_l": vehicle.tank_capacity_l,
+        "current_fuel_l": vehicle.current_fuel_l,
+        "fuel_consumption_l100km": vehicle.fuel_consumption_l100km,
+    }
+
+
 async def _build_payload(convoy_id: uuid.UUID, db: AsyncSession, scope: str = "track") -> TrackPublic:
     convoy_result = await db.execute(
         select(Convoy)
@@ -112,6 +133,7 @@ async def _build_payload(convoy_id: uuid.UUID, db: AsyncSession, scope: str = "t
             staerke_ist_fuehrer=cv.staerke_ist_fuehrer,
             staerke_ist_unterfuehrer=cv.staerke_ist_unterfuehrer,
             staerke_ist_mannschaften=cv.staerke_ist_mannschaften,
+            **_betriebsstoff(cv.vehicle),
         )
         for cv in sorted(convoy.convoy_vehicles, key=lambda c: c.position)
     ]
