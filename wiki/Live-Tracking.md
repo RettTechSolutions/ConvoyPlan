@@ -189,8 +189,13 @@ und die **Reichweite**. Ab 25 % wird die Anzeige gelb.
 Lässt die Meldung Tank oder Verbrauch offen, rechnet die Reichweite mit den
 **Stammdaten** des Fahrzeugs und sagt das dazu. Umgekehrt ändert eine Meldung
 die Stammdaten nicht: Die Planung der Tankstopps rechnet weiter mit dem, was am
-Fahrzeug eingetragen ist. Bei E-Fahrzeugen steht nur der gemeldete Füllstand da —
-Prozent gegen Liter gerechnet ergäbe eine erfundene Reichweite.
+Fahrzeug eingetragen ist.
+
+Bei **E-Fahrzeugen** steht statt ⛽ ein **🔌** mit dem gemeldeten Ladestand.
+Kapazität und Verbrauch kommen dabei aus den kWh-Stammdaten des Fahrzeugs
+(Akkukapazität, Verbrauch je 100 km); der Tooltip nennt Ladestand, kWh im Akku
+und Reichweite — in kWh gerechnet, nicht in Litern. Liter, die eine Meldung für
+ein E-Fahrzeug trüge, zählen nicht mit.
 
 Ohne Meldung steht nichts da. Eine neue Meldung ersetzt die vorige ganz; ein
 leerer Tank (0 %) ist eine Meldung und keine Lücke.

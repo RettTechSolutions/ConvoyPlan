@@ -35,7 +35,7 @@ ConvoyPlan ist eine selbst gehostete Web-Anwendung, die Einsatzorganisationen (B
 - 🗺️ **Kartenbasierte Marschplanung** mit OpenStreetMap, MapLibre GL und selbst gehostetem GraphHopper-Routing – Standard DACH-Raum (DE, AT, CH, LI), im Admin-Panel auf beliebige Geofabrik-Regionen erweiterbar und mehrere Regionen zu einer Karte kombinierbar.
 - 🚒 **Fahrzeug- und Verbandsverwaltung** mit Wegpunkten, Kontrollpunkten, technischen Halten und automatischer Zeitplanung.
 - 📄 **Marschbefehl-PDF, Roadbook (Karte + Navigationsanweisungen) sowie GPX- und JSON-Export** für Weitergabe und Nachbearbeitung.
-- 📡 **Live-Tracking per WebSocket** mit Fahrzeugstatus, Mannschaftsstärke, Projektion auf die Route und Wegpunkt-/Kanalwechsel-Meldungen.
+- 📡 **Live-Tracking per WebSocket** mit Fahrzeugstatus, Mannschaftsstärke, Betriebsstofflage (inkl. Reichweite für Verbrenner und E-Fahrzeuge), Projektion auf die Route und Wegpunkt-/Kanalwechsel-Meldungen.
 - 🌤️ **Wetter- und Verkehrsdaten** über Open-Meteo, Overpass, Autobahn-API, offene Feeds und optional HERE/TomTom.
 - 🏢 **Multi-Tenancy** mit Org-Code-Slug, org-spezifischem Branding, Rollenmodell und vollständiger Datenisolation.
 - 🔒 **Sicherheit & Datenschutz** – MFA/TOTP, Security-Härtung, Audit-Log, DSGVO-Werkzeuge, Backup/Restore.

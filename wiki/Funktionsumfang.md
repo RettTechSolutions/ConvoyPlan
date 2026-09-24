@@ -46,7 +46,8 @@ Vollständige Feature-Übersicht von ConvoyPlan mit Umsetzungsstatus. Eine kompa
 | Live-Tracking | Positionsupdates per REST und WebSocket | ✅ |
 | Fahrzeugstatus | Geplant, unterwegs, angekommen, technischer Halt (drei Dringlichkeitsstufen) und Ausfall/Störung (zwei Schweregrade), je mit optionaler Bemerkung | ✅ |
 | Mannschaftsstärke | Besatzung meldet Führer/Unterführer/Mannschaften je Fahrzeug (Notation 0/1/8//9), die Führung trägt auch Funkmeldungen nach; Verbandsstärke als Summe, Abgleich mit geplanter Sollstärke ([Details](Live-Tracking)) | ✅ |
-| Alarmierung | Technischer Halt und Ausfall lösen bei allen verbundenen Clients Banner, Ton und Vibration aus; Meldungen sind einzeln oder gesammelt quittierbar | ✅ |
+| Betriebsstofflage | Besatzung meldet Füllstand, Verbrauch und Tankvolumen (bei E-Fahrzeugen Ladestand und kWh-Reichweite), die Führung trägt auch Funkmeldungen nach; Anzeige mit Reichweite je Fahrzeug, ab 25 % hervorgehoben ([Details](Live-Tracking)) | ✅ |
+| Alarmierung | Technischer Halt und Ausfall lösen bei allen verbundenen Clients Banner, Ton und Vibration aus; die Quittung läuft über den Server, sodass auch die meldende Besatzung sieht, ob und von wem quittiert wurde | ✅ |
 | Streckenmeldungen | Erreichte Wegpunkte und Leitstellenwechsel werden aus der auf die Route projizierten Konvoiposition angekündigt (Spitze erreicht / Verband vollständig passiert) | ✅ |
 | Abbiegehinweise | Nächstes Manöver ab der eigenen Position im Fahrer-Link, alle Anweisungen mit Kilometrierung im Seitenmenü-Reiter „Route" (Stand ab Verbandsspitze) | ✅ |
 | Fahrzeugbelegung | Ein Fahrzeug sendet je Konvoi nur von einem Gerät gleichzeitig — serverseitig durchgesetzt für Fahrer-Link, Begleit-App und angemeldetes Tracking | ✅ |
