@@ -64,3 +64,10 @@ updates:
     labels:
       - "dependencies"
       - "auto-merge"
+  - package-ecosystem: "docker"
+    directory: "/docker/osmium"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "auto-merge"
