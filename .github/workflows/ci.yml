@@ -212,14 +212,14 @@ jobs:
       - name: Build ${{ matrix.name }} image
         run: docker build -t convoyplan-${{ matrix.name }}:scan ${{ matrix.context }}
 
-      - name: Install Trivy v0.71.0
+      - name: Install Trivy v0.74.0
         # Pin to an immutable release tarball + verify checksum.
         # CVE reference: GHSA-69fq-xp46-6x23 — the trivy ecosystem supply chain
         # was temporarily compromised on 2026-03-19 via the mutable install.sh
         # from the main branch. Pinning to a specific release + checksum
         # verification prevents that class of attack.
         run: |
-          VERSION=0.71.0
+          VERSION=0.74.0
           curl -sfLO "https://github.com/aquasecurity/trivy/releases/download/v${VERSION}/trivy_${VERSION}_Linux-64bit.tar.gz"
           curl -sfLO "https://github.com/aquasecurity/trivy/releases/download/v${VERSION}/trivy_${VERSION}_checksums.txt"
           grep "trivy_${VERSION}_Linux-64bit.tar.gz" "trivy_${VERSION}_checksums.txt" | sha256sum -c -
