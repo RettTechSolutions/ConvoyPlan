@@ -19,7 +19,7 @@ pydantic[email]==2.13.5
 # rejects JWKS-fetch redirects in PyJWKClient, and rate-limits repeated JWKS refreshes for
 # unknown key IDs. 2.15.0 wraps recursion errors from deeply nested JWT payloads in
 # DecodeError instead of leaking a raw RecursionError.
-PyJWT==2.15.0
+PyJWT==2.15.1
 pydantic-settings==2.15.0
 # cryptography 50.0.1 rebuilds wheels against OpenSSL 4.0.2, which fixes
 # several CVEs bundled in the statically-linked OpenSSL (CVE-2026-63072,
@@ -32,7 +32,7 @@ python-multipart==0.0.32
 bcrypt==5.0.0
 httpx==0.28.1
 gpxpy==1.6.2
-fpdf2==2.8.8
+fpdf2==2.8.9
 # Übersichtskarte im Roadbook (services/static_map.py). Kam schon als
 # Abhängigkeit von fpdf2 mit; gepinnt, weil der Code es jetzt direkt benutzt.
 Pillow==12.3.0
