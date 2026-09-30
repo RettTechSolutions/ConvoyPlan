@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onDestroy, onMount } from 'svelte';
+    import { LIZENZ_GEAENDERT } from '$lib/components/LizenzAblaufHinweis.svelte';
     import LeitstelleAreaPicker, { type AreaSelection } from '$lib/components/LeitstelleAreaPicker.svelte';
     import LeitstellenOverviewMap from '$lib/components/LeitstellenOverviewMap.svelte';
     import LeitstellenTable from '$lib/components/LeitstellenTable.svelte';
@@ -610,6 +611,7 @@
         try {
             await licenseApi.remove();
             licenseStatus = await licenseApi.getStatus();
+            window.dispatchEvent(new Event(LIZENZ_GEAENDERT));
             licenseSuccess = 'Lizenz entfernt. Demo-Modus aktiv.';
             setTimeout(() => { licenseSuccess = ''; }, 5000);
         } catch (e: unknown) {
@@ -639,6 +641,8 @@
         try {
             licenseStatus = await licenseApi.activate(licenseKeyInput.trim());
             licenseKeyInput = '';
+            // Der Ablauf-Hinweis oben soll mit dem neuen Schlüssel verschwinden.
+            window.dispatchEvent(new Event(LIZENZ_GEAENDERT));
             licenseSuccess = `Lizenz aktiviert für ${licenseStatus.customer ?? 'Unbekannt'}`;
             setTimeout(() => { licenseSuccess = ''; }, 5000);
         } catch (e: unknown) {
@@ -3728,7 +3732,14 @@
                         {#if licenseStatus.expires}
                             <div class="update-row">
                                 <span class="update-label">Gültig bis</span>
-                                <span>{licenseStatus.expires}</span>
+                                <span>
+                                    {licenseStatus.expires}
+                                    {#if licenseStatus.expiry_warning && licenseStatus.expires_in_days !== null}
+                                        <span class="badge badge-warn" title="Neuen Schlüssel beim Anbieter anfordern — danach Demo-Modus">
+                                            {licenseStatus.expires_in_days === 0 ? 'läuft heute ab' : licenseStatus.expires_in_days === 1 ? 'läuft morgen ab' : `läuft in ${licenseStatus.expires_in_days} Tagen ab`}
+                                        </span>
+                                    {/if}
+                                </span>
                             </div>
                         {/if}
                         {#if licenseStatus.contract}

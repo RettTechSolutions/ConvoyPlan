@@ -1282,6 +1282,10 @@ export interface LicenseStatus {
     email: string | null;
     issued: string | null;
     expires: string | null;
+    /** Tage bis zum letzten gültigen Tag (0 = heute, negativ = abgelaufen); null ohne lesbares Datum. */
+    expires_in_days: number | null;
+    /** Ob Portal und Banner auf den nahen Ablauf hinweisen sollen (≤ 30 Tage, Schlüssel noch gültig). */
+    expiry_warning: boolean;
     max_users: number | null;
     instance_id: string;
     key_source: string | null;
@@ -1594,7 +1598,8 @@ export const mcpAdminApi = {
 };
 
 export const licenseApi = {
-    getStatus: () => api.get<LicenseStatus>('/api/license/status'),
+    /** `sitzung: null` nimmt ausdrücklich die Superadmin-Sitzung, auch unter `/o/<slug>/`. */
+    getStatus: (sitzung: Sitzung = 'seite') => api.get<LicenseStatus>('/api/license/status', sitzung),
     activate: (license_key: string) =>
         api.post<LicenseStatus>('/api/license/activate', { license_key }),
     remove: () => api.delete<{ demo_mode: boolean }>('/api/license/'),

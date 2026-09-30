@@ -64,6 +64,10 @@ class Settings(BaseSettings):
     # How often the backend checks whether an update notification is due
     # (seconds). Relevant for mode "notify" and for notify_on_auto.
     update_notify_interval: int = 1800
+    # How often the backend checks whether the license key is about to expire
+    # and the superadmins should be told (seconds). Each warning stage is
+    # emailed once per key, so the interval only bounds the delay.
+    license_expiry_check_interval: int = 21600
     # Optional: also email the superadmins AFTER an update was installed
     # automatically (mode "auto"). The admin-panel checkbox
     # (system_settings: "update.notify_on_auto") takes priority; this env

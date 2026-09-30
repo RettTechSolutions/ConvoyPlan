@@ -10,7 +10,7 @@ from app.database import get_db
 from app.middleware.license_guard import reset_license_cache
 from app.models.user import User
 from app.services import audit
-from app.services import org_kontingent
+from app.services import lizenz_ablauf, org_kontingent
 from app.services.instance import aktuelle_lizenz, get_or_create_instance_id, save_license_key
 from app.services.license import validate_license
 
@@ -49,6 +49,11 @@ async def _status_antwort(db: AsyncSession, info, instance_id: str, key_source: 
         "email": info.email,
         "issued": info.issued,
         "expires": info.expires,
+        # Tage bis zum letzten gültigen Tag (0 = heute, negativ = abgelaufen);
+        # None ohne lesbares Datum. `expiry_warning` sagt, ob Portal und Banner
+        # darauf hinweisen sollen — dieselbe Grenze wie die Mail.
+        "expires_in_days": lizenz_ablauf.tage_bis_ablauf(info, heute),
+        "expiry_warning": _ablauf_warnen(info, heute),
         "max_users": info.max_users,
         "lts_until": info.lts_until or None,
         "instance_id": instance_id,
@@ -63,6 +68,11 @@ async def _status_antwort(db: AsyncSession, info, instance_id: str, key_source: 
         "orgs_limit": orgs_grenze,
         "orgs_count": orgs_vorhanden,
     }
+
+
+def _ablauf_warnen(info, heute) -> bool:
+    tage = lizenz_ablauf.tage_bis_ablauf(info, heute)
+    return info.valid and tage is not None and tage <= lizenz_ablauf.WARN_TAGE
 
 
 class LicenseActivateRequest(BaseModel):
