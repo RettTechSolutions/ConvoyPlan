@@ -370,11 +370,101 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Das Extract fuer den Ersteinstieg kommt wie in `region-merge` aus einem
+      # Tagescache und liegt schon im Volume, bevor GraphHopper startet. Ohne
+      # das hing der Job zweimal an Geofabrik; am 2026-09-30 lieferte der
+      # Server eine Weiterleitungsschleife (curl: (47) Maximum (50) redirects
+      # followed), und der Job war auf PRs rot, die weder Updater noch Karten
+      # anfassten.
+      #
+      # Berlin laedt switch-region.sh weiterhin selbst von Geofabrik: genau
+      # diese Phase (Groesse per HEAD, Pruefsumme, Download) prueft der Job.
+      # Faellt Geofabrik aus, bleibt er deshalb an dieser Stelle rot — dann
+      # mit einer klaren Meldung aus dem Schritt unten statt mitten im Wechsel.
+      - name: Tagesstempel fuer den Extract-Cache
+        id: osm-day
+        run: echo "day=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Extract aus dem Cache holen
+        id: osm-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: osm/liechtenstein-latest.osm.pbf
+          key: osm-extract-liechtenstein-${{ steps.osm-day.outputs.day }}
+          restore-keys: |
+            osm-extract-liechtenstein-
+
+      - name: Extract laden
+        id: osm-download
+        env:
+          EXACT_HIT: ${{ steps.osm-cache.outputs.cache-hit }}
+        run: |
+          mkdir -p osm
+          fresh=false
+          if [ "$EXACT_HIT" = "true" ]; then
+            echo "Extract von heute liegt im Cache — kein Download noetig."
+          else
+            # Wie in `region-merge`: nach .part laden und erst danach
+            # umbenennen, damit ein halber Download die brauchbare Datei aus
+            # einem frueheren Cache nicht ueberschreibt.
+            url=https://download.geofabrik.de/europe/liechtenstein-latest.osm.pbf
+            if curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 \
+                    --retry-max-time 600 -o osm/liechtenstein-latest.osm.pbf.part "$url"; then
+              mv osm/liechtenstein-latest.osm.pbf.part osm/liechtenstein-latest.osm.pbf
+              fresh=true
+            else
+              rm -f osm/liechtenstein-latest.osm.pbf.part
+              echo "::warning::Download von $url fehlgeschlagen."
+            fi
+          fi
+          if [ ! -s osm/liechtenstein-latest.osm.pbf ]; then
+            echo "::error::Geofabrik ist nicht erreichbar und es liegt kein Extract im Cache — der Job kann nichts pruefen."
+            exit 1
+          fi
+          echo "fresh=$fresh" >> "$GITHUB_OUTPUT"
+          ls -lh osm/
+
+      # Nur frisch geladene Extracts wandern in den Cache — Begruendung wie in
+      # `region-merge`: ein Lauf waehrend einer Stoerung darf alte Dateien
+      # nicht unter dem heutigen Schluessel festschreiben.
+      - name: Extract in den Cache legen
+        if: steps.osm-download.outputs.fresh == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: osm/liechtenstein-latest.osm.pbf
+          key: osm-extract-liechtenstein-${{ steps.osm-day.outputs.day }}
+
+      # Vor dem Wechsel pruefen, ob Geofabrik das Berlin-Extract ueberhaupt
+      # ausliefert. Sonst laeuft der Job erst Minuten in den Wechsel und
+      # scheitert dort mit "Extract nicht abrufbar" — eine Meldung, die nach
+      # einem Fehler im Updater aussieht, obwohl nur die Quelle fehlt.
+      - name: Geofabrik erreichbar? (Berlin-Extract fuer den Wechsel)
+        run: |
+          url=https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf
+          if ! curl -fsSIL --max-time 60 --retry 3 --retry-all-errors --retry-delay 10 "$url" >/dev/null; then
+            echo "::error::Geofabrik liefert $url nicht aus. Der Regionswechsel laedt Berlin selbst von dort und kann ohne die Quelle nicht geprueft werden — das liegt nicht am Stand dieses PRs. Den Job neu starten, sobald Geofabrik wieder antwortet."
+            exit 1
+          fi
+
       - name: Images aus dem PR-Stand bauen (lokale Tags, nicht die von GHCR)
         run: |
           docker build -t convoyplan-backend:latest ./backend
           docker build -t convoyplan-graphhopper:latest ./graphhopper
           docker build -t convoyplan-updater:latest ./docker/updater
+
+      # Liegt die Datei schon im Volume, ueberspringt der GraphHopper-
+      # Entrypoint den Download ("OSM-Daten vorhanden"). `create` legt das
+      # Volume mit den Compose-Labels an, ohne den Dienst zu starten; kopiert
+      # wird mit dem eben gebauten Updater-Image, damit kein weiteres Image
+      # aus einer Registry noetig ist.
+      - name: Ersteinstiegs-Karte ins Volume legen
+        run: |
+          docker compose create graphhopper
+          docker run --rm \
+            -v "${COMPOSE_PROJECT_NAME}_osm_data:/data/osm" \
+            -v "$PWD/osm:/src:ro" \
+            --entrypoint cp convoyplan-updater:latest \
+            /src/liechtenstein-latest.osm.pbf /data/osm/
 
       - name: Stack starten (Entrypoint update-images.sh, wie docker-compose.yml:273 es real festlegt)
         run: docker compose up -d graphhopper updater
