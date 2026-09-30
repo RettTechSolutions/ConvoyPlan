@@ -1,6 +1,7 @@
 """Tests for license validation service."""
 import base64
 import json
+import time
 from datetime import date, timedelta
 
 
@@ -80,6 +81,34 @@ def test_instance_mismatch_rejected(monkeypatch):
     info = lic_mod.validate_license(key, instance_id="other-instance-id")
     assert not info.valid
     assert "not valid for this installation" in info.error
+
+
+def _legacy_payload(iid: str) -> dict:
+    """Format der frühen Lizenzmanager-Fassung: nur "iid" und "exp" (Unix-Zeit)."""
+    exp = int(time.time()) + 365 * 86400
+    return {"exp": exp, "iid": iid}
+
+
+def test_legacy_iid_key_bound_to_its_instance(monkeypatch):
+    import app.services.license as lic_mod
+    priv, pub_b64 = _make_key()
+    monkeypatch.setattr(lic_mod, "_PUBLIC_KEY_B64", pub_b64)
+
+    key = _sign_payload(_legacy_payload("legacy-instance"), priv)
+    info = lic_mod.validate_license(key, instance_id="other-instance-id")
+    assert not info.valid
+    assert "not valid for this installation" in info.error
+
+
+def test_legacy_iid_key_valid_on_its_instance(monkeypatch):
+    import app.services.license as lic_mod
+    priv, pub_b64 = _make_key()
+    monkeypatch.setattr(lic_mod, "_PUBLIC_KEY_B64", pub_b64)
+
+    key = _sign_payload(_legacy_payload("legacy-instance"), priv)
+    info = lic_mod.validate_license(key, instance_id="legacy-instance")
+    assert info.valid
+    assert info.instance_id == "legacy-instance"
 
 
 def test_instance_check_skipped_when_no_local_id(monkeypatch):

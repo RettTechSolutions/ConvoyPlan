@@ -89,7 +89,11 @@ def validate_license(license_key: str, instance_id: str = "") -> LicenseInfo:
             issued=payload.get("issued", ""),
             expires=str(expires_raw),
             max_users=int(payload.get("max_users", 0)),
-            instance_id=payload.get("instance_id", ""),
+            # "iid" ist das Feld der frühen Lizenzmanager-Fassung. Wurde es
+            # nicht gelesen, galt die Bindung als leer und der Schlüssel auf
+            # jeder Installation — Widerruf wirkt offline nicht, also blieben
+            # auch die als widerrufen geführten Schlüssel überall gültig.
+            instance_id=payload.get("instance_id") or payload.get("iid") or "",
         )
 
         if info.expired:
