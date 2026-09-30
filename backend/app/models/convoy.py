@@ -14,7 +14,7 @@ class Convoy(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(100))
     organization: Mapped[str | None] = mapped_column(String(100))
-    organization_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True)
     parent_convoy_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("convoys.id", ondelete="SET NULL", use_alter=True, name="fk_convoy_parent"), nullable=True)
     # Wall-clock local time (no timezone). datetime-local inputs in the frontend
     # are timezone-naive; storing them in a timestamptz column made asyncpg tag
