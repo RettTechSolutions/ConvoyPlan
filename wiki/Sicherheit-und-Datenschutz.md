@@ -73,6 +73,29 @@ Ein **append-only** Protokoll erfasst sicherheitsrelevante Ereignisse (Logins, M
 |---|---|---|
 | Auskunft (Art. 15) | `GET /api/admin/users/{id}/export` | Liefert alle personenbezogenen Daten als JSON |
 | Löschung (Art. 17) | `DELETE /api/admin/users/{id}/data` | Löscht den Benutzer und pseudonymisiert den Audit-Trail |
+| Rückgabe / Umzug einer Organisation | `GET /api/organizations/{id}/export` (Org-Admin), `GET /api/admin/organizations/{id}/export` (Superadmin) | ZIP mit allen Daten der Organisation, siehe unten |
+| Löschung einer Organisation | `DELETE /api/admin/organizations/{id}` | Löscht die Organisation samt Konvois, Wegpunkten, Routen, Positionen und Tracking-Links |
+
+### Organisations-Export
+
+Gedacht für die Rückgabe der Daten bei Vertragsende (Art. 28 Abs. 3 lit. g DSGVO) und
+für einen Umzug, etwa vom Hosting auf die eigene Installation. Admins der Organisation
+finden ihn unter **Organisation → Admin → Datenexport**, der Superadmin mit ⬇ in der
+Organisationsliste.
+
+- **Inhalt:** ein ZIP mit `organisation.json` und den hochgeladenen Logos unter `logos/`.
+  Das JSON enthält Organisation, Mitgliedschaften, Mitglieder, Fahrzeuge, Konvois mit
+  Fahrzeugzuordnungen, Wegpunkten, Routen (GeoJSON), letzten Positionen und
+  Tracking-Links, Leitstellen, API-Schlüssel, KI-Freigabe, Aktivitätstage und das
+  Audit-Log der Organisation.
+- **Jede Spalte:** Die Felder werden aus dem Datenmodell gelesen, nicht von Hand
+  aufgezählt. Ein Test prüft außerdem, dass jede Tabelle mit Bezug zu einer
+  Organisation entweder im Export steht oder bewusst ausgenommen ist.
+- **Nicht enthalten:** Passwort- und Schlüssel-Hashes, MFA-Geheimnisse, die Adressen
+  (Slugs) der Tracking-Links, OAuth-Tokens sowie Rückmeldungen an den Betreiber und
+  Demo-Kontaktdaten.
+- **Nur mit Anmeldung:** Ein API-Key bekommt keinen Export, auch nicht mit Admin-Rolle.
+  Jeder Export steht als `org.exported` im Audit-Log.
 
 ---
 

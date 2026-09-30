@@ -372,6 +372,11 @@ export const trackingApi = {
 		api.delete(`/api/convoys/${convoyId}/vehicles/${vehicleId}/position?suppress=${suppress}`),
 };
 
+/** Derselbe Name, den der Server im Content-Disposition-Kopf vorschlägt. */
+function exportDateiname(slug: string): string {
+	return `convoyplan-${slug}-${new Date().toISOString().slice(0, 10)}.zip`;
+}
+
 // V2: Organizations
 export const orgsApi = {
 	list: () => api.get<Organization[]>('/api/organizations/'),
@@ -385,6 +390,9 @@ export const orgsApi = {
 	removeMember: (orgId: string, userId: string) =>
 		api.delete(`/api/organizations/${orgId}/members/${userId}`),
 	delete: (orgId: string) => api.delete(`/api/organizations/${orgId}`),
+	/** Alle Daten der Organisation als ZIP (nur Admins, nur mit Anmeldung). */
+	exportData: (orgId: string, slug: string) =>
+		downloadFile(`/api/organizations/${orgId}/export`, exportDateiname(slug)),
 	inviteMember: (orgId: string, email: string, password: string, firstName?: string, lastName?: string) =>
 		api.post(`/api/organizations/${orgId}/members/invite`, {
 			email, password, first_name: firstName || undefined, last_name: lastName || undefined,
@@ -695,6 +703,9 @@ export const adminApi = {
     createOrg: (data: { name: string; slug: string }) => api.post<AdminOrg>('/api/admin/organizations', data),
     updateOrg: (id: string, data: { owner_id: string }) => api.patch<AdminOrg>(`/api/admin/organizations/${id}`, data),
     deleteOrg: (id: string) => api.delete(`/api/admin/organizations/${id}`),
+    /** Alle Daten einer Organisation als ZIP — Rückgabe bei Vertragsende. */
+    exportOrg: (id: string, slug: string) =>
+        downloadFile(`/api/admin/organizations/${id}/export`, exportDateiname(slug)),
     listApiKeys: (orgId: string) => api.get<ApiKey[]>(`/api/admin/organizations/${orgId}/api-keys`),
     createApiKey: (orgId: string, data: ApiKeyCreate) =>
         api.post<ApiKeyCreated>(`/api/admin/organizations/${orgId}/api-keys`, data),

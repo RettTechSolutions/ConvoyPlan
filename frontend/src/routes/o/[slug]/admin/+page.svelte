@@ -15,7 +15,24 @@
     const slug = $derived(($page.params as Record<string, string>).slug);
 
     // ── Tab ──────────────────────────────────────────────────────────────────
-    let activeTab = $state<'mitglieder' | 'leitstellen' | 'gps' | 'branding' | 'ki'>('mitglieder');
+    let activeTab = $state<'mitglieder' | 'leitstellen' | 'gps' | 'branding' | 'ki' | 'daten'>('mitglieder');
+
+    // Datenexport
+    let exportLaeuft = $state(false);
+    let exportFehler = $state('');
+
+    async function exportieren() {
+        if (!$orgStore?.org_id || exportLaeuft) return;
+        exportLaeuft = true;
+        exportFehler = '';
+        try {
+            await orgsApi.exportData($orgStore.org_id, slug);
+        } catch (e: unknown) {
+            exportFehler = e instanceof Error ? e.message : 'Export fehlgeschlagen';
+        } finally {
+            exportLaeuft = false;
+        }
+    }
 
     // ── Auth guard ───────────────────────────────────────────────────────────
     onMount(async () => {
@@ -482,7 +499,34 @@
         <button class="tab" class:active={activeTab === 'gps'} onclick={() => { activeTab = 'gps'; loadGpsShares(); }}>GPS-Freigaben</button>
         <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>Branding</button>
         <button class="tab" class:active={activeTab === 'ki'} onclick={() => { activeTab = 'ki'; loadKi(); }}>KI-Zugriff</button>
+        <button class="tab" class:active={activeTab === 'daten'} onclick={() => (activeTab = 'daten')}>Datenexport</button>
     </div>
+
+    <!-- ── Datenexport ── -->
+    {#if activeTab === 'daten'}
+        {#if exportFehler}
+            <div class="error-bar">{exportFehler} <button onclick={() => (exportFehler = '')}>✕</button></div>
+        {/if}
+
+        <div class="section">
+            <div class="section-header">
+                <strong>Alle Daten der Organisation herunterladen</strong>
+            </div>
+            <p class="hint" style="margin:0 0 .75rem">
+                Ein ZIP mit allen Daten dieser Organisation: Mitglieder, Fahrzeuge, Konvois mit
+                Wegpunkten und Routen, Leitstellen, API-Schlüssel, KI-Freigabe, Aktivität,
+                Protokoll und die hochgeladenen Logos. Passwörter, Schlüssel und die Adressen der
+                Tracking-Links sind nicht enthalten. Jeder Export wird im Protokoll vermerkt.
+            </p>
+            <p class="hint" style="margin:0 0 .75rem">
+                Die Datei enthält E-Mail-Adressen und IP-Adressen der Mitglieder — bitte entsprechend
+                sicher aufbewahren.
+            </p>
+            <button class="btn-small" disabled={exportLaeuft} onclick={exportieren}>
+                {exportLaeuft ? 'Export läuft…' : '⬇ Export herunterladen'}
+            </button>
+        </div>
+    {/if}
 
     <!-- ── Mitglieder ── -->
     {#if activeTab === 'mitglieder'}
