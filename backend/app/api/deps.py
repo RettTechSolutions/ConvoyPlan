@@ -342,7 +342,9 @@ async def get_org_context(
 ) -> OrgCtx:
     # Organization-scoped API key takes precedence when supplied.
     if raw_api_key:
-        return await _api_key_org_context(raw_api_key, db)
+        ctx = await _api_key_org_context(raw_api_key, db)
+        await _pruefe_plan_sperre(request, db, ctx[1])
+        return ctx
 
     credential = _credential(request, token)
     if not credential:
@@ -376,7 +378,29 @@ async def get_org_context(
     if not membership:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Kein Mitglied dieser Organisation")
 
+    await _pruefe_plan_sperre(request, db, org)
     return user, org, membership.role
+
+
+_LESENDE_METHODEN = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+async def _pruefe_plan_sperre(request: Request, db: AsyncSession, org: Organization) -> None:
+    """Nach Ablauf eines Pakets samt Kulanz ist die Organisation nur lesend.
+
+    Hier und nicht in einer Middleware: erst an dieser Stelle steht fest, um
+    welche Organisation es geht. Lesende Aufrufe kosten nichts — die Abfrage
+    läuft nur vor einem schreibenden. 402 wie der Demo-Modus der Instanz,
+    damit das Frontend beides gleich behandelt (``services/org_plan.py``)."""
+    if request.method in _LESENDE_METHODEN:
+        return
+    from app.services import org_plan
+
+    if await org_plan.ist_gesperrt(db, org.id):
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=org_plan.GESPERRT_TEXT,
+        )
 
 
 async def _superadmin_from_token(token_data: TokenData, db: AsyncSession) -> User:

@@ -1,6 +1,7 @@
 """Tests for license validation service."""
 import base64
 import json
+import time
 from datetime import date, timedelta
 
 
@@ -34,15 +35,15 @@ def _valid_payload(instance_id: str = "") -> dict:
 
 
 def test_empty_key():
-    from app.services.license import validate_license
-    info = validate_license("")
+    import app.services.license as lic_mod
+    info = lic_mod.validate_license("")
     assert not info.valid
     assert "No license" in info.error
 
 
 def test_malformed_key():
-    from app.services.license import validate_license
-    info = validate_license("notvalidatall")
+    import app.services.license as lic_mod
+    info = lic_mod.validate_license("notvalidatall")
     assert not info.valid
     assert "Malformed" in info.error
 
@@ -80,6 +81,34 @@ def test_instance_mismatch_rejected(monkeypatch):
     info = lic_mod.validate_license(key, instance_id="other-instance-id")
     assert not info.valid
     assert "not valid for this installation" in info.error
+
+
+def _legacy_payload(iid: str) -> dict:
+    """Format der frühen Lizenzmanager-Fassung: nur "iid" und "exp" (Unix-Zeit)."""
+    exp = int(time.time()) + 365 * 86400
+    return {"exp": exp, "iid": iid}
+
+
+def test_legacy_iid_key_bound_to_its_instance(monkeypatch):
+    import app.services.license as lic_mod
+    priv, pub_b64 = _make_key()
+    monkeypatch.setattr(lic_mod, "_PUBLIC_KEY_B64", pub_b64)
+
+    key = _sign_payload(_legacy_payload("legacy-instance"), priv)
+    info = lic_mod.validate_license(key, instance_id="other-instance-id")
+    assert not info.valid
+    assert "not valid for this installation" in info.error
+
+
+def test_legacy_iid_key_valid_on_its_instance(monkeypatch):
+    import app.services.license as lic_mod
+    priv, pub_b64 = _make_key()
+    monkeypatch.setattr(lic_mod, "_PUBLIC_KEY_B64", pub_b64)
+
+    key = _sign_payload(_legacy_payload("legacy-instance"), priv)
+    info = lic_mod.validate_license(key, instance_id="legacy-instance")
+    assert info.valid
+    assert info.instance_id == "legacy-instance"
 
 
 def test_instance_check_skipped_when_no_local_id(monkeypatch):
@@ -129,8 +158,8 @@ async def test_license_mode_endpoint_demo_mode():
     from unittest.mock import patch, AsyncMock
 
     from app.config import settings as app_settings
-    with patch("app.api.routes.license.get_saved_license_key", new=AsyncMock(return_value="")), \
-         patch("app.api.routes.license.get_or_create_instance_id", new=AsyncMock(return_value="test-id")), \
+    with patch("app.services.instance.get_saved_license_key", new=AsyncMock(return_value="")), \
+         patch("app.services.instance.get_or_create_instance_id", new=AsyncMock(return_value="test-id")), \
          patch.object(app_settings, "license_key", ""):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             r = await client.get("/api/license/mode")
@@ -155,8 +184,8 @@ async def test_license_mode_endpoint_licensed(monkeypatch):
 
     valid_key = _sign_payload(_valid_payload(instance_id=""), priv)
 
-    with patch("app.api.routes.license.get_saved_license_key", new=AsyncMock(return_value=valid_key)), \
-         patch("app.api.routes.license.get_or_create_instance_id", new=AsyncMock(return_value="")), \
+    with patch("app.services.instance.get_saved_license_key", new=AsyncMock(return_value=valid_key)), \
+         patch("app.services.instance.get_or_create_instance_id", new=AsyncMock(return_value="")), \
          patch.object(app_settings, "license_key", ""):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             r = await client.get("/api/license/mode")

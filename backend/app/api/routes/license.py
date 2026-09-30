@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,7 +10,8 @@ from app.database import get_db
 from app.middleware.license_guard import reset_license_cache
 from app.models.user import User
 from app.services import audit
-from app.services.instance import get_or_create_instance_id, get_saved_license_key, save_license_key
+from app.services import org_kontingent
+from app.services.instance import aktuelle_lizenz, get_or_create_instance_id, save_license_key
 from app.services.license import validate_license
 
 router = APIRouter(prefix="/license", tags=["license"])
@@ -30,13 +33,14 @@ async def license_status(
     _: User = Depends(require_superadmin),
 ):
     instance_id = await get_or_create_instance_id(db)
-    license_key = settings.license_key
-    key_source = "env"
-    if not license_key:
-        license_key = await get_saved_license_key(db)
-        key_source = "db"
+    key_source = "env" if settings.license_key else "db"
+    info = await aktuelle_lizenz(db)
+    return await _status_antwort(db, info, instance_id, key_source)
 
-    info = validate_license(license_key, instance_id)
+
+async def _status_antwort(db: AsyncSession, info, instance_id: str, key_source: str) -> dict:
+    orgs_vorhanden, orgs_grenze = await org_kontingent.stand(db)
+    heute = datetime.now(timezone.utc).date()
     return {
         "valid": info.valid,
         "demo_mode": not info.valid,
@@ -50,6 +54,14 @@ async def license_status(
         "instance_id": instance_id,
         "key_source": key_source,
         "error": info.error if not info.valid else None,
+        # Lizenzmodell v2 — bei Altschlüsseln contract="legacy", max_orgs=None.
+        "contract": info.contract if info.valid else None,
+        "contract_until": info.contract_until or None,
+        "contract_ended": org_kontingent.vertrag_beendet(info, heute),
+        "max_orgs": info.max_orgs,
+        # Was fürs Anlegen gerade gilt (Vertragsende und Demo eingerechnet).
+        "orgs_limit": orgs_grenze,
+        "orgs_count": orgs_vorhanden,
     }
 
 
@@ -78,20 +90,7 @@ async def activate_license(
         actor_email=current.email, detail={"license_id": info.license_id, "customer": info.customer},
     )
 
-    return {
-        "valid": True,
-        "demo_mode": False,
-        "license_id": info.license_id,
-        "customer": info.customer,
-        "email": info.email,
-        "issued": info.issued,
-        "expires": info.expires,
-        "max_users": info.max_users,
-        "lts_until": info.lts_until or None,
-        "instance_id": instance_id,
-        "key_source": "db",
-        "error": None,
-    }
+    return await _status_antwort(db, info, instance_id, "db")
 
 
 @router.delete("/")
@@ -112,9 +111,5 @@ async def license_mode(db: AsyncSession = Depends(get_db)):
     Returns only {demo_mode: bool} so any logged-in frontend client can show
     a banner without exposing instance IDs or license details.
     """
-    license_key = settings.license_key
-    if not license_key:
-        license_key = await get_saved_license_key(db)
-    instance_id = await get_or_create_instance_id(db)
-    info = validate_license(license_key, instance_id)
+    info = await aktuelle_lizenz(db)
     return {"demo_mode": not info.valid}

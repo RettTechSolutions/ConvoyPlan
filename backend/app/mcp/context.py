@@ -19,11 +19,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db_session
-from app.mcp import areas
+from app.mcp import WRITE_TOOLS, areas
 from app.mcp import scopes as scope_svc
 from app.models.organization import Organization, UserOrganization
 from app.models.user import User
-from app.services import audit, org_mcp_policy, rate_limit
+from app.services import audit, org_mcp_policy, org_plan, rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -320,4 +320,9 @@ async def mcp_context(werkzeug: str | None = None):
         )
         if werkzeug is not None:
             ctx.require_werkzeug(werkzeug)
+            # Nach Ablauf eines Pakets samt Kulanz bleibt die Organisation
+            # lesbar, auch über den Assistenten — nur schreiben geht nicht
+            # mehr. Dieselbe Regel wie in ``api/deps.get_org_context``.
+            if werkzeug in WRITE_TOOLS and await org_plan.ist_gesperrt(db, org_id):
+                raise McpError(org_plan.GESPERRT_TEXT)
         yield ctx

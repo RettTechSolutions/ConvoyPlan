@@ -179,7 +179,7 @@ Hostbits werden beim Speichern verworfen: Aus `203.0.113.7/24` wird `203.0.113.0
 
    ```http
    POST /api/license/activate
-   { "key": "<lizenzschlüssel>" }
+   { "license_key": "<lizenzschlüssel>" }
    ```
 
    Der Schlüssel wird validiert, gespeichert und der Lizenz-Cache ohne Neustart zurückgesetzt.
@@ -196,6 +196,75 @@ Der Lizenzschlüssel kann auf zwei Wegen gesetzt werden:
 | Admin-UI | Admin → System → Lizenz | in der Datenbank |
 
 `GET /api/license/status` liefert `demo_mode`, den aktuellen Status und `key_source` (woher der aktive Schlüssel stammt).
+
+---
+
+## Was ein Lizenzschlüssel erlaubt
+
+Ein Schlüssel schaltet den Demo-Modus ab. Funktionen schaltet er nicht frei —
+jede lizenzierte Instanz kann dasselbe. Seit dem Lizenzmanager mit Vorlagen
+(Payload v2) trägt er zusätzlich:
+
+| Feld | Bedeutung |
+|---|---|
+| `contract` | Vertragsart: `free` (Self-hosted kostenlos), `wartung_basis`, `wartung_plus`, `hosting`, `individuell` — nur zur Anzeige |
+| `max_orgs` | Wie viele Organisationen auf der Instanz **angelegt** werden dürfen; `0` = unbegrenzt |
+| `contract_until` | Ende des Wartungs- bzw. Hostingvertrags (optional) |
+
+Die Grenze für Organisationen greift ausschließlich beim **Anlegen** — über das
+Admin-Portal, über `POST /api/organizations/` und bei der Ersteinrichtung. Ist
+sie erreicht, antwortet das Backend mit **HTTP 402** und einer Erklärung.
+Bestehende Organisationen laufen in jedem Fall weiter. Demo-Organisationen
+zählen nicht mit.
+
+Nach `contract_until` bleibt die Instanz lizenziert; nur für **neue**
+Organisationen gilt dann wieder die kostenlose Stufe (eine). Nichts wird
+abgeschaltet.
+
+**Ältere Schlüssel** (ohne Versionsfeld) bleiben gültig und behalten, was sie
+erlaubt haben: beliebig viele Organisationen. Im Admin-Portal erscheinen sie als
+„Altschlüssel".
+
+Im Admin-Portal unter **System → Lizenz** stehen Vertrag, Vertragsende und die
+Belegung („2 von 5 Organisationen"). `GET /api/license/status` liefert dafür
+`contract`, `contract_until`, `contract_ended`, `max_orgs`, `orgs_limit` (was
+fürs Anlegen gerade gilt) und `orgs_count`.
+
+---
+
+## Pläne je Organisation (Hosting)
+
+Betreibt jemand eine Instanz für mehrere Organisationen, gilt der Schlüssel für
+die ganze Instanz — gebuchte Pakete unterscheiden sich aber je Organisation.
+Dafür gibt es im Admin-Portal den Reiter **Pläne**. Dort setzt der Superadmin je
+Organisation ein Paket (Hosting S/M/L, Einsatz-Paket oder individuell); die
+Grenzen kommen aus dem Katalog und lassen sich je Organisation anpassen.
+
+- **Ohne Plan keine Grenzen.** Das ist der Normalfall jeder eigenen
+  Installation; ein Update ändert daran nichts.
+- **Grenzen sind weich.** Gezählt werden Fahrzeuge und Planerzugänge (Rollen
+  *Admin* und *Planer*); Fahrer und Beobachter zählen nie. Wer mehr nutzt als
+  gebucht, wird **nicht** abgewiesen — Anlegen klappt immer. Planer und Admins
+  der Organisation sehen einen Hinweis, der Betreiber die Überschreitung in der
+  Übersicht.
+- **Ablauf mit Kulanz.** Hat ein Plan ein Ablaufdatum (beim Einsatz-Paket
+  automatisch 30 Tage), laufen danach noch **14 Tage** weiter wie gehabt, mit
+  Hinweis an alle Mitglieder. Danach ist die Organisation **nur noch lesbar** —
+  wie der Demo-Modus, aber nur für diese Organisation: schreibende Aufrufe
+  (REST und KI-Schnittstelle) antworten mit **HTTP 402**, Lesen und Fahrer-Links
+  funktionieren weiter, nichts wird gelöscht. Verlängern oder den Plan
+  entfernen hebt die Sperre sofort auf.
+
+| Endpunkt | Zweck |
+|---|---|
+| `GET /api/admin/plans/catalog` | Pakete mit Ausgangswerten (Superadmin) |
+| `GET /api/admin/plans/organizations` | Alle Organisationen mit Plan und Nutzung, Auffälliges zuerst (Superadmin) |
+| `PUT /api/admin/plans/organizations/{id}` | Plan setzen; fehlt ein Grenzwert, gilt der Katalog, `null` heißt unbegrenzt (Superadmin) |
+| `DELETE /api/admin/plans/organizations/{id}` | Plan entfernen (Superadmin) |
+| `GET /api/org/plan` | Plan, Nutzung und Hinweise der eigenen Organisation (jedes Mitglied) |
+
+Setzen und Entfernen stehen im Audit-Log (`admin.org.plan_set`,
+`admin.org.plan_removed`).
 
 ---
 

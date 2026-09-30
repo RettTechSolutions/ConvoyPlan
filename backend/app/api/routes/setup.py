@@ -13,6 +13,7 @@ from app.models.organization import Organization, UserOrganization
 from app.models.settings import SystemSetting
 from app.models.user import User
 from app.schemas.setup import SetupRequest, SetupStatusResponse
+from app.services import org_kontingent
 from app.services.caddy_config import CERTS_DIR, generate_caddyfile, reload_caddy
 from app.services.password import assert_password_not_breached, validate_password
 
@@ -61,6 +62,14 @@ async def run_setup(data: SetupRequest, db: AsyncSession = Depends(get_db)):
         raise HTTPException(400, "Password must be at least 8 characters")
     validate_password(data.password)
     await assert_password_not_breached(data.password)
+
+    # Auf einer frischen Instanz gibt es keine Organisation, die Grenze ist
+    # also nie erreicht. Die Prüfung steht trotzdem hier, damit sie nicht an
+    # genau dem Weg fehlt, den jemand als Umgehung ausprobiert — und **vor**
+    # dem Superadmin: sie legt beim ersten Aufruf die Instanz-ID an und
+    # committet dabei, danach stünde der Benutzer schon fest.
+    if data.org_name and data.org_slug:
+        await org_kontingent.pruefe_anlegen(db)
 
     # Create superadmin
     user = User(
