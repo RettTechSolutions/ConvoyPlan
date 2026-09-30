@@ -4,19 +4,21 @@ import uuid
 from typing import Literal
 
 import bcrypt
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import get_current_user
+from app.api.deps import OrgCtx, api_key_header, get_current_user, get_org_context
+from app.api.guards import ROLE_ORDER
 from app.config import settings
 from app.database import get_db
 from app.models.organization import Organization, UserOrganization, _slugify
 from app.models.user import User
 from app.schemas.user import InviteUserRequest, NormalizedEmail, UserResponse
 from app.services import org_kontingent
+from app.services import org_export
 from app.services.email import send_org_membership_email
 from app.services.password import assert_password_not_breached, validate_password
 
@@ -281,6 +283,39 @@ async def delete_organization(
         raise HTTPException(status_code=404, detail="Organisation nicht gefunden")
     await db.delete(org)
     await db.commit()
+
+
+@router.get("/{org_id}/export")
+async def export_organization(
+    org_id: uuid.UUID,
+    request: Request,
+    raw_api_key: str | None = Depends(api_key_header),
+    ctx: OrgCtx = Depends(get_org_context),
+    db: AsyncSession = Depends(get_db),
+):
+    """Alle Daten der Organisation als ZIP — für Admins der Organisation.
+
+    Admins und nicht nur der Inhaber: Sie verwalten Mitglieder, Konvois und
+    Branding ohnehin, und eine Organisation, deren Inhaber ausgeschieden ist,
+    stünde sonst ohne Export da.
+
+    Nur mit Anmeldung, nie mit API-Key: Der Export enthält alle Mitglieder samt
+    E-Mail-Adressen und das Protokoll mit IP-Adressen. Ein Integrationsschlüssel,
+    der in einer Leitstellen-Anbindung liegt, soll das nicht in einem Zug
+    abziehen können.
+
+    Inhalt und Ausnahmen: ``app.services.org_export``."""
+    if raw_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Der Organisations-Export ist nur mit einer Anmeldung möglich, nicht mit einem API-Key.",
+        )
+    user, org, role = ctx
+    if org.id != org_id:
+        raise HTTPException(status_code=404, detail="Organisation nicht gefunden")
+    if ROLE_ORDER.get(role, -1) < ROLE_ORDER["admin"]:
+        raise HTTPException(status_code=403, detail="Nur Admins der Organisation dürfen exportieren")
+    return await org_export.export_response(db, org, request, user)
 
 
 async def _get_org_admin(org_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession) -> Organization:

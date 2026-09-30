@@ -28,6 +28,9 @@ ORG_CREATED = "admin.org.created"
 ORG_DELETED = "admin.org.deleted"
 ORG_PLAN_SET = "admin.org.plan_set"
 ORG_PLAN_REMOVED = "admin.org.plan_removed"
+# Ein Export trägt alle Daten der Organisation aus dem System — wer ihn wann
+# gezogen hat, gehört ins Protokoll.
+ORG_EXPORTED = "org.exported"
 API_KEY_CREATED = "admin.api_key.created"
 API_KEY_REVOKED = "admin.api_key.revoked"
 LICENSE_ACTIVATED = "license.activated"

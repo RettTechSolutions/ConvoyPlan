@@ -34,6 +34,7 @@ from app.models.vehicle import Vehicle
 from app.schemas.user import AdminUserCreate, AdminUserResponse, AdminUserUpdate, AdminUserOrgInfo
 from app.services import api_key as api_key_svc
 from app.services import audit
+from app.services import org_export
 from app.services.update_check import (
     VALID_CHANNELS,
     current_license as _current_license,
@@ -1221,6 +1222,21 @@ async def admin_update_organization(
         "owner_id": str(org.owner_id),
         "owner_email": new_owner.email,
     }
+
+
+@router.get("/organizations/{org_id}/export")
+async def admin_export_organization(
+    org_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current: User = Depends(require_superadmin),
+):
+    """Alle Daten einer Organisation als ZIP — für die Rückgabe bei Vertragsende
+    (§ 11 AV-Vertrag). Inhalt und Ausnahmen: ``app.services.org_export``."""
+    org = await db.get(Organization, org_id)
+    if not org:
+        raise HTTPException(404, "Organization not found")
+    return await org_export.export_response(db, org, request, current)
 
 
 @router.delete("/organizations/{org_id}", status_code=204)
