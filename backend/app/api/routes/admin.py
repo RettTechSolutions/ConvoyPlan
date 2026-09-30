@@ -800,8 +800,8 @@ async def terminate_demo_session(
 ):
     """End a demo session immediately: delete its convoys, org and demo user.
 
-    Same deletion order as the retention purge — convoys before the org
-    (FK SET NULL would orphan them), org before its owner user."""
+    Same deletion order as the retention purge — convoys before the org, org
+    before its owner user."""
     result = await db.execute(
         select(Organization).where(Organization.id == org_id, Organization.is_demo.is_(True))
     )

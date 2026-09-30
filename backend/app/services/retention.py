@@ -149,8 +149,9 @@ async def purge_demo_sessions(db: AsyncSession, max_age_hours: int) -> int:
     A session expires at demo_expires_at (settable/extendable by the superadmin);
     legacy rows without that column value fall back to created_at + TTL.
 
-    Order matters: convoys must be deleted before their org (FK with SET NULL
-    would orphan them), org before its owner_user (FK with NO ACTION)."""
+    Order matters: org before its owner_user (FK with NO ACTION). Convoys go
+    with the org by FK cascade (migration 0050); they are still deleted
+    explicitly first so the purge does not depend on the schema version."""
     from sqlalchemy import or_, select as _select
     from app.models.convoy import Convoy
 
@@ -172,8 +173,7 @@ async def purge_demo_sessions(db: AsyncSession, max_age_hours: int) -> int:
     org_ids = [r.id for r in rows]
     user_ids = [r.owner_id for r in rows]
 
-    # Convoys have organization_id FK with SET NULL — delete them explicitly so
-    # demo data is fully removed instead of becoming orphaned.
+    # The FK cascades since 0050; deleting explicitly keeps the order obvious.
     await db.execute(delete(Convoy).where(Convoy.organization_id.in_(org_ids)))
     # Deleting the org cascades UserOrganization memberships.
     await db.execute(delete(Organization).where(Organization.id.in_(org_ids)))
