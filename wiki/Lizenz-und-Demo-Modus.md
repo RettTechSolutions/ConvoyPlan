@@ -186,6 +186,39 @@ Hostbits werden beim Speichern verworfen: Aus `203.0.113.7/24` wird `203.0.113.0
 
 ---
 
+## Ablauf ankündigen
+
+Nach dem Ablaufdatum fällt die Instanz in den Demo-Modus — dann ist sie nur
+noch lesbar. Damit das nicht mitten im Betrieb passiert, kündigt die Instanz den
+Ablauf selbst an. Sie braucht dafür keine Verbindung nach außen: das Datum steht
+im Schlüssel.
+
+| Wann | Mail an alle Superadmins | Im Portal |
+|---|---|---|
+| 30 Tage vorher | einmal | Hinweisleiste oben (gelb) und Plakette neben „Gültig bis" unter **Admin** → **System** → **Lizenz** |
+| 7 Tage vorher | einmal | Hinweisleiste wird orange |
+| nach dem Ablauf | einmal (nur in den ersten 30 Tagen danach) | der bekannte Demo-Banner |
+
+- **Jede Stufe genau einmal** je Schlüssel, auch über Neustarts hinweg. Wer
+  erst in der letzten Woche aktualisiert, bekommt nur die 7-Tage-Mail, nicht
+  beide.
+- **Ein neuer Schlüssel fängt von vorn an** — mit ihm verschwindet auch die
+  Hinweisleiste, ohne Neuladen.
+- **Ohne SMTP** geht keine Mail hinaus; Hinweisleiste und Plakette erscheinen
+  trotzdem. Sobald SMTP eingerichtet ist, holt der nächste Durchgang die
+  fällige Mail nach.
+- **Nur Superadmins** sehen die Hinweisleiste, denn nur sie können einen
+  Schlüssel eintragen. Auf den Fahrer-Seiten (`/track`) erscheint sie nicht.
+- Die Mail nennt die **Instance ID** — die braucht der Anbieter für den
+  neuen Schlüssel. Steht der Schlüssel in `LICENSE_KEY`, sagt die Mail, dass er
+  dort zu ersetzen ist; ein Eintrag im Portal bliebe dann wirkungslos.
+
+Geprüft wird alle 6 Stunden (`LICENSE_EXPIRY_CHECK_INTERVAL`, Sekunden).
+`GET /api/license/status` liefert dazu `expires_in_days` (0 = heute letzter
+gültiger Tag, negativ = abgelaufen) und `expiry_warning`.
+
+---
+
 ## Schlüsselquelle: Env vs. Datenbank
 
 Der Lizenzschlüssel kann auf zwei Wegen gesetzt werden:

@@ -11,6 +11,7 @@
 	import { printConsoleBanner } from '$lib/console-banner';
 	import InstallPrompt from '$lib/components/InstallPrompt.svelte';
 	import ChangelogModal from '$lib/components/ChangelogModal.svelte';
+	import LizenzAblaufHinweis from '$lib/components/LizenzAblaufHinweis.svelte';
 
 	let { children } = $props();
 
@@ -143,6 +144,10 @@
 			<a href="/admin">Lizenz aktivieren →</a>
 		{/if}
 	</div>
+{:else if $auth.is_superadmin && !$page.url.pathname.startsWith('/track')}
+	<!-- Nahender Ablauf des Schlüssels: nur für Superadmins, die ihn erneuern
+	     können. Auf den Fahrer-Seiten (/track) stört er nur. -->
+	<LizenzAblaufHinweis />
 {/if}
 
 {@render children()}

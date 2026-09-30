@@ -454,6 +454,15 @@ weicht vom Katalog ab, und eine Änderung an `KATALOG` darf bestehende Verträge
 nicht umschreiben. **Preise gehören nirgends ins Repo** — weder hierher noch ins
 Wiki; sie stehen nur im Angebot.
 
+Den **Ablauf des Schlüssels** kündigt die Instanz selbst an
+(`services/lizenz_ablauf.py`): Mail an die Superadmins 30 und 7 Tage vorher und
+beim Ablauf, je Stufe einmal (Merker `license.expiry_notified` =
+`<ablaufdatum>:<stufe>`, ein neuer Schlüssel fängt also von vorn an), dazu
+`LizenzAblaufHinweis.svelte` für Superadmins. Die Grenze von 30 Tagen steht nur
+im Backend (`WARN_TAGE`, `expiry_warning` im Status) — das Frontend rechnet
+nicht selbst. Tests: `tests/test_lizenz_ablauf_warnung.py`,
+`frontend/e2e/lizenz-ablauf-hinweis.spec.ts`.
+
 Tests: `tests/test_lizenz_organisationsgrenze.py`, `tests/test_org_plan_grenzen.py`
 (Rechenregeln ohne Datenbank, danach durch die App und über MCP),
 `frontend/e2e/org-plan-hinweis.spec.ts` (wer den Hinweis sieht). Anwenderdoku:

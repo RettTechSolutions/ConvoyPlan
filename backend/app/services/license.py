@@ -57,21 +57,27 @@ class LicenseInfo:
             return False
 
     @property
-    def expired(self) -> bool:
+    def expires_date(self) -> date | None:
+        """Letzter gültiger Tag (UTC); None, wenn ``expires`` fehlt oder unlesbar ist."""
         if not self.expires:
-            return True
-        today_utc = datetime.now(timezone.utc).date()
+            return None
         # ISO date string (YYYY-MM-DD) — preferred format
         try:
-            return date.fromisoformat(self.expires) < today_utc
+            return date.fromisoformat(self.expires)
         except ValueError:
             pass
         # Unix timestamp — "exp" field in JWT convention
         try:
-            return datetime.fromtimestamp(int(self.expires), tz=timezone.utc).date() < today_utc
+            return datetime.fromtimestamp(int(self.expires), tz=timezone.utc).date()
         except (ValueError, OSError, OverflowError):
-            pass
-        return True  # unknown format → treat as expired
+            return None
+
+    @property
+    def expired(self) -> bool:
+        ablauf = self.expires_date
+        if ablauf is None:
+            return True  # missing or unknown format → treat as expired
+        return ablauf < datetime.now(timezone.utc).date()
 
 
 def _b64url_decode(s: str) -> bytes:
