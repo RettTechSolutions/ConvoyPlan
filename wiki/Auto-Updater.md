@@ -19,10 +19,25 @@ Damit der Updater Commit-Stände und Releases von GitHub abrufen kann, wird ein 
 | **Stable** (Standard, empfohlen) | Nur veröffentlichte GitHub-Releases | `:latest` |
 | **Beta** | Nummerierte Vorabversionen / Release-Kandidaten (`vX.Y.Z-beta.N`) | `:beta` |
 | **Nightly** | Jeder Commit auf `main` | `:nightly` |
+| **LTS** (Wartungsvertrag) | Releases der aktuellen LTS-Linie: 12 Monate nur Sicherheits- und Fehlerkorrekturen | `:lts` |
 
 Der Beta-Kanal funktioniert auch bei image-basierten Standard-Installationen.
 
-Fallback-Env: `UPDATE_CHANNEL=stable|beta|nightly`.
+Fallback-Env: `UPDATE_CHANNEL=stable|beta|nightly|lts`.
+
+### LTS-Kanal
+
+Der LTS-Kanal gehört zum Wartungsvertrag. Wählbar ist er nur, wenn der
+Lizenzschlüssel eine LTS-Freigabe (`lts_until`) trägt und das Datum nicht
+überschritten ist. Die Freigabe steht unter **Admin → Lizenz**.
+
+- Eine LTS-Linie ist eine Version wie `2026.7`, die 12 Monate lang nur Sicherheits-
+  und Fehlerkorrekturen bekommt (`v2026.7.1`, `v2026.7.2`, …), keine neuen Funktionen.
+- Pro Jahr beginnt eine neue Linie. Dann wechselt der Kanal von selbst auf sie — im
+  Modus **Benachrichtigen** erst nach Klick auf „Jetzt updaten“.
+- Läuft die Freigabe ab, bleibt eine Installation auf dem LTS-Kanal stehen, statt
+  ungefragt auf die neueste Stable-Version zu springen. Die Admin-Oberfläche weist
+  darauf hin.
 
 ---
 

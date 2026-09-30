@@ -8,7 +8,7 @@ Used by two consumers:
 
 Also owns the settings that are mirrored to the shared ``update_status``
 volume so the (DB-less) updater container can read them:
-  - ``update.channel``  → /update_status/channel  ("stable" | "beta" | "nightly")
+  - ``update.channel``  → /update_status/channel  ("stable" | "beta" | "nightly" | "lts")
   - ``update.mode``     → /update_status/mode     ("auto" | "notify")
 """
 
@@ -31,7 +31,7 @@ STATUS_FILE = "/update_status/status.json"
 CHANNEL_FILE = "/update_status/channel"
 MODE_FILE = "/update_status/mode"
 
-VALID_CHANNELS = ("stable", "beta", "nightly")
+VALID_CHANNELS = ("stable", "beta", "nightly", "lts")
 # auto   → der Updater installiert verfügbare Updates selbstständig
 # notify → keine automatische Installation; Superadmins werden per E-Mail
 #          benachrichtigt und aktualisieren manuell über das Admin-Panel
@@ -59,6 +59,53 @@ def write_channel_file(channel: str) -> None:
     read it. Best-effort: a non-writable volume must never break the request
     (the updater repairs the volume permissions on its next cycle)."""
     _write_shared_file(CHANNEL_FILE, channel)
+
+
+# ── LTS-Kanal ─────────────────────────────────────────────────────────────────
+#
+# Eine LTS-Linie ist ein Branch ``lts/<JAHR>.<MASTER>`` (z. B. ``lts/2026.7``);
+# ihre Releases heißen ``v<JAHR>.<MASTER>.<FIX>``. Maßgeblich ist die höchste
+# Linie, zu der es einen Branch gibt — so wandert der Kanal beim Start einer
+# neuen Linie mit, ohne dass auf den Installationen etwas umzustellen ist.
+# Freigeschaltet wird der Kanal über ``lts_until`` im Lizenzschlüssel.
+
+
+def lts_line(ref_names: list[str]) -> str | None:
+    """Die höchste LTS-Linie aus einer Liste von Git-Refs (``refs/heads/lts/…``)."""
+    lines: list[tuple[tuple[int, int], str]] = []
+    for ref in ref_names:
+        name = ref.removeprefix("refs/heads/lts/")
+        if name == ref:
+            continue
+        parts = name.split(".")
+        if len(parts) == 2 and all(p.isdigit() for p in parts):
+            lines.append(((int(parts[0]), int(parts[1])), name))
+    return max(lines)[1] if lines else None
+
+
+def newest_release_on_line(releases: list[dict], line: str) -> str | None:
+    """Tag des neuesten veröffentlichten Releases einer Linie — Prereleases und
+    Entwürfe zählen nicht, ``v2026.7.10`` ist neuer als ``v2026.7.9``."""
+    prefix = f"v{line}."
+    best: tuple[int, str] | None = None
+    for rel in releases:
+        tag = rel.get("tag_name") or ""
+        fix = tag.removeprefix(prefix)
+        if fix == tag or not fix.isdigit() or rel.get("prerelease") or rel.get("draft"):
+            continue
+        if best is None or int(fix) > best[0]:
+            best = (int(fix), tag)
+    return best[1] if best else None
+
+
+async def current_license(db: AsyncSession):
+    """Die Lizenz dieser Installation — Env-Schlüssel vor gespeichertem."""
+    from app.services.instance import get_or_create_instance_id, get_saved_license_key
+    from app.services.license import validate_license
+
+    license_key = settings.license_key or await get_saved_license_key(db)
+    instance_id = await get_or_create_instance_id(db)
+    return validate_license(license_key, instance_id)
 
 
 # ── Update mode (auto / notify) ───────────────────────────────────────────────
@@ -160,8 +207,9 @@ async def fetch_update_state(db: AsyncSession) -> dict:
     # the latest published GitHub *release*; "beta" against the latest GitHub
     # *pre-release* (numbered release candidate, e.g. v2026.2.1-beta.1);
     # "nightly" against the last successfully built :nightly images (every main
-    # commit). Keep the shared channel file in sync so the updater container
-    # deploys the matching ref.
+    # commit); "lts" against the newest release of the current LTS line. Keep
+    # the shared channel file in sync so the updater container deploys the
+    # matching ref.
     channel, _ = await resolve_channel(db)
     write_channel_file(channel)
 
@@ -198,7 +246,27 @@ async def fetch_update_state(db: AsyncSession) -> dict:
                 # beta   → das neueste Prerelease (nummerierter Release-Kandidat,
                 #          z. B. v2026.2.1-beta.1). Beide durchlaufen danach
                 #          dieselbe "Tag → Commit-SHA + Ancestry"-Logik.
-                if channel == "beta":
+                if channel == "lts":
+                    # Linie = höchster lts/*-Branch; Ziel = ihr neuestes Release.
+                    refs = await client.get(
+                        f"https://api.github.com/repos/{settings.github_repo}"
+                        "/git/matching-refs/heads/lts",
+                        headers=headers,
+                    )
+                    rel = await client.get(
+                        f"https://api.github.com/repos/{settings.github_repo}"
+                        "/releases?per_page=100",
+                        headers=headers,
+                    )
+                    if refs.is_success and rel.is_success:
+                        github_reachable = True
+                        line = lts_line([r.get("ref", "") for r in (refs.json() or [])])
+                        latest_release = (
+                            newest_release_on_line(rel.json() or [], line) if line else None
+                        )
+                        if latest_release is None:
+                            no_release = True
+                elif channel == "beta":
                     rel = await client.get(
                         f"https://api.github.com/repos/{settings.github_repo}"
                         "/releases?per_page=30",

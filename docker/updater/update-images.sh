@@ -158,13 +158,16 @@ write_status() {
 # Note: `docker cp $self:/tmp/foo $HOST_PATH` does NOT work here, because the
 # docker CLI interprets the destination in the CLIENT filesystem (= inside this
 # container), and the host path doesn't exist there.
-# ── Release-Kanal (stable | beta | nightly) ───────────────────────────────────
+# ── Release-Kanal (stable | beta | nightly | lts) ─────────────────────────────
 # Der Backend-Admin-Bereich schreibt den gewählten Kanal in eine geteilte Datei.
 #   stable  → deployt nur veröffentlichte Releases (Images :latest)
 #   beta    → deployt nummerierte Prereleases / Release-Kandidaten
 #             (Images :beta, gebaut von release.yml aus einem vX.Y.Z-beta.N-Tag)
 #   nightly → deployt jeden Commit auf main (Images :nightly, gebaut von
 #             .github/workflows/nightly-images.yml auf jedem main-Push)
+#   lts     → deployt die Releases der aktuellen LTS-Linie (Images :lts, von
+#             release.yml fuer Releases auf einem lts/*-Branch gesetzt).
+#             Freigeschaltet vom Backend nur mit LTS-Lizenz.
 CHANNEL_FILE=/update_status/channel
 
 read_channel() {
@@ -175,6 +178,7 @@ read_channel() {
     case "${ch}" in
         beta)    echo "beta" ;;
         nightly) echo "nightly" ;;
+        lts)     echo "lts" ;;
         *)       echo "stable" ;;
     esac
 }
@@ -208,6 +212,7 @@ _channel_tag() {
     case "$(read_channel)" in
         beta)    echo "beta" ;;
         nightly) echo "nightly" ;;
+        lts)     echo "lts" ;;
         *)       echo "latest" ;;
     esac
 }
@@ -266,6 +271,48 @@ _latest_prerelease_tag() {
     } | grep -oE '"tag_name": *"[^"]*"' | cut -d'"' -f4 | grep -m1 -- '-beta\.' || true
 }
 
+# LTS-Linie: der hoechste Branch lts/<JAHR>.<MASTER>, z. B. "2026.7". Die Linie
+# kommt vom Repo, nicht von der Installation — beim Start einer neuen Linie
+# wandert der Kanal mit. Numerisch sortiert statt `sort -V`: das BusyBox-sort
+# im Updater-Image kennt -V nicht zuverlaessig. Leer = nicht ermittelbar.
+_lts_line() {
+    local repo="${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}"
+    local url="https://api.github.com/repos/${repo}/git/matching-refs/heads/lts"
+    {
+        if [ -n "${GITHUB_TOKEN:-}" ]; then
+            curl -sf --max-time 15 -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                "${url}" 2>/dev/null
+        else
+            curl -sf --max-time 15 "${url}" 2>/dev/null
+        fi
+    } | grep -oE '"ref": *"refs/heads/lts/[0-9]+\.[0-9]+"' | cut -d'"' -f4 \
+      | sed 's#^refs/heads/lts/##' | sort -t. -k1,1n -k2,2n | tail -n1 || true
+}
+
+# LTS-Kanal-Ziel: das neueste veroeffentlichte Release der LTS-Linie
+# (v<LINIE>.<FIX>, hoechster FIX). Tags mit Suffix sind Prereleases (siehe
+# release.yml) und fallen durch das Muster. Leer = nicht ermittelbar.
+_lts_release_tag() {
+    local repo="${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}"
+    local line
+    line="$(_lts_line)"
+    [ -n "${line}" ] || return 0
+    local url="https://api.github.com/repos/${repo}/releases?per_page=100"
+    local fix
+    fix="$({
+        if [ -n "${GITHUB_TOKEN:-}" ]; then
+            curl -sf --max-time 15 -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                "${url}" 2>/dev/null
+        else
+            curl -sf --max-time 15 "${url}" 2>/dev/null
+        fi
+    } | grep -oE "\"tag_name\": *\"v${line//./\\.}\\.[0-9]+\"" | cut -d'"' -f4 \
+      | sed "s/^v${line}\.//" | sort -n | tail -n1 || true)"
+    if [ -n "${fix}" ]; then
+        echo "v${line}.${fix}"
+    fi
+}
+
 # Ancestry zweier Refs laut GitHub-Compare-API: ahead|behind|identical|diverged.
 # "ahead" = head enthält base und ist weiter. Leer = nicht ermittelbar.
 _compare_status() {
@@ -312,11 +359,19 @@ _update_stack_file() {
 
     local repo="${GITHUB_REPO:-RettTechSolutions/ConvoyPlan}"
     # Compose-Datei-Quelle je Kanal: stable → Release-Tag, beta → Prerelease-Tag,
-    # nightly → main (explizites Opt-in auf jeden Commit).
+    # lts → Release-Tag der LTS-Linie, nightly → main (explizites Opt-in auf
+    # jeden Commit).
     local ref
     case "$(read_channel)" in
         nightly)
             ref="main"
+            ;;
+        lts)
+            ref="$(_lts_release_tag)"
+            if [ -z "${ref}" ]; then
+                log "WARNUNG: LTS-Release-Tag nicht ermittelbar — Stack-Datei nicht aktualisiert"
+                return 0
+            fi
             ;;
         beta)
             ref="$(_latest_prerelease_tag)"
@@ -691,6 +746,7 @@ _current_target() {
     case "${ch}" in
         nightly) ref="$(_nightly_built_sha)" ;;
         beta)    ref="$(_latest_prerelease_tag)" ;;
+        lts)     ref="$(_lts_release_tag)" ;;
         *)       ref="$(_latest_release_tag)" ;;
     esac
     if [ -n "${ref}" ]; then

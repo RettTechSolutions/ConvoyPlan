@@ -30,7 +30,20 @@ class LicenseInfo:
     expires: str = ""
     max_users: int = 0
     instance_id: str = ""
+    # Letzter Tag, an dem der LTS-Update-Kanal freigeschaltet ist (ISO-Datum).
+    # Gehört zum Wartungsvertrag; leer = kein LTS.
+    lts_until: str = ""
     error: str = ""
+
+    @property
+    def lts_active(self) -> bool:
+        """True, solange die Lizenz gültig ist und LTS bis heute (einschließlich) abdeckt."""
+        if not self.valid or not self.lts_until:
+            return False
+        try:
+            return date.fromisoformat(self.lts_until) >= datetime.now(timezone.utc).date()
+        except ValueError:
+            return False
 
     @property
     def expired(self) -> bool:
@@ -90,6 +103,7 @@ def validate_license(license_key: str, instance_id: str = "") -> LicenseInfo:
             expires=str(expires_raw),
             max_users=int(payload.get("max_users", 0)),
             instance_id=payload.get("instance_id", ""),
+            lts_until=str(payload.get("lts_until", "") or ""),
         )
 
         if info.expired:
