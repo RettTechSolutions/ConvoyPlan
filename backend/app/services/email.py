@@ -390,7 +390,7 @@ def _build_logo_block(logo_main: str, app_name: str, base_url: str = "") -> str:
     if logo_main:
         safe_logo = html.escape(logo_main)
         return (
-            f'<img src="{base_url}/uploads/logos/{safe_logo}" '
+            f'<img src="{base_url}/api/branding/logos/{safe_logo}" '
             f'height="50" alt="{safe_name}" style="display:block;margin:0 auto;"/>'
         )
     return (

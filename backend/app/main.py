@@ -1,11 +1,9 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from app.api import docs_ui
 from app.api.routes import (
@@ -322,13 +320,10 @@ app.include_router(public_meta_router.wellknown_router)
 # Wurzel — und tut nichts, solange MCP_ENABLED nicht gesetzt ist.
 mcp_mount.mount(app)
 
-_uploads_dir = Path("/uploads")
-try:
-    _uploads_dir.mkdir(parents=True, exist_ok=True)
-except OSError:
-    pass  # directory may already exist or be read-only in dev/test environments
-if _uploads_dir.is_dir():
-    app.mount("/uploads", StaticFiles(directory="/uploads", html=False), name="uploads")
+# Kein statischer Mount für /uploads: Caddy reicht den Pfad nie ans Backend
+# durch, und unter /uploads liegen auch die Bildschirmfotos aus Meldungen.
+# Logos kommen über GET /api/branding/logos/{name}, Screenshots nur über den
+# Superadmin-Endpunkt in api/routes/feedback.py.
 
 
 @app.get("/health")

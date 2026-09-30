@@ -246,8 +246,8 @@ Neustart zurückgesetzt. Als erste Verteidigungslinie gedacht, nicht als harte A
 
 Ohne gültigen Lizenzschlüssel läuft die Instanz im Demo-Modus: **GET immer erlaubt**,
 `POST`/`PUT`/`PATCH`/`DELETE` auf geschützten Pfaden mit `402` abgewiesen. Ausgenommen
-sind `/health`, `/api/auth/login`, `/api/license/*`, `/api/setup`, `/api/track/*` und
-`/uploads`. Lesende Integrationen funktionieren also auch unlizenziert.
+sind `/health`, `/api/auth/login`, `/api/license/*`, `/api/setup` und `/api/track/*`.
+Lesende Integrationen funktionieren also auch unlizenziert.
 
 ### Endpunkte
 
@@ -584,6 +584,7 @@ Org-Admin-Rolle erforderlich (außer dem öffentlichen Slug-Endpunkt). Die Overr
 | `POST` | `/api/org/branding/logo/{slot}` | Logo hochladen (`slot`: `main` oder `horizontal`), PNG/JPG/SVG, max. 2 MB |
 | `DELETE` | `/api/org/branding` | Alle Overrides entfernen — Org fällt zurück auf das Plattform-Branding |
 | `GET` | `/api/branding/org/{slug}` | **Öffentlich:** effektives Branding einer Org per Slug (für die Org-Login-Seite, kein Login nötig) |
+| `GET` | `/api/branding/logos/{datei}` | **Öffentlich:** ein hochgeladenes Logo. Die URL samt `?v=` steht in `logo_main_url`/`logo_horizontal_url` der Branding-Antworten |
 
 ---
 
