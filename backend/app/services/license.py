@@ -31,6 +31,17 @@ class LicenseInfo:
     max_users: int = 0
     instance_id: str = ""
     error: str = ""
+    # Ab Payload v2 (Lizenzmanager mit Vorlagen). Ältere Schlüssel tragen kein
+    # "v" und behalten, was sie hatten: beliebig viele Organisationen — die
+    # Zusage „bereits ausgestellte Schlüssel bleiben gültig" gilt auch für das,
+    # was sie erlaubt haben. Was daraus fürs Anlegen folgt, entscheidet
+    # ``services/org_kontingent.py``, nicht dieses Modul.
+    version: int = 1
+    contract: str = "legacy"
+    # Obergrenze für Organisationen auf der Instanz; None = unbegrenzt.
+    max_orgs: int | None = None
+    # Ende des Wartungs-/Hostingvertrags (YYYY-MM-DD), leer = keins.
+    contract_until: str = ""
 
     @property
     def expired(self) -> bool:
@@ -95,6 +106,14 @@ def validate_license(license_key: str, instance_id: str = "") -> LicenseInfo:
             # auch die als widerrufen geführten Schlüssel überall gültig.
             instance_id=payload.get("instance_id") or payload.get("iid") or "",
         )
+        if int(payload.get("v", 1)) >= 2:
+            info.version = int(payload["v"])
+            info.contract = str(payload.get("contract", "")) or "individuell"
+            # 0 heißt im Schlüssel „unbegrenzt" — so kann der Lizenzmanager es
+            # ohne null ausdrücken, und ein fehlendes Feld fällt nicht auf 0.
+            max_orgs = int(payload.get("max_orgs", 0))
+            info.max_orgs = max_orgs if max_orgs > 0 else None
+            info.contract_until = str(payload.get("contract_until", "") or "")
 
         if info.expired:
             info.valid = False

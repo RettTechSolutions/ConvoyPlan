@@ -6,7 +6,7 @@
     import { auth } from '$lib/stores/auth';
     import EmailTemplateEditor from '$lib/components/EmailTemplateEditor.svelte';
     import { getStreamTicket } from '$lib/api/client';
-    import { adminApi, mfaApi, leistellenApi, licenseApi, mcpAdminApi, regionApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoStats, type DemoSessionInfo, type DemoLeadInfo, type DemoIpLock, type DemoIpAllowlistEntry, type RegionStatus, type RegionPhase, type McpStatus, type McpClient, type McpConnection, type McpOrgPolicy, feedbackAdminApi, type FeedbackReport, type FeedbackStats, type FeedbackStatus, type FeedbackSeverity, type FeedbackKind } from '$lib/api';
+    import { adminApi, mfaApi, leistellenApi, licenseApi, mcpAdminApi, orgPlanAdminApi, type AdminOrgPlanRow, type OrgPlanCatalogEntry, regionApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoStats, type DemoSessionInfo, type DemoLeadInfo, type DemoIpLock, type DemoIpAllowlistEntry, type RegionStatus, type RegionPhase, type McpStatus, type McpClient, type McpConnection, type McpOrgPolicy, feedbackAdminApi, type FeedbackReport, type FeedbackStats, type FeedbackStatus, type FeedbackSeverity, type FeedbackKind } from '$lib/api';
     import { brandingStore, applyBranding, normalizeBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
     import SuperadminLogin from '$lib/components/SuperadminLogin.svelte';
@@ -20,7 +20,7 @@
     let authed = $state(false);
 
     // ── Tab ──────────────────────────────────────────────────────────────────
-    let activeTab = $state<'benutzer' | 'organisationen' | 'api-keys' | 'mcp' | 'meldungen' | 'leitstellen' | 'branding' | 'demo' | 'uebersicht' | 'system'>('benutzer');
+    let activeTab = $state<'benutzer' | 'organisationen' | 'plaene' | 'api-keys' | 'mcp' | 'meldungen' | 'leitstellen' | 'branding' | 'demo' | 'uebersicht' | 'system'>('benutzer');
 
     // ── Meldungen (Fehler und Wünsche aus der Anwendung) ─────────────────────
     // Zwei Abfragen statt einer: die Kennzahlen zählen über den *ganzen*
@@ -1700,6 +1700,119 @@
         }
     }
 
+    // ── Pläne je Organisation (Hosting-Pakete) ─────────────────────────────
+    // Regeln und Begründung: backend/app/services/org_plan.py. Grenzen sind
+    // weich (nur Hinweis), nach Ablauf + Kulanz ist die Organisation lesend.
+    let planRows = $state<AdminOrgPlanRow[]>([]);
+    let planCatalog = $state<OrgPlanCatalogEntry[]>([]);
+    let planLoading = $state(false);
+    let planError = $state('');
+    let planSaving = $state(false);
+    let planEdit = $state<{
+        orgId: string;
+        name: string;
+        plan: string;
+        maxVehicles: string;
+        maxPlanners: string;
+        validUntil: string;
+        note: string;
+    } | null>(null);
+
+    async function loadPlans() {
+        planLoading = true;
+        planError = '';
+        try {
+            [planCatalog, planRows] = await Promise.all([
+                orgPlanAdminApi.catalog(),
+                orgPlanAdminApi.list(),
+            ]);
+        } catch (e) {
+            planError = e instanceof Error ? e.message : 'Pläne konnten nicht geladen werden.';
+        } finally {
+            planLoading = false;
+        }
+    }
+
+    function planZahl(n: number | null): string {
+        return n === null ? '' : String(n);
+    }
+
+    function planKatalogUebernehmen(key: string) {
+        if (!planEdit) return;
+        const k = planCatalog.find((c) => c.plan === key);
+        planEdit.plan = key;
+        if (k) {
+            planEdit.maxVehicles = planZahl(k.max_vehicles);
+            planEdit.maxPlanners = planZahl(k.max_planners);
+            // Leer lassen: das Backend setzt die Laufzeit aus dem Katalog.
+            if (k.laufzeit_tage) planEdit.validUntil = '';
+        }
+    }
+
+    function planBearbeiten(row: AdminOrgPlanRow) {
+        planEdit = {
+            orgId: row.organization_id,
+            name: row.organization_name,
+            plan: row.plan ?? '',
+            maxVehicles: planZahl(row.max_vehicles),
+            maxPlanners: planZahl(row.max_planners),
+            validUntil: row.valid_until ?? '',
+            note: row.note ?? '',
+        };
+        if (!row.plan) planKatalogUebernehmen(planCatalog[0]?.plan ?? 'hosting_s');
+    }
+
+    /** Leeres Feld = unbegrenzt (null), sonst die Zahl. */
+    function planGrenze(text: string): number | null {
+        const t = text.trim();
+        return t === '' ? null : Math.max(0, Math.floor(Number(t)));
+    }
+
+    async function planSpeichern() {
+        if (!planEdit) return;
+        planSaving = true;
+        planError = '';
+        const k = planCatalog.find((c) => c.plan === planEdit!.plan);
+        const data: Parameters<typeof orgPlanAdminApi.set>[1] = {
+            plan: planEdit.plan,
+            max_vehicles: planGrenze(planEdit.maxVehicles),
+            max_planners: planGrenze(planEdit.maxPlanners),
+            note: planEdit.note.trim() || null,
+        };
+        // Ohne Datum bei einem Paket mit Laufzeit rechnet das Backend sie aus;
+        // sonst heißt leer: bis auf Weiteres.
+        if (planEdit.validUntil || !k?.laufzeit_tage) data.valid_until = planEdit.validUntil || null;
+        try {
+            await orgPlanAdminApi.set(planEdit.orgId, data);
+            planEdit = null;
+            await loadPlans();
+        } catch (e) {
+            planError = e instanceof Error ? e.message : 'Plan konnte nicht gespeichert werden.';
+        } finally {
+            planSaving = false;
+        }
+    }
+
+    async function planEntfernen(row: AdminOrgPlanRow) {
+        if (!confirm(`Plan für „${row.organization_name}“ entfernen? Die Organisation läuft danach ohne Grenzen weiter.`)) return;
+        planError = '';
+        try {
+            await orgPlanAdminApi.remove(row.organization_id);
+            await loadPlans();
+        } catch (e) {
+            planError = e instanceof Error ? e.message : 'Plan konnte nicht entfernt werden.';
+        }
+    }
+
+    const VERTRAG_LABEL: Record<string, string> = {
+        free: 'Kostenlos (Self-hosted)',
+        wartung_basis: 'Wartung Basis',
+        wartung_plus: 'Wartung Plus',
+        hosting: 'Hosting (Betreiberinstanz)',
+        individuell: 'Individuell',
+        legacy: 'Altschlüssel',
+    };
+
     async function copyMcpUrl() {
         if (!mcpStatus) return;
         try {
@@ -1816,6 +1929,7 @@
     <div class="tab-bar">
         <button class="tab" class:active={activeTab === 'benutzer'} onclick={() => (activeTab = 'benutzer')}>Benutzer</button>
         <button class="tab" class:active={activeTab === 'organisationen'} onclick={() => { activeTab = 'organisationen'; loadOrgs(); }}>Organisationen</button>
+        <button class="tab" class:active={activeTab === 'plaene'} onclick={() => { activeTab = 'plaene'; loadPlans(); }}>Pläne</button>
         <button class="tab" class:active={activeTab === 'api-keys'} onclick={() => { activeTab = 'api-keys'; loadApiKeyOrgs(); }}>API-Keys</button>
         <button class="tab" class:active={activeTab === 'mcp'} onclick={() => { activeTab = 'mcp'; loadMcp(); }}>MCP</button>
         <button class="tab" class:active={activeTab === 'meldungen'} onclick={() => { activeTab = 'meldungen'; loadFeedback(); }}>
@@ -2061,6 +2175,116 @@
     {/if}
 
     <!-- ── API-Keys ── -->
+    {#if activeTab === 'plaene'}
+        {#if planError}
+            <div class="error-bar">{planError} <button onclick={() => (planError = '')}>✕</button></div>
+        {/if}
+        <div class="section">
+            <div class="section-header">
+                <strong>Pläne je Organisation</strong>
+                <button class="btn-small" onclick={loadPlans}>↺</button>
+            </div>
+            <p class="hint" style="margin:-.25rem 0 .75rem">
+                Für Organisationen, die Sie auf dieser Instanz betreiben (Hosting, Einsatz-Paket).
+                <strong>Ohne Plan gibt es keine Grenzen</strong> — der Normalfall bei einer eigenen
+                Installation. Grenzen sind weich: Mehr Fahrzeuge oder Planer als gebucht werden nicht
+                abgewiesen, sondern hier und beim Org-Admin angezeigt. Nach dem Ablaufdatum laufen noch
+                14 Tage Kulanz, danach ist die Organisation nur noch lesbar. Fahrer und Beobachter
+                zählen nie.
+            </p>
+
+            {#if planLoading}
+                <p class="hint">Lade…</p>
+            {:else if planRows.length === 0}
+                <p class="hint">Es gibt keine Organisationen.</p>
+            {:else}
+                <table class="user-table">
+                    <thead>
+                        <tr>
+                            <th>Organisation</th>
+                            <th>Plan</th>
+                            <th>Fahrzeuge</th>
+                            <th>Planer</th>
+                            <th>Gültig bis</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {#each planRows as row (row.organization_id)}
+                            <tr>
+                                <td>{row.organization_name} <span class="hint">({row.organization_slug})</span></td>
+                                <td>
+                                    {#if row.plan}
+                                        {row.label}
+                                    {:else}
+                                        <span class="badge badge-muted">ohne</span>
+                                    {/if}
+                                </td>
+                                <td>
+                                    {row.vehicles}{#if row.max_vehicles !== null} / {row.max_vehicles}{/if}
+                                    {#if row.vehicles_over}<span class="badge badge-warn">über</span>{/if}
+                                </td>
+                                <td>
+                                    {row.planners}{#if row.max_planners !== null} / {row.max_planners}{/if}
+                                    {#if row.planners_over}<span class="badge badge-warn">über</span>{/if}
+                                </td>
+                                <td>
+                                    {#if row.valid_until}
+                                        {row.valid_until}
+                                        {#if row.locked}
+                                            <span class="badge badge-warn" title="Nur noch lesbar">gesperrt</span>
+                                        {:else if row.expired}
+                                            <span class="badge badge-update" title="Kulanz bis {row.locked_from}">Kulanz</span>
+                                        {/if}
+                                    {:else if row.plan}
+                                        <span class="hint">Vertrag</span>
+                                    {/if}
+                                </td>
+                                <td style="white-space:nowrap">
+                                    <button class="btn-small" onclick={() => planBearbeiten(row)}>{row.plan ? 'Ändern' : 'Plan setzen'}</button>
+                                    {#if row.plan}
+                                        <button class="btn-danger-small" onclick={() => planEntfernen(row)}>Entfernen</button>
+                                    {/if}
+                                </td>
+                            </tr>
+                        {/each}
+                    </tbody>
+                </table>
+            {/if}
+
+            {#if planEdit}
+                <div class="section" style="margin-top:1rem">
+                    <div class="section-header"><strong>Plan für {planEdit.name}</strong></div>
+                    <div class="form-row" style="align-items:flex-end;flex-wrap:wrap;gap:.6rem">
+                        <label>Paket
+                            <select value={planEdit.plan} onchange={(e) => planKatalogUebernehmen((e.currentTarget as HTMLSelectElement).value)}>
+                                {#each planCatalog as k (k.plan)}
+                                    <option value={k.plan}>{k.label}</option>
+                                {/each}
+                            </select>
+                        </label>
+                        <label>Fahrzeuge (leer = ∞)
+                            <input type="number" min="0" style="width:7rem" bind:value={planEdit.maxVehicles} />
+                        </label>
+                        <label>Planer (leer = ∞)
+                            <input type="number" min="0" style="width:7rem" bind:value={planEdit.maxPlanners} />
+                        </label>
+                        <label>Gültig bis (leer = Vertrag{planCatalog.find((k) => k.plan === planEdit?.plan)?.laufzeit_tage ? ' / Laufzeit' : ''})
+                            <input type="date" bind:value={planEdit.validUntil} />
+                        </label>
+                        <label style="flex:1;min-width:180px">Notiz (nur für Sie)
+                            <input type="text" bind:value={planEdit.note} placeholder="z. B. Angebot CP-2026-001" />
+                        </label>
+                        <button class="btn-primary" onclick={planSpeichern} disabled={planSaving || !planEdit.plan}>
+                            {planSaving ? 'Speichere…' : 'Speichern'}
+                        </button>
+                        <button class="btn-small" onclick={() => (planEdit = null)}>Abbrechen</button>
+                    </div>
+                </div>
+            {/if}
+        </div>
+    {/if}
+
     {#if activeTab === 'api-keys'}
         {#if apiKeysError}
             <div class="error-bar">{apiKeysError} <button onclick={() => (apiKeysError = '')}>✕</button></div>
@@ -3498,6 +3722,32 @@
                                 <span>{licenseStatus.expires}</span>
                             </div>
                         {/if}
+                        {#if licenseStatus.contract}
+                            <div class="update-row">
+                                <span class="update-label">Vertrag</span>
+                                <span>{VERTRAG_LABEL[licenseStatus.contract] ?? licenseStatus.contract}</span>
+                            </div>
+                        {/if}
+                        {#if licenseStatus.contract_until}
+                            <div class="update-row">
+                                <span class="update-label">Vertragsende</span>
+                                <span>
+                                    {licenseStatus.contract_until}
+                                    {#if licenseStatus.contract_ended}
+                                        <span class="badge badge-warn" title="Neue Organisationen nur noch bis zur kostenlosen Stufe">beendet</span>
+                                    {/if}
+                                </span>
+                            </div>
+                        {/if}
+                        <div class="update-row">
+                            <span class="update-label">Organisationen</span>
+                            <span>
+                                {licenseStatus.orgs_count} von {licenseStatus.orgs_limit ?? 'unbegrenzt'}
+                                {#if licenseStatus.orgs_limit !== null && licenseStatus.orgs_count >= licenseStatus.orgs_limit}
+                                    <span class="badge badge-update" title="Weitere Organisationen brauchen einen erweiterten Schlüssel">voll</span>
+                                {/if}
+                            </span>
+                        </div>
                         {#if licenseStatus.max_users}
                             <div class="update-row">
                                 <span class="update-label">Max. Benutzer</span>

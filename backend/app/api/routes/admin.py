@@ -1105,6 +1105,10 @@ async def admin_create_organization(
     db: AsyncSession = Depends(get_db),
     current: User = Depends(require_superadmin),
 ):
+    from app.services import org_kontingent
+
+    await org_kontingent.pruefe_anlegen(db)
+
     slug = data.slug.strip().lower()
     # Validate slug chars
     import re as _re

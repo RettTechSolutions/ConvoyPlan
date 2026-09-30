@@ -16,6 +16,7 @@ from app.database import get_db
 from app.models.organization import Organization, UserOrganization, _slugify
 from app.models.user import User
 from app.schemas.user import InviteUserRequest, NormalizedEmail, UserResponse
+from app.services import org_kontingent
 from app.services.email import send_org_membership_email
 from app.services.password import assert_password_not_breached, validate_password
 
@@ -135,6 +136,8 @@ async def create_organization(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    await org_kontingent.pruefe_anlegen(db)
+
     # Generate a unique slug from the org name
     base = _slugify(data.name) or "org"
     slug = base[:77]  # leave room for suffix "-99"

@@ -158,8 +158,8 @@ async def test_license_mode_endpoint_demo_mode():
     from unittest.mock import patch, AsyncMock
 
     from app.config import settings as app_settings
-    with patch("app.api.routes.license.get_saved_license_key", new=AsyncMock(return_value="")), \
-         patch("app.api.routes.license.get_or_create_instance_id", new=AsyncMock(return_value="test-id")), \
+    with patch("app.services.instance.get_saved_license_key", new=AsyncMock(return_value="")), \
+         patch("app.services.instance.get_or_create_instance_id", new=AsyncMock(return_value="test-id")), \
          patch.object(app_settings, "license_key", ""):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             r = await client.get("/api/license/mode")
@@ -184,8 +184,8 @@ async def test_license_mode_endpoint_licensed(monkeypatch):
 
     valid_key = _sign_payload(_valid_payload(instance_id=""), priv)
 
-    with patch("app.api.routes.license.get_saved_license_key", new=AsyncMock(return_value=valid_key)), \
-         patch("app.api.routes.license.get_or_create_instance_id", new=AsyncMock(return_value="")), \
+    with patch("app.services.instance.get_saved_license_key", new=AsyncMock(return_value=valid_key)), \
+         patch("app.services.instance.get_or_create_instance_id", new=AsyncMock(return_value="")), \
          patch.object(app_settings, "license_key", ""):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             r = await client.get("/api/license/mode")

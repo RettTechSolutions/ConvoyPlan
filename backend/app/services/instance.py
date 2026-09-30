@@ -5,11 +5,15 @@ Generated once on first startup and stored in system_settings.
 Used as the machine fingerprint for license binding.
 """
 import uuid
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.settings import SystemSetting
+
+if TYPE_CHECKING:
+    from app.services.license import LicenseInfo
 
 _SETTING_KEY = "license.instance_id"
 _LICENSE_KEY_SETTING = "license.key"
@@ -47,3 +51,17 @@ async def save_license_key(db: AsyncSession, key: str) -> None:
     else:
         db.add(SystemSetting(key=_LICENSE_KEY_SETTING, value=key))
     await db.commit()
+
+
+async def aktuelle_lizenz(db: AsyncSession) -> "LicenseInfo":
+    """Die Lizenz, die für diese Instanz gerade gilt.
+
+    Dieselbe Reihenfolge wie im Lizenzwächter: ``LICENSE_KEY`` aus der
+    Umgebung schlägt den gespeicherten Schlüssel. Ohne Cache — wer hier fragt,
+    will den Stand jetzt (Anlegen einer Organisation, Anzeige im Portal), und
+    das passiert selten genug."""
+    from app.config import settings
+    from app.services.license import validate_license
+
+    key = settings.license_key or await get_saved_license_key(db)
+    return validate_license(key, await get_or_create_instance_id(db))

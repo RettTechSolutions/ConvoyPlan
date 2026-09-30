@@ -421,6 +421,44 @@ Oberfläche nicht ansieht: der abgeschickte Aufruf enthält die Felder, die der
 Ausklapper „Was mitgeschickt wird" nennt — und kein Feld mehr. Anwenderdoku:
 `wiki/Meldungen.md`.
 
+### Lizenz: Schlüssel je Instanz, Plan je Organisation
+
+Verkauft wird Betrieb, Wartung und Support, nicht Funktionen — ein Schlüssel
+schaltet den Demo-Modus ab und sonst nichts frei. Unter AGPL wäre jede
+Funktionssperre ohnehin nur ein Zaun für Ehrliche. Zwei Ebenen, die man nicht
+vermischen darf:
+
+- **Der Schlüssel** (`services/license.py`, Payload v2 aus dem Lizenzmanager)
+  gilt für die Instanz und trägt `max_orgs`. Die Grenze greift **nur beim
+  Anlegen** einer Organisation (`services/org_kontingent.py`, an allen drei
+  Stellen: Admin, `POST /api/organizations/`, Ersteinrichtung), nie beim
+  Betrieb. Schlüssel ohne `v` sind unbegrenzt — „ausgestellte Schlüssel bleiben
+  gültig" heißt: mit dem, was sie erlaubt haben. Nach `contract_until` gilt fürs
+  Anlegen wieder eine Organisation, lizenziert bleibt die Instanz.
+- **Der Plan** (`services/org_plan.py`, Tabelle `organization_plans`, Migration
+  `0050`) gilt für eine Organisation auf einer gemeinsamen Hosting-Instanz und
+  wird vom Superadmin gesetzt — signiert werden muss nichts, die Instanz gehört
+  dem, der ihn setzt. Keine Zeile = keine Grenzen; das ist der Normalfall.
+
+Die Grenzen eines Plans sind **weich**, und das ist Absicht: eine Absage beim
+Anlegen des 26. Fahrzeugs träfe den Moment, in dem jemand während einer Lage
+nachträgt. Gemeldet wird nur (`GET /api/org/plan`, Hinweis im Org-Layout,
+Übersicht im Adminportal). Hart ist allein der **Ablauf**: nach `valid_until`
+14 Tage Kulanz, danach nur lesend — durchgesetzt in `api/deps.get_org_context`
+(schreibende Methoden) und in `mcp/context.mcp_context` (`WRITE_TOOLS`). Wer
+einen dritten Weg zum Schreiben in eine Organisation baut, zieht die Sperre
+dort mit.
+
+Gespeichert werden die geltenden Werte, nicht nur der Paketname: ein Angebot
+weicht vom Katalog ab, und eine Änderung an `KATALOG` darf bestehende Verträge
+nicht umschreiben. **Preise gehören nirgends ins Repo** — weder hierher noch ins
+Wiki; sie stehen nur im Angebot.
+
+Tests: `tests/test_lizenz_organisationsgrenze.py`, `tests/test_org_plan_grenzen.py`
+(Rechenregeln ohne Datenbank, danach durch die App und über MCP),
+`frontend/e2e/org-plan-hinweis.spec.ts` (wer den Hinweis sieht). Anwenderdoku:
+`wiki/Lizenz-und-Demo-Modus.md`.
+
 ## Test-Konventionen
 
 Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste:

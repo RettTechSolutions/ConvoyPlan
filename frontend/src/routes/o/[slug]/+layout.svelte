@@ -5,6 +5,7 @@
     import { orgStore } from '$lib/stores/org';
     import { setOrgBranding, clearOrgBranding } from '$lib/stores/branding';
     import FeedbackModal from '$lib/components/FeedbackModal.svelte';
+    import OrgPlanHinweis from '$lib/components/OrgPlanHinweis.svelte';
 
     let { children } = $props();
     let ready = $state(false);
@@ -61,6 +62,11 @@
 </svelte:head>
 
 {#if ready}
+    {#if $orgStore}
+        <!-- Plan der Organisation (Hosting): ohne Plan nichts, sonst Ablauf
+             und Überschreitungen. Siehe backend/app/services/org_plan.py. -->
+        <OrgPlanHinweis role={$orgStore.user_role} />
+    {/if}
     {@render children()}
     <!-- Der Melde-Dialog hängt hier und nicht auf jeder Seite einzeln: er
          soll überall in der Anwendung derselbe sein, und `ready` heißt, dass

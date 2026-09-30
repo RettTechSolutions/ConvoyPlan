@@ -1273,6 +1273,57 @@ export interface LicenseStatus {
     instance_id: string;
     key_source: string | null;
     error: string | null;
+    /** Vertragsart aus dem Schlüssel; "legacy" bei Schlüsseln vor Payload v2. */
+    contract: 'free' | 'wartung_basis' | 'wartung_plus' | 'hosting' | 'individuell' | 'legacy' | string | null;
+    contract_until: string | null;
+    contract_ended: boolean;
+    /** Was der Schlüssel erlaubt; null = unbegrenzt. */
+    max_orgs: number | null;
+    /** Was fürs Anlegen gerade gilt (Vertragsende und Demo eingerechnet); null = unbegrenzt. */
+    orgs_limit: number | null;
+    orgs_count: number;
+}
+
+/** Plan, Nutzung und Hinweise einer Organisation (backend/app/api/routes/org_plans.py). */
+export interface OrgPlanState {
+    plan: string | null;
+    label: string | null;
+    max_vehicles: number | null;
+    max_planners: number | null;
+    valid_until: string | null;
+    vehicles: number;
+    planners: number;
+    vehicles_over: boolean;
+    planners_over: boolean;
+    expired: boolean;
+    locked: boolean;
+    days_left: number | null;
+    locked_from: string | null;
+}
+
+export interface AdminOrgPlanRow extends OrgPlanState {
+    organization_id: string;
+    organization_name: string;
+    organization_slug: string;
+    note: string | null;
+    updated_at: string | null;
+}
+
+export interface OrgPlanCatalogEntry {
+    plan: string;
+    label: string;
+    max_vehicles: number | null;
+    max_planners: number | null;
+    laufzeit_tage: number | null;
+}
+
+/** Fehlt ein Grenzwert, gilt der Katalog; ausdrücklich null heißt unbegrenzt. */
+export interface OrgPlanSet {
+    plan: string;
+    max_vehicles?: number | null;
+    max_planners?: number | null;
+    valid_until?: string | null;
+    note?: string | null;
 }
 
 export interface McpScopeInfo {
@@ -1534,6 +1585,18 @@ export const licenseApi = {
     activate: (license_key: string) =>
         api.post<LicenseStatus>('/api/license/activate', { license_key }),
     remove: () => api.delete<{ demo_mode: boolean }>('/api/license/'),
+};
+
+export const orgPlanAdminApi = {
+    catalog: () => api.get<OrgPlanCatalogEntry[]>('/api/admin/plans/catalog'),
+    list: () => api.get<AdminOrgPlanRow[]>('/api/admin/plans/organizations'),
+    set: (orgId: string, data: OrgPlanSet) =>
+        api.put<AdminOrgPlanRow>(`/api/admin/plans/organizations/${orgId}`, data),
+    remove: (orgId: string) => api.delete<void>(`/api/admin/plans/organizations/${orgId}`),
+};
+
+export const orgPlanApi = {
+    get: () => api.get<OrgPlanState>('/api/org/plan'),
 };
 
 /** Kennung einer verwaltbaren Vorlage (siehe backend/app/api/routes/email_template.py). */
