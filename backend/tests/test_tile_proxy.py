@@ -94,7 +94,7 @@ async def test_user_agent_nennt_die_instanz(cache, server, monkeypatch):
     monkeypatch.setattr(settings, "app_base_url", "https://convoy.example.de")
     await tile_proxy.get_tile(1, 0, 0)
     ua = server.abrufe[0].headers["user-agent"]
-    assert ua.startswith("ConvoyPlan/") and "https://convoy.example.de" in ua
+    assert ua == f"ConvoyPlan/{settings.app_version} (+https://convoy.example.de)"
 
 
 async def test_gleichzeitige_anfragen_ein_abruf(cache, server):
