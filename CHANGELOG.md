@@ -32,6 +32,8 @@ ursprünglichen SemVer-Nummern.
 
 ### Fixed
 
+- **Wer eine Organisation löscht, löscht auch ihre Konvois.** `convoys.organization_id` zeigte mit `ON DELETE SET NULL` auf die Organisation; beide Lösch-Wege (Superadmin unter `DELETE /api/admin/organizations/{id}`, Inhaber unter `DELETE /api/organizations/{id}`) ließen die Konvois samt Wegpunkten, Route, Positionen und Tracking-Links ohne Zuordnung in der Datenbank zurück — unerreichbar, aber nicht gelöscht. Der Fremdschlüssel kaskadiert jetzt (Migration `0050`), unabhängig davon, auf welchem Weg die Organisation verschwindet. Die Migration löscht außerdem Konvois, die bereits verwaist sind: Jeder Konvoi wird mit Organisation angelegt, einer ohne ist für keinen Nutzer mehr erreichbar.
+
 - **Ein Release auf einer älteren Linie bewegt `:latest` nicht mehr.** Bisher setzte jeder Tag ohne Suffix `:latest` und das GitHub-Label „Latest“ — ein Korrektur-Release `v2026.7.4`, getaggt nachdem `v2026.8.0` erschienen war, hätte `:latest` auf die ältere Linie gesetzt, und die nächste Aktualisierung einer Stable-Installation hätte deren Images gezogen. Jetzt gilt beides nur für die höchste Version (numerisch sortiert, `2026.10` > `2026.9`).
 
 ## [2026.7.0] – 2026-09-23

@@ -41,7 +41,12 @@ class Organization(Base):
 
     owner: Mapped["User"] = relationship(foreign_keys=[owner_id])
     members: Mapped[list["UserOrganization"]] = relationship(back_populates="organization", cascade="all, delete-orphan")
-    convoys: Mapped[list["Convoy"]] = relationship(back_populates="org")
+    # Die Datenbank löscht die Konvois mit (Migration 0050). passive_deletes hält
+    # das ORM davon ab, vorher organization_id auf NULL zu setzen und sie so
+    # als Waisen zurückzulassen.
+    convoys: Mapped[list["Convoy"]] = relationship(
+        back_populates="org", cascade="all", passive_deletes=True
+    )
 
 
 class UserOrganization(Base):
