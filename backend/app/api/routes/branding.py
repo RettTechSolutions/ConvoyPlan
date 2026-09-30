@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 import re
 import defusedxml.ElementTree as _ET
 from pathlib import Path
@@ -187,10 +188,12 @@ async def get_logo(filename: str) -> FileResponse:
     """Public like GET /branding: the login page shows the logo before anyone signs in."""
     if not _LOGO_NAME.fullmatch(filename):
         raise HTTPException(status_code=404, detail="Logo nicht gefunden")
-    path = LOGOS_DIR / filename
-    if not path.is_file():
+    # Doppelt zum Muster: aufgelöst muss der Pfad im Logoverzeichnis liegen.
+    root = os.path.realpath(LOGOS_DIR)
+    path = os.path.realpath(os.path.join(root, filename))
+    if not path.startswith(root + os.sep) or not os.path.isfile(path):
         raise HTTPException(status_code=404, detail="Logo nicht gefunden")
-    ext = path.suffix.lower()
+    ext = os.path.splitext(path)[1].lower()
     headers = {
         "X-Content-Type-Options": "nosniff",
         "Cache-Control": "public, max-age=86400",
