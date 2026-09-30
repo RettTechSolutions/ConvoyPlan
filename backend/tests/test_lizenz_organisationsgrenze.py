@@ -26,14 +26,14 @@ from app.config import settings
 from app.database import AsyncSessionLocal, engine
 from app.models.organization import Organization, UserOrganization
 from app.models.user import User
+import app.services.license as lic_mod
 from app.services import org_kontingent
-from app.services.license import LicenseInfo
 
 HEUTE = date(2026, 9, 30)
 
 
-def _v2(**felder) -> LicenseInfo:
-    info = LicenseInfo(valid=True, version=2, contract="free", max_orgs=1)
+def _v2(**felder) -> lic_mod.LicenseInfo:
+    info = lic_mod.LicenseInfo(valid=True, version=2, contract="free", max_orgs=1)
     for k, v in felder.items():
         setattr(info, k, v)
     return info
@@ -43,7 +43,7 @@ def _v2(**felder) -> LicenseInfo:
 
 
 def test_altschluessel_ist_unbegrenzt():
-    assert org_kontingent.grenze(LicenseInfo(valid=True), HEUTE) is None
+    assert org_kontingent.grenze(lic_mod.LicenseInfo(valid=True), HEUTE) is None
 
 
 def test_v2_grenze_kommt_aus_dem_schluessel():
@@ -52,7 +52,7 @@ def test_v2_grenze_kommt_aus_dem_schluessel():
 
 
 def test_ohne_gueltige_lizenz_genau_eine():
-    assert org_kontingent.grenze(LicenseInfo(valid=False), HEUTE) == 1
+    assert org_kontingent.grenze(lic_mod.LicenseInfo(valid=False), HEUTE) == 1
 
 
 def test_nach_vertragsende_eine_davor_die_vereinbarte():
@@ -80,8 +80,6 @@ def _signieren(payload: dict, monkeypatch) -> str:
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
     from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-    import app.services.license as lic_mod
-
     priv = Ed25519PrivateKey.generate()
     pub = priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
     monkeypatch.setattr(lic_mod, "_PUBLIC_KEY_B64", base64.b64encode(pub).decode())
@@ -95,8 +93,6 @@ def _signieren(payload: dict, monkeypatch) -> str:
 
 
 def test_v2_schluessel_traegt_vertrag_und_grenze(monkeypatch):
-    from app.services.license import validate_license
-
     key = _signieren(
         {
             "v": 2,
@@ -109,27 +105,23 @@ def test_v2_schluessel_traegt_vertrag_und_grenze(monkeypatch):
         },
         monkeypatch,
     )
-    info = validate_license(key, "inst-1")
+    info = lic_mod.validate_license(key, "inst-1")
     assert info.valid
     assert (info.version, info.contract, info.max_orgs) == (2, "wartung_plus", 5)
     assert info.contract_until == "2027-09-29"
 
 
 def test_v2_null_heisst_unbegrenzt(monkeypatch):
-    from app.services.license import validate_license
-
     key = _signieren(
         {"v": 2, "instance_id": "i", "expires": "2056-01-01", "contract": "hosting", "max_orgs": 0},
         monkeypatch,
     )
-    assert validate_license(key, "i").max_orgs is None
+    assert lic_mod.validate_license(key, "i").max_orgs is None
 
 
 def test_altschluessel_bleibt_legacy(monkeypatch):
-    from app.services.license import validate_license
-
     key = _signieren({"instance_id": "i", "expires": "2100-05-27"}, monkeypatch)
-    info = validate_license(key, "i")
+    info = lic_mod.validate_license(key, "i")
     assert info.valid
     assert (info.version, info.contract, info.max_orgs) == (1, "legacy", None)
 
@@ -183,7 +175,7 @@ async def _anzahl() -> int:
         return await org_kontingent.anzahl(db)
 
 
-def _lizenz(monkeypatch, info: LicenseInfo) -> None:
+def _lizenz(monkeypatch, info: lic_mod.LicenseInfo) -> None:
     async def _aktuell(_db):
         return info
 

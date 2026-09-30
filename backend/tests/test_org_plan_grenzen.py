@@ -28,7 +28,6 @@ from app.models.organization import Organization, UserOrganization
 from app.models.user import User
 from app.models.vehicle import Vehicle
 from app.services import org_plan
-from app.services.org_plan import Nutzung
 
 HEUTE = date(2026, 9, 30)
 
@@ -46,14 +45,14 @@ def _zeile(**felder) -> OrganizationPlan:
 
 
 def test_ohne_plan_nie_eine_grenze_und_nie_gesperrt():
-    z = org_plan.zustand(None, Nutzung(fahrzeuge=10_000, planer=10_000), HEUTE)
+    z = org_plan.zustand(None, org_plan.Nutzung(fahrzeuge=10_000, planer=10_000), HEUTE)
     assert not (z.fahrzeuge_ueber or z.planer_ueber or z.abgelaufen or z.gesperrt)
 
 
 def test_grenze_erreicht_ist_nicht_ueberschritten():
-    z = org_plan.zustand(_zeile(), Nutzung(fahrzeuge=25, planer=5), HEUTE)
+    z = org_plan.zustand(_zeile(), org_plan.Nutzung(fahrzeuge=25, planer=5), HEUTE)
     assert not z.fahrzeuge_ueber and not z.planer_ueber
-    z = org_plan.zustand(_zeile(), Nutzung(fahrzeuge=26, planer=6), HEUTE)
+    z = org_plan.zustand(_zeile(), org_plan.Nutzung(fahrzeuge=26, planer=6), HEUTE)
     assert z.fahrzeuge_ueber and z.planer_ueber
     # Überschreiten sperrt nichts — die Grenzen sind weich.
     assert not z.gesperrt
@@ -61,7 +60,7 @@ def test_grenze_erreicht_ist_nicht_ueberschritten():
 
 def test_unbegrenzt_kennt_kein_ueber():
     z = org_plan.zustand(
-        _zeile(max_vehicles=None, max_planners=None), Nutzung(10_000, 10_000), HEUTE
+        _zeile(max_vehicles=None, max_planners=None), org_plan.Nutzung(10_000, 10_000), HEUTE
     )
     assert not z.fahrzeuge_ueber and not z.planer_ueber
 
@@ -78,7 +77,7 @@ def test_unbegrenzt_kennt_kein_ueber():
 )
 def test_ablauf_und_kulanz(tage_nach_ablauf, abgelaufen, gesperrt):
     ende = HEUTE - timedelta(days=tage_nach_ablauf)
-    z = org_plan.zustand(_zeile(valid_until=ende), Nutzung(0, 0), HEUTE)
+    z = org_plan.zustand(_zeile(valid_until=ende), org_plan.Nutzung(0, 0), HEUTE)
     assert (z.abgelaufen, z.gesperrt) == (abgelaufen, gesperrt)
     assert z.tage_bis_ablauf == -tage_nach_ablauf
     assert z.sperre_ab == ende + timedelta(days=org_plan.KULANZ_TAGE + 1)
