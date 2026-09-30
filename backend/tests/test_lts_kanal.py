@@ -15,7 +15,7 @@ from httpx import ASGITransport, AsyncClient
 
 from app.api.deps import get_db, require_superadmin
 from app.main import app
-from app.services.license import LicenseInfo
+import app.services.license as lic_mod
 from app.services.update_check import lts_line, newest_release_on_line
 from tests.test_license import _make_key, _sign_payload, _valid_payload
 
@@ -72,12 +72,10 @@ def test_linie_ohne_release():
     ],
 )
 def test_lts_freigabe(valid, lts_until, erwartet):
-    assert LicenseInfo(valid=valid, lts_until=lts_until).lts_active is erwartet
+    assert lic_mod.LicenseInfo(valid=valid, lts_until=lts_until).lts_active is erwartet
 
 
 def test_lizenzschluessel_traegt_lts_until(monkeypatch):
-    import app.services.license as lic_mod
-
     priv, pub_b64 = _make_key()
     monkeypatch.setattr(lic_mod, "_PUBLIC_KEY_B64", pub_b64)
     payload = {**_valid_payload(), "lts_until": MORGEN}
@@ -88,8 +86,6 @@ def test_lizenzschluessel_traegt_lts_until(monkeypatch):
 
 
 def test_alter_lizenzschluessel_ohne_lts(monkeypatch):
-    import app.services.license as lic_mod
-
     priv, pub_b64 = _make_key()
     monkeypatch.setattr(lic_mod, "_PUBLIC_KEY_B64", pub_b64)
     info = lic_mod.validate_license(_sign_payload(_valid_payload(), priv))
@@ -120,7 +116,7 @@ def admin_client(monkeypatch):
 
 
 def _lizenz(lts_until: str):
-    return AsyncMock(return_value=LicenseInfo(valid=True, lts_until=lts_until))
+    return AsyncMock(return_value=lic_mod.LicenseInfo(valid=True, lts_until=lts_until))
 
 
 async def test_lts_ohne_freigabe_abgelehnt(admin_client, monkeypatch):
