@@ -36,6 +36,7 @@ from app.services import api_key as api_key_svc
 from app.services import audit
 from app.services.update_check import (
     VALID_CHANNELS,
+    current_license as _current_license,
     VALID_MODES,
     env_channel as _env_channel,
     env_mode as _env_mode,
@@ -369,17 +370,22 @@ async def set_traffic_keys(
     )
 
 
-# ── Update-Channel (stable / beta / nightly) ────────────────────────────────
+# ── Update-Channel (stable / beta / nightly / lts) ──────────────────────────
 
 
 class UpdateChannelResponse(BaseModel):
-    channel: str             # effective channel ("stable" | "beta" | "nightly")
+    channel: str             # effective channel ("stable" | "beta" | "nightly" | "lts")
     source: str              # "db" | "env" — where the effective value comes from
     env_channel: str         # the UPDATE_CHANNEL env fallback
+    # LTS gehört zum Wartungsvertrag: freigeschaltet über lts_until im
+    # Lizenzschlüssel. Läuft es ab, bleibt ein gesetzter LTS-Kanal stehen —
+    # ein stiller Wechsel auf Stable wäre ein ungefragter Versionssprung.
+    lts_available: bool
+    lts_until: str | None
 
 
 class UpdateChannelUpdate(BaseModel):
-    channel: str = Field(..., description="Release channel: 'stable', 'beta' or 'nightly'")
+    channel: str = Field(..., description="Release channel: 'stable', 'beta', 'nightly' or 'lts'")
 
 
 @router.get("/settings/update-channel", response_model=UpdateChannelResponse)
@@ -391,7 +397,11 @@ async def get_update_channel(
     # Keep the shared file in sync on read too, so the updater picks up the
     # current value even if it was only ever set via the env var.
     _write_channel_file(channel)
-    return UpdateChannelResponse(channel=channel, source=source, env_channel=_env_channel())
+    lizenz = await _current_license(db)
+    return UpdateChannelResponse(
+        channel=channel, source=source, env_channel=_env_channel(),
+        lts_available=lizenz.lts_active, lts_until=lizenz.lts_until or None,
+    )
 
 
 @router.put("/settings/update-channel", status_code=204)
@@ -403,9 +413,16 @@ async def set_update_channel(
 ):
     """Store the release channel in system_settings and mirror it to the shared
     volume so the updater switches between tracking published releases (stable),
-    numbered pre-releases (beta) or every main commit (nightly)."""
+    numbered pre-releases (beta), every main commit (nightly) or the current
+    LTS line (lts — only with a licence that covers it)."""
     if data.channel not in VALID_CHANNELS:
-        raise HTTPException(422, "channel must be 'stable', 'beta' or 'nightly'")
+        raise HTTPException(422, "channel must be 'stable', 'beta', 'nightly' or 'lts'")
+    if data.channel == "lts" and not (await _current_license(db)).lts_active:
+        raise HTTPException(
+            403,
+            "Der LTS-Kanal gehört zum Wartungsvertrag und braucht einen Lizenzschlüssel "
+            "mit LTS-Freigabe (lts_until).",
+        )
     result = await db.execute(select(SystemSetting).where(SystemSetting.key == "update.channel"))
     setting = result.scalar_one_or_none()
     if setting:
@@ -800,8 +817,8 @@ async def terminate_demo_session(
 ):
     """End a demo session immediately: delete its convoys, org and demo user.
 
-    Same deletion order as the retention purge — convoys before the org
-    (FK SET NULL would orphan them), org before its owner user."""
+    Same deletion order as the retention purge — convoys before the org, org
+    before its owner user."""
     result = await db.execute(
         select(Organization).where(Organization.id == org_id, Organization.is_demo.is_(True))
     )

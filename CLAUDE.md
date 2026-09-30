@@ -436,7 +436,7 @@ vermischen darf:
   gültig" heißt: mit dem, was sie erlaubt haben. Nach `contract_until` gilt fürs
   Anlegen wieder eine Organisation, lizenziert bleibt die Instanz.
 - **Der Plan** (`services/org_plan.py`, Tabelle `organization_plans`, Migration
-  `0050`) gilt für eine Organisation auf einer gemeinsamen Hosting-Instanz und
+  `0051`) gilt für eine Organisation auf einer gemeinsamen Hosting-Instanz und
   wird vom Superadmin gesetzt — signiert werden muss nichts, die Instanz gehört
   dem, der ihn setzt. Keine Zeile = keine Grenzen; das ist der Normalfall.
 

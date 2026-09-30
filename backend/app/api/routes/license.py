@@ -50,6 +50,7 @@ async def _status_antwort(db: AsyncSession, info, instance_id: str, key_source: 
         "issued": info.issued,
         "expires": info.expires,
         "max_users": info.max_users,
+        "lts_until": info.lts_until or None,
         "instance_id": instance_id,
         "key_source": key_source,
         "error": info.error if not info.valid else None,

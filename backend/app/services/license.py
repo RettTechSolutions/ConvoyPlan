@@ -30,6 +30,9 @@ class LicenseInfo:
     expires: str = ""
     max_users: int = 0
     instance_id: str = ""
+    # Letzter Tag, an dem der LTS-Update-Kanal freigeschaltet ist (ISO-Datum).
+    # Gehört zum Wartungsvertrag; leer = kein LTS.
+    lts_until: str = ""
     error: str = ""
     # Ab Payload v2 (Lizenzmanager mit Vorlagen). Ältere Schlüssel tragen kein
     # "v" und behalten, was sie hatten: beliebig viele Organisationen — die
@@ -42,6 +45,16 @@ class LicenseInfo:
     max_orgs: int | None = None
     # Ende des Wartungs-/Hostingvertrags (YYYY-MM-DD), leer = keins.
     contract_until: str = ""
+
+    @property
+    def lts_active(self) -> bool:
+        """True, solange die Lizenz gültig ist und LTS bis heute (einschließlich) abdeckt."""
+        if not self.valid or not self.lts_until:
+            return False
+        try:
+            return date.fromisoformat(self.lts_until) >= datetime.now(timezone.utc).date()
+        except ValueError:
+            return False
 
     @property
     def expired(self) -> bool:
@@ -105,6 +118,7 @@ def validate_license(license_key: str, instance_id: str = "") -> LicenseInfo:
             # jeder Installation — Widerruf wirkt offline nicht, also blieben
             # auch die als widerrufen geführten Schlüssel überall gültig.
             instance_id=payload.get("instance_id") or payload.get("iid") or "",
+            lts_until=str(payload.get("lts_until", "") or ""),
         )
         if int(payload.get("v", 1)) >= 2:
             info.version = int(payload["v"])

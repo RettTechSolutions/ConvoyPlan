@@ -104,6 +104,10 @@ The `release.yml` workflow triggers on the `v*.*.*` tag and:
    ```
 3. Creates a GitHub Release with auto-generated release notes from commit messages.
 
+`:latest` and the GitHub "Latest" flag move **only for the highest version**
+(numeric sort, so `2026.10` > `2026.9`). A fix release on an older LTS line
+never pulls stable instances back to that line.
+
 ---
 
 ## Cutting a Beta Pre-Release
@@ -144,6 +148,45 @@ the `FIX` component of the latest *stable* tag).
 > it pulls the refreshed image, runs the migration (channel → nightly) and from
 > then on tracks `:nightly` automatically. Instances that set the channel purely
 > via `UPDATE_CHANNEL=beta` must switch that env to `UPDATE_CHANNEL=nightly`.
+
+---
+
+## LTS Lines
+
+The **LTS** update channel follows one held version line for 12 months: security
+and bug fixes only, no new features. It is part of the maintenance contract and
+unlocked per instance by `lts_until` in the licence key (Lizenzmanager).
+
+A line is a branch `lts/<YEAR>.<MASTER>`. The **highest** such branch is the
+current line — updaters and the admin UI read it from GitHub, so starting a new
+line moves every LTS instance over without any change on the instances. One
+line per year; the previous line ends when the next one starts.
+
+**Start a line** — create the branch *before* tagging its first release on it:
+
+```bash
+git branch lts/2026.8 v2026.8.0     # or from main before tagging v2026.8.0
+git push origin lts/2026.8
+```
+
+If the release is already tagged, the next release on the line sets `:lts`;
+to set it right away, re-run `release.yml` for that tag (workflow_dispatch).
+
+**Ship a fix on the line** — backport to the branch and tag there:
+
+```bash
+git checkout lts/2026.8
+git cherry-pick <sha-from-main>
+git tag v2026.8.3 && git push origin lts/2026.8 v2026.8.3
+```
+
+`release.yml` recognises a release whose `<YEAR>.<MASTER>` matches the current
+line and points the floating **`:lts`** tag of all five images at its digests
+(via `imagetools`, because `build-or-reuse` sets no tags on a reused image).
+If the version is not the highest overall, `:latest` and "Latest" stay put.
+
+**Contract:** LTS releases are `v<LINE>.<FIX>` without suffix; the updaters pick
+the highest `FIX` on the line. Pre-release tags never count.
 
 ---
 

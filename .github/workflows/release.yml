@@ -68,9 +68,33 @@ jobs:
             version="$(git describe --tags --always 2>/dev/null | sed 's/^v//')"
             prerelease=false
           fi
+
+          # newest: nur das hoechste Release ueberhaupt bewegt :latest. Ein
+          # Korrektur-Release auf einer aelteren LTS-Linie (v2026.7.4, waehrend
+          # main schon bei 2026.8 ist) wuerde sonst jede Stable-Installation
+          # auf die alte Linie zurueckwerfen. Numerisch sortiert: 2026.10 > 2026.9.
+          newest=true
+          lts=false
+          if [[ "${GITHUB_REF}" == refs/tags/* && "${prerelease}" == false ]]; then
+            highest="$(git tag -l 'v*' | grep -v -- '-' | sed 's/^v//' \
+              | sort -t. -k1,1n -k2,2n -k3,3n | tail -n1)"
+            if [ "${version}" != "${highest}" ]; then
+              newest=false
+            fi
+            # lts: das Release gehoert zur aktuellen LTS-Linie, dem hoechsten
+            # Branch lts/<JAHR>.<MASTER>. Die Linie muss als Branch existieren,
+            # bevor ihr erstes Release getaggt wird (RELEASING.md).
+            line="$(git for-each-ref --format='%(refname:lstrip=4)' 'refs/remotes/origin/lts/*' \
+              | grep -E '^[0-9]+\.[0-9]+$' | sort -t. -k1,1n -k2,2n | tail -n1)"
+            if [ -n "${line}" ] && [ "${version%.*}" = "${line}" ]; then
+              lts=true
+            fi
+          fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "prerelease=${prerelease}" >> "$GITHUB_OUTPUT"
-          echo "Resolved APP_VERSION=${version} (prerelease=${prerelease})"
+          echo "newest=${newest}" >> "$GITHUB_OUTPUT"
+          echo "lts=${lts}" >> "$GITHUB_OUTPUT"
+          echo "Resolved APP_VERSION=${version} (prerelease=${prerelease}, newest=${newest}, lts=${lts})"
 
       # GHCR-Repositorynamen muessen klein geschrieben sein. metadata-action
       # macht das fuer seine Tags selbst; die cosign-Aufrufe unten brauchen den
@@ -98,7 +122,7 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}},enable=${{ steps.appver.outputs.prerelease == 'false' }}
-            type=raw,value=latest,enable=${{ steps.appver.outputs.prerelease == 'false' }}
+            type=raw,value=latest,enable=${{ steps.appver.outputs.prerelease == 'false' && steps.appver.outputs.newest == 'true' }}
             type=raw,value=beta,enable=${{ steps.appver.outputs.prerelease == 'true' }}
 
       - name: Docker metadata – frontend
@@ -111,7 +135,7 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}},enable=${{ steps.appver.outputs.prerelease == 'false' }}
-            type=raw,value=latest,enable=${{ steps.appver.outputs.prerelease == 'false' }}
+            type=raw,value=latest,enable=${{ steps.appver.outputs.prerelease == 'false' && steps.appver.outputs.newest == 'true' }}
             type=raw,value=beta,enable=${{ steps.appver.outputs.prerelease == 'true' }}
 
       - name: Docker metadata – graphhopper
@@ -124,7 +148,7 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}},enable=${{ steps.appver.outputs.prerelease == 'false' }}
-            type=raw,value=latest,enable=${{ steps.appver.outputs.prerelease == 'false' }}
+            type=raw,value=latest,enable=${{ steps.appver.outputs.prerelease == 'false' && steps.appver.outputs.newest == 'true' }}
             type=raw,value=beta,enable=${{ steps.appver.outputs.prerelease == 'true' }}
 
       - name: Docker metadata – updater
@@ -137,7 +161,7 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}},enable=${{ steps.appver.outputs.prerelease == 'false' }}
-            type=raw,value=latest,enable=${{ steps.appver.outputs.prerelease == 'false' }}
+            type=raw,value=latest,enable=${{ steps.appver.outputs.prerelease == 'false' && steps.appver.outputs.newest == 'true' }}
             type=raw,value=beta,enable=${{ steps.appver.outputs.prerelease == 'true' }}
 
       # osmium-tool fuer den Regionswechsel. Es laeuft nicht im Stack, sondern
@@ -155,7 +179,7 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}},enable=${{ steps.appver.outputs.prerelease == 'false' }}
-            type=raw,value=latest,enable=${{ steps.appver.outputs.prerelease == 'false' }}
+            type=raw,value=latest,enable=${{ steps.appver.outputs.prerelease == 'false' && steps.appver.outputs.newest == 'true' }}
             type=raw,value=beta,enable=${{ steps.appver.outputs.prerelease == 'true' }}
 
       # Base-Images stammen alle von Docker Hub und sind gelegentlich von
@@ -234,7 +258,7 @@ jobs:
           image: ghcr.io/${{ steps.repo.outputs.lowercase }}/graphhopper
           context: ./graphhopper
           source-path: graphhopper
-          channel-tag: ${{ steps.appver.outputs.prerelease == 'true' && 'beta' || 'latest' }}
+          channel-tag: ${{ steps.appver.outputs.prerelease == 'true' && 'beta' || steps.appver.outputs.newest == 'true' && 'latest' || 'lts' }}
           tags: ${{ steps.meta-graphhopper.outputs.tags }}
           labels: ${{ steps.meta-graphhopper.outputs.labels }}
           force: ${{ inputs.force_rebuild || false }}
@@ -246,7 +270,7 @@ jobs:
           image: ghcr.io/${{ steps.repo.outputs.lowercase }}/updater
           context: ./docker/updater
           source-path: docker/updater
-          channel-tag: ${{ steps.appver.outputs.prerelease == 'true' && 'beta' || 'latest' }}
+          channel-tag: ${{ steps.appver.outputs.prerelease == 'true' && 'beta' || steps.appver.outputs.newest == 'true' && 'latest' || 'lts' }}
           tags: ${{ steps.meta-updater.outputs.tags }}
           labels: ${{ steps.meta-updater.outputs.labels }}
           force: ${{ inputs.force_rebuild || false }}
@@ -258,7 +282,7 @@ jobs:
           image: ghcr.io/${{ steps.repo.outputs.lowercase }}/osmium
           context: ./docker/osmium
           source-path: docker/osmium
-          channel-tag: ${{ steps.appver.outputs.prerelease == 'true' && 'beta' || 'latest' }}
+          channel-tag: ${{ steps.appver.outputs.prerelease == 'true' && 'beta' || steps.appver.outputs.newest == 'true' && 'latest' || 'lts' }}
           tags: ${{ steps.meta-osmium.outputs.tags }}
           labels: ${{ steps.meta-osmium.outputs.labels }}
           force: ${{ inputs.force_rebuild || false }}
@@ -274,6 +298,39 @@ jobs:
       # kein privater Schluessel liegt irgendwo herum. Signiert wird der
       # Digest, nicht der Tag — Tags sind beweglich, Digests nicht. Die
       # Signatur gilt damit fuer alle Tags, die auf denselben Digest zeigen.
+      # :lts zeigt auf die Images des neuesten Releases der LTS-Linie. Per
+      # imagetools und nicht ueber die metadata-Tags: build-or-reuse setzt bei
+      # einem weiterverwendeten Image gar keine Tags — :lts bliebe sonst fuer
+      # graphhopper/updater/osmium auf dem Digest einer anderen Linie stehen.
+      # Ein Manifest-Umzeiger, kein Bau; die Signatur gilt dem Digest.
+      - name: LTS-Tag setzen
+        if: steps.appver.outputs.lts == 'true'
+        env:
+          REPO_LC: ${{ steps.repo.outputs.lowercase }}
+          DIGEST_BACKEND: ${{ steps.build-backend.outputs.digest }}
+          DIGEST_FRONTEND: ${{ steps.build-frontend.outputs.digest }}
+          DIGEST_GRAPHHOPPER: ${{ steps.build-graphhopper.outputs.digest }}
+          DIGEST_UPDATER: ${{ steps.build-updater.outputs.digest }}
+          DIGEST_OSMIUM: ${{ steps.build-osmium.outputs.digest }}
+        run: |
+          set -euo pipefail
+          for entry in \
+            "backend|${DIGEST_BACKEND}" \
+            "frontend|${DIGEST_FRONTEND}" \
+            "graphhopper|${DIGEST_GRAPHHOPPER}" \
+            "updater|${DIGEST_UPDATER}" \
+            "osmium|${DIGEST_OSMIUM}"
+          do
+            IFS='|' read -r name digest <<<"${entry}"
+            if [ -z "$digest" ]; then
+              echo "::error::Kein Digest fuer $name — :lts nicht setzbar"
+              exit 1
+            fi
+            echo "ghcr.io/${REPO_LC}/${name}:lts -> ${digest}"
+            docker buildx imagetools create \
+              -t "ghcr.io/${REPO_LC}/${name}:lts" "ghcr.io/${REPO_LC}/${name}@${digest}"
+          done
+
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
@@ -342,6 +399,15 @@ jobs:
           else
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
+          # "Latest" nur fuers hoechste Release — /releases/latest ist das Ziel
+          # des Stable-Kanals, ein LTS-Korrektur-Release darf es nicht werden.
+          highest="$(git tag -l 'v*' | grep -v -- '-' | sed 's/^v//' \
+            | sort -t. -k1,1n -k2,2n -k3,3n | tail -n1)"
+          if [ "${GITHUB_REF_NAME#v}" = "${highest}" ]; then
+            echo "make_latest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "make_latest=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Create release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
@@ -349,3 +415,4 @@ jobs:
           generate_release_notes: true
           draft: false
           prerelease: ${{ steps.pre.outputs.prerelease }}
+          make_latest: ${{ steps.pre.outputs.make_latest }}

@@ -6,15 +6,15 @@ bekommen deshalb **keine** Zeile: ein Update macht aus keiner Installation
 eine mit erreichter Grenze. Wer auf seiner Hosting-Instanz Pakete führt,
 setzt sie im Adminportal.
 
-Revision ID: 0050
-Revises: 0049
+Revision ID: 0051
+Revises: 0050
 Create Date: 2026-09-30
 """
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0050"
-down_revision = "0049"
+revision = "0051"
+down_revision = "0050"
 branch_labels = None
 depends_on = None
 
