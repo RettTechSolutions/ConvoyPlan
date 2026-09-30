@@ -420,8 +420,16 @@
         finally { orgsLoading = false; }
     }
 
+    async function exportOrg(org: AdminOrg) {
+        try {
+            await adminApi.exportOrg(org.id, org.slug);
+        } catch (e: unknown) {
+            orgsError = e instanceof Error ? e.message : 'Export fehlgeschlagen';
+        }
+    }
+
     async function deleteOrg(org: AdminOrg) {
-        if (!confirm(`Organisation "${org.name}" (${org.slug}) wirklich löschen?\n\nAlle Mitglieder-Zuordnungen und Daten dieser Organisation werden entfernt.`)) return;
+        if (!confirm(`Organisation "${org.name}" (${org.slug}) wirklich löschen?\n\nAlle Mitglieder-Zuordnungen und Daten dieser Organisation werden entfernt — auch ihre Konvois. Wer die Daten zurückbekommen soll: vorher mit ⬇ exportieren.`)) return;
         try {
             await adminApi.deleteOrg(org.id);
             await loadOrgs();
@@ -2046,6 +2054,7 @@
                                 <td class="actions-cell">
                                     <div>
                                         <button class="btn-small" onclick={() => openEditOrgModal(org)} title="Inhaber ändern">✎</button>
+                                        <button class="btn-small" onclick={() => exportOrg(org)} title="Alle Daten exportieren">⬇</button>
                                         <button class="btn-small danger" onclick={() => deleteOrg(org)} title="Löschen">🗑</button>
                                     </div>
                                 </td>

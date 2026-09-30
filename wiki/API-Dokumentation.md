@@ -387,6 +387,7 @@ Jede Demo-Nutzung läuft als eigene, befristete Organisation (`is_demo=true`). D
 | `GET` | `/api/admin/audit-log` | Security-Audit-Log (Filter nach Aktion) |
 | `GET` | `/api/admin/users/{user_id}/export` | Personenbezogene Daten exportieren (DSGVO Art. 15) |
 | `DELETE` | `/api/admin/users/{user_id}/data` | Benutzerdaten löschen, Audit-Trail pseudonymisieren (Art. 17) |
+| `GET` | `/api/admin/organizations/{org_id}/export` | Alle Daten einer Organisation als ZIP |
 
 ---
 
@@ -567,6 +568,7 @@ Eingehende Updates vom Server:
 | `GET` | `/api/organizations/` | Eigene Organisationen auflisten |
 | `POST` | `/api/organizations/` | Neue Organisation anlegen |
 | `DELETE` | `/api/organizations/{org_id}` | Organisation löschen |
+| `GET` | `/api/organizations/{org_id}/export` | Alle Daten der Organisation als ZIP (Org-Admin, nur mit Anmeldung, nicht per API-Key) |
 | `POST` | `/api/organizations/{org_id}/members` | Bestehenden Benutzer per E-Mail zur Org hinzufügen (Org-Admin-Rolle erforderlich) — löst eine Benachrichtigungs-Mail mit Org-Login-Link an den neuen Mitglied aus |
 
 > Siehe auch **[Multi-Tenancy](Multi-Tenancy)**.
