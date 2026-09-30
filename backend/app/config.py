@@ -11,6 +11,19 @@ class Settings(BaseSettings):
     # Dieselbe Quelle wie die Karte im Frontend. Leer = ohne Kartenhintergrund,
     # nur die Route (für Instanzen ohne Internetzugang).
     roadbook_tile_url: str = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+    # Kachel-Proxy (services/tile_proxy.py): Die Karte lädt ihre Kacheln über
+    # /api/tiles, damit die IP-Adressen der Nutzer nicht beim Kachelserver
+    # landen. {z}/{x}/{y} werden ersetzt. Ein eigener oder kommerzieller
+    # Kachelserver schaltet außerdem das volle Vorabladen entlang der Route frei.
+    tile_upstream_url: str = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+    tile_cache_dir: str = "/tile_cache"
+    tile_cache_max_mb: int = 2048
+    # Nach so vielen Tagen wird eine Kachel neu geholt; ist der Kachelserver
+    # dann nicht erreichbar, kommt die alte.
+    tile_cache_max_age_days: int = 7
+    # Je Client-IP und Minute. Eine Kartenansicht braucht 20–60 Kacheln, das
+    # Vorabladen über den OSM-Server höchstens 1500 — verteilt über Minuten.
+    tile_rate_limit_per_minute: int = 1200
     caddy_admin_url: str = "http://caddy:2019"
     github_token: str = ""
     github_repo: str = "RettTechSolutions/ConvoyPlan"

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tileUrlTemplate } from '$lib/map/tiles';
 	import { onMount, onDestroy } from 'svelte';
 	import * as maplibregl from '$lib/map/maplibre';
 	import 'maplibre-gl/dist/maplibre-gl.css';
@@ -99,7 +100,7 @@
 				sources: {
 					osm: {
 						type: 'raster',
-						tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+						tiles: [tileUrlTemplate()],
 						tileSize: 256,
 						attribution: '© OpenStreetMap contributors',
 					},

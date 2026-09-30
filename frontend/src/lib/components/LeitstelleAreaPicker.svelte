@@ -1,4 +1,5 @@
 <script lang="ts" module>
+	import { tileUrlTemplate } from '$lib/map/tiles';
     export interface AreaSelection {
         /** Gewählte Gebietsschlüssel (leer bei freiem Polygon). */
         districtCodes: string[];
@@ -159,7 +160,7 @@
             container: mapContainer,
             style: {
                 version: 8,
-                sources: { osm: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, attribution: '© OpenStreetMap' } },
+                sources: { osm: { type: 'raster', tiles: [tileUrlTemplate()], tileSize: 256, attribution: '© OpenStreetMap' } },
                 layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
             },
             center: [10.5, 48.5],

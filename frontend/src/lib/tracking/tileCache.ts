@@ -16,22 +16,53 @@
 // the SW's StaleWhileRevalidate then serves from that very cache.
 //
 // Politeness: the tile set is bounded and requests are throttled in small
-// batches so we don't hammer the public OSM tile servers, and tiles already in
-// the cache are skipped so re-runs are cheap.
+// batches, and tiles already in the cache are skipped so re-runs are cheap.
+//
+// Tiles come from the instance's own proxy (/api/tiles), not from the tile
+// server directly — the server decides how much may be prefetched
+// (GET /api/tiles/config): on the public OSM server only the overview zooms and
+// a small cap, since its usage policy discourages bulk prefetching; with an own
+// or commercial tile server the full corridor below.
 
-const TILE_HOST = 'https://tile.openstreetmap.org';
+import { tileBase } from '$lib/map/tiles';
+import { getBaseUrl } from '$lib/api/client';
 // Must match the runtime cache name configured in vite.config.ts so the Service
 // Worker serves the tiles we pre-warm here.
 const CACHE_NAME = 'osm-tiles';
 // Overview first (always shows the full route), then the common driving zooms
 // up to the follow zoom (15) and one step closer (16) for junction detail.
 // Processed in order; once the cap is hit we stop, so the overview is preferred.
-const ZOOMS = [12, 13, 14, 15, 16];
+const FULL_ZOOMS = [12, 13, 14, 15, 16];
 // Tiles around each route point → covers the corridor width, not just the line.
 const BUFFER = 1; // 3×3 tiles per point
 // Hard cap on prefetched tiles (OSM politeness + Service-Worker cache budget).
 // Generous enough to hold a long route corridor across all the zooms above.
-const MAX_TILES = 8000;
+const FULL_MAX_TILES = 8000;
+// Fallback when the profile cannot be fetched: the conservative OSM profile.
+const FALLBACK = { zooms: [12, 13, 14], max_tiles: 1500 };
+
+interface PrefetchProfile {
+	zooms: number[];
+	max_tiles: number;
+}
+
+async function loadProfile(): Promise<PrefetchProfile> {
+	try {
+		const res = await fetch(`${getBaseUrl()}/api/tiles/config`, { credentials: 'same-origin' });
+		if (!res.ok) return FALLBACK;
+		const cfg = await res.json();
+		const p = cfg?.prefetch;
+		if (Array.isArray(p?.zooms) && typeof p?.max_tiles === 'number') {
+			return {
+				zooms: p.zooms.filter((z: unknown) => typeof z === 'number' && FULL_ZOOMS.includes(z)),
+				max_tiles: Math.min(p.max_tiles, FULL_MAX_TILES),
+			};
+		}
+	} catch {
+		/* offline or older server — fall back */
+	}
+	return FALLBACK;
+}
 const BATCH = 6; // concurrent requests per batch
 const BATCH_DELAY_MS = 120;
 
@@ -57,8 +88,9 @@ export async function prefetchRouteTiles(coords: number[][], key: string): Promi
 	if (warmedKey === key) return;
 	warmedKey = key;
 
+	const profile = await loadProfile();
 	const tiles = new Set<string>();
-	outer: for (const z of ZOOMS) {
+	outer: for (const z of profile.zooms) {
 		const n = 2 ** z;
 		for (const [lon, lat] of coords) {
 			if (typeof lon !== 'number' || typeof lat !== 'number') continue;
@@ -70,13 +102,14 @@ export async function prefetchRouteTiles(coords: number[][], key: string): Promi
 					const y = ty + dy;
 					if (x < 0 || y < 0 || x >= n || y >= n) continue;
 					tiles.add(`${z}/${x}/${y}`);
-					if (tiles.size >= MAX_TILES) break outer;
+					if (tiles.size >= profile.max_tiles) break outer;
 				}
 			}
 		}
 	}
 
-	const urls = [...tiles].map((t) => `${TILE_HOST}/${t}.png`);
+	const host = tileBase();
+	const urls = [...tiles].map((t) => `${host}/${t}.png`);
 
 	// Prefer the Cache Storage API so warming works even before the Service
 	// Worker controls the page; fall back to a plain fetch (SW interception)
@@ -92,9 +125,9 @@ export async function prefetchRouteTiles(coords: number[][], key: string): Promi
 		try {
 			// Skip tiles already present so re-runs and re-renders stay cheap.
 			if (cache && (await cache.match(url))) return;
-			// OSM sends `Access-Control-Allow-Origin: *`, so a CORS fetch yields a
-			// readable response the map can reuse (no opaque-response pitfalls).
-			const resp = await fetch(url, { mode: 'cors' });
+			// Same origin (the instance's proxy): a readable response the map can
+			// reuse (no opaque-response pitfalls).
+			const resp = await fetch(url, { credentials: 'same-origin' });
 			if (cache && resp.ok) await cache.put(url, resp.clone());
 		} catch {
 			/* ignore individual tile failures */

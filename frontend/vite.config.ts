@@ -54,7 +54,8 @@ export default defineConfig({
 						// The budget is large enough to hold a whole route corridor that
 						// is proactively prefetched (see lib/tracking/tileCache.ts) plus
 						// the tiles viewed around it, without evicting the route again.
-						urlPattern: /^https:\/\/tile\.openstreetmap\.org\/.*/,
+						// Kacheln über den Proxy der eigenen Instanz (/api/tiles).
+						urlPattern: /\/api\/tiles\/\d+\/\d+\/\d+\.png$/,
 						handler: 'StaleWhileRevalidate',
 						options: { cacheName: 'osm-tiles', expiration: { maxEntries: 9000, maxAgeSeconds: 60 * 60 * 24 * 30 } },
 					},

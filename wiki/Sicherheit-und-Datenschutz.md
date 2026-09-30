@@ -61,6 +61,32 @@ Die Policy erlaubt out-of-the-box `tile.openstreetmap.org` (Karten), `nominatim.
 
 ---
 
+## Kartenkacheln über die eigene Instanz
+
+Die Karte lädt ihre Kacheln nicht direkt beim Kachelserver, sondern über den Proxy
+der Instanz (`/api/tiles/{z}/{x}/{y}.png`). Der Kachelserver sieht damit nur die
+IP-Adresse der Instanz, nicht die der Nutzer — auch nicht die der Fahrer am
+Tracking-Link. Die CSP lässt keinen fremden Kachelserver mehr zu.
+
+| Einstellung | Standard | Wirkung |
+|---|---|---|
+| `TILE_UPSTREAM_URL` | `https://tile.openstreetmap.org/{z}/{x}/{y}.png` | Kachelserver hinter dem Proxy |
+| `TILE_CACHE_MAX_MB` | `2048` | Obergrenze des Plattencaches (Volume `tile_cache`); älteste Kacheln gehen zuerst |
+| `TILE_CACHE_MAX_AGE_DAYS` | `7` | Danach wird eine Kachel neu geholt; bei Ausfall des Kachelservers kommt die alte |
+| `TILE_RATE_LIMIT_PER_MINUTE` | `1200` | Abrufe je Client-IP und Minute — der Endpunkt ist ohne Anmeldung erreichbar |
+
+**Vorabladen entlang der Route.** Damit die Karte im Funkloch nicht leer wird, lädt
+die Tracking-Ansicht den Korridor der Route vorab. Beim öffentlichen OSM-Server nur
+Zoom 12–14 und höchstens 1.500 Kacheln — dessen
+[Nutzungsregeln](https://operations.osmfoundation.org/policies/tiles/) sehen
+Massenabrufe nicht vor. Mit eigenem oder kommerziellem Kachelserver in
+`TILE_UPSTREAM_URL` das volle Profil (Zoom 12–16, bis 8.000 Kacheln). Das Profil
+liefert `GET /api/tiles/config`.
+
+Der Cache ist nicht im Backup; er füllt sich beim Kartenaufruf von selbst wieder.
+
+---
+
 ## Audit-Log
 
 Ein **append-only** Protokoll erfasst sicherheitsrelevante Ereignisse (Logins, MFA, Passwortänderungen, Benutzer-/Org-Anlage, Lizenzaktivierung) inklusive Akteur, Ziel, IP und User-Agent. Superadmins rufen es über `GET /api/admin/audit-log` (filterbar nach Aktion) ab.
