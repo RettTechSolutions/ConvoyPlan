@@ -37,11 +37,11 @@ from app.config import settings
 from app.services import activity
 
 # Endpunkte, die keine Benutzeraktivität darstellen: Healthchecks von Docker,
-# statische Uploads und die Systemübersicht selbst (die sich beim Aufruf sonst
+# Logos und die Systemübersicht selbst (die sich beim Aufruf sonst
 # permanent selbst als Last mitzählt und die Kurven verzerrt).
 _IGNORED_PREFIXES = (
     "/health",
-    "/uploads",
+    "/api/branding/logos/",
     "/api/admin/system/",
 )
 

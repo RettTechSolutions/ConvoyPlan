@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -81,6 +82,39 @@ BRANDING_DEFAULTS: dict[str, str] = {
 
 LOGOS_DIR = Path("/uploads/logos")
 
+# Ausgeliefert werden die Logos über die API und nicht über einen statischen
+# Mount unter /uploads: Caddy reicht nur /api/* ans Backend durch, alles andere
+# geht ans Frontend. /uploads/logos/… landete dort im 404 — für jedes Logo,
+# nicht nur für SVG, und der Upload selbst meldete trotzdem Erfolg.
+LOGO_URL_PREFIX = "/api/branding/logos/"
+_LOGO_MEDIA_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".svg": "image/svg+xml",
+}
+# Nur, was die Upload-Endpunkte selbst erzeugen (`main.png`, `org-<uuid>-horizontal.svg`).
+# Kein Punkt vor der Endung, kein Schrägstrich — damit führt kein Name aus LOGOS_DIR hinaus.
+_LOGO_NAME = re.compile(r"^[A-Za-z0-9_-]+\.(?:png|jpe?g|svg)$")
+# Ein direkt geöffnetes SVG ist ein Dokument dieser Origin. Die Upload-Prüfung
+# lässt kein Skript durch; die Sandbox ist die zweite Tür, falls sie etwas übersieht.
+_SVG_CSP = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
+
+
+def logo_url(filename: str) -> str | None:
+    """Öffentliche URL eines Logos, mit Änderungszeit als Cache-Brecher.
+
+    Der Dateiname bleibt beim Ersetzen gleich (`org-<id>-horizontal.svg`); ohne
+    `?v=` zeigte der Browser nach einem neuen Upload das alte Bild aus dem Cache.
+    """
+    if not filename:
+        return None
+    try:
+        version = f"?v={int((LOGOS_DIR / filename).stat().st_mtime)}"
+    except OSError:
+        version = ""
+    return f"{LOGO_URL_PREFIX}{filename}{version}"
+
 async def _global_branding_dict(db: AsyncSession) -> dict[str, str]:
     """Platform-wide branding: defaults overlaid with SystemSetting values."""
     result = await db.execute(
@@ -116,8 +150,8 @@ def _branding_response_from(merged: dict[str, str]) -> BrandingResponse:
     logo_horizontal = merged["branding.logo_horizontal"]
     return BrandingResponse(
         app_name=merged["branding.app_name"],
-        logo_main_url=f"/uploads/logos/{logo_main}" if logo_main else None,
-        logo_horizontal_url=f"/uploads/logos/{logo_horizontal}" if logo_horizontal else None,
+        logo_main_url=logo_url(logo_main),
+        logo_horizontal_url=logo_url(logo_horizontal),
         color_primary=merged["branding.color_primary"],
         color_primary_hover=merged["branding.color_primary_hover"],
         color_accent=merged["branding.color_accent"],
@@ -146,6 +180,24 @@ async def _upsert(db: AsyncSession, key: str, value: str) -> None:
 @router.get("", response_model=BrandingResponse)
 async def get_branding(db: AsyncSession = Depends(get_db)):
     return await _get_branding_response(db)
+
+
+@router.get("/logos/{filename}")
+async def get_logo(filename: str) -> FileResponse:
+    """Public like GET /branding: the login page shows the logo before anyone signs in."""
+    if not _LOGO_NAME.fullmatch(filename):
+        raise HTTPException(status_code=404, detail="Logo nicht gefunden")
+    path = LOGOS_DIR / filename
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Logo nicht gefunden")
+    ext = path.suffix.lower()
+    headers = {
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "public, max-age=86400",
+    }
+    if ext == ".svg":
+        headers["Content-Security-Policy"] = _SVG_CSP
+    return FileResponse(path, media_type=_LOGO_MEDIA_TYPES[ext], headers=headers)
 
 
 @router.get("/org/{slug}", response_model=BrandingResponse)

@@ -19,7 +19,6 @@ Exempt paths (always allowed regardless of method):
   - /api/auth/demo-followup/unsubscribe
   - /api/license/*
   - /api/setup/*
-  - /uploads/*
   - /docs, /redoc, /openapi.json
 """
 import asyncio
@@ -52,7 +51,6 @@ _EXEMPT_PREFIXES = (
     "/api/setup",
     "/api/track/",
     "/api/ws/track/",
-    "/uploads",
     "/docs",
     "/redoc",
     "/openapi.json",
