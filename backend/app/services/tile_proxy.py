@@ -18,6 +18,7 @@ Kachelserver, Cachegröße und Auffrischung stehen in ``app.config`` (``tile_*``
 from __future__ import annotations
 
 import asyncio
+import itertools
 import logging
 import os
 import time
@@ -40,7 +41,7 @@ _PRUNE_EVERY = 256
 
 _semaphores: dict[int, asyncio.Semaphore] = {}
 _inflight: dict[str, asyncio.Task] = {}
-_writes_since_prune = 0
+_schreibzaehler = itertools.count(1)
 
 
 class TileUnavailable(Exception):
@@ -188,7 +189,6 @@ async def get_tile(z: int, x: int, y: int, client: httpx.AsyncClient | None = No
 async def _load(
     z: int, x: int, y: int, path: Path, cached: bytes | None, client: httpx.AsyncClient | None
 ) -> bytes:
-    global _writes_since_prune
     try:
         data = await _fetch_upstream(z, x, y, client)
     except (TileUnavailable, httpx.HTTPError) as exc:
@@ -197,8 +197,6 @@ async def _load(
             return cached
         raise TileUnavailable(str(exc)) from exc
     await asyncio.to_thread(_write, path, data)
-    _writes_since_prune += 1
-    if _writes_since_prune >= _PRUNE_EVERY:
-        _writes_since_prune = 0
+    if next(_schreibzaehler) % _PRUNE_EVERY == 0:
         await asyncio.to_thread(prune)
     return data

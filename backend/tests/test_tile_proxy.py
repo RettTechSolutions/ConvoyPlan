@@ -6,6 +6,7 @@ Kachel nur einmal geholt wird, egal wie viele Browser sie gleichzeitig wollen.
 """
 
 import asyncio
+import itertools
 import os
 import time
 
@@ -212,3 +213,12 @@ async def test_abbruch_eines_anfragers_trifft_die_anderen_nicht(cache, server):
     assert len(server.abrufe) == 1
     await asyncio.sleep(0.01)
     assert tile_proxy.cache_path(7, 5, 5).read_bytes() == PNG
+
+
+async def test_nach_jeder_256_geschriebenen_kachel_wird_aufgeraeumt(cache, server, monkeypatch):
+    aufrufe = []
+    monkeypatch.setattr(tile_proxy, "prune", lambda *a, **k: aufrufe.append(1) or 0)
+    monkeypatch.setattr(tile_proxy, "_schreibzaehler", itertools.count(1))
+    for i in range(tile_proxy._PRUNE_EVERY + 1):
+        await tile_proxy.get_tile(9, i, 0)
+    assert len(aufrufe) == 1
