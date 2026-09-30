@@ -35,15 +35,15 @@ def _valid_payload(instance_id: str = "") -> dict:
 
 
 def test_empty_key():
-    from app.services.license import validate_license
-    info = validate_license("")
+    import app.services.license as lic_mod
+    info = lic_mod.validate_license("")
     assert not info.valid
     assert "No license" in info.error
 
 
 def test_malformed_key():
-    from app.services.license import validate_license
-    info = validate_license("notvalidatall")
+    import app.services.license as lic_mod
+    info = lic_mod.validate_license("notvalidatall")
     assert not info.valid
     assert "Malformed" in info.error
 
