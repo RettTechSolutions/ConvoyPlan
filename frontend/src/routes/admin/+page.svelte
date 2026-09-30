@@ -672,7 +672,7 @@
         if (regionStatusTimer) { clearInterval(regionStatusTimer); regionStatusTimer = null; }
     }
 
-    // Release channel (stable / beta)
+    // Release channel (stable / beta / nightly / lts)
     let updateChannel = $state<import('$lib/api').UpdateChannel | null>(null);
     let channelSaving = $state(false);
 
@@ -695,7 +695,7 @@
         }
     }
 
-    async function setChannel(channel: 'stable' | 'beta' | 'nightly') {
+    async function setChannel(channel: import('$lib/api').UpdateChannelName) {
         if (channelSaving || updateChannel?.channel === channel) return;
         channelSaving = true;
         updateError = '';
@@ -3595,11 +3595,26 @@
                             disabled={channelSaving}
                             onclick={() => setChannel('nightly')}
                         >Nightly</button>
+                        {#if updateChannel.lts_available || updateChannel.channel === 'lts'}
+                            <button
+                                class="channel-btn"
+                                class:active={updateChannel.channel === 'lts'}
+                                disabled={channelSaving || !updateChannel.lts_available}
+                                onclick={() => setChannel('lts')}
+                            >LTS</button>
+                        {/if}
                     </div>
                 </div>
                 <p class="hint" style="margin:-.25rem 0 1rem;">
                     {#if updateChannel.channel === 'stable'}
                         <strong>Stable:</strong> Updates nur bei veröffentlichten GitHub-Releases — einzelne Commits auf <code>main</code> lösen kein Update aus.
+                    {:else if updateChannel.channel === 'lts'}
+                        <strong>LTS:</strong> Eine gehaltene Versionslinie, die 12 Monate lang nur Sicherheits- und Fehlerkorrekturen bekommt, keine neuen Funktionen. Beginnt eine neue Linie, wechselt der Kanal mit.
+                        {#if updateChannel.lts_available && updateChannel.lts_until}
+                            Freigegeben bis {new Date(updateChannel.lts_until).toLocaleDateString('de-DE')}.
+                        {:else if !updateChannel.lts_available}
+                            <strong>Die LTS-Freigabe der Lizenz ist abgelaufen</strong> — die Installation bleibt auf dem Kanal, bis ein anderer gewählt wird.
+                        {/if}
                     {:else if updateChannel.channel === 'beta'}
                         <strong>Beta:</strong> Nummerierte Vorabversionen (Release-Kandidaten, z. B. <code>v2026.2.1-beta.1</code>) zum gezielten Testen des nächsten Releases.
                     {:else}
@@ -3662,13 +3677,15 @@
                             <span class="update-label">Letzter Nightly-Build</span>
                         {:else if updateStatus.channel === 'beta'}
                             <span class="update-label">Neuestes Beta-Release</span>
+                        {:else if updateStatus.channel === 'lts'}
+                            <span class="update-label">Neuestes LTS-Release</span>
                         {:else}
                             <span class="update-label">Neuestes Release</span>
                         {/if}
                         {#if !updateStatus.github_reachable}
                             <span class="hint">nicht erreichbar</span>
                         {:else if updateStatus.no_release}
-                            <span class="hint">{updateStatus.channel === 'beta' ? 'noch kein Prerelease veröffentlicht' : 'noch kein Release veröffentlicht'}</span>
+                            <span class="hint">{updateStatus.channel === 'beta' ? 'noch kein Prerelease veröffentlicht' : updateStatus.channel === 'lts' ? 'noch kein Release der LTS-Linie veröffentlicht' : 'noch kein Release veröffentlicht'}</span>
                         {:else}
                             {#if updateStatus.latest_release}
                                 <code>{updateStatus.latest_release}</code>

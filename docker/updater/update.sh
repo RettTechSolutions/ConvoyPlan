@@ -11,7 +11,7 @@ TRIGGER_POLL=10   # check trigger file every 10s so the UI reacts quickly
 # SWITCH_REGION_SCRIPT in region-hook.sh und REGION_SOURCE_SCRIPT im
 # GraphHopper-Entrypoint.
 TRIGGER_FILE="${TRIGGER_FILE:-/update_status/trigger}"
-CHANNEL_FILE=/update_status/channel   # written by the backend: "stable" | "beta" | "nightly"
+CHANNEL_FILE=/update_status/channel   # written by the backend: "stable" | "beta" | "nightly" | "lts"
 MODE_FILE=/update_status/mode         # written by the backend: "auto" | "notify"
 LAST_NOTIFIED_FILE=/update_status/last_notified
 
@@ -114,6 +114,7 @@ read_channel() {
     case "${ch}" in
         beta)    echo "beta" ;;
         nightly) echo "nightly" ;;
+        lts)     echo "lts" ;;
         *)       echo "stable" ;;
     esac
 }
@@ -165,6 +166,42 @@ latest_prerelease_tag() {
                 "https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=30" 2>/dev/null
         fi
     } | grep -oE '"tag_name": *"[^"]*"' | cut -d'"' -f4 | grep -m1 -- '-beta\.' || true
+}
+
+# LTS line: the highest branch lts/<YEAR>.<MASTER>, e.g. "2026.7". Numeric sort
+# instead of `sort -V`, which BusyBox does not reliably provide. Empty = unknown.
+lts_line() {
+    {
+        if [ -n "${GITHUB_TOKEN:-}" ]; then
+            curl -sf --max-time 15 -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                "https://api.github.com/repos/${GITHUB_REPO}/git/matching-refs/heads/lts" 2>/dev/null
+        else
+            curl -sf --max-time 15 \
+                "https://api.github.com/repos/${GITHUB_REPO}/git/matching-refs/heads/lts" 2>/dev/null
+        fi
+    } | grep -oE '"ref": *"refs/heads/lts/[0-9]+\.[0-9]+"' | cut -d'"' -f4 \
+      | sed 's#^refs/heads/lts/##' | sort -t. -k1,1n -k2,2n | tail -n1 || true
+}
+
+# Tag of the newest published release on the LTS line (v<LINE>.<FIX>, highest
+# FIX). Suffixed tags are pre-releases and do not match. Empty = unknown.
+lts_release_tag() {
+    local line fix
+    line="$(lts_line)"
+    [ -n "${line}" ] || return 0
+    fix="$({
+        if [ -n "${GITHUB_TOKEN:-}" ]; then
+            curl -sf --max-time 15 -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                "https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=100" 2>/dev/null
+        else
+            curl -sf --max-time 15 \
+                "https://api.github.com/repos/${GITHUB_REPO}/releases?per_page=100" 2>/dev/null
+        fi
+    } | grep -oE "\"tag_name\": *\"v${line//./\\.}\\.[0-9]+\"" | cut -d'"' -f4 \
+      | sed "s/^v${line}\.//" | sort -n | tail -n1 || true)"
+    if [ -n "${fix}" ]; then
+        echo "v${line}.${fix}"
+    fi
 }
 
 # First start: clone if no git repo present
@@ -265,7 +302,15 @@ while true; do
     # Tag-basierte Kanäle: stable → neuestes veröffentlichtes Release, beta →
     # neuestes Prerelease (Release-Kandidat). Ein normaler Push auf main löst
     # hier kein Update aus.
-    if [ "${CHANNEL}" = "beta" ]; then
+    if [ "${CHANNEL}" = "lts" ]; then
+      TAG="$(lts_release_tag)"
+      if [ -z "${TAG}" ]; then
+        log "Channel 'lts': kein Release der LTS-Linie gefunden — überspringe."
+        wait_or_trigger && { DEPLOYED=""; continue; }
+        continue
+      fi
+      TARGET_DESC="LTS-Release ${TAG}"
+    elif [ "${CHANNEL}" = "beta" ]; then
       TAG="$(latest_prerelease_tag)"
       if [ -z "${TAG}" ]; then
         log "Channel 'beta': kein Prerelease gefunden — überspringe (warte auf ersten Release-Kandidaten)."
