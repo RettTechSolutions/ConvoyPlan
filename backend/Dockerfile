@@ -49,6 +49,6 @@ ENV APP_VERSION=${APP_VERSION}
 # Pre-create the volume mount-points here (owned by appuser) so that Docker
 # named volumes pick up the correct owner on their first mount.
 RUN useradd --uid 1001 --no-create-home --shell /sbin/nologin appuser \
-    && mkdir -p /uploads /certs /update_status \
-    && chown -R appuser:appuser /app /uploads /certs /update_status
+    && mkdir -p /uploads /certs /update_status /tile_cache \
+    && chown -R appuser:appuser /app /uploads /certs /update_status /tile_cache
 USER appuser

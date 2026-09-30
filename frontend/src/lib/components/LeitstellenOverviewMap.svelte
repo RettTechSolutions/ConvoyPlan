@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tileUrlTemplate } from '$lib/map/tiles';
     import * as maplibregl from '$lib/map/maplibre';
     import 'maplibre-gl/dist/maplibre-gl.css';
     import { onMount, onDestroy } from 'svelte';
@@ -48,7 +49,7 @@
             container: mapContainer,
             style: {
                 version: 8,
-                sources: { osm: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, attribution: '© OpenStreetMap' } },
+                sources: { osm: { type: 'raster', tiles: [tileUrlTemplate()], tileSize: 256, attribution: '© OpenStreetMap' } },
                 layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
             },
             center: [11.5, 50.7],

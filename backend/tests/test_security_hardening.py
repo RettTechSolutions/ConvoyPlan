@@ -415,7 +415,10 @@ def test_setup_caddyfile_has_security_headers_report_only():
     assert "X-Content-Type-Options" in cf
     # Report-Only by default so the CSP can never break the map UI.
     assert "Content-Security-Policy-Report-Only" in cf
-    assert "tile.openstreetmap.org" in cf
+    # Kacheln kommen seit dem Kachel-Proxy von der eigenen Instanz (/api/tiles);
+    # der OSM-Server hat in der CSP nichts mehr zu suchen, sonst könnte eine
+    # vergessene Stelle im Frontend die IPs der Nutzer wieder dorthin tragen.
+    assert "tile.openstreetmap.org" not in cf
     assert "wss://convoy.example.de" in cf
 
 

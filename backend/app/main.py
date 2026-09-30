@@ -21,6 +21,7 @@ from app.api.routes import feedback as feedback_router
 from app.api.routes import license as license_router
 from app.api.routes import region as region_router
 from app.api.routes import setup as setup_router
+from app.api.routes import tiles as tiles_router
 from app.api.routes import share_links as share_links_router
 from app.api.routes import system_metrics as system_metrics_router
 from app.api.routes import track as track_router
@@ -277,6 +278,7 @@ app.include_router(routing.router, prefix="/api")
 app.include_router(organizations.router, prefix="/api")
 app.include_router(tracking.router, prefix="/api")
 app.include_router(weather.router, prefix="/api")
+app.include_router(tiles_router.router, prefix="/api")
 app.include_router(overpass.router, prefix="/api")
 app.include_router(traffic.router, prefix="/api")
 app.include_router(geocoding.router, prefix="/api")

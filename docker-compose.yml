@@ -101,6 +101,9 @@ services:
       - cert_uploads:/certs
       - logo_uploads:/uploads
       - update_status:/update_status
+      # Kachel-Cache des Kartenproxys (/api/tiles). Nicht im Backup: er füllt
+      # sich beim Kartenaufruf von selbst wieder.
+      - tile_cache:/tile_cache
       # Zertifikate für per mTLS geschützte Feeds (mobilithek-Broker). Dateien
       # auf dem Host in ./secrets ablegen; im Container unter /secrets erreichbar.
       - ./secrets:/secrets:ro
@@ -356,3 +359,4 @@ volumes:
   cert_uploads:
   logo_uploads:
   update_status:
+  tile_cache:
