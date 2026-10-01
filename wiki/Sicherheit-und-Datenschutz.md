@@ -57,7 +57,7 @@ Die CSP wird standardmäßig im **Report-Only**-Modus ausgeliefert (bricht die K
 2. Stack neu starten (`docker compose up -d caddy backend`).
 3. Karte, Routing, Live-Tracking und Geocoding-Suche prüfen; bei Verstößen die betroffenen Quellen in der Policy ergänzen.
 
-Die Policy erlaubt out-of-the-box `tile.openstreetmap.org` (Karten), `nominatim.openstreetmap.org` und `photon.komoot.io` (Geocoding), MapLibre-Worker (`blob:`) und Same-Origin-WebSockets.
+Die Policy erlaubt out-of-the-box dem eigenen Ursprung für Karten (Kachel-Proxy, siehe unten), `nominatim.openstreetmap.org` und `photon.komoot.io` (Geocoding), MapLibre-Worker (`blob:`) und Same-Origin-WebSockets.
 
 ---
 

@@ -39,7 +39,7 @@ ConvoyPlan ist eine selbst gehostete Web-Anwendung, die Einsatzorganisationen (B
 - 🌤️ **Wetter- und Verkehrsdaten** über Open-Meteo, Overpass, Autobahn-API, offene Feeds und optional HERE/TomTom.
 - 🏢 **Multi-Tenancy** mit Org-Code-Slug, org-spezifischem Branding, Rollenmodell und vollständiger Datenisolation.
 - 🔒 **Sicherheit & Datenschutz** – MFA/TOTP, Security-Härtung, Audit-Log, DSGVO-Werkzeuge, Backup/Restore.
-- 🔄 **Auto-Updater** mit Kanälen (Stable/Beta/Nightly), Demo-Modus und Lizenzaktivierung über die Admin-UI.
+- 🔄 **Auto-Updater** mit Kanälen (Stable/Beta/Nightly, LTS mit Wartungsvertrag), Demo-Modus und Lizenzaktivierung über die Admin-UI.
 - 📱 **PWA & Capacitor** für installierbare Web-App und native App-Wrapper.
 - 🤖 **MCP-Server für KI-Programme** – Konvois, Fahrzeuge, Wegpunkte, Routen und Status über einen Model-Context-Protocol-Server anbinden; standardmäßig aus, Zugriff nur nach Zustimmung eines Benutzers und gedeckelt durch dessen Rolle, ohne jede Löschmöglichkeit.
 
