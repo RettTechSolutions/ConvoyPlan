@@ -295,6 +295,6 @@ Jede Demo-Nutzung läuft als eigene, befristete Organisation.
 |---|---|
 | Route wird nicht berechnet | GraphHopper-Logs prüfen: `docker compose logs -f graphhopper`. Erster Start dauert mehrere Minuten. |
 | Login schlägt fehl | JWT_SECRET in `.env` prüfen. Nach Änderung alle Container neu starten. |
-| Karte lädt nicht | Internetverbindung für OSM-Kartenkacheln prüfen. |
+| Karte lädt nicht | Internetverbindung der Instanz prüfen — die Kacheln kommen über deren Kachel-Proxy (`/api/tiles/…`) von OpenStreetMap. |
 | PDF ist leer | Route muss vor dem PDF-Export berechnet worden sein. |
 | Tracking-Position wird nicht übertragen | Standortfreigabe im Browser erlauben. Verbindung zum WebSocket prüfen. |
