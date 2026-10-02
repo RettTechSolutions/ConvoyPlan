@@ -76,7 +76,7 @@ Vollständige Feature-Übersicht von ConvoyPlan mit Umsetzungsstatus. Eine kompa
 | Update-Kanal | Umschaltbar zwischen „Stable" (nur veröffentlichte Releases), „Beta" (nummerierte Vorabversionen / Release-Kandidaten) und „Nightly" (jeder Commit auf `main`) im Admin-Bereich — auch bei image-basierten Installationen | ✅ |
 | Update-Modus | „Automatisch" installiert Updates selbstständig; „Benachrichtigen" verschickt nur eine E-Mail an Superadmins, Installation erfolgt manuell; optionale Bestätigungs-Mail nach automatischer Installation | ✅ |
 | Live-Update-Log | Echtzeit-Ausgabe des Updater-Prozesses im Browser via SSE | ✅ |
-| GitHub-Token in UI | `GITHUB_TOKEN` für Update-Fetch direkt in der Admin-UI konfigurierbar, kein Neustart | ✅ |
+| GitHub-Token in UI | Optionaler `GITHUB_TOKEN` gegen das Rate-Limit der GitHub-API, in der Admin-UI ohne Neustart setzbar | ✅ |
 | Kartenregion wechseln | Kartenregion im laufenden Betrieb wechseln (Admin → System) mit Vorabschätzung von Speicher-, Platten- und Zeitbedarf und Live-Fortschritt, ohne nennenswerten Routing-Ausfall; seit `2026.5.0` mehrere Geofabrik-Regionen zu einer Karte kombinierbar, damit Routen auch über Landesgrenzen funktionieren | ✅ |
 | Demo-Modus | Ohne Lizenzschlüssel: Lesezugriff uneingeschränkt, Schreibzugriff gesperrt (HTTP 402) | ✅ |
 | Lizenzaktivierung | Schlüsseleingabe und Instanz-UUID im Admin-Bereich „System"; Cache-Reset ohne Neustart | ✅ |

@@ -134,7 +134,10 @@ function Invoke-Konvoi {
             Write-KonvoiBild -Start $start -Promille 1000 -Bild 0 -Status "✓ $Beschriftung" -StatusFarbe Green
         } else {
             Write-KonvoiBild -Start $start -Promille $promille -Bild 0 -Status "✗ $Beschriftung fehlgeschlagen (Exit $rc):" -StatusFarbe Red
-            (Read-KonvoiLog @($out, $err)) -split "`r?`n" | Where-Object { $_ } |
+            # Fortschrittszeilen der Schichten ausblenden, sonst geht der Fehler
+            # zwischen lauter "Downloading 1.049MB" unter
+            (Read-KonvoiLog @($out, $err)) -split "`r?`n" |
+                Where-Object { $_ -and $_ -notmatch ' (Downloading|Extracting|Waiting|Verifying Checksum|Download complete|Pull complete|Pulling fs layer|Already exists)' } |
                 Select-Object -Last 20 | ForEach-Object { Write-Host "    $_" }
         }
         return $rc
@@ -145,10 +148,27 @@ function Invoke-Konvoi {
     }
 }
 
+# Bis zu drei Versuche: ein Timeout zur Registry (Docker Hub, ghcr.io) ist
+# meist voruebergehend, und bereits geladene Schichten bleiben liegen.
 function Invoke-ImagesZiehen {
     param([string]$Verzeichnis)
     $gesamt = @(docker compose --project-directory $Verzeichnis config --services 2>$null).Count
-    $null = Invoke-Konvoi 'Images laden (kann einige Minuten dauern)' @('compose', '--project-directory', $Verzeichnis, 'pull') -Gesamt $gesamt
+    $beschriftung = 'Images laden (kann einige Minuten dauern)'
+    for ($versuch = 1; $versuch -le 3; $versuch++) {
+        $rc = Invoke-Konvoi $beschriftung @('compose', '--project-directory', $Verzeichnis, 'pull') -Gesamt $gesamt
+        if ($rc -eq 0) { return }
+        if ($versuch -lt 3) {
+            Write-Host "  Neuer Versuch in $($versuch * 10) s; bereits geladene Schichten bleiben erhalten."
+            Start-Sleep -Seconds ($versuch * 10)
+            $beschriftung = "Images laden (Versuch $($versuch + 1)/3)"
+        }
+    }
+    Write-Host ''
+    Write-Host 'FEHLER: Die Images liessen sich nicht laden. Meist ist die Verbindung zur' -ForegroundColor Red
+    Write-Host '        Registry gestoert (Docker Hub, ghcr.io): Netzwerk, Proxy oder DNS pruefen.' -ForegroundColor Red
+    Write-Host '        Danach den Installer erneut starten und [J] Nur aktualisieren waehlen.' -ForegroundColor Red
+    Write-Host '        Die Einstellungen sind bereits gespeichert.' -ForegroundColor Red
+    exit 1
 }
 
 # Voraussetzungen prüfen
@@ -340,7 +360,7 @@ switch ($OsmChoice) {
     default { Write-Host "FEHLER: Ungueltige Auswahl '$OsmChoice'." -ForegroundColor Red; exit 1 }
 }
 
-# Lizenzschluessel und Token: bei einer Neukonfiguration bleibt ein vorhandener
+# Lizenzschluessel: bei einer Neukonfiguration bleibt ein vorhandener
 # Wert mit Enter erhalten. Frueher schrieb das Skript die .env ohne ihn neu, und
 # der Schluessel war weg.
 $PrevLicense = if (Test-Path $EnvFile) { Get-EnvValue 'LICENSE_KEY' $EnvFile } else { '' }
@@ -352,13 +372,11 @@ if ($PrevLicense) {
 } else {
     $LicenseKey = Read-Host 'Lizenzschluessel [Enter = Demo-Modus]'
 }
-# Read the token without echoing it to the screen / PSReadline history. It still
-# has to be written to .env in clear (the updater needs it) — use a fine-grained
-# PAT with minimal scope (read:packages).
-$tokenFrage = if ($PrevToken) { 'GitHub Token fuer Auto-Updater [Enter = bestehenden beibehalten]' } else { 'GitHub Token fuer Auto-Updater [Enter = ueberspringen]' }
-$GithubTokenSecure = Read-Host $tokenFrage -AsSecureString
-$GithubToken = [System.Net.NetworkCredential]::new('', $GithubTokenSecure).Password
-if (-not $GithubToken) { $GithubToken = $PrevToken }
+# Kein GitHub-Token: Das Repository ist oeffentlich, Updater und Backend lesen
+# die GitHub-API auch ohne. Ein Token hebt nur das Rate-Limit (60 -> 5000
+# Anfragen/Stunde je IP) und laesst sich bei Bedarf im Admin-Panel hinterlegen.
+# Ein vorhandener Eintrag aus einer frueheren Installation bleibt erhalten.
+$GithubToken = $PrevToken
 
 # JWT_SECRET: bestehenden beibehalten oder neu generieren
 $existingJwt = if (Test-Path $EnvFile) { Get-EnvValue 'JWT_SECRET' $EnvFile } else { '' }
@@ -425,7 +443,9 @@ if ($GithubToken) { $EnvContent += "`nGITHUB_TOKEN=$GithubToken" }
 # prepends a BOM, which makes Docker Compose read the first line as
 # "﻿POSTGRES_USER" and silently fall back to defaults.
 $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
-[System.IO.File]::WriteAllText((Join-Path $InstallDir '.env'), $EnvContent, $Utf8NoBom)
+# Mit Zeilenende am Schluss — sonst klebt ein spaeteres `echo ... >> .env`
+# an der letzten Zeile fest.
+[System.IO.File]::WriteAllText((Join-Path $InstallDir '.env'), $EnvContent + "`n", $Utf8NoBom)
 
 # Stack starten
 Invoke-ImagesZiehen $InstallDir

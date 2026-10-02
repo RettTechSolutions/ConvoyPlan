@@ -4,9 +4,27 @@ ConvoyPlan bringt einen Updater-Container mit, der das GitHub-Repository pollt u
 
 ---
 
-## Voraussetzung: GitHub-Token
+## GitHub-Token (optional)
 
-Damit der Updater Commit-Stände und Releases von GitHub abrufen kann, wird ein **`GITHUB_TOKEN`** (Classic PAT mit `repo`-Leseberechtigung) benötigt. Es kann per Env-Variable oder direkt in der Admin-UI hinterlegt werden (kein Neustart nötig).
+Der Updater fragt Releases und Build-Stände über die GitHub-API ab. Das
+Repository ist öffentlich, dafür braucht es **keinen Token**.
+
+Ein **`GITHUB_TOKEN`** hebt nur das Rate-Limit: Ohne Token erlaubt GitHub 60
+API-Anfragen pro Stunde **je IP-Adresse**, mit Token 5000. Eine einzelne Instanz
+kommt mit dem kleinen Kontingent aus (der Updater prüft alle 5 Minuten). Eng wird
+es erst, wenn mehrere Instanzen oder andere Werkzeuge hinter derselben öffentlichen
+IP GitHub abfragen. Dann meldet die Instanz „GitHub nicht erreichbar", bis die
+Stunde um ist.
+
+Wer einen Token hinterlegt, nimmt einen
+[fine-grained Token](https://github.com/settings/personal-access-tokens/new) mit
+**„Public repositories (read-only)"** und **ohne** weitere Berechtigungen. Einen
+klassischen Token mit `repo` oder `public_repo` nicht nehmen: beide erlauben
+Schreibzugriff, `repo` sogar auf alle privaten Repositories des Kontos. Der Token
+steht im Klartext in der `.env` bzw. in der Datenbank.
+
+Hinterlegt wird er im Admin-Bereich unter **Software-Update** (wirkt ohne Neustart)
+oder als Env-Variable. Die Installer fragen ihn nicht ab.
 
 `GITHUB_REPO` legt das überwachte Repository fest (Standard `RettTechSolutions/ConvoyPlan`; bei Fork anpassen).
 

@@ -4049,15 +4049,18 @@
                             <button class="btn-small danger" onclick={clearGithubToken} disabled={githubTokenSaving}>Entfernen</button>
                         {/if}
                     {:else}
-                        <span class="badge badge-warn">Nicht konfiguriert</span>
+                        <span class="badge badge-muted">Nicht gesetzt (optional)</span>
                     {/if}
                 </div>
             </div>
 
             <p class="hint" style="margin-bottom:.6rem">
-                Ohne GitHub-Token ist die GitHub-API auf 60 Requests/Stunde limitiert.
-                Token erstellen unter <a href="https://github.com/settings/tokens" target="_blank" rel="noopener" style="color:var(--color-primary)">github.com/settings/tokens</a>
-                (nur <code>public_repo</code> Scope nötig).
+                Nicht nötig: Das Repository ist öffentlich, Updates funktionieren ohne Token.
+                Ohne Token erlaubt GitHub 60 API-Anfragen pro Stunde und IP-Adresse — das reicht für eine Instanz.
+                Erst wenn mehrere Instanzen oder andere Werkzeuge hinter derselben IP GitHub abfragen, hilft ein Token
+                (5000/Stunde): einen <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener" style="color:var(--color-primary)">fine-grained Token</a>
+                mit „Public repositories (read-only)" und <strong>ohne</strong> weitere Berechtigungen.
+                Keinen klassischen Token mit <code>repo</code> oder <code>public_repo</code> — beide erlauben Schreibzugriff.
             </p>
 
             <div class="license-input-row">
