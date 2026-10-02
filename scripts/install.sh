@@ -8,7 +8,7 @@ WATCHDOG_URL="$REPO_RAW/scripts/updater-watchdog.sh"
 
 echo ""
 echo "╔══════════════════════════════════════════╗"
-echo "║      ConvoyPlan Installer v0.8.5         ║"
+echo "║           ConvoyPlan Installer           ║"
 echo "╚══════════════════════════════════════════╝"
 echo ""
 
@@ -153,6 +153,7 @@ esac
 # ── Bestehende Installation erkennen ─────────────────────────────────────────
 PREV_DOMAIN="" PREV_EMAIL="" PREV_DB_PASS="" PREV_JWT=""
 PREV_OSM_URL="" PREV_OSM_FILE="" PREV_JAVA_OPTS=""
+PREV_LICENSE="" PREV_GH_TOKEN=""
 
 _ev() { grep -m1 "^${1}=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2- || true; }
 
@@ -229,6 +230,8 @@ if [[ -f "$INSTALL_DIR/.env" ]] && \
   PREV_OSM_URL=$(_ev OSM_DOWNLOAD_URL)
   PREV_OSM_FILE=$(_ev OSM_FILENAME)
   PREV_JAVA_OPTS=$(_ev JAVA_OPTS)
+  PREV_LICENSE=$(_ev LICENSE_KEY)
+  PREV_GH_TOKEN=$(_ev GITHUB_TOKEN)
   echo "✓ Bestehende Werte geladen."
   echo ""
 
@@ -241,6 +244,8 @@ elif [[ -f "$INSTALL_DIR/.env" ]]; then
   PREV_OSM_URL=$(_ev OSM_DOWNLOAD_URL)
   PREV_OSM_FILE=$(_ev OSM_FILENAME)
   PREV_JAVA_OPTS=$(_ev JAVA_OPTS)
+  PREV_LICENSE=$(_ev LICENSE_KEY)
+  PREV_GH_TOKEN=$(_ev GITHUB_TOKEN)
 fi
 
 prompt "Domain (z.B. convoy.example.com)" "${PREV_DOMAIN:-}" DOMAIN
@@ -305,6 +310,25 @@ else
   esac
 fi
 
+# Lizenzschlüssel und GitHub-Token — beide optional, wie im Windows-Installer.
+# Bei einer Neukonfiguration bleibt ein vorhandener Wert mit Enter erhalten.
+echo ""
+if [[ -n "$PREV_LICENSE" ]]; then
+  read -rp "Lizenzschlüssel [Enter = bestehenden beibehalten]: " LICENSE_KEY </dev/tty
+  LICENSE_KEY="${LICENSE_KEY:-$PREV_LICENSE}"
+else
+  read -rp "Lizenzschlüssel [Enter = Demo-Modus]: " LICENSE_KEY </dev/tty
+fi
+
+# Ohne Echo lesen. In die .env muss der Token trotzdem im Klartext (der Updater
+# braucht ihn) — deshalb einen fine-grained PAT mit minimalen Rechten nehmen.
+if [[ -n "$PREV_GH_TOKEN" ]]; then
+  read -rsp "GitHub-Token für den Auto-Updater [Enter = bestehenden beibehalten]: " GITHUB_TOKEN </dev/tty; echo
+  GITHUB_TOKEN="${GITHUB_TOKEN:-$PREV_GH_TOKEN}"
+else
+  read -rsp "GitHub-Token für den Auto-Updater [Enter = überspringen]: " GITHUB_TOKEN </dev/tty; echo
+fi
+
 # JWT_SECRET beibehalten oder neu generieren
 JWT_SECRET="${PREV_JWT:-$(openssl rand -hex 32)}"
 mkdir -p "$INSTALL_DIR"
@@ -356,9 +380,16 @@ STACK_FILE_PATH=${INSTALL_DIR}/docker-compose.yml
 CADDY_ENTRYPOINT_PATH=${INSTALL_DIR}/caddy/entrypoint.sh
 # Docker-Compose-Projektname — muss mit dem Namen übereinstimmen, den Compose beim Start verwendet
 COMPOSE_PROJECT_NAME=convoyplan
-# Lizenzschlüssel nach dem Setup im Admin-Panel unter System → Lizenz eintragen
-# LICENSE_KEY=
 ENVEOF
+if [[ -n "$LICENSE_KEY" ]]; then
+  echo "LICENSE_KEY=${LICENSE_KEY}" >> "$INSTALL_DIR/.env"
+else
+  echo "# Lizenzschlüssel nach dem Setup im Admin-Panel unter System → Lizenz eintragen" >> "$INSTALL_DIR/.env"
+  echo "# LICENSE_KEY=" >> "$INSTALL_DIR/.env"
+fi
+if [[ -n "$GITHUB_TOKEN" ]]; then
+  echo "GITHUB_TOKEN=${GITHUB_TOKEN}" >> "$INSTALL_DIR/.env"
+fi
 chmod 600 "$INSTALL_DIR/.env"
 
 # Stack starten

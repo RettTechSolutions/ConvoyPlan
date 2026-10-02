@@ -55,9 +55,8 @@ Der Installer fragt interaktiv nach:
 3. **E-Mail für Let's Encrypt**
 4. **Datenbankpasswort** (zweimal)
 5. **OSM-Region**: DACH, Deutschland, Bayern, Berlin oder eine eigene Geofabrik-URL
-
-Der Windows-Installer fragt zusätzlich nach Lizenzschlüssel und GitHub-Token.
-Beides lässt sich überspringen und später nachtragen.
+6. **Lizenzschlüssel** (optional): Enter = Demo-Modus, später im Admin-Bereich nachtragbar
+7. **GitHub-Token für den Auto-Updater** (optional, Eingabe verdeckt)
 
 Danach läuft er ohne weitere Rückfragen durch:
 
