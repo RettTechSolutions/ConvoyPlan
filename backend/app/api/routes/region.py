@@ -30,7 +30,8 @@ from app.api.deps import decode_stream_token, get_db, require_superadmin
 from app.config import settings
 from app.models.user import User
 from app.services import (
-    audit, geofabrik, host_metrics, region_compose, region_estimate, region_switch,
+    audit, docker_stats, geofabrik, host_metrics, region_compose, region_estimate,
+    region_switch,
 )
 from app.services import region_outline as region_outline_geom
 
@@ -82,40 +83,15 @@ class RegionUrls(BaseModel):
     scheduled_for: datetime | None = None
 
 
-def _reclaimable_heap_bytes(pause_routing: bool) -> int:
-    """Heap-Anteil des laufenden GraphHopper, der im WARTUNGSMODUS waehrend
-    eines Imports zurueckgewonnen werden kann — sonst 0.
+def _xmx_bytes() -> int:
+    """`-Xmx` des laufenden GraphHopper in Bytes, 0 wenn nicht lesbar.
 
-    Herkunft: `JAVA_OPTS`/`-Xmx` der *aktiven* Region (app/config.py,
+    Herkunft: `JAVA_OPTS` der *aktiven* Region (app/config.py,
     `settings.java_opts`, aus derselben Env-Variable wie der
-    GraphHopper-Container in docker-compose.yml).
-
-    Der `pause_routing`-Parameter ist nicht kosmetisch, er korrigiert einen
-    Rechenfehler: Diese Funktion hat den Betrag frueher IMMER gutgeschrieben,
-    mit der Begruendung, der Updater verkleinere GraphHopper waehrend des
-    Imports. Das tat er nie. `_stop_graphhopper` laeuft in Phase 4, also NACH
-    dem Import; waehrend des Imports haelt die JVM ihren `-Xmx` unveraendert
-    (genau das ist die Zusage "Routing bleibt aktiv"), und reservierten Heap
-    gibt eine JVM nicht zurueck. Das Panel rechnete damit mit Speicher, den
-    der Updater nicht hatte: Es meldete "knapp", waehrend `_capped_java_opts`
-    gegen den wirklich freien Speicher deckelte. Am 16.09.2026 wurden aus
-    angeforderten -Xmx14g so 7075m — der Wechsel lud sechs Extracts, baute 20
-    Minuten und starb an OutOfMemoryError. Panel und Updater muessen dieselbe
-    Zahl nennen; beim Plattenplatz ist das seit jeher so.
-
-    Erst der Wartungsmodus macht die Gutschrift wahr: Dort haelt der Updater
-    GraphHopper VOR dem Import an, und der Speicher wird tatsaechlich frei.
-    Alternativen wie eine Live-Abfrage des Container-Cgroups wurden bewusst
-    verworfen: `preview` darf keine Docker-Abfrage ausloesen (kein
-    Docker-Socket im Backend, siehe docker-compose.yml-Kommentar beim
-    dockerproxy-Sidecar) und der konfigurierte `-Xmx`-Wert ist ohnehin die
-    verbindliche Obergrenze, die GraphHopper sich reservieren *darf* —
-    unabhaengig davon, wie viel es im Moment der Anfrage tatsaechlich
-    benutzt. Kann der Wert nicht geparst werden (z. B. leeres `JAVA_OPTS`),
-    wird konservativ 0 zurueckgegeben statt zu raten.
+    GraphHopper-Container in docker-compose.yml). Kann der Wert nicht geparst
+    werden (z. B. leeres `JAVA_OPTS`), wird konservativ 0 zurueckgegeben statt
+    zu raten.
     """
-    if not pause_routing:
-        return 0
     for token in settings.java_opts.split():
         if not token.startswith("-Xmx"):
             continue
@@ -131,6 +107,53 @@ def _reclaimable_heap_bytes(pause_routing: bool) -> int:
             return 0
         return int(amount * multiplier)
     return 0
+
+
+async def _reclaimable_heap_bytes(pause_routing: bool) -> tuple[int, bool]:
+    """Speicher des laufenden GraphHopper, den der WARTUNGSMODUS fuer den
+    Import frei macht — sonst 0. Zweiter Wert: ob gemessen (True) oder aus
+    `-Xmx` abgeleitet (False).
+
+    Gemessen wird der anonyme Speicher des Containers (docker_stats,
+    `service_anon_bytes`), dieselbe Groesse, die der Updater in Phase 1 aus
+    memory.stat liest (`_running_gh_heap_mb` in switch-region.sh). Der
+    Seitencache der eingeblendeten Graphdateien steckt schon in
+    MemAvailable und zaehlt deshalb nicht noch einmal.
+
+    Bis 2026-10 war die Gutschrift der `-Xmx`. Das stimmte, solange der Server
+    den Graphen im Heap hielt; seit er ihn per MMAP einblendet, belegt er nur
+    einen Bruchteil davon — auf der gehosteten Instanz 320 MB bei gut 13 GB
+    `-Xmx`. Das Panel versprach mit Wartungsmodus Speicher, den es nicht gab,
+    und der Updater merkte es erst nach dem Download.
+    `-Xmx` bleibt Obergrenze und Rueckfall, wenn sich nicht messen laesst.
+
+    Die Messung geht lesend ueber den dockerproxy-Sidecar, wie die
+    Systemuebersicht. Frueher war eine Docker-Abfrage hier ausdruecklich
+    verworfen — damals hatte das Backend noch keinen Weg zur Engine.
+
+    Vorgeschichte des `pause_routing`-Parameters, er korrigiert einen
+    Rechenfehler: Diese Funktion hat den Betrag frueher IMMER gutgeschrieben,
+    mit der Begruendung, der Updater verkleinere GraphHopper waehrend des
+    Imports. Das tat er nie. `_stop_graphhopper` laeuft in Phase 4, also NACH
+    dem Import; waehrend des Imports haelt die JVM ihren `-Xmx` unveraendert
+    (genau das ist die Zusage "Routing bleibt aktiv"), und reservierten Heap
+    gibt eine JVM nicht zurueck. Das Panel rechnete damit mit Speicher, den
+    der Updater nicht hatte: Es meldete "knapp", waehrend `_capped_java_opts`
+    gegen den wirklich freien Speicher deckelte. Am 16.09.2026 wurden aus
+    angeforderten -Xmx14g so 7075m — der Wechsel lud sechs Extracts, baute 20
+    Minuten und starb an OutOfMemoryError. Panel und Updater muessen dieselbe
+    Zahl nennen; beim Plattenplatz ist das seit jeher so.
+
+    Erst der Wartungsmodus macht die Gutschrift wahr: Dort haelt der Updater
+    GraphHopper VOR dem Import an, und der Speicher wird tatsaechlich frei.
+    """
+    if not pause_routing:
+        return 0, False
+    xmx = _xmx_bytes()
+    measured = await docker_stats.service_anon_bytes("graphhopper")
+    if measured is None:
+        return xmx, False
+    return (min(measured, xmx) if xmx else measured), True
 
 
 @router.post("/preview")
@@ -177,13 +200,16 @@ async def preview(body: RegionUrls, _: User = Depends(require_superadmin)):
 
     mem = host_metrics.read_memory()
     ram_available = mem.available_bytes if mem else 0
-    # Zusaetzlich zum ohnehin freien Speicher zurueckgewinnbar, weil der
-    # Updater den laufenden GraphHopper waehrend des Imports verkleinert
-    # (Details siehe _reclaimable_heap_bytes). Getrennt ausgewiesen statt in
+    # Zusaetzlich zum ohnehin freien Speicher zurueckgewinnbar, wenn der
+    # Updater den laufenden GraphHopper vor dem Import anhaelt (Details siehe
+    # _reclaimable_heap_bytes). Getrennt ausgewiesen statt in
     # `ram_available_bytes` eingerechnet, damit das Panel zeigen kann, dass
     # die Routenplanung waehrend des Imports mit weniger Speicher auskommen
-    # muss.
-    ram_reclaimable = _reclaimable_heap_bytes(body.pause_routing)
+    # muss. Einmal gemessen, auch ohne Wartungsmodus: die Begruendung nennt
+    # dann, was er brachte.
+    pause_credit, credit_measured = await _reclaimable_heap_bytes(True)
+    credit_note = "gemessen" if credit_measured else "laut -Xmx, nicht gemessen"
+    ram_reclaimable = pause_credit if body.pause_routing else 0
     ram_effective_available = ram_available + ram_reclaimable
 
     disks = host_metrics.disk_usage([OSM_PATH, GRAPH_PATH])
@@ -217,15 +243,15 @@ async def preview(body: RegionUrls, _: User = Depends(require_superadmin)):
     if body.pause_routing:
         ram_reason = (
             f"Import braucht ~{gb(ram_needed)} Heap. Frei sind {gb(ram_available)}, "
-            f"dazu {gb(ram_reclaimable)} aus dem angehaltenen GraphHopper "
-            f"(effektiv {gb(ram_effective_available)}) — das Routing pausiert dafuer "
+            f"dazu {gb(ram_reclaimable)} aus dem angehaltenen GraphHopper ({credit_note}; "
+            f"effektiv {gb(ram_effective_available)}) — das Routing pausiert dafuer "
             f"waehrend des Imports."
         )
     else:
         ram_reason = (
             f"Import braucht ~{gb(ram_needed)} Heap. Frei sind {gb(ram_available)} — "
             f"der laufende GraphHopper haelt seinen Speicher waehrend des Imports. "
-            f"Mit pausiertem Routing kaemen {gb(_reclaimable_heap_bytes(True))} dazu."
+            f"Mit pausiertem Routing kaemen {gb(pause_credit)} dazu ({credit_note})."
         )
     ram_raw = region_estimate.estimate_ram_raw_bytes(extract)
     ram_usable = ram_effective_available - region_estimate.HEAP_RESERVE_BYTES
@@ -236,8 +262,10 @@ async def preview(body: RegionUrls, _: User = Depends(require_superadmin)):
             f" Ohne den Sicherheitsaufschlag von 20 % braucht der Import ~{gb(ram_raw)}; "
             f"das passt, der Heap wird aber auf ~{gb(ram_usable)} gedeckelt."
         )
-        if not body.pause_routing:
-            ram_reason += " Routing pausieren gibt ihm den Speicher des laufenden GraphHopper dazu."
+        if not body.pause_routing and pause_credit > 0:
+            ram_reason += (
+                f" Routing pausieren gibt ihm die {gb(pause_credit)} des laufenden GraphHopper dazu."
+            )
     reason = (
         f"{ram_reason} "
         f"Auf der Platte werden ~{gb(disk_needed)} benoetigt, frei sind {gb(disk_free)}."

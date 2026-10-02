@@ -379,6 +379,13 @@ nicht, heißt das „knapp": Der Import läuft mit gedeckeltem Heap, und
 „Routing während des Imports pausieren" gibt ihm den Speicher des laufenden
 GraphHopper dazu.
 
+Gutgeschrieben wird dabei, was GraphHopper **tatsächlich** belegt, gemessen am
+Container (Panel über den `dockerproxy`, Updater über die cgroup), nicht sein
+`-Xmx`. Seit der Server den Graphen per MMAP einblendet, sind das meist nur
+einige hundert MB — der Wartungsmodus bringt also deutlich weniger als früher.
+Lässt sich nicht messen, nennt das Panel den `-Xmx` als Obergrenze und sagt
+dazu, dass er nicht gemessen ist.
+
 Wie viel Heap ein Import wirklich gebraucht hat, steht am Ende seines Protokolls
 im Panel (`garbage-first heap total …K`). Auf der Platte belegt der fertige
 Graph erfahrungsgemäß gut die Hälfte des Extracts (gemessen: 8,5 GB Extracts,

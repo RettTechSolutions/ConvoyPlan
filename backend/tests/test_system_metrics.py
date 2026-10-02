@@ -235,6 +235,61 @@ async def test_collect_survives_unreachable_api():
     assert "nicht erreichbar" in (report.reason or "")
 
 
+def test_anon_bytes_liest_cgroup_v2_und_v1():
+    """Der Heap ohne Seitencache — v2 meldet ihn als anon, v1 als total_rss."""
+    assert docker_stats._anon_bytes({"memory_stats": {"stats": {"anon": 335544320, "file": 9}}}) == 335544320
+    assert docker_stats._anon_bytes({"memory_stats": {"stats": {"total_rss": 42, "rss": 7}}}) == 42
+    assert docker_stats._anon_bytes({"memory_stats": {"stats": {}}}) is None
+    assert docker_stats._anon_bytes({}) is None
+
+
+def _engine(containers: list[dict], stats: dict | None = None):
+    """Eine Docker-Engine im Kleinen: Liste und Stats, sonst 404."""
+    import httpx
+
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/containers/json":
+            seen["filters"] = request.url.params.get("filters", "")
+            return httpx.Response(200, json=containers)
+        if request.url.path.endswith("/stats") and stats is not None:
+            return httpx.Response(200, json=stats)
+        return httpx.Response(404)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url="http://docker")
+    return client, seen
+
+
+@pytest.mark.asyncio
+async def test_service_anon_bytes_misst_den_laufenden_dienst():
+    client, seen = _engine([{"Id": "gh1"}], {"memory_stats": {"stats": {"anon": 320 * 1024**2}}})
+    with patch.object(docker_stats, "_client", return_value=client):
+        assert await docker_stats.service_anon_bytes("graphhopper") == 320 * 1024**2
+    assert "com.docker.compose.service=graphhopper" in seen["filters"]
+    assert "running" in seen["filters"]
+
+
+@pytest.mark.asyncio
+async def test_service_anon_bytes_raet_nicht_bei_zwei_instanzen():
+    """Zwei Stacks auf einem Host: lieber keine Zahl als die des Nachbarn."""
+    client, _ = _engine([{"Id": "a"}, {"Id": "b"}], {"memory_stats": {"stats": {"anon": 1}}})
+    with patch.object(docker_stats, "_client", return_value=client):
+        assert await docker_stats.service_anon_bytes("graphhopper") is None
+
+
+@pytest.mark.asyncio
+async def test_service_anon_bytes_ohne_engine_ist_none():
+    import httpx
+
+    client = MagicMock()
+    client.get = AsyncMock(side_effect=httpx.ConnectError("keine Verbindung"))
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    with patch.object(docker_stats, "_client", return_value=client):
+        assert await docker_stats.service_anon_bytes("graphhopper") is None
+
+
 # ── Aktivitätsregistry ───────────────────────────────────────────────────────
 
 def test_active_users_counts_distinct_users_within_window():
