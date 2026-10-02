@@ -21,9 +21,41 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+## [2026.7.0] – 2026-10-02
+
 ### Added
 
+- **Öffentliche Aktionsseite: Konvois verzögert und vergröbert zeigen.** Eine Organisation kann Konvois öffentlich verfolgen lassen — für Hilfskonvois, Presse oder den Bildschirm bei einer Veranstaltung. Ausgeliefert wird die Seite nicht von der Instanz, sondern von der eigenen Anwendung **Convoyplan-EventTracker**, die einmal pro Minute `GET /api/public/aktion/{slug}` mit ihrem Abruf-Token holt. Die Instanz gibt nur Positionen heraus, die mindestens 60 Minuten alt sind; steht ein Konvoi, zeigt sie nur noch eine Rasterzelle von etwa 10 km, und die Linie endet davor. Was hinausgeht, legt eine Positivliste fest — kein interner Name, keine Kennung, nichts aus dem Fahrzeug. Unbekannt, abgeschaltet, abgelaufen oder falsches Token ergeben dieselbe 404. Verwaltet wird im Org-Admin unter **Aktionsseiten** (Titel, Konvois mit Anzeigename und Farbe, Verzögerung, Laufzeit, Vorschau, Token erneuern). Für Konvois an einer aktiven Seite entsteht ein ausgedünnter Positionsverlauf (`vehicle_position_trail`, Migration `0052`), den die Retention nach `RETENTION_POSITION_TRAIL_DAYS` (Standard 45) löscht. Anwenderdoku: `wiki/Aktionsseite.md`.
+
+- **Pläne je Organisation und eine Organisationsgrenze im Lizenzschlüssel.** Schlüssel ab Payload v2 tragen `max_orgs`; die Grenze greift nur beim Anlegen einer Organisation, nie im Betrieb, und alte Schlüssel bleiben unbegrenzt. Auf einer gemeinsamen Hosting-Instanz setzt der Superadmin je Organisation einen Plan (Adminportal → **Pläne**, Migration `0051`). Grenzen für Fahrzeuge und Planer sind weich: gemeldet, nie abgewiesen. Hart ist nur der Ablauf — danach 14 Tage Kulanz, dann nur lesend, im Web wie über MCP.
+
 - **Die Instanz kündigt den Ablauf ihres Lizenzschlüssels an.** Bisher merkte das erst, wer nach dem Ablauf auf den Demo-Banner stieß — mitten im Betrieb und ohne Schreibrecht. Jetzt geht 30 und 7 Tage vorher sowie beim Ablauf je eine Mail an alle Superadmins (`services/lizenz_ablauf.py`, alle 6 Stunden geprüft, `LICENSE_EXPIRY_CHECK_INTERVAL`), mit Instance ID und dem Weg zum neuen Schlüssel. Jede Stufe meldet sich einmal, auch über Neustarts hinweg; ein neuer Schlüssel fängt von vorn an. Superadmins sehen ab 30 Tagen vorher eine Hinweisleiste oben und neben „Gültig bis" eine Plakette. `GET /api/license/status` liefert dafür `expires_in_days` und `expiry_warning`.
+
+- **Eine Organisation kann alle ihre Daten exportieren.** `GET /api/organizations/{id}/export` (Admins der Organisation, unter **Admin → Datenexport**) und `GET /api/admin/organizations/{id}/export` (Superadmin, ⬇ in der Organisationsliste) liefern ein ZIP mit `organisation.json` und den Logos: Mitglieder, Fahrzeuge, Konvois samt Wegpunkten, Routen, Positionen und Tracking-Links, Leitstellen, API-Schlüssel, KI-Freigabe, Aktivität und Audit-Log. Die Felder kommen aus dem Datenmodell, nicht aus einer Liste; ein Test hält fest, dass jede Tabelle mit Bezug zur Organisation entweder exportiert oder bewusst ausgenommen ist. Hashes, MFA-Geheimnisse und die Slugs der Tracking-Links bleiben draußen. Ein API-Key bekommt keinen Export, jeder Export steht als `org.exported` im Audit-Log. Gedacht für die Rückgabe bei Vertragsende und für den Umzug zwischen Installationen.
+
+- **Die Karte lädt ihre Kacheln über die eigene Instanz.** Bisher holte jeder Browser die Kacheln direkt bei tile.openstreetmap.org, und die IP-Adresse jedes Nutzers — auch jedes Fahrers am Tracking-Link — ging an die OSM Foundation. Jetzt laufen sie über `/api/tiles/{z}/{x}/{y}.png`, einen Proxy mit gemeinsamem Plattencache (Volume `tile_cache`, Obergrenze `TILE_CACHE_MAX_MB`, Auffrischung nach `TILE_CACHE_MAX_AGE_DAYS`, bei Ausfall die alte Kachel). Der Kachelserver sieht nur noch die Instanz, eine Kachel wird für alle Nutzer einmal geholt, gleichzeitige Anfragen lösen einen Abruf aus. Der Endpunkt braucht keine Anmeldung (Tracking-Link) und ist je Client-IP begrenzt. Das Vorabladen entlang der Route fällt beim öffentlichen OSM-Server auf Zoom 12–14 und 1.500 Kacheln (vorher 12–16 und 8.000); mit eigenem Kachelserver in `TILE_UPSTREAM_URL` bleibt das volle Profil. Der OSM-Server steht nicht mehr in der CSP.
+
+### Changed
+
+- **Regionswechsel: das Panel sperrt nur noch, was auch der Updater abbräche.** Bisher wertete es den Heap-Bedarf samt 20 % Aufschlag und meldete „reicht nicht", während der Updater gegen den Bedarf ohne Aufschlag prüft und den Wechsel ausgeführt hätte. Jetzt gilt dieselbe Schwelle; passt nur der Aufschlag nicht, heißt es „knapp", mit Hinweis auf den gedeckelten Heap. Die Schätzung des Graphen auf der Platte folgt einer ersten Messung (0,58-fach statt 1,5-fach des Extracts), und der Import schreibt beim Beenden seinen Heap ins Protokoll (`GH_IMPORT_JAVA_OPTS`, Vorgabe `-Xlog:gc+heap+exit`).
+- **Regionswechsel: der Wartungsmodus rechnet mit dem, was GraphHopper wirklich belegt.** Panel und Updater schrieben dem pausierten Routing den `-Xmx` des laufenden GraphHopper gut. Seit der Server den Graphen per MMAP einblendet, belegt er davon nur einen Bruchteil. Gemessen wird jetzt der anonyme Speicher seines Containers (Panel über den `dockerproxy`, Updater über die cgroup), `-Xmx` bleibt Obergrenze und Rückfall. Ein Wechsel, der nicht passt, bricht damit vor dem Download ab statt danach.
+- **Installer:** `install.sh` fragt wie `install.ps1` Lizenzschlüssel und GitHub-Token ab; eine Neukonfiguration behält mit Enter Lizenz, Token und Region, und `JAVA_OPTS` bekommt nicht bei jedem Lauf eine weitere Schicht Anführungszeichen. Das Wiki beschreibt die Installation über den Installer statt über einen Repository-Klon.
+
+### Fixed
+
+- **Logos erscheinen wieder.** Die Branding-Antwort nannte `/uploads/logos/…`, Caddy reicht aber nur `/api/*` ans Backend durch — jedes Logo landete im 404. Ausgeliefert wird jetzt über `GET /api/branding/logos/{datei}`, SVG mit Sandbox-CSP. Der statische `/uploads`-Mount entfällt; dort lagen auch die Bildschirmfotos aus Meldungen.
+- **Lizenzschlüssel im alten `iid`-Format sind an ihre Instanz gebunden.** Die Prüfung las nur `instance_id`; ein Schlüssel der frühen Lizenzmanager-Fassung galt damit auf jeder Installation.
+- **Der Fahrer-Link holt die Bildschirmsperre nach einem App-Wechsel zurück.** Der Browser gibt den Wake-Lock ab, sobald die Seite verdeckt ist; zurück im Vordergrund blieb das Display bisher ohne ihn, und das Handy ging während der Fahrt aus.
+
+### Security
+
+- `pip` ist nicht mehr im Backend-Image — es brachte eine ungepatchte `urllib3` in `pip/_vendor` mit und wird nur beim Bau gebraucht. `fast-uri` 3.1.8 und `devalue` 5.9.4 im Frontend. Die Jackson-Funde im GraphHopper-JAR 9.1 sind begründet ausgenommen; GraphHopper bleibt bis nach den Weihnachtskonvois bei 9.1 (Review in `.trivyignore`).
+
+## [2026.6.2] – 2026-09-30
+
+Automatisch nach einer Dependabot-Welle geschnitten (`auto-release.yml`). Weil der für `2026.7.0` vorbereitete Stand zu diesem Zeitpunkt schon auf `main` lag, aber nie getaggt worden war, trägt dieses Fix-Release alles aus dem folgenden Abschnitt „2026.6.2 (vorbereitet als 2026.7.0)" und zusätzlich:
+
+### Added
 
 - **Die Quittung eines Alarms geht an den Server — und die Besatzung sieht sie.** Bisher quittierte jede Ansicht für sich; das Fahrzeug, das einen technischen Halt oder Ausfall gemeldet hatte, erfuhr nie, ob die Führung ihn gesehen hatte. Jetzt schicken Tracking-Ansicht und Fahrer-Link `{"type": "alarm_quittieren", "vehicle_id": …, "alarm_ts": …}` über den Kanal. Der Server speichert die Quittung am Fahrzeug (`convoy_vehicles.alarm_quittiert_at`/`_von`, Migration `0049`) und meldet `alarm_quittiert` an alle Verbindungen mit Gerätekennung. Die Tracking-Nutzlast führt je Fahrzeug `alarm_ts`, `alarm_quittiert_at` und `alarm_quittiert_von`. Die Besatzung sieht unter **Mein Status**, ob und von wem quittiert wurde, andere Führungskräfte sehen es unter der Meldung. Es zählt die erste Quittung, ein neuer Status setzt sie zurück, der eigene Alarm und ein Lese-Link quittieren nicht. `hello` nennt die Fähigkeit als `alarm-quittung`, damit die Companion-App weiß, ob sie senden darf.
 
@@ -32,17 +64,13 @@ ursprünglichen SemVer-Nummern.
 
 - **LTS-Update-Kanal für Installationen mit Wartungsvertrag.** Neben Stable, Beta und Nightly gibt es jetzt **LTS**: eine gehaltene Versionslinie (Branch `lts/<JAHR>.<MASTER>`), die 12 Monate lang nur Sicherheits- und Fehlerkorrekturen bekommt. Wählbar ist der Kanal nur mit einem Lizenzschlüssel, der `lts_until` trägt; `PUT /api/admin/settings/update-channel` lehnt `lts` sonst mit 403 ab, `GET` meldet `lts_available` und `lts_until`. Beide Updater folgen dem neuesten Release der höchsten LTS-Linie und ziehen die Images `:lts`, die `release.yml` für Releases der Linie per `imagetools` auf deren Digests setzt. Ablauf siehe `RELEASING.md` → „LTS Lines“.
 
-- **Eine Organisation kann alle ihre Daten exportieren.** `GET /api/organizations/{id}/export` (Admins der Organisation, unter **Admin → Datenexport**) und `GET /api/admin/organizations/{id}/export` (Superadmin, ⬇ in der Organisationsliste) liefern ein ZIP mit `organisation.json` und den Logos: Mitglieder, Fahrzeuge, Konvois samt Wegpunkten, Routen, Positionen und Tracking-Links, Leitstellen, API-Schlüssel, KI-Freigabe, Aktivität und Audit-Log. Die Felder kommen aus dem Datenmodell, nicht aus einer Liste; ein Test hält fest, dass jede Tabelle mit Bezug zur Organisation entweder exportiert oder bewusst ausgenommen ist. Hashes, MFA-Geheimnisse und die Slugs der Tracking-Links bleiben draußen. Ein API-Key bekommt keinen Export, jeder Export steht als `org.exported` im Audit-Log. Gedacht für die Rückgabe bei Vertragsende und für den Umzug zwischen Installationen.
-
-- **Die Karte lädt ihre Kacheln über die eigene Instanz.** Bisher holte jeder Browser die Kacheln direkt bei tile.openstreetmap.org, und die IP-Adresse jedes Nutzers — auch jedes Fahrers am Tracking-Link — ging an die OSM Foundation. Jetzt laufen sie über `/api/tiles/{z}/{x}/{y}.png`, einen Proxy mit gemeinsamem Plattencache (Volume `tile_cache`, Obergrenze `TILE_CACHE_MAX_MB`, Auffrischung nach `TILE_CACHE_MAX_AGE_DAYS`, bei Ausfall die alte Kachel). Der Kachelserver sieht nur noch die Instanz, eine Kachel wird für alle Nutzer einmal geholt, gleichzeitige Anfragen lösen einen Abruf aus. Der Endpunkt braucht keine Anmeldung (Tracking-Link) und ist je Client-IP begrenzt. Das Vorabladen entlang der Route fällt beim öffentlichen OSM-Server auf Zoom 12–14 und 1.500 Kacheln (vorher 12–16 und 8.000); mit eigenem Kachelserver in `TILE_UPSTREAM_URL` bleibt das volle Profil. Der OSM-Server steht nicht mehr in der CSP.
-
 ### Fixed
 
 - **Wer eine Organisation löscht, löscht auch ihre Konvois.** `convoys.organization_id` zeigte mit `ON DELETE SET NULL` auf die Organisation; beide Lösch-Wege (Superadmin unter `DELETE /api/admin/organizations/{id}`, Inhaber unter `DELETE /api/organizations/{id}`) ließen die Konvois samt Wegpunkten, Route, Positionen und Tracking-Links ohne Zuordnung in der Datenbank zurück — unerreichbar, aber nicht gelöscht. Der Fremdschlüssel kaskadiert jetzt (Migration `0050`), unabhängig davon, auf welchem Weg die Organisation verschwindet. Die Migration löscht außerdem Konvois, die bereits verwaist sind: Jeder Konvoi wird mit Organisation angelegt, einer ohne ist für keinen Nutzer mehr erreichbar.
 
 - **Ein Release auf einer älteren Linie bewegt `:latest` nicht mehr.** Bisher setzte jeder Tag ohne Suffix `:latest` und das GitHub-Label „Latest“ — ein Korrektur-Release `v2026.7.4`, getaggt nachdem `v2026.8.0` erschienen war, hätte `:latest` auf die ältere Linie gesetzt, und die nächste Aktualisierung einer Stable-Installation hätte deren Images gezogen. Jetzt gilt beides nur für die höchste Version (numerisch sortiert, `2026.10` > `2026.9`).
 
-## [2026.7.0] – 2026-09-23
+## 2026.6.2 (vorbereitet als 2026.7.0) – 2026-09-23
 
 ### Added
 
@@ -896,7 +924,8 @@ Das ruft den Update-Modus auf: räumt verwaiste Updater-Container auf, zieht all
 - Docker Compose setup with GraphHopper OSM pre-download.
 
 [Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.7.0...HEAD
-[2026.7.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.6.1...v2026.7.0
+[2026.7.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.6.2...v2026.7.0
+[2026.6.2]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.6.1...v2026.6.2
 [2026.6.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.5.2...v2026.6.0
 [2026.5.2]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.5.1...v2026.5.2
 [2026.5.1]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.5.0...v2026.5.1
