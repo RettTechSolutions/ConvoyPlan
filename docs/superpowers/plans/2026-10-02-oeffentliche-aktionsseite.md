@@ -231,11 +231,111 @@ gut zwölf Wochen, und die letzten zwei davon sind für Proben, nicht für Code.
 
 ## 9. Offene Fragen an die Organisation
 
-1. Wie viele Konvois, welche Zielländer, Abfahrtsdatum und -ort?
-2. Eine Instanz der Organisation oder die gehostete?
-3. Wer stellt die Geräte in den Spitzenfahrzeugen, wer kümmert sich unterwegs?
+Beantwortet am 2. Oktober (Folgen in Abschnitt 10):
+
+1. ~~Wie viele Konvois, welche Zielländer?~~ 2–3 parallel, Start jeweils in
+   Deutschland, Ziele Rumänien, Albanien, Bosnien und Herzegowina.
+2. ~~Eine Instanz der Organisation oder die gehostete?~~ Offen; im Gespräch
+   ist ein eigener Server für die öffentliche Seite, angebunden per API.
+3. ~~Wer stellt die Geräte?~~ Die Fahrer mit ihren eigenen Handys, über den
+   Fahrer-Link im Browser oder die Begleit-App.
+
+Weiter offen:
+
 4. 1 oder 2 Stunden Verzögerung? (Empfehlung: 2 h — kostet nichts, und die
    Vergröberung bei Halt bleibt trotzdem nötig.)
 5. Ziel genau (Lagerhalle) oder nur Ort/Land anzeigen?
 6. Logo und Freigabe der Öffentlichkeitsarbeit — wer liefert, wer gibt frei?
-7. Ist Presse eingebunden? Davon hängt ab, ob eine eigene Instanz nötig ist.
+7. Ist Presse eingebunden? Mit dem abgesetzten Server (10.1) entscheidet das
+   nur noch über dessen Größe, nicht mehr über die Einsatzinstanz.
+8. Auf welcher Instanz läuft die Planung der Konvois? Die Aktionsseite
+   braucht eine, von der sie abfragt.
+
+## 10. Stand 2. Oktober: Antworten und Folgen
+
+### 10.1 Die öffentliche Seite auf einem eigenen Server
+
+Der Vorschlag, die Seite abgesetzt zu betreiben und per API anzubinden, ist
+besser als der ursprüngliche Plan — vorausgesetzt, die Richtung stimmt:
+
+```
+Einsatzinstanz                         Öffentlicher Server
+(Planung, Tracking, Verlauf)           (nur Anzeige)
+  GET /api/public/aktion/{slug}  ◀──── holt jede Minute, mit API-Schlüssel
+  → schon verzögert, vergröbert,       → legt die Antwort ab, liefert sie
+    auf die Positivliste beschnitten     samt Seite und Kacheln aus
+```
+
+- **Die Einsatzinstanz liefert nur, was öffentlich sein darf.** Verzögerung,
+  Vergröberung und Feldauswahl bleiben dort (Abschnitte 3 und 4). Der
+  öffentliche Server bekommt nie eine Echtzeitposition zu sehen. Wird er
+  übernommen, steht dort nichts, was nicht ohnehin auf der Seite stand.
+- **Abgeholt, nicht gepusht.** Die Einsatzinstanz braucht keinen Zugang zum
+  öffentlichen Server, und ein ausgefallener öffentlicher Server stört den
+  Einsatz nicht. Umgekehrt zeigt die Seite bei ausgefallener Einsatzinstanz
+  den letzten Stand mit Zeitstempel weiter.
+- **Andrang trifft die Einsatzinstanz nicht.** Sie sieht genau einen Abruf pro
+  Minute, egal ob zehn oder hunderttausend Leute zuschauen. Damit erledigt
+  sich auch die Frage nach Caddy-Cache und eigener Instanz aus Abschnitt 6.
+- **Zugang**: ein eigener API-Schlüssel nur für diesen Endpunkt (das
+  `api_key`-Modell gibt es), zusätzlich bleibt der Slug unratbar. Der
+  Endpunkt antwortet ohne Schlüssel weiter für die Vorschau im Org-Admin.
+- **Was auf den öffentlichen Server kommt**: eine eigene Anwendung im Repo
+  [Convoyplan-EventTracker](https://github.com/RettTechSolutions/Convoyplan-EventTracker)
+  — Seite, ein kleiner Abholer und ein Kachel-Cache. Sie kennt von
+  ConvoyPlan nur den einen Endpunkt und dessen Schema; das Schema ist damit
+  ein Vertrag zwischen zwei Repos und wird in ConvoyPlan per Test
+  festgehalten (Abschnitt 7, `test_aktionsseite_felder.py`). Die Kacheln gehören **nicht** durch den Proxy der
+  Einsatzinstanz — sonst trifft der Andrang sie doch, nur über einen Umweg.
+  Entweder eigener Kachel-Cache auf dem öffentlichen Server oder ein
+  Kachelanbieter mit Nutzungsbedingungen für öffentliche Seiten; die
+  OSM-Standardkacheln sind für so etwas ausdrücklich nicht gedacht.
+
+Kosten gegenüber Abschnitt 4: ein zusätzliches Deploy-Ziel und ein Abholer.
+Der Endpunkt selbst bleibt gleich. **Aufteilung**: Positionsverlauf,
+Verzögerung, Vergröberung, Endpunkt und Verwaltung im Org-Admin bleiben in
+ConvoyPlan — sie brauchen die Datenbank, und nur so verlässt keine
+Echtzeitposition die Einsatzinstanz. Alles aus Abschnitt 5 außer der
+Verwaltung wandert in den EventTracker.
+
+### 10.2 Handys der Fahrer als einzige Quelle
+
+Das funktioniert, hat aber eine Schwachstelle, die vor der Probefahrt geklärt
+sein muss: **Der Fahrer-Link im Browser sendet nur, solange die Seite vorne
+und der Bildschirm an ist.** Mobile Browser stellen die Ortung im Hintergrund
+ein. Den Bildschirm hält der Fahrer-Link beim Senden per Wake Lock an — nur
+gab der Browser die Sperre nach jedem App-Wechsel frei, und der Fahrer-Link
+holte sie nicht zurück (anders als die angemeldete Tracking-Seite). Ein Handy,
+das danach in der Halterung ausging, lieferte stundenlang nichts. Behoben in
+einem eigenen PR.
+
+Folgen:
+
+- **Für die Spitzenfahrzeuge die Begleit-App** (ortet im Hintergrund) und
+  Dauerstrom. Der Browser ist Notlösung, nicht Plan.
+- **Wake Lock nach App-Wechsel zurückholen** — eigener PR, hilft allen
+  Einsätzen, nicht nur diesem. Gegen gesperrte Bildschirme hilft er nicht:
+  wer das Handy sperrt, sendet im Browser nicht mehr.
+- Mit mehreren meldenden Fahrzeugen je Konvoi wird der „eine Punkt je
+  Konvoi" (Abschnitt 4) wichtiger: Fällt das Spitzenfahrzeug aus, nimmt die
+  Seite das nächste Fahrzeug mit frischer Position, statt stehen zu bleiben.
+- Private Handys heißen private Datentarife: das Roaming-Thema aus Abschnitt 6
+  trifft die Fahrer persönlich. Albanien und Bosnien liegen außerhalb der EU,
+  ebenso Serbien und Montenegro, durch die die Strecken voraussichtlich
+  führen. Rumänien ist EU. Klären, wer die Kosten trägt oder ob es
+  Daten-SIMs gibt.
+
+### 10.3 Routing-Region
+
+Für den km-Fortschritt braucht die Einsatzinstanz einen Graphen von
+Deutschland bis zu den Zielen, also mindestens: Deutschland, Österreich,
+Ungarn, Rumänien, Slowenien, Kroatien, Bosnien und Herzegowina, Serbien,
+Montenegro, Albanien (Tschechien/Slowakei je nach Strecke). Das geht über die
+Mehrfach-Regionen (`merge-extracts.sh`), ist aber ein großer Import mit
+entsprechendem RAM. Fällt er zusammen mit der GraphHopper-Hebung bis Ende
+November (siehe `.trivyignore`, Review by 2026-11-30), wird nur einmal neu
+importiert.
+
+Ohne diesen Graphen funktioniert die Seite trotzdem — Punkt und gefahrene
+Linie kommen aus dem Positionsverlauf, nicht aus dem Routing. Es fehlt dann
+nur „noch 640 km".
