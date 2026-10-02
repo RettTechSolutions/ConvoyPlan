@@ -98,8 +98,9 @@ eine vollständige `.env`, bietet er zwei Wege an:
 - **[J] Nur aktualisieren** (Standard): Die Einstellungen bleiben, fehlende
   Einträge werden ergänzt, Compose-Datei und Images erneuert, der Stack wird neu gestartet.
 - **[n] Neu konfigurieren**: Alle Fragen kommen erneut, die bisherigen Werte
-  sind vorausgewählt. `JWT_SECRET` bleibt erhalten, damit bestehende
-  Anmeldungen und MFA-Secrets gültig bleiben.
+  sind vorausgewählt. Datenbankpasswort, Region, Lizenzschlüssel und
+  GitHub-Token bleiben mit Enter erhalten. `JWT_SECRET` wird nicht abgefragt
+  und bleibt immer, damit bestehende Anmeldungen und MFA-Secrets gültig bleiben.
 
 ---
 

@@ -191,10 +191,11 @@ function Read-ConfirmedPassword {
     while ($true) {
         $s1 = Read-Host $Prompt -AsSecureString
         $s2 = Read-Host 'Passwort bestaetigen' -AsSecureString
-        $p1 = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
-              [Runtime.InteropServices.Marshal]::SecureStringToBSTR($s1))
-        $p2 = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
-              [Runtime.InteropServices.Marshal]::SecureStringToBSTR($s2))
+        # NetworkCredential statt PtrToStringAuto(SecureStringToBSTR(...)): Das
+        # liest den UTF-16-BSTR ausserhalb von Windows als UTF-8 und kuerzt am
+        # ersten Nullbyte — aus "geheim" wurde "g". Lecken tut der BSTR auch nicht.
+        $p1 = [System.Net.NetworkCredential]::new('', $s1).Password
+        $p2 = [System.Net.NetworkCredential]::new('', $s2).Password
         if ($p1 -and $p1 -eq $p2) { return $p1 }
         Write-Host '  Passwoerter stimmen nicht ueberein oder leer.' -ForegroundColor Yellow
     }
@@ -280,8 +281,7 @@ if ((Test-Path $EnvFile)) {
         $prevPw     = Get-EnvValue 'POSTGRES_PASSWORD' $EnvFile
         Write-Host "Datenbankpasswort [Enter = bestehendes beibehalten]: " -NoNewline
         $s1 = Read-Host -AsSecureString
-        $typed = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
-                 [Runtime.InteropServices.Marshal]::SecureStringToBSTR($s1))
+        $typed = [System.Net.NetworkCredential]::new('', $s1).Password
         $DbPassword = if ($typed) { $typed } else { $prevPw }
     } else {
         # Unvollstaendige .env — normale Abfrage mit Vorauswahl
@@ -302,12 +302,26 @@ Write-Host '  2) Deutschland       (~4 GB)'
 Write-Host '  3) Bayern            (~1 GB)'
 Write-Host '  4) Berlin            (~30 MB, fuer Tests)'
 Write-Host '  5) Eigene URL eingeben'
-$OsmChoice = Read-Host 'Auswahl [1]'
-if (-not $OsmChoice) { $OsmChoice = '1' }
+# Bei einer Neukonfiguration bleibt die bisherige Region mit Enter erhalten —
+# wie in install.sh. Frueher fiel Enter hier auf DACH zurueck.
+$PrevOsmUrl   = if (Test-Path $EnvFile) { Get-EnvValue 'OSM_DOWNLOAD_URL' $EnvFile } else { '' }
+$PrevOsmFile  = if (Test-Path $EnvFile) { Get-EnvValue 'OSM_FILENAME' $EnvFile } else { '' }
+# JAVA_OPTS steht in Anfuehrungszeichen in der .env — abziehen, sonst kommt bei
+# jeder Neukonfiguration eine Schicht dazu (""-Xmx8g ..."" liest Compose als leer).
+$PrevJavaOpts = if (Test-Path $EnvFile) { (Get-EnvValue 'JAVA_OPTS' $EnvFile).Trim('"') } else { '' }
+if ($PrevOsmFile) {
+    $OsmChoice = Read-Host "Auswahl [Enter = beibehalten: $PrevOsmFile]"
+} else {
+    $OsmChoice = Read-Host 'Auswahl [1]'
+    if (-not $OsmChoice) { $OsmChoice = '1' }
+}
 
 # JAVA_OPTS scale with the region's PBF size — must match install.sh, otherwise
 # the DACH default OOMs on a 2 GB heap during the graph import.
 switch ($OsmChoice) {
+    ''  { $OsmUrl  = $PrevOsmUrl
+          $OsmFile = $PrevOsmFile
+          $JavaOpts = if ($PrevJavaOpts) { $PrevJavaOpts } else { '-Xmx4g -Xms1g -XX:+UseG1GC' } }
     '1' { $OsmUrl  = 'https://download.geofabrik.de/europe/dach-latest.osm.pbf'
           $OsmFile = 'dach-latest.osm.pbf'
           $JavaOpts = '-Xmx8g -Xms1g -XX:+UseG1GC' }
@@ -326,12 +340,25 @@ switch ($OsmChoice) {
     default { Write-Host "FEHLER: Ungueltige Auswahl '$OsmChoice'." -ForegroundColor Red; exit 1 }
 }
 
-$LicenseKey   = Read-Host 'Lizenzschluessel [Enter = Demo-Modus]'
+# Lizenzschluessel und Token: bei einer Neukonfiguration bleibt ein vorhandener
+# Wert mit Enter erhalten. Frueher schrieb das Skript die .env ohne ihn neu, und
+# der Schluessel war weg.
+$PrevLicense = if (Test-Path $EnvFile) { Get-EnvValue 'LICENSE_KEY' $EnvFile } else { '' }
+$PrevToken   = if (Test-Path $EnvFile) { Get-EnvValue 'GITHUB_TOKEN' $EnvFile } else { '' }
+
+if ($PrevLicense) {
+    $LicenseKey = Read-Host 'Lizenzschluessel [Enter = bestehenden beibehalten]'
+    if (-not $LicenseKey) { $LicenseKey = $PrevLicense }
+} else {
+    $LicenseKey = Read-Host 'Lizenzschluessel [Enter = Demo-Modus]'
+}
 # Read the token without echoing it to the screen / PSReadline history. It still
 # has to be written to .env in clear (the updater needs it) — use a fine-grained
 # PAT with minimal scope (read:packages).
-$GithubTokenSecure = Read-Host 'GitHub Token fuer Auto-Updater [Enter = ueberspringen]' -AsSecureString
+$tokenFrage = if ($PrevToken) { 'GitHub Token fuer Auto-Updater [Enter = bestehenden beibehalten]' } else { 'GitHub Token fuer Auto-Updater [Enter = ueberspringen]' }
+$GithubTokenSecure = Read-Host $tokenFrage -AsSecureString
 $GithubToken = [System.Net.NetworkCredential]::new('', $GithubTokenSecure).Password
+if (-not $GithubToken) { $GithubToken = $PrevToken }
 
 # JWT_SECRET: bestehenden beibehalten oder neu generieren
 $existingJwt = if (Test-Path $EnvFile) { Get-EnvValue 'JWT_SECRET' $EnvFile } else { '' }

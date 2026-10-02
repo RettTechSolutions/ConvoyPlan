@@ -368,7 +368,9 @@ if [[ -f "$INSTALL_DIR/.env" ]] && \
   PREV_JWT=$(_ev JWT_SECRET)
   PREV_OSM_URL=$(_ev OSM_DOWNLOAD_URL)
   PREV_OSM_FILE=$(_ev OSM_FILENAME)
-  PREV_JAVA_OPTS=$(_ev JAVA_OPTS)
+  # Steht in Anführungszeichen in der .env — abziehen, sonst kommt bei jeder
+  # Neukonfiguration eine Schicht dazu (""-Xmx8g …"" liest Compose als leer).
+  PREV_JAVA_OPTS=$(_ev JAVA_OPTS | sed -E 's/^"+//; s/"+$//')
   PREV_LICENSE=$(_ev LICENSE_KEY)
   PREV_GH_TOKEN=$(_ev GITHUB_TOKEN)
   echo "✓ Bestehende Werte geladen."
@@ -382,7 +384,9 @@ elif [[ -f "$INSTALL_DIR/.env" ]]; then
   PREV_JWT=$(_ev JWT_SECRET)
   PREV_OSM_URL=$(_ev OSM_DOWNLOAD_URL)
   PREV_OSM_FILE=$(_ev OSM_FILENAME)
-  PREV_JAVA_OPTS=$(_ev JAVA_OPTS)
+  # Steht in Anführungszeichen in der .env — abziehen, sonst kommt bei jeder
+  # Neukonfiguration eine Schicht dazu (""-Xmx8g …"" liest Compose als leer).
+  PREV_JAVA_OPTS=$(_ev JAVA_OPTS | sed -E 's/^"+//; s/"+$//')
   PREV_LICENSE=$(_ev LICENSE_KEY)
   PREV_GH_TOKEN=$(_ev GITHUB_TOKEN)
 fi
