@@ -36,8 +36,8 @@ test('Anlegen zeigt das Token einmal, mit dem Eintrag für den EventTracker', as
 		pfad: 'weihnachtskonvois-2026',
 		slug: 'Hq3vT8kLm2Pw',
 		token: 'tok_Zr8Qm2Lw5Xc9Vb3Nh7Kp',
+		convoyplan: 'https://einsatz.example.de',
 	});
-	await expect(box).toContainText('CONVOYPLAN_URL=https://einsatz.example.de');
 
 	// Was abgeschickt wurde: der öffentliche Name, nicht der interne.
 	const gesendet = await page.evaluate(() => window.__aktionAngelegt);
