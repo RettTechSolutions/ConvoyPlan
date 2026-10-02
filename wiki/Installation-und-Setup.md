@@ -1,87 +1,188 @@
 # Installation und Setup
 
-Diese Seite beschreibt die Einrichtung von ConvoyPlan für lokale Entwicklung und Produktivbetrieb.
+Diese Seite beschreibt die Installation von ConvoyPlan auf einem Server. Für die
+Arbeit am Code (Backend/Frontend lokal, Tests, Migrationen) siehe
+**[Entwicklung](Entwicklung)**.
+
+> **Kurz gesagt:** Den Installer benutzen. Für den Betrieb ist **kein**
+> `git clone` nötig. Die `docker-compose.yml` zieht fertige Images aus der GitHub
+> Container Registry und baut nichts selbst, ein `--build` hat also keine
+> Wirkung. Wer im Repository-Klon `docker compose up` aufruft, scheitert an der
+> fehlenden `.env` (`required variable POSTGRES_PASSWORD is missing a value`).
 
 ---
 
 ## Voraussetzungen
 
-| Komponente | Version | Zweck |
-|---|---|---|
-| Git | aktuell | Repository klonen |
-| Docker + Docker Compose Plugin | aktuell | Alle Dienste starten |
-| Node.js + npm | 20+ | Frontend-Entwicklung (lokal) |
-| Python | 3.12 | Backend-Entwicklung (lokal, optional) |
+| Komponente | Zweck |
+|---|---|
+| Docker Engine + Docker Compose Plugin | Alle Dienste laufen als Container |
+| `curl`, `openssl`, `sudo` (Linux) | Werden vom Installer benutzt |
+| Ports `80` und `443` von außen erreichbar | Caddy, Let's Encrypt |
+| DNS-Eintrag der Domain auf den Server | Für ein öffentliches Zertifikat |
+| Arbeitsspeicher je nach Kartenregion | Für den Import des Routing-Graphen, siehe Tabelle |
+
+| Region | Download | RAM für den Import (`-Xmx`) | Erster Import ca. |
+|---|---|---|---|
+| DACH (Standard) | ~5,5 GB | 8 GB | 60–120 Min. |
+| Deutschland | ~4 GB | 6 GB | 45–90 Min. |
+| Bayern | ~1 GB | 3 GB | 10–20 Min. |
+| Berlin (zum Testen) | ~30 MB | 1 GB | wenige Minuten |
+
+Im laufenden Betrieb braucht GraphHopper deutlich weniger, siehe `GH_DATAACCESS`
+unter [GraphHopper](#graphhopper).
 
 ---
 
-## Quickstart (Docker)
+## Installation mit dem Installer (empfohlen)
 
-### 1. Repository klonen
-
-```bash
-git clone https://github.com/RettTechSolutions/ConvoyPlan.git
-cd ConvoyPlan
-```
-
-### 2. Stack starten
+**Linux:**
 
 ```bash
-docker compose up -d --build
+curl -sSL https://convoyplan.de/install.sh | bash
 ```
 
-Beim ersten Start lädt GraphHopper die konfigurierte OSM-PBF-Datei herunter und baut den Routing-Graphen. Der Standard ist **DACH** (Deutschland, Österreich, Schweiz, Liechtenstein; ~5,5 GB). Für lokale Tests empfiehlt sich eine kleinere Region:
+**Windows (PowerShell als Administrator):**
 
-```yaml
-# docker-compose.yml
-OSM_DOWNLOAD_URL: https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf
-OSM_FILENAME: berlin-latest.osm.pbf
+```powershell
+irm https://convoyplan.de/install.ps1 | iex
 ```
 
-Logs verfolgen:
+Der Installer fragt interaktiv nach:
+
+1. **Installationsverzeichnis**: Standard `~/convoyplan`, unter Windows `%USERPROFILE%\convoyplan`
+2. **Domain** (FQDN, z. B. `convoy.example.com`)
+3. **E-Mail für Let's Encrypt**
+4. **Datenbankpasswort** (zweimal)
+5. **OSM-Region**: DACH, Deutschland, Bayern, Berlin oder eine eigene Geofabrik-URL
+
+Der Windows-Installer fragt zusätzlich nach Lizenzschlüssel und GitHub-Token.
+Beides lässt sich überspringen und später nachtragen.
+
+Danach läuft er ohne weitere Rückfragen durch:
+
+- Er lädt `docker-compose.yml` und `caddy/entrypoint.sh` aus `main` ins Installationsverzeichnis.
+- Er schreibt die `.env` (Rechte `600`) mit DB-Zugang, Domain, Region und einem
+  frisch erzeugten `JWT_SECRET`. Dazu kommen die Image-Adressen und die Pfade, die der
+  [Auto-Updater](Auto-Updater) braucht (`STACK_FILE_PATH`, `CADDY_ENTRYPOINT_PATH`,
+  `COMPOSE_PROJECT_NAME=convoyplan`).
+- Er führt `docker compose pull` und `docker compose up -d` aus.
+- Unter Linux mit systemd richtet er zusätzlich einen Watchdog-Timer ein
+  (`convoyplan-updater-watchdog.timer`, alle 2 Minuten). Er holt einen
+  hängengebliebenen Updater zurück.
+
+Am Ende nennt der Installer die Adresse des Setup-Wizards:
+`https://<DOMAIN>/setup`. GraphHopper baut den Routing-Graphen im Hintergrund,
+und bis dahin gibt es keine Routenberechnung. Fortschritt anzeigen:
 
 ```bash
+cd ~/convoyplan
 docker compose logs -f graphhopper
+docker compose ps        # Zustand und Healthchecks aller Dienste
 ```
 
-Gesundheitschecks:
+> ⚠️ **Die `docker-compose.yml` im Installationsverzeichnis nicht von Hand
+> ändern.** Der Installer ersetzt sie bei jedem Lauf und der Auto-Updater bei
+> Updates. Eigene Einstellungen gehören in die `.env`. Dort ist praktisch jeder
+> Wert der Compose-Datei als Variable herausgeführt (siehe [Konfiguration](#konfiguration)).
+
+### Erneut ausführen: Aktualisieren oder neu konfigurieren
+
+Updates spielt normalerweise der [Auto-Updater](Auto-Updater) ein. Der Installer
+lässt sich trotzdem jederzeit erneut starten. Findet er im gewählten Verzeichnis
+eine vollständige `.env`, bietet er zwei Wege an:
+
+- **[J] Nur aktualisieren** (Standard): Die Einstellungen bleiben, fehlende
+  Einträge werden ergänzt, Compose-Datei und Images erneuert, der Stack wird neu gestartet.
+- **[n] Neu konfigurieren**: Alle Fragen kommen erneut, die bisherigen Werte
+  sind vorausgewählt. `JWT_SECRET` bleibt erhalten, damit bestehende
+  Anmeldungen und MFA-Secrets gültig bleiben.
+
+---
+
+## Setup-Wizard
+
+Beim ersten Aufruf leitet die Anwendung automatisch auf `/setup` weiter. Der
+fünfstufige Wizard führt durch:
+
+1. **Superadmin-Account**: E-Mail-Adresse und Passwort festlegen.
+2. **Erste Organisation**: Org-Name und Org-Code anlegen (URL-Slug, 4–8 Zeichen). Der Slug wird Teil aller org-spezifischen URLs (`/o/[slug]/plan/`, `/o/[slug]/admin/`).
+3. **Domain und SSL**: Serverdomain (FQDN) eingeben und TLS-Modus wählen:
+   - **Let's Encrypt**: automatisches öffentliches Zertifikat
+   - **Eigenes Zertifikat**: PEM-Datei hochladen
+   - **Intern**: selbstsigniertes Zertifikat für lokale Nutzung
+4. **Branding** (optional): App-Name, Farben und Logo anpassen. Lässt sich überspringen und ist später im Admin-Bereich erreichbar.
+5. **Abschluss**: Caddy wird live neu geladen, danach geht es direkt zur Anmeldung unter `https://<DOMAIN>/o/[slug]/login`.
+
+Den Lizenzschlüssel danach im Admin-Bereich unter **System → Lizenz** eintragen.
+Ohne Schlüssel läuft die Instanz im Demo-Modus (siehe
+[Lizenz und Demo-Modus](Lizenz-und-Demo-Modus)).
+
+---
+
+## Manuelle Installation (ohne Installer)
+
+Nur nötig, wenn der Installer nicht in Frage kommt. Er ist ein Shell-Skript und
+macht nichts anderes als die Schritte hier. Ein Repository-Klon wird auch hier
+nicht gebraucht:
 
 ```bash
-curl http://localhost:8000/health
-curl http://localhost:8989/health
+mkdir -p ~/convoyplan/caddy && cd ~/convoyplan
+RAW=https://raw.githubusercontent.com/RettTechSolutions/ConvoyPlan/main
+curl -sSfL $RAW/docker-compose.yml -o docker-compose.yml
+curl -sSfL $RAW/caddy/entrypoint.sh -o caddy/entrypoint.sh
+curl -sSfL $RAW/.env.example        -o .env
+chmod +x caddy/entrypoint.sh
+chmod 600 .env
 ```
 
-### 3. Frontend starten (lokale Entwicklung)
+In der `.env` mindestens setzen:
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-### 4. Erreichbare Dienste
-
-| Dienst | URL |
+| Variable | Wert |
 |---|---|
-| Frontend | http://localhost:5173 |
-| Backend API | http://localhost:8000 |
-| Swagger UI | http://localhost:8000/docs |
-| GraphHopper | http://localhost:8989 |
+| `POSTGRES_PASSWORD` | eigenes Passwort. Ohne Wert startet Compose gar nicht. |
+| `JWT_SECRET` | `openssl rand -hex 32`. Mit dem Platzhalter startet das Backend nicht. |
+| `DOMAIN`, `ACME_EMAIL` | FQDN bzw. E-Mail für Let's Encrypt |
+| `STACK_FILE_PATH` | absoluter Pfad dieser `docker-compose.yml`, z. B. `/home/<user>/convoyplan/docker-compose.yml` (für den Auto-Updater) |
+| `CADDY_ENTRYPOINT_PATH` | absoluter Pfad von `caddy/entrypoint.sh` |
+| `COMPOSE_PROJECT_NAME` | `convoyplan` |
 
-### 5. Setup-Wizard
+Dazu nach Bedarf Region und Speicher (`OSM_DOWNLOAD_URL`, `OSM_FILENAME`,
+`JAVA_OPTS`, Werte siehe [Voraussetzungen](#voraussetzungen)). Danach:
 
-Beim ersten Start leitet die Anwendung automatisch auf `/setup` weiter. Der fünfstufige Wizard führt durch:
+```bash
+docker compose pull
+docker compose up -d
+```
 
-1. **Superadmin-Account** – E-Mail-Adresse und Passwort festlegen.
-2. **Erste Organisation** – Org-Name und Org-Code (URL-Slug, 4–8 Zeichen) anlegen; dieser Slug wird Teil aller org-spezifischen URLs (`/o/[slug]/plan/`, `/o/[slug]/admin/`).
-3. **Domain und SSL** – Serverdomain (FQDN) eingeben und TLS-Modus wählen:
-   - **Let's Encrypt** – automatisches öffentliches Zertifikat
-   - **Eigenes Zertifikat** – PEM-Datei hochladen
-   - **Intern** – selbstsigniertes Zertifikat für lokale Nutzung
-4. **Branding** (optional) – App-Name, Farben und Logo anpassen. Überspringbar und später im Admin-Bereich erreichbar.
-5. **Abschluss** – Caddy wird live neu geladen, danach direkt zur Anmeldung unter `https://<DOMAIN>/o/[slug]/login`.
+und den Setup-Wizard unter `https://<DOMAIN>/setup` aufrufen.
 
-> Für lokale Entwicklung ohne Caddy: `localhost` als Domain und `internal` als TLS-Modus wählen.
+---
+
+## Portainer
+
+Portainer kann denselben Stack betreiben. Die Images liegen in der GitHub
+Container Registry:
+
+| Variable | Wert |
+|---|---|
+| `BACKEND_IMAGE` | `ghcr.io/retttechsolutions/convoyplan/backend:latest` |
+| `FRONTEND_IMAGE` | `ghcr.io/retttechsolutions/convoyplan/frontend:latest` |
+| `GRAPHHOPPER_IMAGE` | `ghcr.io/retttechsolutions/convoyplan/graphhopper:latest` |
+| `UPDATER_IMAGE` | `ghcr.io/retttechsolutions/convoyplan/updater:latest` |
+| `REGION_MERGE_IMAGE` | `ghcr.io/retttechsolutions/convoyplan/osmium:latest` |
+| `POSTGRES_PASSWORD` | sicheres Datenbankpasswort (Pflicht) |
+| `JWT_SECRET` | mit `openssl rand -hex 32` erzeugen (Pflicht) |
+| `DOMAIN` / `ACME_EMAIL` | FQDN bzw. E-Mail für Let's Encrypt |
+
+Caddy bindet `caddy/entrypoint.sh` per Bind-Mount ein (`CADDY_ENTRYPOINT_PATH`,
+Standard `./caddy/entrypoint.sh`). Bei einem reinen Web-Editor-Stack liegt die
+Datei nicht neben der Compose-Datei. Dann muss sie auf dem Host abgelegt und
+`CADDY_ENTRYPOINT_PATH` auf diesen absoluten Pfad gesetzt werden.
+
+> **Hinweis:** Der `updater` braucht die Compose-Datei auf dem Host
+> (`STACK_FILE_PATH`). In Portainer übernimmt sonst Portainers eigener
+> Stack-Update-Mechanismus das Deployment neuer Images.
 
 ---
 
@@ -258,160 +359,64 @@ openssl rand -hex 32
 
 > Schritt-für-Schritt-Anleitung: **[Verkehrsdaten](Verkehrsdaten)**.
 
-### Frontend (lokale Entwicklung)
-
-```env
-# frontend/.env.local
-VITE_WS_HOST=localhost:8000
-```
-
 ---
 
-## GraphHopper-Cache erneuern
+## Kartenregion wechseln
 
-Nach einer Änderung der OSM-Region muss der Graph-Cache neu aufgebaut werden:
+Die Region wechselt man im laufenden Betrieb im Admin-Panel unter **System →
+Kartenregion** (siehe oben). Der neue Graph entsteht dabei neben dem laufenden.
+
+Nur wenn das nicht geht, lässt sich der Graph-Cache von Hand verwerfen. Danach
+ist das Routing bis zum Ende des Neuimports weg:
 
 ```bash
+cd ~/convoyplan
 docker compose down
 docker volume rm convoyplan_gh_graph
-docker compose up -d --build
+docker compose up -d
 ```
 
 ---
 
-## Deployment (Produktion)
+## Checkliste für Produktion
 
-### Docker Compose
-
-```bash
-# 1. Umgebungsvariablen anpassen
-cp .env.example .env
-# JWT_SECRET, POSTGRES_PASSWORD, DOMAIN, ACME_EMAIL setzen
-
-# 2. Stack starten
-docker compose -f docker-compose.yml up -d --build
-
-# 3. Setup-Wizard aufrufen
-open https://<DOMAIN>/setup
-```
-
-### Portainer
-
-Für die Produktion wird dieselbe `docker-compose.yml` verwendet. Sie kann vorgefertigte Images aus der GitHub Container Registry (GHCR) statt lokaler Builds nutzen — kein `git clone` auf dem Server nötig. Pflichtvariablen beim Anlegen des Stacks:
-
-| Variable | Beispiel |
-|---|---|
-| `BACKEND_IMAGE` | `ghcr.io/retttechsolutions/convoyplan-backend:latest` |
-| `FRONTEND_IMAGE` | `ghcr.io/retttechsolutions/convoyplan-frontend:latest` |
-| `GRAPHHOPPER_IMAGE` | `ghcr.io/retttechsolutions/convoyplan-graphhopper:latest` |
-| `JWT_SECRET` | mit `openssl rand -hex 32` erzeugen |
-| `POSTGRES_PASSWORD` | sicheres Datenbankpasswort |
-| `DOMAIN` / `ACME_EMAIL` | FQDN bzw. E-Mail für Let's Encrypt |
-
-Der Setup-Wizard übernimmt die Erstkonfiguration nach dem ersten Stack-Start.
-
-> **Hinweis:** Der `updater`-Container ist nur in `docker-compose.yml` enthalten. In Portainer übernimmt der Stack-Update-Mechanismus von Portainer selbst das Deployment neuer Images.
-
-### Checkliste für Produktion
-
-- [ ] `JWT_SECRET` mit `openssl rand -hex 32` generieren – nicht in Git versionieren
-- [ ] Datenbankpasswort ändern
-- [ ] `CORS_ORIGINS` auf die produktive Domain einschränken
-- [ ] Persistente Volumes (`postgres_data`, `caddy_data`, `cert_uploads`, `logo_uploads`) regelmäßig sichern
-- [ ] Für DACH genug RAM einplanen (`JAVA_OPTS=-Xmx8g`; nur Deutschland: `-Xmx6g`)
-- [ ] GraphHopper-Graph-Cache (`gh_graph`) auf schnellem Speicher ablegen
-- [ ] `GITHUB_TOKEN` setzen, damit der Auto-Updater Commit-Stände abrufen kann
-- [ ] Lizenzschlüssel setzen (Env oder Admin → System); sonst läuft die Instanz dauerhaft im Demo-Modus
-
----
-
-## Lokale Backend-Entwicklung (ohne Docker)
-
-```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-alembic upgrade head
-uvicorn app.main:app --reload
-```
-
-> PostgreSQL/PostGIS und GraphHopper müssen erreichbar sein – am einfachsten weiterhin über Docker Compose.
-
-### Tests ausführen
-
-```bash
-cd backend
-pytest
-```
-
-### Frontend prüfen und bauen
-
-```bash
-cd frontend
-npm install
-npm run check
-npm run build
-```
-
-### Datenbankmigrationen
-
-```bash
-# Aktuelle Migrationen ausführen
-cd backend && alembic upgrade head
-
-# Neue Migration erzeugen
-cd backend && alembic revision --autogenerate -m "beschreibung"
-```
+- [ ] Installation über den Installer, nicht aus einem Repository-Klon
+- [ ] `JWT_SECRET` stark und nirgends versioniert (der Installer erzeugt ihn)
+- [ ] Eigenes Datenbankpasswort
+- [ ] `CORS_ORIGINS` leer lassen oder auf die produktive Domain einschränken, nie `*`
+- [ ] Persistente Volumes (`postgres_data`, `caddy_data`, `cert_uploads`, `logo_uploads`) regelmäßig sichern, siehe `scripts/backup.sh`
+- [ ] Genug RAM für den Import der gewählten Region (siehe [Voraussetzungen](#voraussetzungen))
+- [ ] GraphHopper-Graph-Cache (`gh_graph`) auf schnellem Speicher
+- [ ] Lizenzschlüssel eintragen (Admin → System → Lizenz), sonst läuft die Instanz dauerhaft im Demo-Modus
 
 ---
 
 ## Nützliche Docker-Befehle
 
-```bash
-docker compose up -d --build        # Stack starten
-docker compose logs -f backend      # Backend-Logs anzeigen
-docker compose logs -f graphhopper  # GraphHopper-Logs anzeigen
-docker compose down                 # Services stoppen
-docker compose down -v              # Services stoppen inkl. persistenter Daten
-```
-
----
-
-## Native App / PWA
-
-Das Frontend ist als Progressive Web App konfiguriert und kann im Browser installiert werden. Für native Apps ist Capacitor vorbereitet:
+Im Installationsverzeichnis (Standard `~/convoyplan`):
 
 ```bash
-cd frontend
-npm run build
-npx cap add android   # einmalig, alternativ: ios
-npx cap sync
-npx cap open android
+docker compose ps                   # Zustand und Healthchecks
+docker compose logs -f backend      # Backend-Logs
+docker compose logs -f graphhopper  # GraphHopper-Logs (Import-Fortschritt)
+docker compose pull && docker compose up -d   # Images von Hand aktualisieren
+docker compose down                 # Dienste stoppen
+docker compose down -v              # Dienste stoppen und ALLE Daten löschen
 ```
-
-> Für iOS wird eine macOS-Umgebung mit Xcode benötigt.
-
----
-
-## CI und Releases
-
-CI-Checks (Backend-Tests, Frontend-Typecheck, Docker-Build) laufen automatisch auf Push und Pull Requests gegen `main`.
-
-Für ein neues Release den Tag `vX.Y.Z` setzen – Docker-Images werden dann automatisch zu GHCR gebaut und gepusht und ein GitHub Release wird erstellt. Seit `2026.1.1` folgt die Versionsnummer dem kalenderbasierten Schema `YYYY.MASTER.FIX` (Jahr.Master-Release.Fix-Release) statt SemVer. Prerelease-Tags (`vX.Y.Z-beta.N`) bauen zusätzlich `:beta`-Images und ein GitHub-Prerelease, ohne `:latest` zu berühren; jeder Push auf `main` baut außerdem `:nightly`-Images.
 
 ---
 
 ## Sicherheitshinweise
 
-- In Produktion (`APP_ENV=production`, Default) verweigert das Backend den Start, wenn `JWT_SECRET` leer, der Platzhalter oder kürzer als 32 Zeichen ist (Fail-Closed) — mit `openssl rand -hex 32` erzeugen.
-- Die Datenbankzugänge in `docker-compose.yml` sind Entwicklungs-Defaults – in Produktion ändern.
-- Die Caddy-Admin-API läuft auf Port `:2019` und ist nur im Docker-Netzwerk intern erreichbar.
-- Caddy liefert Security-Header (HSTS, `X-Content-Type-Options`, `X-Frame-Options` u. a.) und eine Content-Security-Policy aus (Report-Only, per `CSP_ENFORCE=true` erzwingbar).
-- Die persistierte Caddyfile (`/certs/Caddyfile`, vom Setup-Wizard geschrieben) wird bei jedem Backend-Start gegen die aktuelle Header-Baseline geprüft und bei Bedarf aus den gespeicherten Setup-Werten neu erzeugt und live nachgeladen — Bestandsinstallationen aus der Zeit vor den Security-Headern liefern sie damit automatisch aus, ohne erneuten Setup-Durchlauf.
-- Endpunkte, die fremdes Kontingent kosten (Routing, Adresssuche, Verkehrslage), haben ein Stundenbudget je Aufrufer; Demo-Sitzungen bekommen das kleinere und werden zusätzlich pro IP gezählt (`QUOTA_*`).
-- TOTP-Secrets werden Fernet-verschlüsselt at-rest gespeichert; Passwort-/MFA-Reset entziehen über die `token_version` alle bestehenden JWTs.
-- Öffentliche Share-Links sind ohne Login abrufbar – Tokens sollten wie vertrauliche Links behandelt und bei Bedarf widerrufen werden.
-- Live-Tracking verarbeitet Standortdaten – Aufbewahrung wird über den `retention`-Container geregelt.
+- `POSTGRES_PASSWORD` ist Pflicht. Ohne Wert verweigert Compose den Start, es gibt kein Standardpasswort.
+- In Produktion (`APP_ENV=production`, Default) verweigert das Backend den Start, wenn `JWT_SECRET` leer, der Platzhalter oder kürzer als 32 Zeichen ist (Fail-Closed).
+- Datenbank (`5432`) und GraphHopper (`8989`) sind nur an `127.0.0.1` gebunden, das Backend ist von außen nur über Caddy erreichbar.
+- Die Caddy-Admin-API läuft auf Port `:2019` und ist nur intern im Docker-Netzwerk erreichbar.
+- Caddy liefert Security-Header (HSTS, `X-Content-Type-Options`, `X-Frame-Options` u. a.) und eine Content-Security-Policy aus (Report-Only, mit `CSP_ENFORCE=true` erzwingbar).
+- Die persistierte Caddyfile (`/certs/Caddyfile`, vom Setup-Wizard geschrieben) wird bei jedem Backend-Start gegen die aktuelle Header-Baseline geprüft und bei Bedarf neu erzeugt und live nachgeladen.
+- Endpunkte, die fremdes Kontingent kosten (Routing, Adresssuche, Verkehrslage), haben ein Stundenbudget je Aufrufer (`QUOTA_*`).
+- TOTP-Secrets werden Fernet-verschlüsselt at-rest gespeichert. Passwort- und MFA-Reset entziehen über die `token_version` alle bestehenden JWTs.
+- Öffentliche Share-Links sind ohne Login abrufbar. Ihre Tokens sind wie vertrauliche Links zu behandeln und bei Bedarf zu widerrufen.
+- Live-Tracking verarbeitet Standortdaten. Die Aufbewahrung regelt der `retention`-Container.
 
 > Vollständige Übersicht: **[Sicherheit und Datenschutz](Sicherheit-und-Datenschutz)**.

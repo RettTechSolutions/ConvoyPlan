@@ -1,6 +1,6 @@
 # Entwicklung
 
-Diese Seite beschreibt die Projektstruktur und den lokalen Entwicklungs-Workflow. Die vollständige Einrichtung (Docker-Quickstart, Konfiguration, Deployment) ist unter [Installation und Setup](Installation-und-Setup) dokumentiert.
+Diese Seite beschreibt die Projektstruktur und den lokalen Entwicklungs-Workflow. Installation auf einem Server und alle Umgebungsvariablen stehen unter [Installation und Setup](Installation-und-Setup) dokumentiert.
 
 ---
 
@@ -142,8 +142,21 @@ cd backend && alembic revision --autogenerate -m "beschreibung"
 
 ## Nützliche Docker-Befehle
 
+Die `docker-compose.yml` hat keine `build:`-Abschnitte, sondern zieht die Images
+aus GHCR. `--build` hat deshalb keine Wirkung. Wer einen geänderten Stand im
+Stack ausprobieren will, baut das Image selbst und zeigt in der `.env` darauf:
+
 ```bash
-docker compose up -d --build        # Stack starten
+docker build -t convoyplan-backend:dev backend
+echo "BACKEND_IMAGE=convoyplan-backend:dev" >> .env   # analog FRONTEND_IMAGE, GRAPHHOPPER_IMAGE
+docker compose up -d backend
+```
+
+Die `.env` vorher aus `.env.example` anlegen und mindestens `POSTGRES_PASSWORD`
+und `JWT_SECRET` setzen (oder `APP_ENV=development`).
+
+```bash
+docker compose up -d                # Stack starten
 docker compose logs -f backend      # Backend-Logs anzeigen
 docker compose logs -f graphhopper  # GraphHopper-Logs anzeigen
 docker compose down                 # Services stoppen
@@ -159,6 +172,24 @@ Der lokale Pre-Commit-Hook (`ruff` + `svelte-check`) lässt sich einmalig instal
 ```bash
 ./scripts/install-hooks.sh
 ```
+
+---
+
+## Native App / PWA
+
+Das Frontend ist als Progressive Web App konfiguriert und kann im Browser installiert werden. Für native Apps ist Capacitor vorbereitet:
+
+```bash
+cd frontend
+npm run build
+npx cap add android   # einmalig, alternativ: ios
+npx cap sync
+npx cap open android
+```
+
+> Für iOS wird eine macOS-Umgebung mit Xcode benötigt.
+
+---
 
 ---
 
