@@ -533,7 +533,15 @@
 	// die Backoff-Wartezeit abzusitzen. Genau das sind die Momente nach einem
 	// Tunnel oder nach dem Entsperren des Telefons.
 	function wakeSocket() { live?.wake(); }
-	function handleVisible() { if (document.visibilityState === 'visible') wakeSocket(); }
+	// Die Bildschirmsperre gibt der Browser beim Verstecken der Seite selbst frei
+	// (App-Wechsel, Anruf, kurz entsperrt) und holt sie nicht von allein zurück.
+	// Ohne neue Anforderung geht das Display danach aus, und mit ihm die Ortung —
+	// stundenlang, wenn das Handy in der Halterung liegt.
+	function handleVisible() {
+		if (document.visibilityState !== 'visible') return;
+		wakeSocket();
+		if (transmitting && wakeLock === null) requestWakeLock();
+	}
 
 	// Seite zu oder weg: das Fahrzeug sofort freigeben, damit es in der App
 	// nicht fünf Minuten lang „belegt" steht. Ein Neuladen belegt es wieder.
