@@ -21,6 +21,10 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Abruf-Adresse der Aktionsseiten beginnt mit `https://`.** Der Org-Admin zeigte `http://…/api/public/aktion/<slug>` (und dasselbe in `CONVOYPLAN_URL` für den EventTracker), obwohl die Instanz nur per HTTPS antwortet. uvicorn nahm `X-Forwarded-Proto` von Caddy nicht an, weil `--forwarded-allow-ips` auf `127.0.0.1` stand und Caddy aus dem Docker-Netz kommt. Wer die Adresse übernahm, lief in die Umleitung auf https; Node fetch verwirft dabei den Authorization-Kopf, der Abruf endete in 404 und die öffentliche Seite blieb leer. Die Compose-Datei setzt jetzt `FORWARDED_ALLOW_IPS=*` für das Backend — vertretbar, weil es keinen Port veröffentlicht und nur Caddy es erreicht —, der Entrypoint reicht den Wert an uvicorn durch. Bereits angelegte Seiten brauchen nichts: die Adresse wird bei jeder Anzeige neu gebaut; im EventTracker eingetragene `http://`-Adressen auf `https://` umstellen.
+
 ## [2026.7.0] – 2026-10-02
 
 ### Added
