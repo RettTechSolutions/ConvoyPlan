@@ -117,6 +117,14 @@ case "$sub" in
       fi
       [ "$detached" = 1 ] && echo "importcid00"
       exit 0 ;;
+  exec)
+      # memory.stat aus der cgroup des laufenden GraphHopper. Ohne
+      # STUB_GH_ANON_BYTES scheitert die Messung — der Rueckfall auf -Xmx.
+      if printf '%s\n' "$@" | grep -q 'memory.stat' && [ -n "${STUB_GH_ANON_BYTES:-}" ]; then
+          printf 'anon %s\nfile 9999999999\n' "$STUB_GH_ANON_BYTES"
+          exit 0
+      fi
+      exit 1 ;;
   rm)
       # `docker rm -f <name>` beendet den haengenden Import-Stub oben.
       [ -n "${STUB_IMPORT_HANG_FILE:-}" ] && rm -f "$STUB_IMPORT_HANG_FILE"
@@ -721,6 +729,30 @@ grep -q "Wartungsmodus: Routing pausiert" "$D/status/region.log"; check $? "Wart
 [ "$(grep -c "stop graphhopper" "$D/calls.txt")" = 1 ]; check $? "nur einmal gestoppt — Phase 4 findet ihn schon stehend vor"
 [ "$(cat "$D/graph/edges")" = "NEU" ]; check $? "neuer Graph ist aktiv"
 ! grep -q "Heap gedeckelt (Import)" "$D/status/region.log"; check $? "Import laeuft ungedeckelt mit dem angeforderten Heap"
+
+echo "── Fall 18e: gutgeschrieben wird, was GraphHopper wirklich belegt ──────"
+# Dieselbe Lage wie 18c, aber der Server haelt seinen Graphen per MMAP und
+# belegt nur 320 MB — bei -Xmx8g in .region. Frueher zaehlte Phase 1 die 8 GB
+# und liess den Wechsel durch; erst nach dem Download fiel die Messung nach
+# dem Anhalten auf. 2560 + 320 - 1024 MB reichen fuer 2560 MB Rohbedarf nicht.
+D="$(setup_case case18e)"
+printf '%s' "$REQ_PAUSE" > "$D/status/region_request.json"
+printf 'MemTotal:       12582912 kB\nMemAvailable:   2621440 kB\n' > "$D/meminfo"
+run_case "$D" STUB_GH_ANON_BYTES=335544320 STUB_FREE_KB_ON_STOP=327680
+[ "$(cat "$D/rc")" != 0 ]; check $? "Exit ungleich 0"
+grep -q "auch mit pausiertem Routing" "$D/status/region.log"; check $? "Meldung: reicht auch mit pausiertem Routing nicht"
+[ "$(cat "$D/dl_calls" 2>/dev/null || echo 0)" = 0 ]; check $? "nichts heruntergeladen — der Abbruch kommt VOR Phase 2"
+grep -q "stop graphhopper" "$D/calls.txt" 2>/dev/null; [ $? -ne 0 ]; check $? "GraphHopper gar nicht erst angehalten"
+
+echo "── Fall 18f: die Messung wird durch -Xmx gedeckelt ─────────────────────"
+# Mehr als der Heap kann nicht frei werden, auch wenn die cgroup mehr meldet
+# (Metaspace, Puffer). Mit 8 GB gemessen und -Xmx8g laeuft 18c unveraendert.
+D="$(setup_case case18f)"
+printf '%s' "$REQ_PAUSE" > "$D/status/region_request.json"
+printf 'MemTotal:       12582912 kB\nMemAvailable:   2621440 kB\n' > "$D/meminfo"
+run_case "$D" STUB_GH_ANON_BYTES=12884901888 STUB_FREE_KB_ON_STOP=8388608
+[ "$(cat "$D/rc")" = 0 ]; check $? "Exit 0"
+[ "$(cat "$D/graph/edges")" = "NEU" ]; check $? "neuer Graph ist aktiv"
 
 echo "── Fall 18d: scheitert der Import, kommt die alte Region zurueck ────────"
 # Der Preis des Wartungsmodus: Zwischen Stopp und Schwenk ist das Routing aus.

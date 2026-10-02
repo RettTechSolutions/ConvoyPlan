@@ -125,6 +125,9 @@ async def test_preview_credits_reclaimable_heap_only_with_pause_routing(monkeypa
 
     monkeypatch.setattr(geofabrik, "head_size_bytes", _async_size(int(5.79 * GB)))
     monkeypatch.setattr(settings, "java_opts", "-Xmx8g -Xms1g -XX:+UseG1GC")
+    # Ohne Messung (kein Docker im Test) bleibt -Xmx der Rueckfall.
+    from app.services import docker_stats
+    monkeypatch.setattr(docker_stats, "service_anon_bytes", AsyncMock(return_value=None))
 
     mem = MagicMock()
     mem.available_bytes = int(8 * GB)
@@ -215,25 +218,108 @@ async def test_preview_returns_503_when_geofabrik_unreachable(monkeypatch):
     assert "erreichbar" in resp.json()["detail"]
 
 
-def test_reclaimable_heap_bytes_falls_back_to_zero_when_unparsable(monkeypatch):
+def test_xmx_bytes_falls_back_to_zero_when_unparsable(monkeypatch):
     """Testluecke aus Fix-Runde 1: der 0-Fallback bei fehlendem/unparsbarem
     -Xmx ist eine bewusste (konservative) Entscheidung und war ungetestet."""
     from app.config import settings
-    from app.api.routes.region import _reclaimable_heap_bytes
+    from app.api.routes.region import _xmx_bytes
 
     monkeypatch.setattr(settings, "java_opts", "-Xms1g -XX:+UseG1GC")  # kein -Xmx
-    assert _reclaimable_heap_bytes(True) == 0
+    assert _xmx_bytes() == 0
 
     monkeypatch.setattr(settings, "java_opts", "-Xmx8x -Xms1g")  # unbekannte Einheit
-    assert _reclaimable_heap_bytes(True) == 0
+    assert _xmx_bytes() == 0
 
     monkeypatch.setattr(settings, "java_opts", "")  # leer
-    assert _reclaimable_heap_bytes(True) == 0
+    assert _xmx_bytes() == 0
 
-    # Ohne Wartungsmodus wird gar nichts gutgeschrieben, auch bei lesbarem -Xmx:
-    # Der laufende GraphHopper gibt seinen Heap dann nicht her.
     monkeypatch.setattr(settings, "java_opts", "-Xmx8g -Xms1g")
-    assert _reclaimable_heap_bytes(False) == 0
+    assert _xmx_bytes() == 8 * GB
+
+
+@pytest.mark.asyncio
+async def test_reclaimable_ohne_wartungsmodus_ist_null(monkeypatch):
+    """Ohne Wartungsmodus wird gar nichts gutgeschrieben, auch bei lesbarem -Xmx:
+    Der laufende GraphHopper gibt seinen Heap dann nicht her."""
+    from app.config import settings
+    from app.api.routes.region import _reclaimable_heap_bytes
+    from app.services import docker_stats
+
+    monkeypatch.setattr(settings, "java_opts", "-Xmx8g -Xms1g")
+    monkeypatch.setattr(docker_stats, "service_anon_bytes", AsyncMock(return_value=GB))
+    assert await _reclaimable_heap_bytes(False) == (0, False)
+
+
+@pytest.mark.asyncio
+async def test_reclaimable_ist_was_graphhopper_wirklich_belegt(monkeypatch):
+    """Seit der Server per MMAP laeuft, haelt er seinen -Xmx nicht. Auf der
+    gehosteten Instanz: 320 MB belegt bei -Xmx13g. Gutgeschrieben wird die
+    Messung, nicht der Deckel."""
+    from app.config import settings
+    from app.api.routes.region import _reclaimable_heap_bytes
+    from app.services import docker_stats
+
+    monkeypatch.setattr(settings, "java_opts", "-Xmx13g -Xms1g")
+    monkeypatch.setattr(docker_stats, "service_anon_bytes", AsyncMock(return_value=320 * 1024**2))
+    assert await _reclaimable_heap_bytes(True) == (320 * 1024**2, True)
+
+
+@pytest.mark.asyncio
+async def test_reclaimable_hoechstens_der_heap(monkeypatch):
+    """Mehr als -Xmx wird nicht frei, auch wenn die cgroup mehr meldet."""
+    from app.config import settings
+    from app.api.routes.region import _reclaimable_heap_bytes
+    from app.services import docker_stats
+
+    monkeypatch.setattr(settings, "java_opts", "-Xmx8g")
+    monkeypatch.setattr(docker_stats, "service_anon_bytes", AsyncMock(return_value=12 * GB))
+    assert await _reclaimable_heap_bytes(True) == (8 * GB, True)
+
+
+@pytest.mark.asyncio
+async def test_reclaimable_faellt_ohne_messung_auf_xmx_zurueck(monkeypatch):
+    from app.config import settings
+    from app.api.routes.region import _reclaimable_heap_bytes
+    from app.services import docker_stats
+
+    monkeypatch.setattr(settings, "java_opts", "-Xmx8g")
+    monkeypatch.setattr(docker_stats, "service_anon_bytes", AsyncMock(return_value=None))
+    assert await _reclaimable_heap_bytes(True) == (8 * GB, False)
+
+
+@pytest.mark.asyncio
+async def test_preview_verspricht_mit_wartungsmodus_nur_gemessenen_speicher(monkeypatch):
+    """Der Fall, um den es ging: 16-GB-Server, MemAvailable ~5 GB, Region mit
+    9,5 GB Extracts, Wartungsmodus. Frueher schrieb das Panel die 13 GB aus
+    -Xmx gut und meldete "ok"; der Updater haette nach dem Download
+    abgebrochen. Mit der Messung (320 MB) ist es "reicht nicht"."""
+    from app.services import docker_stats, host_metrics
+    from app.config import settings
+
+    monkeypatch.setattr(geofabrik, "head_size_bytes", _async_size(int(9.5 * GB)))
+    monkeypatch.setattr(settings, "java_opts", "-Xmx13g -Xms1g -XX:+UseG1GC")
+    monkeypatch.setattr(docker_stats, "service_anon_bytes", AsyncMock(return_value=320 * 1024**2))
+
+    mem = MagicMock()
+    mem.available_bytes = int(5 * GB)
+    monkeypatch.setattr(host_metrics, "read_memory", lambda: mem)
+    disk = MagicMock()
+    disk.free_bytes = int(221 * GB)
+    monkeypatch.setattr(host_metrics, "disk_usage", lambda paths: [disk])
+
+    test_app = _make_app_with_superadmin()
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/api/admin/region/preview",
+            json={"urls": [URL], "pause_routing": True},
+            headers={"Authorization": "Bearer x"},
+        )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ram_reclaimable_bytes"] == 320 * 1024**2
+    assert body["verdict"] == "reicht nicht"
+    assert "gemessen" in body["reason"]
 
 
 # ── Task 5: Auslösen, Status, Abbruch, Liste, aktuelle Region ────────────────
@@ -1671,6 +1757,8 @@ async def test_preview_sperrt_nicht_was_der_updater_ausfuehrt(monkeypatch):
 
     monkeypatch.setattr(geofabrik, "head_size_bytes", _async_size(int(9.5 * GB)))
     monkeypatch.setattr(settings, "java_opts", "-Xmx13g -Xms1g -XX:+UseG1GC")
+    from app.services import docker_stats
+    monkeypatch.setattr(docker_stats, "service_anon_bytes", AsyncMock(return_value=320 * 1024**2))
 
     mem = MagicMock()
     mem.available_bytes = int(14 * GB)

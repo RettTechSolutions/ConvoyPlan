@@ -21,6 +21,7 @@ Fällt die Quelle aus, liefert dieses Modul einen Report mit
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from dataclasses import dataclass, field
 from typing import Any
@@ -183,6 +184,49 @@ def _mem_usage(stats: dict[str, Any]) -> tuple[int | None, int | None]:
         return max(0, usage - (cache or 0)), mem.get("limit")
     except (KeyError, TypeError):
         return None, None
+
+
+def _anon_bytes(stats: dict[str, Any]) -> int | None:
+    """Anonymer Speicher des Containers: was der Prozess selbst belegt (bei einer
+    JVM der Heap und ihr Drumherum), ohne jeden Seitencache. cgroup v2 meldet
+    ihn als ``anon``, v1 als ``total_rss``/``rss``."""
+    try:
+        detail = stats["memory_stats"].get("stats") or {}
+    except (KeyError, TypeError, AttributeError):
+        return None
+    for key in ("anon", "total_rss", "rss"):
+        value = detail.get(key)
+        if isinstance(value, int):
+            return value
+    return None
+
+
+async def service_anon_bytes(service: str) -> int | None:
+    """Anonymer Speicher des laufenden Containers eines Compose-Dienstes.
+
+    ``None``, wenn es sich nicht sicher sagen laesst: Metriken aus, Engine nicht
+    erreichbar, kein laufender Container — oder MEHR als einer mit diesem
+    Dienstnamen (zwei Instanzen auf einem Host). Dann lieber gar keine Zahl als
+    die des Nachbarn; der Aufrufer hat einen Rueckfall.
+    """
+    if not settings.docker_metrics_enabled:
+        return None
+    filters = json.dumps({
+        "label": [f"com.docker.compose.service={service}"],
+        "status": ["running"],
+    })
+    try:
+        async with _client() as client:
+            resp = await client.get("/containers/json", params={"filters": filters})
+            if not resp.is_success:
+                return None
+            found = resp.json()
+            if len(found) != 1 or not found[0].get("Id"):
+                return None
+            stats = await _fetch_stats(client, found[0]["Id"])
+    except (httpx.HTTPError, OSError, ValueError):
+        return None
+    return _anon_bytes(stats) if stats else None
 
 
 async def _fetch_stats(client: httpx.AsyncClient, container_id: str) -> dict[str, Any] | None:

@@ -408,22 +408,49 @@ _mem_available_mb() {
 # Import wird gemessen, während der alte GraphHopper noch läuft; für den
 # produktiven Heap in .region erst, nachdem er gestoppt wurde — beides ist
 # genau der Zustand, in dem der jeweilige Heap tatsächlich gebraucht wird.
-# Der -Xmx-Wert, den der laufende GraphHopper haelt — aus der .region der
-# AKTIVEN Region, derselben Datei, aus der ihn auch sein Entrypoint liest.
-# Genau dieser Anteil wird im Wartungsmodus frei, wenn der Container vor dem
-# Import stoppt. Fehlt die Datei (Ersteinstieg) oder der Wert, wird 0
-# geliefert: lieber zu wenig gutschreiben als einen Import losschicken, der
-# auf Speicher hofft, den niemand belegt hat.
+# Was im Wartungsmodus frei wird, wenn GraphHopper vor dem Import stoppt — in MB.
+#
+# Gemessen: der anonyme Speicher seines Containers (`anon` in memory.stat der
+# cgroup, also Heap und was die JVM sonst selbst belegt). Der Seitencache der
+# eingeblendeten Graphdateien zaehlt bewusst NICHT: Er ist schon in
+# MemAvailable enthalten, und ihn hier noch einmal gutzuschreiben hiesse ihn
+# doppelt zu zaehlen.
+#
+# Bis 2026-10 stand hier der -Xmx aus .region. Das stimmte, solange der Server
+# den Graphen im Heap hielt; seit er ihn per MMAP einblendet (graphhopper/
+# entrypoint.sh), belegt er davon nur einen Bruchteil — auf der gehosteten
+# Instanz 320 MB bei -Xmx von gut 13 GB. Die Pruefung in Phase 1 rechnete
+# damit mit Speicher, den es nicht gab, und erst die Messung nach dem
+# Anhalten fiel auf: nach dem Download.
+#
+# -Xmx bleibt die Obergrenze (mehr gibt der Heap nicht her) und der Rueckfall,
+# wenn sich nicht messen laesst (cgroup v1, kein `cat` im Image, Container
+# gerade weg). Fehlt auch der, wird 0 geliefert: lieber zu wenig gutschreiben
+# als einen Import losschicken, der auf Speicher hofft, den niemand belegt hat.
 _running_gh_heap_mb() {
-    local opts tok mb
-    [ -f "$REGION_FILE" ] || { printf '0'; return 0; }
-    opts="$(sed -n 's/^JAVA_OPTS=//p' "$REGION_FILE" 2>/dev/null | head -1)"
-    for tok in $opts; do
-        case "$tok" in
-            -Xmx*) if mb="$(_xmx_mb "$tok")"; then printf '%s' "$mb"; return 0; fi ;;
+    local opts tok mb xmx_mb=0 cid anon
+    if [ -f "$REGION_FILE" ]; then
+        opts="$(sed -n 's/^JAVA_OPTS=//p' "$REGION_FILE" 2>/dev/null | head -1)"
+        for tok in $opts; do
+            case "$tok" in
+                -Xmx*) if mb="$(_xmx_mb "$tok")"; then xmx_mb="$mb"; break; fi ;;
+            esac
+        done
+    fi
+    cid="$(_gh_cid)"
+    if [ -n "$cid" ]; then
+        anon="$(docker exec "$cid" cat /sys/fs/cgroup/memory.stat 2>/dev/null \
+            | awk '$1 == "anon" {print $2; exit}')"
+        case "$anon" in
+            ''|*[!0-9]*) ;;
+            *)
+                mb=$(( anon / 1024 / 1024 ))
+                if [ "$xmx_mb" -gt 0 ] && [ "$mb" -gt "$xmx_mb" ]; then mb="$xmx_mb"; fi
+                printf '%s' "$mb"
+                return 0 ;;
         esac
-    done
-    printf '0'
+    fi
+    printf '%s' "$xmx_mb"
 }
 
 # Der Anteil des angeforderten Heaps, der wirklich gebraucht wird — ohne den
