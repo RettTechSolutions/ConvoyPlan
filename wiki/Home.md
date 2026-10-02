@@ -132,6 +132,7 @@ Retention-Container → periodischer Daten-Purge
 | [Marschbefehl & Export](Marschbefehl-Export) | PDF-Marschbefehl sowie GPX-/JSON-Export |
 | [Rollen & Berechtigungen](Rollen) | Rollenmodell und Zugriffsrechte |
 | [Teilen](Teilen) | Tracking-Links ohne Login: Viewer- und Fahrer-Links, Passwortschutz, Widerruf |
+| [Aktionsseite](Aktionsseite) | Konvois öffentlich zeigen: verzögert, vergröbert, über den EventTracker |
 | [FAQ](FAQ) | Häufige Fragen |
 
 ### Betrieb, Sicherheit & Features

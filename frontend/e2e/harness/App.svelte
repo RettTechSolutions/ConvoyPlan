@@ -10,6 +10,7 @@
 	import FeedbackModal from '$lib/components/FeedbackModal.svelte';
 	import ConvoyFormModal from '$lib/components/ConvoyFormModal.svelte';
 	import SidebarFooter from '$lib/components/SidebarFooter.svelte';
+	import AktionsseitenVerwaltung from '$lib/components/AktionsseitenVerwaltung.svelte';
 	import { feedbackStore } from '$lib/stores/feedback';
 
 	const welche = new URLSearchParams(location.search).get('k') ?? 'share';
@@ -39,6 +40,8 @@
 		<div class="leiste-inhalt">Inhalt der Planung (steht für Listen und Formulare)</div>
 		<SidebarFooter />
 	</div>
+{:else if welche === 'aktion'}
+	<div class="admin-flaeche"><AktionsseitenVerwaltung /></div>
 {:else if welche === 'feedback'}
 	<FeedbackModal />
 {:else if welche === 'konvoi'}
@@ -67,5 +70,7 @@
 		flex-direction: column;
 		overflow: hidden;
 	}
+	/* Breite des Org-Admins (`--admin-width`). */
+	.admin-flaeche { max-width: var(--admin-width); margin: 1rem auto; padding: 0 1rem; color: var(--text-1); }
 	.leiste-inhalt { flex: 1; padding: 1rem; font-size: .85rem; color: var(--text-2); }
 </style>

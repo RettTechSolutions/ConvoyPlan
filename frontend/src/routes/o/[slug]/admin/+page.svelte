@@ -5,6 +5,7 @@
     import LeitstelleAreaPicker, { type AreaSelection } from '$lib/components/LeitstelleAreaPicker.svelte';
     import LeitstellenOverviewMap from '$lib/components/LeitstellenOverviewMap.svelte';
     import LeitstellenTable from '$lib/components/LeitstellenTable.svelte';
+    import AktionsseitenVerwaltung from '$lib/components/AktionsseitenVerwaltung.svelte';
     import { orgStore } from '$lib/stores/org';
     import { feedbackStore } from '$lib/stores/feedback';
     import { orgLeistellenApi, orgsApi, convoysApi, trackingApi, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type OrgMember } from '$lib/api';
@@ -15,7 +16,7 @@
     const slug = $derived(($page.params as Record<string, string>).slug);
 
     // ── Tab ──────────────────────────────────────────────────────────────────
-    let activeTab = $state<'mitglieder' | 'leitstellen' | 'gps' | 'branding' | 'ki' | 'daten'>('mitglieder');
+    let activeTab = $state<'mitglieder' | 'leitstellen' | 'gps' | 'aktion' | 'branding' | 'ki' | 'daten'>('mitglieder');
 
     // Datenexport
     let exportLaeuft = $state(false);
@@ -497,6 +498,7 @@
         <button class="tab" class:active={activeTab === 'mitglieder'} onclick={() => { activeTab = 'mitglieder'; loadMembers(); }}>Mitglieder</button>
         <button class="tab" class:active={activeTab === 'leitstellen'} onclick={() => (activeTab = 'leitstellen')}>Leitstellen</button>
         <button class="tab" class:active={activeTab === 'gps'} onclick={() => { activeTab = 'gps'; loadGpsShares(); }}>GPS-Freigaben</button>
+        <button class="tab" class:active={activeTab === 'aktion'} onclick={() => (activeTab = 'aktion')}>Aktionsseiten</button>
         <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>Branding</button>
         <button class="tab" class:active={activeTab === 'ki'} onclick={() => { activeTab = 'ki'; loadKi(); }}>KI-Zugriff</button>
         <button class="tab" class:active={activeTab === 'daten'} onclick={() => (activeTab = 'daten')}>Datenexport</button>
@@ -716,6 +718,10 @@
     {/if}
 
     <!-- ── KI-Zugriff (MCP) ── -->
+    {#if activeTab === 'aktion'}
+        <AktionsseitenVerwaltung />
+    {/if}
+
     {#if activeTab === 'ki'}
         {#if kiError}
             <div class="error-bar">{kiError} <button onclick={() => (kiError = '')}>✕</button></div>
