@@ -195,7 +195,10 @@ _konvoi() {
     _konvoi_bild 1000 0 "✓ ${beschriftung}"
   else
     _konvoi_bild "$promille" 0 "✗ ${beschriftung} fehlgeschlagen (Exit ${rc}):"
-    tail -n 20 "$log" | sed 's/^/    /'
+    # Fortschrittszeilen der Schichten ausblenden, sonst bestehen die letzten
+    # 20 Zeilen nur aus "Downloading 1.049MB" und der Fehler geht unter
+    grep -vE ' (Downloading|Extracting|Waiting|Verifying Checksum|Download complete|Pull complete|Pulling fs layer|Already exists)' "$log" \
+      | tail -n 20 | sed 's/^/    /' || true
   fi
   tput cnorm 2>/dev/null || true
   trap - INT TERM
@@ -204,10 +207,28 @@ _konvoi() {
 }
 
 _KONVOI_GESAMT=0
+# Bis zu drei Versuche: ein Timeout zur Registry (Docker Hub, ghcr.io) ist
+# meist vorübergehend, und bereits geladene Schichten bleiben liegen.
 _images_ziehen() {
   _KONVOI_GESAMT=$(docker compose --project-directory "$1" config --services 2>/dev/null | wc -l)
-  _konvoi "Images laden (kann einige Minuten dauern)" _konvoi_fortschritt_pull \
-    docker compose --project-directory "$1" pull
+  local versuch rc=0 beschriftung="Images laden (kann einige Minuten dauern)"
+  for versuch in 1 2 3; do
+    rc=0
+    _konvoi "$beschriftung" _konvoi_fortschritt_pull \
+      docker compose --project-directory "$1" pull || rc=$?
+    (( rc == 0 )) && return 0
+    if (( versuch < 3 )); then
+      echo "  Neuer Versuch in $(( versuch * 10 )) s; bereits geladene Schichten bleiben erhalten."
+      sleep $(( versuch * 10 ))
+      beschriftung="Images laden (Versuch $(( versuch + 1 ))/3)"
+    fi
+  done
+  echo ""
+  echo "FEHLER: Die Images ließen sich nicht laden. Meist ist die Verbindung zur"
+  echo "        Registry gestört (Docker Hub, ghcr.io): Netzwerk, Proxy oder DNS prüfen."
+  echo "        Danach den Installer erneut starten und [J] Nur aktualisieren wählen."
+  echo "        Die Einstellungen sind bereits gespeichert."
+  return "$rc"
 }
 
 # ── Cleanup orphan hex-prefixed updater containers ───────────────────────────
@@ -453,8 +474,8 @@ else
   esac
 fi
 
-# Lizenzschlüssel und GitHub-Token — beide optional, wie im Windows-Installer.
-# Bei einer Neukonfiguration bleibt ein vorhandener Wert mit Enter erhalten.
+# Lizenzschlüssel — optional. Bei einer Neukonfiguration bleibt ein
+# vorhandener Wert mit Enter erhalten.
 echo ""
 if [[ -n "$PREV_LICENSE" ]]; then
   read -rp "Lizenzschlüssel [Enter = bestehenden beibehalten]: " LICENSE_KEY </dev/tty
@@ -463,14 +484,11 @@ else
   read -rp "Lizenzschlüssel [Enter = Demo-Modus]: " LICENSE_KEY </dev/tty
 fi
 
-# Ohne Echo lesen. In die .env muss der Token trotzdem im Klartext (der Updater
-# braucht ihn) — deshalb einen fine-grained PAT mit minimalen Rechten nehmen.
-if [[ -n "$PREV_GH_TOKEN" ]]; then
-  read -rsp "GitHub-Token für den Auto-Updater [Enter = bestehenden beibehalten]: " GITHUB_TOKEN </dev/tty; echo
-  GITHUB_TOKEN="${GITHUB_TOKEN:-$PREV_GH_TOKEN}"
-else
-  read -rsp "GitHub-Token für den Auto-Updater [Enter = überspringen]: " GITHUB_TOKEN </dev/tty; echo
-fi
+# Kein GitHub-Token: Das Repository ist öffentlich, Updater und Backend lesen
+# die GitHub-API auch ohne. Ein Token hebt nur das Rate-Limit (60 → 5000
+# Anfragen/Stunde je IP) und lässt sich bei Bedarf im Admin-Panel hinterlegen.
+# Ein vorhandener Eintrag aus einer früheren Installation bleibt erhalten.
+GITHUB_TOKEN="${PREV_GH_TOKEN:-}"
 
 # JWT_SECRET beibehalten oder neu generieren
 JWT_SECRET="${PREV_JWT:-$(openssl rand -hex 32)}"

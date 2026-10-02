@@ -56,7 +56,9 @@ Der Installer fragt interaktiv nach:
 4. **Datenbankpasswort** (zweimal)
 5. **OSM-Region**: DACH, Deutschland, Bayern, Berlin oder eine eigene Geofabrik-URL
 6. **Lizenzschlüssel** (optional): Enter = Demo-Modus, später im Admin-Bereich nachtragbar
-7. **GitHub-Token für den Auto-Updater** (optional, Eingabe verdeckt)
+
+Einen GitHub-Token fragt der Installer nicht ab. Das Repository ist öffentlich,
+der Auto-Updater kommt ohne aus (siehe [Auto-Updater](Auto-Updater#github-token-optional)).
 
 Danach läuft er ohne weitere Rückfragen durch:
 
@@ -98,8 +100,8 @@ eine vollständige `.env`, bietet er zwei Wege an:
 - **[J] Nur aktualisieren** (Standard): Die Einstellungen bleiben, fehlende
   Einträge werden ergänzt, Compose-Datei und Images erneuert, der Stack wird neu gestartet.
 - **[n] Neu konfigurieren**: Alle Fragen kommen erneut, die bisherigen Werte
-  sind vorausgewählt. Datenbankpasswort, Region, Lizenzschlüssel und
-  GitHub-Token bleiben mit Enter erhalten. `JWT_SECRET` wird nicht abgefragt
+  sind vorausgewählt. Datenbankpasswort, Region und Lizenzschlüssel bleiben
+  mit Enter erhalten, ein vorhandener `GITHUB_TOKEN` bleibt ohne Rückfrage. `JWT_SECRET` wird nicht abgefragt
   und bleibt immer, damit bestehende Anmeldungen und MFA-Secrets gültig bleiben.
 
 ---
@@ -340,7 +342,7 @@ openssl rand -hex 32
 | Variable | Beschreibung |
 |---|---|
 | `LICENSE_KEY` | Lizenzschlüssel. Ohne gültigen Schlüssel läuft die App im Demo-Modus. Alternativ über den Admin-Bereich eintragbar (wird dann in der DB gespeichert). |
-| `GITHUB_TOKEN` | GitHub PAT mit `repo`-Leseberechtigung. Benötigt für den Auto-Updater, um neue Commits/Releases zu erkennen. |
+| `GITHUB_TOKEN` | Optional. Hebt nur das Rate-Limit der GitHub-API (60 → 5000 Anfragen/Stunde je IP). Wenn, dann ein fine-grained Token mit „Public repositories (read-only)" ohne weitere Rechte. Details: [Auto-Updater](Auto-Updater#github-token-optional). |
 | `GITHUB_REPO` | Repository, das der Auto-Updater überwacht. Standard: `RettTechSolutions/ConvoyPlan`. |
 | `UPDATE_CHANNEL` | Fallback-Kanal: `stable` (Standard), `beta` oder `nightly`. Der Schalter im Admin-Bereich überschreibt diesen Wert. |
 | `UPDATE_MODE` | Fallback-Modus: `auto` (Standard) oder `notify`. Der Schalter im Admin-Bereich überschreibt diesen Wert. |
