@@ -68,7 +68,7 @@ irm https://convoyplan.de/install.ps1 | iex
 
 Der Installer prüft Voraussetzungen (Docker, Docker Compose), fragt interaktiv nach Domain, E-Mail, Datenbankpasswort und OSM-Region, generiert einen `JWT_SECRET` automatisch und startet den Stack. Nach Abschluss öffnet sich der Setup-Wizard unter `https://<DOMAIN>/setup`.
 
-> 📖 **Manuelle Installation, Konfiguration und Deployment** (Docker Compose, Portainer, alle Umgebungsvariablen):
+> 📖 **Voraussetzungen, manuelle Installation, Portainer und alle Umgebungsvariablen:**
 > **[Installation und Setup](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Installation-und-Setup)** im Wiki.
 
 ---
@@ -112,7 +112,7 @@ Die Markdown-Quellen dazu liegen im Ordner [`wiki/`](wiki/). Bei jedem Push auf 
 |---|---|
 | [Home](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Home) | Projektübersicht, Architektur, Tech-Stack |
 | [Funktionsumfang](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Funktionsumfang) | Vollständige Feature-Übersicht mit Status und Roadmap |
-| [Installation und Setup](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Installation-und-Setup) | Docker-Quickstart, Konfiguration, Deployment |
+| [Installation und Setup](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Installation-und-Setup) | Installer, Konfiguration, Deployment |
 | [API-Dokumentation](https://github.com/RettTechSolutions/ConvoyPlan/wiki/API-Dokumentation) | REST- und WebSocket-Endpunkte, Datenmodell |
 | [MCP-Server (KI-Schnittstelle)](https://github.com/RettTechSolutions/ConvoyPlan/wiki/MCP-Server) | KI-Programme anbinden, Berechtigungen, Widerruf, Datenschutz |
 | [Entwicklung](https://github.com/RettTechSolutions/ConvoyPlan/wiki/Entwicklung) | Projektstruktur, lokaler Workflow, CI/Releases |
