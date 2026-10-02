@@ -92,9 +92,9 @@ def _set_cookie(response: Response) -> None:
         httponly=True,
         samesite="lax",
         # Nicht aus request.url.scheme: hinter dem Reverse Proxy spricht das
-        # Backend unverschlüsselt und uvicorn läuft ohne --proxy-headers, das
-        # Schema wäre in Produktion also immer "http" und das Cookie nie
-        # Secure. Dieselbe Ableitung wie beim Sitzungs-Cookie.
+        # Backend unverschlüsselt, und ohne FORWARDED_ALLOW_IPS wäre das
+        # Schema in Produktion immer "http" und das Cookie nie Secure.
+        # Dieselbe Ableitung wie beim Sitzungs-Cookie.
         secure=cookies.cookie_secure(),
     )
 

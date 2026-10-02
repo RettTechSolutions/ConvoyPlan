@@ -58,6 +58,15 @@ services:
       QUOTA_TRAFFIC_DEMO_PER_HOUR: ${QUOTA_TRAFFIC_DEMO_PER_HOUR:-100}
       GRAPHHOPPER_URL: http://graphhopper:8989
       BACKEND_PORT: ${BACKEND_PORT:-8000}
+      # uvicorn nimmt X-Forwarded-Proto/-For nur von diesen Adressen an. "*"
+      # ist hier vertretbar, weil das Backend keinen Port veröffentlicht und
+      # nur aus dem Compose-Netz erreichbar ist — nach außen spricht allein
+      # Caddy, und Caddy überschreibt die X-Forwarded-*-Köpfe des Clients.
+      # Ohne das wäre das Schema jeder Anfrage "http", und vom Backend gebaute
+      # Adressen (z. B. die Abruf-Adresse der Aktionsseiten) begännen mit
+      # http://. Wer dem Backend einen Port gibt, setzt hier die Adresse des
+      # Proxys statt "*".
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-*}
       LICENSE_KEY: ${LICENSE_KEY:-}
       LICENSE_EXPIRY_CHECK_INTERVAL: ${LICENSE_EXPIRY_CHECK_INTERVAL:-21600}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
@@ -305,6 +314,7 @@ services:
       HTTP_PORT: ${HTTP_PORT:-80}
       HTTPS_PORT: ${HTTPS_PORT:-443}
       BACKEND_PORT: ${BACKEND_PORT:-8000}
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-*}
       FRONTEND_PORT: ${FRONTEND_PORT:-3000}
       GH_PORT: ${GH_PORT:-8989}
       OSM_DOWNLOAD_URL: ${OSM_DOWNLOAD_URL:-https://download.geofabrik.de/europe/dach-latest.osm.pbf}

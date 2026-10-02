@@ -36,7 +36,14 @@ log "Running database migrations (alembic upgrade head)…"
 if mig_out="$(alembic upgrade head 2>&1)"; then
     printf '%s\n' "${mig_out}"
     log "Migrations OK — starting uvicorn on 0.0.0.0:${BACKEND_PORT}"
-    exec uvicorn app.main:app --host 0.0.0.0 --port "${BACKEND_PORT}"
+    # Von wem uvicorn X-Forwarded-Proto/-For annimmt. Ohne den Proxy in dieser
+    # Liste bleibt das Schema jeder Anfrage "http", und request.url_for baut
+    # http://-Adressen, obwohl die Instanz nur per HTTPS erreichbar ist. Der
+    # Standard 127.0.0.1 passt nie: Caddy kommt aus dem Docker-Netz. Die
+    # Compose-Datei setzt deshalb "*" — dort ist das Backend nicht
+    # veröffentlicht und nur über Caddy erreichbar (siehe docker-compose.yml).
+    exec uvicorn app.main:app --host 0.0.0.0 --port "${BACKEND_PORT}" \
+        --proxy-headers --forwarded-allow-ips "${FORWARDED_ALLOW_IPS:-127.0.0.1}"
 fi
 
 # ── Migration failed — classify and fail closed ─────────────────────────────

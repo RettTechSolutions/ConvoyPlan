@@ -111,11 +111,12 @@ def cookie_secure() -> bool:
     """Ob das Cookie nur über HTTPS gesendet werden darf.
 
     Abgeleitet aus ``APP_BASE_URL`` und **nicht** aus ``request.url.scheme``:
-    hinter dem Reverse Proxy spricht das Backend unverschlüsselt, uvicorn
-    läuft ohne ``--proxy-headers``, und das Schema der Anfrage wäre deshalb
-    in Produktion immer ``http``. Ein Sitzungs-Cookie, das genau dort nie
-    ``Secure`` trägt, wäre der Punkt, an dem diese ganze Umstellung wieder
-    zusammenfiele."""
+    hinter dem Reverse Proxy spricht das Backend unverschlüsselt, und das
+    Schema der Anfrage stimmt nur, wenn uvicorn dem Proxy vertraut
+    (``FORWARDED_ALLOW_IPS``, siehe ``docker-entrypoint.sh``). Fehlt das,
+    wäre es in Produktion immer ``http``. Ein Sitzungs-Cookie, das genau dort
+    nie ``Secure`` trägt, wäre der Punkt, an dem diese ganze Umstellung
+    wieder zusammenfiele."""
     return settings.app_base_url.strip().lower().startswith("https://")
 
 
