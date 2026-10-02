@@ -280,33 +280,42 @@ Einsatzinstanz                         Öffentlicher Server
 - **Zugang**: ein eigener API-Schlüssel nur für diesen Endpunkt (das
   `api_key`-Modell gibt es), zusätzlich bleibt der Slug unratbar. Der
   Endpunkt antwortet ohne Schlüssel weiter für die Vorschau im Org-Admin.
-- **Was auf den öffentlichen Server kommt**: die gebaute Seite (statisch,
-  aus demselben Repo, eigener Build-Einstieg), ein kleiner Abholer und ein
-  Kachel-Cache. Die Kacheln gehören **nicht** durch den Proxy der
+- **Was auf den öffentlichen Server kommt**: eine eigene Anwendung im Repo
+  [Convoyplan-EventTracker](https://github.com/RettTechSolutions/Convoyplan-EventTracker)
+  — Seite, ein kleiner Abholer und ein Kachel-Cache. Sie kennt von
+  ConvoyPlan nur den einen Endpunkt und dessen Schema; das Schema ist damit
+  ein Vertrag zwischen zwei Repos und wird in ConvoyPlan per Test
+  festgehalten (Abschnitt 7, `test_aktionsseite_felder.py`). Die Kacheln gehören **nicht** durch den Proxy der
   Einsatzinstanz — sonst trifft der Andrang sie doch, nur über einen Umweg.
   Entweder eigener Kachel-Cache auf dem öffentlichen Server oder ein
   Kachelanbieter mit Nutzungsbedingungen für öffentliche Seiten; die
   OSM-Standardkacheln sind für so etwas ausdrücklich nicht gedacht.
 
 Kosten gegenüber Abschnitt 4: ein zusätzliches Deploy-Ziel und ein Abholer.
-Der Endpunkt selbst bleibt gleich. Die Entscheidung muss trotzdem bis zum
-24.10. fallen, weil der Seiten-Build davon abhängt.
+Der Endpunkt selbst bleibt gleich. **Aufteilung**: Positionsverlauf,
+Verzögerung, Vergröberung, Endpunkt und Verwaltung im Org-Admin bleiben in
+ConvoyPlan — sie brauchen die Datenbank, und nur so verlässt keine
+Echtzeitposition die Einsatzinstanz. Alles aus Abschnitt 5 außer der
+Verwaltung wandert in den EventTracker.
 
 ### 10.2 Handys der Fahrer als einzige Quelle
 
 Das funktioniert, hat aber eine Schwachstelle, die vor der Probefahrt geklärt
 sein muss: **Der Fahrer-Link im Browser sendet nur, solange die Seite vorne
 und der Bildschirm an ist.** Mobile Browser stellen die Ortung im Hintergrund
-ein; die angemeldete Tracking-Seite hält den Bildschirm wenigstens per Wake
-Lock wach, der Fahrer-Link (`routes/track/[slug]`) nicht einmal das. Ein Handy,
-das in der Halterung ausgeht, liefert stundenlang nichts.
+ein. Den Bildschirm hält der Fahrer-Link beim Senden per Wake Lock an — nur
+gab der Browser die Sperre nach jedem App-Wechsel frei, und der Fahrer-Link
+holte sie nicht zurück (anders als die angemeldete Tracking-Seite). Ein Handy,
+das danach in der Halterung ausging, lieferte stundenlang nichts. Behoben in
+einem eigenen PR.
 
 Folgen:
 
 - **Für die Spitzenfahrzeuge die Begleit-App** (ortet im Hintergrund) und
   Dauerstrom. Der Browser ist Notlösung, nicht Plan.
-- **Wake Lock auch am Fahrer-Link** nachziehen — klein, eigener PR, hilft
-  allen Einsätzen, nicht nur diesem.
+- **Wake Lock nach App-Wechsel zurückholen** — eigener PR, hilft allen
+  Einsätzen, nicht nur diesem. Gegen gesperrte Bildschirme hilft er nicht:
+  wer das Handy sperrt, sendet im Browser nicht mehr.
 - Mit mehreren meldenden Fahrzeugen je Konvoi wird der „eine Punkt je
   Konvoi" (Abschnitt 4) wichtiger: Fällt das Spitzenfahrzeug aus, nimmt die
   Seite das nächste Fahrzeug mit frischer Position, statt stehen zu bleiben.
