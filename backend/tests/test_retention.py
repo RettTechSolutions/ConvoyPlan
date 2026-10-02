@@ -17,6 +17,7 @@ from app.services import retention
 async def test_run_all_returns_counts_and_audits(monkeypatch):
     db = AsyncMock()
     r_pos = MagicMock(); r_pos.rowcount = 3
+    r_trail = MagicMock(); r_trail.rowcount = 6  # Verlaufspunkte der Aktionsseiten
     r_audit = MagicMock(); r_audit.rowcount = 0
     r_links = MagicMock(); r_links.rowcount = 2
     r_hours = MagicMock(); r_hours.scalar_one_or_none.return_value = None  # session-hours setting unset
@@ -28,7 +29,7 @@ async def test_run_all_returns_counts_and_audits(monkeypatch):
     r_refresh = MagicMock(); r_refresh.rowcount = 1  # one rotated refresh token past the grace period
     r_clients = MagicMock(); r_clients.rowcount = 7  # sieben verwaiste Client-Registrierungen
     db.execute.side_effect = [
-        r_pos, r_audit, r_links, r_hours, r_demo, r_cooldown, r_origins, r_leads,
+        r_pos, r_trail, r_audit, r_links, r_hours, r_demo, r_cooldown, r_origins, r_leads,
         r_codes, r_refresh, r_clients,
     ]
 
@@ -45,7 +46,7 @@ async def test_run_all_returns_counts_and_audits(monkeypatch):
 
     assert counts == {
         "demo_followups": 2,
-        "positions": 3, "audit_logs": 0, "share_links": 2,
+        "positions": 3, "position_trail": 6, "audit_logs": 0, "share_links": 2,
         "demo_sessions": 0, "demo_origins": 1, "demo_leads": 4,
         "oauth_codes": 5, "oauth_refresh_tokens": 1, "oauth_clients": 7,
     }
@@ -58,7 +59,7 @@ async def test_run_all_returns_counts_and_audits(monkeypatch):
 @pytest.mark.asyncio
 async def test_run_all_skips_audit_when_nothing_deleted(monkeypatch):
     db = AsyncMock()
-    results = [MagicMock(rowcount=0) for _ in range(3)]
+    results = [MagicMock(rowcount=0) for _ in range(4)]
     r_hours = MagicMock(); r_hours.scalar_one_or_none.return_value = None
     r_demo = MagicMock(); r_demo.all.return_value = []
     r_cooldown = MagicMock(); r_cooldown.scalar_one_or_none.return_value = None
@@ -82,7 +83,7 @@ async def test_run_all_skips_audit_when_nothing_deleted(monkeypatch):
     counts = await retention.run_all(db)
     assert counts == {
         "demo_followups": 0,
-        "positions": 0, "audit_logs": 0, "share_links": 0,
+        "positions": 0, "position_trail": 0, "audit_logs": 0, "share_links": 0,
         "demo_sessions": 0, "demo_origins": 0, "demo_leads": 0,
         "oauth_codes": 0, "oauth_refresh_tokens": 0, "oauth_clients": 0,
     }

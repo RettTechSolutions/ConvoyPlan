@@ -180,6 +180,47 @@ Drei Dinge, die man kennen muss:
   `frontend/e2e/fahrzeug-belegung.spec.ts` hält die Zusagen an der Oberfläche fest.
   Anwenderdoku: `wiki/Live-Tracking.md`, „Ein Fahrzeug, ein Gerät".
 
+### Aktionsseite: öffentlich, verzögert, vergröbert
+
+Eine Organisation kann Konvois öffentlich zeigen (Hilfskonvois, Presse,
+Bildschirm bei Veranstaltungen). Ausgeliefert wird die Seite **nicht** von
+dieser Instanz, sondern von einer eigenen Anwendung im Repo
+**Convoyplan-EventTracker**. Die holt `GET /api/public/aktion/{slug}` mit
+ihrem Abruf-Token (`Authorization: Bearer`) einmal pro Minute ab. Damit sieht
+die Einsatzinstanz den Andrang nie, und der EventTracker sieht nie eine
+Echtzeitposition. Plan und Hintergrund:
+`docs/superpowers/plans/2026-10-02-oeffentliche-aktionsseite.md`.
+
+Drei Regeln, alle in `app/services/aktionsseite.py` und **nur** dort. Ein
+Filter beim Empfänger ließe sich mit den Entwicklertools aushebeln:
+
+- **Verzögert**: nur Punkte bis `jetzt − delay_minutes`; mindestens 60, auch
+  als CHECK in der Datenbank.
+- **Vergröbert, sobald der Konvoi steht** (20 min im Umkreis von 300 m oder
+  keine Daten): feste Rasterzelle von etwa 10 km, die Linie endet 10 km davor.
+  Die Verzögerung schützt keinen parkenden Lkw — ohne diese Regel stünde der
+  Autohof die ganze Nacht metergenau auf der Seite. Fest gerastert statt
+  verrauscht, weil sich Rauschen über viele Abrufe herausmitteln ließe.
+- **Positivliste**: die Pydantic-Modelle in `api/routes/aktionsseite.py`,
+  jedes mit `extra="forbid"`. Sie sind zugleich der Vertrag mit dem
+  EventTracker; `tests/test_aktionsseite_felder.py` schreibt sie aus. Kein
+  interner Konvoiname, keine Datenbank-Kennung, nichts aus dem Fahrzeug.
+
+Unbekannt, abgeschaltet, abgelaufen oder falsches Token ergeben **dieselbe**
+404. Das Token liegt nur als SHA-256 vor, sichtbar ist es einmal beim Anlegen
+und beim Erneuern. Im Export fehlen Slug und Hash, wie beim Share-Link.
+
+Der **Positionsverlauf** (`vehicle_position_trail`) entsteht nur für Konvois
+an einer aktiven Seite (`services/positionsverlauf.py`). Ausgedünnt wird auf
+einen Punkt pro Minute, bei stehendem Fahrzeug auf einen alle fünf Minuten;
+die Retention löscht nach 45 Tagen. `aufzeichnen` steht an **jeder** Stelle,
+die `VehiclePosition` schreibt — heute drei. Wer eine vierte baut, zieht den
+Aufruf mit; `tests/test_positionsverlauf.py` prüft das am Quelltext und
+schlägt sonst an.
+
+Die Positionen tragen die **Serverzeit**. Puffert ein Gerät im Funkloch und
+sendet später, landen die Punkte gestaucht am Ende der Linie.
+
 ### Alarmquittung: die Führung quittiert am Server
 
 Ein technischer Halt oder Ausfall löst `alert` aus; **quittiert** wird er seit

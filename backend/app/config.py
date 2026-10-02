@@ -138,6 +138,9 @@ class Settings(BaseSettings):
     retention_positions_hours: int = 24      # live positions older than this are purged
     retention_audit_days: int = 365          # audit-log entries older than this are purged
     retention_share_links_days: int = 30     # revoked share links older than this are purged
+    # Positionsverlauf der Aktionsseiten. Eine Fahrt dauert Tage; danach bleibt
+    # der Verlauf noch einen Monat für Rückfragen und geht dann.
+    retention_position_trail_days: int = 45
     # Kontaktangaben aus dem Demo-Start (demo_leads). Länger als die Sitzung,
     # weil daran die Nachfrage und ein etwaiges Vertriebsgespräch hängen — aber
     # nicht dauerhaft.

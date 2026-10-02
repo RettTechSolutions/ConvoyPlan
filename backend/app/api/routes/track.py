@@ -36,6 +36,7 @@ from app.services import alarm_quittung
 from app.services import betriebsstoff as betriebsstoff_svc
 from app.services import belegung
 from app.services import geometry as geo_svc
+from app.services import positionsverlauf
 from app.services import route_steps as route_steps_svc
 from app.services import share_links as share_links_svc
 from app.services import staerke as staerke_svc
@@ -253,6 +254,7 @@ async def _ingest_driver_position(convoy_uuid: uuid.UUID, msg: dict) -> None:
             )
         )
         await db.execute(stmt)
+        await positionsverlauf.aufzeichnen(db, convoy_uuid, vehicle_id, lat, lon)
         auto_status = None
         if cv.vehicle_status == "planned":
             cv.vehicle_status = "en_route"

@@ -16,6 +16,7 @@ from app.models.oauth_client import OAuthClient
 from app.models.oauth_code import OAuthCode
 from app.models.oauth_refresh_token import OAuthRefreshToken
 from app.models.organization import Organization
+from app.models.public_tracker import VehiclePositionTrail
 from app.models.share_link import ConvoyShareLink
 from app.models.user import User
 from app.models.vehicle_position import VehiclePosition
@@ -35,6 +36,16 @@ async def purge_stale_positions(db: AsyncSession, max_age_hours: int) -> int:
     """Delete live positions older than the retention window."""
     result = await db.execute(
         delete(VehiclePosition).where(VehiclePosition.recorded_at < _cutoff(hours=max_age_hours))
+    )
+    return result.rowcount or 0
+
+
+async def purge_old_position_trail(db: AsyncSession, max_age_days: int) -> int:
+    """Positionsverlauf der Aktionsseiten nach Ablauf der Aufbewahrung löschen."""
+    result = await db.execute(
+        delete(VehiclePositionTrail).where(
+            VehiclePositionTrail.recorded_at < _cutoff(days=max_age_days)
+        )
     )
     return result.rowcount or 0
 
@@ -256,6 +267,9 @@ async def run_all(db: AsyncSession) -> dict[str, int]:
     counts = {
         "demo_followups": followups_sent,
         "positions": await purge_stale_positions(db, settings.retention_positions_hours),
+        "position_trail": await purge_old_position_trail(
+            db, settings.retention_position_trail_days
+        ),
         "audit_logs": await purge_old_audit_logs(db, settings.retention_audit_days),
         "share_links": await purge_expired_share_links(db, settings.retention_share_links_days),
         # Always purge expired demo sessions — the demo mode can be toggled at

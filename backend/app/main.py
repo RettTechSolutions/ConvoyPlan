@@ -26,6 +26,7 @@ from app.api.routes import track as track_router
 from app.api.routes import mcp_consent as mcp_consent_router
 from app.api.routes import org_mcp as org_mcp_router
 from app.api.routes import org_plans as org_plans_router
+from app.api.routes import aktionsseite as aktionsseite_router
 from app.api.routes import public_meta as public_meta_router
 from app.api.routes import version as version_router
 from app.config import settings
@@ -314,6 +315,10 @@ app.include_router(mcp_consent_router.router, prefix="/api")
 app.include_router(org_mcp_router.router, prefix="/api")
 app.include_router(org_plans_router.admin_router, prefix="/api")
 app.include_router(org_plans_router.org_router, prefix="/api")
+# Öffentliche Aktionsseiten: der Abruf durch den EventTracker (eigenes Token,
+# keine Anmeldung) und die Verwaltung im Org-Admin.
+app.include_router(aktionsseite_router.public_router, prefix="/api")
+app.include_router(aktionsseite_router.org_router, prefix="/api")
 # Selbstauskunft für Maschinen: die öffentliche OpenAPI-Teilmenge unter
 # /api/public/openapi.json und die Protected Resource Metadata der REST-API
 # an der Wurzel. Beide bewusst ohne Anmeldung — sie sind der Einstieg, den
