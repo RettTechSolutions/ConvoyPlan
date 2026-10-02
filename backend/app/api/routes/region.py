@@ -201,7 +201,11 @@ async def preview(body: RegionUrls, _: User = Depends(require_superadmin)):
     else:
         disk_needed = extract + graph
 
-    ram_verdict = region_estimate.verdict(ram_needed, ram_effective_available)
+    # Dieselbe Schwelle wie der Updater: Rohbedarf gegen freien Speicher minus
+    # Reserve. Der Aufschlag entscheidet nur zwischen "ok" und "knapp" —
+    # Begruendung in region_estimate (Abschnitt "Ein Import am Rand des
+    # Aufschlags").
+    ram_verdict = region_estimate.ram_verdict(extract, ram_effective_available)
     disk_verdict = region_estimate.verdict(disk_needed, disk_free)
     worst = "reicht nicht" if "reicht nicht" in (ram_verdict, disk_verdict) else (
         "knapp" if "knapp" in (ram_verdict, disk_verdict) else "ok"
@@ -223,6 +227,17 @@ async def preview(body: RegionUrls, _: User = Depends(require_superadmin)):
             f"der laufende GraphHopper haelt seinen Speicher waehrend des Imports. "
             f"Mit pausiertem Routing kaemen {gb(_reclaimable_heap_bytes(True))} dazu."
         )
+    ram_raw = region_estimate.estimate_ram_raw_bytes(extract)
+    ram_usable = ram_effective_available - region_estimate.HEAP_RESERVE_BYTES
+    if ram_raw <= ram_usable < ram_needed:
+        # Der Fall, den das Panel frueher gesperrt hat, obwohl der Updater ihn
+        # ausfuehrt. Er bleibt erlaubt, aber nicht kommentarlos.
+        ram_reason += (
+            f" Ohne den Sicherheitsaufschlag von 20 % braucht der Import ~{gb(ram_raw)}; "
+            f"das passt, der Heap wird aber auf ~{gb(ram_usable)} gedeckelt."
+        )
+        if not body.pause_routing:
+            ram_reason += " Routing pausieren gibt ihm den Speicher des laufenden GraphHopper dazu."
     reason = (
         f"{ram_reason} "
         f"Auf der Platte werden ~{gb(disk_needed)} benoetigt, frei sind {gb(disk_free)}."

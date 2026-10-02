@@ -78,7 +78,7 @@ run_entrypoint() {
         export OSM_DOWNLOAD_URL="http://invalid.example/test.osm.pbf"
         export REGION_SOURCE_SCRIPT=/dev/null GH_JAR="$TMP/kein.jar" GH_COMMAND="$cmd"
         export JAVA_OPTS="-Xmx3g -Xms1g -XX:+UseG1GC"
-        unset GH_DATAACCESS GH_SERVER_JAVA_OPTS
+        unset GH_DATAACCESS GH_SERVER_JAVA_OPTS GH_IMPORT_JAVA_OPTS
         for kv in "$@"; do export "${kv?}"; done
         sh "$ENTRYPOINT" >/dev/null 2>&1
         echo $?
@@ -91,8 +91,8 @@ JAVA_LOG="$TMP/java.log"; export JAVA_LOG
 rc="$(run_entrypoint server "$TMP/g1")"
 check "Erststart: Entrypoint endet mit dem (falschen) Server, rc 0" "$rc" "0"
 check "Erststart: zwei Java-Laeufe" "$(wc -l < "$JAVA_LOG" | tr -d ' ')" "2"
-check "Erststart: erst import mit RAM_STORE und NUR JAVA_OPTS" \
-    "$(sed -n 1p "$JAVA_LOG")" "import|RAM_STORE|-Xmx3g -Xms1g -XX:+UseG1GC"
+check "Erststart: erst import mit RAM_STORE, JAVA_OPTS und der Heap-Messung" \
+    "$(sed -n 1p "$JAVA_LOG")" "import|RAM_STORE|-Xmx3g -Xms1g -XX:+UseG1GC -Xlog:gc+heap+exit"
 check "Erststart: dann server per MMAP mit den Server-Optionen" \
     "$(sed -n 2p "$JAVA_LOG")" \
     "server|MMAP|-Xmx3g -Xms1g -XX:+UseG1GC -XX:G1PeriodicGCInterval=300000 -XX:+ExitOnOutOfMemoryError"
@@ -122,8 +122,15 @@ check "leeres GH_SERVER_JAVA_OPTS: Vorgabe bleibt" \
 # ── Fall 6: GH_COMMAND=import (Regionswechsel) bleibt einphasig ───────────
 rc="$(run_entrypoint import "$TMP/g6")"
 check "import: ein Java-Lauf" "$(wc -l < "$JAVA_LOG" | tr -d ' ')" "1"
-check "import: RAM_STORE, keine Server-Optionen" \
-    "$(cat "$JAVA_LOG")" "import|RAM_STORE|-Xmx3g -Xms1g -XX:+UseG1GC"
+check "import: RAM_STORE, Heap-Messung, keine Server-Optionen" \
+    "$(cat "$JAVA_LOG")" "import|RAM_STORE|-Xmx3g -Xms1g -XX:+UseG1GC -Xlog:gc+heap+exit"
+
+# ── Fall 6b: die Heap-Messung gehoert nur dem Import ───────────────────────
+# Der Server liefe sonst Tage und schriebe sie erst beim Herunterfahren — ins
+# Container-Log, das dann niemand mehr liest.
+run_entrypoint server "$TMP/g1" >/dev/null
+check "Server: keine Heap-Messung" \
+    "$(grep -c 'Xlog' "$JAVA_LOG" | tr -d ' ')" "0"
 
 # ── Fall 7: scheitert der Import, startet kein Server ─────────────────────
 # Sonst liefe ein Server gegen ein leeres Verzeichnis, importierte selbst
