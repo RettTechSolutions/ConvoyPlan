@@ -238,12 +238,19 @@
 		return p.length >= 3 ? p : 'aktion';
 	}
 
+	// Die Instanz steht mit im Eintrag: Der EventTracker nimmt sie von dort,
+	// wenn CONVOYPLAN_URL fehlt — ein Eintrag, einmal kopieren.
+	const instanz = $derived(neu ? new URL(neu.endpoint).origin : '');
 	const eintrag = $derived(
 		neu
-			? JSON.stringify({ pfad: pfadVorschlag(neu.title), slug: neu.slug, token: neu.fetch_token })
+			? JSON.stringify({
+					pfad: pfadVorschlag(neu.title),
+					slug: neu.slug,
+					token: neu.fetch_token,
+					convoyplan: instanz
+				})
 			: ''
 	);
-	const instanz = $derived(neu ? new URL(neu.endpoint).origin : '');
 
 	async function kopieren() {
 		try {
@@ -299,8 +306,9 @@
 			erneuert es.
 		</p>
 		<p class="hint">
-			Eintrag für <code>EVENTS</code> im EventTracker (<code>pfad</code> ist die öffentliche Adresse und
-			darf angepasst werden), dazu <code>CONVOYPLAN_URL={instanz}</code>:
+			Eintrag für den EventTracker — beim Installer einfügen oder als <code>EVENTS</code> eintragen.
+			<code>pfad</code> ist die öffentliche Adresse und darf angepasst werden, <code>convoyplan</code>
+			ist diese Instanz ({instanz}):
 		</p>
 		<pre class="eintrag">{eintrag}</pre>
 		<div class="knoepfe">
