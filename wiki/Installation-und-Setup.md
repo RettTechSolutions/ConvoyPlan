@@ -65,7 +65,11 @@ Danach läuft er ohne weitere Rückfragen durch:
   frisch erzeugten `JWT_SECRET`. Dazu kommen die Image-Adressen und die Pfade, die der
   [Auto-Updater](Auto-Updater) braucht (`STACK_FILE_PATH`, `CADDY_ENTRYPOINT_PATH`,
   `COMPOSE_PROJECT_NAME=convoyplan`).
-- Er führt `docker compose pull` und `docker compose up -d` aus.
+- Er führt `docker compose pull` und `docker compose up -d` aus. Im Terminal
+  fährt dabei ein Konvoi als Fortschrittsanzeige über den Bildschirm. Beim Laden
+  der Images rückt er je fertigem Dienst vor. Die Docker-Ausgabe erscheint dann
+  nur bei einem Fehler. Wer sie vollständig sehen will, startet mit
+  `CONVOYPLAN_PLAIN=1` (Linux: `curl -sSL https://convoyplan.de/install.sh | CONVOYPLAN_PLAIN=1 bash`).
 - Unter Linux mit systemd richtet er zusätzlich einen Watchdog-Timer ein
   (`convoyplan-updater-watchdog.timer`, alle 2 Minuten). Er holt einen
   hängengebliebenen Updater zurück.

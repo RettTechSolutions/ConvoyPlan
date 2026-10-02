@@ -7,10 +7,149 @@ $StackUrl          = "$RepoRaw/docker-compose.yml"
 $CaddyEntrypointUrl = "$RepoRaw/caddy/entrypoint.sh"
 
 Write-Host ''
-Write-Host '╔══════════════════════════════════════════╗' -ForegroundColor Cyan
-Write-Host '║           ConvoyPlan Installer           ║' -ForegroundColor Cyan
-Write-Host '╚══════════════════════════════════════════╝' -ForegroundColor Cyan
-Write-Host ''
+Write-Host @'
+   ____                            ____  _
+  / ___|___  _ ____   _____  _   _|  _ \| | __ _ _ __
+ | |   / _ \| '_ \ \ / / _ \| | | | |_) | |/ _` | '_ \
+ | |__| (_) | | | \ V / (_) | |_| |  __/| | (_| | | | |
+  \____\___/|_| |_|\_/ \___/ \__, |_|   |_|\__,_|_| |_|
+                             |___/            Installer
+'@ -ForegroundColor Cyan
+Write-Host @'
+
+  _________ ___    _________ ___       __*__
+ |_________|__|\  |_________|__|\   __/__|__\_
+==(o)(o)====(o)====(o)(o)====(o)===='-(o)--(o)'=======
+
+'@
+
+# ── Konvoi-Ladebalken ────────────────────────────────────────────────────────
+# Lange Schritte laufen im Hintergrund, waehrend ein Konvoi ueber die Strasse
+# faehrt. Wo der Fortschritt messbar ist (Images ziehen), faehrt er genau so
+# weit; sonst rollt er langsam aus und erreicht das Ziel erst am Ende. Die
+# Ausgabe des Befehls landet in Logdateien und wird nur bei einem Fehler
+# gezeigt. Ohne Konsole (umgeleitet, ISE, CONVOYPLAN_PLAIN=1) laeuft alles wie
+# frueher mit voller Ausgabe. Gleiche Bilder wie in install.sh.
+$KonvoiLkw  = @(' _________ ___ ', '|_________|__|\', ' (o)(o)    (o) ')
+$KonvoiKdow = @('    __*__   ', ' __/__|__\_ ', " '-(o)--(o)'")
+
+function Test-KonvoiMoeglich {
+    if ($env:CONVOYPLAN_PLAIN) { return $false }
+    if ($Host.Name -ne 'ConsoleHost') { return $false }
+    try {
+        if ([Console]::IsOutputRedirected) { return $false }
+        return ([Console]::WindowWidth -ge 60)
+    } catch { return $false }
+}
+
+function Write-KonvoiBild {
+    param([int]$Start, [int]$Promille, [int]$Bild, [string]$Status, [ConsoleColor]$StatusFarbe = 'Gray')
+    $breite = [Math]::Min([Console]::WindowWidth - 1, 100)
+    $konvoiBreite = $KonvoiLkw[0].Length * 2 + $KonvoiKdow[0].Length + 4
+    $x = [int][Math]::Floor(($breite - $konvoiBreite) * $Promille / 1000)
+    $einzug = ' ' * $x
+    [Console]::SetCursorPosition(0, $Start)
+    for ($i = 0; $i -lt 3; $i++) {
+        $zeile = $einzug + $KonvoiLkw[$i] + '  ' + $KonvoiLkw[$i] + '  ' + $KonvoiKdow[$i]
+        if ($i -eq 0) {
+            # Blaulicht blinkt
+            $pos = $zeile.IndexOf('*')
+            Write-Host $zeile.Substring(0, $pos) -NoNewline
+            $farbe = if ($Bild % 2) { 'Blue' } else { 'Cyan' }
+            Write-Host '*' -NoNewline -ForegroundColor $farbe
+            Write-Host $zeile.Substring($pos + 1).PadRight($breite - $pos - 1)
+        } else {
+            Write-Host $zeile.PadRight($breite)
+        }
+    }
+    $strasse = -join (0..($breite - 1) | ForEach-Object { if ((($_ + $Bild) % 4) -lt 2) { '=' } else { '-' } })
+    Write-Host $strasse
+    Write-Host ('  ' + $Status).PadRight($breite) -ForegroundColor $StatusFarbe
+}
+
+function Read-KonvoiLog {
+    param([string[]]$Pfade)
+    $text = ''
+    foreach ($p in $Pfade) {
+        try {
+            $fs = [IO.File]::Open($p, 'Open', 'Read', 'ReadWrite')
+            try { $text += (New-Object IO.StreamReader($fs)).ReadToEnd() } finally { $fs.Dispose() }
+        } catch { }
+    }
+    return $text
+}
+
+# Invoke-Konvoi 'Beschriftung' @('compose', ..., 'pull') [-Gesamt n]
+# Gibt den Exit-Code von docker zurueck. Mit -Gesamt zaehlt der Balken fertige Dienste.
+function Invoke-Konvoi {
+    param([string]$Beschriftung, [string[]]$DockerArgs, [int]$Gesamt = 0)
+    $start = -1
+    if (Test-KonvoiMoeglich) {
+        # Platz fuer das Bild schaffen; die Konsole muss die Cursorposition
+        # kennen, sonst lieber ohne Animation als mit kaputtem Bild.
+        Write-Host ''
+        1..5 | ForEach-Object { Write-Host '' }
+        try { $start = [Console]::CursorTop - 5 } catch { $start = -1 }
+    }
+    if ($start -lt 0) {
+        Write-Host "-> $Beschriftung..."
+        & docker @DockerArgs | Out-Host
+        return $LASTEXITCODE
+    }
+
+    # Start-Process setzt die Argumente nur mit Leerzeichen zusammen — Pfade
+    # wie C:\Users\Max Muster\convoyplan muessen selbst in Anfuehrungszeichen.
+    $Argumente = ($DockerArgs | ForEach-Object { if ($_ -match '\s') { "`"$_`"" } else { $_ } }) -join ' '
+
+    $out = [IO.Path]::GetTempFileName()
+    $err = [IO.Path]::GetTempFileName()
+    $p = Start-Process docker -ArgumentList $Argumente -NoNewWindow -PassThru `
+        -RedirectStandardOutput $out -RedirectStandardError $err
+    $null = $p.Handle   # sonst bleibt ExitCode unter Windows PowerShell leer
+
+    $bild = 0; $promille = 0
+    try {
+        [Console]::CursorVisible = $false
+        while (-not $p.HasExited) {
+            $anzeige = ''
+            if ($Gesamt -gt 0) {
+                $fertig = ([regex]::Matches((Read-KonvoiLog @($out, $err)), ' (Pulled|Skipped)')).Count
+                $fertig = [Math]::Min($fertig, $Gesamt)
+                $ziel = [int]($fertig * 1000 / $Gesamt)
+                # Nicht erkannt (anderes Ausgabeformat)? Langsam weiterrollen.
+                $ziel = [Math]::Max($ziel, [int](950 * $bild / ($bild + 2000)))
+                $anzeige = "  [$fertig/$Gesamt]"
+            } else {
+                $ziel = [int](950 * $bild / ($bild + 80))
+            }
+            $ziel = [Math]::Min($ziel, 950)
+            if ($promille -lt $ziel) { $promille += [int][Math]::Ceiling(($ziel - $promille) / 10) }
+            Write-KonvoiBild -Start $start -Promille $promille -Bild $bild -Status ($Beschriftung + $anzeige)
+            $bild++
+            Start-Sleep -Milliseconds 120
+        }
+        $p.WaitForExit()
+        $rc = $p.ExitCode
+        if ($rc -eq 0) {
+            Write-KonvoiBild -Start $start -Promille 1000 -Bild 0 -Status "✓ $Beschriftung" -StatusFarbe Green
+        } else {
+            Write-KonvoiBild -Start $start -Promille $promille -Bild 0 -Status "✗ $Beschriftung fehlgeschlagen (Exit $rc):" -StatusFarbe Red
+            (Read-KonvoiLog @($out, $err)) -split "`r?`n" | Where-Object { $_ } |
+                Select-Object -Last 20 | ForEach-Object { Write-Host "    $_" }
+        }
+        return $rc
+    } finally {
+        if (-not $p.HasExited) { $p.Kill() }
+        [Console]::CursorVisible = $true
+        Remove-Item $out, $err -ErrorAction SilentlyContinue
+    }
+}
+
+function Invoke-ImagesZiehen {
+    param([string]$Verzeichnis)
+    $gesamt = @(docker compose --project-directory $Verzeichnis config --services 2>$null).Count
+    $null = Invoke-Konvoi 'Images laden (kann einige Minuten dauern)' @('compose', '--project-directory', $Verzeichnis, 'pull') -Gesamt $gesamt
+}
 
 # Voraussetzungen prüfen
 function Test-DockerAvailable {
@@ -121,18 +260,13 @@ if ((Test-Path $EnvFile)) {
                 Write-Host 'FEHLER: Caddy-Entrypoint konnte nicht heruntergeladen werden.' -ForegroundColor Red; exit 1
             }
 
-            Write-Host ''
-            Write-Host '-> Images aktualisieren...'
-            docker compose --project-directory $InstallDir pull
-
-            Write-Host ''
-            Write-Host '-> ConvoyPlan neu starten...'
-            docker compose --project-directory $InstallDir up -d
+            Invoke-ImagesZiehen $InstallDir
+            $null = Invoke-Konvoi 'ConvoyPlan neu starten' @('compose', '--project-directory', $InstallDir, 'up', '-d')
 
             Write-Host ''
             Write-Host '╔══════════════════════════════════════════════════════════╗' -ForegroundColor Green
             Write-Host '║  ConvoyPlan wurde aktualisiert!                          ║' -ForegroundColor Green
-            Write-Host ("║  URL: https://$existingDomain/").PadRight(61) + "║"      -ForegroundColor Green
+            Write-Host (("║  URL: https://$existingDomain/").PadRight(59) + "║")    -ForegroundColor Green
             Write-Host '╚══════════════════════════════════════════════════════════╝' -ForegroundColor Green
             Write-Host ''
             exit 0
@@ -267,17 +401,12 @@ $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
 [System.IO.File]::WriteAllText((Join-Path $InstallDir '.env'), $EnvContent, $Utf8NoBom)
 
 # Stack starten
-Write-Host ''
-Write-Host '-> Images herunterladen (kann einige Minuten dauern)...'
-docker compose --project-directory $InstallDir pull
-
-Write-Host ''
-Write-Host '-> ConvoyPlan starten...'
-docker compose --project-directory $InstallDir up -d
+Invoke-ImagesZiehen $InstallDir
+$null = Invoke-Konvoi 'ConvoyPlan starten' @('compose', '--project-directory', $InstallDir, 'up', '-d')
 
 Write-Host ''
 Write-Host '╔══════════════════════════════════════════════════════════╗' -ForegroundColor Green
 Write-Host '║  ConvoyPlan laeuft!                                      ║' -ForegroundColor Green
-Write-Host ("║  Setup-Wizard: https://$Domain/setup").PadRight(61) + "║" -ForegroundColor Green
+Write-Host (("║  Setup-Wizard: https://$Domain/setup").PadRight(59) + "║") -ForegroundColor Green
 Write-Host '╚══════════════════════════════════════════════════════════╝' -ForegroundColor Green
 Write-Host ''

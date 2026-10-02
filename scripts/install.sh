@@ -6,11 +6,20 @@ STACK_URL="$REPO_RAW/docker-compose.yml"
 CADDY_ENTRYPOINT_URL="$REPO_RAW/caddy/entrypoint.sh"
 WATCHDOG_URL="$REPO_RAW/scripts/updater-watchdog.sh"
 
-echo ""
-echo "╔══════════════════════════════════════════╗"
-echo "║           ConvoyPlan Installer           ║"
-echo "╚══════════════════════════════════════════╝"
-echo ""
+cat <<'BANNER'
+
+   ____                            ____  _
+  / ___|___  _ ____   _____  _   _|  _ \| | __ _ _ __
+ | |   / _ \| '_ \ \ / / _ \| | | | |_) | |/ _` | '_ \
+ | |__| (_) | | | \ V / (_) | |_| |  __/| | (_| | | | |
+  \____\___/|_| |_|\_/ \___/ \__, |_|   |_|\__,_|_| |_|
+                             |___/            Installer
+
+  _________ ___    _________ ___       __*__
+ |_________|__|\  |_________|__|\   __/__|__\_
+==(o)(o)====(o)====(o)(o)====(o)===='-(o)--(o)'=======
+
+BANNER
 
 # Voraussetzungen prüfen
 if ! command -v docker &>/dev/null; then
@@ -68,6 +77,137 @@ prompt_secret() {
     fi
     echo "  Passwörter stimmen nicht überein oder leer. Erneut versuchen."
   done
+}
+
+# ── Konvoi-Ladebalken ────────────────────────────────────────────────────────
+# Lange Schritte laufen im Hintergrund, während ein Konvoi über die Straße
+# fährt. Wo der Fortschritt messbar ist (Images ziehen), fährt er genau so weit;
+# sonst rollt er langsam aus und erreicht das Ziel erst, wenn der Schritt fertig
+# ist. Die Ausgabe des Befehls landet in einer Logdatei und wird nur bei einem
+# Fehler gezeigt. Ohne Terminal (Pipe, CI, CONVOYPLAN_PLAIN=1) läuft alles wie
+# früher mit voller Ausgabe.
+_KONVOI_LKW=(
+  ' _________ ___ '
+  '|_________|__|\'
+  ' (o)(o)    (o) '
+)
+_KONVOI_KDOW=(
+  '    __*__   '
+  ' __/__|__\_ '
+  " '-(o)--(o)'"
+)
+_KONVOI_HOEHE=5   # drei Zeilen Fahrzeuge, Straße, Statuszeile
+
+_konvoi_moeglich() {
+  [[ -t 1 && "${TERM:-dumb}" != "dumb" && -z "${CONVOYPLAN_PLAIN:-}" ]] || return 1
+  local cols; cols=$(tput cols 2>/dev/null || echo 0)
+  (( cols >= 60 ))
+}
+
+# Zeichnet ein Bild. $1 = Fortschritt in Promille, $2 = Bildnummer, $3 = Statuszeile
+_konvoi_bild() {
+  local promille="$1" bild="$2" status="$3"
+  local cols breite strecke x i zeile licht strasse
+  cols=$(tput cols 2>/dev/null || echo 80)
+  breite=$(( cols > 101 ? 100 : cols - 1 ))
+  # Konvoi = LKW, LKW, KdoW vorneweg (fährt nach rechts)
+  local konvoi_breite=$(( ${#_KONVOI_LKW[0]} * 2 + ${#_KONVOI_KDOW[0]} + 4 ))
+  strecke=$(( breite - konvoi_breite ))
+  x=$(( strecke * promille / 1000 ))
+
+  # Blaulicht blinkt; mit Farbe blau, ohne Farbe an/aus
+  if [[ -z "${NO_COLOR:-}" ]]; then
+    (( bild % 2 )) && licht=$'\e[1;34m*\e[0m' || licht=$'\e[1;36m*\e[0m'
+  else
+    (( bild % 2 )) && licht='*' || licht=' '
+  fi
+
+  for i in 0 1 2; do
+    zeile="$(printf '%*s' "$x" '')${_KONVOI_LKW[$i]}  ${_KONVOI_LKW[$i]}  ${_KONVOI_KDOW[$i]}"
+    (( i == 0 )) && zeile="${zeile/\*/$licht}"
+    printf '\e[2K%s\n' "$zeile"
+  done
+
+  # Fahrbahnmarkierung zieht unter dem Konvoi nach links weg
+  strasse=""
+  for (( i = 0; i < breite; i++ )); do
+    (( (i + bild) % 4 < 2 )) && strasse+="=" || strasse+="-"
+  done
+  printf '\e[2K%s\n' "$strasse"
+  printf '\e[2K  %s\n' "$status"
+}
+
+# Fortschritt beim Ziehen: fertige Dienste / alle Dienste
+_konvoi_fortschritt_pull() {
+  local log="$1" fertig
+  fertig=$(grep -cE ' (Pulled|Skipped)' "$log" 2>/dev/null || true)
+  fertig=${fertig:-0}
+  (( _KONVOI_GESAMT > 0 )) || { echo -1; return; }
+  (( fertig > _KONVOI_GESAMT )) && fertig=$_KONVOI_GESAMT
+  echo $(( fertig * 1000 / _KONVOI_GESAMT )) "${fertig}/${_KONVOI_GESAMT}"
+}
+
+# _konvoi "Beschriftung" fortschrittsfunktion|- befehl...
+_konvoi() {
+  local beschriftung="$1" fortschritt_fn="$2"; shift 2
+  if ! _konvoi_moeglich; then
+    echo "→ ${beschriftung}..."
+    "$@"
+    return
+  fi
+
+  local log; log=$(mktemp)
+  "$@" >"$log" 2>&1 &
+  local pid=$! bild=0 promille=0 ziel anzeige rc=0 rest
+
+  tput civis 2>/dev/null || true
+  trap 'kill "$pid" 2>/dev/null; tput cnorm 2>/dev/null; rm -f "$log"; echo; exit 130' INT TERM
+  echo ""
+  for (( rest = 0; rest < _KONVOI_HOEHE; rest++ )); do echo; done
+
+  while kill -0 "$pid" 2>/dev/null; do
+    anzeige=""
+    ziel=-1
+    if [[ "$fortschritt_fn" != "-" ]]; then
+      read -r ziel anzeige < <("$fortschritt_fn" "$log")
+    fi
+    if (( ziel < 0 )); then
+      # Nicht messbar: nähert sich 95 %, ohne es zu erreichen
+      ziel=$(( 950 * bild / (bild + 80) ))
+    else
+      # Messbar, aber vielleicht nicht erkannt (anderes Ausgabeformat von
+      # Compose): langsam weiterrollen statt stehenzubleiben
+      local kriechen=$(( 950 * bild / (bild + 2000) ))
+      (( kriechen > ziel )) && ziel=$kriechen
+    fi
+    (( ziel > 950 )) && ziel=950
+    # Sanft hinfahren statt springen
+    (( promille < ziel )) && promille=$(( promille + (ziel - promille + 9) / 10 ))
+    printf '\e[%dA' "$_KONVOI_HOEHE"
+    _konvoi_bild "$promille" "$bild" "${beschriftung}${anzeige:+  [$anzeige]}"
+    bild=$(( bild + 1 ))
+    sleep 0.12
+  done
+  wait "$pid" || rc=$?
+
+  printf '\e[%dA' "$_KONVOI_HOEHE"
+  if (( rc == 0 )); then
+    _konvoi_bild 1000 0 "✓ ${beschriftung}"
+  else
+    _konvoi_bild "$promille" 0 "✗ ${beschriftung} fehlgeschlagen (Exit ${rc}):"
+    tail -n 20 "$log" | sed 's/^/    /'
+  fi
+  tput cnorm 2>/dev/null || true
+  trap - INT TERM
+  rm -f "$log"
+  return "$rc"
+}
+
+_KONVOI_GESAMT=0
+_images_ziehen() {
+  _KONVOI_GESAMT=$(docker compose --project-directory "$1" config --services 2>/dev/null | wc -l)
+  _konvoi "Images laden (kann einige Minuten dauern)" _konvoi_fortschritt_pull \
+    docker compose --project-directory "$1" pull
 }
 
 # ── Cleanup orphan hex-prefixed updater containers ───────────────────────────
@@ -200,14 +340,13 @@ if [[ -f "$INSTALL_DIR/.env" ]] && \
       || { echo "FEHLER: Caddy-Entrypoint konnte nicht heruntergeladen werden."; exit 1; }
     chmod +x "$INSTALL_DIR/caddy/entrypoint.sh"
 
-    echo "→ Images aktualisieren..."
-    docker compose --project-directory "$INSTALL_DIR" pull
+    _images_ziehen "$INSTALL_DIR"
 
     echo "→ Verwaiste Updater-Container aufräumen..."
     _cleanup_orphan_updaters "$(_ev COMPOSE_PROJECT_NAME)"
 
-    echo "→ ConvoyPlan neu starten..."
-    docker compose --project-directory "$INSTALL_DIR" up -d || true
+    _konvoi "ConvoyPlan neu starten" - \
+      docker compose --project-directory "$INSTALL_DIR" up -d || true
 
     _install_watchdog "$INSTALL_DIR"
 
@@ -393,13 +532,10 @@ fi
 chmod 600 "$INSTALL_DIR/.env"
 
 # Stack starten
-echo ""
-echo "→ Images herunterladen (kann einige Minuten dauern)..."
-docker compose --project-directory "$INSTALL_DIR" pull
+_images_ziehen "$INSTALL_DIR"
 
-echo ""
-echo "→ ConvoyPlan starten..."
-docker compose --project-directory "$INSTALL_DIR" up -d || true
+_konvoi "ConvoyPlan starten" - \
+  docker compose --project-directory "$INSTALL_DIR" up -d || true
 
 _install_watchdog "$INSTALL_DIR"
 
