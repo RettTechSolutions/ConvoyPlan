@@ -1449,6 +1449,81 @@ export interface OrgMcpConnection {
     expires_at: string;
 }
 
+// ── Öffentliche Aktionsseiten ─────────────────────────────────────────────
+// Verwaltung im Org-Admin. Ausgeliefert wird die Seite vom EventTracker
+// (eigenes Repo), der `endpoint` mit dem Abruf-Token abholt.
+
+export type AktionsseitenThema = 'neutral' | 'weihnachten';
+
+export interface AktionsseiteKonvoi {
+    convoy_id: string;
+    display_name: string;
+    destination_label: string | null;
+    color: string | null;
+}
+
+export interface Aktionsseite {
+    id: string;
+    slug: string;
+    title: string;
+    subtitle: string | null;
+    facts: string | null;
+    theme: AktionsseitenThema;
+    delay_minutes: number;
+    show_destination: boolean;
+    valid_until: string | null;
+    enabled: boolean;
+    /** Eingeschaltet und nicht abgelaufen — so sieht es auch der Abruf. */
+    active: boolean;
+    endpoint: string;
+    convoys: (AktionsseiteKonvoi & { convoy_name: string })[];
+    created_at: string;
+}
+
+export interface AktionsseiteMitToken extends Aktionsseite {
+    /** Nur direkt nach Anlegen oder Erneuern — gespeichert ist der Hash. */
+    fetch_token: string;
+}
+
+export interface AktionsseiteDaten {
+    title: string;
+    subtitle: string | null;
+    facts: string | null;
+    theme: AktionsseitenThema;
+    delay_minutes: number;
+    show_destination: boolean;
+    valid_until: string | null;
+    enabled: boolean;
+    convoys: AktionsseiteKonvoi[];
+}
+
+export interface AktionsseiteVorschau {
+    title: string;
+    delay_minutes: number;
+    as_of: string;
+    generated_at: string;
+    convoys: {
+        key: string;
+        name: string;
+        status: 'vor_abfahrt' | 'unterwegs' | 'pause' | 'angekommen';
+        position: { lat: number; lon: number; coarse: boolean; at: string } | null;
+        driven_km: number;
+        total_km: number | null;
+    }[];
+}
+
+export const aktionsseitenApi = {
+    list: () => api.get<Aktionsseite[]>('/api/org/aktionsseiten'),
+    create: (daten: AktionsseiteDaten) =>
+        api.post<AktionsseiteMitToken>('/api/org/aktionsseiten', daten),
+    update: (id: string, daten: AktionsseiteDaten) =>
+        api.put<Aktionsseite>(`/api/org/aktionsseiten/${id}`, daten),
+    rotateToken: (id: string) =>
+        api.post<AktionsseiteMitToken>(`/api/org/aktionsseiten/${id}/token`, {}),
+    delete: (id: string) => api.delete<void>(`/api/org/aktionsseiten/${id}`),
+    preview: (id: string) => api.get<AktionsseiteVorschau>(`/api/org/aktionsseiten/${id}/vorschau`),
+};
+
 export const orgMcpApi = {
     read: () => api.get<OrgMcpPolicy>('/api/org/mcp'),
     save: (policy: { enabled: boolean; scopes: string[]; bereiche: string[] }) =>

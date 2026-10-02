@@ -95,3 +95,124 @@ export const feedbackApi = {
 		return { id: 'f-1', kind: data.kind, created_at: '2026-09-19T10:00:00Z' };
 	},
 };
+
+// ── Aktionsseiten ────────────────────────────────────────────────────────────
+//
+// Die Verwaltung im Org-Admin. Wie beim Melde-Dialog legt der Stub ab, was
+// abgeschickt wurde — die Zusage „der interne Konvoiname geht nicht hinaus"
+// steht im Körper des Aufrufs, nicht auf dem Bildschirm.
+
+export type AktionsseitenThema = 'neutral' | 'weihnachten';
+export interface AktionsseiteKonvoi {
+	convoy_id: string;
+	display_name: string;
+	destination_label: string | null;
+	color: string | null;
+}
+export interface AktionsseiteDaten {
+	title: string;
+	subtitle: string | null;
+	facts: string | null;
+	theme: AktionsseitenThema;
+	delay_minutes: number;
+	show_destination: boolean;
+	valid_until: string | null;
+	enabled: boolean;
+	convoys: AktionsseiteKonvoi[];
+}
+export interface Aktionsseite extends Omit<AktionsseiteDaten, 'convoys'> {
+	id: string;
+	slug: string;
+	active: boolean;
+	endpoint: string;
+	convoys: (AktionsseiteKonvoi & { convoy_name: string })[];
+	created_at: string;
+}
+export interface AktionsseiteMitToken extends Aktionsseite {
+	fetch_token: string;
+}
+export interface AktionsseiteVorschau {
+	title: string;
+	delay_minutes: number;
+	as_of: string;
+	generated_at: string;
+	convoys: {
+		key: string;
+		name: string;
+		status: 'vor_abfahrt' | 'unterwegs' | 'pause' | 'angekommen';
+		position: { lat: number; lon: number; coarse: boolean; at: string } | null;
+		driven_km: number;
+		total_km: number | null;
+	}[];
+}
+
+/** Interne Namen, wie sie in der Planung stehen. */
+export const KONVOIS = [
+	{ id: 'c-bih', name: 'KV 3 / Los B Ladeliste' },
+	{ id: 'c-rou', name: 'KV 1 Sibiu' },
+];
+
+/** Das Token, das die Verwaltung genau einmal zeigt. */
+export const ABRUF_TOKEN = 'tok_Zr8Qm2Lw5Xc9Vb3Nh7Kp';
+
+declare global {
+	interface Window {
+		__aktionAngelegt?: AktionsseiteDaten;
+	}
+}
+
+const seiten: Aktionsseite[] = [];
+
+function zeile(id: string, d: AktionsseiteDaten): Aktionsseite {
+	return {
+		...d,
+		id,
+		slug: 'Hq3vT8kLm2Pw',
+		active: d.enabled,
+		endpoint: 'https://einsatz.example.de/api/public/aktion/Hq3vT8kLm2Pw',
+		convoys: d.convoys.map((c) => ({
+			...c,
+			convoy_name: KONVOIS.find((k) => k.id === c.convoy_id)?.name ?? '',
+		})),
+		created_at: '2026-10-02T15:00:00Z',
+	};
+}
+
+export const convoysApi = {
+	list: async () => KONVOIS,
+};
+
+export const aktionsseitenApi = {
+	list: async (): Promise<Aktionsseite[]> => seiten.map((s) => ({ ...s })),
+	create: async (d: AktionsseiteDaten): Promise<AktionsseiteMitToken> => {
+		window.__aktionAngelegt = d;
+		const s = zeile('a-1', d);
+		seiten.push(s);
+		return { ...s, fetch_token: ABRUF_TOKEN };
+	},
+	update: async (id: string, d: AktionsseiteDaten): Promise<Aktionsseite> => {
+		const s = zeile(id, d);
+		seiten.splice(seiten.findIndex((x) => x.id === id), 1, s);
+		return s;
+	},
+	rotateToken: async (id: string): Promise<AktionsseiteMitToken> => ({
+		...seiten.find((s) => s.id === id)!,
+		fetch_token: 'tok_neu_Pz4Wq8Ln1Hc6',
+	}),
+	delete: async (id: string) => {
+		seiten.splice(seiten.findIndex((x) => x.id === id), 1);
+	},
+	preview: async (): Promise<AktionsseiteVorschau> => ({
+		title: 'Weihnachtskonvois 2026',
+		delay_minutes: 120,
+		as_of: '2026-12-27T16:00:00Z',
+		generated_at: '2026-12-27T18:00:00Z',
+		convoys: [
+			{
+				key: '1', name: 'Konvoi Bosnien', status: 'pause', driven_km: 498,
+				total_km: 1120.5,
+				position: { lat: 46.05, lon: 14.5072, coarse: true, at: '2026-12-27T15:20:00Z' },
+			},
+		],
+	}),
+};
