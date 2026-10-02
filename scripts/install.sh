@@ -210,7 +210,8 @@ _KONVOI_GESAMT=0
 # Bis zu drei Versuche: ein Timeout zur Registry (Docker Hub, ghcr.io) ist
 # meist vorübergehend, und bereits geladene Schichten bleiben liegen.
 _images_ziehen() {
-  _KONVOI_GESAMT=$(docker compose --project-directory "$1" config --services 2>/dev/null | wc -l)
+  # $(( )) statt nackt: wc -l rückt die Zahl unter macOS mit Leerzeichen ein
+  _KONVOI_GESAMT=$(( $(docker compose --project-directory "$1" config --services 2>/dev/null | wc -l) ))
   local versuch rc=0 beschriftung="Images laden (kann einige Minuten dauern)"
   for versuch in 1 2 3; do
     rc=0
@@ -328,7 +329,8 @@ if [[ -f "$INSTALL_DIR/.env" ]] && \
   echo "  [n] Neu konfigurieren — Werte als Vorauswahl laden"
   read -rp "Auswahl [J/n]: " _upd </dev/tty || true
 
-  if [[ "${_upd,,}" != "n" ]]; then
+  # Nicht ${_upd,,}: macOS bringt Bash 3.2 mit, die kennt das erst ab Bash 4.
+  if [[ "$_upd" != [nN] ]]; then
     # ── UPDATE-MODUS: fehlende Keys ergänzen, Compose-Datei erneuern, neu starten ──
     _patch_env() {
       local key="$1" val="$2"
