@@ -34,7 +34,9 @@ BEWEGT_AB_M = 100
 # dagegen mit jeder Position. Eine Minute veraltet ist harmlos: der erste Punkt
 # nach dem Anlegen einer Seite fehlt dann eben.
 _AKTIV_TTL_S = 60.0
-_aktiv_cache: tuple[frozenset[uuid.UUID], float] | None = None
+# Ein Behälter statt einer neu gebundenen Modulvariablen: kein ``global``, und
+# ``vergessen`` leert denselben Speicher, den ``aktive_konvois`` liest.
+_aktiv: dict[str, tuple[frozenset[uuid.UUID], float]] = {}
 
 
 def abstand_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -67,13 +69,11 @@ def noetig(
 
 def vergessen() -> None:
     """Zwischenspeicher leeren — nach Anlegen, Ändern oder Löschen einer Seite."""
-    global _aktiv_cache
-    _aktiv_cache = None
+    _aktiv.clear()
 
 
 async def aktive_konvois(db: AsyncSession, jetzt: datetime) -> frozenset[uuid.UUID]:
-    global _aktiv_cache
-    cached = _aktiv_cache
+    cached = _aktiv.get("konvois")
     if cached is not None and time.monotonic() - cached[1] < _AKTIV_TTL_S:
         return cached[0]
     rows = await db.execute(
@@ -85,7 +85,7 @@ async def aktive_konvois(db: AsyncSession, jetzt: datetime) -> frozenset[uuid.UU
         )
     )
     ids = frozenset(rows.scalars().all())
-    _aktiv_cache = (ids, time.monotonic())
+    _aktiv["konvois"] = (ids, time.monotonic())
     return ids
 
 
