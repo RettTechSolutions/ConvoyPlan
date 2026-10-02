@@ -221,6 +221,15 @@ GH_DATAACCESS="${GH_DATAACCESS:-MMAP}"
 # Lauf nicht, der ihn bis zum Schluss braucht.
 GH_SERVER_JAVA_OPTS="${GH_SERVER_JAVA_OPTS:--XX:G1PeriodicGCInterval=300000 -XX:+ExitOnOutOfMemoryError}"
 
+# JVM-Optionen NUR fuer den Import, zusaetzlich zu JAVA_OPTS. Die Vorgabe
+# schreibt beim Beenden den Heap ins Log ("garbage-first heap total …K"). Der
+# Wert `total` ist der zuletzt belegte Heap — weil G1 waehrend eines Imports
+# praktisch nur waechst, eine brauchbare Naeherung fuer den Hoechststand. Er
+# landet ueber den Regionswechsel in region.log und ist die einzige Messung,
+# an der sich die Schaetzung in backend/app/services/region_estimate.py
+# pruefen laesst; bis 2026-10 gab es nur Richtwerte aus dem Installer.
+GH_IMPORT_JAVA_OPTS="${GH_IMPORT_JAVA_OPTS:--Xlog:gc+heap+exit}"
+
 # Nur fuer Tests ueberschreibbar (siehe graphhopper/tests/) — im Container immer
 # der Default, dasselbe Muster wie REGION_SOURCE_SCRIPT.
 GH_JAR="${GH_JAR:-/graphhopper/graphhopper.jar}"
@@ -276,7 +285,7 @@ CONF
 if [ "$GH_COMMAND" = "server" ] && [ ! -f "$GRAPH_DIR/edges" ]; then
     write_config RAM_STORE
     echo "Baue Routing-Graph (import, RAM_STORE, Graph-Cache: $GRAPH_DIR)..."
-    java $JAVA_OPTS -jar "$GH_JAR" import "$CONFIG_FILE"
+    java $JAVA_OPTS $GH_IMPORT_JAVA_OPTS -jar "$GH_JAR" import "$CONFIG_FILE"
 fi
 
 if [ "$GH_COMMAND" = "server" ]; then
@@ -288,9 +297,11 @@ if [ "$GH_COMMAND" = "server" ]; then
 fi
 
 # Jeder andere Unterbefehl (der Regionswechsel ruft `import` direkt) laeuft wie
-# bisher: eine Phase, RAM_STORE, nur JAVA_OPTS.
+# bisher: eine Phase, RAM_STORE, JAVA_OPTS — beim Import samt der Messung oben.
 write_config RAM_STORE
 echo "Starte GraphHopper ($GH_COMMAND, RAM_STORE, Graph-Cache: $GRAPH_DIR)..."
-exec java $JAVA_OPTS \
+EXTRA_JAVA_OPTS=""
+[ "$GH_COMMAND" = "import" ] && EXTRA_JAVA_OPTS="$GH_IMPORT_JAVA_OPTS"
+exec java $JAVA_OPTS $EXTRA_JAVA_OPTS \
     -jar "$GH_JAR" \
     "$GH_COMMAND" "$CONFIG_FILE"

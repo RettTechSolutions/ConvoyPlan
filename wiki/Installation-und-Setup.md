@@ -371,6 +371,19 @@ openssl rand -hex 32
 Die Region wechselt man im laufenden Betrieb im Admin-Panel unter **System →
 Kartenregion** (siehe oben). Der neue Graph entsteht dabei neben dem laufenden.
 
+Die Vorabschätzung rechnet den Heap für den Import als `(2 GB + 1,1 × Extract)`
+plus 20 % Sicherheitsaufschlag. Gesperrt wird ein Wechsel erst, wenn schon der
+Bedarf **ohne** Aufschlag nicht in den freien Speicher (abzüglich 1 GB Reserve)
+passt — dieselbe Schwelle, an der der Updater abbräche. Passt nur der Aufschlag
+nicht, heißt das „knapp": Der Import läuft mit gedeckeltem Heap, und
+„Routing während des Imports pausieren" gibt ihm den Speicher des laufenden
+GraphHopper dazu.
+
+Wie viel Heap ein Import wirklich gebraucht hat, steht am Ende seines Protokolls
+im Panel (`garbage-first heap total …K`). Auf der Platte belegt der fertige
+Graph erfahrungsgemäß gut die Hälfte des Extracts (gemessen: 8,5 GB Extracts,
+4,9 GB Graph).
+
 Nur wenn das nicht geht, lässt sich der Graph-Cache von Hand verwerfen. Danach
 ist das Routing bis zum Ende des Neuimports weg:
 

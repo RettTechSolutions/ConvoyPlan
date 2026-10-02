@@ -46,6 +46,28 @@ gemittelt. Das ergibt 13 min/GB (untere Grenze) und 26 min/GB (obere Grenze).
 Damit unterschreitet keine der drei Stuetzstellen die Installer-Angabe;
 Deutschland und DACH werden dadurch bewusst grosszuegig (konservativ)
 geschaetzt, was laut Spec Abschnitt 6 der sicherere Fehler ist.
+
+Erste Messung an einer echten Instanz (2026-10-02, gehostete Instanz,
+zusammengesetzte Region aus DACH, Italien, Slowenien, Kroatien, Montenegro und
+Albanien, 8,5 GB Extracts, ein Profil `car` mit CH): der fertige Graph belegt
+4,9 GB, also das 0,58-fache des Extracts — nicht das 1,5-fache, mit dem die
+Plattenrechnung bis dahin lief. `_GRAPH_FACTOR` steht seitdem auf 0,75: die
+Messung plus Luft fuer weitere Profile, aber nicht mehr doppelt so viel wie
+gemessen. Den Heap-Bedarf belegt die Messung nur nach unten (mit RAM_STORE
+muss der Graph in den Heap passen); die Gerade oben bleibt deshalb, bis
+`gc+heap+exit` aus graphhopper/entrypoint.sh echte Hoechststaende liefert.
+
+Ein Import am Rand des Aufschlags
+---------------------------------
+Das Panel stufte bis 2026-10 mit dem Bedarf INKLUSIVE der 20 % ein und
+sperrte den Wechsel, sobald der nicht in den freien Speicher passte. Der
+Updater prueft dagegen den Rohbedarf (switch-region.sh, `_raw_need_mb`,
+`_heap_shortfall_mb`) gegen den freien Speicher abzueglich seiner Reserve —
+und liess Wechsel durch, die das Panel gar nicht erst abschickte. Auf 16 GB
+traf das genau die Erweiterung von 8,5 auf 9,5 GB: rund 15 GB mit Aufschlag,
+rund 12,5 GB ohne, frei rund 13 GB. `ram_verdict` rechnet deshalb wie der
+Updater: „reicht nicht" erst, wenn der Rohbedarf nicht passt; passt er nur
+ohne den Aufschlag, ist es „knapp".
 """
 
 GB = 1024 ** 3
@@ -56,17 +78,29 @@ _SAFETY_MARGIN = 1.2          # 20 % Aufschlag (Spec Abschnitt 6)
 _MINUTES_PER_GB_LOW = 13   # aufgerundeter Bayern-Quotient 12,63 min/GB (strengste Stuetzstelle)
 _MINUTES_PER_GB_HIGH = 26  # aufgerundeter Bayern-Quotient 25,26 min/GB (strengste Stuetzstelle)
 _TIGHT_THRESHOLD = 0.8
+_GRAPH_FACTOR = 0.75          # gemessen 0,58 (siehe Docstring), plus Luft
+# Dieselbe Reserve, die der Updater vom freien Speicher abzieht, bevor er den
+# Heap deckelt (REGION_HEAP_RESERVE_MB in docker/updater/switch-region.sh).
+HEAP_RESERVE_BYTES = 1024 * 1024 ** 2
+
+
+def estimate_ram_raw_bytes(pbf_bytes: int) -> int:
+    """Heap-Bedarf des Imports OHNE Sicherheitsaufschlag — darunter ist er aussichtslos."""
+    return _BASE_BYTES + int(_PER_PBF_BYTE * pbf_bytes)
 
 
 def estimate_ram_bytes(pbf_bytes: int) -> int:
-    """Geschaetzter Heap-Bedarf des Imports, inklusive Sicherheitsaufschlag."""
-    raw = _BASE_BYTES + int(_PER_PBF_BYTE * pbf_bytes)
-    return int(raw * _SAFETY_MARGIN)
+    """Geschaetzter Heap-Bedarf des Imports, inklusive Sicherheitsaufschlag.
+
+    Das ist auch der Wert, den das Backend als -Xmx anfordert; der Updater
+    rechnet daraus mit `* 10 / 12` den Rohbedarf zurueck.
+    """
+    return int(estimate_ram_raw_bytes(pbf_bytes) * _SAFETY_MARGIN)
 
 
 def estimate_graph_bytes(pbf_bytes: int) -> int:
-    """Der gebaute Graph liegt erfahrungsgemaess in der Groessenordnung des Extracts."""
-    return int(pbf_bytes * 1.5)
+    """Der gebaute Graph, gemessen bei etwa dem 0,6-fachen des Extracts (siehe Docstring)."""
+    return int(pbf_bytes * _GRAPH_FACTOR)
 
 
 def estimate_duration_minutes(pbf_bytes: int) -> tuple[int, int]:
@@ -83,12 +117,30 @@ def verdict(needed: int, available: int) -> str:
     return "ok"
 
 
+def ram_verdict(pbf_bytes: int, available: int) -> str:
+    """Einstufung des Arbeitsspeichers — mit derselben Schwelle wie der Updater.
+
+    `available` ist der freie Speicher samt dem, was der Wartungsmodus
+    zurueckgewinnt. Davon geht die Reserve des Updaters ab; was bleibt, ist
+    der Heap, den der Updater dem Import hoechstens gibt. „Reicht nicht" heisst
+    dann: auch der Rohbedarf passt nicht, der Updater braeche ab. Passt nur der
+    Aufschlag nicht, laeuft der Import mit gedeckeltem Heap — eng, aber nicht
+    aussichtslos (Begruendung im Modul-Docstring).
+    """
+    usable = available - HEAP_RESERVE_BYTES
+    if estimate_ram_raw_bytes(pbf_bytes) > usable:
+        return "reicht nicht"
+    if estimate_ram_bytes(pbf_bytes) > usable:
+        return "knapp"
+    return verdict(estimate_ram_bytes(pbf_bytes), usable)
+
+
 # ── Zusammengesetzte Regionen ───────────────────────────────────────────────
 # Mehrere Geofabrik-Extracts werden zu einer Karte verschmolzen. Die Funktionen
 # oben rechnen mit EINER Groesse; die beiden hier fassen die Bestandteile
 # zusammen, bevor sie dort hineingehen.
 
-_STAGING_GRAPH_FACTOR = 1.5   # der gebaute Graph im Staging, Erfahrungswert wie oben
+_STAGING_GRAPH_FACTOR = _GRAPH_FACTOR   # der gebaute Graph im Staging, wie oben
 
 
 def sum_extract_bytes(sizes: list[int]) -> int:
@@ -112,12 +164,12 @@ def estimate_disk_during_switch(sizes: list[int]) -> int:
 
     Gleichzeitig liegen dort: die N heruntergeladenen Quelldateien, die daraus
     zusammengefuehrte Datei (etwa die Summe), der im Staging gebaute Graph
-    (etwa das 1,5-fache) sowie der alte Graph und das alte Extract, die bis
+    (`_GRAPH_FACTOR`) sowie der alte Graph und das alte Extract, die bis
     nach dem Health-Check aufgehoben werden. Die letzten beiden sind hier
     unbekannt — als Naeherung wird die Summe noch einmal veranschlagt.
 
-    Ergibt zusammen das 4,5-fache der Quellsumme; fuer Deutschland + Polen +
-    Tschechien (~7 GB) also rund 32 GB.
+    Ergibt zusammen das 3,75-fache der Quellsumme; fuer Deutschland + Polen +
+    Tschechien (~7 GB) also rund 26 GB.
     """
     total = sum_extract_bytes(sizes)
     merged = total

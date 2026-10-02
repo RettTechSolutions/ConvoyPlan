@@ -1656,3 +1656,41 @@ def test_gerade_verstrichener_zeitpunkt_gilt_als_sofort():
     eben = datetime.now(timezone.utc) - timedelta(seconds=30)
     assert _validated_schedule(eben) is None
     assert _validated_schedule(None) is None
+
+
+@pytest.mark.asyncio
+async def test_preview_sperrt_nicht_was_der_updater_ausfuehrt(monkeypatch):
+    """16-GB-Server, rund 14 GB frei, Region mit 9,5 GB Extracts (2026-10-02).
+
+    Mit dem Aufschlag von 20 % braucht der Import ~15 GB, ohne ~12,5 GB. Der
+    Updater laesst das durch (Rohbedarf gegen freien Speicher minus Reserve);
+    das Panel sperrte es bis dahin mit "reicht nicht". Jetzt: "knapp", und die
+    Begruendung sagt, dass der Heap gedeckelt wird."""
+    from app.services import host_metrics
+    from app.config import settings
+
+    monkeypatch.setattr(geofabrik, "head_size_bytes", _async_size(int(9.5 * GB)))
+    monkeypatch.setattr(settings, "java_opts", "-Xmx13g -Xms1g -XX:+UseG1GC")
+
+    mem = MagicMock()
+    mem.available_bytes = int(14 * GB)
+    monkeypatch.setattr(host_metrics, "read_memory", lambda: mem)
+
+    disk = MagicMock()
+    disk.free_bytes = int(221 * GB)
+    monkeypatch.setattr(host_metrics, "disk_usage", lambda paths: [disk])
+
+    test_app = _make_app_with_superadmin()
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/api/admin/region/preview",
+            json={"urls": [URL]},
+            headers={"Authorization": "Bearer x"},
+        )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["verdict"] == "knapp"
+    assert "Sicherheitsaufschlag" in body["reason"]
+    assert "gedeckelt" in body["reason"]
+    assert "Routing pausieren" in body["reason"]
