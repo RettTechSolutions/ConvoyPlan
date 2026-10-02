@@ -29,8 +29,17 @@ COPY requirements.txt .
 # beim naechsten Hebung auf ein Quellpaket zurueck, bricht der Bau hier mit
 # einer klaren Meldung ab, statt still nach einem Compiler und Headern zu
 # suchen, die es in diesem Image absichtlich nicht gibt.
+#
+# Danach geht pip selbst aus dem Image. Gebraucht wird es nur hier beim Bau —
+# der Entrypoint startet Migrationen und uvicorn, sonst nichts —, aber es
+# bringt eigene Kopien von urllib3, msgpack & Co. in pip/_vendor mit, die
+# Trivy zu Recht meldet und die sich nicht anheben lassen: sie kommen mit der
+# pip-Fassung, und auch die neueste vendort sie ungepatcht. Was nicht im Image
+# liegt, braucht keine Ausnahme in .trivyignore.
 RUN pip install --no-cache-dir --upgrade "setuptools>=83.0.0" \
-    && pip install --no-cache-dir --only-binary=:all: -r requirements.txt
+    && pip install --no-cache-dir --only-binary=:all: -r requirements.txt \
+    && pip uninstall -y pip \
+    && ! python -c "import pip" 2>/dev/null
 
 COPY . .
 
