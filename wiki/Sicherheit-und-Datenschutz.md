@@ -153,6 +153,7 @@ Der `retention`-Container purgt periodisch abgelaufene Daten:
 | `RETENTION_POSITIONS_HOURS` | `24` | Live-Positionen älter als … löschen |
 | `RETENTION_AUDIT_DAYS` | `365` | Audit-Log-Einträge älter als … löschen |
 | `RETENTION_SHARE_LINKS_DAYS` | `30` | Widerrufene Share-Links älter als … löschen |
+| `RETENTION_POSITION_TRAIL_DAYS` | `45` | Positionsverlauf der Aktionsseiten älter als … löschen |
 | `RETENTION_DEMO_LEADS_DAYS` | `180` | Kontaktangaben aus dem Demo-Start älter als … löschen |
 | `RETENTION_OAUTH_TOKENS_GRACE_DAYS` | `30` | Rotierte und widerrufene MCP-Refresh-Tokens älter als … löschen |
 | `RETENTION_OAUTH_CLIENTS_DAYS` | `7` | Verwaiste MCP-Registrierungen älter als … löschen |

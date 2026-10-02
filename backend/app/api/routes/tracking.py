@@ -19,6 +19,7 @@ from app.models.vehicle_position import VehiclePosition
 from app.services import alarm_quittung
 from app.services import betriebsstoff as betriebsstoff_svc
 from app.services import belegung
+from app.services import positionsverlauf
 from app.services import staerke as staerke_svc
 from app.services import vehicle_status as vs
 from app.services.tracking import tracking_manager
@@ -176,6 +177,7 @@ async def update_position(
         )
     )
     await db.execute(stmt)
+    await positionsverlauf.aufzeichnen(db, convoy_id, data.vehicle_id, data.lat, data.lon)
     await db.commit()
 
     payload = {
@@ -514,6 +516,9 @@ async def tracking_ws(
                     )
                 )
                 await db.execute(stmt)
+                await positionsverlauf.aufzeichnen(
+                    db, uuid.UUID(convoy_id), pos.vehicle_id, pos.lat, pos.lon
+                )
                 await db.commit()
 
             await tracking_manager.broadcast(convoy_id, {

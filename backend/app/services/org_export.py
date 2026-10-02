@@ -45,6 +45,7 @@ from app.models.convoy import Convoy, ConvoyVehicle
 from app.models.leitstelle import Leitstelle
 from app.models.org_mcp_policy import OrganizationMcpPolicy
 from app.models.organization import Organization, UserOrganization
+from app.models.public_tracker import PublicTracker, PublicTrackerConvoy, VehiclePositionTrail
 from app.models.route import Route
 from app.models.share_link import ConvoyShareLink
 from app.models.system_metric import UserActivityDay
@@ -63,6 +64,8 @@ _GEHEIM: dict[str, frozenset[str]] = {
     "users": frozenset({"hashed_password", "mfa_secret", "token_version"}),
     "api_keys": frozenset({"key_hash"}),
     "convoy_share_links": frozenset({"password_hash", "slug"}),
+    # Slug und Abruf-Token zusammen öffnen die Aktionsseite — wie beim Share-Link.
+    "public_trackers": frozenset({"fetch_token_hash", "slug"}),
 }
 
 # Welche Tabellen der Export abdeckt und welche er bewusst auslässt. Ein Test
@@ -74,6 +77,7 @@ EXPORTIERT = frozenset({
     "convoy_vehicles", "waypoints", "routes", "vehicle_positions",
     "convoy_share_links", "leitstellen", "api_keys", "organization_mcp_policies",
     "user_activity_days", "audit_logs",
+    "public_trackers", "public_tracker_convoys", "vehicle_position_trail",
 })
 NICHT_EXPORTIERT = frozenset({
     "feedback_reports",      # Rückmeldungen an den Betreiber, nicht Daten der Organisation
@@ -168,6 +172,25 @@ async def build_org_export(db: AsyncSession, org: Organization) -> dict:
         "vehicle_positions": [
             zeile(p) for p in await _alle(
                 db, select(VehiclePosition).where(VehiclePosition.convoy_id.in_(convoy_ids))
+            )
+        ],
+        "aktionsseiten": [
+            zeile(t) for t in await _alle(
+                db, select(PublicTracker).where(PublicTracker.organization_id == org.id)
+            )
+        ],
+        "aktionsseiten_konvois": [
+            zeile(tc) for tc in await _alle(
+                db,
+                select(PublicTrackerConvoy).where(PublicTrackerConvoy.convoy_id.in_(convoy_ids)),
+            )
+        ],
+        "positionsverlauf": [
+            zeile(p) for p in await _alle(
+                db,
+                select(VehiclePositionTrail)
+                .where(VehiclePositionTrail.convoy_id.in_(convoy_ids))
+                .order_by(VehiclePositionTrail.convoy_id, VehiclePositionTrail.recorded_at),
             )
         ],
         "share_links": [
