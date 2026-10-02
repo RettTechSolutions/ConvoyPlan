@@ -13,6 +13,12 @@ name: Auto-Release
 #   veröffentlicht das GitHub-Release, das die Kunden-Updater dann automatisch
 #   ausrollen).
 #
+#   Liegt ein Master-Release vorbereitet, aber ungetaggt auf main (Version in
+#   frontend/package.json über dem letzten Tag), wird stattdessen DIESE
+#   Version getaggt — sonst liefe der vorbereitete Stand unter einer
+#   Fix-Nummer hinaus, wie am 2026-09-30 2026.7.0 als v2026.6.2.
+#   Geprüft von .github/workflows/tests/test_auto_release_version.sh.
+#
 # Absicherungen:
 #   - Läuft nur, wenn der auslösende Commit ein Dependabot-Merge ist — ein
 #     normaler Feature-Merge löst NIE ein automatisches Release aus.
@@ -84,19 +90,17 @@ jobs:
         with:
           fetch-depth: 0   # volle Historie + Tags für Versionsermittlung
 
-      - name: Nächsten Fix-Tag erstellen und Release starten
+      - name: Nächste Version bestimmen
+        id: version
         if: steps.queue.outputs.pending == '0'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           git fetch --tags --force --quiet
 
           # Prerelease-Tags (v2026.2.1-beta.N) ausschließen: Der Glob matcht sie
           # (dritte Gruppe [0-9]* frisst "1-beta.1"), und `IFS=. read … fix`
-          # würde daran zerbrechen. `grep -v -- '-'` lässt nur STABLE-Tags übrig,
-          # deren FIX-Komponente wir automatisch erhöhen.
-          last=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -v -- '-' | head -1)
+          # würde daran zerbrechen. `grep -v -- '-'` lässt nur STABLE-Tags übrig.
+          last=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -v -- '-' | head -1 || true)
           if [ -z "${last}" ]; then
             echo "::error::Kein bestehender Release-Tag gefunden — erstes Release bitte manuell schneiden."
             exit 1
@@ -104,20 +108,47 @@ jobs:
 
           if [ "$(git rev-parse "${last}^{commit}")" = "$(git rev-parse HEAD)" ]; then
             echo "HEAD ist bereits als ${last} released — nichts zu tun."
+            echo "next=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # Versionsschema YYYY.MASTER.FIX: nur die FIX-Komponente wird
-          # automatisch erhöht (Jahr und Master-Release bleiben; die werden
-          # bewusst manuell beim Schneiden eines Master-Releases gesetzt).
+          # Versionsschema YYYY.MASTER.FIX: automatisch wird nur die
+          # FIX-Komponente erhöht. Jahr und Master-Release setzt ein Mensch,
+          # beim Vorbereiten eines Master-Releases (RELEASING.md).
           IFS=. read -r year master fix <<< "${last#v}"
           next="v${year}.${master}.$((fix + 1))"
 
-          echo "Erstelle Release-Tag ${next} (Vorgänger: ${last})"
-          git tag "${next}" HEAD
-          git push origin "${next}"
+          # Ausnahme: ein vorbereitetes, aber noch nicht getaggtes Release.
+          # Am 2026-09-30 lag 2026.7.0 fertig auf main (Changelog,
+          # frontend/package.json), war aber nie getaggt worden — und dieser
+          # Workflow schnitt aus v2026.6.1 ein v2026.6.2, das den ganzen
+          # 7.0-Stand auslieferte. Steht in frontend/package.json eine
+          # Version ohne Suffix, die über dem letzten Tag liegt und noch
+          # keinen eigenen Tag hat, ist SIE das nächste Release. Ausgeliefert
+          # würde der Stand ohnehin — die Frage ist nur, unter welcher Nummer.
+          prepared=$(sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' frontend/package.json | head -1)
+          if [[ "${prepared}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+             && [ "${prepared}" != "${last#v}" ] \
+             && [ "$(printf '%s\n%s\n' "${last#v}" "${prepared}" | sort -V | tail -1)" = "${prepared}" ] \
+             && ! git rev-parse -q --verify "refs/tags/v${prepared}" >/dev/null; then
+            echo "::notice::frontend/package.json nennt ${prepared}, getaggt ist es noch nicht — das wird das Release statt ${next}."
+            next="v${prepared}"
+          fi
+
+          echo "Nächstes Release: ${next} (Vorgänger: ${last})"
+          echo "next=${next}" >> "$GITHUB_OUTPUT"
+
+      - name: Release-Tag erstellen und Release starten
+        if: steps.queue.outputs.pending == '0' && steps.version.outputs.next != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEXT: ${{ steps.version.outputs.next }}
+        run: |
+          set -euo pipefail
+          git tag "${NEXT}" HEAD
+          git push origin "${NEXT}"
 
           # Expliziter Dispatch, weil der Tag-Push mit dem GITHUB_TOKEN keinen
           # Workflow-Lauf auslöst (Rekursionsschutz, s. Kopfkommentar).
-          gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "${next}"
-          echo "Release-Workflow für ${next} gestartet."
+          gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "${NEXT}"
+          echo "Release-Workflow für ${NEXT} gestartet."

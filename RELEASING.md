@@ -80,6 +80,14 @@ git push origin main --tags
 > workflow. Human merges never trigger this — but any unreleased commits
 > already sitting on `main` ship with that fix release.
 >
+> If a master release is **prepared but not tagged** — `frontend/package.json`
+> names a version above the latest stable tag that has no tag of its own — the
+> wave tags *that* version instead of bumping `FIX`. The prepared state would
+> ship either way; this only keeps its number. (On 2026-09-30 the prepared
+> `2026.7.0` went out as `v2026.6.2` because of exactly this gap.) So bumping
+> `frontend/package.json` is the point of no return: the next Dependabot wave
+> releases it. Bump it in the release-prep commit, not earlier.
+>
 > **Update channels (stable / beta / nightly):** instances pick one in the admin
 > panel (Admin → Software-Update):
 > - **stable** — published releases only, floating `:latest`.
