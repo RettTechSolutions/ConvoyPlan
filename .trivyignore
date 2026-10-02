@@ -252,6 +252,20 @@ CVE-2026-54513
 # 2.18.8; requires a GraphHopper JAR release that pulls the patched jackson.
 GHSA-r7wm-3cxj-wff9
 
+# jackson-core DoS via unbounded StringBuilder growth on malformed tokens, and
+# jackson-databind DoS via unbounded TypeDeserializerBase cache growth plus
+# @JsonIdentityInfo forward-reference completion. All three need attacker-
+# shaped JSON; GraphHopper receives only its own config and well-formed routing
+# requests from our backend on the internal Docker network. Fixed in jackson
+# 2.18.11 / 2.21.7 / 2.22.3; bundled in graphhopper.jar 9.1 (jackson 2.13.5).
+# Ein GH_VERSION-Sprung erzwingt einen Neuimport des Graphen auf jeder
+# Instanz — deshalb nicht nebenbei, sondern geplant und vor dem Freeze Mitte
+# Dezember (keine Neuimporte während laufender Einsätze über die Feiertage).
+# Review by: 2026-11-30.
+CVE-2026-89425
+CVE-2026-91776
+CVE-2026-91777
+
 # ─────────────────────────────────────────────────────────────────────────────
 # convoyplan-frontend: vulnerability in the undici package bundled inside
 # Node.js 26 (not an npm-installed dependency — Trivy reads Node's internal
@@ -264,21 +278,6 @@ GHSA-r7wm-3cxj-wff9
 # undici Denial-of-Service via unbounded response memory allocation.
 # Fixed upstream in undici 6.27.0 (bundled with a future Node.js 26.x release).
 CVE-2026-12151
-
-# ─────────────────────────────────────────────────────────────────────────────
-# convoyplan-backend: msgpack is vendored *inside pip itself*
-# (pip/_vendor/msgpack, see pip's vendor.txt) for pip's own internal wheel
-# cache — it is not a project dependency and is never imported by the running
-# FastAPI app. As of pip 26.2.1 (the latest release at time of review), pip
-# still vendors msgpack==1.1.2; no pip release with a patched vendored
-# msgpack exists yet, so there is nothing to bump on our side. The vendored
-# copy is only exercised during `pip install` at image build time, not at
-# container runtime — not exploitable here (VEX: not_affected).
-# Re-evaluate once a pip release vendors a patched msgpack. Review by: 2026-09-10.
-
-# msgpack: out-of-bounds read / crash on Unpacker reuse after an error.
-# Fixed upstream in msgpack 1.2.1 (not yet adopted by pip's vendored copy).
-GHSA-6v7p-g79w-8964
 
 # convoyplan-backend: setuptools 70.3.0 (CVE-2025-47273 — path traversal in
 # PackageIndex) keeps being reported even after backend/Dockerfile explicitly
