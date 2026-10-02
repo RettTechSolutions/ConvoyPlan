@@ -332,38 +332,74 @@ ganz Deutschland plus die Strecken bis zu den Zielen. Code ist dafür keiner
 nötig: das Adminportal führt mehrere Geofabrik-Extracts zu einer Karte
 zusammen (System → Kartenregion, seit `2026.5.0`).
 
+**Ausgangslage auf der gehosteten Instanz** (Stand 2. Oktober, Server mit
+16 GB RAM, im Leerlauf rund 14 GB frei, 221 GB Platte frei). Die Instanz ist
+die Einsatzinstanz, die Region gilt dort für **alle vier Organisationen**. Sie
+ist schon eine zusammengesetzte Karte aus sechs Extracts, 8,5 GB zusammen:
+`dach`, `italy`, `slovenia`, `croatia`, `montenegro`, `albania`. Der fertige
+Graph belegt 4,9 GB, nur ein Profil (`car` mit CH).
+
+Damit ist Albanien schon heute routbar: über die Küste, seit 2022 über die
+Pelješac-Brücke statt durch den Korridor bei Neum. Es fehlen nur die anderen
+Ziele.
+
 **Extracts** (alle unter `europe/`):
 
-| Zweck | Extracts |
+| | Extracts |
 |---|---|
-| Start | `germany` |
-| Transit Nord/Mitte | `austria`, `czech-republic`, `slovakia`, `hungary` |
-| Transit Westbalkan | `slovenia`, `croatia`, `serbia`, `kosovo`, `macedonia` |
-| Ziele | `romania`, `bosnia-herzegovina`, `montenegro`, `albania` |
+| bleiben (andere Organisationen hängen daran) | `dach`, `italy`, `slovenia`, `croatia`, `montenegro`, `albania` |
+| neu: Rumänien | `hungary`, `romania` |
+| neu: Bosnien | `bosnia-herzegovina` |
+| neu: zweiter Weg nach Albanien | `serbia` (klein, Ungarn → Serbien → Montenegro) |
+| bewusst nicht | `czech-republic`, `slovakia`, `kosovo`, `macedonia` |
 
-Tschechien, Slowakei, Kosovo und Nordmazedonien liegen nicht auf jeder
-Strecke, kosten zusammen aber nur rund 1 GB und lassen GraphHopper die
-kürzeste Route finden, statt sie an einer Landesgrenze abzuschneiden.
+Ohne Tschechien rechnet ein Start in Sachsen über Österreich statt über Prag
+und Brünn. Das ist ein Umweg, den die Planung ohnehin von Hand korrigiert,
+und Tschechien allein wiegt fast 1 GB. Auf 16 GB ist das zu teuer.
 
-**Bedarf** (Schätzung nach `region_estimate.py`; Geofabrik war aus der
-Entwicklungsumgebung nicht erreichbar, das Panel rechnet beim Wechsel mit den
-echten Größen): grob 8 GB Extract → **~13 GB RAM** für den Import, ~12 GB
-Graph auf der Platte, **1,5–3,5 h** Import. Deutschland ist davon gut die
-Hälfte. Im Betrieb liegt der Graph per MMAP im Seitencache, die JVM bleibt
-weit unter dem Import-Wert.
+**Bedarf**: rund 9,5 GB Extract. Nach der Formel braucht der Import ~15 GB
+Heap mit Sicherheitsaufschlag, ~12,5 GB ohne; der Graph wächst auf ~5,5 GB.
+Das Panel meldet das als **„knapp"** und lässt den Wechsel zu (bis
+RettTechSolutions/ConvoyPlan#570 sperrte es ihn mit „reicht nicht", obwohl der
+Updater ihn ausgeführt hätte). Import 2–4 h. Swap hilft nicht: der Updater
+deckelt den Heap auf `MemAvailable`, und ein Java-Heap im Swap blättert statt
+zu rechnen.
+
+Pausiertes Routing bringt auf dieser Instanz wenig: Der laufende GraphHopper
+blendet seinen Graphen per MMAP ein und belegt selbst nur ~0,3 GB. Bis
+RettTechSolutions/ConvoyPlan#571 schrieben Panel und Updater dafür seinen
+`-Xmx` gut (gut 13 GB), seitdem wird gemessen.
+
+Scheitert der Import, bleibt die alte Region aktiv: gebaut wird im Staging,
+bei einem Fehlschlag startet der Updater den alten Graphen wieder. Mit
+pausiertem Routing kostet ein Fehlschlag also die Importzeit als Ausfall,
+aber keine Daten.
 
 **Checkliste für den Wechsel**
 
-- [ ] Einsatzinstanz feststehen lassen (Abschnitt 9, Frage 8) — gewechselt wird dort.
-- [ ] RAM und Platte prüfen. Reicht der RAM knapp nicht, beim Wechsel
-      „Routing während des Imports pausieren" wählen: GraphHopper gibt seinen
-      Speicher dann an den Import ab, dafür gibt es bis zum Ende keine
-      Routenplanung.
-- [ ] Wechsel **terminieren** auf eine nutzungsarme Nacht, spätestens Mitte
-      November — vor der Probefahrt am 28.11., nicht kurz davor.
-- [ ] Nach dem Wechsel: unter „Aktuelle Region" die 14 Bestandteile prüfen,
-      dann je eine Testroute Deutschland → Sibiu, → Tuzla, → Shkodra rechnen.
+- [ ] #570 und #571 auf der Instanz ausrollen. Sie steht auf dem
+      Stable-Kanal, hat aber `49ca928` installiert, einen Stand nach dem
+      letzten Release. Der Updater zieht sie erst mit dem nächsten Release
+      nach, sonst von Hand einspielen. Ohne #570 bleibt der Knopf gesperrt.
+- [ ] Im Panel die zehn Bestandteile auswählen (sechs bleibende plus vier
+      neue). Erwartet: „knapp", in der Begründung „gemessen" mit ~0,3 GB aus
+      GraphHopper. Steht dort „reicht nicht", nicht erzwingen, sondern die
+      Zahlen hierher zurückmelden.
+- [ ] Die drei anderen Organisationen vorher informieren: Die Karte ist
+      instanzweit, und während des Imports gibt es dort keine Routenplanung.
+      Ihre Regionen (DACH, Italien, Adria) bleiben erhalten.
+- [ ] Wechsel mit „Routing während des Imports pausieren" **terminieren**, auf
+      eine nutzungsarme Nacht, spätestens Mitte November — vor der Probefahrt
+      am 28.11., nicht kurz davor. Pausiert wird nicht wegen der 0,3 GB,
+      sondern damit nichts anderes um den Speicher konkurriert.
+- [ ] Nach dem Wechsel: unter „Aktuelle Region" die zehn Bestandteile prüfen,
+      dann je eine Testroute Deutschland → Sibiu, → Tuzla, → Shkodra rechnen,
+      Shkodra einmal über die Küste und einmal über Serbien.
       Grenzübergänge sind die Stelle, an der ein unvollständiger Graph auffällt.
+- [ ] Aus dem Protokoll des Wechsels die Zeile `garbage-first heap total …K`
+      festhalten (seit #570 schreibt der Import sie). Das ist die erste echte
+      Messung des Import-Heaps, und mit ihr wird `region_estimate.py`
+      nachgezogen.
 - [ ] Routen der drei Konvois neu berechnen, damit `total_km` auf der
       Aktionsseite stimmt.
 
