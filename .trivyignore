@@ -258,10 +258,14 @@ GHSA-r7wm-3cxj-wff9
 # shaped JSON; GraphHopper receives only its own config and well-formed routing
 # requests from our backend on the internal Docker network. Fixed in jackson
 # 2.18.11 / 2.21.7 / 2.22.3; bundled in graphhopper.jar 9.1 (jackson 2.13.5).
-# Ein GH_VERSION-Sprung erzwingt einen Neuimport des Graphen auf jeder
-# Instanz — deshalb nicht nebenbei, sondern geplant und vor dem Freeze Mitte
-# Dezember (keine Neuimporte während laufender Einsätze über die Feiertage).
-# Review by: 2026-11-30.
+# Geprüft am 2026-10-02: Ein GH_VERSION-Sprung löst das nicht. Auch das
+# neueste graphhopper-web 11.1 bündelt jackson 2.19.2 — eine Linie ohne Fix —
+# und brächte nach Trivy ebenso 16 HIGH-Funde mit (zwei weitere Jackson-CVEs,
+# zwei in httpcore5), dazu Neuimport und Konfigurationsmigration über zwei
+# Hauptversionen. Die tragfähige Lösung ist ein eigener Build mit
+# jackson >= 2.21.7; der kommt nach den Weihnachtskonvois, nicht davor (kein
+# Routing-Umbau während laufender Einsätze über die Feiertage).
+# Review by: 2027-01-31.
 CVE-2026-89425
 CVE-2026-91776
 CVE-2026-91777

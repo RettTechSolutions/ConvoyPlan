@@ -327,15 +327,49 @@ Folgen:
 
 ### 10.3 Routing-Region
 
-Für den km-Fortschritt braucht die Einsatzinstanz einen Graphen von
-Deutschland bis zu den Zielen, also mindestens: Deutschland, Österreich,
-Ungarn, Rumänien, Slowenien, Kroatien, Bosnien und Herzegowina, Serbien,
-Montenegro, Albanien (Tschechien/Slowakei je nach Strecke). Das geht über die
-Mehrfach-Regionen (`merge-extracts.sh`), ist aber ein großer Import mit
-entsprechendem RAM. Fällt er zusammen mit der GraphHopper-Hebung bis Ende
-November (siehe `.trivyignore`, Review by 2026-11-30), wird nur einmal neu
-importiert.
+Die Konvois starten **verteilt in ganz Deutschland**, der Graph braucht also
+ganz Deutschland plus die Strecken bis zu den Zielen. Code ist dafür keiner
+nötig: das Adminportal führt mehrere Geofabrik-Extracts zu einer Karte
+zusammen (System → Kartenregion, seit `2026.5.0`).
 
-Ohne diesen Graphen funktioniert die Seite trotzdem — Punkt und gefahrene
-Linie kommen aus dem Positionsverlauf, nicht aus dem Routing. Es fehlt dann
-nur „noch 640 km".
+**Extracts** (alle unter `europe/`):
+
+| Zweck | Extracts |
+|---|---|
+| Start | `germany` |
+| Transit Nord/Mitte | `austria`, `czech-republic`, `slovakia`, `hungary` |
+| Transit Westbalkan | `slovenia`, `croatia`, `serbia`, `kosovo`, `macedonia` |
+| Ziele | `romania`, `bosnia-herzegovina`, `montenegro`, `albania` |
+
+Tschechien, Slowakei, Kosovo und Nordmazedonien liegen nicht auf jeder
+Strecke, kosten zusammen aber nur rund 1 GB und lassen GraphHopper die
+kürzeste Route finden, statt sie an einer Landesgrenze abzuschneiden.
+
+**Bedarf** (Schätzung nach `region_estimate.py`; Geofabrik war aus der
+Entwicklungsumgebung nicht erreichbar, das Panel rechnet beim Wechsel mit den
+echten Größen): grob 8 GB Extract → **~13 GB RAM** für den Import, ~12 GB
+Graph auf der Platte, **1,5–3,5 h** Import. Deutschland ist davon gut die
+Hälfte. Im Betrieb liegt der Graph per MMAP im Seitencache, die JVM bleibt
+weit unter dem Import-Wert.
+
+**Checkliste für den Wechsel**
+
+- [ ] Einsatzinstanz feststehen lassen (Abschnitt 9, Frage 8) — gewechselt wird dort.
+- [ ] RAM und Platte prüfen. Reicht der RAM knapp nicht, beim Wechsel
+      „Routing während des Imports pausieren" wählen: GraphHopper gibt seinen
+      Speicher dann an den Import ab, dafür gibt es bis zum Ende keine
+      Routenplanung.
+- [ ] Wechsel **terminieren** auf eine nutzungsarme Nacht, spätestens Mitte
+      November — vor der Probefahrt am 28.11., nicht kurz davor.
+- [ ] Nach dem Wechsel: unter „Aktuelle Region" die 14 Bestandteile prüfen,
+      dann je eine Testroute Deutschland → Sibiu, → Tuzla, → Shkodra rechnen.
+      Grenzübergänge sind die Stelle, an der ein unvollständiger Graph auffällt.
+- [ ] Routen der drei Konvois neu berechnen, damit `total_km` auf der
+      Aktionsseite stimmt.
+
+**GraphHopper-Version:** bleibt bis nach der Aktion bei 9.1. Ein Sprung auf
+11.1 behebt die Jackson-Funde nicht (dieselbe Zahl HIGH-Funde, nur andere)
+und kostet einen Routing-Umbau acht Wochen vor der Fahrt. Begründung und
+Termin stehen in `.trivyignore` (Review by 2027-01-31); danach eigener Build
+mit aktuellem Jackson.
+
