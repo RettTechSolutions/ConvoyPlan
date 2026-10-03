@@ -34,12 +34,16 @@ Dazu drei Regeln, die der Server durchsetzt — nicht die Seite im Browser:
    internen Namens. Ziel und Farbe sind optional.
 4. Anlegen. Danach steht das **Abruf-Token genau einmal** da, zusammen mit dem
    fertigen Eintrag für den EventTracker. Übernehmen, bevor die Seite verlassen
-   wird — gespeichert ist nur ein Hash.
+   wird — gespeichert ist nur ein Hash. Der Eintrag enthält auch die Adresse
+   dieser Instanz (`"convoyplan":"https://<instanz>"`); der EventTracker nimmt
+   sie von dort, sie muss nicht getrennt eingetragen werden.
 
 Ausgeliefert wird die öffentliche Seite **nicht** von ConvoyPlan, sondern vom
 [Convoyplan-EventTracker](https://github.com/RettTechSolutions/Convoyplan-EventTracker).
 Der holt den Stand einmal pro Minute mit dem Token ab — egal, wie viele Leute
-zuschauen, ConvoyPlan merkt davon nichts. Einrichtung dort in der README.
+zuschauen, ConvoyPlan merkt davon nichts. Einrichtung dort in der README. Die Abruf-Adresse beginnt immer mit `https://`;
+wurde früher eine mit `http://` im EventTracker eingetragen, auf `https://`
+umstellen — sonst bleibt die öffentliche Seite leer.
 
 ## Im Betrieb
 

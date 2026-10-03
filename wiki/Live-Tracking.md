@@ -381,6 +381,10 @@ Passwortlink erscheint wieder die Passwortabfrage.
 Ein **Fahrer-Link** erlaubt zusätzlich das Senden von Position und Status – mit
 demselben Statusumfang inklusive technischem Halt und Ausfall.
 
+Solange der Fahrer-Link sendet, hält er den Bildschirm an; nach einem
+App-Wechsel oder Anruf fordert er die Sperre selbst wieder an, damit das Display
+in der Halterung nicht ausgeht und die Ortung weiterläuft.
+
 Die Tracking-Ansicht ist als PWA installierbar und fragt beim Start nach der
 Tracking-ID.
 
