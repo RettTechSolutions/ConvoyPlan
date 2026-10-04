@@ -302,5 +302,8 @@ async def run_all(db: AsyncSession) -> dict[str, int]:
     await db.commit()
     if any(counts.values()):
         await audit.record(db, "retention.purge", detail=counts)
-    logger.info("Retention purge complete: %s", counts)
+    # Nur die Summe ins Log: die Schlüssel nennen OAuth-Tokens, und eine
+    # Zeile mit Tokens im Namen ist für Scanner nicht von einem Geheimnis zu
+    # unterscheiden. Die Aufschlüsselung steht im Audit-Eintrag oben.
+    logger.info("Retention purge complete: %d rows deleted", sum(counts.values()))
     return counts
