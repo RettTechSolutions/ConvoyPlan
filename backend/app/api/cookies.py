@@ -76,6 +76,7 @@ etwas schreibt, wäre hier die Lücke und nicht diese Liste."""
 # der den Endpunkt zerlegt, ist kein Schönheitsfehler.
 _SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _SLUG_MAX = 80
+_COOKIE_WERT = re.compile(r"[A-Za-z0-9._~+/=-]+")
 
 
 def ist_gueltiger_slug(org_slug: str | None) -> bool:
@@ -124,6 +125,10 @@ def set_session_cookie(
     response: Response, token: str, org_slug: str | None = None
 ) -> None:
     """Die Sitzung setzen. ``org_slug`` leer = die globale Sitzung."""
+    # Der Wert ist ein selbst ausgestelltes JWT (Base64url und Punkte). Alles
+    # andere hätte hier nichts zu suchen und könnte den Header verändern.
+    if not _COOKIE_WERT.fullmatch(token):
+        raise ValueError("Ungültiges Sitzungstoken für Cookie")
     response.set_cookie(
         cookie_name(org_slug),
         token,
