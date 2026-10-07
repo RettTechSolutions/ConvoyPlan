@@ -270,6 +270,15 @@ CVE-2026-89425
 CVE-2026-91776
 CVE-2026-91777
 
+# jackson-core: DoS über einen unvollständigen Fix im async-JSON-Parser.
+# Gebündelt im upstream-graphhopper.jar 9.1 (jackson 2.13.5). GraphHopper parst
+# nur seine eigene Konfiguration und wohlgeformte Routing-Anfragen unseres
+# Backends im internen Docker-Netz — kein fremdes JSON erreicht den Parser.
+# Fixed in 2.18.8 / 2.21.4; erledigt sich mit dem eigenen Build
+# (jackson >= 2.21.7) aus dem Eintrag direkt darüber.
+# Review by: 2027-01-31.
+CVE-2026-68494
+
 # ─────────────────────────────────────────────────────────────────────────────
 # convoyplan-frontend: vulnerability in the undici package bundled inside
 # Node.js 26 (not an npm-installed dependency — Trivy reads Node's internal
