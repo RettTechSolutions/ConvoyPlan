@@ -55,4 +55,4 @@ pytest-asyncio>=1.4.0
 # 0.28.1 ins Image. Die Pakete koexistieren konfliktfrei, aber ein
 # httpx-CVE betrifft ab jetzt potenziell beide — bei Sicherheitsupdates
 # an beide denken.
-mcp==2.2.0
+mcp==2.3.0
