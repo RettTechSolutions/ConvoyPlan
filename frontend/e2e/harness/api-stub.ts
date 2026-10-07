@@ -216,3 +216,60 @@ export const aktionsseitenApi = {
 		],
 	}),
 };
+
+// ── Passkeys (`PasskeyVerwaltung`) ───────────────────────────────────────────
+//
+// Die Prüfung der Antwort ist Sache des Servers; hier zählt, was die
+// Komponente hinausschickt. Jeder Aufruf landet in `window.__passkeyAufrufe`,
+// der Test liest ihn von dort.
+
+export interface PasskeyInfo {
+	id: string;
+	name: string;
+	created_at: string;
+	last_used_at: string | null;
+	backed_up: boolean;
+}
+
+export const PASSKEY_CHALLENGE = 'q2Vt8eYp3Lr7Wn1Kc5Xh9Zb4Md6Sf0Ga';
+export const PASSKEY_USER_ID = 'dXNlci1pZC1wbGFuZXI';
+
+function passkeyAufruf(name: string, body: unknown) {
+	const w = window as unknown as { __passkeyAufrufe?: { name: string; body: unknown }[] };
+	(w.__passkeyAufrufe ??= []).push({ name, body });
+}
+
+let passkeys: PasskeyInfo[] = [];
+
+export const passkeyApi = {
+	list: async () => passkeys,
+	registerOptions: async (password: string) => {
+		passkeyAufruf('registerOptions', { password });
+		return {
+			challenge_id: 'ch-1',
+			options: {
+				rp: { id: 'localhost', name: 'ConvoyPlan' },
+				user: { id: PASSKEY_USER_ID, name: 'planer@example.org', displayName: 'Pia Planer' },
+				challenge: PASSKEY_CHALLENGE,
+				pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
+				timeout: 60000,
+				excludeCredentials: [],
+				authenticatorSelection: { residentKey: 'required', requireResidentKey: true, userVerification: 'required' },
+				attestation: 'none',
+			},
+		};
+	},
+	register: async (challenge_id: string, credential: Record<string, unknown>, name?: string) => {
+		passkeyAufruf('register', { challenge_id, credential, name });
+		const neu: PasskeyInfo = {
+			id: 'pk-1', name: name ?? 'Passkey', created_at: '2026-10-07T08:00:00Z',
+			last_used_at: null, backed_up: false,
+		};
+		passkeys = [...passkeys, neu];
+		return neu;
+	},
+	remove: async (id: string) => {
+		passkeyAufruf('remove', { id });
+		passkeys = passkeys.filter((p) => p.id !== id);
+	},
+};

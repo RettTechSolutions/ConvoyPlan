@@ -4,6 +4,7 @@
     import LeitstelleAreaPicker, { type AreaSelection } from '$lib/components/LeitstelleAreaPicker.svelte';
     import LeitstellenOverviewMap from '$lib/components/LeitstellenOverviewMap.svelte';
     import LeitstellenTable from '$lib/components/LeitstellenTable.svelte';
+    import PasskeyVerwaltung from '$lib/components/PasskeyVerwaltung.svelte';
     import { auth } from '$lib/stores/auth';
     import EmailTemplateEditor from '$lib/components/EmailTemplateEditor.svelte';
     import { getStreamTicket } from '$lib/api/client';
@@ -4253,6 +4254,14 @@
                     <button class="btn-small" onclick={() => { mfaSetupStep = 'idle'; mfaCode = ''; }}>Abbrechen</button>
                 </div>
             {/if}
+        </div>
+
+        <!-- ── Passkeys ── -->
+        <div class="section">
+            <div class="section-header">
+                <strong>Passkeys</strong>
+            </div>
+            <PasskeyVerwaltung />
         </div>
 
         <!-- ── E-Mail / SMTP ── -->

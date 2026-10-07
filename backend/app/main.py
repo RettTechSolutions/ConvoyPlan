@@ -11,6 +11,7 @@ from app.api.routes import (
     tracking, weather, overpass, status, users, leitstellen, traffic, geocoding,
 )
 from app.api.routes import org_branding as org_branding_router
+from app.api.routes import passkeys as passkeys_router
 from app.api.routes import org_leitstellen as org_leitstellen_router
 from app.api.routes import admin as admin_router
 from app.api.routes import branding as branding_router
@@ -277,6 +278,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/api")
+app.include_router(passkeys_router.router, prefix="/api")
 app.include_router(vehicles.router, prefix="/api")
 app.include_router(convoys.router, prefix="/api")
 app.include_router(routing.router, prefix="/api")

@@ -2,6 +2,8 @@
 	import { auth } from '$lib/stores/auth';
 	import { authApi } from '$lib/api';
 	import AppLogo from '$lib/components/AppLogo.svelte';
+	import { istAbbruch, passkeysVerfuegbar } from '$lib/passkey';
+	import { onMount } from 'svelte';
 
 	let { onsuccess }: { onsuccess: () => void } = $props();
 
@@ -61,6 +63,22 @@
 		}
 	}
 
+	let passkeyMoeglich = $state(false);
+	onMount(() => { passkeyMoeglich = passkeysVerfuegbar(); });
+
+	async function handlePasskey() {
+		loading = true;
+		error = '';
+		try {
+			await auth.passkeyLogin();
+			onsuccess();
+		} catch (err: unknown) {
+			error = istAbbruch(err) ? '' : err instanceof Error ? err.message : 'Anmeldung mit Passkey fehlgeschlagen';
+		} finally {
+			loading = false;
+		}
+	}
+
 	async function handleMfa(e: Event) {
 		e.preventDefault();
 		loading = true;
@@ -99,6 +117,12 @@
 					{loading ? 'Anmelden…' : 'Anmelden'}
 				</button>
 				<button type="button" class="btn-link" onclick={openForgot}>Passwort vergessen?</button>
+				{#if passkeyMoeglich}
+					<div class="oder"><span>oder</span></div>
+					<button type="button" class="btn-passkey" onclick={handlePasskey} disabled={loading}>
+						Mit Passkey anmelden
+					</button>
+				{/if}
 			</form>
 		{:else if forgotOpen}
 			<form onsubmit={handleForgot}>
@@ -229,6 +253,22 @@
 		text-decoration: underline;
 	}
 	.btn-link:hover:not(:disabled) { color: var(--text-1); }
+	.btn-passkey {
+		background: var(--surface-2);
+		color: var(--text-1);
+		border: 1px solid var(--border);
+		margin-top: 0;
+	}
+	.btn-passkey:hover:not(:disabled) { background: var(--surface-1); border-color: var(--text-muted); }
+	.oder {
+		display: flex;
+		align-items: center;
+		gap: .6rem;
+		margin: 1rem 0 .75rem;
+		color: var(--text-muted);
+		font-size: var(--text-xs);
+	}
+	.oder::before, .oder::after { content: ''; flex: 1; border-top: 1px solid var(--border); }
 	.info {
 		background: var(--surface-2);
 		color: var(--text-1);

@@ -21,6 +21,7 @@ from app.models.demo_ip_allowlist import DemoIpAllowlistEntry
 from app.models.demo_lead import DemoLead
 from app.models.demo_origin import DemoOrigin
 from app.models.organization import Organization, UserOrganization
+from app.models.passkey import Passkey
 from app.models.settings import SystemSetting
 from app.models.share_link import ConvoyShareLink
 from app.models.user import User
@@ -1791,6 +1792,9 @@ async def export_user_data(
             select(AuditLog).where(AuditLog.actor_id == user_id).order_by(AuditLog.created_at.desc())
         )
     ).scalars().all()
+    passkeys = (
+        await db.execute(select(Passkey).where(Passkey.user_id == user_id).order_by(Passkey.created_at))
+    ).scalars().all()
 
     bundle = {
         "exported_at": datetime.now(timezone.utc),
@@ -1832,6 +1836,15 @@ async def export_user_data(
                 "access_count": s.access_count, "revoked": s.revoked,
             }
             for s in share_links
+        ],
+        # Ohne Kennung und öffentlichen Schlüssel: beides sagt über die Person
+        # nichts, was die Liste nicht schon sagt.
+        "passkeys": [
+            {
+                "id": p.id, "name": p.name, "backed_up": p.backed_up,
+                "created_at": p.created_at, "last_used_at": p.last_used_at,
+            }
+            for p in passkeys
         ],
         "audit_log": [
             {
