@@ -415,6 +415,10 @@ async def test_abgeschaltet_gibt_es_den_client_nicht(konto):
         assert r.status_code == 400
         version = await client.get("/api/version")
         assert version.json()["app_oauth"] is None
+        # MCP und App aus: die AS-Routen gibt es dann gar nicht mehr.
+        mcp_mount._anwenden(False)
+        meta = await client.get("/.well-known/oauth-authorization-server")
+        assert meta.status_code == 404
 
 
 async def test_auskunft_und_metadaten_ohne_mcp(konto):
@@ -428,6 +432,11 @@ async def test_auskunft_und_metadaten_ohne_mcp(konto):
         }
         meta = (await client.get("/.well-known/oauth-authorization-server")).json()
         assert meta["authorization_endpoint"] == f"{BASE}/authorize"
+        assert meta["token_endpoint"] == f"{BASE}/token"
+        assert meta["revocation_endpoint"] == f"{BASE}/revoke"
+        # Daran erkennt die App den Browser-Weg (Convoyplan-Companion#89).
+        assert meta["convoyplan_app_client_id"] == app_client.CLIENT_ID
+        assert "S256" in meta["code_challenge_methods_supported"]
         # Nichts ankündigen, was es ohne MCP nicht gibt.
         assert "registration_endpoint" not in meta
         assert "scopes_supported" not in meta

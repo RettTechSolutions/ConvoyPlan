@@ -54,6 +54,7 @@ from mcp.server.streamable_http_manager import (
     StreamableHTTPASGIApp,
     StreamableHTTPSessionManager,
 )
+from mcp.shared.auth import OAuthMetadata
 from pydantic import AnyHttpUrl
 from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.routing import Route
@@ -464,6 +465,17 @@ def build_server() -> MCPServer:
     return mcp
 
 
+class _MetadataMitApp(OAuthMetadata):
+    """Die AS-Metadaten plus die Kennung des App-Clients.
+
+    Daran erkennt die Begleit-App, dass sie sich über den Browser anmelden
+    kann (``services/app_client.py``) — ohne Fehlversuch. Das Modell des SDK
+    verwirft unbekannte Felder still, deshalb diese Unterklasse statt eines
+    ``model_copy(update=…)``."""
+
+    convoyplan_app_client_id: str | None = None
+
+
 def _authorization_server_metadata_route(auth_settings: AuthSettings) -> Route:
     """Die AS-Metadata selbst bauen, um ``iss`` anzukündigen.
 
@@ -510,6 +522,10 @@ def _authorization_server_metadata_route(auth_settings: AuthSettings) -> Route:
             dokument = metadata.model_copy(update={"client_id_metadata_document_supported": True})
         else:
             dokument = metadata
+        if app_client.aktiv():
+            dokument = _MetadataMitApp(
+                **dokument.model_dump(), convoyplan_app_client_id=app_client.CLIENT_ID
+            )
         return await MetadataHandler(dokument).handle(request)
 
     return Route(

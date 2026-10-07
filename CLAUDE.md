@@ -405,7 +405,7 @@ Vier Dinge, die man kennen muss:
   eingefrorene Dataclass, `contextlib` scheitert am Traceback, und aus `invalid_grant`
   wird ein 500. Im Token-Pfad gilt `_token_sitzung()` mit `_TokenAbbruch`.
 
-Die App erkennt den Weg an `GET /api/version` → `app_oauth`. In den MCP-Listen und
+Die App erkennt den Weg an `convoyplan_app_client_id` in `/.well-known/oauth-authorization-server` (so liest es Convoyplan-Companion#89; zusätzlich `GET /api/version` → `app_oauth`). In den MCP-Listen und
 -Zählern des Admin- und Org-Portals taucht der Client nicht auf, die Aufräumroutine
 lässt seine Zeile stehen. Tests: `tests/test_app_anmeldung.py` (ganzer Weg mit MCP
 aus), `tests/test_mcp_toggle.py` (Routentabelle mit und ohne App-Client),

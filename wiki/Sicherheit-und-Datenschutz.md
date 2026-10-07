@@ -154,8 +154,8 @@ Zugangstokens.
   sich der Weg mit `APP_OAUTH_ENABLED=false`; die App bleibt dann bei ihrer
   Passwortmaske.
 
-Ob eine Instanz den Weg anbietet, liest die App aus `GET /api/version` (Feld
-`app_oauth`). Anmeldungen stehen im Audit-Log als `auth.app.granted` bzw.
+Ob eine Instanz den Weg anbietet, liest die App aus
+`/.well-known/oauth-authorization-server` (Feld `convoyplan_app_client_id`). Anmeldungen stehen im Audit-Log als `auth.app.granted` bzw.
 `auth.app.denied`.
 
 ---
