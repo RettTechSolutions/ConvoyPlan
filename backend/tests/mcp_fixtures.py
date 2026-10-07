@@ -111,6 +111,7 @@ async def mcp_app():
         mcp_mount._session_manager = None
         mcp_mount._app = None
         mcp_mount._routes = []
+        mcp_mount._as_routes = []
 
 
 class Fixtures:

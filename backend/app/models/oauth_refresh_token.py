@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -48,3 +48,8 @@ class OAuthRefreshToken(Base):
     # sein erneutes Auftauchen ein Diebstahlsignal.
     rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # ``token_version`` des Benutzers beim Ausstellen. Weicht sie beim Einlösen
+    # ab (Passwortwechsel, „überall abmelden"), stirbt die Familie — sonst
+    # holte sich ein Client nach dem Passwortwechsel einfach ein frisches
+    # Access-Token mit der neuen Version. NULL bei Tokens von vor ``0054``.
+    token_version: Mapped[int | None] = mapped_column(Integer, nullable=True)

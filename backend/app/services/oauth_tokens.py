@@ -210,8 +210,13 @@ async def mint_refresh_token(
     organization_id: uuid.UUID,
     scopes: list[str],
     resource: str | None,
+    token_version: int | None = None,
+    ttl: timedelta | None = None,
 ) -> str:
-    """Ein Refresh-Token ausstellen und seinen Hash ablegen."""
+    """Ein Refresh-Token ausstellen und seinen Hash ablegen.
+
+    ``ttl`` ist die Laufzeit **ohne Nutzung**: jede Nutzung rotiert und stellt
+    ein neues mit voller Laufzeit aus. Ohne Angabe die von MCP."""
     raw = generate_secret()
     db.add(
         OAuthRefreshToken(
@@ -223,7 +228,8 @@ async def mint_refresh_token(
             scopes=" ".join(scopes),
             resource=resource,
             expires_at=datetime.now(timezone.utc)
-            + timedelta(days=settings.mcp_refresh_token_ttl_days),
+            + (ttl or timedelta(days=settings.mcp_refresh_token_ttl_days)),
+            token_version=token_version,
         )
     )
     return raw

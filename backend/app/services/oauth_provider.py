@@ -17,6 +17,8 @@ dort ein Benutzer angemeldet (inklusive MFA), eine Organisation gewählt und
 zugestimmt hat, entsteht ein Autorisierungscode. Damit hängt jedes MCP-Token
 an einer bewussten Handlung eines Menschen, nicht an einer Registrierung.
 """
+import contextlib
+import contextvars
 import logging
 import time
 import uuid
@@ -46,14 +48,51 @@ from app.mcp import scopes as scope_svc
 from app.models.oauth_client import AUTH_METHOD_NONE, OAuthClient
 from app.models.oauth_code import OAuthCode
 from app.models.oauth_refresh_token import OAuthRefreshToken
+from app.models.organization import Organization, UserOrganization
 from app.models.user import User
-from app.services import crypto, mcp_config, oauth_tokens, safe_fetch
+from app.services import app_client, crypto, mcp_config, oauth_tokens, safe_fetch
 
 logger = logging.getLogger(__name__)
 
 # Typ des signierten Umschlags, der eine angefangene Autorisierung trägt.
 # Eigener Typ, damit er an keiner anderen Stelle als Token durchgeht.
 _AUTHZ_REQUEST_TYPE = "mcp_authz"
+# Dasselbe für den App-Client. Ein eigener Typ, damit ein Ticket der App nie
+# auf dem MCP-Zustimmungsschirm eingelöst werden kann und umgekehrt.
+_APP_REQUEST_TYPE = "app_authz"
+
+# Die Organisation aus ``/authorize?…&org_slug=``. Das SDK liest die Anfrage
+# in ein festes Modell und reicht keine weiteren Parameter durch; die Hülle um
+# die Route (``mcp/mount.py``) legt den Wert hier ab, ``authorize()`` liest
+# ihn im selben Request wieder aus.
+ANGEFRAGTE_ORG: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "angefragte_org", default=None
+)
+
+
+class _TokenAbbruch(Exception):
+    """Eine Absage am Token-Endpunkt, geworfen *innerhalb* einer DB-Sitzung.
+
+    ``TokenError`` aus dem SDK ist eine eingefrorene Dataclass. Fliegt sie
+    durch ``async with get_db_session()``, will ``contextlib`` ihr den
+    Traceback zuweisen, scheitert daran mit ``FrozenInstanceError`` — und aus
+    ``invalid_grant`` wird ein 500. Deshalb wird innerhalb der Sitzung dieser
+    Typ geworfen und erst draußen (``_token_sitzung``) zum ``TokenError``."""
+
+    def __init__(self, error: str, beschreibung: str) -> None:
+        super().__init__(beschreibung)
+        self.error = error
+        self.beschreibung = beschreibung
+
+
+@contextlib.asynccontextmanager
+async def _token_sitzung():
+    """``get_db_session`` für den Token-Endpunkt; siehe ``_TokenAbbruch``."""
+    try:
+        async with get_db_session() as db:
+            yield db
+    except _TokenAbbruch as abbruch:
+        raise TokenError(abbruch.error, abbruch.beschreibung) from None
 
 
 # ── Redirect-URI-Prüfung ─────────────────────────────────────────────────
@@ -132,6 +171,41 @@ def encode_authorize_request(client_id: str, params: AuthorizationParams) -> str
         settings.jwt_secret,
         algorithm=settings.jwt_algorithm,
     )
+
+
+def encode_app_request(params: AuthorizationParams, org_slug: str) -> str:
+    """Wie ``encode_authorize_request``, für den App-Client und mit Organisation.
+
+    ``iat`` ist hier mehr als ein Zeitstempel: an ihm entscheidet die Route,
+    ob die Anmeldung *nach* der Anfrage geschah (``app_client.frisch_angemeldet``)."""
+    now = datetime.now(timezone.utc)
+    return _jwt.encode(
+        {
+            "typ": _APP_REQUEST_TYPE,
+            "client_id": app_client.CLIENT_ID,
+            "redirect_uri": str(params.redirect_uri),
+            "redirect_uri_provided_explicitly": params.redirect_uri_provided_explicitly,
+            "code_challenge": params.code_challenge,
+            "state": params.state,
+            "resource": params.resource,
+            "org_slug": org_slug,
+            "exp": now + timedelta(minutes=settings.mcp_authorize_request_ttl_minutes),
+            "iat": now,
+        },
+        settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
+
+
+def decode_app_request(ticket: str) -> dict | None:
+    """Ein Ticket des App-Clients auspacken; None heißt ungültig oder abgelaufen."""
+    try:
+        payload = _jwt.decode(ticket, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    except InvalidTokenError:
+        return None
+    if payload.get("typ") != _APP_REQUEST_TYPE or payload.get("client_id") != app_client.CLIENT_ID:
+        return None
+    return payload
 
 
 def decode_authorize_request(ticket: str) -> dict | None:
@@ -261,6 +335,11 @@ class ConvoyPlanOAuthProvider(
     # ---- Clients ----
 
     async def get_client(self, client_id: str) -> OAuthClientInformationFull | None:
+        # Der App-Client steht im Code, nicht in der Datenbank — dort liegt
+        # nur eine Zeile für die Fremdschlüssel (``app_client``).
+        if app_client.ist_app_client(client_id):
+            return app_client.client_information() if app_client.aktiv() else None
+
         # Eine HTTPS-client_id ist ein Metadatendokument, kein Bezeichner in
         # der Datenbank — dort steht sie gar nicht.
         if ist_cimd_client_id(client_id):
@@ -330,6 +409,9 @@ class ConvoyPlanOAuthProvider(
     async def authorize(
         self, client: OAuthClientInformationFull, params: AuthorizationParams
     ) -> str:
+        if app_client.ist_app_client(client.client_id):
+            return await self._authorize_app(params)
+
         # Der *geltende* Zustand — Datenbank schlägt Umgebungsvariable. Stand
         # hier ``settings.mcp_enabled``, war es derselbe Fehler wie zuvor im
         # Consent-Router (siehe ``routes/mcp_consent.py``), nur eine Station
@@ -371,9 +453,38 @@ class ConvoyPlanOAuthProvider(
         base = settings.app_base_url.rstrip("/")
         return f"{base}/oauth/consent?request={ticket}"
 
+    async def _authorize_app(self, params: AuthorizationParams) -> str:
+        """``/authorize`` für den App-Client: Organisation prüfen, Ticket bauen,
+        auf ``/oauth/app`` im Frontend weiterleiten.
+
+        Kein MCP-Schalter, keine Scopes. Eine ``resource`` darf fehlen oder
+        muss die REST-API dieser Instanz sein — aus demselben Grund wie bei
+        MCP (RFC 8707): ein Token für eine fremde Resource stellen wir nicht
+        aus."""
+        if params.resource and params.resource.rstrip("/") != app_client.api_resource_url():
+            raise AuthorizeError(
+                "invalid_target",
+                f"Die App bekommt nur Tokens für {app_client.api_resource_url()}",
+            )
+        slug = (ANGEFRAGTE_ORG.get() or "").strip()
+        if not slug:
+            raise AuthorizeError("invalid_request", "org_slug fehlt")
+        async with get_db_session() as db:
+            org = (
+                await db.execute(select(Organization).where(Organization.slug == slug))
+            ).scalar_one_or_none()
+        if org is None:
+            raise AuthorizeError("invalid_request", "Unbekannte Organisation")
+
+        ticket = encode_app_request(params, org.slug)
+        base = settings.app_base_url.rstrip("/")
+        return f"{base}/oauth/app?request={ticket}"
+
     async def load_authorization_code(
         self, client: OAuthClientInformationFull, authorization_code: str
     ) -> AuthorizationCode | None:
+        if not await _client_zulaessig(client.client_id):
+            return None
         async with get_db_session() as db:
             row = (
                 await db.execute(
@@ -414,7 +525,7 @@ class ConvoyPlanOAuthProvider(
         code_hash = oauth_tokens.token_hash(authorization_code.code)
         now = datetime.now(timezone.utc)
 
-        async with get_db_session() as db:
+        async with _token_sitzung() as db:
             # Einmalverwendung in einem Schritt: nur wer die Zeile von
             # "unverbraucht" auf "verbraucht" dreht, bekommt sie. Zwei
             # gleichzeitige Einlöseversuche können so nicht beide gewinnen.
@@ -432,13 +543,18 @@ class ConvoyPlanOAuthProvider(
             )
             claim = claimed.first()
             if claim is None:
-                raise TokenError("invalid_grant", "Autorisierungscode bereits eingelöst")
+                raise _TokenAbbruch("invalid_grant", "Autorisierungscode bereits eingelöst")
 
             user_id, org_id, scopes_raw, resource, family_id = claim
             user = await db.get(User, user_id)
             if user is None or not user.is_active:
                 await db.commit()
-                raise TokenError("invalid_grant", "Benutzerkonto nicht mehr aktiv")
+                raise _TokenAbbruch("invalid_grant", "Benutzerkonto nicht mehr aktiv")
+
+            if app_client.ist_app_client(client.client_id):
+                token = await _app_tokens(db, user=user, org_id=org_id, family_id=family_id)
+                await db.commit()
+                return token
 
             scopes = scopes_raw.split()
             access_token, expires_in = oauth_tokens.mint_access_token(
@@ -456,6 +572,7 @@ class ConvoyPlanOAuthProvider(
                 organization_id=org_id,
                 scopes=scopes,
                 resource=resource,
+                token_version=user.token_version,
             )
             await db.execute(
                 update(OAuthClient)
@@ -476,6 +593,8 @@ class ConvoyPlanOAuthProvider(
     async def load_refresh_token(
         self, client: OAuthClientInformationFull, refresh_token: str
     ) -> RefreshToken | None:
+        if not await _client_zulaessig(client.client_id):
+            return None
         async with get_db_session() as db:
             row = await oauth_tokens.load_refresh_token(db, refresh_token)
             if row is None or row.client_id != client.client_id:
@@ -496,7 +615,7 @@ class ConvoyPlanOAuthProvider(
         scopes: list[str],
     ) -> OAuthToken:
         now = datetime.now(timezone.utc)
-        async with get_db_session() as db:
+        async with _token_sitzung() as db:
             # Rotation in einem Schritt, aus demselben Grund wie beim Code:
             # zwei gleichzeitige Versuche dürfen nicht beide gewinnen.
             rotated = await db.execute(
@@ -513,13 +632,34 @@ class ConvoyPlanOAuthProvider(
                     OAuthRefreshToken.organization_id,
                     OAuthRefreshToken.scopes,
                     OAuthRefreshToken.resource,
+                    OAuthRefreshToken.token_version,
                 )
             )
             claim = rotated.first()
             if claim is None:
-                raise TokenError("invalid_grant", "Refresh-Token ungültig oder bereits verwendet")
+                raise _TokenAbbruch("invalid_grant", "Refresh-Token ungültig oder bereits verwendet")
 
-            family_id, user_id, org_id, granted_raw, resource = claim
+            family_id, user_id, org_id, granted_raw, resource, token_version = claim
+
+            user = await db.get(User, user_id)
+            if user is None or not user.is_active:
+                await db.commit()
+                raise _TokenAbbruch("invalid_grant", "Benutzerkonto nicht mehr aktiv")
+            # Passwortwechsel oder „überall abmelden" seit dem Ausstellen: die
+            # Kette endet hier. Ohne diese Prüfung holte sich der Client mit dem
+            # alten Refresh-Token einfach ein Access-Token mit der neuen Version.
+            if token_version is not None and token_version != user.token_version:
+                await oauth_tokens.revoke_family(
+                    db, family_id, reason="token_version des Benutzers hat sich geändert"
+                )
+                await db.commit()
+                raise _TokenAbbruch("invalid_grant", "Sitzung beendet — bitte erneut anmelden")
+
+            if app_client.ist_app_client(client.client_id):
+                token = await _app_tokens(db, user=user, org_id=org_id, family_id=family_id)
+                await db.commit()
+                return token
+
             granted = granted_raw.split()
 
             # Eine Verengung ist erlaubt, eine Ausweitung nie: ein Client darf
@@ -528,16 +668,11 @@ class ConvoyPlanOAuthProvider(
             widened = [s for s in requested if not scope_svc.satisfies(granted, s)]
             if widened:
                 await db.commit()
-                raise TokenError(
+                raise _TokenAbbruch(
                     "invalid_scope",
                     f"Nicht zugestimmte Scopes: {', '.join(widened)}",
                 )
             effective = [s for s in granted if s in set(requested)] or granted
-
-            user = await db.get(User, user_id)
-            if user is None or not user.is_active:
-                await db.commit()
-                raise TokenError("invalid_grant", "Benutzerkonto nicht mehr aktiv")
 
             access_token, expires_in = oauth_tokens.mint_access_token(
                 user=user,
@@ -554,6 +689,7 @@ class ConvoyPlanOAuthProvider(
                 organization_id=org_id,
                 scopes=effective,
                 resource=resource,
+                token_version=user.token_version,
             )
             await db.commit()
 
@@ -611,6 +747,65 @@ class ConvoyPlanOAuthProvider(
 
 
 # ── Hilfen ───────────────────────────────────────────────────────────────
+
+
+async def _client_zulaessig(client_id: str) -> bool:
+    """Ob ein Client gerade Codes und Refresh-Tokens einlösen darf.
+
+    Der App-Client, solange er eingeschaltet ist; jeder andere nur, solange
+    MCP an ist. Nötig, seit ``/token`` auch bei abgeschaltetem MCP montiert
+    ist (für die App): ohne diese Prüfung tauschte eine MCP-Verbindung dort
+    weiter Refresh-Tokens, obwohl es ``/mcp`` gar nicht gibt."""
+    if app_client.ist_app_client(client_id):
+        return app_client.aktiv()
+    async with get_db_session() as db:
+        return await mcp_config.is_mcp_enabled(db)
+
+
+async def _app_tokens(
+    db: AsyncSession, *, user: User, org_id: uuid.UUID, family_id: uuid.UUID
+) -> OAuthToken:
+    """Access- und Refresh-Token für die App — nur für ein Mitglied.
+
+    Die Mitgliedschaft wird bei jedem Tausch neu gelesen: wer aus der
+    Organisation entfernt wurde, bekommt hier nichts mehr, und die Kette
+    endet. Die Rolle kommt aus derselben Zeile, nicht aus dem Code."""
+    row = (
+        await db.execute(
+            select(Organization, UserOrganization.role)
+            .join(UserOrganization, UserOrganization.organization_id == Organization.id)
+            .where(UserOrganization.user_id == user.id, Organization.id == org_id)
+        )
+    ).first()
+    if row is None:
+        await oauth_tokens.revoke_family(db, family_id, reason="nicht mehr Mitglied der Organisation")
+        await db.commit()
+        raise _TokenAbbruch("invalid_grant", "Kein Mitglied dieser Organisation")
+    org, role = row
+
+    access_token, expires_in = app_client.mint_access_token(user=user, org=org, role=role)
+    refresh = await oauth_tokens.mint_refresh_token(
+        db,
+        family_id=family_id,
+        client_id=app_client.CLIENT_ID,
+        user_id=user.id,
+        organization_id=org.id,
+        scopes=[],
+        resource=app_client.api_resource_url(),
+        token_version=user.token_version,
+        ttl=app_client.refresh_ttl(),
+    )
+    await db.execute(
+        update(OAuthClient)
+        .where(OAuthClient.client_id == app_client.CLIENT_ID)
+        .values(last_used_at=datetime.now(timezone.utc))
+    )
+    return OAuthToken(
+        access_token=access_token,
+        expires_in=expires_in,
+        refresh_token=refresh,
+    )
+
 
 
 def _ts_to_datetime(value: int | None) -> datetime | None:

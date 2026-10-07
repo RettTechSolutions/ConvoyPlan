@@ -188,6 +188,19 @@ class Settings(BaseSettings):
     # Gültigkeit des Autorisierungscodes zwischen Zustimmung und Token-Tausch.
     # Kurz, weil der Client ihn sofort einlöst (OAuth 2.1 empfiehlt <= 1 min).
     mcp_code_ttl_seconds: int = 60
+
+    # Der fest eingebaute OAuth-Client der Begleit-App (``services/app_client.py``).
+    # Die App meldet sich über den Browser des Systems an (RFC 8252), der Passkey
+    # bleibt bei der Webseite. Unabhängig vom MCP-Schalter: mit ihm aus hängen
+    # ``/authorize``, ``/token`` und ``/revoke`` nur noch an diesem Client.
+    app_oauth_enabled: bool = True
+    # Access-Tokens der App: kurz, aus demselben Grund wie bei MCP — sie stehen
+    # in keiner Tabelle und lassen sich nicht einzeln zurückholen.
+    app_oauth_access_token_ttl_minutes: int = 15
+    # So lange lebt ein Refresh-Token der App **ohne Nutzung**: jede Nutzung
+    # rotiert es und stellt ein neues mit voller Laufzeit aus. 90 statt der 30
+    # von MCP, weil ein Planer die App oft nur zu Einsätzen öffnet.
+    app_oauth_refresh_token_ttl_days: int = 90
     # Obergrenze für Werkzeugaufrufe je Verbindung und Minute. Ein Modell in
     # einer Schleife ist ein realistisches Lastprofil, kein Sonderfall — und
     # anders als ein Mensch merkt es nicht von selbst, dass es sich im Kreis

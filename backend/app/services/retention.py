@@ -131,7 +131,12 @@ def orphan_client_filter(cutoff: datetime):
     stehen, ein unbenutzter ohne Tokens geht — in beide Richtungen
     entscheidet, ob an der Zeile noch etwas hängt.
     """
+    from app.services.app_client import CLIENT_ID as APP_CLIENT_ID
+
     return sa_and(
+        # Der App-Client ist keine Registrierung, sondern steht im Code; seine
+        # Zeile trägt nur die Fremdschlüssel und wird nie aufgeräumt.
+        OAuthClient.client_id != APP_CLIENT_ID,
         ~exists().where(OAuthRefreshToken.client_id == OAuthClient.client_id),
         ~exists().where(OAuthCode.client_id == OAuthClient.client_id),
         func.coalesce(OAuthClient.last_used_at, OAuthClient.created_at) < cutoff,

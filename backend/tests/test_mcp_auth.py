@@ -13,6 +13,7 @@ from app.config import settings
 from app.database import AsyncSessionLocal
 from app.mcp import scopes as scope_svc
 from app.models.oauth_refresh_token import OAuthRefreshToken
+from app.models.user import User
 from app.services import oauth_tokens
 from tests.mcp_fixtures import (
     BASE_URL,
@@ -486,6 +487,29 @@ async def test_refresh_kann_scopes_nicht_ausweiten():
         assert result["status"] == 400
         assert result["body"]["error"] == "invalid_scope"
         await purge_clients([reg["client_id"]])
+
+
+@pytest.mark.asyncio
+async def test_deaktiviertes_konto_bekommt_beim_refresh_invalid_grant():
+    """Und zwar ``invalid_grant``, nicht 500. ``TokenError`` ist eine
+    eingefrorene Dataclass; innerhalb von ``async with get_db_session()``
+    geworfen, scheiterte ``contextlib`` am Zuweisen des Tracebacks, und der
+    Client sah einen Serverfehler statt einer Absage (siehe
+    ``oauth_provider._TokenAbbruch``)."""
+    async with seeded() as fx, mcp_app() as (_app, client):
+        reg, token = await connect(client, fx.planer, fx.org_a)
+        async with AsyncSessionLocal() as db:
+            (await db.get(User, fx.planer.id)).is_active = False
+            await db.commit()
+        try:
+            result = await _refresh(client, reg, token["refresh_token"])
+            assert result["status"] == 400, result
+            assert result["body"]["error"] == "invalid_grant"
+        finally:
+            async with AsyncSessionLocal() as db:
+                (await db.get(User, fx.planer.id)).is_active = True
+                await db.commit()
+            await purge_clients([reg["client_id"]])
 
 
 @pytest.mark.asyncio

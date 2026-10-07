@@ -48,6 +48,12 @@ def _ensure_token_current(token_data: TokenData, user: User) -> None:
         )
 
 
+def _api_audience() -> str:
+    from app.services.app_client import api_resource_url
+
+    return api_resource_url()
+
+
 def _decode_token(token: str, *, allow_stream: bool = False) -> TokenData:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -55,7 +61,19 @@ def _decode_token(token: str, *, allow_stream: bool = False) -> TokenData:
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = _jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        # Die Audience prüft PyJWT hier nicht selbst: die Tokens aus
+        # ``/api/auth/login`` tragen keine, und ohne ``audience=`` lehnte es
+        # jedes Token *mit* einer ab. Stattdessen ausdrücklich unten — ein
+        # Token mit ``aud`` gilt nur, wenn sie die REST-API dieser Instanz ist
+        # (Access-Tokens der Begleit-App, ``services/app_client.py``).
+        payload = _jwt.decode(
+            token,
+            settings.jwt_secret,
+            algorithms=[settings.jwt_algorithm],
+            options={"verify_aud": False},
+        )
+        if "aud" in payload and payload["aud"] != _api_audience():
+            raise credentials_exception
         user_id_str: str | None = payload.get("sub")
         if user_id_str is None:
             raise credentials_exception

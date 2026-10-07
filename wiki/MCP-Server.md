@@ -157,6 +157,8 @@ curl -i -X POST https://<domain>/mcp -H 'Content-Type: application/json' -d '{}'
 
 > **Ausgeschaltet heißt wirklich ausgeschaltet.** Der Schalter entfernt die Routen, statt sie mit einer Fehlerseite zu bedecken: es gibt dann weder `/mcp` noch die Discovery-Dokumente — nicht als 404 eines Handlers, sondern weil keine Route passt. Genau das war der Grund, warum es lange nur eine Umgebungsvariable gab; die Zusage gilt mit dem Knopf unverändert weiter und wird von einem Test festgehalten.
 >
+> **Was nach dem Ausschalten bleibt:** `/authorize`, `/token`, `/revoke` und `/.well-known/oauth-authorization-server` — sie dienen auch der Anmeldung der Begleit-App (siehe [Sicherheit und Datenschutz](Sicherheit-und-Datenschutz), „Anmeldung der Begleit-App"). MCP-Clients kommen dort trotzdem nicht weiter, und `/mcp`, `/register` sowie die Protected-Resource-Metadaten gibt es nicht mehr. Mit `APP_OAUTH_ENABLED=false` verschwinden auch die vier.
+
 > **Was das Ausschalten nicht tut:** bereits ausgestellte Zugriffstoken ungültig machen. Die laufen ins Leere, weil der Endpunkt fehlt, bleiben aber Tokens. Wer sie wirklich entziehen will, trennt die Verbindungen im Reiter **MCP**.
 
 Der Reverse Proxy braucht Routen für `/mcp` und die OAuth-Pfade an der Wurzel der Site. **Bestehende Installationen rüsten das beim nächsten Backend-Start automatisch nach**; bei Neuinstallationen ist es von vornherein enthalten.

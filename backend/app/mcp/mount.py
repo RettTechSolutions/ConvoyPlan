@@ -54,6 +54,7 @@ from mcp.server.streamable_http_manager import (
     StreamableHTTPASGIApp,
     StreamableHTTPSessionManager,
 )
+from mcp.shared.auth import OAuthMetadata
 from pydantic import AnyHttpUrl
 from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.routing import Route
@@ -67,8 +68,8 @@ from app.mcp import resources as mcp_resources
 from app.mcp import subscriptions as mcp_subs
 from app.mcp import tools_read, tools_write, widgets as mcp_widgets
 from app.middleware.license_guard import is_licensed
-from app.services import mcp_config, oauth_tokens, org_mcp_policy
-from app.services.oauth_provider import ConvoyPlanOAuthProvider
+from app.services import app_client, mcp_config, oauth_tokens, org_mcp_policy
+from app.services.oauth_provider import ANGEFRAGTE_ORG, ConvoyPlanOAuthProvider
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,15 @@ _session_manager: StreamableHTTPSessionManager | None = None
 # der nur 404 zurückgibt — siehe `app/services/mcp_config.py`.
 _app: "FastAPI | None" = None
 _routes: list[Route] = []
+# Die Routen des Authorization Servers (``/authorize``, ``/token``,
+# ``/revoke``, AS-Metadaten). Getrennt von den MCP-Routen, weil sie auch der
+# Begleit-App dienen (``services/app_client.py``): montiert, solange MCP
+# **oder** der App-Client eingeschaltet ist. ``/register`` gehört nicht dazu
+# — Selbstregistrierung gibt es nur für MCP.
+_as_routes: list[Route] = []
+
+# Pfade der AS-Routen, wie ``create_auth_routes`` sie anlegt.
+_AS_PFADE = frozenset({"/authorize", "/token", "/revoke", "/.well-known/oauth-authorization-server"})
 
 
 def _tool_name(tool) -> str | None:
@@ -455,6 +465,17 @@ def build_server() -> MCPServer:
     return mcp
 
 
+class _MetadataMitApp(OAuthMetadata):
+    """Die AS-Metadaten plus die Kennung des App-Clients.
+
+    Daran erkennt die Begleit-App, dass sie sich über den Browser anmelden
+    kann (``services/app_client.py``) — ohne Fehlversuch. Das Modell des SDK
+    verwirft unbekannte Felder still, deshalb diese Unterklasse statt eines
+    ``model_copy(update=…)``."""
+
+    convoyplan_app_client_id: str | None = None
+
+
 def _authorization_server_metadata_route(auth_settings: AuthSettings) -> Route:
     """Die AS-Metadata selbst bauen, um ``iss`` anzukündigen.
 
@@ -489,12 +510,22 @@ def _authorization_server_metadata_route(auth_settings: AuthSettings) -> Route:
         setzt ``Cache-Control: max-age=3600``. Ein Client, der das Dokument
         vorhält, sieht eine Änderung erst danach."""
         async with get_db_session() as db:
-            cimd = await mcp_config.is_cimd_allowed(db)
-        dokument = (
-            metadata.model_copy(update={"client_id_metadata_document_supported": True})
-            if cimd
-            else metadata
-        )
+            mcp_an = await mcp_config.is_mcp_enabled(db)
+            cimd = mcp_an and await mcp_config.is_cimd_allowed(db)
+        if not mcp_an:
+            # Nur noch der App-Client: nichts ankündigen, was es dann nicht
+            # gibt — kein ``/register``, keine MCP-Scopes.
+            dokument = metadata.model_copy(
+                update={"registration_endpoint": None, "scopes_supported": None}
+            )
+        elif cimd:
+            dokument = metadata.model_copy(update={"client_id_metadata_document_supported": True})
+        else:
+            dokument = metadata
+        if app_client.aktiv():
+            dokument = _MetadataMitApp(
+                **dokument.model_dump(), convoyplan_app_client_id=app_client.CLIENT_ID
+            )
         return await MetadataHandler(dokument).handle(request)
 
     return Route(
@@ -502,6 +533,28 @@ def _authorization_server_metadata_route(auth_settings: AuthSettings) -> Route:
         endpoint=cors_middleware(_handle, ["GET", "OPTIONS"]),
         methods=["GET", "OPTIONS"],
     )
+
+
+class _OrgAusAnfrage:
+    """Reicht ``org_slug`` aus der Anfrage an ``provider.authorize`` durch.
+
+    Das SDK liest ``/authorize`` in ein festes Modell und verwirft weitere
+    Parameter. Die Begleit-App braucht genau einen davon — für welche
+    Organisation sie sich anmeldet —, also legt diese Hülle ihn für die Dauer
+    der Anfrage in ``ANGEFRAGTE_ORG`` ab. Für MCP-Clients bleibt er ungelesen."""
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send) -> None:
+        from urllib.parse import parse_qs
+
+        werte = parse_qs(scope.get("query_string", b"").decode("latin-1")).get("org_slug") or [None]
+        marke = ANGEFRAGTE_ORG.set(werte[0])
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            ANGEFRAGTE_ORG.reset(marke)
 
 
 def mount(app: FastAPI) -> None:
@@ -518,7 +571,7 @@ def mount(app: FastAPI) -> None:
     betreten hat — aus einem Request-Handler heraus ließe sie sich nicht
     nachträglich öffnen). Beobachtbar ist davon nichts: ohne Routen führt
     kein Weg dorthin, und die Task-Group läuft leer."""
-    global _session_manager, _app, _routes
+    global _session_manager, _app, _routes, _as_routes
 
     _app = app
     mcp = build_server()
@@ -577,16 +630,21 @@ def mount(app: FastAPI) -> None:
         if getattr(r, "path", "") != "/.well-known/oauth-authorization-server"
     ]
     gesammelt.extend(metadata_routes)
-    gesammelt.append(_authorization_server_metadata_route(auth_settings))
-    gesammelt.extend(auth_routes)
+    as_routen: list[Route] = [_authorization_server_metadata_route(auth_settings)]
+    for route in auth_routes:
+        pfad = getattr(route, "path", "")
+        if pfad == "/authorize":
+            route = Route(pfad, endpoint=_OrgAusAnfrage(route.app), methods=route.methods)
+        (as_routen if pfad in _AS_PFADE else gesammelt).append(route)
     _routes = gesammelt
+    _as_routes = as_routen
 
     logger.info(
         "MCP: vorbereitet für %s (Resource %s, DCR %s) — %d Routen, noch nicht montiert",
         MCP_PATH,
         auth_settings.resource_server_url,
         "an" if settings.mcp_allow_dcr else "aus",
-        len(_routes),
+        len(_routes) + len(_as_routes),
     )
 
 
@@ -600,31 +658,52 @@ def ist_aktiv() -> bool:
     return _routes[0] in _app.router.routes
 
 
+def _anwenden(mcp_an: bool) -> None:
+    """Die Routentabelle auf den Sollzustand bringen.
+
+    MCP-Routen genau dann, wenn MCP an ist; die des Authorization Servers,
+    wenn MCP **oder** der App-Client an ist. Die Liste wird als Ganzes
+    ersetzt statt in Ruhe verändert: eine Anfrage, die gerade darüber läuft,
+    hält noch die alte und läuft sauber zu Ende. Entfernt wird über
+    Objekt-Identität, nicht über den Pfad."""
+    if _app is None:
+        return
+    unsere = {id(r) for r in (*_routes, *_as_routes)}
+    soll: list[Route] = []
+    if mcp_an:
+        soll.extend(_routes)
+    if mcp_an or app_client.aktiv():
+        soll.extend(_as_routes)
+    vorher = [r for r in _app.router.routes if id(r) in unsere]
+    if [id(r) for r in vorher] == [id(r) for r in soll]:
+        return
+    _app.router.routes = [*(r for r in _app.router.routes if id(r) not in unsere), *soll]
+    _openapi_verwerfen()
+
+
 def aktivieren() -> bool:
     """Die MCP-Routen anhängen. Gibt zurück, ob sich etwas geändert hat."""
     if _app is None or not _routes or ist_aktiv():
         return False
-    # Die Liste wird als Ganzes ersetzt statt in Ruhe verändert: eine Anfrage,
-    # die gerade darüber läuft, hält noch die alte und läuft sauber zu Ende.
-    _app.router.routes = [*_app.router.routes, *_routes]
-    _openapi_verwerfen()
-    logger.info("MCP: aktiviert — %d Routen montiert", len(_routes))
+    _anwenden(True)
+    logger.info("MCP: aktiviert — %d Routen montiert", len(_routes) + len(_as_routes))
     return True
 
 
 def deaktivieren() -> bool:
     """Die MCP-Routen wieder entfernen. Gibt zurück, ob sich etwas geändert hat.
 
-    Danach gibt es ``/mcp`` und die Well-Known-Dokumente wirklich nicht mehr —
-    404, weil keine Route passt, nicht weil ein Handler ablehnt. Bereits
+    Danach gibt es ``/mcp``, ``/register`` und die Protected-Resource-Metadaten
+    wirklich nicht mehr — 404, weil keine Route passt, nicht weil ein Handler
+    ablehnt. ``/authorize``, ``/token``, ``/revoke`` und die AS-Metadaten
+    bleiben, solange der App-Client eingeschaltet ist; MCP-Clients kommen dort
+    trotzdem nicht weiter (``oauth_provider._client_zulaessig``). Bereits
     ausgestellte Tokens werden dadurch **nicht** ungültig; sie laufen nur ins
     Leere, weil der Endpunkt fehlt. Wer sie loswerden will, trennt die
     Verbindungen im Reiter MCP."""
     if _app is None or not _routes or not ist_aktiv():
         return False
-    unsere = {id(r) for r in _routes}
-    _app.router.routes = [r for r in _app.router.routes if id(r) not in unsere]
-    _openapi_verwerfen()
+    _anwenden(False)
     logger.info("MCP: deaktiviert — Routen entfernt")
     return True
 
@@ -648,10 +727,10 @@ async def zustand_anwenden() -> bool:
 
     async with get_db_session() as db:
         soll = await mcp_config.is_mcp_enabled(db)
-    if soll:
-        aktivieren()
-    else:
-        deaktivieren()
+    # Immer anwenden, nicht nur bei einem Wechsel: beim Start mit MCP aus
+    # gibt es nichts zu deaktivieren, die Routen des App-Clients müssen aber
+    # trotzdem hinein.
+    _anwenden(soll)
     return soll
 
 
@@ -678,4 +757,5 @@ async def lifespan_context():
             logger.warning(
                 "MCP: Schalterzustand nicht lesbar — bleibt deaktiviert", exc_info=True
             )
+            _anwenden(False)
         yield

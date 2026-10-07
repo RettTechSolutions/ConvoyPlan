@@ -263,8 +263,10 @@ Ein `?key=…` im Query-String wird nicht akzeptiert. Siehe `backend/app/api/doc
 ### MCP-Server (KI-Schnittstelle)
 
 `/mcp` stellt Konvois, Fahrzeuge, Wegpunkte, Routen und Status als
-Model-Context-Protocol-Server bereit. **Standardmäßig aus** — abgeschaltet wird
-kein Endpunkt montiert, auch keine Well-Known-Dokumente.
+Model-Context-Protocol-Server bereit. **Standardmäßig aus** — abgeschaltet gibt
+es `/mcp`, `/register` und die Protected-Resource-Metadaten nicht. `/authorize`,
+`/token`, `/revoke` und die AS-Metadaten bleiben, solange der App-Client an ist
+(siehe „Begleit-App" unten); MCP-Clients kommen dort trotzdem nicht weiter.
 
 Der Schalter sitzt im Admin-Portal unter **System → KI-Schnittstelle** und wirkt
 ohne Neustart; `MCP_ENABLED` ist nur noch der Ausgangswert (Datenbank schlägt
@@ -366,6 +368,49 @@ Anwenderdoku: `wiki/MCP-Server.md`.
 Die ASGI-Verdrahtung in `app/mcp/mount.py` hängt an internen Details des SDK —
 `mcp` ist deshalb exakt gepinnt, und `tests/test_mcp_auth.py` prüft das beobachtbare
 Verhalten. Bei einem SDK-Upgrade zuerst dort nachsehen.
+
+### Begleit-App: Anmeldung über den Browser (OAuth ohne Zustimmungsschirm)
+
+Die App (Repo Convoyplan-Companion) meldet sich per OAuth 2.1 + PKCE über den
+Browser des Systems an (RFC 8252) — ein nativer Passkey bräuchte jede Instanz-Domain
+im Store-Build. Der Client steht im Code (`app/services/app_client.py`), nicht in der
+Datenbank: `convoyplan-companion`, ohne Secret, genau eine Redirect-URI
+`de.convoyplan.companion:/oauth`. `validate_redirect_uri` bleibt für registrierte
+Clients bei HTTPS/Loopback; das Schema gilt nur hier und kommt nie aus einer Anfrage.
+
+Vier Dinge, die man kennen muss:
+
+- **Unabhängig von MCP.** `app/mcp/mount.py` trennt die Routen: MCP-eigene
+  (`/mcp`, `/register`, Protected-Resource-Metadaten) hängen am MCP-Schalter, die des
+  Authorization Servers an MCP **oder** `APP_OAUTH_ENABLED`. Deshalb prüft der
+  Provider beim Einlösen selbst (`_client_zulaessig`), sonst tauschte eine
+  MCP-Verbindung bei abgeschaltetem MCP an `/token` weiter. `org_slug` kommt über
+  eine Hülle um `/authorize` (`_OrgAusAnfrage` → `ANGEFRAGTE_ORG`), weil das SDK
+  zusätzliche Parameter verwirft.
+- **Kein Zustimmungsschirm, aber auch kein stiller Code.** `/oauth/app` stellt den
+  Code ohne Rückfrage nur aus, wenn die Org-Sitzung *nach* der Anfrage entstand
+  (`frisch_angemeldet`: `iat` der Sitzung ≥ `iat` des Tickets — deshalb trägt
+  `create_token` jetzt `iat`); sonst 409 und ein Klick. Ohne das könnte jede fremde
+  Seite den Browser eines Angemeldeten auf `/authorize` schicken, und der Code ginge
+  an die App, die sich das Schema genommen hat. Gelesen wird nur das Cookie der
+  Organisation aus dem Ticket, nicht `get_current_person`.
+- **Tokens für die REST-API.** Access-Tokens der App sind `typ="access"` mit
+  `aud=<instanz>/api` (15 min). `deps._decode_token` prüft die Audience ausdrücklich
+  (PyJWT dort mit `verify_aud: False`, weil Login-Tokens keine tragen): ein Token mit
+  fremder `aud` gilt nicht. Refresh-Tokens 90 Tage ohne Nutzung, mit Rotation; sie
+  tragen die `token_version` (Migration `0054`) — gilt seither auch für MCP: ein
+  Passwortwechsel beendet die Kette beim nächsten Erneuern. Die Mitgliedschaft wird
+  bei jedem Tausch neu gelesen.
+- **`TokenError` nie innerhalb von `get_db_session()` werfen.** Sie ist eine
+  eingefrorene Dataclass, `contextlib` scheitert am Traceback, und aus `invalid_grant`
+  wird ein 500. Im Token-Pfad gilt `_token_sitzung()` mit `_TokenAbbruch`.
+
+Die App erkennt den Weg an `convoyplan_app_client_id` in `/.well-known/oauth-authorization-server` (so liest es Convoyplan-Companion#89; zusätzlich `GET /api/version` → `app_oauth`). In den MCP-Listen und
+-Zählern des Admin- und Org-Portals taucht der Client nicht auf, die Aufräumroutine
+lässt seine Zeile stehen. Tests: `tests/test_app_anmeldung.py` (ganzer Weg mit MCP
+aus), `tests/test_mcp_toggle.py` (Routentabelle mit und ohne App-Client),
+`frontend/e2e/app-anmeldung.spec.ts`. Anwenderdoku: `wiki/Sicherheit-und-Datenschutz.md`,
+„Anmeldung der Begleit-App".
 
 ### Auskunft für Agenten (llms.txt, Well-Known, Markdown)
 

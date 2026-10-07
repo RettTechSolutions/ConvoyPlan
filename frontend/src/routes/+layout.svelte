@@ -32,9 +32,14 @@
 	// die Anmeldemaske, an der er sich gerade nicht anmelden kann. Dasselbe
 	// gilt für /demo/abmelden: der Link steht in einer E-Mail, wer ihn
 	// anklickt, hat keine Sitzung mehr.
+	//
+	// /oauth/app (Anmeldung der Begleit-App) prüft selbst, und zwar die Sitzung
+	// *einer Organisation* — eine globale hat dort kaum jemand. Stünde sie
+	// nicht hier, landete jedes Mitglied auf der Superadmin-Anmeldung.
 	const PUBLIC_ROUTES = [
 		'/share', '/track', '/setup', '/o/', '/admin', '/status', '/demo',
-		'/about', '/contact', '/privacy', '/terms', '/pricing', '/developers', '/docs'
+		'/about', '/contact', '/privacy', '/terms', '/pricing', '/developers', '/docs',
+		'/oauth/app'
 	];
 	const isPublicPath = (path: string) =>
 		path === '/' || PUBLIC_ROUTES.some((r) => path.startsWith(r));

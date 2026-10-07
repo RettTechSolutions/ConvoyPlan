@@ -134,6 +134,38 @@ Passkeys, nicht aber Kennung und Schlüssel.
 
 ---
 
+## Anmeldung der Begleit-App
+
+Die ConvoyPlan-App meldet sich — wo die Instanz es anbietet — **über den Browser
+des Telefons** an statt mit einer eigenen Passwortmaske: Die App öffnet die
+Anmeldeseite der Organisation, man meldet sich dort an wie im Web (Passwort, MFA
+oder Passkey), und der Browser gibt die App wieder frei. Technisch ist das OAuth 2.1
+mit PKCE nach RFC 8252; der Passkey bleibt bei der Webseite, die App bekommt nur
+Zugangstokens.
+
+- **Keine Freigabeliste wie bei der KI-Schnittstelle.** Die App darf, was die Rolle
+  in der Organisation hergibt — dieselbe Prüfung wie im Web, bei jedem Aufruf neu.
+  Gilt unabhängig davon, ob MCP eingeschaltet ist.
+- **Eine Rückfrage bei bestehender Sitzung.** Wer sich in diesem Ablauf frisch
+  angemeldet hat, ist sofort zurück in der App. Ist der Browser noch von früher
+  angemeldet, fragt die Seite einmal nach („In der ConvoyPlan-App als … anmelden?").
+  Nur bestätigen, wenn man die Anmeldung gerade selbst in der App gestartet hat.
+- **Nur die eigene Organisation.** Wer nicht Mitglied der Organisation ist, für die
+  die App fragt, wird abgewiesen; eine andere wird nicht angeboten.
+- **Laufzeiten.** Der Zugang der App gilt 15 Minuten und wird im Hintergrund erneuert.
+  Wird die App **90 Tage** nicht benutzt, muss man sich neu anmelden
+  (`APP_OAUTH_REFRESH_TOKEN_TTL_DAYS`).
+- **Beenden.** Passwort ändern oder zurücksetzen, das Konto deaktivieren oder es aus
+  der Organisation entfernen beendet auch die App-Anmeldung. Ganz abschalten lässt
+  sich der Weg mit `APP_OAUTH_ENABLED=false`; die App bleibt dann bei ihrer
+  Passwortmaske.
+
+Ob eine Instanz den Weg anbietet, liest die App aus
+`/.well-known/oauth-authorization-server` (Feld `convoyplan_app_client_id`). Anmeldungen stehen im Audit-Log als `auth.app.granted` bzw.
+`auth.app.denied`.
+
+---
+
 ## Audit-Log
 
 Ein **append-only** Protokoll erfasst sicherheitsrelevante Ereignisse (Logins, MFA, Passkeys, Passwortänderungen, Benutzer-/Org-Anlage, Lizenzaktivierung) inklusive Akteur, Ziel, IP und User-Agent. Superadmins rufen es über `GET /api/admin/audit-log` (filterbar nach Aktion) ab.

@@ -36,6 +36,9 @@ from app.services.license import validate_license
 _EXEMPT_PREFIXES = (
     "/health",
     "/api/auth/login",
+    # Die Anmeldung der Begleit-App über den Browser — eine Anmeldung wie die
+    # darüber, nur dass am Ende ein Code statt eines Cookies steht.
+    "/api/oauth/app/",
     # Ein Widerspruch gegen die Nachfrage-Mail muss auch dann durchgehen, wenn
     # die Lizenz zwischenzeitlich abgelaufen ist — sonst hinge eine
     # datenschutzrechtliche Pflicht am Lizenzstatus.
