@@ -40,86 +40,108 @@ async function geraet(page: Page): Promise<{ cdp: CDPSession; id: string }> {
 	return { cdp, id: authenticatorId };
 }
 
-test.describe('Anmelden mit Passkey', () => {
-	test('schickt nur die signierte Challenge — für genau diese Organisation', async ({ page }) => {
-		const { cdp, id } = await geraet(page);
-		const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
-		const credentialId = randomBytes(16);
-		const userHandle = randomBytes(16);
-		await cdp.send('WebAuthn.addCredential', {
-			authenticatorId: id,
-			credential: {
-				credentialId: credentialId.toString('base64'),
-				isResidentCredential: true,
-				rpId: 'localhost',
-				privateKey: privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64'),
-				userHandle: userHandle.toString('base64'),
-				signCount: 0,
-			},
+/**
+ * Eine Anmeldung mit echtem (virtuellem) Gerät, über den Knopf oder über das
+ * Autofill am E-Mail-Feld — beide Wege müssen dieselben Bytes abliefern.
+ *
+ * Beim Knopf-Weg ist das Autofill abgeschaltet: der virtuelle Authenticator
+ * beantwortet sonst auch die stille Anfrage von selbst, und je nachdem, wer
+ * schneller ist, wäre die Anmeldung vor dem Klick schon geschehen.
+ */
+async function anmelden(page: Page, weg: 'knopf' | 'autofill') {
+	const { cdp, id } = await geraet(page);
+	if (weg === 'knopf') {
+		await page.addInitScript(() => {
+			(window.PublicKeyCredential as unknown as { isConditionalMediationAvailable: () => Promise<boolean> })
+				.isConditionalMediationAvailable = async () => false;
 		});
+	}
+	const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+	const credentialId = randomBytes(16);
+	const userHandle = randomBytes(16);
+	await cdp.send('WebAuthn.addCredential', {
+		authenticatorId: id,
+		credential: {
+			credentialId: credentialId.toString('base64'),
+			isResidentCredential: true,
+			rpId: 'localhost',
+			privateKey: privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64'),
+			userHandle: userHandle.toString('base64'),
+			signCount: 0,
+		},
+	});
 
-		const challenge = b64url(randomBytes(32));
-		let angemeldet = false;
-		let anmeldung: Record<string, unknown> | null = null;
+	const challenge = b64url(randomBytes(32));
+	let angemeldet = false;
+	let anmeldung: Record<string, unknown> | null = null;
 
-		await blockExternal(page);
-		// Alles, was die Planungsseite nach der Anmeldung lädt, ist hier nicht
-		// Gegenstand — leer beantworten statt an ein Backend durchreichen.
-		await page.route('**/api/**', (r) => r.fulfill({ status: 404, json: { detail: 'Not Found' } }));
-		await page.route('**/api/auth/org-lookup**', (r) => r.fulfill({ json: { name: 'THW OV Musterstadt', slug: SLUG } }));
-		await page.route('**/api/auth/me', (r) =>
-			angemeldet
-				? r.fulfill({
-					json: {
-						user_id: 'u2', email: 'planer@example.org', is_superadmin: false,
-						org_id: 'o1', org_slug: SLUG, org_name: 'THW OV Musterstadt', role: 'planer', is_demo: false,
-					},
-				})
-				: r.fulfill({ status: 401, json: { detail: 'Not authenticated' } }),
-		);
-		await page.route('**/api/auth/login/passkey/options', (r) =>
-			r.fulfill({
+	await blockExternal(page);
+	// Alles, was die Planungsseite nach der Anmeldung lädt, ist hier nicht
+	// Gegenstand — leer beantworten statt an ein Backend durchreichen.
+	await page.route('**/api/**', (r) => r.fulfill({ status: 404, json: { detail: 'Not Found' } }));
+	await page.route('**/api/auth/org-lookup**', (r) => r.fulfill({ json: { name: 'THW OV Musterstadt', slug: SLUG } }));
+	await page.route('**/api/auth/me', (r) =>
+		angemeldet
+			? r.fulfill({
 				json: {
-					challenge_id: CHALLENGE_ID,
-					options: { challenge, timeout: 60000, rpId: 'localhost', allowCredentials: [], userVerification: 'required' },
+					user_id: 'u2', email: 'planer@example.org', is_superadmin: false,
+					org_id: 'o1', org_slug: SLUG, org_name: 'THW OV Musterstadt', role: 'planer', is_demo: false,
 				},
-			}),
-		);
-		await page.route('**/api/auth/login/passkey', (r) => {
-			anmeldung = JSON.parse(r.request().postData() ?? '{}');
-			angemeldet = true;
-			r.fulfill({ json: { access_token: 'x', token_type: 'bearer', mfa_required: false, mfa_token: null } });
-		});
+			})
+			: r.fulfill({ status: 401, json: { detail: 'Not authenticated' } }),
+	);
+	await page.route('**/api/auth/login/passkey/options', (r) =>
+		r.fulfill({
+			json: {
+				challenge_id: CHALLENGE_ID,
+				options: { challenge, timeout: 60000, rpId: 'localhost', allowCredentials: [], userVerification: 'required' },
+			},
+		}),
+	);
+	await page.route('**/api/auth/login/passkey', (r) => {
+		anmeldung = JSON.parse(r.request().postData() ?? '{}');
+		angemeldet = true;
+		r.fulfill({ json: { access_token: 'x', token_type: 'bearer', mfa_required: false, mfa_token: null } });
+	});
 
-		await page.goto(`/o/${SLUG}/login`);
-		await expect(page.getByRole('heading', { name: 'THW OV Musterstadt' })).toBeVisible();
-		await page.getByRole('button', { name: 'Mit Passkey anmelden' }).click();
-		await page.waitForURL(`**/o/${SLUG}/plan`);
+	await page.goto(`/o/${SLUG}/login`);
+	await expect(page.getByRole('heading', { name: 'THW OV Musterstadt' })).toBeVisible();
+	if (weg === 'knopf') await page.getByRole('button', { name: 'Mit Passkey anmelden' }).click();
+	await page.waitForURL(`**/o/${SLUG}/plan`);
 
-		expect(anmeldung).not.toBeNull();
-		const body = anmeldung as unknown as {
-			challenge_id: string;
-			org_slug: string;
-			credential: { rawId: string; response: Record<string, string> };
-		};
-		// Keine Adresse, kein Passwort — nur Kennung, Antwort und Organisation.
-		expect(Object.keys(body).sort()).toEqual(['challenge_id', 'credential', 'org_slug']);
-		expect(body.challenge_id).toBe(CHALLENGE_ID);
-		expect(body.org_slug).toBe(SLUG);
-		expect(body.credential.rawId).toBe(b64url(credentialId));
-		expect(body.credential.response.userHandle).toBe(b64url(userHandle));
+	expect(anmeldung).not.toBeNull();
+	const body = anmeldung as unknown as {
+		challenge_id: string;
+		org_slug: string;
+		credential: { rawId: string; response: Record<string, string> };
+	};
+	// Keine Adresse, kein Passwort — nur Kennung, Antwort und Organisation.
+	expect(Object.keys(body).sort()).toEqual(['challenge_id', 'credential', 'org_slug']);
+	expect(body.challenge_id).toBe(CHALLENGE_ID);
+	expect(body.org_slug).toBe(SLUG);
+	expect(body.credential.rawId).toBe(b64url(credentialId));
+	expect(body.credential.response.userHandle).toBe(b64url(userHandle));
 
-		const clientData = JSON.parse(unb64url(body.credential.response.clientDataJSON).toString());
-		expect(clientData).toMatchObject({ type: 'webauthn.get', challenge, origin: 'http://localhost:4173' });
+	const clientData = JSON.parse(unb64url(body.credential.response.clientDataJSON).toString());
+	expect(clientData).toMatchObject({ type: 'webauthn.get', challenge, origin: 'http://localhost:4173' });
 
-		// Die Signatur stimmt über genau die Bytes, die angekommen sind — das
-		// ist der Beweis, dass die Umwandlung nichts verfälscht.
-		const authData = unb64url(body.credential.response.authenticatorData);
-		const signiert = Buffer.concat([authData, createHash('sha256').update(unb64url(body.credential.response.clientDataJSON)).digest()]);
-		const pub = createPublicKey(publicKey.export({ format: 'pem', type: 'spki' }));
-		expect(verify('sha256', signiert, pub, unb64url(body.credential.response.signature))).toBe(true);
-		// Benutzer anwesend und verifiziert (UP, UV).
-		expect(authData[32] & 0x05).toBe(0x05);
+	// Die Signatur stimmt über genau die Bytes, die angekommen sind — das
+	// ist der Beweis, dass die Umwandlung nichts verfälscht.
+	const authData = unb64url(body.credential.response.authenticatorData);
+	const signiert = Buffer.concat([authData, createHash('sha256').update(unb64url(body.credential.response.clientDataJSON)).digest()]);
+	const pub = createPublicKey(publicKey.export({ format: 'pem', type: 'spki' }));
+	expect(verify('sha256', signiert, pub, unb64url(body.credential.response.signature))).toBe(true);
+	// Benutzer anwesend und verifiziert (UP, UV).
+	expect(authData[32] & 0x05).toBe(0x05);
+}
+
+test.describe('Anmelden mit Passkey', () => {
+	test('über den Knopf: nur die signierte Challenge, für genau diese Organisation', async ({ page }) => {
+		await anmelden(page, 'knopf');
+	});
+
+	test('über das Autofill am E-Mail-Feld: dieselben Bytes, ohne Klick', async ({ page }) => {
+		await anmelden(page, 'autofill');
 	});
 });
 

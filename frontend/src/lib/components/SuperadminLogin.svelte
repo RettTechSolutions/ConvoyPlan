@@ -2,8 +2,8 @@
 	import { auth } from '$lib/stores/auth';
 	import { authApi } from '$lib/api';
 	import AppLogo from '$lib/components/AppLogo.svelte';
-	import { istAbbruch, passkeysVerfuegbar } from '$lib/passkey';
-	import { onMount } from 'svelte';
+	import { istAbbruch, passkeysVerfuegbar, starteAutofill } from '$lib/passkey';
+	import { onDestroy, onMount } from 'svelte';
 
 	let { onsuccess }: { onsuccess: () => void } = $props();
 
@@ -64,9 +64,34 @@
 	}
 
 	let passkeyMoeglich = $state(false);
-	onMount(() => { passkeyMoeglich = passkeysVerfuegbar(); });
+
+	// Autofill im E-Mail-Feld; der Knopf beendet die stille Anfrage zuerst
+	// (siehe Org-Anmeldung, dieselbe Logik in $lib/passkey).
+	let autofillStoppen: (() => void) | null = null;
+
+	function autofillStarten() {
+		autofillStoppen?.();
+		autofillStoppen = starteAutofill(
+			{
+				optionen: auth.passkeyAblauf.optionen,
+				abschliessen: async (challenge_id, credential) => {
+					await auth.passkeyAblauf.abschliessen(challenge_id, credential);
+					onsuccess();
+				},
+			},
+			(err) => { error = err instanceof Error ? err.message : 'Anmeldung mit Passkey fehlgeschlagen'; },
+		);
+	}
+
+	onMount(() => {
+		passkeyMoeglich = passkeysVerfuegbar();
+		if (passkeyMoeglich) autofillStarten();
+	});
+	onDestroy(() => autofillStoppen?.());
 
 	async function handlePasskey() {
+		autofillStoppen?.();
+		autofillStoppen = null;
 		loading = true;
 		error = '';
 		try {
@@ -74,6 +99,7 @@
 			onsuccess();
 		} catch (err: unknown) {
 			error = istAbbruch(err) ? '' : err instanceof Error ? err.message : 'Anmeldung mit Passkey fehlgeschlagen';
+			autofillStarten();
 		} finally {
 			loading = false;
 		}
@@ -104,7 +130,7 @@
 			<form onsubmit={handleLogin}>
 				<div class="field">
 					<label for="email">E-Mail</label>
-					<input id="email" type="email" bind:value={email} required autocomplete="email" />
+					<input id="email" type="email" bind:value={email} required autocomplete="username webauthn" />
 				</div>
 				<div class="field">
 					<label for="password">Passwort</label>

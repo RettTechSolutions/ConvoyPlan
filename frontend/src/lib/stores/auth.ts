@@ -1,6 +1,6 @@
 import { writable } from 'svelte/store';
 import { authApi, passkeyApi } from '$lib/api';
-import { passkeyAnmelden } from '$lib/passkey';
+import { passkeyAnmelden, type PasskeyAblauf } from '$lib/passkey';
 
 interface AuthState {
     /**
@@ -78,11 +78,20 @@ function createAuthStore() {
 
     /** Anmeldung ohne Organisation per Passkey — ohne MFA-Schritt, der
      *  Passkey hat Besitz und PIN/Biometrie schon belegt. */
-    const passkeyLogin = async () => {
-        const { challenge_id, options } = await passkeyApi.loginOptions(null);
-        const credential = await passkeyAnmelden(options);
+    const passkeyAbschliessen = async (challenge_id: string, credential: Record<string, unknown>) => {
         await passkeyApi.login(challenge_id, credential, undefined, null);
         await init();
+    };
+
+    /** Die beiden Schritte für Knopf und Autofill (`$lib/passkey`). */
+    const passkeyAblauf: PasskeyAblauf = {
+        optionen: () => passkeyApi.loginOptions(null),
+        abschliessen: passkeyAbschliessen,
+    };
+
+    const passkeyLogin = async () => {
+        const { challenge_id, options } = await passkeyAblauf.optionen();
+        await passkeyAbschliessen(challenge_id, await passkeyAnmelden(options));
     };
 
     const logout = async () => {
@@ -96,7 +105,7 @@ function createAuthStore() {
         set({ ...LEER, ready: true });
     };
 
-    return { subscribe, init, login, mfaVerify, passkeyLogin, logout };
+    return { subscribe, init, login, mfaVerify, passkeyAblauf, passkeyLogin, logout };
 }
 
 export const auth = createAuthStore();

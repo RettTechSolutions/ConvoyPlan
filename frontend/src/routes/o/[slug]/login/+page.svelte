@@ -1,10 +1,10 @@
 <script lang="ts">
     import { goto } from '$app/navigation';
     import { page } from '$app/stores';
-    import { onMount } from 'svelte';
+    import { onDestroy, onMount } from 'svelte';
     import { orgStore } from '$lib/stores/org';
     import { orgAuthApi, passkeyApi } from '$lib/api';
-    import { istAbbruch, passkeyAnmelden, passkeysVerfuegbar } from '$lib/passkey';
+    import { istAbbruch, passkeyAnmelden, passkeysVerfuegbar, starteAutofill, type PasskeyAblauf } from '$lib/passkey';
     import { sicheresZiel } from '$lib/redirect';
     import AppLogo from '$lib/components/AppLogo.svelte';
     import LegalFooter from '$lib/components/LegalFooter.svelte';
@@ -56,21 +56,41 @@
     // Passkey: nur anbieten, wo der Browser es kann.
     let passkeyMoeglich = $state(false);
 
+    const passkeyAblauf: PasskeyAblauf = {
+        optionen: () => passkeyApi.loginOptions(),
+        abschliessen: async (challenge_id, credential) => {
+            await passkeyApi.login(challenge_id, credential, slug);
+            if (!(await orgStore.load(slug))) throw new Error('Anmeldung fehlgeschlagen');
+            goto(zielNachLogin);
+        },
+    };
+
+    // Autofill: eine stille Anfrage, die Passkeys im Vorschlagsmenü des
+    // E-Mail-Felds anbietet (autocomplete="… webauthn"). Der Knopf daneben
+    // muss sie zuerst beenden — zwei offene Anfragen lehnt der Browser ab.
+    let autofillStoppen: (() => void) | null = null;
+
+    function autofillStarten() {
+        autofillStoppen?.();
+        autofillStoppen = starteAutofill(passkeyAblauf, (e) => {
+            error = e instanceof Error ? e.message : 'Anmeldung mit Passkey fehlgeschlagen';
+        });
+    }
+
+    onDestroy(() => autofillStoppen?.());
+
     async function handlePasskey() {
+        autofillStoppen?.();
+        autofillStoppen = null;
         loading = true;
         error = '';
         try {
-            const { challenge_id, options } = await passkeyApi.loginOptions();
-            const credential = await passkeyAnmelden(options);
-            await passkeyApi.login(challenge_id, credential, slug);
-            if (await orgStore.load(slug)) {
-                goto(zielNachLogin);
-            } else {
-                error = 'Anmeldung fehlgeschlagen';
-            }
+            const { challenge_id, options } = await passkeyAblauf.optionen();
+            await passkeyAblauf.abschliessen(challenge_id, await passkeyAnmelden(options));
         } catch (e: unknown) {
             // Abgebrochener Dialog ist kein Fehler, den man rot anzeigt.
             error = istAbbruch(e) ? '' : e instanceof Error ? e.message : 'Anmeldung mit Passkey fehlgeschlagen';
+            autofillStarten();
         } finally {
             loading = false;
         }
@@ -93,7 +113,9 @@
         } catch {
             // Org existiert nicht → zurück zur Root
             goto('/');
+            return;
         }
+        if (passkeyMoeglich) autofillStarten();
     });
 
     async function handleLogin() {
@@ -165,7 +187,7 @@
             <form onsubmit={(e) => { e.preventDefault(); handleLogin(); }}>
                 <div class="field">
                     <label for="email">E-Mail</label>
-                    <input id="email" type="email" bind:value={email} placeholder="E-Mail" autocomplete="email" required />
+                    <input id="email" type="email" bind:value={email} placeholder="E-Mail" autocomplete="username webauthn" required />
                 </div>
                 <div class="field">
                     <label for="password">Passwort</label>
