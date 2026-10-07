@@ -7,7 +7,7 @@ fastapi==0.142.2
 starlette==1.7.0
 defusedxml==0.7.1
 uvicorn[standard]==0.54.0
-sqlalchemy[asyncio]==2.0.54
+sqlalchemy[asyncio]==2.1.3
 # asyncpg 0.31.0 is the first release with cp314 wheels (needed for the
 # python:3.14-slim base image; 0.29.0 has no 3.14 wheel and fails to build).
 asyncpg==0.31.0
@@ -55,7 +55,7 @@ pytest-asyncio>=1.4.0
 # 0.28.1 ins Image. Die Pakete koexistieren konfliktfrei, aber ein
 # httpx-CVE betrifft ab jetzt potenziell beide — bei Sicherheitsupdates
 # an beide denken.
-mcp==2.2.0
+mcp==2.3.0
 
 # Passkeys (WebAuthn) — Prüfen von Registrierung und Anmeldung
 # (app/services/passkey.py). Zieht cbor2, pyOpenSSL und pyasn1 mit.
