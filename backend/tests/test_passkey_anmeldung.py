@@ -276,7 +276,8 @@ async def test_passkey_ersetzt_den_zweiten_faktor(konto):
     der Passkey eine Sitzung."""
     user, org = konto["user"], konto["org"]
     geraet = Geraet()
-    assert (await _einrichten(user, org, geraet))["status"] == 201
+    eingerichtet = await _einrichten(user, org, geraet)
+    assert eingerichtet["status"] == 201
     async with AsyncSessionLocal() as db:
         u = await db.get(User, user.id)
         u.mfa_enabled = True
@@ -385,7 +386,8 @@ async def test_rueckläufiger_zaehler_verraet_den_klon(konto):
     user, org = konto["user"], konto["org"]
     geraet = Geraet(zaehlt=True)
     await _einrichten(user, org, geraet)
-    assert (await _anmelden(geraet, org.slug))[0].status_code == 200
+    erste, _, _ = await _anmelden(geraet, org.slug)
+    assert erste.status_code == 200
     geraet.zaehler = 0  # der Klon fängt beim alten Stand an
     r, _, _ = await _anmelden(geraet, org.slug)
     assert r.status_code == 401
@@ -440,11 +442,13 @@ async def test_auflisten_und_loeschen_nur_eigene(konto):
         # Keine Schlüsseldaten in der Liste.
         assert set(liste.json()[0]) == {"id", "name", "created_at", "last_used_at", "backed_up"}
 
-        assert (await c.get("/api/auth/passkeys", headers=_bearer(fremd, konto["andere"]))).json() == []
+        fremd_liste = await c.get("/api/auth/passkeys", headers=_bearer(fremd, konto["andere"]))
+        assert fremd_liste.json() == []
         fremd_loeschen = await c.delete(f"/api/auth/passkeys/{angelegt['id']}", headers=_bearer(fremd, konto["andere"]))
         assert fremd_loeschen.status_code == 404
 
-        assert (await c.delete(f"/api/auth/passkeys/{angelegt['id']}", headers=_bearer(user, org))).status_code == 204
+        loeschen = await c.delete(f"/api/auth/passkeys/{angelegt['id']}", headers=_bearer(user, org))
+        assert loeschen.status_code == 204
 
     r, _, _ = await _anmelden(geraet, org.slug)
     assert r.status_code == 401
