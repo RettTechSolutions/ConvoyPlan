@@ -303,6 +303,27 @@ export const passkeyApi = {
 		api.post<LoginResult>('/api/auth/login/passkey', { challenge_id, credential, org_slug }, sitzung),
 };
 
+// Anmeldung der Begleit-App über den Browser — backend/app/api/routes/app_oauth.py.
+
+export interface AppAnfrage {
+	org_slug: string;
+	org_name: string;
+	expires_at: string;
+}
+
+export const appOAuthApi = {
+	/** Für welche Organisation die App anfragt; ohne Anmeldung lesbar. */
+	anfrage: (request: string) =>
+		api.get<AppAnfrage>(`/api/oauth/app/anfrage?request=${encodeURIComponent(request)}`),
+	/**
+	 * Code ausstellen lassen. 401 = nicht angemeldet, 409 = bestehende
+	 * Sitzung, einmal bestätigen (`bestaetigt`). Die Entscheidung trifft der
+	 * Server, nicht diese Seite.
+	 */
+	entscheiden: (request: string, weiter: { bestaetigt?: boolean; abbrechen?: boolean } = {}) =>
+		api.post<{ redirect_url: string }>('/api/oauth/app/anfrage', { request, ...weiter }),
+};
+
 // Vehicles
 export const vehiclesApi = {
 	list: () => api.get<Vehicle[]>('/api/vehicles/'),

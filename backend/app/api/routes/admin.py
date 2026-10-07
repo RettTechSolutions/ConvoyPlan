@@ -2029,16 +2029,28 @@ def _mcp_models():
     return OAuthClient, OAuthRefreshToken
 
 
+def _app_client_id() -> str:
+    from app.services.app_client import CLIENT_ID
+
+    return CLIENT_ID
+
+
 def _active_connection_filter(OAuthRefreshToken):
     """Was als „aktive Verbindung" zählt.
 
     Eine Verbindung ist eine Token-*Familie*, nicht ein einzelnes Token: die
     Tokens rotieren bei jeder Nutzung, die Verbindung bleibt dieselbe.
-    Gezählt wird deshalb das jeweils jüngste, noch nicht rotierte Glied."""
+    Gezählt wird deshalb das jeweils jüngste, noch nicht rotierte Glied.
+
+    Die Anmeldungen der Begleit-App zählen nicht mit: sie laufen über
+    dieselben Tabellen, sind aber keine KI-Verbindung."""
+    from app.services.app_client import CLIENT_ID as APP_CLIENT_ID
+
     return and_(
         OAuthRefreshToken.revoked.is_(False),
         OAuthRefreshToken.rotated_at.is_(None),
         OAuthRefreshToken.expires_at > datetime.now(timezone.utc),
+        OAuthRefreshToken.client_id != APP_CLIENT_ID,
     )
 
 
@@ -2055,7 +2067,9 @@ async def mcp_status(
     cimd_wert = await mcp_config.get_cimd_setting(db)
 
     clients = await db.scalar(
-        select(func.count()).select_from(OAuthClient).where(OAuthClient.revoked.is_(False))
+        select(func.count()).select_from(OAuthClient).where(
+            OAuthClient.revoked.is_(False), OAuthClient.client_id != _app_client_id()
+        )
     )
     connections = await db.scalar(
         select(func.count(func.distinct(OAuthRefreshToken.family_id))).where(
@@ -2265,7 +2279,13 @@ async def list_mcp_clients(
     OAuthClient, OAuthRefreshToken = _mcp_models()
 
     rows = (
-        await db.execute(select(OAuthClient).order_by(OAuthClient.created_at.desc()))
+        await db.execute(
+            select(OAuthClient)
+            # Der App-Client ist kein MCP-Client und lässt sich hier weder
+            # sperren noch löschen — er steht im Code (services/app_client.py).
+            .where(OAuthClient.client_id != _app_client_id())
+            .order_by(OAuthClient.created_at.desc())
+        )
     ).scalars().all()
 
     counts = dict(
@@ -2380,7 +2400,10 @@ async def revoke_mcp_client(
     OAuthClient, OAuthRefreshToken = _mcp_models()
 
     client = await db.get(OAuthClient, client_id)
-    if client is None:
+    # Der App-Client steht nicht in der Liste und wird hier auch nicht
+    # gesperrt: die Sperre in der Zeile läse ``get_client`` für ihn gar nicht,
+    # sie sähe nur nach Wirkung aus. Abschalten: ``APP_OAUTH_ENABLED=false``.
+    if client is None or client_id == _app_client_id():
         raise HTTPException(404, "Client nicht gefunden")
 
     familien = (

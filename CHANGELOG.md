@@ -23,13 +23,20 @@ ursprünglichen SemVer-Nummern.
 
 ### Added
 
+- **Anmeldung der Begleit-App über den Browser.** Die ConvoyPlan-App kann sich jetzt über den Browser des Telefons anmelden (OAuth 2.1 mit PKCE, RFC 8252) — mit Passwort, MFA oder Passkey auf der normalen Anmeldeseite der Organisation, ohne eigene Passwortmaske in der App. Fest eingebauter Client `convoyplan-companion` mit genau einer Redirect-URI (`de.convoyplan.companion:/oauth`), keine Freigabeliste, unabhängig vom MCP-Schalter und von der MCP-Richtlinie der Organisation. Bei einer schon bestehenden Browser-Sitzung fragt `/oauth/app` einmal nach. Access-Tokens 15 Minuten mit eigener Audience (`<instanz>/api`), Refresh-Tokens 90 Tage ohne Nutzung, mit Rotation. Abschaltbar mit `APP_OAUTH_ENABLED=false`; `GET /api/version` meldet unter `app_oauth`, ob es den Weg gibt. Migration `0054`.
+
 - **Anmelden mit Passkey.** Neben E-Mail und Passwort gibt es auf beiden Anmeldeseiten (Organisation und Superadmin) **Mit Passkey anmelden** — Fingerabdruck, Gesichtserkennung oder Geräte-PIN, ohne Adresse und ohne Passwort. Eingerichtet und entfernt werden Passkeys im eigenen Konto (Planung: *Konto → Passkeys*, Adminportal: *System → Passkeys*); das Einrichten verlangt das aktuelle Passwort. Die Instanz verlangt Benutzerverifikation, deshalb folgt auf eine Passkey-Anmeldung kein TOTP-Schritt. Relying Party ist die Domain aus `APP_BASE_URL` — eine Instanz, die mit `https://convoyplan.example.com` aus der Vorlage läuft, muss den Wert richtig setzen, sonst lässt sich kein Passkey anlegen. Neue Abhängigkeit `webauthn` (py_webauthn), Migration `0053`. Anwenderdoku: `wiki/Sicherheit-und-Datenschutz.md`, „Passkeys".
 
 ### Changed
 
+- **`/authorize`, `/token`, `/revoke` und die AS-Metadaten bleiben bei abgeschaltetem MCP montiert**, solange die App-Anmeldung an ist. MCP-Clients tauschen dort bei abgeschaltetem MCP weder Codes noch Refresh-Tokens; die Metadaten kündigen dann weder `/register` noch MCP-Scopes an.
+- **Ein Passwortwechsel beendet auch MCP-Verbindungen beim nächsten Erneuern.** Refresh-Tokens merken sich die `token_version` des Benutzers; weicht sie ab, ist die Kette zu Ende. Bisher holte sich ein Client nach dem Passwortwechsel mit dem alten Refresh-Token ein frisches Access-Token. Gilt für Tokens ab diesem Release.
+
 - **Der Eintrag für den EventTracker bringt die Instanz mit.** Nach dem Anlegen oder Erneuern einer Aktionsseite steht im Eintrag zusätzlich `"convoyplan":"https://<instanz>"`. Der EventTracker (ab RettTechSolutions/Convoyplan-EventTracker#7) nimmt die Adresse von dort, der Installer fragt nicht mehr nach ihr — ein Eintrag, einmal kopieren. `CONVOYPLAN_URL` im EventTracker darf weiter gesetzt sein und gilt dann vor dem Feld.
 
 ### Fixed
+
+- **Absagen am Token-Endpunkt kamen als 500.** Der OAuth-Provider warf `TokenError` innerhalb einer Datenbanksitzung; weil das eine eingefrorene Dataclass ist, scheiterte `contextlib` am Zuweisen des Tracebacks. Betroffen war etwa ein deaktiviertes Konto, dessen MCP-Client sein Token erneuern wollte — statt `invalid_grant` gab es einen Serverfehler.
 
 - **Abruf-Adresse der Aktionsseiten beginnt mit `https://`.** Der Org-Admin zeigte `http://…/api/public/aktion/<slug>` (und dasselbe in `CONVOYPLAN_URL` für den EventTracker), obwohl die Instanz nur per HTTPS antwortet. uvicorn nahm `X-Forwarded-Proto` von Caddy nicht an, weil `--forwarded-allow-ips` auf `127.0.0.1` stand und Caddy aus dem Docker-Netz kommt. Wer die Adresse übernahm, lief in die Umleitung auf https; Node fetch verwirft dabei den Authorization-Kopf, der Abruf endete in 404 und die öffentliche Seite blieb leer. Die Compose-Datei setzt jetzt `FORWARDED_ALLOW_IPS=*` für das Backend — vertretbar, weil es keinen Port veröffentlicht und nur Caddy es erreicht —, der Entrypoint reicht den Wert an uvicorn durch. Bereits angelegte Seiten brauchen nichts: die Adresse wird bei jeder Anzeige neu gebaut; im EventTracker eingetragene `http://`-Adressen auf `https://` umstellen.
 

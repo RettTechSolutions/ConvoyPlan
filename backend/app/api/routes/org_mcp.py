@@ -98,11 +98,15 @@ def _aktive_verbindungen():
     Dieselbe Bedingung wie im Adminportal (``api/routes/admin.py``). Sie steht
     hier ein zweites Mal ausgeschrieben, weil der Import von ``admin`` in eine
     Org-Route die Abhängigkeiten in die falsche Richtung drehte; dass beide
-    dasselbe meinen, hält ``tests/test_org_mcp_policy.py`` fest."""
+    dasselbe meinen, hält ``tests/test_org_mcp_policy.py`` fest — auch, dass
+    die Begleit-App hier wie dort nicht mitzählt."""
+    from app.services.app_client import CLIENT_ID as APP_CLIENT_ID
+
     return and_(
         OAuthRefreshToken.revoked.is_(False),
         OAuthRefreshToken.rotated_at.is_(None),
         OAuthRefreshToken.expires_at > datetime.now(timezone.utc),
+        OAuthRefreshToken.client_id != APP_CLIENT_ID,
     )
 
 

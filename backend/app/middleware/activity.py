@@ -55,7 +55,14 @@ def _user_from_token(request: Request) -> tuple[uuid.UUID, uuid.UUID | None, str
     if not token:
         return None
     try:
-        payload = _jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        # Ohne Audience-Prüfung wie in ``deps._decode_token``: die Access-Tokens
+        # der Begleit-App tragen eine, und ihre Nutzung zählt wie bisher mit.
+        payload = _jwt.decode(
+            token,
+            settings.jwt_secret,
+            algorithms=[settings.jwt_algorithm],
+            options={"verify_aud": False},
+        )
     except Exception:
         return None
     # Halbauthentifizierte MFA-Tokens sind keine Portalnutzung.

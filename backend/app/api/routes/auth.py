@@ -101,10 +101,15 @@ def create_token(
     role: str | None = None,
     token_version: int = 0,
 ) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expire_minutes)
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(minutes=settings.jwt_expire_minutes)
     return _jwt.encode(
         {
             "sub": user_id,
+            # Wann angemeldet wurde. Der App-Client stellt einen Code nur ohne
+            # Rückfrage aus, wenn die Sitzung *nach* seiner Anfrage entstand
+            # (``app_client.frisch_angemeldet``).
+            "iat": now,
             "exp": expire,
             # Explicit token type so a half-authenticated mfa_pending token can
             # never be mistaken for a full access token (CWE-287). _decode_token

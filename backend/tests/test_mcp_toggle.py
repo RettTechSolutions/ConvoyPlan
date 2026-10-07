@@ -7,6 +7,12 @@ ist der Grund, warum er jetzt trotzdem einer sein darf.
 
 Geprüft wird deshalb nicht nur der Statuscode — den liefert ein 404-Deckel
 genauso —, sondern die Routentabelle der App selbst.
+
+Seit dem OAuth-Client der Begleit-App (``services/app_client.py``) gilt das
+für die Pfade des Authorization Servers (``/authorize``, ``/token``,
+``/revoke``, AS-Metadaten) nur, solange auch der App-Client aus ist. Ist er
+an, bleiben genau diese vier stehen — ``/mcp``, ``/register`` und die
+Protected-Resource-Metadaten verschwinden weiterhin. Beides steht unten.
 """
 import pytest
 from fastapi import FastAPI
@@ -20,16 +26,21 @@ pytestmark = pytest.mark.asyncio
 
 BASE = "https://toggle-test.convoyplan.invalid"
 
-# Die Pfade, die es bei abgeschaltetem MCP nicht geben darf.
-MCP_PFADE = [
+# Die Pfade, die es bei abgeschaltetem MCP nie geben darf.
+NUR_MCP = [
     "/mcp",
     "/.well-known/oauth-protected-resource/mcp",
+    "/register",
+]
+# Die des Authorization Servers — bei abgeschaltetem MCP nur, solange der
+# App-Client an ist.
+AS_PFADE = [
     "/.well-known/oauth-authorization-server",
     "/authorize",
     "/token",
-    "/register",
     "/revoke",
 ]
+MCP_PFADE = NUR_MCP + AS_PFADE
 
 
 def _frische_app() -> FastAPI:
@@ -45,16 +56,21 @@ def _pfade(app: FastAPI) -> set[str]:
 
 @pytest.fixture(autouse=True)
 def basis_adresse():
-    vorher = settings.app_base_url, settings.mcp_public_url, settings.mcp_enabled
+    vorher = (settings.app_base_url, settings.mcp_public_url, settings.mcp_enabled,
+              settings.app_oauth_enabled)
     settings.app_base_url = BASE
     settings.mcp_public_url = ""
+    # Die ursprüngliche Zusage gilt ohne App-Client; was er ändert, prüfen
+    # die Tests am Ende ausdrücklich.
+    settings.app_oauth_enabled = False
     try:
         yield
     finally:
         (settings.app_base_url, settings.mcp_public_url,
-         settings.mcp_enabled) = vorher
+         settings.mcp_enabled, settings.app_oauth_enabled) = vorher
         mcp_mount._app = None
         mcp_mount._routes = []
+        mcp_mount._as_routes = []
         mcp_mount._session_manager = None
 
 
@@ -214,3 +230,42 @@ async def test_unsinniger_wert_in_der_datenbank_zaehlt_als_nicht_gesetzt():
             await db.commit()
     finally:
         await engine.dispose()
+
+
+# ── Mit dem App-Client ───────────────────────────────────────────────────
+
+
+def test_mit_app_client_bleiben_nur_die_as_pfade():
+    """MCP aus, App-Client an: ``/authorize``, ``/token``, ``/revoke`` und die
+    AS-Metadaten stehen in der Tabelle — ``/mcp``, ``/register`` und die
+    Protected-Resource-Metadaten nicht."""
+    settings.app_oauth_enabled = True
+    app = _frische_app()
+    mcp_mount.aktivieren()
+    mcp_mount.deaktivieren()
+    pfade = _pfade(app)
+    assert set(AS_PFADE) <= pfade
+    assert pfade.isdisjoint(NUR_MCP)
+
+
+def test_start_mit_mcp_aus_montiert_die_as_pfade_fuer_die_app():
+    """Beim Start ist nichts zu deaktivieren — die Pfade der App müssen
+    trotzdem hinein. ``zustand_anwenden`` ruft dafür immer ``_anwenden``."""
+    settings.app_oauth_enabled = True
+    app = _frische_app()
+    mcp_mount._anwenden(False)
+    assert set(AS_PFADE) <= _pfade(app)
+    assert _pfade(app).isdisjoint(NUR_MCP)
+    assert mcp_mount.ist_aktiv() is False
+
+
+def test_anwenden_ist_idempotent():
+    settings.app_oauth_enabled = True
+    app = _frische_app()
+    mcp_mount._anwenden(False)
+    anzahl = len(app.router.routes)
+    mcp_mount._anwenden(False)
+    assert len(app.router.routes) == anzahl
+    mcp_mount._anwenden(True)
+    mcp_mount._anwenden(True)
+    assert len(app.router.routes) == anzahl + len(mcp_mount._routes)

@@ -40,11 +40,22 @@ _STATE_TTL = 600  # seconds
 _state_cache: dict[str, tuple[float, dict]] = {}
 
 
+class AppOAuthInfo(BaseModel):
+    """Woran die Begleit-App erkennt, dass sie sich über den Browser anmelden
+    kann — ohne Fehlversuch. Fehlt das Feld, bleibt sie bei der Passwortmaske
+    (``services/app_client.py``)."""
+    client_id: str
+    redirect_uri: str
+    authorization_endpoint: str
+    token_endpoint: str
+
+
 class VersionResponse(BaseModel):
     version: str | None          # running build version, e.g. "2026.1.1"
     sha: str | None              # git SHA the build was cut from
     latest: str | None           # latest release tag on GitHub, e.g. "2026.1.2"
     update_available: bool       # True when latest is newer than version
+    app_oauth: AppOAuthInfo | None = None
 
 
 class ChangelogResponse(BaseModel):
@@ -146,6 +157,21 @@ async def get_version(
         sha=sha,
         latest=latest,
         update_available=update_available,
+        app_oauth=_app_oauth_info(),
+    )
+
+
+def _app_oauth_info() -> AppOAuthInfo | None:
+    from app.services import app_client, oauth_tokens
+
+    if not app_client.aktiv():
+        return None
+    issuer = oauth_tokens.issuer_url().rstrip("/")
+    return AppOAuthInfo(
+        client_id=app_client.CLIENT_ID,
+        redirect_uri=app_client.REDIRECT_URI,
+        authorization_endpoint=f"{issuer}/authorize",
+        token_endpoint=f"{issuer}/token",
     )
 
 
