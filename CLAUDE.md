@@ -574,6 +574,16 @@ die Verdrahtung in `api/routes/passkeys.py`, die Browserseite in
   Besitzfaktor, und der Login übersprünge MFA trotzdem. Einrichten verlangt das
   Passwort erneut — ein Passkey überlebt Passwortwechsel und -reset.
 
+**Autofill** (`starteAutofill` in `$lib/passkey.ts`) hält auf den Anmeldeseiten eine
+stille Anfrage (`mediation: 'conditional'`) offen. Wer dort etwas ändert, hält drei
+Dinge fest, die `e2e/passkey-autofill.spec.ts` prüft: der Knopf beendet sie, **bevor**
+er seine eigene stellt (zwei offene lehnt der Browser ab); sie wird nach
+`AUTOFILL_ERNEUERN_MS` mit frischer Challenge neu gestellt, weil der Server eine nach
+fünf Minuten verwirft; und eine sofortige Ablehnung durch den Browser beendet sie,
+statt im Kreis Challenges abzurufen. Im Test mit echtem virtuellem Authenticator ist
+Autofill für den Knopf-Weg abgeschaltet — das Gerät beantwortet die stille Anfrage
+sonst selbst, und wer schneller ist, entscheidet über Grün oder Rot.
+
 Die Anmeldepfade liegen unter `/api/auth/login/passkey…`, weil der Lizenzwächter
 genau `/api/auth/login` durchlässt. Wer sie verlegt, zieht `_EXEMPT_PREFIXES`
 mit, sonst gibt es im Demo-Modus keine Passkey-Anmeldung.
