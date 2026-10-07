@@ -97,6 +97,12 @@ Sicherheitsschlüssel. Eingerichtet wird er im eigenen Konto: in der Planung unt
 Anmeldeseite steht dann **Mit Passkey anmelden**; eine E-Mail-Adresse muss man
 dafür nicht eingeben.
 
+Einfacher geht es über das **E-Mail-Feld**: wer hineinklickt, bekommt den Passkey
+im Vorschlagsmenü des Browsers angeboten, wie ein gespeichertes Passwort. Auswählen,
+Fingerabdruck oder PIN — angemeldet, ohne Klick auf *Anmelden*. Das Menü zeigen
+Chrome, Edge und Safari; wo es fehlt, bleibt der Knopf der Weg, ebenso für einen
+Passkey auf einem anderen Gerät (QR-Code am Telefon).
+
 - **Ersetzt Passwort und Zweitfaktor.** Ein Passkey belegt Besitz (das Gerät)
   und Wissen bzw. Biometrie (PIN, Fingerabdruck) in einem Schritt. Die Instanz
   verlangt diese Benutzerverifikation; ein Gerät, das nur „anwesend" meldet,
