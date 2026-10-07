@@ -9,7 +9,7 @@ Diese Seite fasst die Sicherheits-Härtung, das Audit-Log, die DSGVO-Werkzeuge s
 | Bereich | Umsetzung |
 |---|---|
 | **Fail-Closed JWT** | In Produktion (`APP_ENV=production`) startet das Backend nicht, wenn `JWT_SECRET` leer, Platzhalter oder < 32 Zeichen ist |
-| **Brute-Force-Schutz** | Rate-Limiting auf Login, MFA-Verify und Passwort-Reset (HTTP 429) |
+| **Brute-Force-Schutz** | Rate-Limiting auf Login, Passkey-Anmeldung, MFA-Verify und Passwort-Reset (HTTP 429) |
 | **Kontingent-Drosselung** | Stundenbudget je Aufrufer auf Routing, Adresssuche und Verkehrslage (HTTP 429 mit `Retry-After`); Demo-Sitzungen mit kleinerem Budget und zusätzlich pro IP gezählt |
 | **Passwort-Policy** | Mind. 10 Zeichen mit Buchstaben + Ziffern, Abgleich gegen Have-I-Been-Pwned (k-Anonymity, fail-open) |
 | **E-Mail-Normalisierung** | Login-Adressen werden getrimmt und klein geschrieben gespeichert/verglichen — Login ist case-insensitive, doppelte Konten mit nur abweichender Groß-/Kleinschreibung sind ausgeschlossen (`lower(email)`-Unique-Index) |
@@ -17,6 +17,7 @@ Diese Seite fasst die Sicherheits-Härtung, das Audit-Log, die DSGVO-Werkzeuge s
 | **CSRF-Schutz** | Cookie-Anmeldungen brauchen bei ändernden Methoden den Kopf `X-Requested-With: ConvoyPlan`; zusätzlich `SameSite=Lax` |
 | **JWT-Revocation** | `token_version` entzieht alle Tokens bei Passwort-/MFA-Reset |
 | **MFA at-rest** | TOTP-Secrets mit Fernet verschlüsselt gespeichert |
+| **Passkeys** | Anmeldung per WebAuthn ohne Passwort, mit Pflicht zur Benutzerverifikation (siehe unten) |
 | **CORS-Lockdown** | In Produktion auf die eigene App-Origin beschränkt |
 | **CSP & Security-Header** | Content-Security-Policy (Report-Only/Enforce) plus HSTS, X-Content-Type-Options u. a. über Caddy |
 | **security.txt** | Vulnerability-Disclosure-Kontakt unter `/.well-known/security.txt` |
@@ -87,9 +88,49 @@ Der Cache ist nicht im Backup; er füllt sich beim Kartenaufruf von selbst wiede
 
 ---
 
+## Passkeys
+
+Statt mit E-Mail und Passwort kann man sich mit einem **Passkey** anmelden —
+Fingerabdruck, Gesichtserkennung oder Geräte-PIN auf dem Telefon, Rechner oder
+Sicherheitsschlüssel. Eingerichtet wird er im eigenen Konto: in der Planung unter
+**Konto → Passkeys**, im Adminportal unter **System → Passkeys**. Auf der
+Anmeldeseite steht dann **Mit Passkey anmelden**; eine E-Mail-Adresse muss man
+dafür nicht eingeben.
+
+- **Ersetzt Passwort und Zweitfaktor.** Ein Passkey belegt Besitz (das Gerät)
+  und Wissen bzw. Biometrie (PIN, Fingerabdruck) in einem Schritt. Die Instanz
+  verlangt diese Benutzerverifikation; ein Gerät, das nur „anwesend" meldet,
+  wird abgewiesen. Deshalb folgt auf eine Anmeldung per Passkey **kein**
+  TOTP-Code, auch wenn MFA eingeschaltet ist.
+- **Einrichten verlangt das Passwort.** Ein Passkey bleibt gültig, wenn das
+  Passwort geändert oder zurückgesetzt wird. Wer eine offene Sitzung kurz in die
+  Hand bekommt, soll sich darüber keinen eigenen dauerhaften Zugang anlegen
+  können.
+- **Gilt für die Domain der Instanz.** Maßgeblich ist `APP_BASE_URL`: ihr
+  Hostname ist die Relying-Party-ID. Zieht die Instanz auf eine andere Domain um,
+  passen bestehende Passkeys dort nicht mehr — sie müssen neu eingerichtet
+  werden. Das ist eine Eigenschaft von WebAuthn, keine Einstellung.
+- **Dieselben Regeln wie beim Passwort.** Anmelden kann sich nur ein aktives
+  Konto, in einer Organisation nur ein Mitglied, ohne Organisation nur ein
+  Superadmin. Wer ein Konto deaktiviert, sperrt damit auch dessen Passkeys.
+- **Gespeichert wird nur der öffentliche Schlüssel.** Der private verlässt das
+  Gerät nie; ein Abzug der Datenbank ist damit, anders als einer der
+  Passwort-Hashes, für niemanden eine Anmeldung.
+- **Verloren oder gestohlen?** Den Passkey im Konto unter **Entfernen**
+  löschen — vom Gerät verschwindet er dadurch nicht, anmelden kann man sich
+  damit aber nicht mehr. Ist kein anderer Zugang mehr da, setzt ein Superadmin
+  das Passwort zurück; danach lässt sich der Passkey selbst entfernen.
+
+Anlegen und Entfernen landen im Audit-Log (`auth.passkey.added`,
+`auth.passkey.removed`), Anmeldungen als `auth.login.success` mit
+`"passkey": true`. Die Auskunft nach Art. 15 nennt Name und Zeitpunkte der
+Passkeys, nicht aber Kennung und Schlüssel.
+
+---
+
 ## Audit-Log
 
-Ein **append-only** Protokoll erfasst sicherheitsrelevante Ereignisse (Logins, MFA, Passwortänderungen, Benutzer-/Org-Anlage, Lizenzaktivierung) inklusive Akteur, Ziel, IP und User-Agent. Superadmins rufen es über `GET /api/admin/audit-log` (filterbar nach Aktion) ab.
+Ein **append-only** Protokoll erfasst sicherheitsrelevante Ereignisse (Logins, MFA, Passkeys, Passwortänderungen, Benutzer-/Org-Anlage, Lizenzaktivierung) inklusive Akteur, Ziel, IP und User-Agent. Superadmins rufen es über `GET /api/admin/audit-log` (filterbar nach Aktion) ab.
 
 ---
 

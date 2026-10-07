@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
-import { authApi } from '$lib/api';
+import { authApi, passkeyApi } from '$lib/api';
+import { passkeyAnmelden } from '$lib/passkey';
 
 interface AuthState {
     /**
@@ -75,6 +76,15 @@ function createAuthStore() {
         await init();
     };
 
+    /** Anmeldung ohne Organisation per Passkey — ohne MFA-Schritt, der
+     *  Passkey hat Besitz und PIN/Biometrie schon belegt. */
+    const passkeyLogin = async () => {
+        const { challenge_id, options } = await passkeyApi.loginOptions(null);
+        const credential = await passkeyAnmelden(options);
+        await passkeyApi.login(challenge_id, credential, undefined, null);
+        await init();
+    };
+
     const logout = async () => {
         try {
             // Ohne Organisation: das Backend löscht dann die globale Sitzung
@@ -86,7 +96,7 @@ function createAuthStore() {
         set({ ...LEER, ready: true });
     };
 
-    return { subscribe, init, login, mfaVerify, logout };
+    return { subscribe, init, login, mfaVerify, passkeyLogin, logout };
 }
 
 export const auth = createAuthStore();

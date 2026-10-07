@@ -30,6 +30,7 @@ Vollständige Feature-Übersicht von ConvoyPlan mit Umsetzungsstatus. Eine kompa
 | Multi-Tenancy | Org-Code-Slug, org-spezifische Login-Seite, Branding und Datenisolation pro Org | ✅ |
 | Rollen | Admin, Planer, Fahrer und Beobachter | ✅ |
 | MFA / TOTP | Zwei-Faktor-Authentifizierung per TOTP im Org-Admin-Panel einrichtbar | ✅ |
+| Passkeys | Anmeldung per WebAuthn (Fingerabdruck, Gesichtserkennung, Geräte-PIN, Sicherheitsschlüssel) ohne Passwort | ✅ |
 | SMTP-Dienst | Passwort-E-Mails direkt aus dem Admin-Panel versenden | ✅ |
 | Tracking-Links | Freigabe ohne Login als **Viewer** (nur ansehen) oder **Fahrer** (darf ohne Konto ein Fahrzeug wählen und Position/Status senden), optional passwortgeschützt, einzeln widerrufbar mit Zugriffszähler, als QR-Code anzeigbar/druckbar zur Weitergabe an Mitfahrer | ✅ |
 | Branding | Eigenes App-Logo, Farben und Name über Admin-UI konfigurierbar | ✅ |

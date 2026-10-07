@@ -1,5 +1,6 @@
 import { api, uploadFile, downloadFile, getStreamTicket, type Sitzung } from './client';
 import type { Geometry } from 'geojson';
+import type { AnmeldeOptionenJSON, ErstellOptionenJSON } from '$lib/passkey';
 
 export interface Point { lat: number; lon: number }
 
@@ -269,6 +270,37 @@ export const mfaApi = {
 	setup: () => api.post<{ secret: string; provisioning_uri: string }>('/api/auth/mfa/setup', {}),
 	confirm: (code: string) => api.post<{ status: string }>('/api/auth/mfa/confirm', { code }),
 	disable: (code: string) => api.post<{ status: string }>('/api/auth/mfa/disable', { code }),
+};
+
+// Passkeys — Regeln in backend/app/services/passkey.py, Browserseite in $lib/passkey.
+
+export interface PasskeyInfo {
+	id: string;
+	name: string;
+	created_at: string;
+	last_used_at: string | null;
+	/** Synchronisiert (Passwortmanager, Cloud-Schlüsselbund) statt an ein Gerät gebunden. */
+	backed_up: boolean;
+}
+
+export interface PasskeyOptionen<T> {
+	challenge_id: string;
+	options: T;
+}
+
+export const passkeyApi = {
+	list: () => api.get<PasskeyInfo[]>('/api/auth/passkeys'),
+	/** Verlangt das Passwort noch einmal — ein Passkey ist ein Zugang, der bleibt. */
+	registerOptions: (password: string) =>
+		api.post<PasskeyOptionen<ErstellOptionenJSON>>('/api/auth/passkeys/register/options', { password }),
+	register: (challenge_id: string, credential: Record<string, unknown>, name?: string) =>
+		api.post<PasskeyInfo>('/api/auth/passkeys/register', { challenge_id, credential, name }),
+	remove: (id: string) => api.delete<void>(`/api/auth/passkeys/${id}`),
+	/** Ohne Organisation: Superadmin. Mit `org_slug`: Anmeldung in dieser Organisation. */
+	loginOptions: (sitzung: Sitzung = 'seite') =>
+		api.post<PasskeyOptionen<AnmeldeOptionenJSON>>('/api/auth/login/passkey/options', {}, sitzung),
+	login: (challenge_id: string, credential: Record<string, unknown>, org_slug?: string, sitzung: Sitzung = 'seite') =>
+		api.post<LoginResult>('/api/auth/login/passkey', { challenge_id, credential, org_slug }, sitzung),
 };
 
 // Vehicles

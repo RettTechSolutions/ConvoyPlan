@@ -56,3 +56,7 @@ pytest-asyncio>=1.4.0
 # httpx-CVE betrifft ab jetzt potenziell beide — bei Sicherheitsupdates
 # an beide denken.
 mcp==2.2.0
+
+# Passkeys (WebAuthn) — Prüfen von Registrierung und Anmeldung
+# (app/services/passkey.py). Zieht cbor2, pyOpenSSL und pyasn1 mit.
+webauthn==3.0.1

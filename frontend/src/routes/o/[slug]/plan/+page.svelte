@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import AppLogo from '$lib/components/AppLogo.svelte';
 	import MapView from '$lib/components/MapView.svelte';
+	import PasskeyVerwaltung from '$lib/components/PasskeyVerwaltung.svelte';
 	import LocationSearch from '$lib/components/LocationSearch.svelte';
 	import InfoPill from '$lib/components/InfoPill.svelte';
 	import ShareLinkModal from '$lib/components/ShareLinkModal.svelte';
@@ -1593,7 +1594,7 @@
 					{#if demoSession}
 						<div class="section" data-tour="konto">
 							<div class="demo-restrict-note">
-								🔒 In der Demo sind Passwortänderung und Zwei-Faktor-Authentifizierung deaktiviert,
+								🔒 In der Demo sind Passwortänderung, Zwei-Faktor-Authentifizierung und Passkeys deaktiviert,
 								da der Zugang von mehreren Personen geteilt wird.
 								<a href="https://convoyplan.de/#kontakt" target="_blank" rel="noopener">Vollversion anfragen →</a>
 							</div>
@@ -1686,6 +1687,13 @@
 								<button class="btn-small" onclick={() => { mfaSetupStep = 'idle'; mfaCode = ''; }}>Abbrechen</button>
 							</div>
 						{/if}
+					</div>
+
+					<div class="section">
+						<div class="section-header">
+							<strong>Passkeys</strong>
+						</div>
+						<PasskeyVerwaltung />
 					</div>
 					{/if}
 				{/if}

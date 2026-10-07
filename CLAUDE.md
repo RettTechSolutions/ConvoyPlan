@@ -509,6 +509,37 @@ Tests: `tests/test_lizenz_organisationsgrenze.py`, `tests/test_org_plan_grenzen.
 `frontend/e2e/org-plan-hinweis.spec.ts` (wer den Hinweis sieht). Anwenderdoku:
 `wiki/Lizenz-und-Demo-Modus.md`.
 
+### Passkeys: Domain, einmalige Challenge, kein TOTP danach
+
+Anmelden geht auch per WebAuthn. Die Regeln stehen in `app/services/passkey.py`,
+die Verdrahtung in `api/routes/passkeys.py`, die Browserseite in
+`frontend/src/lib/passkey.ts` (base64url ↔ ArrayBuffer, sonst nichts) und
+`lib/components/PasskeyVerwaltung.svelte`. Drei Dinge, die man kennen muss:
+
+- **Relying Party ist `APP_BASE_URL`** — Hostname als RP-ID, die Adresse selbst
+  als einziger Ursprung. Bewusst keine eigene Einstellung: eine zweite, die von
+  der ersten abweichen kann, ergäbe nur Passkeys, die nirgends passen. Ein
+  Domainwechsel macht bestehende Passkeys ungültig; das ist WebAuthn.
+- **Eine Challenge gilt einmal** und liegt im Speicher (wie `rate_limit` und
+  `tracking_manager`), gedeckelt durch `MAX_OFFENE`, weil die Login-Optionen
+  öffentlich sind. Ein Token, das die Challenge signiert mit sich trägt, wäre
+  zustandslos, aber bis zum Ablauf beliebig oft einlösbar.
+- **Benutzerverifikation ist Pflicht, deshalb folgt kein TOTP.** Wer
+  `require_user_verification` lockert, macht aus dem Passkey einen reinen
+  Besitzfaktor, und der Login übersprünge MFA trotzdem. Einrichten verlangt das
+  Passwort erneut — ein Passkey überlebt Passwortwechsel und -reset.
+
+Die Anmeldepfade liegen unter `/api/auth/login/passkey…`, weil der Lizenzwächter
+genau `/api/auth/login` durchlässt. Wer sie verlegt, zieht `_EXEMPT_PREFIXES`
+mit, sonst gibt es im Demo-Modus keine Passkey-Anmeldung.
+
+Tests: `tests/test_passkey_anmeldung.py` mit einem Software-Authenticator (echte
+P-256-Signaturen, die Bibliothek wird **nicht** gemockt) und
+`frontend/e2e/passkey-anmeldung.spec.ts` mit Chromiums virtuellem Authenticator —
+dort prüft der Test die Signatur über die angekommenen Bytes, weil ein Fehler in
+der base64url-Umwandlung sonst nur als „Anmeldung fehlgeschlagen" sichtbar wäre.
+Anwenderdoku: `wiki/Sicherheit-und-Datenschutz.md`, „Passkeys".
+
 ## Test-Konventionen
 
 Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste:

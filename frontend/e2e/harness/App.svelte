@@ -11,6 +11,7 @@
 	import ConvoyFormModal from '$lib/components/ConvoyFormModal.svelte';
 	import SidebarFooter from '$lib/components/SidebarFooter.svelte';
 	import AktionsseitenVerwaltung from '$lib/components/AktionsseitenVerwaltung.svelte';
+	import PasskeyVerwaltung from '$lib/components/PasskeyVerwaltung.svelte';
 	import { feedbackStore } from '$lib/stores/feedback';
 
 	const welche = new URLSearchParams(location.search).get('k') ?? 'share';
@@ -42,6 +43,8 @@
 	</div>
 {:else if welche === 'aktion'}
 	<div class="admin-flaeche"><AktionsseitenVerwaltung /></div>
+{:else if welche === 'passkey'}
+	<div class="admin-flaeche"><PasskeyVerwaltung /></div>
 {:else if welche === 'feedback'}
 	<FeedbackModal />
 {:else if welche === 'konvoi'}

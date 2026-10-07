@@ -3,7 +3,8 @@
     import { page } from '$app/stores';
     import { onMount } from 'svelte';
     import { orgStore } from '$lib/stores/org';
-    import { orgAuthApi } from '$lib/api';
+    import { orgAuthApi, passkeyApi } from '$lib/api';
+    import { istAbbruch, passkeyAnmelden, passkeysVerfuegbar } from '$lib/passkey';
     import { sicheresZiel } from '$lib/redirect';
     import AppLogo from '$lib/components/AppLogo.svelte';
     import LegalFooter from '$lib/components/LegalFooter.svelte';
@@ -52,7 +53,31 @@
         forgotMessage = '';
     }
 
+    // Passkey: nur anbieten, wo der Browser es kann.
+    let passkeyMoeglich = $state(false);
+
+    async function handlePasskey() {
+        loading = true;
+        error = '';
+        try {
+            const { challenge_id, options } = await passkeyApi.loginOptions();
+            const credential = await passkeyAnmelden(options);
+            await passkeyApi.login(challenge_id, credential, slug);
+            if (await orgStore.load(slug)) {
+                goto(zielNachLogin);
+            } else {
+                error = 'Anmeldung fehlgeschlagen';
+            }
+        } catch (e: unknown) {
+            // Abgebrochener Dialog ist kein Fehler, den man rot anzeigt.
+            error = istAbbruch(e) ? '' : e instanceof Error ? e.message : 'Anmeldung mit Passkey fehlgeschlagen';
+        } finally {
+            loading = false;
+        }
+    }
+
     onMount(async () => {
+        passkeyMoeglich = passkeysVerfuegbar();
         // Bereits eingeloggt? Weiterleiten. Das weiß nur der Server — ein
         // vorhandenes Cookie sagt für sich genommen nichts über seine
         // Gültigkeit, und lesen kann das Portal es ohnehin nicht.
@@ -153,6 +178,12 @@
                     {loading ? 'Anmelden…' : 'Anmelden'}
                 </button>
                 <button type="button" class="btn-link" onclick={openForgot}>Passwort vergessen?</button>
+                {#if passkeyMoeglich}
+                    <div class="oder"><span>oder</span></div>
+                    <button type="button" class="btn-passkey" onclick={handlePasskey} disabled={loading}>
+                        Mit Passkey anmelden
+                    </button>
+                {/if}
             </form>
         {:else if forgotOpen}
             <form onsubmit={(e) => { e.preventDefault(); handleForgot(); }}>
@@ -301,6 +332,22 @@
         text-decoration: underline;
     }
     .btn-link:hover:not(:disabled) { color: var(--text-1); }
+    .btn-passkey {
+        background: var(--surface-2);
+        color: var(--text-1);
+        border: 1px solid var(--border);
+        margin-top: 0;
+    }
+    .btn-passkey:hover:not(:disabled) { background: var(--surface-1); border-color: var(--text-muted); }
+    .oder {
+        display: flex;
+        align-items: center;
+        gap: .6rem;
+        margin: 1rem 0 .75rem;
+        color: var(--text-muted);
+        font-size: var(--text-xs);
+    }
+    .oder::before, .oder::after { content: ''; flex: 1; border-top: 1px solid var(--border); }
     .info {
         background: var(--surface-2);
         color: var(--text-1);

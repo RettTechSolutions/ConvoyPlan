@@ -1,4 +1,5 @@
 from app.models.user import User
+from app.models.passkey import Passkey
 from app.models.vehicle import Vehicle
 from app.models.organization import Organization, UserOrganization
 from app.models.convoy import Convoy, ConvoyVehicle
@@ -21,7 +22,7 @@ from app.models.demo_origin import DemoOrigin
 from app.models.system_metric import SystemMetricDaily, SystemMetricSample, UserActivityDay
 
 __all__ = [
-    "User", "Vehicle", "Organization", "UserOrganization",
+    "User", "Passkey", "Vehicle", "Organization", "UserOrganization",
     "Convoy", "ConvoyVehicle", "Waypoint", "Route",
     "VehiclePosition", "ConvoyShareLink", "AuditLog", "ApiKey",
     "OAuthClient", "OAuthCode", "OAuthRefreshToken", "OrganizationMcpPolicy", "OrganizationPlan",

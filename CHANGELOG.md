@@ -21,6 +21,10 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Added
+
+- **Anmelden mit Passkey.** Neben E-Mail und Passwort gibt es auf beiden Anmeldeseiten (Organisation und Superadmin) **Mit Passkey anmelden** — Fingerabdruck, Gesichtserkennung oder Geräte-PIN, ohne Adresse und ohne Passwort. Eingerichtet und entfernt werden Passkeys im eigenen Konto (Planung: *Konto → Passkeys*, Adminportal: *System → Passkeys*); das Einrichten verlangt das aktuelle Passwort. Die Instanz verlangt Benutzerverifikation, deshalb folgt auf eine Passkey-Anmeldung kein TOTP-Schritt. Relying Party ist die Domain aus `APP_BASE_URL` — eine Instanz, die mit `https://convoyplan.example.com` aus der Vorlage läuft, muss den Wert richtig setzen, sonst lässt sich kein Passkey anlegen. Neue Abhängigkeit `webauthn` (py_webauthn), Migration `0053`. Anwenderdoku: `wiki/Sicherheit-und-Datenschutz.md`, „Passkeys".
+
 ### Changed
 
 - **Der Eintrag für den EventTracker bringt die Instanz mit.** Nach dem Anlegen oder Erneuern einer Aktionsseite steht im Eintrag zusätzlich `"convoyplan":"https://<instanz>"`. Der EventTracker (ab RettTechSolutions/Convoyplan-EventTracker#7) nimmt die Adresse von dort, der Installer fragt nicht mehr nach ihr — ein Eintrag, einmal kopieren. `CONVOYPLAN_URL` im EventTracker darf weiter gesetzt sein und gilt dann vor dem Feld.
