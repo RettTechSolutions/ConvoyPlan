@@ -57,7 +57,7 @@ Docker und ohne Registry geprüft.
 ### Der Routing-Graph und der Deploy
 
 Zwei Dateien entscheiden hier, und man muss sie auseinanderhalten.
-`.graph_fingerprint` (Region + Encoded Values) schreibt `graphhopper/
+`.graph_fingerprint` (Region + Encoded Values + Abbiegeverbote) schreibt `graphhopper/
 entrypoint.sh` **vor** dem Import — er sagt, *wofür* ein Graph gebaut wurde, und
 belegt **nicht**, dass er fertig ist. `edges` legt GraphHopper erst bei einem
 vollständigen Graphen an; das ist der Vollständigkeitsbeleg, und alle drei
@@ -103,6 +103,19 @@ bleibt weit darunter. Das Dateiformat ist bei beiden Zugriffsarten dasselbe.
 Server-Phase anders konfiguriert, setzt `GH_SERVER_JAVA_OPTS` komplett, nicht
 ergänzend; die Vorgabe (Heap im Leerlauf zurückgeben, bei OOM beenden) steht nur
 im Entrypoint.
+
+### Abbiegeverbote: beide Profile mit `turn_costs`
+
+Ohne `turn_costs` im Profil kennt GraphHopper **keine** OSM-Abbiegeverbote — bis
+2026-10 war das bei `car` und `truck` der Fall. Gemeldet an der B 472 bei
+Peißenberg (Anschluss WM 15): die Route nahm die Auffahrt regelkonform hinauf
+und bog an ihrer Spitze per Haarnadel in die Gegenrichtung ab, über ein
+`only_right_turn` hinweg. Sichtbar wurde es mit der Straßenpräferenz
+„standard", weil die Strafe auf `TERTIARY` den Weg über die Rampen billiger
+macht. `graphhopper/entrypoint.sh` setzt `turn_costs` deshalb für beide
+Profile, und der Wert steht im Fingerprint: ein Graph ohne sie wird neu gebaut
+(`test_entrypoint_graph_zustand.sh`, Fall 4b; die erzeugte Konfiguration prüft
+`test_entrypoint_start_phasen.sh`, Fall 1b).
 
 ### Die Wegpunktreihenfolge gehört dem Menschen
 

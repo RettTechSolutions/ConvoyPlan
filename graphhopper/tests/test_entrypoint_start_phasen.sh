@@ -55,6 +55,7 @@ done
 for a in "$@"; do conf="$a"; done
 da="$(sed -n 's/^  graph.dataaccess.default_type: //p' "$conf")"
 printf '%s|%s|%s\n' "$cmd" "$da" "${opts# }" >> "$JAVA_LOG"
+cp "$conf" "$JAVA_LOG.conf"
 if [ "$cmd" = "import" ]; then
     [ "${FAKE_IMPORT_RC:-0}" -eq 0 ] || exit "$FAKE_IMPORT_RC"
     graph="$(sed -n 's/^  graph.location: //p' "$conf")"
@@ -96,6 +97,17 @@ check "Erststart: erst import mit RAM_STORE, JAVA_OPTS und der Heap-Messung" \
 check "Erststart: dann server per MMAP mit den Server-Optionen" \
     "$(sed -n 2p "$JAVA_LOG")" \
     "server|MMAP|-Xmx3g -Xms1g -XX:+UseG1GC -XX:G1PeriodicGCInterval=300000 -XX:+ExitOnOutOfMemoryError"
+
+# ── Fall 1b: jedes Profil beachtet Abbiegeverbote ──────────────────────────
+# Ohne turn_costs ignoriert GraphHopper OSM-Abbiegeverbote vollstaendig — an
+# der B 472 bei Peissenberg fuehrte das per Haarnadel von der Auffahrt in die
+# Gegenrichtung (siehe Kommentar an TURN_COSTS_VEHICLES im Entrypoint). Geprueft
+# an der Konfiguration, die der Server tatsaechlich bekommen hat.
+profile="$(sed -n '/^  profiles:/,/^  profiles_ch:/p' "$JAVA_LOG.conf")"
+check "Erststart: zwei Profile (car, truck)" \
+    "$(echo "$profile" | grep -c '^    - name: ')" "2"
+check "Erststart: jedes Profil hat turn_costs fuer motorcar und motor_vehicle" \
+    "$(echo "$profile" | grep -c '^        vehicle_types: \[motorcar, motor_vehicle\]$')" "2"
 
 # ── Fall 2: Neustart mit fertigem Graphen — nur der Server, kein Import ────
 rc="$(run_entrypoint server "$TMP/g1")"

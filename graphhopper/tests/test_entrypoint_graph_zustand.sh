@@ -45,7 +45,7 @@ trap 'rm -rf "$TMP"' EXIT
 BLOCK="$TMP/graph_zustand.sh"
 sed -n '/^# ── GRAPH_ZUSTAND_ANFANG/,/^# ── GRAPH_ZUSTAND_ENDE/p' "$ENTRYPOINT" > "$BLOCK"
 
-FP='dach-latest.osm.pbf|car_access, car_average_speed, road_class, max_speed, max_height'
+FP='dach-latest.osm.pbf|car_access, car_average_speed, road_class, max_speed, max_height|turn_costs: motorcar, motor_vehicle'
 
 # Fuehrt den echten Block gegen ein vorbereitetes Verzeichnis aus und gibt den
 # gewaehlten REBUILD_REASON zurueck ("KEINER", wenn nicht neu gebaut wird).
@@ -102,6 +102,20 @@ case "$grund" in
     *)              r="nein ($grund)" ;;
 esac
 check "geaenderter Fingerprint schlaegt weiter durch (und nicht der neue Zweig)" "$r" "ja"
+
+# ── Fall 4b: Bestand ohne Abbiegeverbote wird neu gebaut ────────────────────
+# Graphen von vor 2026-10 haben Profile ohne turn_costs. GraphHopper laedt sie
+# mit der neuen Konfiguration nicht, und ohne Neubau blieben die Abbiegeverbote
+# aus. Derselbe Fingerprint wie damals, nur ohne den turn_costs-Teil.
+D4b="$TMP/ohne_abbiegeverbote"; mkdir -p "$D4b"
+printf 'x' > "$D4b/edges"
+printf '%s' "${FP%|turn_costs*}" > "$D4b/.graph_fingerprint"
+grund="$(run_block "$D4b")"
+case "$grund" in
+    *Profile*) r=ja ;;
+    *)         r="nein ($grund)" ;;
+esac
+check "Graph ohne turn_costs im Fingerprint wird neu gebaut" "$r" "ja"
 
 # ── Fall 5: frisch geladene OSM-Datei — bestehendes Verhalten bleibt ───────
 D5="$TMP/neu_geladen"; mkdir -p "$D5"
