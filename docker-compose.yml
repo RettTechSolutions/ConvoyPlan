@@ -80,6 +80,8 @@ services:
       HERE_TRAFFIC_API_KEY: ${HERE_TRAFFIC_API_KEY:-}
       TOMTOM_TRAFFIC_API_KEY: ${TOMTOM_TRAFFIC_API_KEY:-}
       TRAFFIC_FLOW_PROVIDER: ${TRAFFIC_FLOW_PROVIDER:-}
+      # Overpass-Server, kommagetrennt (siehe .env.example).
+      OVERPASS_URLS: ${OVERPASS_URLS:-https://overpass-api.de/api/interpreter}
       # Firmware-Ablage für Tracker (leer = keine Updates anbieten).
       TRACKER_FIRMWARE_URL: ${TRACKER_FIRMWARE_URL-https://firmware.convoyplan.de}
       # Offene Baustellenfeeds (Open Data + mobilithek/DATEX II). Standard =

@@ -356,6 +356,7 @@ openssl rand -hex 32
 | Variable | Beschreibung |
 |---|---|
 | `HERE_TRAFFIC_API_KEY` / `TOMTOM_TRAFFIC_API_KEY` | Optionale API-Keys für die Live-Verkehrslage. Ohne Key bleibt die Funktion inaktiv. Alternativ im Admin-Bereich hinterlegbar (hat Vorrang). |
+| `OVERPASS_URLS` | Overpass-Server für Sperrungen, Tankstellen und Brücken ohne Höhenangabe, kommagetrennt, in dieser Reihenfolge versucht. Standard: `https://overpass-api.de/api/interpreter`. Die Abfragen enthalten die geplante Route. Nur Server mit weltweiten Daten eintragen, ideal ist eine eigene Instanz. |
 | `TRAFFIC_FLOW_PROVIDER` | Anbieter erzwingen (`here`/`tomtom`). Standard: automatisch, HERE bevorzugt. |
 | `HERE_API_KEY` | Optional. Aktiviert die Adresssuche im Plan-Editor über HERE Geocoding & Search (serverseitig proxied). Leer = `HERE_TRAFFIC_API_KEY` mitbenutzen bzw. Photon-Fallback. |
 | `HERE_MONTHLY_LIMIT` | Kostendeckel für die Adresssuche: max. HERE-Anfragen pro Kalendermonat (Standard `25000`, `0` = kein App-Deckel). Deckel erreicht → automatischer Photon-Fallback. |

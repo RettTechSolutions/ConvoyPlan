@@ -245,6 +245,7 @@ Kommt `<?xml … <d2LogicalModel …` zurück, ist alles korrekt.
 | `OPENDATA_TRAFFIC_CLIENT_CERT` | Pfad zum mTLS-Client-Zertifikat (PEM) für `datex2`-Feeds |
 | `OPENDATA_TRAFFIC_CA_CERT` | Nur für Broker mit **privater** CA. Für die mobilithek **leer lassen**. |
 | `HERE_TRAFFIC_API_KEY` / `TOMTOM_TRAFFIC_API_KEY` | Live-Verkehrslage (alternativ im Admin-Panel) |
+| `OVERPASS_URLS` | Overpass-Server, kommagetrennt (Standard: overpass-api.de) |
 | `TRAFFIC_FLOW_PROVIDER` | `here` / `tomtom` erzwingen (leer = automatisch, HERE bevorzugt) |
 | `HERE_API_KEY` | Adresssuche über HERE Geocoding & Search. Leer = HERE-Traffic-Key mitbenutzen bzw. Photon-Fallback |
 | `HERE_MONTHLY_LIMIT` | Kostendeckel: max. HERE-Anfragen/Monat für die Adresssuche (Standard 25000, `0` = aus). Deckel erreicht → Photon-Fallback |
