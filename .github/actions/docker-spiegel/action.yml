@@ -8,6 +8,19 @@ description: >
   Docker Hub. Dockerfiles und veröffentlichte Images bleiben unberührt — das gilt nur
   für den Runner.
 
+  Der Eintrag in `registry-mirrors` allein reicht nicht: Am 2026-10-09 fragte der
+  Daemon für `docker run` trotzdem Docker Hub (429), obwohl der Spiegel die Images
+  hatte. Was ein Job sicher braucht, nennt er deshalb in `images`; die werden
+  ausdrücklich vom Spiegel gezogen und lokal unter ihrem Docker-Hub-Namen getaggt.
+
+inputs:
+  images:
+    description: >
+      Docker-Hub-Images (durch Leerzeichen getrennt, z. B. `bash:5.2 docker:cli`), die
+      vom Spiegel vorab gezogen werden. Fehlt eins dort, bleibt es beim Daemon.
+    required: false
+    default: ''
+
 runs:
   using: composite
   steps:
@@ -25,3 +38,26 @@ runs:
         # Bis der Daemon wieder antwortet; der Neustart dauert meist unter 5 s.
         for _ in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 1; done
         echo "Spiegel: $(docker info --format '{{json .RegistryConfig.Mirrors}}')"
+
+    - name: Images vom Spiegel vorab ziehen
+      if: inputs.images != ''
+      shell: bash
+      env:
+        IMAGES: ${{ inputs.images }}
+      run: |
+        set -uo pipefail
+        for img in $IMAGES; do
+          # Offizielle Images liegen auf Docker Hub unter library/.
+          case "$img" in */*) pfad="$img" ;; *) pfad="library/$img" ;; esac
+          ok=nein
+          for versuch in 1 2 3; do
+            if docker pull -q "mirror.gcr.io/$pfad" >/dev/null; then ok=ja; break; fi
+            sleep $((versuch * 5))
+          done
+          if [ "$ok" = ja ]; then
+            docker tag "mirror.gcr.io/$pfad" "$img"
+            echo "vom Spiegel: $img"
+          else
+            echo "::warning::$img nicht vom Spiegel zu holen; der Daemon versucht es selbst."
+          fi
+        done
