@@ -1432,11 +1432,14 @@ export interface OrgPlanState {
     label: string | null;
     max_vehicles: number | null;
     max_planners: number | null;
+    max_trackers: number | null;
     valid_until: string | null;
     vehicles: number;
     planners: number;
+    trackers: number;
     vehicles_over: boolean;
     planners_over: boolean;
+    trackers_over: boolean;
     expired: boolean;
     locked: boolean;
     days_left: number | null;
@@ -1456,6 +1459,7 @@ export interface OrgPlanCatalogEntry {
     label: string;
     max_vehicles: number | null;
     max_planners: number | null;
+    max_trackers: number | null;
     laufzeit_tage: number | null;
 }
 
@@ -1464,6 +1468,7 @@ export interface OrgPlanSet {
     plan: string;
     max_vehicles?: number | null;
     max_planners?: number | null;
+    max_trackers?: number | null;
     valid_until?: string | null;
     note?: string | null;
 }

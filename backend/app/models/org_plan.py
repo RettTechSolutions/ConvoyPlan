@@ -37,6 +37,9 @@ class OrganizationPlan(Base):
     # None = unbegrenzt.
     max_vehicles: Mapped[int | None] = mapped_column(Integer, nullable=True)
     max_planners: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Ortungsgeräte (Tracker); None = unbegrenzt — auch für jeden Plan, der
+    # vor dieser Spalte gesetzt wurde (Migration 0059).
+    max_trackers: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Letzter Tag, an dem der Plan gilt; None = bis auf Weiteres (Vertrag).
     valid_until: Mapped[date | None] = mapped_column(Date, nullable=True)
     # Freitext für den Betreiber (Angebotsnummer, Absprache). Sieht nur er.

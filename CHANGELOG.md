@@ -21,6 +21,10 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Added
+
+- **Tracker im Paket einer Organisation.** Der Plan einer Organisation zählt jetzt auch ihre Tracker (Ortungsgeräte); gesperrte zählen nicht. Die Grenze `max_trackers` ist weich wie die übrigen: Anlegen klappt immer, Planer und Admins sehen einen Hinweis, der Betreiber die Überschreitung im Reiter **Pläne**. Kein Paket des Katalogs begrenzt Tracker, und jeder schon gesetzte Plan bleibt ohne Grenze — kein Update meldet eine Überschreitung. Migration `0059`.
+
 ## [2026.8.0] – 2026-10-09
 
 ### Wichtig beim Update

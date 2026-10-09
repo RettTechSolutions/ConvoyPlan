@@ -4,11 +4,14 @@ Die Zusagen:
 
 - Ohne Plan keine Grenzen — der Normalfall jeder selbst betriebenen
   Installation darf durch ein Update nicht „Grenze erreicht" melden.
-- Mehr Fahrzeuge oder Planer als gebucht werden **nicht** abgewiesen, nur
-  gemeldet. Anlegen klappt immer.
+- Mehr Fahrzeuge, Planer oder Tracker als gebucht werden **nicht**
+  abgewiesen, nur gemeldet. Anlegen klappt immer.
 - Nach ``valid_until`` laufen 14 Tage Kulanz, danach ist die Organisation nur
   noch lesend: schreiben 402, lesen 200. Nichts wird gelöscht.
-- Fahrer und Beobachter zählen nicht als Planer.
+- Fahrer und Beobachter zählen nicht als Planer, gesperrte Tracker nicht
+  als Tracker.
+- Ein Plan von vor der Tracker-Grenze bleibt ohne sie: kein Update meldet
+  plötzlich eine Überschreitung.
 
 Zuerst die Rechenregel ohne Datenbank und Uhr, danach der Weg durch die App.
 """
@@ -25,6 +28,7 @@ from app.config import settings
 from app.database import AsyncSessionLocal, engine
 from app.models.org_plan import OrganizationPlan
 from app.models.organization import Organization, UserOrganization
+from app.models.ortungsgeraet import Ortungsgeraet
 from app.models.user import User
 from app.models.vehicle import Vehicle
 from app.services import org_plan
@@ -37,6 +41,7 @@ def _zeile(**felder) -> OrganizationPlan:
         plan=felder.pop("plan", "hosting_s"),
         max_vehicles=felder.pop("max_vehicles", 25),
         max_planners=felder.pop("max_planners", 5),
+        max_trackers=felder.pop("max_trackers", None),
         valid_until=felder.pop("valid_until", None),
     )
 
@@ -56,6 +61,16 @@ def test_grenze_erreicht_ist_nicht_ueberschritten():
     assert z.fahrzeuge_ueber and z.planer_ueber
     # Überschreiten sperrt nichts — die Grenzen sind weich.
     assert not z.gesperrt
+
+
+def test_tracker_ueber_der_grenze():
+    z = org_plan.zustand(_zeile(max_trackers=2), org_plan.Nutzung(0, 0, tracker=2), HEUTE)
+    assert not z.tracker_ueber
+    z = org_plan.zustand(_zeile(max_trackers=2), org_plan.Nutzung(0, 0, tracker=3), HEUTE)
+    assert z.tracker_ueber and not z.gesperrt
+    # Ein Plan ohne Tracker-Grenze (auch jeder von vor Migration 0059) kennt kein Über.
+    z = org_plan.zustand(_zeile(), org_plan.Nutzung(0, 0, tracker=500), HEUTE)
+    assert not z.tracker_ueber
 
 
 def test_unbegrenzt_kennt_kein_ueber():
@@ -92,6 +107,8 @@ def test_katalog_entspricht_der_preisliste():
     assert (k["hosting_l"].max_fahrzeuge, k["hosting_l"].max_planer) == (None, None)
     assert (k["einsatz"].max_fahrzeuge, k["einsatz"].max_planer) == (50, 10)
     assert k["einsatz"].laufzeit_tage == 30
+    # Tracker hat kein Paket begrenzt; die Grenze setzt das Angebot.
+    assert all(p.max_tracker is None for p in k.values())
 
 
 # ── Durch die App ────────────────────────────────────────────────────────
@@ -143,6 +160,7 @@ async def org():
         )
     yield ids
     async with AsyncSessionLocal() as db:
+        await db.execute(delete(Ortungsgeraet).where(Ortungsgeraet.organization_id == ids.org_id))
         await db.execute(delete(Vehicle).where(Vehicle.org_id == ids.org_id))
         await db.execute(delete(OrganizationPlan).where(OrganizationPlan.organization_id == ids.org_id))
         await db.execute(delete(UserOrganization).where(UserOrganization.organization_id == ids.org_id))
@@ -233,6 +251,46 @@ async def test_ueberschreitung_wird_gemeldet_nicht_verhindert(org, client):
     # Überschreitungen stehen oben.
     erste_ohne = next((i for i, z in enumerate(liste) if not (z["vehicles_over"] or z["planners_over"] or z["expired"])), len(liste))
     assert liste.index(zeile) < erste_ohne
+
+
+async def test_tracker_werden_gezaehlt_gesperrte_nicht(org, client):
+    r = await client.put(
+        f"/api/admin/plans/organizations/{org.org_id}",
+        json={"plan": "hosting_s", "max_trackers": 1},
+        headers=_h(org.chef),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["max_trackers"] == 1
+    ids = []
+    for name in ("Tracker 1", "Tracker 2", "Tracker 3"):
+        r = await client.post("/api/org/geraete", json={"name": name}, headers=_h(org.admin))
+        assert r.status_code == 201, r.text
+        ids.append(r.json()["id"])
+    # Anlegen über der Grenze klappt — gemeldet wird nur.
+    eigen = (await client.get("/api/org/plan", headers=_h(org.admin))).json()
+    assert (eigen["trackers"], eigen["trackers_over"]) == (3, True)
+
+    for i, geraet_id in enumerate(ids[1:], start=2):
+        r = await client.put(
+            f"/api/org/geraete/{geraet_id}", json={"name": f"Tracker {i}", "aktiv": False}, headers=_h(org.admin)
+        )
+        assert r.status_code == 200, r.text
+    eigen = (await client.get("/api/org/plan", headers=_h(org.admin))).json()
+    assert (eigen["trackers"], eigen["trackers_over"]) == (1, False)
+
+    liste = (await client.get("/api/admin/plans/organizations", headers=_h(org.chef))).json()
+    zeile = next(z for z in liste if z["organization_id"] == str(org.org_id))
+    assert (zeile["trackers"], zeile["max_trackers"]) == (1, 1)
+
+
+async def test_ohne_angabe_gilt_der_katalog_auch_fuer_tracker(org, client):
+    r = await client.put(
+        f"/api/admin/plans/organizations/{org.org_id}",
+        json={"plan": "hosting_m"},
+        headers=_h(org.chef),
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["max_trackers"] is None and r.json()["trackers_over"] is False
 
 
 async def test_nach_kulanz_nur_noch_lesend(org, client):
