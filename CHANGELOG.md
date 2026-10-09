@@ -68,6 +68,8 @@ ursprünglichen SemVer-Nummern.
 
 - **Abbiegeverbote aus OSM werden beachtet.** `car` und `truck` liefen ohne `turn_costs`, GraphHopper ignorierte damit jedes `type=restriction`. Gemeldet an der B 472 bei Peißenberg (Anschluss WM 15): Die Route nahm die Auffahrt hinauf und bog an ihrer Spitze per Haarnadel in die Gegenrichtung ab, über ein `only_right_turn` hinweg.
 
+- **Ein `docker compose pull` von Hand warf eine Instanz auf Stable zurück.** Den Update-Kanal setzte der Updater nur in seiner eigenen Umgebung durch; die `.env` des Hosts blieb auf dem `:latest` des Installers. Eine Nightly- oder Beta-Instanz tauschte so still auf das ältere Stable-Image zurück, samt Neuaufbau des Routing-Graphen. Der Updater schreibt die fünf `*_IMAGE`-Zeilen jetzt beim Start und nach jedem Kanalwechsel in die `.env` zurück; Mirror, Digest und Zeilen in Anführungszeichen bleiben stehen.
+
 - **Gültige Lizenzschlüssel galten an manchen Tagen als abgelaufen.** Seit Python 3.11 liest `date.fromisoformat` auch `YYYYMMDD` und machte aus einer Unix-Zeit in `exp` je nach Ziffernfolge ein Datum im Jahr 1823. Reine Ziffernfolgen gehen jetzt zuerst als Zeitstempel durch.
 
 ### Security
