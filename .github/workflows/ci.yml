@@ -32,6 +32,11 @@ jobs:
     services:
       postgres:
         image: postgis/postgis:15-3.4
+        # Angemeldet zieht der Runner mit eigenem Kontingent; postgis führt
+        # mirror.gcr.io nicht. Ohne Secrets (Fork-PRs) bleibt es anonym.
+        credentials:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
         env:
           POSTGRES_USER: convoyplan
           POSTGRES_PASSWORD: convoyplan
@@ -142,6 +147,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/docker-spiegel
+        with:
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build backend image
         run: docker build ./backend
@@ -212,6 +220,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/docker-spiegel
+        with:
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build ${{ matrix.name }} image
         run: docker build -t convoyplan-${{ matrix.name }}:scan ${{ matrix.context }}
@@ -271,6 +282,8 @@ jobs:
 
       - uses: ./.github/actions/docker-spiegel
         with:
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
           images: bash:5.2 docker:cli
 
       - name: Alle Shell-Suiten ausfuehren
@@ -379,6 +392,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/docker-spiegel
+        with:
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
 
       # Das Extract fuer den Ersteinstieg kommt wie in `region-merge` aus einem
       # Tagescache und liegt schon im Volume, bevor GraphHopper startet. Ohne
@@ -651,6 +667,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - uses: ./.github/actions/docker-spiegel
+        with:
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: osmium installieren
         run: sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool

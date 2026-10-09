@@ -14,6 +14,17 @@ description: >
   ausdrücklich vom Spiegel gezogen und lokal unter ihrem Docker-Hub-Namen getaggt.
 
 inputs:
+  dockerhub-username:
+    description: >
+      Docker-Hub-Konto (Secret `DOCKERHUB_USERNAME`). Mit Token meldet sich der Daemon
+      an und zieht mit eigenem Kontingent statt dem geteilten Limit der Runner.
+      Leer (Fork-PRs) heißt: ohne Anmeldung, wie bisher.
+    required: false
+    default: ''
+  dockerhub-token:
+    description: Read-only Access Token dazu (Secret `DOCKERHUB_TOKEN`).
+    required: false
+    default: ''
   images:
     description: >
       Docker-Hub-Images (durch Leerzeichen getrennt, z. B. `bash:5.2 docker:cli`), die
@@ -24,6 +35,14 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Bei Docker Hub anmelden
+      if: inputs.dockerhub-username != '' && inputs.dockerhub-token != ''
+      shell: bash
+      env:
+        DH_USER: ${{ inputs.dockerhub-username }}
+        DH_TOKEN: ${{ inputs.dockerhub-token }}
+      run: printf '%s' "$DH_TOKEN" | docker login -u "$DH_USER" --password-stdin
+
     - name: Docker-Daemon auf mirror.gcr.io umstellen
       shell: bash
       run: |
