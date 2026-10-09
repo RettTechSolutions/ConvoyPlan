@@ -4,13 +4,16 @@ import math
 import time
 from datetime import datetime, timezone
 
-OVERPASS_URL = "https://overpass-api.de/api/interpreter"
-# Fallback mirrors — tried in order when the previous one fails or is overloaded
-OVERPASS_MIRRORS = [
-    OVERPASS_URL,
-    "https://overpass.kumi.systems/api/interpreter",
-    "https://overpass.private.coffee/api/interpreter",
+from app.config import settings
+
+# In dieser Reihenfolge versucht (OVERPASS_URLS). overpass.kumi.systems und
+# overpass.private.coffee standen hier als Ersatz und antworteten im Oktober
+# 2026 nur noch mit 500 — ein toter Spiegel kostet bei jedem Ausfall des
+# ersten Servers Zeit und bringt nichts.
+OVERPASS_MIRRORS = [u.strip() for u in settings.overpass_urls.split(",") if u.strip()] or [
+    "https://overpass-api.de/api/interpreter"
 ]
+OVERPASS_URL = OVERPASS_MIRRORS[0]
 _HEADERS = {"Accept": "*/*", "User-Agent": "ConvoyPlan/1.0"}
 
 _last_check: dict = {"status": "unknown", "latency_ms": None, "checked_at": None}

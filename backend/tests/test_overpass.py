@@ -99,8 +99,12 @@ class _FailingThenOkClient(_MockClient):
         return await super().post(url, data=data, headers=headers)
 
 
+_ZWEI = ["https://erster.example/api/interpreter", "https://zweiter.example/api/interpreter"]
+
+
 @pytest.mark.asyncio
 async def test_overpass_falls_back_to_mirror(monkeypatch):
+    monkeypatch.setattr(overpass_svc, "OVERPASS_MIRRORS", _ZWEI)
     _FailingThenOkClient.calls = []
     monkeypatch.setattr(overpass_svc.httpx, "AsyncClient", _FailingThenOkClient)
     result = await get_closures_along_route([(11.0, 48.0), (11.1, 48.1)])
@@ -140,6 +144,7 @@ class _SkriptClient(_MockClient):
 def skript(monkeypatch):
     monkeypatch.setattr(overpass_svc.httpx, "AsyncClient", _SkriptClient)
     monkeypatch.setattr(overpass_svc, "_WARTEN_S", (0.0, 0.0))
+    monkeypatch.setattr(overpass_svc, "OVERPASS_MIRRORS", _ZWEI)
     _SkriptClient.calls = []
     return _SkriptClient
 
@@ -150,15 +155,15 @@ async def test_besetzter_server_wird_erneut_gefragt_statt_zum_spiegel(skript):
     skript.antworten = [(429, {}), (200, {"elements": [{"id": 7}]})]
     data = await overpass_svc._post_overpass("q")
     assert data["elements"] == [{"id": 7}]
-    assert skript.calls == [overpass_svc.OVERPASS_URL] * 2
+    assert skript.calls == [_ZWEI[0]] * 2
 
 
 @pytest.mark.asyncio
 async def test_dauerhaft_besetzt_geht_zum_naechsten_spiegel(skript):
     skript.antworten = [(429, {})] * 3 + [(200, {"elements": []})]
     await overpass_svc._post_overpass("q")
-    assert skript.calls[:3] == [overpass_svc.OVERPASS_URL] * 3
-    assert skript.calls[3] == overpass_svc.OVERPASS_MIRRORS[1]
+    assert skript.calls[:3] == [_ZWEI[0]] * 3
+    assert skript.calls[3] == _ZWEI[1]
 
 
 @pytest.mark.asyncio
@@ -191,3 +196,19 @@ async def test_hoechstens_zwei_abfragen_gleichzeitig(monkeypatch):
     monkeypatch.setattr(overpass_svc, "_SLOTS", asyncio.Semaphore(2))
     await asyncio.gather(*(overpass_svc._post_overpass("q") for _ in range(5)))
     assert hoechstens == 2
+
+
+def test_liste_kommt_aus_der_einstellung(monkeypatch):
+    """OVERPASS_URLS, kommagetrennt; Leerzeichen und leere Einträge fallen weg."""
+    import importlib
+
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "overpass_urls", " https://a.example/i , ,https://b.example/i")
+    try:
+        mod = importlib.reload(overpass_svc)
+        assert mod.OVERPASS_MIRRORS == ["https://a.example/i", "https://b.example/i"]
+        assert mod.OVERPASS_URL == "https://a.example/i"
+    finally:
+        monkeypatch.undo()
+        importlib.reload(overpass_svc)
