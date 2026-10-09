@@ -330,6 +330,8 @@ export const regionApi = {
 	logStream: async () => null,
 	switch: async () => ({ status: 'queued' }),
 	cancel: async () => ({ status: 'cancelling' }),
+};
+
 // ── Ortungsgeräte (`TrackerVerwaltung`) ──────────────────────────────────────
 //
 // Was die Komponente abschickt, landet in `window.__trackerAngelegt`; der Code
