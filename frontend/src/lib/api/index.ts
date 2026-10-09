@@ -1620,6 +1620,57 @@ export const aktionsseitenApi = {
     preview: (id: string) => api.get<AktionsseiteVorschau>(`/api/org/aktionsseiten/${id}/vorschau`),
 };
 
+// ── Ortungsgeräte (Tracker) ───────────────────────────────────────────────
+//
+// Feste Tracker im Fahrzeug (Repo ConvoyPlan-Tracker). Der Einmal-Code zum
+// Einrichten steht genau einmal in der Antwort von `create` und `rotateCode`;
+// gespeichert ist nur sein Hash.
+
+export type TrackerKanal = 'stable' | 'beta' | 'nightly';
+
+export interface Tracker {
+    id: string;
+    name: string;
+    vehicle_id: string | null;
+    vehicle_name: string | null;
+    kanal: TrackerKanal;
+    aktiv: boolean;
+    eingerichtet: boolean;
+    code_offen: boolean;
+    hardware_id: string | null;
+    hardware: string | null;
+    firmware: string | null;
+    zuletzt_gesehen: string | null;
+    akku_prozent: number | null;
+    extern: boolean | null;
+    signal_dbm: number | null;
+    update_version: string | null;
+    update_ergebnis: 'bestaetigt' | 'zurueckgerollt' | 'fehler' | null;
+    update_meldung: string | null;
+    update_at: string | null;
+    created_at: string;
+}
+
+export interface TrackerMitCode extends Tracker {
+    code: string;
+    code_expires_at: string;
+}
+
+export interface TrackerDaten {
+    name: string;
+    vehicle_id: string | null;
+    kanal: TrackerKanal;
+    aktiv: boolean;
+}
+
+export const geraeteApi = {
+    list: () => api.get<Tracker[]>('/api/org/geraete'),
+    create: (daten: TrackerDaten) => api.post<TrackerMitCode>('/api/org/geraete', daten),
+    update: (id: string, daten: TrackerDaten) => api.put<Tracker>(`/api/org/geraete/${id}`, daten),
+    rotateCode: (id: string) => api.post<TrackerMitCode>(`/api/org/geraete/${id}/code`, {}),
+    delete: (id: string) => api.delete<void>(`/api/org/geraete/${id}`),
+};
+
 export const orgMcpApi = {
     read: () => api.get<OrgMcpPolicy>('/api/org/mcp'),
     save: (policy: { enabled: boolean; scopes: string[]; bereiche: string[] }) =>

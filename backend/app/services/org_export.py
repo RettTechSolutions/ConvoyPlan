@@ -45,6 +45,7 @@ from app.models.convoy import Convoy, ConvoyVehicle
 from app.models.leitstelle import Leitstelle
 from app.models.org_mcp_policy import OrganizationMcpPolicy
 from app.models.organization import Organization, UserOrganization
+from app.models.ortungsgeraet import Ortungsgeraet
 from app.models.public_tracker import PublicTracker, PublicTrackerConvoy, VehiclePositionTrail
 from app.models.route import Route
 from app.models.share_link import ConvoyShareLink
@@ -66,6 +67,8 @@ _GEHEIM: dict[str, frozenset[str]] = {
     "convoy_share_links": frozenset({"password_hash", "slug"}),
     # Slug und Abruf-Token zusammen öffnen die Aktionsseite — wie beim Share-Link.
     "public_trackers": frozenset({"fetch_token_hash", "slug"}),
+    # Einmal-Code und Gerätetoken: wer beides hätte, könnte als das Gerät senden.
+    "ortungsgeraete": frozenset({"code_hash", "token_hash"}),
 }
 
 # Welche Tabellen der Export abdeckt und welche er bewusst auslässt. Ein Test
@@ -78,6 +81,7 @@ EXPORTIERT = frozenset({
     "convoy_share_links", "leitstellen", "api_keys", "organization_mcp_policies",
     "user_activity_days", "audit_logs",
     "public_trackers", "public_tracker_convoys", "vehicle_position_trail",
+    "ortungsgeraete",
 })
 NICHT_EXPORTIERT = frozenset({
     "feedback_reports",      # Rückmeldungen an den Betreiber, nicht Daten der Organisation
@@ -183,6 +187,11 @@ async def build_org_export(db: AsyncSession, org: Organization) -> dict:
             zeile(tc) for tc in await _alle(
                 db,
                 select(PublicTrackerConvoy).where(PublicTrackerConvoy.convoy_id.in_(convoy_ids)),
+            )
+        ],
+        "tracker": [
+            zeile(g) for g in await _alle(
+                db, select(Ortungsgeraet).where(Ortungsgeraet.organization_id == org.id)
             )
         ],
         "positionsverlauf": [
