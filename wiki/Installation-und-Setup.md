@@ -426,7 +426,7 @@ Im Installationsverzeichnis (Standard `~/convoyplan`):
 docker compose ps                   # Zustand und Healthchecks
 docker compose logs -f backend      # Backend-Logs
 docker compose logs -f graphhopper  # GraphHopper-Logs (Import-Fortschritt)
-docker compose pull && docker compose up -d   # Images von Hand aktualisieren
+docker compose pull && docker compose up -d   # Images von Hand aktualisieren (Kanal-Tags aus .env, pflegt der Updater)
 docker compose down                 # Dienste stoppen
 docker compose down -v              # Dienste stoppen und ALLE Daten löschen
 ```

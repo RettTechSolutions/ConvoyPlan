@@ -621,6 +621,20 @@ gh_deploy_graphhopper() {
 }
 # shellcheck source=./graphhopper-deploy.sh
 source /graphhopper-deploy.sh
+# shellcheck source=./env-kanal.sh
+source /env-kanal.sh
+
+# Die .env des Hosts auf den Kanal ziehen (Begruendung in env-kanal.sh): beim
+# Start des Updaters und nach jedem Kanalwechsel im Panel, nicht bei jedem
+# Durchlauf der Schleife — der Abgleich startet einen Hilfscontainer.
+ENV_KANAL_ZULETZT=""
+_env_kanal_pruefen() {
+    local tag
+    tag="$(_channel_tag)"
+    [ "${tag}" = "${ENV_KANAL_ZULETZT}" ] && return 0
+    _env_kanal_abgleichen "${tag}"
+    ENV_KANAL_ZULETZT="${tag}"
+}
 
 do_update() {
     log "Starte Image-Update (Kanal: $(read_channel))…"
@@ -816,6 +830,8 @@ check_target_and_update() {
 }
 
 while true; do
+    _env_kanal_pruefen
+
     # Trigger check — runs every TRIGGER_POLL seconds so the UI reacts quickly
     if [ -f "${TRIGGER_FILE}" ]; then
         # Regionswechsel hat Vorrang: Trigger und Regionswechsel-Lock können

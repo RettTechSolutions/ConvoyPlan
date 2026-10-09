@@ -54,6 +54,22 @@ ist. Die Entscheidung selbst steht in `decide.sh`, getrennt von der
 Registry-Abfrage, und wird von `tests/test_image_wiederverwendung.sh` ohne
 Docker und ohne Registry geprüft.
 
+### Die `.env` trägt den Kanal-Tag
+
+Den Kanal setzt der Updater nur in seiner eigenen Umgebung durch
+(`_apply_channel_images`); die `.env` des Hosts blieb auf dem `:latest` des
+Installers. Ein `docker compose pull` von Hand tauschte deshalb eine
+Nightly-Instanz still auf das ältere Stable-Image — am 2026-10-09 samt erneutem
+Neuaufbau des Graphen. `docker/updater/env-kanal.sh` zieht die fünf `*_IMAGE`-Zeilen
+beim Start des Updaters und nach jedem Kanalwechsel nach, über einen Hilfscontainer
+wie beim Zurückschreiben der Compose-Datei. Gemountet wird das **Verzeichnis**, nicht
+die Datei (ein Datei-Mount legte bei fehlender `.env` ein Verzeichnis an), und
+geschrieben mit `cat >`, damit die Rechte (600) bleiben. Was nicht eindeutig
+`ghcr.io/retttechsolutions/convoyplan/<name>:<tag>` ist, bleibt unangetastet.
+Test: `docker/updater/tests/test_env_kanal.sh` (ohne Docker). Wer eine weitere
+Datei per `source` in `update-images.sh` einbindet, mountet sie in den drei
+Container-Tests mit, die das Skript ausführen.
+
 ### Der Routing-Graph und der Deploy
 
 Zwei Dateien entscheiden hier, und man muss sie auseinanderhalten.

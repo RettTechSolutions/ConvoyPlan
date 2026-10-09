@@ -24,9 +24,10 @@ COPY update.sh /update.sh
 COPY update-images.sh /update-images.sh
 COPY region-hook.sh /region-hook.sh
 COPY graphhopper-deploy.sh /graphhopper-deploy.sh
+COPY env-kanal.sh /env-kanal.sh
 COPY switch-region.sh /switch-region.sh
 COPY merge-extracts.sh /merge-extracts.sh
-RUN chmod +x /update.sh /update-images.sh /region-hook.sh /graphhopper-deploy.sh /switch-region.sh /merge-extracts.sh
+RUN chmod +x /update.sh /update-images.sh /region-hook.sh /graphhopper-deploy.sh /env-kanal.sh /switch-region.sh /merge-extracts.sh
 # Default entrypoint: git-based updater (for install.sh deployments)
 # portainer-stack.yml overrides this with update-images.sh
 ENTRYPOINT ["/bin/bash", "/update.sh"]
