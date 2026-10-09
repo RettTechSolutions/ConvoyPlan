@@ -55,6 +55,13 @@ CVE-2026-39822
 # Fixed upstream in Go 1.26.9 / 1.27.2.
 CVE-2026-78667
 
+# golang.org/x/net HTTP/2 DoS via a flood of SETTINGS frames. Bundled in cosign,
+# docker-buildx and docker-compose. Only a peer of an HTTP/2 connection can send
+# them; the updater talks only to registries and GitHub over TLS and serves
+# nothing. Worst case one update run stalls and the next cycle retries.
+# Fixed upstream in golang.org/x/net 0.60.0 / Go 1.26.9, 1.27.2.
+CVE-2026-78669
+
 # Go stdlib crypto/tls DoS via multiple ECH outer extension references. Hits
 # the side that processes an ECH ClientHello, i.e. a TLS server; the updater
 # only connects out (Docker Hub, GitHub) and terminates no TLS.

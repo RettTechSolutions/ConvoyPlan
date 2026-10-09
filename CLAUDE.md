@@ -894,7 +894,10 @@ Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste
   Checkout mit `./.github/actions/docker-spiegel` (Daemon auf `mirror.gcr.io`). Ohne
   Anmeldung teilen sich die Runner das Pull-Limit von Docker Hub, und am 2026-10-09
   scheiterten alle Docker-Jobs mit 429, bevor ein Schritt aus dem Repo lief. Wer einen
-  neuen Job mit `docker build`/`docker run` anlegt, hängt den Schritt mit ein.
+  neuen Job mit `docker build`/`docker run` anlegt, hängt den Schritt mit ein. Der
+  Eintrag im Daemon allein hielt `docker run` nicht von Docker Hub fern; was ein Job
+  sicher braucht, nennt er in `images` (Shell-Suite: `bash:5.2 docker:cli`), dann wird es
+  ausdrücklich vom Spiegel gezogen. `postgis/postgis` führt der Spiegel nicht.
 
 Neue Tests liegen neben den bestehenden in `backend/tests/` und werden nach dem
 geprüften Verhalten benannt (`test_<thema>.py`), nicht nach der Implementierung.
