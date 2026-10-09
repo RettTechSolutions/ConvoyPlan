@@ -73,12 +73,15 @@
 	const hoehen = HOEHEN[fall];
 
 	/** Gewichtsgrenzen: `?k=gewicht&fall=…`, die Fälle stehen im Test. */
-	const grenze = (km: number, grenze_t: number, reserve_t: number | null, stufe: GewichtsgrenzeEntry['stufe'], ausnahme: string | null = null) =>
-		({ km, m: km * 1000, lat: 47.8, lon: 11.1, laenge_m: 300, grenze_t, reserve_t, ausnahme, stufe });
-	const GEWICHT: Record<string, { eintraege: GewichtsgrenzeEntry[] | null; gewicht: number | null; ohne: number }> = {
+	const grenze = (km: number, grenze_t: number, reserve_t: number | null, stufe: GewichtsgrenzeEntry['stufe'], ausnahme: string | null = null, art: 'gewicht' | 'achslast' = 'gewicht') =>
+		({ km, m: km * 1000, lat: 47.8, lon: 11.1, laenge_m: 300, grenze_t, reserve_t, ausnahme, stufe, art });
+	const GEWICHT: Record<string, { eintraege: GewichtsgrenzeEntry[] | null; gewicht: number | null; achse?: number; ohne: number }> = {
 		gemischt: {
-			eintraege: [grenze(3.1, 7.5, -18.5, 'ueberschritten', 'destination'), grenze(9.4, 40, 14, 'frei'), grenze(15.0, 28, 2 - 0.5, 'knapp')],
-			gewicht: 26, ohne: 2,
+			eintraege: [
+				grenze(3.1, 7.5, -18.5, 'ueberschritten', 'destination'), grenze(9.4, 40, 14, 'frei'),
+				grenze(15.0, 28, 2 - 0.5, 'knapp'), grenze(17.2, 10, 0.5, 'knapp', null, 'achslast'),
+			],
+			gewicht: 26, achse: 9.5, ohne: 2,
 		},
 		alle_frei: { eintraege: [grenze(9.4, 40, 14, 'frei')], gewicht: 26, ohne: 0 },
 		ohne_gewicht: { eintraege: [grenze(3.1, 7.5, null, 'unbekannt')], gewicht: null, ohne: 3 },
@@ -100,7 +103,7 @@
 	<div class="leiste" data-theme="dark">
 		<div class="leiste-inhalt">
 			<p>Route berechnet.</p>
-			<GewichtsGrenzen eintraege={gewicht.eintraege} fahrzeuggewichtT={gewicht.gewicht} ohneGewicht={gewicht.ohne} />
+			<GewichtsGrenzen eintraege={gewicht.eintraege} fahrzeuggewichtT={gewicht.gewicht} achslastT={gewicht.achse ?? null} ohneGewicht={gewicht.ohne} />
 		</div>
 	</div>
 {:else if welche === 'hoehen'}

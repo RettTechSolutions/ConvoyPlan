@@ -13,11 +13,14 @@
 	let {
 		eintraege,
 		fahrzeuggewichtT = null,
+		achslastT = null,
 		ohneGewicht = 0,
 	}: {
 		eintraege: GewichtsgrenzeEntry[] | null | undefined;
 		/** Schwerstes Fahrzeug, mit dem gesperrt wurde (`routing_params.max_weight_t`). */
 		fahrzeuggewichtT?: number | null;
+		/** Größte Achslast im Verband, mit der gesperrt wurde (`routing_params.max_axle_load_t`). */
+		achslastT?: number | null;
 		/** Fahrzeuge im Verband ohne Gewicht — die zählen beim Sperren nicht mit. */
 		ohneGewicht?: number;
 	} = $props();
@@ -60,13 +63,16 @@
 				{/if}
 			</p>
 		{/if}
+		{#if achslastT != null}
+			<p class="gg-text">Größte Achslast: <strong>{tonnen(achslastT)}</strong></p>
+		{/if}
 
 		{#if liste.length === 0}
 			<p class="gg-text gg-ok">Keine Gewichtsgrenze auf der Strecke bekannt.</p>
 		{:else}
 			{#if auffaellig.length === 0 && !alleZeigen}
 				<p class="gg-text gg-ok">
-					✅ {frei === 1 ? '1 Gewichtsgrenze' : `${frei} Gewichtsgrenzen`}, alle mit mindestens 2 t Reserve.
+					✅ {frei === 1 ? '1 Grenze' : `${frei} Grenzen`}, alle mit ausreichender Reserve.
 				</p>
 			{/if}
 			{#if sichtbar.length}
@@ -74,7 +80,7 @@
 					{#each sichtbar as e}
 						<li class="gg-eintrag" data-stufe={e.stufe}>
 							<span class="gg-km">km {e.km.toFixed(1).replace('.', ',')}</span>
-							<span class="gg-grenze">{tonnen(e.grenze_t)}</span>
+							<span class="gg-grenze">{e.art === 'achslast' ? `Achslast ${tonnen(e.grenze_t)}` : tonnen(e.grenze_t)}</span>
 							{#if e.reserve_t != null}<span>{reserve(e.reserve_t)}</span>{/if}
 							{#if e.ausnahme && AUSNAHME[e.ausnahme]}<span class="gg-blass">{AUSNAHME[e.ausnahme]}</span>{/if}
 							{#if STUFE[e.stufe]}<span class="gg-stufe">{STUFE[e.stufe]}</span>{/if}
@@ -84,14 +90,15 @@
 			{/if}
 			{#if frei > 0 && !alleZeigen}
 				<button type="button" class="gg-mehr" onclick={() => (alleZeigen = true)}>
-					{auffaellig.length ? `+ ${frei} weitere mit mindestens 2 t Reserve` : 'Anzeigen'}
+					{auffaellig.length ? `+ ${frei} weitere mit ausreichender Reserve` : 'Anzeigen'}
 				</button>
 			{/if}
 		{/if}
 
 		<p class="gg-hinweis">
-			Aus OpenStreetMap (auch Lkw-Durchfahrtsverbote), auf 0,1 t gerundet, verglichen mit dem eingetragenen
-			Fahrzeuggewicht. Achslasten sind nicht berücksichtigt. Maßgeblich ist die Beschilderung vor Ort.
+			Aus OpenStreetMap (auch Lkw-Durchfahrtsverbote). Gewicht auf 0,1 t, Achslast auf 0,5 t gerundet, verglichen
+			mit dem schwersten Fahrzeug bzw. der größten Achslast. Knapp: unter 2 t Reserve beim Gewicht, unter 1 t bei
+			der Achslast. Maßgeblich ist die Beschilderung vor Ort.
 		</p>
 	</section>
 {/if}

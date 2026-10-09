@@ -215,6 +215,7 @@ def register(mcp) -> None:
         hoehe_cm: int | None = None,
         laenge_cm: int | None = None,
         gewicht_kg: int | None = None,
+        achslast_kg: int | None = None,
         antrieb: str = "combustion",
         regelbesatzung_fuehrer: int | None = None,
         regelbesatzung_unterfuehrer: int | None = None,
@@ -232,6 +233,8 @@ def register(mcp) -> None:
             hoehe_cm: Fahrzeughöhe in Zentimetern (für Durchfahrten).
             laenge_cm: Fahrzeuglänge in Zentimetern (für die Kolonnenlänge).
             gewicht_kg: Zulässiges Gesamtgewicht in Kilogramm.
+            achslast_kg: Größte Achslast einer einzelnen Achse in Kilogramm
+                (für Achslastgrenzen an Brücken, Zeichen 263).
             antrieb: combustion (Verbrenner) oder electric (E-Fahrzeug).
             regelbesatzung_fuehrer: Führer der üblichen Besatzung (0/1/8 → 0).
             regelbesatzung_unterfuehrer: Unterführer der üblichen Besatzung.
@@ -244,6 +247,7 @@ def register(mcp) -> None:
             data = VehicleCreate(
                 name=name, callsign=funkrufname, license_plate=kennzeichen,
                 height_cm=hoehe_cm, length_cm=laenge_cm, weight_kg=gewicht_kg,
+                axle_load_kg=achslast_kg,
                 propulsion=antrieb,
                 staerke_soll_fuehrer=regelbesatzung_fuehrer,
                 staerke_soll_unterfuehrer=regelbesatzung_unterfuehrer,
@@ -274,6 +278,7 @@ def register(mcp) -> None:
         hoehe_cm: int | None = None,
         laenge_cm: int | None = None,
         gewicht_kg: int | None = None,
+        achslast_kg: int | None = None,
         regelbesatzung_fuehrer: int | None = None,
         regelbesatzung_unterfuehrer: int | None = None,
         regelbesatzung_mannschaften: int | None = None,
@@ -288,6 +293,8 @@ def register(mcp) -> None:
             hoehe_cm: Fahrzeughöhe in Zentimetern.
             laenge_cm: Fahrzeuglänge in Zentimetern.
             gewicht_kg: Zulässiges Gesamtgewicht in Kilogramm.
+            achslast_kg: Größte Achslast einer einzelnen Achse in Kilogramm
+                (für Achslastgrenzen an Brücken, Zeichen 263).
             regelbesatzung_fuehrer: Führer der üblichen Besatzung.
             regelbesatzung_unterfuehrer: Unterführer der üblichen Besatzung.
             regelbesatzung_mannschaften: Mannschaften der üblichen Besatzung.
@@ -299,6 +306,7 @@ def register(mcp) -> None:
             felder = {
                 "name": name, "callsign": funkrufname, "license_plate": kennzeichen,
                 "height_cm": hoehe_cm, "length_cm": laenge_cm, "weight_kg": gewicht_kg,
+                "axle_load_kg": achslast_kg,
                 "staerke_soll_fuehrer": regelbesatzung_fuehrer,
                 "staerke_soll_unterfuehrer": regelbesatzung_unterfuehrer,
                 "staerke_soll_mannschaften": regelbesatzung_mannschaften,

@@ -13,6 +13,8 @@ export type Propulsion = 'combustion' | 'electric';
 export interface Vehicle {
 	id: string; name: string; callsign: string | null; license_plate: string | null;
 	height_cm: number | null; weight_kg: number | null; length_cm: number | null; convoy_role: string | null;
+	/** Größte Achslast einer Achse (kg), für Achslastgrenzen (Zeichen 263). */
+	axle_load_kg?: number | null;
 	propulsion: Propulsion;
 	tank_capacity_l: number | null; fuel_consumption_l100km: number | null; current_fuel_l: number | null;
 	battery_capacity_kwh: number | null; consumption_kwh_100km: number | null; current_charge_kwh: number | null;
@@ -158,6 +160,8 @@ export interface GewichtsgrenzeEntry {
 	/** "destination" (Anlieger frei), "delivery", "forestry" oder null. */
 	ausnahme: string | null;
 	stufe: 'ueberschritten' | 'knapp' | 'frei' | 'unbekannt';
+	/** "gewicht" (maxweight) oder "achslast" (maxaxleload); fehlt bei älteren Routen. */
+	art?: 'gewicht' | 'achslast';
 }
 
 /** Brücke über der Route ohne Höhenangabe in OSM (Backend: services/bruecken.py). */

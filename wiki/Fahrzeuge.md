@@ -21,6 +21,7 @@
 | **Länge** | Fahrzeuglänge in cm |
 | **Breite** | Fahrzeugbreite in cm |
 | **Gewicht** | Gesamtgewicht in kg — die Route meidet Gewichtsgrenzen unter dem schwersten Fahrzeug im Verband (siehe [Gewichtsgrenzen](Konvoi-Planung#gewichtsgrenzen)); das zulässige Gesamtgewicht ist die sichere Angabe |
+| **Größte Achslast** | Last der am stärksten belasteten Achse in kg (Fahrzeugschein: zulässige Achslast, der größte Wert) — die Route meidet Achslastgrenzen (Zeichen 263) unter der größten Achslast im Verband |
 
 ### Kraftstoffdaten
 

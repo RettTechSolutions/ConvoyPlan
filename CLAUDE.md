@@ -252,7 +252,9 @@ verworfen. Drei Regeln, die man kennen muss:
   später und hat das Detail nicht mehr.
 
 **Gewichtsgrenzen** gehen denselben Weg (`services/gewichtsgrenzen.py`,
-`routes.gewichtsgrenzen`, Migration `0059`, `GewichtsGrenzen.svelte`), mit zwei
+`routes.gewichtsgrenzen`, Migration `0059`, `GewichtsGrenzen.svelte`), samt
+**Achslast** (`vehicles.axle_load_kg`, Migration `0060`, `max_axle_load` im Graphen,
+Einträge mit `art="achslast"`, 0,5-t-Raster, deshalb knapp schon unter 1 t), mit zwei
 Unterschieden. „Anlieger frei" (`max_weight_except=destination`) sperrt nicht, sondern
 wird gemieden (`_ANLIEGER_FAKTOR`) — sonst gäbe es zu einem Ziel dahinter keine Route;
 führt sie doch hindurch, heißt die Stelle `ueberschritten`. Und `max_weight` kam erst

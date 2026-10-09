@@ -126,11 +126,13 @@ Hat mindestens ein Fahrzeug ein **Gewicht** (siehe [Fahrzeuge](Fahrzeuge)), meid
 - **Anlieger frei**: wird nicht gesperrt, sondern stark gemieden. Liegt das Ziel hinter so einer Grenze, gäbe es sonst keine Route. Führt die Route trotzdem hindurch, steht die Stelle als **über der Grenze** in der Liste — dann bitte prüfen, ob der Verband dort wirklich Anlieger ist.
 - **Lieferverkehr frei**, **Forstverkehr frei**: gesperrt, ein Konvoi ist keins von beidem.
 
-Nach der Berechnung zeigt der Block **Gewichtsgrenzen** jede Grenze an der Route mit Kilometer und **Reserve** (Grenze minus schwerstes Fahrzeug); unter 2 t Reserve heißt sie **knapp**. Die Stellen stehen außerdem im Marschbefehl (alles außer „frei") und im Roadbook (alle).
+Genauso sperrt die **größte Achslast** im Verband jede Achslastgrenze darunter (Zeichen 263 „Tatsächliche Achslast", in OpenStreetMap `maxaxleload`) — ohne Ausnahme, denn für Achslasten kennt die Karte keine.
 
-Findet die Routenberechnung keinen Weg, der Höhe und Gewicht des Verbands einhält, sagt sie das mit den Werten, mit denen sie gesucht hat — dann Fahrzeugdaten, Start, Ziel und Wegpunkte prüfen.
+Nach der Berechnung zeigt der Block **Gewichtsgrenzen** jede Grenze an der Route mit Kilometer und **Reserve** (Grenze minus schwerstes Fahrzeug bzw. größte Achslast); Achslastgrenzen stehen als „Achslast" darin. **Knapp** heißt eine Grenze unter 2 t Reserve beim Gewicht und unter 1 t bei der Achslast, weil die Achslast in der Karte gröber gespeichert ist. Die Stellen stehen außerdem im Marschbefehl (alles außer „frei") und im Roadbook (alle).
 
-**Grenzen der Daten:** Die Werte stammen aus OpenStreetMap und sind auf 0,1 t gerundet. Auf dem Schild gilt das *tatsächliche* Gewicht, verglichen wird mit dem eingetragenen Fahrzeuggewicht — wer dort das zulässige Gesamtgewicht einträgt, rechnet auf der sicheren Seite. **Achslasten** (Zeichen 263) werden nicht berücksichtigt. Militärische Lastklassen (MLC) kennt OpenStreetMap kaum. Maßgeblich ist die Beschilderung vor Ort, bei Schwertransporten die Genehmigung.
+Findet die Routenberechnung keinen Weg, der Höhe, Gewicht und Achslast des Verbands einhält, sagt sie das mit den Werten, mit denen sie gesucht hat — dann Fahrzeugdaten, Start, Ziel und Wegpunkte prüfen.
+
+**Grenzen der Daten:** Die Werte stammen aus OpenStreetMap; das Gewicht ist auf 0,1 t gerundet, die Achslast auf 0,5 t. Auf dem Schild gilt das *tatsächliche* Gewicht bzw. die tatsächliche Achslast, verglichen wird mit den eingetragenen Werten — wer dort die zulässigen Werte einträgt, rechnet auf der sicheren Seite. Militärische Lastklassen (MLC) kennt OpenStreetMap kaum. Maßgeblich ist die Beschilderung vor Ort, bei Schwertransporten die Genehmigung.
 
 Nach dem Update auf diese Version baut jede Installation ihren Routing-Graphen einmal neu (die Gewichtsdaten müssen hinein); bis dahin wird ohne Gewichtsgrenzen geroutet, und der Block erscheint erst mit dem neuen Graphen.
 

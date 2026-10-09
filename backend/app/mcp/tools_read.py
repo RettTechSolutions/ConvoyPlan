@@ -150,6 +150,7 @@ def _vehicle(vehicle: Vehicle) -> dict:
         "hoehe_cm": vehicle.height_cm,
         "laenge_cm": vehicle.length_cm,
         "gewicht_kg": vehicle.weight_kg,
+        "achslast_kg": vehicle.axle_load_kg,
         "antrieb": vehicle.propulsion,
         # Regelbesatzung aus den Stammdaten („0/1/8"), None wenn keine
         # hinterlegt ist. Sie sagt, womit dieses Fahrzeug üblicherweise

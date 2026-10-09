@@ -66,7 +66,7 @@ Zwischen den Anweisungen stehen an ihrem Kilometer Hinweise ohne Nummer:
 | Symbol | Hinweis |
 |---|---|
 | ↕ | **Durchfahrtshöhe** mit Spielraum zum höchsten Fahrzeug — auch die freien, damit klar ist, wo es gut passt |
-| ⚖ | **Gewichtsgrenze** mit Reserve zum schwersten Fahrzeug und Ausnahme („Anlieger frei") |
+| ⚖ | **Gewichtsgrenze** mit Reserve zum schwersten Fahrzeug und Ausnahme („Anlieger frei"), **Achslastgrenze** mit Reserve zur größten Achslast |
 | ⚠ | **Brücke ohne Höhenangabe** über der Route (nicht auf Autobahn und Kraftfahrstraße) |
 
 Rot hinterlegt sind Stellen, an denen es eng wird (unter 10 cm Spielraum) oder die Route über eine Gewichtsgrenze führt.

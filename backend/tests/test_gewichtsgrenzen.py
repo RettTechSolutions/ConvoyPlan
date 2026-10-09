@@ -10,7 +10,9 @@ Die Zusagen:
   hindurch muss, sieht ``ueberschritten``;
 - kennt der Graph ``max_weight`` noch nicht, wird ohne Gewicht geroutet statt
   gar nicht, und die Liste bleibt „nicht ermittelt";
-- findet GraphHopper keine Verbindung, sagt die Meldung, mit welchen Grenzen.
+- findet GraphHopper keine Verbindung, sagt die Meldung, mit welchen Grenzen;
+- die größte Achslast ist ein Fahrzeugfeld und sperrt Achslastgrenzen
+  (Zeichen 263) wie das Gewicht — ohne Ausnahme, im 0,5-t-Raster des Graphen.
 """
 
 import uuid
@@ -22,7 +24,7 @@ from httpx import ASGITransport, AsyncClient
 from shapely.geometry import Point
 from sqlalchemy import delete
 
-from app.api.deps import get_current_user, get_token_data
+from app.api.deps import get_current_user, get_org_context, get_token_data
 from app.database import AsyncSessionLocal, engine
 from app.main import app
 from app.models.convoy import Convoy, ConvoyVehicle
@@ -42,8 +44,8 @@ KM = [round(m / 1000, 1) for m in route_steps.cumulative_m(COORDS)]
 # ── Der Verband ──────────────────────────────────────────────────────────────
 
 
-def _fz(height_cm=None, weight_kg=None):
-    return SimpleNamespace(height_cm=height_cm, weight_kg=weight_kg)
+def _fz(height_cm=None, weight_kg=None, axle_load_kg=None):
+    return SimpleNamespace(height_cm=height_cm, weight_kg=weight_kg, axle_load_kg=axle_load_kg)
 
 
 def test_gesperrt_wird_mit_dem_hoechsten_und_dem_schwersten():
@@ -51,6 +53,11 @@ def test_gesperrt_wird_mit_dem_hoechsten_und_dem_schwersten():
         [_fz(390, 18000), _fz(250, 3500), _fz(None, 26000), _fz(320, None)]
     )
     assert grenzen == {"max_height_m": 3.9, "max_weight_t": 26.0}
+
+
+def test_achslast_zaehlt_mit_der_groessten():
+    grenzen = routing_svc.verbandsgrenzen([_fz(axle_load_kg=7100), _fz(axle_load_kg=9500), _fz()])
+    assert grenzen == {"max_axle_load_t": 9.5}
 
 
 def test_ohne_angaben_wird_nach_nichts_gesperrt():
@@ -98,6 +105,28 @@ def test_was_keine_grenze_ist_steht_nicht_drin(wert):
 def test_kaputte_eintraege_werden_uebergangen():
     eintraege = gg.grenzen([None, [0], ["a", 1, 3], [1, 2, 7.5]], [[0, "x"], None], COORDS, 3.0)
     assert [e["grenze_t"] for e in eintraege] == [7.5]
+
+
+def test_achslastgrenze_steht_als_achslast_in_der_liste():
+    [e] = gg.achslasten([[0, 1, None], [1, 2, 10.0], [2, 3, None]], COORDS, 9.5)
+    assert (e["art"], e["grenze_t"], e["reserve_t"], e["ausnahme"]) == ("achslast", 10.0, 0.5, None)
+    # Raster 0,5 t: unter 1 t Reserve ist knapp.
+    assert e["stufe"] == "knapp"
+    [frei] = gg.achslasten([[1, 2, 11.5]], COORDS, 9.5)
+    assert frei["stufe"] == "frei"
+
+
+def test_achslast_ende_des_wertebereichs_ist_keine_grenze():
+    assert gg.achslasten([[0, 1, 63.5]], COORDS, 9.0) == []
+    assert gg.achslasten([[0, 1, 62.5]], COORDS, 9.0)[0]["grenze_t"] == 62.5
+
+
+def test_gewicht_und_achslast_in_fahrtrichtung_gewicht_zuerst():
+    gewicht = gg.grenzen([[1, 2, 7.5], [2, 3, 12.0]], [], COORDS, 6.0)
+    achse = gg.achslasten([[0, 1, 8.0], [1, 2, 8.0]], COORDS, 6.0)
+    assert [(e["km"], e["art"]) for e in gg.zusammen(gewicht, achse)] == [
+        (KM[0], "achslast"), (KM[1], "gewicht"), (KM[1], "achslast"), (KM[2], "gewicht"),
+    ]
 
 
 def test_hinweispflichtig_ist_alles_ausser_frei():
@@ -156,10 +185,13 @@ async def test_anfrage_sperrt_nach_gewicht_ausser_anlieger_frei(monkeypatch):
         [_Antwort(200, _pfad({"max_weight": [[1, 2, 7.5]], "max_weight_except": [[1, 2, "destination"]]}))],
         gesendet,
     ))
-    daten = await routing_svc.calculate_route(PUNKTE, {"max_height_m": 3.5, "max_weight_t": 12.0})
+    daten = await routing_svc.calculate_route(
+        PUNKTE, {"max_height_m": 3.5, "max_weight_t": 12.0, "max_axle_load_t": 9.5}
+    )
 
     [anfrage] = gesendet
-    assert {"max_weight", "max_weight_except"} <= set(anfrage["details"])
+    assert {"max_weight", "max_weight_except", "max_axle_load"} <= set(anfrage["details"])
+    assert {"if": "max_axle_load < 9.5", "multiply_by": "0"} in anfrage["custom_model"]["priority"]
     regeln = anfrage["custom_model"]["priority"]
     assert {"if": "max_height < 3.5", "multiply_by": "0"} in regeln
     assert {"if": "max_weight < 12.0 && max_weight_except != DESTINATION", "multiply_by": "0"} in regeln
@@ -187,6 +219,21 @@ async def test_ohne_max_weight_im_graphen_wird_ohne_gewicht_geroutet(monkeypatch
     assert {"if": "max_height < 3.5", "multiply_by": "0"} in zweite["custom_model"]["priority"]
     assert daten["max_weight_details"] is None
     assert daten["max_height_details"] == [[1, 2, 3.9]]
+
+
+async def test_ohne_max_axle_load_im_graphen_ebenso(monkeypatch):
+    gesendet: list = []
+    monkeypatch.setattr(routing_svc, "httpx", _graphhopper(
+        [
+            _Antwort(400, {"message": "Cannot compile expression: 'max_axle_load' not available"}),
+            _Antwort(200, _pfad({})),
+        ],
+        gesendet,
+    ))
+    daten = await routing_svc.calculate_route(PUNKTE, {"max_axle_load_t": 9.5})
+    assert len(gesendet) == 2
+    assert "max_axle_load" not in gesendet[1]["details"]
+    assert daten["max_axle_load_details"] is None
 
 
 async def test_andere_fehler_werden_nicht_ohne_gewicht_wiederholt(monkeypatch):
@@ -258,8 +305,25 @@ def test_marschbefehl_druckt_knappe_und_ueberschrittene_grenzen(gedruckt):
     assert "12,0 t" in text and "-0,5 t" in text and "Anlieger frei" in text and "ÜBER DER GRENZE" in text
     assert "7,5 t" in text and "-5,0 t" in text
     assert "40,0 t" not in text
-    assert "1 weitere Gewichtsgrenze mit mindestens 2 t Reserve." in text
-    assert "Achslasten sind nicht berücksichtigt." in "".join(gedruckt)
+    assert "1 weitere Grenze mit ausreichender Reserve (Gewicht ab 2 t, Achslast ab 1 t)." in text
+    assert "Achslast auf 0,5 t" in "".join(gedruckt)
+
+
+def test_marschbefehl_nennt_achslast_und_kennzeichnet_ihre_grenzen(gedruckt):
+    konvoi = SimpleNamespace(
+        name="K", organization="O", start_time=None, lage=None, auftrag=None, marschform=None,
+        ablaufpunkt=None, ablaufzeit=None, ablaufführer=None, versorgung=None, funkgruppe=None,
+        anlagen=None, speed_urban_kmh=40, speed_rural_kmh=65,
+    )
+    route = SimpleNamespace(distance_m=3300, duration_s=240,
+                            routing_params={"max_weight_t": 18.0, "max_axle_load_t": 9.5})
+    fz = {"name": "WLF", "callsign": None, "license_plate": None, "height_cm": None, "weight_kg": 18000,
+          "convoy_role": None, "position": 0, "sonderfunktion": None, "mobile_phone": None}
+    eintraege = gg.achslasten([[1, 2, 10.0]], COORDS, 9.5)
+    pdf_svc.generate_marschbefehl(konvoi, [], [fz], route, None, None, None, eintraege)
+    text = "\n".join(gedruckt)
+    assert "Größte Achslast: 9,5 t" in text
+    assert "Achse 10,0 t" in text and "+0,5 t" in text
 
 
 def test_marschbefehl_ohne_fahrzeuggewicht_sagt_das(gedruckt):
@@ -300,7 +364,7 @@ async def verband():
             start_point=from_shape(Point(*COORDS[0]), srid=4326),
             end_point=from_shape(Point(*COORDS[-1]), srid=4326),
         )
-        wlf = Vehicle(name=f"WLF {marker}", height_cm=390, weight_kg=26000, owner_id=user.id)
+        wlf = Vehicle(name=f"WLF {marker}", height_cm=390, weight_kg=26000, axle_load_kg=9500, owner_id=user.id)
         mtw = Vehicle(name=f"MTW {marker}", height_cm=250, weight_kg=3500, owner_id=user.id)
         db.add_all([convoy, wlf, mtw])
         await db.flush()
@@ -346,12 +410,13 @@ async def test_berechnung_sperrt_mit_dem_groessten_und_speichert_die_liste(verba
     regeln = gesendet[0]["custom_model"]["priority"]
     assert {"if": "max_height < 3.9", "multiply_by": "0"} in regeln
     assert {"if": "max_weight < 26.0 && max_weight_except != DESTINATION", "multiply_by": "0"} in regeln
+    assert {"if": "max_axle_load < 9.5", "multiply_by": "0"} in regeln
     liste = berechnet.json()["gewichtsgrenzen"]
     assert [(e["grenze_t"], e["stufe"], e["ausnahme"]) for e in liste] == [
         (30.0, "frei", None), (7.5, "ueberschritten", "destination"),
     ]
     assert geladen.json()["gewichtsgrenzen"] == liste
-    assert geladen.json()["routing_params"] == {"max_height_m": 3.9, "max_weight_t": 26.0}
+    assert geladen.json()["routing_params"] == {"max_height_m": 3.9, "max_weight_t": 26.0, "max_axle_load_t": 9.5}
 
 
 async def test_ohne_verbindung_nennt_die_meldung_die_grenzen(verband, monkeypatch):
@@ -361,4 +426,24 @@ async def test_ohne_verbindung_nennt_die_meldung_die_grenzen(verband, monkeypatc
     async with _client() as client:
         antwort = await client.post(f"/api/convoys/{verband.convoy_id}/calculate-route")
     assert antwort.status_code == 422
-    assert "Höhe 3,90 m, Gewicht 26,0 t" in antwort.json()["detail"]
+    assert "Höhe 3,90 m, Gewicht 26,0 t, Achslast 9,5 t" in antwort.json()["detail"]
+
+
+async def test_achslast_ist_ein_fahrzeugfeld(verband):
+    async with AsyncSessionLocal() as db:
+        user = await db.get(User, verband.user_id)
+        org = await db.get(Organization, verband.org_id)
+    app.dependency_overrides[get_org_context] = lambda: (user, org, "admin")
+    async with _client() as client:
+        angelegt = await client.post("/api/vehicles/", json={"name": "SLF", "axle_load_kg": 7100})
+        assert angelegt.status_code == 201, angelegt.text
+        fid = angelegt.json()["id"]
+        geaendert = await client.put(f"/api/vehicles/{fid}", json={"axle_load_kg": 7500})
+        zu_viel = await client.put(f"/api/vehicles/{fid}", json={"axle_load_kg": 20_001})
+        liste = await client.get("/api/vehicles/")
+    verband.vehicle_ids.append(uuid.UUID(fid))
+
+    assert angelegt.json()["axle_load_kg"] == 7100
+    assert geaendert.json()["axle_load_kg"] == 7500
+    assert zu_viel.status_code == 422
+    assert next(v for v in liste.json() if v["id"] == fid)["axle_load_kg"] == 7500

@@ -285,6 +285,15 @@ def test_hinweise_stehen_mit_zahl_spielraum_und_stufe_da():
     assert all("Straßenbrücke" not in z.text for z in zeilen)
 
 
+def test_achslastgrenze_heisst_so():
+    route = SimpleNamespace(gewichtsgrenzen=[
+        {"km": 2.0, "m": 2000, "grenze_t": 10.0, "reserve_t": 0.5, "ausnahme": None, "stufe": "knapp",
+         "art": "achslast"},
+    ])
+    [z] = roadbook.hinweis_rows(route)
+    assert (z.text, z.detail) == ("Achslastgrenze 10,0 t", "Reserve +0,5 t · knapp")
+
+
 def test_ohne_ermittlung_keine_hinweise():
     route = SimpleNamespace(durchfahrtshoehen=None, gewichtsgrenzen=None, bruecken=None)
     assert roadbook.hinweis_rows(route) == []

@@ -221,8 +221,9 @@ def hinweis_rows(route: Any) -> list[Row]:
             teile.append(ausnahme)
         if (zusatz := _GEWICHT_DETAIL.get(e.get("stufe", ""))):
             teile.append(zusatz)
+        art = "Achslastgrenze" if e.get("art") == "achslast" else "Gewichtsgrenze"
         out.append((_m_von(e), Row(
-            0, "⚖", f"Gewichtsgrenze {_t(e['grenze_t'])}", _m_von(e) / 1000, 0.0, "hinweis",
+            0, "⚖", f"{art} {_t(e['grenze_t'])}", _m_von(e) / 1000, 0.0, "hinweis",
             " · ".join(teile), "warnung" if e.get("stufe") == "ueberschritten" else "",
         )))
     for b in ((getattr(route, "bruecken", None) or {}).get("eintraege") or []):

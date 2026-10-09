@@ -8,7 +8,8 @@ import { test, expect, type Page } from '@playwright/test';
 //    Seitenleiste untergeht;
 //  - ohne Fahrzeuggewicht sagt der Block, dass nichts gemieden wurde;
 //  - „nicht ermittelt" zeigt nichts — „keine Grenze" wäre eine Behauptung;
-//  - dass Achslasten fehlen, steht immer dabei.
+//  - Achslastgrenzen stehen in derselben Liste, als solche benannt;
+//  - wie gerundet wird und ab wann etwas knapp ist, steht immer dabei.
 
 const HUELLE = 'http://localhost:4174';
 const block = (page: Page) => page.getByRole('region', { name: 'Gewichtsgrenzen' });
@@ -24,7 +25,8 @@ test('überschrittene und knappe Grenzen stehen da, die freien auf Nachfrage', a
 	await oeffnen(page, 'gemischt');
 	await expect(block(page)).toContainText('Schwerstes Fahrzeug: 26,0 t');
 	await expect(block(page)).toContainText('2 Fahrzeuge ohne Gewicht, nicht berücksichtigt');
-	await expect(eintraege(page)).toHaveCount(2);
+	await expect(block(page)).toContainText('Größte Achslast: 9,5 t');
+	await expect(eintraege(page)).toHaveCount(3);
 	await expect(eintraege(page).nth(0)).toContainText('km 3,1');
 	await expect(eintraege(page).nth(0)).toContainText('7,5 t');
 	await expect(eintraege(page).nth(0)).toContainText('−18,5 t');
@@ -33,8 +35,11 @@ test('überschrittene und knappe Grenzen stehen da, die freien auf Nachfrage', a
 	await expect(eintraege(page).nth(1)).toContainText('+1,5 t');
 	await expect(eintraege(page).nth(1)).toContainText('knapp');
 
-	await block(page).getByRole('button', { name: '+ 1 weitere mit mindestens 2 t Reserve' }).click();
-	await expect(eintraege(page)).toHaveCount(3);
+	await expect(eintraege(page).nth(2)).toContainText('Achslast 10,0 t');
+	await expect(eintraege(page).nth(2)).toContainText('+0,5 t');
+
+	await block(page).getByRole('button', { name: '+ 1 weitere mit ausreichender Reserve' }).click();
+	await expect(eintraege(page)).toHaveCount(4);
 	await expect(eintraege(page).nth(1)).toContainText('40,0 t');
 });
 
@@ -48,7 +53,7 @@ test('eine überschrittene Grenze färbt den Block', async ({ page }) => {
 
 test('sind alle frei, sagt der Block das in einem Satz', async ({ page }) => {
 	await oeffnen(page, 'alle_frei');
-	await expect(block(page)).toContainText('1 Gewichtsgrenze, alle mit mindestens 2 t Reserve.');
+	await expect(block(page)).toContainText('1 Grenze, alle mit ausreichender Reserve.');
 	await expect(eintraege(page)).toHaveCount(0);
 });
 
@@ -68,9 +73,10 @@ test('nicht ermittelt zeigt keinen Block', async ({ page }) => {
 	await expect(block(page)).toHaveCount(0);
 });
 
-test('dass Achslasten fehlen, steht immer dabei', async ({ page }) => {
+test('wie gerundet wird und ab wann es knapp ist, steht immer dabei', async ({ page }) => {
 	for (const fall of ['gemischt', 'ohne_gewicht', 'leer']) {
 		await oeffnen(page, fall);
-		await expect(block(page)).toContainText('Achslasten sind nicht berücksichtigt.');
+		await expect(block(page)).toContainText('Gewicht auf 0,1 t, Achslast auf 0,5 t gerundet');
+		await expect(block(page)).toContainText('unter 2 t Reserve beim Gewicht, unter 1 t bei der Achslast');
 	}
 });

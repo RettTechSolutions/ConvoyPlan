@@ -159,11 +159,11 @@ def convoy_duration_s(
 
 
 def verbandsgrenzen(fahrzeuge: Iterable[Any]) -> dict[str, float]:
-    """Höhe und Gewicht, mit denen gesperrt wird: das jeweils größte im Verband.
+    """Höhe, Gewicht und Achslast, mit denen gesperrt wird: das jeweils größte im Verband.
 
-    ``max_height_m`` aus ``height_cm``, ``max_weight_t`` aus ``weight_kg``. Ein
-    Schlüssel fehlt, wenn kein Fahrzeug die Angabe hat — dann wird danach nicht
-    gesperrt.
+    ``max_height_m`` aus ``height_cm``, ``max_weight_t`` aus ``weight_kg``,
+    ``max_axle_load_t`` aus ``axle_load_kg``. Ein Schlüssel fehlt, wenn kein
+    Fahrzeug die Angabe hat — dann wird danach nicht gesperrt.
     """
     liste = list(fahrzeuge)
     out: dict[str, float] = {}
@@ -173,6 +173,9 @@ def verbandsgrenzen(fahrzeuge: Iterable[Any]) -> dict[str, float]:
     gewichte = [v.weight_kg for v in liste if getattr(v, "weight_kg", None)]
     if gewichte:
         out["max_weight_t"] = round(max(gewichte) / 1000, 2)
+    achslasten = [v.axle_load_kg for v in liste if getattr(v, "axle_load_kg", None)]
+    if achslasten:
+        out["max_axle_load_t"] = round(max(achslasten) / 1000, 2)
     return out
 
 
@@ -205,9 +208,9 @@ def _payload(
 ) -> dict[str, Any]:
     details = ["road_class", "max_speed", "max_height"]
     if mit_gewicht:
-        # Gewichtsgrenzen als Hinweis (services/gewichtsgrenzen.py), gesperrt
-        # wird wie bei der Höhe im Custom Model.
-        details += ["max_weight", "max_weight_except"]
+        # Gewichts- und Achslastgrenzen als Hinweis (services/gewichtsgrenzen.py),
+        # gesperrt wird wie bei der Höhe im Custom Model.
+        details += ["max_weight", "max_weight_except", "max_axle_load"]
     payload: dict[str, Any] = {
         "points": [[p["lon"], p["lat"]] for p in points],
         "profile": "car",
@@ -227,6 +230,9 @@ def _payload(
         sperren.append({"if": f"max_height < {vehicle_params['max_height_m']}", "multiply_by": "0"})
     if mit_gewicht and vehicle_params and "max_weight_t" in vehicle_params:
         sperren += _gewichtsregeln(vehicle_params["max_weight_t"])
+    if mit_gewicht and vehicle_params and "max_axle_load_t" in vehicle_params:
+        # Achslast kennt keine Ausnahme im Graphen — gesperrt wird immer.
+        sperren.append({"if": f"max_axle_load < {vehicle_params['max_axle_load_t']}", "multiply_by": "0"})
 
     custom_model: dict[str, Any] = {}
     if sperren or priority_rules:
@@ -278,18 +284,19 @@ async def calculate_route(
         logger.warning("Unknown road_preference %r, falling back to 'schnell'", road_preference)
         road_preference = "schnell"
 
-    # Ein Graph von vor max_weight (Container noch nicht neu gebaut, eigene
-    # GraphHopper-Instanz) lehnt jede Anfrage ab, die es nennt. Dann ohne
-    # Gewicht routen statt gar nicht — die Liste bleibt „nicht ermittelt".
+    # Ein Graph von vor max_weight/max_axle_load (Container noch nicht neu
+    # gebaut, eigene GraphHopper-Instanz) lehnt jede Anfrage ab, die sie nennt.
+    # Dann ohne Gewicht und Achslast routen statt gar nicht — die Liste bleibt
+    # „nicht ermittelt".
     gewicht = True
     try:
         data = await _anfrage(_payload(points, vehicle_params, road_preference, True))
     except (RoutingOutOfBoundsError, RoutingNoConnectionError):
         raise
     except ValueError as exc:
-        if "max_weight" not in str(exc):
+        if "max_weight" not in str(exc) and "max_axle_load" not in str(exc):
             raise
-        logger.warning("GraphHopper graph without max_weight — routing without weight limits")
+        logger.warning("GraphHopper graph without max_weight/max_axle_load — routing without weight limits")
         gewicht = False
         data = await _anfrage(_payload(points, vehicle_params, road_preference, False))
 
@@ -305,6 +312,7 @@ async def calculate_route(
         # None: der Graph kennt max_weight nicht — nicht dasselbe wie [].
         "max_weight_details": details.get("max_weight", []) if gewicht else None,
         "max_weight_except_details": details.get("max_weight_except", []) if gewicht else None,
+        "max_axle_load_details": details.get("max_axle_load", []) if gewicht else None,
         "instructions": compact_instructions(
             path.get("instructions", []), path["points"].get("coordinates", [])
         ),

@@ -94,6 +94,8 @@ class GewichtsgrenzeEntry(BaseModel):
     # "destination" (Anlieger frei), "delivery", "forestry" oder None.
     ausnahme: str | None = None
     stufe: Literal["ueberschritten", "knapp", "frei", "unbekannt"]
+    # "gewicht" (Gesamtgewicht, maxweight) oder "achslast" (maxaxleload).
+    art: Literal["gewicht", "achslast"] = "gewicht"
 
 
 class BrueckeEntry(BaseModel):

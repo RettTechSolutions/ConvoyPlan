@@ -23,13 +23,14 @@ ursprünglichen SemVer-Nummern.
 
 ### Wichtig beim Update
 
-- **Jede Instanz baut ihren Routing-Graphen erneut neu** — `max_weight` und `max_weight_except` stehen jetzt im Graphen, und die Encoded Values stehen im Fingerprint. Wie unter 2026.8.0: je nach Region 45–75 Minuten ohne Routenplanung, Update außerhalb einer Lage legen. Bis der neue Graph steht, routet das Backend ohne Gewichtsgrenzen statt gar nicht.
-- **Routen können sich ändern.** Die Höhe wird jetzt mit dem *höchsten* Fahrzeug gesperrt (siehe *Fixed*), und jedes Fahrzeug mit Gewicht sperrt Gewichtsgrenzen darunter. Bestehende Routen bleiben, bis sie neu berechnet werden.
-- Datenbank-Migration `0059` läuft beim Start des Backends.
+- **Jede Instanz baut ihren Routing-Graphen erneut neu** — `max_weight`, `max_weight_except` und `max_axle_load` stehen jetzt im Graphen, und die Encoded Values stehen im Fingerprint. Wie unter 2026.8.0: je nach Region 45–75 Minuten ohne Routenplanung, Update außerhalb einer Lage legen. Bis der neue Graph steht, routet das Backend ohne Gewichtsgrenzen statt gar nicht.
+- **Routen können sich ändern.** Die Höhe wird jetzt mit dem *höchsten* Fahrzeug gesperrt (siehe *Fixed*), und jedes Fahrzeug mit Gewicht oder Achslast sperrt Grenzen darunter. Bestehende Routen bleiben, bis sie neu berechnet werden.
+- Datenbank-Migrationen `0059` und `0060` laufen beim Start des Backends.
 
 ### Added
 
-- **Gewichtsgrenzen entlang der Route.** Die Routenberechnung meidet Strecken mit einer Gewichtsgrenze unter dem schwersten Fahrzeug — Brücken mit Tragfähigkeitsbeschränkung genauso wie Lkw-Durchfahrtsverbote. „Anlieger frei" sperrt nicht, sondern wird gemieden; führt die Route doch hindurch, steht die Stelle als *über der Grenze* da. Planungsansicht und Marschbefehl zeigen jede Grenze mit Kilometer und Reserve (*knapp* unter 2 t). Achslasten bleiben außen vor. Findet die Berechnung mit Höhe und Gewicht keinen Weg, nennt die Meldung die Werte, statt „Routing fehlgeschlagen". Migration `0059`. Anwenderdoku: `wiki/Konvoi-Planung.md`, „Gewichtsgrenzen".
+- **Gewichtsgrenzen entlang der Route.** Die Routenberechnung meidet Strecken mit einer Gewichtsgrenze unter dem schwersten Fahrzeug — Brücken mit Tragfähigkeitsbeschränkung genauso wie Lkw-Durchfahrtsverbote. „Anlieger frei" sperrt nicht, sondern wird gemieden; führt die Route doch hindurch, steht die Stelle als *über der Grenze* da. Planungsansicht und Marschbefehl zeigen jede Grenze mit Kilometer und Reserve (*knapp* unter 2 t). Findet die Berechnung mit Höhe, Gewicht und Achslast keinen Weg, nennt die Meldung die Werte, statt „Routing fehlgeschlagen". Migration `0059`. Anwenderdoku: `wiki/Konvoi-Planung.md`, „Gewichtsgrenzen".
+- **Größte Achslast als Fahrzeugfeld.** Fahrzeuge tragen jetzt ihre größte Achslast (Planung, MCP `fahrzeug_anlegen`/`fahrzeug_aktualisieren` mit `achslast_kg`). Die Routenberechnung meidet Achslastgrenzen (Zeichen 263, OSM `maxaxleload`) unter der größten Achslast im Verband; die Stellen stehen als „Achslast" bei den Gewichtsgrenzen, in Marschbefehl und Roadbook. *Knapp* unter 1 t Reserve, weil der Graph Achslasten auf 0,5 t rundet. Migration `0060`.
 - **Höhen, Gewichtsgrenzen und Brücken ohne Angabe im Roadbook.** Zwischen den Abbiegehinweisen steht an ihrem Kilometer jede Durchfahrtshöhe (↕, mit Spielraum — auch die freien), jede Gewichtsgrenze (⚖, mit Reserve) und jede Brücke ohne Höhenangabe abseits der Autobahn (⚠). Enge Stellen und überschrittene Grenzen sind rot hinterlegt.
 
 ### Fixed

@@ -74,13 +74,15 @@ def _keine_verbindung_message(vehicle_params: dict[str, Any]) -> str:
         grenzen.append(f"Höhe {vehicle_params['max_height_m']:.2f} m".replace(".", ","))
     if "max_weight_t" in vehicle_params:
         grenzen.append(f"Gewicht {vehicle_params['max_weight_t']:.1f} t".replace(".", ","))
+    if "max_axle_load_t" in vehicle_params:
+        grenzen.append(f"Achslast {vehicle_params['max_axle_load_t']:.1f} t".replace(".", ","))
     if not grenzen:
         return "Zwischen den Punkten wurde keine befahrbare Verbindung gefunden."
     return (
         "Keine Route gefunden, die die Grenzen des Verbands einhält ("
         + ", ".join(grenzen)
         + "). Jeder Weg führt unter einer zu niedrigen Brücke durch oder über eine "
-        "Gewichtsgrenze. Fahrzeugdaten, Start, Ziel und Wegpunkte prüfen."
+        "Gewichts- oder Achslastgrenze. Fahrzeugdaten, Start, Ziel und Wegpunkte prüfen."
     )
 
 
@@ -535,11 +537,18 @@ async def calculate_route(
     schnellstrassen = bruecken_svc.schnellstrassen(route_data.get("road_class_details", []), coords)
     gewichtsgrenzen = (
         None if route_data.get("max_weight_details") is None
-        else gewicht_svc.grenzen(
-            route_data["max_weight_details"],
-            route_data.get("max_weight_except_details") or [],
-            coords,
-            vehicle_params.get("max_weight_t"),
+        else gewicht_svc.zusammen(
+            gewicht_svc.grenzen(
+                route_data["max_weight_details"],
+                route_data.get("max_weight_except_details") or [],
+                coords,
+                vehicle_params.get("max_weight_t"),
+            ),
+            gewicht_svc.achslasten(
+                route_data.get("max_axle_load_details") or [],
+                coords,
+                vehicle_params.get("max_axle_load_t"),
+            ),
         )
     )
 
