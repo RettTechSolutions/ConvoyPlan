@@ -427,6 +427,16 @@ ließe sich sonst zum Laden fremder Adressen missbrauchen. In Tests zeigt
 Die Referenz-Instanz im Simulator des Tracker-Repos tut dasselbe wie dieser Code;
 wer das Protokoll ändert, zieht beide. Anwenderdoku: `wiki/Tracker.md`.
 
+**Einrichten per USB** (`frontend/src/lib/tracker/usb.ts`, Knopf in
+`TrackerVerwaltung.svelte`): Web Serial, je Zeile ein JSON-Objekt, Protokoll im
+Tracker-Repo (`docs/PROTOKOLL.md`, „Einrichten per USB"), Geräteseite dort in
+`simulator/tracker_sim/usb.py`. Der Browser schreibt nur Adresse (`location.origin`),
+Code und optional Wurzelzertifikate aufs Gerät; eingelöst wird **vom Gerät** über
+Mobilfunk, nicht vom Browser — so prüft das Einrichten Netz und TLS gleich mit, und
+kein Token berührt den Browser. Kein Backend-Anteil. Echte serielle Geräte gibt es in
+der CI nicht; `e2e/tracker-usb-einrichten.spec.ts` baut `navigator.serial` nach, so
+wie der Simulator antwortet. Wer das Protokoll ändert, zieht beide Seiten.
+
 ### Alarmquittung: die Führung quittiert am Server
 
 Ein technischer Halt oder Ausfall löst `alert` aus; **quittiert** wird er seit

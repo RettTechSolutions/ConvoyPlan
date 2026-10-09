@@ -55,9 +55,26 @@ Neustart.
 1. Name vergeben, Fahrzeug wählen, Update-Kanal lassen (*Stabil*).
 2. **Anlegen.** Die Seite zeigt einen Einmal-Code (`K7Q2-M9XD`) — **nur jetzt**,
    24 Stunden gültig. Gespeichert ist er nicht.
-3. Gerät per USB an den Rechner, Instanzadresse und Code eingeben (wie das
-   geht, steht beim Gerät). Beim ersten Kontakt tauscht es den Code gegen seinen
-   Zugang; der Code ist danach verbraucht.
+3. Gerät per USB an den Rechner und **Per USB einrichten** klicken, dann das
+   Gerät in der Liste des Browsers wählen. Die Seite schreibt die Adresse dieser
+   Instanz und den Code aufs Gerät. Der Tracker meldet sich danach **selbst über
+   sein Mobilfunknetz** an und tauscht den Code gegen seinen Zugang. Damit ist
+   zugleich geprüft, dass er Netz hat und die Instanz von außen erreicht. Der
+   Code ist danach verbraucht.
+
+Das geht in **Chrome oder Edge am Rechner** (Web Serial). In anderen Browsern
+steht stattdessen ein Hinweis, und der Code wird am Gerät eingegeben.
+
+Schlägt das Einrichten fehl, bleibt der Code stehen, und die Seite sagt, woran
+es lag: kein Netz, Code abgelaufen oder Zertifikat nicht prüfbar. Ein Tracker,
+der schon für eine andere Instanz eingerichtet war, behält diese Einrichtung,
+bis die neue gelungen ist.
+
+**Eigene Zertifizierungsstelle:** Ein Tracker kennt die öffentlichen Wurzeln
+von Let's Encrypt. Hat diese Instanz ein Zertifikat einer eigenen oder internen
+Stelle, gehört deren Wurzelzertifikat (PEM) beim Einrichten unter *Eigene
+Zertifizierungsstelle* dazu, höchstens drei. Wechselt die Stelle später, muss
+jedes Gerät einmal neu per USB eingerichtet werden.
 
 In der Liste steht danach *bereit*, mit dem letzten Lebenszeichen, Akku, Signal
 und Firmwarestand. Meldet sich ein Gerät länger als einen Tag nicht, steht dort
@@ -101,6 +118,8 @@ erreichbar, bleibt der letzte Stand gültig.
 ## Für Entwickler
 
 Die Geräte-API liegt unter `/api/geraete/` (`einloesen`, `hallo`, `positionen`,
-`firmware/ergebnis`), authentifiziert mit `Authorization: Bearer cvt_…`. Der
+`firmware/ergebnis`), authentifiziert mit `Authorization: Bearer cvt_…`. Das
+Einrichten per USB spricht ein Zeilenprotokoll über die serielle Schnittstelle
+(`frontend/src/lib/tracker/usb.ts`); der Browser sieht dabei nie ein Token. Der
 Vertrag steht im Tracker-Repo unter `docs/PROTOKOLL.md`; die Regeln in
 `backend/app/services/ortungsgeraet.py`.

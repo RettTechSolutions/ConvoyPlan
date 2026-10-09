@@ -8,9 +8,23 @@
 	 * Gerät und nicht diese Seite. Der Einmal-Code zum Einrichten steht hier
 	 * **einmal**, direkt nach Anlegen oder „Neu einrichten"; gespeichert ist nur
 	 * sein Hash. Er gilt 24 Stunden.
+	 *
+	 * Einrichten geht per USB direkt von hier (Web Serial, `$lib/tracker/usb.ts`): Die
+	 * Seite schreibt Adresse, Code und optional eigene Wurzelzertifikate aufs Gerät, das
+	 * Gerät löst den Code selbst über sein Mobilfunknetz ein. Der Browser sieht dabei nie
+	 * ein Token.
 	 */
 	import { onMount } from 'svelte';
 	import { geraeteApi, vehiclesApi, type Tracker, type TrackerDaten, type TrackerKanal, type TrackerMitCode } from '$lib/api';
+	import {
+		SCHRITTTEXT,
+		TrackerUsb,
+		WURZELN_MAX,
+		instanzAdresse,
+		webSerialVerfuegbar,
+		wurzelnLesen,
+		type GeraeteInfo
+	} from '$lib/tracker/usb';
 
 	const KANAELE: { wert: TrackerKanal; name: string }[] = [
 		{ wert: 'stable', name: 'Stabil' },
@@ -42,6 +56,10 @@
 	let speichern = $state(false);
 	let neu = $state<TrackerMitCode | null>(null);
 	let kopiert = $state(false);
+	let usb = $state<{ laeuft: boolean; text: string; fehler: boolean; info: GeraeteInfo | null } | null>(null);
+	let wurzelnText = $state('');
+	let mitSerial = $state(false);
+	let adresse = $state('');
 
 	async function neuLaden() {
 		laden = true;
@@ -57,7 +75,48 @@
 		}
 	}
 
-	onMount(neuLaden);
+	onMount(() => {
+		mitSerial = webSerialVerfuegbar();
+		adresse = instanzAdresse();
+		neuLaden();
+	});
+
+	const wurzeln = $derived(wurzelnLesen(wurzelnText));
+
+	async function usbEinrichten() {
+		if (!neu || usb?.laeuft) return;
+		const { code, name } = neu;
+		if (wurzeln.length > WURZELN_MAX) {
+			usb = { laeuft: false, fehler: true, info: null, text: `Höchstens ${WURZELN_MAX} Wurzelzertifikate.` };
+			return;
+		}
+		let geraet: TrackerUsb | null = null;
+		let info: GeraeteInfo | null = null;
+		usb = { laeuft: true, fehler: false, info: null, text: 'Gerät wählen …' };
+		try {
+			geraet = await TrackerUsb.waehlen();
+			usb.text = 'Gerät antwortet …';
+			info = await geraet.info();
+			usb = { laeuft: true, fehler: false, info, text: SCHRITTTEXT.netz };
+			await geraet.einrichten(adresse, code, wurzeln, (s) => {
+				if (usb) usb.text = SCHRITTTEXT[s];
+			});
+			usb = null;
+			neu = null;
+			wurzelnText = '';
+			erfolg = `„${name}" ist eingerichtet — Gerät ${info.hardware_id}, Firmware ${info.firmware}.`;
+			await neuLaden();
+		} catch (e) {
+			// Auswahl abgebrochen: kein Fehler, nur nichts passiert.
+			if (e instanceof DOMException && e.name === 'NotFoundError') {
+				usb = null;
+				return;
+			}
+			usb = { laeuft: false, fehler: true, info, text: e instanceof Error ? e.message : String(e) };
+		} finally {
+			await geraet?.schliessen();
+		}
+	}
 
 	/** Fahrzeuge, an denen kein anderer Tracker hängt — plus das eigene. */
 	const freieFahrzeuge = $derived(
@@ -180,7 +239,7 @@
 		Feste Ortungsgeräte im Fahrzeug. Ein Tracker ist mit <strong>einem</strong> Fahrzeug gekoppelt und
 		sendet dessen Position von selbst — aber nur, solange das Fahrzeug in einem laufenden Konvoi
 		eingeplant ist. Die Besatzung muss nichts tun. Einrichten: Tracker anlegen, Gerät per USB an den
-		Rechner, Code eingeben.
+		Rechner, <strong>Per USB einrichten</strong>.
 	</p>
 </div>
 
@@ -195,6 +254,50 @@
 		<div class="knoepfe">
 			<button class="btn-small" onclick={() => kopieren(neu!.code)}>{kopiert ? 'Kopiert ✓' : 'Kopieren'}</button>
 			<button class="btn-small" onclick={() => (neu = null)}>Ich habe ihn eingegeben</button>
+		</div>
+
+		<div class="usb" data-testid="usb-einrichten">
+			{#if mitSerial}
+				<p class="hint">
+					Oder direkt von hier: Tracker per USB an diesen Rechner, dann <strong>Per USB einrichten</strong>.
+					Der Tracker meldet sich danach selbst über sein Mobilfunknetz bei
+					<code>{adresse}</code> an.
+				</p>
+				{#if !adresse.startsWith('https://')}
+					<p class="warnung">
+						Diese Seite läuft nicht über HTTPS. Ein Tracker meldet sich nur bei einer HTTPS-Adresse an.
+					</p>
+				{/if}
+				<details>
+					<summary>Eigene Zertifizierungsstelle</summary>
+					<p class="hint">
+						Nur nötig, wenn das Zertifikat dieser Instanz nicht von einer öffentlichen Stelle wie Let's Encrypt
+						stammt. Das Wurzelzertifikat (PEM) hier einfügen, höchstens {WURZELN_MAX}.
+					</p>
+					<textarea
+						bind:value={wurzelnText}
+						rows="4"
+						aria-label="Wurzelzertifikate"
+						placeholder="-----BEGIN CERTIFICATE-----"
+					></textarea>
+					{#if wurzelnText.trim()}
+						<p class="hint">{wurzeln.length} Zertifikat{wurzeln.length === 1 ? '' : 'e'} erkannt.</p>
+					{/if}
+				</details>
+				<div class="knoepfe">
+					<button class="btn-small primary" onclick={usbEinrichten} disabled={usb?.laeuft}>Per USB einrichten</button>
+				</div>
+				{#if usb}
+					<p class={usb.fehler ? 'usb-fehler' : 'hint'} role={usb.fehler ? 'alert' : 'status'}>
+						{#if usb.info}Gerät {usb.info.hardware_id}, Firmware {usb.info.firmware}{#if usb.info.instanz && usb.info.instanz !== adresse}, bisher eingerichtet für {usb.info.instanz}{/if}: {/if}{usb.text}
+					</p>
+				{/if}
+			{:else}
+				<p class="hint">
+					Einrichten per USB direkt aus dieser Seite geht in Chrome oder Edge am Rechner. In diesem Browser: Code
+					am Gerät eingeben, wie es beim Gerät beschrieben ist.
+				</p>
+			{/if}
 		</div>
 	</div>
 {/if}
@@ -315,6 +418,10 @@
 	.formular label.haken { flex-direction: row; align-items: center; gap: .5rem; font-weight: 400; max-width: none; }
 
 	.code-box { border-color: #d4a017; }
+	.usb { margin-top: 1rem; border-top: 1px solid var(--border); padding-top: .75rem; }
+	.usb textarea { width: 100%; max-width: var(--admin-field, 34rem); font-family: monospace; font-size: var(--text-xs); background: var(--surface-2); color: var(--text-1); border: 1px solid var(--border); border-radius: 6px; padding: .4rem; }
+	.usb summary { cursor: pointer; font-size: var(--text-sm); color: var(--text-2); margin: .25rem 0; }
+	.usb-fehler { color: var(--color-primary); font-size: var(--text-sm); margin: .5rem 0 0; }
 	.warnung { background: rgba(212,160,23,.12); border: 1px solid rgba(212,160,23,.45); color: var(--text-1); padding: .4rem .6rem; border-radius: 4px; font-size: var(--text-sm); }
 	.code { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: .6rem .75rem; font-size: 1.6rem; letter-spacing: .15em; font-weight: 700; color: var(--text-1); user-select: all; margin: .5rem 0 0; }
 
