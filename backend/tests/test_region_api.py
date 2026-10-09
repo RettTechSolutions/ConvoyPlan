@@ -387,6 +387,60 @@ async def test_switch_conflicts_with_running_region_switch(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("phase", ["import", "download"])
+async def test_switch_wartet_auf_laufenden_graphbau(monkeypatch, phase):
+    """Baut GraphHopper gerade selbst, liefe der Wechsel-Import daneben — 409,
+    und es wird nichts geschrieben."""
+    from app.services import graph_aufbau
+
+    monkeypatch.setattr(geofabrik, "head_size_bytes", _async_size(int(1 * GB)))
+    monkeypatch.setattr(os.path, "exists", lambda p: False)
+    monkeypatch.setattr(region_switch, "is_busy", lambda: False)
+    monkeypatch.setattr(
+        graph_aufbau, "laufender_aufbau", lambda: graph_aufbau.Aufbau(phase, None)
+    )
+    geschrieben = MagicMock()
+    monkeypatch.setattr(region_switch, "write_request", geschrieben)
+    test_app = _make_app_with_superadmin_and_db()
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post(
+            "/api/admin/region",
+            json={"urls": [URL]},
+            headers={"Authorization": "Bearer x"},
+        )
+    assert resp.status_code == 409
+    assert "Routing-Graphen" in resp.json()["detail"]
+    geschrieben.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_switch_bei_haengendem_import_erlaubt(monkeypatch):
+    """Ein hängender Import sperrt nicht — ein Wechsel auf eine kleinere Region
+    kann genau der Ausweg sein. laufender_aufbau() liefert ihn nicht."""
+    from app.services import graph_aufbau
+
+    monkeypatch.setattr(geofabrik, "head_size_bytes", _async_size(int(1 * GB)))
+    monkeypatch.setattr(os.path, "exists", lambda p: False)
+    monkeypatch.setattr(region_switch, "is_busy", lambda: False)
+    monkeypatch.setattr(
+        graph_aufbau, "graph_zustand",
+        lambda *a, **k: graph_aufbau.Aufbau("haengt", 0.0),
+    )
+    monkeypatch.setattr(region_switch, "write_request", lambda *a, **k: None)
+    test_app = _make_app_with_superadmin_and_db()
+    with patch("app.api.routes.region.audit.record", new=AsyncMock()):
+        transport = ASGITransport(app=test_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/admin/region",
+                json={"urls": [URL]},
+                headers={"Authorization": "Bearer x"},
+            )
+    assert resp.status_code == 202
+
+
+@pytest.mark.asyncio
 async def test_switch_requires_superadmin():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

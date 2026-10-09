@@ -168,6 +168,12 @@
     const showSwitchPanel = $derived(busy || finished);
     const canCancel = $derived(busy && CANCELLABLE_PHASES.includes(status.phase));
     const blocked = $derived(preview?.verdict === 'reicht nicht');
+    // Baut GraphHopper gerade selbst, lehnt der Server einen Wechsel ab (409):
+    // zwei Importe um denselben Speicher. Ein hängender Import sperrt nicht —
+    // dann kann ein Wechsel auf eine kleinere Region der Ausweg sein.
+    const graphBaut = $derived(
+        status.graph_build?.phase === 'import' || status.graph_build?.phase === 'download',
+    );
 
     onMount(async () => {
         await loadCurrent();
@@ -664,7 +670,13 @@
 
             {#if !showPicker}
                 <div style="margin-top:1rem">
-                    <button class="btn-primary" onclick={openPicker}>Region wechseln</button>
+                    <button class="btn-primary" onclick={openPicker} disabled={graphBaut}>Region wechseln</button>
+                    {#if graphBaut}
+                        <p class="hint" style="margin-top:.4rem">
+                            Gesperrt, bis der laufende Graph-Aufbau abgeschlossen ist — ein Wechsel
+                            liefe parallel dazu und konkurrierte um den Speicher.
+                        </p>
+                    {/if}
                 </div>
             {/if}
         {/if}
@@ -847,7 +859,7 @@
                             {/if}
 
                             <div class="switch-actions">
-                                <button class="btn-primary" disabled={blocked || switching} onclick={startSwitch}>
+                                <button class="btn-primary" disabled={blocked || switching || graphBaut} onclick={startSwitch}>
                                     {switching ? '…' : scheduledLocal ? 'Wechsel einplanen' : 'Wechsel starten'}
                                 </button>
                                 <button class="btn-secondary" onclick={closePicker}>Abbrechen</button>

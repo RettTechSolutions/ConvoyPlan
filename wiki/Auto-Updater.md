@@ -129,6 +129,8 @@ Sichtbar ist ein laufender Bau an zwei Stellen. Die öffentliche Statusseite (`/
 - **Routing-Graph wird neu aufgebaut**: Der Import läuft, die Karte zeigt, seit wann.
 - **Import ohne Abschluss**: Seit mehr als vier Stunden gibt es keinen fertigen Graphen. Das ist dieselbe Frist wie oben. Die Ursache steht im Container-Log (`docker compose logs graphhopper`), meist zu wenig Speicher oder eine volle Platte. Ein Neustart des Containers räumt den Rest weg und baut neu. Die Statusseite meldet diesen Fall nicht mehr als Neuaufbau, sondern als Störung.
 
+Solange heruntergeladen oder importiert wird, ist **Region wechseln** gesperrt, und auch die API lehnt einen Wechsel ab (409). Ein Wechsel liefe parallel zum laufenden Import und konkurrierte mit ihm um den Speicher. Ein hängender Import sperrt dagegen nicht: Dann kann ein Wechsel auf eine kleinere Region gerade der Ausweg sein.
+
 Abgelesen wird das an den Dateien im Graph-Volume, nicht am Container. Einen Lebensbeweis für den Import gibt es dabei nicht: Ein Container, der mitten im Import angehalten wurde und nicht wiederkommt, sieht bis zum Ablauf der Frist aus wie ein laufender Import.
 
 ---

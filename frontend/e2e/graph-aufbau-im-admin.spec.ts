@@ -8,6 +8,9 @@ import { test, expect, type Page } from '@playwright/test';
 //    hängend gilt — es gibt keinen Lebensbeweis, die Frist ist die Grenze;
 //  - ein hängender Import ist als solcher erkennbar und sagt, wo die Ursache
 //    steht und dass ein Neustart neu baut;
+//  - solange gebaut wird, ist „Region wechseln" gesperrt (der Server lehnt
+//    ohnehin ab); ein hängender Import sperrt nicht — da kann ein Wechsel auf
+//    eine kleinere Region der Ausweg sein;
 //  - ohne Bau steht nichts da, und die Region bleibt wechselbar.
 
 const HUELLE = 'http://localhost:4174';
@@ -24,6 +27,8 @@ test('ein laufender Import nennt Dauer und Frist', async ({ page }) => {
 	await expect(hinweis(page)).toContainText('Routing-Graph wird neu aufgebaut');
 	await expect(hinweis(page)).toContainText('seit 12 Min.');
 	await expect(hinweis(page)).toContainText('Ohne Abschluss nach 4 Std. gilt der Import als hängend');
+	await expect(page.getByRole('button', { name: 'Region wechseln' })).toBeDisabled();
+	await expect(page.getByText('Gesperrt, bis der laufende Graph-Aufbau abgeschlossen ist')).toBeVisible();
 });
 
 test('ein laufender Download hat keine erfundene Dauer', async ({ page }) => {
@@ -31,6 +36,7 @@ test('ein laufender Download hat keine erfundene Dauer', async ({ page }) => {
 
 	await expect(hinweis(page)).toContainText('Kartendaten werden heruntergeladen');
 	await expect(hinweis(page)).not.toContainText(/seit \d/);
+	await expect(page.getByRole('button', { name: 'Region wechseln' })).toBeDisabled();
 });
 
 test('ein hängender Import sagt, wo die Ursache steht', async ({ page }) => {
@@ -39,11 +45,12 @@ test('ein hängender Import sagt, wo die Ursache steht', async ({ page }) => {
 	await expect(hinweis(page)).toContainText('Import ohne Abschluss');
 	await expect(hinweis(page)).toContainText('seit 5,0 Std.');
 	await expect(hinweis(page)).toContainText('docker compose logs graphhopper');
+	await expect(page.getByRole('button', { name: 'Region wechseln' })).toBeEnabled();
 });
 
 test('ohne Bau steht nichts da', async ({ page }) => {
 	await oeffnen(page, 'keiner');
 
 	await expect(hinweis(page)).toHaveCount(0);
-	await expect(page.getByRole('button', { name: 'Region wechseln' })).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Region wechseln' })).toBeEnabled();
 });

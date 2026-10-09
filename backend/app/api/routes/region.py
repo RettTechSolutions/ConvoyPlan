@@ -494,6 +494,23 @@ async def switch_region(
         )
         raise HTTPException(409, "Es läuft bereits ein Update oder Regionswechsel.")
 
+    # Baut GraphHopper gerade selbst (nach einem Update, einem Neustart ohne
+    # fertigen Graphen), liefe der Wechsel-Import daneben: zwei Importe um
+    # denselben Speicher, und die RAM-Rechnung der Vorschau geht von einem
+    # Server aus, nicht von einem zweiten Import. Am Ende tauschte der Wechsel
+    # das Graph-Verzeichnis und startete GraphHopper neu — der laufende Import
+    # waere ohnehin verloren. Ein *haengender* Import sperrt nicht: dann kann
+    # gerade ein Wechsel auf eine kleinere Region der Ausweg sein.
+    if graph_aufbau.laufender_aufbau() is not None:
+        await _audit_switch_rejected(
+            db, request, user, url, "GraphHopper baut gerade seinen Routing-Graphen."
+        )
+        raise HTTPException(
+            409,
+            "GraphHopper baut gerade seinen Routing-Graphen. Ein Wechsel liefe parallel "
+            "dazu und konkurrierte um den Speicher — bitte nach dem Abschluss starten.",
+        )
+
     try:
         region_switch.write_request(
             url, filename, java_opts, user.email, sources=sources,
