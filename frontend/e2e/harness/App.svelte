@@ -12,6 +12,8 @@
 	import SidebarFooter from '$lib/components/SidebarFooter.svelte';
 	import AktionsseitenVerwaltung from '$lib/components/AktionsseitenVerwaltung.svelte';
 	import PasskeyVerwaltung from '$lib/components/PasskeyVerwaltung.svelte';
+	import DurchfahrtsHoehen from '$lib/components/DurchfahrtsHoehen.svelte';
+	import type { DurchfahrtshoeheEntry } from '$lib/api';
 	import { feedbackStore } from '$lib/stores/feedback';
 
 	const welche = new URLSearchParams(location.search).get('k') ?? 'share';
@@ -31,6 +33,22 @@
 		spacing_motorway_m: 100,
 	});
 	let konvoiOffen = $state(true);
+
+	/** Durchfahrtshöhen: `?k=hoehen&fall=…`, die Fälle stehen im Test. */
+	const fall = new URLSearchParams(location.search).get('fall') ?? 'gemischt';
+	const stelle = (km: number, hoehe_m: number, spielraum_m: number | null, stufe: DurchfahrtshoeheEntry['stufe']) =>
+		({ km, lat: 47.8, lon: 11.1, laenge_m: 40, hoehe_m, spielraum_m, stufe });
+	const HOEHEN: Record<string, { eintraege: DurchfahrtshoeheEntry[] | null; hoehe: number | null; ohne: number }> = {
+		gemischt: {
+			eintraege: [stelle(12.4, 3.7, 0.05, 'eng'), stelle(30.1, 4.5, 0.85, 'frei'), stelle(48.9, 3.9, 0.25, 'knapp'), stelle(60, 4.2, 0.55, 'frei')],
+			hoehe: 3.65, ohne: 1,
+		},
+		alle_frei: { eintraege: [stelle(30.1, 4.5, 0.85, 'frei')], hoehe: 3.65, ohne: 0 },
+		ohne_hoehe: { eintraege: [stelle(12.4, 3.5, null, 'unbekannt')], hoehe: null, ohne: 3 },
+		leer: { eintraege: [], hoehe: 3.2, ohne: 0 },
+		alt: { eintraege: null, hoehe: 3.2, ohne: 0 },
+	};
+	const hoehen = HOEHEN[fall];
 </script>
 
 {#if welche === 'fuss'}
@@ -40,6 +58,14 @@
 	<div class="leiste" data-theme="dark">
 		<div class="leiste-inhalt">Inhalt der Planung (steht für Listen und Formulare)</div>
 		<SidebarFooter />
+	</div>
+{:else if welche === 'hoehen'}
+	<!-- Breite der Seitenleiste der Planung, in der der Block steht. -->
+	<div class="leiste" data-theme="dark">
+		<div class="leiste-inhalt">
+			<p>Route berechnet.</p>
+			<DurchfahrtsHoehen eintraege={hoehen.eintraege} fahrzeughoeheM={hoehen.hoehe} ohneHoehe={hoehen.ohne} />
+		</div>
 	</div>
 {:else if welche === 'aktion'}
 	<div class="admin-flaeche"><AktionsseitenVerwaltung /></div>

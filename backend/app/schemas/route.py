@@ -67,6 +67,18 @@ class KanalwechselEntry(BaseModel):
     typ: Literal["anmelden", "abmelden", "convoy_anmeldung"] = "anmelden"
 
 
+class DurchfahrtshoeheEntry(BaseModel):
+    km: float
+    lat: float
+    lon: float
+    laenge_m: int
+    # Angeschriebene Höhe aus OSM, im Graphen auf 0,1 m gerundet.
+    hoehe_m: float
+    # Höhe minus höchstes Fahrzeug; None ohne erfasste Fahrzeughöhe.
+    spielraum_m: float | None = None
+    stufe: Literal["eng", "knapp", "frei", "unbekannt"]
+
+
 class RouteResponse(BaseModel):
     id: uuid.UUID
     convoy_id: uuid.UUID
@@ -76,6 +88,9 @@ class RouteResponse(BaseModel):
     geojson: dict | None = None
     fuel_analysis: FuelAnalysis | None = None
     kanalwechsel: list[KanalwechselEntry] = []
+    # None = nicht ermittelt (alte oder importierte Route), [] = keine bekannte
+    # Höhenbeschränkung auf der Strecke.
+    durchfahrtshoehen: list[DurchfahrtshoeheEntry] | None = None
     # Abmarschzeit und geplante Ankunft am Ziel. Beide werden auf derselben
     # Zeitbasis wie die Wegpunkt-Zeiten berechnet, damit der Zeitplan konsistent
     # dargestellt wird. planned_arrival = Abmarsch + Fahrzeit + alle Haltezeiten.

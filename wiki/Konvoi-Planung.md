@@ -91,6 +91,23 @@ Jeder empfohlene Halt zeigt in der Planungsansicht seine Art, die Haltedauer und
 
 ---
 
+## Durchfahrtshöhen
+
+Hat mindestens ein Fahrzeug im Verband eine **Höhe** (siehe [Fahrzeuge](Fahrzeuge)), meidet die Routenberechnung jede Unterführung, die niedriger ist als das höchste Fahrzeug. Unter welchen Höhenbeschränkungen die Route trotzdem hindurchführt, zeigt die Planungsansicht nach der Berechnung im Block **Durchfahrtshöhen**:
+
+| Stufe | Spielraum zum höchsten Fahrzeug | Bedeutung |
+|---|---|---|
+| **eng – vor Ort prüfen** | unter 10 cm | Die Kartendaten sind auf 10 cm gerundet; der Spielraum kann in Wirklichkeit fehlen. |
+| **knapp** | 10 bis 30 cm | Durchfahrt möglich, die Besatzungen sollten davon wissen. |
+| frei | ab 30 cm | Wird erst auf Klick („+ N weitere") angezeigt. |
+| **Höhe fehlt** | – | Kein Fahrzeug im Verband hat eine Höhe; dann wird auch nichts gemieden. |
+
+Fahrzeuge ohne Höhenangabe zählen beim Meiden nicht mit — der Block nennt ihre Anzahl. Enge und knappe Stellen stehen zusätzlich im [Marschbefehl](Marschbefehl-Export) unter „Durchfahrtshöhen".
+
+**Grenzen der Daten:** Die Höhen stammen aus OpenStreetMap (`maxheight` an der unterführten Straße). Eine Brücke ohne diese Angabe kennt ConvoyPlan nicht; sie fehlt in der Liste, und die Route meidet sie nicht. Die Liste ist ein Hinweis, keine Freigabe — maßgeblich ist die Beschilderung vor Ort, bei Großraum- und Schwertransporten die Genehmigung. Für Routen, die vor dieser Funktion berechnet wurden, erscheint der Block erst nach einer Neuberechnung.
+
+---
+
 ## Leitstellen & Kanalwechsel
 
 Führt die Route durch Bereiche verschiedener Leitstellen, werden automatisch **Kanalwechsel-Punkte** berechnet:

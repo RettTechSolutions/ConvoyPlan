@@ -22,5 +22,9 @@ class Route(Base):
     # None heißt: keine vorhanden — Route vor Migration 0047 berechnet oder
     # importiert. Das Roadbook sagt das dann, statt eine leere Liste zu drucken.
     instructions: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Höhenbeschränkungen entlang der Route (services/durchfahrtshoehe.py).
+    # None heißt: nicht ermittelt — Route vor Migration 0055 berechnet oder
+    # importiert. Eine leere Liste heißt: keine bekannte Beschränkung.
+    durchfahrtshoehen: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     convoy: Mapped["Convoy"] = relationship(back_populates="route")

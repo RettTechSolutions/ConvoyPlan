@@ -158,6 +158,31 @@ ein Stück doppelt befährt, trifft die Suche nach dem nächsten Streckenpunkt s
 die falsche Vorbeifahrt, und aus der negativen Teilstrecke wird eine rückwärts
 laufende Ankunftszeit.
 
+### Durchfahrtshöhen: gesperrt wird beim Routing, gezeigt wird danach
+
+Das Custom Model in `services/routing.py` nimmt jede Kante mit `max_height` unter
+dem höchsten Fahrzeug aus dem Graphen — das war schon immer so, aber still.
+`services/durchfahrtshoehe.py` macht aus dem Path-Detail `max_height` die Liste
+der Unterführungen, unter denen die Route trotzdem hindurchgeht, gespeichert in
+`routes.durchfahrtshoehen` (Migration `0055`) wie der Kanalwechsel, gezeigt in
+`DurchfahrtsHoehen.svelte` und im Marschbefehl.
+
+Zwei Dinge, die man kennen muss:
+
+- **GraphHopper rundet `max_height` auf 10 cm** (9.1, `MaxHeight.create`, Faktor
+  0,1 mit `Math.round`): aus 3,85 m auf dem Schild werden 3,9 m im Graphen. Die
+  Sperre `max_height < Fahrzeughöhe` kann deshalb ein Fahrzeug von 3,88 m unter
+  ein 3,85-m-Schild schicken. Die Stufe `eng` (< 10 cm Spielraum) ist genau dafür
+  da; die Sperre selbst ist unverändert.
+- **`None` ist nicht `[]`.** `None` heißt „nicht ermittelt" (alte oder importierte
+  Route), `[]` heißt „keine bekannte Beschränkung". Wer das zusammenlegt, behauptet
+  bei jeder alten Route freie Fahrt.
+
+Brücken **ohne** `maxheight` in OSM kennt GraphHopper nicht; sie stehen weder in der
+Liste, noch werden sie gemieden. Tests: `tests/test_durchfahrtshoehen.py`,
+`frontend/e2e/durchfahrtshoehen.spec.ts`. Anwenderdoku: `wiki/Konvoi-Planung.md`,
+„Durchfahrtshöhen".
+
 ### Fahrzeugbelegung: ein Fahrzeug, ein Gerät
 
 Wer ein Fahrzeug wählt, belegt es — am Server, für alle drei Oberflächen zugleich:

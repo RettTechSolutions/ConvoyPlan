@@ -172,7 +172,9 @@ async def calculate_route(
         "instructions": True,
         "locale": "de",
         "points_encoded": False,
-        "details": ["road_class", "max_speed"],
+        # max_height: Höhenbeschränkungen entlang der Route als Hinweis
+        # (services/durchfahrtshoehe.py) — gesperrt wird unten im Custom Model.
+        "details": ["road_class", "max_speed", "max_height"],
     }
 
     road_preference = _LEGACY_PREFERENCES.get(road_preference, road_preference)
@@ -226,6 +228,7 @@ async def calculate_route(
         "geometry": path["points"],
         "road_class_details": path.get("details", {}).get("road_class", []),
         "max_speed_details": path.get("details", {}).get("max_speed", []),
+        "max_height_details": path.get("details", {}).get("max_height", []),
         "instructions": compact_instructions(
             path.get("instructions", []), path["points"].get("coordinates", [])
         ),

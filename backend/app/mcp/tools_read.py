@@ -699,6 +699,9 @@ def register(mcp) -> None:
                 "strecke_m": route.distance_m,
                 "fahrzeit_s": route.duration_s,
                 "kanalwechsel": route.kanalwechsel,
+                # Höhenbeschränkungen aus OSM; stufe eng/knapp/frei/unbekannt.
+                # None: vor dieser Auswertung berechnet — neu berechnen.
+                "durchfahrtshoehen": route.durchfahrtshoehen,
             }
             if mit_geometrie:
                 data["geometrie_geojson"] = geo_svc.linestring_to_geojson(route.geometry)

@@ -127,11 +127,26 @@ export interface KanalwechselEntry {
 	zusatz_kanaele?: { name?: string; kanal?: string }[];
 }
 
+/** Höhenbeschränkung entlang der Route (Backend: services/durchfahrtshoehe.py). */
+export interface DurchfahrtshoeheEntry {
+	km: number;
+	lat: number;
+	lon: number;
+	laenge_m: number;
+	/** Angeschriebene Höhe aus OSM, im Graphen auf 0,1 m gerundet. */
+	hoehe_m: number;
+	/** Höhe minus höchstes Fahrzeug; null ohne erfasste Fahrzeughöhe. */
+	spielraum_m: number | null;
+	stufe: 'eng' | 'knapp' | 'frei' | 'unbekannt';
+}
+
 export interface RouteResult {
 	id: string; convoy_id: string; distance_m: number | null; duration_s: number | null;
 	routing_params: Record<string, unknown> | null; geojson: Geometry | null;
 	fuel_analysis: FuelAnalysis | null;
 	kanalwechsel?: KanalwechselEntry[];
+	/** null: Route vor der Auswertung berechnet oder importiert; []: keine bekannte Beschränkung. */
+	durchfahrtshoehen?: DurchfahrtshoeheEntry[] | null;
 	/** Abmarschzeit (ISO), auf derselben Zeitbasis wie die Wegpunkt-Zeiten. */
 	planned_departure?: string | null;
 	/** Geplante Ankunft am Ziel (ISO); Abmarsch + Fahrzeit + Haltezeiten. */

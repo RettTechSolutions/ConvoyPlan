@@ -22,6 +22,7 @@ from app.models.route import Route
 from app.models.user import User
 from app.models.waypoint import Waypoint
 from app.schemas.route import RouteResponse
+from app.services import durchfahrtshoehe as hoehe_svc
 from app.services import geometry as geo_svc
 from app.services import routing as routing_svc
 from app.services import schedule as schedule_svc
@@ -384,6 +385,7 @@ async def get_route(
         geojson=geojson,
         fuel_analysis=fuel_analysis,
         kanalwechsel=route.kanalwechsel or [],
+        durchfahrtshoehen=route.durchfahrtshoehen,
         planned_departure=route_planned_departure,
         planned_arrival=route_planned_arrival,
     )
@@ -496,6 +498,14 @@ async def calculate_route(
         route_data.get("instructions", []), [str(wp.id) for wp, _ in positioned]
     )
 
+    # Höhenbeschränkungen entlang der Route — dieselbe Fahrzeughöhe, mit der
+    # GraphHopper oben gesperrt hat (services/durchfahrtshoehe.py).
+    durchfahrtshoehen = hoehe_svc.engstellen(
+        route_data.get("max_height_details", []),
+        coords,
+        vehicle_params.get("max_height_m"),
+    )
+
     # Persist route
     line = LineString(coords)
     route = existing_route
@@ -505,6 +515,7 @@ async def calculate_route(
         route.duration_s = convoy_duration_s
         route.routing_params = vehicle_params
         route.instructions = instructions
+        route.durchfahrtshoehen = durchfahrtshoehen
     else:
         route = Route(
             convoy_id=convoy_id,
@@ -513,6 +524,7 @@ async def calculate_route(
             duration_s=convoy_duration_s,
             routing_params=vehicle_params,
             instructions=instructions,
+            durchfahrtshoehen=durchfahrtshoehen,
         )
         db.add(route)
 
@@ -595,6 +607,7 @@ async def calculate_route(
         "geojson": route_data["geometry"],
         "fuel_analysis": fuel_analysis,
         "kanalwechsel": kanalwechsel,
+        "durchfahrtshoehen": durchfahrtshoehen,
         "planned_departure": route_planned_departure,
         "planned_arrival": route_planned_arrival,
     }
@@ -694,12 +707,14 @@ async def export_pdf(
     ]
 
     kanalwechsel = route.kanalwechsel if route else None
+    durchfahrtshoehen = route.durchfahrtshoehen if route else None
     # PDF generation (FPDF, font loading, many tables) is CPU-bound and
     # blocking — run it in the default thread pool so it does not stall the
     # event loop for concurrent requests.
     loop = asyncio.get_running_loop()
     pdf_bytes = await loop.run_in_executor(
-        None, pdf_svc.generate_marschbefehl, convoy, waypoints, vehicles, route, kanalwechsel
+        None, pdf_svc.generate_marschbefehl, convoy, waypoints, vehicles, route, kanalwechsel,
+        durchfahrtshoehen,
     )
     filename = f"Marschbefehl_{_safe_filename(convoy.name.replace(' ', '_'))}.pdf"
     return Response(

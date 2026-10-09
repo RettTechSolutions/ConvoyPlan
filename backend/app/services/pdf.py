@@ -4,6 +4,8 @@ from typing import Any
 
 from fpdf import FPDF
 
+from app.services import durchfahrtshoehe as hoehe_svc
+
 MARSCHFORM_LABELS = {
     "geschlossener_verband": "Geschlossener Gesamtverband",
     "einzelgruppen": "Einzelgruppen",
@@ -121,6 +123,77 @@ def _table_header(pdf: _PDF, cols: list[tuple[int, str]]):
     pdf.ln()
 
 
+_STUFE_LABELS = {
+    "eng": "ENG – vor Ort prüfen",
+    "knapp": "knapp",
+    "unbekannt": "Fahrzeughöhe fehlt",
+    "frei": "",
+}
+
+
+def _durchfahrtshoehen(
+    pdf: _PDF,
+    eintraege: list[dict],
+    vehicles: list[dict],
+    fahrzeughoehe_m: float | None,
+    total_w: float,
+) -> None:
+    """Höhenbeschränkungen mit wenig Spielraum (services/durchfahrtshoehe.py).
+
+    Gedruckt wird, was nicht ``frei`` ist; der Rest steht als Zahl darunter —
+    eine Autobahnfahrt mit zwanzig Tunneln à 4,50 m soll den Befehl nicht füllen.
+
+    ``fahrzeughoehe_m`` ist die Höhe, mit der die Route berechnet wurde
+    (``routing_params``) — dieselbe, aus der der Spielraum stammt, auch wenn
+    sich die Fahrzeugliste seither geändert hat.
+    """
+    _subsection(pdf, "Durchfahrtshöhen")
+    ohne = sum(1 for v in vehicles if not v.get("height_cm"))
+    pdf.set_font("DV", "", 9)
+    if fahrzeughoehe_m:
+        text = f"  • Höchstes Fahrzeug: {fahrzeughoehe_m:.2f} m".replace(".", ",")
+    else:
+        text = "  • Keine Fahrzeughöhe erfasst – die Route meidet keine Höhenbeschränkung"
+    if ohne and fahrzeughoehe_m:
+        text += f" ({ohne} Fahrzeug{'e' if ohne != 1 else ''} ohne Höhenangabe)"
+    pdf.multi_cell(0, 5, text, new_x="LMARGIN", new_y="NEXT")
+
+    zeigen = hoehe_svc.hinweispflichtig(eintraege)
+    if zeigen:
+        cols = [(25, "km"), (30, "Höhe"), (30, "Spielraum"), (0, "Hinweis")]
+        cols[-1] = (total_w - sum(c[0] for c in cols[:-1]), "Hinweis")
+        _table_header(pdf, cols)
+        pdf.set_font("DV", "", 8)
+        fill = False
+        for e in zeigen:
+            pdf.set_fill_color(245, 246, 250) if fill else pdf.set_fill_color(255, 255, 255)
+            sp = e.get("spielraum_m")
+            pdf.cell(cols[0][0], 6, f"{e.get('km', 0):.1f} km", border=1, fill=fill)
+            pdf.cell(cols[1][0], 6, f"{e.get('hoehe_m', 0):.1f} m".replace(".", ","), border=1, fill=fill)
+            pdf.cell(cols[2][0], 6, "-" if sp is None else f"{sp * 100:+.0f} cm", border=1, fill=fill)
+            pdf.cell(cols[3][0], 6, _STUFE_LABELS.get(e.get("stufe", ""), ""), border=1, fill=fill,
+                     new_x="LMARGIN", new_y="NEXT")
+            fill = not fill
+    rest = len(eintraege) - len(zeigen)
+    pdf.set_font("DV", "", 7.5)
+    pdf.set_text_color(80, 80, 80)
+    zeilen = []
+    if not eintraege:
+        zeilen.append("Keine Höhenbeschränkung auf der Strecke bekannt.")
+    elif rest:
+        zeilen.append(
+            f"{rest} weitere Höhenbeschränkung{'en' if rest != 1 else ''} mit mindestens "
+            f"{hoehe_svc.KNAPP_M * 100:.0f} cm Spielraum."
+        )
+    zeilen.append(
+        "Angaben aus OpenStreetMap, auf 10 cm gerundet; Unterführungen ohne Angabe sind nicht erfasst. "
+        "Maßgeblich ist die Beschilderung vor Ort."
+    )
+    pdf.multi_cell(0, 4, "\n".join(zeilen), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(2)
+
+
 def _build_marschweg(waypoints: list[dict]) -> str:
     """Build 'von X über Y, Z nach W' route description from waypoints."""
     names = [w["name"] for w in waypoints if w.get("name")]
@@ -140,6 +213,7 @@ def generate_marschbefehl(
     vehicles: list[dict],
     route: Any | None,
     kanalwechsel: list[dict] | None = None,
+    durchfahrtshoehen: list[dict] | None = None,
 ) -> bytes:
     pdf = _PDF()
     pdf.set_auto_page_break(auto=True, margin=15)
@@ -323,6 +397,11 @@ def generate_marschbefehl(
         pdf.cell(cols_kfz[5][0], 6, sonder[:25], border=1, fill=fill, new_x="LMARGIN", new_y="NEXT")
         fill = not fill
     pdf.ln(3)
+
+    # Durchfahrtshöhen — None: Route vor der Auswertung berechnet, dann nichts.
+    if durchfahrtshoehen is not None:
+        params = getattr(route, "routing_params", None) or {}
+        _durchfahrtshoehen(pdf, durchfahrtshoehen, vehicles, params.get("max_height_m"), total_w)
 
     # ── 4. Versorgung ─────────────────────────────────────────────────────────
     _section(pdf, "4", "Versorgung")
