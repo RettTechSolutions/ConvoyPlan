@@ -44,6 +44,8 @@ ursprünglichen SemVer-Nummern.
 
 ### Fixed
 
+- **Zustimmungsschirm für KI-Clients schickte Mitglieder auf die Superadmin-Anmeldung.** Wer ChatGPT & Co. verbinden wollte und nur in seiner Organisation angemeldet war (der Normalfall), landete von `/oauth/consent` auf `/admin` — das Wurzel-Layout kannte die Seite nicht als öffentlich und verlangte eine globale Sitzung, die nur Superadmins haben. Ohne Anmeldung ging zudem der Rücksprung verloren. Die Seite prüft die Anmeldung selbst und steht jetzt in `PUBLIC_ROUTES`.
+
 - **Absagen am Token-Endpunkt kamen als 500.** Der OAuth-Provider warf `TokenError` innerhalb einer Datenbanksitzung; weil das eine eingefrorene Dataclass ist, scheiterte `contextlib` am Zuweisen des Tracebacks. Betroffen war etwa ein deaktiviertes Konto, dessen MCP-Client sein Token erneuern wollte — statt `invalid_grant` gab es einen Serverfehler.
 
 - **Abruf-Adresse der Aktionsseiten beginnt mit `https://`.** Der Org-Admin zeigte `http://…/api/public/aktion/<slug>` (und dasselbe in `CONVOYPLAN_URL` für den EventTracker), obwohl die Instanz nur per HTTPS antwortet. uvicorn nahm `X-Forwarded-Proto` von Caddy nicht an, weil `--forwarded-allow-ips` auf `127.0.0.1` stand und Caddy aus dem Docker-Netz kommt. Wer die Adresse übernahm, lief in die Umleitung auf https; Node fetch verwirft dabei den Authorization-Kopf, der Abruf endete in 404 und die öffentliche Seite blieb leer. Die Compose-Datei setzt jetzt `FORWARDED_ALLOW_IPS=*` für das Backend — vertretbar, weil es keinen Port veröffentlicht und nur Caddy es erreicht —, der Entrypoint reicht den Wert an uvicorn durch. Bereits angelegte Seiten brauchen nichts: die Adresse wird bei jeder Anzeige neu gebaut; im EventTracker eingetragene `http://`-Adressen auf `https://` umstellen.

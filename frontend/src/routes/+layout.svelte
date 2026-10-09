@@ -33,13 +33,17 @@
 	// gilt für /demo/abmelden: der Link steht in einer E-Mail, wer ihn
 	// anklickt, hat keine Sitzung mehr.
 	//
-	// /oauth/app (Anmeldung der Begleit-App) prüft selbst, und zwar die Sitzung
-	// *einer Organisation* — eine globale hat dort kaum jemand. Stünde sie
-	// nicht hier, landete jedes Mitglied auf der Superadmin-Anmeldung.
+	// /oauth/app (Anmeldung der Begleit-App) und /oauth/consent (Zustimmung für
+	// MCP-Clients) prüfen selbst, und zwar die Sitzung *einer Organisation* —
+	// eine globale hat dort kaum jemand. Stünden sie nicht hier, landete jedes
+	// Mitglied auf der Superadmin-Anmeldung; beim Zustimmungsschirm ist genau
+	// das passiert (e2e/mcp-zustimmung-org-mitglied.spec.ts). Einzeln
+	// aufgeführt statt als `/oauth/`: eine weitere Seite darunter soll nicht
+	// still öffentlich werden.
 	const PUBLIC_ROUTES = [
 		'/share', '/track', '/setup', '/o/', '/admin', '/status', '/demo',
 		'/about', '/contact', '/privacy', '/terms', '/pricing', '/developers', '/docs',
-		'/oauth/app'
+		'/oauth/app', '/oauth/consent'
 	];
 	const isPublicPath = (path: string) =>
 		path === '/' || PUBLIC_ROUTES.some((r) => path.startsWith(r));
