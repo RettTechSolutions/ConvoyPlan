@@ -14,6 +14,7 @@ from app.services import weather as weather_svc
 from app.services import overpass as overpass_svc
 from app.services import autobahn as autobahn_svc
 from app.services import traffic_flow as traffic_flow_svc
+from app.services import region_switch
 
 router = APIRouter(prefix="/status", tags=["status"])
 
@@ -142,18 +143,65 @@ def _overall(components: list[dict]) -> str:
     return "operational"
 
 
+# Warum eine Funktion nicht (voll) nutzbar ist — in Worten eines Anwenders.
+# Dieselbe Grenze wie oben: Funktionen und Folgen, keine Anbieter- oder
+# Dienstnamen. Bei „betriebsbereit" und „unbekannt" gibt es keinen Grund.
+_REASON_DATA_DOWN = "Die Datenbank ist nicht erreichbar. Gespeicherte Daten bleiben erhalten."
+_REASON_TRACKING_DOWN = (
+    "Die Datenbank ist nicht erreichbar — Standortmeldungen werden derzeit nicht gespeichert."
+)
+_REASON_PLANNING = {
+    "building": "Die Straßenkarte wird gerade geladen. Routen lassen sich danach wieder berechnen.",
+    "region": "Die Kartenregion wird gerade gewechselt; die Straßenkarte wird dafür neu aufgebaut.",
+    # Ohne Docker-Zugriff ist „baut nach einem Update neu" von „abgestürzt"
+    # nicht zu unterscheiden. Der erste Fall ist der häufige — gesagt wird
+    # deshalb beides, ohne eines zu behaupten.
+    "offline": (
+        "Der Routing-Dienst antwortet nicht — meist, weil die Straßenkarte nach "
+        "einem Update neu aufgebaut wird. Bereits berechnete Routen bleiben erhalten."
+    ),
+}
+_REASON_TRAFFIC = {
+    "closures": "Sperrungen aus dem Kartenbestand fehlen derzeit; Autobahnmeldungen kommen weiter an.",
+    "autobahn": "Autobahnmeldungen fehlen derzeit; Sperrungen aus dem Kartenbestand kommen weiter an.",
+    "both": "Die externen Quellen für Sperrungen und Verkehrsmeldungen antworten nicht.",
+}
+_REASON_WEATHER_DOWN = (
+    "Der externe Wetterdienst antwortet nicht. Routen lassen sich ohne Wetterangaben planen."
+)
+
+
+def _planning_reason(raw: str) -> str | None:
+    if raw == "ok":
+        return None
+    if region_switch.laeuft():
+        return _REASON_PLANNING["region"]
+    return _REASON_PLANNING.get(raw, _REASON_PLANNING["offline"])
+
+
+def _traffic_reason(overpass: str, autobahn: str) -> str | None:
+    if overpass == "down" and autobahn == "down":
+        return _REASON_TRAFFIC["both"]
+    if overpass == "down":
+        return _REASON_TRAFFIC["closures"]
+    if autobahn == "down":
+        return _REASON_TRAFFIC["autobahn"]
+    return None
+
+
 async def _collect_public_status(db: AsyncSession) -> dict:
     db_state = _state_of("ok" if await _db_reachable(db) else "error")
-    gh_state = _state_of((await _graphhopper_probe())[0])
+    gh_raw = (await _graphhopper_probe())[0]
+    gh_state = _state_of(gh_raw)
 
     overpass_check, autobahn_check, weather_check = await asyncio.gather(
         overpass_svc.probe(), autobahn_svc.probe(), weather_svc.probe()
     )
-    traffic_state = _combine(
-        _state_of(overpass_check.get("status")),
-        _state_of(autobahn_check.get("status")),
-    )
+    overpass_state = _state_of(overpass_check.get("status"))
+    autobahn_state = _state_of(autobahn_check.get("status"))
+    traffic_state = _combine(overpass_state, autobahn_state)
     weather_state = _state_of(weather_check.get("status"))
+    data_down = db_state == "down"
 
     components = [
         {
@@ -163,6 +211,7 @@ async def _collect_public_status(db: AsyncSession) -> dict:
             "core": True,
             # Beantwortet der Server diese Anfrage, läuft das Portal.
             "state": "operational",
+            "reason": None,
         },
         {
             "key": "data",
@@ -170,6 +219,7 @@ async def _collect_public_status(db: AsyncSession) -> dict:
             "description": "Konvois, Fahrzeuge und Einsatzdaten speichern und laden.",
             "core": True,
             "state": db_state,
+            "reason": _REASON_DATA_DOWN if data_down else None,
         },
         {
             "key": "planning",
@@ -177,6 +227,7 @@ async def _collect_public_status(db: AsyncSession) -> dict:
             "description": "Routen, Fahrzeiten und Wegpunkte für Konvois berechnen.",
             "core": False,
             "state": gh_state,
+            "reason": _planning_reason(gh_raw),
         },
         {
             "key": "tracking",
@@ -184,6 +235,7 @@ async def _collect_public_status(db: AsyncSession) -> dict:
             "description": "Standortmeldungen der Fahrzeuge und die Live-Karte der Leitstelle.",
             "core": True,
             "state": db_state,
+            "reason": _REASON_TRACKING_DOWN if data_down else None,
         },
         {
             "key": "traffic",
@@ -191,6 +243,7 @@ async def _collect_public_status(db: AsyncSession) -> dict:
             "description": "Straßensperren und Verkehrsmeldungen entlang der Route.",
             "core": False,
             "state": traffic_state,
+            "reason": _traffic_reason(overpass_state, autobahn_state),
         },
         {
             "key": "weather",
@@ -198,6 +251,7 @@ async def _collect_public_status(db: AsyncSession) -> dict:
             "description": "Wetterlage und Vorhersage für Start- und Zielorte.",
             "core": False,
             "state": weather_state,
+            "reason": _REASON_WEATHER_DOWN if weather_state == "down" else None,
         },
     ]
 

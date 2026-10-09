@@ -18,7 +18,7 @@ class _FakeDB:
 
 
 def _install(monkeypatch, *, db_ok=True, graphhopper="ok",
-             overpass="ok", autobahn="ok", weather="ok"):
+             overpass="ok", autobahn="ok", weather="ok", region_switch=False):
     """Alle Einzelprüfungen durch feste Werte ersetzen — kein Netz, keine DB."""
     app.dependency_overrides[get_db] = lambda: _FakeDB(db_ok)
 
@@ -33,6 +33,7 @@ def _install(monkeypatch, *, db_ok=True, graphhopper="ok",
     monkeypatch.setattr(status_module.overpass_svc, "probe", lambda: _check(overpass))
     monkeypatch.setattr(status_module.autobahn_svc, "probe", lambda: _check(autobahn))
     monkeypatch.setattr(status_module.weather_svc, "probe", lambda: _check(weather))
+    monkeypatch.setattr(status_module.region_switch, "laeuft", lambda: region_switch)
 
     # Der Kurzzeit-Cache würde sonst Ergebnisse zwischen den Tests verschleppen.
     status_module._public_cache = None
@@ -72,7 +73,7 @@ async def test_response_exposes_no_operational_internals(monkeypatch):
 
     assert set(body) == {"checked_at", "overall", "components"}
     for component in body["components"]:
-        assert set(component) == {"key", "name", "description", "state"}
+        assert set(component) == {"key", "name", "description", "state", "reason"}
 
     serialized = str(body).lower()
     for leak in ("latency", "bbox", "graphhopper", "overpass", "autobahn",
@@ -164,3 +165,78 @@ async def test_result_is_cached_between_requests(monkeypatch):
     await _get_public()
 
     assert calls["n"] == 1
+
+
+# ── Gründe ───────────────────────────────────────────────────────────────
+# Eine Plakette „Nicht verfügbar" sagt nicht, ob man warten oder melden soll.
+# Der Grund sagt es — in Funktionen, ohne Anbieter- oder Dienstnamen.
+
+def _reasons(body: dict) -> dict:
+    return {c["key"]: c["reason"] for c in body["components"]}
+
+
+@pytest.mark.asyncio
+async def test_operational_components_carry_no_reason(monkeypatch):
+    _install(monkeypatch)
+    body = await _get_public()
+
+    assert all(r is None for r in _reasons(body).values())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("graphhopper,expected", [
+    ("offline", "nach einem Update neu aufgebaut"),
+    ("building", "wird gerade geladen"),
+])
+async def test_routing_outage_explains_itself(monkeypatch, graphhopper, expected):
+    _install(monkeypatch, graphhopper=graphhopper)
+    reasons = _reasons(await _get_public())
+
+    assert expected in reasons["planning"]
+    assert reasons["data"] is None
+
+
+@pytest.mark.asyncio
+async def test_running_region_switch_is_named_as_cause(monkeypatch):
+    """Während eines Regionswechsels ist der Ausfall angekündigt, nicht rätselhaft."""
+    _install(monkeypatch, graphhopper="offline", region_switch=True)
+    reasons = _reasons(await _get_public())
+
+    assert "Kartenregion wird gerade gewechselt" in reasons["planning"]
+
+
+@pytest.mark.asyncio
+async def test_region_switch_without_outage_gives_no_reason(monkeypatch):
+    _install(monkeypatch, region_switch=True)
+    reasons = _reasons(await _get_public())
+
+    assert reasons["planning"] is None
+
+
+@pytest.mark.asyncio
+async def test_traffic_reason_names_the_missing_part(monkeypatch):
+    _install(monkeypatch, autobahn="error")
+    reasons = _reasons(await _get_public())
+
+    assert reasons["traffic"].startswith("Autobahnmeldungen fehlen")
+
+
+@pytest.mark.asyncio
+async def test_database_outage_explains_data_and_tracking(monkeypatch):
+    _install(monkeypatch, db_ok=False)
+    reasons = _reasons(await _get_public())
+
+    assert "Datenbank" in reasons["data"]
+    assert "Standortmeldungen" in reasons["tracking"]
+    assert reasons["portal"] is None
+
+
+@pytest.mark.asyncio
+async def test_reasons_expose_no_operational_internals(monkeypatch):
+    """Auch im Ausfall keine Anbieter- oder Dienstnamen — die Gründe am wenigsten."""
+    _install(monkeypatch, graphhopper="offline", overpass="error",
+             autobahn="error", weather="error")
+    serialized = " ".join(r for r in _reasons(await _get_public()).values() if r).lower()
+
+    for leak in ("graphhopper", "overpass", "open-meteo", "postgres", "docker", "container"):
+        assert leak not in serialized

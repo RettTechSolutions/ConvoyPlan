@@ -328,6 +328,15 @@ def is_busy() -> bool:
     return os.path.exists(_path(REQUEST_FILE)) or os.path.exists(_path(LOCK_FILE))
 
 
+def laeuft() -> bool:
+    """True, solange der Updater einen Wechsel tatsaechlich ausfuehrt.
+
+    Anders als `is_busy()` zaehlt eine nur wartende oder geplante Anforderung
+    nicht: In der Zeit laeuft die bisherige Region unveraendert weiter.
+    """
+    return os.path.exists(_path(LOCK_FILE))
+
+
 def request_cancel() -> None:
     """Signalisiert dem Updater, einen laufenden Regionswechsel abzubrechen."""
     os.makedirs(VOLUME, exist_ok=True)
