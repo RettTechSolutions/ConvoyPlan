@@ -40,8 +40,18 @@
 	let dateiFeld: HTMLInputElement | null = $state(null);
 	let kannAufnehmen = $state(false);
 
+	// Ob die Meldung auch an den Hersteller geht (selbst gehostete Instanz,
+	// `services/feedback_weiterleitung.py`). Bis die Antwort da ist — und wenn
+	// sie ausbleibt —, sagt der Dialog es: wer zu viele Empfänger nennt, hat
+	// niemanden getäuscht, wer einen verschweigt, schon.
+	let anHersteller = $state(true);
+
 	onMount(() => {
 		kannAufnehmen = aufnahmeMoeglich();
+		feedbackApi
+			.empfaenger()
+			.then((e) => (anHersteller = e.hersteller))
+			.catch(() => {});
 	});
 
 	// Beim Öffnen: Art übernehmen, alles Übrige zurücksetzen. Eine abgeschickte
@@ -295,10 +305,19 @@
 							<dt>Konto</dt>
 							<dd>Name, E-Mail-Adresse und Organisation Ihrer Anmeldung</dd>
 						</dl>
-						<p class="hinweis">
-							Sichtbar ist das alles nur für den Betreiber dieser Instanz — nicht für
-							andere Organisationen und nicht öffentlich.
-						</p>
+						{#if anHersteller}
+							<p class="hinweis" data-empfaenger="hersteller">
+								Sichtbar ist das alles für den Betreiber dieser Instanz und für den
+								Hersteller von ConvoyPlan (RettTech Solutions), der Programmfehler behebt
+								— nicht für andere Organisationen und nicht öffentlich. Achten Sie beim
+								Bildschirmfoto darauf, was darauf zu sehen ist.
+							</p>
+						{:else}
+							<p class="hinweis" data-empfaenger="betreiber">
+								Sichtbar ist das alles nur für den Betreiber dieser Instanz — nicht für
+								andere Organisationen und nicht öffentlich.
+							</p>
+						{/if}
 					</details>
 
 					{#if error}<p class="fehler">{error}</p>{/if}

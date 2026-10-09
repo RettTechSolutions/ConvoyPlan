@@ -58,6 +58,15 @@ services:
       QUOTA_TRAFFIC_DEMO_PER_HOUR: ${QUOTA_TRAFFIC_DEMO_PER_HOUR:-100}
       GRAPHHOPPER_URL: http://graphhopper:8989
       BACKEND_PORT: ${BACKEND_PORT:-8000}
+      # Betriebsart: "selfhost" (eine Organisation betreibt ihre eigene
+      # Instanz) oder "hosting" (der Server, der viele Organisationen trägt).
+      # Entscheidet über Standards, nicht über Funktionen — siehe
+      # backend/app/services/betriebsart.py.
+      INSTANCE_MODE: ${INSTANCE_MODE:-selfhost}
+      # Zentraler Server des Herstellers. Selbst gehostete Instanzen leiten
+      # Meldungen aus der Anwendung (Fehler, Wünsche) dorthin weiter. Leer =
+      # keine Weiterleitung, etwa für eine Instanz ohne Weg nach außen.
+      CENTRAL_URL: ${CENTRAL_URL-https://web.convoyplan.de}
       # uvicorn nimmt X-Forwarded-Proto/-For nur von diesen Adressen an. "*"
       # ist hier vertretbar, weil das Backend keinen Port veröffentlicht und
       # nur aus dem Compose-Netz erreichbar ist — nach außen spricht allein
@@ -236,13 +245,15 @@ services:
     restart: unless-stopped
     environment:
       PORT: ${FRONTEND_PORT:-3000}
+      # Betriebsart, wie beim Backend. Hier entscheidet sie über den Standard
+      # der Agenten-Auskunft.
+      INSTANCE_MODE: ${INSTANCE_MODE:-selfhost}
       # Auskunft über das Produkt für Suchmaschinen und KI-Agenten: llms.txt,
       # die Well-Known-Dokumente, die Markdown-Fassungen der Seiten und die
       # Seiten /about, /pricing, /developers, /docs, /contact, /privacy.
-      # Standard an; auf "false" bleibt von alldem nichts erreichbar — für eine
-      # Instanz, die ausschließlich intern läuft und nichts über sich erzählen
-      # soll. Die Anwendung selbst ändert sich dadurch nicht.
-      AGENT_DISCOVERY: ${AGENT_DISCOVERY:-true}
+      # Leer = nach Betriebsart: an bei "hosting", aus bei "selfhost".
+      # "true"/"false" übersteuert. Die Anwendung selbst ändert sich dadurch nicht.
+      AGENT_DISCOVERY: ${AGENT_DISCOVERY:-}
       # Nachweis der Domain gegenüber OpenAI, falls diese Instanz als
       # ChatGPT-App eingereicht wird. Leer heißt: den Pfad gibt es nicht.
       OPENAI_APPS_CHALLENGE: ${OPENAI_APPS_CHALLENGE:-}

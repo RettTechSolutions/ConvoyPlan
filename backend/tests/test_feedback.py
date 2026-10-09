@@ -327,7 +327,7 @@ def test_melden_bleibt_ohne_lizenz_erreichbar():
 
 
 def test_migration_und_modell_beschreiben_dieselbe_tabelle():
-    """Die Spalten aus `0044` gegen die des Modells.
+    """Die Spalten aus `0044` und `0059` gegen die des Modells.
 
     Ohne diese Prüfung fällt eine neue Spalte, die nur im Modell steht, erst
     in Produktion auf — beim ersten `INSERT` gegen eine Tabelle, die sie nicht
@@ -339,11 +339,14 @@ def test_migration_und_modell_beschreiben_dieselbe_tabelle():
 
     from app.models.feedback import FeedbackReport
 
-    quelle = Path(__file__).resolve().parents[1] / "alembic/versions/0044_feedback_reports.py"
-    baum = ast.parse(quelle.read_text(encoding="utf-8"))
-
+    versionen = Path(__file__).resolve().parents[1] / "alembic/versions"
     spalten: set[str] = set()
-    for knoten in ast.walk(baum):
+    knoten_alle = []
+    # 0044 legt die Tabelle an, 0059 ergänzt die Weiterleitung.
+    for datei in ("0044_feedback_reports.py", "0059_feedback_weiterleitung.py"):
+        knoten_alle.extend(ast.walk(ast.parse((versionen / datei).read_text(encoding="utf-8"))))
+
+    for knoten in knoten_alle:
         if not isinstance(knoten, ast.Call):
             continue
         name = getattr(knoten.func, "attr", None)

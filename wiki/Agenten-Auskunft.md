@@ -8,7 +8,9 @@ als aus einer Single-Page-App, die erst Javascript starten muss.
 
 Alles hier beschreibt die **Software**, nicht ihren Inhalt. Es gibt keinen Pfad in
 dieser Liste, der Daten einer Organisation zeigt. Wer trotzdem nichts über die Instanz
-verraten will, schaltet sie mit `AGENT_DISCOVERY=false` ab — siehe unten.
+verraten will, schaltet sie mit `AGENT_DISCOVERY=false` ab — siehe unten. Auf einer
+selbst gehosteten Instanz (`INSTANCE_MODE=selfhost`, der Standard) ist sie von vornherein
+aus.
 
 ## Was ausgeliefert wird
 
@@ -111,14 +113,22 @@ Produktauskunft, Seitenverzeichnis, Instanzstatus und die Prüfung eines
 Organisations-Codes. Schreibende Werkzeuge gibt es dort bewusst nicht — dafür ist der
 MCP-Server da, mit ausdrücklicher Zustimmung und Audit-Log.
 
-## Abschalten
+## Ein- und abschalten
+
+Ohne Angabe folgt die Auskunft der **Betriebsart**: an bei `INSTANCE_MODE=hosting`, aus
+bei `INSTANCE_MODE=selfhost` (Standard). Eine Feuerwehr, die ConvoyPlan für sich
+betreibt, braucht keine `/pricing`-Seite und keine Agent-Card, die Suchmaschinen auf
+ihre Einsatzinstanz hinweist. Ausdrücklich gesetzt, übersteuert der Schalter das:
 
 ```env
-AGENT_DISCOVERY=false
+AGENT_DISCOVERY=false   # oder true
 ```
 
-Danach gibt es keinen der oben genannten Pfade mehr (404), und die Startseite zeigt
-wieder nur die Anmeldung. Der Rest der Anwendung ist davon unberührt. Standard ist `true`.
+Abgeschaltet gibt es keinen der oben genannten Pfade (404), und die Startseite zeigt
+nur die Anmeldung. Der Rest der Anwendung ist davon unberührt.
+
+> **Bis 2026-10** war die Auskunft überall an. Wer sie auf einer selbst gehosteten
+> Instanz behalten will, setzt nach dem Update `AGENT_DISCOVERY=true` in die `.env`.
 
 ## Was nicht im Code liegt
 

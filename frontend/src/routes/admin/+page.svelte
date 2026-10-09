@@ -2794,6 +2794,7 @@
                                     <span class="m-meta">
                                         <span class="prio prio-{item.priority}">{FEEDBACK_STUFE_LABEL[item.priority] ?? item.priority}</span>
                                         <span>{item.org_name ?? '—'}</span>
+                                        {#if item.herkunft}<span class="tag" title="Weitergeleitet von {item.herkunft}">extern</span>{/if}
                                         {#if item.is_demo}<span class="tag">Demo</span>{/if}
                                         {#if item.has_screenshot}<span class="tag" title="Mit Bildschirmfoto">📷</span>{/if}
                                         <span>{feedbackDatum(item.created_at)}</span>
@@ -2864,10 +2865,18 @@
                                 <dd>
                                     {feedbackDetail.org_name ?? '—'}
                                     {#if feedbackDetail.org_slug}<span class="mono"> ({feedbackDetail.org_slug})</span>{/if}
-                                    {#if !feedbackDetail.org_vorhanden && feedbackDetail.org_slug}
+                                    {#if !feedbackDetail.org_vorhanden && feedbackDetail.org_slug && !feedbackDetail.herkunft}
                                         <br /><span class="hint">gelöscht — Angaben sind eine Kopie aus der Meldung</span>
                                     {/if}
                                 </dd>
+                                {#if feedbackDetail.herkunft}
+                                    <dt>Instanz</dt>
+                                    <dd class="mono">{feedbackDetail.herkunft}<br /><span class="hint">selbst gehostet, weitergeleitet</span></dd>
+                                {/if}
+                                {#if feedbackDetail.weiterleitung}
+                                    <dt>Hersteller</dt>
+                                    <dd>{feedbackDetail.weiterleitung === 'erledigt' ? 'weitergeleitet' : feedbackDetail.weiterleitung === 'offen' ? 'Weiterleitung steht aus' : 'nicht zustellbar (aufgegeben)'}</dd>
+                                {/if}
                                 <dt>Seite</dt>
                                 <dd class="mono">{feedbackDetail.page_url ?? '—'}</dd>
                                 <dt>Browser</dt>

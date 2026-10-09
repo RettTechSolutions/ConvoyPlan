@@ -96,6 +96,10 @@ export const feedbackApi = {
 		window.__meldungen = (window.__meldungen ?? 0) + 1;
 		return { id: 'f-1', kind: data.kind, created_at: '2026-09-19T10:00:00Z' };
 	},
+	// `?hersteller=0` spielt den Hosting-Server, sonst eine selbst gehostete Instanz.
+	empfaenger: async () => ({
+		hersteller: new URLSearchParams(location.search).get('hersteller') !== '0',
+	}),
 };
 
 // ── Aktionsseiten ────────────────────────────────────────────────────────────

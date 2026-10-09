@@ -2011,6 +2011,10 @@ export interface FeedbackReport {
 	viewport: string | null;
 	has_screenshot: boolean;
 	screenshot_bytes: number | null;
+	/** Hosting-Server: Instanz, von der die Meldung weitergeleitet wurde. */
+	herkunft: string | null;
+	/** Selbst gehostet: Stand der Weiterleitung an den Hersteller. */
+	weiterleitung: 'offen' | 'erledigt' | 'aufgegeben' | null;
 	admin_note: string | null;
 	handled_by_email: string | null;
 	handled_at: string | null;
@@ -2030,6 +2034,8 @@ export interface FeedbackStats {
 
 export const feedbackApi = {
 	submit: (data: FeedbackPayload) => api.post<FeedbackSubmitted>('/api/feedback', data),
+	/** Ob die Meldung auch an den Hersteller geht — für den Hinweis im Dialog. */
+	empfaenger: () => api.get<{ hersteller: boolean }>('/api/feedback/empfaenger'),
 };
 
 export interface FeedbackFilter {

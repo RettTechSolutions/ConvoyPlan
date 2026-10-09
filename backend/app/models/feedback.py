@@ -20,7 +20,7 @@ sagt, wie schlimm es sich *im Einsatz* angefühlt hat.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -63,6 +63,9 @@ class FeedbackReport(Base):
     """Eine gemeldete Beobachtung: Fehler oder Wunsch."""
 
     __tablename__ = "feedback_reports"
+    __table_args__ = (
+        UniqueConstraint("herkunft_instanz", "herkunft_id", name="uq_feedback_herkunft"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
 
@@ -108,6 +111,22 @@ class FeedbackReport(Base):
     # Ausliefern an das Verzeichnis gehängt.
     screenshot_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
     screenshot_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # ── Weiterleitung an den Hersteller (services/feedback_weiterleitung.py) ──
+    # Auf einer selbst gehosteten Instanz: NULL = nicht vorgesehen (Meldungen
+    # von vor der Weiterleitung, Hosting-Server), "offen", "erledigt",
+    # "aufgegeben". Ein eigener Zustand statt nur eines Zeitstempels, weil die
+    # alten Meldungen ausdrücklich *nicht* nachgeschickt werden dürfen — ihre
+    # Melder haben einen Dialog gesehen, der etwas anderes versprach.
+    weiterleitung: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    weitergeleitet_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Auf dem Hosting-Server: woher eine weitergeleitete Meldung kam. Instanz
+    # und Kennung der Meldung dort machen die Annahme wiederholbar — schlägt
+    # die Antwort auf dem Rückweg fehl, schickt die Instanz dieselbe Meldung
+    # noch einmal, und sie darf nicht doppelt dastehen.
+    herkunft_instanz: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    herkunft_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    herkunft_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # ── Bearbeitung ───────────────────────────────────────────────────────────
     admin_note: Mapped[str | None] = mapped_column(Text, nullable=True)

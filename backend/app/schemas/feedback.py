@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.feedback import KINDS, PRIORITIES, SEVERITIES, STATUSES
 
@@ -94,6 +94,60 @@ class FeedbackSubmitted(BaseModel):
     created_at: datetime
 
 
+class FeedbackEingang(BaseModel):
+    """Eine Meldung, die eine selbst gehostete Instanz an den Hersteller weiterreicht.
+
+    Das ist der Vertrag zwischen den Instanzen; was hier nicht steht, wird
+    abgewiesen (``extra="forbid"``), statt still verworfen zu werden — eine
+    neuere Instanz, die mehr schickt, soll das merken und nicht glauben, es
+    sei angekommen. Gegenstück: ``services/feedback_weiterleitung.nutzlast``.
+
+    Alles hier behauptet die sendende Instanz. Angemeldet ist auf dieser Seite
+    niemand; die Angaben sind Hinweise für die Fehlersuche wie die
+    Umgebungsfelder in ``FeedbackCreate``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    instanz: str = Field(min_length=1, max_length=64)
+    instanz_url: str | None = Field(default=None, max_length=255)
+    id: uuid.UUID
+
+    kind: str
+    title: str = Field(min_length=3, max_length=200)
+    description: str = Field(min_length=10, max_length=8000)
+    severity: str = "normal"
+
+    org_slug: str | None = Field(default=None, max_length=80)
+    org_name: str | None = Field(default=None, max_length=200)
+    reporter_email: str | None = Field(default=None, max_length=255)
+    reporter_name: str | None = Field(default=None, max_length=200)
+    reporter_role: str | None = Field(default=None, max_length=20)
+    is_demo: bool = False
+
+    page_url: str | None = Field(default=None, max_length=500)
+    user_agent: str | None = Field(default=None, max_length=400)
+    app_version: str | None = Field(default=None, max_length=80)
+    viewport: str | None = Field(default=None, max_length=32)
+    screenshot: str | None = Field(default=None, max_length=6_000_000)
+
+    @field_validator("kind")
+    @classmethod
+    def _kind(cls, v: str) -> str:
+        return _aus(v, KINDS, "kind")
+
+    @field_validator("severity")
+    @classmethod
+    def _severity(cls, v: str) -> str:
+        return _aus(v, SEVERITIES, "severity")
+
+
+class FeedbackEmpfaenger(BaseModel):
+    """Wer eine Meldung zu sehen bekommt — für den Hinweis im Dialog."""
+
+    hersteller: bool
+
+
 class FeedbackReportOut(BaseModel):
     """Eine Meldung, wie das Adminportal sie darstellt."""
 
@@ -125,6 +179,12 @@ class FeedbackReportOut(BaseModel):
 
     has_screenshot: bool
     screenshot_bytes: int | None
+
+    # Hosting-Server: von welcher Instanz die Meldung weitergeleitet wurde
+    # (Adresse, ersatzweise Kennung). ``None`` = hier gemeldet.
+    herkunft: str | None = None
+    # Selbst gehostete Instanz: ob sie beim Hersteller angekommen ist.
+    weiterleitung: str | None = None
 
     admin_note: str | None
     handled_by_email: str | None
