@@ -253,6 +253,16 @@ GH_IMPORT_JAVA_OPTS="${GH_IMPORT_JAVA_OPTS:--Xlog:gc+heap+exit}"
 GH_JAR="${GH_JAR:-/graphhopper/graphhopper.jar}"
 CONFIG_FILE="/tmp/graphhopper-config.yml"
 
+# Keine Contraction Hierarchies (kein profiles_ch). Mit turn_costs waere CH fuer
+# car kantenbasiert, und das ist die mit Abstand teuerste Phase des Imports —
+# an Heap wie an Zeit, fuer DACH ein Vielfaches des knotenbasierten CH von
+# frueher. Genutzt haette sie nur die Praeferenz „schnell" ohne Fahrzeughoehe:
+# jede andere Anfrage schickt ein Custom Model und damit ch.disable
+# (backend/app/services/routing.py), laeuft also ohnehin flexibel. Ohne CH
+# routet GraphHopper jede Anfrage so; ch.disable bleibt erlaubt und wirkungslos.
+# Nicht im Fingerprint: einen fertigen Graphen MIT CH-Daten laedt 10.2 unter
+# dieser Konfiguration anstandslos, ein Neuaufbau braeuchte es dafuer nicht.
+#
 # $1: Zugriffsart (RAM_STORE oder MMAP). Wird je Phase neu geschrieben, weil
 # sich die beiden Laeufe genau in dieser einen Zeile unterscheiden sollen.
 write_config() {
@@ -282,12 +292,6 @@ graphhopper:
         vehicle_types: [$TURN_COSTS_VEHICLES]
         u_turn_costs: 60
       custom_model_files: [car.json]
-
-  profiles_ch:
-    - profile: car
-
-  routing:
-    ch.disabling_allowed: true
 
 server:
   application_connectors:
