@@ -141,13 +141,22 @@ ENCODED_VALUES="car_access, car_average_speed, road_class, max_speed, max_height
 # Profilen nicht laedt — ein Bestand ohne turn_costs muss neu gebaut werden.
 TURN_COSTS_VEHICLES="motorcar, motor_vehicle"
 
+# Die GraphHopper-Fassung (ENV aus dem Dockerfile) gehoert ebenfalls in den
+# Fingerprint: das Speicherformat wechselt zwischen den Versionen (9.1 -> 10.2
+# z. B. edges 22 -> 23), und einen Graphen einer anderen Fassung laedt
+# GraphHopper nicht. Ohne diesen Teil saehe der Entrypoint nach einem
+# Versionssprung "Fingerprint stimmt, edges da" und liesse den Server an dem
+# alten Graphen scheitern — bei jedem Neustart wieder.
+GH_VERSION="${GH_VERSION:-unbekannt}"
+
 # Der kompilierte Graph gehört zu genau EINER OSM-Datei und EINEM Satz Encoded
 # Values. Ändert sich eines von beidem, muss er neu gebaut werden: bei den
 # Encoded Values, weil GraphHopper sonst nicht startet bzw. Anfragen ablehnt —
 # bei der OSM-Datei, weil GraphHopper einen vorhandenen Graphen kommentarlos
 # weiterverwendet und nach einem Regionswechsel sonst still weiter die alte
-# Region routen würde. Beides steckt deshalb im Fingerprint.
-FINGERPRINT="$OSM_FILENAME|$ENCODED_VALUES|turn_costs: $TURN_COSTS_VEHICLES"
+# Region routen würde. Beides steckt deshalb im Fingerprint, dazu die Profile
+# (turn_costs) und die GraphHopper-Fassung — Begruendung jeweils oben.
+FINGERPRINT="$OSM_FILENAME|$ENCODED_VALUES|turn_costs: $TURN_COSTS_VEHICLES|graphhopper: $GH_VERSION"
 FINGERPRINT_FILE="$GRAPH_DIR/.graph_fingerprint"
 LEGACY_FINGERPRINT_FILE="$GRAPH_DIR/.encoded_values"
 
@@ -163,7 +172,7 @@ fi
 if [ -n "$(ls -A "$GRAPH_DIR" 2>/dev/null | grep -vE '^\.(graph_fingerprint|encoded_values)$')" ]; then
     REBUILD_REASON=""
     if [ "$PREV_FINGERPRINT" != "$FINGERPRINT" ]; then
-        REBUILD_REASON="Kartenregion, Encoded Values oder Profile haben sich geändert"
+        REBUILD_REASON="Kartenregion, Encoded Values, Profile oder GraphHopper-Version haben sich geändert"
     elif [ "$DOWNLOADED" -eq 1 ]; then
         # Frisch geladene OSM-Datei neben einem bereits vorhandenen Graphen:
         # der Graph stammt aus anderen Daten und passt nicht mehr dazu.

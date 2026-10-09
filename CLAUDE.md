@@ -124,6 +124,16 @@ Profile, und der Wert steht im Fingerprint: ein Graph ohne sie wird neu gebaut
 (`test_entrypoint_graph_zustand.sh`, Fall 4b; die erzeugte Konfiguration prüft
 `test_entrypoint_start_phasen.sh`, Fall 1b).
 
+Das braucht **GraphHopper ≥ 10.2**. 9.1 bricht den Import mit `turn_costs` an
+gültigen `no_entry`/`no_exit`-Relationen mit Via-Weg und mehreren from- oder
+to-Wegen ab (`fromEdges and toEdges cannot be size > 1 at the same time`,
+GraphHopper #3086/#3100). Solche gibt es in DACH; nach #594 kam auf 9.1 kein
+Import mehr durch, und weil der Entrypoint den Torso danach wegräumt, drehte
+der Container im Kreis. Die Fassung steht deshalb ebenfalls im Fingerprint
+(`GH_VERSION` aus dem Dockerfile, Fall 4c): das Speicherformat wechselt
+zwischen den Versionen, und einen fremden Graphen lädt GraphHopper nicht.
+Wer `GH_VERSION` hebt, baut damit auf jeder Installation den Graphen neu.
+
 ### Die Wegpunktreihenfolge gehört dem Menschen
 
 `order_index` ist die Wahrheit, und `calculate_route` leitet ihn **nicht** aus der
@@ -176,7 +186,7 @@ der Unterführungen, unter denen die Route trotzdem hindurchgeht, gespeichert in
 
 Zwei Dinge, die man kennen muss:
 
-- **GraphHopper rundet `max_height` auf 10 cm** (9.1, `MaxHeight.create`, Faktor
+- **GraphHopper rundet `max_height` auf 10 cm** (9.1 und 10.2, `MaxHeight.create`, Faktor
   0,1 mit `Math.round`): aus 3,85 m auf dem Schild werden 3,9 m im Graphen. Die
   Sperre `max_height < Fahrzeughöhe` kann deshalb ein Fahrzeug von 3,88 m unter
   ein 3,85-m-Schild schicken. Die Stufe `eng` (< 10 cm Spielraum) ist genau dafür

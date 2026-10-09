@@ -67,7 +67,7 @@ Retention-Container → periodischer Daten-Purge
 | Datenbank | PostgreSQL 15, PostGIS |
 | ORM / Migrationen | SQLAlchemy Async, Alembic |
 | Authentifizierung | JWT (python-jose, passlib), MFA/TOTP |
-| Routing | GraphHopper 9.1 |
+| Routing | GraphHopper 10.2 |
 | Externe Daten | Open-Meteo, Overpass, Autobahn-API, offene Feeds (MobiData BW, Berlin VIZ), DATEX-II/mobilithek, HERE/TomTom (optional) |
 | Reverse Proxy / TLS | Caddy 2 |
 | Infrastruktur | Docker Compose, Portainer Stack |
