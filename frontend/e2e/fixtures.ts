@@ -236,6 +236,8 @@ export async function mockOrgPortal(
 		 * Rückgabewerts, damit die bestehenden Aufrufer bleiben, wie sie sind.
 		 */
 		betriebsstoffMeldungen?: BetriebsstoffMeldung[];
+		/** Akku und Empfang der Tracker (`GET …/tracker`); ohne Angabe keiner. */
+		tracker?: object[];
 	},
 ): Promise<StaerkeMeldung[]> {
 	// Was an `PATCH …/staerke` hinausging — die Liste wächst im Test mit.
@@ -276,6 +278,7 @@ export async function mockOrgPortal(
 		const pfad = new URL(route.request().url()).pathname;
 		if (pfad.endsWith('/route')) return void route.fulfill({ json: null });
 		if (pfad.endsWith('/positions')) return void route.fulfill({ json: opts.positionen ?? [] });
+		if (pfad.endsWith('/tracker')) return void route.fulfill({ json: opts.tracker ?? [] });
 		if (pfad.endsWith('/betriebsstoff')) {
 			const fahrzeugId = pfad.split('/vehicles/')[1]!.replace('/betriebsstoff', '');
 			const lage = JSON.parse(route.request().postData() ?? '{}');

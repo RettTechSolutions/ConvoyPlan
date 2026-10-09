@@ -427,6 +427,17 @@ ließe sich sonst zum Laden fremder Adressen missbrauchen. In Tests zeigt
 Die Referenz-Instanz im Simulator des Tracker-Repos tut dasselbe wie dieser Code;
 wer das Protokoll ändert, zieht beide. Anwenderdoku: `wiki/Tracker.md`.
 
+**Akku und Empfang** (`TrackerZustand.svelte`, Regeln in `$lib/tracking/trackerzustand.ts`):
+Batterie und vier Balken in der Tracker-Liste und am Fahrzeug der Konvoi-Ansicht
+(`GET /api/convoys/{id}/tracker`, Leserecht am Konvoi, ohne Gerätekennung — abgefragt
+jede Minute, **nicht** über den Live-Kanal, weil der Store der angemeldeten Ansicht
+keinen neuen Nachrichtentyp lesen soll). Ob der Akku warnt, entscheidet nur das Backend
+(`ortungsgeraet.akku_niedrig`, `AKKU_NIEDRIG_PROZENT`); die Balken rechnet das Frontend
+aus `signal_dbm` (RSRP) und dem letzten Kontakt. `auf_akku_seit` (Migration `0063`)
+merkt sich den **Wechsel** vom Bordnetz auf Akku, nicht jede Meldung — sonst stünde da
+„seit der letzten Meldung". Tests: `tests/test_tracker_geraete.py` (`TestAkku`,
+`TestZustandInDerKonvoiAnsicht`), `frontend/e2e/tracker-zustand.spec.ts`.
+
 **Einrichten per USB** (`frontend/src/lib/tracker/usb.ts`, Knopf in
 `TrackerVerwaltung.svelte`): Web Serial, je Zeile ein JSON-Objekt, Protokoll im
 Tracker-Repo (`docs/PROTOKOLL.md`, „Einrichten per USB"), Geräteseite dort in

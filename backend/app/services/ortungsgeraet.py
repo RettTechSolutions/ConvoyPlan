@@ -47,6 +47,10 @@ BUENDEL_MAX = 500
 #: anzustecken, kurz genug, dass ein liegen gebliebener Zettel nichts wert ist.
 CODE_GUELTIG = timedelta(hours=24)
 
+#: Unter diesem Ladestand und ohne Bordnetz warnt die Oberfläche („Akku schwach").
+#: Hier und nur hier: Org-Admin und Konvoi-Ansicht lesen ``akku_niedrig``.
+AKKU_NIEDRIG_PROZENT = 20
+
 #: Takt, den die Instanz dem Gerät vorgibt (Protokoll, „Anweisung").
 TAKT = {"intervall_s": 10, "buendel_s": 30, "nachfrage_s": 300, "lebenszeichen_s": 43200}
 
@@ -176,6 +180,32 @@ def anweisung(modus_: str, jetzt: datetime, firmware: dict[str, Any] | None = No
         "serverzeit": jetzt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "firmware": firmware,
     }
+
+
+def akku_niedrig(akku_prozent: int | None, extern: bool | None) -> bool:
+    """Ob der Akku warnen soll: unter der Schwelle **und** nicht am Bordnetz.
+
+    Am Bordnetz lädt das Gerät; ein leerer Akku dort ist ein Ladezustand,
+    keine Gefahr. Ohne Angabe zum Bordnetz zählt nur der Ladestand."""
+    return akku_prozent is not None and akku_prozent < AKKU_NIEDRIG_PROZENT and extern is not True
+
+
+def auf_akku_seit(
+    extern_vorher: bool | None, seit_vorher: datetime | None, extern_jetzt: bool | None, jetzt: datetime
+) -> datetime | None:
+    """Seit wann das Gerät ohne Bordnetz läuft — der Zeitpunkt des Wechsels.
+
+    Gemerkt wird der Übergang, nicht jede Meldung: ein Gerät, das seit drei
+    Tagen auf Akku läuft und sich alle zwölf Stunden meldet, soll „seit drei
+    Tagen" zeigen, nicht „seit der letzten Meldung". Meldet es nichts zum
+    Bordnetz, bleibt der alte Stand."""
+    if extern_jetzt is None:
+        return seit_vorher
+    if extern_jetzt:
+        return None
+    if extern_vorher is False and seit_vorher is not None:
+        return seit_vorher
+    return jetzt
 
 
 def zustand_lesen(daten: dict[str, Any]) -> dict[str, Any]:

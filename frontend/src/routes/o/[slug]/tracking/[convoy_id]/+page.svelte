@@ -4,7 +4,7 @@
 	import MapView from '$lib/components/MapView.svelte';
 	import AppLogo from '$lib/components/AppLogo.svelte';
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
-	import { convoysApi, trackingApi, type Convoy, type VehiclePosition, type RouteResult } from '$lib/api';
+	import { convoysApi, trackingApi, type Convoy, type VehiclePosition, type RouteResult, type TrackerAmFahrzeug } from '$lib/api';
 	import { ApiError } from '$lib/api/client';
 	import {
 		livePositions, vehicleStatuses, trackingAlerts, connectTracking, disconnectTracking,
@@ -19,6 +19,7 @@
 	import BetriebsstoffBadge from '$lib/components/BetriebsstoffBadge.svelte';
 	import BetriebsstoffForm from '$lib/components/BetriebsstoffForm.svelte';
 	import StaerkeBadge from '$lib/components/StaerkeBadge.svelte';
+	import TrackerZustand from '$lib/components/TrackerZustand.svelte';
 	import { betriebsstoffAus, mitStammdaten, type Betriebsstoff, type BetriebsstoffFelder } from '$lib/tracking/betriebsstoff';
 	import StaerkeForm from '$lib/components/StaerkeForm.svelte';
 	import { orgStore } from '$lib/stores/org';
@@ -397,7 +398,30 @@
 		return '';
 	}
 
+	/**
+	 * Akku und Empfang der Tracker, je Fahrzeug. Abgefragt statt über den
+	 * Live-Kanal: die Werte ändern sich in Minuten, nicht in Sekunden, und der
+	 * Store der angemeldeten Ansicht soll keinen neuen Nachrichtentyp lesen
+	 * müssen. Fehlt der Aufruf (ältere Instanz), bleibt die Anzeige leer.
+	 */
+	let trackerZustand = $state<Map<string, TrackerAmFahrzeug>>(new Map());
+	let trackerJetzt = $state(Date.now());
+	let trackerTimer: ReturnType<typeof setInterval> | null = null;
+	const TRACKER_ABFRAGE_MS = 60_000;
+
+	async function trackerLaden() {
+		try {
+			const liste = await trackingApi.getTracker(convoyId);
+			trackerZustand = new Map(liste.map((t) => [t.vehicle_id, t]));
+		} catch {
+			/* keine Tracker-Anzeige — der Rest der Seite hängt nicht daran */
+		}
+		trackerJetzt = Date.now();
+	}
+
 	onMount(() => {
+		void trackerLaden();
+		trackerTimer = setInterval(() => void trackerLaden(), TRACKER_ABFRAGE_MS);
 		requestWakeLock();
 		document.addEventListener('visibilitychange', handleVisibility);
 		netOnline = navigator.onLine;
@@ -413,6 +437,7 @@
 	});
 
 	onDestroy(() => {
+		if (trackerTimer) clearInterval(trackerTimer);
 		disconnectTracking();
 		// Reload-safe stop: end the GPS watch but keep the saved session so a
 		// page reload can resume; an explicit "stop" button press clears it.
@@ -819,6 +844,13 @@
 									{@const vomTracker = $livePositions.get(cv.vehicle.id)?.quelle === 'tracker'}
 									<span class="live-badge" class:tracker={vomTracker} title={vomTracker ? 'Position vom Fahrzeugtracker' : undefined}>
 										{vomTracker ? 'TRACKER' : 'LIVE'}
+									</span>
+								{/if}
+								{#if trackerZustand.has(cv.vehicle.id)}
+									{@const tz = trackerZustand.get(cv.vehicle.id)!}
+									<!-- Die Zahl nur, wenn sie zählt: ein schwacher Akku. -->
+									<span data-testid="tracker-{cv.vehicle.id}">
+										<TrackerZustand zustand={tz} prozent={tz.akku_niedrig} jetzt={trackerJetzt} />
 									</span>
 								{/if}
 							</div>

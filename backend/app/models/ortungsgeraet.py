@@ -52,6 +52,9 @@ class Ortungsgeraet(Base):
     akku_prozent: Mapped[int | None] = mapped_column(Integer, nullable=True)
     extern: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     signal_dbm: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Seit wann ohne Bordnetz (Übergang extern true → false); NULL am Bordnetz
+    # oder solange das Gerät nichts dazu gemeldet hat.
+    auf_akku_seit: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Ergebnis des letzten Firmware-Updates: bestaetigt | zurueckgerollt | fehler.
     update_version: Mapped[str | None] = mapped_column(String(40), nullable=True)

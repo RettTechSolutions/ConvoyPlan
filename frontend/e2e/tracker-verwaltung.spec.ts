@@ -58,7 +58,13 @@ test('ein eingerichteter Tracker zeigt, was das Gerät gemeldet hat', async ({ p
 	await page.goto(HUELLE);
 	const zeile = page.getByTestId('tracker').first();
 	await expect(zeile).toContainText('bereit');
-	await expect(zeile).toContainText('Akku 87 %');
+	// Batterie und Empfangsbalken statt Zahlen; die Zahlen stehen im Tooltip.
+	const zustand = zeile.getByTestId('tracker-zustand');
+	await expect(zustand.getByRole('img', { name: /^Akku 87 %/ })).toBeVisible();
+	await expect(zustand).toContainText('87 %');
+	const empfang = zustand.getByRole('img', { name: /Empfang/ });
+	await expect(empfang).toHaveAttribute('data-balken', '3');
+	await expect(empfang).toHaveAttribute('aria-label', /−?-95 dBm/);
 	await expect(zeile).toContainText('Firmware 0.1.0');
 	await expect(zeile).toContainText('352656100000002');
 	await expect(zeile).toContainText('Update 0.2.0 bereit');

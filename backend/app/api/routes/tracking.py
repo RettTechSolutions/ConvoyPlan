@@ -13,11 +13,13 @@ from app.api.deps import decode_stream_token, get_current_user
 from app.api.guards import get_convoy_access
 from app.database import get_db, AsyncSessionLocal
 from app.models.convoy import ConvoyVehicle
+from app.models.ortungsgeraet import Ortungsgeraet
 from app.models.user import User
 from app.models.vehicle import Vehicle
 from app.models.vehicle_position import VehiclePosition
 from app.services import alarm_quittung
 from app.services import betriebsstoff as betriebsstoff_svc
+from app.services import ortungsgeraet
 from app.services import belegung
 from app.services import positionsquelle
 from app.services import positionsverlauf
@@ -141,6 +143,44 @@ async def get_positions(
             "quelle": p.quelle,
         }
         for p in positions
+    ]
+
+
+@router.get("/convoys/{convoy_id}/tracker")
+async def get_tracker_zustand(
+    convoy_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Akku, Bordnetz und Empfang der Tracker an den Fahrzeugen dieses Konvois.
+
+    Für die Führung in der Konvoi-Ansicht: sie soll einen schwachen Akku oder
+    ein Funkloch sehen, bevor die Position ausbleibt — nicht erst der Org-Admin
+    in seiner Liste. Nur eingerichtete, nicht gesperrte Tracker der Organisation
+    des Konvois; keine Kennung, kein Token, kein Gerätename."""
+    convoy = await get_convoy_access(convoy_id, current_user, db, require="read")
+    fahrzeuge = select(ConvoyVehicle.vehicle_id).where(ConvoyVehicle.convoy_id == convoy_id)
+    geraete = (
+        await db.execute(
+            select(Ortungsgeraet).where(
+                Ortungsgeraet.vehicle_id.in_(fahrzeuge),
+                Ortungsgeraet.organization_id == convoy.organization_id,
+                Ortungsgeraet.aktiv.is_(True),
+                Ortungsgeraet.token_hash.is_not(None),
+            )
+        )
+    ).scalars().all()
+    return [
+        {
+            "vehicle_id": str(g.vehicle_id),
+            "zuletzt_gesehen": g.zuletzt_gesehen.isoformat() if g.zuletzt_gesehen else None,
+            "akku_prozent": g.akku_prozent,
+            "extern": g.extern,
+            "auf_akku_seit": g.auf_akku_seit.isoformat() if g.auf_akku_seit else None,
+            "akku_niedrig": ortungsgeraet.akku_niedrig(g.akku_prozent, g.extern),
+            "signal_dbm": g.signal_dbm,
+        }
+        for g in geraete
     ]
 
 

@@ -457,6 +457,8 @@ export const convoysApi = {
 // V3: Tracking
 export const trackingApi = {
 	getPositions: (convoyId: string) => api.get<VehiclePosition[]>(`/api/convoys/${convoyId}/positions`),
+	// Akku und Empfang der Tracker an den Fahrzeugen dieses Konvois.
+	getTracker: (convoyId: string) => api.get<TrackerAmFahrzeug[]>(`/api/convoys/${convoyId}/tracker`),
 	// Tracker übersteuern (Führung): dann gilt für dieses Fahrzeug das Telefon.
 	setPositionsquelle: (convoyId: string, vehicleId: string, trackerUebersteuern: boolean) =>
 		api.patch<{ status: string; tracker_uebersteuert_at: string | null; tracker_uebersteuert_von: string | null }>(
@@ -1700,6 +1702,10 @@ export interface Tracker {
     akku_prozent: number | null;
     extern: boolean | null;
     signal_dbm: number | null;
+    // Seit wann ohne Bordnetz; null am Bordnetz oder ohne Angabe.
+    auf_akku_seit: string | null;
+    // Unter der Schwelle und nicht am Bordnetz — entschieden im Backend.
+    akku_niedrig: boolean;
     update_version: string | null;
     update_ergebnis: 'bestaetigt' | 'zurueckgerollt' | 'fehler' | null;
     update_meldung: string | null;
@@ -1707,6 +1713,17 @@ export interface Tracker {
     // Version, die die Instanz dem Gerät auf seinem Kanal anbietet; null = keine.
     angebot_version: string | null;
     created_at: string;
+}
+
+/** Was die Konvoi-Ansicht vom Tracker eines Fahrzeugs sieht (GET /api/convoys/{id}/tracker). */
+export interface TrackerAmFahrzeug {
+    vehicle_id: string;
+    zuletzt_gesehen: string | null;
+    akku_prozent: number | null;
+    extern: boolean | null;
+    auf_akku_seit: string | null;
+    akku_niedrig: boolean;
+    signal_dbm: number | null;
 }
 
 export interface TrackerMitCode extends Tracker {
