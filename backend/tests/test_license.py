@@ -89,6 +89,23 @@ def _legacy_payload(iid: str) -> dict:
     return {"exp": exp, "iid": iid}
 
 
+def test_unix_zeit_wird_nie_als_iso_datum_gelesen():
+    """1823080307 ist der 9. Oktober 2027 — nicht der 3. August 1823.
+
+    `date.fromisoformat` nimmt seit Python 3.11 "YYYYMMDD" an und las die ersten
+    acht Ziffern einer Unix-Zeit als Datum, wenn sie zufällig eines ergaben.
+    Ein gültiger Schlüssel galt so an manchen Tagen als abgelaufen."""
+    import app.services.license as lic_mod
+    from datetime import date
+
+    for exp, erwartet in (("1823080307", date(2027, 10, 9)), ("1823077740", date(2027, 10, 9)),
+                          ("2027-10-09", date(2027, 10, 9))):
+        info = lic_mod.LicenseInfo(valid=True, expires=exp)
+        assert info.expires_date == erwartet, exp
+        assert not info.expired, exp
+    assert lic_mod.LicenseInfo(valid=True, expires="unsinn").expired
+
+
 def test_legacy_iid_key_bound_to_its_instance(monkeypatch):
     import app.services.license as lic_mod
     priv, pub_b64 = _make_key()
