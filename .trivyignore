@@ -49,6 +49,18 @@ CVE-2026-27145
 # operator-trusted repositories and images. Fixed upstream in Go 1.25.12 / 1.26.5.
 CVE-2026-39822
 
+# Go stdlib net/http DoS via crafted Range headers. Server-side: hits handlers
+# that serve Range requests (http.ServeContent/FileServer). The docker CLI
+# binaries in the updater are HTTP clients only and serve nothing.
+# Fixed upstream in Go 1.26.9 / 1.27.2.
+CVE-2026-78667
+
+# Go stdlib crypto/tls DoS via multiple ECH outer extension references. Hits
+# the side that processes an ECH ClientHello, i.e. a TLS server; the updater
+# only connects out (Docker Hub, GitHub) and terminates no TLS.
+# Fixed upstream in Go 1.26.9 / 1.27.2.
+CVE-2026-97031
+
 # golang.org/x/crypto SSH server/client vulnerabilities (authenticated
 # client loops, keyscan DoS, ssh/agent key restrictions bypass, etc.).
 # Bundled in docker CLI Go binaries; the updater does not act as or connect

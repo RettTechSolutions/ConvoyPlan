@@ -132,13 +132,22 @@ fi
 # ab und calculate-route schlägt fehl.
 ENCODED_VALUES="car_access, car_average_speed, road_class, max_speed, max_height"
 
+# Abbiegeverbote aus OSM (type=restriction) kennt GraphHopper nur in Profilen
+# mit turn_costs. Ohne sie routete `car` bis 2026-10 ueber jedes Verbot hinweg:
+# an der B 472 bei Peissenberg (Anschluss WM 15) die Auffahrt hinauf und an
+# ihrer Spitze per Haarnadel in die Gegenrichtung — genau das verbietet dort
+# Relation 2083454 (only_right_turn). Die Einbahnregel hielt, das Abbiegen nicht.
+# Der Wert steht im Fingerprint, weil GraphHopper einen Graphen mit anderen
+# Profilen nicht laedt — ein Bestand ohne turn_costs muss neu gebaut werden.
+TURN_COSTS_VEHICLES="motorcar, motor_vehicle"
+
 # Der kompilierte Graph gehört zu genau EINER OSM-Datei und EINEM Satz Encoded
 # Values. Ändert sich eines von beidem, muss er neu gebaut werden: bei den
 # Encoded Values, weil GraphHopper sonst nicht startet bzw. Anfragen ablehnt —
 # bei der OSM-Datei, weil GraphHopper einen vorhandenen Graphen kommentarlos
 # weiterverwendet und nach einem Regionswechsel sonst still weiter die alte
 # Region routen würde. Beides steckt deshalb im Fingerprint.
-FINGERPRINT="$OSM_FILENAME|$ENCODED_VALUES"
+FINGERPRINT="$OSM_FILENAME|$ENCODED_VALUES|turn_costs: $TURN_COSTS_VEHICLES"
 FINGERPRINT_FILE="$GRAPH_DIR/.graph_fingerprint"
 LEGACY_FINGERPRINT_FILE="$GRAPH_DIR/.encoded_values"
 
@@ -154,7 +163,7 @@ fi
 if [ -n "$(ls -A "$GRAPH_DIR" 2>/dev/null | grep -vE '^\.(graph_fingerprint|encoded_values)$')" ]; then
     REBUILD_REASON=""
     if [ "$PREV_FINGERPRINT" != "$FINGERPRINT" ]; then
-        REBUILD_REASON="Kartenregion oder Encoded Values haben sich geändert"
+        REBUILD_REASON="Kartenregion, Encoded Values oder Profile haben sich geändert"
     elif [ "$DOWNLOADED" -eq 1 ]; then
         # Frisch geladene OSM-Datei neben einem bereits vorhandenen Graphen:
         # der Graph stammt aus anderen Daten und passt nicht mehr dazu.
@@ -255,8 +264,14 @@ graphhopper:
 
   profiles:
     - name: car
+      turn_costs:
+        vehicle_types: [$TURN_COSTS_VEHICLES]
+        u_turn_costs: 60
       custom_model_files: [car.json]
     - name: truck
+      turn_costs:
+        vehicle_types: [$TURN_COSTS_VEHICLES]
+        u_turn_costs: 60
       custom_model_files: [car.json]
 
   profiles_ch:
