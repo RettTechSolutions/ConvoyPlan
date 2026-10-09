@@ -379,6 +379,10 @@ Org-Admin). Vier Dinge, die man kennen muss:
   `positionsverlauf.aufzeichnen` mit. Auch `is_recently_cleared` („GPS-Freigabe
   zurücksetzen") und `planned → en_route` samt `alarm_quittung.zuruecksetzen`
   gelten hier wie am Fahrer-Link.
+- **„Auf Akku seit"** (`akku_seit`, Migration `0063`) setzt `ortungsgeraet.akku_seit` aus
+  dem *bisherigen* `extern` und der neuen Meldung, **bevor** die Zustandsfelder
+  überschrieben werden (`_zustand_merken`). Eine Meldung ohne `extern` lässt den Wert
+  stehen. Wer die Reihenfolge dort umdreht, setzt den Zeitpunkt bei jeder Meldung neu.
 - **Gerätezeit, nicht Serverzeit.** Jeder Fix trägt seine GNSS-Zeit; mehr als
   120 s Zukunft oder älter als 24 h fällt weg, **je Fix**, nicht je Bündel. Die
   aktuelle Position wird nur ersetzt, wenn der Fix jünger ist
@@ -886,6 +890,11 @@ Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste
 - **Container** — Trivy scannt alle fünf Images (`backend`, `frontend`,
   `graphhopper`, `updater`, `osmium`) auf HIGH/CRITICAL mit verfügbarem Fix.
   Ausnahmen gehören mit Begründung in `.trivyignore`.
+- **Docker Hub über einen Spiegel** — jeder Job, der Images zieht, beginnt nach dem
+  Checkout mit `./.github/actions/docker-spiegel` (Daemon auf `mirror.gcr.io`). Ohne
+  Anmeldung teilen sich die Runner das Pull-Limit von Docker Hub, und am 2026-10-09
+  scheiterten alle Docker-Jobs mit 429, bevor ein Schritt aus dem Repo lief. Wer einen
+  neuen Job mit `docker build`/`docker run` anlegt, hängt den Schritt mit ein.
 
 Neue Tests liegen neben den bestehenden in `backend/tests/` und werden nach dem
 geprüften Verhalten benannt (`test_<thema>.py`), nicht nach der Implementierung.

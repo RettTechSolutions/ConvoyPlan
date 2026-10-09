@@ -7,6 +7,8 @@ import { test, expect } from '@playwright/test';
 //   dem Bestätigen weg; in der Liste taucht er nie auf.
 // - Ein Fahrzeug, an dem schon ein Tracker hängt, steht nicht zur Wahl.
 // - Ohne Fahrzeug geht das Anlegen, aber die Liste sagt „ohne Fahrzeug".
+// - Wie lange ein Tracker schon ohne Bordnetz läuft, steht in der Liste, und ab
+//   einem Tag fällt es auf.
 //
 // Gemountet in der Hülle (`e2e/harness/`, `?k=tracker`), `$lib/api` gestubbt.
 
@@ -62,4 +64,7 @@ test('ein eingerichteter Tracker zeigt, was das Gerät gemeldet hat', async ({ p
 	await expect(zeile).toContainText('Firmware 0.1.0');
 	await expect(zeile).toContainText('352656100000002');
 	await expect(zeile).toContainText('Update 0.2.0 bereit');
+	// Seit über einem Tag ohne Bordnetz: steht da und ist hervorgehoben.
+	const akku = zeile.getByText('auf Akku seit 3 Tagen');
+	await expect(akku).toHaveClass(/akku-lange/);
 });

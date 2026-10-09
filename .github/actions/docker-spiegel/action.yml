@@ -1,0 +1,27 @@
+name: Docker Hub über einen Spiegel
+description: >
+  Stellt den Docker-Daemon des Runners auf mirror.gcr.io um, bevor ein Job Images von
+  Docker Hub zieht. Ohne Anmeldung teilen sich die GitHub-Runner das Pull-Limit von
+  Docker Hub je IP; am 2026-10-09 scheiterten damit alle Docker-Jobs mehrfach mit
+  „429 Too Many Requests“, bevor ein Schritt aus diesem Repo lief. Der Spiegel liefert
+  dieselben Images (gleiche Digests); was er nicht hat, holt der Daemon wie bisher von
+  Docker Hub. Dockerfiles und veröffentlichte Images bleiben unberührt — das gilt nur
+  für den Runner.
+
+runs:
+  using: composite
+  steps:
+    - name: Docker-Daemon auf mirror.gcr.io umstellen
+      shell: bash
+      run: |
+        set -euo pipefail
+        datei=/etc/docker/daemon.json
+        vorher='{}'
+        if sudo test -s "$datei"; then vorher="$(sudo cat "$datei")"; fi
+        printf '%s' "$vorher" \
+          | jq '.["registry-mirrors"] = ((.["registry-mirrors"] // []) + ["https://mirror.gcr.io"] | unique)' \
+          | sudo tee "$datei" >/dev/null
+        sudo systemctl restart docker
+        # Bis der Daemon wieder antwortet; der Neustart dauert meist unter 5 s.
+        for _ in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 1; done
+        echo "Spiegel: $(docker info --format '{{json .RegistryConfig.Mirrors}}')"

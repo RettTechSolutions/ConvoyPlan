@@ -1699,6 +1699,8 @@ export interface Tracker {
     zuletzt_gesehen: string | null;
     akku_prozent: number | null;
     extern: boolean | null;
+    /** Seit wann ohne Bordnetz (Serverzeit der ersten Meldung `extern=false`), sonst null. */
+    akku_seit: string | null;
     signal_dbm: number | null;
     update_version: string | null;
     update_ergebnis: 'bestaetigt' | 'zurueckgerollt' | 'fehler' | null;
