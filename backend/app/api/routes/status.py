@@ -14,7 +14,7 @@ from app.services import weather as weather_svc
 from app.services import overpass as overpass_svc
 from app.services import autobahn as autobahn_svc
 from app.services import traffic_flow as traffic_flow_svc
-from app.services import region_switch
+from app.services import graph_aufbau, region_switch
 
 router = APIRouter(prefix="/status", tags=["status"])
 
@@ -153,14 +153,29 @@ _REASON_TRACKING_DOWN = (
 _REASON_PLANNING = {
     "building": "Die Straßenkarte wird gerade geladen. Routen lassen sich danach wieder berechnen.",
     "region": "Die Kartenregion wird gerade gewechselt; die Straßenkarte wird dafür neu aufgebaut.",
-    # Ohne Docker-Zugriff ist „baut nach einem Update neu" von „abgestürzt"
-    # nicht zu unterscheiden. Der erste Fall ist der häufige — gesagt wird
-    # deshalb beides, ohne eines zu behaupten.
+    "download": (
+        "Die Kartendaten werden gerade heruntergeladen; danach wird die Straßenkarte "
+        "aufgebaut. Bereits berechnete Routen bleiben erhalten."
+    ),
+    # Ein laufender Aufbau ist erkannt (services/graph_aufbau.py) — was hier
+    # übrig bleibt, ist nicht angekündigt. Dann ist „melden" der richtige Rat.
     "offline": (
-        "Der Routing-Dienst antwortet nicht — meist, weil die Straßenkarte nach "
-        "einem Update neu aufgebaut wird. Bereits berechnete Routen bleiben erhalten."
+        "Der Routing-Dienst antwortet nicht, ohne dass ein Neuaufbau der Straßenkarte "
+        "läuft. Hält das an, bitte beim Betreiber melden. Bereits berechnete Routen "
+        "bleiben erhalten."
     ),
 }
+
+
+def _import_reason(seit: float | None) -> str:
+    dauer = ""
+    if seit is not None:
+        minuten = max(0, int((time.time() - seit) // 60))
+        dauer = " (seit einer Minute)" if minuten <= 1 else f" (seit {minuten} Minuten)"
+    return (
+        f"Die Straßenkarte wird gerade neu aufgebaut{dauer}, meist nach einem Update. "
+        "Danach lassen sich Routen wieder berechnen; bereits berechnete bleiben erhalten."
+    )
 _REASON_TRAFFIC = {
     "closures": "Sperrungen aus dem Kartenbestand fehlen derzeit; Autobahnmeldungen kommen weiter an.",
     "autobahn": "Autobahnmeldungen fehlen derzeit; Sperrungen aus dem Kartenbestand kommen weiter an.",
@@ -176,6 +191,11 @@ def _planning_reason(raw: str) -> str | None:
         return None
     if region_switch.laeuft():
         return _REASON_PLANNING["region"]
+    aufbau = graph_aufbau.laufender_aufbau()
+    if aufbau is not None:
+        if aufbau.phase == "download":
+            return _REASON_PLANNING["download"]
+        return _import_reason(aufbau.seit)
     return _REASON_PLANNING.get(raw, _REASON_PLANNING["offline"])
 
 

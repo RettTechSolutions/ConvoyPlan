@@ -18,7 +18,7 @@ class _FakeDB:
 
 
 def _install(monkeypatch, *, db_ok=True, graphhopper="ok",
-             overpass="ok", autobahn="ok", weather="ok", region_switch=False):
+             overpass="ok", autobahn="ok", weather="ok", region_switch=False, aufbau=None):
     """Alle Einzelprüfungen durch feste Werte ersetzen — kein Netz, keine DB."""
     app.dependency_overrides[get_db] = lambda: _FakeDB(db_ok)
 
@@ -34,6 +34,7 @@ def _install(monkeypatch, *, db_ok=True, graphhopper="ok",
     monkeypatch.setattr(status_module.autobahn_svc, "probe", lambda: _check(autobahn))
     monkeypatch.setattr(status_module.weather_svc, "probe", lambda: _check(weather))
     monkeypatch.setattr(status_module.region_switch, "laeuft", lambda: region_switch)
+    monkeypatch.setattr(status_module.graph_aufbau, "laufender_aufbau", lambda: aufbau)
 
     # Der Kurzzeit-Cache würde sonst Ergebnisse zwischen den Tests verschleppen.
     status_module._public_cache = None
@@ -185,7 +186,7 @@ async def test_operational_components_carry_no_reason(monkeypatch):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("graphhopper,expected", [
-    ("offline", "nach einem Update neu aufgebaut"),
+    ("offline", "beim Betreiber melden"),
     ("building", "wird gerade geladen"),
 ])
 async def test_routing_outage_explains_itself(monkeypatch, graphhopper, expected):
@@ -203,6 +204,38 @@ async def test_running_region_switch_is_named_as_cause(monkeypatch):
     reasons = _reasons(await _get_public())
 
     assert "Kartenregion wird gerade gewechselt" in reasons["planning"]
+
+
+@pytest.mark.asyncio
+async def test_running_graph_import_is_named_with_its_duration(monkeypatch):
+    """Ein Neuaufbau nach dem Deploy ist kein Grund zu melden — und sagt, wie lange schon."""
+    import time
+    seit = time.time() - 12 * 60 - 5
+    _install(monkeypatch, graphhopper="offline",
+             aufbau=status_module.graph_aufbau.Aufbau("import", seit))
+    reasons = _reasons(await _get_public())
+
+    assert "wird gerade neu aufgebaut (seit 12 Minuten)" in reasons["planning"]
+    assert "melden" not in reasons["planning"]
+
+
+@pytest.mark.asyncio
+async def test_running_map_download_is_named(monkeypatch):
+    _install(monkeypatch, graphhopper="offline",
+             aufbau=status_module.graph_aufbau.Aufbau("download", None))
+    reasons = _reasons(await _get_public())
+
+    assert "heruntergeladen" in reasons["planning"]
+
+
+@pytest.mark.asyncio
+async def test_region_switch_wins_over_graph_import(monkeypatch):
+    """Der Regionswechsel ist die genauere Aussage — er baut ja gerade den Graphen."""
+    _install(monkeypatch, graphhopper="offline", region_switch=True,
+             aufbau=status_module.graph_aufbau.Aufbau("import", None))
+    reasons = _reasons(await _get_public())
+
+    assert "Kartenregion" in reasons["planning"]
 
 
 @pytest.mark.asyncio
