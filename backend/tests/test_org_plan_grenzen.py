@@ -68,7 +68,7 @@ def test_tracker_ueber_der_grenze():
     assert not z.tracker_ueber
     z = org_plan.zustand(_zeile(max_trackers=2), org_plan.Nutzung(0, 0, tracker=3), HEUTE)
     assert z.tracker_ueber and not z.gesperrt
-    # Ein Plan ohne Tracker-Grenze (auch jeder von vor Migration 0059) kennt kein Über.
+    # Ein Plan ohne Tracker-Grenze (auch jeder von vor Migration 0061) kennt kein Über.
     z = org_plan.zustand(_zeile(), org_plan.Nutzung(0, 0, tracker=500), HEUTE)
     assert not z.tracker_ueber
 

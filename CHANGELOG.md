@@ -21,9 +21,22 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Wichtig beim Update
+
+- **Jede Instanz baut ihren Routing-Graphen erneut neu** — `max_weight`, `max_weight_except` und `max_axle_load` stehen jetzt im Graphen, und die Encoded Values stehen im Fingerprint. Wie unter 2026.8.0: je nach Region 45–75 Minuten ohne Routenplanung, Update außerhalb einer Lage legen. Bis der neue Graph steht, routet das Backend ohne Gewichtsgrenzen statt gar nicht.
+- **Routen können sich ändern.** Die Höhe wird jetzt mit dem *höchsten* Fahrzeug gesperrt (siehe *Fixed*), und jedes Fahrzeug mit Gewicht oder Achslast sperrt Grenzen darunter. Bestehende Routen bleiben, bis sie neu berechnet werden.
+- Datenbank-Migrationen `0059` bis `0061` laufen beim Start des Backends.
+
 ### Added
 
-- **Tracker im Paket einer Organisation.** Der Plan einer Organisation zählt jetzt auch ihre Tracker (Ortungsgeräte); gesperrte zählen nicht. Die Grenze `max_trackers` ist weich wie die übrigen: Anlegen klappt immer, Planer und Admins sehen einen Hinweis, der Betreiber die Überschreitung im Reiter **Pläne**. Kein Paket des Katalogs begrenzt Tracker, und jeder schon gesetzte Plan bleibt ohne Grenze — kein Update meldet eine Überschreitung. Migration `0059`.
+- **Tracker im Paket einer Organisation.** Der Plan einer Organisation zählt jetzt auch ihre Tracker (Ortungsgeräte); gesperrte zählen nicht. Die Grenze `max_trackers` ist weich wie die übrigen: Anlegen klappt immer, Planer und Admins sehen einen Hinweis, der Betreiber die Überschreitung im Reiter **Pläne**. Kein Paket des Katalogs begrenzt Tracker, und jeder schon gesetzte Plan bleibt ohne Grenze — kein Update meldet eine Überschreitung. Migration `0061`.
+- **Gewichtsgrenzen entlang der Route.** Die Routenberechnung meidet Strecken mit einer Gewichtsgrenze unter dem schwersten Fahrzeug — Brücken mit Tragfähigkeitsbeschränkung genauso wie Lkw-Durchfahrtsverbote. „Anlieger frei" sperrt nicht, sondern wird gemieden; führt die Route doch hindurch, steht die Stelle als *über der Grenze* da. Planungsansicht und Marschbefehl zeigen jede Grenze mit Kilometer und Reserve (*knapp* unter 2 t). Findet die Berechnung mit Höhe, Gewicht und Achslast keinen Weg, nennt die Meldung die Werte, statt „Routing fehlgeschlagen". Migration `0061`. Anwenderdoku: `wiki/Konvoi-Planung.md`, „Gewichtsgrenzen".
+- **Größte Achslast als Fahrzeugfeld.** Fahrzeuge tragen jetzt ihre größte Achslast (Planung, MCP `fahrzeug_anlegen`/`fahrzeug_aktualisieren` mit `achslast_kg`). Die Routenberechnung meidet Achslastgrenzen (Zeichen 263, OSM `maxaxleload`) unter der größten Achslast im Verband; die Stellen stehen als „Achslast" bei den Gewichtsgrenzen, in Marschbefehl und Roadbook. *Knapp* unter 1 t Reserve, weil der Graph Achslasten auf 0,5 t rundet. Migration `0060`.
+- **Höhen, Gewichtsgrenzen und Brücken ohne Angabe im Roadbook.** Zwischen den Abbiegehinweisen steht an ihrem Kilometer jede Durchfahrtshöhe (↕, mit Spielraum — auch die freien), jede Gewichtsgrenze (⚖, mit Reserve) und jede Brücke ohne Höhenangabe abseits der Autobahn (⚠). Enge Stellen und überschrittene Grenzen sind rot hinterlegt.
+
+### Fixed
+
+- **Die Durchfahrtshöhe wurde mit dem niedrigsten Fahrzeug gesperrt.** Statt des höchsten nahm die Routenberechnung das *niedrigste* Fahrzeug im Verband mit Höhenangabe: Ein Wechsellader (3,90 m) neben einem MTW (2,50 m) wurde wie ein 2,50 m hoher Verband geroutet, und die Planungsansicht nannte 2,50 m als „Höchstes Fahrzeug". Betroffen waren alle Verbände mit Fahrzeugen unterschiedlicher Höhe. Routen, die vor diesem Update berechnet wurden, sollten neu berechnet werden.
 
 ## [2026.8.0] – 2026-10-09
 
@@ -65,6 +78,8 @@ ursprünglichen SemVer-Nummern.
 - **Kein Regionswechsel mitten in einen Graph-Aufbau.** Ein sofortiger Wechsel wird abgelehnt (409), solange GraphHopper herunterlädt oder importiert. Ein geplanter darf angefordert werden; der Updater startet ihn erst, wenn Termin erreicht **und** Aufbau fertig ist, und das Panel zeigt, dass er wartet. Ein hängender Import hält nichts auf.
 
 ### Fixed
+
+- **Zustimmungsschirm für KI-Clients schickte Mitglieder auf die Superadmin-Anmeldung.** Wer ChatGPT & Co. verbinden wollte und nur in seiner Organisation angemeldet war (der Normalfall), landete von `/oauth/consent` auf `/admin` — das Wurzel-Layout kannte die Seite nicht als öffentlich und verlangte eine globale Sitzung, die nur Superadmins haben. Ohne Anmeldung ging zudem der Rücksprung verloren. Die Seite prüft die Anmeldung selbst und steht jetzt in `PUBLIC_ROUTES`.
 
 - **Absagen am Token-Endpunkt kamen als 500.** Der OAuth-Provider warf `TokenError` innerhalb einer Datenbanksitzung; weil das eine eingefrorene Dataclass ist, scheiterte `contextlib` am Zuweisen des Tracebacks. Betroffen war etwa ein deaktiviertes Konto, dessen MCP-Client sein Token erneuern wollte — statt `invalid_grant` gab es einen Serverfehler.
 

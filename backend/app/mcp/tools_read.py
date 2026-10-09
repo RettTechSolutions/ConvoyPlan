@@ -150,6 +150,7 @@ def _vehicle(vehicle: Vehicle) -> dict:
         "hoehe_cm": vehicle.height_cm,
         "laenge_cm": vehicle.length_cm,
         "gewicht_kg": vehicle.weight_kg,
+        "achslast_kg": vehicle.axle_load_kg,
         "antrieb": vehicle.propulsion,
         # Regelbesatzung aus den Stammdaten („0/1/8"), None wenn keine
         # hinterlegt ist. Sie sagt, womit dieses Fahrzeug üblicherweise
@@ -705,6 +706,9 @@ def register(mcp) -> None:
                 # Brücken über der Route ohne Höhenangabe in OSM; None:
                 # noch nicht gesucht (geschieht in der Planungsansicht).
                 "bruecken_ohne_hoehe": route.bruecken,
+                # Gewichtsgrenzen aus OSM (Brücken, Lkw-Verbote); stufe
+                # ueberschritten/knapp/frei/unbekannt. None: nicht ermittelt.
+                "gewichtsgrenzen": route.gewichtsgrenzen,
             }
             if mit_geometrie:
                 data["geometrie_geojson"] = geo_svc.linestring_to_geojson(route.geometry)

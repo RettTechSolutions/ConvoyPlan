@@ -207,7 +207,7 @@ ein Stück doppelt befährt, trifft die Suche nach dem nächsten Streckenpunkt s
 die falsche Vorbeifahrt, und aus der negativen Teilstrecke wird eine rückwärts
 laufende Ankunftszeit.
 
-### Durchfahrtshöhen: gesperrt wird beim Routing, gezeigt wird danach
+### Durchfahrtshöhen und Gewichtsgrenzen: gesperrt wird beim Routing, gezeigt wird danach
 
 Das Custom Model in `services/routing.py` nimmt jede Kante mit `max_height` unter
 dem höchsten Fahrzeug aus dem Graphen — das war schon immer so, aber still.
@@ -216,8 +216,13 @@ der Unterführungen, unter denen die Route trotzdem hindurchgeht, gespeichert in
 `routes.durchfahrtshoehen` (Migration `0055`) wie der Kanalwechsel, gezeigt in
 `DurchfahrtsHoehen.svelte` und im Marschbefehl.
 
-Zwei Dinge, die man kennen muss:
+Drei Dinge, die man kennen muss:
 
+- **Gesperrt wird mit dem Größten im Verband** (`routing.verbandsgrenzen`): höchstes
+  und schwerstes Fahrzeug, Fahrzeuge ohne Angabe zählen nicht. Bis 2026-10 stand dort
+  `min()` — gesperrt wurde mit dem *niedrigsten* Fahrzeug, und ein Wechsellader neben
+  einem MTW fuhr unter Brücken durch, die nur der MTW passiert
+  (`tests/test_gewichtsgrenzen.py`, gemischter Verband).
 - **GraphHopper rundet `max_height` auf 10 cm** (9.1 und 10.2, `MaxHeight.create`, Faktor
   0,1 mit `Math.round`): aus 3,85 m auf dem Schild werden 3,9 m im Graphen. Die
   Sperre `max_height < Fahrzeughöhe` kann deshalb ein Fahrzeug von 3,88 m unter
@@ -252,9 +257,29 @@ verworfen. Drei Regeln, die man kennen muss:
   einer Pause erneut, bevor es zum Spiegel geht. Ein `remark: runtime error` (Abbruch,
   HTTP 200, halbe Liste) ist ein Fehler — sonst stünde „keine Brücke gefunden" da.
 
+**Gewichtsgrenzen** gehen denselben Weg (`services/gewichtsgrenzen.py`,
+`routes.gewichtsgrenzen`, Migration `0059`, `GewichtsGrenzen.svelte`), samt
+**Achslast** (`vehicles.axle_load_kg`, Migration `0060`, `max_axle_load` im Graphen,
+Einträge mit `art="achslast"`, 0,5-t-Raster, deshalb knapp schon unter 1 t), mit zwei
+Unterschieden. „Anlieger frei" (`max_weight_except=destination`) sperrt nicht, sondern
+wird gemieden (`_ANLIEGER_FAKTOR`) — sonst gäbe es zu einem Ziel dahinter keine Route;
+führt sie doch hindurch, heißt die Stelle `ueberschritten`. Und `max_weight` kam erst
+nach Stufe 1 in den Graphen: Kennt GraphHopper es nicht (Container noch nicht neu
+gebaut), wiederholt `calculate_route` die Anfrage **ohne** Gewicht, statt das Routing
+ganz zu verlieren; die Liste ist dann `None`. Wer weitere Encoded Values ins Backend
+holt, braucht denselben Rückfall oder nimmt den Ausfall bis zum Neuaufbau in Kauf.
+Findet GraphHopper mit den Sperren keine Verbindung, nennt die 422 die Werte
+(`_keine_verbindung_message`).
+
+Das **Roadbook** setzt alle drei Listen als Zeilen ohne Nummer an ihren Kilometer
+(`roadbook.hinweis_rows`, `mit_hinweisen`) — auch die freien Stellen: „4,5 m, +85 cm"
+sagt der Besatzung, wo sie nicht bremsen muss. Die Symbole ↕ ⚖ ⚠ stehen in DejaVu
+Sans; wer die Schrift tauscht, prüft sie.
+
 Tests: `tests/test_durchfahrtshoehen.py`, `tests/test_bruecken_ohne_hoehe.py`,
-`frontend/e2e/durchfahrtshoehen.spec.ts`. Anwenderdoku: `wiki/Konvoi-Planung.md`,
-„Durchfahrtshöhen".
+`tests/test_gewichtsgrenzen.py`, `tests/test_roadbook.py` (Hinweise),
+`frontend/e2e/durchfahrtshoehen.spec.ts`, `frontend/e2e/gewichtsgrenzen.spec.ts`.
+Anwenderdoku: `wiki/Konvoi-Planung.md`, „Durchfahrtshöhen" und „Gewichtsgrenzen".
 
 ### Fahrzeugbelegung: ein Fahrzeug, ein Gerät
 
@@ -710,7 +735,7 @@ vermischen darf:
 Gezählt werden Fahrzeuge, Planer (Rollen *admin*/*planer*) und Tracker mit
 `aktiv=true` — ein gesperrtes Gerät bekommt 401 und belegt nichts. Tracker begrenzt
 kein Katalogpaket (`max_tracker=None`), und `max_trackers` ist NULL für jeden Plan
-von vor `0059`: ein Update darf keiner Organisation eine Überschreitung melden.
+von vor `0061`: ein Update darf keiner Organisation eine Überschreitung melden.
 
 Die Grenzen eines Plans sind **weich**, und das ist Absicht: eine Absage beim
 Anlegen des 26. Fahrzeugs träfe den Moment, in dem jemand während einer Lage

@@ -46,7 +46,7 @@ BLOCK="$TMP/graph_zustand.sh"
 sed -n '/^# ── GRAPH_ZUSTAND_ANFANG/,/^# ── GRAPH_ZUSTAND_ENDE/p' "$ENTRYPOINT" > "$BLOCK"
 
 GH_VERSION_TEST='10.2'
-FP="dach-latest.osm.pbf|car_access, car_average_speed, road_class, max_speed, max_height|turn_costs: motorcar, motor_vehicle|graphhopper: $GH_VERSION_TEST"
+FP="dach-latest.osm.pbf|car_access, car_average_speed, road_class, max_speed, max_height, max_weight, max_weight_except, max_axle_load|turn_costs: motorcar, motor_vehicle|graphhopper: $GH_VERSION_TEST"
 
 # Fuehrt den echten Block gegen ein vorbereitetes Verzeichnis aus und gibt den
 # gewaehlten REBUILD_REASON zurueck ("KEINER", wenn nicht neu gebaut wird).

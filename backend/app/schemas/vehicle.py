@@ -12,6 +12,8 @@ class VehicleCreate(BaseModel):
     license_plate: str | None = None
     height_cm: int | None = Field(default=None, ge=0, le=1000)
     weight_kg: int | None = Field(default=None, ge=0, le=100_000)
+    # Größte Achslast eines einzelnen Achse, für Achslastgrenzen (Zeichen 263).
+    axle_load_kg: int | None = Field(default=None, ge=0, le=20_000)
     length_cm: int | None = Field(default=None, ge=0, le=5000)
     convoy_role: str | None = None
     propulsion: Literal["combustion", "electric"] = "combustion"
@@ -50,6 +52,7 @@ class VehicleResponse(BaseModel):
     license_plate: str | None
     height_cm: int | None
     weight_kg: int | None
+    axle_load_kg: int | None = None
     length_cm: int | None
     convoy_role: str | None
     propulsion: str = "combustion"

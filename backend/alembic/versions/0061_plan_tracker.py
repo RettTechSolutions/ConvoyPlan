@@ -5,15 +5,15 @@ NULL heißt unbegrenzt — auch für jeden schon gesetzten Plan, damit keine
 Organisation durch das Update eine Überschreitung gemeldet bekommt. Die Grenze
 ist weich wie die übrigen: gemeldet, nicht verhindert.
 
-Revision ID: 0059
-Revises: 0058
+Revision ID: 0061
+Revises: 0060
 Create Date: 2026-10-09
 """
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0059"
-down_revision = "0058"
+revision = "0061"
+down_revision = "0060"
 branch_labels = None
 depends_on = None
 

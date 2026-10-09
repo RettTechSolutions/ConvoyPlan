@@ -13,6 +13,8 @@ export type Propulsion = 'combustion' | 'electric';
 export interface Vehicle {
 	id: string; name: string; callsign: string | null; license_plate: string | null;
 	height_cm: number | null; weight_kg: number | null; length_cm: number | null; convoy_role: string | null;
+	/** Größte Achslast einer Achse (kg), für Achslastgrenzen (Zeichen 263). */
+	axle_load_kg?: number | null;
 	propulsion: Propulsion;
 	tank_capacity_l: number | null; fuel_consumption_l100km: number | null; current_fuel_l: number | null;
 	battery_capacity_kwh: number | null; consumption_kwh_100km: number | null; current_charge_kwh: number | null;
@@ -144,6 +146,24 @@ export interface DurchfahrtshoeheEntry {
 	stufe: 'eng' | 'knapp' | 'frei' | 'unbekannt';
 }
 
+/** Gewichtsgrenze entlang der Route (Backend: services/gewichtsgrenzen.py). */
+export interface GewichtsgrenzeEntry {
+	km: number;
+	m: number;
+	lat: number;
+	lon: number;
+	laenge_m: number;
+	/** Grenze aus OSM (auch Lkw-Verbote), auf 0,1 t gerundet. */
+	grenze_t: number;
+	/** Grenze minus schwerstes Fahrzeug; null ohne erfasstes Gewicht. */
+	reserve_t: number | null;
+	/** "destination" (Anlieger frei), "delivery", "forestry" oder null. */
+	ausnahme: string | null;
+	stufe: 'ueberschritten' | 'knapp' | 'frei' | 'unbekannt';
+	/** "gewicht" (maxweight) oder "achslast" (maxaxleload); fehlt bei älteren Routen. */
+	art?: 'gewicht' | 'achslast';
+}
+
 /** Brücke über der Route ohne Höhenangabe in OSM (Backend: services/bruecken.py). */
 export interface BrueckeEntry {
 	km: number;
@@ -172,6 +192,8 @@ export interface RouteResult {
 	durchfahrtshoehen?: DurchfahrtshoeheEntry[] | null;
 	/** null: noch nicht gesucht (`convoysApi.findBridges`). */
 	bruecken?: BrueckenPruefung | null;
+	/** null: nicht ermittelt (alte Route, Import, Graph ohne max_weight); []: keine bekannte Grenze. */
+	gewichtsgrenzen?: GewichtsgrenzeEntry[] | null;
 	/** Abmarschzeit (ISO), auf derselben Zeitbasis wie die Wegpunkt-Zeiten. */
 	planned_departure?: string | null;
 	/** Geplante Ankunft am Ziel (ISO); Abmarsch + Fahrzeit + Haltezeiten. */
