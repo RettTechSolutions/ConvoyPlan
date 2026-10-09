@@ -29,23 +29,32 @@ jobs:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
 
-    services:
-      postgres:
-        image: postgis/postgis:15-3.4
-        env:
-          POSTGRES_USER: convoyplan
-          POSTGRES_PASSWORD: convoyplan
-          POSTGRES_DB: convoyplan
-        options: >-
-          --health-cmd "pg_isready -U convoyplan"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-        ports:
-          - 5432:5432
-
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # PostGIS als Schritt statt als Service-Container: Ein Service startet vor
+      # jedem Schritt und kennt nur `credentials`, die bei leeren Secrets (Fork-PRs)
+      # die ganze Vorlage ungültig machen. So meldet sich die Action an, wenn es
+      # Secrets gibt, und zieht sonst anonym. mirror.gcr.io führt postgis nicht.
+      - uses: ./.github/actions/docker-spiegel
+        with:
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: PostGIS starten
+        run: |
+          docker run -d --name postgres -p 5432:5432 \
+            -e POSTGRES_USER=convoyplan -e POSTGRES_PASSWORD=convoyplan -e POSTGRES_DB=convoyplan \
+            --health-cmd "pg_isready -U convoyplan" --health-interval 5s \
+            --health-timeout 5s --health-retries 10 \
+            postgis/postgis:15-3.4
+          for _ in $(seq 1 60); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' postgres)" = healthy ] && exit 0
+            sleep 2
+          done
+          docker logs postgres
+          echo "::error::PostGIS wurde nicht bereit."
+          exit 1
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -142,6 +151,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/docker-spiegel
+        with:
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build backend image
         run: docker build ./backend
@@ -212,6 +224,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/docker-spiegel
+        with:
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build ${{ matrix.name }} image
         run: docker build -t convoyplan-${{ matrix.name }}:scan ${{ matrix.context }}
@@ -271,6 +286,8 @@ jobs:
 
       - uses: ./.github/actions/docker-spiegel
         with:
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
           images: bash:5.2 docker:cli
 
       - name: Alle Shell-Suiten ausfuehren
@@ -379,6 +396,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/docker-spiegel
+        with:
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
 
       # Das Extract fuer den Ersteinstieg kommt wie in `region-merge` aus einem
       # Tagescache und liegt schon im Volume, bevor GraphHopper startet. Ohne
@@ -651,6 +671,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - uses: ./.github/actions/docker-spiegel
+        with:
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: osmium installieren
         run: sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool

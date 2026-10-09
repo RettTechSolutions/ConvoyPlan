@@ -907,7 +907,12 @@ Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste
   neuen Job mit `docker build`/`docker run` anlegt, hängt den Schritt mit ein. Der
   Eintrag im Daemon allein hielt `docker run` nicht von Docker Hub fern; was ein Job
   sicher braucht, nennt er in `images` (Shell-Suite: `bash:5.2 docker:cli`), dann wird es
-  ausdrücklich vom Spiegel gezogen. `postgis/postgis` führt der Spiegel nicht.
+  ausdrücklich vom Spiegel gezogen. `postgis/postgis` führt der Spiegel nicht; dafür
+  meldet sich die Action mit `DOCKERHUB_USERNAME`/`DOCKERHUB_TOKEN` (Read-only-Token) bei
+  Docker Hub an. PostGIS im Backend-Job startet deshalb als Schritt nach der Action und
+  nicht als `services:`-Container — dessen `credentials` machen bei leeren Secrets
+  (Fork-PRs) die ganze Vorlage ungültig. Ein neuer Job reicht beide Secrets an die
+  Action durch.
 
 Neue Tests liegen neben den bestehenden in `backend/tests/` und werden nach dem
 geprüften Verhalten benannt (`test_<thema>.py`), nicht nach der Implementierung.
