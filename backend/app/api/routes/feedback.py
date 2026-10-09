@@ -24,8 +24,8 @@ ein größeres Problem als das Limit — und dafür gibt es das Telefon.
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,13 +43,17 @@ from app.models.organization import Organization
 from app.models.user import User
 from app.schemas.feedback import (
     FeedbackCreate,
+    FeedbackEingang,
+    FeedbackEmpfaenger,
     FeedbackReportOut,
     FeedbackStats,
     FeedbackSubmitted,
     FeedbackUpdate,
 )
 from app.services import audit
+from app.services import betriebsart
 from app.services import feedback as feedback_svc
+from app.services import feedback_weiterleitung
 from app.services.rate_limit import rate_limit
 
 router = APIRouter(prefix="/feedback", tags=["feedback"])
@@ -105,6 +109,7 @@ async def melder(
 async def submit_feedback(
     data: FeedbackCreate,
     request: Request,
+    hintergrund: BackgroundTasks,
     ctx: Melder = Depends(melder),
     db: AsyncSession = Depends(get_db),
 ) -> FeedbackSubmitted:
@@ -141,6 +146,8 @@ async def submit_feedback(
         user_agent=data.user_agent,
         app_version=data.app_version,
         viewport=data.viewport,
+        # Selbst gehostet: auch an den Hersteller (services/feedback_weiterleitung.py).
+        weiterleitung=feedback_weiterleitung.OFFEN if feedback_weiterleitung.ist_aktiv() else None,
     )
     if bild is not None:
         rohdaten, endung = bild
@@ -161,6 +168,104 @@ async def submit_feedback(
         target_type="feedback_report",
         target_id=str(bericht.id),
         detail={"kind": bericht.kind, "severity": bericht.severity},
+    )
+    if bericht.weiterleitung == feedback_weiterleitung.OFFEN:
+        hintergrund.add_task(feedback_weiterleitung.sofort_weiterleiten, bericht.id)
+    return FeedbackSubmitted(id=bericht.id, kind=bericht.kind, created_at=bericht.created_at)
+
+
+@router.get("/empfaenger", response_model=FeedbackEmpfaenger)
+async def feedback_empfaenger() -> FeedbackEmpfaenger:
+    """Ob eine Meldung auch an den Hersteller geht.
+
+    Der Dialog sagt dem Melder, wer liest. Auf einer selbst gehosteten Instanz
+    ist das nicht mehr nur ihr Betreiber, und wer darauf ein Bildschirmfoto mit
+    Einsatzdaten legt, muss das vorher wissen — nicht im Kleingedruckten der
+    Datenschutzerklärung. Ohne Anmeldung: eine Aussage über die Instanz, nicht
+    über eine Person.
+    """
+    return FeedbackEmpfaenger(hersteller=feedback_weiterleitung.ist_aktiv())
+
+
+@router.post(
+    "/eingang",
+    response_model=FeedbackSubmitted,
+    status_code=201,
+    dependencies=[Depends(rate_limit("feedback_eingang", max_attempts=60, window_seconds=3600, count_attempts=True))],
+)
+async def feedback_eingang(
+    data: FeedbackEingang,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Eine weitergeleitete Meldung einer selbst gehosteten Instanz annehmen.
+
+    Nur auf dem Hosting-Server; überall sonst gibt es den Pfad nicht (404).
+    Ohne Anmeldung, weil eine kostenlose Installation nichts hat, womit sie
+    sich ausweisen könnte — die Grenze sind das Limit je IP, die Bildprüfung
+    und die Sichtung durch einen Menschen, denn nichts hier löst etwas aus.
+
+    Wiederholbar: kommt dieselbe Meldung (Instanz + Kennung) noch einmal, weil
+    die erste Antwort unterwegs verloren ging, gilt sie als angekommen.
+    """
+    if not betriebsart.ist_hosting():
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    vorhanden = (
+        await db.execute(
+            select(FeedbackReport).where(
+                FeedbackReport.herkunft_instanz == data.instanz,
+                FeedbackReport.herkunft_id == data.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if vorhanden is not None:
+        return JSONResponse(
+            status_code=200,
+            content=FeedbackSubmitted(
+                id=vorhanden.id, kind=vorhanden.kind, created_at=vorhanden.created_at
+            ).model_dump(mode="json"),
+        )
+
+    bild = feedback_svc.decode_screenshot(data.screenshot) if data.screenshot else None
+    bericht = FeedbackReport(
+        id=uuid.uuid4(),
+        kind=data.kind,
+        title=data.title.strip(),
+        description=data.description.strip(),
+        severity=data.severity,
+        priority=data.severity,
+        status=STATUS_NEU,
+        org_slug=data.org_slug,
+        org_name=data.org_name,
+        reporter_email=data.reporter_email,
+        reporter_name=data.reporter_name,
+        reporter_role=data.reporter_role,
+        is_demo=data.is_demo,
+        page_url=data.page_url,
+        user_agent=data.user_agent,
+        app_version=data.app_version,
+        viewport=data.viewport,
+        herkunft_instanz=data.instanz,
+        herkunft_id=data.id,
+        herkunft_url=data.instanz_url,
+    )
+    if bild is not None:
+        rohdaten, endung = bild
+        bericht.screenshot_name = await feedback_svc.store_screenshot(bericht.id, rohdaten, endung)
+        bericht.screenshot_bytes = len(rohdaten)
+
+    db.add(bericht)
+    await db.commit()
+    await db.refresh(bericht)
+
+    await audit.record(
+        db,
+        audit.FEEDBACK_SUBMITTED,
+        request=request,
+        target_type="feedback_report",
+        target_id=str(bericht.id),
+        detail={"kind": bericht.kind, "severity": bericht.severity, "herkunft": data.instanz_url or data.instanz},
     )
     return FeedbackSubmitted(id=bericht.id, kind=bericht.kind, created_at=bericht.created_at)
 
@@ -191,6 +296,8 @@ def _out(bericht: FeedbackReport, *, handled_by_email: str | None = None) -> Fee
         app_version=bericht.app_version,
         viewport=bericht.viewport,
         has_screenshot=bool(bericht.screenshot_name),
+        herkunft=bericht.herkunft_url or bericht.herkunft_instanz,
+        weiterleitung=bericht.weiterleitung,
         screenshot_bytes=bericht.screenshot_bytes,
         admin_note=bericht.admin_note,
         handled_by_email=handled_by_email,

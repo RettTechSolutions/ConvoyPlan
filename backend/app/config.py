@@ -82,6 +82,15 @@ class Settings(BaseSettings):
 
     license_key: str = ""
     app_base_url: str = "https://convoyplan.example.com"
+    # Betriebsart (services/betriebsart.py): "selfhost" für eine Instanz, die
+    # eine Organisation für sich betreibt, "hosting" für den Server, der viele
+    # Organisationen trägt. Entscheidet über Standards, nicht über Funktionen.
+    # Unbekannte Werte gelten als "selfhost".
+    instance_mode: str = "selfhost"
+    # Der zentrale Server des Herstellers. Selbst gehostete Instanzen leiten
+    # Meldungen aus der Anwendung dorthin weiter (services/feedback_weiterleitung.py).
+    # Leer = keine Weiterleitung (Instanz ohne Verbindung nach außen).
+    central_url: str = "https://web.convoyplan.de"
     # Firmware-Ablage für Tracker (services/firmware_angebot.py): ein statisches
     # HTTPS-Verzeichnis je Kanal mit manifest.json. Leer = keine Updates anbieten.
     tracker_firmware_url: str = "https://firmware.convoyplan.de"

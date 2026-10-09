@@ -110,3 +110,26 @@ test('ein angehängtes Bildschirmfoto liegt als Bild in der Meldung', async ({ p
 	// Data-URL eines Rasterformats — das Backend nimmt nichts anderes an.
 	expect(bild).toMatch(/^data:image\/(png|jpeg|webp);base64,/);
 });
+
+// ── Wer mitliest ─────────────────────────────────────────────────────────────
+//
+// Eine selbst gehostete Instanz leitet Meldungen an den Hersteller weiter
+// (`services/feedback_weiterleitung.py`). Wer ein Bildschirmfoto mit
+// Einsatzdaten anhängt, muss das vor dem Absenden lesen können — nicht erst in
+// der Datenschutzerklärung.
+
+test('selbst gehostet nennt der Dialog den Hersteller als Empfänger', async ({ page }) => {
+	await page.getByText('Was mitgeschickt wird').click();
+	const hinweis = page.locator('.umgebung .hinweis');
+	await expect(hinweis).toHaveAttribute('data-empfaenger', 'hersteller');
+	await expect(hinweis).toContainText('Hersteller von ConvoyPlan');
+});
+
+test('auf dem Hosting-Server liest nur der Betreiber', async ({ page }) => {
+	await page.goto(`${HUELLE}&hersteller=0`);
+	await expect(page.getByRole('dialog')).toBeVisible();
+	await page.getByText('Was mitgeschickt wird').click();
+	const hinweis = page.locator('.umgebung .hinweis');
+	await expect(hinweis).toHaveAttribute('data-empfaenger', 'betreiber');
+	await expect(hinweis).not.toContainText('Hersteller');
+});

@@ -315,7 +315,7 @@ esac
 # ── Bestehende Installation erkennen ─────────────────────────────────────────
 PREV_DOMAIN="" PREV_EMAIL="" PREV_DB_PASS="" PREV_JWT=""
 PREV_OSM_URL="" PREV_OSM_FILE="" PREV_JAVA_OPTS=""
-PREV_LICENSE="" PREV_GH_TOKEN=""
+PREV_LICENSE="" PREV_GH_TOKEN="" PREV_INSTANCE_MODE=""
 
 _ev() { grep -m1 "^${1}=" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2- || true; }
 
@@ -351,6 +351,7 @@ if [[ -f "$INSTALL_DIR/.env" ]] && \
     _patch_env "GRAPHHOPPER_IMAGE"       "ghcr.io/retttechsolutions/convoyplan/graphhopper:latest"
     _patch_env "REGION_MERGE_IMAGE"      "ghcr.io/retttechsolutions/convoyplan/osmium:latest"
     _patch_env "GITHUB_REPO"             "RettTechSolutions/ConvoyPlan"
+    _patch_env "INSTANCE_MODE"           "selfhost"
 
     sudo chown -R "$(id -u):$(id -g)" "$INSTALL_DIR"
     rm -f "$INSTALL_DIR/docker-compose.yml"
@@ -389,6 +390,7 @@ if [[ -f "$INSTALL_DIR/.env" ]] && \
   PREV_EMAIL=$(_ev ACME_EMAIL)
   PREV_DB_PASS=$(_ev POSTGRES_PASSWORD)
   PREV_JWT=$(_ev JWT_SECRET)
+  PREV_INSTANCE_MODE=$(_ev INSTANCE_MODE)
   PREV_OSM_URL=$(_ev OSM_DOWNLOAD_URL)
   PREV_OSM_FILE=$(_ev OSM_FILENAME)
   # Steht in Anführungszeichen in der .env — abziehen, sonst kommt bei jeder
@@ -405,6 +407,7 @@ elif [[ -f "$INSTALL_DIR/.env" ]]; then
   PREV_EMAIL=$(_ev ACME_EMAIL)
   PREV_DB_PASS=$(_ev POSTGRES_PASSWORD)
   PREV_JWT=$(_ev JWT_SECRET)
+  PREV_INSTANCE_MODE=$(_ev INSTANCE_MODE)
   PREV_OSM_URL=$(_ev OSM_DOWNLOAD_URL)
   PREV_OSM_FILE=$(_ev OSM_FILENAME)
   # Steht in Anführungszeichen in der .env — abziehen, sonst kommt bei jeder
@@ -534,6 +537,9 @@ GRAPHHOPPER_IMAGE=ghcr.io/retttechsolutions/convoyplan/graphhopper:latest
 UPDATER_IMAGE=ghcr.io/retttechsolutions/convoyplan/updater:latest
 REGION_MERGE_IMAGE=ghcr.io/retttechsolutions/convoyplan/osmium:latest
 GITHUB_REPO=RettTechSolutions/ConvoyPlan
+# Betriebsart: selfhost = eigene Instanz einer Organisation. Meldungen aus der
+# Anwendung gehen zusätzlich an den Hersteller (CENTRAL_URL= leer schaltet das ab).
+INSTANCE_MODE=${PREV_INSTANCE_MODE:-selfhost}
 # Interne Ports (Docker-Netzwerk, nicht nach außen exponiert — bei Bedarf anpassen)
 FRONTEND_PORT=3000
 BACKEND_PORT=8000

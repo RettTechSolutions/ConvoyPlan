@@ -53,8 +53,10 @@ Werten:
 | `viewport` | die Größe des Browserfensters |
 | Konto | Name, E-Mail-Adresse und Organisation Ihrer Anmeldung |
 
-Mehr nicht. **Sichtbar ist das alles nur für den Betreiber dieser Instanz** —
-nicht für andere Organisationen und nicht öffentlich.
+Mehr nicht. **Sichtbar ist das alles für den Betreiber dieser Instanz** und — auf
+einer selbst gehosteten Instanz — **für den Hersteller von ConvoyPlan**, der die
+Programmfehler behebt. Nicht für andere Organisationen und nicht öffentlich. Der
+Dialog sagt im Ausklapper, welcher der beiden Fälle gilt.
 
 > **Ein Bildschirmfoto aus dem Einsatz zeigt Einsatzdaten.** Prüfen Sie vor dem
 > Abschicken kurz, was darauf zu sehen ist — genauso, wie Sie es vor dem
@@ -119,6 +121,22 @@ Statuswechsel und jede Löschung steht im Audit-Log
   Verweise stehen auf `SET NULL`, Name, Kürzel und Adresse daneben als
   Textkopie. Ein Fehler ist nicht behoben, nur weil die Demo-Umgebung abgelaufen
   ist, in der er auftrat.
+- **Weiterleitung an den Hersteller (selbst gehostet).** Auf einer Instanz mit
+  `INSTANCE_MODE=selfhost` (Standard) geht jede neue Meldung zusätzlich an
+  `CENTRAL_URL` (Vorgabe `https://web.convoyplan.de`) — mit Text, Umgebung,
+  Bildschirmfoto, Name und E-Mail des Melders sowie Name und Kürzel der
+  Organisation, aber ohne interne Notiz und Priorität. Die Meldung bleibt auch
+  im eigenen Portal; dort steht unter *Hersteller*, ob sie angekommen ist.
+  Zugestellt wird sofort und, wenn das scheitert, alle zehn Minuten erneut;
+  nach 14 Tagen ohne Erfolg wird aufgegeben. Meldungen von vor dieser
+  Änderung werden **nicht** nachgeschickt. Eine Instanz ohne Weg nach außen
+  setzt `CENTRAL_URL=` leer — dann wird nichts vorgemerkt.
+- **Annahme (Hosting-Server).** Mit `INSTANCE_MODE=hosting` nimmt die Instanz
+  unter `POST /api/feedback/eingang` weitergeleitete Meldungen an; sie stehen in
+  derselben Liste, markiert mit *extern* und der Adresse der Instanz. Ohne
+  Anmeldung (eine kostenlose Installation hat nichts, womit sie sich ausweisen
+  könnte), höchstens 60 je Stunde und IP, wiederholte Zustellungen werden an
+  Instanz und Kennung erkannt.
 - **Ohne gültige Lizenz** bleibt das *Melden* erreichbar; das *Sichten* ist
   gewöhnliche Adminarbeit und bleibt lizenzpflichtig.
 
