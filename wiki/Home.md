@@ -133,6 +133,7 @@ Retention-Container → periodischer Daten-Purge
 | [Rollen & Berechtigungen](Rollen) | Rollenmodell und Zugriffsrechte |
 | [Teilen](Teilen) | Tracking-Links ohne Login: Viewer- und Fahrer-Links, Passwortschutz, Widerruf |
 | [Aktionsseite](Aktionsseite) | Konvois öffentlich zeigen: verzögert, vergröbert, über den EventTracker |
+| [Tracker](Tracker) | Feste Ortungsgeräte im Fahrzeug: koppeln, einrichten, Update-Kanäle |
 | [FAQ](FAQ) | Häufige Fragen |
 
 ### Betrieb, Sicherheit & Features

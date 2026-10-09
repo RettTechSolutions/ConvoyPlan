@@ -284,6 +284,51 @@ schlägt sonst an.
 Die Positionen tragen die **Serverzeit**. Puffert ein Gerät im Funkloch und
 sendet später, landen die Punkte gestaucht am Ende der Linie.
 
+### Tracker: das Gerät hängt am Fahrzeug, die Position gehört dem Konvoi
+
+Ein festes Ortungsgerät (Repo **ConvoyPlan-Tracker**: Plan, Protokoll, Simulator,
+später Firmware) sendet die Position seines Fahrzeugs ohne Zutun der Besatzung.
+Das Datenmodell kennt aber keine Position je Fahrzeug, nur je `(convoy_id,
+vehicle_id)`. Deshalb entscheidet die **Instanz**, ob gesendet wird, und sagt es
+dem Gerät in jeder Antwort (`modus`): `senden` nur, solange das gekoppelte
+Fahrzeug in einem Konvoi mit Status `active` oder `running` eingeplant ist
+(E7 im Tracker-Plan), sonst `schweigen`. Das ist zugleich die Antwort auf die
+Datenschutzfrage — ein Tracker ist keine Ortung rund um die Uhr. Steht das
+Fahrzeug in zwei laufenden Konvois, bekommen beide die Position (E8 dort).
+
+Die Regeln stehen in `app/services/ortungsgeraet.py`, geprüft ohne Datenbank
+von `tests/test_tracker_geraete.py`; die Verdrahtung in `api/routes/geraete.py`
+(zwei Router: `/api/geraete/*` für das Gerät, `/api/org/geraete` für den
+Org-Admin). Vier Dinge, die man kennen muss:
+
+- **Vierte Schreibstelle für `VehiclePosition`.** `tests/test_positionsverlauf.py`
+  zählt sie mit; wer eine fünfte baut, trägt sie dort ein und ruft
+  `positionsverlauf.aufzeichnen` mit. Auch `is_recently_cleared` („GPS-Freigabe
+  zurücksetzen") und `planned → en_route` samt `alarm_quittung.zuruecksetzen`
+  gelten hier wie am Fahrer-Link.
+- **Gerätezeit, nicht Serverzeit.** Jeder Fix trägt seine GNSS-Zeit; mehr als
+  120 s Zukunft oder älter als 24 h fällt weg, **je Fix**, nicht je Bündel. Die
+  aktuelle Position wird nur ersetzt, wenn der Fix jünger ist
+  (`on_conflict_do_update … where recorded_at < excluded.recorded_at`); der
+  Verlauf bekommt jeden Fix mit seiner Zeit. Sonst wäre jede Tunnelfahrt ein
+  Knäuel am Ende der Linie.
+- **Code und Token nur als SHA-256**, wie beim Abruf-Token der Aktionsseite.
+  Unbekannt, abgelaufen, verbraucht: dieselbe 404. Ein neuer Code macht das
+  alte Token sofort ungültig; `aktiv=false` ebenso (401, das Gerät geht in
+  *gesperrt*). Die Plansperre der Organisation (`org_plan.ist_gesperrt`) ergibt
+  `schweigen` — der dritte Schreibweg zieht sie mit.
+- **Die Belegung kennt den Tracker noch nicht.** Er belegt das Fahrzeug nicht
+  und wird nicht abgewiesen; sendet daneben ein Telefon für dasselbe Fahrzeug,
+  gewinnt der jüngere Zeitstempel. Dass der Tracker die *Position* belegt und
+  die App die *Meldungen* behält (E5 im Tracker-Plan), ist der nächste Schritt
+  und zieht `belegung.py`, `frontend/src/lib/tracking/belegung.ts` und
+  `packages/track-api` in der Begleit-App mit.
+
+Ein Firmware-Angebot (`firmware` in der Anweisung) gibt es noch nicht — woher
+die Instanz das Manifest ihres Kanals bezieht, ist im Tracker-Repo offen (O6).
+Die Referenz-Instanz im Simulator dort tut dasselbe wie dieser Code; wer das
+Protokoll ändert, zieht beide. Anwenderdoku: `wiki/Tracker.md`.
+
 ### Alarmquittung: die Führung quittiert am Server
 
 Ein technischer Halt oder Ausfall löst `alert` aus; **quittiert** wird er seit

@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
-from app.api.routes import track, tracking
+from app.api.routes import geraete, track, tracking
 from app.database import AsyncSessionLocal
 from app.models.public_tracker import VehiclePositionTrail
 from app.services import positionsverlauf as pv
@@ -71,9 +71,13 @@ def _schreibende_funktionen(modul) -> dict[str, bool]:
 
 
 def test_jede_schreibstelle_zeichnet_auf():
-    gefunden = {**_schreibende_funktionen(track), **_schreibende_funktionen(tracking)}
-    # Heute drei: Fahrer-Link, REST, WebSocket. Kommt eine dazu, steht sie hier.
-    assert len(gefunden) == 3, gefunden
+    gefunden = {
+        **_schreibende_funktionen(track),
+        **_schreibende_funktionen(tracking),
+        **_schreibende_funktionen(geraete),
+    }
+    # Heute vier: Fahrer-Link, REST, WebSocket, Ortungsgerät. Kommt eine dazu, steht sie hier.
+    assert len(gefunden) == 4, gefunden
     assert all(gefunden.values()), gefunden
 
 
@@ -87,7 +91,7 @@ def test_keine_weitere_schreibstelle_ausserhalb():
         for p in app.rglob("*.py")
         if "pg_insert(VehiclePosition)" in p.read_text(encoding="utf-8")
     ]
-    assert sorted(treffer) == ["api/routes/track.py", "api/routes/tracking.py"]
+    assert sorted(treffer) == ["api/routes/geraete.py", "api/routes/track.py", "api/routes/tracking.py"]
 
 
 # ── Nur an aktiven Seiten ──────────────────────────────────────────────────
