@@ -21,6 +21,14 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+## [2026.8.0] – 2026-10-09
+
+### Wichtig beim Update
+
+- **Jede Instanz baut ihren Routing-Graphen neu.** GraphHopper-Fassung und Abbiegeverbote stehen im Fingerprint. Je nach Region dauert das 45–75 Minuten, in dieser Zeit gibt es keine Routenplanung. Bereits berechnete Routen bleiben erhalten. Die Statusseite und das Admin-Portal zeigen den Aufbau mit Dauer; der Updater tauscht den GraphHopper-Container nicht mitten im Import aus. Wer das Update steuert, legt es außerhalb einer Lage.
+- Datenbank-Migrationen `0053` bis `0058` laufen beim Start des Backends.
+- Passkeys verlangen ein korrektes `APP_BASE_URL`; mit der Vorlage `https://convoyplan.example.com` lässt sich keiner anlegen.
+
 ### Added
 
 - **Firmware-Updates für Tracker kommen von der Instanz.** Die Instanz holt stündlich das Manifest ihres Kanals aus der Firmware-Ablage (`TRACKER_FIRMWARE_URL`, Vorgabe `https://firmware.convoyplan.de`, leer = keine Updates), prüft das Image gegen SHA-256 und Größe aus dem Manifest und bietet es dem Gerät in der Anweisung an — nur, wenn es neuer ist als sein Stand und zu seiner Hardware passt. Geladen wird von der Instanz (`GET /api/geraete/firmware/<kanal>/<version>.bin`, Gerätetoken, `Range` für den Wiederanlauf im Funkloch), nicht aus der Ablage: Ein Tracker braucht nur seine Instanz zu erreichen. Ist die Ablage nicht erreichbar, bleibt der letzte Stand gültig. Der Org-Admin sieht je Gerät, welche Version bereitsteht.
@@ -35,6 +43,12 @@ ursprünglichen SemVer-Nummern.
 
 - **Anmelden mit Passkey.** Neben E-Mail und Passwort gibt es auf beiden Anmeldeseiten (Organisation und Superadmin) **Mit Passkey anmelden** — Fingerabdruck, Gesichtserkennung oder Geräte-PIN, ohne Adresse und ohne Passwort. Eingerichtet und entfernt werden Passkeys im eigenen Konto (Planung: *Konto → Passkeys*, Adminportal: *System → Passkeys*); das Einrichten verlangt das aktuelle Passwort. Die Instanz verlangt Benutzerverifikation, deshalb folgt auf eine Passkey-Anmeldung kein TOTP-Schritt. Relying Party ist die Domain aus `APP_BASE_URL` — eine Instanz, die mit `https://convoyplan.example.com` aus der Vorlage läuft, muss den Wert richtig setzen, sonst lässt sich kein Passkey anlegen. Neue Abhängigkeit `webauthn` (py_webauthn), Migration `0053`. Anwenderdoku: `wiki/Sicherheit-und-Datenschutz.md`, „Passkeys".
 
+- **Durchfahrtshöhen entlang der Route.** Das Routing mied Unterführungen unter der Höhe des höchsten Fahrzeugs schon immer, aber still. Jetzt stehen die Höhenbeschränkungen, unter denen die Route hindurchgeht, mit Kilometer, Höhe und Spielraum in der Planungsansicht und im Marschbefehl (Stufen *eng* < 10 cm, *knapp* < 30 cm, *frei*). *Eng* gibt es, weil GraphHopper `max_height` auf 10 cm rundet. Brücken **ohne** Höhenangabe in OSM sucht die Planung auf Knopfdruck entlang der Linie (Overpass), Autobahn und Kraftfahrstraße erst auf Nachfrage. Migrationen `0055` und `0056`. Anwenderdoku: `wiki/Konvoi-Planung.md`, „Durchfahrtshöhen".
+
+- **Die Statusseite sagt, warum eine Funktion gestört ist.** Unter „Nicht verfügbar" steht jetzt ein Grund in Anwendersprache: Kartendaten werden geladen, die Straßenkarte wird neu aufgebaut (mit Dauer), die Region wird gewechselt, eine externe Quelle antwortet nicht. Nur was nicht angekündigt ist, rät zum Melden. `GET /api/status/public` trägt dafür `reason` je Funktion, weiterhin ohne Anbieter- oder Dienstnamen.
+
+- **Graph-Aufbau im Admin-Portal.** Unter **System → Kartenregion** steht, wenn GraphHopper außerhalb eines Regionswechsels baut (nach einem Update, einem Neustart ohne fertigen Graphen), mit Beginn und Dauer. Ein Import, der nach vier Stunden noch nicht fertig ist, erscheint als „Import ohne Abschluss", mit Hinweis auf das Container-Log.
+
 ### Changed
 
 - **`/authorize`, `/token`, `/revoke` und die AS-Metadaten bleiben bei abgeschaltetem MCP montiert**, solange die App-Anmeldung an ist. MCP-Clients tauschen dort bei abgeschaltetem MCP weder Codes noch Refresh-Tokens; die Metadaten kündigen dann weder `/register` noch MCP-Scopes an.
@@ -42,12 +56,23 @@ ursprünglichen SemVer-Nummern.
 
 - **Der Eintrag für den EventTracker bringt die Instanz mit.** Nach dem Anlegen oder Erneuern einer Aktionsseite steht im Eintrag zusätzlich `"convoyplan":"https://<instanz>"`. Der EventTracker (ab RettTechSolutions/Convoyplan-EventTracker#7) nimmt die Adresse von dort, der Installer fragt nicht mehr nach ihr — ein Eintrag, einmal kopieren. `CONVOYPLAN_URL` im EventTracker darf weiter gesetzt sein und gilt dann vor dem Feld.
 
+- **GraphHopper 10.2.** Mit Abbiegeverboten (siehe *Fixed*) brach der Import von 9.1 an gültigen Relationen mit Via-Weg ab (GraphHopper #3086), und der Container startete in Dauerschleife neu. Anders als unter 2026.7.0 angekündigt bleibt es deshalb nicht bis nach den Weihnachtskonvois bei 9.1. Die Fassung steht jetzt im Graph-Fingerprint, weil sich das Speicherformat ändert. `car` rechnet ohne Contraction Hierarchies: Mit Abbiegeverboten wären sie die teuerste Phase des Imports gewesen, und genutzt hätte sie nur „schnell" ohne Fahrzeughöhe.
+
+- **Kein Regionswechsel mitten in einen Graph-Aufbau.** Ein sofortiger Wechsel wird abgelehnt (409), solange GraphHopper herunterlädt oder importiert. Ein geplanter darf angefordert werden; der Updater startet ihn erst, wenn Termin erreicht **und** Aufbau fertig ist, und das Panel zeigt, dass er wartet. Ein hängender Import hält nichts auf.
+
 ### Fixed
 
 - **Absagen am Token-Endpunkt kamen als 500.** Der OAuth-Provider warf `TokenError` innerhalb einer Datenbanksitzung; weil das eine eingefrorene Dataclass ist, scheiterte `contextlib` am Zuweisen des Tracebacks. Betroffen war etwa ein deaktiviertes Konto, dessen MCP-Client sein Token erneuern wollte — statt `invalid_grant` gab es einen Serverfehler.
 
 - **Abruf-Adresse der Aktionsseiten beginnt mit `https://`.** Der Org-Admin zeigte `http://…/api/public/aktion/<slug>` (und dasselbe in `CONVOYPLAN_URL` für den EventTracker), obwohl die Instanz nur per HTTPS antwortet. uvicorn nahm `X-Forwarded-Proto` von Caddy nicht an, weil `--forwarded-allow-ips` auf `127.0.0.1` stand und Caddy aus dem Docker-Netz kommt. Wer die Adresse übernahm, lief in die Umleitung auf https; Node fetch verwirft dabei den Authorization-Kopf, der Abruf endete in 404 und die öffentliche Seite blieb leer. Die Compose-Datei setzt jetzt `FORWARDED_ALLOW_IPS=*` für das Backend — vertretbar, weil es keinen Port veröffentlicht und nur Caddy es erreicht —, der Entrypoint reicht den Wert an uvicorn durch. Bereits angelegte Seiten brauchen nichts: die Adresse wird bei jeder Anzeige neu gebaut; im EventTracker eingetragene `http://`-Adressen auf `https://` umstellen.
 
+- **Abbiegeverbote aus OSM werden beachtet.** `car` und `truck` liefen ohne `turn_costs`, GraphHopper ignorierte damit jedes `type=restriction`. Gemeldet an der B 472 bei Peißenberg (Anschluss WM 15): Die Route nahm die Auffahrt hinauf und bog an ihrer Spitze per Haarnadel in die Gegenrichtung ab, über ein `only_right_turn` hinweg.
+
+- **Gültige Lizenzschlüssel galten an manchen Tagen als abgelaufen.** Seit Python 3.11 liest `date.fromisoformat` auch `YYYYMMDD` und machte aus einer Unix-Zeit in `exp` je nach Ziffernfolge ein Datum im Jahr 1823. Reine Ziffernfolgen gehen jetzt zuerst als Zeitstempel durch.
+
+### Security
+
+- Begründete Ausnahmen in `.trivyignore`: Jackson- und httpcore5-Funde im GraphHopper-JAR (9.1 und 10.2; nur im internen Netz erreichbar, einziger Client ist das Backend) und zwei Go-Stdlib-CVEs in den docker-CLI-Binaries des Updaters (betreffen die Server-Seite, der Updater ist nur Client).
 ## [2026.7.0] – 2026-10-02
 
 ### Added
@@ -950,7 +975,8 @@ Das ruft den Update-Modus auf: räumt verwaiste Updater-Container auf, zieht all
 - Capacitor configuration for Android/iOS native wrapper.
 - Docker Compose setup with GraphHopper OSM pre-download.
 
-[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.7.0...HEAD
+[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.8.0...HEAD
+[2026.8.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.7.3...v2026.8.0
 [2026.7.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.6.2...v2026.7.0
 [2026.6.2]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.6.1...v2026.6.2
 [2026.6.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.5.2...v2026.6.0
