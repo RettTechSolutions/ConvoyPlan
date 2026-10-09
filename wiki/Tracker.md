@@ -72,10 +72,19 @@ Gerät; **Löschen** entfernt es.
 ## Update-Kanäle
 
 Wie bei der Instanz: *Stabil*, *Beta*, *Nightly*. Der Kanal gilt je Gerät; die
-Instanz bietet dem Gerät an, was auf seinem Kanal neuer ist als sein Stand.
-Eingespielt wird nur im Stand, nie während der Fahrt, und ein Image, das nach
-dem Neustart die Instanz nicht erreicht, rollt sich selbst zurück. Das Ergebnis
-des letzten Updates steht in der Liste.
+Instanz bietet dem Gerät an, was auf seinem Kanal neuer ist als sein Stand und
+zu seiner Hardware passt. Eingespielt wird nur im Stand, nie während der Fahrt,
+und ein Image, das nach dem Neustart die Instanz nicht erreicht, rollt sich
+selbst zurück. In der Liste steht, welche Version bereitsteht und wie das letzte
+Update ausging.
+
+Die Firmware kommt aus der **Firmware-Ablage** (`https://firmware.convoyplan.de`,
+gefüllt vom Tracker-Repo). Die Instanz holt stündlich das Manifest des Kanals,
+lädt das Image einmal und prüft es gegen Prüfsumme und Größe; **die Geräte laden
+von ihrer Instanz**, nicht aus dem Internet — ein Tracker braucht nur die
+Adresse seiner Instanz zu erreichen. Mit `TRACKER_FIRMWARE_URL` zeigt eine
+Instanz auf eine eigene Ablage, leer schaltet Updates ab. Ist die Ablage nicht
+erreichbar, bleibt der letzte Stand gültig.
 
 ## Was man wissen sollte
 

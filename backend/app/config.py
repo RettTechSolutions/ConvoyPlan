@@ -76,6 +76,9 @@ class Settings(BaseSettings):
 
     license_key: str = ""
     app_base_url: str = "https://convoyplan.example.com"
+    # Firmware-Ablage für Tracker (services/firmware_angebot.py): ein statisches
+    # HTTPS-Verzeichnis je Kanal mit manifest.json. Leer = keine Updates anbieten.
+    tracker_firmware_url: str = "https://firmware.convoyplan.de"
 
     # Deployment environment. In "production" the app refuses to start with an
     # insecure JWT secret (fail-closed). Set APP_ENV=development to relax this

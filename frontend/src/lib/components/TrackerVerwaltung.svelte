@@ -267,6 +267,7 @@
 				{#if g.vehicle_name}Fahrzeug <strong>{g.vehicle_name}</strong>{:else}Kein Fahrzeug gekoppelt{/if}
 				· Kanal {KANAELE.find((k) => k.wert === g.kanal)?.name ?? g.kanal}
 				{#if g.firmware}· Firmware {g.firmware}{/if}
+				{#if g.angebot_version}· <span class="angebot" title="Das Gerät holt sich das Update, sobald es steht und der Akku reicht.">Update {g.angebot_version} bereit</span>{/if}
 			</p>
 			{#if g.eingerichtet}
 				<p class="hint">
@@ -320,4 +321,5 @@
 	.marke { margin-left: .5rem; font-size: var(--text-xs); padding: .1rem .45rem; border-radius: 999px; background: #2e7d32; color: #fff; font-weight: 600; }
 	.marke.aus { background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border); }
 	.marke.warn { background: #d4a017; color: #1a1a1a; }
+	.angebot { color: #1f6f8b; font-weight: 600; }
 </style>

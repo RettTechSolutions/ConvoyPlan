@@ -18,11 +18,13 @@ die drei anderen ``positionsverlauf.aufzeichnen`` auf, achtet auf
 Tracker) und hebt ein geplantes Fahrzeug beim ersten Fix auf ``en_route``.
 """
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -36,7 +38,7 @@ from app.models.convoy import Convoy, ConvoyVehicle
 from app.models.ortungsgeraet import Ortungsgeraet
 from app.models.vehicle import Vehicle
 from app.models.vehicle_position import VehiclePosition
-from app.services import alarm_quittung, audit, org_plan, positionsquelle, positionsverlauf
+from app.services import alarm_quittung, audit, firmware_angebot, org_plan, positionsquelle, positionsverlauf
 from app.services import ortungsgeraet as og
 from app.services.rate_limit import rate_limit
 from app.services.tracking import tracking_manager
@@ -98,10 +100,10 @@ async def _anweisung(db: AsyncSession, geraet: Ortungsgeraet, jetzt: datetime) -
     konvois = await _laufende_konvois(db, geraet)
     gesperrt = await org_plan.ist_gesperrt(db, geraet.organization_id)
     modus = og.modus(geraet.vehicle_id is not None, len(konvois), gesperrt)
-    # Ein Firmware-Angebot gibt es noch nicht: woher die Instanz das Manifest
-    # ihres Kanals bezieht, ist im Tracker-Repo offen (O6). Das Feld steht
-    # schon im Vertrag, damit die Firmware es kennt.
-    return og.anweisung(modus, jetzt, firmware=None)
+    # Was das Gerät damit tut — nur im Stand, nur mit Akku —, entscheidet es
+    # selbst; die Adresse zeigt auf diese Instanz (services/firmware_angebot.py).
+    firmware = await firmware_angebot.fuer_geraet(geraet.kanal, geraet.firmware, geraet.hardware)
+    return og.anweisung(modus, jetzt, firmware=firmware)
 
 
 def _zustand_merken(geraet: Ortungsgeraet, daten: dict[str, Any], jetzt: datetime) -> None:
@@ -252,6 +254,29 @@ async def _eintragen(
     return ereignisse
 
 
+_VERSION_IM_PFAD = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$")
+
+
+@geraet_router.get("/firmware/{kanal}/{version}.bin")
+async def firmware_laden(
+    kanal: str,
+    version: str,
+    geraet: Ortungsgeraet = Depends(_geraet_aus_token),
+):
+    """Das Image, das die Anweisung angeboten hat — geprüft, von dieser Instanz.
+
+    Nur die Version aus dem aktuellen Manifest des Kanals; alles andere ist 404.
+    ``FileResponse`` beantwortet ``Range``, damit ein abgebrochener Download im
+    Funkloch fortgesetzt werden kann.
+    """
+    if kanal not in og.KANAELE or not _VERSION_IM_PFAD.match(version):
+        raise HTTPException(status_code=404, detail=_NICHT_GEFUNDEN)
+    pfad = await firmware_angebot.ablage.datei(kanal, version)
+    if pfad is None:
+        raise HTTPException(status_code=404, detail=_NICHT_GEFUNDEN)
+    return FileResponse(pfad, media_type="application/octet-stream", filename=f"{version}.bin")
+
+
 @geraet_router.post("/firmware/ergebnis")
 async def firmware_ergebnis(
     daten: dict[str, Any] = Body(...),
@@ -304,6 +329,9 @@ class GeraetZeile(BaseModel):
     update_ergebnis: str | None
     update_meldung: str | None
     update_at: datetime | None
+    # Version, die die Instanz dem Gerät auf seinem Kanal anbietet — aus dem
+    # Zwischenspeicher, die Liste holt nichts nach.
+    angebot_version: str | None
     created_at: datetime
 
 
@@ -338,6 +366,7 @@ def _zeile(g: Ortungsgeraet, jetzt: datetime) -> dict[str, Any]:
         "update_ergebnis": g.update_ergebnis,
         "update_meldung": g.update_meldung,
         "update_at": g.update_at,
+        "angebot_version": firmware_angebot.angebot_bekannt(g.kanal, g.firmware, g.hardware),
         "created_at": g.created_at,
     }
 
