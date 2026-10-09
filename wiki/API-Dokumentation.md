@@ -627,7 +627,9 @@ Org-Admin-Rolle erforderlich (außer dem öffentlichen Slug-Endpunkt). Die Overr
 `GET /api/status/public` ist die Datenquelle der öffentlichen Statusseite und bewusst
 grobkörnig: je Funktion (Portal, Konvoi-Daten, Routenplanung, Live-Tracking, Verkehr &
 Sperrungen, Wetter) nur `operational`, `degraded`, `down` oder `unknown` — **keine**
-Latenzen, Anbieternamen, Kartenausschnitte oder Versionsangaben. Das Ergebnis ist
+Latenzen, Anbieternamen, Kartenausschnitte oder Versionsangaben. Ist eine Funktion
+nicht betriebsbereit, nennt `reason` den Grund in Anwendersprache (etwa „Die
+Kartenregion wird gerade gewechselt"); sonst ist das Feld `null`. Das Ergebnis ist
 15 Sekunden gecacht, damit häufiges Neuladen der Seite nicht auf die geprüften Dienste
 durchschlägt. Wer die technischen Details braucht, nutzt `GET /api/status`.
 

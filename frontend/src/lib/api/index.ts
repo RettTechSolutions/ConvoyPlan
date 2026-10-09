@@ -229,6 +229,8 @@ export interface PublicStatusComponent {
 	name: string;
 	description: string;
 	state: PublicComponentState;
+	/** Warum die Funktion nicht (voll) nutzbar ist; null, wenn sie es ist. */
+	reason?: string | null;
 }
 
 export interface PublicStatusResponse {

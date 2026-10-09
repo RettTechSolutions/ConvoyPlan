@@ -121,7 +121,9 @@ services:
       # ueber diese Mounts die tatsaechlich verfuegbare Plattenkapazitaet
       # (df auf einem Volume-Mount meldet das darunterliegende Dateisystem).
       # Das Backend schreibt hier nichts — Downloads und Graph-Bau bleiben
-      # Sache des Updaters/GraphHopper-Containers.
+      # Sache des Updaters/GraphHopper-Containers. Die öffentliche Statusseite
+      # liest an denselben Mounts ab, ob gerade ein Graph gebaut wird
+      # (backend/app/services/graph_aufbau.py).
       - osm_data:/data/osm:ro
       - gh_graph:/data/graph:ro
     depends_on:

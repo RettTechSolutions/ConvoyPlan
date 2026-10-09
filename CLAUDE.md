@@ -90,6 +90,13 @@ Drei Stellen, jede mit eigenem Test:
   ein Verzeichnis mit Fingerprint **und** `edges` (`test_switch_region.sh`,
   Fall 12b).
 
+Ein vierter Leser kommt ohne Schreibrecht aus: die öffentliche Statusseite nennt
+einen laufenden Neuaufbau als Grund für die Routing-Pause
+(`app/services/graph_aufbau.py`, lesende Mounts). Sie verlässt sich darauf, dass der
+Fingerprint **unmittelbar vor** dem Import geschrieben wird — seine Änderungszeit ist
+der Beginn — und deckelt mit derselben Frist wie `GH_IMPORT_GRACE`. Wer den
+Fingerprint woanders schreibt, zieht `tests/test_graph_aufbau.py` mit.
+
 ### Speicher: Import im Heap, Betrieb per MMAP
 
 `graphhopper/entrypoint.sh` startet in **zwei Phasen**, wenn `GH_COMMAND=server`

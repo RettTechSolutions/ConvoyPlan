@@ -9,7 +9,12 @@
      * Konvoi plant.
      */
     import { onDestroy, onMount } from 'svelte';
-    import { statusApi, type PublicComponentState, type PublicStatusResponse } from '$lib/api';
+    import {
+        statusApi,
+        type PublicComponentState,
+        type PublicStatusComponent,
+        type PublicStatusResponse,
+    } from '$lib/api';
     import AppLogo from '$lib/components/AppLogo.svelte';
     import LegalFooter from '$lib/components/LegalFooter.svelte';
     import { themeStore } from '$lib/stores/theme';
@@ -103,6 +108,11 @@
         down: 'Diese Funktion ist gerade nicht nutzbar.',
         unknown: 'Wird gerade geprüft.',
     };
+
+    /** Grund vom Server — bei „betriebsbereit" nie, auch wenn einer mitkäme. */
+    function reason(c: PublicStatusComponent): string | null {
+        return c.state === 'operational' ? null : (c.reason ?? null);
+    }
 
     // Ein Symbol je Funktion — Pfaddaten für ein 24×24-Raster.
     const ICONS: Record<string, string> = {
@@ -220,8 +230,13 @@
                         <p class="desc">{c.description}</p>
                         <div class="card-foot">
                             <span class="badge">{STATE_LABEL[c.state]}</span>
-                            <span class="hint">{STATE_HINT[c.state]}</span>
+                            {#if !reason(c)}
+                                <span class="hint">{STATE_HINT[c.state]}</span>
+                            {/if}
                         </div>
+                        {#if reason(c)}
+                            <p class="reason">{reason(c)}</p>
+                        {/if}
                     </article>
                 {/each}
             </div>
@@ -537,6 +552,18 @@
         white-space: nowrap;
     }
     .hint { font-size: var(--text-xs); color: var(--text-muted); }
+    /* Der Grund steht unter dem Zustand, nicht statt seiner: die Plakette
+       bleibt die schnelle Aussage, der Text die Erklärung dazu. */
+    .reason {
+        margin: .7rem 0 0;
+        padding: .5rem .65rem;
+        font-size: var(--text-xs);
+        line-height: 1.45;
+        color: var(--text-2);
+        background: color-mix(in srgb, var(--state) 8%, transparent);
+        border-left: 2px solid color-mix(in srgb, var(--state) 55%, transparent);
+        border-radius: 0 6px 6px 0;
+    }
 
     .card.skeleton {
         height: 132px;
