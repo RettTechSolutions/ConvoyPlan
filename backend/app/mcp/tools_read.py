@@ -705,6 +705,9 @@ def register(mcp) -> None:
                 # Brücken über der Route ohne Höhenangabe in OSM; None:
                 # noch nicht gesucht (geschieht in der Planungsansicht).
                 "bruecken_ohne_hoehe": route.bruecken,
+                # Gewichtsgrenzen aus OSM (Brücken, Lkw-Verbote); stufe
+                # ueberschritten/knapp/frei/unbekannt. None: nicht ermittelt.
+                "gewichtsgrenzen": route.gewichtsgrenzen,
             }
             if mit_geometrie:
                 data["geometrie_geojson"] = geo_svc.linestring_to_geojson(route.geometry)

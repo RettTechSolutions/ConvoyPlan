@@ -102,7 +102,7 @@ Hat mindestens ein Fahrzeug im Verband eine **Höhe** (siehe [Fahrzeuge](Fahrzeu
 | frei | ab 30 cm | Wird erst auf Klick („+ N weitere") angezeigt. |
 | **Höhe fehlt** | – | Kein Fahrzeug im Verband hat eine Höhe; dann wird auch nichts gemieden. |
 
-Fahrzeuge ohne Höhenangabe zählen beim Meiden nicht mit — der Block nennt ihre Anzahl. Enge und knappe Stellen stehen zusätzlich im [Marschbefehl](Marschbefehl-Export) unter „Durchfahrtshöhen".
+Fahrzeuge ohne Höhenangabe zählen beim Meiden nicht mit — der Block nennt ihre Anzahl. Enge und knappe Stellen stehen zusätzlich im [Marschbefehl](Marschbefehl-Export) unter „Durchfahrtshöhen", und **jede** Stelle steht im [Roadbook](Marschbefehl-Export#roadbook-pdf) an ihrem Kilometer — auch die mit viel Spielraum, damit die Besatzung weiß, wo sie unbesorgt durchfahren kann.
 
 ### Brücken ohne Höhenangabe
 
@@ -116,6 +116,23 @@ Eine Brücke, an deren unterführter Straße in OpenStreetMap keine Höhe steht,
 Fährt die Route auf einer Brücke über eine andere Brücke hinweg (etwa eine Straßenbrücke über eine Bahnbrücke am Fluss), erscheint die untere fälschlich als Brücke über der Route.
 
 **Grenzen der Daten:** Alle Angaben stammen aus OpenStreetMap. Die Liste ist ein Hinweis, keine Freigabe — maßgeblich ist die Beschilderung vor Ort, bei Großraum- und Schwertransporten die Genehmigung. Für Routen, die vor dieser Funktion berechnet wurden, erscheint der Block erst nach einer Neuberechnung.
+
+---
+
+## Gewichtsgrenzen
+
+Hat mindestens ein Fahrzeug ein **Gewicht** (siehe [Fahrzeuge](Fahrzeuge)), meidet die Routenberechnung jede Strecke mit einer Gewichtsgrenze unter dem schwersten Fahrzeug — Brücken mit Tragfähigkeitsbeschränkung genauso wie Lkw-Durchfahrtsverbote („Verbot für Fahrzeuge über 7,5 t"). Ausnahmen auf dem Zusatzzeichen gelten so:
+
+- **Anlieger frei**: wird nicht gesperrt, sondern stark gemieden. Liegt das Ziel hinter so einer Grenze, gäbe es sonst keine Route. Führt die Route trotzdem hindurch, steht die Stelle als **über der Grenze** in der Liste — dann bitte prüfen, ob der Verband dort wirklich Anlieger ist.
+- **Lieferverkehr frei**, **Forstverkehr frei**: gesperrt, ein Konvoi ist keins von beidem.
+
+Nach der Berechnung zeigt der Block **Gewichtsgrenzen** jede Grenze an der Route mit Kilometer und **Reserve** (Grenze minus schwerstes Fahrzeug); unter 2 t Reserve heißt sie **knapp**. Die Stellen stehen außerdem im Marschbefehl (alles außer „frei") und im Roadbook (alle).
+
+Findet die Routenberechnung keinen Weg, der Höhe und Gewicht des Verbands einhält, sagt sie das mit den Werten, mit denen sie gesucht hat — dann Fahrzeugdaten, Start, Ziel und Wegpunkte prüfen.
+
+**Grenzen der Daten:** Die Werte stammen aus OpenStreetMap und sind auf 0,1 t gerundet. Auf dem Schild gilt das *tatsächliche* Gewicht, verglichen wird mit dem eingetragenen Fahrzeuggewicht — wer dort das zulässige Gesamtgewicht einträgt, rechnet auf der sicheren Seite. **Achslasten** (Zeichen 263) werden nicht berücksichtigt. Militärische Lastklassen (MLC) kennt OpenStreetMap kaum. Maßgeblich ist die Beschilderung vor Ort, bei Schwertransporten die Genehmigung.
+
+Nach dem Update auf diese Version baut jede Installation ihren Routing-Graphen einmal neu (die Gewichtsdaten müssen hinein); bis dahin wird ohne Gewichtsgrenzen geroutet, und der Block erscheint erst mit dem neuen Graphen.
 
 ---
 

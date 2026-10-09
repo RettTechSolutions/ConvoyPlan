@@ -31,5 +31,8 @@ class Route(Base):
     bruecken: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # Meterbereiche [von, bis] auf Autobahn/Kraftfahrstraße, für die Suche.
     schnellstrassen: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Gewichtsgrenzen entlang der Route (services/gewichtsgrenzen.py). None =
+    # nicht ermittelt (alte Route, Import, Graph ohne max_weight).
+    gewichtsgrenzen: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     convoy: Mapped["Convoy"] = relationship(back_populates="route")

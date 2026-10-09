@@ -128,9 +128,13 @@ fi
 # road_class + max_speed: vom Backend als Routen-Details angefragt (Fahrzeit-
 # Berechnung innerorts/außerorts) und im Custom Model der Straßenpräferenzen
 # verwendet. max_height: Höhenbeschränkung aus den Fahrzeugdaten.
+# max_weight + max_weight_except: Gewichtsgrenzen (Brücken, Lkw-Verbote) samt
+# Ausnahme wie "Anlieger frei" — gesperrt bzw. ausgewiesen in
+# backend/app/services/gewichtsgrenzen.py.
 # Fehlen diese Encoded Values im Graph, lehnt GraphHopper jede Routing-Anfrage
-# ab und calculate-route schlägt fehl.
-ENCODED_VALUES="car_access, car_average_speed, road_class, max_speed, max_height"
+# ab, die sie benutzt; das Backend faellt fuer max_weight auf eine Anfrage ohne
+# zurueck (routing.calculate_route), fuer die uebrigen nicht.
+ENCODED_VALUES="car_access, car_average_speed, road_class, max_speed, max_height, max_weight, max_weight_except"
 
 # Abbiegeverbote aus OSM (type=restriction) kennt GraphHopper nur in Profilen
 # mit turn_costs. Ohne sie routete `car` bis 2026-10 ueber jedes Verbot hinweg:

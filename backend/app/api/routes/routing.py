@@ -26,6 +26,7 @@ from app.schemas.route import BrueckenPruefung, RouteResponse
 from app.services import bruecken as bruecken_svc
 from app.services import durchfahrtshoehe as hoehe_svc
 from app.services import geometry as geo_svc
+from app.services import gewichtsgrenzen as gewicht_svc
 from app.services import routing as routing_svc
 from app.services import schedule as schedule_svc
 from app.services import export as export_svc
@@ -60,6 +61,27 @@ def _waypoint_latlon(wp) -> tuple[float, float] | None:
     if c["lat"] is None or c["lon"] is None:
         return None
     return c["lat"], c["lon"]
+
+
+def _keine_verbindung_message(vehicle_params: dict[str, Any]) -> str:
+    """Meldung, wenn GraphHopper keine Verbindung findet.
+
+    Mit Höhe oder Gewicht im Custom Model liegt es meist daran: jeder Weg führt
+    unter einer zu niedrigen Brücke durch oder über eine zu schwache.
+    """
+    grenzen = []
+    if "max_height_m" in vehicle_params:
+        grenzen.append(f"Höhe {vehicle_params['max_height_m']:.2f} m".replace(".", ","))
+    if "max_weight_t" in vehicle_params:
+        grenzen.append(f"Gewicht {vehicle_params['max_weight_t']:.1f} t".replace(".", ","))
+    if not grenzen:
+        return "Zwischen den Punkten wurde keine befahrbare Verbindung gefunden."
+    return (
+        "Keine Route gefunden, die die Grenzen des Verbands einhält ("
+        + ", ".join(grenzen)
+        + "). Jeder Weg führt unter einer zu niedrigen Brücke durch oder über eine "
+        "Gewichtsgrenze. Fahrzeugdaten, Start, Ziel und Wegpunkte prüfen."
+    )
 
 
 def _out_of_bounds_message(point_index: int | None, total_points: int) -> str:
@@ -389,6 +411,7 @@ async def get_route(
         kanalwechsel=route.kanalwechsel or [],
         durchfahrtshoehen=route.durchfahrtshoehen,
         bruecken=route.bruecken,
+        gewichtsgrenzen=route.gewichtsgrenzen,
         planned_departure=route_planned_departure,
         planned_arrival=route_planned_arrival,
     )
@@ -444,13 +467,11 @@ async def calculate_route(
     points.extend({"lat": lat, "lon": lon} for _, (lat, lon) in positioned)
     points.append(end)
 
-    # Determine worst-case vehicle constraints
-    vehicle_params = {}
-    for cv in convoy.convoy_vehicles:
-        v = cv.vehicle
-        if v.height_cm:
-            max_h = vehicle_params.get("max_height_m", float("inf"))
-            vehicle_params["max_height_m"] = min(max_h, v.height_cm / 100)
+    # Der ungünstigste Fall im Verband: das höchste und das schwerste Fahrzeug.
+    # Bis 2026-10 stand hier min() — gesperrt wurde mit dem *niedrigsten*
+    # Fahrzeug, und ein Wechsellader im Verband mit einem MTW fuhr unter Brücken
+    # durch, die nur der MTW passiert. Fahrzeuge ohne Angabe zählen nicht mit.
+    vehicle_params = routing_svc.verbandsgrenzen(cv.vehicle for cv in convoy.convoy_vehicles)
 
     try:
         route_data = await routing_svc.calculate_route(
@@ -462,6 +483,9 @@ async def calculate_route(
         # Punkt außerhalb der geladenen Kartendaten (Standard: DACH).
         logger.warning("Routing point out of bounds for convoy %s: %s", convoy_id, exc)
         raise HTTPException(status_code=422, detail=_out_of_bounds_message(exc.point_index, len(points)))
+    except routing_svc.RoutingNoConnectionError:
+        logger.warning("No connection for convoy %s with %s", convoy_id, vehicle_params)
+        raise HTTPException(status_code=422, detail=_keine_verbindung_message(vehicle_params))
     except ValueError as exc:
         # GraphHopper hat geantwortet, aber die Anfrage abgelehnt (z. B. Punkt
         # außerhalb der Kartendaten, fehlende Encoded Values) — Meldung
@@ -509,6 +533,15 @@ async def calculate_route(
         vehicle_params.get("max_height_m"),
     )
     schnellstrassen = bruecken_svc.schnellstrassen(route_data.get("road_class_details", []), coords)
+    gewichtsgrenzen = (
+        None if route_data.get("max_weight_details") is None
+        else gewicht_svc.grenzen(
+            route_data["max_weight_details"],
+            route_data.get("max_weight_except_details") or [],
+            coords,
+            vehicle_params.get("max_weight_t"),
+        )
+    )
 
     # Persist route
     line = LineString(coords)
@@ -521,6 +554,7 @@ async def calculate_route(
         route.instructions = instructions
         route.durchfahrtshoehen = durchfahrtshoehen
         route.schnellstrassen = schnellstrassen
+        route.gewichtsgrenzen = gewichtsgrenzen
         # Gesucht wurde an der alten Linie.
         route.bruecken = None
     else:
@@ -533,6 +567,7 @@ async def calculate_route(
             instructions=instructions,
             durchfahrtshoehen=durchfahrtshoehen,
             schnellstrassen=schnellstrassen,
+            gewichtsgrenzen=gewichtsgrenzen,
         )
         db.add(route)
 
@@ -617,6 +652,7 @@ async def calculate_route(
         "kanalwechsel": kanalwechsel,
         "durchfahrtshoehen": durchfahrtshoehen,
         "bruecken": None,
+        "gewichtsgrenzen": gewichtsgrenzen,
         "planned_departure": route_planned_departure,
         "planned_arrival": route_planned_arrival,
     }
@@ -763,13 +799,14 @@ async def export_pdf(
     kanalwechsel = route.kanalwechsel if route else None
     durchfahrtshoehen = route.durchfahrtshoehen if route else None
     bruecken = route.bruecken if route else None
+    gewichtsgrenzen = route.gewichtsgrenzen if route else None
     # PDF generation (FPDF, font loading, many tables) is CPU-bound and
     # blocking — run it in the default thread pool so it does not stall the
     # event loop for concurrent requests.
     loop = asyncio.get_running_loop()
     pdf_bytes = await loop.run_in_executor(
         None, pdf_svc.generate_marschbefehl, convoy, waypoints, vehicles, route, kanalwechsel,
-        durchfahrtshoehen, bruecken,
+        durchfahrtshoehen, bruecken, gewichtsgrenzen,
     )
     filename = f"Marschbefehl_{_safe_filename(convoy.name.replace(' ', '_'))}.pdf"
     return Response(

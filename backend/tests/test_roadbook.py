@@ -242,6 +242,82 @@ def test_pdf_mit_langer_liste_bricht_auf_folgeseiten_um():
     assert seiten >= 3
 
 
+# ── Hinweise zu Höhe und Gewicht ─────────────────────────────────────────────
+#
+# Die Besatzung soll im Roadbook an der richtigen Stelle lesen, was knapp wird —
+# und was nicht: eine Brücke mit 85 cm Spielraum ist eine Auskunft.
+
+
+def _route_mit_hinweisen(**extra):
+    return SimpleNamespace(
+        distance_m=20_000, duration_s=1800,
+        instructions=[
+            {"sign": 0, "text": "Losfahren", "distance_m": 5000.0},
+            {"sign": 2, "text": "Rechts abbiegen", "distance_m": 15000.0},
+            {"sign": 4, "text": "Ziel", "distance_m": 0.0},
+        ],
+        durchfahrtshoehen=[
+            {"km": 3.0, "m": 3000, "hoehe_m": 3.7, "spielraum_m": 0.05, "stufe": "eng"},
+            {"km": 12.0, "m": 12000, "hoehe_m": 4.5, "spielraum_m": 0.85, "stufe": "frei"},
+        ],
+        gewichtsgrenzen=[
+            {"km": 7.5, "m": 7500, "grenze_t": 7.5, "reserve_t": -18.5, "ausnahme": "destination",
+             "stufe": "ueberschritten"},
+        ],
+        bruecken={"geprueft_at": "2026-10-09T10:00:00Z", "eintraege": [
+            {"km": 9.0, "m": 9000, "art": "Eisenbahnbrücke", "name": "Ammertalbahn", "schnellstrasse": False},
+            {"km": 15.0, "m": 15000, "art": "Straßenbrücke", "name": None, "schnellstrasse": True},
+        ]},
+        **extra,
+    )
+
+
+def test_hinweise_stehen_mit_zahl_spielraum_und_stufe_da():
+    zeilen = roadbook.hinweis_rows(_route_mit_hinweisen())
+    assert [(z.symbol, z.text, z.detail, z.stufe) for z in zeilen] == [
+        ("↕", "Durchfahrtshöhe 3,7 m", "Spielraum +5 cm · ENG – vor Ort prüfen", "warnung"),
+        ("⚖", "Gewichtsgrenze 7,5 t", "Reserve −18,5 t · Anlieger frei · ÜBER DER GRENZE", "warnung"),
+        ("⚠", "Eisenbahnbrücke ohne Höhenangabe (Ammertalbahn)", "Höhe unbekannt – Beschilderung beachten", ""),
+        # Frei steht auch da — „du kommst gut durch" ist eine Auskunft.
+        ("↕", "Durchfahrtshöhe 4,5 m", "Spielraum +85 cm", ""),
+    ]
+    # Die Brücke auf der Schnellstraße wird gezählt, nicht gedruckt.
+    assert all("Straßenbrücke" not in z.text for z in zeilen)
+
+
+def test_ohne_ermittlung_keine_hinweise():
+    route = SimpleNamespace(durchfahrtshoehen=None, gewichtsgrenzen=None, bruecken=None)
+    assert roadbook.hinweis_rows(route) == []
+    # Routen aus der Zeit vor den Spalten haben die Attribute gar nicht.
+    assert roadbook.hinweis_rows(SimpleNamespace()) == []
+
+
+def test_hinweise_stehen_auf_dem_stueck_auf_dem_sie_liegen():
+    route = _route_mit_hinweisen()
+    zeilen = roadbook.mit_hinweisen(roadbook.build_rows(route.instructions, []), roadbook.hinweis_rows(route))
+    assert [(z.nr, z.text[:14]) for z in zeilen] == [
+        (1, "Losfahren"),
+        (0, "Durchfahrtshöh"),   # km 3 — auf dem Stück nach „Losfahren"
+        (2, "Rechts abbiege"),   # km 5
+        (0, "Gewichtsgrenze"),
+        (0, "Eisenbahnbrück"),
+        (0, "Durchfahrtshöh"),   # km 12
+        (3, "Ziel erreicht"),    # km 20, bleibt die letzte Zeile
+    ]
+
+
+def test_ein_hinweis_hinter_dem_letzten_meter_rutscht_vor_das_ziel():
+    zeilen = roadbook.mit_hinweisen(
+        roadbook.build_rows([{"sign": 0, "text": "Los", "distance_m": 100.0}, {"sign": 4, "text": "Ziel"}], []),
+        [roadbook.Row(0, "↕", "Durchfahrtshöhe 4,0 m", 0.2, 0.0, "hinweis")],
+    )
+    assert [z.kind for z in zeilen] == ["turn", "hinweis", "finish"]
+
+
+def test_pdf_mit_hinweisen_entsteht():
+    assert roadbook.generate_roadbook(_konvoi(), _route_mit_hinweisen(), [], None).startswith(b"%PDF-")
+
+
 def test_pdf_ohne_anweisungen_entsteht_trotzdem():
     route = SimpleNamespace(distance_m=None, duration_s=None, instructions=None)
     assert roadbook.generate_roadbook(_konvoi(), route, [], None).startswith(b"%PDF-")

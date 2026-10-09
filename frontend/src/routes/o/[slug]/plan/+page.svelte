@@ -17,7 +17,7 @@
 		convoysApi, vehiclesApi, orgsApi, overpassApi, trafficApi, authApi, mfaApi,
 		type Convoy, type Vehicle, type Organization, type OrgMember,
 		type FuelAnalysis, type FuelStation, type Waypoint, type RoadPreference,
-		type KanalwechselEntry, type ConvoyVehicleItem, type DurchfahrtshoeheEntry, type RouteResult, type BrueckenPruefung,
+		type KanalwechselEntry, type ConvoyVehicleItem, type DurchfahrtshoeheEntry, type RouteResult, type BrueckenPruefung, type GewichtsgrenzeEntry,
 	} from '$lib/api';
 	import { MAX_JE_ROLLE, formatStaerke, gesamt, sollAus } from '$lib/tracking/staerke';
 
@@ -31,6 +31,7 @@
 	import OnboardingTutorial from '$lib/components/OnboardingTutorial.svelte';
 	import SidebarFooter from '$lib/components/SidebarFooter.svelte';
 	import DurchfahrtsHoehen from '$lib/components/DurchfahrtsHoehen.svelte';
+	import GewichtsGrenzen from '$lib/components/GewichtsGrenzen.svelte';
 	import { tutorialStore } from '$lib/stores/tutorial';
 	import QRCode from 'qrcode';
 
@@ -43,7 +44,7 @@
 	// changes on every recalculation (avoids issues with the `unknown` type not
 	// being deeply proxied, which prevented the map from updating on re-clicks).
 	let routeGeojson = $state<Geometry | null>(null);
-	let route = $state<{ distance_m: number | null; duration_s: number | null; fuel_analysis: FuelAnalysis | null; kanalwechsel: KanalwechselEntry[]; durchfahrtshoehen: DurchfahrtshoeheEntry[] | null; bruecken: BrueckenPruefung | null; fahrzeughoehe_m: number | null; planned_departure?: string | null; planned_arrival?: string | null } | null>(null);
+	let route = $state<{ distance_m: number | null; duration_s: number | null; fuel_analysis: FuelAnalysis | null; kanalwechsel: KanalwechselEntry[]; durchfahrtshoehen: DurchfahrtshoeheEntry[] | null; bruecken: BrueckenPruefung | null; fahrzeughoehe_m: number | null; gewichtsgrenzen: GewichtsgrenzeEntry[] | null; fahrzeuggewicht_t: number | null; planned_departure?: string | null; planned_arrival?: string | null } | null>(null);
 	let fuelStations = $state<FuelStation[]>([]);
 	let showFuelStations = $state(false);
 	let fuelStationsLoading = $state(false);
@@ -318,6 +319,10 @@
 		const h = r.routing_params?.max_height_m;
 		return typeof h === 'number' ? h : null;
 	}
+	function fahrzeuggewicht(r: RouteResult): number | null {
+		const t = r.routing_params?.max_weight_t;
+		return typeof t === 'number' ? t : null;
+	}
 
 	async function loadStoredRoute(convoyId: string) {
 		brueckenSucheZuruecksetzen();
@@ -334,6 +339,8 @@
 				durchfahrtshoehen: r.durchfahrtshoehen ?? null,
 				bruecken: r.bruecken ?? null,
 				fahrzeughoehe_m: fahrzeughoehe(r),
+				gewichtsgrenzen: r.gewichtsgrenzen ?? null,
+				fahrzeuggewicht_t: fahrzeuggewicht(r),
 				planned_departure: r.planned_departure ?? null,
 				planned_arrival: r.planned_arrival ?? null,
 			};
@@ -799,7 +806,7 @@
 		try {
 			const r = await convoysApi.calculateRoute(selected.id);
 			routeGeojson = r.geojson;
-			route = { distance_m: r.distance_m, duration_s: r.duration_s, fuel_analysis: r.fuel_analysis, kanalwechsel: r.kanalwechsel ?? [], durchfahrtshoehen: r.durchfahrtshoehen ?? null, bruecken: null, fahrzeughoehe_m: fahrzeughoehe(r), planned_departure: r.planned_departure ?? null, planned_arrival: r.planned_arrival ?? null };
+			route = { distance_m: r.distance_m, duration_s: r.duration_s, fuel_analysis: r.fuel_analysis, kanalwechsel: r.kanalwechsel ?? [], durchfahrtshoehen: r.durchfahrtshoehen ?? null, bruecken: null, fahrzeughoehe_m: fahrzeughoehe(r), gewichtsgrenzen: r.gewichtsgrenzen ?? null, fahrzeuggewicht_t: fahrzeuggewicht(r), planned_departure: r.planned_departure ?? null, planned_arrival: r.planned_arrival ?? null };
 			fuelStations = [];
 			showFuelStations = false;
 			activeRoute.set(r);
@@ -1389,6 +1396,11 @@
 								bruecken={route.bruecken}
 								suche={brueckenSuche}
 								onSuchen={darfBrueckenSuchen ? () => selected && sucheBruecken(selected.id) : undefined}
+							/>
+							<GewichtsGrenzen
+								eintraege={route.gewichtsgrenzen}
+								fahrzeuggewichtT={route.fahrzeuggewicht_t}
+								ohneGewicht={selected?.convoy_vehicles.filter((cv) => !cv.vehicle.weight_kg).length ?? 0}
 							/>
 							{#if route.fuel_analysis?.duration_halt_needed}
 								{@const remaining = route.fuel_analysis.duration_halts.slice(thStopsAdded)}

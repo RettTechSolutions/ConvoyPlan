@@ -1,7 +1,7 @@
 import logging
 import re
 from math import asin, cos, radians, sin, sqrt
-from typing import Any
+from typing import Any, Iterable
 
 import httpx
 
@@ -158,12 +158,56 @@ def convoy_duration_s(
     return max(1, int(h * 3600))
 
 
-async def calculate_route(
+def verbandsgrenzen(fahrzeuge: Iterable[Any]) -> dict[str, float]:
+    """Höhe und Gewicht, mit denen gesperrt wird: das jeweils größte im Verband.
+
+    ``max_height_m`` aus ``height_cm``, ``max_weight_t`` aus ``weight_kg``. Ein
+    Schlüssel fehlt, wenn kein Fahrzeug die Angabe hat — dann wird danach nicht
+    gesperrt.
+    """
+    liste = list(fahrzeuge)
+    out: dict[str, float] = {}
+    hoehen = [v.height_cm for v in liste if getattr(v, "height_cm", None)]
+    if hoehen:
+        out["max_height_m"] = max(hoehen) / 100
+    gewichte = [v.weight_kg for v in liste if getattr(v, "weight_kg", None)]
+    if gewichte:
+        out["max_weight_t"] = round(max(gewichte) / 1000, 2)
+    return out
+
+
+class RoutingNoConnectionError(ValueError):
+    """GraphHopper findet zwischen den Punkten keine befahrbare Verbindung.
+
+    Mit Höhen- oder Gewichtssperre im Custom Model heißt das meist: jeder Weg
+    führt unter einer zu niedrigen Brücke durch oder über eine zu schwache.
+    """
+
+
+# „Anlieger frei" (max_weight_except=destination) wird nicht gesperrt, nur
+# gemieden: liegt das Ziel hinter so einer Grenze, gäbe es sonst keine Route.
+# Lieferverkehr und Forst sperren — ein Konvoi ist keins von beidem.
+_ANLIEGER_FAKTOR = "0.05"
+
+
+def _gewichtsregeln(gewicht_t: float) -> list[dict[str, str]]:
+    return [
+        {"if": f"max_weight < {gewicht_t} && max_weight_except != DESTINATION", "multiply_by": "0"},
+        {"if": f"max_weight < {gewicht_t}", "multiply_by": _ANLIEGER_FAKTOR},
+    ]
+
+
+def _payload(
     points: list[dict[str, float]],
-    vehicle_params: dict[str, Any] | None = None,
-    road_preference: str = "schnell",
-) -> dict:
-    """Call GraphHopper routing API and return route data with road_class details."""
+    vehicle_params: dict[str, Any] | None,
+    road_preference: str,
+    mit_gewicht: bool,
+) -> dict[str, Any]:
+    details = ["road_class", "max_speed", "max_height"]
+    if mit_gewicht:
+        # Gewichtsgrenzen als Hinweis (services/gewichtsgrenzen.py), gesperrt
+        # wird wie bei der Höhe im Custom Model.
+        details += ["max_weight", "max_weight_except"]
     payload: dict[str, Any] = {
         "points": [[p["lon"], p["lat"]] for p in points],
         "profile": "car",
@@ -174,23 +218,19 @@ async def calculate_route(
         "points_encoded": False,
         # max_height: Höhenbeschränkungen entlang der Route als Hinweis
         # (services/durchfahrtshoehe.py) — gesperrt wird unten im Custom Model.
-        "details": ["road_class", "max_speed", "max_height"],
+        "details": details,
     }
 
-    road_preference = _LEGACY_PREFERENCES.get(road_preference, road_preference)
-    if road_preference not in _PRIORITY_RULES:
-        logger.warning("Unknown road_preference %r, falling back to 'schnell'", road_preference)
-        road_preference = "schnell"
     priority_rules = list(_PRIORITY_RULES[road_preference])
+    sperren: list[dict[str, str]] = []
+    if vehicle_params and "max_height_m" in vehicle_params:
+        sperren.append({"if": f"max_height < {vehicle_params['max_height_m']}", "multiply_by": "0"})
+    if mit_gewicht and vehicle_params and "max_weight_t" in vehicle_params:
+        sperren += _gewichtsregeln(vehicle_params["max_weight_t"])
 
     custom_model: dict[str, Any] = {}
-    if vehicle_params and "max_height_m" in vehicle_params:
-        custom_model["priority"] = [
-            {"if": f"max_height < {vehicle_params['max_height_m']}", "multiply_by": "0"},
-            *priority_rules,
-        ]
-    elif priority_rules:
-        custom_model["priority"] = priority_rules
+    if sperren or priority_rules:
+        custom_model["priority"] = [*sperren, *priority_rules]
 
     if road_preference == "kuerzeste":
         custom_model["distance_influence"] = _SHORTEST_DISTANCE_INFLUENCE
@@ -198,7 +238,10 @@ async def calculate_route(
     if custom_model:
         payload["custom_model"] = custom_model
         payload["ch.disable"] = True
+    return payload
 
+
+async def _anfrage(payload: dict[str, Any]) -> dict:
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(
             f"{settings.graphhopper_url}/route",
@@ -218,17 +261,50 @@ async def calculate_route(
             if "out of bounds" in lower or "out of range" in lower or "cannot find point" in lower:
                 m = re.search(r"point\s+(\d+)", lower)
                 raise RoutingOutOfBoundsError(int(m.group(1)) if m else None)
+            if "connection between locations not found" in lower:
+                raise RoutingNoConnectionError(msg[:300])
             raise ValueError(f"Routing service error ({resp.status_code}): {msg[:300]}")
-        data = resp.json()
+        return resp.json()
+
+
+async def calculate_route(
+    points: list[dict[str, float]],
+    vehicle_params: dict[str, Any] | None = None,
+    road_preference: str = "schnell",
+) -> dict:
+    """Call GraphHopper routing API and return route data with road_class details."""
+    road_preference = _LEGACY_PREFERENCES.get(road_preference, road_preference)
+    if road_preference not in _PRIORITY_RULES:
+        logger.warning("Unknown road_preference %r, falling back to 'schnell'", road_preference)
+        road_preference = "schnell"
+
+    # Ein Graph von vor max_weight (Container noch nicht neu gebaut, eigene
+    # GraphHopper-Instanz) lehnt jede Anfrage ab, die es nennt. Dann ohne
+    # Gewicht routen statt gar nicht — die Liste bleibt „nicht ermittelt".
+    gewicht = True
+    try:
+        data = await _anfrage(_payload(points, vehicle_params, road_preference, True))
+    except (RoutingOutOfBoundsError, RoutingNoConnectionError):
+        raise
+    except ValueError as exc:
+        if "max_weight" not in str(exc):
+            raise
+        logger.warning("GraphHopper graph without max_weight — routing without weight limits")
+        gewicht = False
+        data = await _anfrage(_payload(points, vehicle_params, road_preference, False))
 
     path = data["paths"][0]
+    details = path.get("details", {})
     return {
         "distance_m": int(path["distance"]),
         "duration_s": int(path["time"] / 1000),
         "geometry": path["points"],
-        "road_class_details": path.get("details", {}).get("road_class", []),
-        "max_speed_details": path.get("details", {}).get("max_speed", []),
-        "max_height_details": path.get("details", {}).get("max_height", []),
+        "road_class_details": details.get("road_class", []),
+        "max_speed_details": details.get("max_speed", []),
+        "max_height_details": details.get("max_height", []),
+        # None: der Graph kennt max_weight nicht — nicht dasselbe wie [].
+        "max_weight_details": details.get("max_weight", []) if gewicht else None,
+        "max_weight_except_details": details.get("max_weight_except", []) if gewicht else None,
         "instructions": compact_instructions(
             path.get("instructions", []), path["points"].get("coordinates", [])
         ),

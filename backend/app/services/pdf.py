@@ -5,6 +5,7 @@ from typing import Any
 from fpdf import FPDF
 
 from app.services import durchfahrtshoehe as hoehe_svc
+from app.services import gewichtsgrenzen as gewicht_svc
 
 MARSCHFORM_LABELS = {
     "geschlossener_verband": "Geschlossener Gesamtverband",
@@ -240,6 +241,75 @@ def _durchfahrtshoehen(
     pdf.ln(2)
 
 
+_GEWICHT_LABELS = {
+    "ueberschritten": "ÜBER DER GRENZE",
+    "knapp": "knapp",
+    "unbekannt": "Fahrzeuggewicht fehlt",
+    "frei": "",
+}
+
+
+def _gewichtsgrenzen(
+    pdf: _PDF,
+    eintraege: list[dict],
+    vehicles: list[dict],
+    fahrzeuggewicht_t: float | None,
+    total_w: float,
+) -> None:
+    """Gewichtsgrenzen mit wenig Reserve (services/gewichtsgrenzen.py).
+
+    Das Gewicht stammt wie die Höhe aus ``routing_params`` — dem Stand, mit dem
+    die Route berechnet wurde.
+    """
+    _subsection(pdf, "Gewichtsgrenzen")
+    ohne = sum(1 for v in vehicles if not v.get("weight_kg"))
+    pdf.set_font("DV", "", 9)
+    if fahrzeuggewicht_t:
+        text = f"  • Schwerstes Fahrzeug: {fahrzeuggewicht_t:.1f} t".replace(".", ",")
+        if ohne:
+            text += f" ({ohne} Fahrzeug{'e' if ohne != 1 else ''} ohne Gewichtsangabe)"
+    else:
+        text = "  • Kein Fahrzeuggewicht erfasst – die Route meidet keine Gewichtsgrenze"
+    pdf.multi_cell(0, 5, text, new_x="LMARGIN", new_y="NEXT")
+
+    zeigen = gewicht_svc.hinweispflichtig(eintraege)
+    if zeigen:
+        cols = [(25, "km"), (25, "Grenze"), (25, "Reserve"), (40, "Ausnahme"), (0, "Hinweis")]
+        cols[-1] = (total_w - sum(c[0] for c in cols[:-1]), "Hinweis")
+        _table_header(pdf, cols)
+        pdf.set_font("DV", "", 8)
+        fill = False
+        for e in zeigen:
+            pdf.set_fill_color(245, 246, 250) if fill else pdf.set_fill_color(255, 255, 255)
+            r = e.get("reserve_t")
+            pdf.cell(cols[0][0], 6, f"{e.get('km', 0):.1f} km", border=1, fill=fill)
+            pdf.cell(cols[1][0], 6, f"{e.get('grenze_t', 0):.1f} t".replace(".", ","), border=1, fill=fill)
+            pdf.cell(cols[2][0], 6, "-" if r is None else f"{r:+.1f} t".replace(".", ","), border=1, fill=fill)
+            pdf.cell(cols[3][0], 6, gewicht_svc.AUSNAHMEN.get(e.get("ausnahme") or "", "-"), border=1, fill=fill)
+            pdf.cell(cols[4][0], 6, _GEWICHT_LABELS.get(e.get("stufe", ""), ""), border=1, fill=fill,
+                     new_x="LMARGIN", new_y="NEXT")
+            fill = not fill
+    rest = len(eintraege) - len(zeigen)
+    pdf.set_font("DV", "", 7.5)
+    pdf.set_text_color(80, 80, 80)
+    zeilen = []
+    if not eintraege:
+        zeilen.append("Keine Gewichtsgrenze auf der Strecke bekannt.")
+    elif rest:
+        zeilen.append(
+            f"{rest} weitere Gewichtsgrenze{'n' if rest != 1 else ''} mit mindestens "
+            f"{gewicht_svc.KNAPP_T:.0f} t Reserve."
+        )
+    zeilen.append(
+        "Angaben aus OpenStreetMap (auch Lkw-Durchfahrtsverbote), auf 0,1 t gerundet; verglichen mit dem "
+        "eingetragenen Fahrzeuggewicht. Achslasten sind nicht berücksichtigt. Maßgeblich ist die "
+        "Beschilderung vor Ort."
+    )
+    pdf.multi_cell(0, 4, "\n".join(zeilen), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(2)
+
+
 def _build_marschweg(waypoints: list[dict]) -> str:
     """Build 'von X über Y, Z nach W' route description from waypoints."""
     names = [w["name"] for w in waypoints if w.get("name")]
@@ -261,6 +331,7 @@ def generate_marschbefehl(
     kanalwechsel: list[dict] | None = None,
     durchfahrtshoehen: list[dict] | None = None,
     bruecken: dict | None = None,
+    gewichtsgrenzen: list[dict] | None = None,
 ) -> bytes:
     pdf = _PDF()
     pdf.set_auto_page_break(auto=True, margin=15)
@@ -446,9 +517,12 @@ def generate_marschbefehl(
     pdf.ln(3)
 
     # Durchfahrtshöhen — None: Route vor der Auswertung berechnet, dann nichts.
+    params = getattr(route, "routing_params", None) or {}
     if durchfahrtshoehen is not None:
-        params = getattr(route, "routing_params", None) or {}
         _durchfahrtshoehen(pdf, durchfahrtshoehen, vehicles, params.get("max_height_m"), total_w, bruecken)
+    # Gewichtsgrenzen — None: nicht ermittelt, dann nichts.
+    if gewichtsgrenzen is not None:
+        _gewichtsgrenzen(pdf, gewichtsgrenzen, vehicles, params.get("max_weight_t"), total_w)
 
     # ── 4. Versorgung ─────────────────────────────────────────────────────────
     _section(pdf, "4", "Versorgung")

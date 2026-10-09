@@ -17,10 +17,10 @@
 
 | Feld | Beschreibung |
 |------|-------------|
-| **Höhe** | Fahrzeughöhe in cm (relevant für Streckeneinschränkungen) |
+| **Höhe** | Fahrzeughöhe in cm — die Route meidet Unterführungen unter dem höchsten Fahrzeug im Verband (siehe [Durchfahrtshöhen](Konvoi-Planung#durchfahrtshöhen)) |
 | **Länge** | Fahrzeuglänge in cm |
 | **Breite** | Fahrzeugbreite in cm |
-| **Gewicht** | Gesamtgewicht in kg |
+| **Gewicht** | Gesamtgewicht in kg — die Route meidet Gewichtsgrenzen unter dem schwersten Fahrzeug im Verband (siehe [Gewichtsgrenzen](Konvoi-Planung#gewichtsgrenzen)); das zulässige Gesamtgewicht ist die sichere Angabe |
 
 ### Kraftstoffdaten
 

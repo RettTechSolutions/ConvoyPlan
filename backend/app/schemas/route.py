@@ -81,6 +81,21 @@ class DurchfahrtshoeheEntry(BaseModel):
     stufe: Literal["eng", "knapp", "frei", "unbekannt"]
 
 
+class GewichtsgrenzeEntry(BaseModel):
+    km: float
+    m: int
+    lat: float
+    lon: float
+    laenge_m: int
+    # Grenze aus OSM (maxweight, auch Lkw-Verbote), auf 0,1 t gerundet.
+    grenze_t: float
+    # Grenze minus schwerstes Fahrzeug; None ohne erfasstes Fahrzeuggewicht.
+    reserve_t: float | None = None
+    # "destination" (Anlieger frei), "delivery", "forestry" oder None.
+    ausnahme: str | None = None
+    stufe: Literal["ueberschritten", "knapp", "frei", "unbekannt"]
+
+
 class BrueckeEntry(BaseModel):
     km: float
     m: int
@@ -114,6 +129,8 @@ class RouteResponse(BaseModel):
     durchfahrtshoehen: list[DurchfahrtshoeheEntry] | None = None
     # None = noch nicht gesucht (POST …/route/bruecken)
     bruecken: BrueckenPruefung | None = None
+    # None = nicht ermittelt, [] = keine bekannte Gewichtsgrenze.
+    gewichtsgrenzen: list[GewichtsgrenzeEntry] | None = None
     # Abmarschzeit und geplante Ankunft am Ziel. Beide werden auf derselben
     # Zeitbasis wie die Wegpunkt-Zeiten berechnet, damit der Zeitplan konsistent
     # dargestellt wird. planned_arrival = Abmarsch + Fahrzeit + alle Haltezeiten.

@@ -144,6 +144,22 @@ export interface DurchfahrtshoeheEntry {
 	stufe: 'eng' | 'knapp' | 'frei' | 'unbekannt';
 }
 
+/** Gewichtsgrenze entlang der Route (Backend: services/gewichtsgrenzen.py). */
+export interface GewichtsgrenzeEntry {
+	km: number;
+	m: number;
+	lat: number;
+	lon: number;
+	laenge_m: number;
+	/** Grenze aus OSM (auch Lkw-Verbote), auf 0,1 t gerundet. */
+	grenze_t: number;
+	/** Grenze minus schwerstes Fahrzeug; null ohne erfasstes Gewicht. */
+	reserve_t: number | null;
+	/** "destination" (Anlieger frei), "delivery", "forestry" oder null. */
+	ausnahme: string | null;
+	stufe: 'ueberschritten' | 'knapp' | 'frei' | 'unbekannt';
+}
+
 /** Brücke über der Route ohne Höhenangabe in OSM (Backend: services/bruecken.py). */
 export interface BrueckeEntry {
 	km: number;
@@ -172,6 +188,8 @@ export interface RouteResult {
 	durchfahrtshoehen?: DurchfahrtshoeheEntry[] | null;
 	/** null: noch nicht gesucht (`convoysApi.findBridges`). */
 	bruecken?: BrueckenPruefung | null;
+	/** null: nicht ermittelt (alte Route, Import, Graph ohne max_weight); []: keine bekannte Grenze. */
+	gewichtsgrenzen?: GewichtsgrenzeEntry[] | null;
 	/** Abmarschzeit (ISO), auf derselben Zeitbasis wie die Wegpunkt-Zeiten. */
 	planned_departure?: string | null;
 	/** Geplante Ankunft am Ziel (ISO); Abmarsch + Fahrzeit + Haltezeiten. */
