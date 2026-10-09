@@ -4,7 +4,7 @@ Wo das hingehört, steht in ``models/org_plan.py``: der Schlüssel gilt für die
 Instanz, ein Paket für eine Organisation. Hier steht, was aus einem Paket
 folgt, und zwar in zwei deutlich verschiedenen Stärken:
 
-**Grenzen sind weich.** Mehr Fahrzeuge oder Planer als gebucht werden nicht
+**Grenzen sind weich.** Mehr Fahrzeuge, Planer oder Tracker als gebucht werden nicht
 abgewiesen. Der Org-Admin sieht einen Hinweis, der Betreiber die
 Überschreitung in seiner Übersicht, und abgerechnet wird kaufmännisch
 (nächste Stufe, anteilig). Eine Absage beim Anlegen des 26. Fahrzeugs träfe
@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.org_plan import OrganizationPlan
 from app.models.organization import UserOrganization
+from app.models.ortungsgeraet import Ortungsgeraet
 from app.models.vehicle import Vehicle
 
 # Wer als Planer zählt. Fahrer und Beobachter sind in jedem Paket frei —
@@ -47,6 +48,9 @@ class Katalogplan:
     max_planer: int | None
     # Feste Laufzeit ab Setzen; None = Vertrag, läuft bis auf Weiteres.
     laufzeit_tage: int | None = None
+    # Tracker sind in keinem Paket begrenzt, solange es dafür keine Preise
+    # gibt; ein Angebot setzt die Grenze je Organisation.
+    max_tracker: int | None = None
 
 
 # Ausgangswerte beim Setzen eines Plans. Die geltenden Werte stehen in der
@@ -68,6 +72,10 @@ KATALOG: dict[str, Katalogplan] = {
 class Nutzung:
     fahrzeuge: int
     planer: int
+    # Gezählt werden Tracker, die senden dürfen (``aktiv``). Ein gesperrtes
+    # Gerät bekommt 401 und belegt nichts — wer eines ausmustert, sperrt es
+    # und muss es nicht erst löschen, um unter die Grenze zu kommen.
+    tracker: int = 0
 
 
 @dataclass(frozen=True)
@@ -76,6 +84,7 @@ class Zustand:
 
     fahrzeuge_ueber: bool = False
     planer_ueber: bool = False
+    tracker_ueber: bool = False
     # valid_until überschritten (Kulanz läuft oder ist vorbei)
     abgelaufen: bool = False
     # abgelaufen und Kulanz vorbei: nur noch lesend
@@ -108,6 +117,7 @@ def zustand(
     return Zustand(
         fahrzeuge_ueber=_ueber(nutzung.fahrzeuge, zeile.max_vehicles),
         planer_ueber=_ueber(nutzung.planer, zeile.max_planners),
+        tracker_ueber=_ueber(nutzung.tracker, zeile.max_trackers),
         abgelaufen=abgelaufen,
         gesperrt=gesperrt,
         tage_bis_ablauf=tage,
@@ -137,11 +147,18 @@ async def nutzung(db: AsyncSession, org_id: uuid.UUID) -> Nutzung:
             )
         )
     ).scalar_one()
-    return Nutzung(fahrzeuge=fahrzeuge, planer=planer)
+    tracker = (
+        await db.execute(
+            select(func.count(Ortungsgeraet.id)).where(
+                Ortungsgeraet.organization_id == org_id, Ortungsgeraet.aktiv.is_(True)
+            )
+        )
+    ).scalar_one()
+    return Nutzung(fahrzeuge=fahrzeuge, planer=planer, tracker=tracker)
 
 
 async def nutzung_alle(db: AsyncSession) -> dict[uuid.UUID, Nutzung]:
-    """Nutzung aller Organisationen in zwei Abfragen statt zwei je Zeile."""
+    """Nutzung aller Organisationen in drei Abfragen statt drei je Zeile."""
     fahrzeuge = dict(
         (
             await db.execute(
@@ -160,9 +177,22 @@ async def nutzung_alle(db: AsyncSession) -> dict[uuid.UUID, Nutzung]:
             )
         ).all()
     )
+    tracker = dict(
+        (
+            await db.execute(
+                select(Ortungsgeraet.organization_id, func.count(Ortungsgeraet.id))
+                .where(Ortungsgeraet.aktiv.is_(True))
+                .group_by(Ortungsgeraet.organization_id)
+            )
+        ).all()
+    )
     return {
-        org_id: Nutzung(fahrzeuge=fahrzeuge.get(org_id, 0), planer=planer.get(org_id, 0))
-        for org_id in set(fahrzeuge) | set(planer)
+        org_id: Nutzung(
+            fahrzeuge=fahrzeuge.get(org_id, 0),
+            planer=planer.get(org_id, 0),
+            tracker=tracker.get(org_id, 0),
+        )
+        for org_id in set(fahrzeuge) | set(planer) | set(tracker)
     }
 
 

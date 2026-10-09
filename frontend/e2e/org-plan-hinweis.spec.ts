@@ -14,8 +14,8 @@ const SLUG = 'plan-org';
 const CONVOY = 'c-plan';
 
 const OHNE_PLAN = {
-	plan: null, label: null, max_vehicles: null, max_planners: null, valid_until: null,
-	vehicles: 3, planners: 2, vehicles_over: false, planners_over: false,
+	plan: null, label: null, max_vehicles: null, max_planners: null, max_trackers: null, valid_until: null,
+	vehicles: 3, planners: 2, trackers: 0, vehicles_over: false, planners_over: false, trackers_over: false,
 	expired: false, locked: false, days_left: null, locked_from: null,
 };
 
@@ -57,6 +57,15 @@ test('eine Überschreitung sehen die, die planen — und nichts ist gesperrt', a
 	};
 	await oeffnen(page, ueber, 'planer');
 	await expect(hinweis(page)).toContainText('27 Fahrzeuge (enthalten: 25)');
+	await expect(hinweis(page)).toContainText('nichts eingeschränkt');
+});
+
+test('mehr Tracker als gebucht stehen im selben Hinweis', async ({ page }) => {
+	await oeffnen(page, {
+		...OHNE_PLAN, plan: 'hosting_s', label: 'Hosting S', max_vehicles: 25, max_planners: 5, max_trackers: 2,
+		trackers: 3, trackers_over: true,
+	}, 'admin');
+	await expect(hinweis(page)).toContainText('3 Tracker (enthalten: 2)');
 	await expect(hinweis(page)).toContainText('nichts eingeschränkt');
 });
 

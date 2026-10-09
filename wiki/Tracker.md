@@ -9,6 +9,9 @@ Gerät und Firmware entstehen im Repo
 dort stehen Plan, Protokoll und ein Simulator, mit dem sich alles hier
 Beschriebene ohne Hardware ausprobieren lässt.
 
+Gebuchte Pakete (Hosting) können Tracker begrenzen; gezählt werden nur nicht
+gesperrte, und die Grenze ist weich — siehe [Lizenz und Demo-Modus](Lizenz-und-Demo-Modus#pläne-je-organisation-hosting).
+
 ## Wann ein Tracker sendet
 
 Nur, solange sein Fahrzeug in einem **laufenden** Konvoi eingeplant ist — Status

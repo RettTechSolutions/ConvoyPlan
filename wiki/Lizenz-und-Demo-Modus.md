@@ -275,8 +275,10 @@ Grenzen kommen aus dem Katalog und lassen sich je Organisation anpassen.
 
 - **Ohne Plan keine Grenzen.** Das ist der Normalfall jeder eigenen
   Installation; ein Update ändert daran nichts.
-- **Grenzen sind weich.** Gezählt werden Fahrzeuge und Planerzugänge (Rollen
-  *Admin* und *Planer*); Fahrer und Beobachter zählen nie. Wer mehr nutzt als
+- **Grenzen sind weich.** Gezählt werden Fahrzeuge, Planerzugänge (Rollen
+  *Admin* und *Planer*) und Tracker; Fahrer und Beobachter zählen nie, ein
+  gesperrter Tracker auch nicht. Tracker sind in keinem Paket des Katalogs
+  begrenzt, eine Grenze setzt der Superadmin je Organisation. Wer mehr nutzt als
   gebucht, wird **nicht** abgewiesen — Anlegen klappt immer. Planer und Admins
   der Organisation sehen einen Hinweis, der Betreiber die Überschreitung in der
   Übersicht.
