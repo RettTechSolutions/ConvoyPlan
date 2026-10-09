@@ -103,11 +103,19 @@ check "Erststart: dann server per MMAP mit den Server-Optionen" \
 # der B 472 bei Peissenberg fuehrte das per Haarnadel von der Auffahrt in die
 # Gegenrichtung (siehe Kommentar an TURN_COSTS_VEHICLES im Entrypoint). Geprueft
 # an der Konfiguration, die der Server tatsaechlich bekommen hat.
-profile="$(sed -n '/^  profiles:/,/^  profiles_ch:/p' "$JAVA_LOG.conf")"
+profile="$(sed -n '/^  profiles:/,/^server:/p' "$JAVA_LOG.conf")"
 check "Erststart: zwei Profile (car, truck)" \
     "$(echo "$profile" | grep -c '^    - name: ')" "2"
 check "Erststart: jedes Profil hat turn_costs fuer motorcar und motor_vehicle" \
     "$(echo "$profile" | grep -c '^        vehicle_types: \[motorcar, motor_vehicle\]$')" "2"
+
+# ── Fall 1c: keine Contraction Hierarchies ─────────────────────────────────
+# Mit turn_costs waere CH fuer car kantenbasiert — die mit Abstand teuerste
+# Phase des Imports an Speicher und Zeit. Genutzt haette sie nur „schnell"
+# ohne Fahrzeughoehe; alles andere schickt ein Custom Model und damit
+# ch.disable (backend/app/services/routing.py). Siehe Kommentar im Entrypoint.
+check "Erststart: keine CH-Profile in der Konfiguration" \
+    "$(grep -c 'profiles_ch' "$JAVA_LOG.conf")" "0"
 
 # ── Fall 2: Neustart mit fertigem Graphen — nur der Server, kein Import ────
 rc="$(run_entrypoint server "$TMP/g1")"

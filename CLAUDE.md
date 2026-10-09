@@ -134,6 +134,14 @@ der Container im Kreis. Die Fassung steht deshalb ebenfalls im Fingerprint
 zwischen den Versionen, und einen fremden Graphen lädt GraphHopper nicht.
 Wer `GH_VERSION` hebt, baut damit auf jeder Installation den Graphen neu.
 
+**Kein CH.** Mit `turn_costs` wäre die Contraction Hierarchy für `car`
+kantenbasiert — die teuerste Phase des Imports an Heap und Zeit, für einen
+Nutzen nur bei „schnell" ohne Fahrzeughöhe (alles andere schickt ein Custom
+Model und `ch.disable`). `profiles_ch` fehlt deshalb; jede Anfrage läuft
+flexibel. Nicht im Fingerprint: ein fertiger Graph mit CH-Daten lädt weiter
+(`test_entrypoint_start_phasen.sh`, Fall 1c). Wird „schnell" auf langen
+Strecken zu langsam, ist LM (`profiles_lm`) der nächste Schritt, nicht CH.
+
 ### Die Wegpunktreihenfolge gehört dem Menschen
 
 `order_index` ist die Wahrheit, und `calculate_route` leitet ihn **nicht** aus der
