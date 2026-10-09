@@ -141,6 +141,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - uses: ./.github/actions/docker-spiegel
+
       - name: Build backend image
         run: docker build ./backend
 
@@ -209,6 +211,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - uses: ./.github/actions/docker-spiegel
+
       - name: Build ${{ matrix.name }} image
         run: docker build -t convoyplan-${{ matrix.name }}:scan ${{ matrix.context }}
 
@@ -264,6 +268,8 @@ jobs:
     # in Ruhe untersuchen kann.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/docker-spiegel
 
       - name: Alle Shell-Suiten ausfuehren
         run: |
@@ -369,6 +375,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/docker-spiegel
 
       # Das Extract fuer den Ersteinstieg kommt wie in `region-merge` aus einem
       # Tagescache und liegt schon im Volume, bevor GraphHopper startet. Ohne
@@ -639,6 +647,8 @@ jobs:
     # generell kaputt".
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - uses: ./.github/actions/docker-spiegel
 
       - name: osmium installieren
         run: sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
