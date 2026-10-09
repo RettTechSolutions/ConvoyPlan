@@ -97,6 +97,11 @@ class ConvoyVehicle(Base):
     # Anzeigetext — ein Name oder die Kennung eines Fahrzeugs.
     alarm_quittiert_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     alarm_quittiert_von: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Die Führung hat entschieden: für dieses Fahrzeug gilt das Telefon, nicht der
+    # Tracker (services/positionsquelle.py). NULL = Tracker vor Telefon, solange
+    # er sendet. In der Datenbank, weil ein Neustart das nicht zurücknehmen darf.
+    tracker_uebersteuert_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    tracker_uebersteuert_von: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
     convoy: Mapped["Convoy"] = relationship(back_populates="convoy_vehicles")
     vehicle: Mapped["Vehicle"] = relationship(back_populates="convoy_vehicles")

@@ -74,6 +74,8 @@ class TrackVehicle(BaseModel):
     alarm_ts: datetime | None = None
     alarm_quittiert_at: datetime | None = None
     alarm_quittiert_von: str | None = None
+    # Für dieses Fahrzeug gilt das Telefon statt des Trackers (Führung).
+    tracker_uebersteuert_at: datetime | None = None
     # Kraftstoff-Stammdaten aus der Planung — das „Soll" zur Meldung darunter,
     # wie die Sollstärke zur gemeldeten. Die App belegt damit vor, sodass die
     # Besatzung unterwegs nur noch den Füllstand einstellt.

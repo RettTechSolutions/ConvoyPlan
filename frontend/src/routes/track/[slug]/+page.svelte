@@ -27,6 +27,7 @@
 	import type { ConnectionState } from '$lib/tracking/connection';
 	import { createLiveSocket, CLOSE_UNAUTHORIZED, type LiveSocket } from '$lib/tracking/socket';
 	import { createBelegung, geraeteKennung, BELEGT_HINWEIS } from '$lib/tracking/belegung';
+	import { TRACKER_HINWEIS, istPositionAbgelehnt, istPositionsquelle } from '$lib/tracking/positionsquelle';
 
 	const slug = $derived($page.params.slug!);
 
@@ -246,6 +247,13 @@
 			},
 			onMessage: (raw) => {
 				if (belegung.handle(raw)) return;
+				// Ein Tracker sendet für mein Fahrzeug: Position verworfen, Meldungen
+				// bleiben möglich. Nur der Absender bekommt das.
+				if (istPositionAbgelehnt(raw)) {
+					if (raw.vehicle_id === myVehicleId) driverError = TRACKER_HINWEIS;
+					return;
+				}
+				if (istPositionsquelle(raw)) return;
 				const msg = raw as Record<string, unknown> & { type?: string; vehicle_id?: unknown; lat?: unknown };
 				if (msg.type === 'status_update') {
 					if (typeof msg.vehicle_id === 'string' && typeof msg.vehicle_status === 'string') {

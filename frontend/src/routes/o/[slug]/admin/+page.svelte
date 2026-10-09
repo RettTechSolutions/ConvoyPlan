@@ -213,7 +213,12 @@
     }
 
     // ── GPS-Freigaben ────────────────────────────────────────────────────────
-    interface GpsShare { convoyId: string; convoyName: string; vehicleId: string; vehicleName: string; recordedAt: string; }
+    interface GpsShare {
+        convoyId: string; convoyName: string; vehicleId: string; vehicleName: string; recordedAt: string;
+        // Woher die Position kommt und ob die Führung den Tracker übersteuert hat
+        // (`$lib/tracking/positionsquelle`).
+        quelle: 'tracker' | null; trackerUebersteuert: boolean;
+    }
     let gpsShares = $state<GpsShare[]>([]);
     let gpsLoading = $state(false);
     let gpsError = $state('');
@@ -233,12 +238,17 @@
                             cv.vehicle.callsign ? `${cv.vehicle.name} (${cv.vehicle.callsign})` : cv.vehicle.name,
                         ])
                     );
+                    const uebersteuert = new Set(
+                        c.convoy_vehicles.filter((cv) => cv.tracker_uebersteuert_at).map((cv) => cv.vehicle.id)
+                    );
                     return positions.map((p) => ({
                         convoyId: c.id,
                         convoyName: c.name,
                         vehicleId: p.vehicle_id,
                         vehicleName: nameById.get(p.vehicle_id) ?? p.vehicle_id.slice(0, 8),
                         recordedAt: p.recorded_at,
+                        quelle: p.quelle === 'tracker' ? ('tracker' as const) : null,
+                        trackerUebersteuert: uebersteuert.has(p.vehicle_id),
                     }));
                 })
             );
@@ -249,6 +259,22 @@
             gpsError = 'GPS-Freigaben konnten nicht geladen werden';
         } finally {
             gpsLoading = false;
+        }
+    }
+
+    // Tracker übersteuern: Dann gilt für dieses Fahrzeug im Verband das Telefon,
+    // was der Tracker schickt, wird verworfen. Kein automatischer Rückfall — wer
+    // übersteuert hat, nimmt es hier auch zurück.
+    async function trackerUebersteuern(share: GpsShare, an: boolean) {
+        const frage = an
+            ? `Tracker von „${share.vehicleName}" im Verband „${share.convoyName}" übersteuern?\n\nDanach gilt die Position vom Telefon der Besatzung; was der Tracker sendet, wird verworfen, bis die Übersteuerung zurückgenommen ist.`
+            : `Tracker von „${share.vehicleName}" wieder gelten lassen?`;
+        if (!confirm(frage)) return;
+        try {
+            await trackingApi.setPositionsquelle(share.convoyId, share.vehicleId, an);
+            await loadGpsShares();
+        } catch {
+            gpsError = 'Die Positionsquelle konnte nicht umgestellt werden';
         }
     }
 
@@ -684,7 +710,9 @@
 
             <p class="hint" style="margin:0 0 .75rem">
                 Fahrzeuge, die aktuell ihre Position senden. „Zurücksetzen" löscht die Position und
-                beendet die GPS-Freigabe – die sendende App stoppt automatisch.
+                beendet die GPS-Freigabe – die sendende App stoppt automatisch. Sendet ein Tracker,
+                gehört ihm die Position; „Tracker übersteuern" lässt stattdessen das Telefon der
+                Besatzung gelten, bis die Übersteuerung zurückgenommen wird.
             </p>
 
             {#if gpsLoading}
@@ -696,6 +724,7 @@
                             <th>Verband</th>
                             <th>Fahrzeug</th>
                             <th>Letztes Update</th>
+                            <th>Quelle</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -705,13 +734,22 @@
                                 <td>{s.convoyName}</td>
                                 <td>{s.vehicleName}</td>
                                 <td>{formatTimestamp(s.recordedAt)}</td>
+                                <td>
+                                    {s.quelle === 'tracker' ? 'Tracker' : 'App / Fahrer-Link'}
+                                    {#if s.trackerUebersteuert}<span class="hint"> · Tracker übersteuert</span>{/if}
+                                </td>
                                 <td class="actions-cell">
+                                    {#if s.trackerUebersteuert}
+                                        <button class="btn-small" onclick={() => trackerUebersteuern(s, false)}>Tracker wieder nutzen</button>
+                                    {:else if s.quelle === 'tracker'}
+                                        <button class="btn-small" onclick={() => trackerUebersteuern(s, true)}>Tracker übersteuern</button>
+                                    {/if}
                                     <button class="btn-small danger" onclick={() => resetGps(s)}>GPS zurücksetzen</button>
                                 </td>
                             </tr>
                         {/each}
                         {#if gpsShares.length === 0}
-                            <tr><td colspan="4" class="hint" style="text-align:center">Keine aktiven GPS-Freigaben.</td></tr>
+                            <tr><td colspan="5" class="hint" style="text-align:center">Keine aktiven GPS-Freigaben.</td></tr>
                         {/if}
                     </tbody>
                 </table>

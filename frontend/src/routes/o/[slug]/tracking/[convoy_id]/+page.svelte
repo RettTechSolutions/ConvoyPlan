@@ -11,9 +11,11 @@
 		sendPosition, trackingActive, trackingConnection, gpsRevoked, acknowledgeAlert, dismissAlert,
 		alarmQuittungen,
 		acknowledgeAllAlerts, vehicleStaerken, vehicleBetriebsstoff, fremdBelegt, belegungAbgelehnt,
+		positionAbgelehnt,
 		fahrzeugWaehlen, type VehicleStatusInfo,
 	} from '$lib/stores/tracking';
 	import { BELEGT_HINWEIS } from '$lib/tracking/belegung';
+	import { TRACKER_HINWEIS } from '$lib/tracking/positionsquelle';
 	import BetriebsstoffBadge from '$lib/components/BetriebsstoffBadge.svelte';
 	import BetriebsstoffForm from '$lib/components/BetriebsstoffForm.svelte';
 	import StaerkeBadge from '$lib/components/StaerkeBadge.svelte';
@@ -293,6 +295,16 @@
 		if (transmitting) stopTransmitting();
 		myVehicleId = '';
 		error = BELEGT_HINWEIS;
+	});
+
+	// Ein Tracker sendet für mein Fahrzeug: Die Position gehört ihm, der Rest
+	// bleibt hier. Gesendet wird weiter — fällt der Tracker aus, zählt nach fünf
+	// Minuten wieder das Telefon, ohne dass jemand neu starten muss.
+	$effect(() => {
+		const abgelehnt = $positionAbgelehnt;
+		if (!abgelehnt) return;
+		positionAbgelehnt.set(null);
+		if (abgelehnt === myVehicleId) error = TRACKER_HINWEIS;
 	});
 
 	// Tab zu: sofort freigeben, damit das Fahrzeug nicht fünf Minuten „belegt"
@@ -803,7 +815,12 @@
 								<span class="status-dot" style="background:{statusColor(st)}"></span>
 								<span class="vname">{cv.vehicle.name}</span>
 								{#if cv.vehicle.callsign}<span class="tag">{cv.vehicle.callsign}</span>{/if}
-								{#if $livePositions.has(cv.vehicle.id)}<span class="live-badge">LIVE</span>{/if}
+								{#if $livePositions.has(cv.vehicle.id)}
+									{@const vomTracker = $livePositions.get(cv.vehicle.id)?.quelle === 'tracker'}
+									<span class="live-badge" class:tracker={vomTracker} title={vomTracker ? 'Position vom Fahrzeugtracker' : undefined}>
+										{vomTracker ? 'TRACKER' : 'LIVE'}
+									</span>
+								{/if}
 							</div>
 							<div class="veh-right">
 								<StaerkeBadge fahrzeugId={cv.vehicle.id} felder={staerkeVon(cv)} />
@@ -1217,6 +1234,7 @@
 	.vname { font-size: var(--text-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	.tag { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: .05rem .3rem; background: var(--surface-2); border-radius: 3px; font-size: var(--text-xs); flex-shrink: 0; color: var(--text-2); }
 	.live-badge { background: #27ae60; color: white; border-radius: 3px; padding: .05rem .3rem; font-size: var(--text-xs); font-weight: 700; flex-shrink: 0; animation: pulse 1.5s infinite; }
+	.live-badge.tracker { background: #1f6f8b; animation: none; }
 	.status-chip { font-size: var(--text-xs); font-weight: 600; padding: .15rem .4rem; border: 1.5px solid; border-radius: 999px; white-space: nowrap; flex-shrink: 0; }
 
 	/* Quittung der Führung für den eigenen Alarm */
