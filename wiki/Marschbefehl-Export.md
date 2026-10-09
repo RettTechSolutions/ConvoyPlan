@@ -61,6 +61,16 @@ Jede Zeile der Tabelle enthält:
 
 Wegpunkte sind farbig hervorgehoben und tragen dieselbe Nummer wie auf der Karte, dazu Typ, geplante Ankunft/Abfahrt, Haltedauer mit Zweck und die Notiz. Die Ziel-Zeile nennt die geplante Ankunft.
 
+Zwischen den Anweisungen stehen an ihrem Kilometer Hinweise ohne Nummer:
+
+| Symbol | Hinweis |
+|---|---|
+| ↕ | **Durchfahrtshöhe** mit Spielraum zum höchsten Fahrzeug — auch die freien, damit klar ist, wo es gut passt |
+| ⚖ | **Gewichtsgrenze** mit Reserve zum schwersten Fahrzeug und Ausnahme („Anlieger frei"), **Achslastgrenze** mit Reserve zur größten Achslast |
+| ⚠ | **Brücke ohne Höhenangabe** über der Route (nicht auf Autobahn und Kraftfahrstraße) |
+
+Rot hinterlegt sind Stellen, an denen es eng wird (unter 10 cm Spielraum) oder die Route über eine Gewichtsgrenze führt.
+
 **Gut zu wissen:**
 
 - Die Anweisungen entstehen bei der **Routenberechnung** und werden mit der Route gespeichert. Eine Route, die vor diesem Update berechnet wurde, hat noch keine — das Roadbook sagt das und bittet um eine Neuberechnung.

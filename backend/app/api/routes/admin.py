@@ -1816,7 +1816,8 @@ async def export_user_data(
             {
                 "id": v.id, "name": v.name, "callsign": v.callsign,
                 "license_plate": v.license_plate, "convoy_role": v.convoy_role,
-                "height_cm": v.height_cm, "weight_kg": v.weight_kg, "length_cm": v.length_cm,
+                "height_cm": v.height_cm, "weight_kg": v.weight_kg, "axle_load_kg": v.axle_load_kg,
+                "length_cm": v.length_cm,
                 "org_id": v.org_id,
             }
             for v in vehicles

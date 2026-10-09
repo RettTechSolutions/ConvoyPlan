@@ -15,6 +15,8 @@ class Vehicle(Base):
     license_plate: Mapped[str | None] = mapped_column(String(20))
     height_cm: Mapped[int | None] = mapped_column(Integer)
     weight_kg: Mapped[int | None] = mapped_column(Integer)
+    # Größte Achslast (Zeichen 263) — gesperrt wird mit der größten im Verband.
+    axle_load_kg: Mapped[int | None] = mapped_column(Integer)
     length_cm: Mapped[int | None] = mapped_column(Integer)
     convoy_role: Mapped[str | None] = mapped_column(String(50))
     # Antriebsart: "combustion" (Verbrenner) oder "electric" (E-Fahrzeug)

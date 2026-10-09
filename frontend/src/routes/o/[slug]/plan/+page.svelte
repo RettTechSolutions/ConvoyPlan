@@ -17,7 +17,7 @@
 		convoysApi, vehiclesApi, orgsApi, overpassApi, trafficApi, authApi, mfaApi,
 		type Convoy, type Vehicle, type Organization, type OrgMember,
 		type FuelAnalysis, type FuelStation, type Waypoint, type RoadPreference,
-		type KanalwechselEntry, type ConvoyVehicleItem, type DurchfahrtshoeheEntry, type RouteResult, type BrueckenPruefung,
+		type KanalwechselEntry, type ConvoyVehicleItem, type DurchfahrtshoeheEntry, type RouteResult, type BrueckenPruefung, type GewichtsgrenzeEntry,
 	} from '$lib/api';
 	import { MAX_JE_ROLLE, formatStaerke, gesamt, sollAus } from '$lib/tracking/staerke';
 
@@ -31,6 +31,7 @@
 	import OnboardingTutorial from '$lib/components/OnboardingTutorial.svelte';
 	import SidebarFooter from '$lib/components/SidebarFooter.svelte';
 	import DurchfahrtsHoehen from '$lib/components/DurchfahrtsHoehen.svelte';
+	import GewichtsGrenzen from '$lib/components/GewichtsGrenzen.svelte';
 	import { tutorialStore } from '$lib/stores/tutorial';
 	import QRCode from 'qrcode';
 
@@ -43,7 +44,7 @@
 	// changes on every recalculation (avoids issues with the `unknown` type not
 	// being deeply proxied, which prevented the map from updating on re-clicks).
 	let routeGeojson = $state<Geometry | null>(null);
-	let route = $state<{ distance_m: number | null; duration_s: number | null; fuel_analysis: FuelAnalysis | null; kanalwechsel: KanalwechselEntry[]; durchfahrtshoehen: DurchfahrtshoeheEntry[] | null; bruecken: BrueckenPruefung | null; fahrzeughoehe_m: number | null; planned_departure?: string | null; planned_arrival?: string | null } | null>(null);
+	let route = $state<{ distance_m: number | null; duration_s: number | null; fuel_analysis: FuelAnalysis | null; kanalwechsel: KanalwechselEntry[]; durchfahrtshoehen: DurchfahrtshoeheEntry[] | null; bruecken: BrueckenPruefung | null; fahrzeughoehe_m: number | null; gewichtsgrenzen: GewichtsgrenzeEntry[] | null; fahrzeuggewicht_t: number | null; achslast_t: number | null; planned_departure?: string | null; planned_arrival?: string | null } | null>(null);
 	let fuelStations = $state<FuelStation[]>([]);
 	let showFuelStations = $state(false);
 	let fuelStationsLoading = $state(false);
@@ -137,7 +138,7 @@
 	let showShareLinkModal = $state(false);
 	let showSubConvoyForm = $state(false);
 	function emptyVehicleForm() {
-		return { name:'', callsign:'', license_plate:'', height_cm:'', weight_kg:'', length_cm:'', convoy_role:'', propulsion:'combustion', tank_capacity_l:'', fuel_consumption_l100km:'', current_fuel_l:'', battery_capacity_kwh:'', consumption_kwh_100km:'', current_charge_kwh:'', staerke_soll_fuehrer:'', staerke_soll_unterfuehrer:'', staerke_soll_mannschaften:'' };
+		return { name:'', callsign:'', license_plate:'', height_cm:'', weight_kg:'', axle_load_kg:'', length_cm:'', convoy_role:'', propulsion:'combustion', tank_capacity_l:'', fuel_consumption_l100km:'', current_fuel_l:'', battery_capacity_kwh:'', consumption_kwh_100km:'', current_charge_kwh:'', staerke_soll_fuehrer:'', staerke_soll_unterfuehrer:'', staerke_soll_mannschaften:'' };
 	}
 	let newVehicle = $state(emptyVehicleForm());
 	let editingVehicleId = $state<string | null>(null);
@@ -318,6 +319,14 @@
 		const h = r.routing_params?.max_height_m;
 		return typeof h === 'number' ? h : null;
 	}
+	function fahrzeuggewicht(r: RouteResult): number | null {
+		const t = r.routing_params?.max_weight_t;
+		return typeof t === 'number' ? t : null;
+	}
+	function achslast(r: RouteResult): number | null {
+		const t = r.routing_params?.max_axle_load_t;
+		return typeof t === 'number' ? t : null;
+	}
 
 	async function loadStoredRoute(convoyId: string) {
 		brueckenSucheZuruecksetzen();
@@ -334,6 +343,9 @@
 				durchfahrtshoehen: r.durchfahrtshoehen ?? null,
 				bruecken: r.bruecken ?? null,
 				fahrzeughoehe_m: fahrzeughoehe(r),
+				gewichtsgrenzen: r.gewichtsgrenzen ?? null,
+				fahrzeuggewicht_t: fahrzeuggewicht(r),
+				achslast_t: achslast(r),
 				planned_departure: r.planned_departure ?? null,
 				planned_arrival: r.planned_arrival ?? null,
 			};
@@ -478,6 +490,7 @@
 		const checks: [string, string, number, number, string][] = [
 			['height_cm', 'Fahrzeughöhe', 100, 450, 'cm'],
 			['weight_kg', 'Gewicht', 100, 100000, 'kg'],
+			['axle_load_kg', 'Größte Achslast', 1000, 20000, 'kg'],
 			['length_cm', 'Länge', 100, 3000, 'cm'],
 			// Dieselben Grenzen wie hinten (`staerke.MAX_JE_ROLLE`) — sonst nähme
 			// das Formular an, was der Endpunkt mit 422 zurückwiese.
@@ -526,6 +539,7 @@
 			license_plate: form.license_plate,
 			height_cm: num(form.height_cm),
 			weight_kg: num(form.weight_kg),
+			axle_load_kg: num(form.axle_load_kg),
 			length_cm: num(form.length_cm),
 			convoy_role: form.convoy_role,
 			propulsion: form.propulsion,
@@ -550,6 +564,7 @@
 			license_plate: v.license_plate ?? '',
 			height_cm: v.height_cm != null ? String(v.height_cm) : '',
 			weight_kg: v.weight_kg != null ? String(v.weight_kg) : '',
+			axle_load_kg: v.axle_load_kg != null ? String(v.axle_load_kg) : '',
 			length_cm: v.length_cm != null ? String(v.length_cm) : '',
 			convoy_role: v.convoy_role ?? '',
 			propulsion: v.propulsion ?? 'combustion',
@@ -799,7 +814,7 @@
 		try {
 			const r = await convoysApi.calculateRoute(selected.id);
 			routeGeojson = r.geojson;
-			route = { distance_m: r.distance_m, duration_s: r.duration_s, fuel_analysis: r.fuel_analysis, kanalwechsel: r.kanalwechsel ?? [], durchfahrtshoehen: r.durchfahrtshoehen ?? null, bruecken: null, fahrzeughoehe_m: fahrzeughoehe(r), planned_departure: r.planned_departure ?? null, planned_arrival: r.planned_arrival ?? null };
+			route = { distance_m: r.distance_m, duration_s: r.duration_s, fuel_analysis: r.fuel_analysis, kanalwechsel: r.kanalwechsel ?? [], durchfahrtshoehen: r.durchfahrtshoehen ?? null, bruecken: null, fahrzeughoehe_m: fahrzeughoehe(r), gewichtsgrenzen: r.gewichtsgrenzen ?? null, fahrzeuggewicht_t: fahrzeuggewicht(r), achslast_t: achslast(r), planned_departure: r.planned_departure ?? null, planned_arrival: r.planned_arrival ?? null };
 			fuelStations = [];
 			showFuelStations = false;
 			activeRoute.set(r);
@@ -1390,6 +1405,12 @@
 								suche={brueckenSuche}
 								onSuchen={darfBrueckenSuchen ? () => selected && sucheBruecken(selected.id) : undefined}
 							/>
+							<GewichtsGrenzen
+								eintraege={route.gewichtsgrenzen}
+								fahrzeuggewichtT={route.fahrzeuggewicht_t}
+								achslastT={route.achslast_t}
+								ohneGewicht={selected?.convoy_vehicles.filter((cv) => !cv.vehicle.weight_kg).length ?? 0}
+							/>
 							{#if route.fuel_analysis?.duration_halt_needed}
 								{@const remaining = route.fuel_analysis.duration_halts.slice(thStopsAdded)}
 								{#if remaining.length > 0}
@@ -1459,6 +1480,7 @@
 								<input placeholder="Kennzeichen" bind:value={newVehicle.license_plate} />
 								<input placeholder="Höhe in cm (z.B. 320)" type="number" min="100" max="450" bind:value={newVehicle.height_cm} />
 								<input placeholder="Gewicht (kg)" type="number" min="100" max="100000" bind:value={newVehicle.weight_kg} />
+								<input placeholder="Größte Achslast (kg)" aria-label="Größte Achslast (kg)" type="number" min="1000" max="20000" bind:value={newVehicle.axle_load_kg} />
 								<input placeholder="Länge (cm)" type="number" min="100" max="3000" bind:value={newVehicle.length_cm} />
 								<input placeholder="Funktion im Konvoi" bind:value={newVehicle.convoy_role} />
 								<hr style="border-color:rgba(255,255,255,.15);margin:.2rem 0" />
@@ -1505,6 +1527,7 @@
 											<input placeholder="Kennzeichen" bind:value={editVehicleForm.license_plate} />
 											<input placeholder="Höhe in cm (z.B. 320)" type="number" min="100" max="450" bind:value={editVehicleForm.height_cm} />
 											<input placeholder="Gewicht (kg)" type="number" bind:value={editVehicleForm.weight_kg} />
+											<input placeholder="Größte Achslast (kg)" aria-label="Größte Achslast (kg)" type="number" min="1000" max="20000" bind:value={editVehicleForm.axle_load_kg} />
 											<input placeholder="Länge (cm)" type="number" bind:value={editVehicleForm.length_cm} />
 											<input placeholder="Funktion im Konvoi" bind:value={editVehicleForm.convoy_role} />
 											<hr style="border-color:rgba(255,255,255,.15);margin:.2rem 0" />
