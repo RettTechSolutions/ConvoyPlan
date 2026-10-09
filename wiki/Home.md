@@ -67,7 +67,7 @@ Retention-Container → periodischer Daten-Purge
 | Datenbank | PostgreSQL 15, PostGIS |
 | ORM / Migrationen | SQLAlchemy Async, Alembic |
 | Authentifizierung | JWT (python-jose, passlib), MFA/TOTP |
-| Routing | GraphHopper 9.1 |
+| Routing | GraphHopper 10.2 |
 | Externe Daten | Open-Meteo, Overpass, Autobahn-API, offene Feeds (MobiData BW, Berlin VIZ), DATEX-II/mobilithek, HERE/TomTom (optional) |
 | Reverse Proxy / TLS | Caddy 2 |
 | Infrastruktur | Docker Compose, Portainer Stack |
@@ -133,6 +133,7 @@ Retention-Container → periodischer Daten-Purge
 | [Rollen & Berechtigungen](Rollen) | Rollenmodell und Zugriffsrechte |
 | [Teilen](Teilen) | Tracking-Links ohne Login: Viewer- und Fahrer-Links, Passwortschutz, Widerruf |
 | [Aktionsseite](Aktionsseite) | Konvois öffentlich zeigen: verzögert, vergröbert, über den EventTracker |
+| [Tracker](Tracker) | Feste Ortungsgeräte im Fahrzeug: koppeln, einrichten, Update-Kanäle |
 | [FAQ](FAQ) | Häufige Fragen |
 
 ### Betrieb, Sicherheit & Features

@@ -62,9 +62,9 @@ GRAPHHOPPER_IMAGE="${GRAPHHOPPER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/gra
 
 # Weg für den Graph-Bau: "import" (GraphHopper-Unterbefehl, Container endet von
 # selbst) oder "server" (Container starten, warten bis der Graph steht, wieder
-# beenden). Ob 9.1 den Unterbefehl `import` kennt, ist im Repo nirgends belegt —
-# deshalb erkennt _import_graph() ein "Unrecognized command" und fällt selbst
-# auf "server" zurück. Wer den Rückfall dauerhaft will: REGION_IMPORT_MODE=server.
+# beenden). `import` kennt GraphHopper (10.2, der Entrypoint nutzt ihn auch
+# selbst); _import_graph() erkennt trotzdem ein "Unrecognized command" und
+# fällt auf "server" zurück, falls eine künftige Fassung ihn verliert. Wer den Rückfall dauerhaft will: REGION_IMPORT_MODE=server.
 REGION_IMPORT_MODE="${REGION_IMPORT_MODE:-import}"
 
 # Wartezeit nach dem Schwenk. Der Graph ist zu diesem Zeitpunkt fertig gebaut,

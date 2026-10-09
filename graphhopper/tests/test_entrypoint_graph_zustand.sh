@@ -45,14 +45,16 @@ trap 'rm -rf "$TMP"' EXIT
 BLOCK="$TMP/graph_zustand.sh"
 sed -n '/^# ── GRAPH_ZUSTAND_ANFANG/,/^# ── GRAPH_ZUSTAND_ENDE/p' "$ENTRYPOINT" > "$BLOCK"
 
-FP='dach-latest.osm.pbf|car_access, car_average_speed, road_class, max_speed, max_height|turn_costs: motorcar, motor_vehicle'
+GH_VERSION_TEST='10.2'
+FP="dach-latest.osm.pbf|car_access, car_average_speed, road_class, max_speed, max_height|turn_costs: motorcar, motor_vehicle|graphhopper: $GH_VERSION_TEST"
 
 # Fuehrt den echten Block gegen ein vorbereitetes Verzeichnis aus und gibt den
 # gewaehlten REBUILD_REASON zurueck ("KEINER", wenn nicht neu gebaut wird).
 run_block() {
     local dir="$1" downloaded="${2:-0}" filename="${3:-dach-latest.osm.pbf}"
     (
-        export GRAPH_DIR="$dir" OSM_FILENAME="$filename" DOWNLOADED="$downloaded"
+        export GRAPH_DIR="$dir" OSM_FILENAME="$filename" DOWNLOADED="$downloaded" \
+            GH_VERSION="$GH_VERSION_TEST"
         # shellcheck source=/dev/null
         . "$BLOCK" >/dev/null 2>&1
         echo "${REBUILD_REASON:-KEINER}"
@@ -116,6 +118,24 @@ case "$grund" in
     *)         r="nein ($grund)" ;;
 esac
 check "Graph ohne turn_costs im Fingerprint wird neu gebaut" "$r" "ja"
+
+# ── Fall 4c: Graph einer anderen GraphHopper-Fassung wird neu gebaut ────────
+# Das Speicherformat wechselt zwischen den Versionen (9.1 -> 10.2: edges 22 ->
+# 23). Ein vollstaendiger Graph der alten Fassung hat `edges` und — ohne die
+# Version im Fingerprint — einen passenden Fingerprint; der Server scheiterte
+# dann an ihm, bei jedem Neustart. Fingerprint wie unter 9.1 geschrieben:
+# ohne den graphhopper-Teil.
+D4c="$TMP/andere_gh_fassung"; mkdir -p "$D4c"
+printf 'x' > "$D4c/edges"
+printf '%s' "${FP%|graphhopper:*}" > "$D4c/.graph_fingerprint"
+grund="$(run_block "$D4c")"
+case "$grund" in
+    *GraphHopper-Version*) r=ja ;;
+    *)                     r="nein ($grund)" ;;
+esac
+check "Graph einer anderen GraphHopper-Fassung wird neu gebaut" "$r" "ja"
+[ -e "$D4c/edges" ] && r=liegt_noch || r=weg
+check "der Graph der alten Fassung wird weggeraeumt" "$r" "weg"
 
 # ── Fall 5: frisch geladene OSM-Datei — bestehendes Verhalten bleibt ───────
 D5="$TMP/neu_geladen"; mkdir -p "$D5"

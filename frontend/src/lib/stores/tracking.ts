@@ -5,6 +5,7 @@ import { createConnectionTracker, type ConnectionState } from '$lib/tracking/con
 import type { Betriebsstoff } from '$lib/tracking/betriebsstoff';
 import type { Staerke } from '$lib/tracking/staerke';
 import { createBelegung, geraeteKennung } from '$lib/tracking/belegung';
+import { istPositionAbgelehnt, istPositionsquelle } from '$lib/tracking/positionsquelle';
 
 /** Live status (incl. sub-level and note) received over the WebSocket. */
 export interface VehicleStatusInfo {
@@ -77,6 +78,13 @@ export const gpsRevoked = writable<string | null>(null);
 export const fremdBelegt = writable<ReadonlySet<string>>(new Set());
 /** Das eigene Fahrzeug war schon vergeben; die Ansicht nimmt die Wahl zurück. */
 export const belegungAbgelehnt = writable<string | null>(null);
+/**
+ * Die eigene Position wurde verworfen, weil ein Tracker für das Fahrzeug sendet
+ * (`$lib/tracking/positionsquelle`). Nur der Absender erfährt das.
+ */
+export const positionAbgelehnt = writable<string | null>(null);
+/** Fahrzeuge, für die die Führung den Tracker übersteuert hat — das Telefon gilt. */
+export const trackerUebersteuert = writable<ReadonlySet<string>>(new Set());
 
 const belegung = createBelegung({
 	send: (frame) => {
@@ -210,6 +218,17 @@ async function openSocket(convoyId: string) {
 		};
 		if (data.type === 'pong') {
 			// Heartbeat reply — the timestamp above is all we need.
+			return;
+		} else if (istPositionAbgelehnt(parsed)) {
+			// Vor dem Positionszweig unten, aus demselben Grund wie `alarm_quittiert`.
+			positionAbgelehnt.set(parsed.vehicle_id);
+			return;
+		} else if (istPositionsquelle(parsed)) {
+			trackerUebersteuert.update((s) => {
+				const next = new Set(s);
+				if (parsed.tracker_uebersteuert) next.add(parsed.vehicle_id); else next.delete(parsed.vehicle_id);
+				return next;
+			});
 			return;
 		} else if (data.type === 'alarm_quittiert') {
 			// Vor dem Positionszweig unten: Der läse jede unbekannte Nachricht als

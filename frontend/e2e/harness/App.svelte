@@ -11,6 +11,7 @@
 	import ConvoyFormModal from '$lib/components/ConvoyFormModal.svelte';
 	import SidebarFooter from '$lib/components/SidebarFooter.svelte';
 	import AktionsseitenVerwaltung from '$lib/components/AktionsseitenVerwaltung.svelte';
+	import TrackerVerwaltung from '$lib/components/TrackerVerwaltung.svelte';
 	import PasskeyVerwaltung from '$lib/components/PasskeyVerwaltung.svelte';
 	import DurchfahrtsHoehen from '$lib/components/DurchfahrtsHoehen.svelte';
 	import RegionCard from '$lib/components/RegionCard.svelte';
@@ -97,6 +98,8 @@
 	</div>
 {:else if welche === 'aktion'}
 	<div class="admin-flaeche"><AktionsseitenVerwaltung /></div>
+{:else if welche === 'tracker'}
+	<div class="admin-flaeche"><TrackerVerwaltung /></div>
 {:else if welche === 'passkey'}
 	<div class="admin-flaeche"><PasskeyVerwaltung /></div>
 {:else if welche === 'feedback'}

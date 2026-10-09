@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, func
+from sqlalchemy import DateTime, Float, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -19,6 +19,9 @@ class VehiclePosition(Base):
     speed_kmh: Mapped[float | None] = mapped_column(Float)
     heading: Mapped[float | None] = mapped_column(Float)
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Woher die Position kam: "tracker" (services/positionsquelle.py), NULL für
+    # Fahrer-Link und App. Jede Schreibstelle setzt die Spalte ausdrücklich.
+    quelle: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
     convoy: Mapped["Convoy"] = relationship(back_populates="vehicle_positions")
     vehicle: Mapped["Vehicle"] = relationship()

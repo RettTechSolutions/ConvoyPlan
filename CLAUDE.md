@@ -132,6 +132,24 @@ Profile, und der Wert steht im Fingerprint: ein Graph ohne sie wird neu gebaut
 (`test_entrypoint_graph_zustand.sh`, Fall 4b; die erzeugte Konfiguration prüft
 `test_entrypoint_start_phasen.sh`, Fall 1b).
 
+Das braucht **GraphHopper ≥ 10.2**. 9.1 bricht den Import mit `turn_costs` an
+gültigen `no_entry`/`no_exit`-Relationen mit Via-Weg und mehreren from- oder
+to-Wegen ab (`fromEdges and toEdges cannot be size > 1 at the same time`,
+GraphHopper #3086/#3100). Solche gibt es in DACH; nach #594 kam auf 9.1 kein
+Import mehr durch, und weil der Entrypoint den Torso danach wegräumt, drehte
+der Container im Kreis. Die Fassung steht deshalb ebenfalls im Fingerprint
+(`GH_VERSION` aus dem Dockerfile, Fall 4c): das Speicherformat wechselt
+zwischen den Versionen, und einen fremden Graphen lädt GraphHopper nicht.
+Wer `GH_VERSION` hebt, baut damit auf jeder Installation den Graphen neu.
+
+**Kein CH.** Mit `turn_costs` wäre die Contraction Hierarchy für `car`
+kantenbasiert — die teuerste Phase des Imports an Heap und Zeit, für einen
+Nutzen nur bei „schnell" ohne Fahrzeughöhe (alles andere schickt ein Custom
+Model und `ch.disable`). `profiles_ch` fehlt deshalb; jede Anfrage läuft
+flexibel. Nicht im Fingerprint: ein fertiger Graph mit CH-Daten lädt weiter
+(`test_entrypoint_start_phasen.sh`, Fall 1c). Wird „schnell" auf langen
+Strecken zu langsam, ist LM (`profiles_lm`) der nächste Schritt, nicht CH.
+
 ### Die Wegpunktreihenfolge gehört dem Menschen
 
 `order_index` ist die Wahrheit, und `calculate_route` leitet ihn **nicht** aus der
@@ -184,7 +202,7 @@ der Unterführungen, unter denen die Route trotzdem hindurchgeht, gespeichert in
 
 Zwei Dinge, die man kennen muss:
 
-- **GraphHopper rundet `max_height` auf 10 cm** (9.1, `MaxHeight.create`, Faktor
+- **GraphHopper rundet `max_height` auf 10 cm** (9.1 und 10.2, `MaxHeight.create`, Faktor
   0,1 mit `Math.round`): aus 3,85 m auf dem Schild werden 3,9 m im Graphen. Die
   Sperre `max_height < Fahrzeughöhe` kann deshalb ein Fahrzeug von 3,88 m unter
   ein 3,85-m-Schild schicken. Die Stufe `eng` (< 10 cm Spielraum) ist genau dafür
@@ -291,6 +309,65 @@ schlägt sonst an.
 
 Die Positionen tragen die **Serverzeit**. Puffert ein Gerät im Funkloch und
 sendet später, landen die Punkte gestaucht am Ende der Linie.
+
+### Tracker: das Gerät hängt am Fahrzeug, die Position gehört dem Konvoi
+
+Ein festes Ortungsgerät (Repo **ConvoyPlan-Tracker**: Plan, Protokoll, Simulator,
+später Firmware) sendet die Position seines Fahrzeugs ohne Zutun der Besatzung.
+Das Datenmodell kennt aber keine Position je Fahrzeug, nur je `(convoy_id,
+vehicle_id)`. Deshalb entscheidet die **Instanz**, ob gesendet wird, und sagt es
+dem Gerät in jeder Antwort (`modus`): `senden` nur, solange das gekoppelte
+Fahrzeug in einem Konvoi mit Status `active` oder `running` eingeplant ist
+(E7 im Tracker-Plan), sonst `schweigen`. Das ist zugleich die Antwort auf die
+Datenschutzfrage — ein Tracker ist keine Ortung rund um die Uhr. Steht das
+Fahrzeug in zwei laufenden Konvois, bekommen beide die Position (E8 dort).
+
+Die Regeln stehen in `app/services/ortungsgeraet.py`, geprüft ohne Datenbank
+von `tests/test_tracker_geraete.py`; die Verdrahtung in `api/routes/geraete.py`
+(zwei Router: `/api/geraete/*` für das Gerät, `/api/org/geraete` für den
+Org-Admin). Vier Dinge, die man kennen muss:
+
+- **Vierte Schreibstelle für `VehiclePosition`.** `tests/test_positionsverlauf.py`
+  zählt sie mit; wer eine fünfte baut, trägt sie dort ein und ruft
+  `positionsverlauf.aufzeichnen` mit. Auch `is_recently_cleared` („GPS-Freigabe
+  zurücksetzen") und `planned → en_route` samt `alarm_quittung.zuruecksetzen`
+  gelten hier wie am Fahrer-Link.
+- **Gerätezeit, nicht Serverzeit.** Jeder Fix trägt seine GNSS-Zeit; mehr als
+  120 s Zukunft oder älter als 24 h fällt weg, **je Fix**, nicht je Bündel. Die
+  aktuelle Position wird nur ersetzt, wenn der Fix jünger ist
+  (`on_conflict_do_update … where recorded_at < excluded.recorded_at`); der
+  Verlauf bekommt jeden Fix mit seiner Zeit. Sonst wäre jede Tunnelfahrt ein
+  Knäuel am Ende der Linie.
+- **Code und Token nur als SHA-256**, wie beim Abruf-Token der Aktionsseite.
+  Unbekannt, abgelaufen, verbraucht: dieselbe 404. Ein neuer Code macht das
+  alte Token sofort ungültig; `aktiv=false` ebenso (401, das Gerät geht in
+  *gesperrt*). Die Plansperre der Organisation (`org_plan.ist_gesperrt`) ergibt
+  `schweigen` — der dritte Schreibweg zieht sie mit.
+- **Die Belegung ist aufgeteilt, nicht erweitert** (E5 im Tracker-Plan,
+  `services/positionsquelle.py`). Der Tracker belegt das Fahrzeug *nicht* —
+  die Belegung (`belegung.py`) sagt weiter, welches Gerät der Besatzung Status,
+  Stärke, Betriebsstoff und Quittung meldet. Die **Position** aber gehört dem
+  Tracker, solange er sendet (ein Bündel in den letzten fünf Minuten, dieselbe
+  Frist wie die Belegung): Alle drei Telefonpfade fragen vor dem Schreiben
+  `positionsquelle.telefon_erlaubt`, verwerfen sonst und sagen es **nur dem
+  Absender** (`position_abgelehnt`, nur mit Gerätekennung — der alte Store las
+  Unbekanntes als Position). Fünf Minuten statt sofortigem Rückfall, weil ein
+  Rückfall je Frame das Springen zurückbrächte, das die Belegung abgestellt hat;
+  statt nie, weil ein toter Tracker das Fahrzeug nicht stumm machen darf. Die
+  Führung **übersteuert** mit `PATCH …/vehicles/{id}/positionsquelle`
+  (`ConvoyVehicle.tracker_uebersteuert_at`, Migration `0058`, in der Datenbank,
+  weil ein Neustart die Entscheidung nicht aufheben darf): dann gilt das
+  Telefon, Bündel des Trackers werden in diesem Konvoi verworfen, bis sie es
+  zurücknimmt. `vehicle_positions.quelle` sagt der Karte, was vom Tracker kam;
+  jede Schreibstelle setzt die Spalte ausdrücklich. Gegenstellen:
+  `frontend/src/lib/tracking/positionsquelle.ts` und `packages/track-api` in der
+  Begleit-App. Tests: `tests/test_positionsquelle.py` (Entscheidung ohne Uhr,
+  dann REST, Tracker und Fahrer-Link am gestellten Kanal).
+
+Ein Firmware-Angebot (`firmware` in der Anweisung) gibt es noch nicht — woher
+die Instanz das Manifest ihres Kanals bezieht, ist im Tracker-Repo offen (O6).
+Die Referenz-Instanz im Simulator dort tut dasselbe wie dieser Code; wer das
+Protokoll ändert, zieht beide. Anwenderdoku: `wiki/Tracker.md`.
 
 ### Alarmquittung: die Führung quittiert am Server
 

@@ -76,6 +76,8 @@ export interface ConvoyVehicleItem {
 	status_level: string | null; status_note: string | null; status_changed_at: string | null;
 	// Quittung des laufenden Alarms durch die Führung (Server, `alarm_quittung.py`).
 	alarm_quittiert_at?: string | null; alarm_quittiert_von?: string | null;
+	// Die Führung lässt für dieses Fahrzeug das Telefon statt des Trackers gelten.
+	tracker_uebersteuert_at?: string | null; tracker_uebersteuert_von?: string | null;
 	sonderfunktion: string | null; mobile_phone: string | null;
 	// Mannschaftsstärke (siehe $lib/tracking/staerke): null heißt „nicht
 	// angegeben", 0 heißt „niemand" — die beiden nie gleichsetzen.
@@ -189,6 +191,9 @@ export interface OrgMember {
 export interface VehiclePosition {
 	vehicle_id: string; lat: number; lon: number;
 	speed_kmh: number | null; heading: number | null; recorded_at: string;
+	// Woher die Position kam: 'tracker' für ein festes Ortungsgerät, sonst App
+	// oder Fahrer-Link (`$lib/tracking/positionsquelle`). Fehlt auf älteren Servern.
+	quelle?: 'tracker' | null;
 }
 
 export interface WeatherCurrent {
@@ -430,6 +435,12 @@ export const convoysApi = {
 // V3: Tracking
 export const trackingApi = {
 	getPositions: (convoyId: string) => api.get<VehiclePosition[]>(`/api/convoys/${convoyId}/positions`),
+	// Tracker übersteuern (Führung): dann gilt für dieses Fahrzeug das Telefon.
+	setPositionsquelle: (convoyId: string, vehicleId: string, trackerUebersteuern: boolean) =>
+		api.patch<{ status: string; tracker_uebersteuert_at: string | null; tracker_uebersteuert_von: string | null }>(
+			`/api/convoys/${convoyId}/vehicles/${vehicleId}/positionsquelle`,
+			{ tracker_uebersteuern: trackerUebersteuern },
+		),
 	updatePosition: (convoyId: string, data: Omit<VehiclePosition, 'recorded_at'>) =>
 		api.post(`/api/convoys/${convoyId}/positions`, data),
 	updateVehicleStatus: (
@@ -1636,6 +1647,57 @@ export const aktionsseitenApi = {
         api.post<AktionsseiteMitToken>(`/api/org/aktionsseiten/${id}/token`, {}),
     delete: (id: string) => api.delete<void>(`/api/org/aktionsseiten/${id}`),
     preview: (id: string) => api.get<AktionsseiteVorschau>(`/api/org/aktionsseiten/${id}/vorschau`),
+};
+
+// ── Ortungsgeräte (Tracker) ───────────────────────────────────────────────
+//
+// Feste Tracker im Fahrzeug (Repo ConvoyPlan-Tracker). Der Einmal-Code zum
+// Einrichten steht genau einmal in der Antwort von `create` und `rotateCode`;
+// gespeichert ist nur sein Hash.
+
+export type TrackerKanal = 'stable' | 'beta' | 'nightly';
+
+export interface Tracker {
+    id: string;
+    name: string;
+    vehicle_id: string | null;
+    vehicle_name: string | null;
+    kanal: TrackerKanal;
+    aktiv: boolean;
+    eingerichtet: boolean;
+    code_offen: boolean;
+    hardware_id: string | null;
+    hardware: string | null;
+    firmware: string | null;
+    zuletzt_gesehen: string | null;
+    akku_prozent: number | null;
+    extern: boolean | null;
+    signal_dbm: number | null;
+    update_version: string | null;
+    update_ergebnis: 'bestaetigt' | 'zurueckgerollt' | 'fehler' | null;
+    update_meldung: string | null;
+    update_at: string | null;
+    created_at: string;
+}
+
+export interface TrackerMitCode extends Tracker {
+    code: string;
+    code_expires_at: string;
+}
+
+export interface TrackerDaten {
+    name: string;
+    vehicle_id: string | null;
+    kanal: TrackerKanal;
+    aktiv: boolean;
+}
+
+export const geraeteApi = {
+    list: () => api.get<Tracker[]>('/api/org/geraete'),
+    create: (daten: TrackerDaten) => api.post<TrackerMitCode>('/api/org/geraete', daten),
+    update: (id: string, daten: TrackerDaten) => api.put<Tracker>(`/api/org/geraete/${id}`, daten),
+    rotateCode: (id: string) => api.post<TrackerMitCode>(`/api/org/geraete/${id}/code`, {}),
+    delete: (id: string) => api.delete<void>(`/api/org/geraete/${id}`),
 };
 
 export const orgMcpApi = {
