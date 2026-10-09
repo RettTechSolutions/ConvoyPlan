@@ -61,15 +61,21 @@ class LicenseInfo:
         """Letzter gültiger Tag (UTC); None, wenn ``expires`` fehlt oder unlesbar ist."""
         if not self.expires:
             return None
+        # Unix-Zeit zuerst — "exp" der frühen Lizenzmanager-Fassung. Die Probe
+        # muss *vor* fromisoformat stehen: seit Python 3.11 nimmt das auch
+        # "YYYYMMDD" ohne Trennzeichen an, und aus den ersten acht Ziffern einer
+        # Unix-Zeit wie 1823080307 wird dann der 3. August 1823 — je nach
+        # Ziffernfolge mal ein Datum, mal ein ValueError. Ein gültiger Schlüssel
+        # galt so an manchen Tagen als vor 200 Jahren abgelaufen.
+        if self.expires.isdigit() and len(self.expires) > 8:
+            try:
+                return datetime.fromtimestamp(int(self.expires), tz=timezone.utc).date()
+            except (ValueError, OSError, OverflowError):
+                return None
         # ISO date string (YYYY-MM-DD) — preferred format
         try:
             return date.fromisoformat(self.expires)
         except ValueError:
-            pass
-        # Unix timestamp — "exp" field in JWT convention
-        try:
-            return datetime.fromtimestamp(int(self.expires), tz=timezone.utc).date()
-        except (ValueError, OSError, OverflowError):
             return None
 
     @property
