@@ -338,7 +338,7 @@ async def test_berechnung_speichert_die_liste_und_liefert_sie_wieder_aus(verband
     # Gesperrt wird mit dem höchsten Fahrzeug, beurteilt mit demselben.
     assert {"if": "max_height < 3.65", "multiply_by": "0"} in gesendet["custom_model"]["priority"]
     erwartet = [{
-        "km": KM[1], "lat": COORDS[1][1], "lon": COORDS[1][0],
+        "km": KM[1], "m": pytest.approx(1112, abs=2), "lat": COORDS[1][1], "lon": COORDS[1][0],
         "laenge_m": pytest.approx(1112, abs=2), "hoehe_m": 3.7, "spielraum_m": 0.05, "stufe": "eng",
     }]
     assert berechnet.json()["durchfahrtshoehen"] == erwartet

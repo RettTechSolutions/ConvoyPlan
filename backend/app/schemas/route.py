@@ -69,6 +69,8 @@ class KanalwechselEntry(BaseModel):
 
 class DurchfahrtshoeheEntry(BaseModel):
     km: float
+    # Meter ab Start; fehlt bei Routen, die vor Migration 0056 berechnet wurden.
+    m: int | None = None
     lat: float
     lon: float
     laenge_m: int
@@ -77,6 +79,25 @@ class DurchfahrtshoeheEntry(BaseModel):
     # Höhe minus höchstes Fahrzeug; None ohne erfasste Fahrzeughöhe.
     spielraum_m: float | None = None
     stufe: Literal["eng", "knapp", "frei", "unbekannt"]
+
+
+class BrueckeEntry(BaseModel):
+    km: float
+    m: int
+    lat: float
+    lon: float
+    # Eisenbahnbrücke, Straßenbrücke, Fuß-/Radwegbrücke … — bei mehreren
+    # Wegen an einer Stelle mit " / " verbunden.
+    art: str
+    name: str | None = None
+    osm_ids: list[int] = []
+    # Liegt auf Autobahn oder Kraftfahrstraße — dort gezählt, nicht gelistet.
+    schnellstrasse: bool = False
+
+
+class BrueckenPruefung(BaseModel):
+    geprueft_at: datetime
+    eintraege: list[BrueckeEntry] = []
 
 
 class RouteResponse(BaseModel):
@@ -91,6 +112,8 @@ class RouteResponse(BaseModel):
     # None = nicht ermittelt (alte oder importierte Route), [] = keine bekannte
     # Höhenbeschränkung auf der Strecke.
     durchfahrtshoehen: list[DurchfahrtshoeheEntry] | None = None
+    # None = noch nicht gesucht (POST …/route/bruecken)
+    bruecken: BrueckenPruefung | None = None
     # Abmarschzeit und geplante Ankunft am Ziel. Beide werden auf derselben
     # Zeitbasis wie die Wegpunkt-Zeiten berechnet, damit der Zeitplan konsistent
     # dargestellt wird. planned_arrival = Abmarsch + Fahrzeit + alle Haltezeiten.

@@ -9,10 +9,17 @@ import { test, expect, type Page } from '@playwright/test';
 //    statt Stellen als unbedenklich zu zeigen;
 //  - eine Route von vor der Auswertung zeigt nichts — „keine Beschränkung"
 //    wäre dort eine Behauptung ohne Grundlage;
-//  - die Herkunft der Zahlen steht immer dabei.
+//  - die Herkunft der Zahlen steht immer dabei;
+//  - Brücken über der Route ohne Höhenangabe stehen darunter, die auf Autobahn
+//    und Kraftfahrstraße erst auf Nachfrage; ob gesucht wurde, läuft oder
+//    scheiterte, ist zu unterscheiden — „nichts gefunden" sagt nur, wer gesucht hat.
 
 const HUELLE = 'http://localhost:4174';
 const block = (page: Page) => page.getByRole('region', { name: 'Durchfahrtshöhen' });
+const bekannte = (page: Page) =>
+	block(page).getByRole('list', { name: 'Bekannte Höhenbeschränkungen' }).getByRole('listitem');
+const bruecken = (page: Page) =>
+	block(page).getByRole('list', { name: 'Brücken ohne Höhenangabe' }).getByRole('listitem');
 
 async function oeffnen(page: Page, fall: string) {
 	await page.goto(`${HUELLE}/?k=hoehen&fall=${fall}`);
@@ -21,7 +28,7 @@ async function oeffnen(page: Page, fall: string) {
 
 test('enge und knappe Stellen stehen da, die freien erst auf Nachfrage', async ({ page }) => {
 	await oeffnen(page, 'gemischt');
-	const eintraege = block(page).getByRole('listitem');
+	const eintraege = bekannte(page);
 
 	await expect(block(page)).toContainText('Höchstes Fahrzeug: 3,65 m');
 	await expect(block(page)).toContainText('1 Fahrzeug ohne Höhenangabe, nicht berücksichtigt');
@@ -43,13 +50,13 @@ test('enge und knappe Stellen stehen da, die freien erst auf Nachfrage', async (
 test('sind alle frei, sagt der Block das in einem Satz', async ({ page }) => {
 	await oeffnen(page, 'alle_frei');
 	await expect(block(page)).toContainText('1 Höhenbeschränkung, alle mit mindestens 30 cm Spielraum.');
-	await expect(block(page).getByRole('listitem')).toHaveCount(0);
+	await expect(bekannte(page)).toHaveCount(0);
 });
 
 test('ohne Fahrzeughöhe wird nichts als unbedenklich gezeigt', async ({ page }) => {
 	await oeffnen(page, 'ohne_hoehe');
 	await expect(block(page)).toContainText('Keine Fahrzeughöhe erfasst – die Route meidet keine Höhenbeschränkung.');
-	const [eintrag] = await block(page).getByRole('listitem').all();
+	const [eintrag] = await bekannte(page).all();
 	await expect(eintrag).toContainText('3,5 m');
 	await expect(eintrag).toContainText('Höhe fehlt');
 	await expect(eintrag).not.toContainText('cm');
@@ -64,6 +71,7 @@ test('die Herkunft der Zahlen steht immer dabei', async ({ page }) => {
 	for (const fall of ['gemischt', 'ohne_hoehe', 'leer']) {
 		await oeffnen(page, fall);
 		await expect(block(page)).toContainText('Aus OpenStreetMap, auf 10 cm gerundet.');
+		await expect(block(page)).toContainText('Bei Brücken ohne Angabe ist die Höhe unbekannt.');
 		await expect(block(page)).toContainText('Maßgeblich ist die Beschilderung vor Ort.');
 	}
 });
@@ -71,4 +79,45 @@ test('die Herkunft der Zahlen steht immer dabei', async ({ page }) => {
 test('eine Route von vor der Auswertung zeigt keinen Block', async ({ page }) => {
 	await oeffnen(page, 'alt');
 	await expect(block(page)).toHaveCount(0);
+});
+
+test('Brücken ohne Höhenangabe stehen darunter, Schnellstraßen auf Nachfrage', async ({ page }) => {
+	await oeffnen(page, 'gemischt');
+	await expect(bruecken(page)).toHaveCount(1);
+	await expect(bruecken(page).first()).toContainText('km 5,2');
+	await expect(bruecken(page).first()).toContainText('Eisenbahnbrücke');
+	await expect(bruecken(page).first()).toContainText('Ammertalbahn');
+	await expect(bruecken(page).first().getByRole('link', { name: 'OSM' }))
+		.toHaveAttribute('href', 'https://www.openstreetmap.org/way/101');
+
+	await block(page).getByRole('button', { name: '+ 2 auf Autobahn- oder Kraftfahrstraßenabschnitten' }).click();
+	await expect(bruecken(page)).toHaveCount(3);
+	await expect(bruecken(page).nth(2)).toContainText('Fuß-/Radwegbrücke');
+});
+
+test('wer gesucht und nichts gefunden hat, sagt das', async ({ page }) => {
+	await oeffnen(page, 'leer');
+	await expect(block(page)).toContainText('Keine Brücke ohne Höhenangabe über der Route gefunden.');
+});
+
+test('ungesucht ist nicht „nichts gefunden" — und lässt sich anstoßen', async ({ page }) => {
+	await oeffnen(page, 'ungesucht');
+	await expect(block(page)).toContainText('Nicht gesucht.');
+	await expect(block(page)).not.toContainText('Keine Brücke');
+	await block(page).getByRole('button', { name: 'Jetzt suchen' }).click();
+	await expect(page.getByText('Suchen geklickt: 1')).toBeVisible();
+	await expect(block(page)).toContainText('Suche läuft …');
+});
+
+test('eine gescheiterte Suche sagt das und bietet einen neuen Versuch', async ({ page }) => {
+	await oeffnen(page, 'suche_fehler');
+	await expect(block(page)).toContainText('Suche fehlgeschlagen');
+	await block(page).getByRole('button', { name: 'Erneut suchen' }).click();
+	await expect(page.getByText('Suchen geklickt: 1')).toBeVisible();
+});
+
+test('wer nicht suchen darf, bekommt keinen Knopf', async ({ page }) => {
+	await oeffnen(page, 'ohne_knopf');
+	await expect(block(page)).toContainText('Nicht gesucht.');
+	await expect(block(page).getByRole('button')).toHaveCount(0);
 });

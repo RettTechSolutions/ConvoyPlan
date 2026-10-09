@@ -178,8 +178,26 @@ Zwei Dinge, die man kennen muss:
   Route), `[]` heißt „keine bekannte Beschränkung". Wer das zusammenlegt, behauptet
   bei jeder alten Route freie Fahrt.
 
-Brücken **ohne** `maxheight` in OSM kennt GraphHopper nicht; sie stehen weder in der
-Liste, noch werden sie gemieden. Tests: `tests/test_durchfahrtshoehen.py`,
+Brücken **ohne** `maxheight` in OSM kennt GraphHopper nicht; gemieden werden sie
+nicht. Gefunden werden sie nach der Berechnung in `services/bruecken.py`: Overpass
+liefert alle `bridge=*`-Wege im 25-m-Korridor, gezählt wird, was die Linie
+*kreuzt*. Das Frontend stößt die Suche an (`POST …/route/bruecken`), wie bei den
+Tankstellen — die Berechnung soll nicht an einem fremden Dienst hängen. Ergebnis in
+`routes.bruecken` (Migration `0056`), `None` = nicht gesucht; jede Neuberechnung setzt
+es zurück, und ein Ergebnis zu einer inzwischen ersetzten Linie wird mit 409
+verworfen. Drei Regeln, die man kennen muss:
+
+- **Nicht exakt vergleichen.** Ob die Route über eine Brücke *fährt* oder nur an
+  einem Knoten *anschließt*, wird mit Toleranzen (~2 m bzw. ~0,5 m) entschieden,
+  nicht über die exakte Schnittmenge: GraphHopper und Overpass liefern dieselben
+  OSM-Knoten, aber nicht zwingend bitgleich.
+- **Bekannt ist bekannt.** Eine Kreuzung im Abschnitt eines Eintrags aus Stufe 1
+  (über dessen `m`) steht nicht doppelt da.
+- **Schnellstraßen zählen, nicht listen.** `routes.schnellstrassen` hält bei der
+  Berechnung fest, wo `road_class` Autobahn oder Kraftfahrstraße ist; die Suche läuft
+  später und hat das Detail nicht mehr.
+
+Tests: `tests/test_durchfahrtshoehen.py`, `tests/test_bruecken_ohne_hoehe.py`,
 `frontend/e2e/durchfahrtshoehen.spec.ts`. Anwenderdoku: `wiki/Konvoi-Planung.md`,
 „Durchfahrtshöhen".
 

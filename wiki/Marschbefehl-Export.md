@@ -38,7 +38,7 @@ Der Marschbefehl ist das offizielle Führungsdokument für den Konvoi. ConvoyPla
    - Fahrzeugliste mit Positionen und Sonderfunktionen
    - Kraftstoffanalyse
    - Kanalwechsel-Punkte (falls Leitstellen konfiguriert)
-   - Durchfahrtshöhen: enge und knappe Unterführungen auf der Route (siehe [Konvoi planen](Konvoi-Planung#durchfahrtshöhen))
+   - Durchfahrtshöhen: enge und knappe Unterführungen auf der Route und Brücken ohne Höhenangabe (siehe [Konvoi planen](Konvoi-Planung#durchfahrtshöhen))
 
 ---
 

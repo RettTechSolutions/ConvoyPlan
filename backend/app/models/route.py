@@ -26,5 +26,10 @@ class Route(Base):
     # None heißt: nicht ermittelt — Route vor Migration 0055 berechnet oder
     # importiert. Eine leere Liste heißt: keine bekannte Beschränkung.
     durchfahrtshoehen: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Brücken ohne bekannte Höhe (services/bruecken.py), gesucht nach der
+    # Berechnung: {"geprueft_at": …, "eintraege": […]}. None = nicht gesucht.
+    bruecken: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Meterbereiche [von, bis] auf Autobahn/Kraftfahrstraße, für die Suche.
+    schnellstrassen: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     convoy: Mapped["Convoy"] = relationship(back_populates="route")

@@ -3,6 +3,7 @@ import json as _json
 import logging
 import re
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, File, Query, UploadFile
@@ -21,7 +22,8 @@ from app.models.convoy import Convoy, ConvoyVehicle
 from app.models.route import Route
 from app.models.user import User
 from app.models.waypoint import Waypoint
-from app.schemas.route import RouteResponse
+from app.schemas.route import BrueckenPruefung, RouteResponse
+from app.services import bruecken as bruecken_svc
 from app.services import durchfahrtshoehe as hoehe_svc
 from app.services import geometry as geo_svc
 from app.services import routing as routing_svc
@@ -386,6 +388,7 @@ async def get_route(
         fuel_analysis=fuel_analysis,
         kanalwechsel=route.kanalwechsel or [],
         durchfahrtshoehen=route.durchfahrtshoehen,
+        bruecken=route.bruecken,
         planned_departure=route_planned_departure,
         planned_arrival=route_planned_arrival,
     )
@@ -505,6 +508,7 @@ async def calculate_route(
         coords,
         vehicle_params.get("max_height_m"),
     )
+    schnellstrassen = bruecken_svc.schnellstrassen(route_data.get("road_class_details", []), coords)
 
     # Persist route
     line = LineString(coords)
@@ -516,6 +520,9 @@ async def calculate_route(
         route.routing_params = vehicle_params
         route.instructions = instructions
         route.durchfahrtshoehen = durchfahrtshoehen
+        route.schnellstrassen = schnellstrassen
+        # Gesucht wurde an der alten Linie.
+        route.bruecken = None
     else:
         route = Route(
             convoy_id=convoy_id,
@@ -525,6 +532,7 @@ async def calculate_route(
             routing_params=vehicle_params,
             instructions=instructions,
             durchfahrtshoehen=durchfahrtshoehen,
+            schnellstrassen=schnellstrassen,
         )
         db.add(route)
 
@@ -608,9 +616,55 @@ async def calculate_route(
         "fuel_analysis": fuel_analysis,
         "kanalwechsel": kanalwechsel,
         "durchfahrtshoehen": durchfahrtshoehen,
+        "bruecken": None,
         "planned_departure": route_planned_departure,
         "planned_arrival": route_planned_arrival,
     }
+
+
+@router.post("/{convoy_id}/route/bruecken", response_model=BrueckenPruefung)
+async def bruecken_pruefen(
+    convoy_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Brücken über der gespeicherten Route ohne bekannte Höhe suchen (Overpass).
+
+    Eigener Aufruf nach der Berechnung, wie die Tankstellen: die Abfrage kann
+    dauern, und die Route soll nicht an einem fremden Dienst hängen. Das
+    Ergebnis wird an der Route gespeichert, damit Marschbefehl und MCP es haben.
+    """
+    await _load_convoy(convoy_id, current_user, db, require="write")
+    route = (await db.execute(select(Route).where(Route.convoy_id == convoy_id))).scalar_one_or_none()
+    if route is None or route.geometry is None:
+        raise HTTPException(status_code=404, detail="No route calculated yet")
+    line = geo_svc.linestring_to_geojson(route.geometry)
+    coords = (line or {}).get("coordinates", [])
+    if len(coords) < 2:
+        raise HTTPException(status_code=404, detail="No route calculated yet")
+
+    # Die Abfrage dauert; die Sitzung hält dabei keine Transaktion offen.
+    await db.commit()
+    try:
+        elemente = await overpass_svc.bruecken_entlang(coords)
+    except Exception as exc:
+        logger.warning("Bridge lookup failed for convoy %s: %s", convoy_id, exc)
+        raise HTTPException(status_code=502, detail="Brückendaten nicht verfügbar")
+
+    # Wurde inzwischen neu berechnet, gehört das Ergebnis zur alten Linie.
+    await db.refresh(route)
+    aktuell = geo_svc.linestring_to_geojson(route.geometry) if route.geometry is not None else None
+    if (aktuell or {}).get("coordinates") != coords:
+        raise HTTPException(status_code=409, detail="Route wurde inzwischen neu berechnet")
+
+    route.bruecken = {
+        "geprueft_at": datetime.now(timezone.utc).isoformat(),
+        "eintraege": bruecken_svc.kreuzungen(
+            coords, elemente, route.durchfahrtshoehen or [], route.schnellstrassen or []
+        ),
+    }
+    await db.commit()
+    return route.bruecken
 
 
 @router.get("/{convoy_id}/export/gpx")
@@ -708,13 +762,14 @@ async def export_pdf(
 
     kanalwechsel = route.kanalwechsel if route else None
     durchfahrtshoehen = route.durchfahrtshoehen if route else None
+    bruecken = route.bruecken if route else None
     # PDF generation (FPDF, font loading, many tables) is CPU-bound and
     # blocking — run it in the default thread pool so it does not stall the
     # event loop for concurrent requests.
     loop = asyncio.get_running_loop()
     pdf_bytes = await loop.run_in_executor(
         None, pdf_svc.generate_marschbefehl, convoy, waypoints, vehicles, route, kanalwechsel,
-        durchfahrtshoehen,
+        durchfahrtshoehen, bruecken,
     )
     filename = f"Marschbefehl_{_safe_filename(convoy.name.replace(' ', '_'))}.pdf"
     return Response(

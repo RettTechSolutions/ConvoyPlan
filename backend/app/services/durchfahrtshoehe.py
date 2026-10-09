@@ -98,6 +98,9 @@ def engstellen(
         lon, lat = coords[von][0], coords[von][1]
         out.append({
             "km": round(along[von] / 1000, 1),
+            # Meter auf der Linie — der Abgleich mit Brücken ohne Angabe
+            # (services/bruecken.py) braucht mehr als die 100 m des km-Werts.
+            "m": round(along[von]),
             "lat": lat,
             "lon": lon,
             "laenge_m": round(along[bis] - along[von]),

@@ -13,7 +13,7 @@
 	import AktionsseitenVerwaltung from '$lib/components/AktionsseitenVerwaltung.svelte';
 	import PasskeyVerwaltung from '$lib/components/PasskeyVerwaltung.svelte';
 	import DurchfahrtsHoehen from '$lib/components/DurchfahrtsHoehen.svelte';
-	import type { DurchfahrtshoeheEntry } from '$lib/api';
+	import type { BrueckenPruefung, DurchfahrtshoeheEntry } from '$lib/api';
 	import { feedbackStore } from '$lib/stores/feedback';
 
 	const welche = new URLSearchParams(location.search).get('k') ?? 'share';
@@ -38,6 +38,21 @@
 	const fall = new URLSearchParams(location.search).get('fall') ?? 'gemischt';
 	const stelle = (km: number, hoehe_m: number, spielraum_m: number | null, stufe: DurchfahrtshoeheEntry['stufe']) =>
 		({ km, lat: 47.8, lon: 11.1, laenge_m: 40, hoehe_m, spielraum_m, stufe });
+	const bruecke = (km: number, art: string, name: string | null, osm: number, schnellstrasse = false) =>
+		({ km, m: km * 1000, lat: 47.8, lon: 11.1, art, name, osm_ids: [osm], schnellstrasse });
+	const GESUCHT: BrueckenPruefung = {
+		geprueft_at: '2026-10-09T10:00:00Z',
+		eintraege: [
+			bruecke(5.2, 'Eisenbahnbrücke', 'Ammertalbahn', 101),
+			bruecke(20.4, 'Straßenbrücke', null, 102, true),
+			bruecke(22.0, 'Fuß-/Radwegbrücke', 'Steg', 103, true),
+		],
+	};
+	let suche = $state<'idle' | 'laeuft' | 'fehler'>(fall === 'suche_fehler' ? 'fehler' : fall === 'suche_laeuft' ? 'laeuft' : 'idle');
+	let gesucht = $state<BrueckenPruefung | null>(
+		fall === 'gemischt' ? GESUCHT : fall === 'leer' ? { geprueft_at: '2026-10-09T10:00:00Z', eintraege: [] } : null,
+	);
+	let suchenGeklickt = $state(0);
 	const HOEHEN: Record<string, { eintraege: DurchfahrtshoeheEntry[] | null; hoehe: number | null; ohne: number }> = {
 		gemischt: {
 			eintraege: [stelle(12.4, 3.7, 0.05, 'eng'), stelle(30.1, 4.5, 0.85, 'frei'), stelle(48.9, 3.9, 0.25, 'knapp'), stelle(60, 4.2, 0.55, 'frei')],
@@ -47,6 +62,10 @@
 		ohne_hoehe: { eintraege: [stelle(12.4, 3.5, null, 'unbekannt')], hoehe: null, ohne: 3 },
 		leer: { eintraege: [], hoehe: 3.2, ohne: 0 },
 		alt: { eintraege: null, hoehe: 3.2, ohne: 0 },
+		suche_fehler: { eintraege: [], hoehe: 3.2, ohne: 0 },
+		suche_laeuft: { eintraege: [], hoehe: 3.2, ohne: 0 },
+		ungesucht: { eintraege: [], hoehe: 3.2, ohne: 0 },
+		ohne_knopf: { eintraege: [], hoehe: 3.2, ohne: 0 },
 	};
 	const hoehen = HOEHEN[fall];
 </script>
@@ -64,7 +83,15 @@
 	<div class="leiste" data-theme="dark">
 		<div class="leiste-inhalt">
 			<p>Route berechnet.</p>
-			<DurchfahrtsHoehen eintraege={hoehen.eintraege} fahrzeughoeheM={hoehen.hoehe} ohneHoehe={hoehen.ohne} />
+			<DurchfahrtsHoehen
+				eintraege={hoehen.eintraege}
+				fahrzeughoeheM={hoehen.hoehe}
+				ohneHoehe={hoehen.ohne}
+				bruecken={gesucht}
+				{suche}
+				onSuchen={fall === 'ohne_knopf' ? undefined : () => { suchenGeklickt++; suche = 'laeuft'; }}
+			/>
+			<p class="geklickt">Suchen geklickt: {suchenGeklickt}</p>
 		</div>
 	</div>
 {:else if welche === 'aktion'}

@@ -137,6 +137,7 @@ def _durchfahrtshoehen(
     vehicles: list[dict],
     fahrzeughoehe_m: float | None,
     total_w: float,
+    bruecken: dict | None = None,
 ) -> None:
     """Höhenbeschränkungen mit wenig Spielraum (services/durchfahrtshoehe.py).
 
@@ -177,19 +178,64 @@ def _durchfahrtshoehen(
     rest = len(eintraege) - len(zeigen)
     pdf.set_font("DV", "", 7.5)
     pdf.set_text_color(80, 80, 80)
-    zeilen = []
     if not eintraege:
-        zeilen.append("Keine Höhenbeschränkung auf der Strecke bekannt.")
+        pdf.multi_cell(0, 4, "Keine Höhenbeschränkung auf der Strecke bekannt.", new_x="LMARGIN", new_y="NEXT")
     elif rest:
-        zeilen.append(
+        pdf.multi_cell(
+            0, 4,
             f"{rest} weitere Höhenbeschränkung{'en' if rest != 1 else ''} mit mindestens "
-            f"{hoehe_svc.KNAPP_M * 100:.0f} cm Spielraum."
+            f"{hoehe_svc.KNAPP_M * 100:.0f} cm Spielraum.",
+            new_x="LMARGIN", new_y="NEXT",
         )
-    zeilen.append(
-        "Angaben aus OpenStreetMap, auf 10 cm gerundet; Unterführungen ohne Angabe sind nicht erfasst. "
-        "Maßgeblich ist die Beschilderung vor Ort."
+    pdf.set_text_color(0, 0, 0)
+
+    # Brücken über der Route, für die OSM keine Höhe kennt (services/bruecken.py).
+    pdf.ln(1)
+    pdf.set_font("DV", "B", 8.5)
+    pdf.cell(0, 5, "Brücken ohne Höhenangabe", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("DV", "", 7.5)
+    pdf.set_text_color(80, 80, 80)
+    if bruecken is None:
+        pdf.multi_cell(
+            0, 4, "Nicht gesucht – Route in der Planungsansicht öffnen, die Suche läuft dort.",
+            new_x="LMARGIN", new_y="NEXT",
+        )
+    else:
+        alle = bruecken.get("eintraege") or []
+        einzeln = [b for b in alle if not b.get("schnellstrasse")]
+        schnell = len(alle) - len(einzeln)
+        pdf.set_text_color(0, 0, 0)
+        if einzeln:
+            cols = [(25, "km"), (50, "Bauwerk"), (0, "Name")]
+            cols[-1] = (total_w - sum(c[0] for c in cols[:-1]), "Name")
+            _table_header(pdf, cols)
+            pdf.set_font("DV", "", 8)
+            fill = False
+            for b in einzeln:
+                pdf.set_fill_color(245, 246, 250) if fill else pdf.set_fill_color(255, 255, 255)
+                pdf.cell(cols[0][0], 6, f"{b.get('km', 0):.1f} km", border=1, fill=fill)
+                pdf.cell(cols[1][0], 6, str(b.get("art", ""))[:30], border=1, fill=fill)
+                pdf.cell(cols[2][0], 6, str(b.get("name") or "-")[:60], border=1, fill=fill,
+                         new_x="LMARGIN", new_y="NEXT")
+                fill = not fill
+        pdf.set_font("DV", "", 7.5)
+        pdf.set_text_color(80, 80, 80)
+        zeilen = []
+        if not alle:
+            zeilen.append("Keine Brücke ohne Höhenangabe über der Route gefunden.")
+        if schnell:
+            zeilen.append(
+                f"{schnell} {'weitere ' if einzeln else ''}auf Autobahn- oder Kraftfahrstraßenabschnitten, "
+                "nicht einzeln aufgeführt."
+            )
+        if zeilen:
+            pdf.multi_cell(0, 4, "\n".join(zeilen), new_x="LMARGIN", new_y="NEXT")
+
+    pdf.multi_cell(
+        0, 4,
+        "Angaben aus OpenStreetMap, Höhen auf 10 cm gerundet. Maßgeblich ist die Beschilderung vor Ort.",
+        new_x="LMARGIN", new_y="NEXT",
     )
-    pdf.multi_cell(0, 4, "\n".join(zeilen), new_x="LMARGIN", new_y="NEXT")
     pdf.set_text_color(0, 0, 0)
     pdf.ln(2)
 
@@ -214,6 +260,7 @@ def generate_marschbefehl(
     route: Any | None,
     kanalwechsel: list[dict] | None = None,
     durchfahrtshoehen: list[dict] | None = None,
+    bruecken: dict | None = None,
 ) -> bytes:
     pdf = _PDF()
     pdf.set_auto_page_break(auto=True, margin=15)
@@ -401,7 +448,7 @@ def generate_marschbefehl(
     # Durchfahrtshöhen — None: Route vor der Auswertung berechnet, dann nichts.
     if durchfahrtshoehen is not None:
         params = getattr(route, "routing_params", None) or {}
-        _durchfahrtshoehen(pdf, durchfahrtshoehen, vehicles, params.get("max_height_m"), total_w)
+        _durchfahrtshoehen(pdf, durchfahrtshoehen, vehicles, params.get("max_height_m"), total_w, bruecken)
 
     # ── 4. Versorgung ─────────────────────────────────────────────────────────
     _section(pdf, "4", "Versorgung")

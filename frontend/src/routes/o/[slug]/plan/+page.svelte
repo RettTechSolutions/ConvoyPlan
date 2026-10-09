@@ -17,7 +17,7 @@
 		convoysApi, vehiclesApi, orgsApi, overpassApi, trafficApi, authApi, mfaApi,
 		type Convoy, type Vehicle, type Organization, type OrgMember,
 		type FuelAnalysis, type FuelStation, type Waypoint, type RoadPreference,
-		type KanalwechselEntry, type ConvoyVehicleItem, type DurchfahrtshoeheEntry, type RouteResult,
+		type KanalwechselEntry, type ConvoyVehicleItem, type DurchfahrtshoeheEntry, type RouteResult, type BrueckenPruefung,
 	} from '$lib/api';
 	import { MAX_JE_ROLLE, formatStaerke, gesamt, sollAus } from '$lib/tracking/staerke';
 
@@ -43,7 +43,7 @@
 	// changes on every recalculation (avoids issues with the `unknown` type not
 	// being deeply proxied, which prevented the map from updating on re-clicks).
 	let routeGeojson = $state<Geometry | null>(null);
-	let route = $state<{ distance_m: number | null; duration_s: number | null; fuel_analysis: FuelAnalysis | null; kanalwechsel: KanalwechselEntry[]; durchfahrtshoehen: DurchfahrtshoeheEntry[] | null; fahrzeughoehe_m: number | null; planned_departure?: string | null; planned_arrival?: string | null } | null>(null);
+	let route = $state<{ distance_m: number | null; duration_s: number | null; fuel_analysis: FuelAnalysis | null; kanalwechsel: KanalwechselEntry[]; durchfahrtshoehen: DurchfahrtshoeheEntry[] | null; bruecken: BrueckenPruefung | null; fahrzeughoehe_m: number | null; planned_departure?: string | null; planned_arrival?: string | null } | null>(null);
 	let fuelStations = $state<FuelStation[]>([]);
 	let showFuelStations = $state(false);
 	let fuelStationsLoading = $state(false);
@@ -320,6 +320,7 @@
 	}
 
 	async function loadStoredRoute(convoyId: string) {
+		brueckenSucheZuruecksetzen();
 		try {
 			const r = await convoysApi.getRoute(convoyId);
 			// Guard against a slow response after the user switched convoys
@@ -331,11 +332,15 @@
 				fuel_analysis: r.fuel_analysis,
 				kanalwechsel: r.kanalwechsel ?? [],
 				durchfahrtshoehen: r.durchfahrtshoehen ?? null,
+				bruecken: r.bruecken ?? null,
 				fahrzeughoehe_m: fahrzeughoehe(r),
 				planned_departure: r.planned_departure ?? null,
 				planned_arrival: r.planned_arrival ?? null,
 			};
 			activeRoute.set(r);
+			// Gesucht wird einmal je Linie; eine Route von vor Stufe 1 hat keine
+			// bekannten Höhen zum Abgleich und bleibt ungesucht.
+			if (r.bruecken == null && r.durchfahrtshoehen != null) void sucheBruecken(convoyId);
 		} catch { /* no stored route yet */ }
 	}
 
@@ -794,7 +799,7 @@
 		try {
 			const r = await convoysApi.calculateRoute(selected.id);
 			routeGeojson = r.geojson;
-			route = { distance_m: r.distance_m, duration_s: r.duration_s, fuel_analysis: r.fuel_analysis, kanalwechsel: r.kanalwechsel ?? [], durchfahrtshoehen: r.durchfahrtshoehen ?? null, fahrzeughoehe_m: fahrzeughoehe(r), planned_departure: r.planned_departure ?? null, planned_arrival: r.planned_arrival ?? null };
+			route = { distance_m: r.distance_m, duration_s: r.duration_s, fuel_analysis: r.fuel_analysis, kanalwechsel: r.kanalwechsel ?? [], durchfahrtshoehen: r.durchfahrtshoehen ?? null, bruecken: null, fahrzeughoehe_m: fahrzeughoehe(r), planned_departure: r.planned_departure ?? null, planned_arrival: r.planned_arrival ?? null };
 			fuelStations = [];
 			showFuelStations = false;
 			activeRoute.set(r);
@@ -811,9 +816,35 @@
 			}
 			void loadClosuresInBackground();
 			void loadFlowInBackground();
+			void sucheBruecken(selected.id);
 		} catch (e: unknown) {
 			error = e instanceof Error ? e.message : 'Routing fehlgeschlagen';
 		} finally { loading = false; }
+	}
+
+	// Brücken ohne Höhenangabe: Overpass, dauert — wie die Tankstellen im Hintergrund.
+	// Ein Lauf zählt nur, solange kein neuerer begonnen hat oder der Verband
+	// gewechselt wurde — sonst stünde „Suche läuft" am falschen Konvoi.
+	let brueckenSuche = $state<'idle' | 'laeuft' | 'fehler'>('idle');
+	let brueckenLauf = 0;
+	// Die Suche speichert an der Route und braucht deshalb Schreibrecht.
+	const darfBrueckenSuchen = $derived($orgStore?.user_role !== 'beobachter');
+	function brueckenSucheZuruecksetzen() {
+		brueckenLauf++;
+		brueckenSuche = 'idle';
+	}
+	async function sucheBruecken(convoyId: string) {
+		if (!darfBrueckenSuchen) return;
+		const lauf = ++brueckenLauf;
+		brueckenSuche = 'laeuft';
+		try {
+			const ergebnis = await convoysApi.findBridges(convoyId);
+			if (lauf !== brueckenLauf) return;
+			if (get(activeConvoy)?.id === convoyId && route) route = { ...route, bruecken: ergebnis };
+			brueckenSuche = 'idle';
+		} catch {
+			if (lauf === brueckenLauf) brueckenSuche = 'fehler';
+		}
 	}
 
 	async function loadFuelStationsInBackground(convoyId: string, pos: { lat: number; lon: number }) {
@@ -1355,6 +1386,9 @@
 								eintraege={route.durchfahrtshoehen}
 								fahrzeughoeheM={route.fahrzeughoehe_m}
 								ohneHoehe={selected?.convoy_vehicles.filter((cv) => !cv.vehicle.height_cm).length ?? 0}
+								bruecken={route.bruecken}
+								suche={brueckenSuche}
+								onSuchen={darfBrueckenSuchen ? () => selected && sucheBruecken(selected.id) : undefined}
 							/>
 							{#if route.fuel_analysis?.duration_halt_needed}
 								{@const remaining = route.fuel_analysis.duration_halts.slice(thStopsAdded)}
