@@ -178,6 +178,25 @@ def anweisung(modus_: str, jetzt: datetime, firmware: dict[str, Any] | None = No
     }
 
 
+def akku_seit(
+    alt_extern: bool | None, alt_seit: datetime | None, neu_extern: bool | None, jetzt: datetime
+) -> datetime | None:
+    """Seit wann ein Gerät auf Akku läuft, nach seiner neuesten Meldung.
+
+    Die Instanz sieht den Wechsel nur, wenn das Gerät ihn meldet — also ist der
+    Wert „seit spätestens". Eine Meldung ohne `extern` ändert nichts, sonst
+    verlöre ein Bündel ohne Zustand den Zeitpunkt. Ohne Vorwert (neues Gerät,
+    alte Zeile) gilt die erste Meldung `false` als Beginn.
+    """
+    if neu_extern is None:
+        return alt_seit
+    if neu_extern:
+        return None
+    if alt_extern is False and alt_seit is not None:
+        return alt_seit
+    return jetzt
+
+
 def zustand_lesen(daten: dict[str, Any]) -> dict[str, Any]:
     """Was das Gerät über sich meldet, bereinigt — für die Spalten am Gerät."""
     felder: dict[str, Any] = {}

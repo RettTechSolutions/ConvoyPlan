@@ -144,6 +144,27 @@ class TestAnweisung:
         assert og.zustand_lesen({"akku_prozent": 140, "extern": "ja", "signal_dbm": 5, "firmware": ""}) == {}
 
 
+class TestAkkuSeit:
+    """„Auf Akku seit …": der Zeitpunkt des Wechsels, nicht der letzten Meldung."""
+
+    FRUEHER = JETZT - timedelta(days=3)
+
+    @pytest.mark.parametrize(
+        ("alt_extern", "alt_seit", "neu_extern", "erwartet"),
+        [
+            (True, None, False, JETZT),  # Stecker gezogen: ab jetzt
+            (None, None, False, JETZT),  # erste Meldung überhaupt: ab spätestens jetzt
+            (False, FRUEHER, False, FRUEHER),  # weiter auf Akku: der Beginn bleibt
+            (False, FRUEHER, True, None),  # wieder am Bordnetz
+            (False, FRUEHER, None, FRUEHER),  # Meldung ohne Zustand ändert nichts
+            (True, None, None, None),
+            (False, None, False, JETZT),  # alte Zeile ohne Zeitpunkt bekommt einen
+        ],
+    )
+    def test_regel(self, alt_extern, alt_seit, neu_extern, erwartet):
+        assert og.akku_seit(alt_extern, alt_seit, neu_extern, JETZT) == erwartet
+
+
 # ── Durch die App ──────────────────────────────────────────────────────────
 
 
@@ -463,6 +484,35 @@ class TestSenden:
                 await db.execute(delete(ConvoyVehicle).where(ConvoyVehicle.convoy_id == fremd_id))
                 await db.execute(delete(Convoy).where(Convoy.id == fremd_id))
                 await db.commit()
+
+
+class TestAkkuSeitDurchDieApp:
+    async def test_wechsel_wird_gemerkt_und_bleibt_bis_zum_strom(self, client, org):
+        geraet, kopf = await _eingerichtet(client, org)
+
+        async def zeile() -> dict:
+            liste = (await client.get("/api/org/geraete", headers=h(org.admin))).json()
+            return next(z for z in liste if z["id"] == geraet["id"])
+
+        await client.post("/api/geraete/hallo", json={"grund": "strom", "extern": True}, headers=kopf)
+        assert (await zeile())["akku_seit"] is None
+
+        await client.post("/api/geraete/hallo", json={"grund": "bewegung", "extern": False}, headers=kopf)
+        seit = (await zeile())["akku_seit"]
+        assert seit is not None
+
+        # Den Beginn drei Tage zurücklegen: weitere Meldungen auf Akku verschieben ihn nicht,
+        # auch nicht ein Bündel ohne Zustand.
+        frueher = datetime.now(timezone.utc) - timedelta(days=3)
+        async with AsyncSessionLocal() as db:
+            (await db.get(Ortungsgeraet, uuid.UUID(geraet["id"]))).akku_seit = frueher
+            await db.commit()
+        await client.post("/api/geraete/hallo", json={"grund": "lebenszeichen", "extern": False}, headers=kopf)
+        await client.post("/api/geraete/positionen", json={"fixes": [_fix(5)]}, headers=kopf)
+        assert datetime.fromisoformat((await zeile())["akku_seit"]) == frueher
+
+        await client.post("/api/geraete/hallo", json={"grund": "strom", "extern": True}, headers=kopf)
+        assert (await zeile())["akku_seit"] is None
 
 
 class TestFirmware:

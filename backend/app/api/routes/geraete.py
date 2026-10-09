@@ -108,7 +108,9 @@ async def _anweisung(db: AsyncSession, geraet: Ortungsgeraet, jetzt: datetime) -
 
 def _zustand_merken(geraet: Ortungsgeraet, daten: dict[str, Any], jetzt: datetime) -> None:
     geraet.zuletzt_gesehen = jetzt
-    for feld, wert in og.zustand_lesen(daten).items():
+    felder = og.zustand_lesen(daten)
+    geraet.akku_seit = og.akku_seit(geraet.extern, geraet.akku_seit, felder.get("extern"), jetzt)
+    for feld, wert in felder.items():
         setattr(geraet, feld, wert)
 
 
@@ -324,6 +326,7 @@ class GeraetZeile(BaseModel):
     zuletzt_gesehen: datetime | None
     akku_prozent: int | None
     extern: bool | None
+    akku_seit: datetime | None
     signal_dbm: int | None
     update_version: str | None
     update_ergebnis: str | None
@@ -361,6 +364,7 @@ def _zeile(g: Ortungsgeraet, jetzt: datetime) -> dict[str, Any]:
         "zuletzt_gesehen": g.zuletzt_gesehen,
         "akku_prozent": g.akku_prozent,
         "extern": g.extern,
+        "akku_seit": g.akku_seit,
         "signal_dbm": g.signal_dbm,
         "update_version": g.update_version,
         "update_ergebnis": g.update_ergebnis,

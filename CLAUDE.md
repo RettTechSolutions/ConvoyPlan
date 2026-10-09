@@ -379,6 +379,10 @@ Org-Admin). Vier Dinge, die man kennen muss:
   `positionsverlauf.aufzeichnen` mit. Auch `is_recently_cleared` („GPS-Freigabe
   zurücksetzen") und `planned → en_route` samt `alarm_quittung.zuruecksetzen`
   gelten hier wie am Fahrer-Link.
+- **„Auf Akku seit"** (`akku_seit`, Migration `0063`) setzt `ortungsgeraet.akku_seit` aus
+  dem *bisherigen* `extern` und der neuen Meldung, **bevor** die Zustandsfelder
+  überschrieben werden (`_zustand_merken`). Eine Meldung ohne `extern` lässt den Wert
+  stehen. Wer die Reihenfolge dort umdreht, setzt den Zeitpunkt bei jeder Meldung neu.
 - **Gerätezeit, nicht Serverzeit.** Jeder Fix trägt seine GNSS-Zeit; mehr als
   120 s Zukunft oder älter als 24 h fällt weg, **je Fix**, nicht je Bündel. Die
   aktuelle Position wird nur ersetzt, wenn der Fix jünger ist

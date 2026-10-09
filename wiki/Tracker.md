@@ -84,6 +84,12 @@ und Firmwarestand. Meldet sich ein Gerät länger als einen Tag nicht, steht dor
 *nicht erreichbar* — ein Tracker meldet sich auch ohne Bewegung alle zwölf
 Stunden.
 
+Hängt ein Tracker nicht am Bordnetz, steht dort **auf Akku seit …**, ab einem
+Tag hervorgehoben. Über Nacht ohne Strom ist normal, wenn die Steckdose an der
+Zündung hängt. Mehrere Tage heißen meist: Stecker gezogen oder Steckdose ohne
+Strom, und der Akku hält nicht ewig. Gezählt wird ab der ersten Meldung ohne
+Bordnetz, der Wert heißt also „seit spätestens".
+
 **Neu einrichten** erzeugt einen neuen Code und sperrt den bisherigen Zugang
 sofort — für ein Gerät, das den Besitzer wechselt oder verloren ging.
 **Bearbeiten** koppelt ein anderes Fahrzeug, wechselt den Kanal oder sperrt das
