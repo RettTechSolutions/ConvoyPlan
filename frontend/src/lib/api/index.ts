@@ -127,11 +127,49 @@ export interface KanalwechselEntry {
 	zusatz_kanaele?: { name?: string; kanal?: string }[];
 }
 
+/** Höhenbeschränkung entlang der Route (Backend: services/durchfahrtshoehe.py). */
+export interface DurchfahrtshoeheEntry {
+	km: number;
+	/** Meter ab Start; fehlt bei Routen vor Migration 0056. */
+	m?: number | null;
+	lat: number;
+	lon: number;
+	laenge_m: number;
+	/** Angeschriebene Höhe aus OSM, im Graphen auf 0,1 m gerundet. */
+	hoehe_m: number;
+	/** Höhe minus höchstes Fahrzeug; null ohne erfasste Fahrzeughöhe. */
+	spielraum_m: number | null;
+	stufe: 'eng' | 'knapp' | 'frei' | 'unbekannt';
+}
+
+/** Brücke über der Route ohne Höhenangabe in OSM (Backend: services/bruecken.py). */
+export interface BrueckeEntry {
+	km: number;
+	m: number;
+	lat: number;
+	lon: number;
+	/** Eisenbahnbrücke, Straßenbrücke, Fuß-/Radwegbrücke … */
+	art: string;
+	name: string | null;
+	osm_ids: number[];
+	/** Auf Autobahn oder Kraftfahrstraße — gezählt, nicht gelistet. */
+	schnellstrasse: boolean;
+}
+
+export interface BrueckenPruefung {
+	geprueft_at: string;
+	eintraege: BrueckeEntry[];
+}
+
 export interface RouteResult {
 	id: string; convoy_id: string; distance_m: number | null; duration_s: number | null;
 	routing_params: Record<string, unknown> | null; geojson: Geometry | null;
 	fuel_analysis: FuelAnalysis | null;
 	kanalwechsel?: KanalwechselEntry[];
+	/** null: Route vor der Auswertung berechnet oder importiert; []: keine bekannte Beschränkung. */
+	durchfahrtshoehen?: DurchfahrtshoeheEntry[] | null;
+	/** null: noch nicht gesucht (`convoysApi.findBridges`). */
+	bruecken?: BrueckenPruefung | null;
 	/** Abmarschzeit (ISO), auf derselben Zeitbasis wie die Wegpunkt-Zeiten. */
 	planned_departure?: string | null;
 	/** Geplante Ankunft am Ziel (ISO); Abmarsch + Fahrzeit + Haltezeiten. */
@@ -370,6 +408,9 @@ export const convoysApi = {
 		api.get<RouteResult | null>(`/api/convoys/${id}/route`),
 	calculateRoute: (id: string) =>
 		api.post<RouteResult>(`/api/convoys/${id}/calculate-route`, {}),
+	/** Brücken über der gespeicherten Route ohne Höhenangabe suchen (Overpass, dauert). */
+	findBridges: (id: string) =>
+		api.post<BrueckenPruefung>(`/api/convoys/${id}/route/bruecken`, {}),
 	findFuelStations: (id: string, lat: number, lon: number, radiusM = 3000) =>
 		api.get<FuelStation[]>(`/api/convoys/${id}/fuel-stations?lat=${lat}&lon=${lon}&radius_m=${radiusM}`),
 	listSubConvoys: (id: string) => api.get<Convoy[]>(`/api/convoys/${id}/sub-convoys`),

@@ -158,6 +158,49 @@ ein Stück doppelt befährt, trifft die Suche nach dem nächsten Streckenpunkt s
 die falsche Vorbeifahrt, und aus der negativen Teilstrecke wird eine rückwärts
 laufende Ankunftszeit.
 
+### Durchfahrtshöhen: gesperrt wird beim Routing, gezeigt wird danach
+
+Das Custom Model in `services/routing.py` nimmt jede Kante mit `max_height` unter
+dem höchsten Fahrzeug aus dem Graphen — das war schon immer so, aber still.
+`services/durchfahrtshoehe.py` macht aus dem Path-Detail `max_height` die Liste
+der Unterführungen, unter denen die Route trotzdem hindurchgeht, gespeichert in
+`routes.durchfahrtshoehen` (Migration `0055`) wie der Kanalwechsel, gezeigt in
+`DurchfahrtsHoehen.svelte` und im Marschbefehl.
+
+Zwei Dinge, die man kennen muss:
+
+- **GraphHopper rundet `max_height` auf 10 cm** (9.1, `MaxHeight.create`, Faktor
+  0,1 mit `Math.round`): aus 3,85 m auf dem Schild werden 3,9 m im Graphen. Die
+  Sperre `max_height < Fahrzeughöhe` kann deshalb ein Fahrzeug von 3,88 m unter
+  ein 3,85-m-Schild schicken. Die Stufe `eng` (< 10 cm Spielraum) ist genau dafür
+  da; die Sperre selbst ist unverändert.
+- **`None` ist nicht `[]`.** `None` heißt „nicht ermittelt" (alte oder importierte
+  Route), `[]` heißt „keine bekannte Beschränkung". Wer das zusammenlegt, behauptet
+  bei jeder alten Route freie Fahrt.
+
+Brücken **ohne** `maxheight` in OSM kennt GraphHopper nicht; gemieden werden sie
+nicht. Gefunden werden sie nach der Berechnung in `services/bruecken.py`: Overpass
+liefert alle `bridge=*`-Wege im 25-m-Korridor, gezählt wird, was die Linie
+*kreuzt*. Das Frontend stößt die Suche an (`POST …/route/bruecken`), wie bei den
+Tankstellen — die Berechnung soll nicht an einem fremden Dienst hängen. Ergebnis in
+`routes.bruecken` (Migration `0056`), `None` = nicht gesucht; jede Neuberechnung setzt
+es zurück, und ein Ergebnis zu einer inzwischen ersetzten Linie wird mit 409
+verworfen. Drei Regeln, die man kennen muss:
+
+- **Nicht exakt vergleichen.** Ob die Route über eine Brücke *fährt* oder nur an
+  einem Knoten *anschließt*, wird mit Toleranzen (~2 m bzw. ~0,5 m) entschieden,
+  nicht über die exakte Schnittmenge: GraphHopper und Overpass liefern dieselben
+  OSM-Knoten, aber nicht zwingend bitgleich.
+- **Bekannt ist bekannt.** Eine Kreuzung im Abschnitt eines Eintrags aus Stufe 1
+  (über dessen `m`) steht nicht doppelt da.
+- **Schnellstraßen zählen, nicht listen.** `routes.schnellstrassen` hält bei der
+  Berechnung fest, wo `road_class` Autobahn oder Kraftfahrstraße ist; die Suche läuft
+  später und hat das Detail nicht mehr.
+
+Tests: `tests/test_durchfahrtshoehen.py`, `tests/test_bruecken_ohne_hoehe.py`,
+`frontend/e2e/durchfahrtshoehen.spec.ts`. Anwenderdoku: `wiki/Konvoi-Planung.md`,
+„Durchfahrtshöhen".
+
 ### Fahrzeugbelegung: ein Fahrzeug, ein Gerät
 
 Wer ein Fahrzeug wählt, belegt es — am Server, für alle drei Oberflächen zugleich:

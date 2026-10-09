@@ -206,3 +206,30 @@ async def get_closures_along_route(
     sampled = _sample_route(latlon)
     coord_str = ",".join(f"{lat:.5f},{lon:.5f}" for lat, lon in sampled)
     return await _run_closures_query(_closures_query(f"around:{corridor_m},{coord_str}"))
+
+
+async def bruecken_entlang(coordinates: list) -> list[dict]:
+    """Brückenwege im schmalen Korridor um die Route ``[[lon, lat], …]``.
+
+    Die Abfrage baut ``services/bruecken.py``; hier wird nur geholt, über
+    dieselben Spiegel und mit demselben Statusvermerk wie die Sperrungen.
+    """
+    from app.services import bruecken as bruecken_svc
+
+    global _last_check
+    t0 = time.monotonic()
+    try:
+        data = await _post_overpass(bruecken_svc.abfrage(coordinates), timeout=100.0)
+    except Exception:
+        _last_check = {
+            "status": "error",
+            "latency_ms": None,
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+        }
+        raise
+    _last_check = {
+        "status": "ok",
+        "latency_ms": round((time.monotonic() - t0) * 1000),
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+    }
+    return data.get("elements", [])

@@ -91,6 +91,34 @@ Jeder empfohlene Halt zeigt in der Planungsansicht seine Art, die Haltedauer und
 
 ---
 
+## Durchfahrtshöhen
+
+Hat mindestens ein Fahrzeug im Verband eine **Höhe** (siehe [Fahrzeuge](Fahrzeuge)), meidet die Routenberechnung jede Unterführung, die niedriger ist als das höchste Fahrzeug. Unter welchen Höhenbeschränkungen die Route trotzdem hindurchführt, zeigt die Planungsansicht nach der Berechnung im Block **Durchfahrtshöhen**:
+
+| Stufe | Spielraum zum höchsten Fahrzeug | Bedeutung |
+|---|---|---|
+| **eng – vor Ort prüfen** | unter 10 cm | Die Kartendaten sind auf 10 cm gerundet; der Spielraum kann in Wirklichkeit fehlen. |
+| **knapp** | 10 bis 30 cm | Durchfahrt möglich, die Besatzungen sollten davon wissen. |
+| frei | ab 30 cm | Wird erst auf Klick („+ N weitere") angezeigt. |
+| **Höhe fehlt** | – | Kein Fahrzeug im Verband hat eine Höhe; dann wird auch nichts gemieden. |
+
+Fahrzeuge ohne Höhenangabe zählen beim Meiden nicht mit — der Block nennt ihre Anzahl. Enge und knappe Stellen stehen zusätzlich im [Marschbefehl](Marschbefehl-Export) unter „Durchfahrtshöhen".
+
+### Brücken ohne Höhenangabe
+
+Eine Brücke, an deren unterführter Straße in OpenStreetMap keine Höhe steht, kennt die Routenberechnung nicht — sie meidet sie nicht und nennt sie nicht. Deshalb sucht ConvoyPlan nach der Berechnung zusätzlich nach **Brücken, die über die Route führen** (Straßen-, Eisenbahn-, Fuß- und Radwegbrücken), und listet die ohne bekannte Höhe im selben Block unter **Brücken ohne Höhenangabe** auf, mit Kilometer, Art, Namen und einem Link zur Stelle in OpenStreetMap.
+
+- Brücken, auf denen die Route selbst fährt, und Wege, die nur an die Route anschließen, zählen nicht.
+- Brücken über Autobahn- und Kraftfahrstraßenabschnitten werden nur gezählt; aufgelistet werden sie erst auf Klick — dort kreuzt alle paar hundert Meter eine Überführung.
+- Die Suche läuft über den öffentlichen OpenStreetMap-Dienst Overpass (wie die Baustellensuche) und dauert einige Sekunden. Dabei geht die Linie der Route an diesen Dienst. Ist er nicht erreichbar, steht dort „Suche fehlgeschlagen" mit der Möglichkeit, es erneut zu versuchen.
+- Jede Neuberechnung verwirft das Ergebnis; gesucht wird dann neu. Beobachter sehen das Ergebnis, stoßen die Suche aber nicht an.
+
+Fährt die Route auf einer Brücke über eine andere Brücke hinweg (etwa eine Straßenbrücke über eine Bahnbrücke am Fluss), erscheint die untere fälschlich als Brücke über der Route.
+
+**Grenzen der Daten:** Alle Angaben stammen aus OpenStreetMap. Die Liste ist ein Hinweis, keine Freigabe — maßgeblich ist die Beschilderung vor Ort, bei Großraum- und Schwertransporten die Genehmigung. Für Routen, die vor dieser Funktion berechnet wurden, erscheint der Block erst nach einer Neuberechnung.
+
+---
+
 ## Leitstellen & Kanalwechsel
 
 Führt die Route durch Bereiche verschiedener Leitstellen, werden automatisch **Kanalwechsel-Punkte** berechnet:
