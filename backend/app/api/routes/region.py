@@ -501,7 +501,11 @@ async def switch_region(
     # das Graph-Verzeichnis und startete GraphHopper neu — der laufende Import
     # waere ohnehin verloren. Ein *haengender* Import sperrt nicht: dann kann
     # gerade ein Wechsel auf eine kleinere Region der Ausweg sein.
-    if graph_aufbau.laufender_aufbau() is not None:
+    #
+    # Nur der SOFORTIGE Wechsel wird abgewiesen. Ein geplanter darf liegen:
+    # Der Updater startet ihn erst, wenn Termin erreicht UND Bau fertig ist
+    # (region_graph_building in docker/updater/region-hook.sh).
+    if scheduled is None and graph_aufbau.laufender_aufbau() is not None:
         await _audit_switch_rejected(
             db, request, user, url, "GraphHopper baut gerade seinen Routing-Graphen."
         )
@@ -548,6 +552,21 @@ async def switch_region(
     return {"status": "requested"}
 
 
+def _faellig_aber_wartend(status: dict) -> bool:
+    """Ob eine Anforderung faellig ist und noch nicht laeuft."""
+    if status.get("phase") == "queued":
+        return True
+    if status.get("phase") != "scheduled":
+        return False
+    try:
+        termin = datetime.fromisoformat(status.get("scheduled_for") or "")
+    except ValueError:
+        return False
+    if termin.tzinfo is None:
+        termin = termin.replace(tzinfo=timezone.utc)
+    return termin <= datetime.now(timezone.utc)
+
+
 @router.get("/status")
 async def region_status(_: User = Depends(require_superadmin)):
     """Aktueller Fortschritt eines laufenden oder zuletzt beendeten Regionswechsels.
@@ -563,6 +582,15 @@ async def region_status(_: User = Depends(require_superadmin)):
     """
     status = region_switch.read_status()
     zustand = graph_aufbau.graph_zustand()
+    # Liegt eine faellige Anforderung (ohne Termin, oder Termin verstrichen)
+    # und baut GraphHopper gerade, haelt der Updater sie zurueck. Ohne diesen
+    # Hinweis stuende im Panel weiter „ab 03:00" — um 03:20.
+    if (
+        zustand is not None
+        and zustand.phase != "haengt"
+        and _faellig_aber_wartend(status)
+    ):
+        status["waiting_for_graph"] = True
     if zustand is not None:
         status["graph_build"] = {
             "phase": zustand.phase,

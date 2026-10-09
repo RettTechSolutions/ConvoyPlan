@@ -415,6 +415,75 @@ async def test_switch_wartet_auf_laufenden_graphbau(monkeypatch, phase):
 
 
 @pytest.mark.asyncio
+async def test_geplanter_switch_waehrend_graphbau_erlaubt(monkeypatch):
+    """Geplant darf werden: Der Updater startet ihn erst, wenn der Termin
+    erreicht UND der Bau fertig ist (region-hook.sh)."""
+    from app.services import graph_aufbau
+
+    monkeypatch.setattr(geofabrik, "head_size_bytes", _async_size(int(1 * GB)))
+    monkeypatch.setattr(os.path, "exists", lambda p: False)
+    monkeypatch.setattr(region_switch, "is_busy", lambda: False)
+    monkeypatch.setattr(
+        graph_aufbau, "laufender_aufbau", lambda: graph_aufbau.Aufbau("import", None)
+    )
+    geschrieben = MagicMock()
+    monkeypatch.setattr(region_switch, "write_request", geschrieben)
+    termin = (datetime.now(timezone.utc) + timedelta(hours=3)).isoformat()
+    test_app = _make_app_with_superadmin_and_db()
+    with patch("app.api.routes.region.audit.record", new=AsyncMock()):
+        transport = ASGITransport(app=test_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/admin/region",
+                json={"urls": [URL], "scheduled_for": termin},
+                headers={"Authorization": "Bearer x"},
+            )
+    assert resp.status_code == 202
+    geschrieben.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("anforderung,wartet", [
+    ({"phase": "scheduled", "scheduled_for": "2020-01-01T03:00:00+00:00"}, True),
+    ({"phase": "scheduled", "scheduled_for": "2999-01-01T03:00:00+00:00"}, False),
+    ({"phase": "queued"}, True),
+    ({"phase": "importing"}, False),
+])
+async def test_status_meldet_wartenden_wechsel(monkeypatch, anforderung, wartet):
+    """Fällig, aber vom Graph-Bau zurückgehalten — sonst stünde „ab 03:00" um 03:20."""
+    from app.services import graph_aufbau
+
+    monkeypatch.setattr(region_switch, "read_status", lambda: dict(anforderung))
+    monkeypatch.setattr(
+        graph_aufbau, "graph_zustand", lambda: graph_aufbau.Aufbau("import", None)
+    )
+    test_app = _make_app_with_superadmin()
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get(
+            "/api/admin/region/status", headers={"Authorization": "Bearer x"}
+        )
+    assert resp.json().get("waiting_for_graph", False) is wartet
+
+
+@pytest.mark.asyncio
+async def test_haengender_import_haelt_keinen_wechsel_zurueck(monkeypatch):
+    from app.services import graph_aufbau
+
+    monkeypatch.setattr(region_switch, "read_status", lambda: {"phase": "queued"})
+    monkeypatch.setattr(
+        graph_aufbau, "graph_zustand", lambda: graph_aufbau.Aufbau("haengt", 0.0)
+    )
+    test_app = _make_app_with_superadmin()
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get(
+            "/api/admin/region/status", headers={"Authorization": "Bearer x"}
+        )
+    assert "waiting_for_graph" not in resp.json()
+
+
+@pytest.mark.asyncio
 async def test_switch_bei_haengendem_import_erlaubt(monkeypatch):
     """Ein hängender Import sperrt nicht — ein Wechsel auf eine kleinere Region
     kann genau der Ausweg sein. laufender_aufbau() liefert ihn nicht."""

@@ -40,6 +40,15 @@ REGION_REQUEST_FILE="${REGION_REQUEST_FILE:-${REGION_STATUS_DIR}/region_request.
 REGION_LOCK_FILE="${REGION_LOCK_FILE:-${REGION_STATUS_DIR}/region.lock}"
 REGION_CANCEL_FILE="${REGION_CANCEL_FILE:-${REGION_STATUS_DIR}/region.cancel}"
 SWITCH_REGION_SCRIPT="${SWITCH_REGION_SCRIPT:-/switch-region.sh}"
+# Graph- und OSM-Volume — dieselben Mounts wie in switch-region.sh.
+REGION_GRAPH_DIR="${REGION_GRAPH_DIR:-/data/graph}"
+REGION_OSM_DIR="${REGION_OSM_DIR:-/data/osm}"
+# Marke, dass das Warten auf den Graph-Aufbau schon im Log steht.
+REGION_WAIT_MARK="${REGION_WAIT_MARK:-${REGION_STATUS_DIR}/region_wait_graph}"
+# Dieselbe Frist wie in graphhopper-deploy.sh und im Backend (graph_aufbau.py).
+REGION_GRAPH_GRACE="${REGION_GRAPH_GRACE:-${GH_IMPORT_GRACE:-14400}}"
+# So lange darf die Download-Datei unveraendert liegen und gilt noch als aktiv.
+REGION_DOWNLOAD_STALL="${REGION_DOWNLOAD_STALL:-600}"
 
 region_switch_blocked() {
     [ -f "${REGION_LOCK_FILE}" ]
@@ -80,6 +89,40 @@ region_switch_due() {
     [ "${now}" -ge "${due}" ]
 }
 
+# Baut GraphHopper gerade selbst (nach einem Update, einem Neustart ohne
+# fertigen Graphen)? Abgelesen an denselben Spuren wie im Backend
+# (backend/app/services/graph_aufbau.py), ohne Docker:
+#   - eine *.osm.pbf.tmp, die sich in den letzten zehn Minuten geaendert hat —
+#     der Entrypoint laedt gerade das Extract;
+#   - ein .graph_fingerprint ohne edges, juenger als die Frist — der Entrypoint
+#     schreibt ihn unmittelbar VOR dem Import, edges entsteht erst am Ende.
+#
+# Ein Wechsel, der jetzt anliefe, importierte daneben: zwei Importe um denselben
+# Speicher, und am Ende tauschte er das Graph-Verzeichnis und startete
+# GraphHopper neu — der laufende Import waere verloren. Das Backend lehnt einen
+# SOFORTIGEN Wechsel in dieser Lage schon ab; ein GEPLANTER darf angefordert
+# werden und wartet hier, bis sein Termin erreicht UND der Bau fertig ist.
+#
+# Ueber der Frist gilt ein Import als haengend und haelt nichts mehr auf: Dann
+# kann gerade ein Wechsel auf eine kleinere Region der Ausweg sein.
+region_graph_building() {
+    local now mtime f
+    now="$(date -u +%s 2>/dev/null)"
+    case "${now:-}" in ''|*[!0-9]*) return 1 ;; esac
+
+    for f in "${REGION_OSM_DIR}"/*.osm.pbf.tmp; do
+        [ -f "$f" ] || continue
+        mtime="$(stat -c %Y "$f" 2>/dev/null)"
+        case "${mtime:-}" in ''|*[!0-9]*) continue ;; esac
+        [ "$((now - mtime))" -le "${REGION_DOWNLOAD_STALL}" ] && return 0
+    done
+
+    [ -f "${REGION_GRAPH_DIR}/edges" ] && return 1
+    mtime="$(stat -c %Y "${REGION_GRAPH_DIR}/.graph_fingerprint" 2>/dev/null)"
+    case "${mtime:-}" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$((now - mtime))" -le "${REGION_GRAPH_GRACE}" ]
+}
+
 run_region_switch_if_requested() {
     if [ -f "${REGION_REQUEST_FILE}" ] && [ ! -f "${REGION_LOCK_FILE}" ]; then
         # Noch nicht an der Reihe: liegen lassen und 1 zurueckgeben, damit der
@@ -90,6 +133,18 @@ run_region_switch_if_requested() {
         # Meldung je Durchlauf ersaeufte region.log. Dass ein Wechsel geplant
         # ist, steht beim Anfordern im Log und zeigt das Panel aus dem Status.
         region_switch_due || return 1
+        # Abbruch geht vor: switch-region.sh raeumt die Anforderung dann nur
+        # auf, es importiert nichts. Sonst wartet ein faelliger Wechsel auf
+        # einen laufenden Graph-Aufbau — mit genau EINER Logzeile, aus
+        # demselben Grund wie oben.
+        if [ ! -f "${REGION_CANCEL_FILE}" ] && region_graph_building; then
+            if [ ! -f "${REGION_WAIT_MARK}" ]; then
+                log "Regionswechsel ist faellig, GraphHopper baut aber gerade seinen Graphen — der Wechsel startet nach dessen Abschluss."
+                : > "${REGION_WAIT_MARK}" 2>/dev/null || true
+            fi
+            return 1
+        fi
+        rm -f "${REGION_WAIT_MARK}" 2>/dev/null || true
         log "Regionswechsel angefordert — starte switch-region.sh"
         "${SWITCH_REGION_SCRIPT}" || log "Regionswechsel fehlgeschlagen (siehe region.log)"
         return 0

@@ -99,7 +99,11 @@ Fingerprint woanders schreibt, zieht `tests/test_graph_aufbau.py` mit. Dieselbe
 Erkennung zeigt das Admin-Portal in der Kartenregion (`graph_build` in
 `GET /api/admin/region/status`), dort zusätzlich den Import **über** der Frist als
 „hängt" — öffentlich ist der nur noch eine Störung (`graph_zustand` vs.
-`laufender_aufbau`; `frontend/e2e/graph-aufbau-im-admin.spec.ts`).
+`laufender_aufbau`; `frontend/e2e/graph-aufbau-im-admin.spec.ts`). Und noch einmal im
+Updater, als Shell: `region_graph_building` in `docker/updater/region-hook.sh` hält
+einen fälligen Regionswechsel zurück, solange gebaut wird — das Backend lehnt nur
+den *sofortigen* ab, geplante dürfen liegen (`test_region_schedule.sh`, Fälle 9–16).
+Zwei Umsetzungen derselben Regel; wer eine ändert, zieht die andere mit.
 
 ### Speicher: Import im Heap, Betrieb per MMAP
 

@@ -27,7 +27,10 @@ setup_case() {
     # expandiert, bevor `name` zugewiesen ist.
     local name="$1"
     local d="$ROOT/$name"
-    mkdir -p "$d/status"
+    mkdir -p "$d/status" "$d/graph" "$d/osm"
+    # Der Normalfall: fertiger Graph, kein Download.
+    : > "$d/graph/.graph_fingerprint"
+    : > "$d/graph/edges"
     cat > "$d/switch-stub.sh" <<'STUB'
 #!/usr/bin/env bash
 echo "gestartet" >> "$SWITCH_CALLS"
@@ -52,6 +55,9 @@ run_hook() {
         REGION_LOCK_FILE="$d/status/region.lock"
         REGION_CANCEL_FILE="$d/status/region.cancel"
         SWITCH_REGION_SCRIPT="$d/switch-stub.sh"
+        REGION_GRAPH_DIR="$d/graph"
+        REGION_OSM_DIR="$d/osm"
+        REGION_WAIT_MARK="$d/status/region_wait_graph"
         # shellcheck source=/dev/null
         . "$HOOK"
         run_region_switch_if_requested
@@ -140,6 +146,74 @@ D="$(setup_case case8)"
 run_hook "$D"
 [ "$(cat "$D/rc")" = 1 ]; check $? "Rueckgabe 1"
 not_started "$D"; check $? "switch-region.sh NICHT gestartet"
+
+# ── Graph-Aufbau: ein faelliger Wechsel wartet ───────────────────────────────
+# GraphHopper baut nach einem Update selbst. Ein Wechsel, der jetzt anliefe,
+# importierte daneben und tauschte am Ende das Verzeichnis unter dem laufenden
+# Import weg. Geplant werden darf er (das Backend lehnt nur SOFORTIGE ab), er
+# laeuft aber erst, wenn Termin UND Bau durch sind.
+
+# Import laeuft: Fingerprint ohne edges, Alter in Sekunden.
+importiert() { rm -f "$1/graph/edges"; touch -d "@$(( NOW - $2 ))" "$1/graph/.graph_fingerprint"; }
+
+echo "── Fall 9: faelliger Wechsel wartet auf laufenden Import ───────────────"
+D="$(setup_case case9)"; write_request "$D" "$(( NOW - 60 ))"
+importiert "$D" 600
+run_hook "$D"
+[ "$(cat "$D/rc")" = 1 ]; check $? "Rueckgabe 1 (Update-Check laeuft weiter)"
+not_started "$D"; check $? "switch-region.sh NICHT gestartet"
+[ -f "$D/status/region_request.json" ]; check $? "Anforderung liegt weiterhin bereit"
+grep -q "baut aber gerade seinen Graphen" "$D/log.txt"; check $? "Grund steht im Log"
+run_hook "$D"
+[ "$(grep -c "baut aber gerade" "$D/log.txt")" = 1 ]; check $? "nur EINE Logzeile, nicht je Durchlauf"
+
+echo "── Fall 10: nach dem Import laeuft der Wechsel an ──────────────────────"
+: > "$D/graph/edges"
+run_hook "$D"
+started "$D"; check $? "switch-region.sh wurde gestartet"
+[ ! -f "$D/status/region_wait_graph" ]; check $? "Wartemarke aufgeraeumt"
+
+echo "── Fall 11: auch ein Wechsel ohne Termin wartet ────────────────────────"
+# Das Backend lehnt ihn ab, aber eine Anforderung, die unmittelbar vor dem
+# Import-Beginn kam, liegt trotzdem da — die Sperre sitzt deshalb auch hier.
+D="$(setup_case case11)"; write_request "$D"
+importiert "$D" 60
+run_hook "$D"
+not_started "$D"; check $? "switch-region.sh NICHT gestartet"
+
+echo "── Fall 12: laufender Download haelt den Wechsel an ────────────────────"
+D="$(setup_case case12)"; write_request "$D" "$(( NOW - 60 ))"
+: > "$D/osm/dach-latest.osm.pbf.tmp"
+run_hook "$D"
+not_started "$D"; check $? "switch-region.sh NICHT gestartet"
+
+echo "── Fall 13: liegengebliebener Download haelt nichts an ─────────────────"
+D="$(setup_case case13)"; write_request "$D" "$(( NOW - 60 ))"
+touch -d "@$(( NOW - 3600 ))" "$D/osm/dach-latest.osm.pbf.tmp"
+run_hook "$D"
+started "$D"; check $? "switch-region.sh wurde gestartet"
+
+echo "── Fall 14: haengender Import haelt nichts an ──────────────────────────"
+# Ueber der Frist: Dann kann ein Wechsel auf eine kleinere Region der Ausweg sein.
+D="$(setup_case case14)"; write_request "$D" "$(( NOW - 60 ))"
+importiert "$D" $(( 14400 + 60 ))
+run_hook "$D"
+started "$D"; check $? "switch-region.sh wurde gestartet"
+
+echo "── Fall 15: Abbruch sticht den laufenden Import ────────────────────────"
+# switch-region.sh raeumt dann nur auf, es importiert nichts.
+D="$(setup_case case15)"; write_request "$D" "$(( NOW + 3600 ))"
+importiert "$D" 60
+: > "$D/status/region.cancel"
+run_hook "$D"
+started "$D"; check $? "switch-region.sh laeuft an und raeumt auf"
+
+echo "── Fall 16: ohne Graph-Volume wie bisher ───────────────────────────────"
+# Altinstallation ohne die Mounts: lieber wechseln als ewig warten.
+D="$(setup_case case16)"; write_request "$D"
+rm -rf "$D/graph" "$D/osm"
+run_hook "$D"
+started "$D"; check $? "switch-region.sh wurde gestartet"
 
 echo
 if [ "$FAILED" = 0 ]; then

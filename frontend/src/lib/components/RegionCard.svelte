@@ -168,9 +168,10 @@
     const showSwitchPanel = $derived(busy || finished);
     const canCancel = $derived(busy && CANCELLABLE_PHASES.includes(status.phase));
     const blocked = $derived(preview?.verdict === 'reicht nicht');
-    // Baut GraphHopper gerade selbst, lehnt der Server einen Wechsel ab (409):
-    // zwei Importe um denselben Speicher. Ein hängender Import sperrt nicht —
-    // dann kann ein Wechsel auf eine kleinere Region der Ausweg sein.
+    // Baut GraphHopper gerade selbst, lehnt der Server einen SOFORTIGEN
+    // Wechsel ab (409): zwei Importe um denselben Speicher. Geplant werden darf
+    // — der Updater startet ihn erst nach Termin UND Bau. Ein hängender Import
+    // sperrt nicht: dann kann ein Wechsel auf eine kleinere Region der Ausweg sein.
     const graphBaut = $derived(
         status.graph_build?.phase === 'import' || status.graph_build?.phase === 'download',
     );
@@ -521,7 +522,12 @@
             {/if}
         </div>
 
-        {#if status.phase === 'scheduled'}
+        {#if status.waiting_for_graph}
+            <p class="reassurance">
+                Fällig, aber GraphHopper baut gerade seinen Routing-Graphen. Der Wechsel startet
+                von selbst, sobald dieser Aufbau abgeschlossen ist.
+            </p>
+        {:else if status.phase === 'scheduled'}
             <p class="reassurance">
                 Bis zum gewählten Zeitpunkt läuft die bisherige Region unverändert weiter.
                 Der Wechsel lässt sich bis dahin jederzeit abbrechen.
@@ -670,13 +676,7 @@
 
             {#if !showPicker}
                 <div style="margin-top:1rem">
-                    <button class="btn-primary" onclick={openPicker} disabled={graphBaut}>Region wechseln</button>
-                    {#if graphBaut}
-                        <p class="hint" style="margin-top:.4rem">
-                            Gesperrt, bis der laufende Graph-Aufbau abgeschlossen ist — ein Wechsel
-                            liefe parallel dazu und konkurrierte um den Speicher.
-                        </p>
-                    {/if}
+                    <button class="btn-primary" onclick={openPicker}>Region wechseln</button>
                 </div>
             {/if}
         {/if}
@@ -859,11 +859,18 @@
                             {/if}
 
                             <div class="switch-actions">
-                                <button class="btn-primary" disabled={blocked || switching || graphBaut} onclick={startSwitch}>
+                                <button class="btn-primary" disabled={blocked || switching || (graphBaut && !scheduledLocal)} onclick={startSwitch}>
                                     {switching ? '…' : scheduledLocal ? 'Wechsel einplanen' : 'Wechsel starten'}
                                 </button>
                                 <button class="btn-secondary" onclick={closePicker}>Abbrechen</button>
                             </div>
+                            {#if graphBaut && !scheduledLocal}
+                                <p class="hint graph-sperre">
+                                    Sofort geht es erst nach dem laufenden Graph-Aufbau — ein Wechsel
+                                    liefe parallel dazu und konkurrierte um den Speicher. Einplanen geht:
+                                    Der Wechsel startet dann, sobald Termin erreicht und Aufbau fertig ist.
+                                </p>
+                            {/if}
                             {#if switchError}
                                 <div class="error-bar">{switchError} <button onclick={() => (switchError = '')}>✕</button></div>
                             {/if}
@@ -925,6 +932,7 @@
        Fehlschlag aussieht und nicht wie ein Erfolg. */
     .graph-build { margin-bottom: 1rem; padding: .6rem .75rem; border: 1px solid rgba(210,120,30,.35); border-radius: 6px; background: rgba(210,120,30,.06); }
     .graph-build.stuck { border-color: rgba(180,60,40,.4); background: rgba(180,60,40,.06); }
+    .graph-sperre { margin: .5rem 0 0; }
     .graph-build-text { margin: .45rem 0 0; font-size: var(--text-sm); line-height: 1.45; color: var(--text-2); }
     .badge-neutral { background: rgba(140,140,140,.15); color: var(--text-2); border: 1px solid rgba(140,140,140,.35); }
     .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(255,255,255,.3); border-top-color: currentColor; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: .3rem; }

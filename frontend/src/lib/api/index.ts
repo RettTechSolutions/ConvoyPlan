@@ -1070,6 +1070,11 @@ export interface RegionStatus {
      * (nach Update oder Neustart) oder ein solcher Bau über der Frist hängt.
      */
     graph_build?: GraphBuild;
+    /**
+     * Fällig (ohne Termin oder Termin verstrichen), aber der Updater hält den
+     * Wechsel zurück, bis GraphHopper seinen laufenden Graph-Aufbau beendet hat.
+     */
+    waiting_for_graph?: boolean;
 }
 
 export interface GraphBuild {
