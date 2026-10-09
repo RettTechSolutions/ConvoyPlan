@@ -276,6 +276,60 @@ export const passkeyApi = {
 	},
 };
 
+// ── Kartenregion (Admin-Portal, System) ──────────────────────────────────────
+// `?k=region&bau=import|download|haengt|keiner|wartet`. Ein Graph-Bau ohne
+// Regionswechsel: Die Karte liest ihn aus `status().graph_build`. `wartet` ist
+// ein fälliger geplanter Wechsel, den der Updater bis zum Ende des Baus hält.
+
+export type RegionPhase = string;
+export interface GraphBuild {
+	phase: 'download' | 'import' | 'haengt';
+	since: string | null;
+	grace_hours: number;
+}
+export interface RegionStatus {
+	phase: RegionPhase;
+	scheduled_for?: string;
+	graph_build?: GraphBuild;
+	waiting_for_graph?: boolean;
+}
+
+const bau = new URLSearchParams(location.search).get('bau') ?? 'keiner';
+const vorMinuten = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
+const GRAPH_BUILD: Record<string, GraphBuild | undefined> = {
+	import: { phase: 'import', since: vorMinuten(12), grace_hours: 4 },
+	download: { phase: 'download', since: null, grace_hours: 4 },
+	haengt: { phase: 'haengt', since: vorMinuten(5 * 60), grace_hours: 4 },
+	keiner: undefined,
+	wartet: { phase: 'import', since: vorMinuten(12), grace_hours: 4 },
+};
+
+export const regionApi = {
+	current: async () => ({
+		url: 'https://download.geofabrik.de/europe/dach-latest.osm.pbf',
+		filename: 'dach-latest.osm.pbf',
+		java_opts: '-Xmx8g',
+		sources: ['europe/dach'],
+	}),
+	preview: async () => ({
+		sources: ['europe/dach'], composed: false, overlapping: [],
+		extract_bytes: 4_100_000_000, graph_bytes: 6_000_000_000,
+		ram_needed_bytes: 8_000_000_000, ram_available_bytes: 16_000_000_000,
+		ram_reclaimable_bytes: 0, ram_effective_available_bytes: 16_000_000_000,
+		disk_needed_bytes: 20_000_000_000, disk_free_bytes: 92_000_000_000,
+		duration_minutes: [45, 75], verdict: 'ok', reason: 'Reicht.',
+	}),
+	list: async () => [],
+	status: async (): Promise<RegionStatus> => {
+		const gb = GRAPH_BUILD[bau];
+		if (bau === 'wartet') {
+			return { phase: 'scheduled', scheduled_for: vorMinuten(20), graph_build: gb, waiting_for_graph: true };
+		}
+		return gb ? { phase: 'idle', graph_build: gb } : { phase: 'idle' };
+	},
+	logStream: async () => null,
+	switch: async () => ({ status: 'queued' }),
+	cancel: async () => ({ status: 'cancelling' }),
 // ── Ortungsgeräte (`TrackerVerwaltung`) ──────────────────────────────────────
 //
 // Was die Komponente abschickt, landet in `window.__trackerAngelegt`; der Code

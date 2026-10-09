@@ -168,6 +168,13 @@
     const showSwitchPanel = $derived(busy || finished);
     const canCancel = $derived(busy && CANCELLABLE_PHASES.includes(status.phase));
     const blocked = $derived(preview?.verdict === 'reicht nicht');
+    // Baut GraphHopper gerade selbst, lehnt der Server einen SOFORTIGEN
+    // Wechsel ab (409): zwei Importe um denselben Speicher. Geplant werden darf
+    // — der Updater startet ihn erst nach Termin UND Bau. Ein hängender Import
+    // sperrt nicht: dann kann ein Wechsel auf eine kleinere Region der Ausweg sein.
+    const graphBaut = $derived(
+        status.graph_build?.phase === 'import' || status.graph_build?.phase === 'download',
+    );
 
     onMount(async () => {
         await loadCurrent();
@@ -468,6 +475,13 @@
         return `${size.toFixed(size >= 100 || unit === 0 ? 0 : 1).replace('.', ',')} ${units[unit]}`;
     }
 
+    /** „seit 12 Min." / „seit 4,2 Std." — aus dem Beginn, den der Server liefert. */
+    function seit(iso: string | null): string {
+        if (!iso) return '';
+        const min = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000));
+        return min >= 60 ? `seit ${(min / 60).toFixed(1).replace('.', ',')} Std.` : `seit ${min} Min.`;
+    }
+
     function formatDuration([low, high]: [number, number]): string {
         const fmt = (m: number) => (m >= 60 ? `${(m / 60).toFixed(1).replace('.', ',')} Std.` : `${m} Min.`);
         return `${fmt(low)} – ${fmt(high)}`;
@@ -508,7 +522,12 @@
             {/if}
         </div>
 
-        {#if status.phase === 'scheduled'}
+        {#if status.waiting_for_graph}
+            <p class="reassurance">
+                Fällig, aber GraphHopper baut gerade seinen Routing-Graphen. Der Wechsel startet
+                von selbst, sobald dieser Aufbau abgeschlossen ist.
+            </p>
+        {:else if status.phase === 'scheduled'}
             <p class="reassurance">
                 Bis zum gewählten Zeitpunkt läuft die bisherige Region unverändert weiter.
                 Der Wechsel lässt sich bis dahin jederzeit abbrechen.
@@ -557,6 +576,50 @@
         {/if}
     {:else}
         <!-- ── Ruhezustand ── -->
+        <!--
+            Ein Graph-Bau ohne Regionswechsel: nach einem Update oder einem
+            Neustart ohne fertigen Graphen. Abgelesen an den Volumes
+            (services/graph_aufbau.py) — es gibt keinen Lebensbeweis, deshalb
+            nennt die Karte die Frist, nach der ein Import als hängend gilt.
+        -->
+        {#if status.graph_build}
+            {@const gb = status.graph_build}
+            <div class="graph-build" class:stuck={gb.phase === 'haengt'}>
+                <div class="phase-row">
+                    <span class="badge" class:badge-update={gb.phase !== 'haengt'} class:badge-warn={gb.phase === 'haengt'}>
+                        {#if gb.phase !== 'haengt'}<span class="spinner"></span>{/if}
+                        {#if gb.phase === 'download'}
+                            Kartendaten werden heruntergeladen
+                        {:else if gb.phase === 'import'}
+                            Routing-Graph wird neu aufgebaut
+                        {:else}
+                            Import ohne Abschluss
+                        {/if}
+                    </span>
+                    {#if gb.since}<span class="hint">{seit(gb.since)}</span>{/if}
+                </div>
+                {#if gb.phase === 'haengt'}
+                    <p class="graph-build-text">
+                        GraphHopper hat seit über {gb.grace_hours} Std. keinen fertigen Graphen.
+                        Routing ist so lange nicht verfügbar. Ursache steht im Container-Log
+                        (<code>docker compose logs graphhopper</code>); ein Neustart des
+                        Containers verwirft den Rest und baut neu.
+                    </p>
+                {:else if gb.phase === 'download'}
+                    <p class="graph-build-text">
+                        GraphHopper lädt das Extract, weil keines vorliegt, und baut danach den
+                        Graphen. Routing ist bis zum Abschluss nicht verfügbar.
+                    </p>
+                {:else}
+                    <p class="graph-build-text">
+                        Typisch nach einem Update oder einem Neustart ohne fertigen Graphen.
+                        Routing ist bis zum Abschluss nicht verfügbar; die Statusseite nennt
+                        diesen Grund. Ohne Abschluss nach {gb.grace_hours} Std. gilt der
+                        Import als hängend.
+                    </p>
+                {/if}
+            </div>
+        {/if}
         {#if loadingCurrent}
             <p class="hint">Lade…</p>
         {:else if current}
@@ -796,11 +859,18 @@
                             {/if}
 
                             <div class="switch-actions">
-                                <button class="btn-primary" disabled={blocked || switching} onclick={startSwitch}>
+                                <button class="btn-primary" disabled={blocked || switching || (graphBaut && !scheduledLocal)} onclick={startSwitch}>
                                     {switching ? '…' : scheduledLocal ? 'Wechsel einplanen' : 'Wechsel starten'}
                                 </button>
                                 <button class="btn-secondary" onclick={closePicker}>Abbrechen</button>
                             </div>
+                            {#if graphBaut && !scheduledLocal}
+                                <p class="hint graph-sperre">
+                                    Sofort geht es erst nach dem laufenden Graph-Aufbau — ein Wechsel
+                                    liefe parallel dazu und konkurrierte um den Speicher. Einplanen geht:
+                                    Der Wechsel startet dann, sobald Termin erreicht und Aufbau fertig ist.
+                                </p>
+                            {/if}
                             {#if switchError}
                                 <div class="error-bar">{switchError} <button onclick={() => (switchError = '')}>✕</button></div>
                             {/if}
@@ -860,6 +930,10 @@
     .badge-warn { background: rgba(180,60,40,.15); color: var(--color-primary); border: 1px solid rgba(180,60,40,.3); }
     /* Abgebrochen ist weder gut noch schlecht — grau, damit es nicht wie ein
        Fehlschlag aussieht und nicht wie ein Erfolg. */
+    .graph-build { margin-bottom: 1rem; padding: .6rem .75rem; border: 1px solid rgba(210,120,30,.35); border-radius: 6px; background: rgba(210,120,30,.06); }
+    .graph-build.stuck { border-color: rgba(180,60,40,.4); background: rgba(180,60,40,.06); }
+    .graph-sperre { margin: .5rem 0 0; }
+    .graph-build-text { margin: .45rem 0 0; font-size: var(--text-sm); line-height: 1.45; color: var(--text-2); }
     .badge-neutral { background: rgba(140,140,140,.15); color: var(--text-2); border: 1px solid rgba(140,140,140,.35); }
     .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(255,255,255,.3); border-top-color: currentColor; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: .3rem; }
     @keyframes spin { to { transform: rotate(360deg); } }

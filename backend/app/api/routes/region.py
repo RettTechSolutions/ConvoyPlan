@@ -30,7 +30,7 @@ from app.api.deps import decode_stream_token, get_db, require_superadmin
 from app.config import settings
 from app.models.user import User
 from app.services import (
-    audit, docker_stats, geofabrik, host_metrics, region_compose, region_estimate,
+    audit, docker_stats, geofabrik, graph_aufbau, host_metrics, region_compose, region_estimate,
     region_switch,
 )
 from app.services import region_outline as region_outline_geom
@@ -494,6 +494,27 @@ async def switch_region(
         )
         raise HTTPException(409, "Es läuft bereits ein Update oder Regionswechsel.")
 
+    # Baut GraphHopper gerade selbst (nach einem Update, einem Neustart ohne
+    # fertigen Graphen), liefe der Wechsel-Import daneben: zwei Importe um
+    # denselben Speicher, und die RAM-Rechnung der Vorschau geht von einem
+    # Server aus, nicht von einem zweiten Import. Am Ende tauschte der Wechsel
+    # das Graph-Verzeichnis und startete GraphHopper neu — der laufende Import
+    # waere ohnehin verloren. Ein *haengender* Import sperrt nicht: dann kann
+    # gerade ein Wechsel auf eine kleinere Region der Ausweg sein.
+    #
+    # Nur der SOFORTIGE Wechsel wird abgewiesen. Ein geplanter darf liegen:
+    # Der Updater startet ihn erst, wenn Termin erreicht UND Bau fertig ist
+    # (region_graph_building in docker/updater/region-hook.sh).
+    if scheduled is None and graph_aufbau.laufender_aufbau() is not None:
+        await _audit_switch_rejected(
+            db, request, user, url, "GraphHopper baut gerade seinen Routing-Graphen."
+        )
+        raise HTTPException(
+            409,
+            "GraphHopper baut gerade seinen Routing-Graphen. Ein Wechsel liefe parallel "
+            "dazu und konkurrierte um den Speicher — bitte nach dem Abschluss starten.",
+        )
+
     try:
         region_switch.write_request(
             url, filename, java_opts, user.email, sources=sources,
@@ -531,6 +552,21 @@ async def switch_region(
     return {"status": "requested"}
 
 
+def _faellig_aber_wartend(status: dict) -> bool:
+    """Ob eine Anforderung faellig ist und noch nicht laeuft."""
+    if status.get("phase") == "queued":
+        return True
+    if status.get("phase") != "scheduled":
+        return False
+    try:
+        termin = datetime.fromisoformat(status.get("scheduled_for") or "")
+    except ValueError:
+        return False
+    if termin.tzinfo is None:
+        termin = termin.replace(tzinfo=timezone.utc)
+    return termin <= datetime.now(timezone.utc)
+
+
 @router.get("/status")
 async def region_status(_: User = Depends(require_superadmin)):
     """Aktueller Fortschritt eines laufenden oder zuletzt beendeten Regionswechsels.
@@ -538,8 +574,34 @@ async def region_status(_: User = Depends(require_superadmin)):
     Liest ausschliesslich `region_switch.read_status()` — die vom Updater
     zuletzt geschriebene Statusdatei. Ruht kein Wechsel, ist das der
     Default-Zustand `{"phase": "idle"}`.
+
+    Dazu `graph_build`, solange GraphHopper ausserhalb eines Wechsels seinen
+    Graphen baut (nach einem Update, einem Neustart ohne fertigen Graphen) —
+    oder ein solcher Bau ueber die Frist haengt. Nur dann: Ohne Bau bleibt die
+    Antwort, was der Updater geschrieben hat.
     """
-    return region_switch.read_status()
+    status = region_switch.read_status()
+    zustand = graph_aufbau.graph_zustand()
+    # Liegt eine faellige Anforderung (ohne Termin, oder Termin verstrichen)
+    # und baut GraphHopper gerade, haelt der Updater sie zurueck. Ohne diesen
+    # Hinweis stuende im Panel weiter „ab 03:00" — um 03:20.
+    if (
+        zustand is not None
+        and zustand.phase != "haengt"
+        and _faellig_aber_wartend(status)
+    ):
+        status["waiting_for_graph"] = True
+    if zustand is not None:
+        status["graph_build"] = {
+            "phase": zustand.phase,
+            "since": (
+                datetime.fromtimestamp(zustand.seit, timezone.utc).isoformat()
+                if zustand.seit is not None
+                else None
+            ),
+            "grace_hours": graph_aufbau.IMPORT_FRIST_S // 3600,
+        }
+    return status
 
 
 async def _require_superadmin_stream_token(token: str, db: AsyncSession) -> None:

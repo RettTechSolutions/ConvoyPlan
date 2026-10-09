@@ -42,7 +42,7 @@ DOWNLOAD_STILLSTAND_S = 10 * 60
 
 @dataclass(frozen=True)
 class Aufbau:
-    phase: str  # "download" | "import"
+    phase: str  # "download" | "import" | "haengt" (nur graph_zustand)
     #: Beginn als Unix-Zeit — nur beim Import bekannt. Beim Download gibt der
     #: Mount keinen Erstellzeitpunkt her (ctime ändert sich mit jedem Schreiben).
     seit: float | None
@@ -70,12 +70,17 @@ def _laufender_download(osm_dir: str, jetzt: float) -> Aufbau | None:
     return None
 
 
-def laufender_aufbau(
+def graph_zustand(
     graph_dir: str = GRAPH_DIR,
     osm_dir: str = OSM_DIR,
     jetzt: float | None = None,
 ) -> Aufbau | None:
-    """Download oder Import, falls einer läuft; sonst ``None``."""
+    """Download, Import oder ein Import über der Frist („haengt"); sonst ``None``.
+
+    Die dritte Phase ist für das Admin-Panel: Wer die Instanz betreibt, soll
+    sehen, dass ein Import nicht fertig geworden ist. Die öffentliche Seite
+    fragt :func:`laufender_aufbau` und meldet dann schlicht einen Ausfall.
+    """
     jetzt = time.time() if jetzt is None else jetzt
 
     download = _laufender_download(osm_dir, jetzt)
@@ -85,6 +90,20 @@ def laufender_aufbau(
     if os.path.exists(os.path.join(graph_dir, EDGES)):
         return None
     beginn = _mtime(os.path.join(graph_dir, FINGERPRINT))
-    if beginn is None or jetzt - beginn > IMPORT_FRIST_S:
+    if beginn is None:
         return None
+    if jetzt - beginn > IMPORT_FRIST_S:
+        return Aufbau("haengt", beginn)
     return Aufbau("import", beginn)
+
+
+def laufender_aufbau(
+    graph_dir: str = GRAPH_DIR,
+    osm_dir: str = OSM_DIR,
+    jetzt: float | None = None,
+) -> Aufbau | None:
+    """Download oder Import, falls einer läuft; sonst ``None``."""
+    zustand = graph_zustand(graph_dir, osm_dir, jetzt)
+    if zustand is None or zustand.phase == "haengt":
+        return None
+    return zustand

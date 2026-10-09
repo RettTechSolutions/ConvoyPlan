@@ -7,7 +7,7 @@ import os
 import time
 
 from app.services import graph_aufbau
-from app.services.graph_aufbau import Aufbau, laufender_aufbau
+from app.services.graph_aufbau import Aufbau, graph_zustand, laufender_aufbau
 
 JETZT = 1_800_000_000.0
 
@@ -85,3 +85,21 @@ def test_ohne_zeitangabe_gilt_die_uhr(tmp_path):
     aufbau = laufender_aufbau(str(graph), str(osm))
     assert aufbau is not None and aufbau.phase == "import"
     assert abs(aufbau.seit - time.time()) < 60
+
+
+def test_admin_sieht_den_haengenden_import(tmp_path):
+    """Öffentlich ist er ein Ausfall — wer betreibt, soll sehen, dass ein Import
+    nicht fertig wurde, und seit wann."""
+    graph, osm = _dirs(tmp_path)
+    alter = graph_aufbau.IMPORT_FRIST_S + 60
+    _datei(graph / ".graph_fingerprint", alter_s=alter)
+
+    assert graph_zustand(str(graph), str(osm), jetzt=JETZT) == Aufbau("haengt", JETZT - alter)
+    assert _frage(graph, osm) is None
+
+
+def test_admin_und_oeffentlich_sind_sich_bei_laufendem_import_einig(tmp_path):
+    graph, osm = _dirs(tmp_path)
+    _datei(graph / ".graph_fingerprint", alter_s=60)
+
+    assert graph_zustand(str(graph), str(osm), jetzt=JETZT) == _frage(graph, osm)
