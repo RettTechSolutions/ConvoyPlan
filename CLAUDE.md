@@ -758,7 +758,7 @@ vermischen darf:
 Gezählt werden Fahrzeuge, Planer (Rollen *admin*/*planer*) und Tracker mit
 `aktiv=true` — ein gesperrtes Gerät bekommt 401 und belegt nichts. Tracker begrenzt
 kein Katalogpaket (`max_tracker=None`), und `max_trackers` ist NULL für jeden Plan
-von vor `0061`: ein Update darf keiner Organisation eine Überschreitung melden.
+von vor `0062`: ein Update darf keiner Organisation eine Überschreitung melden.
 
 Die Grenzen eines Plans sind **weich**, und das ist Absicht: eine Absage beim
 Anlegen des 26. Fahrzeugs träfe den Moment, in dem jemand während einer Lage
