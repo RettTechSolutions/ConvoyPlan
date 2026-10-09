@@ -119,3 +119,75 @@ async def test_overpass_raises_when_all_mirrors_fail(monkeypatch):
     monkeypatch.setattr(overpass_svc.httpx, "AsyncClient", _AlwaysFailingClient)
     with pytest.raises(httpx.ConnectTimeout):
         await get_closures_along_route([(11.0, 48.0), (11.1, 48.1)])
+
+
+# ── Besetzter Server, Teilergebnis, gleichzeitige Abfragen ───────────
+
+
+class _SkriptClient(_MockClient):
+    """Antwortet der Reihe nach mit ``antworten`` (Statuscode, JSON)."""
+
+    antworten: list[tuple[int, dict]] = []
+    calls: list[str] = []
+
+    async def post(self, url, data=None, headers=None):
+        _SkriptClient.calls.append(url)
+        status, body = _SkriptClient.antworten.pop(0)
+        return httpx.Response(status, json=body, request=httpx.Request("POST", url))
+
+
+@pytest.fixture
+def skript(monkeypatch):
+    monkeypatch.setattr(overpass_svc.httpx, "AsyncClient", _SkriptClient)
+    monkeypatch.setattr(overpass_svc, "_WARTEN_S", (0.0, 0.0))
+    _SkriptClient.calls = []
+    return _SkriptClient
+
+
+@pytest.mark.asyncio
+async def test_besetzter_server_wird_erneut_gefragt_statt_zum_spiegel(skript):
+    """429 heißt „beide Slots belegt" — kurz warten, dann derselbe Server."""
+    skript.antworten = [(429, {}), (200, {"elements": [{"id": 7}]})]
+    data = await overpass_svc._post_overpass("q")
+    assert data["elements"] == [{"id": 7}]
+    assert skript.calls == [overpass_svc.OVERPASS_URL] * 2
+
+
+@pytest.mark.asyncio
+async def test_dauerhaft_besetzt_geht_zum_naechsten_spiegel(skript):
+    skript.antworten = [(429, {})] * 3 + [(200, {"elements": []})]
+    await overpass_svc._post_overpass("q")
+    assert skript.calls[:3] == [overpass_svc.OVERPASS_URL] * 3
+    assert skript.calls[3] == overpass_svc.OVERPASS_MIRRORS[1]
+
+
+@pytest.mark.asyncio
+async def test_abbruch_mit_teilergebnis_ist_ein_fehler(skript):
+    """Ein Timeout liefert HTTP 200 mit halber Liste — das wäre „keine Brücke gefunden"."""
+    halb = {"elements": [{"id": 1}], "remark": 'runtime error: Query timed out in "query" at line 3 after 91 seconds.'}
+    skript.antworten = [(200, halb)] * len(overpass_svc.OVERPASS_MIRRORS)
+    with pytest.raises(overpass_svc.OverpassUnvollstaendig):
+        await overpass_svc.bruecken_entlang([[11.0, 48.0], [11.1, 48.1]])
+
+
+@pytest.mark.asyncio
+async def test_hoechstens_zwei_abfragen_gleichzeitig(monkeypatch):
+    """overpass-api.de gibt je IP zwei Slots; die Instanz teilt sich eine IP."""
+    import asyncio
+
+    laufend = 0
+    hoechstens = 0
+
+    class _Langsam(_MockClient):
+        async def post(self, url, data=None, headers=None):
+            nonlocal laufend, hoechstens
+            laufend += 1
+            hoechstens = max(hoechstens, laufend)
+            await asyncio.sleep(0.01)
+            laufend -= 1
+            return httpx.Response(200, json={"elements": []}, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(overpass_svc.httpx, "AsyncClient", _Langsam)
+    monkeypatch.setattr(overpass_svc, "_SLOTS", asyncio.Semaphore(2))
+    await asyncio.gather(*(overpass_svc._post_overpass("q") for _ in range(5)))
+    assert hoechstens == 2

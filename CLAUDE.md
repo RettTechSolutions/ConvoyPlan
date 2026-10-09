@@ -245,6 +245,12 @@ verworfen. Drei Regeln, die man kennen muss:
 - **Schnellstraßen zählen, nicht listen.** `routes.schnellstrassen` hält bei der
   Berechnung fest, wo `road_class` Autobahn oder Kraftfahrstraße ist; die Suche läuft
   später und hat das Detail nicht mehr.
+- **Overpass hat zwei Slots je IP**, und die Instanz teilt sich eine. Nach der
+  Berechnung laufen Sperrungen, Tankstellen und Brücken gleichzeitig los; die dritte
+  bekam 429, und die Suche meldete „nicht erreichbar". `_post_overpass` lässt deshalb
+  höchstens zwei zugleich laufen und fragt einen besetzten Server (429/503/504) nach
+  einer Pause erneut, bevor es zum Spiegel geht. Ein `remark: runtime error` (Abbruch,
+  HTTP 200, halbe Liste) ist ein Fehler — sonst stünde „keine Brücke gefunden" da.
 
 Tests: `tests/test_durchfahrtshoehen.py`, `tests/test_bruecken_ohne_hoehe.py`,
 `frontend/e2e/durchfahrtshoehen.spec.ts`. Anwenderdoku: `wiki/Konvoi-Planung.md`,
