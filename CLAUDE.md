@@ -618,6 +618,19 @@ aus), `tests/test_mcp_toggle.py` (Routentabelle mit und ohne App-Client),
 `frontend/e2e/app-anmeldung.spec.ts`. Anwenderdoku: `wiki/Sicherheit-und-Datenschutz.md`,
 „Anmeldung der Begleit-App".
 
+### Betriebsart: selbst gehostet oder Hosting-Server
+
+Derselbe Code läuft beim Selbsthoster und auf dem Hosting-Server; `INSTANCE_MODE`
+(`selfhost`, Standard, oder `hosting`) entscheidet über **Standards**, nicht über
+Funktionen (`services/betriebsart.py`, im Frontend über dieselbe Umgebungsvariable).
+Unbekannte Werte gelten als `selfhost` — die zurückhaltende Seite. Heute hängen daran:
+die Agenten-Auskunft (aus bei `selfhost`, solange `AGENT_DISCOVERY` leer ist) und die
+Meldungen (Weiterleiten bzw. Annehmen, siehe dort). Eine zweite Codebasis für
+Selbsthoster ist ausdrücklich nicht gewollt: doppelte Tests, auseinanderlaufende
+Migrationen. **Der Hosting-Server braucht `INSTANCE_MODE=hosting` in seiner `.env`**,
+sonst fehlen dort Agenten-Auskunft und Annahme. Abgleich der Leitstellen zwischen
+Instanzen: `docs/superpowers/plans/2026-10-09-leitstellen-abgleich.md`.
+
 ### Auskunft für Agenten (llms.txt, Well-Known, Markdown)
 
 Jede Instanz liefert unter ihrer eigenen Domain aus, was sie ist und wie man sie
@@ -659,8 +672,8 @@ Zwei Regeln, die den Aufwand erklären:
   über `.md` und über `?mode=agent` — nicht, weil ein Crawler sich als Crawler zu
   erkennen gibt. Das wäre Cloaking.
 
-Abschaltbar über `AGENT_DISCOVERY=false` (Standard an); dann existieren diese Pfade
-nicht. Anwenderdoku: `wiki/Agenten-Auskunft.md`.
+Abschaltbar über `AGENT_DISCOVERY=false`; ohne Angabe an bei `INSTANCE_MODE=hosting`,
+aus bei `selfhost`. Abgeschaltet existieren diese Pfade nicht. Anwenderdoku: `wiki/Agenten-Auskunft.md`.
 
 `/openapi.json` ist bewusst **nicht** die vollständige Beschreibung — die bleibt hinter
 `DOCS_API_KEY`. Das Frontend reicht `/api/public/openapi.json` durch; das Backend baut
@@ -707,6 +720,16 @@ Zwei Einschätzungen, die getrennt bleiben: `severity` gehört dem Melder und wi
 nicht angefasst, `priority` dem Betreiber. In einem Feld verlöre man die erste
 beim ersten Triage-Klick, und genau die sagt, wie schlimm es sich *im Einsatz*
 angefühlt hat.
+
+**Selbst gehostet geht jede Meldung auch an den Hersteller**
+(`services/feedback_weiterleitung.py`): Programmfehler behebt, wer den Code pflegt.
+Erst gespeichert (`weiterleitung="offen"`), dann zugestellt — sofort und per Schleife
+alle zehn Minuten, nach 14 Tagen aufgegeben; Meldungen von vor `0061` bleiben `NULL`
+und werden nie nachgeschickt, ihre Melder lasen „nur der Betreiber". Angenommen wird
+nur auf dem Hosting-Server (`POST /api/feedback/eingang`, Vertrag `FeedbackEingang`
+mit `extra="forbid"`, wiederholbar über `herkunft_instanz`+`herkunft_id`). Der Dialog
+fragt `GET /api/feedback/empfaenger` und nennt den Hersteller, solange er es nicht
+besser weiß. Wer an der Nutzlast etwas ändert, zieht den Ausklapper mit.
 
 `frontend/e2e/feedback-melden.spec.ts` hält die Zusage fest, die man der
 Oberfläche nicht ansieht: der abgeschickte Aufruf enthält die Felder, die der

@@ -172,6 +172,7 @@ async def _lifespan(_app: FastAPI):
     from app.services.deploy_alert import deploy_alert_loop
     from app.jobs.metrics import metrics_collector_loop
     from app.services.lizenz_ablauf import lizenz_ablauf_loop
+    from app.services.feedback_weiterleitung import weiterleitung_loop
     notify_task = asyncio.create_task(update_notify_loop())
     # Watches /update_status/deploy_alert.json for failed-deploy / auto-rollback
     # / aborted-boot markers written by the updater and entrypoint, and emails
@@ -184,6 +185,9 @@ async def _lifespan(_app: FastAPI):
     # Kündigt den Ablauf des Lizenzschlüssels an (30 und 7 Tage vorher, beim
     # Ablauf) — per Mail an die Superadmins, je Stufe einmal.
     expiry_task = asyncio.create_task(lizenz_ablauf_loop())
+    # Selbst gehostet: Meldungen, deren sofortige Weiterleitung an den
+    # Hersteller scheiterte, erneut zustellen (alle zehn Minuten).
+    feedback_task = asyncio.create_task(weiterleitung_loop())
     try:
         # Der Streamable-HTTP-Transport des MCP-Servers braucht eine laufende
         # Task-Group. Ohne das scheitert der erste MCP-Request mit einem
@@ -198,8 +202,9 @@ async def _lifespan(_app: FastAPI):
         alert_task.cancel()
         metrics_task.cancel()
         expiry_task.cancel()
+        feedback_task.cancel()
         outcome = await asyncio.gather(
-            notify_task, alert_task, metrics_task, expiry_task, return_exceptions=True
+            notify_task, alert_task, metrics_task, expiry_task, feedback_task, return_exceptions=True
         )
         logger.debug("Hintergrund-Tasks beendet: %r", outcome)
 

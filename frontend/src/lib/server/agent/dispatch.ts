@@ -20,11 +20,19 @@ import { PAGES, pageFor } from '$lib/agent/pages';
 
 const BACKEND = 'http://backend:8000';
 
-/** Ob die Agenten-Auskunft auf dieser Instanz eingeschaltet ist (Standard: ja). */
+/**
+ * Ob die Agenten-Auskunft auf dieser Instanz eingeschaltet ist.
+ *
+ * `AGENT_DISCOVERY` entscheidet, wenn es gesetzt ist. Sonst die Betriebsart
+ * (`INSTANCE_MODE`, siehe `backend/app/services/betriebsart.py`): an auf dem
+ * Hosting-Server, aus auf einer selbst gehosteten Instanz. Eine Feuerwehr, die
+ * ConvoyPlan für sich betreibt, braucht keine `/pricing`-Seite und keine
+ * Agent-Card, die Suchmaschinen auf ihre Einsatzinstanz hinweisen.
+ */
 export function discoveryEnabled(): boolean {
 	const raw = (env.AGENT_DISCOVERY ?? '').trim().toLowerCase();
-	if (raw === '') return true;
-	return !['false', '0', 'no', 'off'].includes(raw);
+	if (raw !== '') return !['false', '0', 'no', 'off'].includes(raw);
+	return (env.INSTANCE_MODE ?? '').trim().toLowerCase() === 'hosting';
 }
 
 // ── Kontext ─────────────────────────────────────────────────────────────

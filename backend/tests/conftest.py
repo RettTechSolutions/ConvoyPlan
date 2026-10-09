@@ -92,3 +92,17 @@ def keine_firmware_ablage(monkeypatch):
     from app.services import firmware_angebot
 
     monkeypatch.setattr(firmware_angebot, "ablage", firmware_angebot.Ablage(""))
+
+
+@pytest.fixture(autouse=True)
+def keine_weiterleitung_an_den_hersteller():
+    """Meldungen nicht an den zentralen Server weiterleiten.
+
+    ``CENTRAL_URL`` zeigt in der Vorgabe auf web.convoyplan.de; jede Meldung
+    eines Tests ginge sonst ins Netz, und die Hintergrundaufgabe öffnete eine
+    eigene Datenbanksitzung. Tests der Weiterleitung setzen die Adresse selbst.
+    """
+    previous = settings.central_url
+    settings.central_url = ""
+    yield
+    settings.central_url = previous
