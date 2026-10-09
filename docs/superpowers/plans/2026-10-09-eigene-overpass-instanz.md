@@ -130,11 +130,19 @@ zeigt das Admin-Portal (Abschnitt 8).
 
 ## 6. Backend
 
-- `OVERPASS_URLS` wird bei `OVERPASS_LOCAL=true` vom Installer auf
-  `http://overpass/api/interpreter,https://overpass-api.de/api/interpreter`
-  gesetzt: die eigene zuerst, die öffentliche als Ersatz.
-  **Offen** (Abschnitt 12): ob der Ersatz bei eigener Instanz gewollt ist, oder
-  ob die Route dann nie nach draußen gehen soll.
+- **Kein Ersatz als Vorgabe** (entschieden 2026-10-09). Bei
+  `OVERPASS_LOCAL=true` setzt der Installer `OVERPASS_URLS` auf
+  `http://overpass/api/interpreter`, und nur darauf. Die Route bleibt im Haus.
+  Wer ausdrücklich zustimmt (Abschnitt 7), bekommt
+  `https://overpass-api.de/api/interpreter` als zweite URL dazu.
+- **Ohne Ersatz braucht der Ausfall einen eigenen Text.** Baut die eigene
+  Instanz oder passt ihre Region nicht, gibt es keine nächste URL. Dann darf
+  weder eine leere Liste herauskommen noch „OpenStreetMap-Dienst nicht
+  erreichbar". Das Backend antwortet mit einem eigenen Grund (`503`,
+  `detail: "overpass_import"` bzw. `"overpass_region"`), und
+  `DurchfahrtsHoehen.svelte` sagt „Eigene OpenStreetMap-Instanz baut gerade
+  neu – Brücken danach erneut suchen". Dasselbe gilt für Sperrungen und
+  Tankstellen.
 - **Slots je Server**, nicht global: die Semaphore aus #608 gilt der
   öffentlichen Instanz. Die eigene verträgt mehr (`OVERPASS_RATE_LIMIT` im
   Image). Also ein Slot-Zähler je Host, Anzahl aus einer Tabelle mit Vorgabe 2.
@@ -152,8 +160,11 @@ zeigt das Admin-Portal (Abschnitt 8).
 
 - `install.sh`/`install.ps1`: eine Frage nach der Regionswahl, „Eigene
   OpenStreetMap-Abfrage-Instanz? (j/N)", mit Platz- und RAM-Hinweis für die
-  gewählte Region. Schreibt `OVERPASS_LOCAL` und `OVERPASS_URLS`. Im
-  Update-Modus ergänzt `_patch_env` nur `OVERPASS_LOCAL=false`.
+  gewählte Region. Bei *ja* eine zweite Frage: „Bei Ausfall der eigenen
+  Instanz auf overpass-api.de ausweichen? Die geplante Route geht dann an
+  diesen Server. (j/N)". Vorgabe *nein*. Schreibt `OVERPASS_LOCAL` und
+  `OVERPASS_URLS`. Im Update-Modus ergänzt `_patch_env` nur
+  `OVERPASS_LOCAL=false` und fasst `OVERPASS_URLS` nicht an.
 - `region_estimate.py`: Ist `OVERPASS_LOCAL` an, rechnet die Vorschau die
   Overpass-Datenbank mit ein, als Platte für Staging **und** Bestand während
   des Wechsels. Die Faktoren kommen aus dem Spike (Abschnitt 11, Schritt 1),
@@ -194,7 +205,9 @@ zusammen. Bei sechs Stellen mal sechs Images reicht das nicht mehr.
 | `docker/overpass/tests/test_entrypoint_zustand.sh` | Fingerprint ohne `.fertig` → neu; `.staging`-Torso → weg; `OVERPASS_LOCAL=false` → schläft, rührt `/db` nicht an; Wipe trifft keine Punktdateien |
 | `…/test_entrypoint_wechsel.sh` | alte DB bedient während des Imports, Tausch erst nach `.fertig` |
 | `backend/tests/test_overpass.py` | Slots je Host; fremde Region → nächste URL; Zustand `import` → nächste URL |
-| `backend/tests/test_overpass_eigene_instanz.py` | `/api/status` unterscheidet eigene/öffentliche |
+| `backend/tests/test_overpass_eigene_instanz.py` | `/api/status` unterscheidet eigene/öffentliche; ohne Ersatz und mit bauender Instanz kommt `503` mit Grund, nie eine leere Liste |
+| `frontend/e2e/durchfahrtshoehen.spec.ts` | „baut gerade neu" statt „nicht erreichbar" |
+| Installer-Test | ohne Antwort auf die Ersatzfrage steht nur die eigene URL in `.env` |
 | Image-Zähltest (Abschnitt 9) | sechs Images an allen Stellen |
 
 Alle Entscheidungen im Entrypoint stehen in einer eigenen Datei
@@ -218,11 +231,6 @@ Alle Entscheidungen im Entrypoint stehen in einer eigenen Datei
 
 ## 12. Offen
 
-- **Ersatz bei eigener Instanz:** öffentliche URL als zweite (Ausfallsicher,
-  aber die Route geht dann doch nach draußen) oder gar keine (Route bleibt im
-  Haus, bei Ausfall gibt es keine Sperrungen und keine Brücken)? Vorschlag:
-  Installer fragt, Vorgabe *keine*. Wer die eigene Instanz will, will meist
-  genau das.
 - **Ressourcen**: Schätzungen ohne Messung. DACH-PBF etwa 5 GB → DB grob
   20–40 GB, Import einige Stunden, RAM beim Import einige GB. Der Spike
   ersetzt diese Zeile durch Zahlen.
