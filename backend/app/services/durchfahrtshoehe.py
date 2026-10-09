@@ -20,6 +20,7 @@ Zwei Grenzen der Daten, die die Stufen erklären:
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from app.services import route_steps as route_steps_svc
@@ -47,7 +48,7 @@ def _hoehe(wert: Any) -> float | None:
         h = float(wert)
     except (TypeError, ValueError):
         return None
-    if h != h or h <= 0 or h > _OBERGRENZE_M:  # NaN, Unsinn, Infinity
+    if not math.isfinite(h) or h <= 0 or h > _OBERGRENZE_M:
         return None
     return round(h, 1)
 
