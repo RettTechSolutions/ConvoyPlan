@@ -226,6 +226,11 @@ async def _eingerichtet(client, org, **felder) -> tuple[dict, dict]:
     return geraet, h((await _einloesen(client, geraet["code"]))["token"])
 
 
+async def _status(aufruf) -> int:
+    """Antwortstatus eines Aufrufs — damit der Aufruf nicht im ``assert`` steckt."""
+    return (await aufruf).status_code
+
+
 def _fix(sekunden_her: float, lon: float = 11.0, **extra) -> dict:
     t = datetime.now(timezone.utc) - timedelta(seconds=sekunden_her)
     return {"t": _iso(t), "lat": 47.8, "lon": lon, "speed_kmh": 50.0, "heading": 90.0, **extra}
@@ -287,12 +292,12 @@ class TestEinrichten:
 
     async def test_neuer_code_macht_das_alte_token_ungueltig(self, client, org):
         geraet, kopf = await _eingerichtet(client, org)
-        assert (await client.post("/api/geraete/hallo", json={}, headers=kopf)).status_code == 200
+        assert await _status(client.post("/api/geraete/hallo", json={}, headers=kopf)) == 200
         r = await client.post(f"/api/org/geraete/{geraet['id']}/code", headers=h(org.admin))
         assert r.status_code == 200 and r.json()["code"] != geraet["code"]
-        assert (await client.post("/api/geraete/hallo", json={}, headers=kopf)).status_code == 401
+        assert await _status(client.post("/api/geraete/hallo", json={}, headers=kopf)) == 401
         neu = await _einloesen(client, r.json()["code"])
-        assert (await client.post("/api/geraete/hallo", json={}, headers=h(neu["token"]))).status_code == 200
+        assert await _status(client.post("/api/geraete/hallo", json={}, headers=h(neu["token"]))) == 200
 
     async def test_gesperrtes_geraet_bekommt_401(self, client, org):
         geraet, kopf = await _eingerichtet(client, org)
@@ -302,22 +307,23 @@ class TestEinrichten:
             headers=h(org.admin),
         )
         assert r.status_code == 200 and r.json()["kanal"] == "beta" and r.json()["aktiv"] is False
-        assert (await client.post("/api/geraete/hallo", json={}, headers=kopf)).status_code == 401
-        assert (await client.post("/api/geraete/hallo", json={})).status_code == 401
-        assert (await client.post("/api/geraete/hallo", json={}, headers=h("cvt_falsch"))).status_code == 401
+        assert await _status(client.post("/api/geraete/hallo", json={}, headers=kopf)) == 401
+        assert await _status(client.post("/api/geraete/hallo", json={})) == 401
+        assert await _status(client.post("/api/geraete/hallo", json={}, headers=h("cvt_falsch"))) == 401
 
     async def test_nur_org_admins_verwalten(self, client, org):
         for aufruf in (
             client.get("/api/org/geraete", headers=h(org.fahrer)),
             client.post("/api/org/geraete", json={"name": "x"}, headers=h(org.fahrer)),
         ):
-            assert (await aufruf).status_code == 403
+            assert await _status(aufruf) == 403
 
     async def test_loeschen(self, client, org):
         geraet, kopf = await _eingerichtet(client, org)
-        assert (await client.delete(f"/api/org/geraete/{geraet['id']}", headers=h(org.admin))).status_code == 204
-        assert (await client.get("/api/org/geraete", headers=h(org.admin))).json() == []
-        assert (await client.post("/api/geraete/hallo", json={}, headers=kopf)).status_code == 401
+        assert await _status(client.delete(f"/api/org/geraete/{geraet['id']}", headers=h(org.admin))) == 204
+        liste = await client.get("/api/org/geraete", headers=h(org.admin))
+        assert liste.json() == []
+        assert await _status(client.post("/api/geraete/hallo", json={}, headers=kopf)) == 401
 
 
 class TestKoppeln:
