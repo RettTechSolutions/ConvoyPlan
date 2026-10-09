@@ -29,6 +29,25 @@ Beim ersten Punkt wechselt ein Fahrzeug im Status *geplant* auf *unterwegs*, wie
 beim Fahrer-Link. Statusmeldungen, Stärke und Betriebsstoff kommen weiter aus der
 App oder vom Fahrer-Link — der Tracker meldet nur, wo das Fahrzeug ist.
 
+## Tracker und Telefon am selben Fahrzeug
+
+Sendet ein Tracker, gehört ihm die Position. Meldet daneben die Besatzung mit
+App oder Fahrer-Link für dasselbe Fahrzeug, wird ihre Position verworfen, und
+nur sie erfährt es: „Die Position kommt vom Fahrzeugtracker. Status und
+Meldungen gehen weiter von hier." Genau das bleibt ihr: Status, Stärke,
+Betriebsstoff, Quittung. Sonst sprängen zwei Punkte auf der Karte hin und her.
+
+Fällt der Tracker aus, gilt fünf Minuten nach seinem letzten Bündel wieder das
+Telefon — von selbst, niemand muss neu starten. In der Fahrzeugliste steht
+**TRACKER** statt **LIVE**, solange die Position vom Gerät kommt.
+
+Will die Führung sofort das Telefon gelten lassen (Tracker defekt, falsches
+Fahrzeug gekoppelt), übersteuert sie den Tracker: **Org-Admin → GPS-Freigaben →
+„Tracker übersteuern"** (Rolle *Planer*). Danach wird verworfen, was der Tracker
+für dieses Fahrzeug in diesem Konvoi sendet, bis jemand „Tracker wieder nutzen"
+drückt. Das nimmt die Instanz nicht von selbst zurück, auch nicht nach einem
+Neustart.
+
 ## Einrichten
 
 **Org-Admin → Tracker → „+ Neuer Tracker"** (Rolle *Admin*):

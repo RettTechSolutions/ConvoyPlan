@@ -19,6 +19,7 @@ from app.models.vehicle_position import VehiclePosition
 from app.services import alarm_quittung
 from app.services import betriebsstoff as betriebsstoff_svc
 from app.services import belegung
+from app.services import positionsquelle
 from app.services import positionsverlauf
 from app.services import staerke as staerke_svc
 from app.services import vehicle_status as vs
@@ -137,6 +138,7 @@ async def get_positions(
             "speed_kmh": p.speed_kmh,
             "heading": p.heading,
             "recorded_at": p.recorded_at.isoformat(),
+            "quelle": p.quelle,
         }
         for p in positions
     ]
@@ -154,6 +156,14 @@ async def update_position(
     # it can't re-create the position the admin removed.
     if tracking_manager.is_recently_cleared(str(convoy_id), str(data.vehicle_id)):
         return {"status": "suppressed"}
+    # Sendet ein Tracker für das Fahrzeug, gehört ihm die Position
+    # (services/positionsquelle.py); ohne Kanal sagt es nur die Antwort.
+    cv = await db.get(ConvoyVehicle, (convoy_id, data.vehicle_id))
+    uebersteuert_at = cv.tracker_uebersteuert_at if cv is not None else None
+    if not await positionsquelle.telefon_erlaubt(
+        str(convoy_id), str(data.vehicle_id), uebersteuert_at, None, False
+    ):
+        return {"status": "tracker"}
     stmt = (
         pg_insert(VehiclePosition)
         .values(
@@ -164,6 +174,7 @@ async def update_position(
             speed_kmh=data.speed_kmh,
             heading=data.heading,
             recorded_at=datetime.now(timezone.utc),
+            quelle=None,
         )
         .on_conflict_do_update(
             index_elements=["convoy_id", "vehicle_id"],
@@ -173,6 +184,7 @@ async def update_position(
                 "speed_kmh": data.speed_kmh,
                 "heading": data.heading,
                 "recorded_at": datetime.now(timezone.utc),
+                "quelle": None,
             },
         )
     )
@@ -358,11 +370,59 @@ async def clear_vehicle_position(
         # hält. Beim Selbst-Stopp bleibt die Belegung — das Fahrzeug ist ja
         # weiter gewählt; frei wird es mit dem Abwählen (``freigeben``).
         await belegung.freigeben(str(convoy_id), str(vehicle_id), None)
+        positionsquelle.positionsquellen.vergessen(str(convoy_id), str(vehicle_id))
     await tracking_manager.broadcast(str(convoy_id), {
         "type": "position_cleared",
         "vehicle_id": str(vehicle_id),
     })
     return {"status": "ok"}
+
+
+class PositionsquelleUpdate(BaseModel):
+    tracker_uebersteuern: bool
+
+
+@router.patch("/convoys/{convoy_id}/vehicles/{vehicle_id}/positionsquelle")
+async def positionsquelle_setzen(
+    convoy_id: uuid.UUID,
+    vehicle_id: uuid.UUID,
+    data: PositionsquelleUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Tracker übersteuern (oder wieder gelten lassen) — die Führung entscheidet.
+
+    Übersteuert gilt für dieses Fahrzeug im Konvoi das Telefon; Bündel des
+    Trackers werden verworfen. Kein automatischer Rückfall: Wer übersteuert
+    hat, nimmt es auch zurück. Planer-Recht wie beim Zurücksetzen der Freigabe
+    durch die Führung; das Ereignis geht nur an Verbindungen mit Gerätekennung
+    (``broadcast_neu``), wie Belegung und Quittung.
+    """
+    await get_convoy_access(convoy_id, current_user, db, require="write")
+    cv = await db.get(ConvoyVehicle, (convoy_id, vehicle_id))
+    if cv is None:
+        raise HTTPException(status_code=404, detail="Fahrzeug nicht im Verband")
+    if data.tracker_uebersteuern:
+        cv.tracker_uebersteuert_at = datetime.now(timezone.utc)
+        name = " ".join(t for t in (current_user.first_name, current_user.last_name) if t)
+        cv.tracker_uebersteuert_von = (name or current_user.email)[:120]
+        # Was der Tracker bisher gesendet hat, zählt nicht mehr — das Telefon
+        # darf sofort, nicht erst nach fünf Minuten.
+        positionsquelle.positionsquellen.vergessen(str(convoy_id), str(vehicle_id))
+    else:
+        cv.tracker_uebersteuert_at = None
+        cv.tracker_uebersteuert_von = None
+    await db.commit()
+    await tracking_manager.broadcast_neu(str(convoy_id), {
+        "type": "positionsquelle",
+        "vehicle_id": str(vehicle_id),
+        "tracker_uebersteuert": data.tracker_uebersteuern,
+    })
+    return {
+        "status": "ok",
+        "tracker_uebersteuert_at": cv.tracker_uebersteuert_at,
+        "tracker_uebersteuert_von": cv.tracker_uebersteuert_von,
+    }
 
 
 async def _belegung_bearbeiten(
@@ -493,6 +553,12 @@ async def tracking_ws(
                     convoy_id, str(pos.vehicle_id), kennung, ws, durchsetzen
                 ):
                     continue
+                # Belegt ist das Fahrzeug jetzt — die Position aber gehört dem
+                # Tracker, solange er sendet (services/positionsquelle.py).
+                if not await positionsquelle.telefon_erlaubt(
+                    convoy_id, str(pos.vehicle_id), cv.tracker_uebersteuert_at, ws, durchsetzen
+                ):
+                    continue
                 stmt = (
                     pg_insert(VehiclePosition)
                     .values(
@@ -503,6 +569,7 @@ async def tracking_ws(
                         speed_kmh=pos.speed_kmh,
                         heading=pos.heading,
                         recorded_at=datetime.now(timezone.utc),
+                        quelle=None,
                     )
                     .on_conflict_do_update(
                         index_elements=["convoy_id", "vehicle_id"],
@@ -512,6 +579,7 @@ async def tracking_ws(
                             "speed_kmh": pos.speed_kmh,
                             "heading": pos.heading,
                             "recorded_at": datetime.now(timezone.utc),
+                            "quelle": None,
                         },
                     )
                 )

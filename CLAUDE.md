@@ -327,12 +327,26 @@ Org-Admin). Vier Dinge, die man kennen muss:
   alte Token sofort ungültig; `aktiv=false` ebenso (401, das Gerät geht in
   *gesperrt*). Die Plansperre der Organisation (`org_plan.ist_gesperrt`) ergibt
   `schweigen` — der dritte Schreibweg zieht sie mit.
-- **Die Belegung kennt den Tracker noch nicht.** Er belegt das Fahrzeug nicht
-  und wird nicht abgewiesen; sendet daneben ein Telefon für dasselbe Fahrzeug,
-  gewinnt der jüngere Zeitstempel. Dass der Tracker die *Position* belegt und
-  die App die *Meldungen* behält (E5 im Tracker-Plan), ist der nächste Schritt
-  und zieht `belegung.py`, `frontend/src/lib/tracking/belegung.ts` und
-  `packages/track-api` in der Begleit-App mit.
+- **Die Belegung ist aufgeteilt, nicht erweitert** (E5 im Tracker-Plan,
+  `services/positionsquelle.py`). Der Tracker belegt das Fahrzeug *nicht* —
+  die Belegung (`belegung.py`) sagt weiter, welches Gerät der Besatzung Status,
+  Stärke, Betriebsstoff und Quittung meldet. Die **Position** aber gehört dem
+  Tracker, solange er sendet (ein Bündel in den letzten fünf Minuten, dieselbe
+  Frist wie die Belegung): Alle drei Telefonpfade fragen vor dem Schreiben
+  `positionsquelle.telefon_erlaubt`, verwerfen sonst und sagen es **nur dem
+  Absender** (`position_abgelehnt`, nur mit Gerätekennung — der alte Store las
+  Unbekanntes als Position). Fünf Minuten statt sofortigem Rückfall, weil ein
+  Rückfall je Frame das Springen zurückbrächte, das die Belegung abgestellt hat;
+  statt nie, weil ein toter Tracker das Fahrzeug nicht stumm machen darf. Die
+  Führung **übersteuert** mit `PATCH …/vehicles/{id}/positionsquelle`
+  (`ConvoyVehicle.tracker_uebersteuert_at`, Migration `0058`, in der Datenbank,
+  weil ein Neustart die Entscheidung nicht aufheben darf): dann gilt das
+  Telefon, Bündel des Trackers werden in diesem Konvoi verworfen, bis sie es
+  zurücknimmt. `vehicle_positions.quelle` sagt der Karte, was vom Tracker kam;
+  jede Schreibstelle setzt die Spalte ausdrücklich. Gegenstellen:
+  `frontend/src/lib/tracking/positionsquelle.ts` und `packages/track-api` in der
+  Begleit-App. Tests: `tests/test_positionsquelle.py` (Entscheidung ohne Uhr,
+  dann REST, Tracker und Fahrer-Link am gestellten Kanal).
 
 Ein Firmware-Angebot (`firmware` in der Anweisung) gibt es noch nicht — woher
 die Instanz das Manifest ihres Kanals bezieht, ist im Tracker-Repo offen (O6).

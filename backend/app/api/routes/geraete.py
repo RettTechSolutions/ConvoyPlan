@@ -36,7 +36,7 @@ from app.models.convoy import Convoy, ConvoyVehicle
 from app.models.ortungsgeraet import Ortungsgeraet
 from app.models.vehicle import Vehicle
 from app.models.vehicle_position import VehiclePosition
-from app.services import alarm_quittung, audit, org_plan, positionsverlauf
+from app.services import alarm_quittung, audit, org_plan, positionsquelle, positionsverlauf
 from app.services import ortungsgeraet as og
 from app.services.rate_limit import rate_limit
 from app.services.tracking import tracking_manager
@@ -205,10 +205,14 @@ async def _eintragen(
     cv = await db.get(ConvoyVehicle, (convoy_id, vehicle_id))
     if cv is None:
         return []
+    # Die Führung hat für dieses Fahrzeug das Telefon gelten lassen: verworfen.
+    if not positionsquelle.tracker_sendet(str(convoy_id), str(vehicle_id), cv.tracker_uebersteuert_at):
+        return []
     juengster = fixes[-1]
     stmt = pg_insert(VehiclePosition).values(
         convoy_id=convoy_id, vehicle_id=vehicle_id, lat=juengster.lat, lon=juengster.lon,
         speed_kmh=juengster.speed_kmh, heading=juengster.heading, recorded_at=juengster.t,
+        quelle="tracker",
     )
     # Nur, wenn der Fix jünger ist als die vorhandene Position: ein
     # nachgereichtes Bündel aus dem Funkloch setzt das Fahrzeug nicht zurück.
@@ -217,7 +221,7 @@ async def _eintragen(
         set_={
             "lat": stmt.excluded.lat, "lon": stmt.excluded.lon,
             "speed_kmh": stmt.excluded.speed_kmh, "heading": stmt.excluded.heading,
-            "recorded_at": stmt.excluded.recorded_at,
+            "recorded_at": stmt.excluded.recorded_at, "quelle": stmt.excluded.quelle,
         },
         where=VehiclePosition.recorded_at < stmt.excluded.recorded_at,
     )
@@ -231,6 +235,7 @@ async def _eintragen(
             "type": "position", "vehicle_id": str(vehicle_id),
             "lat": juengster.lat, "lon": juengster.lon,
             "speed_kmh": juengster.speed_kmh, "heading": juengster.heading,
+            "quelle": "tracker",
         },
     )]
     if cv.vehicle_status == "planned":

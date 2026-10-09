@@ -76,6 +76,8 @@ export interface ConvoyVehicleItem {
 	status_level: string | null; status_note: string | null; status_changed_at: string | null;
 	// Quittung des laufenden Alarms durch die Führung (Server, `alarm_quittung.py`).
 	alarm_quittiert_at?: string | null; alarm_quittiert_von?: string | null;
+	// Die Führung lässt für dieses Fahrzeug das Telefon statt des Trackers gelten.
+	tracker_uebersteuert_at?: string | null; tracker_uebersteuert_von?: string | null;
 	sonderfunktion: string | null; mobile_phone: string | null;
 	// Mannschaftsstärke (siehe $lib/tracking/staerke): null heißt „nicht
 	// angegeben", 0 heißt „niemand" — die beiden nie gleichsetzen.
@@ -189,6 +191,9 @@ export interface OrgMember {
 export interface VehiclePosition {
 	vehicle_id: string; lat: number; lon: number;
 	speed_kmh: number | null; heading: number | null; recorded_at: string;
+	// Woher die Position kam: 'tracker' für ein festes Ortungsgerät, sonst App
+	// oder Fahrer-Link (`$lib/tracking/positionsquelle`). Fehlt auf älteren Servern.
+	quelle?: 'tracker' | null;
 }
 
 export interface WeatherCurrent {
@@ -430,6 +435,12 @@ export const convoysApi = {
 // V3: Tracking
 export const trackingApi = {
 	getPositions: (convoyId: string) => api.get<VehiclePosition[]>(`/api/convoys/${convoyId}/positions`),
+	// Tracker übersteuern (Führung): dann gilt für dieses Fahrzeug das Telefon.
+	setPositionsquelle: (convoyId: string, vehicleId: string, trackerUebersteuern: boolean) =>
+		api.patch<{ status: string; tracker_uebersteuert_at: string | null; tracker_uebersteuert_von: string | null }>(
+			`/api/convoys/${convoyId}/vehicles/${vehicleId}/positionsquelle`,
+			{ tracker_uebersteuern: trackerUebersteuern },
+		),
 	updatePosition: (convoyId: string, data: Omit<VehiclePosition, 'recorded_at'>) =>
 		api.post(`/api/convoys/${convoyId}/positions`, data),
 	updateVehicleStatus: (

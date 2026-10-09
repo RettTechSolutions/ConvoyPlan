@@ -36,6 +36,7 @@ from app.services import alarm_quittung
 from app.services import betriebsstoff as betriebsstoff_svc
 from app.services import belegung
 from app.services import geometry as geo_svc
+from app.services import positionsquelle
 from app.services import positionsverlauf
 from app.services import route_steps as route_steps_svc
 from app.services import share_links as share_links_svc
@@ -123,6 +124,7 @@ async def _build_payload(convoy_id: uuid.UUID, db: AsyncSession, scope: str = "t
             alarm_ts=alarm_quittung.alarm_ts(cv),
             alarm_quittiert_at=cv.alarm_quittiert_at,
             alarm_quittiert_von=cv.alarm_quittiert_von,
+            tracker_uebersteuert_at=cv.tracker_uebersteuert_at,
             battery_capacity_kwh=cv.vehicle.battery_capacity_kwh,
             consumption_kwh_100km=cv.vehicle.consumption_kwh_100km,
             betriebsstoff_verbrauch=cv.betriebsstoff_verbrauch,
@@ -215,12 +217,16 @@ async def auth_track(
     return TrackAuthResponse(token=share_links_svc.issue_session_token(slug))
 
 
-async def _ingest_driver_position(convoy_uuid: uuid.UUID, msg: dict) -> None:
+async def _ingest_driver_position(
+    convoy_uuid: uuid.UUID, msg: dict, ws: WebSocket | None = None, mit_kennung: bool = False
+) -> None:
     """Persist + broadcast a position sent by a "driver" share-link holder.
 
     Authorization happens at connect time (slug + scope + optional password);
     the vehicle must belong to the convoy. On the first movement a vehicle that
     is still "planned" is auto-advanced to "en_route", mirroring the authed app.
+    Sendet ein Tracker für das Fahrzeug, wird die Position verworfen und nur dem
+    Absender gesagt (``services/positionsquelle.py``).
     """
     try:
         vehicle_id = uuid.UUID(str(msg.get("vehicle_id")))
@@ -241,16 +247,21 @@ async def _ingest_driver_position(convoy_uuid: uuid.UUID, msg: dict) -> None:
         cv = await db.get(ConvoyVehicle, (convoy_uuid, vehicle_id))
         if cv is None:
             return  # vehicle is not part of this convoy → ignore
+        if not await positionsquelle.telefon_erlaubt(
+            str(convoy_uuid), str(vehicle_id), cv.tracker_uebersteuert_at, ws, mit_kennung
+        ):
+            return
         stmt = (
             pg_insert(VehiclePosition)
             .values(
                 convoy_id=convoy_uuid, vehicle_id=vehicle_id, lat=lat, lon=lon,
                 speed_kmh=speed, heading=heading, recorded_at=datetime.now(timezone.utc),
+                quelle=None,
             )
             .on_conflict_do_update(
                 index_elements=["convoy_id", "vehicle_id"],
                 set_={"lat": lat, "lon": lon, "speed_kmh": speed, "heading": heading,
-                      "recorded_at": datetime.now(timezone.utc)},
+                      "recorded_at": datetime.now(timezone.utc), "quelle": None},
             )
         )
         await db.execute(stmt)
@@ -632,7 +643,7 @@ async def track_ws(
             elif kind == "betriebsstoff":
                 await _ingest_driver_betriebsstoff(convoy_uuid, raw)
             else:
-                await _ingest_driver_position(convoy_uuid, raw)
+                await _ingest_driver_position(convoy_uuid, raw, ws, durchsetzen)
     except WebSocketDisconnect:
         pass
     except Exception as exc:

@@ -74,6 +74,10 @@ class ConvoyVehicleItem(BaseModel):
     # Quittung des laufenden Alarms durch die Führung (services/alarm_quittung.py).
     alarm_quittiert_at: datetime | None = None
     alarm_quittiert_von: str | None = None
+    # Die Führung lässt für dieses Fahrzeug das Telefon statt des Trackers gelten
+    # (services/positionsquelle.py).
+    tracker_uebersteuert_at: datetime | None = None
+    tracker_uebersteuert_von: str | None = None
     sonderfunktion: str | None = None
     mobile_phone: str | None = None
     staerke_soll_fuehrer: int | None = None
