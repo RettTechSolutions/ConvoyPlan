@@ -32,6 +32,7 @@ class KatalogEintrag(BaseModel):
     label: str
     max_vehicles: int | None
     max_planners: int | None
+    max_trackers: int | None
     laufzeit_tage: int | None
 
 
@@ -40,11 +41,14 @@ class PlanZustand(BaseModel):
     label: str | None
     max_vehicles: int | None
     max_planners: int | None
+    max_trackers: int | None
     valid_until: date | None
     vehicles: int
     planners: int
+    trackers: int
     vehicles_over: bool
     planners_over: bool
+    trackers_over: bool
     expired: bool
     locked: bool
     days_left: int | None
@@ -65,6 +69,7 @@ class PlanSetzen(BaseModel):
     # deshalb ``model_fields_set`` statt ``is None`` (siehe unten).
     max_vehicles: int | None = Field(default=None, ge=0)
     max_planners: int | None = Field(default=None, ge=0)
+    max_trackers: int | None = Field(default=None, ge=0)
     valid_until: date | None = None
     note: str | None = Field(default=None, max_length=2000)
 
@@ -77,11 +82,14 @@ def _zustand(zeile: OrganizationPlan | None, nutzung: org_plan.Nutzung) -> dict:
         "label": (katalog.label if katalog else zeile.plan) if zeile else None,
         "max_vehicles": zeile.max_vehicles if zeile else None,
         "max_planners": zeile.max_planners if zeile else None,
+        "max_trackers": zeile.max_trackers if zeile else None,
         "valid_until": zeile.valid_until if zeile else None,
         "vehicles": nutzung.fahrzeuge,
         "planners": nutzung.planer,
+        "trackers": nutzung.tracker,
         "vehicles_over": z.fahrzeuge_ueber,
         "planners_over": z.planer_ueber,
+        "trackers_over": z.tracker_ueber,
         "expired": z.abgelaufen,
         "locked": z.gesperrt,
         "days_left": z.tage_bis_ablauf,
@@ -100,6 +108,7 @@ async def katalog(_: User = Depends(require_superadmin)) -> list[KatalogEintrag]
             label=p.label,
             max_vehicles=p.max_fahrzeuge,
             max_planners=p.max_planer,
+            max_trackers=p.max_tracker,
             laufzeit_tage=p.laufzeit_tage,
         )
         for p in org_plan.KATALOG.values()
@@ -142,7 +151,7 @@ async def liste(
         for org, plan in zeilen
     ]
     out.sort(
-        key=lambda z: not (z.vehicles_over or z.planners_over or z.expired)
+        key=lambda z: not (z.vehicles_over or z.planners_over or z.trackers_over or z.expired)
     )
     return out
 
@@ -182,6 +191,9 @@ async def setzen(
     zeile.max_planners = (
         data.max_planners if "max_planners" in gesetzt else katalog.max_planer
     )
+    zeile.max_trackers = (
+        data.max_trackers if "max_trackers" in gesetzt else katalog.max_tracker
+    )
     zeile.valid_until = valid_until
     zeile.note = data.note
     zeile.updated_by_id = current.id
@@ -196,6 +208,7 @@ async def setzen(
             "plan": zeile.plan,
             "max_vehicles": zeile.max_vehicles,
             "max_planners": zeile.max_planners,
+            "max_trackers": zeile.max_trackers,
             "valid_until": zeile.valid_until.isoformat() if zeile.valid_until else None,
         },
     )

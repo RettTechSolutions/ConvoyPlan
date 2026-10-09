@@ -1727,6 +1727,7 @@
         plan: string;
         maxVehicles: string;
         maxPlanners: string;
+        maxTrackers: string;
         validUntil: string;
         note: string;
     } | null>(null);
@@ -1757,6 +1758,7 @@
         if (k) {
             planEdit.maxVehicles = planZahl(k.max_vehicles);
             planEdit.maxPlanners = planZahl(k.max_planners);
+            planEdit.maxTrackers = planZahl(k.max_trackers);
             // Leer lassen: das Backend setzt die Laufzeit aus dem Katalog.
             if (k.laufzeit_tage) planEdit.validUntil = '';
         }
@@ -1769,6 +1771,7 @@
             plan: row.plan ?? '',
             maxVehicles: planZahl(row.max_vehicles),
             maxPlanners: planZahl(row.max_planners),
+            maxTrackers: planZahl(row.max_trackers),
             validUntil: row.valid_until ?? '',
             note: row.note ?? '',
         };
@@ -1790,6 +1793,7 @@
             plan: planEdit.plan,
             max_vehicles: planGrenze(planEdit.maxVehicles),
             max_planners: planGrenze(planEdit.maxPlanners),
+            max_trackers: planGrenze(planEdit.maxTrackers),
             note: planEdit.note.trim() || null,
         };
         // Ohne Datum bei einem Paket mit Laufzeit rechnet das Backend sie aus;
@@ -2219,6 +2223,7 @@
                             <th>Plan</th>
                             <th>Fahrzeuge</th>
                             <th>Planer</th>
+                            <th>Tracker</th>
                             <th>Gültig bis</th>
                             <th></th>
                         </tr>
@@ -2241,6 +2246,10 @@
                                 <td>
                                     {row.planners}{#if row.max_planners !== null} / {row.max_planners}{/if}
                                     {#if row.planners_over}<span class="badge badge-warn">über</span>{/if}
+                                </td>
+                                <td>
+                                    {row.trackers}{#if row.max_trackers !== null} / {row.max_trackers}{/if}
+                                    {#if row.trackers_over}<span class="badge badge-warn">über</span>{/if}
                                 </td>
                                 <td>
                                     {#if row.valid_until}
@@ -2282,6 +2291,9 @@
                         </label>
                         <label>Planer (leer = ∞)
                             <input type="number" min="0" style="width:7rem" bind:value={planEdit.maxPlanners} />
+                        </label>
+                        <label>Tracker (leer = ∞)
+                            <input type="number" min="0" style="width:7rem" bind:value={planEdit.maxTrackers} />
                         </label>
                         <label>Gültig bis (leer = Vertrag{planCatalog.find((k) => k.plan === planEdit?.plan)?.laufzeit_tage ? ' / Laufzeit' : ''})
                             <input type="date" bind:value={planEdit.validUntil} />

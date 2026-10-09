@@ -57,6 +57,7 @@
         const ueber: string[] = [];
         if (plan.vehicles_over) ueber.push(`${plan.vehicles} Fahrzeuge (enthalten: ${plan.max_vehicles})`);
         if (plan.planners_over) ueber.push(`${plan.planners} Planerzugänge (enthalten: ${plan.max_planners})`);
+        if (plan.trackers_over) ueber.push(`${plan.trackers} Tracker (enthalten: ${plan.max_trackers})`);
         if (ueber.length === 0) return null;
         return {
             stufe: 'info',
