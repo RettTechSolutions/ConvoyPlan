@@ -13,6 +13,7 @@
 	import AktionsseitenVerwaltung from '$lib/components/AktionsseitenVerwaltung.svelte';
 	import PasskeyVerwaltung from '$lib/components/PasskeyVerwaltung.svelte';
 	import DurchfahrtsHoehen from '$lib/components/DurchfahrtsHoehen.svelte';
+	import RegionCard from '$lib/components/RegionCard.svelte';
 	import type { BrueckenPruefung, DurchfahrtshoeheEntry } from '$lib/api';
 	import { feedbackStore } from '$lib/stores/feedback';
 
@@ -100,6 +101,8 @@
 	<div class="admin-flaeche"><PasskeyVerwaltung /></div>
 {:else if welche === 'feedback'}
 	<FeedbackModal />
+{:else if welche === 'region'}
+	<div class="admin-flaeche"><RegionCard /></div>
 {:else if welche === 'konvoi'}
 	{#if konvoiOffen}
 		<ConvoyFormModal

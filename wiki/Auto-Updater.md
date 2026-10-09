@@ -123,6 +123,14 @@ Alle übrigen Dienste werden normal aktualisiert; das Update gilt als erfolgreic
 
 Bleibt trotzdem ein unvollständiger Graph zurück (Host-Neustart, abgeschossener Container), erkennt GraphHopper das beim nächsten Start selbst, räumt das Verzeichnis und baut neu. Das kostet den Import erneut, aber die Instanz routet danach wieder statt in einer Neustart-Schleife zu hängen.
 
+Sichtbar ist ein laufender Bau an zwei Stellen. Die öffentliche Statusseite (`/status`) nennt ihn als Grund, warum die Routenplanung gerade nicht verfügbar ist. Im Admin-Portal steht er unter **System → Kartenregion**, mit Beginn und Dauer:
+
+- **Kartendaten werden heruntergeladen**: Es liegt noch kein Extract vor, GraphHopper lädt es und baut danach.
+- **Routing-Graph wird neu aufgebaut**: Der Import läuft, die Karte zeigt, seit wann.
+- **Import ohne Abschluss**: Seit mehr als vier Stunden gibt es keinen fertigen Graphen. Das ist dieselbe Frist wie oben. Die Ursache steht im Container-Log (`docker compose logs graphhopper`), meist zu wenig Speicher oder eine volle Platte. Ein Neustart des Containers räumt den Rest weg und baut neu. Die Statusseite meldet diesen Fall nicht mehr als Neuaufbau, sondern als Störung.
+
+Abgelesen wird das an den Dateien im Graph-Volume, nicht am Container. Einen Lebensbeweis für den Import gibt es dabei nicht: Ein Container, der mitten im Import angehalten wurde und nicht wiederkommt, sieht bis zum Ablauf der Frist aus wie ein laufender Import.
+
 ---
 
 ## Host-Watchdog

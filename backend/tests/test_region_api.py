@@ -425,6 +425,48 @@ async def test_status_returns_updater_status(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_status_meldet_laufenden_graphbau(monkeypatch):
+    """Ein Import nach einem Update ist kein Regionswechsel — das Panel soll ihn
+    trotzdem sehen, mit Beginn und Frist."""
+    from app.services import graph_aufbau
+
+    monkeypatch.setattr(region_switch, "read_status", lambda: {"phase": "idle"})
+    monkeypatch.setattr(
+        graph_aufbau, "graph_zustand",
+        lambda: graph_aufbau.Aufbau("import", 1_800_000_000.0),
+    )
+    test_app = _make_app_with_superadmin()
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get(
+            "/api/admin/region/status", headers={"Authorization": "Bearer x"}
+        )
+    assert resp.json() == {
+        "phase": "idle",
+        "graph_build": {
+            "phase": "import",
+            "since": "2027-01-15T08:00:00+00:00",
+            "grace_hours": 4,
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_status_ohne_graphbau_bleibt_unveraendert(monkeypatch):
+    from app.services import graph_aufbau
+
+    monkeypatch.setattr(region_switch, "read_status", lambda: {"phase": "idle"})
+    monkeypatch.setattr(graph_aufbau, "graph_zustand", lambda: None)
+    test_app = _make_app_with_superadmin()
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get(
+            "/api/admin/region/status", headers={"Authorization": "Bearer x"}
+        )
+    assert resp.json() == {"phase": "idle"}
+
+
+@pytest.mark.asyncio
 async def test_cancel_returns_409_when_not_busy(monkeypatch):
     monkeypatch.setattr(region_switch, "is_busy", lambda: False)
     test_app = _make_app_with_superadmin()

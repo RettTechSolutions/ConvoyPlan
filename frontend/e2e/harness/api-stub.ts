@@ -273,3 +273,45 @@ export const passkeyApi = {
 		passkeys = passkeys.filter((p) => p.id !== id);
 	},
 };
+
+// ── Kartenregion (Admin-Portal, System) ──────────────────────────────────────
+// `?k=region&bau=import|download|haengt|keiner`. Ein Graph-Bau ohne
+// Regionswechsel: Die Karte liest ihn aus `status().graph_build`.
+
+export type RegionPhase = string;
+export interface GraphBuild {
+	phase: 'download' | 'import' | 'haengt';
+	since: string | null;
+	grace_hours: number;
+}
+export interface RegionStatus {
+	phase: RegionPhase;
+	graph_build?: GraphBuild;
+}
+
+const bau = new URLSearchParams(location.search).get('bau') ?? 'keiner';
+const vorMinuten = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
+const GRAPH_BUILD: Record<string, GraphBuild | undefined> = {
+	import: { phase: 'import', since: vorMinuten(12), grace_hours: 4 },
+	download: { phase: 'download', since: null, grace_hours: 4 },
+	haengt: { phase: 'haengt', since: vorMinuten(5 * 60), grace_hours: 4 },
+	keiner: undefined,
+};
+
+export const regionApi = {
+	current: async () => ({
+		url: 'https://download.geofabrik.de/europe/dach-latest.osm.pbf',
+		filename: 'dach-latest.osm.pbf',
+		java_opts: '-Xmx8g',
+		sources: ['europe/dach'],
+	}),
+	preview: async () => ({ extract_bytes: 4_100_000_000, disk_free_bytes: 92_000_000_000 }),
+	list: async () => [],
+	status: async (): Promise<RegionStatus> => {
+		const gb = GRAPH_BUILD[bau];
+		return gb ? { phase: 'idle', graph_build: gb } : { phase: 'idle' };
+	},
+	logStream: async () => null,
+	switch: async () => ({ status: 'queued' }),
+	cancel: async () => ({ status: 'cancelling' }),
+};

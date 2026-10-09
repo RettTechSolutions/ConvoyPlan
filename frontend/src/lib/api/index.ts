@@ -1065,6 +1065,19 @@ export interface RegionStatus {
     scheduled_for?: string;
     /** Nur bei phase === 'scheduled': ob das Routing dabei pausiert wird. */
     pause_routing?: boolean;
+    /**
+     * Nur solange GraphHopper außerhalb eines Wechsels seinen Graphen baut
+     * (nach Update oder Neustart) oder ein solcher Bau über der Frist hängt.
+     */
+    graph_build?: GraphBuild;
+}
+
+export interface GraphBuild {
+    phase: 'download' | 'import' | 'haengt';
+    /** Beginn des Imports; beim Download unbekannt. */
+    since: string | null;
+    /** Ab wann ein Import als hängend gilt (dieselbe Frist wie im Updater). */
+    grace_hours: number;
 }
 
 /** Optionen für Vorab-Rechnung und Wechsel. */

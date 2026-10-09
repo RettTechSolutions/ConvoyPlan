@@ -30,7 +30,7 @@ from app.api.deps import decode_stream_token, get_db, require_superadmin
 from app.config import settings
 from app.models.user import User
 from app.services import (
-    audit, docker_stats, geofabrik, host_metrics, region_compose, region_estimate,
+    audit, docker_stats, geofabrik, graph_aufbau, host_metrics, region_compose, region_estimate,
     region_switch,
 )
 from app.services import region_outline as region_outline_geom
@@ -538,8 +538,25 @@ async def region_status(_: User = Depends(require_superadmin)):
     Liest ausschliesslich `region_switch.read_status()` — die vom Updater
     zuletzt geschriebene Statusdatei. Ruht kein Wechsel, ist das der
     Default-Zustand `{"phase": "idle"}`.
+
+    Dazu `graph_build`, solange GraphHopper ausserhalb eines Wechsels seinen
+    Graphen baut (nach einem Update, einem Neustart ohne fertigen Graphen) —
+    oder ein solcher Bau ueber die Frist haengt. Nur dann: Ohne Bau bleibt die
+    Antwort, was der Updater geschrieben hat.
     """
-    return region_switch.read_status()
+    status = region_switch.read_status()
+    zustand = graph_aufbau.graph_zustand()
+    if zustand is not None:
+        status["graph_build"] = {
+            "phase": zustand.phase,
+            "since": (
+                datetime.fromtimestamp(zustand.seit, timezone.utc).isoformat()
+                if zustand.seit is not None
+                else None
+            ),
+            "grace_hours": graph_aufbau.IMPORT_FRIST_S // 3600,
+        }
+    return status
 
 
 async def _require_superadmin_stream_token(token: str, db: AsyncSession) -> None:

@@ -95,7 +95,11 @@ einen laufenden Neuaufbau als Grund für die Routing-Pause
 (`app/services/graph_aufbau.py`, lesende Mounts). Sie verlässt sich darauf, dass der
 Fingerprint **unmittelbar vor** dem Import geschrieben wird — seine Änderungszeit ist
 der Beginn — und deckelt mit derselben Frist wie `GH_IMPORT_GRACE`. Wer den
-Fingerprint woanders schreibt, zieht `tests/test_graph_aufbau.py` mit.
+Fingerprint woanders schreibt, zieht `tests/test_graph_aufbau.py` mit. Dieselbe
+Erkennung zeigt das Admin-Portal in der Kartenregion (`graph_build` in
+`GET /api/admin/region/status`), dort zusätzlich den Import **über** der Frist als
+„hängt" — öffentlich ist der nur noch eine Störung (`graph_zustand` vs.
+`laufender_aufbau`; `frontend/e2e/graph-aufbau-im-admin.spec.ts`).
 
 ### Speicher: Import im Heap, Betrieb per MMAP
 
