@@ -724,7 +724,7 @@ angefühlt hat.
 **Selbst gehostet geht jede Meldung auch an den Hersteller**
 (`services/feedback_weiterleitung.py`): Programmfehler behebt, wer den Code pflegt.
 Erst gespeichert (`weiterleitung="offen"`), dann zugestellt — sofort und per Schleife
-alle zehn Minuten, nach 14 Tagen aufgegeben; Meldungen von vor `0059` bleiben `NULL`
+alle zehn Minuten, nach 14 Tagen aufgegeben; Meldungen von vor `0061` bleiben `NULL`
 und werden nie nachgeschickt, ihre Melder lasen „nur der Betreiber". Angenommen wird
 nur auf dem Hosting-Server (`POST /api/feedback/eingang`, Vertrag `FeedbackEingang`
 mit `extra="forbid"`, wiederholbar über `herkunft_instanz`+`herkunft_id`). Der Dialog

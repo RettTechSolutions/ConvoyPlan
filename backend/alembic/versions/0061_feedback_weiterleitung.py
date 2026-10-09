@@ -8,16 +8,16 @@
   Hosting-Server, woher eine weitergeleitete Meldung stammt. Eindeutig über
   Instanz und Kennung, damit eine wiederholte Zustellung keine Dublette ergibt.
 
-Revision ID: 0059
-Revises: 0058
+Revision ID: 0061
+Revises: 0060
 Create Date: 2026-10-09
 """
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import UUID
 
-revision = "0059"
-down_revision = "0058"
+revision = "0061"
+down_revision = "0060"
 branch_labels = None
 depends_on = None
 
