@@ -80,6 +80,8 @@ services:
       HERE_TRAFFIC_API_KEY: ${HERE_TRAFFIC_API_KEY:-}
       TOMTOM_TRAFFIC_API_KEY: ${TOMTOM_TRAFFIC_API_KEY:-}
       TRAFFIC_FLOW_PROVIDER: ${TRAFFIC_FLOW_PROVIDER:-}
+      # Firmware-Ablage für Tracker (leer = keine Updates anbieten).
+      TRACKER_FIRMWARE_URL: ${TRACKER_FIRMWARE_URL-https://firmware.convoyplan.de}
       # Offene Baustellenfeeds (Open Data + mobilithek/DATEX II). Standard =
       # BW + Berlin; per OPENDATA_TRAFFIC_FEEDS überschreiben, um z. B.
       # datex2|<broker-url> für weitere Bundesländer oder für Österreich

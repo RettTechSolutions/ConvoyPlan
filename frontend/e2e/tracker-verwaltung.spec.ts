@@ -61,4 +61,5 @@ test('ein eingerichteter Tracker zeigt, was das Gerät gemeldet hat', async ({ p
 	await expect(zeile).toContainText('Akku 87 %');
 	await expect(zeile).toContainText('Firmware 0.1.0');
 	await expect(zeile).toContainText('352656100000002');
+	await expect(zeile).toContainText('Update 0.2.0 bereit');
 });

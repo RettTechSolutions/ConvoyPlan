@@ -356,10 +356,21 @@ Org-Admin). Vier Dinge, die man kennen muss:
   Begleit-App. Tests: `tests/test_positionsquelle.py` (Entscheidung ohne Uhr,
   dann REST, Tracker und Fahrer-Link am gestellten Kanal).
 
-Ein Firmware-Angebot (`firmware` in der Anweisung) gibt es noch nicht — woher
-die Instanz das Manifest ihres Kanals bezieht, ist im Tracker-Repo offen (O6).
-Die Referenz-Instanz im Simulator dort tut dasselbe wie dieser Code; wer das
-Protokoll ändert, zieht beide. Anwenderdoku: `wiki/Tracker.md`.
+**Firmware** (`services/firmware_angebot.py`, E9 im Tracker-Plan): Die Ablage ist
+ein statisches HTTPS-Verzeichnis je Kanal (`TRACKER_FIRMWARE_URL`, Vorgabe
+`https://firmware.convoyplan.de`; `<kanal>/manifest.json` mit `version`, `sha256`,
+`groesse`, `image`, optional `hardware`). Die Instanz holt das Manifest stündlich
+(bei Ausfall bleibt der letzte Stand), lädt das Image **einmal** nach
+`/uploads/firmware/`, prüft SHA-256 und Größe und bietet es in der Anweisung an —
+nur neuer als der gemeldete Stand, nur passende Hardware, und die Adresse zeigt auf
+**diese Instanz** (`GET /api/geraete/firmware/<kanal>/<version>.bin`, Gerätetoken,
+`Range`). Nicht in die Ablage, weil ein Tracker mit IoT-SIM oft nur eine
+Positivliste von Hosts erreicht und seine Instanz ohnehin darauf steht. Geliefert
+wird nur die Version aus dem aktuellen Manifest; eine beliebige Version im Pfad
+ließe sich sonst zum Laden fremder Adressen missbrauchen. In Tests zeigt
+`conftest.py` die Ablage ins Leere, sonst fragte jedes `hallo` im Netz nach.
+Die Referenz-Instanz im Simulator des Tracker-Repos tut dasselbe wie dieser Code;
+wer das Protokoll ändert, zieht beide. Anwenderdoku: `wiki/Tracker.md`.
 
 ### Alarmquittung: die Führung quittiert am Server
 

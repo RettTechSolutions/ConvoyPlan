@@ -1659,6 +1659,8 @@ export interface Tracker {
     update_ergebnis: 'bestaetigt' | 'zurueckgerollt' | 'fehler' | null;
     update_meldung: string | null;
     update_at: string | null;
+    // Version, die die Instanz dem Gerät auf seinem Kanal anbietet; null = keine.
+    angebot_version: string | null;
     created_at: string;
 }
 

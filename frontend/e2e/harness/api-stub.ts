@@ -301,7 +301,7 @@ const tracker: Tracker[] = [
 		aktiv: true, eingerichtet: true, code_offen: false, hardware_id: '352656100000002',
 		hardware: 'nrf9151-v1', firmware: '0.1.0', zuletzt_gesehen: new Date().toISOString(),
 		akku_prozent: 87, extern: false, signal_dbm: -95, update_version: null, update_ergebnis: null,
-		update_meldung: null, update_at: null, created_at: '2026-10-01T09:00:00Z',
+		update_meldung: null, update_at: null, angebot_version: '0.2.0', created_at: '2026-10-01T09:00:00Z',
 	},
 ];
 
@@ -312,7 +312,7 @@ function trackerZeile(id: string, d: TrackerDaten): Tracker {
 		kanal: d.kanal, aktiv: d.aktiv, eingerichtet: false, code_offen: true,
 		hardware_id: null, hardware: null, firmware: null, zuletzt_gesehen: null, akku_prozent: null,
 		extern: null, signal_dbm: null, update_version: null, update_ergebnis: null, update_meldung: null,
-		update_at: null, created_at: '2026-10-09T10:00:00Z',
+		update_at: null, angebot_version: null, created_at: '2026-10-09T10:00:00Z',
 	};
 }
 

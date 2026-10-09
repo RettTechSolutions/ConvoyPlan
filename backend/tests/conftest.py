@@ -79,3 +79,16 @@ def disable_update_check():
     settings.update_check_enabled = False
     yield
     settings.update_check_enabled = previous
+
+
+@pytest.fixture(autouse=True)
+def keine_firmware_ablage(monkeypatch):
+    """Die Firmware-Ablage der Tracker nicht aus dem Netz holen.
+
+    `services/firmware_angebot.ablage` zeigt in der Vorgabe auf
+    firmware.convoyplan.de; jedes `hallo` eines Testgeräts fragte sonst dort
+    nach. Tests, die das Angebot prüfen, setzen ihre eigene Ablage ein.
+    """
+    from app.services import firmware_angebot
+
+    monkeypatch.setattr(firmware_angebot, "ablage", firmware_angebot.Ablage(""))
