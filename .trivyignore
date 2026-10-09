@@ -291,6 +291,25 @@ CVE-2026-91777
 # Review by: 2027-01-31.
 CVE-2026-68494
 
+# Mit GH_VERSION 10.2 (Import mit turn_costs bricht unter 9.1 ab, siehe
+# graphhopper/Dockerfile) kommen vier HIGH-Funde im upstream-JAR dazu:
+# - jackson-core 2.17.2: ReDoS (CVE-2026-89407), jackson-databind: CPU-DoS
+#   durch unbegrenztes Zahlenparsen (CVE-2026-68497). Beide brauchen
+#   angreifergeformtes JSON; GraphHopper parst nur seine eigene Konfiguration
+#   und wohlgeformte Routing-Anfragen unseres Backends im internen Docker-Netz.
+# - httpcore5 5.2.5 / httpcore5-h2 5.2.4: DoS durch zu viele bzw. zu grosse
+#   HTTP-(2-)Header (CVE-2026-54399, CVE-2026-54428). Das ist die HTTP-Client-
+#   Bibliothek; GraphHopper laedt in unserer Konfiguration nichts nach (keine
+#   Hoehendaten, keine Custom Areas), und gesprochen wird es ueber Jetty, nicht
+#   ueber httpcore5. Den Server erreicht ohnehin nur unser Backend.
+# Erledigt sich wie die Eintraege darueber mit dem eigenen Build
+# (jackson >= 2.21.7) bzw. einer GraphHopper-Fassung mit neueren Abhaengigkeiten.
+# Review by: 2027-01-31.
+CVE-2026-89407
+CVE-2026-68497
+CVE-2026-54399
+CVE-2026-54428
+
 # ─────────────────────────────────────────────────────────────────────────────
 # convoyplan-frontend: vulnerability in the undici package bundled inside
 # Node.js 26 (not an npm-installed dependency — Trivy reads Node's internal
