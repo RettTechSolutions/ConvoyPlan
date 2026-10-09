@@ -16,7 +16,6 @@
 	 */
 	import { onMount } from 'svelte';
 	import TrackerZustand from '$lib/components/TrackerZustand.svelte';
-	import { dauer } from '$lib/tracking/trackerzustand';
 	import { geraeteApi, vehiclesApi, type Tracker, type TrackerDaten, type TrackerKanal, type TrackerMitCode } from '$lib/api';
 	import {
 		SCHRITTTEXT,
@@ -40,6 +39,8 @@
 	};
 	/** Danach gilt ein Tracker als nicht mehr erreichbar — nach dem Lebenszeichen alle 12 h. */
 	const STUMM_AB_MS = 24 * 3600 * 1000;
+	/** Ab hier wird „auf Akku" hervorgehoben: über Nacht vom Bordnetz ist normal, einen Tag nicht. */
+	const AKKU_WARNUNG_MS = 24 * 3600 * 1000;
 
 	interface Formular {
 		id: string | null;
@@ -198,6 +199,19 @@
 		} catch {
 			/* Zwischenablage nicht erlaubt — der Code steht zum Markieren da */
 		}
+	}
+
+	/** „seit 40 min", „seit 5 h", „seit 3 Tagen" — gerundet nach unten, wie es die Instanz weiß. */
+	function seit(iso: string, jetzt = Date.now()): string {
+		const min = Math.max(0, Math.floor((jetzt - new Date(iso).getTime()) / 60000));
+		if (min < 60) return `seit ${min} min`;
+		const std = Math.floor(min / 60);
+		if (std < 48) return `seit ${std} h`;
+		return `seit ${Math.floor(std / 24)} Tagen`;
+	}
+
+	function akkuLange(iso: string): boolean {
+		return Date.now() - new Date(iso).getTime() >= AKKU_WARNUNG_MS;
 	}
 
 	function uhrzeit(iso: string): string {
@@ -379,7 +393,9 @@
 				<p class="hint">
 					<TrackerZustand zustand={g} /> ·
 					{#if g.zuletzt_gesehen}Zuletzt gemeldet {uhrzeit(g.zuletzt_gesehen)}{:else}Noch nie gemeldet{/if}
-					{#if g.extern}· an Bordnetz{:else if g.auf_akku_seit}· auf Akku seit {dauer(g.auf_akku_seit, Date.now())}{/if}
+					{#if g.extern === false && g.akku_seit}
+						· <span class={akkuLange(g.akku_seit) ? 'akku-lange' : ''} title="Seit der ersten Meldung ohne Bordnetz, frühestens {uhrzeit(g.akku_seit)}">auf Akku {seit(g.akku_seit)}</span>
+					{/if}
 					{#if g.hardware_id}· Gerät {g.hardware_id}{/if}
 				</p>
 				{#if g.update_version}
@@ -432,4 +448,5 @@
 	.marke.aus { background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border); }
 	.marke.warn { background: #d4a017; color: #1a1a1a; }
 	.angebot { color: #1f6f8b; font-weight: 600; }
+	.akku-lange { color: #b26a00; font-weight: 600; }
 </style>

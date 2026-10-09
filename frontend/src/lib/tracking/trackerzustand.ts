@@ -40,7 +40,7 @@ export function dauer(iso: string, jetzt: number): string {
 export interface TrackerAnzeige {
 	akku_prozent: number | null;
 	extern: boolean | null;
-	auf_akku_seit: string | null;
+	akku_seit: string | null;
 	akku_niedrig: boolean;
 	signal_dbm: number | null;
 	zuletzt_gesehen: string | null;
@@ -50,7 +50,7 @@ export function akkuTitel(t: TrackerAnzeige, jetzt: number): string {
 	if (t.akku_prozent === null) return 'Akku: keine Angabe';
 	const teile = [`Akku ${t.akku_prozent} %`];
 	if (t.extern) teile.push('am Bordnetz, lädt');
-	else if (t.auf_akku_seit) teile.push(`auf Akku seit ${dauer(t.auf_akku_seit, jetzt)}`);
+	else if (t.akku_seit) teile.push(`auf Akku seit ${dauer(t.akku_seit, jetzt)}`);
 	if (t.akku_niedrig) teile.push('schwach');
 	return teile.join(' · ');
 }

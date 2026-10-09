@@ -176,7 +176,7 @@ async def get_tracker_zustand(
             "zuletzt_gesehen": g.zuletzt_gesehen.isoformat() if g.zuletzt_gesehen else None,
             "akku_prozent": g.akku_prozent,
             "extern": g.extern,
-            "auf_akku_seit": g.auf_akku_seit.isoformat() if g.auf_akku_seit else None,
+            "akku_seit": g.akku_seit.isoformat() if g.akku_seit else None,
             "akku_niedrig": ortungsgeraet.akku_niedrig(g.akku_prozent, g.extern),
             "signal_dbm": g.signal_dbm,
         }

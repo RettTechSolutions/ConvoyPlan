@@ -158,18 +158,26 @@ class TestAkku:
     def test_akku_niedrig(self, akku, extern, erwartet):
         assert og.akku_niedrig(akku, extern) is erwartet
 
-    def test_auf_akku_seit_merkt_den_wechsel_nicht_die_meldung(self):
-        frueher = JETZT - timedelta(days=3)
-        # Wechsel vom Bordnetz auf Akku: jetzt.
-        assert og.auf_akku_seit(True, None, False, JETZT) == JETZT
-        # Erste Meldung überhaupt, gleich auf Akku: jetzt.
-        assert og.auf_akku_seit(None, None, False, JETZT) == JETZT
-        # Weiter auf Akku: der alte Zeitpunkt bleibt.
-        assert og.auf_akku_seit(False, frueher, False, JETZT) == frueher
-        # Zurück ans Bordnetz: weg.
-        assert og.auf_akku_seit(False, frueher, True, JETZT) is None
-        # Nichts zum Bordnetz gemeldet: unverändert.
-        assert og.auf_akku_seit(False, frueher, None, JETZT) == frueher
+
+class TestAkkuSeit:
+    """„Auf Akku seit …": der Zeitpunkt des Wechsels, nicht der letzten Meldung."""
+
+    FRUEHER = JETZT - timedelta(days=3)
+
+    @pytest.mark.parametrize(
+        ("alt_extern", "alt_seit", "neu_extern", "erwartet"),
+        [
+            (True, None, False, JETZT),  # Stecker gezogen: ab jetzt
+            (None, None, False, JETZT),  # erste Meldung überhaupt: ab spätestens jetzt
+            (False, FRUEHER, False, FRUEHER),  # weiter auf Akku: der Beginn bleibt
+            (False, FRUEHER, True, None),  # wieder am Bordnetz
+            (False, FRUEHER, None, FRUEHER),  # Meldung ohne Zustand ändert nichts
+            (True, None, None, None),
+            (False, None, False, JETZT),  # alte Zeile ohne Zeitpunkt bekommt einen
+        ],
+    )
+    def test_regel(self, alt_extern, alt_seit, neu_extern, erwartet):
+        assert og.akku_seit(alt_extern, alt_seit, neu_extern, JETZT) == erwartet
 
 
 # ── Durch die App ──────────────────────────────────────────────────────────
@@ -493,6 +501,35 @@ class TestSenden:
                 await db.commit()
 
 
+class TestAkkuSeitDurchDieApp:
+    async def test_wechsel_wird_gemerkt_und_bleibt_bis_zum_strom(self, client, org):
+        geraet, kopf = await _eingerichtet(client, org)
+
+        async def zeile() -> dict:
+            liste = (await client.get("/api/org/geraete", headers=h(org.admin))).json()
+            return next(z for z in liste if z["id"] == geraet["id"])
+
+        await client.post("/api/geraete/hallo", json={"grund": "strom", "extern": True}, headers=kopf)
+        assert (await zeile())["akku_seit"] is None
+
+        await client.post("/api/geraete/hallo", json={"grund": "bewegung", "extern": False}, headers=kopf)
+        seit = (await zeile())["akku_seit"]
+        assert seit is not None
+
+        # Den Beginn drei Tage zurücklegen: weitere Meldungen auf Akku verschieben ihn nicht,
+        # auch nicht ein Bündel ohne Zustand.
+        frueher = datetime.now(timezone.utc) - timedelta(days=3)
+        async with AsyncSessionLocal() as db:
+            (await db.get(Ortungsgeraet, uuid.UUID(geraet["id"]))).akku_seit = frueher
+            await db.commit()
+        await client.post("/api/geraete/hallo", json={"grund": "lebenszeichen", "extern": False}, headers=kopf)
+        await client.post("/api/geraete/positionen", json={"fixes": [_fix(5)]}, headers=kopf)
+        assert datetime.fromisoformat((await zeile())["akku_seit"]) == frueher
+
+        await client.post("/api/geraete/hallo", json={"grund": "strom", "extern": True}, headers=kopf)
+        assert (await zeile())["akku_seit"] is None
+
+
 class TestFirmware:
     async def test_ergebnis_steht_am_geraet(self, client, org):
         geraet, kopf = await _eingerichtet(client, org)
@@ -512,22 +549,22 @@ class TestFirmware:
 
 
 class TestZustandInDerKonvoiAnsicht:
-    async def test_auf_akku_seit_ueber_mehrere_meldungen(self, client, org):
+    async def test_akku_seit_ueber_mehrere_meldungen(self, client, org):
         _, kopf = await _eingerichtet(client, org)
         await client.post("/api/geraete/hallo", json={"akku_prozent": 90, "extern": True}, headers=kopf)
         zeile = (await client.get("/api/org/geraete", headers=h(org.admin))).json()[0]
-        assert zeile["auf_akku_seit"] is None and zeile["akku_niedrig"] is False
+        assert zeile["akku_seit"] is None and zeile["akku_niedrig"] is False
 
         await client.post("/api/geraete/hallo", json={"akku_prozent": 80, "extern": False}, headers=kopf)
-        seit = (await client.get("/api/org/geraete", headers=h(org.admin))).json()[0]["auf_akku_seit"]
+        seit = (await client.get("/api/org/geraete", headers=h(org.admin))).json()[0]["akku_seit"]
         assert seit is not None
         await client.post("/api/geraete/hallo", json={"akku_prozent": 15, "extern": False}, headers=kopf)
         zeile = (await client.get("/api/org/geraete", headers=h(org.admin))).json()[0]
-        assert zeile["auf_akku_seit"] == seit and zeile["akku_niedrig"] is True
+        assert zeile["akku_seit"] == seit and zeile["akku_niedrig"] is True
 
         await client.post("/api/geraete/hallo", json={"akku_prozent": 15, "extern": True}, headers=kopf)
         zeile = (await client.get("/api/org/geraete", headers=h(org.admin))).json()[0]
-        assert zeile["auf_akku_seit"] is None and zeile["akku_niedrig"] is False
+        assert zeile["akku_seit"] is None and zeile["akku_niedrig"] is False
 
     async def test_fuehrung_sieht_akku_und_empfang_am_fahrzeug(self, client, org):
         _, kopf = await _eingerichtet(client, org)
@@ -540,7 +577,7 @@ class TestZustandInDerKonvoiAnsicht:
         (eintrag,) = r.json()
         assert eintrag["vehicle_id"] == str(org.hlf)
         assert (eintrag["akku_prozent"], eintrag["extern"], eintrag["signal_dbm"]) == (12, False, -108)
-        assert eintrag["akku_niedrig"] is True and eintrag["auf_akku_seit"] and eintrag["zuletzt_gesehen"]
+        assert eintrag["akku_niedrig"] is True and eintrag["akku_seit"] and eintrag["zuletzt_gesehen"]
         # Nichts, was das Gerät identifiziert.
         assert not {"hardware_id", "name", "id", "token_hash"} & set(eintrag)
 

@@ -360,7 +360,7 @@ const tracker: Tracker[] = [
 		id: 't-lf', name: 'Tracker LF 10', vehicle_id: 'v-lf', vehicle_name: 'LF 10', kanal: 'stable',
 		aktiv: true, eingerichtet: true, code_offen: false, hardware_id: '352656100000002',
 		hardware: 'nrf9151-v1', firmware: '0.1.0', zuletzt_gesehen: new Date().toISOString(),
-		akku_prozent: 87, extern: false, signal_dbm: -95, auf_akku_seit: null, akku_niedrig: false, update_version: null, update_ergebnis: null,
+		akku_prozent: 87, extern: false, akku_seit: new Date(Date.now() - 3 * 86400_000 - 3600_000).toISOString(), signal_dbm: -95, akku_niedrig: false, update_version: null, update_ergebnis: null,
 		update_meldung: null, update_at: null, angebot_version: '0.2.0', created_at: '2026-10-01T09:00:00Z',
 	},
 ];
@@ -371,7 +371,7 @@ function trackerZeile(id: string, d: TrackerDaten): Tracker {
 		vehicle_name: FAHRZEUGE.find((f) => f.id === d.vehicle_id)?.name ?? null,
 		kanal: d.kanal, aktiv: d.aktiv, eingerichtet: false, code_offen: true,
 		hardware_id: null, hardware: null, firmware: null, zuletzt_gesehen: null, akku_prozent: null,
-		extern: null, signal_dbm: null, auf_akku_seit: null, akku_niedrig: false, update_version: null, update_ergebnis: null, update_meldung: null,
+		extern: null, akku_seit: null, signal_dbm: null, akku_niedrig: false, update_version: null, update_ergebnis: null, update_meldung: null,
 		update_at: null, angebot_version: null, created_at: '2026-10-09T10:00:00Z',
 	};
 }

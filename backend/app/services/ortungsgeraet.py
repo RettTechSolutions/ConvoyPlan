@@ -190,21 +190,22 @@ def akku_niedrig(akku_prozent: int | None, extern: bool | None) -> bool:
     return akku_prozent is not None and akku_prozent < AKKU_NIEDRIG_PROZENT and extern is not True
 
 
-def auf_akku_seit(
-    extern_vorher: bool | None, seit_vorher: datetime | None, extern_jetzt: bool | None, jetzt: datetime
+def akku_seit(
+    alt_extern: bool | None, alt_seit: datetime | None, neu_extern: bool | None, jetzt: datetime
 ) -> datetime | None:
-    """Seit wann das Gerät ohne Bordnetz läuft — der Zeitpunkt des Wechsels.
+    """Seit wann ein Gerät auf Akku läuft, nach seiner neuesten Meldung.
 
-    Gemerkt wird der Übergang, nicht jede Meldung: ein Gerät, das seit drei
-    Tagen auf Akku läuft und sich alle zwölf Stunden meldet, soll „seit drei
-    Tagen" zeigen, nicht „seit der letzten Meldung". Meldet es nichts zum
-    Bordnetz, bleibt der alte Stand."""
-    if extern_jetzt is None:
-        return seit_vorher
-    if extern_jetzt:
+    Die Instanz sieht den Wechsel nur, wenn das Gerät ihn meldet — also ist der
+    Wert „seit spätestens". Eine Meldung ohne `extern` ändert nichts, sonst
+    verlöre ein Bündel ohne Zustand den Zeitpunkt. Ohne Vorwert (neues Gerät,
+    alte Zeile) gilt die erste Meldung `false` als Beginn.
+    """
+    if neu_extern is None:
+        return alt_seit
+    if neu_extern:
         return None
-    if extern_vorher is False and seit_vorher is not None:
-        return seit_vorher
+    if alt_extern is False and alt_seit is not None:
+        return alt_seit
     return jetzt
 
 

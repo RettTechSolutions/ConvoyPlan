@@ -34,9 +34,9 @@ async function oeffnen(page: Page, tracker: object[]) {
 test('schwacher Akku und Empfang stehen am Fahrzeug', async ({ page }) => {
 	await oeffnen(page, [
 		{ vehicle_id: 'v-hlf', zuletzt_gesehen: vor(0), akku_prozent: 12, extern: false,
-		  auf_akku_seit: vor(3 * 24 * 60), akku_niedrig: true, signal_dbm: -112 },
+		  akku_seit: vor(3 * 24 * 60), akku_niedrig: true, signal_dbm: -112 },
 		{ vehicle_id: 'v-mtw', zuletzt_gesehen: vor(0), akku_prozent: 64, extern: true,
-		  auf_akku_seit: null, akku_niedrig: false, signal_dbm: -85 },
+		  akku_seit: null, akku_niedrig: false, signal_dbm: -85 },
 	]);
 
 	const hlf = page.getByTestId('tracker-v-hlf');
@@ -58,7 +58,7 @@ test('schwacher Akku und Empfang stehen am Fahrzeug', async ({ page }) => {
 test('ein Tracker ohne aktuelle Meldung zeigt keine Balken', async ({ page }) => {
 	await oeffnen(page, [
 		{ vehicle_id: 'v-hlf', zuletzt_gesehen: vor(25), akku_prozent: 80, extern: false,
-		  auf_akku_seit: vor(30), akku_niedrig: false, signal_dbm: -80 },
+		  akku_seit: vor(30), akku_niedrig: false, signal_dbm: -80 },
 	]);
 	const empfang = page.getByTestId('tracker-v-hlf').getByRole('img', { name: /Keine aktuelle Verbindung/ });
 	await expect(empfang).toHaveAttribute('data-balken', '0');

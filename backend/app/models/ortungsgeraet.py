@@ -51,10 +51,11 @@ class Ortungsgeraet(Base):
     zuletzt_gesehen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     akku_prozent: Mapped[int | None] = mapped_column(Integer, nullable=True)
     extern: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # Seit wann das Gerät ohne Bordnetz läuft: gesetzt bei der ersten Meldung
+    # `extern=false` nach `true` oder ohne Vorwert, gelöscht mit `extern=true`
+    # (``ortungsgeraet.akku_seit``). Serverzeit der Meldung, also „seit spätestens".
+    akku_seit: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     signal_dbm: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # Seit wann ohne Bordnetz (Übergang extern true → false); NULL am Bordnetz
-    # oder solange das Gerät nichts dazu gemeldet hat.
-    auf_akku_seit: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Ergebnis des letzten Firmware-Updates: bestaetigt | zurueckgerollt | fehler.
     update_version: Mapped[str | None] = mapped_column(String(40), nullable=True)

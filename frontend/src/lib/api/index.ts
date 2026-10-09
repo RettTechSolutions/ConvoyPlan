@@ -1701,9 +1701,9 @@ export interface Tracker {
     zuletzt_gesehen: string | null;
     akku_prozent: number | null;
     extern: boolean | null;
+    /** Seit wann ohne Bordnetz (Serverzeit der ersten Meldung `extern=false`), sonst null. */
+    akku_seit: string | null;
     signal_dbm: number | null;
-    // Seit wann ohne Bordnetz; null am Bordnetz oder ohne Angabe.
-    auf_akku_seit: string | null;
     // Unter der Schwelle und nicht am Bordnetz — entschieden im Backend.
     akku_niedrig: boolean;
     update_version: string | null;
@@ -1721,7 +1721,7 @@ export interface TrackerAmFahrzeug {
     zuletzt_gesehen: string | null;
     akku_prozent: number | null;
     extern: boolean | null;
-    auf_akku_seit: string | null;
+    akku_seit: string | null;
     akku_niedrig: boolean;
     signal_dbm: number | null;
 }
