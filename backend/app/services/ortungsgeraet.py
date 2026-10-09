@@ -47,6 +47,10 @@ BUENDEL_MAX = 500
 #: anzustecken, kurz genug, dass ein liegen gebliebener Zettel nichts wert ist.
 CODE_GUELTIG = timedelta(hours=24)
 
+#: Unter diesem Ladestand und ohne Bordnetz warnt die Oberfläche („Akku schwach").
+#: Hier und nur hier: Org-Admin und Konvoi-Ansicht lesen ``akku_niedrig``.
+AKKU_NIEDRIG_PROZENT = 20
+
 #: Takt, den die Instanz dem Gerät vorgibt (Protokoll, „Anweisung").
 TAKT = {"intervall_s": 10, "buendel_s": 30, "nachfrage_s": 300, "lebenszeichen_s": 43200}
 
@@ -176,6 +180,14 @@ def anweisung(modus_: str, jetzt: datetime, firmware: dict[str, Any] | None = No
         "serverzeit": jetzt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "firmware": firmware,
     }
+
+
+def akku_niedrig(akku_prozent: int | None, extern: bool | None) -> bool:
+    """Ob der Akku warnen soll: unter der Schwelle **und** nicht am Bordnetz.
+
+    Am Bordnetz lädt das Gerät; ein leerer Akku dort ist ein Ladezustand,
+    keine Gefahr. Ohne Angabe zum Bordnetz zählt nur der Ladestand."""
+    return akku_prozent is not None and akku_prozent < AKKU_NIEDRIG_PROZENT and extern is not True
 
 
 def akku_seit(

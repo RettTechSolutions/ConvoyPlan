@@ -328,6 +328,7 @@ class GeraetZeile(BaseModel):
     extern: bool | None
     akku_seit: datetime | None
     signal_dbm: int | None
+    akku_niedrig: bool
     update_version: str | None
     update_ergebnis: str | None
     update_meldung: str | None
@@ -366,6 +367,7 @@ def _zeile(g: Ortungsgeraet, jetzt: datetime) -> dict[str, Any]:
         "extern": g.extern,
         "akku_seit": g.akku_seit,
         "signal_dbm": g.signal_dbm,
+        "akku_niedrig": og.akku_niedrig(g.akku_prozent, g.extern),
         "update_version": g.update_version,
         "update_ergebnis": g.update_ergebnis,
         "update_meldung": g.update_meldung,

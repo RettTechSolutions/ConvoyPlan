@@ -15,6 +15,7 @@
 	 * ein Token.
 	 */
 	import { onMount } from 'svelte';
+	import TrackerZustand from '$lib/components/TrackerZustand.svelte';
 	import { geraeteApi, vehiclesApi, type Tracker, type TrackerDaten, type TrackerKanal, type TrackerMitCode } from '$lib/api';
 	import {
 		SCHRITTTEXT,
@@ -229,6 +230,7 @@
 		if (!g.vehicle_id) return { text: 'ohne Fahrzeug', klasse: 'aus' };
 		if (!g.zuletzt_gesehen || Date.now() - new Date(g.zuletzt_gesehen).getTime() > STUMM_AB_MS)
 			return { text: 'nicht erreichbar', klasse: 'warn' };
+		if (g.akku_niedrig) return { text: 'Akku schwach', klasse: 'warn' };
 		return { text: 'bereit', klasse: '' };
 	}
 </script>
@@ -389,12 +391,11 @@
 			</p>
 			{#if g.eingerichtet}
 				<p class="hint">
+					<TrackerZustand zustand={g} /> ·
 					{#if g.zuletzt_gesehen}Zuletzt gemeldet {uhrzeit(g.zuletzt_gesehen)}{:else}Noch nie gemeldet{/if}
-					{#if g.akku_prozent !== null}· Akku {g.akku_prozent} %{#if g.extern}&nbsp;(an Bordnetz){/if}{/if}
 					{#if g.extern === false && g.akku_seit}
 						· <span class={akkuLange(g.akku_seit) ? 'akku-lange' : ''} title="Seit der ersten Meldung ohne Bordnetz, frühestens {uhrzeit(g.akku_seit)}">auf Akku {seit(g.akku_seit)}</span>
 					{/if}
-					{#if g.signal_dbm !== null}· Signal {g.signal_dbm} dBm{/if}
 					{#if g.hardware_id}· Gerät {g.hardware_id}{/if}
 				</p>
 				{#if g.update_version}

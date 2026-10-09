@@ -144,6 +144,21 @@ class TestAnweisung:
         assert og.zustand_lesen({"akku_prozent": 140, "extern": "ja", "signal_dbm": 5, "firmware": ""}) == {}
 
 
+class TestAkku:
+    @pytest.mark.parametrize(
+        "akku,extern,erwartet",
+        [
+            (19, False, True),
+            (20, False, False),  # die Schwelle selbst warnt nicht
+            (5, True, False),  # am Bordnetz lädt das Gerät
+            (5, None, True),  # ohne Angabe zählt nur der Ladestand
+            (None, False, False),
+        ],
+    )
+    def test_akku_niedrig(self, akku, extern, erwartet):
+        assert og.akku_niedrig(akku, extern) is erwartet
+
+
 class TestAkkuSeit:
     """„Auf Akku seit …": der Zeitpunkt des Wechsels, nicht der letzten Meldung."""
 
@@ -531,3 +546,51 @@ class TestFirmware:
         assert zeile["firmware"] == "0.1.0"
         r = await client.post("/api/geraete/firmware/ergebnis", json={"version": "0.2.0", "ergebnis": "egal"}, headers=kopf)
         assert r.status_code == 400
+
+
+class TestZustandInDerKonvoiAnsicht:
+    async def test_akku_seit_ueber_mehrere_meldungen(self, client, org):
+        _, kopf = await _eingerichtet(client, org)
+        await client.post("/api/geraete/hallo", json={"akku_prozent": 90, "extern": True}, headers=kopf)
+        zeile = (await client.get("/api/org/geraete", headers=h(org.admin))).json()[0]
+        assert zeile["akku_seit"] is None and zeile["akku_niedrig"] is False
+
+        await client.post("/api/geraete/hallo", json={"akku_prozent": 80, "extern": False}, headers=kopf)
+        seit = (await client.get("/api/org/geraete", headers=h(org.admin))).json()[0]["akku_seit"]
+        assert seit is not None
+        await client.post("/api/geraete/hallo", json={"akku_prozent": 15, "extern": False}, headers=kopf)
+        zeile = (await client.get("/api/org/geraete", headers=h(org.admin))).json()[0]
+        assert zeile["akku_seit"] == seit and zeile["akku_niedrig"] is True
+
+        await client.post("/api/geraete/hallo", json={"akku_prozent": 15, "extern": True}, headers=kopf)
+        zeile = (await client.get("/api/org/geraete", headers=h(org.admin))).json()[0]
+        assert zeile["akku_seit"] is None and zeile["akku_niedrig"] is False
+
+    async def test_fuehrung_sieht_akku_und_empfang_am_fahrzeug(self, client, org):
+        _, kopf = await _eingerichtet(client, org)
+        await client.post(
+            "/api/geraete/hallo", json={"akku_prozent": 12, "extern": False, "signal_dbm": -108}, headers=kopf
+        )
+        # Lesen darf jedes Mitglied, auch ein Fahrer.
+        r = await client.get(f"/api/convoys/{org.konvoi}/tracker", headers=h(org.fahrer))
+        assert r.status_code == 200, r.text
+        (eintrag,) = r.json()
+        assert eintrag["vehicle_id"] == str(org.hlf)
+        assert (eintrag["akku_prozent"], eintrag["extern"], eintrag["signal_dbm"]) == (12, False, -108)
+        assert eintrag["akku_niedrig"] is True and eintrag["akku_seit"] and eintrag["zuletzt_gesehen"]
+        # Nichts, was das Gerät identifiziert.
+        assert not {"hardware_id", "name", "id", "token_hash"} & set(eintrag)
+
+    async def test_gesperrte_und_fremde_tracker_fehlen(self, client, org):
+        geraet, kopf = await _eingerichtet(client, org)
+        await client.post("/api/geraete/hallo", json={"akku_prozent": 50}, headers=kopf)
+        r = await client.put(
+            f"/api/org/geraete/{geraet['id']}",
+            json={"name": "Tracker HLF", "vehicle_id": str(org.hlf), "aktiv": False},
+            headers=h(org.admin),
+        )
+        assert r.status_code == 200, r.text
+        assert (await client.get(f"/api/convoys/{org.konvoi}/tracker", headers=h(org.admin))).json() == []
+        # Ein Konvoi, auf den man keinen Zugriff hat, verrät nichts.
+        r = await client.get(f"/api/convoys/{uuid.uuid4()}/tracker", headers=h(org.admin))
+        assert r.status_code == 404

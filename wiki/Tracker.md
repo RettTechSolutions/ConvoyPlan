@@ -79,10 +79,29 @@ Stelle, gehört deren Wurzelzertifikat (PEM) beim Einrichten unter *Eigene
 Zertifizierungsstelle* dazu, höchstens drei. Wechselt die Stelle später, muss
 jedes Gerät einmal neu per USB eingerichtet werden.
 
-In der Liste steht danach *bereit*, mit dem letzten Lebenszeichen, Akku, Signal
+In der Liste steht danach *bereit*, mit dem letzten Lebenszeichen, Akku, Empfang
 und Firmwarestand. Meldet sich ein Gerät länger als einen Tag nicht, steht dort
 *nicht erreichbar* — ein Tracker meldet sich auch ohne Bewegung alle zwölf
-Stunden.
+Stunden. Hat der Akku weniger als 20 % und hängt das Gerät nicht am Bordnetz,
+steht dort *Akku schwach*.
+
+### Akku und Empfang
+
+Akku und Empfang stehen als kleine Symbole, wie man sie vom Telefon kennt: in der
+Tracker-Liste und in der **Konvoi-Ansicht direkt am Fahrzeug**, damit die Führung
+einen schwachen Akku oder ein Funkloch bemerkt, bevor die Position ausbleibt. Mit
+der Maus über dem Symbol stehen die genauen Werte.
+
+- **Batterie:** Füllung nach Ladestand. Ein gelber Blitz heißt *am Bordnetz*, das
+  Gerät lädt. Rot mit Zahl heißt *Akku schwach*: unter 20 % und ohne Bordnetz. Der
+  Tooltip nennt, seit wann das Gerät auf Akku läuft („auf Akku seit 3 Tagen").
+- **Empfangsbalken:** vier Balken nach der zuletzt gemeldeten Signalstärke (RSRP:
+  ab −90 dBm vier, ab −100 drei, ab −110 zwei, ab −120 einer). Ist die letzte
+  Meldung älter als zehn Minuten, sind die Balken grau — alter Empfang ist kein
+  Empfang. Das ist kein Fehler: Steht das Fahrzeug länger als fünf Minuten, schläft
+  der Tracker bis zur nächsten Bewegung.
+
+Die Konvoi-Ansicht fragt die Werte einmal pro Minute ab.
 
 Hängt ein Tracker nicht am Bordnetz, steht dort **auf Akku seit …**, ab einem
 Tag hervorgehoben. Über Nacht ohne Strom ist normal, wenn die Steckdose an der
