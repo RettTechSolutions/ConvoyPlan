@@ -14,8 +14,9 @@
 	import TrackerVerwaltung from '$lib/components/TrackerVerwaltung.svelte';
 	import PasskeyVerwaltung from '$lib/components/PasskeyVerwaltung.svelte';
 	import DurchfahrtsHoehen from '$lib/components/DurchfahrtsHoehen.svelte';
+	import GewichtsGrenzen from '$lib/components/GewichtsGrenzen.svelte';
 	import RegionCard from '$lib/components/RegionCard.svelte';
-	import type { BrueckenPruefung, DurchfahrtshoeheEntry } from '$lib/api';
+	import type { BrueckenPruefung, DurchfahrtshoeheEntry, GewichtsgrenzeEntry } from '$lib/api';
 	import { feedbackStore } from '$lib/stores/feedback';
 
 	const welche = new URLSearchParams(location.search).get('k') ?? 'share';
@@ -70,6 +71,24 @@
 		ohne_knopf: { eintraege: [], hoehe: 3.2, ohne: 0 },
 	};
 	const hoehen = HOEHEN[fall];
+
+	/** Gewichtsgrenzen: `?k=gewicht&fall=…`, die Fälle stehen im Test. */
+	const grenze = (km: number, grenze_t: number, reserve_t: number | null, stufe: GewichtsgrenzeEntry['stufe'], ausnahme: string | null = null, art: 'gewicht' | 'achslast' = 'gewicht') =>
+		({ km, m: km * 1000, lat: 47.8, lon: 11.1, laenge_m: 300, grenze_t, reserve_t, ausnahme, stufe, art });
+	const GEWICHT: Record<string, { eintraege: GewichtsgrenzeEntry[] | null; gewicht: number | null; achse?: number; ohne: number }> = {
+		gemischt: {
+			eintraege: [
+				grenze(3.1, 7.5, -18.5, 'ueberschritten', 'destination'), grenze(9.4, 40, 14, 'frei'),
+				grenze(15.0, 28, 2 - 0.5, 'knapp'), grenze(17.2, 10, 0.5, 'knapp', null, 'achslast'),
+			],
+			gewicht: 26, achse: 9.5, ohne: 2,
+		},
+		alle_frei: { eintraege: [grenze(9.4, 40, 14, 'frei')], gewicht: 26, ohne: 0 },
+		ohne_gewicht: { eintraege: [grenze(3.1, 7.5, null, 'unbekannt')], gewicht: null, ohne: 3 },
+		leer: { eintraege: [], gewicht: 12, ohne: 0 },
+		alt: { eintraege: null, gewicht: 12, ohne: 0 },
+	};
+	const gewicht = GEWICHT[fall] ?? GEWICHT.gemischt;
 </script>
 
 {#if welche === 'fuss'}
@@ -79,6 +98,13 @@
 	<div class="leiste" data-theme="dark">
 		<div class="leiste-inhalt">Inhalt der Planung (steht für Listen und Formulare)</div>
 		<SidebarFooter />
+	</div>
+{:else if welche === 'gewicht'}
+	<div class="leiste" data-theme="dark">
+		<div class="leiste-inhalt">
+			<p>Route berechnet.</p>
+			<GewichtsGrenzen eintraege={gewicht.eintraege} fahrzeuggewichtT={gewicht.gewicht} achslastT={gewicht.achse ?? null} ohneGewicht={gewicht.ohne} />
+		</div>
 	</div>
 {:else if welche === 'hoehen'}
 	<!-- Breite der Seitenleiste der Planung, in der der Block steht. -->

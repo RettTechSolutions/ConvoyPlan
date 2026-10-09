@@ -84,8 +84,10 @@ class Row:
     km_at: float
     # Strecke bis zur nächsten Anweisung (0 am Ziel).
     distance_m: float
-    kind: str  # "turn" | "waypoint" | "finish"
+    kind: str  # "turn" | "waypoint" | "finish" | "hinweis"
     detail: str = ""
+    # Nur bei Hinweisen: "warnung" (eng, über der Grenze) färbt die Zeile.
+    stufe: str = ""
 
 
 def fmt_km(km: float) -> str:
@@ -170,6 +172,94 @@ def build_rows(
         rows.append(Row(i, symbol(sign), text, km / 1000, dist, kind, detail))
         km += dist
     return rows
+
+
+# ── Hinweise zu Höhe und Gewicht ─────────────────────────────────────────────
+#
+# Dieselben Listen wie Planungsansicht und Marschbefehl (services/
+# durchfahrtshoehe.py, gewichtsgrenzen.py, bruecken.py), hier als Zeilen an der
+# Stelle der Strecke, an der man sie braucht. Gezeigt wird auch, was frei ist:
+# „3,9 m, +85 cm" sagt der Besatzung, dass sie unter dieser Brücke nicht
+# bremsen muss — das ist eine Auskunft, kein Rauschen.
+
+_HOEHE_DETAIL = {"eng": "ENG – vor Ort prüfen", "knapp": "knapp", "unbekannt": "Fahrzeughöhe fehlt"}
+_GEWICHT_DETAIL = {"ueberschritten": "ÜBER DER GRENZE", "knapp": "knapp", "unbekannt": "Fahrzeuggewicht fehlt"}
+_AUSNAHMEN = {"destination": "Anlieger frei", "delivery": "Lieferverkehr frei", "forestry": "Forstverkehr frei"}
+
+
+def _cm(m: float) -> str:
+    return f"{'+' if m >= 0 else '−'}{abs(round(m * 100))} cm"
+
+
+def _t(t: float, vorzeichen: bool = False) -> str:
+    zahl = f"{abs(t) if vorzeichen else t:.1f}".replace(".", ",")
+    return f"{('+' if t >= 0 else '−') if vorzeichen else ''}{zahl} t"
+
+
+def _m_von(e: dict[str, Any]) -> float:
+    return float(e["m"]) if e.get("m") is not None else float(e.get("km", 0)) * 1000
+
+
+def hinweis_rows(route: Any) -> list[Row]:
+    """Höhen, Gewichtsgrenzen und Brücken ohne Angabe als Zeilen, nach Meter sortiert.
+
+    Brücken auf Autobahn und Kraftfahrstraße bleiben weg — wie in der Planung
+    zählt man sie, statt achtzig Zeilen zu drucken.
+    """
+    out: list[tuple[float, Row]] = []
+    for e in getattr(route, "durchfahrtshoehen", None) or []:
+        teile = [f"Spielraum {_cm(e['spielraum_m'])}"] if e.get("spielraum_m") is not None else []
+        if (zusatz := _HOEHE_DETAIL.get(e.get("stufe", ""))):
+            teile.append(zusatz)
+        out.append((_m_von(e), Row(
+            0, "↕", f"Durchfahrtshöhe {fmt_km(e['hoehe_m'])} m", _m_von(e) / 1000, 0.0, "hinweis",
+            " · ".join(teile), "warnung" if e.get("stufe") == "eng" else "",
+        )))
+    for e in getattr(route, "gewichtsgrenzen", None) or []:
+        teile = [f"Reserve {_t(e['reserve_t'], True)}"] if e.get("reserve_t") is not None else []
+        if (ausnahme := _AUSNAHMEN.get(e.get("ausnahme") or "")):
+            teile.append(ausnahme)
+        if (zusatz := _GEWICHT_DETAIL.get(e.get("stufe", ""))):
+            teile.append(zusatz)
+        art = "Achslastgrenze" if e.get("art") == "achslast" else "Gewichtsgrenze"
+        out.append((_m_von(e), Row(
+            0, "⚖", f"{art} {_t(e['grenze_t'])}", _m_von(e) / 1000, 0.0, "hinweis",
+            " · ".join(teile), "warnung" if e.get("stufe") == "ueberschritten" else "",
+        )))
+    for b in ((getattr(route, "bruecken", None) or {}).get("eintraege") or []):
+        if b.get("schnellstrasse"):
+            continue
+        text = f"{b.get('art') or 'Brücke'} ohne Höhenangabe"
+        if b.get("name"):
+            text += f" ({b['name']})"
+        out.append((_m_von(b), Row(
+            0, "⚠", text, _m_von(b) / 1000, 0.0, "hinweis", "Höhe unbekannt – Beschilderung beachten",
+        )))
+    out.sort(key=lambda x: x[0])
+    return [r for _, r in out]
+
+
+def mit_hinweisen(rows: list[Row], hinweise: list[Row]) -> list[Row]:
+    """Hinweise hinter die letzte Anweisung vor ihrer Stelle einsortieren.
+
+    Eine Anweisung bei km 12,4 gilt bis zur nächsten; eine Brücke bei km 13,0
+    liegt auf diesem Stück und steht deshalb darunter. Die Nummern der
+    Anweisungen bleiben, Hinweise tragen keine.
+    """
+    out: list[Row] = []
+    offen = list(hinweise)
+    for r in rows:
+        while offen and offen[0].km_at < r.km_at:
+            out.append(offen.pop(0))
+        out.append(r)
+    # Hinweise hinter dem Ziel kann es nicht geben, aber vor dem Ziel auf dem
+    # letzten Stück schon: das Ziel bleibt die letzte Zeile.
+    if offen:
+        ziel = out.pop() if out and out[-1].kind == "finish" else None
+        out.extend(offen)
+        if ziel is not None:
+            out.append(ziel)
+    return out
 
 
 _STOP_TYPES = {"stop", "technical_stop"}
@@ -262,12 +352,14 @@ def generate_roadbook(
         )
         return bytes(pdf.output())
 
-    rows = build_rows(instructions, located, planned_arrival)
+    rows = mit_hinweisen(build_rows(instructions, located, planned_arrival), hinweis_rows(route))
 
     pdf.set_font("DV", "", 9)
     heading = FontFace(emphasis="BOLD", fill_color=(220, 225, 235))
     waypoint_style = FontFace(emphasis="BOLD", fill_color=(254, 243, 199))
     finish_style = FontFace(emphasis="BOLD", fill_color=(220, 252, 231))
+    hinweis_style = FontFace(fill_color=(232, 240, 252))
+    warnung_style = FontFace(emphasis="BOLD", fill_color=(254, 226, 226))
     with pdf.table(
         col_widths=(9, 9, content_w - 9 - 9 - 17 - 19, 17, 19),
         headings_style=heading,
@@ -279,9 +371,11 @@ def generate_roadbook(
     ) as table:
         table.row(["Nr.", "", "Anweisung", "bei km", "dann"])
         for r in rows:
-            style = {"waypoint": waypoint_style, "finish": finish_style}.get(r.kind)
+            style = {"waypoint": waypoint_style, "finish": finish_style, "hinweis": hinweis_style}.get(r.kind)
+            if r.stufe == "warnung":
+                style = warnung_style
             row = table.row(style=style)
-            row.cell(str(r.nr))
+            row.cell(str(r.nr) if r.nr else "")
             row.cell(r.symbol, style=FontFace(size_pt=12, emphasis=style.emphasis if style else None,
                                                 fill_color=style.fill_color if style else None))
             row.cell(f"{r.text}\n{r.detail}" if r.detail else r.text)
@@ -294,7 +388,9 @@ def generate_roadbook(
     pdf.multi_cell(
         0, 4,
         "Anweisungen aus der Routenberechnung (GraphHopper, OpenStreetMap). Vor Ort gilt die "
-        "Beschilderung. „bei km“: Kilometrierung ab Start; „dann“: Strecke bis zur nächsten Anweisung.",
+        "Beschilderung. „bei km“: Kilometrierung ab Start; „dann“: Strecke bis zur nächsten Anweisung. "
+        "↕ Durchfahrtshöhe und ⚖ Gewichtsgrenze aus OpenStreetMap, verglichen mit dem höchsten bzw. "
+        "schwersten Fahrzeug; ⚠ Brücke über der Route ohne bekannte Höhe.",
     )
     pdf.set_text_color(0, 0, 0)
     return bytes(pdf.output())

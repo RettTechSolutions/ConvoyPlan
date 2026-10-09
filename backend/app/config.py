@@ -7,6 +7,12 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 24 * 7  # 7 days
     graphhopper_url: str = "http://localhost:8989"
+    # Overpass-Server für Sperrungen, Tankstellen und Brücken (services/
+    # overpass.py), kommagetrennt, in dieser Reihenfolge versucht. Nur Server
+    # mit weltweiten Daten — ein regionaler wie overpass.osm.ch antwortet
+    # außerhalb seiner Region mit einer leeren Liste, und die sähe aus wie
+    # „keine Brücke gefunden".
+    overpass_urls: str = "https://overpass-api.de/api/interpreter"
     # Kacheln für die Übersichtskarte im Roadbook-PDF (services/static_map.py).
     # Dieselbe Quelle wie die Karte im Frontend. Leer = ohne Kartenhintergrund,
     # nur die Route (für Instanzen ohne Internetzugang).
