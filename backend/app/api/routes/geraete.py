@@ -34,6 +34,7 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import OrgCtx, get_org_context
 from app.api.guards import ROLE_ORDER
 from app.database import get_db
+from app.middleware.license_guard import is_licensed
 from app.models.convoy import Convoy, ConvoyVehicle
 from app.models.ortungsgeraet import Ortungsgeraet
 from app.models.vehicle import Vehicle
@@ -99,7 +100,9 @@ async def _laufende_konvois(db: AsyncSession, geraet: Ortungsgeraet) -> list[uui
 
 async def _anweisung(db: AsyncSession, geraet: Ortungsgeraet, jetzt: datetime) -> dict[str, Any]:
     konvois = await _laufende_konvois(db, geraet)
-    gesperrt = await org_plan.ist_gesperrt(db, geraet.organization_id)
+    # Ohne Lizenz wie eine gesperrte Organisation: `schweigen`, und `positionen`
+    # verwirft. Die Middleware lässt diese Pfade dafür durch (license_guard.py).
+    gesperrt = await org_plan.ist_gesperrt(db, geraet.organization_id) or not await is_licensed()
     modus = og.modus(geraet.vehicle_id is not None, len(konvois), gesperrt)
     # Was das Gerät damit tut — nur im Stand, nur mit Akku —, entscheidet es
     # selbst; die Adresse zeigt auf diese Instanz (services/firmware_angebot.py).

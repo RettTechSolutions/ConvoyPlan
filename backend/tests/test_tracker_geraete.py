@@ -10,13 +10,18 @@ Was hier zugesagt wird:
 - Einmal-Code und Token liegen nur als Hash vor; ein neuer Code macht das alte
   Token ungültig; unbekannt, abgelaufen und verbraucht geben dieselbe 404.
 - „GPS-Freigabe zurücksetzen" gilt auch für einen Tracker.
+- Ohne Lizenz hört das Gerät ``schweigen`` statt 402 (sonst fragt es alle 30 s
+  nach), geschrieben wird nichts; Einrichten bleibt lizenzpflichtig.
 """
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import delete, select
+
+import app.middleware.license_guard as _lgm
 
 from app.database import AsyncSessionLocal
 from app.models.audit_log import AuditLog
@@ -499,6 +504,69 @@ class TestSenden:
                 await db.execute(delete(ConvoyVehicle).where(ConvoyVehicle.convoy_id == fremd_id))
                 await db.execute(delete(Convoy).where(Convoy.id == fremd_id))
                 await db.commit()
+
+
+@pytest.fixture
+def ohne_lizenz():
+    """Lizenz-Cache auf „ungültig" stellen, danach zurück auf das, was
+    conftest.py für alle Tests vorgibt."""
+    _lgm._license_valid = False
+    _lgm._license_checked_at = time.monotonic()
+    yield
+    _lgm._license_valid = True
+    _lgm._license_checked_at = time.monotonic()
+
+
+class TestOhneLizenz:
+    """Protokoll im Tracker-Repo (docs/PROTOKOLL.md, „Anweisung"): ohne Lizenz
+    schickt die Instanz `schweigen`, kein 402. Ein 402 ist für das Gerät eine
+    unerwartete Antwort, und es fragt dann alle 30 s erneut — dauerhaft."""
+
+    async def test_hallo_hoert_schweigen(self, client, org, ohne_lizenz):
+        _lgm._license_valid = True
+        _, kopf = await _eingerichtet(client, org)
+        _lgm._license_valid = False
+        r = await client.post("/api/geraete/hallo", json={"akku_prozent": 55}, headers=kopf)
+        assert r.status_code == 200, r.text
+        assert r.json()["modus"] == "schweigen"
+        # Gerätezustand wird weiter gemerkt — das ist kein Schreiben in die Organisation.
+        async with AsyncSessionLocal() as db:
+            zeile = (await db.execute(select(Ortungsgeraet).where(Ortungsgeraet.organization_id == org.org_id))).scalar_one()
+            assert zeile.akku_prozent == 55 and zeile.zuletzt_gesehen is not None
+
+    async def test_positionen_werden_verworfen(self, client, org, ohne_lizenz):
+        _lgm._license_valid = True
+        _, kopf = await _eingerichtet(client, org)
+        _lgm._license_valid = False
+        r = await client.post("/api/geraete/positionen", json={"fixes": [_fix(5)]}, headers=kopf)
+        assert r.status_code == 200, r.text
+        assert (r.json()["angenommen"], r.json()["verworfen"], r.json()["modus"]) == (0, 1, "schweigen")
+        assert await _position(org.konvoi, org.hlf) is None
+
+    async def test_firmware_ergebnis_geht_durch(self, client, org, ohne_lizenz):
+        _lgm._license_valid = True
+        _, kopf = await _eingerichtet(client, org)
+        _lgm._license_valid = False
+        r = await client.post(
+            "/api/geraete/firmware/ergebnis", json={"version": "0.2.0", "ergebnis": "bestaetigt"}, headers=kopf
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["modus"] == "schweigen"
+
+    async def test_einloesen_bleibt_gesperrt(self, client, org, ohne_lizenz):
+        _lgm._license_valid = True
+        geraet = await _anlegen(client, org)
+        _lgm._license_valid = False
+        r = await client.post(
+            "/api/geraete/einloesen", json={"code": geraet["code"], "hardware_id": IMEI, "firmware": "0.1.0"}
+        )
+        assert r.status_code == 402
+        async with AsyncSessionLocal() as db:
+            assert (await db.get(Ortungsgeraet, uuid.UUID(geraet["id"]))).token_hash is None
+
+    async def test_andere_schreibende_aufrufe_bleiben_gesperrt(self, client, org, ohne_lizenz):
+        r = await client.post("/api/vehicles/", json={"name": "Neu"}, headers=h(org.admin))
+        assert r.status_code == 402
 
 
 class TestAkkuSeitDurchDieApp:

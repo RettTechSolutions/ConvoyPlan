@@ -8,6 +8,10 @@ import { test, expect, type Page } from '@playwright/test';
 //   und nur die PEM-Blöcke daraus.
 // - Ein Fehler des Geräts (hier: Zertifikat nicht prüfbar) lässt den Code stehen; man
 //   kann es noch einmal versuchen. Nach dem Erfolg ist der Code weg.
+// - Lehnt die Instanz das Einlösen mangels Lizenz ab (402, `keine_lizenz`), sagt der
+//   Hinweis das — und nicht „Code abgelehnt", denn der Code bleibt gültig.
+// - Ein Fehlername, den dieses Frontend nicht kennt (neuere Firmware), zeigt den Text
+//   des Geräts, statt das Gerät für ein fremdes Protokoll zu halten.
 // - Ohne Web Serial gibt es den Knopf nicht, sondern einen Hinweis.
 //
 // Das Gerät ist nachgebaut, wie `simulator/tracker_sim/usb.py` im Repo ConvoyPlan-Tracker
@@ -17,7 +21,7 @@ import { test, expect, type Page } from '@playwright/test';
 const HUELLE = 'http://localhost:4174/?k=tracker';
 const PEM = '-----BEGIN CERTIFICATE-----\nMIIBszCCAVmgAwIBAgIU\n-----END CERTIFICATE-----';
 
-type Verhalten = { fehler?: 'tls' | 'code_abgelehnt'; eingerichtetFuer?: string };
+type Verhalten = { fehler?: string; text?: string; eingerichtetFuer?: string };
 
 async function geraetAnstecken(page: Page, verhalten: Verhalten = {}) {
 	await page.addInitScript((v: Verhalten) => {
@@ -55,7 +59,7 @@ async function geraetAnstecken(page: Page, verhalten: Verhalten = {}) {
 							setTimeout(() => {
 								senden({ schritt: 'einloesen' });
 								setTimeout(() => senden(v.fehler
-									? { ok: false, fehler: v.fehler, text: 'unknown ca' }
+									? { ok: false, fehler: v.fehler, text: v.text ?? 'unknown ca' }
 									: { ok: true, geraet_id: 't-neu' }), 20);
 							}, 20);
 						}
@@ -124,6 +128,30 @@ test('scheitert das Zertifikat, bleibt der Code stehen und der Hinweis nennt den
 	await expect(page.getByTestId('neuer-code').locator('pre')).toHaveText('K7Q2-M9XD');
 	// Noch einmal versuchen geht.
 	await expect(page.getByRole('button', { name: 'Per USB einrichten' })).toBeEnabled();
+});
+
+test('ohne Lizenz sagt der Hinweis das, und der Code bleibt stehen', async ({ page }) => {
+	await geraetAnstecken(page, { fehler: 'keine_lizenz', text: 'Instanz ohne Lizenz (HTTP 402)' });
+	await anlegen(page);
+	await page.getByRole('button', { name: 'Per USB einrichten' }).click();
+
+	const meldung = page.getByTestId('usb-einrichten').getByRole('alert');
+	await expect(meldung).toContainText('keine gültige Lizenz');
+	await expect(meldung).toContainText('der Code bleibt gültig');
+	await expect(meldung).not.toContainText('abgelaufen oder schon benutzt');
+	await expect(page.getByTestId('neuer-code').locator('pre')).toHaveText('K7Q2-M9XD');
+	await expect(page.getByRole('button', { name: 'Per USB einrichten' })).toBeEnabled();
+});
+
+test('einen unbekannten Fehler zeigt der Hinweis mit dem Text des Geräts', async ({ page }) => {
+	await geraetAnstecken(page, { fehler: 'speicher_voll', text: 'Kein Platz für die Wurzelzertifikate' });
+	await anlegen(page);
+	await page.getByRole('button', { name: 'Per USB einrichten' }).click();
+
+	const meldung = page.getByTestId('usb-einrichten').getByRole('alert');
+	await expect(meldung).toContainText('Das Gerät meldet: Kein Platz für die Wurzelzertifikate');
+	await expect(meldung).not.toContainText('anderes Protokoll');
+	await expect(page.getByTestId('neuer-code').locator('pre')).toHaveText('K7Q2-M9XD');
 });
 
 test('ohne Web Serial gibt es keinen Knopf, sondern einen Hinweis', async ({ page }) => {

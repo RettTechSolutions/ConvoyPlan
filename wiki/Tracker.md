@@ -69,7 +69,10 @@ Das geht in **Chrome oder Edge am Rechner** (Web Serial). In anderen Browsern
 steht stattdessen ein Hinweis, und der Code wird am Gerät eingegeben.
 
 Schlägt das Einrichten fehl, bleibt der Code stehen, und die Seite sagt, woran
-es lag: kein Netz, Code abgelaufen oder Zertifikat nicht prüfbar. Ein Tracker,
+es lag: kein Netz, Code abgelaufen, Zertifikat nicht prüfbar oder keine gültige
+Lizenz auf dieser Instanz (dann bleibt der Code gültig, bis eine Lizenz
+eingetragen ist). Ohne Lizenz senden auch eingerichtete Tracker keine Positionen;
+sie melden sich nur noch in langen Abständen. Ein Tracker,
 der schon für eine andere Instanz eingerichtet war, behält diese Einrichtung,
 bis die neue gelungen ist.
 

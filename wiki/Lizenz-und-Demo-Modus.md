@@ -10,6 +10,7 @@ ConvoyPlan läuft ohne gültigen Lizenzschlüssel im **Demo-Modus**. Lesezugriff
 |---|---|
 | Lesezugriffe (GET) | uneingeschränkt |
 | Schreibzugriffe (POST/PUT/PATCH/DELETE) | mit **HTTP 402** gesperrt |
+| Tracker | melden sich weiter, hören aber `schweigen` und senden keine Positionen; neue Tracker einrichten geht nicht |
 | Eignung | Tests und Evaluierung — **nicht** für den Einsatzbetrieb |
 
 ---
