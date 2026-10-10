@@ -1,6 +1,6 @@
 """Welche eigenen Wurzeln ein Tracker hat (``ortungsgeraete.wurzeln_sha256``).
 
-Die Instanz verteilt Wurzelzertifikate an ihre Tracker (E12 im Tracker-Plan,
+Die Instanz verteilt Wurzelzertifikate an ihre Tracker (E13 im Tracker-Plan,
 ``services/tracker_wurzeln.py``) und muss wissen, welches Gerät das gewünschte
 Bündel schon übernommen hat. Nullable ohne Vorgabe: Geräte melden den
 Fingerabdruck mit dem nächsten ``hallo``, ältere Firmware nie.

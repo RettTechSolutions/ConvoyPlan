@@ -441,7 +441,7 @@ aus `signal_dbm` (RSRP) und dem letzten Kontakt; „auf Akku seit" kommt aus `ak
 (siehe oben). Tests: `tests/test_tracker_geraete.py` (`test_akku_niedrig`,
 `TestZustandInDerKonvoiAnsicht`), `frontend/e2e/tracker-zustand.spec.ts`.
 
-**Wurzelzertifikate** (`services/tracker_wurzeln.py`, E12 im Tracker-Plan): Mit
+**Wurzelzertifikate** (`services/tracker_wurzeln.py`, E13 im Tracker-Plan): Mit
 `TRACKER_WURZELN` (PEM-Datei) verteilt die Instanz ein Bündel eigener Wurzeln. Das
 Gerät meldet in `hallo` den Fingerabdruck seiner Wurzeln (`wurzeln_sha256`,
 Migration `0064`); weicht er ab, steht das Bündel in der Antwort — **nur** in `hallo`,

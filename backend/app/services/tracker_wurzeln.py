@@ -4,7 +4,7 @@ Ein Tracker prüft das Zertifikat seiner Instanz gegen die eingebauten Wurzeln
 (ISRG Root X1 und X2) und bis zu drei eigene, die der Org-Admin beim Einrichten
 per USB mitgibt. Wechselt eine Instanz mit eigener Zertifizierungsstelle die CA,
 müsste sonst jedes Gerät im Feld einmal an den Rechner (O10 im Tracker-Plan, jetzt
-E12).
+E13).
 
 Deshalb kann der Betreiber das gewünschte Bündel als PEM-Datei ablegen
 (``TRACKER_WURZELN``). Das Gerät meldet in ``hallo`` den Fingerabdruck seiner

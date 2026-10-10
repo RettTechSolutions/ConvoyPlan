@@ -1,4 +1,4 @@
-"""Die Instanz verteilt Wurzelzertifikate an ihre Tracker (E12 im Tracker-Plan).
+"""Die Instanz verteilt Wurzelzertifikate an ihre Tracker (E13 im Tracker-Plan).
 
 Erst die Regeln ohne Datenbank (``services/tracker_wurzeln.py``): was als Bündel
 gilt, wie der Fingerabdruck entsteht, wann angeboten wird. Dann der Weg durch die
