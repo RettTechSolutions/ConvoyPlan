@@ -130,35 +130,45 @@ def aktuell(gespeichert: str | None, buendel: Buendel | None) -> bool | None:
 
 # ── Einstellung lesen ───────────────────────────────────────────────────────
 
-_stand: tuple[str, float, int] | None = None
-_buendel: Buendel | None = None
+
+class _Datei:
+    """Die zuletzt gelesene Datei: Pfad, Änderungszeit und Größe, und was daraus wurde."""
+
+    def __init__(self) -> None:
+        self.stand: tuple[str, float, int] | None = None
+        self.buendel: Buendel | None = None
+
+    def lesen(self, pfad: str) -> Buendel | None:
+        try:
+            info = Path(pfad).stat()
+        except OSError as e:
+            stand = (pfad, -1.0, -1)
+            if stand != self.stand:
+                logger.error("TRACKER_WURZELN: %s nicht lesbar (%s) — es werden keine Wurzeln verteilt", pfad, e)
+            self.stand, self.buendel = stand, None
+            return None
+        stand = (pfad, info.st_mtime, info.st_size)
+        if stand == self.stand:
+            return self.buendel
+        self.stand = stand
+        try:
+            self.buendel = lesen(Path(pfad).read_text(encoding="utf-8"))
+            logger.info(
+                "TRACKER_WURZELN: %d Wurzel(n), Fingerabdruck %s", len(self.buendel.pem), self.buendel.sha256[:12]
+            )
+        except (OSError, UnicodeDecodeError, ValueError) as e:
+            logger.error("TRACKER_WURZELN: %s — es werden keine Wurzeln verteilt", e)
+            self.buendel = None
+        return self.buendel
+
+
+_datei = _Datei()
 
 
 def gewuenscht() -> Buendel | None:
     """Das Bündel aus ``TRACKER_WURZELN``, neu gelesen, sobald sich die Datei ändert."""
-    global _stand, _buendel
     pfad = (settings.tracker_wurzeln or "").strip()
     if not pfad:
-        _stand, _buendel = None, None
+        _datei.stand, _datei.buendel = None, None
         return None
-    try:
-        info = Path(pfad).stat()
-    except OSError as e:
-        stand = (pfad, -1.0, -1)
-        if stand != _stand:
-            logger.error("TRACKER_WURZELN: %s nicht lesbar (%s) — es werden keine Wurzeln verteilt", pfad, e)
-        _stand, _buendel = stand, None
-        return None
-    stand = (pfad, info.st_mtime, info.st_size)
-    if stand == _stand:
-        return _buendel
-    _stand = stand
-    try:
-        _buendel = lesen(Path(pfad).read_text(encoding="utf-8"))
-        logger.info(
-            "TRACKER_WURZELN: %d Wurzel(n), Fingerabdruck %s", len(_buendel.pem), _buendel.sha256[:12]
-        )
-    except (OSError, UnicodeDecodeError, ValueError) as e:
-        logger.error("TRACKER_WURZELN: %s — es werden keine Wurzeln verteilt", e)
-        _buendel = None
-    return _buendel
+    return _datei.lesen(pfad)
