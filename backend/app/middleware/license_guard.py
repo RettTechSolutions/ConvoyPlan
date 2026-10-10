@@ -19,6 +19,7 @@ Exempt paths (always allowed regardless of method):
   - /api/auth/demo-followup/unsubscribe
   - /api/license/*
   - /api/setup/*
+  - /api/geraete/hallo, /api/geraete/positionen, /api/geraete/firmware/ergebnis
   - /docs, /redoc, /openapi.json
 """
 import asyncio
@@ -53,6 +54,17 @@ _EXEMPT_PREFIXES = (
     "/api/license/",
     "/api/setup",
     "/api/track/",
+    # Die Geräte-API des Trackers spricht nur POST. Ein 402 ist für das Gerät
+    # eine unerwartete Antwort, es fragt dann alle 30 s erneut — dauerhaft.
+    # Ohne Lizenz soll es stattdessen `schweigen` hören (wie bei der
+    # Plansperre) und erst nach `nachfrage_s` wiederkommen. Die eigentliche
+    # Sperre greift in `_anweisung` (api/routes/geraete.py): ohne Lizenz
+    # `schweigen`, und `positionen` verwirft dann jeden Fix. Nur diese drei
+    # Pfade, nicht das Präfix: `einloesen` richtet ein neues Gerät ein und
+    # bleibt lizenzpflichtig.
+    "/api/geraete/hallo",
+    "/api/geraete/positionen",
+    "/api/geraete/firmware/ergebnis",
     "/api/ws/track/",
     "/docs",
     "/redoc",

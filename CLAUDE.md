@@ -393,7 +393,12 @@ Org-Admin). Vier Dinge, die man kennen muss:
   Unbekannt, abgelaufen, verbraucht: dieselbe 404. Ein neuer Code macht das
   alte Token sofort ungültig; `aktiv=false` ebenso (401, das Gerät geht in
   *gesperrt*). Die Plansperre der Organisation (`org_plan.ist_gesperrt`) ergibt
-  `schweigen` — der dritte Schreibweg zieht sie mit.
+  `schweigen` — der dritte Schreibweg zieht sie mit. Ebenso eine fehlende
+  **Lizenz**: `hallo`, `positionen` und `firmware/ergebnis` sind deshalb in
+  `license_guard._EXEMPT_PREFIXES` einzeln ausgenommen (ein 402 ließe das Gerät
+  alle 30 s nachfragen), die Sperre greift in `_anweisung`. `einloesen` bleibt
+  lizenzpflichtig; das Gerät meldet dann per USB `keine_lizenz`. Nicht das
+  ganze Präfix `/api/geraete/` ausnehmen.
 - **Die Belegung ist aufgeteilt, nicht erweitert** (E5 im Tracker-Plan,
   `services/positionsquelle.py`). Der Tracker belegt das Fahrzeug *nicht* —
   die Belegung (`belegung.py`) sagt weiter, welches Gerät der Besatzung Status,

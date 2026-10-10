@@ -46,17 +46,20 @@ export type FehlerArt =
 	| 'kein_netz'
 	| 'tls'
 	| 'code_abgelehnt'
+	| 'keine_lizenz'
 	| 'unbekannt'
 	| 'zeitablauf'
 	| 'verbindung'
-	| 'protokoll';
+	| 'protokoll'
+	/** Ein Fehlername, den dieses Frontend nicht kennt (neuere Firmware). Gezeigt wird der Text des Geräts. */
+	| 'geraet';
 
 export class UsbFehler extends Error {
 	constructor(
 		readonly art: FehlerArt,
 		readonly detail = ''
 	) {
-		super(FEHLERTEXT[art] + (detail ? ` (${detail})` : ''));
+		super(art === 'geraet' && detail ? `Das Gerät meldet: ${detail}` : FEHLERTEXT[art] + (detail ? ` (${detail})` : ''));
 	}
 }
 
@@ -66,10 +69,13 @@ export const FEHLERTEXT: Record<FehlerArt, string> = {
 		'Der Tracker erreicht diese Instanz nicht. Hat er Mobilfunkempfang, und ist die Adresse von außen erreichbar?',
 	tls: 'Der Tracker kann das Zertifikat dieser Instanz nicht prüfen. Bei einer eigenen Zertifizierungsstelle deren Wurzelzertifikat unten mitgeben.',
 	code_abgelehnt: 'Der Code wurde abgelehnt — abgelaufen oder schon benutzt. „Neu einrichten" erzeugt einen neuen.',
+	keine_lizenz:
+		'Diese Instanz hat keine gültige Lizenz, deshalb lässt sie keine neuen Tracker zu. Lizenz im Superadmin eintragen, der Code bleibt gültig.',
 	unbekannt: 'Das Gerät kennt diesen Befehl nicht. Ist die Firmware zu alt?',
 	zeitablauf: 'Das Gerät antwortet nicht.',
 	verbindung: 'Die Verbindung zum Gerät ist abgebrochen.',
-	protokoll: 'Das Gerät spricht ein anderes Protokoll. Ist es ein ConvoyPlan-Tracker?'
+	protokoll: 'Das Gerät spricht ein anderes Protokoll. Ist es ein ConvoyPlan-Tracker?',
+	geraet: 'Das Gerät meldet einen Fehler.'
 };
 
 export const SCHRITTTEXT: Record<Schritt, string> = {
@@ -166,8 +172,13 @@ export class TrackerUsb {
 			}
 			if (a.ok === true) return a;
 			if (a.ok === false) {
-				const art = (typeof a.fehler === 'string' && a.fehler in FEHLERTEXT ? a.fehler : 'protokoll') as FehlerArt;
-				throw new UsbFehler(art, typeof a.text === 'string' ? a.text : '');
+				const text = typeof a.text === 'string' ? a.text : '';
+				if (typeof a.fehler !== 'string') throw new UsbFehler('protokoll', text);
+				// Neuere Firmware kann Fehler melden, die dieses Frontend noch nicht kennt
+				// (so kam `keine_lizenz` dazu). Das ist kein Protokollfehler: der Text des
+				// Geräts sagt, was los ist.
+				if (!Object.hasOwn(FEHLERTEXT, a.fehler) || a.fehler === 'geraet') throw new UsbFehler('geraet', text || a.fehler);
+				throw new UsbFehler(a.fehler as FehlerArt, text);
 			}
 		}
 	}
