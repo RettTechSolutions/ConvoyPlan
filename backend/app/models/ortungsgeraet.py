@@ -56,6 +56,9 @@ class Ortungsgeraet(Base):
     # (``ortungsgeraet.akku_seit``). Serverzeit der Meldung, also „seit spätestens".
     akku_seit: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     signal_dbm: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Fingerabdruck der eigenen Wurzeln, wie ihn das Gerät zuletzt in `hallo`
+    # gemeldet hat (``tracker_wurzeln.fingerabdruck``). NULL: nie gemeldet.
+    wurzeln_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     # Ergebnis des letzten Firmware-Updates: bestaetigt | zurueckgerollt | fehler.
     update_version: Mapped[str | None] = mapped_column(String(40), nullable=True)

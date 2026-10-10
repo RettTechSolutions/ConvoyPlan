@@ -94,6 +94,10 @@ class Settings(BaseSettings):
     # Firmware-Ablage für Tracker (services/firmware_angebot.py): ein statisches
     # HTTPS-Verzeichnis je Kanal mit manifest.json. Leer = keine Updates anbieten.
     tracker_firmware_url: str = "https://firmware.convoyplan.de"
+    # Wurzelzertifikate, die die Instanz an ihre Tracker verteilt
+    # (services/tracker_wurzeln.py): Pfad zu einer PEM-Datei mit höchstens drei
+    # CA-Zertifikaten. Leer = die Instanz verwaltet keine Wurzeln.
+    tracker_wurzeln: str = ""
 
     # Deployment environment. In "production" the app refuses to start with an
     # insecure JWT secret (fail-closed). Set APP_ENV=development to relax this

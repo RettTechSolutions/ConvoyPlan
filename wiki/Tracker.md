@@ -131,6 +131,34 @@ Adresse seiner Instanz zu erreichen. Mit `TRACKER_FIRMWARE_URL` zeigt eine
 Instanz auf eine eigene Ablage, leer schaltet Updates ab. Ist die Ablage nicht
 erreichbar, bleibt der letzte Stand gültig.
 
+## Eigene Zertifizierungsstelle wechseln
+
+Ein Tracker prüft das Zertifikat seiner Instanz. Let's Encrypt kennt er von Haus
+aus; eine eigene oder interne Zertifizierungsstelle bekommt er beim Einrichten
+per USB (Feld *Wurzelzertifikate*). Wechselt die Instanz später ihre CA, muss
+dafür nicht jedes Gerät an den Rechner: die Instanz kann die Wurzeln selbst
+verteilen.
+
+Dazu legt der Betreiber eine PEM-Datei mit höchstens drei CA-Zertifikaten ab und
+nennt sie in `TRACKER_WURZELN`, am besten im Volume `/certs`
+(`TRACKER_WURZELN=/certs/tracker-wurzeln.pem`). Beim nächsten Kontakt bekommt jedes
+Gerät das Bündel; **übernommen wird es erst, wenn eine Verbindung damit gelingt**.
+Ein falsches Bündel sperrt also kein Gerät aus, es wird nur nicht übernommen.
+
+Der Wechsel geht in drei Schritten:
+
+1. **Alte und neue CA** in die Datei schreiben. Die Instanz liest sie ohne Neustart.
+2. Warten, bis in der Tracker-Liste bei keinem Gerät mehr *Zertifikate noch nicht
+   übernommen* steht. Ein Gerät meldet sich spätestens nach zwölf Stunden, mit
+   Strom aus dem Fahrzeug sofort.
+3. **Zertifikat der Instanz tauschen**, danach die alte CA aus der Datei nehmen.
+   Bis zum Tausch lehnen die Geräte das gekürzte Bündel ab und behalten beide.
+
+Eine Datei ohne Zertifikat heißt: keine eigenen Wurzeln mehr, etwa nach dem Umzug
+auf Let's Encrypt. Ist die Datei unlesbar oder enthält sie etwas anderes als
+CA-Zertifikate, verteilt die Instanz nichts und schreibt den Grund ins Log.
+Ohne `TRACKER_WURZELN` behält jedes Gerät, was es beim Einrichten bekommen hat.
+
 ## Was man wissen sollte
 
 - **Ein Fahrzeug, ein Tracker.** Ein Fahrzeug, an dem schon ein Tracker hängt,

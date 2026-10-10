@@ -73,4 +73,6 @@ test('ein eingerichteter Tracker zeigt, was das Gerät gemeldet hat', async ({ p
 	// Seit über einem Tag ohne Bordnetz: steht da und ist hervorgehoben.
 	const akku = zeile.getByText('auf Akku seit 3 Tagen');
 	await expect(akku).toHaveClass(/akku-lange/);
+	// Die Instanz verteilt neue Wurzeln, das Gerät hat sie noch nicht.
+	await expect(zeile.getByText('Zertifikate noch nicht übernommen')).toBeVisible();
 });
