@@ -39,6 +39,7 @@ from app.models.ortungsgeraet import Ortungsgeraet
 from app.models.vehicle import Vehicle
 from app.models.vehicle_position import VehiclePosition
 from app.services import alarm_quittung, audit, firmware_angebot, org_plan, positionsquelle, positionsverlauf
+from app.services import tracker_wurzeln as tw
 from app.services import ortungsgeraet as og
 from app.services.rate_limit import rate_limit
 from app.services.tracking import tracking_manager
@@ -168,6 +169,12 @@ async def hallo(
     jetzt = datetime.now(timezone.utc)
     _zustand_merken(geraet, daten, jetzt)
     antwort = await _anweisung(db, geraet, jetzt)
+    # Wurzeln nur hier: das Gerät meldet seinen Fingerabdruck in `hallo`, und ein
+    # Bündel in jeder Antwort auf `positionen` kostete alle 30 s bis zu 12 KB.
+    gemeldet = tw.gemeldet_lesen(daten)
+    if gemeldet is not None:
+        geraet.wurzeln_sha256 = gemeldet
+    antwort["wurzeln"] = tw.angebot(gemeldet, tw.gewuenscht())
     await db.commit()
     return antwort
 
@@ -336,6 +343,9 @@ class GeraetZeile(BaseModel):
     # Version, die die Instanz dem Gerät auf seinem Kanal anbietet — aus dem
     # Zwischenspeicher, die Liste holt nichts nach.
     angebot_version: str | None
+    # Hat das Gerät die Wurzeln übernommen, die die Instanz verteilt?
+    # None: die Instanz verwaltet keine (``TRACKER_WURZELN`` leer).
+    wurzeln_aktuell: bool | None
     created_at: datetime
 
 
@@ -373,6 +383,7 @@ def _zeile(g: Ortungsgeraet, jetzt: datetime) -> dict[str, Any]:
         "update_meldung": g.update_meldung,
         "update_at": g.update_at,
         "angebot_version": firmware_angebot.angebot_bekannt(g.kanal, g.firmware, g.hardware),
+        "wurzeln_aktuell": tw.aktuell(g.wurzeln_sha256, tw.gewuenscht()),
         "created_at": g.created_at,
     }
 

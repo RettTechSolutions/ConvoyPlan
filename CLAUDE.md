@@ -441,6 +441,17 @@ aus `signal_dbm` (RSRP) und dem letzten Kontakt; „auf Akku seit" kommt aus `ak
 (siehe oben). Tests: `tests/test_tracker_geraete.py` (`test_akku_niedrig`,
 `TestZustandInDerKonvoiAnsicht`), `frontend/e2e/tracker-zustand.spec.ts`.
 
+**Wurzelzertifikate** (`services/tracker_wurzeln.py`, E13 im Tracker-Plan): Mit
+`TRACKER_WURZELN` (PEM-Datei) verteilt die Instanz ein Bündel eigener Wurzeln. Das
+Gerät meldet in `hallo` den Fingerabdruck seiner Wurzeln (`wurzeln_sha256`,
+Migration `0064`); weicht er ab, steht das Bündel in der Antwort — **nur** in `hallo`,
+nie in `positionen`, und nie an ein Gerät ohne Fingerabdruck (alte Firmware). Das
+Gerät übernimmt erst nach gelungener Probeverbindung; deshalb muss die Instanz ihr
+eigenes Zertifikat nicht kennen. Eine ungültige Datei verteilt **nichts**, eine leere
+heißt „keine eigenen Wurzeln". Der Fingerabdruck (sortierte SHA-256 der DER-Kodierungen)
+steht genauso im Protokoll und im Simulator; wer ihn ändert, zieht beide. Tests:
+`tests/test_tracker_wurzeln.py`.
+
 **Einrichten per USB** (`frontend/src/lib/tracker/usb.ts`, Knopf in
 `TrackerVerwaltung.svelte`): Web Serial, je Zeile ein JSON-Objekt, Protokoll im
 Tracker-Repo (`docs/PROTOKOLL.md`, „Einrichten per USB"), Geräteseite dort in

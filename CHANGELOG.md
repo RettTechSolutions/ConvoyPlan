@@ -25,9 +25,11 @@ ursprünglichen SemVer-Nummern.
 
 - **Jede Instanz baut ihren Routing-Graphen erneut neu** — `max_weight`, `max_weight_except` und `max_axle_load` stehen jetzt im Graphen, und die Encoded Values stehen im Fingerprint. Wie unter 2026.8.0: je nach Region 45–75 Minuten ohne Routenplanung, Update außerhalb einer Lage legen. Bis der neue Graph steht, routet das Backend ohne Gewichtsgrenzen statt gar nicht.
 - **Routen können sich ändern.** Die Höhe wird jetzt mit dem *höchsten* Fahrzeug gesperrt (siehe *Fixed*), und jedes Fahrzeug mit Gewicht oder Achslast sperrt Grenzen darunter. Bestehende Routen bleiben, bis sie neu berechnet werden.
-- Datenbank-Migrationen `0059` bis `0063` laufen beim Start des Backends.
+- Datenbank-Migrationen `0059` bis `0064` laufen beim Start des Backends.
 
 ### Added
+
+- **Tracker übernehmen neue Wurzelzertifikate von ihrer Instanz.** Wer eine eigene Zertifizierungsstelle betreibt und sie wechselt, muss nicht mehr jedes Gerät per USB neu einrichten: Mit `TRACKER_WURZELN` (PEM-Datei, höchstens drei CA-Zertifikate) verteilt die Instanz das Bündel beim nächsten `hallo`, und das Gerät übernimmt es erst, wenn eine Verbindung damit gelingt. Die Tracker-Liste zeigt, welches Gerät es noch nicht übernommen hat. Ablauf im Wiki unter „Eigene Zertifizierungsstelle wechseln". Ohne Einstellung ändert sich nichts.
 
 - **„Auf Akku seit …" bei Trackern.** Die Instanz merkt sich, seit wann ein Tracker ohne Bordnetz läuft (gesetzt bei der ersten Meldung `extern=false`, gelöscht mit Strom), und die Tracker-Liste im Org-Admin zeigt es an, ab einem Tag hervorgehoben. So fällt ein gezogener Stecker auf, bevor der Akku leer ist und der Tracker als *nicht erreichbar* erscheint. Migration `0063`.
 - **Akku und Empfang der Tracker als Symbole — auch am Fahrzeug im Konvoi.** Batterie mit Füllstand (gelber Blitz am Bordnetz, rot mit Zahl unter 20 % ohne Bordnetz) und vier Empfangsbalken nach der gemeldeten Signalstärke, grau, wenn die letzte Meldung älter als zehn Minuten ist. In der Tracker-Liste des Org-Admins (dort zusätzlich *Akku schwach*) und neu in der Konvoi-Ansicht direkt am Fahrzeug, damit die Führung einen schwachen Akku sieht, bevor die Position ausbleibt (`GET /api/convoys/{id}/tracker`, jedes Mitglied, ohne Gerätekennung, samt `akku_seit`). Anwenderdoku: `wiki/Tracker.md`, „Akku und Empfang".

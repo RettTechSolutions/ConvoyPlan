@@ -397,6 +397,9 @@
 						· <span class={akkuLange(g.akku_seit) ? 'akku-lange' : ''} title="Seit der ersten Meldung ohne Bordnetz, frühestens {uhrzeit(g.akku_seit)}">auf Akku {seit(g.akku_seit)}</span>
 					{/if}
 					{#if g.hardware_id}· Gerät {g.hardware_id}{/if}
+					{#if g.wurzeln_aktuell === false}
+						· <span class="wurzeln-alt" title="Die Instanz verteilt neue Wurzelzertifikate. Das Gerät übernimmt sie beim nächsten Kontakt, sobald eine Verbindung damit gelingt.">Zertifikate noch nicht übernommen</span>
+					{/if}
 				</p>
 				{#if g.update_version}
 					<p class="hint">
@@ -449,4 +452,5 @@
 	.marke.warn { background: #d4a017; color: #1a1a1a; }
 	.angebot { color: #1f6f8b; font-weight: 600; }
 	.akku-lange { color: #b26a00; font-weight: 600; }
+	.wurzeln-alt { color: #b26a00; }
 </style>

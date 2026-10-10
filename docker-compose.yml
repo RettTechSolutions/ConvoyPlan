@@ -93,6 +93,9 @@ services:
       OVERPASS_URLS: ${OVERPASS_URLS:-https://overpass-api.de/api/interpreter}
       # Firmware-Ablage für Tracker (leer = keine Updates anbieten).
       TRACKER_FIRMWARE_URL: ${TRACKER_FIRMWARE_URL-https://firmware.convoyplan.de}
+      # Wurzelzertifikate, die die Instanz an ihre Tracker verteilt (PEM-Datei,
+      # z. B. /certs/tracker-wurzeln.pem). Leer = keine verwalten.
+      TRACKER_WURZELN: ${TRACKER_WURZELN:-}
       # Offene Baustellenfeeds (Open Data + mobilithek/DATEX II). Standard =
       # BW + Berlin; per OPENDATA_TRAFFIC_FEEDS überschreiben, um z. B.
       # datex2|<broker-url> für weitere Bundesländer oder für Österreich

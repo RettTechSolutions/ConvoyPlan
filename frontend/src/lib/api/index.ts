@@ -1712,6 +1712,8 @@ export interface Tracker {
     update_at: string | null;
     // Version, die die Instanz dem Gerät auf seinem Kanal anbietet; null = keine.
     angebot_version: string | null;
+    /** Hat das Gerät die Wurzeln übernommen, die die Instanz verteilt? null = sie verteilt keine. */
+    wurzeln_aktuell: boolean | null;
     created_at: string;
 }
 
