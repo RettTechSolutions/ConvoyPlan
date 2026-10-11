@@ -65,7 +65,21 @@ TIMEOUT = httpx.Timeout(connect=5.0, read=30.0, write=5.0, pool=5.0)
 FIRMWARE_DIR = Path("/uploads/firmware")
 
 VERSION_MAX = 40
-_VERSION = re.compile(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?")
+_ZUSATZ_ZEICHEN = frozenset("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.")
+
+
+def ist_version(version: str) -> bool:
+    """``1.2.3`` oder ``1.2.3-rc.1`` — ohne Regex, damit die Prüfung nicht von
+    der Länge der Eingabe abhängt (und die Obergrenze gilt vor jeder Zerlegung)."""
+    if not isinstance(version, str) or not 0 < len(version) <= VERSION_MAX:
+        return False
+    kern, trenner, zusatz = version.partition("-")
+    teile = kern.split(".")
+    if len(teile) != 3 or not all(t.isascii() and t.isdigit() for t in teile):
+        return False
+    return not trenner or (bool(zusatz) and all(c in _ZUSATZ_ZEICHEN for c in zusatz))
+
+
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _HARDWARE = re.compile(r"^[A-Za-z0-9._-]{1,40}$")
 
@@ -111,7 +125,7 @@ def manifest_lesen(roh: Any, basis: str) -> Manifest | None:
     sha = roh.get("sha256")
     groesse = roh.get("groesse")
     image = roh.get("image") or roh.get("url")
-    if not isinstance(version, str) or not _VERSION.fullmatch(version.strip()):
+    if not isinstance(version, str) or not ist_version(version.strip()):
         return None
     if not isinstance(sha, str) or not _SHA256.match(sha.strip().lower()):
         return None
@@ -224,7 +238,7 @@ class Ablage:
     def pfad(self, kanal: str, version: str) -> Path:
         # Kanal und Version kommen aus dem Aufruf. Die Aufrufer prüfen sie,
         # hier wird es für den Dateizugriff selbst noch einmal erzwungen.
-        if kanal not in KANAELE or len(version) > VERSION_MAX or not _VERSION.fullmatch(version):
+        if kanal not in KANAELE or not ist_version(version):
             raise ValueError("Ungültiger Kanal oder ungültige Version")
         basis = os.path.realpath(self.verzeichnis)
         ziel = os.path.realpath(os.path.join(basis, kanal, f"{version}.bin"))

@@ -18,7 +18,6 @@ die drei anderen ``positionsverlauf.aufzeichnen`` auf, achtet auf
 Tracker) und hebt ein geplantes Fahrzeug beim ersten Fix auf ``en_route``.
 """
 import logging
-import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -266,9 +265,6 @@ async def _eintragen(
     return ereignisse
 
 
-_VERSION_IM_PFAD = re.compile(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?")
-
-
 @geraet_router.get("/firmware/{kanal}/{version}.bin")
 async def firmware_laden(
     kanal: str,
@@ -281,11 +277,7 @@ async def firmware_laden(
     ``FileResponse`` beantwortet ``Range``, damit ein abgebrochener Download im
     Funkloch fortgesetzt werden kann.
     """
-    if (
-        kanal not in og.KANAELE
-        or len(version) > firmware_angebot.VERSION_MAX
-        or not _VERSION_IM_PFAD.fullmatch(version)
-    ):
+    if kanal not in og.KANAELE or not firmware_angebot.ist_version(version):
         raise HTTPException(status_code=404, detail=_NICHT_GEFUNDEN)
     pfad = await firmware_angebot.ablage.datei(kanal, version)
     if pfad is None:
