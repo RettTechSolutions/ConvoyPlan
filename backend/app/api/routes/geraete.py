@@ -281,7 +281,11 @@ async def firmware_laden(
     ``FileResponse`` beantwortet ``Range``, damit ein abgebrochener Download im
     Funkloch fortgesetzt werden kann.
     """
-    if kanal not in og.KANAELE or not _VERSION_IM_PFAD.fullmatch(version):
+    if (
+        kanal not in og.KANAELE
+        or len(version) > firmware_angebot.VERSION_MAX
+        or not _VERSION_IM_PFAD.fullmatch(version)
+    ):
         raise HTTPException(status_code=404, detail=_NICHT_GEFUNDEN)
     pfad = await firmware_angebot.ablage.datei(kanal, version)
     if pfad is None:

@@ -38,6 +38,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import os
 import re
 import time
 from collections.abc import Callable
@@ -63,6 +64,7 @@ MANIFEST_MAX_BYTES = 64 * 1024
 TIMEOUT = httpx.Timeout(connect=5.0, read=30.0, write=5.0, pool=5.0)
 FIRMWARE_DIR = Path("/uploads/firmware")
 
+VERSION_MAX = 40
 _VERSION = re.compile(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _HARDWARE = re.compile(r"^[A-Za-z0-9._-]{1,40}$")
@@ -222,13 +224,13 @@ class Ablage:
     def pfad(self, kanal: str, version: str) -> Path:
         # Kanal und Version kommen aus dem Aufruf. Die Aufrufer prüfen sie,
         # hier wird es für den Dateizugriff selbst noch einmal erzwungen.
-        if kanal not in KANAELE or not _VERSION.fullmatch(version):
+        if kanal not in KANAELE or len(version) > VERSION_MAX or not _VERSION.fullmatch(version):
             raise ValueError("Ungültiger Kanal oder ungültige Version")
-        basis = self.verzeichnis.resolve()
-        ziel = (basis / kanal / f"{version}.bin").resolve()
-        if not ziel.is_relative_to(basis):
+        basis = os.path.realpath(self.verzeichnis)
+        ziel = os.path.realpath(os.path.join(basis, kanal, f"{version}.bin"))
+        if not ziel.startswith(basis + os.sep):
             raise ValueError("Pfad verlässt das Firmware-Verzeichnis")
-        return ziel
+        return Path(ziel)
 
     async def datei(self, kanal: str, version: str) -> Path | None:
         """Das geprüfte Image zu Kanal und Version — holt es beim ersten Mal.
