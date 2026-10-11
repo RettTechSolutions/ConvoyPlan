@@ -63,7 +63,7 @@ MANIFEST_MAX_BYTES = 64 * 1024
 TIMEOUT = httpx.Timeout(connect=5.0, read=30.0, write=5.0, pool=5.0)
 FIRMWARE_DIR = Path("/uploads/firmware")
 
-_VERSION = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$")
+_VERSION = re.compile(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _HARDWARE = re.compile(r"^[A-Za-z0-9._-]{1,40}$")
 
@@ -109,7 +109,7 @@ def manifest_lesen(roh: Any, basis: str) -> Manifest | None:
     sha = roh.get("sha256")
     groesse = roh.get("groesse")
     image = roh.get("image") or roh.get("url")
-    if not isinstance(version, str) or not _VERSION.match(version.strip()):
+    if not isinstance(version, str) or not _VERSION.fullmatch(version.strip()):
         return None
     if not isinstance(sha, str) or not _SHA256.match(sha.strip().lower()):
         return None
@@ -220,7 +220,15 @@ class Ablage:
         return neu
 
     def pfad(self, kanal: str, version: str) -> Path:
-        return self.verzeichnis / kanal / f"{version}.bin"
+        # Kanal und Version kommen aus dem Aufruf. Die Aufrufer prüfen sie,
+        # hier wird es für den Dateizugriff selbst noch einmal erzwungen.
+        if kanal not in KANAELE or not _VERSION.fullmatch(version):
+            raise ValueError("Ungültiger Kanal oder ungültige Version")
+        basis = self.verzeichnis.resolve()
+        ziel = (basis / kanal / f"{version}.bin").resolve()
+        if not ziel.is_relative_to(basis):
+            raise ValueError("Pfad verlässt das Firmware-Verzeichnis")
+        return ziel
 
     async def datei(self, kanal: str, version: str) -> Path | None:
         """Das geprüfte Image zu Kanal und Version — holt es beim ersten Mal.

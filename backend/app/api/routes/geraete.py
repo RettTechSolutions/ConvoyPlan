@@ -266,7 +266,7 @@ async def _eintragen(
     return ereignisse
 
 
-_VERSION_IM_PFAD = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$")
+_VERSION_IM_PFAD = re.compile(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?")
 
 
 @geraet_router.get("/firmware/{kanal}/{version}.bin")
@@ -281,7 +281,7 @@ async def firmware_laden(
     ``FileResponse`` beantwortet ``Range``, damit ein abgebrochener Download im
     Funkloch fortgesetzt werden kann.
     """
-    if kanal not in og.KANAELE or not _VERSION_IM_PFAD.match(version):
+    if kanal not in og.KANAELE or not _VERSION_IM_PFAD.fullmatch(version):
         raise HTTPException(status_code=404, detail=_NICHT_GEFUNDEN)
     pfad = await firmware_angebot.ablage.datei(kanal, version)
     if pfad is None:
