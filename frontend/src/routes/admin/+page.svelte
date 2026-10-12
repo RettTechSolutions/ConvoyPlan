@@ -15,6 +15,7 @@
     import SystemOverview from '$lib/components/SystemOverview.svelte';
     import RegionCard from '$lib/components/RegionCard.svelte';
     import QRCode from 'qrcode';
+    import { benutzerListe, orgsSortiert, umschalten, STANDARD_SORTIERUNG, type BenutzerSortierung, type BenutzerSpalte } from '$lib/admin/benutzerliste';
 
     // ── Auth gate ──────────────────────────────────────────────────────────────
     // /admin is self-gated: when not logged in as a superadmin we render the
@@ -145,9 +146,27 @@
 
     // ── Users ────────────────────────────────────────────────────────────────
     let users = $state<AdminUser[]>([]);
-    // Reguläre Benutzer zuerst, Demo-Sitzungen als abgesetzte Gruppe darunter
-    const sortedUsers = $derived([...users.filter(u => !u.is_demo), ...users.filter(u => u.is_demo)]);
+    // Sortierung, Suche und Org-Filter in $lib/admin/benutzerliste.ts;
+    // Demo-Sitzungen bleiben dort als abgesetzte Gruppe am Ende.
+    let userSort = $state<BenutzerSortierung>(STANDARD_SORTIERUNG);
+    let userSuche = $state('');
+    let userOrgFilter = $state('');
+    const sortedUsers = $derived(benutzerListe(users, userSort, userSuche, userOrgFilter));
     const demoUserCount = $derived(users.filter(u => u.is_demo).length);
+    const shownDemoCount = $derived(sortedUsers.filter(u => u.is_demo).length);
+    const userFilterAktiv = $derived(!!userSuche.trim() || !!userOrgFilter);
+    /** Organisationen, in denen reguläre Benutzer Mitglied sind — für den Filter. */
+    const userFilterOrgs = $derived(orgsSortiert(
+        [...new Map(users.filter(u => !u.is_demo).flatMap(u => u.orgs).map(o => [o.id, o])).values()],
+    ));
+    const USER_SPALTEN: { key: BenutzerSpalte; label: string }[] = [
+        { key: 'name', label: 'Name' },
+        { key: 'email', label: 'E-Mail' },
+        { key: 'orgs', label: 'Organisationen' },
+        { key: 'aktiv', label: 'Aktiv' },
+        { key: 'superadmin', label: 'Superadmin' },
+        { key: 'mfa', label: 'MFA' },
+    ];
     let loading = $state(true);
     let error = $state('');
     let showCreateForm = $state(false);
@@ -2021,23 +2040,46 @@
             {#if loading}
                 <p class="hint">Lade…</p>
             {:else}
+                <div class="user-filter">
+                    <input
+                        type="search"
+                        placeholder="Suchen: Name, E-Mail, Organisation…"
+                        aria-label="Benutzer suchen"
+                        bind:value={userSuche}
+                    />
+                    <select bind:value={userOrgFilter} aria-label="Nach Organisation filtern">
+                        <option value="">Alle Organisationen</option>
+                        {#each userFilterOrgs as o}
+                            <option value={o.id}>{o.name}</option>
+                        {/each}
+                    </select>
+                    {#if userFilterAktiv}
+                        <span class="hint">{sortedUsers.length} von {users.length}</span>
+                        <button class="btn-small" onclick={() => { userSuche = ''; userOrgFilter = ''; }}>Zurücksetzen</button>
+                    {/if}
+                </div>
                 <table class="user-table">
                     <thead>
                         <tr>
-                            <th>Name</th>
-                            <th>E-Mail</th>
-                            <th>Organisationen</th>
-                            <th>Aktiv</th>
-                            <th>Superadmin</th>
-                            <th>MFA</th>
+                            {#each USER_SPALTEN as sp}
+                                <th aria-sort={userSort.spalte === sp.key ? (userSort.absteigend ? 'descending' : 'ascending') : 'none'}>
+                                    <button class="sort-th" class:active={userSort.spalte === sp.key} onclick={() => (userSort = umschalten(userSort, sp.key))}>
+                                        {sp.label}
+                                        <span class="sort-arrow" aria-hidden="true">{userSort.spalte === sp.key ? (userSort.absteigend ? '▼' : '▲') : '↕'}</span>
+                                    </button>
+                                </th>
+                            {/each}
                             <th></th>
                         </tr>
                     </thead>
                     <tbody>
+                        {#if sortedUsers.length === 0}
+                            <tr><td colspan="7" class="hint">Kein Benutzer passt zum Filter.</td></tr>
+                        {/if}
                         {#each sortedUsers as user, i}
                             {#if user.is_demo && (i === 0 || !sortedUsers[i - 1].is_demo)}
                                 <tr class="group-divider-row">
-                                    <td colspan="7">▶ Demo-Sitzungen ({demoUserCount}) — temporär, werden automatisch gelöscht</td>
+                                    <td colspan="7">▶ Demo-Sitzungen ({shownDemoCount}) — temporär, werden automatisch gelöscht</td>
                                 </tr>
                             {/if}
                             <tr class:inactive={!user.is_active} class:demo-row={user.is_demo}>
@@ -2051,7 +2093,7 @@
                                 <td class="email-cell">{user.email}</td>
                                 <td>
                                     <div class="orgs-cell">
-                                        {#each user.orgs as org}
+                                        {#each orgsSortiert(user.orgs) as org}
                                             <span class="tag">{org.name} ({org.role})</span>
                                         {/each}
                                         {#if user.orgs.length === 0}
@@ -4680,6 +4722,15 @@
     /* Lange E-Mails (z. B. Demo-Adressen) dürfen umbrechen, damit die
        Tabelle nicht breiter als die Karte wird. */
     .user-table td.email-cell { overflow-wrap: anywhere; }
+    .user-filter { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: .75rem; }
+    .user-filter input, .user-filter select { padding: .4rem .6rem; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-1); color: var(--text-1); font-size: var(--text-sm); }
+    .user-filter input { flex: 1 1 16rem; min-width: 0; }
+    .user-filter input:focus, .user-filter select:focus { outline: none; border-color: var(--color-primary); }
+    .sort-th { all: unset; cursor: pointer; display: inline-flex; gap: .3rem; align-items: center; color: inherit; font: inherit; text-transform: inherit; letter-spacing: inherit; }
+    .sort-th:hover, .sort-th.active { color: var(--text-1); }
+    .sort-th:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; border-radius: 3px; }
+    .sort-arrow { opacity: .5; font-size: .85em; }
+    .sort-th.active .sort-arrow { opacity: 1; }
     .user-table tr.inactive td { opacity: .45; }
     .user-table tr.group-divider-row td {
         padding: .6rem .5rem .35rem;
