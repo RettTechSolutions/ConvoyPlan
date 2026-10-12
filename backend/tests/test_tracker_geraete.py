@@ -12,6 +12,9 @@ Was hier zugesagt wird:
 - „GPS-Freigabe zurücksetzen" gilt auch für einen Tracker.
 - Ohne Lizenz hört das Gerät ``schweigen`` statt 402 (sonst fragt es alle 30 s
   nach), geschrieben wird nichts; Einrichten bleibt lizenzpflichtig.
+- Während der Fahrt erwartet die Instanz Bündel; bleiben zwei aus, ist die
+  Verbindung unterbrochen. Ein Gerät, das sich in Ruhe abmeldet, ist es nicht.
+  Kommen Bündel, aber keine plausiblen Fixes, ist das GPS gestört.
 """
 import time
 import uuid
@@ -70,8 +73,8 @@ class TestFixe:
         assert og.fix_lesen(roh, JETZT) is None
 
     def test_grenzen_der_toleranz(self):
-        assert og.fix_lesen({"t": _iso(JETZT + timedelta(seconds=120)), "lat": 0, "lon": 0}, JETZT) is not None
-        assert og.fix_lesen({"t": _iso(JETZT - timedelta(hours=24)), "lat": 0, "lon": 0}, JETZT) is not None
+        assert og.fix_lesen({"t": _iso(JETZT + timedelta(seconds=120)), "lat": 1, "lon": 1}, JETZT) is not None
+        assert og.fix_lesen({"t": _iso(JETZT - timedelta(hours=24)), "lat": 1, "lon": 1}, JETZT) is not None
 
     def test_unsinnige_nebenwerte_fallen_einzeln_weg(self):
         f = og.fix_lesen({"t": _iso(JETZT), "lat": 1, "lon": 2, "speed_kmh": -3, "heading": 360, "accuracy_m": True}, JETZT)
@@ -143,6 +146,24 @@ class TestAnweisung:
         assert a["firmware"] is None
         assert {"intervall_s", "buendel_s", "nachfrage_s", "lebenszeichen_s"} <= set(a)
 
+    def test_buendeltakt_der_organisation(self):
+        assert og.anweisung("senden", JETZT, buendel=60)["buendel_s"] == 60
+        # Ohne Wahl oder mit einer, die es nicht (mehr) gibt: der Standard
+        assert og.anweisung("senden", JETZT)["buendel_s"] == og.TAKT["buendel_s"]
+        assert og.anweisung("senden", JETZT, buendel=7)["buendel_s"] == og.TAKT["buendel_s"]
+
+    def test_wahl_bleibt_zwischen_fixtakt_und_vorrang(self):
+        assert og.TAKT["buendel_s"] in og.BUENDEL_WAHL
+        assert min(og.BUENDEL_WAHL) >= og.TAKT["intervall_s"]
+        assert max(og.BUENDEL_WAHL) < 300  # positionsquelle.VORRANG_S
+
+    def test_volumen_sinkt_mit_dem_takt_und_der_handschlag_kostet_am_meisten(self):
+        werte = [og.volumen_kb_pro_stunde(b) for b in og.BUENDEL_WAHL]
+        assert werte == sorted(werte, reverse=True)
+        # 15 s: 240 Versände mit je 1,5 Fixes
+        assert og.volumen_kb_pro_stunde(15) == round(240 * (1400 + 1.5 * 115) / 1000)
+        assert og.volumen_kb_pro_stunde(15, offen=False) > 4 * og.volumen_kb_pro_stunde(15)
+
     def test_zustand_wird_bereinigt(self):
         z = og.zustand_lesen({"firmware": " 0.1.0 ", "akku_prozent": 87.4, "extern": False, "signal_dbm": -95})
         assert z == {"firmware": "0.1.0", "akku_prozent": 87, "extern": False, "signal_dbm": -95}
@@ -183,6 +204,55 @@ class TestAkkuSeit:
     )
     def test_regel(self, alt_extern, alt_seit, neu_extern, erwartet):
         assert og.akku_seit(alt_extern, alt_seit, neu_extern, JETZT) == erwartet
+
+
+class TestPlausibel:
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            {"lat": 0, "lon": 0},  # Null Island
+            {"accuracy_m": 150},
+            {"speed_kmh": 400},
+        ],
+    )
+    def test_unplausible_fixes(self, extra):
+        assert og.fix_lesen({"t": _iso(JETZT), "lat": 47.8, "lon": 11.0, **extra}, JETZT) is None
+
+    def test_sprung_faellt_weg_der_naechste_bleibt(self):
+        def roh(s: int, lon: float) -> dict:
+            return {"t": _iso(JETZT - timedelta(seconds=60 - s)), "lat": 47.8, "lon": lon}
+
+        # 10 s, 140 m: 50 km/h. Dann 10 s, 75 km weit: Ausreißer. Dann wieder auf der Spur.
+        fixes, verworfen = og.fixes_lesen([roh(0, 11.0), roh(10, 11.00187), roh(20, 12.0), roh(30, 11.00374)], JETZT)
+        assert [f.lon for f in fixes] == [11.0, 11.00187, 11.00374] and verworfen == 1
+
+
+class TestVerbindungUnterbrochen:
+    @pytest.mark.parametrize(("buendel", "sekunden"), [(15, 45), (30, 75), (120, 255)])
+    def test_zwei_ausgebliebene_buendel_im_takt_der_organisation(self, buendel, sekunden):
+        assert og.unterbrochen_ab("senden", None, JETZT, buendel) == JETZT + timedelta(seconds=sekunden)
+        assert og.unterbrochen_ab("senden", False, JETZT, buendel) == JETZT + timedelta(seconds=sekunden)
+
+    @pytest.mark.parametrize(("modus", "ruhe"), [("senden", True), ("schweigen", None), ("schweigen", True)])
+    def test_nichts_erwartet(self, modus, ruhe):
+        assert og.unterbrochen_ab(modus, ruhe, JETZT, 15) is None
+
+    def test_nur_echtes_true_ist_ruhe(self):
+        assert og.unterbrochen_ab("senden", "true", JETZT, 15) is not None
+
+    def test_gps_frist(self):
+        erwartet = JETZT + timedelta(seconds=45)
+        # Halt-Takt 60 s + ein Bündel (15 s) + 15 s Spielraum.
+        frist = JETZT + timedelta(seconds=90)
+        assert og.gps_gestoert_ab(None, erwartet, 1, JETZT, 15) == frist
+        assert og.gps_gestoert_ab(None, erwartet, 1, JETZT, 120) == JETZT + timedelta(seconds=195)
+        # Leeres Bündel: die laufende Frist bleibt, sonst hielte es das GPS für gesund.
+        alt = JETZT - timedelta(minutes=5)
+        assert og.gps_gestoert_ab(alt, erwartet, 0, JETZT, 15) == alt
+        # Erstes Bündel der Fahrt ohne Fix: die Frist beginnt.
+        assert og.gps_gestoert_ab(None, erwartet, 0, JETZT, 15) == frist
+        # Nichts erwartet (Ruhe, schweigen): auch kein GPS.
+        assert og.gps_gestoert_ab(JETZT, None, 3, JETZT, 15) is None
 
 
 # ── Durch die App ──────────────────────────────────────────────────────────
@@ -418,7 +488,7 @@ class TestSenden:
         try:
             r = await client.post(
                 "/api/geraete/positionen",
-                json={"akku_prozent": 80, "fixes": [_fix(30, 11.00), _fix(20, 11.01), _fix(10, 11.02)]},
+                json={"akku_prozent": 80, "fixes": [_fix(30, 11.000), _fix(20, 11.001), _fix(10, 11.002)]},
                 headers=kopf,
             )
         finally:
@@ -426,14 +496,14 @@ class TestSenden:
         assert r.status_code == 200, r.text
         assert (r.json()["angenommen"], r.json()["verworfen"], r.json()["modus"]) == (3, 0, "senden")
         pos = await _position(org.konvoi, org.hlf)
-        assert pos.lon == 11.02
+        assert pos.lon == 11.002
         assert abs((datetime.now(timezone.utc) - pos.recorded_at).total_seconds() - 10) < 3
         async with AsyncSessionLocal() as db:
             cv = await db.get(ConvoyVehicle, (org.konvoi, org.hlf))
             assert cv.vehicle_status == "en_route" and cv.status_changed_at is not None
         typen = [d["type"] for cid, d in empfangen if cid == str(org.konvoi)]
         assert typen == ["position", "status_update"]
-        assert next(d for _, d in empfangen if d["type"] == "position")["lon"] == 11.02
+        assert next(d for _, d in empfangen if d["type"] == "position")["lon"] == 11.002
 
     async def test_nachgereichtes_buendel_setzt_nicht_zurueck(self, client, org):
         _, kopf = await _eingerichtet(client, org)
@@ -517,6 +587,31 @@ def ohne_lizenz():
     _lgm._license_checked_at = time.monotonic()
 
 
+class TestSendetakt:
+    async def test_admin_waehlt_und_das_geraet_hoert_es(self, client, org):
+        _, kopf = await _eingerichtet(client, org)
+        takt = (await client.get("/api/org/geraete/takt", headers=h(org.admin))).json()
+        assert takt["buendel_s"] == takt["standard_s"] == og.TAKT["buendel_s"]
+        assert [w["buendel_s"] for w in takt["wahl"]] == list(og.BUENDEL_WAHL)
+        r = await client.put("/api/org/geraete/takt", json={"buendel_s": 60}, headers=h(org.admin))
+        assert r.status_code == 200, r.text
+        assert r.json()["buendel_s"] == 60
+        antwort = (await client.post("/api/geraete/hallo", json={}, headers=kopf)).json()
+        assert antwort["buendel_s"] == 60
+        async with AsyncSessionLocal() as db:
+            eintrag = (
+                await db.execute(select(AuditLog).where(AuditLog.action == "org.geraet.takt_updated", AuditLog.org_id == org.org_id))
+            ).scalar_one()
+            assert eintrag.detail == {"vorher": og.TAKT["buendel_s"], "nachher": 60}
+
+    async def test_nur_aus_der_wahl_und_nur_fuer_admins(self, client, org):
+        r = await client.put("/api/org/geraete/takt", json={"buendel_s": 7}, headers=h(org.admin))
+        assert r.status_code == 422
+        r = await client.put("/api/org/geraete/takt", json={"buendel_s": 60}, headers=h(org.fahrer))
+        assert r.status_code == 403
+        assert (await client.get("/api/org/geraete/takt", headers=h(org.fahrer))).status_code == 403
+
+
 class TestOhneLizenz:
     """Protokoll im Tracker-Repo (docs/PROTOKOLL.md, „Anweisung"): ohne Lizenz
     schickt die Instanz `schweigen`, kein 402. Ein 402 ist für das Gerät eine
@@ -596,6 +691,80 @@ class TestAkkuSeitDurchDieApp:
 
         await client.post("/api/geraete/hallo", json={"grund": "strom", "extern": True}, headers=kopf)
         assert (await zeile())["akku_seit"] is None
+
+
+class TestVerbindungDurchDieApp:
+    async def _ab(self, client, org) -> datetime | None:
+        (eintrag,) = (await client.get(f"/api/convoys/{org.konvoi}/tracker", headers=h(org.fahrer))).json()
+        roh = eintrag["unterbrochen_ab"]
+        return datetime.fromisoformat(roh) if roh else None
+
+    async def test_fahrt_erwartet_das_naechste_buendel(self, client, org):
+        _, kopf = await _eingerichtet(client, org)
+        vorher = datetime.now(timezone.utc)
+        await client.post("/api/geraete/positionen", json={"fixes": [_fix(5)]}, headers=kopf)
+        ab = await self._ab(client, org)
+        assert ab is not None
+        # Standardtakt 15 s: zwei ausgeblieben plus 15 s Spielraum.
+        assert vorher + timedelta(seconds=45) <= ab <= datetime.now(timezone.utc) + timedelta(seconds=45)
+        zeile = (await client.get("/api/org/geraete", headers=h(org.admin))).json()[0]
+        assert datetime.fromisoformat(zeile["unterbrochen_ab"]) == ab
+
+    async def test_frist_folgt_dem_sendetakt_der_organisation(self, client, org):
+        _, kopf = await _eingerichtet(client, org)
+        r = await client.put("/api/org/geraete/takt", json={"buendel_s": 60}, headers=h(org.admin))
+        assert r.status_code == 200, r.text
+        vorher = datetime.now(timezone.utc)
+        r = await client.post("/api/geraete/positionen", json={"fixes": [_fix(5)]}, headers=kopf)
+        assert r.json()["buendel_s"] == 60
+        ab = await self._ab(client, org)
+        assert vorher + timedelta(seconds=135) <= ab <= datetime.now(timezone.utc) + timedelta(seconds=135)
+
+    async def test_leeres_buendel_haelt_die_verbindung(self, client, org):
+        """Kein GNSS ist kein Funkloch: das leere Bündel schiebt die Frist weiter."""
+        _, kopf = await _eingerichtet(client, org)
+        r = await client.post("/api/geraete/positionen", json={"fixes": []}, headers=kopf)
+        assert r.status_code == 200 and r.json()["angenommen"] == 0
+        assert await self._ab(client, org) is not None
+        assert await _position(org.konvoi, org.hlf) is None
+
+    async def test_buendel_ohne_plausiblen_fix_halten_die_gps_frist_nicht_auf(self, client, org):
+        geraet, kopf = await _eingerichtet(client, org)
+
+        async def gps_ab() -> datetime | None:
+            (eintrag,) = (await client.get(f"/api/convoys/{org.konvoi}/tracker", headers=h(org.fahrer))).json()
+            return datetime.fromisoformat(eintrag["gps_gestoert_ab"]) if eintrag["gps_gestoert_ab"] else None
+
+        await client.post("/api/geraete/positionen", json={"fixes": [_fix(5)]}, headers=kopf)
+        gesund = await gps_ab()
+        assert gesund is not None and gesund > datetime.now(timezone.utc) + timedelta(seconds=85)
+        # Netz da, GNSS liefert Unsinn oder nichts: Die Frist läuft weiter ab.
+        r = await client.post("/api/geraete/positionen", json={"fixes": [_fix(2, lon=0, lat=0)]}, headers=kopf)
+        assert r.json()["verworfen"] == 1
+        await client.post("/api/geraete/positionen", json={"fixes": []}, headers=kopf)
+        assert await gps_ab() == gesund
+        zeile = (await client.get("/api/org/geraete", headers=h(org.admin))).json()[0]
+        assert datetime.fromisoformat(zeile["gps_gestoert_ab"]) == gesund
+        # Null Island landet nicht auf der Karte.
+        assert (await _position(org.konvoi, org.hlf)).lon == 11.0
+        await client.post("/api/geraete/positionen", json={"ruhe": True, "fixes": []}, headers=kopf)
+        assert await gps_ab() is None
+
+    async def test_ruhe_hallo_und_schweigen_beenden_die_erwartung(self, client, org):
+        _, kopf = await _eingerichtet(client, org)
+        await client.post("/api/geraete/positionen", json={"fixes": [_fix(5)]}, headers=kopf)
+        await client.post("/api/geraete/positionen", json={"ruhe": True, "fixes": [_fix(1)]}, headers=kopf)
+        assert await self._ab(client, org) is None
+
+        await client.post("/api/geraete/positionen", json={"fixes": []}, headers=kopf)
+        await client.post("/api/geraete/hallo", json={"grund": "start"}, headers=kopf)
+        assert await self._ab(client, org) is None
+
+        await client.post("/api/geraete/positionen", json={"fixes": []}, headers=kopf)
+        await _konvoi_status(org.konvoi, "completed")
+        r = await client.post("/api/geraete/positionen", json={"fixes": [_fix(1)]}, headers=kopf)
+        assert r.json()["modus"] == "schweigen"
+        assert await self._ab(client, org) is None
 
 
 class TestFirmware:

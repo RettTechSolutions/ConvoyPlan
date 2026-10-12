@@ -2,7 +2,7 @@ import re
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -38,6 +38,10 @@ class Organization(Base):
     # JSON dict of branding overrides (app_name, colors, logo filenames).
     # NULL = no override, the org inherits the platform branding.
     branding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Wie oft die Tracker dieser Organisation in Fahrt senden (``buendel_s``).
+    # NULL = Standard aus ``services/ortungsgeraet.TAKT``; erlaubt ist nur
+    # ``BUENDEL_WAHL``.
+    tracker_buendel_s: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     owner: Mapped["User"] = relationship(foreign_keys=[owner_id])
     members: Mapped[list["UserOrganization"]] = relationship(back_populates="organization", cascade="all, delete-orphan")

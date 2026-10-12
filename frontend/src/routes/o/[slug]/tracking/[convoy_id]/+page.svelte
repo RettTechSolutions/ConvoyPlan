@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { onMount, onDestroy, untrack } from 'svelte';
+	import { onMount, onDestroy, tick, untrack } from 'svelte';
 	import { page } from '$app/stores';
-	import MapView from '$lib/components/MapView.svelte';
+	import MapView, { type KartenKontext } from '$lib/components/MapView.svelte';
+	import { kontextmenue, oeffnen as menueOeffnen, kopieren, ortEintraege, koordinatenText, TRENNER, type Eintraege } from '$lib/kontextmenue/menue';
 	import AppLogo from '$lib/components/AppLogo.svelte';
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
 	import { convoysApi, trackingApi, type Convoy, type VehiclePosition, type RouteResult, type TrackerAmFahrzeug } from '$lib/api';
@@ -407,15 +408,17 @@
 	}
 
 	/**
-	 * Akku und Empfang der Tracker, je Fahrzeug. Abgefragt statt über den
-	 * Live-Kanal: die Werte ändern sich in Minuten, nicht in Sekunden, und der
-	 * Store der angemeldeten Ansicht soll keinen neuen Nachrichtentyp lesen
-	 * müssen. Fehlt der Aufruf (ältere Instanz), bleibt die Anzeige leer.
+	 * Akku, Empfang und Störungen der Tracker, je Fahrzeug. Abgefragt statt über
+	 * den Live-Kanal: der Store der angemeldeten Ansicht soll keinen neuen
+	 * Nachrichtentyp lesen müssen. Fehlt der Aufruf (ältere Instanz), bleibt die
+	 * Anzeige leer. Alle 15 s, weil „Verbindung unterbrochen" beim Standardtakt
+	 * nach 45 s ohne Bündel gilt: eine Minute Abfrage käme zu spät — oder zeigte
+	 * eine Störung, die das nächste Bündel schon behoben hat.
 	 */
 	let trackerZustand = $state<Map<string, TrackerAmFahrzeug>>(new Map());
 	let trackerJetzt = $state(Date.now());
 	let trackerTimer: ReturnType<typeof setInterval> | null = null;
-	const TRACKER_ABFRAGE_MS = 60_000;
+	const TRACKER_ABFRAGE_MS = 15_000;
 
 	// Wegpunkte entlang der Route — einmal je Route, nicht je Position.
 	let blasenLinie = $derived(routeCoords(route?.geojson));
@@ -527,6 +530,16 @@
 		if (backOnlineTimer) { clearTimeout(backOnlineTimer); backOnlineTimer = null; }
 	});
 
+	// Route und Konvoi zeigen einen Überblick: Folgen und Fahrtrichtung enden
+	// dabei, sonst zöge die nächste Position die Karte zurück aufs eigene
+	// Fahrzeug. Erst die Effekte durchlaufen lassen — deren easeTo bräche den
+	// Zoom sonst gleich wieder ab.
+	async function ansichtFreigeben() {
+		followMyVehicle = false;
+		headingUp = false;
+		await tick();
+	}
+
 	// Restore a previously active assignment after a reload. If the saved vehicle
 	// is still part of the convoy, re-select it and resume transmitting.
 	let sessionRestored = false;
@@ -626,6 +639,37 @@
 			livePositions.update((m) => { m.delete(myVehicleId); return new Map(m); });
 			trackingApi.clearVehiclePosition(convoyId, myVehicleId, false).catch(() => {});
 		}
+	}
+
+	// ── Kontextmenüs ──────────────────────────────────────────────────
+	function fahrzeugEintraege(vehicleId: string): Eintraege {
+		const cv = (convoy?.convoy_vehicles ?? []).find((c) => c.vehicle.id === vehicleId);
+		if (!cv) return [];
+		const pos = $livePositions.get(vehicleId);
+		const meins = vehicleId === myVehicleId;
+		return [
+			{ titel: cv.vehicle.callsign ? `${cv.vehicle.name} · ${cv.vehicle.callsign}` : cv.vehicle.name },
+			{ label: 'Auf Karte zeigen', icon: '🔍', aus: pos ? false : 'Keine Position gemeldet', aktion: () => { sidebarOpen = false; mapView?.zeigeFahrzeug(vehicleId); } },
+			meins && pos && { label: 'Karte folgt meinem Fahrzeug', art: 'schalter', an: followMyVehicle, aktion: () => (followMyVehicle = !followMyVehicle) },
+			TRENNER,
+			kopieren('Funkrufname kopieren', cv.vehicle.callsign),
+			pos && kopieren('Position kopieren', koordinatenText(pos.lat, pos.lon)),
+		];
+	}
+
+	function kartenMenue(ort: KartenKontext) {
+		const { lat, lon, x, y, marker } = ort;
+		const eintraege: Eintraege = marker?.art === 'fahrzeug'
+			? [...fahrzeugEintraege(marker.vehicleId), TRENNER, ...ortEintraege(lat, lon)]
+			: [
+				{ titel: marker?.art === 'start' ? 'Startpunkt' : marker?.art === 'ziel' ? 'Zielpunkt' : marker?.art === 'wegpunkt' ? marker.wegpunkt.name : koordinatenText(lat, lon) },
+				transmitting && manualMode && myVehicleId && !marker && { label: 'Meine Position hierher', icon: '📍', aktion: () => handleMapTap(lat, lon) },
+				routeGeojson && { label: 'Ganze Route zeigen', icon: '⤢', aktion: () => mapView?.showRoute() },
+				mapView?.istGedreht() && { label: 'Karte einnorden', icon: '🧭', aktion: () => { headingUp = false; mapView?.resetNorth(); } },
+				TRENNER,
+				...ortEintraege(lat, lon),
+			];
+		menueOeffnen(x, y, eintraege);
 	}
 
 	function handleMapTap(lat: number, lon: number) {
@@ -916,7 +960,7 @@
 						{@const lvl = levelOf(cv)}
 						{@const fzLabel = cv.vehicle.callsign || cv.vehicle.name}
 						{@const offen = staerkeOffenFuer === cv.vehicle.id}
-						<div class="vehicle-row">
+						<div class="vehicle-row" use:kontextmenue={() => fahrzeugEintraege(cv.vehicle.id)}>
 							<div class="veh-left">
 								<span class="status-dot" style="background:{statusColor(st)}"></span>
 								<span class="vname">{cv.vehicle.name}</span>
@@ -1236,8 +1280,21 @@
 				</button>
 			{/if}
 			{#if routeGeojson}
-				<button class="map-ctrl-btn" onclick={() => mapView?.showRoute()} title="Gesamte Route anzeigen">
+				<button
+					class="map-ctrl-btn"
+					onclick={async () => { await ansichtFreigeben(); mapView?.showRoute(); }}
+					title="Gesamte Route anzeigen"
+				>
 					🗺️ Route
+				</button>
+			{/if}
+			{#if $livePositions.size > 0}
+				<button
+					class="map-ctrl-btn"
+					onclick={async () => { await ansichtFreigeben(); mapView?.showConvoy(); }}
+					title="Auf alle Fahrzeuge des Konvois zoomen"
+				>
+					🚐 Konvoi
 				</button>
 			{/if}
 			<button class="map-ctrl-btn" onclick={() => { headingUp = false; mapView?.resetNorth(); }} title="Nach Norden ausrichten">
@@ -1264,6 +1321,7 @@
 		</div>
 		<MapView
 			bind:this={mapView}
+			onKontextmenue={kartenMenue}
 			startPoint={convoy?.start_point}
 			endPoint={convoy?.end_point}
 			waypoints={convoy?.waypoints ?? []}

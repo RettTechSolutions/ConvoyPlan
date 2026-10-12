@@ -314,6 +314,8 @@ Konvoi überhaupt ein Zeitplan hinterlegt ist.
 
 | Bedienelement | Wirkung |
 |---|---|
+| 🗺️ **Route** | Zeigt die gesamte Route und nordet ein; ein aktives Folgen endet dabei |
+| 🚐 **Konvoi** | Zoomt auf alle Fahrzeuge, die gerade senden, und nordet ein; ein aktives Folgen endet dabei. Positionen, die älter als 30 Minuten sind, zählen nur, wenn kein Fahrzeug aktuell sendet |
 | 🧭 **Norden** | Dreht die Karte zurück nach Norden und hebt die Neigung auf |
 | ⬆️ **Fahrtrichtung** | Richtet die Karte in Fahrtrichtung des eigenen Fahrzeugs aus (Heading-up) und folgt ihm |
 | **Folgen** | Sperrt die Karte auf das eigene Fahrzeug |

@@ -28,7 +28,7 @@ Zwei Entscheidungen, die man kennen muss:
 
 Wer sendet, steht im Speicher (:class:`Positionsquellen`), wie die Belegung und
 die Verbindungen in ``tracking_manager``: nach einem Neustart ist der Tracker mit
-seinem nächsten Bündel (alle 30 s) wieder da. Die Entscheidung selbst
+seinem nächsten Bündel (alle 15 s) wieder da. Die Entscheidung selbst
 (:func:`entscheiden`) kommt ohne Uhr und Netz aus und wird von
 ``tests/test_positionsquelle.py`` geprüft; die drei Telefonpfade ziehen sie über
 :func:`telefon_erlaubt`, der Tracker meldet sich über :func:`tracker_sendet`.

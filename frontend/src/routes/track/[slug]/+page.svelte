@@ -894,6 +894,11 @@
 						🗺️ Route
 					</button>
 				{/if}
+				{#if livePositions.size > 0}
+					<button class="map-ctrl-btn" onclick={() => mapView?.showConvoy()} title="Auf alle Fahrzeuge des Konvois zoomen">
+						🚐 Konvoi
+					</button>
+				{/if}
 			</div>
 			{#if isDriver && manualMode && transmitting}
 				<div class="map-hint-bar">Tippe auf die Karte, um deine Position zu senden</div>

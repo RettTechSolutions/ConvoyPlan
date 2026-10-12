@@ -1,3 +1,15 @@
+<script lang="ts" module>
+	import type { Waypoint as KartenWegpunkt } from '$lib/api';
+
+	/** Worauf rechts geklickt wurde, wenn nicht auf die leere Karte. */
+	export type KartenMarker =
+		| { art: 'start' }
+		| { art: 'ziel' }
+		| { art: 'wegpunkt'; wegpunkt: KartenWegpunkt }
+		| { art: 'fahrzeug'; vehicleId: string };
+	export type KartenKontext = { lat: number; lon: number; x: number; y: number; marker?: KartenMarker };
+</script>
+
 <script lang="ts">
 	import { tileUrlTemplate } from '$lib/map/tiles';
 	import { onMount, onDestroy } from 'svelte';
@@ -7,6 +19,7 @@
 	import { mapMode } from '$lib/stores/map';
 	import { themeStore } from '$lib/stores/theme';
 	import { addRegionMask, applyMapTheme } from '$lib/map/region';
+	import { konvoiAusschnitt } from '$lib/map/konvoiAusschnitt';
 	import type { Waypoint, VehiclePosition } from '$lib/api';
 	import type { Geometry, FeatureCollection } from 'geojson';
 	import { positionsZeile, type BlasenZeile } from '$lib/tracking/fahrzeugblase';
@@ -38,6 +51,11 @@
 		headingUp?: boolean;
 		/** Optional vehicle id → Zeilen für die Blase (Status, Stärke, …), siehe `fahrzeugblase.ts`. */
 		vehicleInfo?: Map<string, BlasenZeile[]>;
+		/**
+		 * Rechtsklick (bzw. langes Drücken) auf Karte oder Marker. Ohne Angabe
+		 * bleibt es beim Verhalten des Browsers.
+		 */
+		onKontextmenue?: (ort: KartenKontext) => void;
 	}
 
 	let {
@@ -58,6 +76,7 @@
 		vehicleColors = new Map(),
 		headingUp = false,
 		vehicleInfo = new Map(),
+		onKontextmenue,
 	}: Props = $props();
 
 	const DEFAULT_MARKER_COLOR = '#e74c3c';
@@ -129,6 +148,19 @@
 			if (onMapClick && (clickEnabled || mode !== 'idle')) {
 				onMapClick(e.lngLat.lat, e.lngLat.lng);
 			}
+		});
+
+		// MapLibre liefert `contextmenu` auch für langes Drücken (iOS kennt es
+		// nativ nicht) und unterdrückt es nach dem Drehen mit rechts gedrückter
+		// Maustaste — deshalb sein Ereignis und nicht das des Browsers.
+		map.on('contextmenu', (e) => {
+			if (!onKontextmenue) return;
+			e.preventDefault();
+			e.originalEvent.preventDefault();
+			const r = mapContainer.getBoundingClientRect();
+			const x = e.originalEvent.clientX || r.left + e.point.x;
+			const y = e.originalEvent.clientY || r.top + e.point.y;
+			onKontextmenue({ lat: e.lngLat.lat, lon: e.lngLat.lng, x, y });
 		});
 
 		// Cursor: crosshair in placing mode, default otherwise
@@ -292,6 +324,21 @@
 		}
 	}
 
+	/**
+	 * Rechtsklick auf einen Marker: eigenes Menü statt dem der Karte. Das
+	 * Ereignis endet hier, sonst öffnete MapLibre danach das Kartenmenü.
+	 */
+	function markerKontext(m: maplibregl.Marker, ziel: () => KartenMarker): maplibregl.Marker {
+		m.getElement().addEventListener('contextmenu', (e) => {
+			if (!onKontextmenue || e.shiftKey) return;
+			e.preventDefault();
+			e.stopPropagation();
+			const p = m.getLngLat();
+			onKontextmenue({ lat: p.lat, lon: p.lng, x: e.clientX, y: e.clientY, marker: ziel() });
+		});
+		return m;
+	}
+
 	function makeMarker(color: string, size = 20, label?: string): maplibregl.Marker {
 		const el = document.createElement('div');
 		el.style.cssText = `width:${size}px;height:${size}px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.4);cursor:pointer`;
@@ -334,7 +381,25 @@
 		map.flyTo({ center: [pos.lon, pos.lat], zoom: 15, duration: 800 });
 	}
 
-	function fitRoute(duration = 800) {
+	/** Einen Ort heranholen (Kontextmenü „Auf Karte zeigen"). */
+	export function zeigeOrt(lat: number, lon: number, zoom = 15) {
+		map?.flyTo({ center: [lon, lat], zoom: Math.max(zoom, map.getZoom()), duration: 800 });
+	}
+
+	/** Ein Fahrzeug mit Position heranholen; `false`, wenn es keine gibt. */
+	export function zeigeFahrzeug(vehicleId: string): boolean {
+		const pos = livePositions.get(vehicleId);
+		if (!pos || !map) return false;
+		flyToPosition(pos);
+		return true;
+	}
+
+	/** Die Karte gerade drehen — für das Kontextmenü, wenn sie gedreht ist. */
+	export function istGedreht(): boolean {
+		return !!map && (map.getBearing() !== 0 || map.getPitch() !== 0);
+	}
+
+	function fitRoute(duration = 800, bearing?: number) {
 		if (!map || !routeGeojson) return;
 		const coords: number[][] =
 			routeGeojson.type === 'LineString' ? routeGeojson.coordinates as number[][]
@@ -345,20 +410,32 @@
 		const lats = coords.map(c => c[1]);
 		map.fitBounds(
 			[[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
-			{ padding: 60, duration }
+			{ padding: 60, duration, ...(bearing != null && { bearing, pitch: 0 }) }
 		);
 	}
 
-	/** Fit the whole route into view again (used by the "Route" button). */
+	/**
+	 * Fit the whole route into view again (used by the "Route" button), north-up.
+	 * Wie bei showConvoy() löst der Aufrufer einen Folgen-Modus vorher.
+	 */
 	export function showRoute() {
-		fitRoute();
+		fitRoute(800, 0);
 	}
 
-	/** Zum Fahrzeug fliegen und seine Blase öffnen (z. B. aus einem Banner heraus). */
+	/**
+	 * Zoom so that every vehicle of the convoy is in view (the "Konvoi" button).
+	 * Nordet dabei ein; einen Folgen-Modus muss der Aufrufer vorher lösen, sonst
+	 * zieht die nächste Position die Karte wieder auf das eigene Fahrzeug.
+	 */
+	export function showConvoy() {
+		const ausschnitt = konvoiAusschnitt(livePositions.values());
+		if (!map || !ausschnitt) return;
+		map.fitBounds(ausschnitt, { padding: 80, maxZoom: FOLLOW_ZOOM, bearing: 0, pitch: 0, duration: 800 });
+	}
+
+	/** Wie `zeigeFahrzeug`, dazu die Blase öffnen (z. B. aus dem Abriss-Banner). */
 	export function showVehicle(vehicleId: string) {
-		const pos = livePositions.get(vehicleId);
-		if (!pos || !map) return;
-		flyToPosition(pos);
+		if (!zeigeFahrzeug(vehicleId)) return;
 		const marker = trackingMarkers.get(vehicleId)?.marker;
 		if (marker && !marker.getPopup()?.isOpen()) marker.togglePopup();
 	}
@@ -374,7 +451,7 @@
 		startMarker?.remove();
 		startMarker = null;
 		if (startPoint) {
-			startMarker = makeMarker('#27ae60', 20, 'Start').setLngLat([startPoint.lon, startPoint.lat]).addTo(map);
+			startMarker = markerKontext(makeMarker('#27ae60', 20, 'Start'), () => ({ art: 'start' })).setLngLat([startPoint.lon, startPoint.lat]).addTo(map);
 		}
 	});
 
@@ -384,7 +461,7 @@
 		endMarker?.remove();
 		endMarker = null;
 		if (endPoint) {
-			endMarker = makeMarker('#e74c3c', 20, 'Ziel').setLngLat([endPoint.lon, endPoint.lat]).addTo(map);
+			endMarker = markerKontext(makeMarker('#e74c3c', 20, 'Ziel'), () => ({ art: 'ziel' })).setLngLat([endPoint.lon, endPoint.lat]).addTo(map);
 		}
 	});
 
@@ -400,7 +477,7 @@
 			.filter((w) => w.lat && w.lon)
 			.map((w) => {
 				const color = typeColors[w.type] ?? '#3498db';
-				return makeMarker(color, 16, w.name)
+				return markerKontext(makeMarker(color, 16, w.name), () => ({ art: 'wegpunkt', wegpunkt: w }))
 					.setLngLat([w.lon!, w.lat!])
 					.setPopup(
 						new maplibregl.Popup({ offset: 12 }).setDOMContent(
@@ -454,6 +531,7 @@
 			} else {
 				existing?.marker.remove();
 				lm = makeLiveMarker(pos, label, color);
+				markerKontext(lm.marker, () => ({ art: 'fahrzeug', vehicleId }));
 				lm.marker
 					.setLngLat([pos.lon, pos.lat])
 					.setPopup(new maplibregl.Popup({ offset: 14, maxWidth: '280px' }).setDOMContent(lm.popup))

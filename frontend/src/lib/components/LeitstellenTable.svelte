@@ -37,6 +37,7 @@
 <script lang="ts">
     import type { Snippet } from 'svelte';
     import type { Leitstelle } from '$lib/api';
+    import { kontextmenue, type Eintraege } from '$lib/kontextmenue/menue';
 
     interface Props {
         items: Leitstelle[];
@@ -44,8 +45,10 @@
         actions?: Snippet<[Leitstelle]>;
         /** Statuslabel-Override (z.B. Org-Portal: pending = „Eingereicht"). */
         statusLabels?: Record<string, string>;
+        /** Einträge fürs Kontextmenü einer Zeile — dieselben Aktionen wie in `actions`. */
+        kontext?: (ls: Leitstelle) => Eintraege;
     }
-    let { items, showOrg = false, actions, statusLabels }: Props = $props();
+    let { items, showOrg = false, actions, statusLabels, kontext }: Props = $props();
 
     type SortKey = 'name' | 'anrufgruppe' | 'status' | 'org' | 'kanaele' | 'grenzen';
     let search = $state('');
@@ -157,7 +160,7 @@
 </table>
 
 {#snippet row(ls: Leitstelle)}
-    <tr>
+    <tr use:kontextmenue={() => kontext?.(ls) ?? []}>
         <td>{ls.name}</td>
         <td><code>{ls.anrufgruppe}</code></td>
         <td>

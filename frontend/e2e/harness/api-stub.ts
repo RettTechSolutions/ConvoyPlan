@@ -6,7 +6,7 @@
  * und widerrufen — Letzteres bekommt keinen QR-Knopf.
  */
 
-import type { Tracker, TrackerDaten, TrackerMitCode, Vehicle } from '$lib/api';
+import type { Tracker, TrackerDaten, TrackerMitCode, TrackerTakt, Vehicle } from '$lib/api';
 
 export type ShareLinkPasswordMode = 'none' | 'generate' | 'set';
 export type ShareLinkScope = 'track' | 'driver';
@@ -344,6 +344,7 @@ export const regionApi = {
 declare global {
 	interface Window {
 		__trackerAngelegt?: TrackerDaten;
+		__trackerTakt?: number;
 	}
 }
 
@@ -380,8 +381,31 @@ export const vehiclesApi = {
 	list: async () => FAHRZEUGE,
 };
 
+// Wie das Backend (`og.volumen_kb_pro_stunde`), auf ganze KB gerundet.
+function taktStub(buendel_s: number): TrackerTakt {
+	return {
+		buendel_s,
+		standard_s: 15,
+		intervall_s: 10,
+		wahl: [
+			{ buendel_s: 10, kb_pro_stunde: 545, kb_pro_stunde_ohne_keepalive: 2345 },
+			{ buendel_s: 15, kb_pro_stunde: 377, kb_pro_stunde_ohne_keepalive: 1577 },
+			{ buendel_s: 30, kb_pro_stunde: 209, kb_pro_stunde_ohne_keepalive: 809 },
+			{ buendel_s: 60, kb_pro_stunde: 125, kb_pro_stunde_ohne_keepalive: 425 },
+			{ buendel_s: 120, kb_pro_stunde: 83, kb_pro_stunde_ohne_keepalive: 233 },
+		],
+	};
+}
+let taktGesetzt = 15;
+
 export const geraeteApi = {
 	list: async (): Promise<Tracker[]> => tracker.map((t) => ({ ...t })),
+	takt: async (): Promise<TrackerTakt> => taktStub(taktGesetzt),
+	taktSetzen: async (buendel_s: number): Promise<TrackerTakt> => {
+		window.__trackerTakt = buendel_s;
+		taktGesetzt = buendel_s;
+		return taktStub(buendel_s);
+	},
 	create: async (d: TrackerDaten): Promise<TrackerMitCode> => {
 		window.__trackerAngelegt = d;
 		const t = trackerZeile('t-neu', d);

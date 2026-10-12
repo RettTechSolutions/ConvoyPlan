@@ -56,7 +56,7 @@ logger = logging.getLogger(__name__)
 KANAELE = ("stable", "beta", "nightly")
 #: So lange gilt ein geholtes Manifest, bevor die Ablage erneut gefragt wird.
 MANIFEST_TTL_S = 3600.0
-#: Nach einem Fehler so lange nicht erneut fragen — ein Tracker fragt alle 30 s.
+#: Nach einem Fehler so lange nicht erneut fragen — ein Tracker fragt alle 15 s.
 FEHLER_TTL_S = 300.0
 #: Größer ist kein Tracker-Image. Schützt den Speicher vor einem falschen Link.
 MAX_IMAGE_BYTES = 8 * 1024 * 1024

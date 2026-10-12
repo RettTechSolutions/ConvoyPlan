@@ -48,6 +48,31 @@ Caddy wird automatisch neu geladen. Danach ist die Anmeldung direkt möglich.
 
 ---
 
+## Kontextmenü (rechte Maustaste)
+
+Fast überall, wo eine Zeile oder ein Punkt Knöpfe trägt, öffnet die **rechte Maustaste**
+ein Menü mit denselben Aktionen — am Telefon **lange drücken**, per Tastatur die Taste
+*Kontextmenü* oder **Umschalt+F10**. Das Menü ist eine Abkürzung: alles darin gibt es
+auch als Knopf.
+
+| Wo | Was im Menü steht |
+|---|---|
+| **Karte der Planung** | Start/Ziel hier setzen, Wegpunkt oder Halt hier anlegen, Route berechnen, ganze Route zeigen, Karte einnorden, Sperrungen/Verkehrslage ein- und ausblenden, Koordinaten kopieren, in OpenStreetMap oder Google Maps öffnen |
+| **Marker auf der Karte** | Wegpunkt: bearbeiten, umsortieren, löschen · Start/Ziel: neu setzen |
+| **Wegpunktliste** | Bearbeiten, auf Karte zeigen, nach oben/unten, an den Anfang/ans Ende, Koordinaten kopieren, löschen |
+| **Fahrzeuge** | Bearbeiten, zum Verband hinzufügen bzw. herausnehmen, Funkrufname/Kennzeichen kopieren, löschen |
+| **Marschfolge** | Eine Position vor/zurück, an die Spitze, ans Ende, aus dem Verband nehmen |
+| **Marschverband** (Kopf der Seitenleiste) | Bearbeiten, Route berechnen, Marschbefehl, Roadbook, GPX, Tracking-Ansicht, Link kopieren, öffentlich teilen |
+| **Konvoi-Ansicht (Tracking)** | Fahrzeug auf Karte zeigen, Karte folgen lassen, Funkrufname und Position kopieren; auf der Karte im manuellen Modus „Meine Position hierher" |
+| **Org-Admin** | Mitglieder: Rolle wechseln, E-Mail kopieren, entfernen · Leitstellen · GPS-Freigaben · KI-Verbindungen |
+| **Admin-Bereich** | Benutzer: bearbeiten, aktiv/Superadmin schalten, Passwort, MFA, löschen · Organisationen · Leitstellen · API-Keys |
+
+In **Eingabefeldern**, auf **Links** und auf **markiertem Text** bleibt das gewohnte Menü des
+Browsers (Einfügen, Kopieren, in neuem Tab öffnen). Wer es auch anderswo braucht, hält beim
+Rechtsklick **Umschalt** gedrückt.
+
+---
+
 ## Fahrzeuge verwalten
 
 Fahrzeuge werden einmalig angelegt und können dann beliebigen Konvois zugeordnet werden.
