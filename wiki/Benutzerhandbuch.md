@@ -55,6 +55,10 @@ ein Menü mit denselben Aktionen — am Telefon **lange drücken**, per Tastatur
 *Kontextmenü* oder **Umschalt+F10**. Das Menü ist eine Abkürzung: alles darin gibt es
 auch als Knopf.
 
+![Kontextmenü auf der Karte der Planung: Start, Ziel, Wegpunkt oder Halt an der angeklickten Stelle, Route berechnen, Sperrungen, Koordinaten kopieren](bilder/kontextmenue-karte.jpg)
+
+*Rechtsklick auf die Karte: oben die Koordinaten der Stelle, darunter, was sich dort setzen lässt.*
+
 | Wo | Was im Menü steht |
 |---|---|
 | **Karte der Planung** | Start/Ziel hier setzen, Wegpunkt oder Halt hier anlegen, Route berechnen, ganze Route zeigen, Karte einnorden, Sperrungen/Verkehrslage ein- und ausblenden, Koordinaten kopieren, in OpenStreetMap oder Google Maps öffnen |
@@ -67,9 +71,23 @@ auch als Knopf.
 | **Org-Admin** | Mitglieder: Rolle wechseln, E-Mail kopieren, entfernen · Leitstellen · GPS-Freigaben · KI-Verbindungen |
 | **Admin-Bereich** | Benutzer: bearbeiten, aktiv/Superadmin schalten, Passwort, MFA, löschen · Organisationen · Leitstellen · API-Keys |
 
+<table>
+<tr>
+<td width="50%"><img src="bilder/kontextmenue-wegpunkte.png" alt="Kontextmenü an einem Wegpunkt: Bearbeiten, Auf Karte zeigen, Nach oben/unten, An den Anfang, Ans Ende, Koordinaten kopieren, Löschen"></td>
+<td width="50%"><img src="bilder/kontextmenue-mitglieder.png" alt="Kontextmenü an einem Mitglied im Org-Admin: aktuelle Rolle markiert, andere Rollen wählbar, E-Mail kopieren, Entfernen"><br><br><img src="bilder/kontextmenue-benutzer.png" alt="Kontextmenü an einem Benutzer im Admin-Bereich: Schalter Aktiv und Superadmin mit Stand, Passwort, E-Mail kopieren, Löschen"></td>
+</tr>
+<tr>
+<td><em>Wegpunktliste: umsortieren ohne Ziehen.</em></td>
+<td><em>Org-Admin und Admin-Bereich: Punkt bzw. Haken zeigen den aktuellen Stand. Was gerade nicht geht, ist ausgegraut — z. B. Passwort per E-Mail ohne eingerichteten Mailversand.</em></td>
+</tr>
+</table>
+
 In **Eingabefeldern**, auf **Links** und auf **markiertem Text** bleibt das gewohnte Menü des
 Browsers (Einfügen, Kopieren, in neuem Tab öffnen). Wer es auch anderswo braucht, hält beim
 Rechtsklick **Umschalt** gedrückt.
+
+Mit der Tastatur: **Pfeiltasten** wählen, **Enter** führt aus, **Esc** schließt; ein
+Anfangsbuchstabe springt zum passenden Eintrag.
 
 ---
 
