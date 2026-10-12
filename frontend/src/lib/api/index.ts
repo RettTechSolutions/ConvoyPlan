@@ -458,7 +458,8 @@ export const convoysApi = {
 export const trackingApi = {
 	getPositions: (convoyId: string) => api.get<VehiclePosition[]>(`/api/convoys/${convoyId}/positions`),
 	// Akku und Empfang der Tracker an den Fahrzeugen dieses Konvois.
-	getTracker: (convoyId: string) => api.get<TrackerAmFahrzeug[]>(`/api/convoys/${convoyId}/tracker`),
+	getTracker: (convoyId: string, signal?: AbortSignal) =>
+		api.get<TrackerAmFahrzeug[]>(`/api/convoys/${convoyId}/tracker`, 'seite', signal),
 	// Tracker übersteuern (Führung): dann gilt für dieses Fahrzeug das Telefon.
 	setPositionsquelle: (convoyId: string, vehicleId: string, trackerUebersteuern: boolean) =>
 		api.patch<{ status: string; tracker_uebersteuert_at: string | null; tracker_uebersteuert_von: string | null }>(

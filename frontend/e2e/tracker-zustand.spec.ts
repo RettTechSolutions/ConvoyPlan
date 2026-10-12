@@ -94,3 +94,22 @@ test('ausgebliebene Bündel und gestörtes GPS stehen in Worten am Fahrzeug', as
 
 	await expect(page.getByTestId('tracker-v-elw').getByTestId('tracker-stoerung')).toHaveCount(0);
 });
+
+test('„Verbindung unterbrochen" erscheint ohne Neuladen, auch wenn die Abfrage hängt', async ({ page }) => {
+	// Gemeldet: der Tracker verstummte, die Ansicht blieb still, erst F5 zeigte
+	// die Störung. Die Uhr lief nur nach einer gelungenen Abfrage weiter — und
+	// ein `fetch` ohne Frist kann minutenlang hängen.
+	await page.clock.install();
+	await oeffnen(page, [
+		{ vehicle_id: 'v-hlf', zuletzt_gesehen: vor(0), akku_prozent: 80, extern: true, akku_seit: null,
+		  akku_niedrig: false, signal_dbm: -80, unterbrochen_ab: in_(20), gps_gestoert_ab: in_(60) },
+	]);
+	const hlf = page.getByTestId('tracker-v-hlf');
+	await expect(hlf).toBeVisible();
+	await expect(hlf.getByTestId('tracker-stoerung')).toHaveCount(0);
+
+	// Ab jetzt antwortet die Instanz nicht mehr.
+	await page.route(`**/api/convoys/${CONVOY}/tracker`, () => {});
+	await page.clock.runFor(40_000);
+	await expect(hlf.getByTestId('tracker-stoerung')).toHaveText('Verbindung unterbrochen');
+});
