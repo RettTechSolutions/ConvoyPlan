@@ -17,6 +17,7 @@
 	import GewichtsGrenzen from '$lib/components/GewichtsGrenzen.svelte';
 	import RouteHinweisMarke from '$lib/components/RouteHinweisMarke.svelte';
 	import { routeHinweise } from '$lib/route/hinweise';
+	import HaltVermerk from '$lib/components/HaltVermerk.svelte';
 	import RegionCard from '$lib/components/RegionCard.svelte';
 	import type { BrueckenPruefung, DurchfahrtshoeheEntry, FuelAnalysis, GewichtsgrenzeEntry } from '$lib/api';
 	import { feedbackStore } from '$lib/stores/feedback';
@@ -107,15 +108,16 @@
 		recommended_stop_duration_min: tank ? 15 : null, duration_halt_needed: halte > 0,
 		duration_halts: Array.from({ length: halte }, (_, i) => halt(120 * (i + 1))), rest_needed: false,
 	});
-	const ROUTE: Record<string, [Parameters<typeof routeHinweise>[0], boolean, number]> = {
-		keine: [{ fuel_analysis: analyse(false, 0), durchfahrtshoehen: [stelle(30.1, 4.5, 0.85, 'frei')], gewichtsgrenzen: [grenze(9.4, 40, 14, 'frei')] }, false, 0],
-		halte: [{ fuel_analysis: analyse(false, 2), durchfahrtshoehen: [], gewichtsgrenzen: [] }, false, 0],
-		halte_teils_gesetzt: [{ fuel_analysis: analyse(false, 2), durchfahrtshoehen: [], gewichtsgrenzen: [] }, false, 1],
-		eng: [{ fuel_analysis: null, durchfahrtshoehen: [stelle(12.4, 3.7, 0.05, 'eng')], gewichtsgrenzen: [grenze(15, 28, 1.5, 'knapp')] }, false, 0],
-		knapp: [{ fuel_analysis: null, durchfahrtshoehen: [stelle(48.9, 3.9, 0.25, 'knapp')], gewichtsgrenzen: null }, false, 0],
-		tankstopp: [{ fuel_analysis: analyse(true, 0), durchfahrtshoehen: null, gewichtsgrenzen: null }, false, 0],
-		tankstopp_gesetzt: [{ fuel_analysis: analyse(true, 0), durchfahrtshoehen: null, gewichtsgrenzen: null }, true, 0],
-		ohne_route: [null, false, 0],
+	const ROUTE: Record<string, [Parameters<typeof routeHinweise>[0], boolean]> = {
+		keine: [{ fuel_analysis: analyse(false, 0), durchfahrtshoehen: [stelle(30.1, 4.5, 0.85, 'frei')], gewichtsgrenzen: [grenze(9.4, 40, 14, 'frei')] }, false],
+		halte: [{ fuel_analysis: analyse(false, 2), durchfahrtshoehen: [], gewichtsgrenzen: [] }, false],
+		// Einer der beiden steht schon als Wegpunkt: das Backend nennt nur noch den anderen.
+		halte_teils_gesetzt: [{ fuel_analysis: analyse(false, 1), durchfahrtshoehen: [], gewichtsgrenzen: [] }, false],
+		eng: [{ fuel_analysis: null, durchfahrtshoehen: [stelle(12.4, 3.7, 0.05, 'eng')], gewichtsgrenzen: [grenze(15, 28, 1.5, 'knapp')] }, false],
+		knapp: [{ fuel_analysis: null, durchfahrtshoehen: [stelle(48.9, 3.9, 0.25, 'knapp')], gewichtsgrenzen: null }, false],
+		tankstopp: [{ fuel_analysis: analyse(true, 0), durchfahrtshoehen: null, gewichtsgrenzen: null }, false],
+		tankstopp_gesetzt: [{ fuel_analysis: analyse(true, 0), durchfahrtshoehen: null, gewichtsgrenzen: null }, true],
+		ohne_route: [null, false],
 	};
 	const routeFall = ROUTE[fall] ?? ROUTE.keine;
 </script>
@@ -163,6 +165,16 @@
 	<div class="admin-flaeche"><PasskeyVerwaltung /></div>
 {:else if welche === 'feedback'}
 	<FeedbackModal />
+{:else if welche === 'vermerk'}
+	<!-- Wegpunktliste der Planung: Tankhalt, in dem ein TH aufgeht, und ein
+	     Kontrollpunkt ohne Vermerk. -->
+	<div class="leiste" data-theme="dark">
+		<ul class="leiste-inhalt">
+			<li data-testid="tankhalt">Tankhalt – Raststätte Pfefferhöhe <HaltVermerk eintraege={[{ waypoint_id: 't', kind: 'tech', duration_min: 30, faellig_km: 123.3 }]} haltMin={20} /></li>
+			<li data-testid="pause">Rastanlage <HaltVermerk eintraege={[{ waypoint_id: 'p', kind: 'break', duration_min: 45, faellig_km: 288 }]} haltMin={45} /></li>
+			<li data-testid="kontrollpunkt">KP 2 – Kirchheimer Dreieck <HaltVermerk eintraege={undefined} haltMin={0} /></li>
+		</ul>
+	</div>
 {:else if welche === 'region'}
 	<div class="admin-flaeche"><RegionCard /></div>
 {:else if welche === 'konvoi'}

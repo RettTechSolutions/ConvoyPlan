@@ -152,6 +152,31 @@ class TestAnweisung:
         assert og.anweisung("senden", JETZT)["buendel_s"] == og.TAKT["buendel_s"]
         assert og.anweisung("senden", JETZT, buendel=7)["buendel_s"] == og.TAKT["buendel_s"]
 
+    @pytest.mark.parametrize("netz", ["wlan", "ble"])
+    def test_ohne_datenvolumen_live(self, netz):
+        """Über WLAN und BLE kostet ein Versand kein Volumen der SIM: jeder Fix sofort,
+        egal, was die Organisation für den Mobilfunk gewählt hat."""
+        for gewaehlt in (None, 15, 120):
+            assert og.anweisung("senden", JETZT, buendel=gewaehlt, netz=netz)["buendel_s"] == og.TAKT["intervall_s"]
+
+    def test_mobilfunk_bleibt_beim_takt_der_organisation(self):
+        assert og.anweisung("senden", JETZT, buendel=60, netz="mobil")["buendel_s"] == 60
+
+    @pytest.mark.parametrize(
+        "daten,erwartet",
+        [
+            ({"netz": "wlan"}, "wlan"),
+            ({"netz": "ble"}, "ble"),
+            ({"netz": "mobil"}, "mobil"),
+            ({}, "mobil"),
+            ({"netz": "WLAN"}, "mobil"),  # unbekannt: verworfen, nicht geraten
+            ({"netz": "lora"}, "mobil"),
+            ({"netz": 1}, "mobil"),
+        ],
+    )
+    def test_netz_lesen(self, daten, erwartet):
+        assert og.netz_lesen(daten) == erwartet
+
     def test_wahl_bleibt_zwischen_fixtakt_und_vorrang(self):
         assert og.TAKT["buendel_s"] in og.BUENDEL_WAHL
         assert min(og.BUENDEL_WAHL) >= og.TAKT["intervall_s"]
@@ -719,6 +744,29 @@ class TestVerbindungDurchDieApp:
         assert r.json()["buendel_s"] == 60
         ab = await self._ab(client, org)
         assert vorher + timedelta(seconds=135) <= ab <= datetime.now(timezone.utc) + timedelta(seconds=135)
+
+    async def test_live_ueber_wlan_und_ble(self, client, org):
+        _, kopf = await _eingerichtet(client, org)
+        r = await client.put("/api/org/geraete/takt", json={"buendel_s": 60}, headers=h(org.admin))
+        assert r.status_code == 200, r.text
+        for netz in ("wlan", "ble"):
+            r = await client.post("/api/geraete/hallo", json={"grund": "strom", "netz": netz}, headers=kopf)
+            assert r.json()["buendel_s"] == og.TAKT["intervall_s"], netz
+            r = await client.post("/api/geraete/positionen", json={"netz": netz, "fixes": [_fix(5)]}, headers=kopf)
+            assert r.json()["buendel_s"] == og.TAKT["intervall_s"], netz
+        # Zurück im Mobilfunk: wieder der Takt der Organisation.
+        r = await client.post("/api/geraete/positionen", json={"netz": "mobil", "fixes": [_fix(1)]}, headers=kopf)
+        assert r.json()["buendel_s"] == 60
+
+    async def test_live_verkuerzt_die_frist_nicht(self, client, org):
+        """Verlässt das Fahrzeug das WLAN der Wache, kommt das nächste Bündel erst nach
+        einem gescheiterten Versuch über Mobilfunk. Das ist kein Abriss."""
+        _, kopf = await _eingerichtet(client, org)
+        vorher = datetime.now(timezone.utc)
+        r = await client.post("/api/geraete/positionen", json={"netz": "wlan", "fixes": [_fix(5)]}, headers=kopf)
+        assert r.json()["buendel_s"] == og.TAKT["intervall_s"]
+        ab = await self._ab(client, org)
+        assert vorher + timedelta(seconds=45) <= ab <= datetime.now(timezone.utc) + timedelta(seconds=45)
 
     async def test_leeres_buendel_haelt_die_verbindung(self, client, org):
         """Kein GNSS ist kein Funkloch: das leere Bündel schiebt die Frist weiter."""

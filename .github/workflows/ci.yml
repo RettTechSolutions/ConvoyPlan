@@ -22,11 +22,55 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  changes:
+    name: Kartenpruefungen erforderlich?
+    runs-on: ubuntu-latest
+    outputs:
+      region: ${{ steps.paths.outputs.region }}
+      code: ${{ steps.paths.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name != 'schedule'
+        with:
+          fetch-depth: 0
+      - id: paths
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          QUEUE_BASE: ${{ github.event.merge_group.base_sha }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          region=true
+          code=true
+          case "$EVENT" in
+            pull_request) range="$PR_BASE...$PR_HEAD" ;;
+            merge_group) range="$QUEUE_BASE..HEAD" ;;
+            push) range="$BEFORE..HEAD" ;;
+            *) range="" ;;
+          esac
+          # Unknown files and failed comparisons keep the full checks enabled.
+          if [ -n "$range" ] && git diff --name-only "$range" > "$RUNNER_TEMP/ci-paths"; then
+            if ! grep -qvE '^docs/|^[^/]+\.(md|rst)$' "$RUNNER_TEMP/ci-paths"; then
+              code=false
+            fi
+            if ! grep -qvE '^(frontend/|docs/)|^[^/]+\.(md|rst)$' "$RUNNER_TEMP/ci-paths"; then
+              region=false
+            fi
+          fi
+          echo "region=$region" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
   backend-lint-test:
     name: Backend – Lint & Tests
     # Kein Sicherheits-Job — beim wöchentlichen Lauf übersprungen.
-    if: github.event_name != 'schedule'
+    needs: changes
+    if: github.event_name != 'schedule' && needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -91,7 +135,8 @@ jobs:
   frontend-check:
     name: Frontend – Type Check
     # Kein Sicherheits-Job — beim wöchentlichen Lauf übersprungen.
-    if: github.event_name != 'schedule'
+    needs: changes
+    if: github.event_name != 'schedule' && needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -104,7 +149,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
-        run: cd frontend && npm ci
+        run: cd frontend && npm ci --prefer-offline --no-audit --fund=false
 
       - name: Svelte type check
         run: cd frontend && npm run check
@@ -112,7 +157,8 @@ jobs:
   frontend-e2e:
     name: Frontend – E2E (Playwright)
     # Kein Sicherheits-Job — beim wöchentlichen Lauf übersprungen.
-    if: github.event_name != 'schedule'
+    needs: changes
+    if: github.event_name != 'schedule' && needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     # Die Suite braucht rund eine Minute. Ein Deckel darüber, damit ein
     # hängender Schritt nicht stundenlang einen Runner belegt, statt als
@@ -132,9 +178,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /root/.npm
+          key: e2e-npm-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: e2e-npm-${{ runner.os }}-
 
       - name: Install dependencies
-        run: cd frontend && npm ci
+        run: cd frontend && npm ci --prefer-offline --no-audit --fund=false
 
       # Nur Chromium: Die Tests prüfen Verhalten (Druckblatt, QR-Inhalt,
       # Rollentexte), nicht die Darstellung in mehreren Programmen.
@@ -143,29 +194,18 @@ jobs:
 
   docker-build:
     name: Docker – Build check
-    # Kein Sicherheits-Job — beim wöchentlichen Lauf übersprungen.
-    if: github.event_name != 'schedule'
+    # The scan matrix already builds all images. Keep the required check name.
+    needs: [changes, container-scan]
+    if: always() && github.event_name != 'schedule'
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: ./.github/actions/docker-spiegel
-        with:
-          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
-          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build backend image
-        run: docker build ./backend
-
-      - name: Build frontend image
-        run: docker build ./frontend
-
-      - name: Build graphhopper image
-        run: docker build ./graphhopper
-
-      - name: Build updater image
-        run: docker build ./docker/updater
+      - name: Images built and scanned successfully
+        env:
+          RESULT: ${{ needs.container-scan.result }}
+          CHANGES_RESULT: ${{ needs.changes.result }}
+        run: |
+          test "$CHANGES_RESULT" = success
+          test "$RESULT" = success
 
   dependency-audit:
     name: Security – Dependency Audit
@@ -228,8 +268,21 @@ jobs:
           dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
           dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
       - name: Build ${{ matrix.name }} image
-        run: docker build -t convoyplan-${{ matrix.name }}:scan ${{ matrix.context }}
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          load: true
+          pull: true
+          no-cache: ${{ github.event_name == 'schedule' }}
+          tags: convoyplan-${{ matrix.name }}:scan
+          cache-from: type=gha,scope=ci-${{ matrix.name }}
+          cache-to: type=gha,mode=min,scope=ci-${{ matrix.name }},ignore-error=true
 
       - name: Install Trivy v0.74.0
         # Pin to an immutable release tarball + verify checksum.
@@ -309,7 +362,8 @@ jobs:
   region-switch:
     name: Region – Wechsel end-to-end (Berlin)
     # Kein Sicherheits-Job — beim wöchentlichen Lauf übersprungen.
-    if: github.event_name != 'schedule'
+    needs: changes
+    if: github.event_name != 'schedule' && needs.changes.outputs.region == 'true'
     runs-on: ubuntu-24.04
     # Einziger Test, der die fünf Phasen von docker/updater/switch-region.sh
     # gegeneinander prüft, statt sie per docker-Stub zu simulieren (siehe
@@ -652,7 +706,8 @@ jobs:
   region-merge:
     name: Region – Grenzrouting bei zusammengeführten Extracts
     # Kein Sicherheits-Job — beim wöchentlichen Lauf übersprungen.
-    if: github.event_name != 'schedule'
+    needs: changes
+    if: github.event_name != 'schedule' && needs.changes.outputs.region == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     # Beantwortet fortlaufend die Frage, die vor dem Entwurf einmalig als
@@ -896,3 +951,4 @@ jobs:
       - name: Logs bei Fehlschlag
         if: failure()
         run: docker logs gh 2>&1 | tail -60
+

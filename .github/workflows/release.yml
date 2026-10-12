@@ -216,6 +216,10 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ./backend
+          cache-from: |
+            type=registry,ref=ghcr.io/${{ steps.repo.outputs.lowercase }}/backend:nightly
+            type=registry,ref=ghcr.io/${{ steps.repo.outputs.lowercase }}/backend:latest
+          cache-to: type=inline
           push: true
           pull: false   # vorab gezogenes Base-Image aus dem lokalen Cache nutzen
           tags: ${{ steps.meta-backend.outputs.tags }}
@@ -229,6 +233,10 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ./frontend
+          cache-from: |
+            type=registry,ref=ghcr.io/${{ steps.repo.outputs.lowercase }}/frontend:nightly
+            type=registry,ref=ghcr.io/${{ steps.repo.outputs.lowercase }}/frontend:latest
+          cache-to: type=inline
           push: true
           pull: false   # vorab gezogenes Base-Image aus dem lokalen Cache nutzen
           tags: ${{ steps.meta-frontend.outputs.tags }}
@@ -416,3 +424,4 @@ jobs:
           draft: false
           prerelease: ${{ steps.pre.outputs.prerelease }}
           make_latest: ${{ steps.pre.outputs.make_latest }}
+

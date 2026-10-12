@@ -707,6 +707,10 @@
 			{takt.intervall_s} s; jeder Versand bringt alle Messungen seit dem letzten mit, der Verlauf bleibt also
 			gleich dicht. Gilt für alle Tracker dieser Organisation, ab ihrem nächsten Kontakt.
 		</p>
+		<p class="hint">
+			Der Takt gilt nur im <strong>Mobilfunk</strong>. Über WLAN und über BLE (Begleit-App) kostet ein Versand
+			kein Volumen der SIM; dort senden die Tracker live, jede Messung sofort.
+		</p>
 
 		<div class="takt-rahmen">
 		<table class="takt">
