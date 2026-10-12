@@ -1,4 +1,4 @@
-"""Nahfunk: die Begleit-App meldet über den Tracker im Fahrzeug (E-NEU im Tracker-Plan).
+"""Nahfunk: die Begleit-App meldet über den Tracker im Fahrzeug (E14 im Tracker-Plan).
 
 Erreicht das Telefon der Besatzung die Instanz nicht, gibt die App Status, Stärke und
 Betriebsstoff per Bluetooth an den festen Tracker ihres Fahrzeugs. Der reicht sie mit

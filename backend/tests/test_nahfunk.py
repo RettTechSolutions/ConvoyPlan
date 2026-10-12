@@ -1,4 +1,4 @@
-"""Nahfunk: Die Begleit-App meldet über den Tracker im Fahrzeug (E-NEU im Tracker-Plan).
+"""Nahfunk: Die Begleit-App meldet über den Tracker im Fahrzeug (E14 im Tracker-Plan).
 
 Was hier zugesagt wird:
 
