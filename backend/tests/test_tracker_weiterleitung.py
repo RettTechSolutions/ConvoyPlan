@@ -339,11 +339,15 @@ class TestSchluesselImHallo:
         # Alte Firmware ohne das Feld: nie.
         assert (await hallo())["schluessel"] is None
         assert (await hallo(schluessel_kennung=kennung))["schluessel"] is None
-        assert (await hallo(schluessel_kennung=""))["schluessel"] == eingeloest["schluessel"]
+        # Abweichend: der geltende, kein neuer.
         assert (await hallo(schluessel_kennung="0123456789abcdef"))["schluessel"] == eingeloest["schluessel"]
-        # Die Kennung des Geräts nur zusammen mit dem Schlüssel.
-        assert (await hallo(schluessel_kennung=""))["geraet_id"] == geraet["id"]
-        assert (await hallo(schluessel_kennung=kennung))["geraet_id"] is None
+        # Leer (NVS verloren): immer ein neuer, mit der Kennung des Geräts.
+        leer = await hallo(schluessel_kennung="")
+        assert leer["schluessel"] not in (None, eingeloest["schluessel"])
+        assert leer["geraet_id"] == geraet["id"]
+        assert (await hallo(schluessel_kennung=kennung))["geraet_id"] is not None  # alter gilt nicht mehr
+        neu_kennung = tb.kennung(base64.b64decode(leer["schluessel"]))
+        assert (await hallo(schluessel_kennung=neu_kennung))["geraet_id"] is None
         # Nie in `positionen`.
         r = await client.post(
             "/api/geraete/positionen", json={"schluessel_kennung": "", "fixes": [_fix(5)]}, headers=kopf
@@ -363,8 +367,9 @@ class TestSchluesselImHallo:
         assert (await client.post("/api/geraete/hallo", json={}, headers=kopf)).json()["schluessel"] is None
         neu = (await client.post("/api/geraete/hallo", json={"schluessel_kennung": ""}, headers=kopf)).json()["schluessel"]
         assert neu and neu != eingeloest["schluessel"]
-        # Derselbe beim nächsten Mal, falls die Antwort verloren ging.
-        assert (await client.post("/api/geraete/hallo", json={"schluessel_kennung": ""}, headers=kopf)).json()["schluessel"] == neu
+        # Ging die Antwort verloren, meldet das Gerät wieder "" und bekommt einen weiteren;
+        # es nimmt den, der ankommt.
+        neu = (await client.post("/api/geraete/hallo", json={"schluessel_kennung": ""}, headers=kopf)).json()["schluessel"]
         # Und damit geht die Weiterleitung.
         slug = await _link(org.konvoi, org.users[0])
         try:
@@ -377,6 +382,23 @@ class TestSchluesselImHallo:
             async with AsyncSessionLocal() as db:
                 await db.execute(delete(ConvoyShareLink).where(ConvoyShareLink.slug == slug))
                 await db.commit()
+
+
+class TestZaehlerVerloren:
+    async def test_leere_kennung_neuer_schluessel_und_seq_von_vorn(self, client, aufbau):
+        """Ein Gerät, das sein NVS verliert, fängt mit `seq` neu an. Mit dem alten Schlüssel
+        gälten mitgeschnittene Rahmen dann wieder — deshalb ein neuer Schlüssel."""
+        org, geraet, slug = aufbau
+        alt = geraet.rahmen("positionen", {"fixes": [_fix(5, 11.3)]})
+        assert (await client.post(f"/api/track/{slug}/tracker", json=alt)).status_code == 200
+        neu = (await client.post("/api/geraete/hallo", json={"schluessel_kennung": ""}, headers=geraet.kopf)).json()
+        frisch = Geraet(geraet.id, neu["schluessel"], geraet.kopf)
+        rahmen = frisch.rahmen("positionen", {"fixes": [_fix(4, 11.31)]})
+        assert rahmen["seq"] <= alt["seq"]
+        r = await client.post(f"/api/track/{slug}/tracker", json=rahmen)
+        assert r.status_code == 200, r.text
+        # Der mitgeschnittene alte Rahmen gilt nicht mehr.
+        assert (await client.post(f"/api/track/{slug}/tracker", json=alt)).status_code == 404
 
 
 class TestNetz:
