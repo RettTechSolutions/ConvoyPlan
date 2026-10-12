@@ -58,7 +58,7 @@ async function geraetAnstecken(page: Page, verhalten: Verhalten = {}) {
 								ok: true, protokoll: 1, hardware_id: '352656100000009', hardware: 'nrf9151-v1',
 								firmware: v.alteFirmware ? '0.2.0' : '0.3.0', eingerichtet: !!v.eingerichtetFuer,
 								instanz: v.eingerichtetFuer ?? null,
-								...(v.alteFirmware ? {} : { apn: 'iot.1nce.net', netz: 'catm' }),
+								...(v.alteFirmware ? {} : { apn: 'iot.1nce.net', funknetz: 'catm' }),
 							});
 						} else if (anfrage.befehl === 'einrichten') {
 							senden({ schritt: 'netz' });
@@ -178,7 +178,7 @@ test('APN und Funknetz gehen mit, wenn sie gesetzt sind', async ({ page }) => {
 		instanz: 'http://localhost:4174',
 		code: 'K7Q2-M9XD',
 		apn: 'internet.m2m',
-		netz: 'nbiot',
+		funknetz: 'nbiot',
 	});
 });
 
