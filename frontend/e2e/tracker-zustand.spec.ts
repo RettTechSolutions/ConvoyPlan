@@ -131,6 +131,8 @@ test('ein verstummter Tracker zeigt auch über WLAN keine aktuelle Verbindung', 
 	const empfang = page.getByTestId('tracker-v-hlf').getByRole('img', { name: /^Keine aktuelle Verbindung/ });
 	await expect(empfang).toHaveAttribute('data-netz', 'wlan');
 	await expect(empfang).toHaveClass(/alt/);
+});
+
 test('„Verbindung unterbrochen" erscheint ohne Neuladen, auch wenn die Abfrage hängt', async ({ page }) => {
 	// Gemeldet: der Tracker verstummte, die Ansicht blieb still, erst F5 zeigte
 	// die Störung. Die Uhr lief nur nach einer gelungenen Abfrage weiter — und
