@@ -20,7 +20,7 @@ from typing import Any, Iterable
 
 from fpdf.fonts import FontFace
 
-from app.services.pdf import PURPOSE_LABELS, TYPE_LABELS, _PDF
+from app.services.pdf import PURPOSE_LABELS, TYPE_LABELS, _PDF, halt_vermerk
 from app.services.static_map import END_COLOR, START_COLOR, STOP_COLOR, WAYPOINT_COLOR, Marker
 
 # GraphHopper-Instruction-Signs (com.graphhopper.util.Instruction).
@@ -114,7 +114,7 @@ def _hhmm(dt: datetime | None) -> str | None:
     return dt.strftime("%H:%M") if dt else None
 
 
-def _waypoint_detail(wp: Any) -> str:
+def _waypoint_detail(wp: Any, zusammengelegt: list[dict] | None = None) -> str:
     parts = [TYPE_LABELS.get(wp.type, wp.type or "Wegpunkt")]
     arrival, departure = _hhmm(wp.planned_arrival), _hhmm(wp.planned_departure)
     if arrival:
@@ -125,6 +125,8 @@ def _waypoint_detail(wp: Any) -> str:
         hold = f"{wp.hold_duration_min} min Halt"
         purpose = PURPOSE_LABELS.get(getattr(wp, "halt_purpose", None) or "")
         parts.append(f"{hold} ({purpose})" if purpose else hold)
+    if vermerk := halt_vermerk(zusammengelegt, wp.hold_duration_min):
+        parts.append(vermerk)
     if wp.notes:
         parts.append(wp.notes)
     return " · ".join(parts)
@@ -134,12 +136,14 @@ def build_rows(
     instructions: Iterable[dict[str, Any]],
     located: list[Any],
     planned_arrival: datetime | None = None,
+    zusammengelegt: dict[str, list[dict]] | None = None,
 ) -> list[Row]:
     """Turn stored instructions into printable rows.
 
     ``located`` sind die Wegpunkte mit Lage, in der Reihenfolge der Liste. Ihre
     Position (ab 1) ist die Nummer im Text — dieselbe trägt ihr Marker auf der
-    Karte (``map_markers()``).
+    Karte (``map_markers()``). ``zusammengelegt`` nennt je Wegpunkt-ID die
+    fälligen Halte, die in ihm aufgehen (``fuel.halteplan``).
     """
     numbers = {str(wp.id): n for n, wp in enumerate(located, start=1)}
     by_id = {str(wp.id): wp for wp in located}
@@ -156,7 +160,7 @@ def build_rows(
             wp = by_id.get(str(ins.get("waypoint_id")))
             if wp is not None:
                 text = f"Wegpunkt {numbers[str(wp.id)]}: {wp.name}"
-                detail = _waypoint_detail(wp)
+                detail = _waypoint_detail(wp, (zusammengelegt or {}).get(str(wp.id)))
         elif sign == SIGN_FINISH:
             kind = "finish"
             text = "Ziel erreicht"
@@ -312,6 +316,7 @@ def generate_roadbook(
     map_jpeg: bytes | None,
     planned_departure: datetime | None = None,
     planned_arrival: datetime | None = None,
+    zusammengelegt: dict[str, list[dict]] | None = None,
 ) -> bytes:
     pdf = _RoadbookPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
@@ -352,7 +357,7 @@ def generate_roadbook(
         )
         return bytes(pdf.output())
 
-    rows = mit_hinweisen(build_rows(instructions, located, planned_arrival), hinweis_rows(route))
+    rows = mit_hinweisen(build_rows(instructions, located, planned_arrival, zusammengelegt), hinweis_rows(route))
 
     pdf.set_font("DV", "", 9)
     heading = FontFace(emphasis="BOLD", fill_color=(220, 225, 235))

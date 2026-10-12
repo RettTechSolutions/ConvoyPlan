@@ -100,3 +100,146 @@ def test_analyse_reicht_geplante_halte_durch():
     assert ohne["duration_halt_needed"] is True
     assert mit["duration_halt_needed"] is False
     assert mit["duration_halts"] == []
+
+
+# ── Vermerk: was zusammengelegt wurde, geht nicht verloren ───────────────────
+#
+# „Tankhalt + TH": Die WOLKE-Prüfung entfällt nicht, sie findet am Tankhalt
+# statt. Das muss am Wegpunkt stehen — auf dem Schirm und auf dem Ausdruck.
+
+import uuid  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+
+import pytest  # noqa: E402
+
+from app.services import pdf as pdf_svc  # noqa: E402
+from app.services import roadbook  # noqa: E402
+from app.services.fuel import halteplan  # noqa: E402
+
+
+def _plan(stunden: float, geplant=(), fahrzeuge: int = 3):
+    return halteplan(_km(stunden), stunden * 3600, [], fahrzeuge, list(geplant))
+
+
+def test_tankhalt_traegt_den_aufgegangenen_th():
+    halts, zusammen = _plan(5, [(_km(2 + 10 / 60), 20, "tank")], fahrzeuge=6)
+    assert zusammen == [{"waypoint_id": "tank", "kind": "tech", "duration_min": 30, "faellig_km": _km(2)}]
+    assert [h["kind"] for h in halts] == ["break"]
+
+
+def test_auch_ein_tankhalt_kurz_vor_dem_th_traegt_ihn():
+    _, zusammen = _plan(5, [(_km(1 + 45 / 60), 20, "tank")])
+    assert [z["waypoint_id"] for z in zusammen] == ["tank"]
+
+
+def test_ein_viel_frueherer_halt_ersetzt_nichts():
+    """Er setzt das Intervall zurück, aber kein fälliger Halt ging in ihm auf."""
+    _, zusammen = _plan(5, [(_km(1), 15, "frueh")])
+    assert zusammen == []
+
+
+def test_zu_kurzer_halt_ersetzt_keine_lenkpause_und_traegt_sie_nicht():
+    halt_bei = 4 + 10 / 60
+    halts, zusammen = _plan(8, [(_km(2), 15, "th"), (_km(halt_bei), 20, "tank")])
+    assert "tank" not in [z["waypoint_id"] for z in zusammen]
+    assert any(h["kind"] == "break" and h["stop_km"] == round(_km(halt_bei), 1) for h in halts)
+
+
+def test_langer_halt_traegt_die_lenkpause():
+    _, zusammen = _plan(5, [(_km(2), 15, "th"), (_km(4 + 20 / 60), 45, "rast")])
+    assert {z["waypoint_id"]: z["kind"] for z in zusammen} == {"th": "tech", "rast": "break"}
+
+
+def test_uebernommener_vorschlag_ist_kein_zusammengelegter():
+    """Ein Vorschlag an seiner eigenen Stelle ist er selbst — der Vermerk
+    stünde trotzdem richtig da („zugleich Technischer Halt“)."""
+    vorschlaege = _halts(5)
+    _, zusammen = _plan(5, [(h["stop_km"], h["duration_min"], f"v{i}") for i, h in enumerate(vorschlaege)])
+    assert [z["kind"] for z in zusammen] == [h["kind"] for h in vorschlaege]
+
+
+@pytest.mark.parametrize(("eintraege", "halt", "text"), [
+    ([{"kind": "tech", "duration_min": 30}], 20, "zugleich Technischer Halt (WOLKE), empfohlen 30 min"),
+    ([{"kind": "tech", "duration_min": 15}], 20, "zugleich Technischer Halt (WOLKE)"),
+    ([{"kind": "break", "duration_min": 45}], 45, "zugleich Lenkpause"),
+    ([], 20, ""),
+    (None, 20, ""),
+])
+def test_vermerk_text(eintraege, halt, text):
+    assert pdf_svc.halt_vermerk(eintraege, halt) == text
+
+
+def test_roadbook_nennt_den_th_am_tankhalt():
+    tank = SimpleNamespace(
+        id=uuid.uuid4(), name="Raststätte Pfefferhöhe", type="technical_stop",
+        planned_arrival=None, planned_departure=None, hold_duration_min=20,
+        halt_purpose="fuel", notes=None,
+    )
+    anweisungen = roadbook.link_waypoints([
+        {"sign": 0, "text": "Weiter auf A 5", "distance_m": 1000.0},
+        {"sign": 5, "text": "Wegpunkt 1 erreicht", "distance_m": 0.0},
+        {"sign": 4, "text": "Ziel erreicht!", "distance_m": 0.0},
+    ], [str(tank.id)])
+    zeilen = roadbook.build_rows(
+        anweisungen, [tank], None, {str(tank.id): [{"kind": "tech", "duration_min": 30}]},
+    )
+    assert "20 min Halt (Betriebsstoff)" in zeilen[1].detail
+    assert "zugleich Technischer Halt (WOLKE), empfohlen 30 min" in zeilen[1].detail
+
+
+def test_marschbefehl_nennt_den_th_unter_dem_tankhalt(monkeypatch):
+    texte: list[str] = []
+    cell = pdf_svc._PDF.cell
+
+    def _cell(self, w=None, h=None, text="", *a, **k):
+        texte.append(str(text))
+        return cell(self, w, h, text, *a, **k)
+
+    monkeypatch.setattr(pdf_svc._PDF, "cell", _cell)
+    konvoi = SimpleNamespace(
+        name="Konvoi", organization=None, start_time=None, lage=None, auftrag=None,
+        marschform=None, ablaufpunkt=None, ablaufzeit=None, ablaufführer=None,
+        versorgung=None, funkgruppe=None, anlagen=None, speed_urban_kmh=40, speed_rural_kmh=65,
+    )
+    wegpunkte = [{
+        "lat": 50.7, "lon": 9.3, "name": "Raststätte Pfefferhöhe", "type": "technical_stop",
+        "notes": None, "halt_purpose": "fuel", "hold_duration_min": 20,
+        "planned_arrival": None, "planned_departure": None,
+        "zusammengelegt": [{"kind": "tech", "duration_min": 30}],
+    }]
+    assert pdf_svc.generate_marschbefehl(konvoi, wegpunkte, [], None).startswith(b"%PDF-")
+    assert any("zugleich Technischer Halt (WOLKE), empfohlen 30 min" in t for t in texte)
+
+
+def test_uebernommener_th_traegt_keinen_vermerk_der_tankhalt_schon(monkeypatch):
+    """Durch die App: der Tankhalt bekommt „+ TH“, ein übernommener TH-Vorschlag
+    nicht „zugleich Technischer Halt“ an sich selbst."""
+    from app.api.routes import routing
+
+    # Gerade Strecke nach Osten; die Lage eines Wegpunkts ist sein km.
+    coords = [[9.0 + i * 0.01, 50.0] for i in range(1000)]
+    lage = {}
+
+    def _latlon(wp):
+        return lage.get(wp.id)
+
+    monkeypatch.setattr(routing, "_waypoint_latlon", _latlon)
+    route_m = routing.fuel_svc.haversine_m(9.0, 50.0, coords[-1][0], 50.0)
+    dauer_s = 5 * 3600
+
+    def _bei(stunden):
+        return (50.0, 9.0 + (coords[-1][0] - 9.0) * stunden * 3600 / dauer_s)
+
+    tank = SimpleNamespace(id=uuid.uuid4(), type="technical_stop", halt_purpose="fuel", hold_duration_min=20)
+    th = SimpleNamespace(id=uuid.uuid4(), type="technical_stop", halt_purpose=None, hold_duration_min=15)
+    lage[tank.id] = _bei(2 + 10 / 60)
+    konvoi = SimpleNamespace(waypoints=[tank], convoy_vehicles=[])
+    analyse = routing._halteanalyse(konvoi, route_m, coords, dauer_s)
+    assert [(z["waypoint_id"], z["kind"]) for z in analyse["zusammengelegt"]] == [(str(tank.id), "tech")]
+
+    # Ohne Tankhalt, mit übernommenem Vorschlag an seiner Stelle: kein Vermerk.
+    lage[th.id] = _bei(2)
+    konvoi = SimpleNamespace(waypoints=[th], convoy_vehicles=[])
+    analyse = routing._halteanalyse(konvoi, route_m, coords, dauer_s)
+    assert analyse["zusammengelegt"] == []
+    assert all(h["kind"] != "tech" or h["after_drive_s"] > 2 * 3600 for h in analyse["duration_halts"])

@@ -17,6 +17,7 @@
 	import GewichtsGrenzen from '$lib/components/GewichtsGrenzen.svelte';
 	import RouteHinweisMarke from '$lib/components/RouteHinweisMarke.svelte';
 	import { routeHinweise } from '$lib/route/hinweise';
+	import HaltVermerk from '$lib/components/HaltVermerk.svelte';
 	import RegionCard from '$lib/components/RegionCard.svelte';
 	import type { BrueckenPruefung, DurchfahrtshoeheEntry, FuelAnalysis, GewichtsgrenzeEntry } from '$lib/api';
 	import { feedbackStore } from '$lib/stores/feedback';
@@ -164,6 +165,16 @@
 	<div class="admin-flaeche"><PasskeyVerwaltung /></div>
 {:else if welche === 'feedback'}
 	<FeedbackModal />
+{:else if welche === 'vermerk'}
+	<!-- Wegpunktliste der Planung: Tankhalt, in dem ein TH aufgeht, und ein
+	     Kontrollpunkt ohne Vermerk. -->
+	<div class="leiste" data-theme="dark">
+		<ul class="leiste-inhalt">
+			<li data-testid="tankhalt">Tankhalt – Raststätte Pfefferhöhe <HaltVermerk eintraege={[{ waypoint_id: 't', kind: 'tech', duration_min: 30, faellig_km: 123.3 }]} haltMin={20} /></li>
+			<li data-testid="pause">Rastanlage <HaltVermerk eintraege={[{ waypoint_id: 'p', kind: 'break', duration_min: 45, faellig_km: 288 }]} haltMin={45} /></li>
+			<li data-testid="kontrollpunkt">KP 2 – Kirchheimer Dreieck <HaltVermerk eintraege={undefined} haltMin={0} /></li>
+		</ul>
+	</div>
 {:else if welche === 'region'}
 	<div class="admin-flaeche"><RegionCard /></div>
 {:else if welche === 'konvoi'}

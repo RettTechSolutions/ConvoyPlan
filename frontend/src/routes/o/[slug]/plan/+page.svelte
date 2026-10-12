@@ -39,6 +39,8 @@
 	import GewichtsGrenzen from '$lib/components/GewichtsGrenzen.svelte';
 	import RouteHinweisMarke from '$lib/components/RouteHinweisMarke.svelte';
 	import { routeHinweise } from '$lib/route/hinweise';
+	import { vermerkeJeWegpunkt, vermerkText } from '$lib/route/halte';
+	import HaltVermerk from '$lib/components/HaltVermerk.svelte';
 	import { tutorialStore } from '$lib/stores/tutorial';
 	import QRCode from 'qrcode';
 
@@ -61,6 +63,8 @@
 		(selected?.waypoints ?? []).some(wp => wp.halt_purpose === 'fuel')
 	);
 	const routeHinweiseJetzt = $derived(routeHinweise(route, fuelStopExists));
+	// Fällige Halte, die in einem geplanten Wegpunkt aufgehen („Tankhalt + TH").
+	const haltVermerke = $derived(vermerkeJeWegpunkt(route?.fuel_analysis));
 	let closures = $state<FeatureCollection | null>(null);
 	let showClosures = $state(false);
 	// Live-Verkehrslage (HERE/TomTom) — nur verfügbar, wenn eine Installation
@@ -1666,6 +1670,25 @@
 									</div>
 								{/if}
 							{/if}
+							{#if route.fuel_analysis?.zusammengelegt?.length}
+								<div class="th-warning zusammengelegt">
+									<p class="th-title">🔗 Zusammengelegt</p>
+									<ul class="th-list">
+										{#each route.fuel_analysis.zusammengelegt as z}
+											{@const wp = selected?.waypoints.find((w) => w.id === z.waypoint_id)}
+											{#if wp}
+												<li class="th-item">
+													<div>
+														<strong>{HALT_ICON[z.kind] ?? '🔧'} {HALT_NAME[z.kind] ?? 'Technischer Halt'}</strong>
+														(fällig bei ca. km {z.faellig_km}) findet im Halt <strong>{wp.name}</strong> statt
+														<span class="th-after">{vermerkText([z], wp.hold_duration_min)}</span>
+													</div>
+												</li>
+											{/if}
+										{/each}
+									</ul>
+								</div>
+							{/if}
 							<DurchfahrtsHoehen
 								eintraege={route.durchfahrtshoehen}
 								fahrzeughoeheM={route.fahrzeughoehe_m}
@@ -2013,6 +2036,7 @@
 										<span class="tag">{WP_TYPE_LABELS[wp.type] ?? wp.type}</span>
 										{#if wp.halt_purpose && wp.halt_purpose !== 'technical'}<span class="tag orange">{wp.halt_purpose}</span>{/if}
 										{#if wp.hold_duration_min > 0}<span class="tag">{wp.hold_duration_min} min</span>{/if}
+										<HaltVermerk eintraege={haltVermerke.get(wp.id)} haltMin={wp.hold_duration_min} />
 									</div>
 									<div class="wp-actions">
 										<button class="btn-small" onclick={() => startEditWp(wp)} title="Bearbeiten">✎</button>
@@ -2073,7 +2097,7 @@
 									{/if}
 									{#each selected.waypoints as wp}
 										<tr>
-											<td>{wp.name} {#if wp.type === 'technical_stop'}<span class="tag orange">Techn.</span>{/if}</td>
+											<td>{wp.name} {#if wp.type === 'technical_stop'}<span class="tag orange">Techn.</span>{/if} <HaltVermerk eintraege={haltVermerke.get(wp.id)} haltMin={wp.hold_duration_min} /></td>
 											<td>{formatTime(wp.planned_arrival)}</td>
 											<td>{formatTime(wp.planned_departure)}</td>
 										</tr>

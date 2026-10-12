@@ -133,8 +133,19 @@ def _duration_halts(
     route_duration_s: float,
     route_coords: list[list[float]],
     vehicle_count: int,
-    geplante_halte: list[tuple[float, int]] = (),
+    geplante_halte: list[tuple] = (),
 ) -> list[dict]:
+    """Nur die empfohlenen Halte aus ``halteplan``."""
+    return halteplan(route_km, route_duration_s, route_coords, vehicle_count, geplante_halte)[0]
+
+
+def halteplan(
+    route_km: float,
+    route_duration_s: float,
+    route_coords: list[list[float]],
+    vehicle_count: int,
+    geplante_halte: list[tuple] = (),
+) -> tuple[list[dict], list[dict]]:
     """
     Simuliert die Marschzeit und leitet daraus die empfohlenen Halte ab.
 
@@ -149,7 +160,7 @@ def _duration_halts(
     Lenkzeitunterbrechung und setzt die Lenkzeit zurück.
 
     ``geplante_halte`` sind die Halte, die schon als Wegpunkt stehen —
-    ``(km entlang der Route, Haltedauer in min)``. Sie zählen wie ein
+    ``(km entlang der Route, Haltedauer in min[, Kennung])``. Sie zählen wie ein
     Technischer Halt: Das TH-Intervall läuft danach neu an, und ein TH, der
     höchstens ``HALT_MERGE_WINDOW_S`` vor einem geplanten Halt fällig wäre,
     geht in diesem auf, statt zwei Stopps kurz hintereinander zu erzeugen
@@ -160,18 +171,28 @@ def _duration_halts(
 
     Damit liefert die Liste nur noch, was **fehlt**: ein übernommener
     Vorschlag steht danach als geplanter Halt da und verschwindet aus ihr.
+
+    Zurück kommen zwei Listen: die empfohlenen Halte und die
+    **zusammengelegten** — welcher fällige Halt in welchem geplanten aufging.
+    Die zweite ist der Vermerk am Wegpunkt („Tankhalt + TH"): ohne sie wüsste
+    die Besatzung am Tankhalt nicht, dass dort auch die WOLKE-Prüfung fällig
+    ist. Abgeleitet statt gespeichert, damit er mit dem Halt mitwandert.
     """
     if route_duration_s <= TH_TRIGGER_S:
-        return []
+        return [], []
 
     # Geplante Halte auf der Lenkzeit-Achse, wie die Vorschläge über den
     # Streckenanteil umgerechnet.
     geplant = sorted(
-        (km / route_km * route_duration_s, dauer)
-        for km, dauer in geplante_halte
-        if route_km > 0 and dauer > 0
+        (
+            (g[0] / route_km * route_duration_s, g[1], g[2] if len(g) > 2 else None)
+            for g in geplante_halte
+            if route_km > 0 and g[1] > 0
+        ),
+        key=lambda g: g[0],
     )
     naechster_geplant = 0
+    zusammengelegt: list[dict] = []
 
     th_min = tech_stop_duration_min(vehicle_count)
     halts: list[dict] = []
@@ -194,10 +215,28 @@ def _duration_halts(
         nur_th = step == to_th and step < to_break and step < to_rest
         frist = driven + step + (HALT_MERGE_WINDOW_S if nur_th else GLEICHE_STELLE_S)
         if naechster_geplant < len(geplant) and geplant[naechster_geplant][0] <= frist:
-            bei, dauer = geplant[naechster_geplant]
+            bei, dauer, kennung = geplant[naechster_geplant]
             naechster_geplant += 1
             if bei > route_duration_s - _arrival_window_s(route_duration_s):
                 break
+            # Liegt der geplante Halt nah am fälligen, ersetzt er ihn — das
+            # wird vermerkt. Ein viel früherer setzt nur das Intervall zurück.
+            faellig = driven + step
+            if bei >= faellig - HALT_MERGE_WINDOW_S:
+                if to_rest - step <= HALT_MERGE_WINDOW_S:
+                    art, noetig, reicht = HALT_KIND_DAILY_REST, DAILY_REST_MIN, dauer >= DAILY_REST_MIN
+                elif to_break - step <= HALT_MERGE_WINDOW_S:
+                    art, noetig = HALT_KIND_BREAK, max(BREAK_DURATION_MIN, th_min)
+                    reicht = dauer >= BREAK_DURATION_MIN
+                else:
+                    art, noetig, reicht = HALT_KIND_TECH, th_min, True
+                if reicht:
+                    zusammengelegt.append({
+                        "waypoint_id": kennung,
+                        "kind": art,
+                        "duration_min": noetig,
+                        "faellig_km": round(faellig / route_duration_s * route_km, 1),
+                    })
             gefahren = max(0.0, bei - driven)
             driven += gefahren
             since_break += gefahren
@@ -256,7 +295,7 @@ def _duration_halts(
 
         halts.append(_halt(driven, route_km, route_duration_s, route_coords, kind, duration, covers_break))
 
-    return halts
+    return halts, zusammengelegt
 
 
 def _halt(
@@ -286,13 +325,13 @@ def analyse_fuel(
     route_distance_m: float,
     route_coords: list[list[float]],
     route_duration_s: float = 0,
-    geplante_halte: list[tuple[float, int]] = (),
+    geplante_halte: list[tuple] = (),
 ) -> dict:
     """
     Returns a fuel analysis dict.
 
     ``geplante_halte``: Halte, die schon als Wegpunkt stehen, als
-    ``(km entlang der Route, Haltedauer in min)`` — siehe ``_duration_halts``.
+    ``(km entlang der Route, Haltedauer in min, Wegpunkt-ID)`` — siehe ``halteplan``.
 
     When a vehicle has no fuel data, default values are used
     (DEFAULT_CONSUMPTION_L100KM, DEFAULT_TANK_L) and flagged via
@@ -302,7 +341,7 @@ def analyse_fuel(
     vehicle_count = len(convoy_vehicles)
 
     # Duration-based TH recommendations (independent of fuel)
-    dur_halts = _duration_halts(route_km, route_duration_s, route_coords, vehicle_count, geplante_halte)
+    dur_halts, zusammengelegt = halteplan(route_km, route_duration_s, route_coords, vehicle_count, geplante_halte)
 
     ranges = []
     for cv in convoy_vehicles:
@@ -337,6 +376,7 @@ def analyse_fuel(
     base = {
         "duration_halt_needed": len(dur_halts) > 0,
         "duration_halts": dur_halts,
+        "zusammengelegt": zusammengelegt,
         "rest_needed": route_duration_s > REST_TRIGGER_S,
     }
 

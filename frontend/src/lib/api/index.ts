@@ -39,6 +39,14 @@ export interface DurationHalt {
 	after_drive_s: number;
 	covers_break: boolean;
 }
+/** Ein fälliger Halt, der in einem geplanten Wegpunkt aufgeht („Tankhalt + TH"). */
+export interface ZusammengelegterHalt {
+	waypoint_id: string | null;
+	kind: HaltKind;
+	/** Dauer, die der Halt für sich empfohlen hätte. */
+	duration_min: number;
+	faellig_km: number;
+}
 export interface FuelAnalysis {
 	vehicles_with_range: VehicleRangeInfo[];
 	min_range_km: number | null;
@@ -53,6 +61,8 @@ export interface FuelAnalysis {
 	recommended_stop_duration_min: number | null;
 	duration_halt_needed: boolean;
 	duration_halts: DurationHalt[];
+	/** Fehlt bei Antworten älterer Backends. */
+	zusammengelegt?: ZusammengelegterHalt[];
 	rest_needed: boolean;
 }
 
