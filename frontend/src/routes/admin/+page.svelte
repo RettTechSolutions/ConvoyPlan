@@ -6,6 +6,7 @@
     import LeitstellenTable from '$lib/components/LeitstellenTable.svelte';
     import PasskeyVerwaltung from '$lib/components/PasskeyVerwaltung.svelte';
     import { auth } from '$lib/stores/auth';
+    import { kontextmenue, kopieren, TRENNER, type Eintraege } from '$lib/kontextmenue/menue';
     import EmailTemplateEditor from '$lib/components/EmailTemplateEditor.svelte';
     import { getStreamTicket } from '$lib/api/client';
     import { adminApi, mfaApi, leistellenApi, licenseApi, mcpAdminApi, orgPlanAdminApi, type AdminOrgPlanRow, type OrgPlanCatalogEntry, regionApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoStats, type DemoSessionInfo, type DemoLeadInfo, type DemoIpLock, type DemoIpAllowlistEntry, type RegionStatus, type RegionPhase, type McpStatus, type McpClient, type McpConnection, type McpOrgPolicy, feedbackAdminApi, type FeedbackReport, type FeedbackStats, type FeedbackStatus, type FeedbackSeverity, type FeedbackKind } from '$lib/api';
@@ -386,6 +387,56 @@
         } finally {
             createAndEmailWorking = false;
         }
+    }
+
+    // ── Kontextmenüs: dieselben Aktionen wie die Knöpfe in der Zeile ──
+    function benutzerEintraege(user: AdminUser): Eintraege {
+        const name = [user.first_name, user.last_name].filter(Boolean).join(' ');
+        return [
+            { titel: name || user.email },
+            { label: 'Bearbeiten…', icon: '✎', aktion: () => openEditUser(user) },
+            { label: 'Aktiv', art: 'schalter', an: user.is_active, aktion: () => toggleActive(user) },
+            { label: 'Superadmin', art: 'schalter', an: user.is_superadmin, aktion: () => toggleSuperadmin(user) },
+            TRENNER,
+            { label: 'Neues Passwort anzeigen', icon: '🔑', aus: resettingPasswordFor === user.id, aktion: () => resetUserPassword(user.id) },
+            {
+                label: 'Neues Passwort per E-Mail', icon: '✉',
+                aus: !smtpConfig?.configured ? 'SMTP zuerst unter Einstellungen konfigurieren' : sendingPasswordFor === user.id,
+                aktion: () => sendUserPassword(user.id),
+            },
+            user.mfa_enabled && { label: 'MFA zurücksetzen', icon: '🔓', aus: resettingMfaFor === user.id, aktion: () => resetUserMfa(user) },
+            TRENNER,
+            kopieren('E-Mail kopieren', user.email),
+            TRENNER,
+            { label: 'Löschen', icon: '🗑', gefahr: true, aktion: () => deleteUser(user) },
+        ];
+    }
+
+    function orgEintraege(org: AdminOrg): Eintraege {
+        return [
+            { titel: org.name },
+            { label: 'Inhaber ändern…', icon: '✎', aktion: () => openEditOrgModal(org) },
+            { label: 'Alle Daten exportieren', icon: '⬇', aktion: () => exportOrg(org) },
+            { label: 'Org-Portal öffnen', icon: '↗', aktion: () => window.open(`/o/${org.slug}/admin`, '_blank') },
+            TRENNER,
+            kopieren('Code kopieren', org.slug),
+            kopieren('Anmeldelink kopieren', `${window.location.origin}/o/${org.slug}/login`, '🔗'),
+            kopieren('Inhaber-E-Mail kopieren', org.owner_email),
+            TRENNER,
+            { label: 'Löschen', icon: '🗑', gefahr: true, aktion: () => deleteOrg(org) },
+        ];
+    }
+
+    function leitstelleEintraege(ls: Leitstelle): Eintraege {
+        return [
+            { titel: ls.name },
+            ls.status === 'pending' && { label: 'Freigeben', icon: '✓', aktion: () => approveLs(ls) },
+            ls.status === 'pending' && { label: 'Ablehnen', icon: '✕', aktion: () => rejectLs(ls) },
+            $auth.is_superadmin && { label: 'Bearbeiten…', icon: '✎', aktion: () => openEditLs(ls) },
+            kopieren('Anrufgruppe kopieren', ls.anrufgruppe),
+            TRENNER,
+            $auth.is_superadmin && { label: 'Löschen', icon: '✕', gefahr: true, aktion: () => deleteLs(ls) },
+        ];
     }
 
     async function toggleActive(user: AdminUser) {
@@ -2082,7 +2133,7 @@
                                     <td colspan="7">▶ Demo-Sitzungen ({shownDemoCount}) — temporär, werden automatisch gelöscht</td>
                                 </tr>
                             {/if}
-                            <tr class:inactive={!user.is_active} class:demo-row={user.is_demo}>
+                            <tr class:inactive={!user.is_active} class:demo-row={user.is_demo} use:kontextmenue={() => benutzerEintraege(user)}>
                                 <td>
                                     {#if user.first_name || user.last_name}
                                         {[user.first_name, user.last_name].filter(Boolean).join(' ')}
@@ -2211,7 +2262,7 @@
                                     <td colspan="5">▶ Demo-Sitzungen ({demoOrgCount}) — temporär, werden automatisch gelöscht</td>
                                 </tr>
                             {/if}
-                            <tr class:demo-row={org.is_demo}>
+                            <tr class:demo-row={org.is_demo} use:kontextmenue={() => orgEintraege(org)}>
                                 <td>{org.name}</td>
                                 <td><code>{org.slug}</code></td>
                                 <td class="hint email-cell">{org.owner_email ?? '–'}</td>
@@ -2442,7 +2493,12 @@
                         </thead>
                         <tbody>
                             {#each apiKeys as key}
-                                <tr style:opacity={key.revoked ? 0.5 : 1}>
+                                <tr style:opacity={key.revoked ? 0.5 : 1} use:kontextmenue={() => [
+                                    { titel: key.name },
+                                    kopieren('Präfix kopieren', `cvp_${key.prefix}`),
+                                    TRENNER,
+                                    !key.revoked && { label: 'Widerrufen', icon: '🗑', gefahr: true, aktion: () => revokeApiKey(key) },
+                                ]}>
                                     <td>{key.name}</td>
                                     <td><code>cvp_{key.prefix}…</code></td>
                                     <td>{key.scope === 'system' ? 'System (nur lesen)' : key.role}</td>
@@ -2989,7 +3045,7 @@
                     </thead>
                     <tbody>
                         {#each pendingLs as ls}
-                            <tr>
+                            <tr use:kontextmenue={() => leitstelleEintraege(ls)}>
                                 <td>{ls.name}</td>
                                 <td><code>{ls.anrufgruppe}</code></td>
                                 <td>{ls.proposed_by_org_name ?? ls.org_name ?? '–'}</td>
@@ -3016,7 +3072,7 @@
                 {/if}
             </div>
 
-            <LeitstellenTable items={leitstellen} showOrg>
+            <LeitstellenTable items={leitstellen} showOrg kontext={leitstelleEintraege}>
                 {#snippet actions(ls)}
                     {#if $auth.is_superadmin}
                         <div>

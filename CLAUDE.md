@@ -379,6 +379,12 @@ Org-Admin). Vier Dinge, die man kennen muss:
   `positionsverlauf.aufzeichnen` mit. Auch `is_recently_cleared` („GPS-Freigabe
   zurücksetzen") und `planned → en_route` samt `alarm_quittung.zuruecksetzen`
   gelten hier wie am Fahrer-Link.
+- **Sendetakt je Organisation** (`organizations.tracker_buendel_s`, Migration `0065`).
+  NULL heißt Standard aus `ortungsgeraet.TAKT`; `_anweisung` liest ihn bei jeder
+  Antwort, wählbar ist nur `BUENDEL_WAHL` (nicht unter `intervall_s`, unter
+  `positionsquelle.VORRANG_S`). Die Volumenschätzung (`volumen_kb_pro_stunde`)
+  ist aus dem Protokoll gerechnet, nicht gemessen; kommen Zahlen aus M3 im
+  Tracker-Repo, gehören sie in `VOLUMEN_*_B`.
 - **„Auf Akku seit"** (`akku_seit`, Migration `0063`) setzt `ortungsgeraet.akku_seit` aus
   dem *bisherigen* `extern` und der neuen Meldung, **bevor** die Zustandsfelder
   überschrieben werden (`_zustand_merken`). Eine Meldung ohne `extern` lässt den Wert
@@ -446,6 +452,19 @@ aus `signal_dbm` (RSRP) und dem letzten Kontakt; „auf Akku seit" kommt aus `ak
 (siehe oben). Tests: `tests/test_tracker_geraete.py` (`test_akku_niedrig`,
 `TestZustandInDerKonvoiAnsicht`), `frontend/e2e/tracker-zustand.spec.ts`.
 
+**Verbindung unterbrochen, GPS gestört** (`ortungsgeraet.unterbrochen_ab`/`gps_gestoert_ab`,
+Migration `0066`): Nach jedem Bündel ohne `ruhe`, auf das die Instanz `senden` antwortet,
+steht in `unterbrochen_ab`, wann zwei weitere ausgeblieben sind (2 × `buendel_s` + 15 s,
+mit dem `buendel_s` aus **dieser** Antwort, also dem Sendetakt der Organisation).
+`_zustand_merken` löscht beide Spalten bei **jedem** Aufruf, `positionen` setzt sie danach
+neu — ein `hallo` kommt nur aus der Ruhe, also wird danach nichts erwartet. `gps_gestoert_ab`
+schiebt nur ein Bündel mit plausiblem Fix weiter, ein leeres lässt die Frist laufen. Das
+Backend liefert Zeitpunkte statt Booleans, damit die Ansicht zwischen zwei Abfragen (15 s)
+selbst umschlägt (`stoerung()` in `trackerzustand.ts`). Unplausible Fixes (0/0,
+`accuracy_m` > 100, > 250 km/h, Sprünge im Bündel) verwirft `fixes_lesen` als einzelne Fixes.
+Die Referenz-Instanz im Tracker-Repo tut dasselbe. Tests: `TestPlausibel`,
+`TestVerbindungUnterbrochen`, `TestVerbindungDurchDieApp`.
+
 **Wurzelzertifikate** (`services/tracker_wurzeln.py`, E13 im Tracker-Plan): Mit
 `TRACKER_WURZELN` (PEM-Datei) verteilt die Instanz ein Bündel eigener Wurzeln. Das
 Gerät meldet in `hallo` den Fingerabdruck seiner Wurzeln (`wurzeln_sha256`,
@@ -490,6 +509,25 @@ Ein technischer Halt oder Ausfall löst `alert` aus; **quittiert** wird er seit
 - Die Gegenstelle in der Begleit-App ist `packages/track-api` und
   `app/src/alerts/board.ts` im Repo Convoyplan-Companion; `hello` meldet die
   Fähigkeit als `alarm-quittung`.
+
+### Kontextmenü: eins für alle, und nur als Abkürzung
+
+Rechtsklick, Taste *Kontextmenü*/Umschalt+F10 und langes Drücken öffnen **ein**
+Menü (`$lib/kontextmenue/Kontextmenue.svelte`, eingehängt im Wurzel-Layout);
+geöffnet wird es über die Action `use:kontextmenue={() => [...]}` oder `oeffnen()`
+aus `menue.ts`. Auf der Karte kommt das Ereignis von MapLibre (`onKontextmenue` an
+`MapView`), weil MapLibre langes Drücken auf iOS selbst erkennt und den Rechtsklick
+nach dem Drehen der Karte verschluckt; Marker halten ihr eigenes fest.
+
+Drei Regeln, die `frontend/e2e/kontextmenue.spec.ts` festhält:
+
+- **Jeder Eintrag ruft die Funktion des Knopfes daneben.** Was es nur im Menü gäbe,
+  fände am Telefon niemand. Umsortieren läuft deshalb über dieselbe Speicherfunktion
+  wie das Ziehen (`speichereWegpunktReihenfolge`, `speichereMarschfolge`).
+- **Das Browsermenü bleibt**, wo es gebraucht wird: Eingabefeld, Link, markierter
+  Text, Umschalt gedrückt. Sonst ginge „Einfügen" verloren.
+- **Ohne Aktion kein Menü.** `aufraeumen()` wirft bedingte Einträge (`false`) und
+  überzählige Trenner weg; bleibt keine Aktion, öffnet der Browser seins.
 
 ### API-Docs (Swagger/OpenAPI)
 

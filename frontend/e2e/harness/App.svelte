@@ -20,6 +20,8 @@
 	import RegionCard from '$lib/components/RegionCard.svelte';
 	import type { BrueckenPruefung, DurchfahrtshoeheEntry, FuelAnalysis, GewichtsgrenzeEntry } from '$lib/api';
 	import { feedbackStore } from '$lib/stores/feedback';
+	import Kontextmenue from '$lib/kontextmenue/Kontextmenue.svelte';
+	import { kontextmenue, kopieren, reihenfolgeEintraege, TRENNER } from '$lib/kontextmenue/menue';
 
 	const welche = new URLSearchParams(location.search).get('k') ?? 'share';
 	if (welche === 'feedback') feedbackStore.open('bug');
@@ -38,6 +40,11 @@
 		spacing_motorway_m: 100,
 	});
 	let konvoiOffen = $state(true);
+
+	/** Kontextmenü: `?k=kontextmenue` — eine Liste wie die Wegpunkte der Planung. */
+	let punkte = $state(['Abmarsch', 'Rastplatz Irschenberg', 'Ziel']);
+	let geloescht = $state<string[]>([]);
+	let zeilenKlicks = $state(0);
 
 	/** Durchfahrtshöhen: `?k=hoehen&fall=…`, die Fälle stehen im Test. */
 	const fall = new URLSearchParams(location.search).get('fall') ?? 'gemischt';
@@ -169,6 +176,39 @@
 			onDelete={() => {}}
 		/>
 	{/if}
+{:else if welche === 'kontextmenue'}
+	<div class="admin-flaeche">
+		<ul class="punkte">
+			{#each punkte as p, i (p)}
+				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+				<li
+					tabindex="0"
+					data-testid="punkt-{i}"
+					onclick={() => zeilenKlicks++}
+					onkeydown={() => {}}
+					use:kontextmenue={() => [
+						false,
+						TRENNER,
+						{ titel: p },
+						...reihenfolgeEintraege(punkte, i, (neu) => (punkte = neu)),
+						TRENNER,
+						TRENNER,
+						kopieren('Namen kopieren', p),
+						{ label: 'Gesperrt', aus: 'Geht hier nicht', aktion: () => geloescht.push('GESPERRT') },
+						TRENNER,
+						{ label: 'Löschen', icon: '✕', gefahr: true, aktion: () => { geloescht.push(p); punkte = punkte.filter((x) => x !== p); } },
+						TRENNER,
+					]}
+				>
+					{p} <input aria-label="Notiz zu {p}" /> <a href="#{i}">Link</a>
+				</li>
+			{/each}
+		</ul>
+		<p class="geloescht">Gelöscht: {geloescht.join(', ') || '–'}</p>
+		<p class="klicks">Zeilenklicks: {zeilenKlicks}</p>
+		<p class="ohne" use:kontextmenue={() => [false, TRENNER, { titel: 'Nur ein Titel' }]}>Ohne Einträge</p>
+	</div>
+	<Kontextmenue />
 {:else}
 	<ShareLinkModal convoyId="demo" convoyName="THW OV Musterstadt – Verlegung Nord" onClose={() => {}} />
 {/if}

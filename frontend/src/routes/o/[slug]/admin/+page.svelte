@@ -8,6 +8,7 @@
     import AktionsseitenVerwaltung from '$lib/components/AktionsseitenVerwaltung.svelte';
     import TrackerVerwaltung from '$lib/components/TrackerVerwaltung.svelte';
     import { orgStore } from '$lib/stores/org';
+    import { kontextmenue, kopieren, TRENNER, type Eintraege } from '$lib/kontextmenue/menue';
     import { feedbackStore } from '$lib/stores/feedback';
     import { orgLeistellenApi, orgsApi, convoysApi, trackingApi, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type OrgMember } from '$lib/api';
     import { brandingStore, applyBranding, setOrgBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
@@ -95,6 +96,46 @@
         } catch (e: unknown) {
             membersError = e instanceof Error ? e.message : 'Fehler beim Einladen';
         } finally { inviteWorking = false; }
+    }
+
+    // ── Kontextmenüs: dieselben Aktionen wie die Knöpfe in der Zeile ──
+    const ROLLEN: [string, string][] = [['beobachter', 'Beobachter'], ['fahrer', 'Fahrer'], ['planer', 'Planer'], ['admin', 'Admin']];
+
+    function mitgliedEintraege(m: OrgMember): Eintraege {
+        const name = [m.first_name, m.last_name].filter(Boolean).join(' ');
+        return [
+            { titel: name || m.email },
+            ...ROLLEN.map(([wert, label]) => ({
+                label: `Rolle: ${label}`, art: 'auswahl' as const, an: m.role === wert,
+                aktion: () => { if (m.role !== wert) updateRole(m.user_id, wert); },
+            })),
+            TRENNER,
+            kopieren('E-Mail kopieren', m.email),
+            TRENNER,
+            { label: 'Aus der Organisation entfernen', icon: '✕', gefahr: true, aktion: () => removeMember(m.user_id, m.email) },
+        ];
+    }
+
+    function leitstelleEintraege(ls: Leitstelle): Eintraege {
+        if (!isOwn(ls)) return [{ titel: `${ls.name} (global)` }, kopieren('Anrufgruppe kopieren', ls.anrufgruppe)];
+        return [
+            { titel: ls.name },
+            { label: 'Bearbeiten…', icon: '✎', aktion: () => openEditLs(ls) },
+            (ls.status === 'local' || ls.status === 'rejected') && { label: 'Zur Freigabe senden', icon: '📤', aktion: () => submitLs(ls) },
+            kopieren('Anrufgruppe kopieren', ls.anrufgruppe),
+            TRENNER,
+            { label: 'Löschen', icon: '✕', gefahr: true, aktion: () => deleteLs(ls) },
+        ];
+    }
+
+    function gpsEintraege(s: GpsShare): Eintraege {
+        return [
+            { titel: `${s.vehicleName} · ${s.convoyName}` },
+            s.trackerUebersteuert && { label: 'Tracker wieder nutzen', icon: '📡', aktion: () => trackerUebersteuern(s, false) },
+            !s.trackerUebersteuert && s.quelle === 'tracker' && { label: 'Tracker übersteuern', icon: '📱', aktion: () => trackerUebersteuern(s, true) },
+            TRENNER,
+            { label: 'GPS zurücksetzen', icon: '⟲', gefahr: true, aktion: () => resetGps(s) },
+        ];
     }
 
     async function updateRole(userId: string, role: string) {
@@ -624,7 +665,7 @@
                     </thead>
                     <tbody>
                         {#each members as m}
-                            <tr>
+                            <tr use:kontextmenue={() => mitgliedEintraege(m)}>
                                 <td>
                                     {#if m.first_name || m.last_name}
                                         {[m.first_name, m.last_name].filter(Boolean).join(' ')}
@@ -676,7 +717,7 @@
                 <button class="btn-small" onclick={openCreateLs}>+ Neu</button>
             </div>
 
-            <LeitstellenTable items={leitstellen} statusLabels={{ pending: 'Eingereicht' }}>
+            <LeitstellenTable items={leitstellen} statusLabels={{ pending: 'Eingereicht' }} kontext={leitstelleEintraege}>
                 {#snippet actions(ls)}
                     {#if isOwn(ls)}
                         <div>
@@ -730,7 +771,7 @@
                     </thead>
                     <tbody>
                         {#each gpsShares as s (s.convoyId + s.vehicleId)}
-                            <tr>
+                            <tr use:kontextmenue={() => gpsEintraege(s)}>
                                 <td>{s.convoyName}</td>
                                 <td>{s.vehicleName}</td>
                                 <td>{formatTimestamp(s.recordedAt)}</td>
@@ -885,7 +926,7 @@
                     </thead>
                     <tbody>
                         {#each kiConnections as verbindung (verbindung.family_id)}
-                            <tr>
+                            <tr use:kontextmenue={() => [{ titel: verbindung.client_name }, { label: 'Verbindung trennen', icon: '✕', gefahr: true, aktion: () => kiTrennen(verbindung) }]}>
                                 <td>{verbindung.client_name}</td>
                                 <td>{verbindung.user_email ?? '—'}</td>
                                 <td class="hint">{verbindung.scopes.join(', ')}</td>

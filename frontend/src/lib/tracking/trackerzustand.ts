@@ -1,15 +1,20 @@
 /**
- * Akku und Empfang eines Trackers, wie Org-Admin und Konvoi-Ansicht sie zeigen.
+ * Akku, Empfang und Störungen eines Trackers, wie Org-Admin und Konvoi-Ansicht sie zeigen.
  *
  * Ob der Akku warnt, entscheidet das Backend (`akku_niedrig`,
  * `services/ortungsgeraet.py`) — hier steht nur, wie es aussieht. Die Balken
  * rechnen aus `signal_dbm` (RSRP des LTE-M-/NB-IoT-Moduls) und dem letzten
  * Kontakt; eine Meldung, die älter ist als `EMPFANG_VERALTET_MS`, sagt über den
  * Empfang von jetzt nichts mehr.
+ *
+ * Während der Fahrt erwartet das Backend Bündel und sagt, ab wann zwei
+ * ausgeblieben sind (`unterbrochen_ab`) und ab wann Bündel ohne plausiblen Fix
+ * kamen (`gps_gestoert_ab`). Verglichen wird hier mit der Uhr, damit die Anzeige
+ * zwischen zwei Abfragen umschlägt.
  */
 
 /** Ab hier gelten die Balken als veraltet (grau). Ein Tracker im laufenden
- *  Konvoi sendet alle 30 s; steht das Fahrzeug, schläft er nach fünf Minuten. */
+ *  Konvoi sendet alle 15 s; steht das Fahrzeug, schläft er nach fünf Minuten. */
 export const EMPFANG_VERALTET_MS = 10 * 60 * 1000;
 
 /** RSRP-Schwellen für 4/3/2/1 Balken, darunter keiner. */
@@ -37,6 +42,21 @@ export function dauer(iso: string, jetzt: number): string {
 	return `${Math.round(std / 24)} Tagen`;
 }
 
+export type Stoerung = 'unterbrochen' | 'gps';
+
+export const STOERUNG_TEXT: Record<Stoerung, string> = {
+	unterbrochen: 'Verbindung unterbrochen',
+	gps: 'GPS gestört',
+};
+
+/** Unterbrochen geht vor: ohne Bündel weiß das Backend nichts über das GPS. */
+export function stoerung(t: Pick<TrackerAnzeige, 'unterbrochen_ab' | 'gps_gestoert_ab'>, jetzt: number): Stoerung | null {
+	const faellig = (iso: string | null | undefined) => !!iso && jetzt >= new Date(iso).getTime();
+	if (faellig(t.unterbrochen_ab)) return 'unterbrochen';
+	if (faellig(t.gps_gestoert_ab)) return 'gps';
+	return null;
+}
+
 export interface TrackerAnzeige {
 	akku_prozent: number | null;
 	extern: boolean | null;
@@ -44,6 +64,10 @@ export interface TrackerAnzeige {
 	akku_niedrig: boolean;
 	signal_dbm: number | null;
 	zuletzt_gesehen: string | null;
+	/** Ab hier „Verbindung unterbrochen"; null: keine Fahrt, nichts erwartet. Ältere Backends: fehlt. */
+	unterbrochen_ab?: string | null;
+	/** Ab hier „GPS gestört"; null: nichts erwartet. */
+	gps_gestoert_ab?: string | null;
 }
 
 export function akkuTitel(t: TrackerAnzeige, jetzt: number): string {
@@ -58,6 +82,7 @@ export function akkuTitel(t: TrackerAnzeige, jetzt: number): string {
 export function empfangTitel(t: TrackerAnzeige, jetzt: number): string {
 	if (!t.zuletzt_gesehen) return 'Noch nie gemeldet';
 	const kontakt = `letzter Kontakt vor ${dauer(t.zuletzt_gesehen, jetzt)}`.replace('vor gerade eben', 'gerade eben');
+	if (stoerung(t, jetzt) === 'unterbrochen') return `${STOERUNG_TEXT.unterbrochen} · ${kontakt}`;
 	if (veraltet(t.zuletzt_gesehen, jetzt)) return `Keine aktuelle Verbindung · ${kontakt}`;
 	const b = balken(t.signal_dbm);
 	const dbm = t.signal_dbm === null ? '' : ` (${t.signal_dbm} dBm)`;
