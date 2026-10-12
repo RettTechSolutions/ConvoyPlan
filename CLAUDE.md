@@ -476,7 +476,7 @@ heißt „keine eigenen Wurzeln". Der Fingerabdruck (sortierte SHA-256 der DER-K
 steht genauso im Protokoll und im Simulator; wer ihn ändert, zieht beide. Tests:
 `tests/test_tracker_wurzeln.py`.
 
-**Nahfunk** (`services/nahfunk.py`, E14 im Tracker-Plan): Die Begleit-App meldet ohne Netz
+**Nahfunk** (`services/nahfunk.py`, E15 im Tracker-Plan): Die Begleit-App meldet ohne Netz
 über den Tracker ihres Fahrzeugs (BLE), der Tracker reicht mit `POST /api/geraete/meldungen`
 weiter. Den Schlüssel bekommen der Tracker in der Anweisung (`nahfunk`, nur bei `senden`) und die
 App über `track_ws` (Frame `nahfunk` auf jedes `belegen`, nur mit Gerätekennung). Drei Dinge, die
