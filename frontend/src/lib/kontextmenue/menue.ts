@@ -37,6 +37,13 @@ export type OffenesMenue = {
 	eintraege: Eintrag[];
 	/** Bekommt den Fokus zurück, wenn das Menü per Tastatur geschlossen wird. */
 	ausloeser: HTMLElement | null;
+	/**
+	 * Per Tastatur geöffnet: dann steht der Fokus gleich auf dem ersten Eintrag.
+	 * Mit der Maus nicht — Chrome zeichnet einen solchen Fokus sichtbar, sobald
+	 * vorher nichts Fokussierbares angeklickt wurde (eine Tabellenzelle), und
+	 * der erste Eintrag sähe aus wie gewählt.
+	 */
+	perTastatur: boolean;
 };
 
 export const TRENNER = { trenner: true } as const;
@@ -65,10 +72,16 @@ export function aufraeumen(roh: Eintraege): Eintrag[] {
 }
 
 /** Öffnet das Menü. Ohne einen einzigen Eintrag bleibt es zu (`false`). */
-export function oeffnen(x: number, y: number, eintraege: Eintraege, ausloeser: HTMLElement | null = null): boolean {
+export function oeffnen(
+	x: number,
+	y: number,
+	eintraege: Eintraege,
+	ausloeser: HTMLElement | null = null,
+	perTastatur = false,
+): boolean {
 	const liste = aufraeumen(eintraege);
 	if (!liste.length) return false;
-	menue.set({ x, y, eintraege: liste, ausloeser });
+	menue.set({ x, y, eintraege: liste, ausloeser, perTastatur });
 	return true;
 }
 
@@ -188,9 +201,9 @@ export function kontextmenue(node: HTMLElement, eintraege: () => Eintraege) {
 	let start: { x: number; y: number } | null = null;
 	let langGedruecktUm = 0;
 
-	function oeffnenBei(x: number, y: number, ziel: EventTarget | null): boolean {
+	function oeffnenBei(x: number, y: number, ziel: EventTarget | null, perTastatur = false): boolean {
 		const ausloeser = ziel instanceof HTMLElement ? (ziel.closest<HTMLElement>('button, [tabindex], a') ?? node) : node;
-		return oeffnen(x, y, quelle(), ausloeser);
+		return oeffnen(x, y, quelle(), ausloeser, perTastatur);
 	}
 
 	function onContextmenu(e: MouseEvent) {
@@ -203,7 +216,8 @@ export function kontextmenue(node: HTMLElement, eintraege: () => Eintraege) {
 		if (browsermenueBehalten(e, node)) return;
 		let { clientX: x, clientY: y } = e;
 		// Per Tastatur ausgelöst: kein Zeiger, also unter das Element.
-		if (!Number.isFinite(x) || !Number.isFinite(y) || (x === 0 && y === 0)) {
+		const perTastatur = !Number.isFinite(x) || !Number.isFinite(y) || (x === 0 && y === 0);
+		if (perTastatur) {
 			const r = (document.activeElement instanceof HTMLElement && node.contains(document.activeElement)
 				? document.activeElement
 				: node
@@ -211,7 +225,7 @@ export function kontextmenue(node: HTMLElement, eintraege: () => Eintraege) {
 			x = r.left + 8;
 			y = r.bottom;
 		}
-		if (oeffnenBei(x, y, e.target)) e.preventDefault();
+		if (oeffnenBei(x, y, e.target, perTastatur)) e.preventDefault();
 	}
 
 	// iOS Safari kennt kein `contextmenu` beim langen Drücken, Android schon —

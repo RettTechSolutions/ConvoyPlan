@@ -24,6 +24,12 @@ jobs:
       - name: Copy wiki pages
         run: |
           cp wiki/*.md wiki-repo/
+          # Bilder liegen neben den Seiten und werden relativ eingebunden
+          # (`bilder/…`) — so zeigen sie im Wiki und im Repo gleichermaßen.
+          if [ -d wiki/bilder ]; then
+            mkdir -p wiki-repo/bilder
+            cp -r wiki/bilder/. wiki-repo/bilder/
+          fi
 
       - name: Commit and push
         run: |

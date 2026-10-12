@@ -4,7 +4,8 @@ Was hier zugesagt wird:
 
 - Ein Rahmen, den die App mit ihrem Fahrer-Link abliefert, wirkt wie der direkte
   Aufruf: Fixes landen im laufenden Konvoi, die Anweisung kommt signiert zurück, der
-  Weg steht als ``ble`` am Gerät. Firmware, Wurzeln und Schlüssel sind darin immer null.
+  Weg steht als ``ble`` am Gerät. Firmware, Wurzeln, Schlüssel und der Nahfunk-Zugang
+  sind darin immer null.
 - Die App kann nichts fälschen: geänderter Rahmen, fremder Schlüssel, fremdes Gerät,
   Gerät einer anderen Organisation, Link ohne ``driver``, widerrufen oder ohne
   Sitzungstoken — alles dieselbe 404.
@@ -29,9 +30,11 @@ from app.database import AsyncSessionLocal
 from app.models.convoy import Convoy
 from app.models.ortungsgeraet import Ortungsgeraet
 from app.models.share_link import ConvoyShareLink
+from app.services import belegung as belegung_modul
 from app.services import positionsquelle as pq
 from app.services import share_links as sl
 from app.services import tracker_ble as tb
+from app.services.belegung import Belegungen
 from app.services.positionsquelle import Positionsquellen
 from tests.aktionsseite_fixtures import client, h, reset_db_engine  # noqa: F401
 from tests.test_tracker_bake import _link
@@ -141,6 +144,38 @@ class TestGanzerWeg:
         # Direkt hätte es Firmware und Schlüssel gegeben.
         direkt = (await client.post("/api/geraete/hallo", json={"schluessel_kennung": ""}, headers=geraet.kopf)).json()
         assert direkt["firmware"] is not None and direkt["schluessel"] is not None
+
+    async def test_kein_nahfunk_zugang_ueber_die_app(self, client, aufbau, monkeypatch):
+        """Der Nahfunk-Zugang ist Schlüsselmaterial: direkt ja, über BLE nie.
+
+        Gerät im laufenden Konvoi, Fahrzeug von einer App belegt — direkt bekäme der
+        Tracker `nahfunk` mit Schlüssel, weitergeleitet steht dort in `hallo` und in
+        `positionen` null."""
+        org, geraet, slug = aufbau
+        belegungen = Belegungen()
+        monkeypatch.setattr(belegung_modul, "belegungen", belegungen)
+        belegungen.beanspruchen(str(org.konvoi), str(org.hlf), "app-besatzung")
+
+        direkt = (await client.post("/api/geraete/hallo", json={}, headers=geraet.kopf)).json()
+        assert direkt["modus"] == "senden"
+        assert direkt["nahfunk"] is not None and direkt["nahfunk"]["schluessel"]
+        material = {direkt["nahfunk"]["schluessel"], direkt["nahfunk"]["kennung"]}
+
+        for art, koerper in (
+            ("hallo", {"grund": "bewegung", "schluessel_kennung": ""}),
+            ("positionen", {"fixes": [_fix(5, 11.2)]}),
+        ):
+            rahmen = geraet.rahmen(art, koerper)
+            r = await client.post(f"/api/track/{slug}/tracker", json=rahmen)
+            assert r.status_code == 200, r.text
+            inhalt = geraet.lesen(rahmen, r.json())
+            assert inhalt["status"] == 200
+            k = inhalt["koerper"]
+            assert k["modus"] == "senden", art
+            assert k["nahfunk"] is None, art
+            assert k.get("schluessel") is None and k["firmware"] is None, art
+            text = json.dumps(k)
+            assert not any(m in text for m in material), art
 
     async def test_geraet_muss_nicht_im_konvoi_des_links_fahren(self, client, aufbau):
         org, geraet, _ = aufbau

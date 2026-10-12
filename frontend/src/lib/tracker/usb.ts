@@ -7,9 +7,11 @@
  * Schlusszeile mit `ok`.
  *
  * Diese Seite schickt dem Gerät Instanzadresse, Einmal-Code und optional eigene
- * Wurzelzertifikate und WLAN-Netze. Das Gerät löst den Code **selbst** ein, über WLAN
- * oder Mobilfunk — so prüft das Einrichten gleich mit, ob Netz, Adresse und Zertifikat
- * stimmen. Ein Token sieht der Browser nie.
+ * Wurzelzertifikate, APN und Funknetz der SIM sowie WLAN-Netze. APN und Funknetz übernimmt
+ * das Gerät erst, wenn das Einlösen mit ihnen gelingt; Firmware vor 0.3.0 kennt sie nicht
+ * (siehe `kenntFunk`). Das Gerät löst den Code **selbst** ein, über WLAN oder Mobilfunk —
+ * so prüft das Einrichten gleich mit, ob Netz, Adresse und Zertifikat stimmen. Ein Token
+ * sieht der Browser nie.
  *
  * Das WLAN-Passwort (`psk`) geht **nur aufs Gerät**: nicht an die Instanz, und das Gerät
  * gibt es nie zurück (`info` nennt nur die SSIDs). Das Passwort der Wache gehört nicht in
@@ -39,6 +41,14 @@ interface SerialLike {
 	requestPort(optionen?: object): Promise<SeriellerAnschluss>;
 }
 
+export type Netz = 'catm' | 'nbiot' | 'beide';
+
+export const NETZE: { wert: Netz; name: string }[] = [
+	{ wert: 'catm', name: 'LTE-M' },
+	{ wert: 'nbiot', name: 'NB-IoT' },
+	{ wert: 'beide', name: 'LTE-M und NB-IoT' }
+];
+
 export interface GeraeteInfo {
 	protokoll: number;
 	hardware_id: string;
@@ -48,11 +58,45 @@ export interface GeraeteInfo {
 	instanz: string | null;
 	/** Eingerichtete WLAN-Netze, nur die SSIDs; fehlt bei einem Gerät ohne WLAN. */
 	wlan?: string[];
+	/** Seit Firmware 0.3.0; fehlt bei älterer. */
+	apn?: string;
+	netz?: Netz;
 }
 
 export interface WlanNetz {
 	ssid: string;
 	psk: string;
+}
+
+export interface Einrichtung {
+	wurzeln?: string[];
+	/** Leer oder fehlend: das Gerät behält seinen bisherigen. */
+	apn?: string;
+	netz?: Netz;
+	/** Leer oder fehlend: das Gerät behält seine bisherigen Netze. */
+	wlan?: WlanNetz[];
+}
+
+/**
+ * Zeichen eines APN nach 3GPP TS 23.003, wie das Gerät sie annimmt. Er steht dort im
+ * AT-Befehl zwischen Anführungszeichen; was hier durchkommt, kann sie nicht schließen.
+ */
+const APN_MUSTER = /^[A-Za-z0-9.-]{1,63}$/;
+
+export function apnGueltig(apn: string): boolean {
+	return APN_MUSTER.test(apn);
+}
+
+/**
+ * Ob die Firmware APN und Funknetz beim Einrichten kennt. Ältere überginge sie still —
+ * der Tracker käme mit dem alten APN nicht ins Netz, und die Meldung hieße „kein Netz".
+ */
+export function kenntFunk(info: GeraeteInfo): boolean {
+	return typeof info.apn === 'string';
+}
+
+export function netzName(netz: Netz | undefined): string {
+	return NETZE.find((n) => n.wert === netz)?.name ?? '';
 }
 
 export type Schritt = 'netz' | 'einloesen';
@@ -67,6 +111,8 @@ export type FehlerArt =
 	| 'zeitablauf'
 	| 'verbindung'
 	| 'protokoll'
+	/** APN oder Funknetz angegeben, aber die Firmware kennt sie beim Einrichten noch nicht. */
+	| 'firmware_alt'
 	/** Ein Fehlername, den dieses Frontend nicht kennt (neuere Firmware). Gezeigt wird der Text des Geräts. */
 	| 'geraet';
 
@@ -80,9 +126,11 @@ export class UsbFehler extends Error {
 }
 
 export const FEHLERTEXT: Record<FehlerArt, string> = {
-	ungueltig: 'Das Gerät hat die Angaben abgelehnt (Adresse, Code, Zertifikate oder WLAN).',
+	ungueltig: 'Das Gerät hat die Angaben abgelehnt (Adresse, Code, Zertifikate, APN oder WLAN).',
 	kein_netz:
-		'Der Tracker erreicht diese Instanz nicht. Hat er WLAN oder Mobilfunkempfang, stimmt das WLAN-Passwort, und ist die Adresse von außen erreichbar?',
+		'Der Tracker erreicht diese Instanz nicht. Hat er WLAN oder Mobilfunkempfang, stimmen WLAN-Passwort und APN der SIM, und ist die Adresse von außen erreichbar?',
+	firmware_alt:
+		'Diese Firmware kennt APN und Funknetz beim Einrichten noch nicht (erst ab 0.3.0). Im seriellen Terminal „setze apn …" bzw. „setze netz …" und „neustart" eingeben, dann hier ohne APN einrichten.',
 	tls: 'Der Tracker kann das Zertifikat dieser Instanz nicht prüfen. Bei einer eigenen Zertifizierungsstelle deren Wurzelzertifikat unten mitgeben.',
 	code_abgelehnt: 'Der Code wurde abgelehnt — abgelaufen oder schon benutzt. „Neu einrichten" erzeugt einen neuen.',
 	keine_lizenz:
@@ -137,6 +185,7 @@ export class TrackerUsb {
 	private puffer = '';
 	private leser: ReadableStreamDefaultReader<Uint8Array> | null = null;
 	private dekodierer = new TextDecoder();
+	private zuletzt: GeraeteInfo | null = null;
 
 	private constructor(private anschluss: SeriellerAnschluss) {}
 
@@ -151,18 +200,25 @@ export class TrackerUsb {
 	async info(): Promise<GeraeteInfo> {
 		const a = await this.anfrage({ befehl: 'info' }, INFO_MS);
 		if (a.protokoll !== PROTOKOLL || typeof a.hardware_id !== 'string') throw new UsbFehler('protokoll');
-		return a as unknown as GeraeteInfo;
+		this.zuletzt = a as unknown as GeraeteInfo;
+		return this.zuletzt;
 	}
 
+	/** Vorher `info()`: nur so ist bekannt, ob die Firmware `apn` und `netz` versteht. */
 	async einrichten(
 		instanz: string,
 		code: string,
-		wurzeln: string[],
-		beiSchritt: (s: Schritt) => void = () => {},
-		wlan: WlanNetz[] = []
+		{ wurzeln = [], apn, netz, wlan = [] }: Einrichtung = {},
+		beiSchritt: (s: Schritt) => void = () => {}
 	): Promise<{ geraet_id: string }> {
 		const anfrage: Record<string, unknown> = { befehl: 'einrichten', instanz, code };
 		if (wurzeln.length) anfrage.wurzeln = wurzeln;
+		if (apn || netz) {
+			if (!this.zuletzt || !kenntFunk(this.zuletzt)) throw new UsbFehler('firmware_alt');
+			if (apn && !apnGueltig(apn)) throw new UsbFehler('ungueltig', 'APN');
+			if (apn) anfrage.apn = apn;
+			if (netz) anfrage.netz = netz;
+		}
 		// Ohne Feld behält das Gerät seine bisherigen Netze.
 		if (wlan.length) anfrage.wlan = wlan;
 		const a = await this.anfrage(anfrage, EINRICHTEN_MS, beiSchritt);

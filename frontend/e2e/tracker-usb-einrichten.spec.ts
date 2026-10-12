@@ -12,6 +12,10 @@ import { test, expect, type Page } from '@playwright/test';
 //   Hinweis das — und nicht „Code abgelehnt", denn der Code bleibt gültig.
 // - Ein Fehlername, den dieses Frontend nicht kennt (neuere Firmware), zeigt den Text
 //   des Geräts, statt das Gerät für ein fremdes Protokoll zu halten.
+// - APN und Funknetz gehen nur mit, wenn sie gesetzt sind, und ein APN, der im AT-Befehl
+//   die Anführungszeichen schließen könnte, erreicht das Gerät gar nicht erst.
+// - Firmware vor 0.3.0 kennt APN und Funknetz beim Einrichten nicht und überginge sie
+//   still. Dann geht `einrichten` gar nicht erst raus, und der Hinweis nennt die Konsole.
 // - Ohne Web Serial gibt es den Knopf nicht, sondern einen Hinweis.
 // - WLAN-Netze gehen nur mit, wenn welche eingetragen sind, und das Passwort (`psk`)
 //   geht nur aufs Gerät: in keinem Aufruf an die Instanz, und danach steht es nirgends mehr.
@@ -27,7 +31,13 @@ const PEM = '-----BEGIN CERTIFICATE-----\nMIIBszCCAVmgAwIBAgIU\n-----END CERTIFI
 
 const PSK = 'Wache-Nord-geheim-2026';
 
-type Verhalten = { fehler?: string; text?: string; eingerichtetFuer?: string; wlan?: string[] };
+type Verhalten = {
+	fehler?: string;
+	text?: string;
+	eingerichtetFuer?: string;
+	wlan?: string[];
+	alteFirmware?: boolean;
+};
 
 async function geraetAnstecken(page: Page, verhalten: Verhalten = {}) {
 	await page.addInitScript((v: Verhalten) => {
@@ -58,7 +68,9 @@ async function geraetAnstecken(page: Page, verhalten: Verhalten = {}) {
 							ctrl.enqueue(enc.encode('*** Booting ConvoyPlan Tracker ***\r\n'));
 							senden({
 								ok: true, protokoll: 1, hardware_id: '352656100000009', hardware: 'nrf9151-v1',
-								firmware: '0.2.0', eingerichtet: !!v.eingerichtetFuer, instanz: v.eingerichtetFuer ?? null,
+								firmware: v.alteFirmware ? '0.2.0' : '0.3.0', eingerichtet: !!v.eingerichtetFuer,
+								instanz: v.eingerichtetFuer ?? null,
+								...(v.alteFirmware ? {} : { apn: 'iot.1nce.net', netz: 'catm' }),
 								...(v.wlan ? { wlan: v.wlan } : {}),
 							});
 						} else if (anfrage.befehl === 'wlan') {
@@ -110,7 +122,7 @@ test('Per USB einrichten schreibt Adresse und Code aufs Gerät, sonst nichts', a
 	await page.getByRole('button', { name: 'Per USB einrichten' }).click();
 
 	await expect(page.getByRole('status').filter({ hasText: 'ist eingerichtet' })).toContainText(
-		'Gerät 352656100000009, Firmware 0.2.0'
+		'Gerät 352656100000009, Firmware 0.3.0'
 	);
 	// Der Code ist verbraucht und verschwindet.
 	await expect(page.getByTestId('neuer-code')).toHaveCount(0);
@@ -144,6 +156,7 @@ test('scheitert das Zertifikat, bleibt der Code stehen und der Hinweis nennt den
 	const meldung = page.getByTestId('usb-einrichten').getByRole('alert');
 	await expect(meldung).toContainText('Zertifikat dieser Instanz nicht prüfen');
 	await expect(meldung).toContainText('bisher eingerichtet für https://alt.example.org');
+	await expect(meldung).toContainText('APN iot.1nce.net (LTE-M)');
 	await expect(page.getByTestId('neuer-code').locator('pre')).toHaveText('K7Q2-M9XD');
 	// Noch einmal versuchen geht.
 	await expect(page.getByRole('button', { name: 'Per USB einrichten' })).toBeEnabled();
@@ -171,6 +184,61 @@ test('einen unbekannten Fehler zeigt der Hinweis mit dem Text des Geräts', asyn
 	await expect(meldung).toContainText('Das Gerät meldet: Kein Platz für die Wurzelzertifikate');
 	await expect(meldung).not.toContainText('anderes Protokoll');
 	await expect(page.getByTestId('neuer-code').locator('pre')).toHaveText('K7Q2-M9XD');
+});
+
+test('APN und Funknetz gehen mit, wenn sie gesetzt sind', async ({ page }) => {
+	await geraetAnstecken(page);
+	await anlegen(page);
+	await page.getByText('Mobilfunk (SIM)').click();
+	const mobilfunk = page.getByTestId('usb-mobilfunk');
+	await mobilfunk.getByLabel('APN').fill(' internet.m2m ');
+	await mobilfunk.getByLabel('Funknetz').selectOption('nbiot');
+	await page.getByRole('button', { name: 'Per USB einrichten' }).click();
+
+	await expect(page.getByRole('status').filter({ hasText: 'ist eingerichtet' })).toContainText(
+		'Mobilfunk: APN internet.m2m, NB-IoT'
+	);
+	expect((await gesendet(page))[1]).toEqual({
+		befehl: 'einrichten',
+		instanz: 'http://localhost:4174',
+		code: 'K7Q2-M9XD',
+		apn: 'internet.m2m',
+		netz: 'nbiot',
+	});
+});
+
+test('ein APN mit Anführungszeichen oder Leerzeichen erreicht das Gerät nicht', async ({ page }) => {
+	await geraetAnstecken(page);
+	await anlegen(page);
+	await page.getByText('Mobilfunk (SIM)').click();
+	for (const apn of ['x";+CFUN=0', 'web vodafone', 'ä.de']) {
+		await page.getByTestId('usb-mobilfunk').getByLabel('APN').fill(apn);
+		await expect(page.getByTestId('usb-mobilfunk')).toContainText('Nur Buchstaben, Ziffern, Punkt und Bindestrich');
+		await expect(page.getByRole('button', { name: 'Per USB einrichten' })).toBeDisabled();
+	}
+	expect(await gesendet(page)).toEqual([]);
+});
+
+test('alte Firmware: der APN wird nicht still übergangen, der Hinweis nennt die Konsole', async ({ page }) => {
+	await geraetAnstecken(page, { alteFirmware: true });
+	await anlegen(page);
+	await page.getByText('Mobilfunk (SIM)').click();
+	await page.getByTestId('usb-mobilfunk').getByLabel('APN').fill('internet.m2m');
+	await page.getByRole('button', { name: 'Per USB einrichten' }).click();
+
+	const meldung = page.getByTestId('usb-einrichten').getByRole('alert');
+	await expect(meldung).toContainText('erst ab 0.3.0');
+	await expect(meldung).toContainText('setze apn');
+	expect(await gesendet(page)).toEqual([{ befehl: 'info' }]);
+	await expect(page.getByTestId('neuer-code').locator('pre')).toHaveText('K7Q2-M9XD');
+});
+
+test('alte Firmware ohne APN richtet ein wie bisher', async ({ page }) => {
+	await geraetAnstecken(page, { alteFirmware: true });
+	await anlegen(page);
+	await page.getByRole('button', { name: 'Per USB einrichten' }).click();
+	await expect(page.getByRole('status').filter({ hasText: 'ist eingerichtet' })).not.toContainText('Mobilfunk');
+	expect((await gesendet(page))[1]).toEqual({ befehl: 'einrichten', instanz: 'http://localhost:4174', code: 'K7Q2-M9XD' });
 });
 
 test('ohne Web Serial gibt es keinen Knopf, sondern einen Hinweis', async ({ page }) => {
@@ -208,6 +276,29 @@ test('WLAN beim Einrichten geht aufs Gerät, das Passwort nie an die Instanz', a
 	expect(aufrufe).toContain('create');
 	expect(aufrufe).not.toContain(PSK);
 	await expect(page.locator('body')).not.toContainText(PSK);
+});
+
+test('APN und WLAN gehen beim Einrichten zusammen mit', async ({ page }) => {
+	const instanz = anDieInstanz(page);
+	await geraetAnstecken(page);
+	await anlegen(page);
+	await page.getByText('Mobilfunk (SIM)').click();
+	await page.getByTestId('usb-mobilfunk').getByLabel('APN').fill('internet.m2m');
+	await page.getByText('WLAN', { exact: true }).click();
+	const wlan = page.getByTestId('einrichten-wlan');
+	await wlan.getByRole('button', { name: '+ WLAN' }).click();
+	await wlan.getByLabel('WLAN 1: Name (SSID)').fill('Wache-Nord');
+	await wlan.getByLabel('WLAN 1: Passwort').fill(PSK);
+	await page.getByRole('button', { name: 'Per USB einrichten' }).click();
+	await expect(page.getByRole('status').filter({ hasText: 'ist eingerichtet' })).toContainText(
+		'Mobilfunk: APN internet.m2m, LTE-M'
+	);
+
+	expect((await gesendet(page))[1]).toEqual({
+		befehl: 'einrichten', instanz: 'http://localhost:4174', code: 'K7Q2-M9XD',
+		apn: 'internet.m2m', wlan: [{ ssid: 'Wache-Nord', psk: PSK }],
+	});
+	expect(await instanz()).not.toContain(PSK);
 });
 
 test('WLAN per USB ändert nur die Netze', async ({ page }) => {

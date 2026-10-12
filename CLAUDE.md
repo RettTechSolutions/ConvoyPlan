@@ -476,17 +476,46 @@ heißt „keine eigenen Wurzeln". Der Fingerabdruck (sortierte SHA-256 der DER-K
 steht genauso im Protokoll und im Simulator; wer ihn ändert, zieht beide. Tests:
 `tests/test_tracker_wurzeln.py`.
 
+**Nahfunk** (`services/nahfunk.py`, E14 im Tracker-Plan): Die Begleit-App meldet ohne Netz
+über den Tracker ihres Fahrzeugs (BLE), der Tracker reicht mit `POST /api/geraete/meldungen`
+weiter. Den Schlüssel bekommen der Tracker in der Anweisung (`nahfunk`, nur bei `senden`) und die
+App über `track_ws` (Frame `nahfunk` auf jedes `belegen`, nur mit Gerätekennung). Drei Dinge, die
+man kennen muss:
+
+- **Abgeleitet, nicht gespeichert.** HMAC über `JWT_SECRET`, Gerät, Fahrzeug, laufende Konvois und
+  den **letzten** Halter der Belegung (`Belegungen.letzter_halter`). Nicht den aktuellen: Die
+  Belegung läuft nach fünf Minuten ohne Frame ab, und der Schlüssel wechselte dann mitten im
+  Funkloch, also genau dann, wenn der Tracker gebraucht wird. Neu wird er, wenn ein anderes Gerät
+  belegt oder jemand freigibt. Ein Neustart verliert die Halter; die App holt den neuen Schlüssel
+  mit dem nächsten `belegen`.
+- **Dieselbe Quittung wie der Fahrer-Link.** `meldungen` ruft `track._ingest_acked` je laufendem
+  Konvoi; eine `client_id` zählt deshalb über WebSocket und Tracker nur einmal. „Veraltet"
+  (über 30 min) gilt nur, wenn der Kanal die Meldung noch nicht hatte
+  (`tracking_manager.bekannte_quittung`). Eine Meldung erneuert die Belegung des letzten Halters.
+- **Kein `_zustand_merken`.** Das setzt `unterbrochen_ab` zurück, und eine Meldung ist kein
+  Bündel. `/api/geraete/meldungen` steht wie die übrigen Gerätepfade einzeln in
+  `_EXEMPT_PREFIXES`.
+
+Tests: `tests/test_nahfunk.py`. Die Referenz-Instanz im Tracker-Repo tut dasselbe; wer das
+Protokoll ändert, zieht beide.
+
 **Einrichten per USB** (`frontend/src/lib/tracker/usb.ts`, Knopf in
 `TrackerVerwaltung.svelte`): Web Serial, je Zeile ein JSON-Objekt, Protokoll im
 Tracker-Repo (`docs/PROTOKOLL.md`, „Einrichten per USB"), Geräteseite dort in
 `simulator/tracker_sim/usb.py`. Der Browser schreibt nur Adresse (`location.origin`),
-Code und optional Wurzelzertifikate aufs Gerät; eingelöst wird **vom Gerät** über
-Mobilfunk, nicht vom Browser — so prüft das Einrichten Netz und TLS gleich mit, und
+Code und optional Wurzelzertifikate, APN und Funknetz sowie WLAN aufs Gerät; eingelöst
+wird **vom Gerät** über nicht vom Browser — so prüft das Einrichten Netz und TLS gleich mit, und
 kein Token berührt den Browser. Kein Backend-Anteil. Echte serielle Geräte gibt es in
 der CI nicht; `e2e/tracker-usb-einrichten.spec.ts` baut `navigator.serial` nach, so
-wie der Simulator antwortet. Wer das Protokoll ändert, zieht beide Seiten. Dasselbe
-gilt für WLAN (`wlan` beim Einrichten, Befehl `wlan` an „WLAN per USB"): das Passwort
-geht nur aufs Gerät, der Test prüft am abgefangenen Aufruf, dass es nie an die Instanz geht.
+wie der Simulator antwortet. Wer das Protokoll ändert, zieht beide Seiten.
+APN und Funknetz schickt `TrackerUsb.einrichten` nur, wenn `info` sie nennt
+(`kenntFunk`, Firmware ab 0.3.0) — ältere überginge sie still, und der Tracker käme mit
+dem alten APN nicht ins Netz. Der APN wird vorher auf `A–Z a–z 0–9 . -` geprüft, weil er
+im Gerät zwischen Anführungszeichen in einem AT-Befehl steht; das Gerät prüft ihn selbst
+noch einmal.
+WLAN geht denselben Weg (`wlan` beim Einrichten, Befehl `wlan` an „WLAN per USB"): das
+Passwort geht nur aufs Gerät, der Test prüft am abgefangenen Aufruf, dass es nie an die
+Instanz geht.
 
 **Drei Wege ins Netz** (E14 im Tracker-Plan, Migration `0067`): WLAN, Mobilfunk, und als
 Rückfall BLE über die Begleit-App. Für die Instanz ist WLAN nur das Feld `netz`;
@@ -505,8 +534,9 @@ Nutzlast durch `_hallo_verarbeiten`/`_positionen_verarbeiten` wie der direkte Au
 allen Regeln oben. Ablehnungen 1–3 sind dieselbe 404, eine alte `seq` 409 — geprüft und
 gesetzt in **einem** `UPDATE … WHERE ble_seq < :seq`, damit zwei Apps denselben Rahmen
 nicht zweimal einspielen. Gesperrt (401) und unbrauchbar (400) gehen signiert zurück,
-`firmware`/`wurzeln`/`schluessel` darin immer null. `GET /api/track/{slug}/baken` liefert
-je Fahrzeug die Bake-Kennungen für drei Fenster; die App schlägt nur vor, belegt wird
+`firmware`/`wurzeln`/`schluessel` darin immer null — ebenso `nahfunk`: der
+Nahfunk-Zugang ist Schlüsselmaterial und geht nur direkt an den Tracker.
+`GET /api/track/{slug}/baken` liefert je Fahrzeug die Bake-Kennungen für drei Fenster; die App schlägt nur vor, belegt wird
 weiter von Hand. Gegenstellen: Firmware und Simulator im Tracker-Repo, `packages/track-api`
 der Begleit-App — wer an Ableitung, MAC-Text oder Antwortformat dreht, zieht alle drei.
 Tests: `tests/test_tracker_weiterleitung.py`, `tests/test_tracker_bake.py`,
@@ -559,6 +589,11 @@ Dass die Einträge in Planung, Org-Admin und Admin-Bereich wirklich dieselben Au
 schicken wie die Knöpfe, prüft `frontend/e2e/kontextmenue-planung-und-admin.spec.ts`
 in der echten App am Körper der abgefangenen Anfrage. Wer einen Eintrag auf eine
 andere Funktion umbiegt, sieht es dort.
+
+Die Bilder im Wiki (`wiki/bilder/kontextmenue-*`) entstehen aus derselben Lage
+(`e2e/kontextmenue-attrappe.ts`) mit `npm run wiki:bilder` in `frontend/` — ein eigener
+Playwright-Lauf mit echten OSM-Kacheln, deshalb mit Netz und nicht in der CI. Wer das
+Menü sichtbar ändert, lässt ihn neu laufen. `sync-wiki.yml` kopiert `wiki/bilder/` mit.
 
 ### API-Docs (Swagger/OpenAPI)
 

@@ -80,6 +80,26 @@ für dieses Fahrzeug in diesem Konvoi sendet, bis jemand „Tracker wieder nutze
 drückt. Das nimmt die Instanz nicht von selbst zurück, auch nicht nach einem
 Neustart.
 
+### Meldungen über den Tracker, wenn das Telefon kein Netz hat
+
+Die Begleit-App verbindet sich per Bluetooth mit dem Tracker ihres Fahrzeugs. Erreicht das
+Telefon die Instanz nicht, etwa in einer Halle, im Funkloch oder auf einem Diensttelefon ohne
+Daten, gehen Status, Stärke und Betriebsstoff über den Tracker hinaus (WLAN oder Mobilfunk).
+Die App zeigt dann „an den Tracker übergeben“ und später „über den Tracker bestätigt“. Die
+Führung sieht die Meldung wie jede andere, mit Alarm bei technischem Halt und Ausfall.
+
+- Es funktioniert nur im laufenden Konvoi und nur für die Besatzung, die das Fahrzeug in der
+  App gewählt hat. Den Schlüssel dafür gibt die Instanz dem Tracker und dieser einen App;
+  Koppeln oder Knöpfe am Gerät gibt es nicht.
+- Die App muss **einmal** Netz gehabt haben, nachdem sie das Fahrzeug gewählt hat. Ein
+  Telefon, das schon beim Einsteigen kein Netz hat, kann den Tracker nicht nutzen.
+- Wählt eine andere Besatzung das Fahrzeug oder gibt die bisherige es frei, gilt ein neuer
+  Schlüssel. Der alte Weg endet damit, ein Funkloch beendet ihn nicht.
+- Eine Meldung zählt einmal, auch wenn sie über App und Tracker zugleich ankommt. Was länger
+  als 30 Minuten unterwegs war, wird verworfen; die App sagt es.
+- Nötig sind Tracker-Firmware und Begleit-App mit Nahfunk. Ältere Fassungen merken nichts
+  davon.
+
 ## Einrichten
 
 **Org-Admin → Tracker → „+ Neuer Tracker"** (Rolle *Admin*):
@@ -89,7 +109,8 @@ Neustart.
    24 Stunden gültig. Gespeichert ist er nicht.
 3. Gerät per USB an den Rechner und **Per USB einrichten** klicken, dann das
    Gerät in der Liste des Browsers wählen. Die Seite schreibt die Adresse dieser
-   Instanz und den Code aufs Gerät, auf Wunsch auch WLAN-Netze (siehe unten). Der
+   Instanz und den Code aufs Gerät, auf Wunsch auch WLAN-Netze und den APN der SIM
+   (siehe unten). Der
    Tracker meldet sich danach **selbst über WLAN oder Mobilfunk** an und tauscht
    den Code gegen seinen Zugang. Damit ist zugleich geprüft, dass er Netz hat und
    die Instanz von außen erreicht. Der Code ist danach verbraucht.
@@ -110,6 +131,24 @@ von Let's Encrypt. Hat diese Instanz ein Zertifikat einer eigenen oder internen
 Stelle, gehört deren Wurzelzertifikat (PEM) beim Einrichten unter *Eigene
 Zertifizierungsstelle* dazu, höchstens drei. Wechselt die Stelle später, muss
 jedes Gerät einmal neu per USB eingerichtet werden.
+
+**Andere SIM als 1NCE:** Ab Werk meldet sich ein Tracker mit dem APN
+`iot.1nce.net` im LTE-M-Netz an. Für eine andere SIM gehört deren APN beim
+Einrichten unter *Mobilfunk (SIM)* dazu, ebenso das Funknetz, wenn am Standort
+nur NB-IoT verfügbar ist. Der Tracker übernimmt beides erst, wenn er sich damit
+bei dieser Instanz anmelden konnte; ein Tippfehler im APN ergibt „erreicht diese
+Instanz nicht", und die alten Einstellungen bleiben. Leer gelassen ändert sich
+nichts. Beides gehört zur SIM, nicht zur Instanz: Ein Tracker, der zu einer
+anderen Organisation wechselt, behält es. Die Statuszeile beim Einrichten nennt
+den APN, mit dem das Gerät gerade arbeitet. Firmware vor 0.3.0 kennt diese
+Felder noch nicht; dort setzt man den APN im seriellen Terminal
+(`setze apn …`, dann `neustart`), die Seite sagt das.
+
+In der Liste steht danach *bereit*, mit dem letzten Lebenszeichen, Akku, Empfang
+und Firmwarestand. Meldet sich ein Gerät länger als einen Tag nicht, steht dort
+*nicht erreichbar* — ein Tracker meldet sich auch ohne Bewegung alle zwölf
+Stunden. Hat der Akku weniger als 20 % und hängt das Gerät nicht am Bordnetz,
+steht dort *Akku schwach*.
 
 ### WLAN
 
@@ -145,6 +184,9 @@ Konvoi. Der Fahrer-Link muss zur selben Organisation gehören wie der Tracker, a
 nicht zum Konvoi, in dem das Fahrzeug fährt. Ein Link nur zum Ansehen leitet nicht
 weiter.
 
+Das ist der umgekehrte Weg zu den [Meldungen über den Tracker](#meldungen-über-den-tracker-wenn-das-telefon-kein-netz-hat):
+dort hat das Telefon kein Netz und der Tracker schon, hier ist es andersherum.
+
 ### Welches Fahrzeug? Die Bake
 
 Ein eingerichteter Tracker sendet per Bluetooth eine Kennung, die alle 15 Minuten
@@ -153,12 +195,6 @@ es vor; **gewählt wird weiter von Hand**. Weil die Kennung wechselt und nur die
 Instanz sie zuordnen kann, lässt sich ein Fahrzeug darüber nicht über Tage
 verfolgen. Tracker, die vor dieser Funktion eingerichtet wurden, bekommen ihren
 Schlüssel beim nächsten Kontakt über WLAN oder Mobilfunk von selbst.
-
-In der Liste steht danach *bereit*, mit dem letzten Lebenszeichen, Akku, Empfang
-und Firmwarestand. Meldet sich ein Gerät länger als einen Tag nicht, steht dort
-*nicht erreichbar* — ein Tracker meldet sich auch ohne Bewegung alle zwölf
-Stunden. Hat der Akku weniger als 20 % und hängt das Gerät nicht am Bordnetz,
-steht dort *Akku schwach*.
 
 ### Akku und Empfang
 

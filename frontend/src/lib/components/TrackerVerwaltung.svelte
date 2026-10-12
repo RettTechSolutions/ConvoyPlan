@@ -10,10 +10,10 @@
 	 * sein Hash. Er gilt 24 Stunden.
 	 *
 	 * Einrichten geht per USB direkt von hier (Web Serial, `$lib/tracker/usb.ts`): Die
-	 * Seite schreibt Adresse, Code und optional eigene Wurzelzertifikate und WLAN-Netze
-	 * aufs Gerät, das Gerät löst den Code selbst ein, über WLAN oder Mobilfunk. Der
-	 * Browser sieht dabei nie ein Token. Die WLAN-Netze lassen sich später allein
-	 * ändern („WLAN per USB"); ihre Passwörter gehen nur aufs Gerät, nie an die Instanz.
+	 * Seite schreibt Adresse, Code und optional eigene Wurzelzertifikate, APN und Funknetz
+	 * sowie WLAN-Netze aufs Gerät, das Gerät löst den Code selbst ein, über WLAN oder
+	 * Mobilfunk. Der Browser sieht dabei nie ein Token. Die WLAN-Netze lassen sich später
+	 * allein ändern („WLAN per USB"); ihre Passwörter gehen nur aufs Gerät, nie an die Instanz.
 	 */
 	import { onMount } from 'svelte';
 	import TrackerZustand from '$lib/components/TrackerZustand.svelte';
@@ -28,16 +28,20 @@
 		type TrackerTakt
 	} from '$lib/api';
 	import {
+		NETZE,
 		SCHRITTTEXT,
 		TrackerUsb,
 		WLAN_MAX,
 		WURZELN_MAX,
+		apnGueltig,
 		instanzAdresse,
+		netzName,
 		webSerialVerfuegbar,
 		wlanBereinigen,
 		wlanPruefen,
 		wurzelnLesen,
 		type GeraeteInfo,
+		type Netz,
 		type WlanNetz
 	} from '$lib/tracker/usb';
 
@@ -86,6 +90,9 @@
 		text: string;
 		fehler: boolean;
 	} | null>(null);
+	/** Leer bzw. '': das Gerät behält seine bisherigen (ab Werk 1NCE, LTE-M). */
+	let apn = $state('');
+	let netz = $state<Netz | ''>('');
 	let mitSerial = $state(false);
 	let adresse = $state('');
 	let takt = $state<TrackerTakt | null>(null);
@@ -124,12 +131,17 @@
 	});
 
 	const wurzeln = $derived(wurzelnLesen(wurzelnText));
+	const apnFehler = $derived(apn.trim() !== '' && !apnGueltig(apn.trim()));
 
 	async function usbEinrichten() {
 		if (!neu || usb?.laeuft) return;
 		const { code, name } = neu;
 		if (wurzeln.length > WURZELN_MAX) {
 			usb = { laeuft: false, fehler: true, info: null, text: `Höchstens ${WURZELN_MAX} Wurzelzertifikate.` };
+			return;
+		}
+		if (apnFehler) {
+			usb = { laeuft: false, fehler: true, info: null, text: 'Der APN darf nur Buchstaben, Ziffern, Punkt und Bindestrich enthalten.' };
 			return;
 		}
 		const wlan = wlanBereinigen(wlanNeu);
@@ -149,17 +161,19 @@
 			await geraet.einrichten(
 				adresse,
 				code,
-				wurzeln,
+				{ wurzeln, apn: apn.trim() || undefined, netz: netz || undefined, wlan },
 				(s) => {
 					if (usb) usb.text = SCHRITTTEXT[s];
-				},
-				wlan
+				}
 			);
+			const funk = info.apn ? ` Mobilfunk: APN ${apn.trim() || info.apn}, ${netzName(netz || info.netz)}.` : '';
 			usb = null;
 			neu = null;
 			wurzelnText = '';
+			apn = '';
+			netz = '';
 			wlanNeu = [];
-			erfolg = `„${name}" ist eingerichtet — Gerät ${info.hardware_id}, Firmware ${info.firmware}.`;
+			erfolg = `„${name}" ist eingerichtet — Gerät ${info.hardware_id}, Firmware ${info.firmware}.${funk}`;
 			await neuLaden();
 		} catch (e) {
 			// Auswahl abgebrochen: kein Fehler, nur nichts passiert.
@@ -475,12 +489,45 @@
 					</p>
 					{@render wlanFelder(wlanNeu, 'einrichten')}
 				</details>
+				<details data-testid="usb-mobilfunk">
+					<summary>Mobilfunk (SIM)</summary>
+					<p class="hint">
+						Nur nötig, wenn die SIM nicht von 1NCE ist oder das Netz am Standort nur NB-IoT kann. Leer gelassen behält
+						der Tracker seine bisherigen Einstellungen. Er übernimmt sie erst, wenn er sich damit bei dieser Instanz
+						anmelden konnte — ein Tippfehler im APN lässt die alten stehen.
+					</p>
+					<div class="zeile">
+						<label>
+							APN
+							<input
+								bind:value={apn}
+								maxlength="63"
+								placeholder="iot.1nce.net"
+								autocomplete="off"
+								spellcheck="false"
+								aria-invalid={apnFehler}
+							/>
+						</label>
+						<label>
+							Funknetz
+							<select bind:value={netz}>
+								<option value="">— unverändert —</option>
+								{#each NETZE as n (n.wert)}
+									<option value={n.wert}>{n.name}</option>
+								{/each}
+							</select>
+						</label>
+					</div>
+					{#if apnFehler}
+						<p class="usb-fehler">Nur Buchstaben, Ziffern, Punkt und Bindestrich, höchstens 63 Zeichen.</p>
+					{/if}
+				</details>
 				<div class="knoepfe">
-					<button class="btn-small primary" onclick={usbEinrichten} disabled={usb?.laeuft}>Per USB einrichten</button>
+					<button class="btn-small primary" onclick={usbEinrichten} disabled={usb?.laeuft || apnFehler}>Per USB einrichten</button>
 				</div>
 				{#if usb}
 					<p class={usb.fehler ? 'usb-fehler' : 'hint'} role={usb.fehler ? 'alert' : 'status'}>
-						{#if usb.info}Gerät {usb.info.hardware_id}, Firmware {usb.info.firmware}{#if usb.info.instanz && usb.info.instanz !== adresse}, bisher eingerichtet für {usb.info.instanz}{/if}: {/if}{usb.text}
+						{#if usb.info}Gerät {usb.info.hardware_id}, Firmware {usb.info.firmware}{#if usb.info.apn}, APN {usb.info.apn} ({netzName(usb.info.netz)}){/if}{#if usb.info.instanz && usb.info.instanz !== adresse}, bisher eingerichtet für {usb.info.instanz}{/if}: {/if}{usb.text}
 					</p>
 				{/if}
 			{:else}
@@ -714,6 +761,10 @@
 	.code-box { border-color: #d4a017; }
 	.usb { margin-top: 1rem; border-top: 1px solid var(--border); padding-top: .75rem; }
 	.usb textarea { width: 100%; max-width: var(--admin-field, 34rem); font-family: monospace; font-size: var(--text-xs); background: var(--surface-2); color: var(--text-1); border: 1px solid var(--border); border-radius: 6px; padding: .4rem; }
+	.usb .zeile { max-width: var(--admin-field, 34rem); margin-top: .4rem; }
+	.usb label { display: flex; flex-direction: column; gap: .3rem; font-size: var(--text-sm); font-weight: 600; color: var(--text-2); }
+	.usb input, .usb select { padding: .4rem .6rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); font-weight: 400; }
+	.usb input[aria-invalid='true'] { border-color: var(--color-primary); }
 	.wlan { display: flex; flex-direction: column; gap: .4rem; align-items: flex-start; }
 	.wlan-zeile { display: flex; gap: .4rem; flex-wrap: wrap; width: 100%; max-width: var(--admin-field, 34rem); }
 	.wlan-zeile input { flex: 1 1 9rem; min-width: 0; padding: .35rem .5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); }

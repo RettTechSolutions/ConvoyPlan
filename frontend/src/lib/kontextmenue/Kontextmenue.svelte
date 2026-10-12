@@ -28,7 +28,10 @@
 			if (left + r.width > vw - RAND) left = Math.max(RAND, m.x - r.width);
 			if (top + r.height > vh - RAND) top = Math.max(RAND, Math.min(m.y - r.height, vh - RAND - r.height));
 			pos = { left, top };
-			knoepfe()[0]?.focus({ preventScroll: true });
+			// Den Fokus braucht das Menü immer — sonst gingen die Pfeiltasten an die
+			// Seite. Auf den ersten Eintrag nur per Tastatur (siehe `perTastatur`).
+			if (m.perTastatur) knoepfe()[0]?.focus({ preventScroll: true });
+			else el.focus({ preventScroll: true });
 		});
 	});
 

@@ -164,7 +164,7 @@ async def test_der_server_sagt_beim_verbinden_was_er_kann(verband, gesendet):
     assert {
         "type": "hello",
         "protocol": 2,
-        "features": ["ack", "ack-betriebsstoff", "alarm-quittung"],
+        "features": ["ack", "ack-betriebsstoff", "alarm-quittung", "nahfunk"],
     } in ws.sent
 
 
