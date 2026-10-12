@@ -497,6 +497,25 @@ Ein technischer Halt oder Ausfall löst `alert` aus; **quittiert** wird er seit
   `app/src/alerts/board.ts` im Repo Convoyplan-Companion; `hello` meldet die
   Fähigkeit als `alarm-quittung`.
 
+### Kontextmenü: eins für alle, und nur als Abkürzung
+
+Rechtsklick, Taste *Kontextmenü*/Umschalt+F10 und langes Drücken öffnen **ein**
+Menü (`$lib/kontextmenue/Kontextmenue.svelte`, eingehängt im Wurzel-Layout);
+geöffnet wird es über die Action `use:kontextmenue={() => [...]}` oder `oeffnen()`
+aus `menue.ts`. Auf der Karte kommt das Ereignis von MapLibre (`onKontextmenue` an
+`MapView`), weil MapLibre langes Drücken auf iOS selbst erkennt und den Rechtsklick
+nach dem Drehen der Karte verschluckt; Marker halten ihr eigenes fest.
+
+Drei Regeln, die `frontend/e2e/kontextmenue.spec.ts` festhält:
+
+- **Jeder Eintrag ruft die Funktion des Knopfes daneben.** Was es nur im Menü gäbe,
+  fände am Telefon niemand. Umsortieren läuft deshalb über dieselbe Speicherfunktion
+  wie das Ziehen (`speichereWegpunktReihenfolge`, `speichereMarschfolge`).
+- **Das Browsermenü bleibt**, wo es gebraucht wird: Eingabefeld, Link, markierter
+  Text, Umschalt gedrückt. Sonst ginge „Einfügen" verloren.
+- **Ohne Aktion kein Menü.** `aufraeumen()` wirft bedingte Einträge (`false`) und
+  überzählige Trenner weg; bleibt keine Aktion, öffnet der Browser seins.
+
 ### API-Docs (Swagger/OpenAPI)
 
 `/docs`, `/redoc` und `/openapi.json` sind in Produktion **standardmäßig deaktiviert**

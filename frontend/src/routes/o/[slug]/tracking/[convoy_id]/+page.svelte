@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { page } from '$app/stores';
-	import MapView from '$lib/components/MapView.svelte';
+	import MapView, { type KartenKontext } from '$lib/components/MapView.svelte';
+	import { kontextmenue, oeffnen as menueOeffnen, kopieren, ortEintraege, koordinatenText, TRENNER, type Eintraege } from '$lib/kontextmenue/menue';
 	import AppLogo from '$lib/components/AppLogo.svelte';
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
 	import { convoysApi, trackingApi, type Convoy, type VehiclePosition, type RouteResult, type TrackerAmFahrzeug } from '$lib/api';
@@ -566,6 +567,37 @@
 		}
 	}
 
+	// ── Kontextmenüs ──────────────────────────────────────────────────
+	function fahrzeugEintraege(vehicleId: string): Eintraege {
+		const cv = (convoy?.convoy_vehicles ?? []).find((c) => c.vehicle.id === vehicleId);
+		if (!cv) return [];
+		const pos = $livePositions.get(vehicleId);
+		const meins = vehicleId === myVehicleId;
+		return [
+			{ titel: cv.vehicle.callsign ? `${cv.vehicle.name} · ${cv.vehicle.callsign}` : cv.vehicle.name },
+			{ label: 'Auf Karte zeigen', icon: '🔍', aus: pos ? false : 'Keine Position gemeldet', aktion: () => { sidebarOpen = false; mapView?.zeigeFahrzeug(vehicleId); } },
+			meins && pos && { label: 'Karte folgt meinem Fahrzeug', art: 'schalter', an: followMyVehicle, aktion: () => (followMyVehicle = !followMyVehicle) },
+			TRENNER,
+			kopieren('Funkrufname kopieren', cv.vehicle.callsign),
+			pos && kopieren('Position kopieren', koordinatenText(pos.lat, pos.lon)),
+		];
+	}
+
+	function kartenMenue(ort: KartenKontext) {
+		const { lat, lon, x, y, marker } = ort;
+		const eintraege: Eintraege = marker?.art === 'fahrzeug'
+			? [...fahrzeugEintraege(marker.vehicleId), TRENNER, ...ortEintraege(lat, lon)]
+			: [
+				{ titel: marker?.art === 'start' ? 'Startpunkt' : marker?.art === 'ziel' ? 'Zielpunkt' : marker?.art === 'wegpunkt' ? marker.wegpunkt.name : koordinatenText(lat, lon) },
+				transmitting && manualMode && myVehicleId && !marker && { label: 'Meine Position hierher', icon: '📍', aktion: () => handleMapTap(lat, lon) },
+				routeGeojson && { label: 'Ganze Route zeigen', icon: '⤢', aktion: () => mapView?.showRoute() },
+				mapView?.istGedreht() && { label: 'Karte einnorden', icon: '🧭', aktion: () => { headingUp = false; mapView?.resetNorth(); } },
+				TRENNER,
+				...ortEintraege(lat, lon),
+			];
+		menueOeffnen(x, y, eintraege);
+	}
+
 	function handleMapTap(lat: number, lon: number) {
 		if (!transmitting || !manualMode || !myVehicleId) return;
 		recordMyPosition(lat, lon);
@@ -854,7 +886,7 @@
 						{@const lvl = levelOf(cv)}
 						{@const fzLabel = cv.vehicle.callsign || cv.vehicle.name}
 						{@const offen = staerkeOffenFuer === cv.vehicle.id}
-						<div class="vehicle-row">
+						<div class="vehicle-row" use:kontextmenue={() => fahrzeugEintraege(cv.vehicle.id)}>
 							<div class="veh-left">
 								<span class="status-dot" style="background:{statusColor(st)}"></span>
 								<span class="vname">{cv.vehicle.name}</span>
@@ -1199,6 +1231,7 @@
 		</div>
 		<MapView
 			bind:this={mapView}
+			onKontextmenue={kartenMenue}
 			startPoint={convoy?.start_point}
 			endPoint={convoy?.end_point}
 			waypoints={convoy?.waypoints ?? []}
