@@ -1,0 +1,84 @@
+/**
+ * Abstand eines Fahrzeugs zu seinem Vordermann — für die Blase auf der Karte.
+ *
+ * Vordermann ist das Fahrzeug davor in der **Marschfolge** (`position`), nicht
+ * das, das gerade zufällig voraus fährt: Die Frage der Führung ist, ob der
+ * Verband zusammenbleibt. Hat der unmittelbare Vordermann keine Position (kein
+ * Gerät), zählt das nächste davor, das eine hat — und die Blase nennt, wen.
+ *
+ * Gemessen wird entlang der Route, nicht in Luftlinie; in einer Kurve wäre die
+ * sonst zu kurz. Die beiden Positionen sind selten gleich alt — bei 80 km/h
+ * sind fünf Sekunden über 100 m —, deshalb wird die ältere mit ihrem Tempo
+ * fortgeschrieben, aber nur bis `FORTSCHREIBEN_MAX_S`. Darüber wäre die Zahl
+ * geraten, und die Blase sagt das statt einer Zahl.
+ *
+ * Gewarnt wird nicht: Die Sollabstände (15/50/100 m) hängen an der
+ * Straßenklasse, die hier niemand kennt, und liegen in der Größenordnung der
+ * GPS-Ungenauigkeit.
+ */
+import { projectOnRoute } from './eta';
+import { ABSEITS_M } from './naechsterhalt';
+import { formatDistance } from './progress';
+
+export const FORTSCHREIBEN_MAX_S = 60;
+
+export interface Streckenstand {
+	along: number;
+	/** Zeitpunkt der Position (ms). */
+	t: number;
+	/** m/s, 0 ohne Angabe. */
+	v: number;
+}
+
+interface PositionLike {
+	lat: number;
+	lon: number;
+	speed_kmh: number | null;
+	recorded_at: string;
+}
+
+/** Alle Live-Positionen einmal auf die Route gelegt; abseits Stehende fehlen. */
+export function streckenstaende(coords: number[][], positionen: Map<string, PositionLike>): Map<string, Streckenstand> {
+	const out = new Map<string, Streckenstand>();
+	for (const [id, p] of positionen) {
+		const proj = projectOnRoute(coords, p);
+		const t = new Date(p.recorded_at).getTime();
+		if (!proj || proj.offset > ABSEITS_M || Number.isNaN(t)) continue;
+		out.set(id, { along: proj.along, t, v: Math.max(0, (p.speed_kmh ?? 0) / 3.6) });
+	}
+	return out;
+}
+
+export interface Vordermann {
+	name: string;
+	/** Positiv: Vordermann voraus. Negativ: er liegt zurück. null: Positionen zu weit auseinander. */
+	abstandM: number | null;
+}
+
+export function vordermann(
+	reihenfolge: { id: string; name: string }[],
+	staende: Map<string, Streckenstand>,
+	id: string,
+): Vordermann | null {
+	const ich = staende.get(id);
+	const i = reihenfolge.findIndex((f) => f.id === id);
+	if (!ich || i <= 0) return null;
+	for (let k = i - 1; k >= 0; k--) {
+		const er = staende.get(reihenfolge[k].id);
+		if (!er) continue;
+		const dt = (ich.t - er.t) / 1000;
+		if (Math.abs(dt) > FORTSCHREIBEN_MAX_S) return { name: reihenfolge[k].name, abstandM: null };
+		// Den älteren Stand auf den Zeitpunkt des jüngeren fortschreiben.
+		const erAlong = dt > 0 ? er.along + er.v * dt : er.along;
+		const ichAlong = dt < 0 ? ich.along - ich.v * dt : ich.along;
+		return { name: reihenfolge[k].name, abstandM: erAlong - ichAlong };
+	}
+	return null;
+}
+
+/** „Vordermann Akkon 10/1: 350 m", „… 200 m dahinter", „… Positionen nicht gleichzeitig". */
+export function vordermannText(v: Vordermann): string {
+	if (v.abstandM === null) return `Vordermann ${v.name}: Positionen nicht gleichzeitig`;
+	if (v.abstandM < 0) return `Vordermann ${v.name}: ${formatDistance(-v.abstandM)} dahinter`;
+	return `Vordermann ${v.name}: ${formatDistance(v.abstandM)}`;
+}

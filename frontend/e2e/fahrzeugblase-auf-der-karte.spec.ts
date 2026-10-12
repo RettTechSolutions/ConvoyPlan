@@ -87,46 +87,92 @@ test('die Blase zeigt die Live-Angaben des Fahrzeugs und bleibt aktuell', async 
 	await expect(blase).not.toContainText('Reifen platt');
 });
 
-// Der nächste Wegpunkt und die Ankunft dort. Gerechnet aus dem Plan, nicht aus
-// dem Tempo: Zwischen Abmarsch und geplanter Ankunft am Wegpunkt wird nach der
-// Strecke geteilt. Eine gerade Linie nach Norden, ein Rastplatz in der Mitte.
-test('die Blase nennt den nächsten Wegpunkt und die erwartete Ankunft', async ({ page }) => {
+// Eine gerade Linie nach Norden (0,1° ≈ 11,1 km), Abmarsch vor zehn Minuten,
+// ein Rastplatz in der Mitte.
+const um = (jetzt: number, min: number) => new Date(jetzt + min * 60_000).toISOString();
+
+async function mitRoute(page: Page, fahrzeuge: ReturnType<typeof konvoiFahrzeug>[]) {
 	const jetzt = Date.now();
-	const um = (min: number) => new Date(jetzt + min * 60_000).toISOString();
 	let kanal: WebSocketRoute | null = null;
 	await blockExternal(page);
 	await page.routeWebSocket(/\/api\/ws\//, (ws) => { kanal = ws; });
 	await mockOrgPortal(page, {
 		slug: SLUG, convoyId: CONVOY, rolle: 'planer',
-		fahrzeuge: [konvoiFahrzeug({ vehicle_status: 'en_route', vehicle: { id: 'v-mtw', name: 'MTW', callsign: 'Akkon 14/1' } })],
+		fahrzeuge,
 		wegpunkte: [{
 			id: 'w1', name: 'Rastplatz', type: 'stop', lat: 50.10, lon: 8.69,
-			planned_arrival: um(10), planned_departure: um(15),
+			planned_arrival: um(jetzt, 10), planned_departure: um(jetzt, 15),
 			hold_duration_min: 5, halt_purpose: null, notes: null, order_index: 0,
 		}],
 		route: {
 			id: 'r1', convoy_id: CONVOY, distance_m: 22_240, duration_s: 1800,
 			routing_params: null, fuel_analysis: null,
 			geojson: { type: 'LineString', coordinates: [[8.69, 50.0], [8.69, 50.1], [8.69, 50.2]] },
-			planned_departure: um(-10), planned_arrival: um(25),
+			planned_departure: um(jetzt, -10), planned_arrival: um(jetzt, 25),
 		},
 	});
 	await page.goto(`/o/${SLUG}/tracking/${CONVOY}`, { waitUntil: 'domcontentloaded' });
 	await expect.poll(() => kanal !== null).toBe(true);
-	const senden = (lat: number) => kanal!.send(JSON.stringify({
-		vehicle_id: 'v-mtw', lat, lon: 8.69, speed_kmh: 0, heading: 0, recorded_at: new Date().toISOString(),
+	return (id: string, lat: number, extra: { speed_kmh?: number; alterS?: number } = {}) => kanal!.send(JSON.stringify({
+		vehicle_id: id, lat, lon: 8.69, speed_kmh: extra.speed_kmh ?? 0, heading: 0,
+		recorded_at: new Date(Date.now() - (extra.alterS ?? 0) * 1000).toISOString(),
 	}));
+}
+
+const fz = (position: number, id: string, callsign: string) =>
+	konvoiFahrzeug({ position, vehicle_status: 'en_route', vehicle: { id, name: `Fz ${position}`, callsign } });
+
+// Der nächste Wegpunkt und die Ankunft dort. Gerechnet aus dem Plan, nicht aus
+// dem Tempo: Zwischen Abmarsch und geplanter Ankunft am Wegpunkt wird nach der
+// Strecke geteilt.
+test('die Blase nennt den nächsten Wegpunkt und die erwartete Ankunft', async ({ page }) => {
+	const senden = await mitRoute(page, [fz(1, 'v-mtw', 'Akkon 14/1')]);
 
 	// Ein Viertel bis zum Rastplatz nach der Hälfte der Zeit: 15 statt 10 min.
 	// Steht das Fahrzeug, zählt das nicht als „nie" — Tempo 0 rechnet nicht mit.
-	senden(50.025);
+	senden('v-mtw', 50.025);
 	await page.locator('.maplibregl-marker').filter({ hasText: 'Akkon 14/1' }).click();
 	const zeile = page.locator('.fz-blase div', { hasText: /^Nächster:/ });
 	await expect(zeile).toHaveText(/^Nächster: Rastplatz in 8,3 km · an ca\. \d\d:\d\d \(\+5 min\)$/);
 	await expect(zeile).toHaveClass(/warnung/);
 
 	// Hinter dem Rastplatz zählt die Abfahrt dort als Anker, und das Ziel ist dran.
-	senden(50.15);
+	senden('v-mtw', 50.15);
 	await expect(zeile).toHaveText(/^Nächster: Ziel in 5,6 km · an ca\. \d\d:\d\d \(−20 min\)$/);
 	await expect(zeile).not.toHaveClass(/warnung/);
+});
+
+// Der Vordermann ist der aus der Marschfolge, nicht wer gerade voraus fährt —
+// und hat der unmittelbare kein Gerät, der nächste davor mit Position.
+test('die Blase nennt den Abstand zum Vordermann', async ({ page }) => {
+	const senden = await mitRoute(page, [
+		fz(1, 'v-kdow', 'Akkon 10/1'),
+		fz(2, 'v-ohne', 'Akkon 11/1'),
+		fz(3, 'v-mtw', 'Akkon 14/1'),
+	]);
+	senden('v-kdow', 50.05);
+	senden('v-mtw', 50.0455);
+	await page.locator('.maplibregl-marker').filter({ hasText: 'Akkon 14/1' }).click();
+	const zeile = page.locator('.fz-blase div', { hasText: /^Vordermann/ });
+	await expect(zeile).toHaveText('Vordermann Akkon 10/1: 500 m');
+
+	// Die ältere Position wird mit ihrem Tempo fortgeschrieben: 30 s bei 36 km/h
+	// sind 300 m, die der Vordermann seither weiter ist.
+	senden('v-kdow', 50.05, { speed_kmh: 36, alterS: 30 });
+	await expect(zeile).toHaveText('Vordermann Akkon 10/1: 800 m');
+
+	// Überholt: der Vordermann liegt zurück.
+	senden('v-kdow', 50.05);
+	senden('v-mtw', 50.06);
+	await expect(zeile).toHaveText('Vordermann Akkon 10/1: 1,1 km dahinter');
+
+	// Zwei Minuten auseinander: keine Zahl, die geraten wäre.
+	senden('v-kdow', 50.05, { alterS: 120 });
+	await expect(zeile).toHaveText('Vordermann Akkon 10/1: Positionen nicht gleichzeitig');
+
+	// Die Spitze hat keinen Vordermann.
+	await page.locator('.maplibregl-popup-close-button').click();
+	await page.locator('.maplibregl-marker').filter({ hasText: 'Akkon 10/1' }).click();
+	await expect(page.locator('.fz-blase strong')).toHaveText('Akkon 10/1');
+	await expect(page.locator('.fz-blase div', { hasText: /^Vordermann/ })).toHaveCount(0);
 });

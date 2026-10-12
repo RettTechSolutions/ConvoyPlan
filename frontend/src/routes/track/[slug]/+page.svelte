@@ -13,6 +13,7 @@
 	import { istAus, sollAus, type Staerke, type StaerkeFelder } from '$lib/tracking/staerke';
 	import { fahrzeugBlase } from '$lib/tracking/fahrzeugblase';
 	import { naechsterHalt, routenHalte } from '$lib/tracking/naechsterhalt';
+	import { streckenstaende, vordermann } from '$lib/tracking/vordermann';
 	import {
 		trackApi, isTrackGate,
 		type TrackPayload, type TrackGate, type TrackPosition, type VehiclePosition,
@@ -131,6 +132,12 @@
 	let blasenLinie = $derived(routeCoords(data?.geojson));
 	let blasenHalte = $derived(routenHalte(blasenLinie, data?.waypoints ?? []));
 
+	let marschfolge = $derived(
+		[...(data?.vehicles ?? [])].sort((a, b) => a.position - b.position)
+			.map((v) => ({ id: v.id, name: v.callsign || v.name }))
+	);
+	let blasenStaende = $derived(streckenstaende(blasenLinie, livePositions));
+
 	// vehicle id → Zeilen der Kartenblase: dieselben Angaben wie die Fahrzeugzeile.
 	let vehicleInfo = $derived(
 		new Map((data?.vehicles ?? []).map((v) => {
@@ -145,6 +152,7 @@
 				ist: istAus(felder),
 				betriebsstoff: betriebsstoffVon(v),
 				naechster: pos ? naechsterHalt(blasenLinie, blasenHalte, pos, data?.start_time ?? null, Date.now()) : null,
+				vordermann: vordermann(marschfolge, blasenStaende, v.id),
 			}, Date.now())];
 		}))
 	);

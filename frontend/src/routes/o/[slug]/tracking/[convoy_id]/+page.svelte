@@ -29,6 +29,7 @@
 	} from '$lib/tracking/staerke';
 	import { fahrzeugBlase } from '$lib/tracking/fahrzeugblase';
 	import { naechsterHalt, routenHalte } from '$lib/tracking/naechsterhalt';
+	import { streckenstaende, vordermann } from '$lib/tracking/vordermann';
 	import {
 		STATUS_LABELS, STATUS_COLORS, STATUS_ICONS, HALT_LEVEL_LABELS, BREAKDOWN_LEVEL_LABELS,
 		statusColor, statusLabel, levelLabel, type HaltLevel, type BreakdownLevel,
@@ -418,6 +419,12 @@
 	let blasenLinie = $derived(routeCoords(route?.geojson));
 	let blasenHalte = $derived(routenHalte(blasenLinie, convoy?.waypoints ?? [], route?.planned_arrival ?? null));
 
+	let marschfolge = $derived(
+		[...(convoy?.convoy_vehicles ?? [])].sort((a, b) => a.position - b.position)
+			.map((cv) => ({ id: cv.vehicle.id, name: cv.vehicle.callsign || cv.vehicle.name }))
+	);
+	let blasenStaende = $derived(streckenstaende(blasenLinie, $livePositions));
+
 	// vehicle id → Zeilen der Kartenblase: dieselben Angaben wie die Fahrzeugzeile.
 	let vehicleInfo = $derived(
 		new Map((convoy?.convoy_vehicles ?? []).map((cv) => {
@@ -438,6 +445,7 @@
 				betriebsstoff: betriebsstoffVon(cv),
 				tracker: trackerZustand.get(cv.vehicle.id) ?? null,
 				naechster: pos ? naechsterHalt(blasenLinie, blasenHalte, pos, abmarsch, Date.now()) : null,
+				vordermann: vordermann(marschfolge, blasenStaende, cv.vehicle.id),
 			}, trackerJetzt)];
 		}))
 	);

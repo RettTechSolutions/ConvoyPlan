@@ -341,6 +341,15 @@ einen Kilometer neben der Route steht, bekommt keine Angabe. Im Fahrer-Link ist
 die geplante Ankunft am Ziel nicht bekannt; dort zeigt die letzte Etappe nur
 die Entfernung.
 
+Außerdem der **Abstand zum Vordermann**, etwa „Vordermann Akkon 10/1: 350 m“.
+Vordermann ist das Fahrzeug davor in der Marschfolge; hat es kein Gerät, das
+nächste davor mit Position. Gemessen wird entlang der Route. Weil die beiden
+Positionen selten gleich alt sind, wird die ältere mit ihrem Tempo
+fortgeschrieben; liegen sie mehr als eine Minute auseinander, steht statt einer
+Zahl „Positionen nicht gleichzeitig“. Ist das Fahrzeug am Vordermann vorbei,
+steht „… dahinter“. Gewarnt wird nicht: Die Sollabstände liegen in der
+Größenordnung der GPS-Genauigkeit.
+
 Was Aufmerksamkeit
 verdient (Halt oder Ausfall, Abweichung vom Soll, knapper Betriebsstoff,
 schwacher Akku), steht hervorgehoben. Die Blase bleibt aktuell, solange sie
