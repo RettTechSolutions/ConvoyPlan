@@ -354,6 +354,15 @@
 		fitRoute();
 	}
 
+	/** Zum Fahrzeug fliegen und seine Blase öffnen (z. B. aus einem Banner heraus). */
+	export function showVehicle(vehicleId: string) {
+		const pos = livePositions.get(vehicleId);
+		if (!pos || !map) return;
+		flyToPosition(pos);
+		const marker = trackingMarkers.get(vehicleId)?.marker;
+		if (marker && !marker.getPopup()?.isOpen()) marker.togglePopup();
+	}
+
 	/** Reset the map orientation to north-up (and level). */
 	export function resetNorth() {
 		map?.easeTo({ bearing: 0, pitch: 0, duration: 400 });

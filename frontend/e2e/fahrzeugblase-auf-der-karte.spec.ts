@@ -91,11 +91,16 @@ test('die Blase zeigt die Live-Angaben des Fahrzeugs und bleibt aktuell', async 
 // ein Rastplatz in der Mitte.
 const um = (jetzt: number, min: number) => new Date(jetzt + min * 60_000).toISOString();
 
-async function mitRoute(page: Page, fahrzeuge: ReturnType<typeof konvoiFahrzeug>[]) {
+async function mitRoute(page: Page, fahrzeuge: ReturnType<typeof konvoiFahrzeug>[], { uhr = false } = {}) {
 	const jetzt = Date.now();
+	if (uhr) await page.clock.install();
 	let kanal: WebSocketRoute | null = null;
 	await blockExternal(page);
-	await page.routeWebSocket(/\/api\/ws\//, (ws) => { kanal = ws; });
+	await page.routeWebSocket(/\/api\/ws\//, (ws) => {
+		kanal = ws;
+		// Der Heartbeat erwartet Antwort — sonst baut er bei vorgespulter Uhr neu auf.
+		ws.onMessage((roh) => { if (String(roh).includes('"ping"')) ws.send(JSON.stringify({ type: 'pong' })); });
+	});
 	await mockOrgPortal(page, {
 		slug: SLUG, convoyId: CONVOY, rolle: 'planer',
 		fahrzeuge,
@@ -184,4 +189,51 @@ test('die Blase nennt den Abstand zum Vordermann', async ({ page }) => {
 	await page.locator('.maplibregl-marker').filter({ hasText: 'Akkon 10/1' }).click();
 	await expect(page.locator('.fz-blase strong')).toHaveText('Akkon 10/1');
 	await expect(page.locator('.fz-blase div', { hasText: /^Vordermann/ })).toHaveCount(0);
+});
+
+// Das Banner zum Abriss: erst, wenn der Abstand eine Minute lang über 1 km
+// bleibt — eine Ampel, die den Verband für einen Umlauf trennt, ist kein Alarm.
+test('ein Abriss über eine Minute bringt ein Banner', async ({ page }) => {
+	const senden = await mitRoute(page, [fz(1, 'v-kdow', 'Akkon 10/1'), fz(2, 'v-mtw', 'Akkon 14/1')], { uhr: true });
+	const banner = page.getByTestId('abriss-banner');
+	// In kleinen Schritten, damit der Heartbeat zwischendurch seine Antwort bekommt.
+	const vergehen = async (ms: number) => {
+		for (let t = 0; t < ms; t += 2_000) await page.clock.runFor(Math.min(2_000, ms - t));
+	};
+	senden('v-kdow', 50.05);
+	senden('v-mtw', 50.035);
+	await expect(page.locator('.maplibregl-marker').filter({ hasText: 'Akkon 14/1' })).toBeVisible();
+
+	await vergehen(30_000);
+	await expect(banner).toHaveCount(0);
+
+	// Die Lücke schließt sich vor Ablauf der Minute: die Uhr fängt von vorn an.
+	senden('v-mtw', 50.045);
+	await vergehen(6_000);
+	senden('v-mtw', 50.035);
+	await vergehen(40_000);
+	await expect(banner).toHaveCount(0);
+
+	await vergehen(25_000);
+	await expect(banner).toBeVisible();
+	await expect(banner).toContainText('Abriss: Akkon 14/1 · 1,7 km hinter Akkon 10/1');
+	await expect(banner).toContainText('seit 1 min');
+
+	// „Zeigen" öffnet die Blase des Fahrzeugs.
+	await banner.getByRole('button', { name: 'Zeigen' }).click();
+	await expect(page.locator('.fz-blase strong')).toHaveText('Akkon 14/1');
+
+	// Aufgeschlossen: das Banner geht von selbst.
+	senden('v-mtw', 50.045);
+	await vergehen(6_000);
+	await expect(banner).toHaveCount(0);
+
+	// Ausgeblendet bleibt ein Abriss weg, solange er andauert.
+	senden('v-mtw', 50.035);
+	await vergehen(66_000);
+	await expect(banner).toBeVisible();
+	await banner.getByRole('button', { name: 'Ausblenden' }).click();
+	await expect(banner).toHaveCount(0);
+	await vergehen(30_000);
+	await expect(banner).toHaveCount(0);
 });

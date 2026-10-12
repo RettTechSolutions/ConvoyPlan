@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, untrack } from 'svelte';
 	import { page } from '$app/stores';
 	import MapView from '$lib/components/MapView.svelte';
 	import AppLogo from '$lib/components/AppLogo.svelte';
@@ -29,7 +29,9 @@
 	} from '$lib/tracking/staerke';
 	import { fahrzeugBlase } from '$lib/tracking/fahrzeugblase';
 	import { naechsterHalt, routenHalte } from '$lib/tracking/naechsterhalt';
-	import { streckenstaende, vordermann } from '$lib/tracking/vordermann';
+	import {
+		abrisse, abrissSeit, streckenstaende, vordermann, type Vordermann,
+	} from '$lib/tracking/vordermann';
 	import {
 		STATUS_LABELS, STATUS_COLORS, STATUS_ICONS, HALT_LEVEL_LABELS, BREAKDOWN_LEVEL_LABELS,
 		statusColor, statusLabel, levelLabel, type HaltLevel, type BreakdownLevel,
@@ -424,6 +426,36 @@
 			.map((cv) => ({ id: cv.vehicle.id, name: cv.vehicle.callsign || cv.vehicle.name }))
 	);
 	let blasenStaende = $derived(streckenstaende(blasenLinie, $livePositions));
+	let vordermaenner = $derived(
+		new Map<string, Vordermann | null>(marschfolge.map((f) => [f.id, vordermann(marschfolge, blasenStaende, f.id)]))
+	);
+
+	// --- Abriss des Verbands ------------------------------------------------
+	// Ein Banner, wenn ein Fahrzeug eine Minute lang mehr als 1 km hinter seinem
+	// Vordermann liegt (`vordermann.ts`). Der Takt sorgt dafür, dass es auch
+	// kommt, wenn in der Minute keine neue Position eintrifft. Ausblenden gilt
+	// für diesen Abriss auf diesem Gerät; schließt die Lücke und reißt neu auf,
+	// kommt es wieder.
+	let abrissUhr = $state(Date.now());
+	let abrissTakt: ReturnType<typeof setInterval> | null = null;
+	let abrissSeitMap = new Map<string, number>();
+	let abrissIds = $state<string[]>([]);
+	let abrissAusgeblendet = $state<ReadonlySet<string>>(new Set());
+	$effect(() => {
+		void abrissUhr; // der Takt, damit die Minute auch ohne neue Position abläuft
+		abrissSeitMap = abrissSeit(abrissSeitMap, vordermaenner, Date.now());
+		const ids = abrisse(abrissSeitMap, Date.now());
+		untrack(() => {
+			if (ids.some((id) => !abrissIds.includes(id) && !abrissAusgeblendet.has(id))) notifySignal(false);
+			const bleiben = [...abrissAusgeblendet].filter((id) => abrissSeitMap.has(id));
+			if (bleiben.length !== abrissAusgeblendet.size) abrissAusgeblendet = new Set(bleiben);
+			if (ids.join() !== abrissIds.join()) abrissIds = ids;
+		});
+	});
+	let sichtbareAbrisse = $derived(abrissIds.filter((id) => !abrissAusgeblendet.has(id)));
+	function abrissMinuten(id: string): number {
+		return Math.max(1, Math.floor((abrissUhr - (abrissSeitMap.get(id) ?? abrissUhr)) / 60_000));
+	}
 
 	// vehicle id → Zeilen der Kartenblase: dieselben Angaben wie die Fahrzeugzeile.
 	let vehicleInfo = $derived(
@@ -445,7 +477,7 @@
 				betriebsstoff: betriebsstoffVon(cv),
 				tracker: trackerZustand.get(cv.vehicle.id) ?? null,
 				naechster: pos ? naechsterHalt(blasenLinie, blasenHalte, pos, abmarsch, Date.now()) : null,
-				vordermann: vordermann(marschfolge, blasenStaende, cv.vehicle.id),
+				vordermann: vordermaenner.get(cv.vehicle.id) ?? null,
 			}, trackerJetzt)];
 		}))
 	);
@@ -463,6 +495,7 @@
 	onMount(() => {
 		void trackerLaden();
 		trackerTimer = setInterval(() => void trackerLaden(), TRACKER_ABFRAGE_MS);
+		abrissTakt = setInterval(() => (abrissUhr = Date.now()), 5_000);
 		requestWakeLock();
 		document.addEventListener('visibilitychange', handleVisibility);
 		netOnline = navigator.onLine;
@@ -479,6 +512,7 @@
 
 	onDestroy(() => {
 		if (trackerTimer) clearInterval(trackerTimer);
+		if (abrissTakt) clearInterval(abrissTakt);
 		disconnectTracking();
 		// Reload-safe stop: end the GPS watch but keep the saved session so a
 		// page reload can resume; an explicit "stop" button press clears it.
@@ -1156,8 +1190,24 @@
 			</div>
 		{/if}
 
+		<!-- Abriss des Verbands: unter TH/Ausfall, über den Wegpunkt-Ansagen -->
+		{#if sichtbareAbrisse.length > 0 && activeAlerts.length === 0}
+			{@const id = sichtbareAbrisse[0]}
+			{@const vm = vordermaenner.get(id)}
+			<div class="alert-banner abriss" class:with-net={offline || backOnline} data-testid="abriss-banner" role="alert">
+				<span class="ab-icon">⛓️‍💥</span>
+				<div class="ab-text">
+					<strong>Abriss: {vehicleNames.get(id) ?? 'Fahrzeug'}</strong>
+					{#if vm?.abstandM != null} · {formatDistance(vm.abstandM)} hinter {vm.name}{/if}
+					<div class="ab-note">seit {abrissMinuten(id)} min{#if sichtbareAbrisse.length > 1} · {sichtbareAbrisse.length - 1} weitere{/if}</div>
+				</div>
+				<button class="ab-btn" onclick={() => mapView?.showVehicle(id)}>Zeigen</button>
+				<button class="ab-btn dim" onclick={() => (abrissAusgeblendet = new Set([...abrissAusgeblendet, id]))} aria-label="Ausblenden">✕</button>
+			</div>
+		{/if}
+
 		<!-- Route-point announcement (Leitstellenwechsel / Wegpunkt erreicht) -->
-		{#if pointEvent && activeAlerts.length === 0}
+		{#if pointEvent && activeAlerts.length === 0 && sichtbareAbrisse.length === 0}
 			<div class="point-banner" class:with-net={offline || backOnline} class:done={pointEventDone}>
 				<span class="ab-icon">{pointEvent.kind === 'kanalwechsel' ? '📡' : '📍'}</span>
 				<div class="ab-text">
@@ -1172,7 +1222,7 @@
 		{/if}
 
 		<!-- Next upcoming route point (Wegpunkt / Leitstellenwechsel) -->
-		{#if nextPoint && !pointEvent && activeAlerts.length === 0}
+		{#if nextPoint && !pointEvent && activeAlerts.length === 0 && sichtbareAbrisse.length === 0}
 			<div class="next-point" class:with-net={offline || backOnline}>
 				<span class="np-icon">{nextPoint.point.kind === 'kanalwechsel' ? '📡' : '📍'}</span>
 				<span class="np-text">In {formatDistance(nextPoint.aheadM)}: {nextPoint.point.label}</span>
@@ -1383,6 +1433,9 @@
 	.ab-note { font-style: italic; font-size: var(--text-xs); }
 	.ab-btn { background: rgba(0,0,0,.15); color: inherit; border: none; border-radius: 6px; padding: .35rem .6rem; font-weight: 600; cursor: pointer; font-size: var(--text-sm); flex-shrink: 0; }
 	.alert-banner.breakdown .ab-btn { background: rgba(255,255,255,.25); }
+	.alert-banner.abriss { background: #e67e22; color: #fff; }
+	.alert-banner.abriss .ab-btn { background: rgba(255,255,255,.25); }
+	.alert-banner.abriss .ab-btn.dim { background: transparent; }
 	.ab-btn.dim { background: transparent; }
 	@keyframes alert-in { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 	@keyframes flash { from { box-shadow: 0 4px 16px rgba(0,0,0,.4); } to { box-shadow: 0 0 0 4px rgba(226,61,40,.5), 0 4px 16px rgba(0,0,0,.4); } }

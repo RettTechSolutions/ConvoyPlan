@@ -352,6 +352,17 @@ Gegen die Sollabstände wird nicht gewarnt: Sie hängen an der Straßenklasse un
 liegen in der Größenordnung der GPS-Genauigkeit. Ein überholter Vordermann ist
 kein Abriss.
 
+Bleibt der Abstand **eine Minute lang** über 1 km, erscheint in der
+Konvoi-Ansicht ein orangefarbenes **Abriss-Banner** über der Karte, mit Ton:
+„Abriss: Akkon 14/1 · 1,7 km hinter Akkon 10/1 — seit 1 min“. Die Minute
+verhindert, dass jede Ampel, die den Verband für einen Umlauf trennt, Alarm
+schlägt; fällt der Abstand zwischendurch unter 1 km, beginnt sie von vorn,
+ebenso, wenn die Positionen nicht gleichzeitig genug für eine Zahl sind.
+**Zeigen** fliegt zum Fahrzeug und öffnet seine Blase, **✕** blendet diesen
+Abriss auf diesem Gerät aus, bis die Lücke geschlossen ist. Schließt der
+Verband auf, verschwindet das Banner von selbst. Ein Technischer Halt oder
+Ausfall hat Vorrang. Im Fahrer-Link gibt es das Banner nicht.
+
 Was Aufmerksamkeit
 verdient (Halt oder Ausfall, Abweichung vom Soll, knapper Betriebsstoff,
 schwacher Akku), steht hervorgehoben. Die Blase bleibt aktuell, solange sie

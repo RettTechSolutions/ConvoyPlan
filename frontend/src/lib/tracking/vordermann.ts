@@ -91,3 +91,34 @@ export function vordermannText(v: Vordermann): { text: string; warnung: boolean 
 	if (v.abstandM > ABRISS_M) return { text: `${vorn} ${formatDistance(v.abstandM)} – Abriss`, warnung: true };
 	return { text: `${vorn} ${formatDistance(v.abstandM)}`, warnung: false };
 }
+
+/**
+ * Wie lange der Abstand über `ABRISS_M` bleiben muss, bevor das Banner kommt.
+ * Eine Ampel trennt einen Verband oft für einen Umlauf, und ein Alarm, der bei
+ * jeder Ampel anschlägt, wird bald nicht mehr gelesen.
+ */
+export const ABRISS_NACH_MS = 60_000;
+
+/**
+ * Seit wann jedes Fahrzeug ununterbrochen mehr als `ABRISS_M` hinter seinem
+ * Vordermann liegt (Uhr des Betrachters, nicht der Positionen). Wer darunter
+ * fällt, beginnt von vorn — auch, wenn sich kein Abstand bestimmen lässt
+ * („Positionen nicht gleichzeitig"): Ein Alarm auf eine geschätzte Zahl hin
+ * wäre schlimmer als einer, der eine Minute später kommt.
+ */
+export function abrissSeit(
+	vorher: ReadonlyMap<string, number>,
+	abstaende: ReadonlyMap<string, Vordermann | null>,
+	jetzt: number,
+): Map<string, number> {
+	const seit = new Map<string, number>();
+	for (const [id, v] of abstaende) {
+		if (v?.abstandM != null && v.abstandM > ABRISS_M) seit.set(id, vorher.get(id) ?? jetzt);
+	}
+	return seit;
+}
+
+/** Fahrzeuge, deren Abriss lange genug anhält, um gemeldet zu werden — der älteste zuerst. */
+export function abrisse(seit: ReadonlyMap<string, number>, jetzt: number): string[] {
+	return [...seit].filter(([, t]) => jetzt - t >= ABRISS_NACH_MS).sort((a, b) => a[1] - b[1]).map(([id]) => id);
+}
