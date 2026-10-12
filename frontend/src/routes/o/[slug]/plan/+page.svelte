@@ -1281,7 +1281,7 @@
 		{#if wizardStep === 0}
 			<!-- Primary planning tabs -->
 			<div class="tabs">
-				{#each [['convoy','Plan'],['route','Route'],['wegpunkte','Wegpunkte'],['zeitplan','Zeitplan'],['export','Export']] as [tab, label]}
+				{#each [['convoy','Plan'],['route','Route'],['wegpunkte','Wegpunkte'],['zeitplan','Zeitplan']] as [tab, label]}
 					<button class="tab" class:active={activeTab === tab} onclick={() => (activeTab = tab as typeof activeTab)}>{label}{#if tab === 'route'}<RouteHinweisMarke hinweise={routeHinweiseJetzt} />{/if}</button>
 				{/each}
 			</div>
@@ -1290,6 +1290,7 @@
 				<span class="tabs-section-label">Verwaltung</span>
 				<button class="tab" class:active={activeTab === 'fahrzeuge'} onclick={() => (activeTab = 'fahrzeuge')}>Fahrzeuge</button>
 				<button class="tab" class:active={activeTab === 'konto'} onclick={openKontoTab}>Konto</button>
+				<button class="tab" class:active={activeTab === 'export'} onclick={() => (activeTab = 'export')}>Export</button>
 			</div>
 
 			<div class="tab-content">
@@ -2338,11 +2339,12 @@
 	.convoy-selector { display: flex; gap: .5rem; padding: .75rem 1rem; border-bottom: 1px solid var(--border); }
 .convoy-selector select { flex: 1; padding: .5rem; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); }
 
-	/* Fünf Reiter auf 340 px: knapp bemessen, damit „Export“ nicht hinter dem
-	   unsichtbaren Scrollbalken verschwindet. */
-	.tabs { display: flex; overflow-x: auto; scrollbar-width: none; padding: .25rem .35rem; gap: .1rem; border-bottom: 1px solid var(--border); }
+	/* Beide Reiterzeilen müssen in 340 px passen — ein überlaufender Reiter
+	   verschwindet hinter dem unsichtbaren Scrollbalken. Mit Inter gemessen:
+	   Planung 320 px (mit Marke an „Route“), Verwaltung samt Export 332 px. */
+	.tabs { display: flex; overflow-x: auto; scrollbar-width: none; padding: .25rem .5rem; gap: .25rem; border-bottom: 1px solid var(--border); }
 .tabs::-webkit-scrollbar { display: none; }
-.tab { flex: 0 0 auto; padding: .5rem .4rem; background: none; border: none; color: var(--text-2); font-size: var(--text-sm); cursor: pointer; white-space: nowrap; border-radius: 4px; }
+.tab { flex: 0 0 auto; padding: .5rem .6rem; background: none; border: none; color: var(--text-2); font-size: var(--text-sm); cursor: pointer; white-space: nowrap; border-radius: 4px; }
 .tab.active { color: var(--text-1); background: var(--surface-2); font-weight: 600; }
 .tabs-verwaltung { padding: .25rem .5rem; gap: .25rem; border-bottom: 1px solid var(--border); }
 .tabs-verwaltung .tab { font-size: var(--text-sm); }
