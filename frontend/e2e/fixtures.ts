@@ -25,6 +25,7 @@ export type TrackFahrzeug = {
 	alarm_ts?: string | null;
 	alarm_quittiert_at?: string | null;
 	alarm_quittiert_von?: string | null;
+	tracker_uebersteuert_at?: string | null;
 };
 
 /** Ein Fahrzeug ohne jede Stärkeangabe — der Normalfall vor der ersten Meldung. */
@@ -43,10 +44,15 @@ export function fahrzeug(teil: Partial<TrackFahrzeug> = {}): TrackFahrzeug {
  * „LIVE". Beide Ansichten führen dieselben Felder (`TrackPosition` bzw.
  * `VehiclePosition`).
  */
-export function position(fahrzeugId = 'v1') {
+export function position(
+	fahrzeugId = 'v1',
+	teil: { recorded_at?: string; quelle?: 'tracker' | null } = {},
+) {
 	return {
 		vehicle_id: fahrzeugId, lat: 52.5, lon: 13.4,
 		speed_kmh: 42, heading: 90, recorded_at: '2026-09-18T14:05:00Z',
+		quelle: null as 'tracker' | null,
+		...teil,
 	};
 }
 

@@ -142,6 +142,7 @@ async def _build_payload(convoy_id: uuid.UUID, db: AsyncSession, scope: str = "t
             speed_kmh=p.speed_kmh,
             heading=p.heading,
             recorded_at=p.recorded_at,
+            quelle=p.quelle,
         )
         for p in positions
     ]

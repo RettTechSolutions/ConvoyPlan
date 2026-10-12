@@ -31,7 +31,7 @@
 	import type { ConnectionState } from '$lib/tracking/connection';
 	import { createLiveSocket, CLOSE_UNAUTHORIZED, type LiveSocket } from '$lib/tracking/socket';
 	import { createBelegung, geraeteKennung, BELEGT_HINWEIS } from '$lib/tracking/belegung';
-	import { TRACKER_HINWEIS, istPositionAbgelehnt, istPositionsquelle } from '$lib/tracking/positionsquelle';
+	import { TRACKER_HINWEIS, istPositionAbgelehnt, istPositionsquelle, trackerHaeltPosition } from '$lib/tracking/positionsquelle';
 
 	const slug = $derived($page.params.slug!);
 
@@ -70,6 +70,9 @@
 	// sie schlagen die Zahlen aus der Nutzlast beim Laden.
 	let liveStaerken = $state<Map<string, Staerke>>(new Map());
 	let liveBetriebsstoff = $state<Map<string, Betriebsstoff>>(new Map());
+	// Was die Führung seit dem Laden an der Positionsquelle umgestellt hat
+	// (`positionsquelle`); fehlt ein Fahrzeug hier, gilt der Stand aus dem Laden.
+	let liveUebersteuert = $state<Map<string, boolean>>(new Map());
 	let live: LiveSocket | null = null;
 	let mapView = $state<ReturnType<typeof MapView>>();
 
@@ -307,6 +310,7 @@
 			lat: p.lat, lon: p.lon,
 			speed_kmh: p.speed_kmh, heading: p.heading,
 			recorded_at: p.recorded_at,
+			quelle: p.quelle ?? null,
 		};
 	}
 
@@ -337,10 +341,15 @@
 				// Ein Tracker sendet für mein Fahrzeug: Position verworfen, Meldungen
 				// bleiben möglich. Nur der Absender bekommt das.
 				if (istPositionAbgelehnt(raw)) {
-					if (raw.vehicle_id === myVehicleId) driverError = TRACKER_HINWEIS;
+					if (raw.vehicle_id !== myVehicleId) return;
+					if (transmitting) stopTransmitting();
+					driverError = TRACKER_HINWEIS;
 					return;
 				}
-				if (istPositionsquelle(raw)) return;
+				if (istPositionsquelle(raw)) {
+					liveUebersteuert = new Map(liveUebersteuert).set(raw.vehicle_id, raw.tracker_uebersteuert);
+					return;
+				}
 				const msg = raw as Record<string, unknown> & { type?: string; vehicle_id?: unknown; lat?: unknown };
 				if (msg.type === 'status_update') {
 					if (typeof msg.vehicle_id === 'string' && typeof msg.vehicle_status === 'string') {
@@ -406,6 +415,7 @@
 					speed_kmh: (msg.speed_kmh as number | null) ?? null,
 					heading: (msg.heading as number | null) ?? null,
 					recorded_at: new Date().toISOString(),
+					quelle: msg.quelle === 'tracker' ? 'tracker' : null,
 				});
 				livePositions = next;
 			},
@@ -432,8 +442,24 @@
 		livePositions = next;
 	}
 
+	// Sendet der Tracker für mein Fahrzeug, gehört ihm die Position: kein „GPS
+	// senden", und ein laufendes Senden endet, sobald er übernimmt. Status und
+	// Meldungen bleiben hier. Fällt er aus, ist der Knopf nach fünf Minuten
+	// (`VORRANG_MS`) wieder da.
+	let trackerHaeltMeine = $derived.by(() => {
+		if (!myVehicleId) return false;
+		const v = data?.vehicles.find((x) => x.id === myVehicleId);
+		const uebersteuert = liveUebersteuert.get(myVehicleId) ?? !!v?.tracker_uebersteuert_at;
+		return trackerHaeltPosition(livePositions.get(myVehicleId), uebersteuert, stilleUhr);
+	});
+	$effect(() => {
+		if (!trackerHaeltMeine || !transmitting) return;
+		untrack(() => { stopTransmitting(); driverError = TRACKER_HINWEIS; });
+	});
+
 	function startTransmitting() {
 		if (!myVehicleId) { driverError = 'Bitte zuerst ein Fahrzeug auswählen'; return; }
+		if (trackerHaeltMeine) { driverError = TRACKER_HINWEIS; return; }
 		driverError = '';
 		try { sessionStorage.setItem(SESSION_KEY, myVehicleId); } catch { /* ignore */ }
 		requestWakeLock();
@@ -751,9 +777,12 @@
 					</select>
 					{#if !transmitting}
 						{#if !isSecure}<p class="hint">GPS benötigt HTTPS – Position kann per Karten-Tippen gesetzt werden.</p>{/if}
-						<button class="btn-primary" onclick={startTransmitting} disabled={!myVehicleId}>
+						<button class="btn-primary" onclick={startTransmitting} disabled={!myVehicleId || trackerHaeltMeine}>
 							{isSecure ? '📡 GPS senden' : '📍 Manuell setzen'}
 						</button>
+						{#if trackerHaeltMeine && driverError !== TRACKER_HINWEIS}
+							<p class="hint" data-testid="tracker-haelt-position">{TRACKER_HINWEIS}</p>
+						{/if}
 					{:else}
 						<p class="hint hint-active">{manualMode ? 'Tippe auf die Karte, um deine Position zu setzen' : 'GPS aktiv – Position wird übertragen'}</p>
 						<button class="btn-stop" onclick={stopTransmitting}>⏹ Senden stoppen</button>

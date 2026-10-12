@@ -638,6 +638,8 @@ export interface TrackVehicle {
 	// Der laufende Alarm und seine Quittung durch die Führung. Fehlen auf einem
 	// älteren Server — deshalb optional.
 	alarm_ts?: string | null; alarm_quittiert_at?: string | null; alarm_quittiert_von?: string | null;
+	// Die Führung lässt für dieses Fahrzeug das Telefon statt des Trackers gelten.
+	tracker_uebersteuert_at?: string | null;
 	sonderfunktion: string | null; vehicle_status: string | null; position: number;
 	// Mannschaftsstärke: Soll aus der Planung, Ist aus der Meldung unterwegs.
 	staerke_soll_fuehrer: number | null;
@@ -660,6 +662,8 @@ export interface TrackVehicle {
 export interface TrackPosition {
 	vehicle_id: string; lat: number; lon: number;
 	speed_kmh: number | null; heading: number | null; recorded_at: string;
+	// 'tracker' vom festen Ortungsgerät. Fehlt auf älteren Servern.
+	quelle?: 'tracker' | null;
 }
 export interface TrackWaypointPublic {
 	name: string; type: string;

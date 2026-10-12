@@ -113,6 +113,9 @@ class TrackPosition(BaseModel):
     speed_kmh: float | None = None
     heading: float | None = None
     recorded_at: datetime
+    # 'tracker', wenn die Position vom festen Ortungsgerät kam — dann bietet der
+    # Fahrer-Link für dieses Fahrzeug kein „GPS senden" an.
+    quelle: str | None = None
 
 
 class RouteStep(BaseModel):
