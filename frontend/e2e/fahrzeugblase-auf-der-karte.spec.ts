@@ -123,7 +123,11 @@ async function mitRoute(page: Page, fahrzeuge: ReturnType<typeof konvoiFahrzeug>
 		recorded_at: new Date(Date.now() - (extra.alterS ?? 0) * 1000).toISOString(),
 	}));
 	// Jede andere Nachricht des Kanals, z. B. ein Statuswechsel.
-	return Object.assign(position, { roh: (nachricht: object) => kanal!.send(JSON.stringify(nachricht)) });
+	return Object.assign(position, {
+		roh: (nachricht: object) => kanal!.send(JSON.stringify(nachricht)),
+		// Den Kanal von Serverseite schließen; der nächste Versuch landet wieder hier.
+		schliessen: async () => { const alt = kanal!; await alt.close(); await expect.poll(() => kanal !== alt).toBe(true); },
+	});
 }
 
 const fz = (position: number, id: string, callsign: string) =>
@@ -279,4 +283,29 @@ test('Funkstille nach drei Minuten, aber nur bei einem fahrenden Fahrzeug', asyn
 	senden.roh({ type: 'status_update', vehicle_id: 'v-mtw', vehicle_status: 'arrived', status_level: null, status_note: null });
 	await vergehen(200_000);
 	await expect(banner).toHaveCount(0);
+});
+
+// Reißt die eigene Verbindung ab, schweigen alle — das ist die Funkstille des
+// Betrachters, nicht die der Fahrzeuge. Nach dem Wiederverbinden zählen die
+// drei Minuten neu.
+test('Funkstille zählt nur, solange die eigene Verbindung steht', async ({ page }) => {
+	const senden = await mitRoute(page, [fz(1, 'v-mtw', 'Akkon 14/1')], { uhr: true });
+	const banner = page.getByTestId('funkstille-banner');
+	const vergehen = async (ms: number) => {
+		for (let t = 0; t < ms; t += 2_000) await page.clock.runFor(Math.min(2_000, ms - t));
+	};
+	senden('v-mtw', 50.05, { speed_kmh: 60 });
+	await expect(page.locator('.maplibregl-marker').filter({ hasText: 'Akkon 14/1' })).toBeVisible();
+	await vergehen(120_000);
+
+	// Der Server schließt; der Store verbindet neu (die Positionen bleiben).
+	await senden.schliessen();
+	await vergehen(90_000);
+	await expect(banner).toHaveCount(0);
+
+	// Drei Minuten nach dem Wiederverbinden: jetzt ist es das Fahrzeug.
+	await vergehen(100_000);
+	await expect(banner).toBeVisible();
+	// Angezeigt wird die wahre letzte Position, nicht der Neubeginn der Zählung.
+	await expect(banner).toContainText(/seit [5-6] min/);
 });

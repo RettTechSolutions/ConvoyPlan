@@ -15,6 +15,11 @@
  * Uhr am Führungsrechner ergäbe sonst Alarme oder verschluckte sie. Nur für
  * Positionen, die schon beim Laden da waren, gilt `recorded_at`, und auch das
  * höchstens bis jetzt.
+ *
+ * Und nur, solange der Betrachter selbst verbunden ist (`verbundenSeit`):
+ * Reißt seine eigene Verbindung ab, schweigen alle — das ist dann seine
+ * Funkstille, nicht die der Fahrzeuge. Nach dem Wiederverbinden beginnen die
+ * drei Minuten neu; angezeigt wird trotzdem die wahre letzte Position.
  */
 
 export const FUNKSTILLE_MS = 3 * 60_000;
@@ -59,11 +64,14 @@ export function funkstille(
 	positionen: ReadonlyMap<string, PositionLike>,
 	statusVon: (id: string) => string,
 	jetzt: number,
+	/** Seit wann der Betrachter ununterbrochen verbunden ist; null: gerade nicht. */
+	verbundenSeit: number | null,
 ): { id: string; seit: number; kmh: number }[] {
+	if (verbundenSeit === null) return [];
 	const out: { id: string; seit: number; kmh: number }[] = [];
 	for (const [id, p] of positionen) {
 		const g = gehoert.get(id);
-		if (!g || jetzt - g.t < FUNKSTILLE_MS) continue;
+		if (!g || jetzt - Math.max(g.t, verbundenSeit) < FUNKSTILLE_MS) continue;
 		if (p.speed_kmh == null || p.speed_kmh < FAHRT_KMH) continue;
 		if (statusVon(id) === 'arrived') continue;
 		out.push({ id, seit: g.t, kmh: p.speed_kmh });
