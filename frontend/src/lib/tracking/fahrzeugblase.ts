@@ -25,6 +25,8 @@ export interface FahrzeugAngaben {
 	name?: string | null;
 	status: string;
 	statusText: string;
+	/** Bemerkung zum Status — gezeigt nur bei Halt oder Ausfall, dort ist sie der Grund. */
+	bemerkung?: string | null;
 	soll: Staerke | null;
 	ist: Staerke | null;
 	betriebsstoff: Betriebsstoff | null;
@@ -37,6 +39,8 @@ export function fahrzeugBlase(a: FahrzeugAngaben, jetzt: number): BlasenZeile[] 
 	const zeilen: BlasenZeile[] = [];
 	if (a.name) zeilen.push({ text: a.name });
 	zeilen.push({ text: a.statusText, warnung: ALARM.has(a.status) });
+	const bemerkung = a.bemerkung?.trim();
+	if (bemerkung && ALARM.has(a.status)) zeilen.push({ text: `„${bemerkung}“`, warnung: true });
 
 	// Wie die Zeile: fehlende Meldung ist keine Abweichung.
 	if (a.ist) {

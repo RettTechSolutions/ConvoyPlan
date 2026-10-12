@@ -419,10 +419,13 @@
 			const st = statusOf(cv);
 			const stufe = levelLabel(st, levelOf(cv));
 			const felder = staerkeVon(cv);
+			// Ein Live-Status ersetzt auch die Bemerkung — eine fehlende inklusive.
+			const live = $vehicleStatuses.get(cv.vehicle.id);
 			return [cv.vehicle.id, fahrzeugBlase({
 				name: cv.vehicle.callsign ? cv.vehicle.name : null,
 				status: st,
 				statusText: stufe ? `${statusLabel(st)} · ${stufe}` : statusLabel(st),
+				bemerkung: live ? live.note : cv.status_note,
 				soll: sollAus(felder),
 				ist: istAus(felder),
 				betriebsstoff: betriebsstoffVon(cv),

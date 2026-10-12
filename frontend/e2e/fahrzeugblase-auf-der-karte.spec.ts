@@ -71,8 +71,18 @@ test('die Blase zeigt die Live-Angaben des Fahrzeugs und bleibt aktuell', async 
 	kanal().send(position(72));
 	kanal().send(JSON.stringify({
 		type: 'status_update', vehicle_id: 'v-mtw', vehicle_status: 'technical_halt', status_level: 'dringend',
+		status_note: 'Reifen platt',
 	}));
 	await expect(blase).toContainText('72 km/h');
 	await expect(blase).not.toContainText('50 km/h');
 	await expect(blase.locator('div.warnung', { hasText: /^Techn\. Halt · / })).toBeVisible();
+	// Bei Halt oder Ausfall steht der Grund dabei.
+	await expect(blase.locator('div.warnung', { hasText: '„Reifen platt“' })).toBeVisible();
+
+	// Zurück auf „Unterwegs": die Bemerkung des Halts gehört nicht mehr dazu.
+	kanal().send(JSON.stringify({
+		type: 'status_update', vehicle_id: 'v-mtw', vehicle_status: 'en_route', status_level: null, status_note: null,
+	}));
+	await expect(blase).toContainText('Unterwegs');
+	await expect(blase).not.toContainText('Reifen platt');
 });

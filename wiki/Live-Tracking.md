@@ -325,7 +325,8 @@ besser greifbare Anordnung.
 
 Ein Klick auf ein Fahrzeug öffnet eine Blase mit dem, was auch in der
 Fahrzeugliste steht: Tempo und Zeitpunkt der letzten Position (und ob sie vom
-Tracker kam), Fahrzeugname, Status, Stärke gegen das Soll, Betriebsstoff und —
+Tracker kam), Fahrzeugname, Status (bei Halt oder Ausfall mit der Bemerkung — nicht im
+Fahrer-Link), Stärke gegen das Soll, Betriebsstoff und —
 in der Konvoi-Ansicht — Akku und Empfang des Trackers. Was Aufmerksamkeit
 verdient (Halt oder Ausfall, Abweichung vom Soll, knapper Betriebsstoff,
 schwacher Akku), steht hervorgehoben. Die Blase bleibt aktuell, solange sie
