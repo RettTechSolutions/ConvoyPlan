@@ -31,6 +31,7 @@
 	import OnboardingTutorial from '$lib/components/OnboardingTutorial.svelte';
 	import SidebarFooter from '$lib/components/SidebarFooter.svelte';
 	import DurchfahrtsHoehen from '$lib/components/DurchfahrtsHoehen.svelte';
+	import KonvoiStatusSchalter from '$lib/components/KonvoiStatusSchalter.svelte';
 	import GewichtsGrenzen from '$lib/components/GewichtsGrenzen.svelte';
 	import { tutorialStore } from '$lib/stores/tutorial';
 	import QRCode from 'qrcode';
@@ -354,6 +355,13 @@
 			// bekannten Höhen zum Abgleich und bleibt ungesucht.
 			if (r.bruecken == null && r.durchfahrtshoehen != null) void sucheBruecken(convoyId);
 		} catch { /* no stored route yet */ }
+	}
+
+	function konvoiStatusGeaendert(c: Convoy) {
+		selected = withVehicleIds(c);
+		convoyList = convoyList.map(x => x.id === c.id ? selected! : x);
+		convoys.set(convoyList);
+		activeConvoy.set(selected);
 	}
 
 	async function refreshConvoy() {
@@ -843,6 +851,8 @@
 	let brueckenSuche = $state<'idle' | 'laeuft' | 'fehler'>('idle');
 	let brueckenLauf = 0;
 	// Die Suche speichert an der Route und braucht deshalb Schreibrecht.
+	// Wie `PUT /api/convoys/{id}`: ab Planer.
+	const darfKonvoiStatus = $derived(['planer', 'admin'].includes($orgStore?.user_role ?? ''));
 	const darfBrueckenSuchen = $derived($orgStore?.user_role !== 'beobachter');
 	function brueckenSucheZuruecksetzen() {
 		brueckenLauf++;
@@ -1918,6 +1928,9 @@
 						</div>
 						<div data-tour="tracking">
 							<div class="section-header" style="margin-top:1rem"><strong>Live-Tracking</strong></div>
+							<div style="margin-bottom:.5rem">
+								<KonvoiStatusSchalter convoy={selected} darf={darfKonvoiStatus} onchange={konvoiStatusGeaendert} />
+							</div>
 							<div class="export-grid">
 								<a class="btn-export" href="/o/{$page.params.slug}/tracking/{selected.id}" target="_blank">🔴 Tracking-Ansicht öffnen</a>
 								<button class="btn-export" onclick={() => (showShareLinkModal = true)}>🔗 Öffentlich teilen (QR / Passwort)</button>

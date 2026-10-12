@@ -20,6 +20,7 @@
 	import BetriebsstoffForm from '$lib/components/BetriebsstoffForm.svelte';
 	import StaerkeBadge from '$lib/components/StaerkeBadge.svelte';
 	import TrackerZustand from '$lib/components/TrackerZustand.svelte';
+	import KonvoiStatusSchalter from '$lib/components/KonvoiStatusSchalter.svelte';
 	import { betriebsstoffAus, mitStammdaten, type Betriebsstoff, type BetriebsstoffFelder } from '$lib/tracking/betriebsstoff';
 	import StaerkeForm from '$lib/components/StaerkeForm.svelte';
 	import { orgStore } from '$lib/stores/org';
@@ -181,6 +182,8 @@
 	 * ein Beobachter bekäme 403 und soll den Knopf nicht erst gezeigt bekommen.
 	 * Das hier ist Anzeige, nicht Schutz — der steht hinten (`guards.py`).
 	 */
+	// Wie `PUT /api/convoys/{id}`: ab Planer.
+	const darfKonvoiStatus = $derived(['planer', 'admin'].includes($orgStore?.user_role ?? ''));
 	const darfMelden = $derived($orgStore != null && $orgStore.user_role !== 'beobachter');
 
 	/** Die eigene, bereits gemeldete Stärke — Ausgangsstand für eine Korrektur. */
@@ -768,6 +771,12 @@
 				<span>{error}</span>
 				<button class="retry" onclick={() => loadConvoyData()} disabled={loading}>Erneut laden</button>
 				<button onclick={() => (error = '')} aria-label="Meldung schließen">✕</button>
+			</div>
+		{/if}
+
+		{#if convoy}
+			<div class="position-block">
+				<KonvoiStatusSchalter {convoy} darf={darfKonvoiStatus} onchange={(c) => { if (convoy) convoy = { ...convoy, status: c.status }; }} />
 			</div>
 		{/if}
 
