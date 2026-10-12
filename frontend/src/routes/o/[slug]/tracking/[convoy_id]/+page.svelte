@@ -450,6 +450,15 @@
 	let meldungen = $state<Meldung[]>([]);
 	let ausgeblendet = $state<ReadonlySet<string>>(new Set());
 	let statusVon = $derived(new Map((convoy?.convoy_vehicles ?? []).map((cv) => [cv.vehicle.id, statusOf(cv)])));
+	// Seit wann die eigene Verbindung steht — ohne sie schweigen alle (`funkstille.ts`).
+	let verbundenSeit = $state<number | null>(null);
+	$effect(() => {
+		const offen = $trackingConnection === 'open';
+		untrack(() => {
+			if (offen && verbundenSeit === null) verbundenSeit = Date.now();
+			else if (!offen) verbundenSeit = null;
+		});
+	});
 	$effect(() => {
 		void meldungsUhr;
 		const jetzt = Date.now();
@@ -458,7 +467,7 @@
 		const status = statusVon;
 		const neu: Meldung[] = [
 			...abrisse(abrissSeitMap, jetzt).map((id) => ({ art: 'abriss' as const, id, seit: abrissSeitMap.get(id)! })),
-			...funkstille(gehoert, $livePositions, (id) => status.get(id) ?? '', jetzt)
+			...funkstille(gehoert, $livePositions, (id) => status.get(id) ?? '', jetzt, verbundenSeit)
 				.map((f) => ({ art: 'funkstille' as const, id: f.id, seit: f.seit, kmh: f.kmh })),
 		].sort((x, y) => x.seit - y.seit);
 		untrack(() => {

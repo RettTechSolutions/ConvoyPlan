@@ -379,6 +379,18 @@ Meldung aus, bis wieder eine Position kommt. Gemessen wird ab dem Eintreffen
 der Position beim Betrachter, damit eine falsch gehende Uhr am Führungsrechner
 keine Alarme auslöst.
 
+Gezählt wird nur, solange die **eigene Verbindung** steht: Reißt sie ab,
+schweigen alle Fahrzeuge zugleich, und das ist dann die Funkstille des
+Betrachters. Nach dem Wiederverbinden beginnen die drei Minuten neu.
+
+Das Banner erscheint auch im **Fahrer-Link**, für jedes Fahrzeug außer dem
+eigenen — die Besatzung dahinter merkt als Erste, wenn der Vordermann fehlt.
+Der Kanal des Fahrer-Links beantwortet keine Pings; ob er selbst noch lebt,
+zeigt sich nur an dem, was ankommt. Gemeldet wird deshalb nur, wenn in der
+letzten Minute irgendeine Nachricht kam, etwa die Position eines anderen
+Fahrzeugs. Schweigt der ganze Kanal, bleibt die Meldung aus: Dann lässt sich
+die eigene Funkstille nicht von der der anderen trennen.
+
 Was Aufmerksamkeit
 verdient (Halt oder Ausfall, Abweichung vom Soll, knapper Betriebsstoff,
 schwacher Akku), steht hervorgehoben. Die Blase bleibt aktuell, solange sie
