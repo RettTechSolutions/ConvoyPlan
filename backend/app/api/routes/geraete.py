@@ -111,6 +111,10 @@ async def _anweisung(db: AsyncSession, geraet: Ortungsgeraet, jetzt: datetime) -
 
 def _zustand_merken(geraet: Ortungsgeraet, daten: dict[str, Any], jetzt: datetime) -> None:
     geraet.zuletzt_gesehen = jetzt
+    # Erwartet wird nur nach einem Bündel (``positionen`` setzt es neu): ein ``hallo``
+    # kommt aus der Ruhe, ein Update-Ergebnis nach dem Neustart.
+    geraet.unterbrochen_ab = None
+    geraet.gps_gestoert_ab = None
     felder = og.zustand_lesen(daten)
     geraet.akku_seit = og.akku_seit(geraet.extern, geraet.akku_seit, felder.get("extern"), jetzt)
     for feld, wert in felder.items():
@@ -192,8 +196,11 @@ async def positionen(
         fixes, verworfen = og.fixes_lesen(daten.get("fixes"), jetzt)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    gps_alt = geraet.gps_gestoert_ab
     _zustand_merken(geraet, daten, jetzt)
     antwort = await _anweisung(db, geraet, jetzt)
+    geraet.unterbrochen_ab = og.unterbrochen_ab(antwort["modus"], daten.get("ruhe"), jetzt)
+    geraet.gps_gestoert_ab = og.gps_gestoert_ab(gps_alt, geraet.unterbrochen_ab, len(fixes), jetzt)
     if antwort["modus"] != "senden":
         # Kein Ort für die Position: das Gerät erfährt es aus der Antwort und
         # hört auf. Was schon unterwegs war, zählt als verworfen.
@@ -335,6 +342,10 @@ class GeraetZeile(BaseModel):
     akku_seit: datetime | None
     signal_dbm: int | None
     akku_niedrig: bool
+    # Ab wann zwei erwartete Bündel ausgeblieben sind; None: keins erwartet.
+    unterbrochen_ab: datetime | None
+    # Ab wann Bündel ohne plausiblen Fix kommen (GPS gestört); None: nichts erwartet.
+    gps_gestoert_ab: datetime | None
     update_version: str | None
     update_ergebnis: str | None
     update_meldung: str | None
@@ -377,6 +388,8 @@ def _zeile(g: Ortungsgeraet, jetzt: datetime) -> dict[str, Any]:
         "akku_seit": g.akku_seit,
         "signal_dbm": g.signal_dbm,
         "akku_niedrig": og.akku_niedrig(g.akku_prozent, g.extern),
+        "unterbrochen_ab": g.unterbrochen_ab,
+        "gps_gestoert_ab": g.gps_gestoert_ab,
         "update_version": g.update_version,
         "update_ergebnis": g.update_ergebnis,
         "update_meldung": g.update_meldung,

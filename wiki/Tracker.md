@@ -111,7 +111,28 @@ der Maus über dem Symbol stehen die genauen Werte.
   Empfang. Das ist kein Fehler: Steht das Fahrzeug länger als fünf Minuten, schläft
   der Tracker bis zur nächsten Bewegung.
 
-Die Konvoi-Ansicht fragt die Werte einmal pro Minute ab.
+Die Konvoi-Ansicht fragt die Werte alle 15 Sekunden ab.
+
+### Verbindung unterbrochen, GPS gestört
+
+Während der Fahrt sendet ein Tracker alle 30 Sekunden ein Bündel, auch ohne GPS.
+Die Instanz **erwartet** es deshalb und zeigt am Fahrzeug in Worten, was fehlt:
+
+- **Verbindung unterbrochen** (rot): Zwei erwartete Bündel sind ausgeblieben, also
+  75 Sekunden nichts (zwei Takte plus 15 Sekunden für den Verbindungsaufbau).
+  Funkloch, Tunnel, Gerät aus. Kommt das nächste Bündel, verschwindet die Meldung;
+  was der Tracker im Funkloch aufgezeichnet hat, reicht er nach.
+- **GPS gestört** (orange): Die Bündel kommen, das Netz steht also, aber seit
+  105 Sekunden ohne brauchbare Position — kein Satellitenempfang, Antenne ab,
+  Störsender oder unplausible Werte. Unplausibel ist eine Position bei 0°/0°,
+  eine Genauigkeit über 100 m, mehr als 250 km/h oder ein Sprung, der schneller
+  wäre. Solche Positionen landen nicht auf der Karte.
+
+Ein parkendes Fahrzeug ist keine Störung: Steht es fünf Minuten oder geht die
+Zündung aus, meldet sich der Tracker ab, bevor er schläft, und die Instanz
+erwartet nichts mehr. Ohne laufenden Konvoi erwartet sie ohnehin nichts.
+
+In der Tracker-Liste des Org-Admins stehen beide Meldungen als Zustand des Geräts.
 
 Hängt ein Tracker nicht am Bordnetz, steht dort **auf Akku seit …**, ab einem
 Tag hervorgehoben. Über Nacht ohne Strom ist normal, wenn die Steckdose an der

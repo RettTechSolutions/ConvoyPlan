@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import math
 import re
 import secrets
 from dataclasses import dataclass
@@ -53,6 +54,20 @@ AKKU_NIEDRIG_PROZENT = 20
 
 #: Takt, den die Instanz dem Gerät vorgibt (Protokoll, „Anweisung").
 TAKT = {"intervall_s": 10, "buendel_s": 30, "nachfrage_s": 300, "lebenszeichen_s": 43200}
+
+#: Wie viele erwartete Bündel ausbleiben, bis die Verbindung als unterbrochen gilt.
+#: Eins allein ist oft nur ein langsamer Verbindungsaufbau.
+BUENDEL_AUSGEBLIEBEN = 2
+#: Spielraum für Verbindungsaufbau und TLS im Mobilfunk, auf die ausgebliebenen Bündel.
+VERBINDUNG_TOLERANZ = timedelta(seconds=15)
+#: So lange darf bei stehender Verbindung ein plausibler Fix fehlen, bis „GPS gestört"
+#: gilt: im Halt nimmt das Gerät nur alle 60 s einen auf, plus ein Bündel und Spielraum.
+GPS_FRIST = timedelta(seconds=60 + TAKT["buendel_s"]) + VERBINDUNG_TOLERANZ
+
+#: Unplausible Fixes (Protokoll, „positionen"): Was ein Empfänger mit gestörtem GNSS
+#: liefert, Null Island, Mehrwege im Häuserblock, Spoofing, landet nicht auf der Karte.
+GENAUIGKEIT_MAX_M = 100.0
+TEMPO_MAX_KMH = 250.0
 
 # Ohne 0/O, 1/I: der Code wird abgetippt.
 _CODE_ZEICHEN = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -131,9 +146,13 @@ def fix_lesen(roh: Any, jetzt: datetime) -> Fix | None:
         return None
     if t > jetzt + ZUKUNFT_MAX or t < jetzt - VERGANGENHEIT_MAX:
         return None
+    if lat == 0 and lon == 0:
+        return None  # Null Island: der Empfänger hat keine Position, schickt aber eine
     speed = _zahl(roh.get("speed_kmh"))
     heading = _zahl(roh.get("heading"))
     accuracy = _zahl(roh.get("accuracy_m"))
+    if (accuracy is not None and accuracy > GENAUIGKEIT_MAX_M) or (speed is not None and speed > TEMPO_MAX_KMH):
+        return None
     return Fix(
         t=t,
         lat=lat,
@@ -154,7 +173,33 @@ def fixes_lesen(roh: Any, jetzt: datetime) -> tuple[list[Fix], int]:
         raise ValueError(f"fixes: Liste mit höchstens {BUENDEL_MAX} Einträgen")
     gueltig = [f for f in (fix_lesen(r, jetzt) for r in roh) if f is not None]
     gueltig.sort(key=lambda f: f.t)
+    gueltig = _ohne_spruenge(gueltig)
     return gueltig, len(roh) - len(gueltig)
+
+
+def _abstand_m(a: Fix, b: Fix) -> float:
+    r = 6_371_000.0
+    p1, p2 = math.radians(a.lat), math.radians(b.lat)
+    dp, dl = p2 - p1, math.radians(b.lon - a.lon)
+    h = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(min(1.0, math.sqrt(h)))
+
+
+def _ohne_spruenge(fixes: list[Fix]) -> list[Fix]:
+    """Fixes, die vom vorigen schneller als ``TEMPO_MAX_KMH`` entfernt wären, fallen weg.
+
+    Verglichen wird mit dem letzten behaltenen, damit ein einzelner Ausreißer nicht
+    auch den nächsten, wieder richtigen Fix mitreißt. Mindestens eine Sekunde
+    Abstand, sonst wäre jeder Doppelfix mit Rauschen unendlich schnell."""
+    behalten: list[Fix] = []
+    for f in fixes:
+        if behalten:
+            vorher = behalten[-1]
+            sekunden = max(1.0, (f.t - vorher.t).total_seconds())
+            if _abstand_m(vorher, f) / sekunden * 3.6 > TEMPO_MAX_KMH:
+                continue
+        behalten.append(f)
+    return behalten
 
 
 def ueberschreibt(vorhanden_at: datetime | None, neu: Fix) -> bool:
@@ -180,6 +225,38 @@ def anweisung(modus_: str, jetzt: datetime, firmware: dict[str, Any] | None = No
         "serverzeit": jetzt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "firmware": firmware,
     }
+
+
+def unterbrochen_ab(modus_: str, ruhe: Any, jetzt: datetime) -> datetime | None:
+    """Ab wann die Verbindung als unterbrochen gilt, nach einem angenommenen Bündel.
+
+    Solange die Fahrt läuft, sendet das Gerät alle ``buendel_s`` — auch leer, wenn
+    GNSS fehlt. Bleiben zwei erwartete Bündel aus, ist die Verbindung weg. Erwartet
+    wird nichts, wenn die Antwort ``schweigen`` war oder das Gerät mit ``ruhe: true``
+    sagt, dass es jetzt schläft (fünf Minuten Halt, Zündung aus): ein parkendes
+    Fahrzeug ist kein Funkloch. Ein Gerät, das mitten in der Fahrt ausgeht, meldet
+    sich nicht ab — genau das soll auffallen.
+    """
+    if modus_ != "senden" or ruhe is True:
+        return None
+    return jetzt + BUENDEL_AUSGEBLIEBEN * timedelta(seconds=TAKT["buendel_s"]) + VERBINDUNG_TOLERANZ
+
+
+def gps_gestoert_ab(
+    alt: datetime | None, unterbrochen_ab_: datetime | None, plausible: int, jetzt: datetime
+) -> datetime | None:
+    """Ab wann „GPS gestört" gilt, nach einem angenommenen Bündel.
+
+    Nur solange die Instanz Bündel erwartet (*unterbrochen_ab_* gesetzt): Dann ist
+    das Netz da, und ein Bündel ohne plausiblen Fix heißt, GNSS liefert nichts
+    Brauchbares — kein Empfang, Antenne ab, Störsender, Unsinn. Ein plausibler Fix
+    schiebt die Frist, ein leeres Bündel nicht; es beginnt sie nur, wenn noch keine
+    läuft (erstes Bündel der Fahrt)."""
+    if unterbrochen_ab_ is None:
+        return None
+    if plausible > 0 or alt is None:
+        return jetzt + GPS_FRIST
+    return alt
 
 
 def akku_niedrig(akku_prozent: int | None, extern: bool | None) -> bool:

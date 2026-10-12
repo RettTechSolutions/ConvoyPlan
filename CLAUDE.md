@@ -446,6 +446,18 @@ aus `signal_dbm` (RSRP) und dem letzten Kontakt; „auf Akku seit" kommt aus `ak
 (siehe oben). Tests: `tests/test_tracker_geraete.py` (`test_akku_niedrig`,
 `TestZustandInDerKonvoiAnsicht`), `frontend/e2e/tracker-zustand.spec.ts`.
 
+**Verbindung unterbrochen, GPS gestört** (`ortungsgeraet.unterbrochen_ab`/`gps_gestoert_ab`,
+Migration `0065`): Nach jedem Bündel ohne `ruhe`, auf das die Instanz `senden` antwortet,
+steht in `unterbrochen_ab`, wann zwei weitere ausgeblieben sind (2 × `buendel_s` + 15 s).
+`_zustand_merken` löscht beide Spalten bei **jedem** Aufruf, `positionen` setzt sie danach
+neu — ein `hallo` kommt nur aus der Ruhe, also wird danach nichts erwartet. `gps_gestoert_ab`
+schiebt nur ein Bündel mit plausiblem Fix weiter, ein leeres lässt die Frist laufen. Das
+Backend liefert Zeitpunkte statt Booleans, damit die Ansicht zwischen zwei Abfragen (15 s)
+selbst umschlägt (`stoerung()` in `trackerzustand.ts`). Unplausible Fixes (0/0,
+`accuracy_m` > 100, > 250 km/h, Sprünge im Bündel) verwirft `fixes_lesen` als einzelne Fixes.
+Die Referenz-Instanz im Tracker-Repo tut dasselbe. Tests: `TestPlausibel`,
+`TestVerbindungUnterbrochen`, `TestVerbindungDurchDieApp`.
+
 **Wurzelzertifikate** (`services/tracker_wurzeln.py`, E13 im Tracker-Plan): Mit
 `TRACKER_WURZELN` (PEM-Datei) verteilt die Instanz ein Bündel eigener Wurzeln. Das
 Gerät meldet in `hallo` den Fingerabdruck seiner Wurzeln (`wurzeln_sha256`,

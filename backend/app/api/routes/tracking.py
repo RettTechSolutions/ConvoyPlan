@@ -152,7 +152,7 @@ async def get_tracker_zustand(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Akku, Bordnetz und Empfang der Tracker an den Fahrzeugen dieses Konvois.
+    """Akku, Bordnetz, Empfang und Störungen der Tracker an den Fahrzeugen dieses Konvois.
 
     Für die Führung in der Konvoi-Ansicht: sie soll einen schwachen Akku oder
     ein Funkloch sehen, bevor die Position ausbleibt — nicht erst der Org-Admin
@@ -179,6 +179,10 @@ async def get_tracker_zustand(
             "akku_seit": g.akku_seit.isoformat() if g.akku_seit else None,
             "akku_niedrig": ortungsgeraet.akku_niedrig(g.akku_prozent, g.extern),
             "signal_dbm": g.signal_dbm,
+            # Ab hier „Verbindung unterbrochen" — die Ansicht vergleicht selbst mit
+            # der Uhr, damit es zwischen zwei Abfragen umschlägt.
+            "unterbrochen_ab": g.unterbrochen_ab.isoformat() if g.unterbrochen_ab else None,
+            "gps_gestoert_ab": g.gps_gestoert_ab.isoformat() if g.gps_gestoert_ab else None,
         }
         for g in geraete
     ]

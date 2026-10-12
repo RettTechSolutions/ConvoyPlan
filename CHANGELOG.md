@@ -25,9 +25,11 @@ ursprünglichen SemVer-Nummern.
 
 - **Jede Instanz baut ihren Routing-Graphen erneut neu** — `max_weight`, `max_weight_except` und `max_axle_load` stehen jetzt im Graphen, und die Encoded Values stehen im Fingerprint. Wie unter 2026.8.0: je nach Region 45–75 Minuten ohne Routenplanung, Update außerhalb einer Lage legen. Bis der neue Graph steht, routet das Backend ohne Gewichtsgrenzen statt gar nicht.
 - **Routen können sich ändern.** Die Höhe wird jetzt mit dem *höchsten* Fahrzeug gesperrt (siehe *Fixed*), und jedes Fahrzeug mit Gewicht oder Achslast sperrt Grenzen darunter. Bestehende Routen bleiben, bis sie neu berechnet werden.
-- Datenbank-Migrationen `0059` bis `0064` laufen beim Start des Backends.
+- Datenbank-Migrationen `0059` bis `0065` laufen beim Start des Backends.
 
 ### Added
+
+- **„Verbindung unterbrochen" und „GPS gestört" am Tracker.** Während der Fahrt erwartet die Instanz alle 30 s ein Bündel. Bleiben zwei aus (75 s), steht am Fahrzeug in der Konvoi-Ansicht und in der Tracker-Liste rot *Verbindung unterbrochen*; kommen Bündel, aber seit 105 s keine plausible Position, orange *GPS gestört*. Ein Tracker meldet sich mit `ruhe: true` ab, bevor er schläft (fünf Minuten Halt, Zündung aus), damit ein parkendes Fahrzeug keinen Alarm auslöst, und sendet in Fahrt auch leere Bündel, damit fehlendes GPS nicht wie ein Funkloch aussieht (Protokoll im Repo ConvoyPlan-Tracker). Unplausible Fixes — 0°/0°, Genauigkeit über 100 m, über 250 km/h, Sprünge im Bündel — werden verworfen und landen nicht mehr auf der Karte. Die Konvoi-Ansicht fragt den Tracker-Zustand jetzt alle 15 s statt jede Minute ab. Migration `0065`. Anwenderdoku: `wiki/Tracker.md`, „Verbindung unterbrochen, GPS gestört".
 
 - **Tracker übernehmen neue Wurzelzertifikate von ihrer Instanz.** Wer eine eigene Zertifizierungsstelle betreibt und sie wechselt, muss nicht mehr jedes Gerät per USB neu einrichten: Mit `TRACKER_WURZELN` (PEM-Datei, höchstens drei CA-Zertifikate) verteilt die Instanz das Bündel beim nächsten `hallo`, und das Gerät übernimmt es erst, wenn eine Verbindung damit gelingt. Die Tracker-Liste zeigt, welches Gerät es noch nicht übernommen hat. Ablauf im Wiki unter „Eigene Zertifizierungsstelle wechseln". Ohne Einstellung ändert sich nichts.
 

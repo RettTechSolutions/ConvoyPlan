@@ -16,6 +16,7 @@
 	 */
 	import { onMount } from 'svelte';
 	import TrackerZustand from '$lib/components/TrackerZustand.svelte';
+	import { stoerung, STOERUNG_TEXT } from '$lib/tracking/trackerzustand';
 	import { geraeteApi, vehiclesApi, type Tracker, type TrackerDaten, type TrackerKanal, type TrackerMitCode } from '$lib/api';
 	import {
 		SCHRITTTEXT,
@@ -230,6 +231,8 @@
 		if (!g.vehicle_id) return { text: 'ohne Fahrzeug', klasse: 'aus' };
 		if (!g.zuletzt_gesehen || Date.now() - new Date(g.zuletzt_gesehen).getTime() > STUMM_AB_MS)
 			return { text: 'nicht erreichbar', klasse: 'warn' };
+		const s = stoerung(g, Date.now());
+		if (s) return { text: STOERUNG_TEXT[s], klasse: 'warn' };
 		if (g.akku_niedrig) return { text: 'Akku schwach', klasse: 'warn' };
 		return { text: 'bereit', klasse: '' };
 	}

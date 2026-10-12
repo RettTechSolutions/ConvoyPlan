@@ -56,6 +56,13 @@ class Ortungsgeraet(Base):
     # (``ortungsgeraet.akku_seit``). Serverzeit der Meldung, also „seit spätestens".
     akku_seit: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     signal_dbm: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Ab hier gilt die Verbindung als unterbrochen: zwei erwartete Bündel sind
+    # ausgeblieben (``ortungsgeraet.unterbrochen_ab``). NULL: die Instanz erwartet
+    # keins — Ruhe, ``schweigen`` oder zuletzt ein ``hallo``.
+    unterbrochen_ab: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Ab hier „GPS gestört": Bündel kommen, aber kein plausibler Fix
+    # (``ortungsgeraet.gps_gestoert_ab``). NULL, wenn nichts erwartet wird.
+    gps_gestoert_ab: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Fingerabdruck der eigenen Wurzeln, wie ihn das Gerät zuletzt in `hallo`
     # gemeldet hat (``tracker_wurzeln.fingerabdruck``). NULL: nie gemeldet.
     wurzeln_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
