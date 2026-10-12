@@ -33,6 +33,15 @@ class DurationHalt(BaseModel):
     covers_break: bool = False
 
 
+class ZusammengelegterHalt(BaseModel):
+    """Ein fälliger Halt, der in einem geplanten Wegpunkt aufgeht (Tankhalt + TH)."""
+    waypoint_id: str | None
+    kind: Literal["tech", "break", "daily_rest"]
+    # Dauer, die der Halt für sich empfohlen hätte
+    duration_min: int
+    faellig_km: float
+
+
 class FuelAnalysis(BaseModel):
     vehicles_with_range: list[VehicleRangeInfo]
     min_range_km: float | None
@@ -47,6 +56,7 @@ class FuelAnalysis(BaseModel):
     recommended_stop_duration_min: int | None = None
     duration_halt_needed: bool = False
     duration_halts: list[DurationHalt] = []
+    zusammengelegt: list[ZusammengelegterHalt] = []
     rest_needed: bool = False
 
 

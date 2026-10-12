@@ -6,7 +6,8 @@ import { test, expect, type Page } from '@playwright/test';
 // trägt der Reiter eine Marke. Die Zusagen:
 //  - die Zahl nennt, was noch zu tun oder zu prüfen ist: ein fehlender
 //    Tankstopp, jeder noch nicht gesetzte Halt, jede Stelle, die nicht frei ist;
-//  - was schon als Wegpunkt steht, zählt nicht mehr;
+//  - was schon als Wegpunkt steht, zählt nicht mehr (die Halte rechnet das
+//    Backend heraus, die Marke zählt, was es noch nennt);
 //  - rot wird sie bei fehlendem Tankstopp, enger Durchfahrt, überschrittener
 //    Grenze — sonst bleibt sie gelb;
 //  - ohne Hinweis (und ohne Route) steht keine Marke da, auch keine „0".

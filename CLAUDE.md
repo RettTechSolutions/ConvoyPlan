@@ -207,6 +207,25 @@ ein Stück doppelt befährt, trifft die Suche nach dem nächsten Streckenpunkt s
 die falsche Vorbeifahrt, und aus der negativen Teilstrecke wird eine rückwärts
 laufende Ankunftszeit.
 
+### Halte-Empfehlung: geplante Halte zählen mit, und der Vermerk bleibt
+
+`fuel.halteplan` simuliert die Lenkzeit **mit** den Wegpunkten, die eine Haltedauer
+haben (`routing._geplante_halte`, über die Lage projiziert, nicht über `order_index`).
+Ein geplanter Halt zählt als Technischer Halt, egal wie lang — so entschieden, ein
+20-min-Tankhalt darf den TH ersetzen. Ein TH bis 30 min davor oder danach geht in ihm
+auf. Lenkpause und Tagesruhe ersetzt er nur ab 45 min bzw. 11 h, sonst rücken sie
+an seine Stelle. Gemeldet war ein TH wenige Kilometer hinter dem Tankhalt. Die
+Liste nennt seitdem nur, was **fehlt**; das Frontend zählt nicht mehr selbst ab.
+
+Was aufgeht, steht in `zusammengelegt` und wird am Wegpunkt **vermerkt** („+ TH",
+„zugleich Technischer Halt (WOLKE), empfohlen 30 min") — Information darf beim
+Zusammenlegen nicht verloren gehen. Abgeleitet, nicht gespeichert, damit der Vermerk
+mit dem Halt mitwandert. `routing._halteanalyse` ist die eine Stelle für Ansicht und
+Ausdruck und filtert übernommene Vorschläge heraus (kein „TH, zugleich TH"). Der Text
+steht zweimal: `pdf.halt_vermerk` (Roadbook, Marschbefehl) und `$lib/route/halte.ts`
+(`HaltVermerk.svelte`); wer einen ändert, zieht den anderen mit. Tests:
+`tests/test_halte_mit_geplanten_halten.py`, `frontend/e2e/halt-vermerk.spec.ts`.
+
 ### Durchfahrtshöhen und Gewichtsgrenzen: gesperrt wird beim Routing, gezeigt wird danach
 
 Das Custom Model in `services/routing.py` nimmt jede Kante mit `max_height` unter

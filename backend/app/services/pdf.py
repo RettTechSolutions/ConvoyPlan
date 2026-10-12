@@ -35,6 +35,29 @@ PURPOSE_LABELS = {
     "other": "Sonstiges",
 }
 
+HALT_KIND_LABELS = {
+    "tech": "Technischer Halt (WOLKE)",
+    "break": "Lenkpause",
+    "daily_rest": "Tagesruhezeit",
+}
+
+
+def halt_vermerk(zusammengelegt: list[dict] | None, hold_min: int | None) -> str:
+    """„zugleich Technischer Halt (WOLKE), empfohlen 30 min" — oder leer.
+
+    Ein fälliger Halt, der in einem geplanten aufging (``fuel.halteplan``),
+    darf auf dem Ausdruck nicht verschwinden: die Besatzung am Tankhalt muss
+    wissen, dass dort auch die WOLKE-Prüfung ansteht. Die empfohlene Dauer
+    steht nur dabei, wenn der Halt kürzer geplant ist.
+    """
+    teile = []
+    for z in zusammengelegt or []:
+        text = HALT_KIND_LABELS.get(z.get("kind", ""), "Halt")
+        if z.get("duration_min") and z["duration_min"] > (hold_min or 0):
+            text += f", empfohlen {z['duration_min']} min"
+        teile.append(text)
+    return f"zugleich {'; '.join(teile)}" if teile else ""
+
 
 _FONT_REGULAR = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 _FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
@@ -487,6 +510,10 @@ def generate_marschbefehl(
             pdf.cell(cols_mp[0][0], 6, w["name"][:30], border=1, fill=fill)
             pdf.cell(cols_mp[1][0], 6, art[:28], border=1, fill=fill)
             pdf.cell(cols_mp[2][0], 6, dur, border=1, fill=fill, new_x="LMARGIN", new_y="NEXT")
+            if vermerk := halt_vermerk(w.get("zusammengelegt"), w.get("hold_duration_min")):
+                pdf.set_font("DV", "B", 8)
+                pdf.cell(total_w, 6, f"  ↳ {vermerk}", border=1, fill=fill, new_x="LMARGIN", new_y="NEXT")
+                pdf.set_font("DV", "", 8)
             fill = not fill
         pdf.set_font("DV", "", 7.5)
         pdf.set_text_color(80, 80, 80)

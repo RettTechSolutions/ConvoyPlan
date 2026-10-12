@@ -79,6 +79,74 @@ def _waypoint_latlon(wp) -> tuple[float, float] | None:
     return c["lat"], c["lon"]
 
 
+def _geplante_halte(waypoints, route_coords: list[list[float]]) -> list[tuple[float, int, str]]:
+    """Halte, die schon als Wegpunkt stehen: (km entlang der Route, min, ID).
+
+    Die Halte-Empfehlung rechnet damit (``fuel_svc._duration_halts``) — ein
+    Technischer Halt kurz vor einem eingeplanten Tankhalt geht in ihm auf.
+    Über die Lage, nicht über ``order_index``: ein frisch vorgeschlagener
+    Halt steht noch am Listenende.
+    """
+    halte = []
+    for wp in waypoints:
+        if not wp.hold_duration_min or wp.hold_duration_min <= 0:
+            continue
+        c = _waypoint_latlon(wp)
+        if c is None or not route_coords:
+            continue
+        km = fuel_svc.project_onto_route(route_coords, c[0], c[1]) / 1000
+        halte.append((km, wp.hold_duration_min, str(wp.id)))
+    return halte
+
+
+# Ein übernommener Vorschlag trägt seinen eigenen Halt — „Technischer Halt
+# (km 128), zugleich Technischer Halt" wäre kein Vermerk, sondern Rauschen.
+# Erkannt an Typ und Zweck, wie `addTHStopWaypoint` im Frontend sie setzt.
+_EIGENE_ART = {
+    "tech": lambda wp: wp.type == "technical_stop" and wp.halt_purpose in (None, "", "technical"),
+    "break": lambda wp: wp.halt_purpose == "rest",
+    "daily_rest": lambda wp: wp.halt_purpose == "rest",
+}
+
+
+def _halteanalyse(convoy: Convoy, distance_m: float, route_coords: list[list[float]], duration_s: float) -> dict:
+    """``analyse_fuel`` mit den geplanten Halten — eine Stelle für Ansicht und Ausdruck."""
+    analyse = fuel_svc.analyse_fuel(
+        convoy.convoy_vehicles,
+        distance_m,
+        route_coords,
+        route_duration_s=duration_s,
+        geplante_halte=_geplante_halte(convoy.waypoints, route_coords),
+    )
+    by_id = {str(wp.id): wp for wp in convoy.waypoints}
+    analyse["zusammengelegt"] = [
+        z for z in analyse["zusammengelegt"]
+        if not ((wp := by_id.get(z["waypoint_id"])) and _EIGENE_ART[z["kind"]](wp))
+    ]
+    return analyse
+
+
+def _zusammengelegte_halte(convoy: Convoy, route: Route | None, route_coords: list[list[float]]) -> dict[str, list[dict]]:
+    """Je Wegpunkt-ID die fälligen Halte, die in ihm aufgehen — für die Ausdrucke.
+
+    Dieselbe Rechnung wie in der Planungsansicht (``analyse_fuel``), damit
+    „Tankhalt + TH" auf Papier steht, wo es auf dem Schirm steht.
+    """
+    if route is None or route.distance_m is None or not route_coords:
+        return {}
+    # Beiwerk wie die Karte: ohne Vermerk gibt es trotzdem einen Ausdruck.
+    try:
+        analyse = _halteanalyse(convoy, route.distance_m, route_coords, route.duration_s or 0)
+    except Exception:
+        logger.exception("Halte-Vermerke für den Ausdruck fehlgeschlagen (Konvoi %s)", getattr(convoy, "id", "?"))
+        return {}
+    out: dict[str, list[dict]] = {}
+    for z in analyse["zusammengelegt"]:
+        if z["waypoint_id"]:
+            out.setdefault(z["waypoint_id"], []).append(z)
+    return out
+
+
 def _keine_verbindung_message(vehicle_params: dict[str, Any]) -> str:
     """Meldung, wenn GraphHopper keine Verbindung findet.
 
@@ -406,12 +474,7 @@ async def get_route(
     fuel_analysis = None
     if route.distance_m is not None:
         route_coords = geojson["coordinates"] if geojson else []
-        fuel_analysis = fuel_svc.analyse_fuel(
-            convoy.convoy_vehicles,
-            route.distance_m,
-            route_coords,
-            route_duration_s=route.duration_s or 0,
-        )
+        fuel_analysis = _halteanalyse(convoy, route.distance_m, route_coords, route.duration_s or 0)
 
     # Departure + destination ETA, recomputed so a reloaded route shows the same
     # total arrival as right after calculation (drive time + all waypoint holds).
@@ -659,12 +722,7 @@ async def calculate_route(
     await db.commit()
 
     # Fuel analysis
-    fuel_analysis = fuel_svc.analyse_fuel(
-        convoy.convoy_vehicles,
-        route_data["distance_m"],
-        route_coords,
-        route_duration_s=convoy_duration_s,
-    )
+    fuel_analysis = _halteanalyse(convoy, route_data["distance_m"], route_coords, convoy_duration_s)
 
     return {
         "id": route.id,
@@ -792,6 +850,8 @@ async def export_pdf(
     convoy = await _load_convoy(convoy_id, current_user, db, require="read")
     route_result = await db.execute(select(Route).where(Route.convoy_id == convoy_id))
     route = route_result.scalar_one_or_none()
+    line = geo_svc.linestring_to_geojson(route.geometry) if route and route.geometry is not None else None
+    zusammengelegt = _zusammengelegte_halte(convoy, route, (line or {}).get("coordinates", []))
 
     waypoints = [
         {
@@ -803,6 +863,7 @@ async def export_pdf(
             "hold_duration_min": w.hold_duration_min,
             "planned_arrival": w.planned_arrival.isoformat() if w.planned_arrival else None,
             "planned_departure": w.planned_departure.isoformat() if w.planned_departure else None,
+            "zusammengelegt": zusammengelegt.get(str(w.id), []),
         }
         for w in convoy.waypoints
     ]
@@ -878,6 +939,7 @@ async def export_roadbook(
         None,
         roadbook_svc.generate_roadbook,
         convoy, route, [wp for wp, _ in located], map_jpeg, departure, arrival,
+        _zusammengelegte_halte(convoy, route, coords),
     )
     filename = f"Roadbook_{convoy.name.replace(' ', '_')}.pdf"
     return Response(
