@@ -97,3 +97,35 @@ test('Sendetakt: Rechenbeispiel folgt den Eingaben, gespeichert wird die Wahl', 
 	await expect(page.getByRole('status')).toContainText('alle 60 s');
 	await expect(speichern).toBeDisabled();
 });
+
+test('die Liste bleibt live: neue Meldungen erscheinen ohne Neuladen', async ({ page }) => {
+	await page.clock.install();
+	await page.goto(HUELLE);
+	const zeile = page.getByTestId('tracker').first();
+	await expect(zeile).toContainText('bereit');
+
+	// Das Gerät meldet einen schwachen Akku; die nächste Abfrage bringt ihn mit.
+	await page.evaluate(() => window.__trackerMelden!('t-lf', { akku_prozent: 9, akku_niedrig: true }));
+	await page.clock.runFor(16_000);
+	await expect(zeile).toContainText('Akku schwach');
+	await expect(zeile.getByRole('img', { name: /^Akku 9 %/ })).toBeVisible();
+});
+
+test('„Verbindung unterbrochen" schlägt ohne Neuladen um, auch wenn die Abfrage hängt', async ({ page }) => {
+	await page.clock.install();
+	await page.goto(HUELLE);
+	const zeile = page.getByTestId('tracker').first();
+	await expect(zeile).toContainText('bereit');
+
+	// Letztes Bündel: in 20 s gelten zwei als ausgeblieben. Danach antwortet die Instanz nicht mehr.
+	await page.evaluate(() => {
+		window.__trackerMelden!('t-lf', { unterbrochen_ab: new Date(Date.now() + 20_000).toISOString() });
+	});
+	await page.clock.runFor(16_000);
+	await page.evaluate(() => (window.__trackerHaengt = true));
+	await expect(zeile).toContainText('bereit');
+
+	await page.clock.runFor(30_000);
+	await expect(zeile.locator('.marke')).toHaveText('Verbindung unterbrochen');
+	await expect(zeile.getByTestId('tracker-stoerung')).toHaveText('Verbindung unterbrochen');
+});

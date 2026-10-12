@@ -14,6 +14,14 @@
 	 * sowie WLAN-Netze aufs Gerät, das Gerät löst den Code selbst ein, über WLAN oder
 	 * Mobilfunk. Der Browser sieht dabei nie ein Token. Die WLAN-Netze lassen sich später
 	 * allein ändern („WLAN per USB"); ihre Passwörter gehen nur aufs Gerät, nie an die Instanz.
+	 * Seite schreibt Adresse, Code und optional eigene Wurzelzertifikate, APN und Funknetz aufs Gerät, das
+	 * Gerät löst den Code selbst über sein Mobilfunknetz ein. Der Browser sieht dabei nie
+	 * ein Token.
+	 *
+	 * Die Liste bleibt offen live: alle 15 s still neu abgefragt (wie die
+	 * Konvoi-Ansicht), und die Uhr für „Verbindung unterbrochen", „nicht
+	 * erreichbar" und „auf Akku seit" läuft eigenständig weiter — nicht erst
+	 * nach einer gelungenen Abfrage, sonst stünde sie bei einem hängenden Abruf.
 	 */
 	import { onMount } from 'svelte';
 	import TrackerZustand from '$lib/components/TrackerZustand.svelte';
@@ -102,7 +110,15 @@
 	let fahrstunden = $state(20);
 	let anzahl = $state(0);
 
+	const ABFRAGE_MS = 15_000;
+	const FRIST_MS = 10_000;
+	let jetzt = $state(Date.now());
+	let abruf = false;
+	/** Zählt jedes `neuLaden`: eine stille Abfrage von davor darf dessen Ergebnis nicht überschreiben. */
+	let stand = 0;
+
 	async function neuLaden() {
+		stand++;
 		laden = true;
 		fehler = '';
 		try {
@@ -124,10 +140,39 @@
 		}
 	}
 
+	/** Still: kein „Lade…", keine Fehlermeldung — die Liste bleibt, wie sie war. */
+	async function aktualisieren() {
+		if (abruf || laden) return;
+		abruf = true;
+		const vorher = stand;
+		try {
+			const g = await geraeteApi.list(AbortSignal.timeout(FRIST_MS));
+			if (vorher === stand) geraete = g;
+		} catch {
+			/* nächster Versuch im Takt */
+		} finally {
+			abruf = false;
+		}
+	}
+
+	function sichtbar() {
+		if (document.visibilityState !== 'visible') return;
+		jetzt = Date.now();
+		void aktualisieren();
+	}
+
 	onMount(() => {
 		mitSerial = webSerialVerfuegbar();
 		adresse = instanzAdresse();
 		neuLaden();
+		const abfrage = setInterval(() => void aktualisieren(), ABFRAGE_MS);
+		const uhr = setInterval(() => (jetzt = Date.now()), 5_000);
+		document.addEventListener('visibilitychange', sichtbar);
+		return () => {
+			clearInterval(abfrage);
+			clearInterval(uhr);
+			document.removeEventListener('visibilitychange', sichtbar);
+		};
 	});
 
 	const wurzeln = $derived(wurzelnLesen(wurzelnText));
@@ -339,7 +384,7 @@
 	}
 
 	/** „seit 40 min", „seit 5 h", „seit 3 Tagen" — gerundet nach unten, wie es die Instanz weiß. */
-	function seit(iso: string, jetzt = Date.now()): string {
+	function seit(iso: string): string {
 		const min = Math.max(0, Math.floor((jetzt - new Date(iso).getTime()) / 60000));
 		if (min < 60) return `seit ${min} min`;
 		const std = Math.floor(min / 60);
@@ -348,7 +393,7 @@
 	}
 
 	function akkuLange(iso: string): boolean {
-		return Date.now() - new Date(iso).getTime() >= AKKU_WARNUNG_MS;
+		return jetzt - new Date(iso).getTime() >= AKKU_WARNUNG_MS;
 	}
 
 	function uhrzeit(iso: string): string {
@@ -365,9 +410,9 @@
 		if (!g.aktiv) return { text: 'gesperrt', klasse: 'aus' };
 		if (!g.eingerichtet) return g.code_offen ? { text: 'wartet auf Einrichtung', klasse: 'aus' } : { text: 'Code abgelaufen', klasse: 'aus' };
 		if (!g.vehicle_id) return { text: 'ohne Fahrzeug', klasse: 'aus' };
-		if (!g.zuletzt_gesehen || Date.now() - new Date(g.zuletzt_gesehen).getTime() > STUMM_AB_MS)
+		if (!g.zuletzt_gesehen || jetzt - new Date(g.zuletzt_gesehen).getTime() > STUMM_AB_MS)
 			return { text: 'nicht erreichbar', klasse: 'warn' };
-		const s = stoerung(g, Date.now());
+		const s = stoerung(g, jetzt);
 		if (s) return { text: STOERUNG_TEXT[s], klasse: 'warn' };
 		if (g.akku_niedrig) return { text: 'Akku schwach', klasse: 'warn' };
 		return { text: 'bereit', klasse: '' };
@@ -633,7 +678,7 @@
 			{/if}
 			{#if g.eingerichtet}
 				<p class="hint">
-					<TrackerZustand zustand={g} /> ·
+					<TrackerZustand zustand={g} {jetzt} /> ·
 					{#if g.zuletzt_gesehen}Zuletzt gemeldet {uhrzeit(g.zuletzt_gesehen)}{:else}Noch nie gemeldet{/if}
 					{#if g.extern === false && g.akku_seit}
 						· <span class={akkuLange(g.akku_seit) ? 'akku-lange' : ''} title="Seit der ersten Meldung ohne Bordnetz, frühestens {uhrzeit(g.akku_seit)}">auf Akku {seit(g.akku_seit)}</span>

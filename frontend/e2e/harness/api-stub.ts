@@ -348,6 +348,10 @@ declare global {
 		__trackerAngelegt?: TrackerDaten;
 		__trackerTakt?: number;
 		__trackerAufrufe?: { name: string; args: unknown[] }[];
+		/** Was das Gerät inzwischen gemeldet hat — die nächste Abfrage liefert es. */
+		__trackerMelden?: (id: string, felder: Partial<Tracker>) => void;
+		/** Ab jetzt antwortet die Liste nicht mehr (hängender Abruf). */
+		__trackerHaengt?: boolean;
 	}
 }
 
@@ -372,6 +376,9 @@ const tracker: Tracker[] = [
 		update_meldung: null, update_at: null, angebot_version: '0.2.0', wurzeln_aktuell: false, created_at: '2026-10-01T09:00:00Z',
 	},
 ];
+
+if (typeof window !== 'undefined')
+	window.__trackerMelden = (id, felder) => Object.assign(tracker.find((t) => t.id === id)!, felder);
 
 function trackerZeile(id: string, d: TrackerDaten): Tracker {
 	return {
@@ -408,6 +415,7 @@ let taktGesetzt = 15;
 export const geraeteApi = {
 	list: async (): Promise<Tracker[]> => {
 		trackerAufruf('list');
+		if (window.__trackerHaengt) return new Promise(() => {});
 		return tracker.map((t) => ({ ...t }));
 	},
 	takt: async (): Promise<TrackerTakt> => taktStub(taktGesetzt),

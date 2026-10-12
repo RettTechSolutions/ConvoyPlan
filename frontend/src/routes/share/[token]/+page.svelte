@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import MapView from '$lib/components/MapView.svelte';
 	import { shareApi, type Waypoint } from '$lib/api';
 	import AppLogo from '$lib/components/AppLogo.svelte';
@@ -10,7 +10,7 @@
 
 	onMount(async () => {
 		try {
-			data = await shareApi.get($page.params.token!);
+			data = await shareApi.get(page.params.token!);
 		} catch {
 			error = 'Marschverband nicht gefunden oder Link ungültig.';
 		}

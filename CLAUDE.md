@@ -450,8 +450,11 @@ wer das Protokoll ändert, zieht beide. Anwenderdoku: `wiki/Tracker.md`.
 **Akku und Empfang** (`TrackerZustand.svelte`, Regeln in `$lib/tracking/trackerzustand.ts`):
 Batterie und vier Balken in der Tracker-Liste und am Fahrzeug der Konvoi-Ansicht
 (`GET /api/convoys/{id}/tracker`, Leserecht am Konvoi, ohne Gerätekennung — abgefragt
-jede Minute, **nicht** über den Live-Kanal, weil der Store der angemeldeten Ansicht
-keinen neuen Nachrichtentyp lesen soll). Ob der Akku warnt, entscheidet nur das Backend
+alle 15 s, **nicht** über den Live-Kanal, weil der Store der angemeldeten Ansicht
+keinen neuen Nachrichtentyp lesen soll; die Tracker-Liste im Org-Admin ebenso). Die Uhr,
+gegen die `unterbrochen_ab` verglichen wird, läuft in beiden Ansichten **eigenständig** und
+jeder Abruf hat eine Frist: Stand sie still bis zur nächsten gelungenen Abfrage, zeigte ein
+hängender Abruf die Störung erst nach dem Neuladen. Ob der Akku warnt, entscheidet nur das Backend
 (`ortungsgeraet.akku_niedrig`, `AKKU_NIEDRIG_PROZENT`); die Balken rechnet das Frontend
 aus `signal_dbm` (RSRP) und dem letzten Kontakt; „auf Akku seit" kommt aus `akku_seit`
 (siehe oben). Tests: `tests/test_tracker_geraete.py` (`test_akku_niedrig`,

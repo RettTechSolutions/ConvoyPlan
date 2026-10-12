@@ -1,6 +1,6 @@
 <script lang="ts">
     import { goto } from '$app/navigation';
-    import { page } from '$app/stores';
+    import { page } from '$app/state';
     import { onMount, onDestroy } from 'svelte';
     import { orgStore } from '$lib/stores/org';
     import { setOrgBranding, clearOrgBranding } from '$lib/stores/branding';
@@ -29,8 +29,8 @@
     });
 
     onMount(async () => {
-        const slug = ($page.params as Record<string, string>).slug;
-        const isLoginPage = $page.url.pathname === `/o/${slug}/login`;
+        const slug = (page.params as Record<string, string>).slug;
+        const isLoginPage = page.url.pathname === `/o/${slug}/login`;
 
         loadOrgBranding(slug);
 
