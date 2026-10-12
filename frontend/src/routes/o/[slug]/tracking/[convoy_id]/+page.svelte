@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
 	import { page } from '$app/stores';
 	import MapView from '$lib/components/MapView.svelte';
 	import AppLogo from '$lib/components/AppLogo.svelte';
@@ -454,6 +454,16 @@
 		window.removeEventListener('pageshow', belegenBeimZurueckkehren);
 		if (backOnlineTimer) { clearTimeout(backOnlineTimer); backOnlineTimer = null; }
 	});
+
+	// Route und Konvoi zeigen einen Überblick: Folgen und Fahrtrichtung enden
+	// dabei, sonst zöge die nächste Position die Karte zurück aufs eigene
+	// Fahrzeug. Erst die Effekte durchlaufen lassen — deren easeTo bräche den
+	// Zoom sonst gleich wieder ab.
+	async function ansichtFreigeben() {
+		followMyVehicle = false;
+		headingUp = false;
+		await tick();
+	}
 
 	// Restore a previously active assignment after a reload. If the saved vehicle
 	// is still part of the convoy, re-select it and resume transmitting.
@@ -1148,8 +1158,21 @@
 				</button>
 			{/if}
 			{#if routeGeojson}
-				<button class="map-ctrl-btn" onclick={() => mapView?.showRoute()} title="Gesamte Route anzeigen">
+				<button
+					class="map-ctrl-btn"
+					onclick={async () => { await ansichtFreigeben(); mapView?.showRoute(); }}
+					title="Gesamte Route anzeigen"
+				>
 					🗺️ Route
+				</button>
+			{/if}
+			{#if $livePositions.size > 0}
+				<button
+					class="map-ctrl-btn"
+					onclick={async () => { await ansichtFreigeben(); mapView?.showConvoy(); }}
+					title="Auf alle Fahrzeuge des Konvois zoomen"
+				>
+					🚐 Konvoi
 				</button>
 			{/if}
 			<button class="map-ctrl-btn" onclick={() => { headingUp = false; mapView?.resetNorth(); }} title="Nach Norden ausrichten">

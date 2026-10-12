@@ -7,6 +7,7 @@
 	import { mapMode } from '$lib/stores/map';
 	import { themeStore } from '$lib/stores/theme';
 	import { addRegionMask, applyMapTheme } from '$lib/map/region';
+	import { konvoiAusschnitt } from '$lib/map/konvoiAusschnitt';
 	import type { Waypoint, VehiclePosition } from '$lib/api';
 	import type { Geometry, FeatureCollection } from 'geojson';
 
@@ -308,7 +309,7 @@
 		map.flyTo({ center: [pos.lon, pos.lat], zoom: 15, duration: 800 });
 	}
 
-	function fitRoute(duration = 800) {
+	function fitRoute(duration = 800, bearing?: number) {
 		if (!map || !routeGeojson) return;
 		const coords: number[][] =
 			routeGeojson.type === 'LineString' ? routeGeojson.coordinates as number[][]
@@ -319,13 +320,27 @@
 		const lats = coords.map(c => c[1]);
 		map.fitBounds(
 			[[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
-			{ padding: 60, duration }
+			{ padding: 60, duration, ...(bearing != null && { bearing, pitch: 0 }) }
 		);
 	}
 
-	/** Fit the whole route into view again (used by the "Route" button). */
+	/**
+	 * Fit the whole route into view again (used by the "Route" button), north-up.
+	 * Wie bei showConvoy() löst der Aufrufer einen Folgen-Modus vorher.
+	 */
 	export function showRoute() {
-		fitRoute();
+		fitRoute(800, 0);
+	}
+
+	/**
+	 * Zoom so that every vehicle of the convoy is in view (the "Konvoi" button).
+	 * Nordet dabei ein; einen Folgen-Modus muss der Aufrufer vorher lösen, sonst
+	 * zieht die nächste Position die Karte wieder auf das eigene Fahrzeug.
+	 */
+	export function showConvoy() {
+		const ausschnitt = konvoiAusschnitt(livePositions.values());
+		if (!map || !ausschnitt) return;
+		map.fitBounds(ausschnitt, { padding: 80, maxZoom: FOLLOW_ZOOM, bearing: 0, pitch: 0, duration: 800 });
 	}
 
 	/** Reset the map orientation to north-up (and level). */
