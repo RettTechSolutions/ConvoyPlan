@@ -49,7 +49,10 @@
           { "context": "Frontend – Type Check" },
           { "context": "Frontend – E2E (Playwright)" },
           { "context": "Docker – Build check" },
-          { "context": "Security – Dependency Audit" }
+          { "context": "Security – Dependency Audit" },
+          { "context": "Shell – Updater und Entrypoint" },
+          { "context": "Region – Wechsel end-to-end (Berlin)" },
+          { "context": "Region – Grenzrouting bei zusammengeführten Extracts" }
         ]
       }
     }
