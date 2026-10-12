@@ -93,7 +93,7 @@ Jeder empfohlene Halt zeigt in der Planungsansicht seine Art, die Haltedauer und
 
 ## Durchfahrtshöhen
 
-Hat mindestens ein Fahrzeug im Verband eine **Höhe** (siehe [Fahrzeuge](Fahrzeuge)), meidet die Routenberechnung jede Unterführung, die niedriger ist als das höchste Fahrzeug. Unter welchen Höhenbeschränkungen die Route trotzdem hindurchführt, zeigt die Planungsansicht nach der Berechnung im Block **Durchfahrtshöhen**:
+Hat mindestens ein Fahrzeug im Verband eine **Höhe** (siehe [Fahrzeuge](Fahrzeuge)), meidet die Routenberechnung jede Unterführung, die niedriger ist als das höchste Fahrzeug. Unter welchen Höhenbeschränkungen die Route trotzdem hindurchführt, zeigt die Planungsansicht nach der Berechnung im Tab **Route**, Block **Durchfahrtshöhen**:
 
 | Stufe | Spielraum zum höchsten Fahrzeug | Bedeutung |
 |---|---|---|
@@ -128,7 +128,7 @@ Hat mindestens ein Fahrzeug ein **Gewicht** (siehe [Fahrzeuge](Fahrzeuge)), meid
 
 Genauso sperrt die **größte Achslast** im Verband jede Achslastgrenze darunter (Zeichen 263 „Tatsächliche Achslast", in OpenStreetMap `maxaxleload`) — ohne Ausnahme, denn für Achslasten kennt die Karte keine.
 
-Nach der Berechnung zeigt der Block **Gewichtsgrenzen** jede Grenze an der Route mit Kilometer und **Reserve** (Grenze minus schwerstes Fahrzeug bzw. größte Achslast); Achslastgrenzen stehen als „Achslast" darin. **Knapp** heißt eine Grenze unter 2 t Reserve beim Gewicht und unter 1 t bei der Achslast, weil die Achslast in der Karte gröber gespeichert ist. Die Stellen stehen außerdem im Marschbefehl (alles außer „frei") und im Roadbook (alle).
+Nach der Berechnung zeigt der Block **Gewichtsgrenzen** (Tab **Route**) jede Grenze an der Route mit Kilometer und **Reserve** (Grenze minus schwerstes Fahrzeug bzw. größte Achslast); Achslastgrenzen stehen als „Achslast" darin. **Knapp** heißt eine Grenze unter 2 t Reserve beim Gewicht und unter 1 t bei der Achslast, weil die Achslast in der Karte gröber gespeichert ist. Die Stellen stehen außerdem im Marschbefehl (alles außer „frei") und im Roadbook (alle).
 
 Findet die Routenberechnung keinen Weg, der Höhe, Gewicht und Achslast des Verbands einhält, sagt sie das mit den Werten, mit denen sie gesucht hat — dann Fahrzeugdaten, Start, Ziel und Wegpunkte prüfen.
 

@@ -117,6 +117,7 @@ Fahrzeuge werden einmalig angelegt und können dann beliebigen Konvois zugeordne
 1. Mindestens Start- und Zielpunkt setzen.
 2. **Route berechnen** klicken.
 3. GraphHopper berechnet die Route; ConvoyPlan erstellt automatisch den Zeitplan mit streckenproportionalen Ankunfts- und Abfahrtszeiten je Wegpunkt (ein Wegpunkt bei 40 % der Strecke bekommt auch 40 % der Fahrzeit als ETA). Der **Zeitplan**-Tab zeigt zusätzlich eine **Abmarsch**-Zeile (Startzeit) und eine **Ziel**-Zeile mit der Gesamt-Ankunftszeit.
+4. Was die Berechnung über die Strecke sagt, steht im Tab **Route**: Tank- bzw. Ladestopp, empfohlene Halte, **Durchfahrtshöhen** und **Gewichtsgrenzen**. Die Zahl am Tab nennt die offenen Hinweise – rot bei fehlendem Tankstopp, enger Durchfahrt oder überschrittener Grenze. Gibt es Hinweise, öffnet ConvoyPlan nach der Berechnung den Tab **Route**, sonst den **Zeitplan**. Höhen und Gewichte stehen eingeklappt mit ihrem Befund in einer Zeile und klappen von selbst auf, sobald eine Stelle zu prüfen ist.
 
 ### Konvoi bearbeiten
 

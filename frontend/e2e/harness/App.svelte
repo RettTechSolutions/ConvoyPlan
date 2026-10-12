@@ -15,8 +15,10 @@
 	import PasskeyVerwaltung from '$lib/components/PasskeyVerwaltung.svelte';
 	import DurchfahrtsHoehen from '$lib/components/DurchfahrtsHoehen.svelte';
 	import GewichtsGrenzen from '$lib/components/GewichtsGrenzen.svelte';
+	import RouteHinweisMarke from '$lib/components/RouteHinweisMarke.svelte';
+	import { routeHinweise } from '$lib/route/hinweise';
 	import RegionCard from '$lib/components/RegionCard.svelte';
-	import type { BrueckenPruefung, DurchfahrtshoeheEntry, GewichtsgrenzeEntry } from '$lib/api';
+	import type { BrueckenPruefung, DurchfahrtshoeheEntry, FuelAnalysis, GewichtsgrenzeEntry } from '$lib/api';
 	import { feedbackStore } from '$lib/stores/feedback';
 	import Kontextmenue from '$lib/kontextmenue/Kontextmenue.svelte';
 	import { kontextmenue, kopieren, reihenfolgeEintraege, TRENNER } from '$lib/kontextmenue/menue';
@@ -96,6 +98,26 @@
 		alt: { eintraege: null, gewicht: 12, ohne: 0 },
 	};
 	const gewicht = GEWICHT[fall] ?? GEWICHT.gemischt;
+
+	/** Marke am Reiter „Route": `?k=route&fall=…`, die Fälle stehen im Test. */
+	const halt = (stop_km: number) => ({ stop_km, stop_position: null, duration_min: 30, kind: 'tech' as const, is_rest: false, after_drive_s: 7200, covers_break: false });
+	const analyse = (tank: boolean, halte: number): FuelAnalysis => ({
+		vehicles_with_range: [], min_range_km: 400, route_distance_km: 300, fuel_stop_needed: tank, fuel_stop_km: tank ? 240 : null,
+		fuel_stop_position: null, limiting_vehicle: tank ? 'MTW' : null, has_default_values: false, vehicles_without_data: 0,
+		recommended_stop_duration_min: tank ? 15 : null, duration_halt_needed: halte > 0,
+		duration_halts: Array.from({ length: halte }, (_, i) => halt(120 * (i + 1))), rest_needed: false,
+	});
+	const ROUTE: Record<string, [Parameters<typeof routeHinweise>[0], boolean, number]> = {
+		keine: [{ fuel_analysis: analyse(false, 0), durchfahrtshoehen: [stelle(30.1, 4.5, 0.85, 'frei')], gewichtsgrenzen: [grenze(9.4, 40, 14, 'frei')] }, false, 0],
+		halte: [{ fuel_analysis: analyse(false, 2), durchfahrtshoehen: [], gewichtsgrenzen: [] }, false, 0],
+		halte_teils_gesetzt: [{ fuel_analysis: analyse(false, 2), durchfahrtshoehen: [], gewichtsgrenzen: [] }, false, 1],
+		eng: [{ fuel_analysis: null, durchfahrtshoehen: [stelle(12.4, 3.7, 0.05, 'eng')], gewichtsgrenzen: [grenze(15, 28, 1.5, 'knapp')] }, false, 0],
+		knapp: [{ fuel_analysis: null, durchfahrtshoehen: [stelle(48.9, 3.9, 0.25, 'knapp')], gewichtsgrenzen: null }, false, 0],
+		tankstopp: [{ fuel_analysis: analyse(true, 0), durchfahrtshoehen: null, gewichtsgrenzen: null }, false, 0],
+		tankstopp_gesetzt: [{ fuel_analysis: analyse(true, 0), durchfahrtshoehen: null, gewichtsgrenzen: null }, true, 0],
+		ohne_route: [null, false, 0],
+	};
+	const routeFall = ROUTE[fall] ?? ROUTE.keine;
 </script>
 
 {#if welche === 'fuss'}
@@ -112,6 +134,10 @@
 			<p>Route berechnet.</p>
 			<GewichtsGrenzen eintraege={gewicht.eintraege} fahrzeuggewichtT={gewicht.gewicht} achslastT={gewicht.achse ?? null} ohneGewicht={gewicht.ohne} />
 		</div>
+	</div>
+{:else if welche === 'route'}
+	<div class="leiste" data-theme="dark">
+		<nav aria-label="Reiter"><button type="button">Route<RouteHinweisMarke hinweise={routeHinweise(...routeFall)} /></button></nav>
 	</div>
 {:else if welche === 'hoehen'}
 	<!-- Breite der Seitenleiste der Planung, in der der Block steht. -->

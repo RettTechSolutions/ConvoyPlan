@@ -37,6 +37,8 @@
 	import DurchfahrtsHoehen from '$lib/components/DurchfahrtsHoehen.svelte';
 	import KonvoiStatusSchalter from '$lib/components/KonvoiStatusSchalter.svelte';
 	import GewichtsGrenzen from '$lib/components/GewichtsGrenzen.svelte';
+	import RouteHinweisMarke from '$lib/components/RouteHinweisMarke.svelte';
+	import { routeHinweise } from '$lib/route/hinweise';
 	import { tutorialStore } from '$lib/stores/tutorial';
 	import QRCode from 'qrcode';
 
@@ -63,6 +65,7 @@
 			wp.type === 'technical_stop' && wp.halt_purpose !== 'fuel'
 		).length
 	);
+	const routeHinweiseJetzt = $derived(routeHinweise(route, fuelStopExists, thStopsAdded));
 	let closures = $state<FeatureCollection | null>(null);
 	let showClosures = $state(false);
 	// Live-Verkehrslage (HERE/TomTom) — nur verfügbar, wenn eine Installation
@@ -76,7 +79,7 @@
 		standard: 'Standard', schnell: 'Schnellste', kuerzeste: 'Kürzeste',
 		bundesstrasse: 'Standard (veraltet)', landstrasse: 'Standard (veraltet)',
 	};
-	let activeTab = $state<'convoy'|'fahrzeuge'|'wegpunkte'|'zeitplan'|'export'|'konto'>('convoy');
+	let activeTab = $state<'convoy'|'route'|'fahrzeuge'|'wegpunkte'|'zeitplan'|'export'|'konto'>('convoy');
 	let loading = $state(false);
 	let dndWaypoints = $state<Waypoint[]>([]);
 	let dndVehicles = $state<Vehicle[]>([]);
@@ -988,14 +991,14 @@
 			showFuelStations = false;
 			activeRoute.set(r);
 			await refreshConvoy();
-			activeTab = 'zeitplan';
+			// Gibt es etwas zu tun (Tankstopp, Halte, enge Stellen), zuerst dorthin.
+			activeTab = routeHinweiseJetzt.anzahl > 0 ? 'route' : 'zeitplan';
 
 			// Fuel stations and closures use the public Overpass API which can be
 			// very slow — run them in the background AFTER releasing the loading
 			// state, otherwise the calculate button stays disabled for up to a
 			// minute and appears broken.
 			if (r.fuel_analysis?.fuel_stop_needed && r.fuel_analysis.fuel_stop_position) {
-				activeTab = 'convoy';
 				void loadFuelStationsInBackground(selected.id, r.fuel_analysis.fuel_stop_position);
 			}
 			void loadClosuresInBackground();
@@ -1435,15 +1438,15 @@
 		{#if wizardStep === 0}
 			<!-- Primary planning tabs -->
 			<div class="tabs">
-				{#each [['convoy','Plan'],['wegpunkte','Wegpunkte'],['zeitplan','Zeitplan'],['export','Export']] as [tab, label]}
-					<button class="tab" class:active={activeTab === tab} onclick={() => (activeTab = tab as typeof activeTab)}>{label}</button>
+				{#each [['convoy','Plan'],['route','Route'],['wegpunkte','Wegpunkte'],['zeitplan','Zeitplan']] as [tab, label]}
+					<button class="tab" class:active={activeTab === tab} onclick={() => (activeTab = tab as typeof activeTab)}>{label}{#if tab === 'route'}<RouteHinweisMarke hinweise={routeHinweiseJetzt} />{/if}</button>
 				{/each}
 			</div>
-			<!-- Verwaltung tabs -->
+			<!-- Zweite Reiterzeile: Fahrzeuge, Konto, Export -->
 			<div class="tabs tabs-verwaltung">
-				<span class="tabs-section-label">Verwaltung</span>
 				<button class="tab" class:active={activeTab === 'fahrzeuge'} onclick={() => (activeTab = 'fahrzeuge')}>Fahrzeuge</button>
 				<button class="tab" class:active={activeTab === 'konto'} onclick={openKontoTab}>Konto</button>
+				<button class="tab" class:active={activeTab === 'export'} onclick={() => (activeTab = 'export')}>Export</button>
 			</div>
 
 			<div class="tab-content">
@@ -1518,6 +1521,54 @@
 							{loading ? 'Berechne…' : '🗺 Route berechnen'}
 						</button>
 						{#if route}
+							<p class="route-info">{((route.distance_m ?? 0) / 1000).toFixed(1)} km · {formatDuration(route.duration_s)}</p>
+							<button type="button" class="route-weiter" class:kritisch={routeHinweiseJetzt.kritisch} onclick={() => (activeTab = 'route')}>
+								{routeHinweiseJetzt.anzahl === 0 ? 'Ergebnisse der Prüfung' : routeHinweiseJetzt.anzahl === 1 ? '⚠ 1 Hinweis zur Route' : `⚠ ${routeHinweiseJetzt.anzahl} Hinweise zur Route`} →
+							</button>
+						{/if}
+					</div>
+
+					<!-- V2: Teilverband -->
+					<div class="section" style="margin-top:.75rem">
+						<div class="section-header">
+							<strong>Teilverbände</strong>
+							<button class="btn-small" onclick={() => (showSubConvoyForm = !showSubConvoyForm)}>+ Neu</button>
+						</div>
+						{#if showSubConvoyForm}
+							<form class="inline-form" onsubmit={async (e) => {
+								e.preventDefault();
+								if (!selected) return;
+								await convoysApi.createSubConvoy(selected.id, { name: newConvoy.name, speed_urban_kmh: 40, speed_rural_kmh: 65 });
+								await loadData();
+								showSubConvoyForm = false;
+								newConvoy = { ...newConvoy, name: '' };
+							}}>
+								<input placeholder="Name des Teilverbands *" bind:value={newConvoy.name} required />
+								<button type="submit">Erstellen</button>
+							</form>
+						{/if}
+						{#each convoyList.filter(c => c.parent_convoy_id === selected?.id) as sub}
+							<div class="sub-convoy-item" onclick={() => selectConvoy(sub)} use:kontextmenue={() => [{ titel: sub.name }, { label: 'Öffnen', icon: '↳', aktion: () => selectConvoy(sub) }]}>
+								↳ {sub.name}
+							</div>
+						{/each}
+					</div>
+				{/if}
+
+				<!-- ── TAB: Route ── -->
+				<!-- Was die Berechnung über die Strecke sagt. Liegt nicht mehr im Reiter
+				     „Plan"; damit nichts davon übersehen wird, zählt die Marke am Reiter
+				     ($lib/route/hinweise.ts), und nach der Berechnung geht es hierher,
+				     sobald es etwas zu tun gibt. -->
+				{#if activeTab === 'route' && selected}
+					<div class="section">
+						<div class="section-header" style="margin-top:0">
+							<span>Route</span>
+							<button class="btn-small" onclick={calculateRoute} disabled={loading}>{loading ? 'Berechne…' : '↻ Neu berechnen'}</button>
+						</div>
+						{#if !route}
+							<p class="hint">Noch keine Route berechnet. Start und Ziel setzen und im Reiter <strong>Plan</strong> auf „Route berechnen“.</p>
+						{:else}
 							<p class="route-info">{((route.distance_m ?? 0) / 1000).toFixed(1)} km · {formatDuration(route.duration_s)}</p>
 							{#if route.fuel_analysis?.fuel_stop_needed && !fuelStopExists}
 								{@const evStop = route.fuel_analysis.limiting_propulsion === 'electric'}
@@ -1613,32 +1664,6 @@
 								ohneGewicht={selected?.convoy_vehicles.filter((cv) => !cv.vehicle.weight_kg).length ?? 0}
 							/>
 						{/if}
-					</div>
-
-					<!-- V2: Teilverband -->
-					<div class="section" style="margin-top:.75rem">
-						<div class="section-header">
-							<strong>Teilverbände</strong>
-							<button class="btn-small" onclick={() => (showSubConvoyForm = !showSubConvoyForm)}>+ Neu</button>
-						</div>
-						{#if showSubConvoyForm}
-							<form class="inline-form" onsubmit={async (e) => {
-								e.preventDefault();
-								if (!selected) return;
-								await convoysApi.createSubConvoy(selected.id, { name: newConvoy.name, speed_urban_kmh: 40, speed_rural_kmh: 65 });
-								await loadData();
-								showSubConvoyForm = false;
-								newConvoy = { ...newConvoy, name: '' };
-							}}>
-								<input placeholder="Name des Teilverbands *" bind:value={newConvoy.name} required />
-								<button type="submit">Erstellen</button>
-							</form>
-						{/if}
-						{#each convoyList.filter(c => c.parent_convoy_id === selected?.id) as sub}
-							<div class="sub-convoy-item" onclick={() => selectConvoy(sub)} use:kontextmenue={() => [{ titel: sub.name }, { label: 'Öffnen', icon: '↳', aktion: () => selectConvoy(sub) }]}>
-								↳ {sub.name}
-							</div>
-						{/each}
 					</div>
 				{/if}
 
@@ -2472,14 +2497,16 @@
 	.convoy-selector { display: flex; gap: .5rem; padding: .75rem 1rem; border-bottom: 1px solid var(--border); }
 .convoy-selector select { flex: 1; padding: .5rem; border-radius: 6px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); }
 
+	/* Beide Reiterzeilen müssen in 340 px passen — ein überlaufender Reiter
+	   verschwindet hinter dem unsichtbaren Scrollbalken. Mit Inter gemessen:
+	   Planung 320 px (mit Marke an „Route“), zweite Zeile samt Export 332 px. */
 	.tabs { display: flex; overflow-x: auto; scrollbar-width: none; padding: .25rem .5rem; gap: .25rem; border-bottom: 1px solid var(--border); }
 .tabs::-webkit-scrollbar { display: none; }
-.tab { flex: 0 0 auto; padding: .5rem .75rem; background: none; border: none; color: var(--text-2); font-size: var(--text-sm); cursor: pointer; white-space: nowrap; border-radius: 4px; }
+.tab { flex: 0 0 auto; padding: .5rem .6rem; background: none; border: none; color: var(--text-2); font-size: var(--text-sm); cursor: pointer; white-space: nowrap; border-radius: 4px; }
 .tab.active { color: var(--text-1); background: var(--surface-2); font-weight: 600; }
 .tabs-verwaltung { padding: .25rem .5rem; gap: .25rem; border-bottom: 1px solid var(--border); }
 .tabs-verwaltung .tab { font-size: var(--text-sm); }
 .tabs-verwaltung .tab.active { color: var(--text-1); background: var(--surface-2); }
-.tabs-section-label { flex-shrink: 0; font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); padding: 0 .5rem; white-space: nowrap; align-self: center; }
 
 	.tab-content { flex: 1; overflow-y: auto; padding: .75rem 1rem; }
 
@@ -2546,6 +2573,8 @@
 
 	.route-actions { margin-top: .75rem; }
 	.route-info { font-size: var(--text-sm); color: var(--text-2); margin: .4rem 0; }
+	.route-weiter { display: block; width: 100%; text-align: left; padding: .4rem .6rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; color: var(--text-2); font-size: var(--text-sm); cursor: pointer; }
+	.route-weiter.kritisch { background: rgba(226,61,40,.15); border-color: rgba(226,61,40,.5); color: var(--text-1); }
 
 	.hint { font-size: var(--text-xs); color: var(--text-muted); font-style: italic; margin: .25rem 0; }
 
