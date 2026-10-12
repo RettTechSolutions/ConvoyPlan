@@ -1764,7 +1764,7 @@ export interface TrackerTakt {
 }
 
 export const geraeteApi = {
-    list: () => api.get<Tracker[]>('/api/org/geraete'),
+    list: (signal?: AbortSignal) => api.get<Tracker[]>('/api/org/geraete', 'seite', signal),
     takt: () => api.get<TrackerTakt>('/api/org/geraete/takt'),
     taktSetzen: (buendel_s: number) => api.put<TrackerTakt>('/api/org/geraete/takt', { buendel_s }),
     create: (daten: TrackerDaten) => api.post<TrackerMitCode>('/api/org/geraete', daten),
