@@ -74,13 +74,13 @@ etwas schreibt, wäre hier die Lücke und nicht diese Liste."""
 # ab —, aber es lehnt sie mit einer ``CookieError`` ab, und die kam am
 # Abmelde-Endpunkt als **500** heraus. Ein Kopf, den jeder setzen kann und
 # der den Endpunkt zerlegt, ist kein Schönheitsfehler.
-_SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+_SLUG = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 _SLUG_MAX = 80
 _COOKIE_WERT = re.compile(r"[A-Za-z0-9._~+/=-]+")
 
 
 def ist_gueltiger_slug(org_slug: str | None) -> bool:
-    return bool(org_slug) and len(org_slug) <= _SLUG_MAX and _SLUG.match(org_slug) is not None
+    return bool(org_slug) and len(org_slug) <= _SLUG_MAX and _SLUG.fullmatch(org_slug) is not None
 
 
 def cookie_name(org_slug: str | None) -> str:
