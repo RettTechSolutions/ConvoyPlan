@@ -480,11 +480,16 @@ steht genauso im Protokoll und im Simulator; wer ihn ändert, zieht beide. Tests
 `TrackerVerwaltung.svelte`): Web Serial, je Zeile ein JSON-Objekt, Protokoll im
 Tracker-Repo (`docs/PROTOKOLL.md`, „Einrichten per USB"), Geräteseite dort in
 `simulator/tracker_sim/usb.py`. Der Browser schreibt nur Adresse (`location.origin`),
-Code und optional Wurzelzertifikate aufs Gerät; eingelöst wird **vom Gerät** über
+Code und optional Wurzelzertifikate, APN und Funknetz aufs Gerät; eingelöst wird **vom Gerät** über
 Mobilfunk, nicht vom Browser — so prüft das Einrichten Netz und TLS gleich mit, und
 kein Token berührt den Browser. Kein Backend-Anteil. Echte serielle Geräte gibt es in
 der CI nicht; `e2e/tracker-usb-einrichten.spec.ts` baut `navigator.serial` nach, so
 wie der Simulator antwortet. Wer das Protokoll ändert, zieht beide Seiten.
+APN und Funknetz schickt `TrackerUsb.einrichten` nur, wenn `info` sie nennt
+(`kenntFunk`, Firmware ab 0.3.0) — ältere überginge sie still, und der Tracker käme mit
+dem alten APN nicht ins Netz. Der APN wird vorher auf `A–Z a–z 0–9 . -` geprüft, weil er
+im Gerät zwischen Anführungszeichen in einem AT-Befehl steht; das Gerät prüft ihn selbst
+noch einmal.
 
 ### Alarmquittung: die Führung quittiert am Server
 
