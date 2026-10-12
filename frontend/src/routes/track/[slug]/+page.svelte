@@ -10,7 +10,10 @@
 	import StaerkeBadge from '$lib/components/StaerkeBadge.svelte';
 	import { betriebsstoffAus, mitStammdaten, type Betriebsstoff, type BetriebsstoffFelder } from '$lib/tracking/betriebsstoff';
 	import StaerkeForm from '$lib/components/StaerkeForm.svelte';
-	import { type Staerke, type StaerkeFelder } from '$lib/tracking/staerke';
+	import { istAus, sollAus, type Staerke, type StaerkeFelder } from '$lib/tracking/staerke';
+	import { fahrzeugBlase } from '$lib/tracking/fahrzeugblase';
+	import { naechsterHalt, routenHalte } from '$lib/tracking/naechsterhalt';
+	import { streckenstaende, vordermann } from '$lib/tracking/vordermann';
 	import {
 		trackApi, isTrackGate,
 		type TrackPayload, type TrackGate, type TrackPosition, type VehiclePosition,
@@ -121,6 +124,37 @@
 	// vehicle id → status color so the map markers reflect the current status.
 	let vehicleColors = $derived(
 		new Map((data?.vehicles ?? []).map((v) => [v.id, statusColor(statusOf(v))]))
+	);
+
+	// Wegpunkte entlang der Route — einmal je Route, nicht je Position. Eine
+	// geplante Ankunft am Ziel kennt der Fahrer-Link nicht; dort bleibt es bei
+	// der Entfernung, sofern kein Wegpunkt am Ende steht.
+	let blasenLinie = $derived(routeCoords(data?.geojson));
+	let blasenHalte = $derived(routenHalte(blasenLinie, data?.waypoints ?? []));
+
+	let marschfolge = $derived(
+		[...(data?.vehicles ?? [])].sort((a, b) => a.position - b.position)
+			.map((v) => ({ id: v.id, name: v.callsign || v.name }))
+	);
+	let blasenStaende = $derived(streckenstaende(blasenLinie, livePositions));
+
+	// vehicle id → Zeilen der Kartenblase: dieselben Angaben wie die Fahrzeugzeile.
+	let vehicleInfo = $derived(
+		new Map((data?.vehicles ?? []).map((v) => {
+			const st = statusOf(v);
+			const felder = staerkeVon(v);
+			const pos = livePositions.get(v.id);
+			return [v.id, fahrzeugBlase({
+				name: v.callsign ? v.name : null,
+				status: st,
+				statusText: STATUS_LABELS[st] ?? st,
+				soll: sollAus(felder),
+				ist: istAus(felder),
+				betriebsstoff: betriebsstoffVon(v),
+				naechster: pos ? naechsterHalt(blasenLinie, blasenHalte, pos, data?.start_time ?? null, Date.now()) : null,
+				vordermann: vordermann(marschfolge, blasenStaende, v.id),
+			}, Date.now())];
+		}))
 	);
 
 	// Only offer the schedule tab when at least one waypoint has a planned time.
@@ -910,6 +944,7 @@
 				livePositions={livePositions}
 				vehicleNames={vehicleNames}
 				vehicleColors={vehicleColors}
+				vehicleInfo={vehicleInfo}
 				clickEnabled={isDriver && manualMode && transmitting}
 				onMapClick={handleMapTap}
 			/>

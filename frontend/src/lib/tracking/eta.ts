@@ -49,6 +49,14 @@ function cumulativeDistances(coords: number[][]): number[] {
  * (in meters) the nearest point lies. Returns null if the route is too short.
  */
 export function distanceAlongRoute(coords: number[][], point: LatLon): number | null {
+	return projectOnRoute(coords, point)?.along ?? null;
+}
+
+/**
+ * Wie `distanceAlongRoute`, dazu der Abstand des Punkts zur Linie (m) — wer
+ * weit neben der Route steht, hat keinen sinnvollen Platz auf ihr.
+ */
+export function projectOnRoute(coords: number[][], point: LatLon): { along: number; offset: number } | null {
 	if (coords.length < 2) return null;
 	const cum = cumulativeDistances(coords);
 	let best = { dist: Infinity, along: 0 };
@@ -73,7 +81,12 @@ export function distanceAlongRoute(coords: number[][], point: LatLon): number | 
 			best = { dist: d, along: cum[i - 1] + (cum[i] - cum[i - 1]) * t };
 		}
 	}
-	return best.along;
+	return { along: best.along, offset: best.dist };
+}
+
+/** Länge der Linie (m). */
+export function routeLength(coords: number[][]): number {
+	return coords.length < 2 ? 0 : cumulativeDistances(coords)[coords.length - 1];
 }
 
 export interface DelayEstimate {
