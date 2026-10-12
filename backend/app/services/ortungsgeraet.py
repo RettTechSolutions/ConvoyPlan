@@ -51,8 +51,28 @@ CODE_GUELTIG = timedelta(hours=24)
 #: Hier und nur hier: Org-Admin und Konvoi-Ansicht lesen ``akku_niedrig``.
 AKKU_NIEDRIG_PROZENT = 20
 
-#: Takt, den die Instanz dem Gerät vorgibt (Protokoll, „Anweisung").
+#: Takt, den die Instanz dem Gerät vorgibt (Protokoll, „Anweisung"). ``buendel_s``
+#: ist der Standard; jede Organisation kann ihn ändern (``tracker_buendel_s``).
 TAKT = {"intervall_s": 10, "buendel_s": 15, "nachfrage_s": 300, "lebenszeichen_s": 43200}
+
+#: Was der Org-Admin für ``buendel_s`` wählen kann. Nicht unter dem Fix-Takt
+#: (``intervall_s``): öfter senden als messen bringt nichts. Nicht über 120 s:
+#: Der Tracker behält seinen Vorrang vor dem Telefon nur, solange er in den
+#: letzten fünf Minuten gesendet hat (``positionsquelle.VORRANG_S``), und ein
+#: Funkloch soll nicht gleich das Telefon zurückholen.
+BUENDEL_WAHL = (10, 15, 30, 60, 120)
+
+# Datenvolumen je Versand in Fahrt, geschätzt aus dem, was die Firmware schickt
+# (Tracker-Repo, ``kern_json_positionen`` und ``kern_http_anfrage``); gemessen
+# wird es dort in Phase 0 (M3). Was sich häuft, ist der Versand, nicht der Fix:
+# Ein Fix sind gut 100 Bytes, Kopf, Antwort und Rahmen um 1,4 KB.
+VOLUMEN_FIX_B = 115
+#: Anfrage mit Kopf, Token und Gerätezustand, Antwort mit Anweisung, TLS-Rahmen
+#: und TCP/IP-Pakete samt Quittungen — bei offener Verbindung (Keep-Alive).
+VOLUMEN_VERSAND_B = 1400
+#: Dazu, wenn die Verbindung zwischen zwei Versänden zugegangen ist: TCP- und
+#: TLS-Handschlag mit Zertifikatskette.
+VOLUMEN_HANDSCHLAG_B = 5000
 
 # Ohne 0/O, 1/I: der Code wird abgetippt.
 _CODE_ZEICHEN = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -173,10 +193,33 @@ def modus(gekoppelt: bool, laufende_konvois: int, gesperrt: bool = False) -> str
     return "senden"
 
 
-def anweisung(modus_: str, jetzt: datetime, firmware: dict[str, Any] | None = None) -> dict[str, Any]:
+def buendel_s(gewaehlt: int | None) -> int:
+    """Der Bündeltakt einer Organisation; ohne gültige Wahl der Standard."""
+    return gewaehlt if gewaehlt in BUENDEL_WAHL else TAKT["buendel_s"]
+
+
+def volumen_kb_pro_stunde(buendel: int, offen: bool = True) -> int:
+    """Geschätztes Datenvolumen eines Trackers je Fahrstunde in KB.
+
+    *offen*: Die Verbindung bleibt zwischen zwei Versänden stehen. Sonst kostet
+    jeder Versand einen neuen Handschlag, und der ist größer als alles andere.
+    Im Halt (Fix alle 60 s) und in Ruhe ist es viel weniger."""
+    versaende = 3600 / buendel
+    fixes = buendel / TAKT["intervall_s"]
+    je_versand = VOLUMEN_VERSAND_B + fixes * VOLUMEN_FIX_B + (0 if offen else VOLUMEN_HANDSCHLAG_B)
+    return round(versaende * je_versand / 1000)
+
+
+def anweisung(
+    modus_: str,
+    jetzt: datetime,
+    firmware: dict[str, Any] | None = None,
+    buendel: int | None = None,
+) -> dict[str, Any]:
     return {
         "modus": modus_,
         **TAKT,
+        "buendel_s": buendel_s(buendel),
         "serverzeit": jetzt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "firmware": firmware,
     }

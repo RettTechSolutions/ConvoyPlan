@@ -1740,8 +1740,26 @@ export interface TrackerDaten {
     aktiv: boolean;
 }
 
+/** Sendetakt der Tracker einer Organisation (GET/PUT /api/org/geraete/takt). */
+export interface TrackerTaktWahl {
+    buendel_s: number;
+    /** Geschätzt je Tracker und Fahrstunde, bei offener Verbindung. */
+    kb_pro_stunde: number;
+    /** Ebenso, wenn jeder Versand neu verbinden muss. */
+    kb_pro_stunde_ohne_keepalive: number;
+}
+
+export interface TrackerTakt {
+    buendel_s: number;
+    standard_s: number;
+    intervall_s: number;
+    wahl: TrackerTaktWahl[];
+}
+
 export const geraeteApi = {
     list: () => api.get<Tracker[]>('/api/org/geraete'),
+    takt: () => api.get<TrackerTakt>('/api/org/geraete/takt'),
+    taktSetzen: (buendel_s: number) => api.put<TrackerTakt>('/api/org/geraete/takt', { buendel_s }),
     create: (daten: TrackerDaten) => api.post<TrackerMitCode>('/api/org/geraete', daten),
     update: (id: string, daten: TrackerDaten) => api.put<Tracker>(`/api/org/geraete/${id}`, daten),
     rotateCode: (id: string) => api.post<TrackerMitCode>(`/api/org/geraete/${id}/code`, {}),
