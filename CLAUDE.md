@@ -534,6 +534,11 @@ schicken wie die Knöpfe, prüft `frontend/e2e/kontextmenue-planung-und-admin.sp
 in der echten App am Körper der abgefangenen Anfrage. Wer einen Eintrag auf eine
 andere Funktion umbiegt, sieht es dort.
 
+Die Bilder im Wiki (`wiki/bilder/kontextmenue-*`) entstehen aus derselben Lage
+(`e2e/kontextmenue-attrappe.ts`) mit `npm run wiki:bilder` in `frontend/` — ein eigener
+Playwright-Lauf mit echten OSM-Kacheln, deshalb mit Netz und nicht in der CI. Wer das
+Menü sichtbar ändert, lässt ihn neu laufen. `sync-wiki.yml` kopiert `wiki/bilder/` mit.
+
 ### API-Docs (Swagger/OpenAPI)
 
 `/docs`, `/redoc` und `/openapi.json` sind in Produktion **standardmäßig deaktiviert**
