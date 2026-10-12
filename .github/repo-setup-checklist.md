@@ -28,6 +28,20 @@ müssen einmalig von einem Repo-Admin ausgeführt werden. Reihenfolge einhalten.
      - `Frontend – E2E (Playwright)`
      - `Docker – Build check`
      - `Security – Dependency Audit`
+     - `Shell – Updater und Entrypoint`
+     - `Region – Wechsel end-to-end (Berlin)`
+     - `Region – Grenzrouting bei zusammengeführten Extracts`
+
+     Bewusst **nicht** Pflicht ist `Security – Container Image Scan (…)`: Er
+     meldet neue CVEs unabhängig vom Diff, und eine frische Lücke in einem
+     Base-Image sperrte sonst jeden PR, bis `.trivyignore` nachgezogen ist.
+     Er läuft trotzdem auf jedem PR und wöchentlich.
+
+     Ein Name hier ist ein String, der wörtlich zum `name:` des Jobs passen
+     muss (Gedankenstrich `–`, nicht `-`). Benennt jemand einen Job um, wartet
+     das Ruleset auf einen Check, der nie kommt, und kein PR ist mehr
+     mergebar. `.github/workflows/tests/test_ruleset_pflichtchecks.sh` hält
+     beides aneinander.
    - **Merge Queue** — Merges laufen seriell durch eine Warteschlange: GitHub
      baut pro Eintrag einen temporären Merge-Branch (PR + aktueller `main`),
      lässt die Required Checks darauf laufen (`merge_group`-Trigger in
