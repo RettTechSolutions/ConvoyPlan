@@ -1285,9 +1285,8 @@
 					<button class="tab" class:active={activeTab === tab} onclick={() => (activeTab = tab as typeof activeTab)}>{label}{#if tab === 'route'}<RouteHinweisMarke hinweise={routeHinweiseJetzt} />{/if}</button>
 				{/each}
 			</div>
-			<!-- Verwaltung tabs -->
+			<!-- Zweite Reiterzeile: Fahrzeuge, Konto, Export -->
 			<div class="tabs tabs-verwaltung">
-				<span class="tabs-section-label">Verwaltung</span>
 				<button class="tab" class:active={activeTab === 'fahrzeuge'} onclick={() => (activeTab = 'fahrzeuge')}>Fahrzeuge</button>
 				<button class="tab" class:active={activeTab === 'konto'} onclick={openKontoTab}>Konto</button>
 				<button class="tab" class:active={activeTab === 'export'} onclick={() => (activeTab = 'export')}>Export</button>
@@ -2341,7 +2340,7 @@
 
 	/* Beide Reiterzeilen müssen in 340 px passen — ein überlaufender Reiter
 	   verschwindet hinter dem unsichtbaren Scrollbalken. Mit Inter gemessen:
-	   Planung 320 px (mit Marke an „Route“), Verwaltung samt Export 332 px. */
+	   Planung 320 px (mit Marke an „Route“), zweite Zeile samt Export 332 px. */
 	.tabs { display: flex; overflow-x: auto; scrollbar-width: none; padding: .25rem .5rem; gap: .25rem; border-bottom: 1px solid var(--border); }
 .tabs::-webkit-scrollbar { display: none; }
 .tab { flex: 0 0 auto; padding: .5rem .6rem; background: none; border: none; color: var(--text-2); font-size: var(--text-sm); cursor: pointer; white-space: nowrap; border-radius: 4px; }
@@ -2349,7 +2348,6 @@
 .tabs-verwaltung { padding: .25rem .5rem; gap: .25rem; border-bottom: 1px solid var(--border); }
 .tabs-verwaltung .tab { font-size: var(--text-sm); }
 .tabs-verwaltung .tab.active { color: var(--text-1); background: var(--surface-2); }
-.tabs-section-label { flex-shrink: 0; font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); padding: 0 .5rem; white-space: nowrap; align-self: center; }
 
 	.tab-content { flex: 1; overflow-y: auto; padding: .75rem 1rem; }
 
