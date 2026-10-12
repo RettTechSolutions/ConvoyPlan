@@ -80,6 +80,26 @@ für dieses Fahrzeug in diesem Konvoi sendet, bis jemand „Tracker wieder nutze
 drückt. Das nimmt die Instanz nicht von selbst zurück, auch nicht nach einem
 Neustart.
 
+### Meldungen über den Tracker, wenn das Telefon kein Netz hat
+
+Die Begleit-App verbindet sich per Bluetooth mit dem Tracker ihres Fahrzeugs. Erreicht das
+Telefon die Instanz nicht, etwa in einer Halle, im Funkloch oder auf einem Diensttelefon ohne
+Daten, gehen Status, Stärke und Betriebsstoff über das Mobilfunkmodem des Trackers hinaus.
+Die App zeigt dann „an den Tracker übergeben“ und später „über den Tracker bestätigt“. Die
+Führung sieht die Meldung wie jede andere, mit Alarm bei technischem Halt und Ausfall.
+
+- Es funktioniert nur im laufenden Konvoi und nur für die Besatzung, die das Fahrzeug in der
+  App gewählt hat. Den Schlüssel dafür gibt die Instanz dem Tracker und dieser einen App;
+  Koppeln oder Knöpfe am Gerät gibt es nicht.
+- Die App muss **einmal** Netz gehabt haben, nachdem sie das Fahrzeug gewählt hat. Ein
+  Telefon, das schon beim Einsteigen kein Netz hat, kann den Tracker nicht nutzen.
+- Wählt eine andere Besatzung das Fahrzeug oder gibt die bisherige es frei, gilt ein neuer
+  Schlüssel. Der alte Weg endet damit, ein Funkloch beendet ihn nicht.
+- Eine Meldung zählt einmal, auch wenn sie über App und Tracker zugleich ankommt. Was länger
+  als 30 Minuten unterwegs war, wird verworfen; die App sagt es.
+- Nötig sind Tracker-Firmware und Begleit-App mit Nahfunk. Ältere Fassungen merken nichts
+  davon.
+
 ## Einrichten
 
 **Org-Admin → Tracker → „+ Neuer Tracker"** (Rolle *Admin*):

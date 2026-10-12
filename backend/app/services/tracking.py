@@ -75,6 +75,15 @@ class TrackingManager:
         self._acks[key] = (now, asyncio.get_running_loop().create_future())
         return None
 
+    def bekannte_quittung(self, key: tuple[str, str]) -> "asyncio.Future | None":
+        """Die Quittung zu einer Kennung, die schon verarbeitet wird oder wurde — ohne zu
+        reservieren. Für ``meldungen``: Eine Meldung, die der Kanal schon hatte, ist nicht
+        veraltet, nur weil sie über den Tracker spät ankommt."""
+        entry = self._acks.get(key)
+        if entry is not None and time.monotonic() - entry[0] <= self._ACK_TTL_S:
+            return entry[1]
+        return None
+
     def settle_ack(self, key: tuple[str, str], ack: dict) -> None:
         entry = self._acks.get(key)
         if entry is not None and not entry[1].done():
