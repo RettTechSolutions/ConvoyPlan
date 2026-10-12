@@ -341,6 +341,9 @@ class TestSchluesselImHallo:
         assert (await hallo(schluessel_kennung=kennung))["schluessel"] is None
         assert (await hallo(schluessel_kennung=""))["schluessel"] == eingeloest["schluessel"]
         assert (await hallo(schluessel_kennung="0123456789abcdef"))["schluessel"] == eingeloest["schluessel"]
+        # Die Kennung des Geräts nur zusammen mit dem Schlüssel.
+        assert (await hallo(schluessel_kennung=""))["geraet_id"] == geraet["id"]
+        assert (await hallo(schluessel_kennung=kennung))["geraet_id"] is None
         # Nie in `positionen`.
         r = await client.post(
             "/api/geraete/positionen", json={"schluessel_kennung": "", "fixes": [_fix(5)]}, headers=kopf

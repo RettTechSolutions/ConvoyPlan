@@ -263,12 +263,15 @@ async def _hallo_verarbeiten(
     if direkt:
         antwort["wurzeln"] = tw.angebot(gemeldet, tw.gewuenscht())
         antwort["schluessel"] = _schluessel_angebot(geraet, daten)
+        # Mit dem Schlüssel die Kennung, die ein Rahmen nennt: Ein Gerät von vor E14 kennt
+        # sie sonst nicht, nur ``einloesen`` lieferte sie.
+        antwort["geraet_id"] = str(geraet.id) if antwort["schluessel"] else None
     else:
         # Über BLE nie: keine Firmware (der Download braucht das Gerätetoken, und das
         # geht nicht durchs Telefon), keine Wurzeln (TLS macht dort die App), und der
         # Schlüssel ginge durch genau die Leitung, die er absichern soll. Dasselbe gilt
         # für den Nahfunk-Zugang: auch er ist Schlüsselmaterial.
-        antwort.update(firmware=None, wurzeln=None, schluessel=None, nahfunk=None)
+        antwort.update(firmware=None, wurzeln=None, schluessel=None, geraet_id=None, nahfunk=None)
     return antwort
 
 

@@ -531,7 +531,8 @@ Rückfall BLE über die Begleit-App. Für die Instanz ist WLAN nur das Feld `net
 Balken), ein unbekannter Weg wird verworfen. Für BLE gibt es den **Geräteschlüssel**
 (`services/tracker_ble.py`, Prüfwerte aus `PROTOKOLL.md` wörtlich in
 `tests/test_tracker_bake.py`): neu bei jedem `einloesen`, sonst nur in einem *direkten*
-`hallo` mit abweichender `schluessel_kennung` — nie ohne das Feld, nie in `positionen`,
+`hallo` mit abweichender `schluessel_kennung`, dann zusammen mit `geraet_id` (ein Gerät von
+vor E14 kennt sie sonst nicht) — nie ohne das Feld, nie in `positionen`,
 **nie über BLE**, denn er sichert genau diese Leitung. Abgelegt verschlüsselt über
 `services/crypto.py` (wie MFA-Geheimnisse; ein Datenbankleck allein gibt ihn nicht her);
 ist er nicht mehr lesbar, gilt er als fehlend und das Gerät bekommt beim nächsten `hallo`
