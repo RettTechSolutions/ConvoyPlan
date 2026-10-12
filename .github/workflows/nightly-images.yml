@@ -139,6 +139,8 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ./backend
+          cache-from: type=registry,ref=ghcr.io/${{ steps.repo.outputs.lowercase }}/backend:nightly
+          cache-to: type=inline
           push: true
           pull: false   # vorab gezogenes Base-Image aus dem lokalen Cache nutzen
           tags: ${{ steps.meta-backend.outputs.tags }}
@@ -152,6 +154,8 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ./frontend
+          cache-from: type=registry,ref=ghcr.io/${{ steps.repo.outputs.lowercase }}/frontend:nightly
+          cache-to: type=inline
           push: true
           pull: false   # vorab gezogenes Base-Image aus dem lokalen Cache nutzen
           tags: ${{ steps.meta-frontend.outputs.tags }}
@@ -265,3 +269,4 @@ jobs:
             echo "Signiere ghcr.io/${REPO_LC}/${name}@${digest}"
             cosign sign --yes "ghcr.io/${REPO_LC}/${name}@${digest}"
           done
+
