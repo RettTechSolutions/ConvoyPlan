@@ -25,8 +25,9 @@
 	import StaerkeForm from '$lib/components/StaerkeForm.svelte';
 	import { orgStore } from '$lib/stores/org';
 	import {
-		formatStaerke, istAus, verbandsStaerke, type Staerke, type StaerkeFelder,
+		formatStaerke, istAus, sollAus, verbandsStaerke, type Staerke, type StaerkeFelder,
 	} from '$lib/tracking/staerke';
+	import { fahrzeugBlase } from '$lib/tracking/fahrzeugblase';
 	import {
 		STATUS_LABELS, STATUS_COLORS, STATUS_ICONS, HALT_LEVEL_LABELS, BREAKDOWN_LEVEL_LABELS,
 		statusColor, statusLabel, levelLabel, type HaltLevel, type BreakdownLevel,
@@ -411,6 +412,24 @@
 	let trackerJetzt = $state(Date.now());
 	let trackerTimer: ReturnType<typeof setInterval> | null = null;
 	const TRACKER_ABFRAGE_MS = 60_000;
+
+	// vehicle id → Zeilen der Kartenblase: dieselben Angaben wie die Fahrzeugzeile.
+	let vehicleInfo = $derived(
+		new Map((convoy?.convoy_vehicles ?? []).map((cv) => {
+			const st = statusOf(cv);
+			const stufe = levelLabel(st, levelOf(cv));
+			const felder = staerkeVon(cv);
+			return [cv.vehicle.id, fahrzeugBlase({
+				name: cv.vehicle.callsign ? cv.vehicle.name : null,
+				status: st,
+				statusText: stufe ? `${statusLabel(st)} · ${stufe}` : statusLabel(st),
+				soll: sollAus(felder),
+				ist: istAus(felder),
+				betriebsstoff: betriebsstoffVon(cv),
+				tracker: trackerZustand.get(cv.vehicle.id) ?? null,
+			}, trackerJetzt)];
+		}))
+	);
 
 	async function trackerLaden() {
 		try {
@@ -1183,6 +1202,7 @@
 			livePositions={$livePositions}
 			vehicleNames={vehicleNames}
 			vehicleColors={vehicleColors}
+			vehicleInfo={vehicleInfo}
 			headingUp={headingUp}
 			focusVehicleId={myVehicleId || null}
 			followVehicleId={followMyVehicle ? myVehicleId : null}

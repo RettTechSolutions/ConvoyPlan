@@ -323,6 +323,14 @@ kompensieren die Kartendrehung und zeigen immer die echte Fahrtrichtung. Im
 kurzen Querformat auf Smartphones rücken die Bedienelemente in eine größere,
 besser greifbare Anordnung.
 
+Ein Klick auf ein Fahrzeug öffnet eine Blase mit dem, was auch in der
+Fahrzeugliste steht: Tempo und Zeitpunkt der letzten Position (und ob sie vom
+Tracker kam), Fahrzeugname, Status, Stärke gegen das Soll, Betriebsstoff und —
+in der Konvoi-Ansicht — Akku und Empfang des Trackers. Was Aufmerksamkeit
+verdient (Halt oder Ausfall, Abweichung vom Soll, knapper Betriebsstoff,
+schwacher Akku), steht hervorgehoben. Die Blase bleibt aktuell, solange sie
+offen ist.
+
 ---
 
 ## Verbindungsüberwachung

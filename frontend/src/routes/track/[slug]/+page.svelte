@@ -10,7 +10,8 @@
 	import StaerkeBadge from '$lib/components/StaerkeBadge.svelte';
 	import { betriebsstoffAus, mitStammdaten, type Betriebsstoff, type BetriebsstoffFelder } from '$lib/tracking/betriebsstoff';
 	import StaerkeForm from '$lib/components/StaerkeForm.svelte';
-	import { type Staerke, type StaerkeFelder } from '$lib/tracking/staerke';
+	import { istAus, sollAus, type Staerke, type StaerkeFelder } from '$lib/tracking/staerke';
+	import { fahrzeugBlase } from '$lib/tracking/fahrzeugblase';
 	import {
 		trackApi, isTrackGate,
 		type TrackPayload, type TrackGate, type TrackPosition, type VehiclePosition,
@@ -121,6 +122,22 @@
 	// vehicle id → status color so the map markers reflect the current status.
 	let vehicleColors = $derived(
 		new Map((data?.vehicles ?? []).map((v) => [v.id, statusColor(statusOf(v))]))
+	);
+
+	// vehicle id → Zeilen der Kartenblase: dieselben Angaben wie die Fahrzeugzeile.
+	let vehicleInfo = $derived(
+		new Map((data?.vehicles ?? []).map((v) => {
+			const st = statusOf(v);
+			const felder = staerkeVon(v);
+			return [v.id, fahrzeugBlase({
+				name: v.callsign ? v.name : null,
+				status: st,
+				statusText: STATUS_LABELS[st] ?? st,
+				soll: sollAus(felder),
+				ist: istAus(felder),
+				betriebsstoff: betriebsstoffVon(v),
+			}, Date.now())];
+		}))
 	);
 
 	// Only offer the schedule tab when at least one waypoint has a planned time.
@@ -905,6 +922,7 @@
 				livePositions={livePositions}
 				vehicleNames={vehicleNames}
 				vehicleColors={vehicleColors}
+				vehicleInfo={vehicleInfo}
 				clickEnabled={isDriver && manualMode && transmitting}
 				onMapClick={handleMapTap}
 			/>
