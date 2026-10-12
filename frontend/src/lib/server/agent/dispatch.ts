@@ -12,11 +12,13 @@
  * Pfade gibt es schlicht nicht. Eine rein interne Instanz muss nichts über
  * sich erzählen.
  */
-import { env } from '$env/dynamic/private';
 import * as docs from './documents';
 import type { AgentContext } from './documents';
 import * as ask from './ask';
 import { PAGES, pageFor } from '$lib/agent/pages';
+
+// Zur Laufzeit gelesen, wie früher über `$env/dynamic/private` (in SvelteKit 3 entfallen).
+const { env } = process;
 
 const BACKEND = 'http://backend:8000';
 

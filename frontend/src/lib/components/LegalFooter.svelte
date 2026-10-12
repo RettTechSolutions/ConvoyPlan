@@ -14,14 +14,14 @@
   namentlich auf der Statusseite selbst.
 -->
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 
 	interface Props {
 		showStatus?: boolean;
 	}
 	let { showStatus = true }: Props = $props();
 
-	const eigeneDatenschutzseite = $derived($page.data.agentDiscovery === true);
+	const eigeneDatenschutzseite = $derived(page.data.agentDiscovery === true);
 </script>
 
 <footer class="legal-footer">

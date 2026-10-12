@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { page } from '$app/stores';
+    import { page } from '$app/state';
     import { authApi } from '$lib/api';
     import { ApiError } from '$lib/api/client';
     import AppLogo from '$lib/components/AppLogo.svelte';
@@ -9,7 +9,7 @@
     let message = $state('');
 
     onMount(async () => {
-        const token = $page.url.searchParams.get('token') ?? '';
+        const token = page.url.searchParams.get('token') ?? '';
         if (!token) {
             state_ = 'failed';
             message = 'Dieser Abmeldelink ist unvollständig.';

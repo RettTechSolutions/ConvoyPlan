@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy, tick, untrack } from 'svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import MapView, { type KartenKontext } from '$lib/components/MapView.svelte';
 	import { kontextmenue, oeffnen as menueOeffnen, kopieren, ortEintraege, koordinatenText, TRENNER, type Eintraege } from '$lib/kontextmenue/menue';
 	import AppLogo from '$lib/components/AppLogo.svelte';
@@ -43,7 +43,7 @@
 	import { buildRoutePoints, computeConvoyProgress, formatDistance, type RoutePoint } from '$lib/tracking/progress';
 	import { notifySignal } from '$lib/tracking/notify';
 
-	const convoyId = $page.params.convoy_id!;
+	const convoyId = page.params.convoy_id!;
 
 	// Radius (m) around the destination within which a vehicle auto-switches to "Angekommen".
 	const ARRIVAL_RADIUS_M = 150;

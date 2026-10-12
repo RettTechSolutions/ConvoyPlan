@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { auth } from '$lib/stores/auth';
 	import { purgeLegacyTokens } from '$lib/api/client';
 	import { brandingStore, setGlobalBranding } from '$lib/stores/branding';
@@ -90,7 +90,7 @@
 			const resp = await fetch('/api/setup/status');
 			if (resp.ok) {
 				const data = await resp.json();
-				if (data.setup_required && !$page.url.pathname.startsWith('/setup')) {
+				if (data.setup_required && !page.url.pathname.startsWith('/setup')) {
 					goto('/setup');
 					return;
 				}
@@ -109,7 +109,7 @@
 		// Befund — wer hier schon umleitet, wirft jeden Angemeldeten beim
 		// Laden auf die Anmeldemaske.
 		if (!$auth.ready) return;
-		const isPublic = isPublicPath($page.url.pathname);
+		const isPublic = isPublicPath(page.url.pathname);
 		if (!isPublic && !$auth.is_authenticated) {
 			goto('/admin');
 			return;
@@ -134,7 +134,7 @@
 		Tracking-Manifest via TrackingPwaHead eingebunden, daher hier ausschließen, damit
 		nicht zwei Manifeste gleichzeitig aktiv sind.
 	-->
-	{#if !$page.url.pathname.startsWith('/track')}
+	{#if !page.url.pathname.startsWith('/track')}
 		<link rel="manifest" href="/app.webmanifest" />
 		<meta name="apple-mobile-web-app-capable" content="yes" />
 		<meta name="mobile-web-app-capable" content="yes" />
@@ -154,7 +154,7 @@
 			<a href="/admin">Lizenz aktivieren →</a>
 		{/if}
 	</div>
-{:else if $auth.is_superadmin && !$page.url.pathname.startsWith('/track')}
+{:else if $auth.is_superadmin && !page.url.pathname.startsWith('/track')}
 	<!-- Nahender Ablauf des Schlüssels: nur für Superadmins, die ihn erneuern
 	     können. Auf den Fahrer-Seiten (/track) stört er nur. -->
 	<LizenzAblaufHinweis />
@@ -168,7 +168,7 @@
 
 <!-- Auf /track-Seiten greift die eigenständige Tracking-App-Installation
      (eigenes Manifest + eigene Install-CTA), daher hier kein generischer Banner. -->
-{#if !$page.url.pathname.startsWith('/track')}
+{#if !page.url.pathname.startsWith('/track')}
 	<InstallPrompt />
 {/if}
 

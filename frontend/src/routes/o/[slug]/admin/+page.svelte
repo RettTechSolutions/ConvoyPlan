@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount } from 'svelte';
     import { goto } from '$app/navigation';
-    import { page } from '$app/stores';
+    import { page } from '$app/state';
     import LeitstelleAreaPicker, { type AreaSelection } from '$lib/components/LeitstelleAreaPicker.svelte';
     import LeitstellenOverviewMap from '$lib/components/LeitstellenOverviewMap.svelte';
     import LeitstellenTable from '$lib/components/LeitstellenTable.svelte';
@@ -15,7 +15,7 @@
     import { orgBrandingApi, orgMcpApi, type BrandingUpdate, type OrgMcpPolicy, type OrgMcpConnection } from '$lib/api';
 
     // ── Slug ─────────────────────────────────────────────────────────────────
-    const slug = $derived(($page.params as Record<string, string>).slug);
+    const slug = $derived((page.params as Record<string, string>).slug);
 
     // ── Tab ──────────────────────────────────────────────────────────────────
     let activeTab = $state<'mitglieder' | 'leitstellen' | 'gps' | 'tracker' | 'aktion' | 'branding' | 'ki' | 'daten'>('mitglieder');
@@ -39,7 +39,7 @@
 
     // ── Auth guard ───────────────────────────────────────────────────────────
     onMount(async () => {
-        const s = ($page.params as Record<string, string>).slug;
+        const s = (page.params as Record<string, string>).slug;
         if ($orgStore?.user_role !== 'admin') {
             goto(`/o/${s}/plan`);
             return;

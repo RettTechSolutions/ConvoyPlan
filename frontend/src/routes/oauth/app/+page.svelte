@@ -14,14 +14,14 @@
      *   die App leiten, die sich das Schema genommen hat.
      */
     import { goto } from '$app/navigation';
-    import { page } from '$app/stores';
+    import { page } from '$app/state';
     import { onMount } from 'svelte';
     import { appOAuthApi, type AppAnfrage } from '$lib/api';
     import { ApiError } from '$lib/api/client';
     import AppLogo from '$lib/components/AppLogo.svelte';
     import LegalFooter from '$lib/components/LegalFooter.svelte';
 
-    const ticket = $derived($page.url.searchParams.get('request') ?? '');
+    const ticket = $derived(page.url.searchParams.get('request') ?? '');
 
     let info = $state<AppAnfrage | null>(null);
     let bestaetigen = $state<{ email: string; org_name: string } | null>(null);
@@ -30,7 +30,7 @@
     let arbeitet = $state(true);
 
     function zurAnmeldung(slug: string) {
-        const hier = $page.url.pathname + $page.url.search;
+        const hier = page.url.pathname + page.url.search;
         goto(`/o/${encodeURIComponent(slug)}/login?redirect=${encodeURIComponent(hier)}`);
     }
 
