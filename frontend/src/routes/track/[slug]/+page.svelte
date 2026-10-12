@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, untrack } from 'svelte';
 	import { page } from '$app/stores';
 	import MapView from '$lib/components/MapView.svelte';
 	import AppLogo from '$lib/components/AppLogo.svelte';
@@ -14,6 +14,7 @@
 	import { fahrzeugBlase } from '$lib/tracking/fahrzeugblase';
 	import { naechsterHalt, routenHalte } from '$lib/tracking/naechsterhalt';
 	import { streckenstaende, vordermann } from '$lib/tracking/vordermann';
+	import { funkstille, zuletztGehoert, type Gehoert } from '$lib/tracking/funkstille';
 	import {
 		trackApi, isTrackGate,
 		type TrackPayload, type TrackGate, type TrackPosition, type VehiclePosition,
@@ -138,6 +139,56 @@
 	);
 	let blasenStaende = $derived(streckenstaende(blasenLinie, livePositions));
 
+	// --- Funkstille ------------------------------------------------------------
+	// Wie in der Konvoi-Ansicht (`funkstille.ts`): ein Fahrzeug, das fuhr und
+	// seit drei Minuten keine Position schickt. Auch hier, weil die Besatzung
+	// dahinter als Erste merkt, wenn der Vordermann fehlt. Das eigene Fahrzeug
+	// zählt nicht — dessen Ausfall zeigt die Verbindungsanzeige.
+	let stilleUhr = $state(Date.now());
+	let stilleTakt: ReturnType<typeof setInterval> | null = null;
+	let gehoert = new Map<string, Gehoert>();
+	let stillen = $state<{ id: string; seit: number; kmh: number }[]>([]);
+	let stilleAusgeblendet = $state<ReadonlySet<string>>(new Set());
+	// Der öffentliche Kanal beantwortet keine Pings (`socket.ts`): Ob er lebt
+	// oder nur alle schweigen, sieht man ihm erst nach drei Minuten an — genau
+	// der Frist hier. Verbunden heißt deshalb: offen (oder „still") und in der
+	// letzten Minute irgendeine Nachricht, z. B. die Position eines anderen
+	// Fahrzeugs. Schweigt der ganze Kanal, gibt es keine Meldung; dann lässt
+	// sich die eigene Funkstille nicht von der der anderen trennen.
+	const LEBENSZEICHEN_MS = 60_000;
+	let letzteNachricht = 0;
+	let verbundenSeit = $state<number | null>(null);
+	$effect(() => {
+		const offen = wsState === 'open' || wsState === 'stale';
+		untrack(() => {
+			if (offen && verbundenSeit === null) verbundenSeit = Date.now();
+			else if (!offen) verbundenSeit = null;
+		});
+	});
+	let statusVon = $derived(new Map((data?.vehicles ?? []).map((v) => [v.id, statusOf(v)])));
+	$effect(() => {
+		void stilleUhr; // der Takt: bei Funkstille trifft ja gerade nichts ein
+		const jetzt = Date.now();
+		gehoert = zuletztGehoert(gehoert, livePositions, jetzt);
+		const status = statusVon;
+		const eigenes = isDriver ? myVehicleId : '';
+		const lebt = jetzt - letzteNachricht < LEBENSZEICHEN_MS;
+		const neu = funkstille(gehoert, livePositions, (id) => status.get(id) ?? '', jetzt, lebt ? verbundenSeit : null)
+			.filter((f) => f.id !== eigenes);
+		untrack(() => {
+			const vorher = new Set(stillen.map((f) => f.id));
+			if (neu.some((f) => !vorher.has(f.id) && !stilleAusgeblendet.has(f.id))) notifySignal(false);
+			const bleiben = [...stilleAusgeblendet].filter((id) => neu.some((f) => f.id === id));
+			if (bleiben.length !== stilleAusgeblendet.size) stilleAusgeblendet = new Set(bleiben);
+			if (neu.map((f) => `${f.id}@${f.seit}`).join() !== stillen.map((f) => `${f.id}@${f.seit}`).join()) stillen = neu;
+		});
+	});
+	let sichtbareStillen = $derived(stillen.filter((f) => !stilleAusgeblendet.has(f.id)));
+	let stilleSeit = $derived(new Map(stillen.map((f) => [f.id, f.seit])));
+	function minutenSeit(t: number): number {
+		return Math.max(1, Math.floor((stilleUhr - t) / 60_000));
+	}
+
 	// vehicle id → Zeilen der Kartenblase: dieselben Angaben wie die Fahrzeugzeile.
 	let vehicleInfo = $derived(
 		new Map((data?.vehicles ?? []).map((v) => {
@@ -153,6 +204,7 @@
 				betriebsstoff: betriebsstoffVon(v),
 				naechster: pos ? naechsterHalt(blasenLinie, blasenHalte, pos, data?.start_time ?? null, Date.now()) : null,
 				vordermann: vordermann(marschfolge, blasenStaende, v.id),
+				stilleSeitMin: stilleSeit.has(v.id) ? minutenSeit(stilleSeit.get(v.id)!) : null,
 			}, Date.now())];
 		}))
 	);
@@ -280,6 +332,7 @@
 				error = 'Dieser Tracking-Link ist nicht mehr gültig.';
 			},
 			onMessage: (raw) => {
+				letzteNachricht = Date.now();
 				if (belegung.handle(raw)) return;
 				// Ein Tracker sendet für mein Fahrzeug: Position verworfen, Meldungen
 				// bleiben möglich. Nur der Absender bekommt das.
@@ -600,11 +653,13 @@
 		window.addEventListener('pageshow', belegenBeimZurueckkehren);
 		document.addEventListener('visibilitychange', handleVisible);
 		void load();
+		stilleTakt = setInterval(() => (stilleUhr = Date.now()), 5_000);
 	});
 	onDestroy(() => {
 		if (geoWatcher !== null) navigator.geolocation.clearWatch(geoWatcher);
 		releaseWakeLock();
 		belegung.stop();
+		if (stilleTakt) clearInterval(stilleTakt);
 		if (typeof window !== 'undefined') {
 			window.removeEventListener('online', wakeSocket);
 			window.removeEventListener('pagehide', freigebenBeimVerlassen);
@@ -916,6 +971,19 @@
 					</div>
 				</div>
 			{/if}
+			{#if sichtbareStillen.length > 0}
+				{@const f = sichtbareStillen[0]}
+				<div class="stille-banner" data-testid="funkstille-banner" role="alert">
+					<span class="pb-icon">📵</span>
+					<div class="pb-text">
+						<strong>Funkstille: {vehicleNames.get(f.id) ?? 'Fahrzeug'}</strong>
+						· keine Position, zuletzt {Math.round(f.kmh)} km/h
+						<div class="pb-note">seit {minutenSeit(f.seit)} min{#if sichtbareStillen.length > 1} · {sichtbareStillen.length - 1} weitere{/if}</div>
+					</div>
+					<button class="pb-btn" onclick={() => mapView?.showVehicle(f.id)}>Letzte Position</button>
+					<button class="pb-btn dim" onclick={() => (stilleAusgeblendet = new Set([...stilleAusgeblendet, f.id]))} aria-label="Ausblenden">✕</button>
+				</div>
+			{/if}
 			<!-- Route-point announcement (Leitstellenwechsel / Wegpunkt erreicht) -->
 			{#if pointEvent}
 				<div class="point-banner" class:done={pointEventDone}>
@@ -1084,6 +1152,10 @@
 	/* Route-point announcement banner (Leitstellenwechsel / Wegpunkt) */
 	.point-banner { display: flex; align-items: center; gap: .6rem; max-width: min(640px, calc(100% - 1.5rem)); padding: .6rem .8rem; border-radius: 12px; background: #3498db; color: #fff; box-shadow: 0 4px 16px rgba(0,0,0,.4); animation: banner-in .25s ease; }
 	.point-banner.done { background: #27ae60; }
+	/* Funkstille: dieselbe Farbe wie in der Konvoi-Ansicht */
+	.stille-banner { display: flex; align-items: center; gap: .6rem; max-width: min(640px, calc(100% - 1.5rem)); padding: .6rem .8rem; border-radius: 12px; background: #8e44ad; color: #fff; box-shadow: 0 4px 16px rgba(0,0,0,.4); animation: banner-in .25s ease; }
+	.stille-banner .pb-btn { background: rgba(255,255,255,.25); }
+	.stille-banner .pb-btn.dim { background: transparent; }
 	.pb-icon { font-size: 1.3rem; flex-shrink: 0; }
 	.pb-text { font-size: var(--text-sm); min-width: 0; line-height: 1.3; }
 	.pb-note { font-size: var(--text-xs); opacity: .95; }
