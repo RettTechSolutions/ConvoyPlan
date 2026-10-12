@@ -325,6 +325,65 @@ kompensieren die Kartendrehung und zeigen immer die echte Fahrtrichtung. Im
 kurzen Querformat auf Smartphones rücken die Bedienelemente in eine größere,
 besser greifbare Anordnung.
 
+Ein Klick auf ein Fahrzeug öffnet eine Blase mit dem, was auch in der
+Fahrzeugliste steht: Tempo und Zeitpunkt der letzten Position (und ob sie vom
+Tracker kam), Fahrzeugname, Status (bei Halt oder Ausfall mit der Bemerkung — nicht im
+Fahrer-Link), Stärke gegen das Soll, Betriebsstoff und —
+in der Konvoi-Ansicht — Akku und Empfang des Trackers.
+
+Dazu der **nächste Wegpunkt** mit Entfernung und erwarteter Ankunft, etwa
+„Nächster: Rastplatz in 8,3 km · an ca. 14:52 (+5 min)“. Die Ankunft kommt aus
+dem Zeitplan, nicht aus dem momentanen Tempo — ein Fahrzeug an der Ampel
+„erreicht“ den Wegpunkt sonst nie: Die geplante Fahrzeit vom letzten Wegpunkt
+(oder vom Abmarsch) bis zum nächsten wird nach der Strecke geteilt, und was
+davon noch vor dem Fahrzeug liegt, kommt auf die aktuelle Uhrzeit. Die
+Abweichung vom Plan steht ab drei Minuten dabei, eine Verspätung hervorgehoben.
+Ohne geplante Zeiten gibt es nur die Entfernung, und ein Fahrzeug, das mehr als
+einen Kilometer neben der Route steht, bekommt keine Angabe. Im Fahrer-Link ist
+die geplante Ankunft am Ziel nicht bekannt; dort zeigt die letzte Etappe nur
+die Entfernung.
+
+Außerdem der **Abstand zum Vordermann**, etwa „Vordermann Akkon 10/1: 350 m“.
+Vordermann ist das Fahrzeug davor in der Marschfolge; hat es kein Gerät, das
+nächste davor mit Position. Gemessen wird entlang der Route. Weil die beiden
+Positionen selten gleich alt sind, wird die ältere mit ihrem Tempo
+fortgeschrieben; liegen sie mehr als eine Minute auseinander, steht statt einer
+Zahl „Positionen nicht gleichzeitig“. Ist das Fahrzeug am Vordermann vorbei,
+steht „… dahinter“. Ab **1 km Abstand** steht „– Abriss“ dabei, hervorgehoben.
+Gegen die Sollabstände wird nicht gewarnt: Sie hängen an der Straßenklasse und
+liegen in der Größenordnung der GPS-Genauigkeit. Ein überholter Vordermann ist
+kein Abriss.
+
+Bleibt der Abstand **eine Minute lang** über 1 km, erscheint in der
+Konvoi-Ansicht ein orangefarbenes **Abriss-Banner** über der Karte, mit Ton:
+„Abriss: Akkon 14/1 · 1,7 km hinter Akkon 10/1 — seit 1 min“. Die Minute
+verhindert, dass jede Ampel, die den Verband für einen Umlauf trennt, Alarm
+schlägt; fällt der Abstand zwischendurch unter 1 km, beginnt sie von vorn,
+ebenso, wenn die Positionen nicht gleichzeitig genug für eine Zahl sind.
+**Zeigen** fliegt zum Fahrzeug und öffnet seine Blase, **✕** blendet diesen
+Abriss auf diesem Gerät aus, bis die Lücke geschlossen ist. Schließt der
+Verband auf, verschwindet das Banner von selbst. Ein Technischer Halt oder
+Ausfall hat Vorrang. Im Fahrer-Link gibt es das Banner nicht.
+
+Ein violettes **Funkstille-Banner** erscheint, wenn ein Fahrzeug **fuhr** und
+seit **drei Minuten** keine Position mehr geschickt hat: „Funkstille: Akkon 14/1
+· keine Position, zuletzt 60 km/h — seit 3 min“. Gewarnt wird nur, wenn das
+Fahrzeug bei seiner letzten Position mindestens 5 km/h fuhr. Ein Telefon meldet
+nur, wenn es sich bewegt, und ein Tracker schläft nach fünf Minuten Stand; ein
+Fahrzeug am Rastplatz schweigt also zu Recht. Wer fährt, liefert dagegen
+laufend Positionen — bleiben die aus, ist das Gerät weg (Funkloch, Akku,
+Absturz). Ohne Tempoangabe (Handeingabe) und bei angekommenen Fahrzeugen gibt
+es keine Warnung. In der Blase steht dann unter dem „Stand“ „Funkstille: keine
+Position seit … min“. **Letzte Position** fliegt dorthin, **✕** blendet die
+Meldung aus, bis wieder eine Position kommt. Gemessen wird ab dem Eintreffen
+der Position beim Betrachter, damit eine falsch gehende Uhr am Führungsrechner
+keine Alarme auslöst.
+
+Was Aufmerksamkeit
+verdient (Halt oder Ausfall, Abweichung vom Soll, knapper Betriebsstoff,
+schwacher Akku), steht hervorgehoben. Die Blase bleibt aktuell, solange sie
+offen ist.
+
 ---
 
 ## Verbindungsüberwachung

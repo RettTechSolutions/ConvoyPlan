@@ -22,6 +22,7 @@
 	import { konvoiAusschnitt } from '$lib/map/konvoiAusschnitt';
 	import type { Waypoint, VehiclePosition } from '$lib/api';
 	import type { Geometry, FeatureCollection } from 'geojson';
+	import { positionsZeile, type BlasenZeile } from '$lib/tracking/fahrzeugblase';
 
 	interface Props {
 		startPoint?: { lat: number; lon: number } | null;
@@ -48,6 +49,8 @@
 		vehicleColors?: Map<string, string>;
 		/** Heading-up: rotate the map so the followed vehicle's heading points up. */
 		headingUp?: boolean;
+		/** Optional vehicle id → Zeilen für die Blase (Status, Stärke, …), siehe `fahrzeugblase.ts`. */
+		vehicleInfo?: Map<string, BlasenZeile[]>;
 		/**
 		 * Rechtsklick (bzw. langes Drücken) auf Karte oder Marker. Ohne Angabe
 		 * bleibt es beim Verhalten des Browsers.
@@ -72,6 +75,7 @@
 		vehicleNames = new Map(),
 		vehicleColors = new Map(),
 		headingUp = false,
+		vehicleInfo = new Map(),
 		onKontextmenue,
 	}: Props = $props();
 
@@ -96,6 +100,8 @@
 		heading: number;
 		label: string | undefined;
 		color: string;
+		/** Inhalt der Blase — bleibt dasselbe Element und wird bei jeder Änderung neu gefüllt. */
+		popup: HTMLDivElement;
 	}
 	let trackingMarkers = new Map<string, LiveMarker>();
 
@@ -300,6 +306,25 @@
 	}
 
 	/**
+	 * Blase eines Live-Fahrzeugs. Neu gefüllt bei jeder Position und jeder
+	 * Änderung der Angaben — vorher entstand sie einmal mit der Marke, und das
+	 * Tempo darin blieb stehen, während das Fahrzeug weiterfuhr.
+	 */
+	function fuelleFahrzeugBlase(node: HTMLDivElement, title: string, pos: VehiclePosition, zeilen: BlasenZeile[]) {
+		node.replaceChildren();
+		node.className = 'fz-blase';
+		const strong = document.createElement('strong');
+		strong.textContent = title;
+		node.appendChild(strong);
+		for (const z of [{ text: positionsZeile(pos) }, ...zeilen] as BlasenZeile[]) {
+			const div = document.createElement('div');
+			div.textContent = z.text;
+			if (z.warnung) div.className = 'warnung';
+			node.appendChild(div);
+		}
+	}
+
+	/**
 	 * Rechtsklick auf einen Marker: eigenes Menü statt dem der Karte. Das
 	 * Ereignis endet hier, sonst öffnete MapLibre danach das Kartenmenü.
 	 */
@@ -346,7 +371,8 @@
 			el.style.cssText = `width:18px;height:18px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.4);cursor:pointer`;
 		}
 		if (label) el.appendChild(labelEl(label));
-		const lm: LiveMarker = { marker: new maplibregl.Marker({ element: el }), arrow, svg, hasHeading, heading, label, color };
+		const popup = document.createElement('div');
+		const lm: LiveMarker = { marker: new maplibregl.Marker({ element: el }), arrow, svg, hasHeading, heading, label, color, popup };
 		applyArrowRotation(lm);
 		return lm;
 	}
@@ -405,6 +431,13 @@
 		const ausschnitt = konvoiAusschnitt(livePositions.values());
 		if (!map || !ausschnitt) return;
 		map.fitBounds(ausschnitt, { padding: 80, maxZoom: FOLLOW_ZOOM, bearing: 0, pitch: 0, duration: 800 });
+	}
+
+	/** Wie `zeigeFahrzeug`, dazu die Blase öffnen (z. B. aus dem Abriss-Banner). */
+	export function showVehicle(vehicleId: string) {
+		if (!zeigeFahrzeug(vehicleId)) return;
+		const marker = trackingMarkers.get(vehicleId)?.marker;
+		if (marker && !marker.getPopup()?.isOpen()) marker.togglePopup();
 	}
 
 	/** Reset the map orientation to north-up (and level). */
@@ -483,29 +516,28 @@
 			// recolor it and update the heading rotation. Rebuild when the kind flips
 			// (a dot gains a heading) or the label arrives (the convoy names often load
 			// after the first position on a fresh page load / reconnect).
-			if (existing && existing.hasHeading === hasHeading && existing.label === label) {
-				existing.marker.setLngLat([pos.lon, pos.lat]);
-				if (existing.color !== color) {
-					existing.color = color;
-					if (existing.svg) existing.svg.setAttribute('fill', color);
-					else existing.marker.getElement().style.background = color;
+			let lm = existing;
+			if (lm && lm.hasHeading === hasHeading && lm.label === label) {
+				lm.marker.setLngLat([pos.lon, pos.lat]);
+				if (lm.color !== color) {
+					lm.color = color;
+					if (lm.svg) lm.svg.setAttribute('fill', color);
+					else lm.marker.getElement().style.background = color;
 				}
 				if (hasHeading) {
-					existing.heading = pos.heading ?? existing.heading;
-					applyArrowRotation(existing);
+					lm.heading = pos.heading ?? lm.heading;
+					applyArrowRotation(lm);
 				}
 			} else {
-	      existing?.marker.remove();
-	      const lm = makeLiveMarker(pos, label, color);
-	      markerKontext(lm.marker, () => ({ art: 'fahrzeug', vehicleId }));
-	      lm.marker
-		      .setLngLat([pos.lon, pos.lat])
-		      .setPopup(new maplibregl.Popup().setDOMContent(
-			      popupNode(label ?? `${vehicleId.slice(0, 8)}…`, `${pos.speed_kmh?.toFixed(0) ?? '–'} km/h`)
-          ))
-		      .addTo(map);
-	      trackingMarkers.set(vehicleId, lm);
-      }
+				existing?.marker.remove();
+				lm = makeLiveMarker(pos, label, color);
+				markerKontext(lm.marker, () => ({ art: 'fahrzeug', vehicleId }));
+				lm.marker
+					.setLngLat([pos.lon, pos.lat])
+					.setPopup(new maplibregl.Popup({ offset: 14, maxWidth: '280px' }).setDOMContent(lm.popup))
+					.addTo(map);
+				trackingMarkers.set(vehicleId, lm);
+			}
 		});
 		// Remove stale markers
 		trackingMarkers.forEach((lm, id) => {
@@ -530,6 +562,18 @@
 		} else {
 			following = null;
 		}
+	});
+
+	// Blaseninhalt — eigener Effekt, damit eine geänderte Angabe (Tracker-Abfrage
+	// jede Minute, Stärkemeldung) nicht auch das Nachführen der Karte auslöst.
+	// Läuft nach dem Effekt oben, die Marken gibt es also schon.
+	$effect(() => {
+		livePositions.forEach((pos, vehicleId) => {
+			const lm = trackingMarkers.get(vehicleId);
+			if (!lm) return;
+			const title = vehicleNames.get(vehicleId) ?? `${vehicleId.slice(0, 8)}…`;
+			fuelleFahrzeugBlase(lm.popup, title, pos, vehicleInfo.get(vehicleId) ?? []);
+		});
 	});
 
 	// Leaving heading-up mode snaps the map back to north so it isn't left tilted.
@@ -582,4 +626,8 @@
 
 <style>
 	.map { width: 100%; height: 100%; }
+	/* Die Blase hängt maplibre an den Kartencontainer, außerhalb dieser Komponente. */
+	.map :global(.fz-blase) { font: 13px/1.45 system-ui, sans-serif; color: #1f2d3a; }
+	.map :global(.fz-blase strong) { display: block; margin-bottom: .15rem; padding-right: 1rem; }
+	.map :global(.fz-blase .warnung) { color: #b9770e; font-weight: 600; }
 </style>

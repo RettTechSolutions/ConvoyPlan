@@ -238,6 +238,10 @@ export async function mockOrgPortal(
 		betriebsstoffMeldungen?: BetriebsstoffMeldung[];
 		/** Akku und Empfang der Tracker (`GET …/tracker`); ohne Angabe keiner. */
 		tracker?: object[];
+		/** Die berechnete Route (`GET …/route`); ohne Angabe keine. */
+		route?: object;
+		/** Wegpunkte des Marschverbands; ohne Angabe keine. */
+		wegpunkte?: object[];
 	},
 ): Promise<StaerkeMeldung[]> {
 	// Was an `PATCH …/staerke` hinausging — die Liste wächst im Test mit.
@@ -276,7 +280,7 @@ export async function mockOrgPortal(
 			return;
 		}
 		const pfad = new URL(route.request().url()).pathname;
-		if (pfad.endsWith('/route')) return void route.fulfill({ json: null });
+		if (pfad.endsWith('/route')) return void route.fulfill({ json: opts.route ?? null });
 		if (pfad.endsWith('/positions')) return void route.fulfill({ json: opts.positionen ?? [] });
 		if (pfad.endsWith('/tracker')) return void route.fulfill({ json: opts.tracker ?? [] });
 		if (pfad.endsWith('/betriebsstoff')) {
@@ -292,7 +296,7 @@ export async function mockOrgPortal(
 			const gesamt = (werte.fuehrer ?? 0) + (werte.unterfuehrer ?? 0) + (werte.mannschaften ?? 0);
 			return void route.fulfill({ json: { status: 'ok', gesamt } });
 		}
-		route.fulfill({ json: convoyPayload(opts.convoyId, opts.fahrzeuge) });
+		route.fulfill({ json: { ...convoyPayload(opts.convoyId, opts.fahrzeuge), waypoints: opts.wegpunkte ?? [] } });
 	});
 
 	return staerkeMeldungen;

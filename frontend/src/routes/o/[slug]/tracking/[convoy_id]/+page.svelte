@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy, tick } from 'svelte';
+	import { onMount, onDestroy, tick, untrack } from 'svelte';
 	import { page } from '$app/stores';
 	import MapView, { type KartenKontext } from '$lib/components/MapView.svelte';
 	import { kontextmenue, oeffnen as menueOeffnen, kopieren, ortEintraege, koordinatenText, TRENNER, type Eintraege } from '$lib/kontextmenue/menue';
@@ -26,8 +26,14 @@
 	import StaerkeForm from '$lib/components/StaerkeForm.svelte';
 	import { orgStore } from '$lib/stores/org';
 	import {
-		formatStaerke, istAus, verbandsStaerke, type Staerke, type StaerkeFelder,
+		formatStaerke, istAus, sollAus, verbandsStaerke, type Staerke, type StaerkeFelder,
 	} from '$lib/tracking/staerke';
+	import { fahrzeugBlase } from '$lib/tracking/fahrzeugblase';
+	import { naechsterHalt, routenHalte } from '$lib/tracking/naechsterhalt';
+	import {
+		abrisse, abrissSeit, streckenstaende, vordermann, type Vordermann,
+	} from '$lib/tracking/vordermann';
+	import { funkstille, zuletztGehoert, type Gehoert } from '$lib/tracking/funkstille';
 	import {
 		STATUS_LABELS, STATUS_COLORS, STATUS_ICONS, HALT_LEVEL_LABELS, BREAKDOWN_LEVEL_LABELS,
 		statusColor, statusLabel, levelLabel, type HaltLevel, type BreakdownLevel,
@@ -415,6 +421,90 @@
 	let trackerTimer: ReturnType<typeof setInterval> | null = null;
 	const TRACKER_ABFRAGE_MS = 15_000;
 
+	// Wegpunkte entlang der Route — einmal je Route, nicht je Position.
+	let blasenLinie = $derived(routeCoords(route?.geojson));
+	let blasenHalte = $derived(routenHalte(blasenLinie, convoy?.waypoints ?? [], route?.planned_arrival ?? null));
+
+	let marschfolge = $derived(
+		[...(convoy?.convoy_vehicles ?? [])].sort((a, b) => a.position - b.position)
+			.map((cv) => ({ id: cv.vehicle.id, name: cv.vehicle.callsign || cv.vehicle.name }))
+	);
+	let blasenStaende = $derived(streckenstaende(blasenLinie, $livePositions));
+	let vordermaenner = $derived(
+		new Map<string, Vordermann | null>(marschfolge.map((f) => [f.id, vordermann(marschfolge, blasenStaende, f.id)]))
+	);
+
+	// --- Verbandsmeldungen: Abriss und Funkstille ---------------------------
+	// Ein Banner, wenn ein Fahrzeug eine Minute lang mehr als 1 km hinter seinem
+	// Vordermann liegt (`vordermann.ts`) oder fuhr und seit drei Minuten keine
+	// Position mehr schickt (`funkstille.ts`). Der Takt sorgt dafür, dass beides
+	// auch kommt, wenn keine neue Position eintrifft — bei Funkstille ist das
+	// der Normalfall. Ausblenden gilt für diese Meldung auf diesem Gerät; endet
+	// sie und kommt neu, erscheint sie wieder.
+	type Meldung = { art: 'abriss' | 'funkstille'; id: string; seit: number; kmh?: number };
+	const meldungsKey = (m: Pick<Meldung, 'art' | 'id'>) => `${m.art}:${m.id}`;
+	let meldungsUhr = $state(Date.now());
+	let meldungsTakt: ReturnType<typeof setInterval> | null = null;
+	let abrissSeitMap = new Map<string, number>();
+	let gehoert = new Map<string, Gehoert>();
+	let meldungen = $state<Meldung[]>([]);
+	let ausgeblendet = $state<ReadonlySet<string>>(new Set());
+	let statusVon = $derived(new Map((convoy?.convoy_vehicles ?? []).map((cv) => [cv.vehicle.id, statusOf(cv)])));
+	$effect(() => {
+		void meldungsUhr;
+		const jetzt = Date.now();
+		abrissSeitMap = abrissSeit(abrissSeitMap, vordermaenner, jetzt);
+		gehoert = zuletztGehoert(gehoert, $livePositions, jetzt);
+		const status = statusVon;
+		const neu: Meldung[] = [
+			...abrisse(abrissSeitMap, jetzt).map((id) => ({ art: 'abriss' as const, id, seit: abrissSeitMap.get(id)! })),
+			...funkstille(gehoert, $livePositions, (id) => status.get(id) ?? '', jetzt)
+				.map((f) => ({ art: 'funkstille' as const, id: f.id, seit: f.seit, kmh: f.kmh })),
+		].sort((x, y) => x.seit - y.seit);
+		untrack(() => {
+			const vorher = new Set(meldungen.map(meldungsKey));
+			const jetztKeys = new Set(neu.map(meldungsKey));
+			if ([...jetztKeys].some((k) => !vorher.has(k) && !ausgeblendet.has(k))) notifySignal(false);
+			// Ausgeblendet bleibt nur, was noch andauert. Ein Abriss gilt schon ab
+			// dem ersten Überschreiten als andauernd, nicht erst nach der Minute.
+			const bleiben = [...ausgeblendet].filter((k) =>
+				jetztKeys.has(k) || (k.startsWith('abriss:') && abrissSeitMap.has(k.slice(7))));
+			if (bleiben.length !== ausgeblendet.size) ausgeblendet = new Set(bleiben);
+			if ([...jetztKeys].join() !== [...vorher].join() || neu.some((m, i) => m.seit !== meldungen[i]?.seit)) meldungen = neu;
+		});
+	});
+	let sichtbareMeldungen = $derived(meldungen.filter((m) => !ausgeblendet.has(meldungsKey(m))));
+	let stilleSeit = $derived(new Map(meldungen.filter((m) => m.art === 'funkstille').map((m) => [m.id, m.seit])));
+	function minutenSeit(t: number): number {
+		return Math.max(1, Math.floor((meldungsUhr - t) / 60_000));
+	}
+
+	// vehicle id → Zeilen der Kartenblase: dieselben Angaben wie die Fahrzeugzeile.
+	let vehicleInfo = $derived(
+		new Map((convoy?.convoy_vehicles ?? []).map((cv) => {
+			const st = statusOf(cv);
+			const stufe = levelLabel(st, levelOf(cv));
+			const felder = staerkeVon(cv);
+			// Ein Live-Status ersetzt auch die Bemerkung — eine fehlende inklusive.
+			const live = $vehicleStatuses.get(cv.vehicle.id);
+			const pos = $livePositions.get(cv.vehicle.id);
+			const abmarsch = route?.planned_departure ?? convoy?.start_time ?? null;
+			return [cv.vehicle.id, fahrzeugBlase({
+				name: cv.vehicle.callsign ? cv.vehicle.name : null,
+				status: st,
+				statusText: stufe ? `${statusLabel(st)} · ${stufe}` : statusLabel(st),
+				bemerkung: live ? live.note : cv.status_note,
+				soll: sollAus(felder),
+				ist: istAus(felder),
+				betriebsstoff: betriebsstoffVon(cv),
+				tracker: trackerZustand.get(cv.vehicle.id) ?? null,
+				naechster: pos ? naechsterHalt(blasenLinie, blasenHalte, pos, abmarsch, Date.now()) : null,
+				vordermann: vordermaenner.get(cv.vehicle.id) ?? null,
+				stilleSeitMin: stilleSeit.has(cv.vehicle.id) ? minutenSeit(stilleSeit.get(cv.vehicle.id)!) : null,
+			}, trackerJetzt)];
+		}))
+	);
+
 	async function trackerLaden() {
 		try {
 			const liste = await trackingApi.getTracker(convoyId);
@@ -428,6 +518,7 @@
 	onMount(() => {
 		void trackerLaden();
 		trackerTimer = setInterval(() => void trackerLaden(), TRACKER_ABFRAGE_MS);
+		meldungsTakt = setInterval(() => (meldungsUhr = Date.now()), 5_000);
 		requestWakeLock();
 		document.addEventListener('visibilitychange', handleVisibility);
 		netOnline = navigator.onLine;
@@ -444,6 +535,7 @@
 
 	onDestroy(() => {
 		if (trackerTimer) clearInterval(trackerTimer);
+		if (meldungsTakt) clearInterval(meldungsTakt);
 		disconnectTracking();
 		// Reload-safe stop: end the GPS watch but keep the saved session so a
 		// page reload can resume; an explicit "stop" button press clears it.
@@ -1162,8 +1254,29 @@
 			</div>
 		{/if}
 
+		<!-- Abriss und Funkstille: unter TH/Ausfall, über den Wegpunkt-Ansagen -->
+		{#if sichtbareMeldungen.length > 0 && activeAlerts.length === 0}
+			{@const m = sichtbareMeldungen[0]}
+			{@const vm = vordermaenner.get(m.id)}
+			<div class="alert-banner {m.art}" class:with-net={offline || backOnline} data-testid="{m.art}-banner" role="alert">
+				<span class="ab-icon">{m.art === 'abriss' ? '⛓️‍💥' : '📵'}</span>
+				<div class="ab-text">
+					{#if m.art === 'abriss'}
+						<strong>Abriss: {vehicleNames.get(m.id) ?? 'Fahrzeug'}</strong>
+						{#if vm?.abstandM != null} · {formatDistance(vm.abstandM)} hinter {vm.name}{/if}
+					{:else}
+						<strong>Funkstille: {vehicleNames.get(m.id) ?? 'Fahrzeug'}</strong>
+						· keine Position, zuletzt {Math.round(m.kmh ?? 0)} km/h
+					{/if}
+					<div class="ab-note">seit {minutenSeit(m.seit)} min{#if sichtbareMeldungen.length > 1} · {sichtbareMeldungen.length - 1} weitere{/if}</div>
+				</div>
+				<button class="ab-btn" onclick={() => mapView?.showVehicle(m.id)}>{m.art === 'abriss' ? 'Zeigen' : 'Letzte Position'}</button>
+				<button class="ab-btn dim" onclick={() => (ausgeblendet = new Set([...ausgeblendet, meldungsKey(m)]))} aria-label="Ausblenden">✕</button>
+			</div>
+		{/if}
+
 		<!-- Route-point announcement (Leitstellenwechsel / Wegpunkt erreicht) -->
-		{#if pointEvent && activeAlerts.length === 0}
+		{#if pointEvent && activeAlerts.length === 0 && sichtbareMeldungen.length === 0}
 			<div class="point-banner" class:with-net={offline || backOnline} class:done={pointEventDone}>
 				<span class="ab-icon">{pointEvent.kind === 'kanalwechsel' ? '📡' : '📍'}</span>
 				<div class="ab-text">
@@ -1178,7 +1291,7 @@
 		{/if}
 
 		<!-- Next upcoming route point (Wegpunkt / Leitstellenwechsel) -->
-		{#if nextPoint && !pointEvent && activeAlerts.length === 0}
+		{#if nextPoint && !pointEvent && activeAlerts.length === 0 && sichtbareMeldungen.length === 0}
 			<div class="next-point" class:with-net={offline || backOnline}>
 				<span class="np-icon">{nextPoint.point.kind === 'kanalwechsel' ? '📡' : '📍'}</span>
 				<span class="np-text">In {formatDistance(nextPoint.aheadM)}: {nextPoint.point.label}</span>
@@ -1241,6 +1354,7 @@
 			livePositions={$livePositions}
 			vehicleNames={vehicleNames}
 			vehicleColors={vehicleColors}
+			vehicleInfo={vehicleInfo}
 			headingUp={headingUp}
 			focusVehicleId={myVehicleId || null}
 			followVehicleId={followMyVehicle ? myVehicleId : null}
@@ -1402,6 +1516,10 @@
 	.ab-note { font-style: italic; font-size: var(--text-xs); }
 	.ab-btn { background: rgba(0,0,0,.15); color: inherit; border: none; border-radius: 6px; padding: .35rem .6rem; font-weight: 600; cursor: pointer; font-size: var(--text-sm); flex-shrink: 0; }
 	.alert-banner.breakdown .ab-btn { background: rgba(255,255,255,.25); }
+	.alert-banner.abriss, .alert-banner.funkstille { background: #e67e22; color: #fff; }
+	.alert-banner.funkstille { background: #8e44ad; }
+	.alert-banner.abriss .ab-btn, .alert-banner.funkstille .ab-btn { background: rgba(255,255,255,.25); }
+	.alert-banner.abriss .ab-btn.dim, .alert-banner.funkstille .ab-btn.dim { background: transparent; }
 	.ab-btn.dim { background: transparent; }
 	@keyframes alert-in { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 	@keyframes flash { from { box-shadow: 0 4px 16px rgba(0,0,0,.4); } to { box-shadow: 0 0 0 4px rgba(226,61,40,.5), 0 4px 16px rgba(0,0,0,.4); } }

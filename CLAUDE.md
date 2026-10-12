@@ -552,6 +552,11 @@ Drei Regeln, die `frontend/e2e/kontextmenue.spec.ts` festhält:
 - **Ohne Aktion kein Menü.** `aufraeumen()` wirft bedingte Einträge (`false`) und
   überzählige Trenner weg; bleibt keine Aktion, öffnet der Browser seins.
 
+Dass die Einträge in Planung, Org-Admin und Admin-Bereich wirklich dieselben Aufrufe
+schicken wie die Knöpfe, prüft `frontend/e2e/kontextmenue-planung-und-admin.spec.ts`
+in der echten App am Körper der abgefangenen Anfrage. Wer einen Eintrag auf eine
+andere Funktion umbiegt, sieht es dort.
+
 ### API-Docs (Swagger/OpenAPI)
 
 `/docs`, `/redoc` und `/openapi.json` sind in Produktion **standardmäßig deaktiviert**
