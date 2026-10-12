@@ -52,7 +52,9 @@ class ConvoyUpdate(BaseModel):
     spacing_urban_m: int | None = None
     spacing_rural_m: int | None = None
     spacing_motorway_m: int | None = None
-    status: str | None = None
+    # Freitext stand hier früher, und ein Tippfehler („aktiv") ließ jeden
+    # Tracker stumm: gesendet wird nur bei ``ortungsgeraet.LAUFEND``.
+    status: Literal["planning", "active", "running", "completed"] | None = None
     lage: str | None = None
     auftrag: str | None = None
     marschform: str | None = None

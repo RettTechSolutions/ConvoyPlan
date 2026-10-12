@@ -178,6 +178,8 @@ def register(mcp) -> None:
                 "versorgung": versorgung, "funkgruppe": funkgruppe, "anlagen": anlagen,
             }
             payload = {k: v for k, v in felder.items() if v is not None}
+            if status is not None and status not in ("planning", "active", "completed"):
+                raise McpError("status ist planning, active oder completed.")
             if start_lat is not None and start_lon is not None:
                 payload["start_point"] = {"lat": start_lat, "lon": start_lon}
             if ziel_lat is not None and ziel_lon is not None:
