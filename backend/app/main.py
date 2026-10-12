@@ -331,6 +331,7 @@ app.include_router(aktionsseite_router.public_router, prefix="/api")
 app.include_router(aktionsseite_router.org_router, prefix="/api")
 app.include_router(geraete_router.geraet_router, prefix="/api")
 app.include_router(geraete_router.org_router, prefix="/api")
+app.include_router(geraete_router.track_router, prefix="/api")
 # Selbstauskunft für Maschinen: die öffentliche OpenAPI-Teilmenge unter
 # /api/public/openapi.json und die Protected Resource Metadata der REST-API
 # an der Wurzel. Beide bewusst ohne Anmeldung — sie sind der Einstieg, den

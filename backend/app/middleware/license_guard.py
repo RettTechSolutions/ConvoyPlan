@@ -53,6 +53,9 @@ _EXEMPT_PREFIXES = (
     "/api/feedback",
     "/api/license/",
     "/api/setup",
+    # Fahrer-Link, und darunter auch die Weiterleitung eines Trackers über BLE
+    # (`/api/track/{slug}/tracker`): Sie muss sich ohne Lizenz verhalten wie der
+    # direkte Weg unten — `schweigen` in der signierten Antwort statt 402.
     "/api/track/",
     # Die Geräte-API des Trackers spricht nur POST. Ein 402 ist für das Gerät
     # eine unerwartete Antwort, es fragt dann alle 30 s erneut — dauerhaft.

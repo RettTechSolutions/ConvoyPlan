@@ -21,6 +21,15 @@ Fahrer-Link, REST und WebSocket der angemeldeten Ansicht. Deshalb ruft sie wie
 die drei anderen ``positionsverlauf.aufzeichnen`` auf, achtet auf
 ``is_recently_cleared`` („GPS-Freigabe zurücksetzen" gilt auch für einen
 Tracker) und hebt ein geplantes Fahrzeug beim ersten Fix auf ``en_route``.
+
+Der dritte Router (``track_router``) nimmt Rahmen an, die die Begleit-App über BLE
+vom Tracker holt und mit ihrem Fahrer-Link abliefert (E14, ``services/tracker_ble.py``).
+Er ist **keine** fünfte Schreibstelle: Nach der Prüfung von Link, Signatur und
+``seq`` läuft die Nutzlast durch dieselben Funktionen wie der direkte Aufruf
+(``_hallo_verarbeiten``, ``_positionen_verarbeiten``), mit allen Regeln — Lizenz,
+Plansperre, E7/E8, Positionsquelle, Alarmquittung. Der Pfad liegt unter
+``/api/track/``, das der Lizenzwächter schon durchlässt; ohne Lizenz hört das Gerät
+also auch über BLE ``schweigen`` statt 402.
 """
 import logging
 import uuid
@@ -30,7 +39,7 @@ from typing import Any
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -43,20 +52,24 @@ from app.middleware.license_guard import is_licensed
 from app.models.convoy import Convoy, ConvoyVehicle
 from app.models.organization import Organization
 from app.models.ortungsgeraet import Ortungsgeraet
+from app.models.share_link import ConvoyShareLink
 from app.models.vehicle import Vehicle
 from app.models.vehicle_position import VehiclePosition
 from app.services import alarm_quittung, audit, firmware_angebot, org_plan, positionsquelle, positionsverlauf
 from app.services import belegung
 from app.services import nahfunk
+from app.services import share_links as share_links_svc
+from app.services import tracker_ble as tb
 from app.services import tracker_wurzeln as tw
 from app.services import ortungsgeraet as og
-from app.services.rate_limit import rate_limit
+from app.services.rate_limit import rate_limit, register_failure
 from app.services.tracking import tracking_manager
 
 logger = logging.getLogger(__name__)
 
 geraet_router = APIRouter(prefix="/geraete", tags=["ortungsgeraete"])
 org_router = APIRouter(prefix="/org/geraete", tags=["ortungsgeraete"])
+track_router = APIRouter(prefix="/track", tags=["ortungsgeraete"])
 
 CREATED = "org.geraet.created"
 UPDATED = "org.geraet.updated"
@@ -169,6 +182,9 @@ def _zustand_merken(geraet: Ortungsgeraet, daten: dict[str, Any], jetzt: datetim
     # kommt aus der Ruhe, ein Update-Ergebnis nach dem Neustart.
     geraet.unterbrochen_ab = None
     geraet.gps_gestoert_ab = None
+    netz = og.netz_gemeldet(daten)
+    if netz is not None:
+        geraet.netz = netz
     felder = og.zustand_lesen(daten)
     geraet.akku_seit = og.akku_seit(geraet.extern, geraet.akku_seit, felder.get("extern"), jetzt)
     for feld, wert in felder.items():
@@ -210,6 +226,10 @@ async def einloesen(
     geraet.hardware_id = hardware_id
     hardware = daten.get("hardware")
     geraet.hardware = hardware.strip()[:40] if isinstance(hardware, str) and hardware.strip() else None
+    # Ein neuer Schlüssel bei jedem Einlösen; `seq` zählt ab ihm von vorn.
+    schluessel = tb.schluessel_erzeugen()
+    geraet.schluessel = tb.ablegen(schluessel)
+    geraet.ble_seq = None
     _zustand_merken(geraet, daten, jetzt)
     await db.commit()
     await audit.record(
@@ -217,7 +237,49 @@ async def einloesen(
         target_type="ortungsgeraet", target_id=str(geraet.id),
         detail={"hardware_id": hardware_id, "firmware": geraet.firmware},
     )
-    return {"geraet_id": str(geraet.id), "token": token}
+    return {"geraet_id": str(geraet.id), "token": token, "schluessel": tb.als_base64(schluessel)}
+
+
+def _schluessel_angebot(geraet: Ortungsgeraet, daten: dict[str, Any]) -> str | None:
+    """Der Geräteschlüssel für die Antwort auf ein **direktes** ``hallo``, sonst ``None``.
+
+    Nur, wenn das Gerät eine Kennung meldet und sie abweicht. Ein Gerät von vor E14
+    (eingerichtet ohne Schlüssel) meldet ``""`` und bekommt hier seinen ersten."""
+    gemeldet = tb.kennung_gemeldet(daten)
+    if gemeldet is None:
+        return None
+    schluessel = tb.schluessel_lesen(geraet.schluessel)
+    if schluessel is None:
+        schluessel = tb.schluessel_erzeugen()
+        geraet.schluessel = tb.ablegen(schluessel)
+        geraet.ble_seq = None
+    return tb.als_base64(schluessel) if tb.angebot_noetig(gemeldet, schluessel) else None
+
+
+async def _hallo_verarbeiten(
+    db: AsyncSession, geraet: Ortungsgeraet, daten: dict[str, Any], jetzt: datetime, direkt: bool
+) -> dict[str, Any]:
+    """``hallo``, direkt oder weitergeleitet. Der Aufrufer schreibt fest (``commit``)."""
+    _zustand_merken(geraet, daten, jetzt)
+    antwort = await _anweisung(db, geraet, jetzt, og.netz_lesen(daten))
+    # Wurzeln nur hier: das Gerät meldet seinen Fingerabdruck in `hallo`, und ein
+    # Bündel in jeder Antwort auf `positionen` kostete alle 15 s bis zu 12 KB.
+    gemeldet = tw.gemeldet_lesen(daten)
+    if gemeldet is not None:
+        geraet.wurzeln_sha256 = gemeldet
+    if direkt:
+        antwort["wurzeln"] = tw.angebot(gemeldet, tw.gewuenscht())
+        antwort["schluessel"] = _schluessel_angebot(geraet, daten)
+        # Mit dem Schlüssel die Kennung, die ein Rahmen nennt: Ein Gerät von vor E14 kennt
+        # sie sonst nicht, nur ``einloesen`` lieferte sie.
+        antwort["geraet_id"] = str(geraet.id) if antwort["schluessel"] else None
+    else:
+        # Über BLE nie: keine Firmware (der Download braucht das Gerätetoken, und das
+        # geht nicht durchs Telefon), keine Wurzeln (TLS macht dort die App), und der
+        # Schlüssel ginge durch genau die Leitung, die er absichern soll. Dasselbe gilt
+        # für den Nahfunk-Zugang: auch er ist Schlüsselmaterial.
+        antwort.update(firmware=None, wurzeln=None, schluessel=None, geraet_id=None, nahfunk=None)
+    return antwort
 
 
 @geraet_router.post("/hallo")
@@ -226,15 +288,7 @@ async def hallo(
     geraet: Ortungsgeraet = Depends(_geraet_aus_token),
     db: AsyncSession = Depends(get_db),
 ):
-    jetzt = datetime.now(timezone.utc)
-    _zustand_merken(geraet, daten, jetzt)
-    antwort = await _anweisung(db, geraet, jetzt, og.netz_lesen(daten))
-    # Wurzeln nur hier: das Gerät meldet seinen Fingerabdruck in `hallo`, und ein
-    # Bündel in jeder Antwort auf `positionen` kostete alle 15 s bis zu 12 KB.
-    gemeldet = tw.gemeldet_lesen(daten)
-    if gemeldet is not None:
-        geraet.wurzeln_sha256 = gemeldet
-    antwort["wurzeln"] = tw.angebot(gemeldet, tw.gewuenscht())
+    antwort = await _hallo_verarbeiten(db, geraet, daten, datetime.now(timezone.utc), direkt=True)
     await db.commit()
     return antwort
 
@@ -245,7 +299,20 @@ async def positionen(
     geraet: Ortungsgeraet = Depends(_geraet_aus_token),
     db: AsyncSession = Depends(get_db),
 ):
-    jetzt = datetime.now(timezone.utc)
+    antwort, ereignisse = await _positionen_verarbeiten(db, geraet, daten, datetime.now(timezone.utc))
+    await db.commit()
+    for convoy_id, nachricht in ereignisse:
+        await tracking_manager.broadcast(convoy_id, nachricht)
+    return antwort
+
+
+async def _positionen_verarbeiten(
+    db: AsyncSession, geraet: Ortungsgeraet, daten: dict[str, Any], jetzt: datetime
+) -> tuple[dict[str, Any], list[tuple[str, dict[str, Any]]]]:
+    """``positionen``, direkt oder weitergeleitet: die Antwort und was danach zu verteilen ist.
+
+    Der Aufrufer schreibt fest und verteilt erst danach. Ein unbrauchbares Bündel wirft
+    die 400, bevor irgendetwas am Gerät geändert ist."""
     try:
         fixes, verworfen = og.fixes_lesen(daten.get("fixes"), jetzt)
     except ValueError as e:
@@ -269,10 +336,7 @@ async def positionen(
     if fixes:
         for convoy_id in await _laufende_konvois(db, geraet):
             ereignisse += await _eintragen(db, convoy_id, geraet.vehicle_id, fixes)
-    await db.commit()
-    for convoy_id, nachricht in ereignisse:
-        await tracking_manager.broadcast(convoy_id, nachricht)
-    return {"angenommen": len(fixes), "verworfen": verworfen, **antwort}
+    return {"angenommen": len(fixes), "verworfen": verworfen, **antwort}, ereignisse
 
 
 @geraet_router.post("/meldungen")
@@ -431,6 +495,172 @@ async def firmware_ergebnis(
     return antwort
 
 
+# ── Weiterleitung über BLE und Bake (Fahrer-Link) ──────────────────────────
+
+
+async def _fahrer_link(db: AsyncSession, slug: str, track_token: str | None) -> ConvoyShareLink | None:
+    """Der Link, wenn er besteht, nicht widerrufen ist, ``driver`` erlaubt und — bei
+    Passwort — das Sitzungstoken dazu stimmt. Sonst ``None``; der Aufrufer macht daraus
+    dieselbe 404 wie aus jeder anderen Ablehnung."""
+    link = (
+        await db.execute(select(ConvoyShareLink).where(ConvoyShareLink.slug == slug))
+    ).scalar_one_or_none()
+    if link is None or link.revoked or link.scope != "driver":
+        return None
+    if link.password_hash is not None:
+        token_slug = share_links_svc.decode_session_token(track_token) if track_token else None
+        if token_slug != slug:
+            return None
+    return link
+
+
+def _abgelehnt(request: Request, bucket: str) -> HTTPException:
+    register_failure(request, bucket)
+    return HTTPException(status_code=404, detail=_NICHT_GEFUNDEN)
+
+
+@track_router.post(
+    "/{slug}/tracker",
+    dependencies=[Depends(rate_limit("track-tracker", max_attempts=20, window_seconds=300))],
+)
+async def weiterleiten(
+    slug: str,
+    request: Request,
+    roh: Any = Body(default=None),
+    x_track_token: str | None = Header(default=None, alias="X-Track-Token"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Ein Rahmen vom Tracker, den die Begleit-App über BLE geholt hat.
+
+    Link, Gerät der Organisation hinter dem Link und Signatur — fällt eines durch, ist es
+    dieselbe 404, und sie zählt gegen das Rate-Limit. Eine schon angenommene ``seq`` ist
+    409: die Wiederholung eines echten Rahmens, nicht verarbeitet. Sonst läuft die
+    Nutzlast durch dieselben Funktionen wie der direkte Aufruf, mit ``netz: ble``, und
+    die Antwort geht signiert zurück — auch ein 401 für ein gesperrtes Gerät und ein 400
+    für einen unbrauchbaren Körper, denn beides muss das Gerät erfahren können.
+    """
+    bucket = "track-tracker"
+    link = await _fahrer_link(db, slug, x_track_token)
+    rahmen = tb.rahmen_lesen(roh)
+    if link is None or rahmen is None:
+        raise _abgelehnt(request, bucket)
+    try:
+        geraet_id = uuid.UUID(rahmen.geraet)
+    except ValueError:
+        raise _abgelehnt(request, bucket) from None
+    # Das Gerät muss nicht in diesem Konvoi fahren, nur zur selben Organisation gehören.
+    org_id = (
+        await db.execute(select(Convoy.organization_id).where(Convoy.id == link.convoy_id))
+    ).scalar_one_or_none()
+    geraet = (
+        await db.execute(
+            select(Ortungsgeraet).where(Ortungsgeraet.id == geraet_id, Ortungsgeraet.organization_id == org_id)
+        )
+    ).scalar_one_or_none()
+    abgelegt = geraet.schluessel if geraet is not None else None
+    schluessel = tb.schluessel_lesen(abgelegt)
+    if geraet is None or schluessel is None or not tb.rahmen_echt(schluessel, rahmen):
+        raise _abgelehnt(request, bucket)
+
+    # `seq` in einem Schritt prüfen und setzen. Leiten zwei Apps denselben Rahmen
+    # gleichzeitig weiter, wartet die zweite auf die Zeilensperre der ersten, sieht
+    # danach deren `seq` und bekommt 409 — verarbeitet wird er genau einmal.
+    gesetzt = (
+        await db.execute(
+            update(Ortungsgeraet)
+            .where(
+                Ortungsgeraet.id == geraet_id,
+                Ortungsgeraet.schluessel == abgelegt,
+                or_(Ortungsgeraet.ble_seq.is_(None), Ortungsgeraet.ble_seq < rahmen.seq),
+            )
+            .values(ble_seq=rahmen.seq)
+            .returning(Ortungsgeraet.id)
+            .execution_options(synchronize_session=False)
+        )
+    ).scalar_one_or_none()
+    if gesetzt is None:
+        await db.rollback()
+        # Dazwischen neu eingelöst (anderer Schlüssel) ist keine Wiederholung, sondern ein
+        # Rahmen mit einem Schlüssel, der nicht mehr gilt.
+        aktuell = (
+            await db.execute(select(Ortungsgeraet.schluessel).where(Ortungsgeraet.id == geraet_id))
+        ).scalar_one_or_none()
+        if aktuell != abgelegt:
+            raise _abgelehnt(request, bucket)
+        raise HTTPException(status_code=409, detail="Rahmen schon angenommen")
+    # Was wir oben gelesen haben, kann älter sein als die Sperre; ab hier gilt der Stand darunter.
+    await db.refresh(geraet)
+
+    jetzt = datetime.now(timezone.utc)
+    ereignisse: list[tuple[str, dict[str, Any]]] = []
+    daten = tb.nutzlast_lesen(rahmen)
+    status = 200
+    koerper: dict[str, Any]
+    if not geraet.aktiv or geraet.token_hash is None:
+        # Wie `_geraet_aus_token`: gesperrt oder neu einzurichten. Die `seq` bleibt
+        # verbraucht, damit sich die Antwort nicht wieder abspielen lässt.
+        status, koerper = 401, {"detail": "Gerät unbekannt"}
+    elif daten is None:
+        status, koerper = 400, {"detail": "Körper unbrauchbar"}
+    else:
+        daten = {**daten, "netz": "ble"}
+        try:
+            if rahmen.art == "hallo":
+                koerper = await _hallo_verarbeiten(db, geraet, daten, jetzt, direkt=False)
+            else:
+                koerper, ereignisse = await _positionen_verarbeiten(db, geraet, daten, jetzt)
+                # Wie bei `hallo`: über BLE weder Firmware noch Schlüsselmaterial.
+                koerper.update(firmware=None, nahfunk=None)
+        except HTTPException as e:
+            status, koerper = e.status_code, {"detail": e.detail}
+    await db.commit()
+    for convoy_id, nachricht in ereignisse:
+        await tracking_manager.broadcast(convoy_id, nachricht)
+    return tb.antwort(schluessel, rahmen, status, koerper)
+
+
+@track_router.get(
+    "/{slug}/baken",
+    dependencies=[Depends(rate_limit("track-baken", max_attempts=20, window_seconds=300))],
+)
+async def baken(
+    slug: str,
+    request: Request,
+    x_track_token: str | None = Header(default=None, alias="X-Track-Token"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Bake-Kennungen der Tracker an den Fahrzeugen dieses Konvois, für drei Fenster.
+
+    Die App schlägt damit das Fahrzeug vor, in dem sie sitzt; belegt wird es erst, wenn
+    die Besatzung es wählt (``belegen``). Nur Tracker der Organisation des Konvois, nur
+    eingerichtete, freigegebene mit Schlüssel. Ohne Gerätekennung und ohne Namen."""
+    link = await _fahrer_link(db, slug, x_track_token)
+    if link is None:
+        raise _abgelehnt(request, "track-baken")
+    org_id = (
+        await db.execute(select(Convoy.organization_id).where(Convoy.id == link.convoy_id))
+    ).scalar_one_or_none()
+    fahrzeuge = select(ConvoyVehicle.vehicle_id).where(ConvoyVehicle.convoy_id == link.convoy_id)
+    geraete = (
+        await db.execute(
+            select(Ortungsgeraet).where(
+                Ortungsgeraet.vehicle_id.in_(fahrzeuge),
+                Ortungsgeraet.organization_id == org_id,
+                Ortungsgeraet.aktiv.is_(True),
+                Ortungsgeraet.token_hash.is_not(None),
+                Ortungsgeraet.schluessel.is_not(None),
+            )
+        )
+    ).scalars().all()
+    jetzt = datetime.now(timezone.utc)
+    eintraege = []
+    for g in geraete:
+        schluessel = tb.schluessel_lesen(g.schluessel)
+        if schluessel is not None:
+            eintraege.append({"vehicle_id": str(g.vehicle_id), "kennungen": tb.bake_kennungen(schluessel, jetzt)})
+    return {"fenster_s": tb.FENSTER_S, "baken": eintraege}
+
+
 # ── Org-Admin ──────────────────────────────────────────────────────────────
 
 
@@ -458,6 +688,8 @@ class GeraetZeile(BaseModel):
     extern: bool | None
     akku_seit: datetime | None
     signal_dbm: int | None
+    # Weg des letzten Aufrufs: wlan | mobil | ble; None: nie gemeldet.
+    netz: str | None
     akku_niedrig: bool
     # Ab wann zwei erwartete Bündel ausgeblieben sind; None: keins erwartet.
     unterbrochen_ab: datetime | None
@@ -504,6 +736,7 @@ def _zeile(g: Ortungsgeraet, jetzt: datetime) -> dict[str, Any]:
         "extern": g.extern,
         "akku_seit": g.akku_seit,
         "signal_dbm": g.signal_dbm,
+        "netz": g.netz,
         "akku_niedrig": og.akku_niedrig(g.akku_prozent, g.extern),
         "unterbrochen_ab": g.unterbrochen_ab,
         "gps_gestoert_ab": g.gps_gestoert_ab,

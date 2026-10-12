@@ -509,7 +509,7 @@ heißt „keine eigenen Wurzeln". Der Fingerabdruck (sortierte SHA-256 der DER-K
 steht genauso im Protokoll und im Simulator; wer ihn ändert, zieht beide. Tests:
 `tests/test_tracker_wurzeln.py`.
 
-**Nahfunk** (`services/nahfunk.py`, E14 im Tracker-Plan): Die Begleit-App meldet ohne Netz
+**Nahfunk** (`services/nahfunk.py`, E15 im Tracker-Plan): Die Begleit-App meldet ohne Netz
 über den Tracker ihres Fahrzeugs (BLE), der Tracker reicht mit `POST /api/geraete/meldungen`
 weiter. Den Schlüssel bekommen der Tracker in der Anweisung (`nahfunk`, nur bei `senden`) und die
 App über `track_ws` (Frame `nahfunk` auf jedes `belegen`, nur mit Gerätekennung). Drei Dinge, die
@@ -536,8 +536,8 @@ Protokoll ändert, zieht beide.
 `TrackerVerwaltung.svelte`): Web Serial, je Zeile ein JSON-Objekt, Protokoll im
 Tracker-Repo (`docs/PROTOKOLL.md`, „Einrichten per USB"), Geräteseite dort in
 `simulator/tracker_sim/usb.py`. Der Browser schreibt nur Adresse (`location.origin`),
-Code und optional Wurzelzertifikate, APN und Funknetz aufs Gerät; eingelöst wird **vom Gerät** über
-Mobilfunk, nicht vom Browser — so prüft das Einrichten Netz und TLS gleich mit, und
+Code und optional Wurzelzertifikate, APN und Funknetz sowie WLAN aufs Gerät; eingelöst
+wird **vom Gerät** über nicht vom Browser — so prüft das Einrichten Netz und TLS gleich mit, und
 kein Token berührt den Browser. Kein Backend-Anteil. Echte serielle Geräte gibt es in
 der CI nicht; `e2e/tracker-usb-einrichten.spec.ts` baut `navigator.serial` nach, so
 wie der Simulator antwortet. Wer das Protokoll ändert, zieht beide Seiten.
@@ -546,6 +546,35 @@ APN und Funknetz schickt `TrackerUsb.einrichten` nur, wenn `info` sie nennt
 dem alten APN nicht ins Netz. Der APN wird vorher auf `A–Z a–z 0–9 . -` geprüft, weil er
 im Gerät zwischen Anführungszeichen in einem AT-Befehl steht; das Gerät prüft ihn selbst
 noch einmal.
+WLAN geht denselben Weg (`wlan` beim Einrichten, Befehl `wlan` an „WLAN per USB"): das
+Passwort geht nur aufs Gerät, der Test prüft am abgefangenen Aufruf, dass es nie an die
+Instanz geht.
+
+**Drei Wege ins Netz** (E14 im Tracker-Plan, Migration `0067`): WLAN, Mobilfunk, und als
+Rückfall BLE über die Begleit-App. Für die Instanz ist WLAN nur das Feld `netz`;
+`signal_dbm` gilt nur bei `mobil` oder ohne Angabe (RSRP — ein WLAN-RSSI zeigte falsche
+Balken), ein unbekannter Weg wird verworfen. Für BLE gibt es den **Geräteschlüssel**
+(`services/tracker_ble.py`, Prüfwerte aus `PROTOKOLL.md` wörtlich in
+`tests/test_tracker_bake.py`): neu bei jedem `einloesen`, sonst nur in einem *direkten*
+`hallo` mit abweichender `schluessel_kennung`, dann zusammen mit `geraet_id` (ein Gerät von
+vor E14 kennt sie sonst nicht) — nie ohne das Feld, nie in `positionen`,
+**nie über BLE**, denn er sichert genau diese Leitung. Abgelegt verschlüsselt über
+`services/crypto.py` (wie MFA-Geheimnisse; ein Datenbankleck allein gibt ihn nicht her);
+ist er nicht mehr lesbar, gilt er als fehlend und das Gerät bekommt beim nächsten `hallo`
+einen neuen. Die Weiterleitung (`POST /api/track/{slug}/tracker`, Fahrer-Link mit
+`driver`, liegt unter dem Lizenz-Ausnahmepräfix `/api/track/`) ist **keine fünfte
+Schreibstelle**: nach Link, Gerät der Organisation, MAC (konstante Zeit) und `seq` läuft die
+Nutzlast durch `_hallo_verarbeiten`/`_positionen_verarbeiten` wie der direkte Aufruf, mit
+allen Regeln oben. Ablehnungen 1–3 sind dieselbe 404, eine alte `seq` 409 — geprüft und
+gesetzt in **einem** `UPDATE … WHERE ble_seq < :seq`, damit zwei Apps denselben Rahmen
+nicht zweimal einspielen. Gesperrt (401) und unbrauchbar (400) gehen signiert zurück,
+`firmware`/`wurzeln`/`schluessel` darin immer null — ebenso `nahfunk`: der
+Nahfunk-Zugang ist Schlüsselmaterial und geht nur direkt an den Tracker.
+`GET /api/track/{slug}/baken` liefert je Fahrzeug die Bake-Kennungen für drei Fenster; die App schlägt nur vor, belegt wird
+weiter von Hand. Gegenstellen: Firmware und Simulator im Tracker-Repo, `packages/track-api`
+der Begleit-App — wer an Ableitung, MAC-Text oder Antwortformat dreht, zieht alle drei.
+Tests: `tests/test_tracker_weiterleitung.py`, `tests/test_tracker_bake.py`,
+`frontend/e2e/tracker-zustand.spec.ts` (Symbol statt Balken).
 
 ### Alarmquittung: die Führung quittiert am Server
 

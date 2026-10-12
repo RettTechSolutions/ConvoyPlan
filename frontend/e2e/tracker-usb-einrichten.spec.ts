@@ -17,6 +17,10 @@ import { test, expect, type Page } from '@playwright/test';
 // - Firmware vor 0.3.0 kennt APN und Funknetz beim Einrichten nicht und überginge sie
 //   still. Dann geht `einrichten` gar nicht erst raus, und der Hinweis nennt die Konsole.
 // - Ohne Web Serial gibt es den Knopf nicht, sondern einen Hinweis.
+// - WLAN-Netze gehen nur mit, wenn welche eingetragen sind, und das Passwort (`psk`)
+//   geht nur aufs Gerät: in keinem Aufruf an die Instanz, und danach steht es nirgends mehr.
+// - „WLAN per USB" ändert an einem eingerichteten Tracker nur die Netze (`wlan`), ohne
+//   neu einzurichten; ein zu kurzes Passwort wird abgelehnt, bevor etwas ans Gerät geht.
 //
 // Das Gerät ist nachgebaut, wie `simulator/tracker_sim/usb.py` im Repo ConvoyPlan-Tracker
 // antwortet: Startmeldung ohne JSON vorweg, Zwischenstände, eine Schlusszeile mit `ok`,
@@ -25,7 +29,15 @@ import { test, expect, type Page } from '@playwright/test';
 const HUELLE = 'http://localhost:4174/?k=tracker';
 const PEM = '-----BEGIN CERTIFICATE-----\nMIIBszCCAVmgAwIBAgIU\n-----END CERTIFICATE-----';
 
-type Verhalten = { fehler?: string; text?: string; eingerichtetFuer?: string; alteFirmware?: boolean };
+const PSK = 'Wache-Nord-geheim-2026';
+
+type Verhalten = {
+	fehler?: string;
+	text?: string;
+	eingerichtetFuer?: string;
+	wlan?: string[];
+	alteFirmware?: boolean;
+};
 
 async function geraetAnstecken(page: Page, verhalten: Verhalten = {}) {
 	await page.addInitScript((v: Verhalten) => {
@@ -59,7 +71,11 @@ async function geraetAnstecken(page: Page, verhalten: Verhalten = {}) {
 								firmware: v.alteFirmware ? '0.2.0' : '0.3.0', eingerichtet: !!v.eingerichtetFuer,
 								instanz: v.eingerichtetFuer ?? null,
 								...(v.alteFirmware ? {} : { apn: 'iot.1nce.net', funknetz: 'catm' }),
+								...(v.wlan ? { wlan: v.wlan } : {}),
 							});
+						} else if (anfrage.befehl === 'wlan') {
+							// Wie das Gerät: nur die SSIDs zurück, nie das Passwort.
+							senden({ ok: true, wlan: anfrage.netze.map((n: { ssid: string }) => n.ssid) });
 						} else if (anfrage.befehl === 'einrichten') {
 							senden({ schritt: 'netz' });
 							setTimeout(() => {
@@ -90,6 +106,15 @@ async function anlegen(page: Page) {
 }
 
 const gesendet = (page: Page) => page.evaluate(() => (window as unknown as { __usbGesendet: object[] }).__usbGesendet);
+
+/** Alles, was an die Instanz ging: Netzaufrufe und die Aufrufe der gestubbten API. */
+function anDieInstanz(page: Page): () => Promise<string> {
+	const anfragen: string[] = [];
+	page.on('request', (r) => anfragen.push(`${r.url()} ${r.postData() ?? ''}`));
+	return async () =>
+		anfragen.join('\n') +
+		JSON.stringify(await page.evaluate(() => (window as unknown as { __trackerAufrufe?: unknown[] }).__trackerAufrufe ?? []));
+}
 
 test('Per USB einrichten schreibt Adresse und Code aufs Gerät, sonst nichts', async ({ page }) => {
 	await geraetAnstecken(page);
@@ -223,4 +248,88 @@ test('ohne Web Serial gibt es keinen Knopf, sondern einen Hinweis', async ({ pag
 	await anlegen(page);
 	await expect(page.getByRole('button', { name: 'Per USB einrichten' })).toHaveCount(0);
 	await expect(page.getByTestId('usb-einrichten')).toContainText('Chrome oder Edge');
+});
+
+test('WLAN beim Einrichten geht aufs Gerät, das Passwort nie an die Instanz', async ({ page }) => {
+	const instanz = anDieInstanz(page);
+	await geraetAnstecken(page);
+	await anlegen(page);
+	await page.getByText('WLAN', { exact: true }).click();
+	const wlan = page.getByTestId('einrichten-wlan');
+	await wlan.getByRole('button', { name: '+ WLAN' }).click();
+	await wlan.getByLabel('WLAN 1: Name (SSID)').fill('Wache-Nord');
+	await wlan.getByLabel('WLAN 1: Passwort').fill(PSK);
+	await expect(wlan.getByLabel('WLAN 1: Passwort')).toHaveAttribute('type', 'password');
+	// Eine leere zweite Zeile zählt nicht.
+	await wlan.getByRole('button', { name: '+ WLAN' }).click();
+	await page.getByRole('button', { name: 'Per USB einrichten' }).click();
+	await expect(page.getByTestId('neuer-code')).toHaveCount(0);
+
+	expect(await gesendet(page)).toEqual([
+		{ befehl: 'info' },
+		{
+			befehl: 'einrichten', instanz: 'http://localhost:4174', code: 'K7Q2-M9XD',
+			wlan: [{ ssid: 'Wache-Nord', psk: PSK }],
+		},
+	]);
+	const aufrufe = await instanz();
+	expect(aufrufe).toContain('create');
+	expect(aufrufe).not.toContain(PSK);
+	await expect(page.locator('body')).not.toContainText(PSK);
+});
+
+test('APN und WLAN gehen beim Einrichten zusammen mit', async ({ page }) => {
+	const instanz = anDieInstanz(page);
+	await geraetAnstecken(page);
+	await anlegen(page);
+	await page.getByText('Mobilfunk (SIM)').click();
+	await page.getByTestId('usb-mobilfunk').getByLabel('APN').fill('internet.m2m');
+	await page.getByText('WLAN', { exact: true }).click();
+	const wlan = page.getByTestId('einrichten-wlan');
+	await wlan.getByRole('button', { name: '+ WLAN' }).click();
+	await wlan.getByLabel('WLAN 1: Name (SSID)').fill('Wache-Nord');
+	await wlan.getByLabel('WLAN 1: Passwort').fill(PSK);
+	await page.getByRole('button', { name: 'Per USB einrichten' }).click();
+	await expect(page.getByRole('status').filter({ hasText: 'ist eingerichtet' })).toContainText(
+		'Mobilfunk: APN internet.m2m, LTE-M'
+	);
+
+	expect((await gesendet(page))[1]).toEqual({
+		befehl: 'einrichten', instanz: 'http://localhost:4174', code: 'K7Q2-M9XD',
+		apn: 'internet.m2m', wlan: [{ ssid: 'Wache-Nord', psk: PSK }],
+	});
+	expect(await instanz()).not.toContain(PSK);
+});
+
+test('WLAN per USB ändert nur die Netze', async ({ page }) => {
+	const instanz = anDieInstanz(page);
+	await geraetAnstecken(page, { eingerichtetFuer: 'http://localhost:4174', wlan: ['Alt'] });
+	await page.goto(HUELLE);
+	const lf = page.getByTestId('tracker').filter({ hasText: 'Tracker LF 10' });
+	await lf.getByRole('button', { name: 'WLAN per USB' }).click();
+	const form = page.getByTestId('wlan-aendern');
+	await form.getByLabel('WLAN 1: Name (SSID)').fill('ELW-Router');
+	await form.getByLabel('WLAN 1: Passwort').fill(PSK);
+	await form.getByRole('button', { name: 'Per USB übertragen' }).click();
+
+	await expect(page.getByRole('status').filter({ hasText: 'WLAN auf Gerät 352656100000009 gespeichert' })).toContainText('ELW-Router');
+	await expect(page.getByTestId('wlan-aendern')).toHaveCount(0);
+	expect(await gesendet(page)).toEqual([
+		{ befehl: 'info' },
+		{ befehl: 'wlan', netze: [{ ssid: 'ELW-Router', psk: PSK }] },
+	]);
+	expect(await instanz()).not.toContain(PSK);
+	expect(await page.evaluate(() => (window as unknown as { __usbGeschlossen?: boolean }).__usbGeschlossen)).toBe(true);
+});
+
+test('ein zu kurzes WLAN-Passwort wird abgelehnt, bevor etwas ans Gerät geht', async ({ page }) => {
+	await geraetAnstecken(page);
+	await page.goto(HUELLE);
+	await page.getByTestId('tracker').getByRole('button', { name: 'WLAN per USB' }).click();
+	const form = page.getByTestId('wlan-aendern');
+	await form.getByLabel('WLAN 1: Name (SSID)').fill('Wache-Nord');
+	await form.getByLabel('WLAN 1: Passwort').fill('kurz');
+	await form.getByRole('button', { name: 'Per USB übertragen' }).click();
+	await expect(form.getByRole('alert')).toContainText('8 bis 63 Zeichen');
+	expect(await gesendet(page)).toEqual([]);
 });

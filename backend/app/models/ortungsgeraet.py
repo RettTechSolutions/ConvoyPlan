@@ -13,7 +13,7 @@ unterscheiden kann. Die Regeln stehen in ``services/ortungsgeraet.py``.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -66,6 +66,17 @@ class Ortungsgeraet(Base):
     # Fingerabdruck der eigenen Wurzeln, wie ihn das Gerät zuletzt in `hallo`
     # gemeldet hat (``tracker_wurzeln.fingerabdruck``). NULL: nie gemeldet.
     wurzeln_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Weg des letzten Aufrufs: wlan | mobil | ble. ``signal_dbm`` ist RSRP und gilt
+    # nur bei ``mobil``; die Ansicht zeigt sonst ein WLAN- bzw. Bluetooth-Symbol.
+    netz: Mapped[str | None] = mapped_column(String(10), nullable=True)
+
+    # Geräteschlüssel (32 Byte) für die Weiterleitung über BLE und die Bake,
+    # verschlüsselt wie die MFA-Geheimnisse (``services/crypto.py``). Neu bei jedem
+    # ``einloesen``; NULL bei Geräten von vor E14, bis zum nächsten direkten ``hallo``.
+    # Lesen und Schreiben nur über ``tracker_ble.schluessel_lesen``/``_ablegen``.
+    schluessel: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Zuletzt angenommene ``seq`` eines weitergeleiteten Rahmens; nur größere gelten.
+    ble_seq: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     # Ergebnis des letzten Firmware-Updates: bestaetigt | zurueckgerollt | fehler.
     update_version: Mapped[str | None] = mapped_column(String(40), nullable=True)

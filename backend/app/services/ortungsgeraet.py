@@ -356,8 +356,22 @@ def akku_seit(
     return jetzt
 
 
+def netz_gemeldet(daten: dict[str, Any]) -> str | None:
+    """Der Weg, den das Gerät meldet, zum Speichern: ohne Angabe ``mobil``, ein unbekannter
+    Wert ``None`` (verworfen, der gespeicherte bleibt). Für den Sendetakt gilt ``netz_lesen``."""
+    if "netz" not in daten or daten["netz"] is None:
+        return "mobil"
+    wert = daten["netz"]
+    return wert if wert in NETZE else None
+
+
 def zustand_lesen(daten: dict[str, Any]) -> dict[str, Any]:
-    """Was das Gerät über sich meldet, bereinigt — für die Spalten am Gerät."""
+    """Was das Gerät über sich meldet, bereinigt — für die Spalten am Gerät.
+
+    ``signal_dbm`` ist RSRP und gilt nur, wenn der Aufruf über Mobilfunk kam (oder
+    ohne ``netz``, wie bei Firmware von vor E14). Ein WLAN-RSSI liegt auf einer
+    anderen Skala und zeigte falsche Balken; bei unbekanntem Weg weiß man es nicht.
+    ``netz`` selbst steht nicht hier, sondern in ``netz_gemeldet``."""
     felder: dict[str, Any] = {}
     firmware = daten.get("firmware")
     if isinstance(firmware, str) and firmware.strip():
@@ -368,6 +382,6 @@ def zustand_lesen(daten: dict[str, Any]) -> dict[str, Any]:
     if isinstance(daten.get("extern"), bool):
         felder["extern"] = daten["extern"]
     signal = _zahl(daten.get("signal_dbm"))
-    if signal is not None and -200 <= signal <= 0:
+    if signal is not None and -200 <= signal <= 0 and netz_gemeldet(daten) == "mobil":
         felder["signal_dbm"] = int(signal)
     return felder

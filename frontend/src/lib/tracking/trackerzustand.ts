@@ -7,6 +7,10 @@
  * Kontakt; eine Meldung, die älter ist als `EMPFANG_VERALTET_MS`, sagt über den
  * Empfang von jetzt nichts mehr.
  *
+ * Balken gibt es nur über Mobilfunk: `signal_dbm` ist RSRP, und das meldet der
+ * Tracker nur bei `netz: mobil`. Kam der letzte Aufruf über WLAN oder über die
+ * Begleit-App (BLE), zeigt die Ansicht stattdessen deren Symbol (`netzArt`).
+ *
  * Während der Fahrt erwartet das Backend Bündel und sagt, ab wann zwei
  * ausgeblieben sind (`unterbrochen_ab`) und ab wann Bündel ohne plausiblen Fix
  * kamen (`gps_gestoert_ab`). Verglichen wird hier mit der Uhr, damit die Anzeige
@@ -57,12 +61,27 @@ export function stoerung(t: Pick<TrackerAnzeige, 'unterbrochen_ab' | 'gps_gestoe
 	return null;
 }
 
+/** Weg des letzten Aufrufs (Protokoll im Tracker-Repo, „Drei Wege ins Netz"). */
+export type TrackerNetz = 'wlan' | 'mobil' | 'ble';
+
+export const NETZ_TEXT: Record<Exclude<TrackerNetz, 'mobil'>, string> = {
+	wlan: 'Über WLAN',
+	ble: 'Über Bluetooth und die Begleit-App',
+};
+
+/** Wie die Verbindung gezeigt wird. Ohne Angabe (älteres Backend, nie gemeldet): Mobilfunk. */
+export function netzArt(t: Pick<TrackerAnzeige, 'netz'>): TrackerNetz {
+	return t.netz === 'wlan' || t.netz === 'ble' ? t.netz : 'mobil';
+}
+
 export interface TrackerAnzeige {
 	akku_prozent: number | null;
 	extern: boolean | null;
 	akku_seit: string | null;
 	akku_niedrig: boolean;
 	signal_dbm: number | null;
+	/** Weg des letzten Aufrufs; null: nie gemeldet. Ältere Backends: fehlt. */
+	netz?: TrackerNetz | null;
 	zuletzt_gesehen: string | null;
 	/** Ab hier „Verbindung unterbrochen"; null: keine Fahrt, nichts erwartet. Ältere Backends: fehlt. */
 	unterbrochen_ab?: string | null;
@@ -84,6 +103,8 @@ export function empfangTitel(t: TrackerAnzeige, jetzt: number): string {
 	const kontakt = `letzter Kontakt vor ${dauer(t.zuletzt_gesehen, jetzt)}`.replace('vor gerade eben', 'gerade eben');
 	if (stoerung(t, jetzt) === 'unterbrochen') return `${STOERUNG_TEXT.unterbrochen} · ${kontakt}`;
 	if (veraltet(t.zuletzt_gesehen, jetzt)) return `Keine aktuelle Verbindung · ${kontakt}`;
+	const art = netzArt(t);
+	if (art !== 'mobil') return `${NETZ_TEXT[art]} · ${kontakt}`;
 	const b = balken(t.signal_dbm);
 	const dbm = t.signal_dbm === null ? '' : ` (${t.signal_dbm} dBm)`;
 	return `${EMPFANG_TEXT[b][0].toUpperCase()}${EMPFANG_TEXT[b].slice(1)}${dbm} · ${kontakt}`;

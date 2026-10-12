@@ -7,15 +7,24 @@
  * Schlusszeile mit `ok`.
  *
  * Diese Seite schickt dem Gerät Instanzadresse, Einmal-Code und optional eigene
- * Wurzelzertifikate, APN und Funknetz der SIM. APN und Funknetz übernimmt das Gerät erst,
- * wenn das Einlösen mit ihnen gelingt; Firmware vor 0.3.0 kennt sie nicht (siehe
- * `kenntFunk`). Das Gerät löst den Code **selbst** über sein Mobilfunknetz ein —
+ * Wurzelzertifikate, APN und Funknetz der SIM sowie WLAN-Netze. APN und Funknetz übernimmt
+ * das Gerät erst, wenn das Einlösen mit ihnen gelingt; Firmware vor 0.3.0 kennt sie nicht
+ * (siehe `kenntFunk`). Das Gerät löst den Code **selbst** ein, über WLAN oder Mobilfunk —
  * so prüft das Einrichten gleich mit, ob Netz, Adresse und Zertifikat stimmen. Ein Token
  * sieht der Browser nie.
+ *
+ * Das WLAN-Passwort (`psk`) geht **nur aufs Gerät**: nicht an die Instanz, und das Gerät
+ * gibt es nie zurück (`info` nennt nur die SSIDs). Das Passwort der Wache gehört nicht in
+ * die Datenbank einer Einsatzplanung (E14 im Plan des Tracker-Repos).
  */
 
 export const PROTOKOLL = 1;
 export const WURZELN_MAX = 3;
+/** Höchstens drei Netze, nur WPA2/WPA3-Personal (Protokoll, „einrichten"). */
+export const WLAN_MAX = 3;
+const SSID_MAX_BYTES = 32;
+const PSK_MIN = 8;
+const PSK_MAX = 63;
 /** Die erste Anmeldung im Mobilfunknetz kann dauern. */
 export const EINRICHTEN_MS = 180_000;
 const INFO_MS = 5_000;
@@ -51,9 +60,16 @@ export interface GeraeteInfo {
 	firmware: string;
 	eingerichtet: boolean;
 	instanz: string | null;
+	/** Eingerichtete WLAN-Netze, nur die SSIDs; fehlt bei einem Gerät ohne WLAN. */
+	wlan?: string[];
 	/** Seit Firmware 0.3.0; fehlt bei älterer. */
 	apn?: string;
 	funknetz?: Funknetz;
+}
+
+export interface WlanNetz {
+	ssid: string;
+	psk: string;
 }
 
 export interface Einrichtung {
@@ -61,6 +77,8 @@ export interface Einrichtung {
 	/** Leer oder fehlend: das Gerät behält seinen bisherigen. */
 	apn?: string;
 	funknetz?: Funknetz;
+	/** Leer oder fehlend: das Gerät behält seine bisherigen Netze. */
+	wlan?: WlanNetz[];
 }
 
 /**
@@ -112,9 +130,9 @@ export class UsbFehler extends Error {
 }
 
 export const FEHLERTEXT: Record<FehlerArt, string> = {
-	ungueltig: 'Das Gerät hat die Angaben abgelehnt.',
+	ungueltig: 'Das Gerät hat die Angaben abgelehnt (Adresse, Code, Zertifikate, APN oder WLAN).',
 	kein_netz:
-		'Der Tracker erreicht diese Instanz nicht. Hat er Mobilfunkempfang, stimmt der APN der SIM, und ist die Adresse von außen erreichbar?',
+		'Der Tracker erreicht diese Instanz nicht. Hat er WLAN oder Mobilfunkempfang, stimmen WLAN-Passwort und APN der SIM, und ist die Adresse von außen erreichbar?',
 	firmware_alt:
 		'Diese Firmware kennt APN und Funknetz beim Einrichten noch nicht (erst ab 0.3.0). Im seriellen Terminal „setze apn …" bzw. „setze netz …" und „neustart" eingeben, dann hier ohne APN einrichten.',
 	tls: 'Der Tracker kann das Zertifikat dieser Instanz nicht prüfen. Bei einer eigenen Zertifizierungsstelle deren Wurzelzertifikat unten mitgeben.',
@@ -129,7 +147,7 @@ export const FEHLERTEXT: Record<FehlerArt, string> = {
 };
 
 export const SCHRITTTEXT: Record<Schritt, string> = {
-	netz: 'Tracker verbindet sich mit dem Mobilfunknetz …',
+	netz: 'Tracker verbindet sich mit dem Netz (WLAN oder Mobilfunk) …',
 	einloesen: 'Tracker meldet sich bei dieser Instanz …'
 };
 
@@ -140,6 +158,23 @@ export function webSerialVerfuegbar(nav: Navigator = navigator): boolean {
 /** Zerlegt eingefügten Text in einzelne PEM-Zertifikate. Alles andere fällt weg. */
 export function wurzelnLesen(text: string): string[] {
 	return (text.match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g) ?? []).map((w) => w.trim());
+}
+
+/** Zeilen ohne SSID und ohne Passwort zählen nicht — so bleibt ein leeres Formular „kein WLAN". */
+export function wlanBereinigen(netze: WlanNetz[]): WlanNetz[] {
+	return netze.filter((n) => n.ssid !== '' || n.psk !== '').map((n) => ({ ssid: n.ssid, psk: n.psk }));
+}
+
+/** Prüft die Netze wie das Gerät, damit es eine Rückfrage weniger gibt. `null` heißt: passt. */
+export function wlanPruefen(netze: WlanNetz[]): string | null {
+	if (netze.length > WLAN_MAX) return `Höchstens ${WLAN_MAX} WLAN-Netze.`;
+	for (const n of netze) {
+		const bytes = new TextEncoder().encode(n.ssid).length;
+		if (bytes < 1 || bytes > SSID_MAX_BYTES) return `Der Name (SSID) eines WLANs hat 1 bis ${SSID_MAX_BYTES} Zeichen.`;
+		if (n.psk.length < PSK_MIN || n.psk.length > PSK_MAX)
+			return `Das Passwort für „${n.ssid}" hat ${PSK_MIN} bis ${PSK_MAX} Zeichen (WPA2/WPA3-Personal).`;
+	}
+	return null;
 }
 
 /**
@@ -177,7 +212,7 @@ export class TrackerUsb {
 	async einrichten(
 		instanz: string,
 		code: string,
-		{ wurzeln = [], apn, funknetz }: Einrichtung = {},
+		{ wurzeln = [], apn, funknetz, wlan = [] }: Einrichtung = {},
 		beiSchritt: (s: Schritt) => void = () => {}
 	): Promise<{ geraet_id: string }> {
 		const anfrage: Record<string, unknown> = { befehl: 'einrichten', instanz, code };
@@ -188,8 +223,16 @@ export class TrackerUsb {
 			if (apn) anfrage.apn = apn;
 			if (funknetz) anfrage.funknetz = funknetz;
 		}
+		// Ohne Feld behält das Gerät seine bisherigen Netze.
+		if (wlan.length) anfrage.wlan = wlan;
 		const a = await this.anfrage(anfrage, EINRICHTEN_MS, beiSchritt);
 		return { geraet_id: String(a.geraet_id ?? '') };
+	}
+
+	/** Ersetzt die WLAN-Netze, ohne neu einzurichten; `[]` löscht alle. Gibt die SSIDs zurück. */
+	async wlanSetzen(netze: WlanNetz[]): Promise<string[]> {
+		const a = await this.anfrage({ befehl: 'wlan', netze }, INFO_MS);
+		return Array.isArray(a.wlan) ? a.wlan.filter((s): s is string => typeof s === 'string') : [];
 	}
 
 	async schliessen(): Promise<void> {

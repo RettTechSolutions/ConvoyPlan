@@ -1,12 +1,22 @@
 <!--
-  Empfangsbalken und Batterie eines Trackers, wie man sie vom Telefon kennt,
+  Empfangsbalken und Batterie eines Trackers, wie man sie vom Telefon kennt —
+  Balken nur über Mobilfunk, sonst ein WLAN- bzw. Bluetooth-Symbol —
   dazu in Worten, wenn während der Fahrt etwas fehlt: Verbindung oder GPS.
   Gemeinsam für Org-Admin (Tracker-Liste) und Konvoi-Ansicht, damit „schwach"
   an beiden Stellen gleich aussieht. Die Regeln stehen in
   `$lib/tracking/trackerzustand`, ob der Akku warnt, sagt das Backend.
 -->
 <script lang="ts">
-	import { akkuTitel, balken, empfangTitel, stoerung, STOERUNG_TEXT, veraltet, type TrackerAnzeige } from '$lib/tracking/trackerzustand';
+	import {
+		akkuTitel,
+		balken,
+		empfangTitel,
+		netzArt,
+		stoerung,
+		STOERUNG_TEXT,
+		veraltet,
+		type TrackerAnzeige
+	} from '$lib/tracking/trackerzustand';
 
 	let { zustand, prozent = true, jetzt = Date.now() }: { zustand: TrackerAnzeige; prozent?: boolean; jetzt?: number } = $props();
 
@@ -15,17 +25,35 @@
 	const stufe = $derived(alt ? 0 : balken(zustand.signal_dbm));
 	const fuellung = $derived(Math.max(0, Math.min(100, zustand.akku_prozent ?? 0)));
 	const empfang = $derived(empfangTitel(zustand, jetzt));
+	const netz = $derived(netzArt(zustand));
 	const akku = $derived(akkuTitel(zustand, jetzt));
 </script>
 
 <span class="tracker-zustand" data-testid="tracker-zustand">
-	<span class="empfang" class:alt role="img" aria-label={empfang} title={empfang} data-balken={stufe}>
-		<svg viewBox="0 0 16 12" width="16" height="12" aria-hidden="true">
-			{#each [1, 2, 3, 4] as b (b)}
-				<rect x={(b - 1) * 4} y={12 - b * 3} width="3" height={b * 3} rx="0.5" class:an={b <= stufe} />
-			{/each}
-		</svg>
-	</span>
+	{#if netz === 'mobil'}
+		<span class="empfang" class:alt role="img" aria-label={empfang} title={empfang} data-balken={stufe} data-netz="mobil">
+			<svg viewBox="0 0 16 12" width="16" height="12" aria-hidden="true">
+				{#each [1, 2, 3, 4] as b (b)}
+					<rect x={(b - 1) * 4} y={12 - b * 3} width="3" height={b * 3} rx="0.5" class:an={b <= stufe} />
+				{/each}
+			</svg>
+		</span>
+	{:else}
+		<span class="empfang" class:alt role="img" aria-label={empfang} title={empfang} data-netz={netz}>
+			{#if netz === 'wlan'}
+				<svg viewBox="0 0 16 12" width="16" height="12" aria-hidden="true">
+					<path class="linie" d="M1 4.2 A10 10 0 0 1 15 4.2" />
+					<path class="linie" d="M3.6 6.9 A6.3 6.3 0 0 1 12.4 6.9" />
+					<path class="linie" d="M6.1 9.4 A2.8 2.8 0 0 1 9.9 9.4" />
+					<circle cx="8" cy="11" r="1" />
+				</svg>
+			{:else}
+				<svg viewBox="0 0 16 12" width="16" height="12" aria-hidden="true">
+					<path class="linie" d="M5 3.5 L11 8.5 L8 11 V1 L11 3.5 L5 8.5" />
+				</svg>
+			{/if}
+		</span>
+	{/if}
 	{#if fehlt}
 		<span class="stoerung {fehlt}" role="status" data-testid="tracker-stoerung" data-stoerung={fehlt}>{STOERUNG_TEXT[fehlt]}</span>
 	{/if}
@@ -49,6 +77,8 @@
 	.empfang, .akku { display: inline-flex; align-items: center; gap: .2rem; color: var(--text-1, #2c3e50); }
 	.empfang rect { fill: currentColor; opacity: .22; }
 	.empfang rect.an { opacity: 1; }
+	.empfang circle { fill: currentColor; }
+	.empfang .linie { fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
 	.empfang.alt { color: var(--text-muted, #95a5a6); }
 	.akku .huelle { fill: none; stroke: currentColor; stroke-width: 1; }
 	.akku .pol { fill: currentColor; }

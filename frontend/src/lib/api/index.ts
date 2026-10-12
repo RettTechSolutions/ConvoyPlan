@@ -1719,6 +1719,8 @@ export interface Tracker {
     /** Seit wann ohne Bordnetz (Serverzeit der ersten Meldung `extern=false`), sonst null. */
     akku_seit: string | null;
     signal_dbm: number | null;
+    /** Weg des letzten Aufrufs: wlan, mobil oder ble (über die Begleit-App); null = nie gemeldet. */
+    netz: 'wlan' | 'mobil' | 'ble' | null;
     // Unter der Schwelle und nicht am Bordnetz — entschieden im Backend.
     akku_niedrig: boolean;
     unterbrochen_ab: string | null;
@@ -1743,6 +1745,8 @@ export interface TrackerAmFahrzeug {
     akku_seit: string | null;
     akku_niedrig: boolean;
     signal_dbm: number | null;
+    /** Weg des letzten Aufrufs; Balken nur bei `mobil`. Ältere Backends: fehlt. */
+    netz?: 'wlan' | 'mobil' | 'ble' | null;
     /** Ab hier „Verbindung unterbrochen" (zwei erwartete Bündel ausgeblieben); null: keins erwartet. */
     unterbrochen_ab: string | null;
     /** Ab hier „GPS gestört" (Bündel ohne plausiblen Fix); null: keins erwartet. */

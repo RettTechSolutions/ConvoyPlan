@@ -9,6 +9,7 @@ import { blockExternal, konvoiFahrzeug, mockOrgPortal } from './fixtures';
 // - Ein Tracker, der sich seit Minuten nicht gemeldet hat, zeigt keine vollen
 //   Balken mehr: alter Empfang ist kein Empfang.
 // - Ein Fahrzeug ohne Tracker bekommt keine Symbole.
+// - Balken nur über Mobilfunk; über WLAN oder die Begleit-App (BLE) das Symbol des Wegs.
 
 const SLUG = 'tz-org';
 const CONVOY = 'c-tz';
@@ -93,6 +94,43 @@ test('ausgebliebene Bündel und gestörtes GPS stehen in Worten am Fahrzeug', as
 	await expect(mtw.getByRole('img', { name: /Empfang/ })).toHaveAttribute('data-balken', '4');
 
 	await expect(page.getByTestId('tracker-v-elw').getByTestId('tracker-stoerung')).toHaveCount(0);
+});
+
+// Über WLAN oder die Begleit-App gibt es kein RSRP: Balken wären dort erfunden. Die
+// Ansicht zeigt dann das Symbol des Wegs, mit Worten für Tooltip und Screenreader.
+test('über WLAN oder Bluetooth steht das Symbol des Wegs statt Balken', async ({ page }) => {
+	await oeffnen(page, [
+		{ vehicle_id: 'v-hlf', zuletzt_gesehen: vor(0), akku_prozent: 80, extern: true, akku_seit: null,
+		  akku_niedrig: false, signal_dbm: -85, netz: 'wlan' },
+		{ vehicle_id: 'v-mtw', zuletzt_gesehen: vor(1), akku_prozent: 80, extern: true, akku_seit: null,
+		  akku_niedrig: false, signal_dbm: -85, netz: 'ble' },
+		{ vehicle_id: 'v-elw', zuletzt_gesehen: vor(0), akku_prozent: 80, extern: true, akku_seit: null,
+		  akku_niedrig: false, signal_dbm: -85, netz: 'mobil' },
+	]);
+
+	const wlan = page.getByTestId('tracker-v-hlf').getByRole('img', { name: /^Über WLAN · letzter Kontakt/ });
+	await expect(wlan).toHaveAttribute('data-netz', 'wlan');
+	await expect(wlan).not.toHaveAttribute('data-balken', /.*/);
+	await expect(wlan).toHaveAttribute('title', /^Über WLAN/);
+
+	const ble = page.getByTestId('tracker-v-mtw').getByRole('img', { name: /^Über Bluetooth und die Begleit-App · letzter Kontakt vor 1 min/ });
+	await expect(ble).toHaveAttribute('data-netz', 'ble');
+	await expect(ble).not.toHaveAttribute('data-balken', /.*/);
+
+	// Über Mobilfunk bleiben die Balken.
+	const mobil = page.getByTestId('tracker-v-elw').getByRole('img', { name: /Empfang/ });
+	await expect(mobil).toHaveAttribute('data-balken', '4');
+	await expect(mobil).toHaveAttribute('data-netz', 'mobil');
+});
+
+test('ein verstummter Tracker zeigt auch über WLAN keine aktuelle Verbindung', async ({ page }) => {
+	await oeffnen(page, [
+		{ vehicle_id: 'v-hlf', zuletzt_gesehen: vor(25), akku_prozent: 80, extern: true, akku_seit: null,
+		  akku_niedrig: false, signal_dbm: null, netz: 'wlan' },
+	]);
+	const empfang = page.getByTestId('tracker-v-hlf').getByRole('img', { name: /^Keine aktuelle Verbindung/ });
+	await expect(empfang).toHaveAttribute('data-netz', 'wlan');
+	await expect(empfang).toHaveClass(/alt/);
 });
 
 test('„Verbindung unterbrochen" erscheint ohne Neuladen, auch wenn die Abfrage hängt', async ({ page }) => {
