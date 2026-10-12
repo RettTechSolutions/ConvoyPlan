@@ -94,7 +94,10 @@
 	let backOnline = $state(false);
 	let backOnlineTimer: ReturnType<typeof setTimeout> | null = null;
 
-	function handleNet() { netOnline = navigator.onLine; }
+	function handleNet() {
+		netOnline = navigator.onLine;
+		if (netOnline) void trackerLaden();
+	}
 
 	// Fullscreen: let the map use the entire screen on mobile browsers that
 	// support the Fullscreen API (Android/desktop/iPad). On iOS Safari the API
@@ -429,11 +432,21 @@
 	 * Anzeige leer. Alle 15 s, weil „Verbindung unterbrochen" beim Standardtakt
 	 * nach 45 s ohne Bündel gilt: eine Minute Abfrage käme zu spät — oder zeigte
 	 * eine Störung, die das nächste Bündel schon behoben hat.
+	 *
+	 * Die Uhr, gegen die `unterbrochen_ab` verglichen wird, läuft eigenständig
+	 * (`trackerJetzt`, im Takt der Verbandsmeldungen) und nicht erst nach einer
+	 * gelungenen Abfrage: Blieb ein Abruf hängen — ohne Frist wartet `fetch`
+	 * minutenlang —, stand die Uhr, und „Verbindung unterbrochen" erschien
+	 * erst nach dem Neuladen. Deshalb auch die Frist je Abruf, kein zweiter,
+	 * solange einer läuft, und ein frischer, sobald die Seite wieder sichtbar
+	 * oder das Netz wieder da ist.
 	 */
 	let trackerZustand = $state<Map<string, TrackerAmFahrzeug>>(new Map());
 	let trackerJetzt = $state(Date.now());
 	let trackerTimer: ReturnType<typeof setInterval> | null = null;
+	let trackerAbruf = false;
 	const TRACKER_ABFRAGE_MS = 15_000;
+	const TRACKER_FRIST_MS = 10_000;
 
 	// Wegpunkte entlang der Route — einmal je Route, nicht je Position.
 	let blasenLinie = $derived(routeCoords(route?.geojson));
@@ -529,11 +542,15 @@
 	);
 
 	async function trackerLaden() {
+		if (trackerAbruf) return;
+		trackerAbruf = true;
 		try {
-			const liste = await trackingApi.getTracker(convoyId);
+			const liste = await trackingApi.getTracker(convoyId, AbortSignal.timeout(TRACKER_FRIST_MS));
 			trackerZustand = new Map(liste.map((t) => [t.vehicle_id, t]));
 		} catch {
 			/* keine Tracker-Anzeige — der Rest der Seite hängt nicht daran */
+		} finally {
+			trackerAbruf = false;
 		}
 		trackerJetzt = Date.now();
 	}
@@ -541,7 +558,7 @@
 	onMount(() => {
 		void trackerLaden();
 		trackerTimer = setInterval(() => void trackerLaden(), TRACKER_ABFRAGE_MS);
-		meldungsTakt = setInterval(() => (meldungsUhr = Date.now()), 5_000);
+		meldungsTakt = setInterval(() => (meldungsUhr = trackerJetzt = Date.now()), 5_000);
 		requestWakeLock();
 		document.addEventListener('visibilitychange', handleVisibility);
 		netOnline = navigator.onLine;
@@ -627,7 +644,10 @@
 	}
 
 	function handleVisibility() {
-		if (document.visibilityState === 'visible' && wakeLock === null) requestWakeLock();
+		if (document.visibilityState !== 'visible') return;
+		if (wakeLock === null) requestWakeLock();
+		// Im Hintergrund drosselt der Browser die Abfrage oder hält sie an.
+		void trackerLaden();
 	}
 
 	function startTransmitting() {

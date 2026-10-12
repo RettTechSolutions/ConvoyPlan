@@ -214,7 +214,7 @@ async function request<T>(
  * nur, wer die organisationslose Sitzung meint (siehe `authApi.me`).
  */
 export const api = {
-	get: <T>(path: string, sitzung: Sitzung = 'seite') => request<T>(path, {}, sitzung),
+	get: <T>(path: string, sitzung: Sitzung = 'seite', signal?: AbortSignal) => request<T>(path, { signal }, sitzung),
 	post: <T>(path: string, body: unknown, sitzung: Sitzung = 'seite') =>
 		request<T>(path, { method: 'POST', body: JSON.stringify(body) }, sitzung),
 	put: <T>(path: string, body: unknown, sitzung: Sitzung = 'seite') =>
