@@ -421,7 +421,12 @@ Org-Admin). Vier Dinge, die man kennen muss:
   weil ein Neustart die Entscheidung nicht aufheben darf): dann gilt das
   Telefon, Bündel des Trackers werden in diesem Konvoi verworfen, bis sie es
   zurücknimmt. `vehicle_positions.quelle` sagt der Karte, was vom Tracker kam;
-  jede Schreibstelle setzt die Spalte ausdrücklich. Gegenstellen:
+  jede Schreibstelle setzt die Spalte ausdrücklich. Im Browser (Fahrer-Link und
+  Tracking-Ansicht) ist „GPS senden" gesperrt, solange der letzte Punkt des
+  Fahrzeugs vom Tracker kommt und jünger als `VORRANG_MS` ist
+  (`trackerHaeltPosition`); ein laufendes Senden endet, sobald er übernimmt —
+  **ohne** `DELETE …/position`, denn die gespeicherte Position ist dann seine
+  (`e2e/tracker-hat-vorrang.spec.ts`). Gegenstellen:
   `frontend/src/lib/tracking/positionsquelle.ts` und `packages/track-api` in der
   Begleit-App. Tests: `tests/test_positionsquelle.py` (Entscheidung ohne Uhr,
   dann REST, Tracker und Fahrer-Link am gestellten Kanal).

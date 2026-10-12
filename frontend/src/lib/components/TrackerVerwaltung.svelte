@@ -28,20 +28,20 @@
 		type TrackerTakt
 	} from '$lib/api';
 	import {
-		NETZE,
+		FUNKNETZE,
 		SCHRITTTEXT,
 		TrackerUsb,
 		WLAN_MAX,
 		WURZELN_MAX,
 		apnGueltig,
 		instanzAdresse,
-		netzName,
+		funknetzName,
 		webSerialVerfuegbar,
 		wlanBereinigen,
 		wlanPruefen,
 		wurzelnLesen,
 		type GeraeteInfo,
-		type Netz,
+		type Funknetz,
 		type WlanNetz
 	} from '$lib/tracker/usb';
 
@@ -92,7 +92,7 @@
 	} | null>(null);
 	/** Leer bzw. '': das Gerät behält seine bisherigen (ab Werk 1NCE, LTE-M). */
 	let apn = $state('');
-	let netz = $state<Netz | ''>('');
+	let funknetz = $state<Funknetz | ''>('');
 	let mitSerial = $state(false);
 	let adresse = $state('');
 	let takt = $state<TrackerTakt | null>(null);
@@ -161,17 +161,17 @@
 			await geraet.einrichten(
 				adresse,
 				code,
-				{ wurzeln, apn: apn.trim() || undefined, netz: netz || undefined, wlan },
+				{ wurzeln, apn: apn.trim() || undefined, funknetz: funknetz || undefined, wlan },
 				(s) => {
 					if (usb) usb.text = SCHRITTTEXT[s];
 				}
 			);
-			const funk = info.apn ? ` Mobilfunk: APN ${apn.trim() || info.apn}, ${netzName(netz || info.netz)}.` : '';
+			const funk = info.apn ? ` Mobilfunk: APN ${apn.trim() || info.apn}, ${funknetzName(funknetz || info.funknetz)}.` : '';
 			usb = null;
 			neu = null;
 			wurzelnText = '';
 			apn = '';
-			netz = '';
+			funknetz = '';
 			wlanNeu = [];
 			erfolg = `„${name}" ist eingerichtet — Gerät ${info.hardware_id}, Firmware ${info.firmware}.${funk}`;
 			await neuLaden();
@@ -510,9 +510,9 @@
 						</label>
 						<label>
 							Funknetz
-							<select bind:value={netz}>
+							<select bind:value={funknetz}>
 								<option value="">— unverändert —</option>
-								{#each NETZE as n (n.wert)}
+								{#each FUNKNETZE as n (n.wert)}
 									<option value={n.wert}>{n.name}</option>
 								{/each}
 							</select>
@@ -527,7 +527,7 @@
 				</div>
 				{#if usb}
 					<p class={usb.fehler ? 'usb-fehler' : 'hint'} role={usb.fehler ? 'alert' : 'status'}>
-						{#if usb.info}Gerät {usb.info.hardware_id}, Firmware {usb.info.firmware}{#if usb.info.apn}, APN {usb.info.apn} ({netzName(usb.info.netz)}){/if}{#if usb.info.instanz && usb.info.instanz !== adresse}, bisher eingerichtet für {usb.info.instanz}{/if}: {/if}{usb.text}
+						{#if usb.info}Gerät {usb.info.hardware_id}, Firmware {usb.info.firmware}{#if usb.info.apn}, APN {usb.info.apn} ({funknetzName(usb.info.funknetz)}){/if}{#if usb.info.instanz && usb.info.instanz !== adresse}, bisher eingerichtet für {usb.info.instanz}{/if}: {/if}{usb.text}
 					</p>
 				{/if}
 			{:else}

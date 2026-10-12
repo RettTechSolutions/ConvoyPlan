@@ -41,9 +41,13 @@ interface SerialLike {
 	requestPort(optionen?: object): Promise<SeriellerAnschluss>;
 }
 
-export type Netz = 'catm' | 'nbiot' | 'beide';
+/**
+ * Funknetz des Modems. Per USB heißt das Feld `funknetz`, weil `netz` im Geräteprotokoll
+ * (`hallo`) den Weg eines Aufrufs meint (WLAN, Mobilfunk, BLE).
+ */
+export type Funknetz = 'catm' | 'nbiot' | 'beide';
 
-export const NETZE: { wert: Netz; name: string }[] = [
+export const FUNKNETZE: { wert: Funknetz; name: string }[] = [
 	{ wert: 'catm', name: 'LTE-M' },
 	{ wert: 'nbiot', name: 'NB-IoT' },
 	{ wert: 'beide', name: 'LTE-M und NB-IoT' }
@@ -60,7 +64,7 @@ export interface GeraeteInfo {
 	wlan?: string[];
 	/** Seit Firmware 0.3.0; fehlt bei älterer. */
 	apn?: string;
-	netz?: Netz;
+	funknetz?: Funknetz;
 }
 
 export interface WlanNetz {
@@ -72,7 +76,7 @@ export interface Einrichtung {
 	wurzeln?: string[];
 	/** Leer oder fehlend: das Gerät behält seinen bisherigen. */
 	apn?: string;
-	netz?: Netz;
+	funknetz?: Funknetz;
 	/** Leer oder fehlend: das Gerät behält seine bisherigen Netze. */
 	wlan?: WlanNetz[];
 }
@@ -95,8 +99,8 @@ export function kenntFunk(info: GeraeteInfo): boolean {
 	return typeof info.apn === 'string';
 }
 
-export function netzName(netz: Netz | undefined): string {
-	return NETZE.find((n) => n.wert === netz)?.name ?? '';
+export function funknetzName(funknetz: Funknetz | undefined): string {
+	return FUNKNETZE.find((n) => n.wert === funknetz)?.name ?? '';
 }
 
 export type Schritt = 'netz' | 'einloesen';
@@ -204,20 +208,20 @@ export class TrackerUsb {
 		return this.zuletzt;
 	}
 
-	/** Vorher `info()`: nur so ist bekannt, ob die Firmware `apn` und `netz` versteht. */
+	/** Vorher `info()`: nur so ist bekannt, ob die Firmware `apn` und `funknetz` versteht. */
 	async einrichten(
 		instanz: string,
 		code: string,
-		{ wurzeln = [], apn, netz, wlan = [] }: Einrichtung = {},
+		{ wurzeln = [], apn, funknetz, wlan = [] }: Einrichtung = {},
 		beiSchritt: (s: Schritt) => void = () => {}
 	): Promise<{ geraet_id: string }> {
 		const anfrage: Record<string, unknown> = { befehl: 'einrichten', instanz, code };
 		if (wurzeln.length) anfrage.wurzeln = wurzeln;
-		if (apn || netz) {
+		if (apn || funknetz) {
 			if (!this.zuletzt || !kenntFunk(this.zuletzt)) throw new UsbFehler('firmware_alt');
 			if (apn && !apnGueltig(apn)) throw new UsbFehler('ungueltig', 'APN');
 			if (apn) anfrage.apn = apn;
-			if (netz) anfrage.netz = netz;
+			if (funknetz) anfrage.funknetz = funknetz;
 		}
 		// Ohne Feld behält das Gerät seine bisherigen Netze.
 		if (wlan.length) anfrage.wlan = wlan;
