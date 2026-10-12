@@ -63,7 +63,10 @@ def ablaufdatum(info: LicenseInfo) -> date | None:
     ablauf = info.expires_date
     if ablauf is None:
         return None
-    if not info.valid and not info.expired:
+    # Nach dem Grund fragen, nicht nach dem heutigen Datum: validate_license
+    # prüft den Ablauf vor der Installationsbindung. Ein fremder Schlüssel
+    # bekäme sonst nach seinem Datum eine Ablaufwarnung.
+    if not info.valid and not info.error.startswith("License expired"):
         return None
     return ablauf
 
