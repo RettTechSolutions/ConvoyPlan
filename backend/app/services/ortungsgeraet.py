@@ -52,7 +52,7 @@ CODE_GUELTIG = timedelta(hours=24)
 AKKU_NIEDRIG_PROZENT = 20
 
 #: Takt, den die Instanz dem Gerät vorgibt (Protokoll, „Anweisung").
-TAKT = {"intervall_s": 10, "buendel_s": 30, "nachfrage_s": 300, "lebenszeichen_s": 43200}
+TAKT = {"intervall_s": 10, "buendel_s": 15, "nachfrage_s": 300, "lebenszeichen_s": 43200}
 
 # Ohne 0/O, 1/I: der Code wird abgetippt.
 _CODE_ZEICHEN = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"

@@ -172,7 +172,7 @@ async def hallo(
     _zustand_merken(geraet, daten, jetzt)
     antwort = await _anweisung(db, geraet, jetzt)
     # Wurzeln nur hier: das Gerät meldet seinen Fingerabdruck in `hallo`, und ein
-    # Bündel in jeder Antwort auf `positionen` kostete alle 30 s bis zu 12 KB.
+    # Bündel in jeder Antwort auf `positionen` kostete alle 15 s bis zu 12 KB.
     gemeldet = tw.gemeldet_lesen(daten)
     if gemeldet is not None:
         geraet.wurzeln_sha256 = gemeldet
