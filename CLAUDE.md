@@ -476,6 +476,29 @@ heißt „keine eigenen Wurzeln". Der Fingerabdruck (sortierte SHA-256 der DER-K
 steht genauso im Protokoll und im Simulator; wer ihn ändert, zieht beide. Tests:
 `tests/test_tracker_wurzeln.py`.
 
+**Nahfunk** (`services/nahfunk.py`, E14 im Tracker-Plan): Die Begleit-App meldet ohne Netz
+über den Tracker ihres Fahrzeugs (BLE), der Tracker reicht mit `POST /api/geraete/meldungen`
+weiter. Den Schlüssel bekommen der Tracker in der Anweisung (`nahfunk`, nur bei `senden`) und die
+App über `track_ws` (Frame `nahfunk` auf jedes `belegen`, nur mit Gerätekennung). Drei Dinge, die
+man kennen muss:
+
+- **Abgeleitet, nicht gespeichert.** HMAC über `JWT_SECRET`, Gerät, Fahrzeug, laufende Konvois und
+  den **letzten** Halter der Belegung (`Belegungen.letzter_halter`). Nicht den aktuellen: Die
+  Belegung läuft nach fünf Minuten ohne Frame ab, und der Schlüssel wechselte dann mitten im
+  Funkloch, also genau dann, wenn der Tracker gebraucht wird. Neu wird er, wenn ein anderes Gerät
+  belegt oder jemand freigibt. Ein Neustart verliert die Halter; die App holt den neuen Schlüssel
+  mit dem nächsten `belegen`.
+- **Dieselbe Quittung wie der Fahrer-Link.** `meldungen` ruft `track._ingest_acked` je laufendem
+  Konvoi; eine `client_id` zählt deshalb über WebSocket und Tracker nur einmal. „Veraltet"
+  (über 30 min) gilt nur, wenn der Kanal die Meldung noch nicht hatte
+  (`tracking_manager.bekannte_quittung`). Eine Meldung erneuert die Belegung des letzten Halters.
+- **Kein `_zustand_merken`.** Das setzt `unterbrochen_ab` zurück, und eine Meldung ist kein
+  Bündel. `/api/geraete/meldungen` steht wie die übrigen Gerätepfade einzeln in
+  `_EXEMPT_PREFIXES`.
+
+Tests: `tests/test_nahfunk.py`. Die Referenz-Instanz im Tracker-Repo tut dasselbe; wer das
+Protokoll ändert, zieht beide.
+
 **Einrichten per USB** (`frontend/src/lib/tracker/usb.ts`, Knopf in
 `TrackerVerwaltung.svelte`): Web Serial, je Zeile ein JSON-Objekt, Protokoll im
 Tracker-Repo (`docs/PROTOKOLL.md`, „Einrichten per USB"), Geräteseite dort in

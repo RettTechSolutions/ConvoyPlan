@@ -11,6 +11,11 @@ widerrufenes oder gesperrtes Token: 401, und das Gerät fällt in den Zustand
 beim Einlösen gegen das Token getauscht; unbekannt, abgelaufen oder schon
 eingelöst ergeben dieselbe 404.
 
+Dazu ``meldungen``: Status, Stärke und Betriebsstoff der Besatzung, die der Tracker per
+Nahfunk von der Begleit-App bekommen hat (``services/nahfunk.py``). Verarbeitet werden sie
+wie am Fahrer-Link, über dieselbe Quittung (``track._ingest_acked``) — eine ``client_id``
+zählt über beide Wege nur einmal.
+
 Dies ist die **vierte** Stelle, die ``VehiclePosition`` schreibt — neben
 Fahrer-Link, REST und WebSocket der angemeldeten Ansicht. Deshalb ruft sie wie
 die drei anderen ``positionsverlauf.aufzeichnen`` auf, achtet auf
@@ -32,6 +37,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import OrgCtx, get_org_context
 from app.api.guards import ROLE_ORDER
+from app.config import settings
 from app.database import get_db
 from app.middleware.license_guard import is_licensed
 from app.models.convoy import Convoy, ConvoyVehicle
@@ -40,6 +46,8 @@ from app.models.ortungsgeraet import Ortungsgeraet
 from app.models.vehicle import Vehicle
 from app.models.vehicle_position import VehiclePosition
 from app.services import alarm_quittung, audit, firmware_angebot, org_plan, positionsquelle, positionsverlauf
+from app.services import belegung
+from app.services import nahfunk
 from app.services import tracker_wurzeln as tw
 from app.services import ortungsgeraet as og
 from app.services.rate_limit import rate_limit
@@ -111,7 +119,41 @@ async def _anweisung(db: AsyncSession, geraet: Ortungsgeraet, jetzt: datetime) -
     buendel = (
         await db.execute(select(Organization.tracker_buendel_s).where(Organization.id == geraet.organization_id))
     ).scalar_one_or_none()
-    return og.anweisung(modus, jetzt, firmware=firmware, buendel=buendel)
+    antwort = og.anweisung(modus, jetzt, firmware=firmware, buendel=buendel)
+    # Nur bei `senden`: ohne laufenden Konvoi gibt es keinen Ort für eine Meldung.
+    antwort["nahfunk"] = _nahfunk_zugang(geraet, konvois) if modus == "senden" else None
+    return antwort
+
+
+def _nahfunk_zugang(geraet: Ortungsgeraet, konvois: list[uuid.UUID]) -> dict[str, Any]:
+    """Derselbe Zugang für den Tracker (Anweisung) und die App (``track_ws``)."""
+    halter = [
+        h
+        for k in konvois
+        if (h := belegung.belegungen.letzter_halter(str(k), str(geraet.vehicle_id))) is not None
+    ]
+    return nahfunk.zugang(settings.jwt_secret, geraet.id, geraet.vehicle_id, konvois, halter)
+
+
+async def nahfunk_fuer_fahrzeug(db: AsyncSession, vehicle_id: uuid.UUID) -> dict[str, Any] | None:
+    """Der Zugang für die App, die *vehicle_id* belegt — oder ``None``: kein Tracker am
+    Fahrzeug, oder er hört gerade ``schweigen`` (kein laufender Konvoi, Plansperre, Lizenz)."""
+    geraet = (
+        await db.execute(
+            select(Ortungsgeraet).where(
+                Ortungsgeraet.vehicle_id == vehicle_id,
+                Ortungsgeraet.aktiv.is_(True),
+                Ortungsgeraet.token_hash.is_not(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if geraet is None:
+        return None
+    konvois = await _laufende_konvois(db, geraet)
+    gesperrt = await org_plan.ist_gesperrt(db, geraet.organization_id) or not await is_licensed()
+    if og.modus(True, len(konvois), gesperrt) != "senden":
+        return None
+    return _nahfunk_zugang(geraet, konvois)
 
 
 def _zustand_merken(geraet: Ortungsgeraet, daten: dict[str, Any], jetzt: datetime) -> None:
@@ -221,6 +263,64 @@ async def positionen(
     for convoy_id, nachricht in ereignisse:
         await tracking_manager.broadcast(convoy_id, nachricht)
     return {"angenommen": len(fixes), "verworfen": verworfen, **antwort}
+
+
+@geraet_router.post("/meldungen")
+async def meldungen(
+    daten: dict[str, Any] = Body(...),
+    geraet: Ortungsgeraet = Depends(_geraet_aus_token),
+    db: AsyncSession = Depends(get_db),
+):
+    """Meldungen der Besatzung aus dem Nahfunk (PROTOKOLL.md im Tracker-Repo, ``meldungen``).
+
+    Je Meldung mit lesbarer ``client_id`` ein Ergebnis. Angewendet wird auf das gekoppelte
+    Fahrzeug in jedem laufenden Konvoi (E8), mit denselben Regeln, Broadcasts und derselben
+    Quittung wie am Fahrer-Link. Die Belegung der Besatzung hält das wach: Wer über den
+    Tracker meldet, sendet für sein Fahrzeug.
+    """
+    # Spät importiert: track.py holt sich von hier den Zugang für die App.
+    from app.api.routes.track import _ingest_acked
+
+    jetzt = datetime.now(timezone.utc)
+    try:
+        liste = nahfunk.meldungen_lesen(daten.get("meldungen"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    # Nicht `_zustand_merken`: das setzt die Erwartung des nächsten Bündels zurück, und eine
+    # Meldung ist kein Bündel — eine Fahrt, deren Positionen ausbleiben, soll auffallen.
+    geraet.zuletzt_gesehen = jetzt
+    felder = og.zustand_lesen(daten)
+    geraet.akku_seit = og.akku_seit(geraet.extern, geraet.akku_seit, felder.get("extern"), jetzt)
+    for feld, wert in felder.items():
+        setattr(geraet, feld, wert)
+    antwort = await _anweisung(db, geraet, jetzt)
+    konvois = await _laufende_konvois(db, geraet) if antwort["modus"] == "senden" else []
+    await db.commit()
+
+    ergebnisse: list[dict[str, Any]] = []
+    for m in liste:
+        schon = [
+            q for k in konvois
+            if (q := tracking_manager.bekannte_quittung((str(k), m.client_id))) is not None
+        ]
+        if not konvois:
+            ergebnisse.append(nahfunk.abgelehnt(m.client_id, "kein-konvoi"))
+        elif not schon and nahfunk.veraltet(m, jetzt):
+            # Was der Kanal schon hatte, ist nicht veraltet: Es gilt die erste Antwort.
+            ergebnisse.append(nahfunk.abgelehnt(m.client_id, "veraltet"))
+        elif m.art is None or m.frame is None:
+            ergebnisse.append(nahfunk.abgelehnt(m.client_id, "ungueltig"))
+        else:
+            je_konvoi = []
+            for k in konvois:
+                halter = belegung.belegungen.letzter_halter(str(k), str(geraet.vehicle_id))
+                if halter is not None:
+                    belegung.belegungen.beanspruchen(str(k), str(geraet.vehicle_id), halter)
+                roh = {**m.frame, "vehicle_id": str(geraet.vehicle_id)}
+                quittung = await _ingest_acked(k, m.art, roh, m.client_id)
+                je_konvoi.append(nahfunk.ergebnis_aus_quittung(m.client_id, quittung))
+            ergebnisse.append(nahfunk.zusammenfassen(m.client_id, je_konvoi))
+    return {"ergebnisse": ergebnisse, **antwort}
 
 
 async def _eintragen(

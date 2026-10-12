@@ -408,10 +408,14 @@ async def _ingest_driver_staerke(convoy_uuid: uuid.UUID, msg: dict) -> dict:
 # ``alarm-quittung`` ebenso: Erst dann darf ein Client den Knopf „Quittieren"
 # an den Server schicken und auf ``alarm_quittiert`` warten
 # (``_alarm_quittieren``).
+#
+# ``nahfunk``: Die Verbindung, die ein Fahrzeug mit Tracker belegt, bekommt den Schlüssel,
+# mit dem die App ohne Netz über den Tracker meldet (``_nahfunk_senden``,
+# ``services/nahfunk.py``).
 HELLO = {
     "type": "hello",
     "protocol": 2,
-    "features": ["ack", "ack-betriebsstoff", "alarm-quittung"],
+    "features": ["ack", "ack-betriebsstoff", "alarm-quittung", "nahfunk"],
 }
 
 # Welche Frames eine Quittung bekommen, und wer sie verarbeitet.
@@ -547,6 +551,25 @@ async def _im_verband(convoy_uuid: uuid.UUID, vehicle_id: str) -> bool:
         return await db.get(ConvoyVehicle, (convoy_uuid, uuid.UUID(vehicle_id))) is not None
 
 
+async def _nahfunk_senden(ws: WebSocket, vehicle_id: str) -> None:
+    """Der Nahfunk-Zugang für das Fahrzeug, das diese Verbindung gerade belegt hat.
+
+    Geht bei jedem ``belegen`` mit, also beim Wählen und mit dem Keepalive jede Minute: So
+    kommt ein neuer Schlüssel (anderer Konvoi, Tracker gekoppelt) ohne eigene Benachrichtigung
+    an, und ``kennung: null`` zieht ihn zurück. Die App übergeht einen unveränderten.
+    """
+    # Spät importiert: geraete.py holt sich von hier die Quittung (``_ingest_acked``).
+    from app.api.routes.geraete import nahfunk_fuer_fahrzeug
+    from app.services import nahfunk
+
+    async with AsyncSessionLocal() as db:
+        zugang = await nahfunk_fuer_fahrzeug(db, uuid.UUID(vehicle_id))
+    try:
+        await ws.send_json(nahfunk.ws_nachricht(vehicle_id, zugang))
+    except Exception:
+        logger.debug("nahfunk nicht zustellbar (vehicle_id=%s)", vehicle_id, exc_info=True)
+
+
 @ws_router.websocket("/{slug}")
 async def track_ws(
     slug: str,
@@ -633,6 +656,8 @@ async def track_ws(
                     await ws.send_json(_ack(client_id, kind, _rejected("vehicle-taken")))
                 continue
             if kind == "belegen":
+                if durchsetzen:
+                    await _nahfunk_senden(ws, vehicle_id)
                 continue
             if client_id is not None:
                 await ws.send_json(await _ingest_acked(convoy_uuid, kind, raw, client_id))

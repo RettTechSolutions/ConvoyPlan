@@ -81,6 +81,11 @@ class Belegungen:
         self._ablauf_s = ablauf_s
         # (convoy_id, vehicle_id) → (Kennung, zuletzt gesehen)
         self._halter: dict[tuple[str, str], tuple[str, float]] = {}
+        # (convoy_id, vehicle_id) → das Gerät, das das Fahrzeug zuletzt hielt — auch über den
+        # Ablauf hinaus. Daran hängt der Nahfunk-Schlüssel (services/nahfunk.py): Eine
+        # Besatzung im Funkloch verliert nach fünf Minuten ihre Belegung, aber nicht den Weg
+        # über den Tracker. Neu wird er erst, wenn ein anderes Gerät belegt oder jemand freigibt.
+        self._letzter: dict[tuple[str, str], str] = {}
 
     def beanspruchen(self, convoy_id: str, vehicle_id: str, kennung: str) -> Ergebnis:
         """Beansprucht oder erneuert. ``fremd``: ein anderes Gerät hält das Fahrzeug."""
@@ -90,6 +95,7 @@ class Belegungen:
         if bisher is not None and bisher[0] != kennung and jetzt - bisher[1] <= self._ablauf_s:
             return "fremd"
         self._halter[schluessel] = (kennung, jetzt)
+        self._letzter[schluessel] = kennung
         if bisher is not None and bisher[0] == kennung:
             return "erneuert"
         return "neu"
@@ -103,10 +109,14 @@ class Belegungen:
         schluessel = (convoy_id, vehicle_id)
         bisher = self._halter.get(schluessel)
         if bisher is None:
+            # Abgelaufen, aber ausdrücklich freigegeben: Der Weg über den Tracker endet auch.
+            if kennung is None or self._letzter.get(schluessel) == kennung:
+                self._letzter.pop(schluessel, None)
             return False
         if kennung is not None and bisher[0] != kennung:
             return False
         del self._halter[schluessel]
+        self._letzter.pop(schluessel, None)
         return True
 
     def ablaufen(self, convoy_id: str) -> list[str]:
@@ -138,8 +148,13 @@ class Belegungen:
             if cid == convoy_id and zuletzt >= grenze and halter == kennung
         )
 
+    def letzter_halter(self, convoy_id: str, vehicle_id: str) -> str | None:
+        """Wer das Fahrzeug zuletzt hielt, auch wenn die Belegung abgelaufen ist (Nahfunk)."""
+        return self._letzter.get((convoy_id, vehicle_id))
+
     def leeren(self) -> None:
         self._halter.clear()
+        self._letzter.clear()
 
 
 belegungen = Belegungen()

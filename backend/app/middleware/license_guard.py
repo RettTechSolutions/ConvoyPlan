@@ -59,12 +59,15 @@ _EXEMPT_PREFIXES = (
     # Ohne Lizenz soll es stattdessen `schweigen` hören (wie bei der
     # Plansperre) und erst nach `nachfrage_s` wiederkommen. Die eigentliche
     # Sperre greift in `_anweisung` (api/routes/geraete.py): ohne Lizenz
-    # `schweigen`, und `positionen` verwirft dann jeden Fix. Nur diese drei
+    # `schweigen`, und `positionen` verwirft dann jeden Fix. Nur diese
     # Pfade, nicht das Präfix: `einloesen` richtet ein neues Gerät ein und
     # bleibt lizenzpflichtig.
     "/api/geraete/hallo",
     "/api/geraete/positionen",
     "/api/geraete/firmware/ergebnis",
+    # Meldungen der Besatzung über den Tracker (Nahfunk): ohne Lizenz `schweigen`, und jede
+    # Meldung bekommt `kein-konvoi` statt eines 402, den das Gerät nicht zuordnen könnte.
+    "/api/geraete/meldungen",
     "/api/ws/track/",
     "/docs",
     "/redoc",
