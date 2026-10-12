@@ -111,6 +111,18 @@ Stelle, gehört deren Wurzelzertifikat (PEM) beim Einrichten unter *Eigene
 Zertifizierungsstelle* dazu, höchstens drei. Wechselt die Stelle später, muss
 jedes Gerät einmal neu per USB eingerichtet werden.
 
+**Andere SIM als 1NCE:** Ab Werk meldet sich ein Tracker mit dem APN
+`iot.1nce.net` im LTE-M-Netz an. Für eine andere SIM gehört deren APN beim
+Einrichten unter *Mobilfunk (SIM)* dazu, ebenso das Funknetz, wenn am Standort
+nur NB-IoT verfügbar ist. Der Tracker übernimmt beides erst, wenn er sich damit
+bei dieser Instanz anmelden konnte; ein Tippfehler im APN ergibt „erreicht diese
+Instanz nicht", und die alten Einstellungen bleiben. Leer gelassen ändert sich
+nichts. Beides gehört zur SIM, nicht zur Instanz: Ein Tracker, der zu einer
+anderen Organisation wechselt, behält es. Die Statuszeile beim Einrichten nennt
+den APN, mit dem das Gerät gerade arbeitet. Firmware vor 0.3.0 kennt diese
+Felder noch nicht; dort setzt man den APN im seriellen Terminal
+(`setze apn …`, dann `neustart`), die Seite sagt das.
+
 In der Liste steht danach *bereit*, mit dem letzten Lebenszeichen, Akku, Empfang
 und Firmwarestand. Meldet sich ein Gerät länger als einen Tag nicht, steht dort
 *nicht erreichbar* — ein Tracker meldet sich auch ohne Bewegung alle zwölf
