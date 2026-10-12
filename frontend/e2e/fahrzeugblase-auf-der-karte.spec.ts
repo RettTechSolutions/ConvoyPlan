@@ -160,11 +160,20 @@ test('die Blase nennt den Abstand zum Vordermann', async ({ page }) => {
 	// sind 300 m, die der Vordermann seither weiter ist.
 	senden('v-kdow', 50.05, { speed_kmh: 36, alterS: 30 });
 	await expect(zeile).toHaveText('Vordermann Akkon 10/1: 800 m');
+	await expect(zeile).not.toHaveClass(/warnung/);
+
+	// Über 1 km: der Verband ist abgerissen.
+	senden('v-kdow', 50.05);
+	senden('v-mtw', 50.035);
+	await expect(zeile).toHaveText('Vordermann Akkon 10/1: 1,7 km – Abriss');
+	await expect(zeile).toHaveClass(/warnung/);
 
 	// Überholt: der Vordermann liegt zurück.
 	senden('v-kdow', 50.05);
 	senden('v-mtw', 50.06);
+	// Kein Abriss — der Verband ist nur umsortiert.
 	await expect(zeile).toHaveText('Vordermann Akkon 10/1: 1,1 km dahinter');
+	await expect(zeile).not.toHaveClass(/warnung/);
 
 	// Zwei Minuten auseinander: keine Zahl, die geraten wäre.
 	senden('v-kdow', 50.05, { alterS: 120 });

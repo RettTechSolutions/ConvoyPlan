@@ -12,15 +12,18 @@
  * fortgeschrieben, aber nur bis `FORTSCHREIBEN_MAX_S`. Darüber wäre die Zahl
  * geraten, und die Blase sagt das statt einer Zahl.
  *
- * Gewarnt wird nicht: Die Sollabstände (15/50/100 m) hängen an der
+ * Gegen die Sollabstände (15/50/100 m) wird nicht gewarnt: Sie hängen an der
  * Straßenklasse, die hier niemand kennt, und liegen in der Größenordnung der
- * GPS-Ungenauigkeit.
+ * GPS-Ungenauigkeit. Gewarnt wird erst ab `ABRISS_M` — da ist der Verband
+ * abgerissen, bei welcher Straßenklasse auch immer.
  */
 import { projectOnRoute } from './eta';
 import { ABSEITS_M } from './naechsterhalt';
 import { formatDistance } from './progress';
 
 export const FORTSCHREIBEN_MAX_S = 60;
+/** Ab diesem Abstand zum Vordermann gilt der Verband als abgerissen. */
+export const ABRISS_M = 1000;
 
 export interface Streckenstand {
 	along: number;
@@ -76,9 +79,15 @@ export function vordermann(
 	return null;
 }
 
-/** „Vordermann Akkon 10/1: 350 m", „… 200 m dahinter", „… Positionen nicht gleichzeitig". */
-export function vordermannText(v: Vordermann): string {
-	if (v.abstandM === null) return `Vordermann ${v.name}: Positionen nicht gleichzeitig`;
-	if (v.abstandM < 0) return `Vordermann ${v.name}: ${formatDistance(-v.abstandM)} dahinter`;
-	return `Vordermann ${v.name}: ${formatDistance(v.abstandM)}`;
+/**
+ * „Vordermann Akkon 10/1: 350 m", „… 1,4 km – Abriss", „… 200 m dahinter",
+ * „… Positionen nicht gleichzeitig". Ein überholter Vordermann ist kein
+ * Abriss — der Verband ist dann nur umsortiert.
+ */
+export function vordermannText(v: Vordermann): { text: string; warnung: boolean } {
+	const vorn = `Vordermann ${v.name}:`;
+	if (v.abstandM === null) return { text: `${vorn} Positionen nicht gleichzeitig`, warnung: false };
+	if (v.abstandM < 0) return { text: `${vorn} ${formatDistance(-v.abstandM)} dahinter`, warnung: false };
+	if (v.abstandM > ABRISS_M) return { text: `${vorn} ${formatDistance(v.abstandM)} – Abriss`, warnung: true };
+	return { text: `${vorn} ${formatDistance(v.abstandM)}`, warnung: false };
 }

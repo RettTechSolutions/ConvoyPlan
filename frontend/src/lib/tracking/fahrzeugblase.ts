@@ -49,7 +49,7 @@ export function fahrzeugBlase(a: FahrzeugAngaben, jetzt: number): BlasenZeile[] 
 	if (bemerkung && ALARM.has(a.status)) zeilen.push({ text: `„${bemerkung}“`, warnung: true });
 
 	if (a.naechster) zeilen.push(naechsterHaltText(a.naechster));
-	if (a.vordermann) zeilen.push({ text: vordermannText(a.vordermann) });
+	if (a.vordermann) zeilen.push(vordermannText(a.vordermann));
 
 	// Wie die Zeile: fehlende Meldung ist keine Abweichung.
 	if (a.ist) {

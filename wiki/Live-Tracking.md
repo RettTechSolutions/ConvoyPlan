@@ -347,8 +347,10 @@ nächste davor mit Position. Gemessen wird entlang der Route. Weil die beiden
 Positionen selten gleich alt sind, wird die ältere mit ihrem Tempo
 fortgeschrieben; liegen sie mehr als eine Minute auseinander, steht statt einer
 Zahl „Positionen nicht gleichzeitig“. Ist das Fahrzeug am Vordermann vorbei,
-steht „… dahinter“. Gewarnt wird nicht: Die Sollabstände liegen in der
-Größenordnung der GPS-Genauigkeit.
+steht „… dahinter“. Ab **1 km Abstand** steht „– Abriss“ dabei, hervorgehoben.
+Gegen die Sollabstände wird nicht gewarnt: Sie hängen an der Straßenklasse und
+liegen in der Größenordnung der GPS-Genauigkeit. Ein überholter Vordermann ist
+kein Abriss.
 
 Was Aufmerksamkeit
 verdient (Halt oder Ausfall, Abweichung vom Soll, knapper Betriebsstoff,
