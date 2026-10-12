@@ -9,7 +9,9 @@ import { test, expect, type Page } from '@playwright/test';
 //  - ohne Fahrzeuggewicht sagt der Block, dass nichts gemieden wurde;
 //  - „nicht ermittelt" zeigt nichts — „keine Grenze" wäre eine Behauptung;
 //  - Achslastgrenzen stehen in derselben Liste, als solche benannt;
-//  - wie gerundet wird und ab wann etwas knapp ist, steht immer dabei.
+//  - wie gerundet wird und ab wann etwas knapp ist, steht immer dabei;
+//  - ist alles frei, steht der Block eingeklappt mit seinem Befund in einer
+//    Zeile da; eine überschrittene Grenze liegt nie hinter einem Klick.
 
 const HUELLE = 'http://localhost:4174';
 const block = (page: Page) => page.getByRole('region', { name: 'Gewichtsgrenzen' });
@@ -79,4 +81,21 @@ test('wie gerundet wird und ab wann es knapp ist, steht immer dabei', async ({ p
 		await expect(block(page)).toContainText('Gewicht auf 0,1 t, Achslast auf 0,5 t gerundet');
 		await expect(block(page)).toContainText('unter 2 t Reserve beim Gewicht, unter 1 t bei der Achslast');
 	}
+});
+
+test('alles frei: eingeklappt, der Befund steht in der Kopfzeile', async ({ page }) => {
+	await oeffnen(page, 'alle_frei');
+	const kopf = block(page).locator('summary');
+	await expect(kopf).toContainText('26,0 t');
+	await expect(kopf).toContainText('✓ frei');
+	await expect(block(page).getByText('1 Grenze, alle mit ausreichender Reserve.')).toBeHidden();
+	await kopf.click();
+	await expect(block(page).getByText('1 Grenze, alle mit ausreichender Reserve.')).toBeVisible();
+});
+
+test('eine überschrittene Grenze klappt den Block auf und steht schon in der Kopfzeile', async ({ page }) => {
+	await oeffnen(page, 'gemischt');
+	const kopf = block(page).locator('summary');
+	await expect(kopf).toContainText('1 über der Grenze');
+	await expect(eintraege(page).first()).toBeVisible();
 });

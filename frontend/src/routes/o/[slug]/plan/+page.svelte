@@ -68,6 +68,10 @@
 	let flowProvider = $state<string | null>(null);
 	// [lat, lon] — wird von handleMapMove gesetzt und in fetchClosures gelesen.
 	let mapCenter = $state<[number, number]>([50.7, 11.5]);
+	const ROUTENWAHL: Record<string, string> = {
+		standard: 'Standard', schnell: 'Schnellste', kuerzeste: 'Kürzeste',
+		bundesstrasse: 'Standard (veraltet)', landstrasse: 'Standard (veraltet)',
+	};
 	let activeTab = $state<'convoy'|'fahrzeuge'|'wegpunkte'|'zeitplan'|'export'|'konto'>('convoy');
 	let loading = $state(false);
 	let dndWaypoints = $state<Waypoint[]>([]);
@@ -1294,19 +1298,25 @@
 							<span>Marschverband</span>
 							<button class="btn-small" onclick={openEditConvoyForm}>✎ Bearbeiten</button>
 						</div>
-						<p><strong>Organisation:</strong> {selected.organization || organizations.find(o => o.id === selected?.organization_id)?.name || '–'}</p>
-						<p><strong>Startzeit:</strong> {selected.start_time ? new Date(selected.start_time).toLocaleString('de-DE') : '–'}</p>
-						<p><strong>Tempo:</strong> {selected.speed_urban_kmh} km/h (innerorts) / {selected.speed_rural_kmh} km/h (außerorts) · {{ standard: 'Standard', schnell: 'Schnellste', kuerzeste: 'Kürzeste', bundesstrasse: 'Standard (veraltet)', landstrasse: 'Standard (veraltet)' }[selected.road_preference] ?? selected.road_preference}</p>
-						<p><strong>Abstände:</strong> {selected.spacing_urban_m} m / {selected.spacing_rural_m} m / {selected.spacing_motorway_m} m (i/a/BAB)</p>
-						{#if selected.marschform}<p><strong>Marschform:</strong> {({ geschlossener_verband:'Geschlossener Verband', einzelgruppen:'Einzelgruppen', individuell:'Individuelle Anreise' })[selected.marschform] ?? selected.marschform}</p>{/if}
-						{#if selected.ablaufpunkt}<p><strong>Ablaufpunkt:</strong> {selected.ablaufpunkt}</p>{/if}
-						{#if selected.ablaufführer}<p><strong>Ablaufführer:</strong> {selected.ablaufführer}</p>{/if}
-						{#if selected.funkgruppe}<p><strong>Funkgruppe:</strong> {selected.funkgruppe}</p>{/if}
-						{#if selected.lage}<details><summary><strong>Lage</strong></summary><p class="detail-text">{selected.lage}</p></details>{/if}
-						{#if selected.auftrag}<details><summary><strong>Auftrag</strong></summary><p class="detail-text">{selected.auftrag}</p></details>{/if}
-						{#if selected.parent_convoy_id}
-							<p class="tag-pill">Teilverband</p>
-						{/if}
+						<p class="plan-kurz">
+							{selected.start_time ? new Date(selected.start_time).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + ' Uhr' : 'Startzeit offen'}
+							· {selected.speed_urban_kmh}/{selected.speed_rural_kmh} km/h
+							· {ROUTENWAHL[selected.road_preference] ?? selected.road_preference}
+							{#if selected.parent_convoy_id}<span class="tag-pill">Teilverband</span>{/if}
+						</p>
+						<details class="plan-details">
+							<summary>Alle Eckdaten</summary>
+							<p><strong>Organisation:</strong> {selected.organization || organizations.find(o => o.id === selected?.organization_id)?.name || '–'}</p>
+							<p><strong>Startzeit:</strong> {selected.start_time ? new Date(selected.start_time).toLocaleString('de-DE') : '–'}</p>
+							<p><strong>Tempo:</strong> {selected.speed_urban_kmh} km/h (innerorts) / {selected.speed_rural_kmh} km/h (außerorts) · {ROUTENWAHL[selected.road_preference] ?? selected.road_preference}</p>
+							<p><strong>Abstände:</strong> {selected.spacing_urban_m} m / {selected.spacing_rural_m} m / {selected.spacing_motorway_m} m (i/a/BAB)</p>
+							{#if selected.marschform}<p><strong>Marschform:</strong> {({ geschlossener_verband:'Geschlossener Verband', einzelgruppen:'Einzelgruppen', individuell:'Individuelle Anreise' })[selected.marschform] ?? selected.marschform}</p>{/if}
+							{#if selected.ablaufpunkt}<p><strong>Ablaufpunkt:</strong> {selected.ablaufpunkt}</p>{/if}
+							{#if selected.ablaufführer}<p><strong>Ablaufführer:</strong> {selected.ablaufführer}</p>{/if}
+							{#if selected.funkgruppe}<p><strong>Funkgruppe:</strong> {selected.funkgruppe}</p>{/if}
+							{#if selected.lage}<details><summary><strong>Lage</strong></summary><p class="detail-text">{selected.lage}</p></details>{/if}
+							{#if selected.auftrag}<details><summary><strong>Auftrag</strong></summary><p class="detail-text">{selected.auftrag}</p></details>{/if}
+						</details>
 					</div>
 					<div class="map-actions" data-tour="map-actions">
 						<button class="btn-map" class:active={$mapMode === 'set-start'} onclick={() => mapMode.set($mapMode === 'set-start' ? 'idle' : 'set-start')}>📍 Start</button>
@@ -1407,20 +1417,6 @@
 							{:else if route.fuel_analysis && route.fuel_analysis.vehicles_with_range.length === 0 && allVehicles.length > 0}
 								<p class="hint" style="margin-top:.4rem">⚠ Keine Fahrzeuge im Verband – gehe zu <strong>Fahrzeuge</strong> und füge sie mit + hinzu, um die Reichweitenanalyse zu nutzen.</p>
 							{/if}
-							<DurchfahrtsHoehen
-								eintraege={route.durchfahrtshoehen}
-								fahrzeughoeheM={route.fahrzeughoehe_m}
-								ohneHoehe={selected?.convoy_vehicles.filter((cv) => !cv.vehicle.height_cm).length ?? 0}
-								bruecken={route.bruecken}
-								suche={brueckenSuche}
-								onSuchen={darfBrueckenSuchen ? () => selected && sucheBruecken(selected.id) : undefined}
-							/>
-							<GewichtsGrenzen
-								eintraege={route.gewichtsgrenzen}
-								fahrzeuggewichtT={route.fahrzeuggewicht_t}
-								achslastT={route.achslast_t}
-								ohneGewicht={selected?.convoy_vehicles.filter((cv) => !cv.vehicle.weight_kg).length ?? 0}
-							/>
 							{#if route.fuel_analysis?.duration_halt_needed}
 								{@const remaining = route.fuel_analysis.duration_halts.slice(thStopsAdded)}
 								{#if remaining.length > 0}
@@ -1445,6 +1441,20 @@
 									</div>
 								{/if}
 							{/if}
+							<DurchfahrtsHoehen
+								eintraege={route.durchfahrtshoehen}
+								fahrzeughoeheM={route.fahrzeughoehe_m}
+								ohneHoehe={selected?.convoy_vehicles.filter((cv) => !cv.vehicle.height_cm).length ?? 0}
+								bruecken={route.bruecken}
+								suche={brueckenSuche}
+								onSuchen={darfBrueckenSuchen ? () => selected && sucheBruecken(selected.id) : undefined}
+							/>
+							<GewichtsGrenzen
+								eintraege={route.gewichtsgrenzen}
+								fahrzeuggewichtT={route.fahrzeuggewicht_t}
+								achslastT={route.achslast_t}
+								ohneGewicht={selected?.convoy_vehicles.filter((cv) => !cv.vehicle.weight_kg).length ?? 0}
+							/>
 						{/if}
 					</div>
 
@@ -2423,6 +2433,9 @@
 
 	.org-item { display: flex; justify-content: space-between; align-items: center; padding: .35rem 0; border-bottom: 1px solid var(--border); font-size: var(--text-sm); }
 
+	.plan-kurz { display: flex; flex-wrap: wrap; align-items: center; gap: .1rem .35rem; }
+	.plan-details > summary { cursor: pointer; font-size: var(--text-xs); color: var(--text-muted); margin: .15rem 0; }
+	.plan-details[open] > summary { margin-bottom: .3rem; }
 	.tag-pill { display: inline-block; background: rgba(52,152,219,.3); border: 1px solid var(--color-accent); border-radius: 12px; padding: .1rem .5rem; font-size: .72rem; color: #74b9ff; }
 
 	.error-bar { background: var(--color-primary-hover); color: white; padding: .4rem .75rem; font-size: .8rem; margin: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; flex-shrink: 0; word-break: break-word; }

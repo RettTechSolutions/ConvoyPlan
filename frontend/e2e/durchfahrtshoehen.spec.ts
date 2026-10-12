@@ -12,7 +12,9 @@ import { test, expect, type Page } from '@playwright/test';
 //  - die Herkunft der Zahlen steht immer dabei;
 //  - Brücken über der Route ohne Höhenangabe stehen darunter, die auf Autobahn
 //    und Kraftfahrstraße erst auf Nachfrage; ob gesucht wurde, läuft oder
-//    scheiterte, ist zu unterscheiden — „nichts gefunden" sagt nur, wer gesucht hat.
+//    scheiterte, ist zu unterscheiden — „nichts gefunden" sagt nur, wer gesucht hat;
+//  - ist alles frei, steht der Block eingeklappt mit seinem Befund in einer
+//    Zeile da; eine enge oder knappe Stelle liegt nie hinter einem Klick.
 
 const HUELLE = 'http://localhost:4174';
 const block = (page: Page) => page.getByRole('region', { name: 'Durchfahrtshöhen' });
@@ -120,4 +122,28 @@ test('wer nicht suchen darf, bekommt keinen Knopf', async ({ page }) => {
 	await oeffnen(page, 'ohne_knopf');
 	await expect(block(page)).toContainText('Nicht gesucht.');
 	await expect(block(page).getByRole('button')).toHaveCount(0);
+});
+
+test('alles frei: eingeklappt, der Befund steht in der Kopfzeile', async ({ page }) => {
+	await oeffnen(page, 'alle_frei');
+	const kopf = block(page).locator('summary');
+	await expect(kopf).toContainText('✓ frei');
+	await expect(block(page).getByText('Aus OpenStreetMap, auf 10 cm gerundet.')).toBeHidden();
+	await kopf.click();
+	await expect(block(page).getByText('Aus OpenStreetMap, auf 10 cm gerundet.')).toBeVisible();
+});
+
+test('eine enge Stelle klappt den Block auf und steht schon in der Kopfzeile', async ({ page }) => {
+	await oeffnen(page, 'gemischt');
+	const kopf = block(page).locator('summary');
+	await expect(kopf).toContainText('1 eng');
+	await expect(kopf).toContainText('1 knapp');
+	await expect(kopf).not.toContainText('✓ frei');
+	await expect(bekannte(page).first()).toBeVisible();
+});
+
+test('der Klick auf „Jetzt suchen" klappt den Block nicht zu', async ({ page }) => {
+	await oeffnen(page, 'ungesucht');
+	await block(page).getByRole('button', { name: 'Jetzt suchen' }).click();
+	await expect(block(page).getByText('Suche läuft …')).toBeVisible();
 });

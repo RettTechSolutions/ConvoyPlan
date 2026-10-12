@@ -78,7 +78,7 @@
 			tab: 'convoy',
 			target: '[data-tour="plan-params"]',
 			sidebar: true,
-			lead: 'Der hervorgehobene Bereich zeigt alle Eckdaten des Verbands. Über „✎ Bearbeiten“ passt du sie an – sie fließen direkt in Routen- und Zeitberechnung ein.',
+			lead: 'Die Kurzzeile zeigt Start, Tempo und Routenwahl, „Alle Eckdaten“ klappt den Rest auf. Über „✎ Bearbeiten“ passt du sie an – sie fließen direkt in Routen- und Zeitberechnung ein.',
 			bullets: [
 				{ label: 'Tempo & Routenwahl', text: 'Geschwindigkeit innerorts/außerorts und Routenpräferenz.' },
 				{ label: 'Abstände', text: 'Fahrzeugabstände innerorts / außerorts / Autobahn.' },

@@ -53,7 +53,7 @@
 	};
 	let suche = $state<'idle' | 'laeuft' | 'fehler'>(fall === 'suche_fehler' ? 'fehler' : fall === 'suche_laeuft' ? 'laeuft' : 'idle');
 	let gesucht = $state<BrueckenPruefung | null>(
-		fall === 'gemischt' ? GESUCHT : fall === 'leer' ? { geprueft_at: '2026-10-09T10:00:00Z', eintraege: [] } : null,
+		fall === 'gemischt' ? GESUCHT : fall === 'leer' || fall === 'alle_frei' ? { geprueft_at: '2026-10-09T10:00:00Z', eintraege: [] } : null,
 	);
 	let suchenGeklickt = $state(0);
 	const HOEHEN: Record<string, { eintraege: DurchfahrtshoeheEntry[] | null; hoehe: number | null; ohne: number }> = {
