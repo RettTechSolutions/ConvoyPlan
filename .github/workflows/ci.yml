@@ -32,6 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       region: ${{ steps.paths.outputs.region }}
+      code: ${{ steps.paths.outputs.code }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: github.event_name != 'schedule'
@@ -46,6 +47,7 @@ jobs:
           BEFORE: ${{ github.event.before }}
         run: |
           region=true
+          code=true
           case "$EVENT" in
             pull_request) range="$PR_BASE...$PR_HEAD" ;;
             merge_group) range="$QUEUE_BASE..HEAD" ;;
@@ -54,16 +56,21 @@ jobs:
           esac
           # Unknown files and failed comparisons keep the full checks enabled.
           if [ -n "$range" ] && git diff --name-only "$range" > "$RUNNER_TEMP/ci-paths"; then
+            if ! grep -qvE '^docs/|^[^/]+\.(md|rst)$' "$RUNNER_TEMP/ci-paths"; then
+              code=false
+            fi
             if ! grep -qvE '^(frontend/|docs/)|^[^/]+\.(md|rst)$' "$RUNNER_TEMP/ci-paths"; then
               region=false
             fi
           fi
           echo "region=$region" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
 
   backend-lint-test:
     name: Backend – Lint & Tests
     # Kein Sicherheits-Job — beim wöchentlichen Lauf übersprungen.
-    if: github.event_name != 'schedule'
+    needs: changes
+    if: github.event_name != 'schedule' && needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -128,7 +135,8 @@ jobs:
   frontend-check:
     name: Frontend – Type Check
     # Kein Sicherheits-Job — beim wöchentlichen Lauf übersprungen.
-    if: github.event_name != 'schedule'
+    needs: changes
+    if: github.event_name != 'schedule' && needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -149,7 +157,8 @@ jobs:
   frontend-e2e:
     name: Frontend – E2E (Playwright)
     # Kein Sicherheits-Job — beim wöchentlichen Lauf übersprungen.
-    if: github.event_name != 'schedule'
+    needs: changes
+    if: github.event_name != 'schedule' && needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     # Die Suite braucht rund eine Minute. Ein Deckel darüber, damit ein
     # hängender Schritt nicht stundenlang einen Runner belegt, statt als
@@ -186,14 +195,17 @@ jobs:
   docker-build:
     name: Docker – Build check
     # The scan matrix already builds all images. Keep the required check name.
-    needs: container-scan
+    needs: [changes, container-scan]
     if: always() && github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - name: Images built and scanned successfully
         env:
           RESULT: ${{ needs.container-scan.result }}
-        run: test "$RESULT" = success
+          CHANGES_RESULT: ${{ needs.changes.result }}
+        run: |
+          test "$CHANGES_RESULT" = success
+          test "$RESULT" = success
 
   dependency-audit:
     name: Security – Dependency Audit
@@ -939,3 +951,4 @@ jobs:
       - name: Logs bei Fehlschlag
         if: failure()
         run: docker logs gh 2>&1 | tail -60
+

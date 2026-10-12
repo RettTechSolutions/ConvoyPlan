@@ -52,7 +52,7 @@ while IFS= read -r ctx; do
         drin && /^    if: / { sub(/^    if: /, ""); print; exit }
     ' "$CI")"
     case "$bedingung" in
-        ""|"github.event_name != 'schedule'"|"always() && github.event_name != 'schedule'"|"github.event_name != 'schedule' && needs.changes.outputs.region == 'true'")
+        ""|"github.event_name != 'schedule'"|"always() && github.event_name != 'schedule'"|"github.event_name != 'schedule' && needs.changes.outputs.region == 'true'"|"github.event_name != 'schedule' && needs.changes.outputs.code == 'true'")
             ok "'$ctx' meldet auf PR und Merge Queue (ausgefuehrt oder uebersprungen)" ;;
         *) bad "'$ctx' hat die Bedingung '$bedingung' — meldet er auf jedem PR?" ;;
     esac
