@@ -21,7 +21,9 @@
 	const aktiv = $derived(istAktiv(convoy.status));
 
 	async function setzen(status: KonvoiStatus) {
-		if (status === 'completed' && !confirm(`„${convoy.name}" abschließen? Tracker in diesem Konvoi hören dann auf zu senden.`)) return;
+		// Wer einen aktiven Konvoi verlässt, lässt seine Tracker verstummen — das fragt nach.
+		if (aktiv && status === 'completed' && !confirm(`„${convoy.name}" abschließen? Tracker in diesem Konvoi hören dann auf zu senden.`)) return;
+		if (aktiv && status === 'planning' && !confirm(`„${convoy.name}" zurück in die Planung? Tracker in diesem Konvoi hören dann auf zu senden.`)) return;
 		busy = true;
 		fehler = '';
 		try {
@@ -50,6 +52,9 @@
 			</button>
 			<p class="hint">Fest eingebaute Tracker senden erst, wenn der Konvoi aktiv ist.</p>
 		{/if}
+		{#if convoy.status !== 'planning'}
+			<button class="btn-zurueck" onclick={() => setzen('planning')} disabled={busy}>↩ Zurück in Planung</button>
+		{/if}
 	{/if}
 	{#if fehler}<p class="fehler" role="alert">{fehler}</p>{/if}
 </div>
@@ -66,6 +71,9 @@
 	.btn-go { background: #27ae60; color: white; border: none; }
 	.btn-go:hover:not(:disabled) { background: #219150; }
 	.btn-stop { background: rgba(226, 61, 40, .3); border: 1px solid var(--color-primary); color: var(--text-1); }
+	.btn-zurueck { align-self: flex-start; padding: .2rem 0; background: none; border: none; color: var(--text-muted); font-size: var(--text-xs); cursor: pointer; text-decoration: underline; }
+	.btn-zurueck:hover:not(:disabled) { color: var(--text-1); }
+	.btn-zurueck:disabled { opacity: .5; cursor: not-allowed; }
 	.hint { font-size: var(--text-xs); color: var(--text-muted); margin: 0; line-height: 1.4; }
 	.fehler { font-size: var(--text-xs); color: var(--color-primary); margin: 0; }
 </style>

@@ -373,7 +373,7 @@ Passwortlink erscheint wieder die Passwortabfrage.
    nachtragen, die über Funk hereinkam
 6. Die Ansicht aktualisiert sich fortlaufend ohne Neuladen
 7. Oben in der Seitenleiste steht der Status des Konvois. Planer schalten ihn dort
-   mit **▶ Konvoi aktivieren** aktiv und mit **⏹ Konvoi abschließen** wieder ab —
+   mit **▶ Konvoi aktivieren** aktiv und mit **⏹ Konvoi abschließen** oder **↩ Zurück in Planung** wieder ab —
    fest eingebaute [Tracker](Tracker) senden nur, solange er aktiv ist
 
 ---

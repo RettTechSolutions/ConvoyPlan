@@ -5,7 +5,8 @@ import { blockExternal, convoyPayload, mockOrgPortal } from './fixtures';
 //
 // - Der Knopf schickt genau `{ status: 'active' }` — kein „aktiv" oder ein
 //   anderer Freitext, bei dem Tracker still weiter schweigen.
-// - Abschließen fragt nach, weil die Tracker danach verstummen.
+// - Abschließen fragt nach, weil die Tracker danach verstummen; ebenso der
+//   Rückweg aus „Aktiv" in die Planung. Aus „Abgeschlossen" geht er ohne.
 // - Wer nicht planen darf, sieht den Status, aber keinen Knopf.
 
 const SLUG = 'ks-org';
@@ -51,6 +52,34 @@ test('Planer schaltet den Konvoi aktiv und schließt ihn ab', async ({ page }) =
 	await expect(block).toContainText('Abgeschlossen');
 	expect(gesendet).toEqual([{ status: 'active' }, { status: 'completed' }]);
 	await expect(block.getByRole('button', { name: /wieder aktivieren/ })).toBeVisible();
+});
+
+test('aus aktiv zurück in die Planung nur nach Rückfrage', async ({ page }) => {
+	const gesendet = await oeffnen(page, 'planer', 'active');
+	const block = page.getByTestId('konvoi-status');
+	const zurueck = block.getByRole('button', { name: /Zurück in Planung/ });
+
+	page.once('dialog', (d) => d.dismiss());
+	await zurueck.click();
+	await expect(block).toContainText('Aktiv');
+	expect(gesendet).toEqual([]);
+
+	page.once('dialog', (d) => d.accept());
+	await zurueck.click();
+	await expect(block).toContainText('In Planung');
+	expect(gesendet).toEqual([{ status: 'planning' }]);
+	// In der Planung gibt es keinen Rückweg mehr, nur den Weg nach vorn.
+	await expect(zurueck).toHaveCount(0);
+	await expect(block.getByRole('button', { name: /^▶ Konvoi aktivieren/ })).toBeVisible();
+});
+
+test('aus abgeschlossen zurück in die Planung ohne Rückfrage', async ({ page }) => {
+	const gesendet = await oeffnen(page, 'planer', 'completed');
+	const block = page.getByTestId('konvoi-status');
+	page.on('dialog', () => { throw new Error('keine Rückfrage erwartet'); });
+	await block.getByRole('button', { name: /Zurück in Planung/ }).click();
+	await expect(block).toContainText('In Planung');
+	expect(gesendet).toEqual([{ status: 'planning' }]);
 });
 
 test('Beobachter sieht den Status, aber keinen Knopf', async ({ page }) => {

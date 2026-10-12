@@ -24,7 +24,8 @@ Aktiv geschaltet wird der Konvoi mit **▶ Konvoi aktivieren** — in der
 Tracking-Ansicht oben in der Seitenleiste oder in der Planung im Reiter
 **Export** unter *Live-Tracking* (ab der Rolle **Planer**). **⏹ Konvoi
 abschließen** beendet das Senden wieder; ein abgeschlossener Konvoi lässt sich
-erneut aktivieren.
+erneut aktivieren. **↩ Zurück in Planung** setzt ihn aus beiden Zuständen
+wieder auf *In Planung*.
 
 Steht das Fahrzeug in zwei laufenden Konvois (Hauptkonvoi und Unterkonvoi),
 erscheint es in beiden.
