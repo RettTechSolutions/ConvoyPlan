@@ -379,6 +379,12 @@ Org-Admin). Vier Dinge, die man kennen muss:
   `positionsverlauf.aufzeichnen` mit. Auch `is_recently_cleared` („GPS-Freigabe
   zurücksetzen") und `planned → en_route` samt `alarm_quittung.zuruecksetzen`
   gelten hier wie am Fahrer-Link.
+- **Sendetakt je Organisation** (`organizations.tracker_buendel_s`, Migration `0065`).
+  NULL heißt Standard aus `ortungsgeraet.TAKT`; `_anweisung` liest ihn bei jeder
+  Antwort, wählbar ist nur `BUENDEL_WAHL` (nicht unter `intervall_s`, unter
+  `positionsquelle.VORRANG_S`). Die Volumenschätzung (`volumen_kb_pro_stunde`)
+  ist aus dem Protokoll gerechnet, nicht gemessen; kommen Zahlen aus M3 im
+  Tracker-Repo, gehören sie in `VOLUMEN_*_B`.
 - **„Auf Akku seit"** (`akku_seit`, Migration `0063`) setzt `ortungsgeraet.akku_seit` aus
   dem *bisherigen* `extern` und der neuen Meldung, **bevor** die Zustandsfelder
   überschrieben werden (`_zustand_merken`). Eine Meldung ohne `extern` lässt den Wert
@@ -447,8 +453,9 @@ aus `signal_dbm` (RSRP) und dem letzten Kontakt; „auf Akku seit" kommt aus `ak
 `TestZustandInDerKonvoiAnsicht`), `frontend/e2e/tracker-zustand.spec.ts`.
 
 **Verbindung unterbrochen, GPS gestört** (`ortungsgeraet.unterbrochen_ab`/`gps_gestoert_ab`,
-Migration `0065`): Nach jedem Bündel ohne `ruhe`, auf das die Instanz `senden` antwortet,
-steht in `unterbrochen_ab`, wann zwei weitere ausgeblieben sind (2 × `buendel_s` + 15 s).
+Migration `0066`): Nach jedem Bündel ohne `ruhe`, auf das die Instanz `senden` antwortet,
+steht in `unterbrochen_ab`, wann zwei weitere ausgeblieben sind (2 × `buendel_s` + 15 s,
+mit dem `buendel_s` aus **dieser** Antwort, also dem Sendetakt der Organisation).
 `_zustand_merken` löscht beide Spalten bei **jedem** Aufruf, `positionen` setzt sie danach
 neu — ein `hallo` kommt nur aus der Ruhe, also wird danach nichts erwartet. `gps_gestoert_ab`
 schiebt nur ein Bündel mit plausiblem Fix weiter, ein leeres lässt die Frist laufen. Das

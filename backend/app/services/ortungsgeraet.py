@@ -52,17 +52,37 @@ CODE_GUELTIG = timedelta(hours=24)
 #: Hier und nur hier: Org-Admin und Konvoi-Ansicht lesen ``akku_niedrig``.
 AKKU_NIEDRIG_PROZENT = 20
 
-#: Takt, den die Instanz dem Gerät vorgibt (Protokoll, „Anweisung").
-TAKT = {"intervall_s": 10, "buendel_s": 30, "nachfrage_s": 300, "lebenszeichen_s": 43200}
+#: Takt, den die Instanz dem Gerät vorgibt (Protokoll, „Anweisung"). ``buendel_s``
+#: ist der Standard; jede Organisation kann ihn ändern (``tracker_buendel_s``).
+TAKT = {"intervall_s": 10, "buendel_s": 15, "nachfrage_s": 300, "lebenszeichen_s": 43200}
+
+#: Was der Org-Admin für ``buendel_s`` wählen kann. Nicht unter dem Fix-Takt
+#: (``intervall_s``): öfter senden als messen bringt nichts. Nicht über 120 s:
+#: Der Tracker behält seinen Vorrang vor dem Telefon nur, solange er in den
+#: letzten fünf Minuten gesendet hat (``positionsquelle.VORRANG_S``), und ein
+#: Funkloch soll nicht gleich das Telefon zurückholen.
+BUENDEL_WAHL = (10, 15, 30, 60, 120)
+
+# Datenvolumen je Versand in Fahrt, geschätzt aus dem, was die Firmware schickt
+# (Tracker-Repo, ``kern_json_positionen`` und ``kern_http_anfrage``); gemessen
+# wird es dort in Phase 0 (M3). Was sich häuft, ist der Versand, nicht der Fix:
+# Ein Fix sind gut 100 Bytes, Kopf, Antwort und Rahmen um 1,4 KB.
+VOLUMEN_FIX_B = 115
+#: Anfrage mit Kopf, Token und Gerätezustand, Antwort mit Anweisung, TLS-Rahmen
+#: und TCP/IP-Pakete samt Quittungen — bei offener Verbindung (Keep-Alive).
+VOLUMEN_VERSAND_B = 1400
+#: Dazu, wenn die Verbindung zwischen zwei Versänden zugegangen ist: TCP- und
+#: TLS-Handschlag mit Zertifikatskette.
+VOLUMEN_HANDSCHLAG_B = 5000
 
 #: Wie viele erwartete Bündel ausbleiben, bis die Verbindung als unterbrochen gilt.
 #: Eins allein ist oft nur ein langsamer Verbindungsaufbau.
 BUENDEL_AUSGEBLIEBEN = 2
 #: Spielraum für Verbindungsaufbau und TLS im Mobilfunk, auf die ausgebliebenen Bündel.
 VERBINDUNG_TOLERANZ = timedelta(seconds=15)
-#: So lange darf bei stehender Verbindung ein plausibler Fix fehlen, bis „GPS gestört"
-#: gilt: im Halt nimmt das Gerät nur alle 60 s einen auf, plus ein Bündel und Spielraum.
-GPS_FRIST = timedelta(seconds=60 + TAKT["buendel_s"]) + VERBINDUNG_TOLERANZ
+#: Im Halt nimmt das Gerät nur alle 60 s einen Fix auf. So lange plus ein Bündel und
+#: Spielraum darf bei stehender Verbindung ein plausibler Fix fehlen (``gps_frist``).
+HALT_FIX_S = 60
 
 #: Unplausible Fixes (Protokoll, „positionen"): Was ein Empfänger mit gestörtem GNSS
 #: liefert, Null Island, Mehrwege im Häuserblock, Spoofing, landet nicht auf der Karte.
@@ -218,19 +238,48 @@ def modus(gekoppelt: bool, laufende_konvois: int, gesperrt: bool = False) -> str
     return "senden"
 
 
-def anweisung(modus_: str, jetzt: datetime, firmware: dict[str, Any] | None = None) -> dict[str, Any]:
+def buendel_s(gewaehlt: int | None) -> int:
+    """Der Bündeltakt einer Organisation; ohne gültige Wahl der Standard."""
+    return gewaehlt if gewaehlt in BUENDEL_WAHL else TAKT["buendel_s"]
+
+
+def volumen_kb_pro_stunde(buendel: int, offen: bool = True) -> int:
+    """Geschätztes Datenvolumen eines Trackers je Fahrstunde in KB.
+
+    *offen*: Die Verbindung bleibt zwischen zwei Versänden stehen. Sonst kostet
+    jeder Versand einen neuen Handschlag, und der ist größer als alles andere.
+    Im Halt (Fix alle 60 s) und in Ruhe ist es viel weniger."""
+    versaende = 3600 / buendel
+    fixes = buendel / TAKT["intervall_s"]
+    je_versand = VOLUMEN_VERSAND_B + fixes * VOLUMEN_FIX_B + (0 if offen else VOLUMEN_HANDSCHLAG_B)
+    return round(versaende * je_versand / 1000)
+
+
+def anweisung(
+    modus_: str,
+    jetzt: datetime,
+    firmware: dict[str, Any] | None = None,
+    buendel: int | None = None,
+) -> dict[str, Any]:
     return {
         "modus": modus_,
         **TAKT,
+        "buendel_s": buendel_s(buendel),
         "serverzeit": jetzt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "firmware": firmware,
     }
 
 
-def unterbrochen_ab(modus_: str, ruhe: Any, jetzt: datetime) -> datetime | None:
+def gps_frist(buendel: int) -> timedelta:
+    """Bis „GPS gestört" gilt: Fix-Takt im Halt, ein Bündel im Takt der Organisation, Spielraum."""
+    return timedelta(seconds=HALT_FIX_S + buendel) + VERBINDUNG_TOLERANZ
+
+
+def unterbrochen_ab(modus_: str, ruhe: Any, jetzt: datetime, buendel: int) -> datetime | None:
     """Ab wann die Verbindung als unterbrochen gilt, nach einem angenommenen Bündel.
 
-    Solange die Fahrt läuft, sendet das Gerät alle ``buendel_s`` — auch leer, wenn
+    Solange die Fahrt läuft, sendet das Gerät alle *buendel* Sekunden (der Takt
+    der Organisation aus der Anweisung, ``buendel_s``) — auch leer, wenn
     GNSS fehlt. Bleiben zwei erwartete Bündel aus, ist die Verbindung weg. Erwartet
     wird nichts, wenn die Antwort ``schweigen`` war oder das Gerät mit ``ruhe: true``
     sagt, dass es jetzt schläft (fünf Minuten Halt, Zündung aus): ein parkendes
@@ -239,11 +288,11 @@ def unterbrochen_ab(modus_: str, ruhe: Any, jetzt: datetime) -> datetime | None:
     """
     if modus_ != "senden" or ruhe is True:
         return None
-    return jetzt + BUENDEL_AUSGEBLIEBEN * timedelta(seconds=TAKT["buendel_s"]) + VERBINDUNG_TOLERANZ
+    return jetzt + BUENDEL_AUSGEBLIEBEN * timedelta(seconds=buendel) + VERBINDUNG_TOLERANZ
 
 
 def gps_gestoert_ab(
-    alt: datetime | None, unterbrochen_ab_: datetime | None, plausible: int, jetzt: datetime
+    alt: datetime | None, unterbrochen_ab_: datetime | None, plausible: int, jetzt: datetime, buendel: int
 ) -> datetime | None:
     """Ab wann „GPS gestört" gilt, nach einem angenommenen Bündel.
 
@@ -255,7 +304,7 @@ def gps_gestoert_ab(
     if unterbrochen_ab_ is None:
         return None
     if plausible > 0 or alt is None:
-        return jetzt + GPS_FRIST
+        return jetzt + gps_frist(buendel)
     return alt
 
 

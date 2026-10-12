@@ -76,3 +76,24 @@ test('ein eingerichteter Tracker zeigt, was das Gerät gemeldet hat', async ({ p
 	// Die Instanz verteilt neue Wurzeln, das Gerät hat sie noch nicht.
 	await expect(zeile.getByText('Zertifikate noch nicht übernommen')).toBeVisible();
 });
+
+test('Sendetakt: Rechenbeispiel folgt den Eingaben, gespeichert wird die Wahl', async ({ page }) => {
+	await page.goto(HUELLE);
+	const takt = page.getByTestId('sendetakt');
+	await expect(takt.getByRole('radio', { name: 'alle 15 s' })).toBeChecked();
+	const speichern = takt.getByRole('button', { name: 'Sendetakt speichern' });
+	await expect(speichern).toBeDisabled();
+
+	// 60 s: 125 KB je Fahrstunde, 4 Tracker × 50 h = 25 MB
+	await takt.getByLabel('Tracker', { exact: true }).fill('4');
+	await takt.getByLabel('Fahrstunden je Tracker im Monat').fill('50');
+	const zeile60 = takt.locator('tr', { has: page.getByRole('radio', { name: 'alle 60 s' }) });
+	await expect(zeile60).toContainText('125 KB');
+	await expect(zeile60).toContainText('25 MB');
+
+	await takt.getByRole('radio', { name: 'alle 60 s' }).check();
+	await speichern.click();
+	expect(await page.evaluate(() => window.__trackerTakt)).toBe(60);
+	await expect(page.getByRole('status')).toContainText('alle 60 s');
+	await expect(speichern).toBeDisabled();
+});

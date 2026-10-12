@@ -35,6 +35,7 @@ from app.api.guards import ROLE_ORDER
 from app.database import get_db
 from app.middleware.license_guard import is_licensed
 from app.models.convoy import Convoy, ConvoyVehicle
+from app.models.organization import Organization
 from app.models.ortungsgeraet import Ortungsgeraet
 from app.models.vehicle import Vehicle
 from app.models.vehicle_position import VehiclePosition
@@ -53,6 +54,7 @@ CREATED = "org.geraet.created"
 UPDATED = "org.geraet.updated"
 CODE_ROTATED = "org.geraet.code_rotated"
 DELETED = "org.geraet.deleted"
+TAKT_UPDATED = "org.geraet.takt_updated"
 EINGERICHTET = "geraet.eingerichtet"
 
 _NICHT_GEFUNDEN = "Nicht gefunden"
@@ -106,7 +108,10 @@ async def _anweisung(db: AsyncSession, geraet: Ortungsgeraet, jetzt: datetime) -
     # Was das Gerät damit tut — nur im Stand, nur mit Akku —, entscheidet es
     # selbst; die Adresse zeigt auf diese Instanz (services/firmware_angebot.py).
     firmware = await firmware_angebot.fuer_geraet(geraet.kanal, geraet.firmware, geraet.hardware)
-    return og.anweisung(modus, jetzt, firmware=firmware)
+    buendel = (
+        await db.execute(select(Organization.tracker_buendel_s).where(Organization.id == geraet.organization_id))
+    ).scalar_one_or_none()
+    return og.anweisung(modus, jetzt, firmware=firmware, buendel=buendel)
 
 
 def _zustand_merken(geraet: Ortungsgeraet, daten: dict[str, Any], jetzt: datetime) -> None:
@@ -176,7 +181,7 @@ async def hallo(
     _zustand_merken(geraet, daten, jetzt)
     antwort = await _anweisung(db, geraet, jetzt)
     # Wurzeln nur hier: das Gerät meldet seinen Fingerabdruck in `hallo`, und ein
-    # Bündel in jeder Antwort auf `positionen` kostete alle 30 s bis zu 12 KB.
+    # Bündel in jeder Antwort auf `positionen` kostete alle 15 s bis zu 12 KB.
     gemeldet = tw.gemeldet_lesen(daten)
     if gemeldet is not None:
         geraet.wurzeln_sha256 = gemeldet
@@ -199,8 +204,10 @@ async def positionen(
     gps_alt = geraet.gps_gestoert_ab
     _zustand_merken(geraet, daten, jetzt)
     antwort = await _anweisung(db, geraet, jetzt)
-    geraet.unterbrochen_ab = og.unterbrochen_ab(antwort["modus"], daten.get("ruhe"), jetzt)
-    geraet.gps_gestoert_ab = og.gps_gestoert_ab(gps_alt, geraet.unterbrochen_ab, len(fixes), jetzt)
+    # Im Takt, den diese Antwort dem Gerät vorgibt (Sendetakt der Organisation).
+    buendel = antwort["buendel_s"]
+    geraet.unterbrochen_ab = og.unterbrochen_ab(antwort["modus"], daten.get("ruhe"), jetzt, buendel)
+    geraet.gps_gestoert_ab = og.gps_gestoert_ab(gps_alt, geraet.unterbrochen_ab, len(fixes), jetzt, buendel)
     if antwort["modus"] != "senden":
         # Kein Ort für die Position: das Gerät erfährt es aus der Antwort und
         # hört auf. Was schon unterwegs war, zählt als verworfen.
@@ -461,6 +468,72 @@ async def liste(ctx: OrgCtx = Depends(get_org_context), db: AsyncSession = Depen
         )
     ).scalars().all()
     return [_zeile(g, jetzt) for g in rows]
+
+
+class TaktWahl(BaseModel):
+    buendel_s: int
+    # Geschätzt je Tracker und Fahrstunde, mit offener und ohne offene Verbindung.
+    kb_pro_stunde: int
+    kb_pro_stunde_ohne_keepalive: int
+
+
+class Takt(BaseModel):
+    buendel_s: int
+    standard_s: int
+    intervall_s: int
+    wahl: list[TaktWahl]
+
+
+class TaktDaten(BaseModel):
+    buendel_s: int
+
+
+def _takt(org: Organization) -> dict[str, Any]:
+    return {
+        "buendel_s": og.buendel_s(org.tracker_buendel_s),
+        "standard_s": og.TAKT["buendel_s"],
+        "intervall_s": og.TAKT["intervall_s"],
+        "wahl": [
+            {
+                "buendel_s": b,
+                "kb_pro_stunde": og.volumen_kb_pro_stunde(b),
+                "kb_pro_stunde_ohne_keepalive": og.volumen_kb_pro_stunde(b, offen=False),
+            }
+            for b in og.BUENDEL_WAHL
+        ],
+    }
+
+
+# Vor den Routen mit ``/{geraet_id}``, sonst hielte FastAPI „takt" für eine ID.
+@org_router.get("/takt", response_model=Takt)
+async def takt_lesen(ctx: OrgCtx = Depends(get_org_context)):
+    """Wie oft die Tracker dieser Organisation in Fahrt senden, mit Volumenschätzung."""
+    _, org, role = ctx
+    _require_admin(role)
+    return _takt(org)
+
+
+@org_router.put("/takt", response_model=Takt)
+async def takt_setzen(
+    data: TaktDaten,
+    request: Request,
+    ctx: OrgCtx = Depends(get_org_context),
+    db: AsyncSession = Depends(get_db),
+):
+    """Gilt ab der nächsten Antwort an das Gerät, also spätestens nach einem Bündel."""
+    user, org, role = ctx
+    _require_admin(role)
+    if data.buendel_s not in og.BUENDEL_WAHL:
+        raise HTTPException(status_code=422, detail="Nicht wählbarer Sendetakt")
+    vorher = og.buendel_s(org.tracker_buendel_s)
+    org.tracker_buendel_s = data.buendel_s
+    await db.commit()
+    await audit.record(
+        db, TAKT_UPDATED, request=request, actor_id=user.id, actor_email=user.email,
+        org_id=org.id, target_type="organization", target_id=str(org.id),
+        detail={"vorher": vorher, "nachher": data.buendel_s},
+    )
+    return _takt(org)
 
 
 @org_router.post("", response_model=GeraetMitCode, status_code=201)

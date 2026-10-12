@@ -14,7 +14,7 @@
  */
 
 /** Ab hier gelten die Balken als veraltet (grau). Ein Tracker im laufenden
- *  Konvoi sendet alle 30 s; steht das Fahrzeug, schläft er nach fünf Minuten. */
+ *  Konvoi sendet alle 15 s; steht das Fahrzeug, schläft er nach fünf Minuten. */
 export const EMPFANG_VERALTET_MS = 10 * 60 * 1000;
 
 /** RSRP-Schwellen für 4/3/2/1 Balken, darunter keiner. */

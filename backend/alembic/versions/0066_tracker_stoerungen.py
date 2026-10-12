@@ -6,15 +6,15 @@ Fixes, „GPS gestört" (``services/ortungsgeraet.py``, Protokoll im Tracker-Rep
 „Verbindung unterbrochen"). Nullable ohne Vorgabe: NULL heißt, die Instanz
 erwartet nichts — so stehen alle Geräte bis zu ihrem nächsten Bündel.
 
-Revision ID: 0065
-Revises: 0064
+Revision ID: 0066
+Revises: 0065
 Create Date: 2026-10-12
 """
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0065"
-down_revision = "0064"
+revision = "0066"
+down_revision = "0065"
 branch_labels = None
 depends_on = None
 

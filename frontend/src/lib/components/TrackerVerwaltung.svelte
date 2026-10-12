@@ -17,7 +17,15 @@
 	import { onMount } from 'svelte';
 	import TrackerZustand from '$lib/components/TrackerZustand.svelte';
 	import { stoerung, STOERUNG_TEXT } from '$lib/tracking/trackerzustand';
-	import { geraeteApi, vehiclesApi, type Tracker, type TrackerDaten, type TrackerKanal, type TrackerMitCode } from '$lib/api';
+	import {
+		geraeteApi,
+		vehiclesApi,
+		type Tracker,
+		type TrackerDaten,
+		type TrackerKanal,
+		type TrackerMitCode,
+		type TrackerTakt
+	} from '$lib/api';
 	import {
 		SCHRITTTEXT,
 		TrackerUsb,
@@ -64,6 +72,12 @@
 	let wurzelnText = $state('');
 	let mitSerial = $state(false);
 	let adresse = $state('');
+	let takt = $state<TrackerTakt | null>(null);
+	let taktGewaehlt = $state(0);
+	let taktSpeichern = $state(false);
+	/** Für das Rechenbeispiel; nur hier im Browser, gespeichert wird es nicht. */
+	let fahrstunden = $state(20);
+	let anzahl = $state(0);
 
 	async function neuLaden() {
 		laden = true;
@@ -71,11 +85,19 @@
 		try {
 			const [g, f] = await Promise.all([geraeteApi.list(), vehiclesApi.list()]);
 			geraete = g;
+			if (!anzahl) anzahl = Math.max(1, g.length);
 			fahrzeuge = f.map((v) => ({ id: v.id, name: v.callsign ? `${v.name} (${v.callsign})` : v.name }));
 		} catch (e) {
 			fehler = e instanceof Error ? e.message : 'Laden fehlgeschlagen';
 		} finally {
 			laden = false;
+		}
+		// Getrennt: Ohne Sendetakt bleibt die Liste benutzbar, nur der Abschnitt fehlt.
+		try {
+			takt = await geraeteApi.takt();
+			taktGewaehlt = takt.buendel_s;
+		} catch {
+			takt = null;
 		}
 	}
 
@@ -119,6 +141,33 @@
 			usb = { laeuft: false, fehler: true, info, text: e instanceof Error ? e.message : String(e) };
 		} finally {
 			await geraet?.schliessen();
+		}
+	}
+
+	/** Um wie viele Meter die Position bei 50 km/h zwischen zwei Versänden springt. */
+	function sprungM(buendel_s: number): number {
+		return Math.round((50 / 3.6) * buendel_s / 10) * 10;
+	}
+
+	/** KB je Stunde → MB im Monat für alle Tracker, gerundet für eine Schätzung. */
+	function mbImMonat(kb_pro_stunde: number): string {
+		const mb = (kb_pro_stunde * Math.max(0, fahrstunden) * Math.max(0, anzahl)) / 1000;
+		return mb < 10 ? mb.toLocaleString('de-DE', { maximumFractionDigits: 1 }) : Math.round(mb).toLocaleString('de-DE');
+	}
+
+	const taktAktuell = $derived(takt?.wahl.find((w) => w.buendel_s === takt?.buendel_s) ?? null);
+
+	async function taktSichern() {
+		if (!takt || taktSpeichern || taktGewaehlt === takt.buendel_s) return;
+		taktSpeichern = true;
+		fehler = '';
+		try {
+			takt = await geraeteApi.taktSetzen(taktGewaehlt);
+			erfolg = `Die Tracker senden in Fahrt jetzt alle ${takt.buendel_s} s — ab ihrem nächsten Kontakt.`;
+		} catch (err) {
+			fehler = err instanceof Error ? err.message : 'Speichern fehlgeschlagen';
+		} finally {
+			taktSpeichern = false;
 		}
 	}
 
@@ -276,6 +325,15 @@
 			<button class="btn-small" onclick={() => (neu = null)}>Ich habe ihn eingegeben</button>
 		</div>
 
+		{#if takt && taktAktuell}
+			<p class="hint" data-testid="takt-hinweis">
+				In Fahrt sendet der Tracker alle <strong>{takt.buendel_s} s</strong>, geschätzt
+				<strong>{taktAktuell.kb_pro_stunde} KB</strong> je Fahrstunde (bis {taktAktuell.kb_pro_stunde_ohne_keepalive} KB,
+				wenn das Netz die Verbindung zwischendurch schließt). Den Takt und ein Rechenbeispiel für den
+				SIM-Tarif gibt es unten unter <strong>Sendetakt</strong>.
+			</p>
+		{/if}
+
 		<div class="usb" data-testid="usb-einrichten">
 			{#if mitSerial}
 				<p class="hint">
@@ -414,7 +472,84 @@
 	{/each}
 {/if}
 
+{#if takt}
+	<div class="section formular" data-testid="sendetakt">
+		<div class="section-header"><strong>Sendetakt</strong></div>
+		<p class="hint">
+			Wie oft die Tracker <strong>während der Fahrt</strong> ihre Position senden. Öfter heißt: Die Karte ist
+			aktueller, aber Datenvolumen und Strom steigen. Die Position messen die Tracker davon unabhängig alle
+			{takt.intervall_s} s; jeder Versand bringt alle Messungen seit dem letzten mit, der Verlauf bleibt also
+			gleich dicht. Gilt für alle Tracker dieser Organisation, ab ihrem nächsten Kontakt.
+		</p>
+
+		<div class="takt-rahmen">
+		<table class="takt">
+			<thead>
+				<tr>
+					<th></th>
+					<th>Senden alle</th>
+					<th>Sprung auf der Karte bei 50 km/h</th>
+					<th>je Tracker und Fahrstunde</th>
+					<th>{anzahl} Tracker, {fahrstunden} Fahrstunden im Monat</th>
+				</tr>
+			</thead>
+			<tbody>
+				{#each takt.wahl as w (w.buendel_s)}
+					<tr class:gewaehlt={w.buendel_s === taktGewaehlt}>
+						<td>
+							<input
+								type="radio"
+								name="buendel"
+								value={w.buendel_s}
+								bind:group={taktGewaehlt}
+								aria-label="alle {w.buendel_s} s"
+							/>
+						</td>
+						<td>
+							{w.buendel_s} s{#if w.buendel_s === takt.standard_s}&nbsp;<span class="marke aus">Standard</span>{/if}
+						</td>
+						<td>ca. {sprungM(w.buendel_s)} m</td>
+						<td>ca. {w.kb_pro_stunde} KB <span class="leise">(bis {w.kb_pro_stunde_ohne_keepalive} KB)</span></td>
+						<td>ca. {mbImMonat(w.kb_pro_stunde)} MB <span class="leise">(bis {mbImMonat(w.kb_pro_stunde_ohne_keepalive)} MB)</span></td>
+					</tr>
+				{/each}
+			</tbody>
+		</table>
+		</div>
+
+		<div class="zeile">
+			<label>
+				Tracker
+				<input type="number" min="1" max="999" bind:value={anzahl} />
+			</label>
+			<label>
+				Fahrstunden je Tracker im Monat
+				<input type="number" min="0" max="744" bind:value={fahrstunden} />
+			</label>
+		</div>
+		<p class="hint">
+			Rechenbeispiel, keine Messung. Gezählt ist nur die Fahrt in einem laufenden Konvoi. Steht das Fahrzeug,
+			misst der Tracker einmal pro Minute; ohne laufenden Konvoi meldet er sich nur alle 12 Stunden mit einem
+			Lebenszeichen. Beides fällt kaum ins Gewicht. Der höhere Wert gilt, wenn das Mobilfunknetz die
+			Verbindung zwischen zwei Versänden schließt und jeder Versand neu verbinden muss. Wer knapp
+			kalkuliert, plant mit dem höheren Wert.
+		</p>
+
+		<div class="knoepfe">
+			<button class="btn-primary" type="button" onclick={taktSichern} disabled={taktSpeichern || taktGewaehlt === takt.buendel_s}>
+				{taktSpeichern ? 'Speichert…' : 'Sendetakt speichern'}
+			</button>
+		</div>
+	</div>
+{/if}
+
 <style>
+	.takt-rahmen { overflow-x: auto; max-width: 100%; }
+	.takt { border-collapse: collapse; font-size: var(--text-sm); color: var(--text-1); width: 100%; max-width: 48rem; }
+	.takt th, .takt td { text-align: left; padding: .3rem .5rem; border-bottom: 1px solid var(--border); }
+	.takt th { font-weight: 600; color: var(--text-2); font-size: var(--text-xs); }
+	.takt tr.gewaehlt td { background: var(--surface-2); }
+	.leise { color: var(--text-muted); font-size: var(--text-xs); }
 	.section { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; box-shadow: var(--shadow); }
 	.section-header { display: flex; justify-content: space-between; align-items: center; gap: .5rem; flex-wrap: wrap; margin-bottom: .75rem; font-size: var(--text-sm); font-weight: 500; color: var(--text-1); }
 	.kopf-knoepfe, .knoepfe { display: flex; gap: .4rem; flex-wrap: wrap; }
