@@ -82,16 +82,21 @@
 		laden = true;
 		fehler = '';
 		try {
-			const [g, f, t] = await Promise.all([geraeteApi.list(), vehiclesApi.list(), geraeteApi.takt()]);
+			const [g, f] = await Promise.all([geraeteApi.list(), vehiclesApi.list()]);
 			geraete = g;
-			takt = t;
-			taktGewaehlt = t.buendel_s;
 			if (!anzahl) anzahl = Math.max(1, g.length);
 			fahrzeuge = f.map((v) => ({ id: v.id, name: v.callsign ? `${v.name} (${v.callsign})` : v.name }));
 		} catch (e) {
 			fehler = e instanceof Error ? e.message : 'Laden fehlgeschlagen';
 		} finally {
 			laden = false;
+		}
+		// Getrennt: Ohne Sendetakt bleibt die Liste benutzbar, nur der Abschnitt fehlt.
+		try {
+			takt = await geraeteApi.takt();
+			taktGewaehlt = takt.buendel_s;
+		} catch {
+			takt = null;
 		}
 	}
 
