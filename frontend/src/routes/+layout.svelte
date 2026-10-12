@@ -12,6 +12,7 @@
 	import InstallPrompt from '$lib/components/InstallPrompt.svelte';
 	import ChangelogModal from '$lib/components/ChangelogModal.svelte';
 	import LizenzAblaufHinweis from '$lib/components/LizenzAblaufHinweis.svelte';
+	import Kontextmenue from '$lib/kontextmenue/Kontextmenue.svelte';
 
 	let { children } = $props();
 
@@ -160,6 +161,10 @@
 {/if}
 
 {@render children()}
+
+<!-- Das eine Kontextmenü der Anwendung; geöffnet wird es aus den Seiten über
+     `$lib/kontextmenue/menue.ts`. -->
+<Kontextmenue />
 
 <!-- Auf /track-Seiten greift die eigenständige Tracking-App-Installation
      (eigenes Manifest + eigene Install-CTA), daher hier kein generischer Banner. -->

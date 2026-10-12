@@ -2,7 +2,11 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import AppLogo from '$lib/components/AppLogo.svelte';
-	import MapView from '$lib/components/MapView.svelte';
+	import MapView, { type KartenKontext } from '$lib/components/MapView.svelte';
+	import {
+		kontextmenue, oeffnen as menueOeffnen, kopieren, ortEintraege, reihenfolgeEintraege,
+		koordinatenText, TRENNER, type Eintraege,
+	} from '$lib/kontextmenue/menue';
 	import PasskeyVerwaltung from '$lib/components/PasskeyVerwaltung.svelte';
 	import LocationSearch from '$lib/components/LocationSearch.svelte';
 	import InfoPill from '$lib/components/InfoPill.svelte';
@@ -81,6 +85,7 @@
 	let editWpForm = $state({ name: '', type: 'waypoint', hold_duration_min: 0, halt_purpose: '', notes: '' });
 	let sidebarOpen = $state(false);
 	let error = $state('');
+	let mapView = $state<ReturnType<typeof MapView>>();
 
 	// Demo flag decoded from the JWT payload (null for regular sessions). The
 	// displayed expiry comes from the server (demoExpiresAt) — the superadmin
@@ -635,6 +640,149 @@
 		} catch { error = 'Fehler beim Entfernen'; }
 	}
 
+	// ── Kontextmenüs ──────────────────────────────────────────────────
+	// Jeder Eintrag ruft dieselbe Funktion wie der Knopf daneben — das Menü
+	// ist eine Abkürzung, kein zweiter Weg mit eigenen Regeln.
+
+	/** Auf dem Telefon liegt die Liste unter der Karte: erst die Leiste öffnen. */
+	function zeigeImTab(tab: typeof activeTab) {
+		activeTab = tab;
+		sidebarOpen = true;
+	}
+
+	async function setzeEndpunkt(which: 'start_point' | 'end_point', lat: number, lon: number) {
+		if (!selected) return;
+		try {
+			await convoysApi.update(selected.id, { [which]: { lat, lon } });
+			await refreshConvoy();
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Punkt konnte nicht gesetzt werden';
+		}
+	}
+
+	/** Wegpunkt an der Stelle anlegen und gleich zum Benennen öffnen. */
+	async function wegpunktHier(lat: number, lon: number, type: 'waypoint' | 'stop') {
+		if (!selected) return;
+		try {
+			const wp = await convoysApi.createWaypoint(selected.id, {
+				name: `${type === 'stop' ? 'Halt' : 'WP'} ${selected.waypoints.length + 1}`,
+				type,
+				lat,
+				lon,
+				hold_duration_min: 0,
+				order_index: selected.waypoints.length,
+			});
+			await refreshConvoy();
+			zeigeImTab('wegpunkte');
+			const neu = selected?.waypoints.find((w) => w.id === wp?.id);
+			if (neu) startEditWp(neu);
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Wegpunkt konnte nicht angelegt werden';
+		}
+	}
+
+	function wegpunktEintraege(wp: Waypoint): Eintraege {
+		const liste = dndWaypoints;
+		const i = liste.findIndex((w) => w.id === wp.id);
+		return [
+			{ titel: wp.name },
+			{ label: 'Bearbeiten', icon: '✎', aktion: () => { zeigeImTab('wegpunkte'); startEditWp(wp); } },
+			wp.lat != null && wp.lon != null && { label: 'Auf Karte zeigen', icon: '🔍', aktion: () => { sidebarOpen = false; mapView?.zeigeOrt(wp.lat!, wp.lon!); } },
+			TRENNER,
+			...(i >= 0 ? reihenfolgeEintraege(liste, i, speichereWegpunktReihenfolge) : []),
+			TRENNER,
+			wp.lat != null && wp.lon != null && kopieren('Koordinaten kopieren', koordinatenText(wp.lat, wp.lon)),
+			TRENNER,
+			{ label: 'Löschen', icon: '✕', gefahr: true, aktion: () => deleteWaypoint(wp.id) },
+		];
+	}
+
+	function kartenMenue(ort: KartenKontext) {
+		const { lat, lon, x, y, marker } = ort;
+		let eintraege: Eintraege;
+		if (marker?.art === 'wegpunkt') {
+			eintraege = wegpunktEintraege(marker.wegpunkt);
+		} else if (marker?.art === 'start' || marker?.art === 'ziel') {
+			const start = marker.art === 'start';
+			eintraege = [
+				{ titel: start ? 'Startpunkt' : 'Zielpunkt' },
+				{ label: start ? 'Start neu setzen…' : 'Ziel neu setzen…', icon: start ? '📍' : '🏁', aktion: () => mapMode.set(start ? 'set-start' : 'set-end') },
+				TRENNER,
+				...ortEintraege(lat, lon),
+			];
+		} else {
+			const r = selected;
+			eintraege = [
+				{ titel: koordinatenText(lat, lon) },
+				$mapMode !== 'idle' && { label: 'Setzen abbrechen', icon: '✕', aktion: () => mapMode.set('idle') },
+				r && { label: 'Start hier setzen', icon: '📍', aktion: () => setzeEndpunkt('start_point', lat, lon) },
+				r && { label: 'Ziel hier setzen', icon: '🏁', aktion: () => setzeEndpunkt('end_point', lat, lon) },
+				r && { label: 'Wegpunkt hier anlegen', icon: '➕', aktion: () => wegpunktHier(lat, lon, 'waypoint') },
+				r && { label: 'Halt hier anlegen', icon: '⏸', aktion: () => wegpunktHier(lat, lon, 'stop') },
+				!r && { label: 'Neuer Marschverband…', icon: '＋', aktion: () => (showConvoyForm = true) },
+				TRENNER,
+				r && { label: 'Route berechnen', icon: '🗺', aus: !r.start_point || !r.end_point ? 'Start und Ziel fehlen noch' : loading, aktion: calculateRoute },
+				routeGeojson && { label: 'Ganze Route zeigen', icon: '⤢', aktion: () => mapView?.showRoute() },
+				mapView?.istGedreht() && { label: 'Karte einnorden', icon: '🧭', aktion: () => mapView?.resetNorth() },
+				TRENNER,
+				r && { label: 'Sperrungen anzeigen', art: 'schalter', an: showClosures, aktion: toggleClosures },
+				r && flowProvider && { label: 'Verkehrslage anzeigen', art: 'schalter', an: showFlow, aktion: toggleFlow },
+				TRENNER,
+				...ortEintraege(lat, lon),
+			];
+		}
+		menueOeffnen(x, y, eintraege);
+	}
+
+	function fahrzeugEintraege(v: Vehicle): Eintraege {
+		const imVerband = assignedIds.has(v.id);
+		return [
+			{ titel: v.callsign ? `${v.name} · ${v.callsign}` : v.name },
+			{ label: 'Bearbeiten', icon: '✏️', aktion: () => { zeigeImTab('fahrzeuge'); startEditVehicle(v); } },
+			selected && !imVerband && { label: `Zu „${selected.name}" hinzufügen`, icon: '+', aktion: () => addVehicleToConvoy(v.id) },
+			selected && imVerband && { label: 'Aus dem Verband nehmen', icon: '–', aktion: () => removeVehicleFromConvoy(v.id) },
+			TRENNER,
+			kopieren('Funkrufname kopieren', v.callsign),
+			kopieren('Kennzeichen kopieren', v.license_plate),
+			TRENNER,
+			{ label: 'Löschen', icon: '🗑', gefahr: true, aktion: () => deleteVehicle(v.id) },
+		];
+	}
+
+	function marschfolgeEintraege(cv: DndConvoyVehicle, i: number): Eintraege {
+		const fz = allVehicles.find((v) => v.id === cv.vehicle.id);
+		return [
+			{ titel: `${i + 1}. ${cv.vehicle.name}` },
+			...reihenfolgeEintraege(dndConvoyVehicles, i, speichereMarschfolge, {
+				hoch: 'Eine Position vor', runter: 'Eine Position zurück', anfang: 'An die Spitze', ende: 'Ans Ende',
+			}),
+			TRENNER,
+			fz && { label: 'Fahrzeug bearbeiten', icon: '✏️', aktion: () => startEditVehicle(fz) },
+			kopieren('Funkrufname kopieren', cv.vehicle.callsign),
+			TRENNER,
+			{ label: 'Aus dem Verband nehmen', icon: '–', gefahr: true, aktion: () => removeVehicleFromConvoy(cv.vehicle.id) },
+		];
+	}
+
+	function verbandEintraege(): Eintraege {
+		const r = selected;
+		if (!r) return [{ label: 'Neuer Marschverband…', icon: '＋', aktion: () => (showConvoyForm = true) }];
+		return [
+			{ titel: r.name },
+			{ label: 'Bearbeiten…', icon: '✎', aktion: openEditConvoyForm },
+			{ label: 'Route berechnen', icon: '🗺', aus: !r.start_point || !r.end_point ? 'Start und Ziel fehlen noch' : loading, aktion: calculateRoute },
+			{ label: 'Marschbefehl…', icon: '📋', aktion: openBefehlModal },
+			{ label: 'Roadbook (PDF)', icon: '🧭', aus: routeGeojson ? false : 'Zuerst die Route berechnen', aktion: () => downloadExport('roadbook') },
+			{ label: 'GPX herunterladen', icon: '📍', aktion: () => downloadExport('gpx') },
+			TRENNER,
+			{ label: 'Tracking-Ansicht öffnen', icon: '🔴', aktion: () => window.open(`/o/${$page.params.slug}/tracking/${r.id}`, '_blank') },
+			kopieren('Link kopieren', r.share_token ? `${window.location.origin}/share/${r.share_token}` : null, '🔗'),
+			{ label: 'Öffentlich teilen…', icon: '🔗', aktion: () => (showShareLinkModal = true) },
+			TRENNER,
+			{ label: 'Neuer Marschverband…', icon: '＋', aktion: () => (showConvoyForm = true) },
+		];
+	}
+
 	// ── Map Click Handler ─────────────────────────────────────────────
 	async function handleMapClick(lat: number, lon: number) {
 		if (!selected) { error = 'Kein Verband ausgewählt'; return; }
@@ -723,9 +871,13 @@
 	}
 
 	async function handleConvoyVehicleDndFinalize(e: CustomEvent) {
+		await speichereMarschfolge(e.detail.items as DndConvoyVehicle[]);
+	}
+
+	async function speichereMarschfolge(items: DndConvoyVehicle[]) {
 		if (!selected) return;
 		const prev = dndConvoyVehicles;
-		const reordered = (e.detail.items as DndConvoyVehicle[]).map((cv, i) => ({ ...cv, position: i }));
+		const reordered = items.map((cv, i) => ({ ...cv, position: i }));
 		dndConvoyVehicles = reordered;
 		selected = { ...selected, convoy_vehicles: reordered };
 		activeConvoy.set(selected);
@@ -747,9 +899,14 @@
   }
 
   async function handleDndFinalize(e: CustomEvent) {
+    await speichereWegpunktReihenfolge(e.detail.items as Waypoint[]);
+  }
+
+  /** Ziehen und Kontextmenü speichern die Reihenfolge auf demselben Weg. */
+  async function speichereWegpunktReihenfolge(items: Waypoint[]) {
     const convoy = selected;
     if (!convoy) return;
-    const reordered: Waypoint[] = (e.detail.items as Waypoint[]).map(
+    const reordered: Waypoint[] = items.map(
       (wp, i) => ({ ...wp, order_index: i })
     );
     dndWaypoints = reordered;
@@ -1256,7 +1413,7 @@
 		{/if}
 
 		<!-- Convoy-Selektor -->
-		<div class="convoy-selector" data-tour="convoy-selector">
+		<div class="convoy-selector" data-tour="convoy-selector" use:kontextmenue={verbandEintraege}>
 			<select onchange={(e) => { const c = convoyList.find(x => x.id === (e.target as HTMLSelectElement).value); if (c) selectConvoy(c); }}>
 				{#if convoyList.length === 0}<option value="">Kein Marschverband</option>{/if}
 				{#each convoyList as c}
@@ -1293,7 +1450,7 @@
 
 				<!-- ── TAB: Plan ── -->
 				{#if activeTab === 'convoy' && selected}
-					<div class="section" data-tour="plan-params">
+					<div class="section" data-tour="plan-params" use:kontextmenue={verbandEintraege}>
 						<div class="section-header" style="margin-top:0">
 							<span>Marschverband</span>
 							<button class="btn-small" onclick={openEditConvoyForm}>✎ Bearbeiten</button>
@@ -1478,7 +1635,7 @@
 							</form>
 						{/if}
 						{#each convoyList.filter(c => c.parent_convoy_id === selected?.id) as sub}
-							<div class="sub-convoy-item" onclick={() => selectConvoy(sub)}>
+							<div class="sub-convoy-item" onclick={() => selectConvoy(sub)} use:kontextmenue={() => [{ titel: sub.name }, { label: 'Öffnen', icon: '↳', aktion: () => selectConvoy(sub) }]}>
 								↳ {sub.name}
 							</div>
 						{/each}
@@ -1538,7 +1695,7 @@
 						>
 							{#each dndVehicles as v (v.id)}
 								{@const besatzung = sollAus(v)}
-								<li class="vehicle-item" style="flex-direction:column;align-items:stretch;gap:.3rem">
+								<li class="vehicle-item" style="flex-direction:column;align-items:stretch;gap:.3rem" use:kontextmenue={() => editingVehicleId === v.id ? [] : fahrzeugEintraege(v)}>
 									{#if editingVehicleId === v.id}
 										<form class="inline-form" onsubmit={(e) => { e.preventDefault(); saveEditVehicle(); }}>
 											{#if vehicleFormError}<p class="error-bar">{vehicleFormError}</p>{/if}
@@ -1619,7 +1776,7 @@
 								onfinalize={handleConvoyVehicleDndFinalize}
 							>
 								{#each dndConvoyVehicles as cv, i (cv.id)}
-									<li class="vehicle-item convoy-vehicle-row">
+									<li class="vehicle-item convoy-vehicle-row" use:kontextmenue={() => marschfolgeEintraege(cv, i)}>
 										<div class="veh-left">
 											<span class="drag-handle" title="Ziehen zum Umsortieren">⠿</span>
 											<span class="veh-pos">{i + 1}.</span>
@@ -1808,7 +1965,7 @@
 							onfinalize={handleDndFinalize}
 						>
 							{#each dndWaypoints as wp (wp.id)}
-								<li class="wp-item">
+								<li class="wp-item" use:kontextmenue={() => wegpunktEintraege(wp)}>
 									<div class="wp-main">
 										<strong>{wp.name}</strong>
 										<span class="tag">{WP_TYPE_LABELS[wp.type] ?? wp.type}</span>
@@ -2091,6 +2248,8 @@
 		/>
 
 		<MapView
+			bind:this={mapView}
+			onKontextmenue={kartenMenue}
 			startPoint={selected?.start_point}
 			endPoint={selected?.end_point}
 			waypoints={selected?.waypoints ?? []}
