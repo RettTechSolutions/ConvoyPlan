@@ -3,6 +3,7 @@ import json as _json
 import logging
 import re
 import uuid
+from urllib.parse import quote
 from datetime import datetime, timezone
 from typing import Any, Literal
 
@@ -50,6 +51,21 @@ _UNSAFE_FILENAME_RE = re.compile(r'[\x00-\x1f\x7f"\\/]')
 def _safe_filename(name: str) -> str:
     """Return a header-safe version of *name* for Content-Disposition filenames."""
     return _UNSAFE_FILENAME_RE.sub("_", name)
+
+
+def _attachment(filename: str) -> dict[str, str]:
+    """Content-Disposition für einen Download, auch bei Namen außerhalb von Latin-1.
+
+    Starlette kodiert Header als Latin-1; ein Konvoiname mit „–" oder Emoji ließ
+    jeden Export mit 500 scheitern. Deshalb ein ASCII-Ersatz in ``filename`` und
+    der echte Name nach RFC 5987 in ``filename*``.
+    """
+    safe = _safe_filename(filename)
+    ascii_name = safe.encode("ascii", "replace").decode("ascii").replace("?", "_")
+    return {
+        "Content-Disposition": f'attachment; filename="{ascii_name}"; '
+        f"filename*=UTF-8''{quote(safe, safe='')}"
+    }
 
 
 _MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB — guard against DoS via huge uploads
@@ -735,7 +751,7 @@ async def export_gpx(
     return PlainTextResponse(
         content=gpx_content,
         media_type="application/gpx+xml",
-        headers={"Content-Disposition": f'attachment; filename="{_safe_filename(convoy.name)}.gpx"'},
+        headers=_attachment(f"{convoy.name}.gpx"),
     )
 
 
@@ -763,7 +779,7 @@ async def export_json(
     return PlainTextResponse(
         content=json_content,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{_safe_filename(convoy.name)}.json"'},
+        headers=_attachment(f"{convoy.name}.json"),
     )
 
 
@@ -817,11 +833,11 @@ async def export_pdf(
         None, pdf_svc.generate_marschbefehl, convoy, waypoints, vehicles, route, kanalwechsel,
         durchfahrtshoehen, bruecken, gewichtsgrenzen,
     )
-    filename = f"Marschbefehl_{_safe_filename(convoy.name.replace(' ', '_'))}.pdf"
+    filename = f"Marschbefehl_{convoy.name.replace(' ', '_')}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers=_attachment(filename),
     )
 
 
@@ -863,11 +879,11 @@ async def export_roadbook(
         roadbook_svc.generate_roadbook,
         convoy, route, [wp for wp, _ in located], map_jpeg, departure, arrival,
     )
-    filename = f"Roadbook_{_safe_filename(convoy.name.replace(' ', '_'))}.pdf"
+    filename = f"Roadbook_{convoy.name.replace(' ', '_')}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers=_attachment(filename),
     )
 
 
