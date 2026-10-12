@@ -57,6 +57,13 @@ Schätzung aus dem Protokoll, bis Messfahrten echte Zahlen liefern.
 Öfter senden kostet auch Strom und beim verbauten Funkmodul etwas GNSS: Solange
 es sendet, misst es nicht.
 
+Der Sendetakt gilt nur im **Mobilfunk**. Meldet ein Tracker, dass er über **WLAN**
+(Router im Fahrzeug, Netz der Wache) oder über **BLE** (Weiterleitung durch die
+Begleit-App) verbunden ist, sendet er **live**: jede Messung sofort, also alle 10 s,
+ohne dass jemand etwas einstellt. Diese Wege kosten kein Volumen der SIM. Die
+Entscheidung trifft die Instanz bei jedem Kontakt neu; fällt der Tracker auf
+Mobilfunk zurück, gilt mit der nächsten Antwort wieder der Takt der Organisation.
+
 Beim ersten Punkt wechselt ein Fahrzeug im Status *geplant* auf *unterwegs*, wie
 beim Fahrer-Link. Statusmeldungen, Stärke und Betriebsstoff kommen weiter aus der
 App oder vom Fahrer-Link — der Tracker meldet nur, wo das Fahrzeug ist.
@@ -181,6 +188,9 @@ Die Instanz **erwartet** es deshalb und zeigt am Fahrzeug in Worten, was fehlt:
 - **Verbindung unterbrochen** (rot): Zwei erwartete Bündel sind ausgeblieben, also
   zwei Takte plus 15 Sekunden für den Verbindungsaufbau nichts — beim Standard
   45 Sekunden, bei 60 Sekunden Takt 2¼ Minuten.
+  Gerechnet wird immer mit dem Takt der Organisation, auch wenn der Tracker gerade
+  live über WLAN sendet: Wer das WLAN der Wache verlässt, wechselt erst nach einem
+  gescheiterten Versuch auf Mobilfunk, und das soll nicht als Abriss aufleuchten.
   Funkloch, Tunnel, Gerät aus. Kommt das nächste Bündel, verschwindet die Meldung;
   was der Tracker im Funkloch aufgezeichnet hat, reicht er nach.
 - **GPS gestört** (orange): Die Bündel kommen, das Netz steht also, aber seit

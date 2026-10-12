@@ -63,6 +63,14 @@ TAKT = {"intervall_s": 10, "buendel_s": 15, "nachfrage_s": 300, "lebenszeichen_s
 #: Funkloch soll nicht gleich das Telefon zurückholen.
 BUENDEL_WAHL = (10, 15, 30, 60, 120)
 
+#: Wege ins Netz (Protokoll, „Drei Wege ins Netz"; E14 im Tracker-Plan). Ohne
+#: Angabe gilt ``mobil``, ein unbekannter Wert ebenso.
+NETZE = ("mobil", "wlan", "ble")
+#: Wege ohne Datenvolumen der SIM: Hier sendet der Tracker live, jeden Fix sofort
+#: (``buendel_s`` = ``intervall_s``), ohne dass jemand etwas einstellt. Der Sendetakt
+#: der Organisation ist eine Abwägung gegen das Volumen und gilt nur im Mobilfunk.
+LIVE_NETZE = frozenset({"wlan", "ble"})
+
 # Datenvolumen je Versand in Fahrt, geschätzt aus dem, was die Firmware schickt
 # (Tracker-Repo, ``kern_json_positionen`` und ``kern_http_anfrage``); gemessen
 # wird es dort in Phase 0 (M3). Was sich häuft, ist der Versand, nicht der Fix:
@@ -243,6 +251,18 @@ def buendel_s(gewaehlt: int | None) -> int:
     return gewaehlt if gewaehlt in BUENDEL_WAHL else TAKT["buendel_s"]
 
 
+def netz_lesen(daten: dict[str, Any]) -> str:
+    """Der Weg dieses Aufrufs; fehlt er oder ist er unbekannt, ``mobil``."""
+    netz = daten.get("netz")
+    return netz if isinstance(netz, str) and netz in NETZE else "mobil"
+
+
+def sendetakt_s(gewaehlt: int | None, netz: str = "mobil") -> int:
+    """Der Bündeltakt, den die Anweisung über *netz* vorgibt: live über WLAN und
+    BLE, sonst der Takt der Organisation."""
+    return TAKT["intervall_s"] if netz in LIVE_NETZE else buendel_s(gewaehlt)
+
+
 def volumen_kb_pro_stunde(buendel: int, offen: bool = True) -> int:
     """Geschätztes Datenvolumen eines Trackers je Fahrstunde in KB.
 
@@ -260,11 +280,12 @@ def anweisung(
     jetzt: datetime,
     firmware: dict[str, Any] | None = None,
     buendel: int | None = None,
+    netz: str = "mobil",
 ) -> dict[str, Any]:
     return {
         "modus": modus_,
         **TAKT,
-        "buendel_s": buendel_s(buendel),
+        "buendel_s": sendetakt_s(buendel, netz),
         "serverzeit": jetzt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "firmware": firmware,
     }

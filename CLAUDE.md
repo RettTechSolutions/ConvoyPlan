@@ -385,6 +385,12 @@ Org-Admin). Vier Dinge, die man kennen muss:
   `positionsquelle.VORRANG_S`). Die Volumenschätzung (`volumen_kb_pro_stunde`)
   ist aus dem Protokoll gerechnet, nicht gemessen; kommen Zahlen aus M3 im
   Tracker-Repo, gehören sie in `VOLUMEN_*_B`.
+  Der Takt gilt nur im Mobilfunk: Meldet das Gerät `netz: wlan` oder `ble` (E14),
+  gibt `og.sendetakt_s` live vor (`buendel_s` = `intervall_s`). `unterbrochen_ab` und
+  `gps_gestoert_ab` rechnen trotzdem mit dem Takt der Organisation — beim Verlassen
+  des WLANs kommt das nächste Bündel erst nach einem gescheiterten Versuch über
+  Mobilfunk. Jede Antwort mit Anweisung liest `netz` (`hallo`, `positionen`,
+  `meldungen`, `firmware/ergebnis`), sonst setzte eine davon das Gerät zurück.
 - **„Auf Akku seit"** (`akku_seit`, Migration `0063`) setzt `ortungsgeraet.akku_seit` aus
   dem *bisherigen* `extern` und der neuen Meldung, **bevor** die Zustandsfelder
   überschrieben werden (`_zustand_merken`). Eine Meldung ohne `extern` lässt den Wert
