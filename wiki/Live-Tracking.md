@@ -365,6 +365,20 @@ Abriss auf diesem Gerät aus, bis die Lücke geschlossen ist. Schließt der
 Verband auf, verschwindet das Banner von selbst. Ein Technischer Halt oder
 Ausfall hat Vorrang. Im Fahrer-Link gibt es das Banner nicht.
 
+Ein violettes **Funkstille-Banner** erscheint, wenn ein Fahrzeug **fuhr** und
+seit **drei Minuten** keine Position mehr geschickt hat: „Funkstille: Akkon 14/1
+· keine Position, zuletzt 60 km/h — seit 3 min“. Gewarnt wird nur, wenn das
+Fahrzeug bei seiner letzten Position mindestens 5 km/h fuhr. Ein Telefon meldet
+nur, wenn es sich bewegt, und ein Tracker schläft nach fünf Minuten Stand; ein
+Fahrzeug am Rastplatz schweigt also zu Recht. Wer fährt, liefert dagegen
+laufend Positionen — bleiben die aus, ist das Gerät weg (Funkloch, Akku,
+Absturz). Ohne Tempoangabe (Handeingabe) und bei angekommenen Fahrzeugen gibt
+es keine Warnung. In der Blase steht dann unter dem „Stand“ „Funkstille: keine
+Position seit … min“. **Letzte Position** fliegt dorthin, **✕** blendet die
+Meldung aus, bis wieder eine Position kommt. Gemessen wird ab dem Eintreffen
+der Position beim Betrachter, damit eine falsch gehende Uhr am Führungsrechner
+keine Alarme auslöst.
+
 Was Aufmerksamkeit
 verdient (Halt oder Ausfall, Abweichung vom Soll, knapper Betriebsstoff,
 schwacher Akku), steht hervorgehoben. Die Blase bleibt aktuell, solange sie

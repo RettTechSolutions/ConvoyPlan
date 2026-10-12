@@ -33,6 +33,7 @@
 	import {
 		abrisse, abrissSeit, streckenstaende, vordermann, type Vordermann,
 	} from '$lib/tracking/vordermann';
+	import { funkstille, zuletztGehoert, type Gehoert } from '$lib/tracking/funkstille';
 	import {
 		STATUS_LABELS, STATUS_COLORS, STATUS_ICONS, HALT_LEVEL_LABELS, BREAKDOWN_LEVEL_LABELS,
 		statusColor, statusLabel, levelLabel, type HaltLevel, type BreakdownLevel,
@@ -433,31 +434,49 @@
 		new Map<string, Vordermann | null>(marschfolge.map((f) => [f.id, vordermann(marschfolge, blasenStaende, f.id)]))
 	);
 
-	// --- Abriss des Verbands ------------------------------------------------
+	// --- Verbandsmeldungen: Abriss und Funkstille ---------------------------
 	// Ein Banner, wenn ein Fahrzeug eine Minute lang mehr als 1 km hinter seinem
-	// Vordermann liegt (`vordermann.ts`). Der Takt sorgt dafür, dass es auch
-	// kommt, wenn in der Minute keine neue Position eintrifft. Ausblenden gilt
-	// für diesen Abriss auf diesem Gerät; schließt die Lücke und reißt neu auf,
-	// kommt es wieder.
-	let abrissUhr = $state(Date.now());
-	let abrissTakt: ReturnType<typeof setInterval> | null = null;
+	// Vordermann liegt (`vordermann.ts`) oder fuhr und seit drei Minuten keine
+	// Position mehr schickt (`funkstille.ts`). Der Takt sorgt dafür, dass beides
+	// auch kommt, wenn keine neue Position eintrifft — bei Funkstille ist das
+	// der Normalfall. Ausblenden gilt für diese Meldung auf diesem Gerät; endet
+	// sie und kommt neu, erscheint sie wieder.
+	type Meldung = { art: 'abriss' | 'funkstille'; id: string; seit: number; kmh?: number };
+	const meldungsKey = (m: Pick<Meldung, 'art' | 'id'>) => `${m.art}:${m.id}`;
+	let meldungsUhr = $state(Date.now());
+	let meldungsTakt: ReturnType<typeof setInterval> | null = null;
 	let abrissSeitMap = new Map<string, number>();
-	let abrissIds = $state<string[]>([]);
-	let abrissAusgeblendet = $state<ReadonlySet<string>>(new Set());
+	let gehoert = new Map<string, Gehoert>();
+	let meldungen = $state<Meldung[]>([]);
+	let ausgeblendet = $state<ReadonlySet<string>>(new Set());
+	let statusVon = $derived(new Map((convoy?.convoy_vehicles ?? []).map((cv) => [cv.vehicle.id, statusOf(cv)])));
 	$effect(() => {
-		void abrissUhr; // der Takt, damit die Minute auch ohne neue Position abläuft
-		abrissSeitMap = abrissSeit(abrissSeitMap, vordermaenner, Date.now());
-		const ids = abrisse(abrissSeitMap, Date.now());
+		void meldungsUhr;
+		const jetzt = Date.now();
+		abrissSeitMap = abrissSeit(abrissSeitMap, vordermaenner, jetzt);
+		gehoert = zuletztGehoert(gehoert, $livePositions, jetzt);
+		const status = statusVon;
+		const neu: Meldung[] = [
+			...abrisse(abrissSeitMap, jetzt).map((id) => ({ art: 'abriss' as const, id, seit: abrissSeitMap.get(id)! })),
+			...funkstille(gehoert, $livePositions, (id) => status.get(id) ?? '', jetzt)
+				.map((f) => ({ art: 'funkstille' as const, id: f.id, seit: f.seit, kmh: f.kmh })),
+		].sort((x, y) => x.seit - y.seit);
 		untrack(() => {
-			if (ids.some((id) => !abrissIds.includes(id) && !abrissAusgeblendet.has(id))) notifySignal(false);
-			const bleiben = [...abrissAusgeblendet].filter((id) => abrissSeitMap.has(id));
-			if (bleiben.length !== abrissAusgeblendet.size) abrissAusgeblendet = new Set(bleiben);
-			if (ids.join() !== abrissIds.join()) abrissIds = ids;
+			const vorher = new Set(meldungen.map(meldungsKey));
+			const jetztKeys = new Set(neu.map(meldungsKey));
+			if ([...jetztKeys].some((k) => !vorher.has(k) && !ausgeblendet.has(k))) notifySignal(false);
+			// Ausgeblendet bleibt nur, was noch andauert. Ein Abriss gilt schon ab
+			// dem ersten Überschreiten als andauernd, nicht erst nach der Minute.
+			const bleiben = [...ausgeblendet].filter((k) =>
+				jetztKeys.has(k) || (k.startsWith('abriss:') && abrissSeitMap.has(k.slice(7))));
+			if (bleiben.length !== ausgeblendet.size) ausgeblendet = new Set(bleiben);
+			if ([...jetztKeys].join() !== [...vorher].join() || neu.some((m, i) => m.seit !== meldungen[i]?.seit)) meldungen = neu;
 		});
 	});
-	let sichtbareAbrisse = $derived(abrissIds.filter((id) => !abrissAusgeblendet.has(id)));
-	function abrissMinuten(id: string): number {
-		return Math.max(1, Math.floor((abrissUhr - (abrissSeitMap.get(id) ?? abrissUhr)) / 60_000));
+	let sichtbareMeldungen = $derived(meldungen.filter((m) => !ausgeblendet.has(meldungsKey(m))));
+	let stilleSeit = $derived(new Map(meldungen.filter((m) => m.art === 'funkstille').map((m) => [m.id, m.seit])));
+	function minutenSeit(t: number): number {
+		return Math.max(1, Math.floor((meldungsUhr - t) / 60_000));
 	}
 
 	// vehicle id → Zeilen der Kartenblase: dieselben Angaben wie die Fahrzeugzeile.
@@ -481,6 +500,7 @@
 				tracker: trackerZustand.get(cv.vehicle.id) ?? null,
 				naechster: pos ? naechsterHalt(blasenLinie, blasenHalte, pos, abmarsch, Date.now()) : null,
 				vordermann: vordermaenner.get(cv.vehicle.id) ?? null,
+				stilleSeitMin: stilleSeit.has(cv.vehicle.id) ? minutenSeit(stilleSeit.get(cv.vehicle.id)!) : null,
 			}, trackerJetzt)];
 		}))
 	);
@@ -498,7 +518,7 @@
 	onMount(() => {
 		void trackerLaden();
 		trackerTimer = setInterval(() => void trackerLaden(), TRACKER_ABFRAGE_MS);
-		abrissTakt = setInterval(() => (abrissUhr = Date.now()), 5_000);
+		meldungsTakt = setInterval(() => (meldungsUhr = Date.now()), 5_000);
 		requestWakeLock();
 		document.addEventListener('visibilitychange', handleVisibility);
 		netOnline = navigator.onLine;
@@ -515,7 +535,7 @@
 
 	onDestroy(() => {
 		if (trackerTimer) clearInterval(trackerTimer);
-		if (abrissTakt) clearInterval(abrissTakt);
+		if (meldungsTakt) clearInterval(meldungsTakt);
 		disconnectTracking();
 		// Reload-safe stop: end the GPS watch but keep the saved session so a
 		// page reload can resume; an explicit "stop" button press clears it.
@@ -1234,24 +1254,29 @@
 			</div>
 		{/if}
 
-		<!-- Abriss des Verbands: unter TH/Ausfall, über den Wegpunkt-Ansagen -->
-		{#if sichtbareAbrisse.length > 0 && activeAlerts.length === 0}
-			{@const id = sichtbareAbrisse[0]}
-			{@const vm = vordermaenner.get(id)}
-			<div class="alert-banner abriss" class:with-net={offline || backOnline} data-testid="abriss-banner" role="alert">
-				<span class="ab-icon">⛓️‍💥</span>
+		<!-- Abriss und Funkstille: unter TH/Ausfall, über den Wegpunkt-Ansagen -->
+		{#if sichtbareMeldungen.length > 0 && activeAlerts.length === 0}
+			{@const m = sichtbareMeldungen[0]}
+			{@const vm = vordermaenner.get(m.id)}
+			<div class="alert-banner {m.art}" class:with-net={offline || backOnline} data-testid="{m.art}-banner" role="alert">
+				<span class="ab-icon">{m.art === 'abriss' ? '⛓️‍💥' : '📵'}</span>
 				<div class="ab-text">
-					<strong>Abriss: {vehicleNames.get(id) ?? 'Fahrzeug'}</strong>
-					{#if vm?.abstandM != null} · {formatDistance(vm.abstandM)} hinter {vm.name}{/if}
-					<div class="ab-note">seit {abrissMinuten(id)} min{#if sichtbareAbrisse.length > 1} · {sichtbareAbrisse.length - 1} weitere{/if}</div>
+					{#if m.art === 'abriss'}
+						<strong>Abriss: {vehicleNames.get(m.id) ?? 'Fahrzeug'}</strong>
+						{#if vm?.abstandM != null} · {formatDistance(vm.abstandM)} hinter {vm.name}{/if}
+					{:else}
+						<strong>Funkstille: {vehicleNames.get(m.id) ?? 'Fahrzeug'}</strong>
+						· keine Position, zuletzt {Math.round(m.kmh ?? 0)} km/h
+					{/if}
+					<div class="ab-note">seit {minutenSeit(m.seit)} min{#if sichtbareMeldungen.length > 1} · {sichtbareMeldungen.length - 1} weitere{/if}</div>
 				</div>
-				<button class="ab-btn" onclick={() => mapView?.showVehicle(id)}>Zeigen</button>
-				<button class="ab-btn dim" onclick={() => (abrissAusgeblendet = new Set([...abrissAusgeblendet, id]))} aria-label="Ausblenden">✕</button>
+				<button class="ab-btn" onclick={() => mapView?.showVehicle(m.id)}>{m.art === 'abriss' ? 'Zeigen' : 'Letzte Position'}</button>
+				<button class="ab-btn dim" onclick={() => (ausgeblendet = new Set([...ausgeblendet, meldungsKey(m)]))} aria-label="Ausblenden">✕</button>
 			</div>
 		{/if}
 
 		<!-- Route-point announcement (Leitstellenwechsel / Wegpunkt erreicht) -->
-		{#if pointEvent && activeAlerts.length === 0 && sichtbareAbrisse.length === 0}
+		{#if pointEvent && activeAlerts.length === 0 && sichtbareMeldungen.length === 0}
 			<div class="point-banner" class:with-net={offline || backOnline} class:done={pointEventDone}>
 				<span class="ab-icon">{pointEvent.kind === 'kanalwechsel' ? '📡' : '📍'}</span>
 				<div class="ab-text">
@@ -1266,7 +1291,7 @@
 		{/if}
 
 		<!-- Next upcoming route point (Wegpunkt / Leitstellenwechsel) -->
-		{#if nextPoint && !pointEvent && activeAlerts.length === 0 && sichtbareAbrisse.length === 0}
+		{#if nextPoint && !pointEvent && activeAlerts.length === 0 && sichtbareMeldungen.length === 0}
 			<div class="next-point" class:with-net={offline || backOnline}>
 				<span class="np-icon">{nextPoint.point.kind === 'kanalwechsel' ? '📡' : '📍'}</span>
 				<span class="np-text">In {formatDistance(nextPoint.aheadM)}: {nextPoint.point.label}</span>
@@ -1491,9 +1516,10 @@
 	.ab-note { font-style: italic; font-size: var(--text-xs); }
 	.ab-btn { background: rgba(0,0,0,.15); color: inherit; border: none; border-radius: 6px; padding: .35rem .6rem; font-weight: 600; cursor: pointer; font-size: var(--text-sm); flex-shrink: 0; }
 	.alert-banner.breakdown .ab-btn { background: rgba(255,255,255,.25); }
-	.alert-banner.abriss { background: #e67e22; color: #fff; }
-	.alert-banner.abriss .ab-btn { background: rgba(255,255,255,.25); }
-	.alert-banner.abriss .ab-btn.dim { background: transparent; }
+	.alert-banner.abriss, .alert-banner.funkstille { background: #e67e22; color: #fff; }
+	.alert-banner.funkstille { background: #8e44ad; }
+	.alert-banner.abriss .ab-btn, .alert-banner.funkstille .ab-btn { background: rgba(255,255,255,.25); }
+	.alert-banner.abriss .ab-btn.dim, .alert-banner.funkstille .ab-btn.dim { background: transparent; }
 	.ab-btn.dim { background: transparent; }
 	@keyframes alert-in { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 	@keyframes flash { from { box-shadow: 0 4px 16px rgba(0,0,0,.4); } to { box-shadow: 0 0 0 4px rgba(226,61,40,.5), 0 4px 16px rgba(0,0,0,.4); } }

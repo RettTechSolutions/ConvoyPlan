@@ -118,10 +118,12 @@ async function mitRoute(page: Page, fahrzeuge: ReturnType<typeof konvoiFahrzeug>
 	});
 	await page.goto(`/o/${SLUG}/tracking/${CONVOY}`, { waitUntil: 'domcontentloaded' });
 	await expect.poll(() => kanal !== null).toBe(true);
-	return (id: string, lat: number, extra: { speed_kmh?: number; alterS?: number } = {}) => kanal!.send(JSON.stringify({
+	const position = (id: string, lat: number, extra: { speed_kmh?: number; alterS?: number } = {}) => kanal!.send(JSON.stringify({
 		vehicle_id: id, lat, lon: 8.69, speed_kmh: extra.speed_kmh ?? 0, heading: 0,
 		recorded_at: new Date(Date.now() - (extra.alterS ?? 0) * 1000).toISOString(),
 	}));
+	// Jede andere Nachricht des Kanals, z. B. ein Statuswechsel.
+	return Object.assign(position, { roh: (nachricht: object) => kanal!.send(JSON.stringify(nachricht)) });
 }
 
 const fz = (position: number, id: string, callsign: string) =>
@@ -235,5 +237,46 @@ test('ein Abriss über eine Minute bringt ein Banner', async ({ page }) => {
 	await banner.getByRole('button', { name: 'Ausblenden' }).click();
 	await expect(banner).toHaveCount(0);
 	await vergehen(30_000);
+	await expect(banner).toHaveCount(0);
+});
+
+// Funkstille: wer fuhr und drei Minuten nichts schickt, ist weg. Wer stand,
+// schweigt zu Recht — das Telefon meldet nur Bewegung.
+test('Funkstille nach drei Minuten, aber nur bei einem fahrenden Fahrzeug', async ({ page }) => {
+	const senden = await mitRoute(page, [fz(1, 'v-kdow', 'Akkon 10/1'), fz(2, 'v-mtw', 'Akkon 14/1')], { uhr: true });
+	const banner = page.getByTestId('funkstille-banner');
+	const vergehen = async (ms: number) => {
+		for (let t = 0; t < ms; t += 2_000) await page.clock.runFor(Math.min(2_000, ms - t));
+	};
+	senden('v-kdow', 50.06, { speed_kmh: 0 });
+	senden('v-mtw', 50.0595, { speed_kmh: 60 });
+	await expect(page.locator('.maplibregl-marker').filter({ hasText: 'Akkon 14/1' })).toBeVisible();
+
+	await vergehen(150_000);
+	await expect(banner).toHaveCount(0);
+
+	await vergehen(40_000);
+	await expect(banner).toBeVisible();
+	await expect(banner).toContainText('Funkstille: Akkon 14/1 · keine Position, zuletzt 60 km/h');
+	// Der stehende KdoW schweigt genauso lange, ist aber keine Meldung.
+	await expect(banner).not.toContainText('weitere');
+
+	// Die Blase sagt es direkt unter dem „Stand", weil alles darunter auf der
+	// alten Position beruht.
+	await banner.getByRole('button', { name: 'Letzte Position' }).click();
+	await expect(page.locator('.fz-blase div').nth(0)).toHaveText(/^60 km\/h · Stand /);
+	const stille = page.locator('.fz-blase div').nth(1);
+	await expect(stille).toHaveText(/^Funkstille: keine Position seit 3 min$/);
+	await expect(stille).toHaveClass(/warnung/);
+
+	// Eine neue Position beendet sie.
+	senden('v-mtw', 50.061, { speed_kmh: 55 });
+	await vergehen(6_000);
+	await expect(banner).toHaveCount(0);
+	await expect(page.locator('.fz-blase')).not.toContainText('Funkstille');
+
+	// Angekommen: kein Alarm, auch wenn danach nichts mehr kommt.
+	senden.roh({ type: 'status_update', vehicle_id: 'v-mtw', vehicle_status: 'arrived', status_level: null, status_note: null });
+	await vergehen(200_000);
 	await expect(banner).toHaveCount(0);
 });

@@ -37,6 +37,8 @@ export interface FahrzeugAngaben {
 	naechster?: NaechsterHalt | null;
 	/** Abstand zum Vordermann in der Marschfolge (`vordermann.ts`). */
 	vordermann?: Vordermann | null;
+	/** Funkstille seit so vielen Minuten (`funkstille.ts`), null ohne. */
+	stilleSeitMin?: number | null;
 }
 
 const ALARM = new Set(['technical_halt', 'breakdown']);
@@ -48,6 +50,9 @@ export function fahrzeugBlase(a: FahrzeugAngaben, jetzt: number): BlasenZeile[] 
 	const bemerkung = a.bemerkung?.trim();
 	if (bemerkung && ALARM.has(a.status)) zeilen.push({ text: `„${bemerkung}“`, warnung: true });
 
+	// Ganz oben, direkt unter „… km/h · Stand …“ aus `MapView`: Alles darunter
+	// beruht auf dieser Position, und die ist alt.
+	if (a.stilleSeitMin != null) zeilen.unshift({ text: `Funkstille: keine Position seit ${a.stilleSeitMin} min`, warnung: true });
 	if (a.naechster) zeilen.push(naechsterHaltText(a.naechster));
 	if (a.vordermann) zeilen.push(vordermannText(a.vordermann));
 
