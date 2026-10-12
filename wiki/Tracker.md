@@ -69,9 +69,14 @@ nur sie erfährt es: „Die Position kommt vom Fahrzeugtracker. Status und
 Meldungen gehen weiter von hier." Genau das bleibt ihr: Status, Stärke,
 Betriebsstoff, Quittung. Sonst sprängen zwei Punkte auf der Karte hin und her.
 
+Im Browser — Fahrer-Link und Tracking-Ansicht — ist **„GPS senden" für ein
+solches Fahrzeug gar nicht erst drückbar**; der Hinweis steht darunter. Lief das
+Senden schon, als der Tracker übernahm, endet es von selbst, und die Position
+des Trackers bleibt auf der Karte.
+
 Fällt der Tracker aus, gilt fünf Minuten nach seinem letzten Bündel wieder das
-Telefon — von selbst, niemand muss neu starten. In der Fahrzeugliste steht
-**TRACKER** statt **LIVE**, solange die Position vom Gerät kommt.
+Telefon: Im Browser wird „GPS senden" dann wieder drückbar. In der Fahrzeugliste
+steht **TRACKER** statt **LIVE**, solange die Position vom Gerät kommt.
 
 Will die Führung sofort das Telefon gelten lassen (Tracker defekt, falsches
 Fahrzeug gekoppelt), übersteuert sie den Tracker: **Org-Admin → GPS-Freigaben →

@@ -12,11 +12,11 @@
 		sendPosition, trackingActive, trackingConnection, gpsRevoked, acknowledgeAlert, dismissAlert,
 		alarmQuittungen,
 		acknowledgeAllAlerts, vehicleStaerken, vehicleBetriebsstoff, fremdBelegt, belegungAbgelehnt,
-		positionAbgelehnt,
+		positionAbgelehnt, trackerUebersteuert,
 		fahrzeugWaehlen, type VehicleStatusInfo,
 	} from '$lib/stores/tracking';
 	import { BELEGT_HINWEIS } from '$lib/tracking/belegung';
-	import { TRACKER_HINWEIS } from '$lib/tracking/positionsquelle';
+	import { TRACKER_HINWEIS, trackerHaeltPosition } from '$lib/tracking/positionsquelle';
 	import BetriebsstoffBadge from '$lib/components/BetriebsstoffBadge.svelte';
 	import BetriebsstoffForm from '$lib/components/BetriebsstoffForm.svelte';
 	import StaerkeBadge from '$lib/components/StaerkeBadge.svelte';
@@ -309,13 +309,27 @@
 	});
 
 	// Ein Tracker sendet für mein Fahrzeug: Die Position gehört ihm, der Rest
-	// bleibt hier. Gesendet wird weiter — fällt der Tracker aus, zählt nach fünf
-	// Minuten wieder das Telefon, ohne dass jemand neu starten muss.
+	// bleibt hier. „GPS senden" gibt es dann nicht (`trackerHaeltMeine`), und
+	// ein laufendes Senden endet, sobald der Tracker übernimmt — ohne die
+	// Position zu löschen, die ist ja seine. Fällt er aus, ist der Knopf nach
+	// fünf Minuten (`VORRANG_MS`) wieder da.
+	let trackerHaeltMeine = $derived.by(() => {
+		if (!myVehicleId) return false;
+		const cv = (convoy?.convoy_vehicles ?? []).find((c) => c.vehicle.id === myVehicleId);
+		const uebersteuert = $trackerUebersteuert.has(myVehicleId) || !!cv?.tracker_uebersteuert_at;
+		return trackerHaeltPosition($livePositions.get(myVehicleId), uebersteuert, trackerJetzt);
+	});
+	$effect(() => {
+		if (!trackerHaeltMeine || !transmitting) return;
+		untrack(() => { stopTransmitting(false); error = TRACKER_HINWEIS; });
+	});
 	$effect(() => {
 		const abgelehnt = $positionAbgelehnt;
 		if (!abgelehnt) return;
 		positionAbgelehnt.set(null);
-		if (abgelehnt === myVehicleId) error = TRACKER_HINWEIS;
+		if (abgelehnt !== myVehicleId) return;
+		if (transmitting) stopTransmitting(false);
+		error = TRACKER_HINWEIS;
 	});
 
 	// Tab zu: sofort freigeben, damit das Fahrzeug nicht fünf Minuten „belegt"
@@ -618,6 +632,7 @@
 
 	function startTransmitting() {
 		if (!myVehicleId) { error = 'Bitte zuerst ein Fahrzeug auswählen'; return; }
+		if (trackerHaeltMeine) { error = TRACKER_HINWEIS; return; }
 		error = '';
 		autoArrived = false;
 		// Selecting & sending a vehicle auto-advances it to "Unterwegs" (from Geplant).
@@ -656,7 +671,9 @@
 		);
 	}
 
-	function stopTransmitting() {
+	// `positionLoeschen=false`, wenn der Tracker übernommen hat: Die gespeicherte
+	// Position ist dann seine, und das Löschen nähme sie von der Karte.
+	function stopTransmitting(positionLoeschen = true) {
 		if (geoWatcher !== null) { navigator.geolocation.clearWatch(geoWatcher); geoWatcher = null; }
 		const wasTransmitting = transmitting;
 		transmitting = false;
@@ -664,7 +681,7 @@
 		// End the GPS sharing: remove our own position so we no longer show as LIVE
 		// and the marker disappears (suppress=false → we may re-start immediately).
 		// Drop the locally mirrored marker right away so it vanishes even offline.
-		if (wasTransmitting && myVehicleId) {
+		if (wasTransmitting && myVehicleId && positionLoeschen) {
 			livePositions.update((m) => { m.delete(myVehicleId); return new Map(m); });
 			trackingApi.clearVehiclePosition(convoyId, myVehicleId, false).catch(() => {});
 		}
@@ -942,16 +959,19 @@
 				{#if !isSecure}
 					<p class="hint">GPS benötigt HTTPS. Manuelle Positionierung via Karten-Tippen verfügbar.</p>
 				{/if}
-				<button class="btn-primary" onclick={startTransmitting} disabled={!myVehicleId}>
+				<button class="btn-primary" onclick={startTransmitting} disabled={!myVehicleId || trackerHaeltMeine}>
 					{isSecure ? '📡 GPS senden' : '📍 Manuell setzen'}
 				</button>
+				{#if trackerHaeltMeine && error !== TRACKER_HINWEIS}
+					<p class="hint" data-testid="tracker-haelt-position">{TRACKER_HINWEIS}</p>
+				{/if}
 			{:else}
 				{#if manualMode}
 					<p class="hint hint-active">Tippe auf die Karte um deine Position zu setzen</p>
 				{:else}
 					<p class="hint hint-active">GPS aktiv – Position wird übertragen</p>
 				{/if}
-				<button class="btn-stop" onclick={stopTransmitting}>⏹ Senden stoppen</button>
+				<button class="btn-stop" onclick={() => stopTransmitting()}>⏹ Senden stoppen</button>
 			{/if}
 		</div>
 

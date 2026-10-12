@@ -310,7 +310,9 @@ async function openSocket(convoyId: string) {
 			gpsRevoked.set(data.vehicle_id);
 		} else {
 			livePositions.update((m) => {
-				m.set(data.vehicle_id, data);
+				// Der Tracker schickt keinen Zeitstempel mit; ohne ihn ließe sich
+				// nicht sagen, ob er noch sendet (`trackerHaeltPosition`).
+				m.set(data.vehicle_id, data.recorded_at ? data : { ...data, recorded_at: new Date().toISOString() });
 				return new Map(m);
 			});
 		}

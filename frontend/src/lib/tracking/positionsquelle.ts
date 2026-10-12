@@ -37,3 +37,27 @@ export function istPositionsquelle(msg: unknown): msg is PositionsquelleGeaender
 	return !!m && m.type === 'positionsquelle' && typeof m.vehicle_id === 'string' &&
 		typeof m.tracker_uebersteuert === 'boolean';
 }
+
+/**
+ * So lange nach seinem letzten Punkt hat der Tracker Vorrang — dieselbe Frist
+ * wie `VORRANG_S` im Backend. Danach gilt wieder das Telefon.
+ */
+export const VORRANG_MS = 300_000;
+
+/**
+ * Hält der Tracker gerade die Position dieses Fahrzeugs? Dann bietet die
+ * Ansicht „GPS senden" gar nicht erst an: Der Server verwürfe jeden Punkt, und
+ * der eigene Marker überdeckte lokal den des Trackers.
+ *
+ * Gemessen am letzten Punkt mit `quelle: 'tracker'` — ohne Zeitstempel gilt er
+ * als gerade eben empfangen. Hat die Führung übersteuert, gilt das Telefon.
+ */
+export function trackerHaeltPosition(
+	pos: { quelle?: 'tracker' | null; recorded_at?: string } | undefined,
+	uebersteuert: boolean,
+	jetzt: number,
+): boolean {
+	if (uebersteuert || pos?.quelle !== 'tracker') return false;
+	const t = pos.recorded_at ? Date.parse(pos.recorded_at) : NaN;
+	return !Number.isFinite(t) || jetzt - t <= VORRANG_MS;
+}
