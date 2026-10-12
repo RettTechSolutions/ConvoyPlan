@@ -107,7 +107,16 @@ async def _laufende_konvois(db: AsyncSession, geraet: Ortungsgeraet) -> list[uui
     return list(rows.scalars().all())
 
 
-async def _anweisung(db: AsyncSession, geraet: Ortungsgeraet, jetzt: datetime) -> dict[str, Any]:
+async def _org_takt(db: AsyncSession, geraet: Ortungsgeraet) -> int | None:
+    """Der Sendetakt, den der Org-Admin gewählt hat (``tracker_buendel_s``), roh."""
+    return (
+        await db.execute(select(Organization.tracker_buendel_s).where(Organization.id == geraet.organization_id))
+    ).scalar_one_or_none()
+
+
+async def _anweisung(
+    db: AsyncSession, geraet: Ortungsgeraet, jetzt: datetime, netz: str = "mobil"
+) -> dict[str, Any]:
     konvois = await _laufende_konvois(db, geraet)
     # Ohne Lizenz wie eine gesperrte Organisation: `schweigen`, und `positionen`
     # verwirft. Die Middleware lässt diese Pfade dafür durch (license_guard.py).
@@ -116,10 +125,8 @@ async def _anweisung(db: AsyncSession, geraet: Ortungsgeraet, jetzt: datetime) -
     # Was das Gerät damit tut — nur im Stand, nur mit Akku —, entscheidet es
     # selbst; die Adresse zeigt auf diese Instanz (services/firmware_angebot.py).
     firmware = await firmware_angebot.fuer_geraet(geraet.kanal, geraet.firmware, geraet.hardware)
-    buendel = (
-        await db.execute(select(Organization.tracker_buendel_s).where(Organization.id == geraet.organization_id))
-    ).scalar_one_or_none()
-    antwort = og.anweisung(modus, jetzt, firmware=firmware, buendel=buendel)
+    # Über WLAN und BLE live, sonst im Takt der Organisation (``og.sendetakt_s``).
+    antwort = og.anweisung(modus, jetzt, firmware=firmware, buendel=await _org_takt(db, geraet), netz=netz)
     # Nur bei `senden`: ohne laufenden Konvoi gibt es keinen Ort für eine Meldung.
     antwort["nahfunk"] = _nahfunk_zugang(geraet, konvois) if modus == "senden" else None
     return antwort
@@ -221,7 +228,7 @@ async def hallo(
 ):
     jetzt = datetime.now(timezone.utc)
     _zustand_merken(geraet, daten, jetzt)
-    antwort = await _anweisung(db, geraet, jetzt)
+    antwort = await _anweisung(db, geraet, jetzt, og.netz_lesen(daten))
     # Wurzeln nur hier: das Gerät meldet seinen Fingerabdruck in `hallo`, und ein
     # Bündel in jeder Antwort auf `positionen` kostete alle 15 s bis zu 12 KB.
     gemeldet = tw.gemeldet_lesen(daten)
@@ -245,9 +252,12 @@ async def positionen(
         raise HTTPException(status_code=400, detail=str(e)) from e
     gps_alt = geraet.gps_gestoert_ab
     _zustand_merken(geraet, daten, jetzt)
-    antwort = await _anweisung(db, geraet, jetzt)
-    # Im Takt, den diese Antwort dem Gerät vorgibt (Sendetakt der Organisation).
-    buendel = antwort["buendel_s"]
+    antwort = await _anweisung(db, geraet, jetzt, og.netz_lesen(daten))
+    # Erwartet wird im Takt der Organisation, auch wenn diese Antwort über WLAN oder
+    # BLE live vorgibt: Fällt der Weg weg (Fahrzeug verlässt das WLAN der Wache),
+    # wechselt das Gerät erst nach einem gescheiterten Versuch auf Mobilfunk und
+    # bekommt dort den langsameren Takt. Das ist kein Abriss.
+    buendel = og.buendel_s(await _org_takt(db, geraet))
     geraet.unterbrochen_ab = og.unterbrochen_ab(antwort["modus"], daten.get("ruhe"), jetzt, buendel)
     geraet.gps_gestoert_ab = og.gps_gestoert_ab(gps_alt, geraet.unterbrochen_ab, len(fixes), jetzt, buendel)
     if antwort["modus"] != "senden":
@@ -293,7 +303,7 @@ async def meldungen(
     geraet.akku_seit = og.akku_seit(geraet.extern, geraet.akku_seit, felder.get("extern"), jetzt)
     for feld, wert in felder.items():
         setattr(geraet, feld, wert)
-    antwort = await _anweisung(db, geraet, jetzt)
+    antwort = await _anweisung(db, geraet, jetzt, og.netz_lesen(daten))
     konvois = await _laufende_konvois(db, geraet) if antwort["modus"] == "senden" else []
     await db.commit()
 
@@ -416,7 +426,7 @@ async def firmware_ergebnis(
     geraet.update_meldung = meldung.strip()[:200] if isinstance(meldung, str) and meldung.strip() else None
     geraet.update_at = jetzt
     _zustand_merken(geraet, daten, jetzt)
-    antwort = await _anweisung(db, geraet, jetzt)
+    antwort = await _anweisung(db, geraet, jetzt, og.netz_lesen(daten))
     await db.commit()
     return antwort
 
