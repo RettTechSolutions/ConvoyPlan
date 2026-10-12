@@ -1,15 +1,17 @@
 <!--
-  Empfangsbalken und Batterie eines Trackers, wie man sie vom Telefon kennt.
+  Empfangsbalken und Batterie eines Trackers, wie man sie vom Telefon kennt,
+  dazu in Worten, wenn während der Fahrt etwas fehlt: Verbindung oder GPS.
   Gemeinsam für Org-Admin (Tracker-Liste) und Konvoi-Ansicht, damit „schwach"
   an beiden Stellen gleich aussieht. Die Regeln stehen in
   `$lib/tracking/trackerzustand`, ob der Akku warnt, sagt das Backend.
 -->
 <script lang="ts">
-	import { akkuTitel, balken, empfangTitel, veraltet, type TrackerAnzeige } from '$lib/tracking/trackerzustand';
+	import { akkuTitel, balken, empfangTitel, stoerung, STOERUNG_TEXT, veraltet, type TrackerAnzeige } from '$lib/tracking/trackerzustand';
 
 	let { zustand, prozent = true, jetzt = Date.now() }: { zustand: TrackerAnzeige; prozent?: boolean; jetzt?: number } = $props();
 
-	const alt = $derived(veraltet(zustand.zuletzt_gesehen, jetzt));
+	const fehlt = $derived(stoerung(zustand, jetzt));
+	const alt = $derived(fehlt === 'unterbrochen' || veraltet(zustand.zuletzt_gesehen, jetzt));
 	const stufe = $derived(alt ? 0 : balken(zustand.signal_dbm));
 	const fuellung = $derived(Math.max(0, Math.min(100, zustand.akku_prozent ?? 0)));
 	const empfang = $derived(empfangTitel(zustand, jetzt));
@@ -24,6 +26,9 @@
 			{/each}
 		</svg>
 	</span>
+	{#if fehlt}
+		<span class="stoerung {fehlt}" role="status" data-testid="tracker-stoerung" data-stoerung={fehlt}>{STOERUNG_TEXT[fehlt]}</span>
+	{/if}
 	{#if zustand.akku_prozent !== null}
 		<span class="akku" class:niedrig={zustand.akku_niedrig} role="img" aria-label={akku} title={akku}>
 			<svg viewBox="0 0 24 12" width="24" height="12" aria-hidden="true">
@@ -50,5 +55,8 @@
 	.akku .fuellung { fill: currentColor; }
 	.akku .blitz { fill: #f1c40f; stroke: var(--surface-1, #fff); stroke-width: .6; }
 	.akku.niedrig { color: #e74c3c; }
+	.stoerung { font-size: var(--text-xs, .72rem); font-weight: 700; color: #fff; padding: .05rem .35rem; border-radius: 3px; }
+	.stoerung.unterbrochen { background: #c0392b; }
+	.stoerung.gps { background: #d35400; }
 	.prozent { font-size: var(--text-xs, .72rem); font-variant-numeric: tabular-nums; }
 </style>

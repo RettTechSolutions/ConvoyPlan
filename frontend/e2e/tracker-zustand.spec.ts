@@ -64,3 +64,33 @@ test('ein Tracker ohne aktuelle Meldung zeigt keine Balken', async ({ page }) =>
 	await expect(empfang).toHaveAttribute('data-balken', '0');
 	await expect(empfang).toHaveAttribute('aria-label', /letzter Kontakt vor 25 min/);
 });
+
+// Während der Fahrt erwartet die Instanz Bündel. Was davon ausbleibt, steht in
+// Worten am Fahrzeug — nicht nur als graue Balken, die man übersieht.
+const in_ = (s: number) => new Date(Date.now() + s * 1000).toISOString();
+
+test('ausgebliebene Bündel und gestörtes GPS stehen in Worten am Fahrzeug', async ({ page }) => {
+	await oeffnen(page, [
+		// Zwei Bündel ausgeblieben: unterbrochen, auch wenn das GPS vorher schon gestört war.
+		{ vehicle_id: 'v-hlf', zuletzt_gesehen: vor(2), akku_prozent: 80, extern: true, akku_seit: null,
+		  akku_niedrig: false, signal_dbm: -80, unterbrochen_ab: vor(1), gps_gestoert_ab: vor(1) },
+		// Bündel kommen, aber keine plausiblen Fixes.
+		{ vehicle_id: 'v-mtw', zuletzt_gesehen: vor(0), akku_prozent: 80, extern: true, akku_seit: null,
+		  akku_niedrig: false, signal_dbm: -80, unterbrochen_ab: in_(60), gps_gestoert_ab: vor(1) },
+		// Alles im Takt.
+		{ vehicle_id: 'v-elw', zuletzt_gesehen: vor(0), akku_prozent: 80, extern: true, akku_seit: null,
+		  akku_niedrig: false, signal_dbm: -80, unterbrochen_ab: in_(60), gps_gestoert_ab: in_(90) },
+	]);
+
+	const hlf = page.getByTestId('tracker-v-hlf');
+	await expect(hlf.getByTestId('tracker-stoerung')).toHaveText('Verbindung unterbrochen');
+	await expect(hlf.getByRole('img', { name: /^Verbindung unterbrochen · letzter Kontakt vor 2 min/ }))
+		.toHaveAttribute('data-balken', '0');
+
+	const mtw = page.getByTestId('tracker-v-mtw');
+	await expect(mtw.getByTestId('tracker-stoerung')).toHaveText('GPS gestört');
+	// Das Netz steht: die Balken bleiben.
+	await expect(mtw.getByRole('img', { name: /Empfang/ })).toHaveAttribute('data-balken', '4');
+
+	await expect(page.getByTestId('tracker-v-elw').getByTestId('tracker-stoerung')).toHaveCount(0);
+});

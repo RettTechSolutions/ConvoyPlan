@@ -403,15 +403,17 @@
 	}
 
 	/**
-	 * Akku und Empfang der Tracker, je Fahrzeug. Abgefragt statt über den
-	 * Live-Kanal: die Werte ändern sich in Minuten, nicht in Sekunden, und der
-	 * Store der angemeldeten Ansicht soll keinen neuen Nachrichtentyp lesen
-	 * müssen. Fehlt der Aufruf (ältere Instanz), bleibt die Anzeige leer.
+	 * Akku, Empfang und Störungen der Tracker, je Fahrzeug. Abgefragt statt über
+	 * den Live-Kanal: der Store der angemeldeten Ansicht soll keinen neuen
+	 * Nachrichtentyp lesen müssen. Fehlt der Aufruf (ältere Instanz), bleibt die
+	 * Anzeige leer. Alle 15 s, weil „Verbindung unterbrochen" beim Standardtakt
+	 * nach 45 s ohne Bündel gilt: eine Minute Abfrage käme zu spät — oder zeigte
+	 * eine Störung, die das nächste Bündel schon behoben hat.
 	 */
 	let trackerZustand = $state<Map<string, TrackerAmFahrzeug>>(new Map());
 	let trackerJetzt = $state(Date.now());
 	let trackerTimer: ReturnType<typeof setInterval> | null = null;
-	const TRACKER_ABFRAGE_MS = 60_000;
+	const TRACKER_ABFRAGE_MS = 15_000;
 
 	async function trackerLaden() {
 		try {
