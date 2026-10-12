@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
 	import { page } from '$app/stores';
 	import MapView from '$lib/components/MapView.svelte';
 	import AppLogo from '$lib/components/AppLogo.svelte';
@@ -1150,6 +1150,17 @@
 			{#if routeGeojson}
 				<button class="map-ctrl-btn" onclick={() => mapView?.showRoute()} title="Gesamte Route anzeigen">
 					🗺️ Route
+				</button>
+			{/if}
+			{#if $livePositions.size > 0}
+				<!-- Erst Folgen und Fahrtrichtung lösen und die Effekte durchlaufen
+				     lassen: sonst bricht deren easeTo den Zoom gleich wieder ab. -->
+				<button
+					class="map-ctrl-btn"
+					onclick={async () => { followMyVehicle = false; headingUp = false; await tick(); mapView?.showConvoy(); }}
+					title="Auf alle Fahrzeuge des Konvois zoomen"
+				>
+					🚐 Konvoi
 				</button>
 			{/if}
 			<button class="map-ctrl-btn" onclick={() => { headingUp = false; mapView?.resetNorth(); }} title="Nach Norden ausrichten">

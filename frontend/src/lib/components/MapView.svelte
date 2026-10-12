@@ -7,6 +7,7 @@
 	import { mapMode } from '$lib/stores/map';
 	import { themeStore } from '$lib/stores/theme';
 	import { addRegionMask, applyMapTheme } from '$lib/map/region';
+	import { konvoiAusschnitt } from '$lib/map/konvoiAusschnitt';
 	import type { Waypoint, VehiclePosition } from '$lib/api';
 	import type { Geometry, FeatureCollection } from 'geojson';
 
@@ -326,6 +327,17 @@
 	/** Fit the whole route into view again (used by the "Route" button). */
 	export function showRoute() {
 		fitRoute();
+	}
+
+	/**
+	 * Zoom so that every vehicle of the convoy is in view (the "Konvoi" button).
+	 * Nordet dabei ein; einen Folgen-Modus muss der Aufrufer vorher lösen, sonst
+	 * zieht die nächste Position die Karte wieder auf das eigene Fahrzeug.
+	 */
+	export function showConvoy() {
+		const ausschnitt = konvoiAusschnitt(livePositions.values());
+		if (!map || !ausschnitt) return;
+		map.fitBounds(ausschnitt, { padding: 80, maxZoom: FOLLOW_ZOOM, bearing: 0, pitch: 0, duration: 800 });
 	}
 
 	/** Reset the map orientation to north-up (and level). */
