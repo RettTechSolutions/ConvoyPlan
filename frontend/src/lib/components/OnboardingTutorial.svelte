@@ -2,7 +2,7 @@
 	import { untrack } from 'svelte';
 	import { tutorialStore } from '$lib/stores/tutorial';
 
-	type PlanTab = 'convoy' | 'fahrzeuge' | 'wegpunkte' | 'zeitplan' | 'export' | 'konto';
+	type PlanTab = 'convoy' | 'route' | 'fahrzeuge' | 'wegpunkte' | 'zeitplan' | 'export' | 'konto';
 
 	let {
 		slug,
@@ -109,6 +109,7 @@
 			lead: 'Mit „Route berechnen“ ermittelt ConvoyPlan Strecke, Fahrzeit und mehr für den gesamten Verband.',
 			bullets: [
 				{ label: 'Distanz & Dauer', text: 'werden nach der Berechnung angezeigt.' },
+				{ label: 'Reiter „Route“', text: 'sammelt Tankstopp, empfohlene Halte, Durchfahrtshöhen und Gewichtsgrenzen. Die Zahl am Reiter sagt, wie viele Hinweise offen sind – rot heißt: eng, überschritten oder Tankstopp fehlt.' },
 				{ label: 'Reichweiten-/Tankanalyse', text: 'erkennt nötige Tankstopps – Voraussetzung sind Fahrzeuge mit Verbrauchsdaten.' },
 				{ label: 'Sperrungen', text: 'aktuelle Straßensperrungen lassen sich auf der Karte einblenden.' },
 			],
