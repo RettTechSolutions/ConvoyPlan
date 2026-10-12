@@ -309,7 +309,7 @@
 		map.flyTo({ center: [pos.lon, pos.lat], zoom: 15, duration: 800 });
 	}
 
-	function fitRoute(duration = 800) {
+	function fitRoute(duration = 800, bearing?: number) {
 		if (!map || !routeGeojson) return;
 		const coords: number[][] =
 			routeGeojson.type === 'LineString' ? routeGeojson.coordinates as number[][]
@@ -320,13 +320,16 @@
 		const lats = coords.map(c => c[1]);
 		map.fitBounds(
 			[[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
-			{ padding: 60, duration }
+			{ padding: 60, duration, ...(bearing != null && { bearing, pitch: 0 }) }
 		);
 	}
 
-	/** Fit the whole route into view again (used by the "Route" button). */
+	/**
+	 * Fit the whole route into view again (used by the "Route" button), north-up.
+	 * Wie bei showConvoy() löst der Aufrufer einen Folgen-Modus vorher.
+	 */
 	export function showRoute() {
-		fitRoute();
+		fitRoute(800, 0);
 	}
 
 	/**

@@ -455,6 +455,16 @@
 		if (backOnlineTimer) { clearTimeout(backOnlineTimer); backOnlineTimer = null; }
 	});
 
+	// Route und Konvoi zeigen einen Überblick: Folgen und Fahrtrichtung enden
+	// dabei, sonst zöge die nächste Position die Karte zurück aufs eigene
+	// Fahrzeug. Erst die Effekte durchlaufen lassen — deren easeTo bräche den
+	// Zoom sonst gleich wieder ab.
+	async function ansichtFreigeben() {
+		followMyVehicle = false;
+		headingUp = false;
+		await tick();
+	}
+
 	// Restore a previously active assignment after a reload. If the saved vehicle
 	// is still part of the convoy, re-select it and resume transmitting.
 	let sessionRestored = false;
@@ -1148,16 +1158,18 @@
 				</button>
 			{/if}
 			{#if routeGeojson}
-				<button class="map-ctrl-btn" onclick={() => mapView?.showRoute()} title="Gesamte Route anzeigen">
+				<button
+					class="map-ctrl-btn"
+					onclick={async () => { await ansichtFreigeben(); mapView?.showRoute(); }}
+					title="Gesamte Route anzeigen"
+				>
 					🗺️ Route
 				</button>
 			{/if}
 			{#if $livePositions.size > 0}
-				<!-- Erst Folgen und Fahrtrichtung lösen und die Effekte durchlaufen
-				     lassen: sonst bricht deren easeTo den Zoom gleich wieder ab. -->
 				<button
 					class="map-ctrl-btn"
-					onclick={async () => { followMyVehicle = false; headingUp = false; await tick(); mapView?.showConvoy(); }}
+					onclick={async () => { await ansichtFreigeben(); mapView?.showConvoy(); }}
 					title="Auf alle Fahrzeuge des Konvois zoomen"
 				>
 					🚐 Konvoi
