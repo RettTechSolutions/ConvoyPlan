@@ -60,12 +60,7 @@
 	let fuelStopExists = $derived(
 		(selected?.waypoints ?? []).some(wp => wp.halt_purpose === 'fuel')
 	);
-	let thStopsAdded = $derived(
-		(selected?.waypoints ?? []).filter(wp =>
-			wp.type === 'technical_stop' && wp.halt_purpose !== 'fuel'
-		).length
-	);
-	const routeHinweiseJetzt = $derived(routeHinweise(route, fuelStopExists, thStopsAdded));
+	const routeHinweiseJetzt = $derived(routeHinweise(route, fuelStopExists));
 	let closures = $state<FeatureCollection | null>(null);
 	let showClosures = $state(false);
 	// Live-Verkehrslage (HERE/TomTom) — nur verfügbar, wenn eine Installation
@@ -378,10 +373,32 @@
 
 	async function refreshConvoy() {
 		if (!selected) return;
+		const halteVorher = halteSignatur(selected.waypoints);
 		selected = withVehicleIds(await convoysApi.get(selected.id));
 		convoyList = convoyList.map(c => c.id === selected!.id ? selected! : c);
 		convoys.set(convoyList);
 		activeConvoy.set(selected);
+		if (route && halteSignatur(selected.waypoints) !== halteVorher) void halteNeuBewerten(selected.id);
+	}
+
+	// Die empfohlenen Halte rechnet das Backend gegen die schon geplanten:
+	// ein TH kurz vor dem Tankhalt geht in diesem auf, ein übernommener
+	// Vorschlag verschwindet aus der Liste. Ändert sich ein Halt, wird die
+	// Empfehlung deshalb neu geholt — ohne die Route neu zu berechnen.
+	function halteSignatur(wps: Waypoint[] | undefined): string {
+		return (wps ?? [])
+			.filter(wp => wp.hold_duration_min > 0)
+			.map(wp => `${wp.id}:${wp.lat}:${wp.lon}:${wp.hold_duration_min}`)
+			.sort()
+			.join('|');
+	}
+
+	async function halteNeuBewerten(convoyId: string) {
+		try {
+			const r = await convoysApi.getRoute(convoyId);
+			if (!r || !route || get(activeConvoy)?.id !== convoyId) return;
+			route = { ...route, fuel_analysis: r.fuel_analysis };
+		} catch { /* Empfehlung bleibt bis zur nächsten Berechnung stehen */ }
 	}
 
 	/**
@@ -1626,7 +1643,7 @@
 								<p class="hint" style="margin-top:.4rem">⚠ Keine Fahrzeuge im Verband – gehe zu <strong>Fahrzeuge</strong> und füge sie mit + hinzu, um die Reichweitenanalyse zu nutzen.</p>
 							{/if}
 							{#if route.fuel_analysis?.duration_halt_needed}
-								{@const remaining = route.fuel_analysis.duration_halts.slice(thStopsAdded)}
+								{@const remaining = route.fuel_analysis.duration_halts}
 								{#if remaining.length > 0}
 									<div class="th-warning">
 										<p class="th-title">🛑 Halte empfohlen</p>

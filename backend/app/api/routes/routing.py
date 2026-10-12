@@ -79,6 +79,26 @@ def _waypoint_latlon(wp) -> tuple[float, float] | None:
     return c["lat"], c["lon"]
 
 
+def _geplante_halte(waypoints, route_coords: list[list[float]]) -> list[tuple[float, int]]:
+    """Halte, die schon als Wegpunkt stehen: (km entlang der Route, min).
+
+    Die Halte-Empfehlung rechnet damit (``fuel_svc._duration_halts``) — ein
+    Technischer Halt kurz vor einem eingeplanten Tankhalt geht in ihm auf.
+    Über die Lage, nicht über ``order_index``: ein frisch vorgeschlagener
+    Halt steht noch am Listenende.
+    """
+    halte = []
+    for wp in waypoints:
+        if not wp.hold_duration_min or wp.hold_duration_min <= 0:
+            continue
+        c = _waypoint_latlon(wp)
+        if c is None or not route_coords:
+            continue
+        km = fuel_svc.project_onto_route(route_coords, c[0], c[1]) / 1000
+        halte.append((km, wp.hold_duration_min))
+    return halte
+
+
 def _keine_verbindung_message(vehicle_params: dict[str, Any]) -> str:
     """Meldung, wenn GraphHopper keine Verbindung findet.
 
@@ -411,6 +431,7 @@ async def get_route(
             route.distance_m,
             route_coords,
             route_duration_s=route.duration_s or 0,
+            geplante_halte=_geplante_halte(convoy.waypoints, route_coords),
         )
 
     # Departure + destination ETA, recomputed so a reloaded route shows the same
@@ -664,6 +685,7 @@ async def calculate_route(
         route_data["distance_m"],
         route_coords,
         route_duration_s=convoy_duration_s,
+        geplante_halte=_geplante_halte(convoy.waypoints, route_coords),
     )
 
     return {

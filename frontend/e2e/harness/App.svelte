@@ -107,15 +107,16 @@
 		recommended_stop_duration_min: tank ? 15 : null, duration_halt_needed: halte > 0,
 		duration_halts: Array.from({ length: halte }, (_, i) => halt(120 * (i + 1))), rest_needed: false,
 	});
-	const ROUTE: Record<string, [Parameters<typeof routeHinweise>[0], boolean, number]> = {
-		keine: [{ fuel_analysis: analyse(false, 0), durchfahrtshoehen: [stelle(30.1, 4.5, 0.85, 'frei')], gewichtsgrenzen: [grenze(9.4, 40, 14, 'frei')] }, false, 0],
-		halte: [{ fuel_analysis: analyse(false, 2), durchfahrtshoehen: [], gewichtsgrenzen: [] }, false, 0],
-		halte_teils_gesetzt: [{ fuel_analysis: analyse(false, 2), durchfahrtshoehen: [], gewichtsgrenzen: [] }, false, 1],
-		eng: [{ fuel_analysis: null, durchfahrtshoehen: [stelle(12.4, 3.7, 0.05, 'eng')], gewichtsgrenzen: [grenze(15, 28, 1.5, 'knapp')] }, false, 0],
-		knapp: [{ fuel_analysis: null, durchfahrtshoehen: [stelle(48.9, 3.9, 0.25, 'knapp')], gewichtsgrenzen: null }, false, 0],
-		tankstopp: [{ fuel_analysis: analyse(true, 0), durchfahrtshoehen: null, gewichtsgrenzen: null }, false, 0],
-		tankstopp_gesetzt: [{ fuel_analysis: analyse(true, 0), durchfahrtshoehen: null, gewichtsgrenzen: null }, true, 0],
-		ohne_route: [null, false, 0],
+	const ROUTE: Record<string, [Parameters<typeof routeHinweise>[0], boolean]> = {
+		keine: [{ fuel_analysis: analyse(false, 0), durchfahrtshoehen: [stelle(30.1, 4.5, 0.85, 'frei')], gewichtsgrenzen: [grenze(9.4, 40, 14, 'frei')] }, false],
+		halte: [{ fuel_analysis: analyse(false, 2), durchfahrtshoehen: [], gewichtsgrenzen: [] }, false],
+		// Einer der beiden steht schon als Wegpunkt: das Backend nennt nur noch den anderen.
+		halte_teils_gesetzt: [{ fuel_analysis: analyse(false, 1), durchfahrtshoehen: [], gewichtsgrenzen: [] }, false],
+		eng: [{ fuel_analysis: null, durchfahrtshoehen: [stelle(12.4, 3.7, 0.05, 'eng')], gewichtsgrenzen: [grenze(15, 28, 1.5, 'knapp')] }, false],
+		knapp: [{ fuel_analysis: null, durchfahrtshoehen: [stelle(48.9, 3.9, 0.25, 'knapp')], gewichtsgrenzen: null }, false],
+		tankstopp: [{ fuel_analysis: analyse(true, 0), durchfahrtshoehen: null, gewichtsgrenzen: null }, false],
+		tankstopp_gesetzt: [{ fuel_analysis: analyse(true, 0), durchfahrtshoehen: null, gewichtsgrenzen: null }, true],
+		ohne_route: [null, false],
 	};
 	const routeFall = ROUTE[fall] ?? ROUTE.keine;
 </script>
