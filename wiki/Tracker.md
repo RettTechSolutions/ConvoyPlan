@@ -35,6 +35,28 @@ Fährt das Fahrzeug durch ein Funkloch, reicht das Gerät die Punkte danach nach
 und die Linie auf der Aktionsseite bleibt eine Linie. Ein nachgereichter Punkt
 setzt die aktuelle Position auf der Karte nie zurück.
 
+### Sendetakt und Datenvolumen
+
+Während der Fahrt misst ein Tracker seine Position alle 10 s und sendet die
+gesammelten Punkte gebündelt. Wie oft, stellt der Org-Admin für alle Tracker der
+Organisation ein: **Org-Admin → Tracker → Sendetakt**, zur Wahl stehen 10, 15
+(Standard), 30, 60 und 120 s. Der Verlauf auf der Karte bleibt gleich dicht; der
+Takt bestimmt, wie aktuell die Position ist und wie weit sie zwischen zwei
+Versänden springt (bei 50 km/h und 15 s gut 200 m). Die Tracker übernehmen eine
+Änderung mit ihrem nächsten Kontakt.
+
+Der Abschnitt zeigt für jeden Takt eine Schätzung des Datenvolumens je Tracker
+und Fahrstunde und rechnet sie mit der Zahl der Tracker und den Fahrstunden im
+Monat auf den SIM-Tarif hoch. Die Kosten stecken fast ganz im Versand, nicht in
+den Punkten: Bei 15 s sind es grob 400 KB je Fahrstunde, bei 60 s gut 120 KB.
+Schließt das Mobilfunknetz die Verbindung zwischen zwei Versänden, muss jeder
+neu verbinden, und es wird ein Mehrfaches; die Seite nennt diesen Wert in
+Klammern. Im Stand und ohne laufenden Konvoi fällt kaum etwas an. Es ist eine
+Schätzung aus dem Protokoll, bis Messfahrten echte Zahlen liefern.
+
+Öfter senden kostet auch Strom und beim verbauten Funkmodul etwas GNSS: Solange
+es sendet, misst es nicht.
+
 Beim ersten Punkt wechselt ein Fahrzeug im Status *geplant* auf *unterwegs*, wie
 beim Fahrer-Link. Statusmeldungen, Stärke und Betriebsstoff kommen weiter aus der
 App oder vom Fahrer-Link — der Tracker meldet nur, wo das Fahrzeug ist.
@@ -175,8 +197,8 @@ Ohne `TRACKER_WURZELN` behält jedes Gerät, was es beim Einrichten bekommen hat
   steht beim Koppeln nicht zur Wahl.
 - **„GPS-Freigabe zurücksetzen"** (Reiter *GPS-Freigaben*) gilt auch für einen
   Tracker: die gelöschte Position kommt nicht beim nächsten Punkt zurück.
-- **Jede Änderung** — Anlegen, Koppeln, Sperren, neuer Code, Löschen, und das
-  Einrichten durch das Gerät — steht im Audit-Log.
+- **Jede Änderung** — Anlegen, Koppeln, Sperren, neuer Code, Löschen, der
+  Sendetakt und das Einrichten durch das Gerät — steht im Audit-Log.
 - **Ortung im Dienstfahrzeug** ist bei hauptamtlichem Personal
   mitbestimmungspflichtig. Dass nur während eines laufenden Konvois gesendet
   wird und das in der Fahrzeugliste sichtbar ist, ist dafür die Grundlage.

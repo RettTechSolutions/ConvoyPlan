@@ -379,6 +379,12 @@ Org-Admin). Vier Dinge, die man kennen muss:
   `positionsverlauf.aufzeichnen` mit. Auch `is_recently_cleared` („GPS-Freigabe
   zurücksetzen") und `planned → en_route` samt `alarm_quittung.zuruecksetzen`
   gelten hier wie am Fahrer-Link.
+- **Sendetakt je Organisation** (`organizations.tracker_buendel_s`, Migration `0065`).
+  NULL heißt Standard aus `ortungsgeraet.TAKT`; `_anweisung` liest ihn bei jeder
+  Antwort, wählbar ist nur `BUENDEL_WAHL` (nicht unter `intervall_s`, unter
+  `positionsquelle.VORRANG_S`). Die Volumenschätzung (`volumen_kb_pro_stunde`)
+  ist aus dem Protokoll gerechnet, nicht gemessen; kommen Zahlen aus M3 im
+  Tracker-Repo, gehören sie in `VOLUMEN_*_B`.
 - **„Auf Akku seit"** (`akku_seit`, Migration `0063`) setzt `ortungsgeraet.akku_seit` aus
   dem *bisherigen* `extern` und der neuen Meldung, **bevor** die Zustandsfelder
   überschrieben werden (`_zustand_merken`). Eine Meldung ohne `extern` lässt den Wert

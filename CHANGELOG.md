@@ -25,10 +25,11 @@ ursprünglichen SemVer-Nummern.
 
 - **Jede Instanz baut ihren Routing-Graphen erneut neu** — `max_weight`, `max_weight_except` und `max_axle_load` stehen jetzt im Graphen, und die Encoded Values stehen im Fingerprint. Wie unter 2026.8.0: je nach Region 45–75 Minuten ohne Routenplanung, Update außerhalb einer Lage legen. Bis der neue Graph steht, routet das Backend ohne Gewichtsgrenzen statt gar nicht.
 - **Routen können sich ändern.** Die Höhe wird jetzt mit dem *höchsten* Fahrzeug gesperrt (siehe *Fixed*), und jedes Fahrzeug mit Gewicht oder Achslast sperrt Grenzen darunter. Bestehende Routen bleiben, bis sie neu berechnet werden.
-- Datenbank-Migrationen `0059` bis `0064` laufen beim Start des Backends.
+- Datenbank-Migrationen `0059` bis `0065` laufen beim Start des Backends.
 
 ### Added
 
+- **Sendetakt der Tracker wählt der Org-Admin, mit Rechenbeispiel fürs Datenvolumen.** Unter **Org-Admin → Tracker → Sendetakt** stehen 10, 15, 30, 60 und 120 s zur Wahl, für alle Tracker der Organisation, ab ihrem nächsten Kontakt. Standard ist jetzt 15 s statt 30 s. Zu jedem Takt zeigt die Seite, wie weit die Position bei 50 km/h springt und wie viel Datenvolumen je Fahrstunde geschätzt anfällt, hochgerechnet auf Tracker und Fahrstunden im Monat; der Einmal-Code beim Einrichten nennt den aktuellen Wert. Änderungen stehen im Audit-Log (`org.geraet.takt_updated`). API `GET/PUT /api/org/geraete/takt`. Migration `0065`. Anwenderdoku: `wiki/Tracker.md`, „Sendetakt und Datenvolumen".
 - **Tracker übernehmen neue Wurzelzertifikate von ihrer Instanz.** Wer eine eigene Zertifizierungsstelle betreibt und sie wechselt, muss nicht mehr jedes Gerät per USB neu einrichten: Mit `TRACKER_WURZELN` (PEM-Datei, höchstens drei CA-Zertifikate) verteilt die Instanz das Bündel beim nächsten `hallo`, und das Gerät übernimmt es erst, wenn eine Verbindung damit gelingt. Die Tracker-Liste zeigt, welches Gerät es noch nicht übernommen hat. Ablauf im Wiki unter „Eigene Zertifizierungsstelle wechseln". Ohne Einstellung ändert sich nichts.
 
 - **„Auf Akku seit …" bei Trackern.** Die Instanz merkt sich, seit wann ein Tracker ohne Bordnetz läuft (gesetzt bei der ersten Meldung `extern=false`, gelöscht mit Strom), und die Tracker-Liste im Org-Admin zeigt es an, ab einem Tag hervorgehoben. So fällt ein gezogener Stecker auf, bevor der Akku leer ist und der Tracker als *nicht erreichbar* erscheint. Migration `0063`.
