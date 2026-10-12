@@ -10,9 +10,10 @@
 	 * sein Hash. Er gilt 24 Stunden.
 	 *
 	 * Einrichten geht per USB direkt von hier (Web Serial, `$lib/tracker/usb.ts`): Die
-	 * Seite schreibt Adresse, Code und optional eigene Wurzelzertifikate aufs Gerät, das
-	 * Gerät löst den Code selbst über sein Mobilfunknetz ein. Der Browser sieht dabei nie
-	 * ein Token.
+	 * Seite schreibt Adresse, Code und optional eigene Wurzelzertifikate und WLAN-Netze
+	 * aufs Gerät, das Gerät löst den Code selbst ein, über WLAN oder Mobilfunk. Der
+	 * Browser sieht dabei nie ein Token. Die WLAN-Netze lassen sich später allein
+	 * ändern („WLAN per USB"); ihre Passwörter gehen nur aufs Gerät, nie an die Instanz.
 	 */
 	import { onMount } from 'svelte';
 	import TrackerZustand from '$lib/components/TrackerZustand.svelte';
@@ -29,11 +30,15 @@
 	import {
 		SCHRITTTEXT,
 		TrackerUsb,
+		WLAN_MAX,
 		WURZELN_MAX,
 		instanzAdresse,
 		webSerialVerfuegbar,
+		wlanBereinigen,
+		wlanPruefen,
 		wurzelnLesen,
-		type GeraeteInfo
+		type GeraeteInfo,
+		type WlanNetz
 	} from '$lib/tracker/usb';
 
 	const KANAELE: { wert: TrackerKanal; name: string }[] = [
@@ -70,6 +75,17 @@
 	let kopiert = $state(false);
 	let usb = $state<{ laeuft: boolean; text: string; fehler: boolean; info: GeraeteInfo | null } | null>(null);
 	let wurzelnText = $state('');
+	/** WLAN-Netze fürs Einrichten. Nur im Browser und nur bis zum Senden ans Gerät. */
+	let wlanNeu = $state<WlanNetz[]>([]);
+	/** „WLAN per USB" an einem eingerichteten Tracker: nur die Netze, ohne neu einzurichten. */
+	let wlanAendern = $state<{
+		id: string;
+		name: string;
+		netze: WlanNetz[];
+		laeuft: boolean;
+		text: string;
+		fehler: boolean;
+	} | null>(null);
 	let mitSerial = $state(false);
 	let adresse = $state('');
 	let takt = $state<TrackerTakt | null>(null);
@@ -116,6 +132,12 @@
 			usb = { laeuft: false, fehler: true, info: null, text: `Höchstens ${WURZELN_MAX} Wurzelzertifikate.` };
 			return;
 		}
+		const wlan = wlanBereinigen(wlanNeu);
+		const wlanFehler = wlanPruefen(wlan);
+		if (wlanFehler) {
+			usb = { laeuft: false, fehler: true, info: null, text: wlanFehler };
+			return;
+		}
 		let geraet: TrackerUsb | null = null;
 		let info: GeraeteInfo | null = null;
 		usb = { laeuft: true, fehler: false, info: null, text: 'Gerät wählen …' };
@@ -124,12 +146,19 @@
 			usb.text = 'Gerät antwortet …';
 			info = await geraet.info();
 			usb = { laeuft: true, fehler: false, info, text: SCHRITTTEXT.netz };
-			await geraet.einrichten(adresse, code, wurzeln, (s) => {
-				if (usb) usb.text = SCHRITTTEXT[s];
-			});
+			await geraet.einrichten(
+				adresse,
+				code,
+				wurzeln,
+				(s) => {
+					if (usb) usb.text = SCHRITTTEXT[s];
+				},
+				wlan
+			);
 			usb = null;
 			neu = null;
 			wurzelnText = '';
+			wlanNeu = [];
 			erfolg = `„${name}" ist eingerichtet — Gerät ${info.hardware_id}, Firmware ${info.firmware}.`;
 			await neuLaden();
 		} catch (e) {
@@ -139,6 +168,50 @@
 				return;
 			}
 			usb = { laeuft: false, fehler: true, info, text: e instanceof Error ? e.message : String(e) };
+		} finally {
+			await geraet?.schliessen();
+		}
+	}
+
+	function wlanOeffnen(g: Tracker) {
+		wlanAendern = { id: g.id, name: g.name, netze: [{ ssid: '', psk: '' }], laeuft: false, text: '', fehler: false };
+	}
+
+	/** Schreibt nur die WLAN-Netze aufs Gerät (`wlan`). Die Instanz erfährt davon nichts. */
+	async function wlanSchreiben() {
+		const a = wlanAendern;
+		if (!a || a.laeuft) return;
+		const netze = wlanBereinigen(a.netze);
+		const pruefung = wlanPruefen(netze);
+		if (pruefung) {
+			a.fehler = true;
+			a.text = pruefung;
+			return;
+		}
+		if (netze.length === 0 && !confirm(`Alle WLAN-Netze von „${a.name}" löschen?\n\nDer Tracker sendet danach nur noch über Mobilfunk oder die Begleit-App.`))
+			return;
+		let geraet: TrackerUsb | null = null;
+		a.laeuft = true;
+		a.fehler = false;
+		a.text = 'Gerät wählen …';
+		try {
+			geraet = await TrackerUsb.waehlen();
+			a.text = 'Gerät antwortet …';
+			const info = await geraet.info();
+			const ssids = await geraet.wlanSetzen(netze);
+			wlanAendern = null;
+			erfolg = ssids.length
+				? `WLAN auf Gerät ${info.hardware_id} gespeichert: ${ssids.join(', ')}. Ob es trägt, zeigt das Symbol beim nächsten Kontakt.`
+				: `Auf Gerät ${info.hardware_id} ist kein WLAN mehr eingerichtet.`;
+		} catch (e) {
+			if (e instanceof DOMException && e.name === 'NotFoundError') {
+				a.laeuft = false;
+				a.text = '';
+				return;
+			}
+			a.laeuft = false;
+			a.fehler = true;
+			a.text = e instanceof Error ? e.message : String(e);
 		} finally {
 			await geraet?.schliessen();
 		}
@@ -287,6 +360,38 @@
 	}
 </script>
 
+{#snippet wlanFelder(netze: WlanNetz[], praefix: string)}
+	<div class="wlan" data-testid="{praefix}-wlan">
+		{#each netze as n, i (i)}
+			<div class="wlan-zeile">
+				<input
+					bind:value={n.ssid}
+					maxlength="32"
+					autocomplete="off"
+					aria-label="WLAN {i + 1}: Name (SSID)"
+					placeholder="Name (SSID)"
+				/>
+				<input
+					bind:value={n.psk}
+					type="password"
+					maxlength="63"
+					autocomplete="new-password"
+					aria-label="WLAN {i + 1}: Passwort"
+					placeholder="Passwort"
+				/>
+				<button class="btn-small" type="button" aria-label="WLAN {i + 1} entfernen" onclick={() => netze.splice(i, 1)}>✕</button>
+			</div>
+		{/each}
+		{#if netze.length < WLAN_MAX}
+			<button class="btn-small" type="button" onclick={() => netze.push({ ssid: '', psk: '' })}>+ WLAN</button>
+		{/if}
+		<p class="hint">
+			Höchstens {WLAN_MAX} Netze, WPA2/WPA3 mit Passwort. Das Passwort geht <strong>nur aufs Gerät</strong> —
+			nicht an diese Instanz, und das Gerät gibt es nicht wieder heraus.
+		</p>
+	</div>
+{/snippet}
+
 {#if fehler}
 	<div class="error-bar" role="alert">{fehler} <button onclick={() => (fehler = '')} aria-label="Schließen">✕</button></div>
 {/if}
@@ -338,7 +443,7 @@
 			{#if mitSerial}
 				<p class="hint">
 					Oder direkt von hier: Tracker per USB an diesen Rechner, dann <strong>Per USB einrichten</strong>.
-					Der Tracker meldet sich danach selbst über sein Mobilfunknetz bei
+					Der Tracker meldet sich danach selbst über WLAN oder Mobilfunk bei
 					<code>{adresse}</code> an.
 				</p>
 				{#if !adresse.startsWith('https://')}
@@ -361,6 +466,14 @@
 					{#if wurzelnText.trim()}
 						<p class="hint">{wurzeln.length} Zertifikat{wurzeln.length === 1 ? '' : 'e'} erkannt.</p>
 					{/if}
+				</details>
+				<details>
+					<summary>WLAN</summary>
+					<p class="hint">
+						Optional: Netze, über die der Tracker vor dem Mobilfunk sendet — das WLAN im Fahrzeug oder das der
+						Wache. Kein Datenvolumen, und Updates kommen schneller.
+					</p>
+					{@render wlanFelder(wlanNeu, 'einrichten')}
 				</details>
 				<div class="knoepfe">
 					<button class="btn-small primary" onclick={usbEinrichten} disabled={usb?.laeuft}>Per USB einrichten</button>
@@ -440,6 +553,9 @@
 				</div>
 				<div class="kopf-knoepfe">
 					<button class="btn-small" onclick={() => bearbeiten(g)}>Bearbeiten</button>
+					{#if mitSerial && g.eingerichtet}
+						<button class="btn-small" onclick={() => wlanOeffnen(g)}>WLAN per USB</button>
+					{/if}
 					<button class="btn-small" onclick={() => neuEinrichten(g)}>Neu einrichten</button>
 					<button class="btn-small danger" onclick={() => loeschen(g)}>Löschen</button>
 				</div>
@@ -450,6 +566,24 @@
 				{#if g.firmware}· Firmware {g.firmware}{/if}
 				{#if g.angebot_version}· <span class="angebot" title="Das Gerät holt sich das Update, sobald es steht und der Akku reicht.">Update {g.angebot_version} bereit</span>{/if}
 			</p>
+			{#if wlanAendern?.id === g.id}
+				<div class="usb" data-testid="wlan-aendern">
+					<p class="hint">
+						Ersetzt die WLAN-Netze auf dem Gerät, ohne es neu einzurichten. Tracker per USB an diesen Rechner,
+						Netze eintragen, dann <strong>Per USB übertragen</strong>. Ohne Eintrag werden alle gelöscht.
+					</p>
+					{@render wlanFelder(wlanAendern.netze, 'aendern')}
+					<div class="knoepfe">
+						<button class="btn-small primary" onclick={wlanSchreiben} disabled={wlanAendern.laeuft}>Per USB übertragen</button>
+						<button class="btn-small" onclick={() => (wlanAendern = null)} disabled={wlanAendern.laeuft}>Abbrechen</button>
+					</div>
+					{#if wlanAendern.text}
+						<p class={wlanAendern.fehler ? 'usb-fehler' : 'hint'} role={wlanAendern.fehler ? 'alert' : 'status'}>
+							{wlanAendern.text}
+						</p>
+					{/if}
+				</div>
+			{/if}
 			{#if g.eingerichtet}
 				<p class="hint">
 					<TrackerZustand zustand={g} /> ·
@@ -580,6 +714,9 @@
 	.code-box { border-color: #d4a017; }
 	.usb { margin-top: 1rem; border-top: 1px solid var(--border); padding-top: .75rem; }
 	.usb textarea { width: 100%; max-width: var(--admin-field, 34rem); font-family: monospace; font-size: var(--text-xs); background: var(--surface-2); color: var(--text-1); border: 1px solid var(--border); border-radius: 6px; padding: .4rem; }
+	.wlan { display: flex; flex-direction: column; gap: .4rem; align-items: flex-start; }
+	.wlan-zeile { display: flex; gap: .4rem; flex-wrap: wrap; width: 100%; max-width: var(--admin-field, 34rem); }
+	.wlan-zeile input { flex: 1 1 9rem; min-width: 0; padding: .35rem .5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); color: var(--text-1); font-size: var(--text-sm); }
 	.usb summary { cursor: pointer; font-size: var(--text-sm); color: var(--text-2); margin: .25rem 0; }
 	.usb-fehler { color: var(--color-primary); font-size: var(--text-sm); margin: .5rem 0 0; }
 	.warnung { background: rgba(212,160,23,.12); border: 1px solid rgba(212,160,23,.45); color: var(--text-1); padding: .4rem .6rem; border-radius: 4px; font-size: var(--text-sm); }

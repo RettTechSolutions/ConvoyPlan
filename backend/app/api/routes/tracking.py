@@ -179,6 +179,8 @@ async def get_tracker_zustand(
             "akku_seit": g.akku_seit.isoformat() if g.akku_seit else None,
             "akku_niedrig": ortungsgeraet.akku_niedrig(g.akku_prozent, g.extern),
             "signal_dbm": g.signal_dbm,
+            # Weg des letzten Aufrufs: Balken nur bei `mobil`, sonst WLAN- bzw. Bluetooth-Symbol.
+            "netz": g.netz,
             # Ab hier „Verbindung unterbrochen" — die Ansicht vergleicht selbst mit
             # der Uhr, damit es zwischen zwei Abfragen umschlägt.
             "unterbrochen_ab": g.unterbrochen_ab.isoformat() if g.unterbrochen_ab else None,

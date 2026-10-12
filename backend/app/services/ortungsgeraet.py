@@ -93,6 +93,9 @@ TEMPO_MAX_KMH = 250.0
 _CODE_ZEICHEN = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 _CODE_FORM = re.compile(r"^[A-Z2-9]{4}-?[A-Z2-9]{4}$")
 UPDATE_ERGEBNISSE = ("bestaetigt", "zurueckgerollt", "fehler")
+#: Wege ins Netz (Protokoll, „Drei Wege ins Netz"). Ohne Angabe gilt ``mobil`` —
+#: so meldet sich jede Firmware von vor E14.
+NETZE = ("wlan", "mobil", "ble")
 
 
 # ── Geheimnisse ────────────────────────────────────────────────────────────
@@ -335,8 +338,21 @@ def akku_seit(
     return jetzt
 
 
+def netz_lesen(daten: dict[str, Any]) -> str | None:
+    """Der Weg dieses Aufrufs; ohne Angabe ``mobil``, ein unbekannter Wert ``None`` (verworfen)."""
+    if "netz" not in daten or daten["netz"] is None:
+        return "mobil"
+    wert = daten["netz"]
+    return wert if wert in NETZE else None
+
+
 def zustand_lesen(daten: dict[str, Any]) -> dict[str, Any]:
-    """Was das Gerät über sich meldet, bereinigt — für die Spalten am Gerät."""
+    """Was das Gerät über sich meldet, bereinigt — für die Spalten am Gerät.
+
+    ``signal_dbm`` ist RSRP und gilt nur, wenn der Aufruf über Mobilfunk kam (oder
+    ohne ``netz``, wie bei Firmware von vor E14). Ein WLAN-RSSI liegt auf einer
+    anderen Skala und zeigte falsche Balken; bei unbekanntem Weg weiß man es nicht.
+    ``netz`` selbst steht nicht hier, sondern in ``netz_lesen``."""
     felder: dict[str, Any] = {}
     firmware = daten.get("firmware")
     if isinstance(firmware, str) and firmware.strip():
@@ -347,6 +363,6 @@ def zustand_lesen(daten: dict[str, Any]) -> dict[str, Any]:
     if isinstance(daten.get("extern"), bool):
         felder["extern"] = daten["extern"]
     signal = _zahl(daten.get("signal_dbm"))
-    if signal is not None and -200 <= signal <= 0:
+    if signal is not None and -200 <= signal <= 0 and netz_lesen(daten) == "mobil":
         felder["signal_dbm"] = int(signal)
     return felder

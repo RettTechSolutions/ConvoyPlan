@@ -339,13 +339,20 @@ export const regionApi = {
 // ── Ortungsgeräte (`TrackerVerwaltung`) ──────────────────────────────────────
 //
 // Was die Komponente abschickt, landet in `window.__trackerAngelegt`; der Code
-// kommt genau einmal zurück, mit dem Anlegen und beim Neu-Einrichten.
+// kommt genau einmal zurück, mit dem Anlegen und beim Neu-Einrichten. Jeder
+// Aufruf an die Instanz steht dazu in `window.__trackerAufrufe` — so prüft der
+// USB-Test, dass ein WLAN-Passwort nie dorthin geht.
 
 declare global {
 	interface Window {
 		__trackerAngelegt?: TrackerDaten;
 		__trackerTakt?: number;
+		__trackerAufrufe?: { name: string; args: unknown[] }[];
 	}
+}
+
+function trackerAufruf(name: string, ...args: unknown[]) {
+	(window.__trackerAufrufe ??= []).push({ name, args });
 }
 
 export const EINMAL_CODE = 'K7Q2-M9XD';
@@ -361,7 +368,7 @@ const tracker: Tracker[] = [
 		id: 't-lf', name: 'Tracker LF 10', vehicle_id: 'v-lf', vehicle_name: 'LF 10', kanal: 'stable',
 		aktiv: true, eingerichtet: true, code_offen: false, hardware_id: '352656100000002',
 		hardware: 'nrf9151-v1', firmware: '0.1.0', zuletzt_gesehen: new Date().toISOString(),
-		akku_prozent: 87, extern: false, akku_seit: new Date(Date.now() - 3 * 86400_000 - 3600_000).toISOString(), signal_dbm: -95, akku_niedrig: false, update_version: null, update_ergebnis: null,
+		akku_prozent: 87, extern: false, akku_seit: new Date(Date.now() - 3 * 86400_000 - 3600_000).toISOString(), signal_dbm: -95, netz: 'mobil', akku_niedrig: false, update_version: null, update_ergebnis: null,
 		update_meldung: null, update_at: null, angebot_version: '0.2.0', wurzeln_aktuell: false, created_at: '2026-10-01T09:00:00Z',
 	},
 ];
@@ -372,7 +379,7 @@ function trackerZeile(id: string, d: TrackerDaten): Tracker {
 		vehicle_name: FAHRZEUGE.find((f) => f.id === d.vehicle_id)?.name ?? null,
 		kanal: d.kanal, aktiv: d.aktiv, eingerichtet: false, code_offen: true,
 		hardware_id: null, hardware: null, firmware: null, zuletzt_gesehen: null, akku_prozent: null,
-		extern: null, akku_seit: null, signal_dbm: null, akku_niedrig: false, update_version: null, update_ergebnis: null, update_meldung: null,
+		extern: null, akku_seit: null, signal_dbm: null, netz: null, akku_niedrig: false, update_version: null, update_ergebnis: null, update_meldung: null,
 		update_at: null, angebot_version: null, wurzeln_aktuell: null, created_at: '2026-10-09T10:00:00Z',
 	};
 }
@@ -399,25 +406,32 @@ function taktStub(buendel_s: number): TrackerTakt {
 let taktGesetzt = 15;
 
 export const geraeteApi = {
-	list: async (): Promise<Tracker[]> => tracker.map((t) => ({ ...t })),
+	list: async (): Promise<Tracker[]> => {
+		trackerAufruf('list');
+		return tracker.map((t) => ({ ...t }));
+	},
 	takt: async (): Promise<TrackerTakt> => taktStub(taktGesetzt),
 	taktSetzen: async (buendel_s: number): Promise<TrackerTakt> => {
+		trackerAufruf('taktSetzen', buendel_s);
 		window.__trackerTakt = buendel_s;
 		taktGesetzt = buendel_s;
 		return taktStub(buendel_s);
 	},
 	create: async (d: TrackerDaten): Promise<TrackerMitCode> => {
+		trackerAufruf('create', d);
 		window.__trackerAngelegt = d;
 		const t = trackerZeile('t-neu', d);
 		tracker.push(t);
 		return { ...t, code: EINMAL_CODE, code_expires_at: '2026-10-10T10:00:00Z' };
 	},
 	update: async (id: string, d: TrackerDaten): Promise<Tracker> => {
+		trackerAufruf('update', id, d);
 		const t = { ...trackerZeile(id, d), eingerichtet: true, code_offen: false };
 		tracker.splice(tracker.findIndex((x) => x.id === id), 1, t);
 		return t;
 	},
 	rotateCode: async (id: string): Promise<TrackerMitCode> => {
+		trackerAufruf('rotateCode', id);
 		const t = tracker.find((x) => x.id === id)!;
 		Object.assign(t, { eingerichtet: false, code_offen: true });
 		return { ...t, code: 'PX3N-7RTF', code_expires_at: '2026-10-10T10:00:00Z' };

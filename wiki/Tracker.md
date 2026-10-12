@@ -89,10 +89,10 @@ Neustart.
    24 Stunden gültig. Gespeichert ist er nicht.
 3. Gerät per USB an den Rechner und **Per USB einrichten** klicken, dann das
    Gerät in der Liste des Browsers wählen. Die Seite schreibt die Adresse dieser
-   Instanz und den Code aufs Gerät. Der Tracker meldet sich danach **selbst über
-   sein Mobilfunknetz** an und tauscht den Code gegen seinen Zugang. Damit ist
-   zugleich geprüft, dass er Netz hat und die Instanz von außen erreicht. Der
-   Code ist danach verbraucht.
+   Instanz und den Code aufs Gerät, auf Wunsch auch WLAN-Netze (siehe unten). Der
+   Tracker meldet sich danach **selbst über WLAN oder Mobilfunk** an und tauscht
+   den Code gegen seinen Zugang. Damit ist zugleich geprüft, dass er Netz hat und
+   die Instanz von außen erreicht. Der Code ist danach verbraucht.
 
 Das geht in **Chrome oder Edge am Rechner** (Web Serial). In anderen Browsern
 steht stattdessen ein Hinweis, und der Code wird am Gerät eingegeben.
@@ -111,6 +111,49 @@ Stelle, gehört deren Wurzelzertifikat (PEM) beim Einrichten unter *Eigene
 Zertifizierungsstelle* dazu, höchstens drei. Wechselt die Stelle später, muss
 jedes Gerät einmal neu per USB eingerichtet werden.
 
+### WLAN
+
+Ein Tracker sendet bevorzugt über WLAN: das Netz des LTE-Routers im Fahrzeug (ELW,
+KdoW) oder das der Wache. Das kostet kein Datenvolumen, und Updates kommen
+schneller. Erst wenn kein bekanntes WLAN in Reichweite ist, nimmt er Mobilfunk.
+
+Beim Einrichten unter **WLAN** bis zu drei Netze eintragen, je Name (SSID) und
+Passwort (WPA2/WPA3 mit Passwort; Netze mit Anmeldeseite oder Benutzerkonto gehen
+nicht). Später ändern, ohne neu einzurichten: in der Tracker-Liste **WLAN per USB**,
+Netze eintragen, **Per USB übertragen**. Ohne Eintrag werden alle Netze vom Gerät
+gelöscht.
+
+Das **Passwort geht nur aufs Gerät**. Die Instanz bekommt es nie zu sehen, und das
+Gerät gibt es nicht wieder heraus — nur die Namen. Ob das WLAN trägt, zeigt das
+Symbol in der Liste beim nächsten Kontakt (siehe [Akku und Empfang](#akku-und-empfang)).
+
+### Ohne Netz: über die Begleit-App
+
+Hat der Tracker weder WLAN noch Mobilfunk, kann ein Telefon im Fahrzeug einspringen:
+Die **Begleit-App** mit einem **Fahrer-Link** dieser Instanz nimmt die Daten des
+Trackers per Bluetooth entgegen und liefert sie ab. Die Besatzung muss dafür nichts
+tun, außer die App mit dem Fahrer-Link offen zu haben. Das ist die Rückfallebene,
+nicht der Normalfall — auf Akku und Hintergrundbetrieb des Telefons ist weniger
+Verlass als auf das Gerät.
+
+Das Telefon ist dabei nur eine Leitung: Der Tracker signiert, was er schickt, mit
+einem eigenen Schlüssel, und die Instanz signiert ihre Antwort. Das Telefon kann
+nichts verändern, keine Position erfinden und dem Tracker kein Senden außerhalb
+eines laufenden Konvois einreden. Das Gerätetoken und der Schlüssel gehen nie über
+Bluetooth. Es gelten dieselben Regeln wie sonst — gesendet wird nur im laufenden
+Konvoi. Der Fahrer-Link muss zur selben Organisation gehören wie der Tracker, aber
+nicht zum Konvoi, in dem das Fahrzeug fährt. Ein Link nur zum Ansehen leitet nicht
+weiter.
+
+### Welches Fahrzeug? Die Bake
+
+Ein eingerichteter Tracker sendet per Bluetooth eine Kennung, die alle 15 Minuten
+wechselt. Die Begleit-App erkennt daran, in welchem Fahrzeug sie sitzt, und schlägt
+es vor; **gewählt wird weiter von Hand**. Weil die Kennung wechselt und nur die
+Instanz sie zuordnen kann, lässt sich ein Fahrzeug darüber nicht über Tage
+verfolgen. Tracker, die vor dieser Funktion eingerichtet wurden, bekommen ihren
+Schlüssel beim nächsten Kontakt über WLAN oder Mobilfunk von selbst.
+
 In der Liste steht danach *bereit*, mit dem letzten Lebenszeichen, Akku, Empfang
 und Firmwarestand. Meldet sich ein Gerät länger als einen Tag nicht, steht dort
 *nicht erreichbar* — ein Tracker meldet sich auch ohne Bewegung alle zwölf
@@ -127,9 +170,11 @@ der Maus über dem Symbol stehen die genauen Werte.
 - **Batterie:** Füllung nach Ladestand. Ein gelber Blitz heißt *am Bordnetz*, das
   Gerät lädt. Rot mit Zahl heißt *Akku schwach*: unter 20 % und ohne Bordnetz. Der
   Tooltip nennt, seit wann das Gerät auf Akku läuft („auf Akku seit 3 Tagen").
-- **Empfangsbalken:** vier Balken nach der zuletzt gemeldeten Signalstärke (RSRP:
+- **Empfang:** Kam die letzte Meldung über **WLAN**, steht ein WLAN-Symbol, kam sie
+  über die **Begleit-App**, ein Bluetooth-Symbol. Nur über **Mobilfunk** gibt es
+  Balken: vier nach der zuletzt gemeldeten Signalstärke (RSRP:
   ab −90 dBm vier, ab −100 drei, ab −110 zwei, ab −120 einer). Ist die letzte
-  Meldung älter als zehn Minuten, sind die Balken grau — alter Empfang ist kein
+  Meldung älter als zehn Minuten, ist das Symbol grau — alter Empfang ist kein
   Empfang. Das ist kein Fehler: Steht das Fahrzeug länger als fünf Minuten, schläft
   der Tracker bis zur nächsten Bewegung.
 
@@ -230,7 +275,10 @@ Ohne `TRACKER_WURZELN` behält jedes Gerät, was es beim Einrichten bekommen hat
 ## Für Entwickler
 
 Die Geräte-API liegt unter `/api/geraete/` (`einloesen`, `hallo`, `positionen`,
-`firmware/ergebnis`), authentifiziert mit `Authorization: Bearer cvt_…`. Das
+`firmware/ergebnis`), authentifiziert mit `Authorization: Bearer cvt_…`. Die
+Weiterleitung über BLE liegt am Fahrer-Link (`POST /api/track/{slug}/tracker`, dazu
+`GET /api/track/{slug}/baken` für die Bake), die Kryptographie in
+`backend/app/services/tracker_ble.py`. Das
 Einrichten per USB spricht ein Zeilenprotokoll über die serielle Schnittstelle
 (`frontend/src/lib/tracker/usb.ts`); der Browser sieht dabei nie ein Token. Der
 Vertrag steht im Tracker-Repo unter `docs/PROTOKOLL.md`; die Regeln in

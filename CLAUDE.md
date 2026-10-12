@@ -484,7 +484,33 @@ Code und optional Wurzelzertifikate aufs Gerät; eingelöst wird **vom Gerät** 
 Mobilfunk, nicht vom Browser — so prüft das Einrichten Netz und TLS gleich mit, und
 kein Token berührt den Browser. Kein Backend-Anteil. Echte serielle Geräte gibt es in
 der CI nicht; `e2e/tracker-usb-einrichten.spec.ts` baut `navigator.serial` nach, so
-wie der Simulator antwortet. Wer das Protokoll ändert, zieht beide Seiten.
+wie der Simulator antwortet. Wer das Protokoll ändert, zieht beide Seiten. Dasselbe
+gilt für WLAN (`wlan` beim Einrichten, Befehl `wlan` an „WLAN per USB"): das Passwort
+geht nur aufs Gerät, der Test prüft am abgefangenen Aufruf, dass es nie an die Instanz geht.
+
+**Drei Wege ins Netz** (E14 im Tracker-Plan, Migration `0067`): WLAN, Mobilfunk, und als
+Rückfall BLE über die Begleit-App. Für die Instanz ist WLAN nur das Feld `netz`;
+`signal_dbm` gilt nur bei `mobil` oder ohne Angabe (RSRP — ein WLAN-RSSI zeigte falsche
+Balken), ein unbekannter Weg wird verworfen. Für BLE gibt es den **Geräteschlüssel**
+(`services/tracker_ble.py`, Prüfwerte aus `PROTOKOLL.md` wörtlich in
+`tests/test_tracker_bake.py`): neu bei jedem `einloesen`, sonst nur in einem *direkten*
+`hallo` mit abweichender `schluessel_kennung` — nie ohne das Feld, nie in `positionen`,
+**nie über BLE**, denn er sichert genau diese Leitung. Abgelegt verschlüsselt über
+`services/crypto.py` (wie MFA-Geheimnisse; ein Datenbankleck allein gibt ihn nicht her);
+ist er nicht mehr lesbar, gilt er als fehlend und das Gerät bekommt beim nächsten `hallo`
+einen neuen. Die Weiterleitung (`POST /api/track/{slug}/tracker`, Fahrer-Link mit
+`driver`, liegt unter dem Lizenz-Ausnahmepräfix `/api/track/`) ist **keine fünfte
+Schreibstelle**: nach Link, Gerät der Organisation, MAC (konstante Zeit) und `seq` läuft die
+Nutzlast durch `_hallo_verarbeiten`/`_positionen_verarbeiten` wie der direkte Aufruf, mit
+allen Regeln oben. Ablehnungen 1–3 sind dieselbe 404, eine alte `seq` 409 — geprüft und
+gesetzt in **einem** `UPDATE … WHERE ble_seq < :seq`, damit zwei Apps denselben Rahmen
+nicht zweimal einspielen. Gesperrt (401) und unbrauchbar (400) gehen signiert zurück,
+`firmware`/`wurzeln`/`schluessel` darin immer null. `GET /api/track/{slug}/baken` liefert
+je Fahrzeug die Bake-Kennungen für drei Fenster; die App schlägt nur vor, belegt wird
+weiter von Hand. Gegenstellen: Firmware und Simulator im Tracker-Repo, `packages/track-api`
+der Begleit-App — wer an Ableitung, MAC-Text oder Antwortformat dreht, zieht alle drei.
+Tests: `tests/test_tracker_weiterleitung.py`, `tests/test_tracker_bake.py`,
+`frontend/e2e/tracker-zustand.spec.ts` (Symbol statt Balken).
 
 ### Alarmquittung: die Führung quittiert am Server
 
