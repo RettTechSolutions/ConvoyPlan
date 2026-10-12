@@ -327,7 +327,21 @@ Ein Klick auf ein Fahrzeug öffnet eine Blase mit dem, was auch in der
 Fahrzeugliste steht: Tempo und Zeitpunkt der letzten Position (und ob sie vom
 Tracker kam), Fahrzeugname, Status (bei Halt oder Ausfall mit der Bemerkung — nicht im
 Fahrer-Link), Stärke gegen das Soll, Betriebsstoff und —
-in der Konvoi-Ansicht — Akku und Empfang des Trackers. Was Aufmerksamkeit
+in der Konvoi-Ansicht — Akku und Empfang des Trackers.
+
+Dazu der **nächste Wegpunkt** mit Entfernung und erwarteter Ankunft, etwa
+„Nächster: Rastplatz in 8,3 km · an ca. 14:52 (+5 min)“. Die Ankunft kommt aus
+dem Zeitplan, nicht aus dem momentanen Tempo — ein Fahrzeug an der Ampel
+„erreicht“ den Wegpunkt sonst nie: Die geplante Fahrzeit vom letzten Wegpunkt
+(oder vom Abmarsch) bis zum nächsten wird nach der Strecke geteilt, und was
+davon noch vor dem Fahrzeug liegt, kommt auf die aktuelle Uhrzeit. Die
+Abweichung vom Plan steht ab drei Minuten dabei, eine Verspätung hervorgehoben.
+Ohne geplante Zeiten gibt es nur die Entfernung, und ein Fahrzeug, das mehr als
+einen Kilometer neben der Route steht, bekommt keine Angabe. Im Fahrer-Link ist
+die geplante Ankunft am Ziel nicht bekannt; dort zeigt die letzte Etappe nur
+die Entfernung.
+
+Was Aufmerksamkeit
 verdient (Halt oder Ausfall, Abweichung vom Soll, knapper Betriebsstoff,
 schwacher Akku), steht hervorgehoben. Die Blase bleibt aktuell, solange sie
 offen ist.

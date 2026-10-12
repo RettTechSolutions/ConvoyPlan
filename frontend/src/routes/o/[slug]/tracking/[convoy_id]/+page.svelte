@@ -28,6 +28,7 @@
 		formatStaerke, istAus, sollAus, verbandsStaerke, type Staerke, type StaerkeFelder,
 	} from '$lib/tracking/staerke';
 	import { fahrzeugBlase } from '$lib/tracking/fahrzeugblase';
+	import { naechsterHalt, routenHalte } from '$lib/tracking/naechsterhalt';
 	import {
 		STATUS_LABELS, STATUS_COLORS, STATUS_ICONS, HALT_LEVEL_LABELS, BREAKDOWN_LEVEL_LABELS,
 		statusColor, statusLabel, levelLabel, type HaltLevel, type BreakdownLevel,
@@ -413,6 +414,10 @@
 	let trackerTimer: ReturnType<typeof setInterval> | null = null;
 	const TRACKER_ABFRAGE_MS = 60_000;
 
+	// Wegpunkte entlang der Route — einmal je Route, nicht je Position.
+	let blasenLinie = $derived(routeCoords(route?.geojson));
+	let blasenHalte = $derived(routenHalte(blasenLinie, convoy?.waypoints ?? [], route?.planned_arrival ?? null));
+
 	// vehicle id → Zeilen der Kartenblase: dieselben Angaben wie die Fahrzeugzeile.
 	let vehicleInfo = $derived(
 		new Map((convoy?.convoy_vehicles ?? []).map((cv) => {
@@ -421,6 +426,8 @@
 			const felder = staerkeVon(cv);
 			// Ein Live-Status ersetzt auch die Bemerkung — eine fehlende inklusive.
 			const live = $vehicleStatuses.get(cv.vehicle.id);
+			const pos = $livePositions.get(cv.vehicle.id);
+			const abmarsch = route?.planned_departure ?? convoy?.start_time ?? null;
 			return [cv.vehicle.id, fahrzeugBlase({
 				name: cv.vehicle.callsign ? cv.vehicle.name : null,
 				status: st,
@@ -430,6 +437,7 @@
 				ist: istAus(felder),
 				betriebsstoff: betriebsstoffVon(cv),
 				tracker: trackerZustand.get(cv.vehicle.id) ?? null,
+				naechster: pos ? naechsterHalt(blasenLinie, blasenHalte, pos, abmarsch, Date.now()) : null,
 			}, trackerJetzt)];
 		}))
 	);

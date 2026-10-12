@@ -2,7 +2,7 @@
  * Was die Blase an einem Fahrzeug auf der Karte zeigt.
  *
  * Dieselben Angaben wie die Fahrzeugzeile in der Seitenleiste — Status, Stärke,
- * Betriebsstoff, Tracker —, aber dort, wo man hinsieht, wenn man auf der Karte
+ * Betriebsstoff, Tracker — und den nächsten Wegpunkt, aber dort, wo man hinsieht, wenn man auf der Karte
  * ein Fahrzeug sucht. Die Zeile kürzt, weil sie in die Leiste passen muss; die
  * Blase darf etwas mehr sagen (Soll, Reichweite, Akku und Empfang in Worten).
  *
@@ -13,6 +13,7 @@
 import { betriebsstoffKurz, istKnapp, reichweiteKm, type Betriebsstoff } from './betriebsstoff';
 import { formatStaerke, weichtAb, type Staerke } from './staerke';
 import { akkuTitel, empfangTitel, type TrackerAnzeige } from './trackerzustand';
+import { naechsterHaltText, type NaechsterHalt } from './naechsterhalt';
 
 export interface BlasenZeile {
 	text: string;
@@ -31,6 +32,8 @@ export interface FahrzeugAngaben {
 	ist: Staerke | null;
 	betriebsstoff: Betriebsstoff | null;
 	tracker?: TrackerAnzeige | null;
+	/** Nächster Wegpunkt samt Ankunft (`naechsterhalt.ts`), null ohne Position auf der Route. */
+	naechster?: NaechsterHalt | null;
 }
 
 const ALARM = new Set(['technical_halt', 'breakdown']);
@@ -41,6 +44,8 @@ export function fahrzeugBlase(a: FahrzeugAngaben, jetzt: number): BlasenZeile[] 
 	zeilen.push({ text: a.statusText, warnung: ALARM.has(a.status) });
 	const bemerkung = a.bemerkung?.trim();
 	if (bemerkung && ALARM.has(a.status)) zeilen.push({ text: `„${bemerkung}“`, warnung: true });
+
+	if (a.naechster) zeilen.push(naechsterHaltText(a.naechster));
 
 	// Wie die Zeile: fehlende Meldung ist keine Abweichung.
 	if (a.ist) {

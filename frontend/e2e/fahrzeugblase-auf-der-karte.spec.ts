@@ -86,3 +86,47 @@ test('die Blase zeigt die Live-Angaben des Fahrzeugs und bleibt aktuell', async 
 	await expect(blase).toContainText('Unterwegs');
 	await expect(blase).not.toContainText('Reifen platt');
 });
+
+// Der nächste Wegpunkt und die Ankunft dort. Gerechnet aus dem Plan, nicht aus
+// dem Tempo: Zwischen Abmarsch und geplanter Ankunft am Wegpunkt wird nach der
+// Strecke geteilt. Eine gerade Linie nach Norden, ein Rastplatz in der Mitte.
+test('die Blase nennt den nächsten Wegpunkt und die erwartete Ankunft', async ({ page }) => {
+	const jetzt = Date.now();
+	const um = (min: number) => new Date(jetzt + min * 60_000).toISOString();
+	let kanal: WebSocketRoute | null = null;
+	await blockExternal(page);
+	await page.routeWebSocket(/\/api\/ws\//, (ws) => { kanal = ws; });
+	await mockOrgPortal(page, {
+		slug: SLUG, convoyId: CONVOY, rolle: 'planer',
+		fahrzeuge: [konvoiFahrzeug({ vehicle_status: 'en_route', vehicle: { id: 'v-mtw', name: 'MTW', callsign: 'Akkon 14/1' } })],
+		wegpunkte: [{
+			id: 'w1', name: 'Rastplatz', type: 'stop', lat: 50.10, lon: 8.69,
+			planned_arrival: um(10), planned_departure: um(15),
+			hold_duration_min: 5, halt_purpose: null, notes: null, order_index: 0,
+		}],
+		route: {
+			id: 'r1', convoy_id: CONVOY, distance_m: 22_240, duration_s: 1800,
+			routing_params: null, fuel_analysis: null,
+			geojson: { type: 'LineString', coordinates: [[8.69, 50.0], [8.69, 50.1], [8.69, 50.2]] },
+			planned_departure: um(-10), planned_arrival: um(25),
+		},
+	});
+	await page.goto(`/o/${SLUG}/tracking/${CONVOY}`, { waitUntil: 'domcontentloaded' });
+	await expect.poll(() => kanal !== null).toBe(true);
+	const senden = (lat: number) => kanal!.send(JSON.stringify({
+		vehicle_id: 'v-mtw', lat, lon: 8.69, speed_kmh: 0, heading: 0, recorded_at: new Date().toISOString(),
+	}));
+
+	// Ein Viertel bis zum Rastplatz nach der Hälfte der Zeit: 15 statt 10 min.
+	// Steht das Fahrzeug, zählt das nicht als „nie" — Tempo 0 rechnet nicht mit.
+	senden(50.025);
+	await page.locator('.maplibregl-marker').filter({ hasText: 'Akkon 14/1' }).click();
+	const zeile = page.locator('.fz-blase div', { hasText: /^Nächster:/ });
+	await expect(zeile).toHaveText(/^Nächster: Rastplatz in 8,3 km · an ca\. \d\d:\d\d \(\+5 min\)$/);
+	await expect(zeile).toHaveClass(/warnung/);
+
+	// Hinter dem Rastplatz zählt die Abfahrt dort als Anker, und das Ziel ist dran.
+	senden(50.15);
+	await expect(zeile).toHaveText(/^Nächster: Ziel in 5,6 km · an ca\. \d\d:\d\d \(−20 min\)$/);
+	await expect(zeile).not.toHaveClass(/warnung/);
+});

@@ -12,6 +12,7 @@
 	import StaerkeForm from '$lib/components/StaerkeForm.svelte';
 	import { istAus, sollAus, type Staerke, type StaerkeFelder } from '$lib/tracking/staerke';
 	import { fahrzeugBlase } from '$lib/tracking/fahrzeugblase';
+	import { naechsterHalt, routenHalte } from '$lib/tracking/naechsterhalt';
 	import {
 		trackApi, isTrackGate,
 		type TrackPayload, type TrackGate, type TrackPosition, type VehiclePosition,
@@ -124,11 +125,18 @@
 		new Map((data?.vehicles ?? []).map((v) => [v.id, statusColor(statusOf(v))]))
 	);
 
+	// Wegpunkte entlang der Route — einmal je Route, nicht je Position. Eine
+	// geplante Ankunft am Ziel kennt der Fahrer-Link nicht; dort bleibt es bei
+	// der Entfernung, sofern kein Wegpunkt am Ende steht.
+	let blasenLinie = $derived(routeCoords(data?.geojson));
+	let blasenHalte = $derived(routenHalte(blasenLinie, data?.waypoints ?? []));
+
 	// vehicle id → Zeilen der Kartenblase: dieselben Angaben wie die Fahrzeugzeile.
 	let vehicleInfo = $derived(
 		new Map((data?.vehicles ?? []).map((v) => {
 			const st = statusOf(v);
 			const felder = staerkeVon(v);
+			const pos = livePositions.get(v.id);
 			return [v.id, fahrzeugBlase({
 				name: v.callsign ? v.name : null,
 				status: st,
@@ -136,6 +144,7 @@
 				soll: sollAus(felder),
 				ist: istAus(felder),
 				betriebsstoff: betriebsstoffVon(v),
+				naechster: pos ? naechsterHalt(blasenLinie, blasenHalte, pos, data?.start_time ?? null, Date.now()) : null,
 			}, Date.now())];
 		}))
 	);
