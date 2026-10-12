@@ -9,7 +9,7 @@
   im ausgelieferten HTML stehen, nicht erst nach dem Start der App.
 -->
 <script lang="ts">
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import AppLogo from '$lib/components/AppLogo.svelte';
 	import LegalFooter from '$lib/components/LegalFooter.svelte';
 	import type { InfoPageData } from '$lib/agent/info';
@@ -31,7 +31,7 @@
 	<meta property="og:url" content={data.canonical} />
 	<meta property="og:site_name" content="ConvoyPlan" />
 	<meta property="og:locale" content="de_DE" />
-	<meta property="og:image" content="{$page.url.origin}/logo/light/LogoHorinzontal.png" />
+	<meta property="og:image" content="{page.url.origin}/logo/light/LogoHorinzontal.png" />
 	<meta name="twitter:card" content="summary_large_image" />
 </svelte:head>
 
@@ -42,7 +42,7 @@
 		</a>
 		<nav aria-label="Informationsseiten">
 			{#each nav as item (item.path)}
-				<a href={item.path} aria-current={$page.url.pathname === item.path ? 'page' : undefined}>
+				<a href={item.path} aria-current={page.url.pathname === item.path ? 'page' : undefined}>
 					{item.title.replace(' — Marschplanung für Einsatzorganisationen', '')}
 				</a>
 			{/each}

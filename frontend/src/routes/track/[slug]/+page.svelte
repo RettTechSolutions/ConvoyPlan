@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy, untrack } from 'svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import MapView from '$lib/components/MapView.svelte';
 	import AppLogo from '$lib/components/AppLogo.svelte';
 	import LiveIndicator from '$lib/components/LiveIndicator.svelte';
@@ -33,7 +33,7 @@
 	import { createBelegung, geraeteKennung, BELEGT_HINWEIS } from '$lib/tracking/belegung';
 	import { TRACKER_HINWEIS, istPositionAbgelehnt, istPositionsquelle, trackerHaeltPosition } from '$lib/tracking/positionsquelle';
 
-	const slug = $derived($page.params.slug!);
+	const slug = $derived(page.params.slug!);
 
 	let data = $state<TrackPayload | null>(null);
 	let gate = $state<TrackGate | null>(null);

@@ -1,4 +1,4 @@
-import type { Handle } from '@sveltejs/kit';
+import type { Handle } from '@sveltejs/kit/hooks';
 import * as agent from '$lib/server/agent/dispatch';
 
 const BACKEND = 'http://backend:8000';

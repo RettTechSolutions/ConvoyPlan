@@ -1,6 +1,6 @@
 <script lang="ts">
     import { goto } from '$app/navigation';
-    import { page } from '$app/stores';
+    import { page } from '$app/state';
     import { onDestroy, onMount } from 'svelte';
     import { orgStore } from '$lib/stores/org';
     import { orgAuthApi, passkeyApi } from '$lib/api';
@@ -9,12 +9,12 @@
     import AppLogo from '$lib/components/AppLogo.svelte';
     import LegalFooter from '$lib/components/LegalFooter.svelte';
 
-    const slug = $derived(($page.params as Record<string, string>).slug);
+    const slug = $derived((page.params as Record<string, string>).slug);
     // Standardziel ist der Plan; ein mitgegebenes `redirect` bringt den
     // Benutzer zurück auf die Seite, die ihn zur Anmeldung geschickt hat
     // (siehe $lib/redirect — fremde Ziele werden dort verworfen).
     const zielNachLogin = $derived(
-        sicheresZiel($page.url.searchParams.get('redirect')) ?? `/o/${slug}/plan`
+        sicheresZiel(page.url.searchParams.get('redirect')) ?? `/o/${slug}/plan`
     );
     let orgName = $state('');
     let email = $state('');

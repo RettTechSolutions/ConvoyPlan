@@ -1,6 +1,6 @@
 <script lang="ts">
     import { goto } from '$app/navigation';
-    import { page } from '$app/stores';
+    import { page } from '$app/state';
     import { onMount } from 'svelte';
     import { mcpApi, type McpConsentRequest } from '$lib/api';
     import { ApiError } from '$lib/api/client';
@@ -8,7 +8,7 @@
     import LegalFooter from '$lib/components/LegalFooter.svelte';
 
     // Das signierte Ticket aus der Weiterleitung des Authorization Servers.
-    const ticket = $derived($page.url.searchParams.get('request') ?? '');
+    const ticket = $derived(page.url.searchParams.get('request') ?? '');
 
     let info = $state<McpConsentRequest | null>(null);
     let selectedOrgId = $state('');
@@ -76,7 +76,7 @@
         } catch (e) {
             if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
                 // Nicht angemeldet: zur Anmeldung und danach hierher zurück.
-                goto(`/?redirect=${encodeURIComponent($page.url.pathname + $page.url.search)}`);
+                goto(`/?redirect=${encodeURIComponent(page.url.pathname + page.url.search)}`);
                 return;
             }
             error = e instanceof Error ? e.message : 'Die Anfrage konnte nicht geladen werden.';

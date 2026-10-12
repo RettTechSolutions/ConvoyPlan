@@ -13,7 +13,7 @@
 	import ShareLinkModal from '$lib/components/ShareLinkModal.svelte';
 	import ConvoyFormModal from '$lib/components/ConvoyFormModal.svelte';
 	import { get } from 'svelte/store';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { orgStore } from '$lib/stores/org';
 	import { activeConvoy, activeRoute, convoys } from '$lib/stores/convoy';
 	import { mapMode } from '$lib/stores/map';
@@ -98,7 +98,7 @@
 	// Der Demo-Start hat die noch laufende Sitzung zurückgegeben statt eine neue
 	// angelegt (`?resumed=1`) — das Banner sagt es, sonst wundert sich der
 	// Besucher über die Daten, die er beim letzten Mal angelegt hat.
-	const demoResumed = $derived($page.url.searchParams.get('resumed') === '1');
+	const demoResumed = $derived(page.url.searchParams.get('resumed') === '1');
 
 	// Import state
 	let importFile = $state<File | null>(null);
@@ -284,7 +284,7 @@
 			} catch { /* Banner zeigt dann keine Ablaufzeit */ }
 		}
 		// Erstbesucher (Org wie Demo) durch alle Bereiche führen.
-		const slug = ($page.params as Record<string, string>).slug;
+		const slug = (page.params as Record<string, string>).slug;
 		tutorialStore.openIfFirstVisit(slug);
 	});
 
@@ -778,7 +778,7 @@
 			{ label: 'Roadbook (PDF)', icon: '🧭', aus: routeGeojson ? false : 'Zuerst die Route berechnen', aktion: () => downloadExport('roadbook') },
 			{ label: 'GPX herunterladen', icon: '📍', aktion: () => downloadExport('gpx') },
 			TRENNER,
-			{ label: 'Tracking-Ansicht öffnen', icon: '🔴', aktion: () => window.open(`/o/${$page.params.slug}/tracking/${r.id}`, '_blank') },
+			{ label: 'Tracking-Ansicht öffnen', icon: '🔴', aktion: () => window.open(`/o/${page.params.slug}/tracking/${r.id}`, '_blank') },
 			kopieren('Link kopieren', r.share_token ? `${window.location.origin}/share/${r.share_token}` : null, '🔗'),
 			{ label: 'Öffentlich teilen…', icon: '🔗', aktion: () => (showShareLinkModal = true) },
 			TRENNER,
@@ -1241,7 +1241,7 @@
 		return !!kw.zusatz_kanaele?.length && kw.typ !== 'abmelden';
 	}
 	async function logout() {
-		const slug = ($page.params as Record<string, string>).slug;
+		const slug = (page.params as Record<string, string>).slug;
 		await orgStore.logout();
 		goto(`/o/${slug}/login`);
 	}
@@ -1402,7 +1402,7 @@
 			<div class="logo-wrap"><AppLogo width={null} /></div>
 			<div style="display:flex;align-items:center;gap:.5rem">
 				{#if $orgStore?.user_role === 'admin'}
-					<a href="/o/{($page.params as Record<string, string>).slug}/admin" class="admin-link" data-tour="admin-link">⚙ Admin</a>
+					<a href="/o/{(page.params as Record<string, string>).slug}/admin" class="admin-link" data-tour="admin-link">⚙ Admin</a>
 				{/if}
 				<button class="logout-btn" onclick={logout} title="Abmelden">✕</button>
 			</div>
@@ -2124,7 +2124,7 @@
 								<KonvoiStatusSchalter convoy={selected} darf={darfKonvoiStatus} onchange={konvoiStatusGeaendert} />
 							</div>
 							<div class="export-grid">
-								<a class="btn-export" href="/o/{$page.params.slug}/tracking/{selected.id}" target="_blank">🔴 Tracking-Ansicht öffnen</a>
+								<a class="btn-export" href="/o/{page.params.slug}/tracking/{selected.id}" target="_blank">🔴 Tracking-Ansicht öffnen</a>
 								<button class="btn-export" onclick={() => (showShareLinkModal = true)}>🔗 Öffentlich teilen (QR / Passwort)</button>
 							</div>
 						</div>
@@ -2457,7 +2457,7 @@
 <!-- ── Onboarding-Tutorial für Erstbesucher (Org & Demo) ──────────── -->
 {#if $tutorialStore}
 	<OnboardingTutorial
-		slug={($page.params as Record<string, string>).slug}
+		slug={(page.params as Record<string, string>).slug}
 		orgName={$orgStore?.org_name ?? ''}
 		isDemo={!!demoSession}
 		isAdmin={$orgStore?.user_role === 'admin'}

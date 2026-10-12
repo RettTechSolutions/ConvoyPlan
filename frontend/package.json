@@ -16,9 +16,8 @@
 	},
 	"devDependencies": {
 		"@playwright/test": "^1.63.0",
-		"@sveltejs/adapter-auto": "^7.0.1",
-		"@sveltejs/adapter-node": "^5.5.7",
-		"@sveltejs/kit": "^2.70.3",
+		"@sveltejs/adapter-node": "^6.0.0",
+		"@sveltejs/kit": "^3.0.1",
 		"@sveltejs/vite-plugin-svelte": "^7.3.1",
 		"@types/geojson": "^7946.0.16",
 		"@types/node": "^26.6.1",
@@ -32,7 +31,6 @@
 		"workbox-window": "^7.4.1"
 	},
 	"overrides": {
-		"cookie": "^0.7.2",
 		"esbuild": "^0.28.2",
 		"@babel/core": "^7.29.7",
 		"fast-uri": "^3.1.6",
@@ -41,6 +39,9 @@
 		"postcss": "^8.5.28",
 		"vite-plugin-pwa": {
 			"vite": "^7.3.5"
+		},
+		"@vite-pwa/sveltekit": {
+			"@sveltejs/kit": "$@sveltejs/kit"
 		}
 	},
 	"dependencies": {
