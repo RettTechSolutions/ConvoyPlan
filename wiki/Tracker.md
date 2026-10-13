@@ -30,6 +30,31 @@ wieder auf *In Planung*.
 Steht das Fahrzeug in zwei laufenden Konvois (Hauptkonvoi und Unterkonvoi),
 erscheint es in beiden.
 
+### Losfahren: wann der Tracker vom Konvoi erfährt
+
+Ob sein Fahrzeug in einem laufenden Konvoi steht, erfährt der Tracker beim ersten Kontakt
+mit der Instanz. Steht das Fahrzeug länger und hängt der Tracker nicht am Bordnetz, schläft
+er und **vergisst dabei, ob er senden soll** — das Aufwachen ist ein Neustart. Weckt ihn die
+Bewegung oder die Zündung, sendet er erst, wenn dieser erste Kontakt durchkommt:
+
+- Mit **Mobilfunk oder WLAN** dauert das Sekunden.
+- **Ohne eigenes Netz** (Halle ohne Empfang, Gerät ohne SIM) ruft er per Bluetooth die
+  [Begleit-App](#ohne-netz-über-die-begleit-app) und fragt über sie nach. Ohne App versucht
+  er es jede Minute erneut, bis er Netz hat.
+
+Was bis dahin gefahren wird, zeichnet er **nicht** auf: Die Linie beginnt beim ersten
+Kontakt, nicht in der Halle. Konvoi früher aktivieren ändert daran nichts, denn der Tracker
+weiß es erst nach dem Kontakt. Hängt der Tracker dagegen am Dauerstrom, schläft er nicht und
+behält, was die Instanz zuletzt gesagt hat. Dann zeichnet er auch eine Anfahrt ohne Empfang
+auf und reicht sie nach.
+
+Wer die Linie ab der ersten Minute braucht, sorgt am Abfahrtsort für Empfang, etwa mit dem
+[WLAN](#wlan) der Wache, oder für eine Begleit-App mit Fahrer-Link im Fahrzeug.
+
+Das Nachfragen über die App und jede Minute kann der Tracker ab Firmware 0.3.0. Ältere
+Fassungen versuchen es ohne Netz erst mit dem nächsten Lebenszeichen wieder, nach bis zu
+zwölf Stunden.
+
 Positionen vom Tracker tragen die **Zeit der Messung**, nicht die des Eingangs.
 Fährt das Fahrzeug durch ein Funkloch, reicht das Gerät die Punkte danach nach,
 und die Linie auf der Aktionsseite bleibt eine Linie. Ein nachgereichter Punkt
@@ -183,7 +208,9 @@ Symbol in der Liste beim nächsten Kontakt (siehe [Akku und Empfang](#akku-und-e
 Hat der Tracker weder WLAN noch Mobilfunk, kann ein Telefon im Fahrzeug einspringen:
 Die **Begleit-App** mit einem **Fahrer-Link** dieser Instanz nimmt die Daten des
 Trackers per Bluetooth entgegen und liefert sie ab. Die Besatzung muss dafür nichts
-tun, außer die App mit dem Fahrer-Link offen zu haben. Das ist die Rückfallebene,
+tun, außer die App mit dem Fahrer-Link offen zu haben. Das gilt auch beim
+[Losfahren](#losfahren-wann-der-tracker-vom-konvoi-erfährt): Weiß der Tracker nach dem
+Aufwachen noch nicht, ob ein Konvoi läuft, ruft er die App, um nachzufragen. Das ist die Rückfallebene,
 nicht der Normalfall — auf Akku und Hintergrundbetrieb des Telefons ist weniger
 Verlass als auf das Gerät.
 
@@ -227,7 +254,7 @@ der Maus über dem Symbol stehen die genauen Werte.
   ab −90 dBm vier, ab −100 drei, ab −110 zwei, ab −120 einer). Ist die letzte
   Meldung älter als zehn Minuten, ist das Symbol grau — alter Empfang ist kein
   Empfang. Das ist kein Fehler: Steht das Fahrzeug länger als fünf Minuten, schläft
-  der Tracker bis zur nächsten Bewegung.
+  der Tracker auf Akku bis zur nächsten Bewegung oder bis die Zündung Strom bringt.
 
 Die Konvoi-Ansicht fragt die Werte alle 15 Sekunden ab.
 
