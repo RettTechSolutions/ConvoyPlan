@@ -623,6 +623,9 @@ gh_deploy_graphhopper() {
 source /graphhopper-deploy.sh
 # shellcheck source=./env-kanal.sh
 source /env-kanal.sh
+# Kein automatisches Update, solange Nutzer angemeldet sind (Kopf der Datei).
+# shellcheck source=./anwesenheit.sh
+source /anwesenheit.sh
 
 # Die .env des Hosts auf den Kanal ziehen (Begruendung in env-kanal.sh): beim
 # Start des Updaters und nach jedem Kanalwechsel im Panel, nicht bei jedem
@@ -820,6 +823,12 @@ check_target_and_update() {
             log "Update verfügbar: ${target} — Modus 'notify': keine automatische Installation (manuell über das Admin-Panel updaten)."
             echo "${target}" > "${LAST_NOTIFIED_FILE}"
         fi
+        return 0
+    fi
+
+    # Nicht mitten in die Arbeit angemeldeter Nutzer hinein deployen; der
+    # manuelle Trigger oben in der Schleife kommt hier nicht vorbei.
+    if update_zurueckhalten "${target}"; then
         return 0
     fi
 

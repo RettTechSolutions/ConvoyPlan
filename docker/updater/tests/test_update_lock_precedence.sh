@@ -35,6 +35,7 @@ docker run --rm \
     -v "${UPDATER_DIR}/region-hook.sh:/region-hook.sh:ro" \
     -v "${UPDATER_DIR}/graphhopper-deploy.sh:/graphhopper-deploy.sh:ro" \
     -v "${UPDATER_DIR}/env-kanal.sh:/env-kanal.sh:ro" \
+    -v "${UPDATER_DIR}/anwesenheit.sh:/anwesenheit.sh:ro" \
     -v "${UPDATER_DIR}/update.sh:/update.sh:ro" \
     -v "${UPDATER_DIR}/update-images.sh:/update-images.sh:ro" \
     -i bash:5.2 bash -s <<'INNER'

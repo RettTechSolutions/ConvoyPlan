@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.settings import SystemSetting
+from app.services import anwesenheit
 
 logger = logging.getLogger(__name__)
 
@@ -198,7 +199,7 @@ async def fetch_update_state(db: AsyncSession) -> dict:
 
     Returns the dict served by GET /api/admin/update-status:
     deployed_sha, deployed_at, remote_sha, update_available, github_reachable,
-    channel, latest_release, no_release, ahead_of_release.
+    channel, latest_release, no_release, ahead_of_release, held_back.
     """
     deployed_sha, deployed_at = read_deployed()
     github_token = await resolve_github_token(db)
@@ -354,4 +355,7 @@ async def fetch_update_state(db: AsyncSession) -> dict:
         "latest_release": latest_release,
         "no_release": no_release,
         "ahead_of_release": ahead_of_release,
+        # Der Updater hält ein automatisches Update zurück, solange Nutzer
+        # angemeldet sind (app.services.anwesenheit); None = er hält nicht.
+        "held_back": anwesenheit.zurueckgehalten() if update_available else None,
     }

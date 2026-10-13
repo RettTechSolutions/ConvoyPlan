@@ -54,6 +54,9 @@ gh_deploy_graphhopper() {
 }
 # shellcheck source=./graphhopper-deploy.sh
 source /graphhopper-deploy.sh
+# Kein automatisches Update, solange Nutzer angemeldet sind (Kopf der Datei).
+# shellcheck source=./anwesenheit.sh
+source /anwesenheit.sh
 
 # ── Self-repair: health gate + rollback (source/build path) ──────────────────
 # A deploy counts as good only once the backend actually reports HEALTHY, not
@@ -358,6 +361,11 @@ while true; do
       log "Update verfügbar (${TARGET_DESC} ${REMOTE:0:7}) — Modus 'notify': keine automatische Installation (manuell über das Admin-Panel updaten)."
       echo "${CHANNEL} ${REMOTE}" > "${LAST_NOTIFIED_FILE}"
     fi
+  elif [ -n "${DEPLOYED}" ] && [ "${DEPLOYED}" != "${REMOTE}" ] && \
+       update_zurueckhalten "${CHANNEL} ${REMOTE}"; then
+    # Angemeldete Nutzer: nicht automatisch deployen. Der manuelle Trigger
+    # leert DEPLOYED und kommt deshalb hier nicht hinein.
+    :
   elif [ "${DEPLOYED}" != "${REMOTE}" ]; then
     log "Update detected (${CHANNEL}): ${DEPLOYED:0:7} → ${TARGET_DESC} ${REMOTE:0:7}"
     # Remember the commit running before this deploy so we can rebuild it if the
