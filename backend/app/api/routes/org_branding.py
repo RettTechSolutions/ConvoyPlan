@@ -13,7 +13,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import OrgCtx, get_org_context
+from app.api.deps import OrgCtx, get_org_context, require_modul
 from app.api.guards import ROLE_ORDER
 from app.database import get_db
 from app.api.routes.branding import (
@@ -23,8 +23,13 @@ from app.api.routes.branding import (
     org_branding_response,
 )
 from app.schemas.branding import BrandingResponse, BrandingUpdate
+from app.services import org_module
 
-router = APIRouter(prefix="/org/branding", tags=["branding"])
+router = APIRouter(
+    prefix="/org/branding",
+    tags=["branding"],
+    dependencies=[Depends(require_modul(org_module.BRANDING))],
+)
 
 
 def _require_admin(role: str) -> None:

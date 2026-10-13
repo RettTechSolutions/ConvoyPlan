@@ -13,12 +13,23 @@
     import { orgLeistellenApi, orgsApi, convoysApi, trackingApi, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type OrgMember } from '$lib/api';
     import { brandingStore, applyBranding, setOrgBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { orgBrandingApi, orgMcpApi, type BrandingUpdate, type OrgMcpPolicy, type OrgMcpConnection } from '$lib/api';
+    import { orgModuleApi, type OrgModul, type OrgModule } from '$lib/api';
 
     // ── Slug ─────────────────────────────────────────────────────────────────
     const slug = $derived((page.params as Record<string, string>).slug);
 
     // ── Tab ──────────────────────────────────────────────────────────────────
     let activeTab = $state<'mitglieder' | 'leitstellen' | 'gps' | 'tracker' | 'aktion' | 'branding' | 'ki' | 'daten'>('mitglieder');
+
+    // ── Module ───────────────────────────────────────────────────────────────
+    // Was der Betreiber freigeschaltet hat (backend/app/services/org_module.py).
+    // Ein gesperrtes Modul bleibt als Reiter sichtbar, ausgegraut — wer es sucht,
+    // erfährt, warum es fehlt, statt an seinem Gedächtnis zu zweifeln. Sein Inhalt
+    // lädt nicht: das Backend antwortete ohnehin 403.
+    let module = $state<OrgModule | null>(null);
+    const frei = (m: OrgModul) => module?.[m] === true;
+    const gesperrt = (m: OrgModul) => module !== null && !module[m];
+    const MODUL_GESPERRT = 'Nicht freigeschaltet — freischalten kann es der Betreiber dieser Instanz.';
 
     // Datenexport
     let exportLaeuft = $state(false);
@@ -44,7 +55,14 @@
             goto(`/o/${s}/plan`);
             return;
         }
-        await Promise.all([loadMembers(), loadLeitstellen(), loadBranding()]);
+        try {
+            module = await orgModuleApi.get();
+        } catch {
+            // Ohne Auskunft lieber alles zeigen als alles sperren: durchgesetzt
+            // wird im Backend, der Reiter ist nur die Ansicht davon.
+            module = { tracker: true, aktionsseiten: true, branding: true, ki: true };
+        }
+        await Promise.all([loadMembers(), loadLeitstellen(), frei('branding') ? loadBranding() : undefined]);
     });
 
     // ── Mitglieder ───────────────────────────────────────────────────────────
@@ -442,7 +460,7 @@
     let brandingSuccess = $state(false);
 
     $effect(() => {
-        if (activeTab !== 'branding') {
+        if (activeTab !== 'branding' || !frei('branding')) {
             applyBranding($brandingStore);
             return;
         }
@@ -566,10 +584,10 @@
         <button class="tab" class:active={activeTab === 'mitglieder'} onclick={() => { activeTab = 'mitglieder'; loadMembers(); }}>Mitglieder</button>
         <button class="tab" class:active={activeTab === 'leitstellen'} onclick={() => (activeTab = 'leitstellen')}>Leitstellen</button>
         <button class="tab" class:active={activeTab === 'gps'} onclick={() => { activeTab = 'gps'; loadGpsShares(); }}>GPS-Freigaben</button>
-        <button class="tab" class:active={activeTab === 'tracker'} onclick={() => (activeTab = 'tracker')}>Tracker</button>
-        <button class="tab" class:active={activeTab === 'aktion'} onclick={() => (activeTab = 'aktion')}>Aktionsseiten</button>
-        <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>Branding</button>
-        <button class="tab" class:active={activeTab === 'ki'} onclick={() => { activeTab = 'ki'; loadKi(); }}>KI-Zugriff</button>
+        <button class="tab" class:active={activeTab === 'tracker'} class:inaktiv={gesperrt('tracker')} title={gesperrt('tracker') ? MODUL_GESPERRT : undefined} onclick={() => (activeTab = 'tracker')}>{#if gesperrt('tracker')}🔒 {/if}Tracker</button>
+        <button class="tab" class:active={activeTab === 'aktion'} class:inaktiv={gesperrt('aktionsseiten')} title={gesperrt('aktionsseiten') ? MODUL_GESPERRT : undefined} onclick={() => (activeTab = 'aktion')}>{#if gesperrt('aktionsseiten')}🔒 {/if}Aktionsseiten</button>
+        <button class="tab" class:active={activeTab === 'branding'} class:inaktiv={gesperrt('branding')} title={gesperrt('branding') ? MODUL_GESPERRT : undefined} onclick={() => activeTab = 'branding'}>{#if gesperrt('branding')}🔒 {/if}Branding</button>
+        <button class="tab" class:active={activeTab === 'ki'} class:inaktiv={gesperrt('ki')} title={gesperrt('ki') ? MODUL_GESPERRT : undefined} onclick={() => { activeTab = 'ki'; if (frei('ki')) loadKi(); }}>{#if gesperrt('ki')}🔒 {/if}KI-Zugriff</button>
         <button class="tab" class:active={activeTab === 'daten'} onclick={() => (activeTab = 'daten')}>Datenexport</button>
     </div>
 
@@ -799,15 +817,36 @@
     {/if}
 
     <!-- ── KI-Zugriff (MCP) ── -->
+    {#snippet modulGesperrt(name: string)}
+        <div class="section modul-gesperrt" data-testid="modul-gesperrt">
+            <div class="section-header"><strong>🔒 {name}</strong></div>
+            <p class="hint">
+                Dieses Modul ist für Ihre Organisation nicht freigeschaltet. Freischalten kann es der
+                Betreiber dieser Instanz. Bereits gespeicherte Einstellungen bleiben erhalten und gelten
+                wieder, sobald es freigeschaltet ist.
+            </p>
+        </div>
+    {/snippet}
+
     {#if activeTab === 'tracker'}
-        <TrackerVerwaltung />
+        {#if gesperrt('tracker')}
+            {@render modulGesperrt('Tracker')}
+        {:else if frei('tracker')}
+            <TrackerVerwaltung />
+        {/if}
     {/if}
 
     {#if activeTab === 'aktion'}
-        <AktionsseitenVerwaltung />
+        {#if gesperrt('aktionsseiten')}
+            {@render modulGesperrt('Aktionsseiten')}
+        {:else if frei('aktionsseiten')}
+            <AktionsseitenVerwaltung />
+        {/if}
     {/if}
 
-    {#if activeTab === 'ki'}
+    {#if activeTab === 'ki' && gesperrt('ki')}
+        {@render modulGesperrt('KI-Zugriff')}
+    {:else if activeTab === 'ki'}
         {#if kiError}
             <div class="error-bar">{kiError} <button onclick={() => (kiError = '')}>✕</button></div>
         {/if}
@@ -946,7 +985,9 @@
     {/if}
 
     <!-- ── Branding ── -->
-    {#if activeTab === 'branding'}
+    {#if activeTab === 'branding' && gesperrt('branding')}
+        {@render modulGesperrt('Branding')}
+    {:else if activeTab === 'branding'}
     <div class="section branding-panel">
         <div class="section-header"><strong>Branding</strong></div>
         <p class="hint" style="margin:-.25rem 0 1rem">
@@ -1151,6 +1192,9 @@
     .tab-bar { display: flex; gap: .25rem; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem; padding: .25rem .25rem 0; }
     .tab { padding: .5rem 1rem; background: none; border: none; cursor: pointer; font-size: var(--text-sm); color: var(--text-2); border-radius: 4px 4px 0 0; margin-bottom: -1px; }
     .tab.active { color: var(--color-primary); background: var(--surface-2); font-weight: 600; border-bottom: 2px solid var(--color-primary); }
+    /* Modul nicht freigeschaltet: sichtbar, aber erkennbar nicht bedienbar. */
+    .tab.inaktiv { color: var(--text-muted); opacity: .6; }
+    .tab.inaktiv.active { color: var(--text-muted); border-bottom-color: var(--text-muted); }
 
     .error-bar { background: var(--color-primary-hover); color: white; padding: .4rem .75rem; border-radius: 4px; margin-bottom: 1rem; display: flex; justify-content: space-between; }
     .error-bar button { background: none; border: none; color: white; cursor: pointer; }

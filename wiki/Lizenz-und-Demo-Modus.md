@@ -304,6 +304,43 @@ Setzen und Entfernen stehen im Audit-Log (`admin.org.plan_set`,
 
 ---
 
+## Module je Organisation
+
+Einige Bereiche schaltet der Superadmin je Organisation frei: **Tracker**,
+**Aktionsseiten**, **Branding** und **KI-Zugriff**. Das geht im Admin-Portal unter
+**Organisationen**, Spalte *Module* — ein Klick auf ein Modul schaltet es frei
+(✓) oder sperrt es (🔒). Mitglieder, Leitstellen, GPS-Freigaben und der
+Datenexport sind keine Module und stehen jeder Organisation zu.
+
+- **Standard nach Betriebsart.** Auf einer selbst betriebenen Instanz
+  (`INSTANCE_MODE=selfhost`) sind alle Module frei, auf dem Hosting-Server
+  (`INSTANCE_MODE=hosting`) bekommt eine **neue** Organisation zunächst keines.
+  Demo-Organisationen haben immer alle.
+- **Ein Update nimmt nichts weg.** Jede Organisation, die es vor der Einführung
+  schon gab, hat alle Module ausdrücklich freigeschaltet — auch auf dem
+  Hosting-Server.
+- **Im Org-Admin** bleibt ein gesperrtes Modul als ausgegrauter Reiter mit 🔒
+  sichtbar; wer ihn öffnet, liest, dass der Betreiber es freischalten kann.
+- **Gesperrt heißt gesperrt, nicht versteckt.** Die Verwaltung antwortet mit
+  HTTP 403. Tracker bekommen *schweigen* und senden nicht; die Konvoi-Ansicht
+  zeigt keine Tracker. Aktionsseiten sind nicht mehr abrufbar (404) und
+  zeichnen keinen Verlauf auf. Statt des eigenen Brandings erscheint das der
+  Plattform. Die KI-Schnittstelle gilt für die Organisation als abgeschaltet,
+  bestehende Verbindungen kommen nicht mehr weiter.
+- **Gelöscht wird nichts.** Geräte, Seiten, Logos und die KI-Richtlinie bleiben
+  gespeichert und gelten wieder, sobald das Modul freigeschaltet ist.
+
+| Endpunkt | Zweck |
+|---|---|
+| `GET /api/admin/modules/catalog` | Module, Standard und Betriebsart (Superadmin) |
+| `GET /api/admin/modules/organizations` | Alle Organisationen mit ihren Modulen (Superadmin) |
+| `PUT /api/admin/modules/organizations/{id}` | Module setzen, z. B. `{"tracker": true}`; nur die genannten ändern sich (Superadmin) |
+| `GET /api/org/modules` | Module der eigenen Organisation (jedes Mitglied) |
+
+Jede Änderung steht im Audit-Log (`admin.org.modules_set`).
+
+---
+
 ## Lizenzmodell des Quellcodes
 
 Der Quellcode selbst steht unter einem **Dual-Lizenz-Modell** (AGPL-3.0 bzw. kommerzielle Lizenz) — das betrifft die Nutzung/Weitergabe des Codes und ist unabhängig vom obigen Laufzeit-Lizenzschlüssel. Siehe `LICENSE`, `COMMERCIAL_LICENSE.md` und `CLA.md` im Repository.

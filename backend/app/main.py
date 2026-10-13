@@ -28,6 +28,7 @@ from app.api.routes import track as track_router
 from app.api.routes import mcp_consent as mcp_consent_router
 from app.api.routes import org_mcp as org_mcp_router
 from app.api.routes import org_plans as org_plans_router
+from app.api.routes import org_module as org_module_router
 from app.api.routes import aktionsseite as aktionsseite_router
 from app.api.routes import geraete as geraete_router
 from app.api.routes import public_meta as public_meta_router
@@ -325,6 +326,8 @@ app.include_router(mcp_consent_router.router, prefix="/api")
 app.include_router(org_mcp_router.router, prefix="/api")
 app.include_router(org_plans_router.admin_router, prefix="/api")
 app.include_router(org_plans_router.org_router, prefix="/api")
+app.include_router(org_module_router.admin_router, prefix="/api")
+app.include_router(org_module_router.org_router, prefix="/api")
 # Öffentliche Aktionsseiten: der Abruf durch den EventTracker (eigenes Token,
 # keine Anmeldung) und die Verwaltung im Org-Admin.
 app.include_router(aktionsseite_router.public_router, prefix="/api")

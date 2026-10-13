@@ -2008,6 +2008,9 @@ class McpOrgPolicyResponse(BaseModel):
     slug: str
     is_demo: bool
     enabled: bool
+    # Ob der Betreiber das Modul „KI-Zugriff" freigeschaltet hat. Ohne Freigabe
+    # ist ``enabled`` false, gleich was die Organisation eingestellt hat.
+    modul_freigegeben: bool = True
     scopes: list[str]
     bereiche: list[str]
     # Ob je etwas eingestellt wurde. Trennt „bewusst abgeschaltet" von
@@ -2451,6 +2454,7 @@ async def list_mcp_organizations(
     """
     from app.models.org_mcp_policy import OrganizationMcpPolicy
     from app.services import org_mcp_policy as policy_svc
+    from app.services import org_module as org_module_svc
 
     _OAuthClient, OAuthRefreshToken = _mcp_models()
 
@@ -2486,9 +2490,11 @@ async def list_mcp_organizations(
         )
     ).all()
 
+    module = await org_module_svc.fuer_orgs(db, [org.id for org, _ in zeilen])
     antwort = []
     for org, zeile in zeilen:
-        policy = policy_svc.aus_zeile(zeile)
+        frei = module[org.id][org_module_svc.KI]
+        policy = policy_svc.aus_zeile(zeile) if frei else policy_svc.AUS
         antwort.append(
             McpOrgPolicyResponse(
                 organization_id=org.id,
@@ -2496,9 +2502,10 @@ async def list_mcp_organizations(
                 slug=org.slug,
                 is_demo=org.is_demo,
                 enabled=policy.enabled,
+                modul_freigegeben=frei,
                 scopes=list(policy.scopes),
                 bereiche=list(policy.bereiche),
-                konfiguriert=policy.gesetzt,
+                konfiguriert=zeile is not None,
                 active_connections=verbindungen.get(org.id, 0),
                 updated_at=zeile.updated_at if zeile else None,
             )

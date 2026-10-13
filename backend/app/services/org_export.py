@@ -87,6 +87,7 @@ NICHT_EXPORTIERT = frozenset({
     "feedback_reports",      # Rückmeldungen an den Betreiber, nicht Daten der Organisation
     "demo_leads",            # Kontaktdaten aus der Demo, Vertriebsdaten des Betreibers
     "organization_plans",    # Paket und Notiz des Betreibers — Vertragsdaten, nicht Daten der Organisation
+    "organization_modules",  # Freischaltungen des Betreibers — wie der Plan, kein Inhalt der Organisation
     "oauth_codes",           # kurzlebige Autorisierungscodes (Minuten)
     "oauth_refresh_tokens",  # Zugangstokens — gehören in keine Exportdatei
 })

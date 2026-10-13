@@ -26,15 +26,19 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import OrgCtx, get_org_context
+from app.api.deps import OrgCtx, get_org_context, require_modul
 from app.api.guards import ROLE_ORDER
 from app.database import get_db
 from app.models.convoy import Convoy
 from app.models.public_tracker import PublicTracker, PublicTrackerConvoy
-from app.services import aktionsseite, audit, positionsverlauf
+from app.services import aktionsseite, audit, org_module, positionsverlauf
 
 public_router = APIRouter(prefix="/public/aktion", tags=["aktionsseite"])
-org_router = APIRouter(prefix="/org/aktionsseiten", tags=["aktionsseite"])
+org_router = APIRouter(
+    prefix="/org/aktionsseiten",
+    tags=["aktionsseite"],
+    dependencies=[Depends(require_modul(org_module.AKTIONSSEITEN))],
+)
 
 CREATED = "org.aktionsseite.created"
 UPDATED = "org.aktionsseite.updated"
@@ -147,6 +151,7 @@ async def abrufen(
         tracker is None
         or not aktionsseite.ist_aktiv(tracker, jetzt)
         or not _passt(token, tracker.fetch_token_hash)
+        or not await org_module.freigegeben(db, tracker.organization_id, org_module.AKTIONSSEITEN)
     ):
         raise HTTPException(status_code=404, detail=_NICHT_GEFUNDEN)
 

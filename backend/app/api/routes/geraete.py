@@ -44,7 +44,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import OrgCtx, get_org_context
+from app.api.deps import OrgCtx, get_org_context, require_modul
 from app.api.guards import ROLE_ORDER
 from app.config import settings
 from app.database import get_db
@@ -55,7 +55,7 @@ from app.models.ortungsgeraet import Ortungsgeraet
 from app.models.share_link import ConvoyShareLink
 from app.models.vehicle import Vehicle
 from app.models.vehicle_position import VehiclePosition
-from app.services import alarm_quittung, audit, firmware_angebot, org_plan, positionsquelle, positionsverlauf
+from app.services import alarm_quittung, audit, firmware_angebot, org_module, org_plan, positionsquelle, positionsverlauf
 from app.services import belegung
 from app.services import nahfunk
 from app.services import share_links as share_links_svc
@@ -68,7 +68,11 @@ from app.services.tracking import tracking_manager
 logger = logging.getLogger(__name__)
 
 geraet_router = APIRouter(prefix="/geraete", tags=["ortungsgeraete"])
-org_router = APIRouter(prefix="/org/geraete", tags=["ortungsgeraete"])
+org_router = APIRouter(
+    prefix="/org/geraete",
+    tags=["ortungsgeraete"],
+    dependencies=[Depends(require_modul(org_module.TRACKER))],
+)
 track_router = APIRouter(prefix="/track", tags=["ortungsgeraete"])
 
 CREATED = "org.geraet.created"
@@ -127,13 +131,23 @@ async def _org_takt(db: AsyncSession, geraet: Ortungsgeraet) -> int | None:
     ).scalar_one_or_none()
 
 
+async def _schweigt(db: AsyncSession, org_id: uuid.UUID) -> bool:
+    """Plansperre, fehlende Lizenz oder nicht freigeschaltetes Modul: das Gerät schweigt."""
+    return (
+        await org_plan.ist_gesperrt(db, org_id)
+        or not await is_licensed()
+        or not await org_module.freigegeben(db, org_id, org_module.TRACKER)
+    )
+
+
 async def _anweisung(
     db: AsyncSession, geraet: Ortungsgeraet, jetzt: datetime, netz: str = "mobil"
 ) -> dict[str, Any]:
     konvois = await _laufende_konvois(db, geraet)
     # Ohne Lizenz wie eine gesperrte Organisation: `schweigen`, und `positionen`
     # verwirft. Die Middleware lässt diese Pfade dafür durch (license_guard.py).
-    gesperrt = await org_plan.ist_gesperrt(db, geraet.organization_id) or not await is_licensed()
+    # Ebenso ohne freigeschaltetes Modul (services/org_module.py).
+    gesperrt = await _schweigt(db, geraet.organization_id)
     modus = og.modus(geraet.vehicle_id is not None, len(konvois), gesperrt)
     # Was das Gerät damit tut — nur im Stand, nur mit Akku —, entscheidet es
     # selbst; die Adresse zeigt auf diese Instanz (services/firmware_angebot.py).
@@ -170,7 +184,7 @@ async def nahfunk_fuer_fahrzeug(db: AsyncSession, vehicle_id: uuid.UUID) -> dict
     if geraet is None:
         return None
     konvois = await _laufende_konvois(db, geraet)
-    gesperrt = await org_plan.ist_gesperrt(db, geraet.organization_id) or not await is_licensed()
+    gesperrt = await _schweigt(db, geraet.organization_id)
     if og.modus(True, len(konvois), gesperrt) != "senden":
         return None
     return _nahfunk_zugang(geraet, konvois)

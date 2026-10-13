@@ -14,6 +14,7 @@ from app.models.oauth_code import OAuthCode
 from app.models.oauth_refresh_token import OAuthRefreshToken
 from app.models.org_mcp_policy import OrganizationMcpPolicy
 from app.models.org_plan import OrganizationPlan
+from app.models.org_module import OrganizationModule
 from app.models.public_tracker import PublicTracker, PublicTrackerConvoy, VehiclePositionTrail
 from app.models.ortungsgeraet import Ortungsgeraet
 from app.models.feedback import FeedbackReport
@@ -27,6 +28,7 @@ __all__ = [
     "Convoy", "ConvoyVehicle", "Waypoint", "Route",
     "VehiclePosition", "ConvoyShareLink", "AuditLog", "ApiKey",
     "OAuthClient", "OAuthCode", "OAuthRefreshToken", "OrganizationMcpPolicy", "OrganizationPlan",
+    "OrganizationModule",
     "PublicTracker", "PublicTrackerConvoy", "VehiclePositionTrail", "Ortungsgeraet",
     "DemoOrigin", "DemoIpAllowlistEntry", "DemoLead", "FeedbackReport",
     "SystemMetricSample", "SystemMetricDaily", "UserActivityDay",

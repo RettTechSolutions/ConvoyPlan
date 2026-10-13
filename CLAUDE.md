@@ -805,10 +805,12 @@ Derselbe Code läuft beim Selbsthoster und auf dem Hosting-Server; `INSTANCE_MOD
 Funktionen (`services/betriebsart.py`, im Frontend über dieselbe Umgebungsvariable).
 Unbekannte Werte gelten als `selfhost` — die zurückhaltende Seite. Heute hängen daran:
 die Agenten-Auskunft (aus bei `selfhost`, solange `AGENT_DISCOVERY` leer ist) und die
-Meldungen (Weiterleiten bzw. Annehmen, siehe dort). Eine zweite Codebasis für
+Meldungen (Weiterleiten bzw. Annehmen, siehe dort) und die Module neuer
+Organisationen (frei bzw. gesperrt, siehe „Module je Organisation"). Eine zweite Codebasis für
 Selbsthoster ist ausdrücklich nicht gewollt: doppelte Tests, auseinanderlaufende
 Migrationen. **Der Hosting-Server braucht `INSTANCE_MODE=hosting` in seiner `.env`**,
-sonst fehlen dort Agenten-Auskunft und Annahme. Abgleich der Leitstellen zwischen
+sonst fehlen dort Agenten-Auskunft und Annahme, und neue Organisationen bekommen
+alle Module. Abgleich der Leitstellen zwischen
 Instanzen: `docs/superpowers/plans/2026-10-09-leitstellen-abgleich.md`.
 
 ### Auskunft für Agenten (llms.txt, Well-Known, Markdown)
@@ -967,6 +969,35 @@ Tests: `tests/test_lizenz_organisationsgrenze.py`, `tests/test_org_plan_grenzen.
 (Rechenregeln ohne Datenbank, danach durch die App und über MCP),
 `frontend/e2e/org-plan-hinweis.spec.ts` (wer den Hinweis sieht). Anwenderdoku:
 `wiki/Lizenz-und-Demo-Modus.md`.
+
+### Module je Organisation: der Betreiber schaltet frei
+
+Tracker, Aktionsseiten, Branding und KI-Zugriff schaltet der Superadmin je
+Organisation frei (`services/org_module.py`, Tabelle `organization_modules`,
+Migration `0068`, Portal: **Organisationen**, Spalte *Module*). Im Org-Admin bleibt
+ein gesperrtes Modul als ausgegrauter Reiter mit 🔒 stehen und lädt nichts.
+Mitglieder, Leitstellen, GPS-Freigaben und Datenexport sind keine Module.
+
+- **Keine Zeile heißt Standard der Betriebsart** (`org_module.standard`): `selfhost`
+  frei, `hosting` gesperrt; Demo-Organisationen immer frei. Gespeichert wird
+  `freigegeben` als Wert, sonst ließe sich selbst gehostet nichts sperren. Die
+  Migration schreibt **jeder bestehenden** Organisation jedes Modul frei — ein
+  Update nimmt keinem Hosting-Kunden einen Reiter weg. Ein späteres neues Modul
+  entscheidet in seiner eigenen Migration, was Bestandsorganisationen bekommen.
+- **Durchgesetzt im Backend**, nicht am Reiter: `require_modul` hängt am Router des
+  Moduls (403); Tracker bekommen `schweigen` (`geraete._schweigt`, neben Plansperre
+  und Lizenz), `GET /api/convoys/{id}/tracker` liefert `[]`; die öffentliche
+  Aktionsseite ist die übliche 404 und `positionsverlauf.aktive_konvois` lässt den
+  Konvoi aus; `branding.org_branding_response` fällt aufs Plattform-Branding zurück;
+  `org_mcp_policy.fuer_org`/`fuer_orgs` geben `AUS`. Wer einem Modul einen weiteren
+  Weg baut (neuer Router, neuer Leser), zieht die Prüfung dort mit.
+- **Gelöscht wird nichts.** Geräte, Seiten, Logos und Richtlinie bleiben stehen und
+  gelten nach der Freigabe wieder. Setzen leert die Zwischenspeicher der
+  Aktionsseite, damit ein Entzug sofort wirkt.
+
+Tests: `tests/test_org_module.py` (Regel ohne Datenbank, dann je Modul die
+Wirkung), `frontend/e2e/org-module.spec.ts`. Anwenderdoku:
+`wiki/Lizenz-und-Demo-Modus.md`, „Module je Organisation".
 
 ### Passkeys: Domain, einmalige Challenge, kein TOTP danach
 

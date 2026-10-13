@@ -1590,6 +1590,8 @@ export interface McpWahlmoeglichkeit {
 
 export interface OrgMcpPolicy {
     enabled: boolean;
+    /** Ob der Betreiber das Modul „KI-Zugriff" freigeschaltet hat; sonst ist `enabled` false. */
+    modul_freigegeben: boolean;
     scopes: string[];
     bereiche: string[];
     /** Ob je etwas eingestellt wurde — trennt „abgeschaltet" von „nie angefasst". */
@@ -1957,6 +1959,36 @@ export const orgPlanAdminApi = {
 
 export const orgPlanApi = {
     get: () => api.get<OrgPlanState>('/api/org/plan'),
+};
+
+/** Module, die der Betreiber je Organisation freischaltet (backend/app/services/org_module.py). */
+export type OrgModul = 'tracker' | 'aktionsseiten' | 'branding' | 'ki';
+export type OrgModule = Record<OrgModul, boolean>;
+
+export interface OrgModulKatalog {
+    module: { modul: OrgModul; label: string; beschreibung: string }[];
+    /** Was ohne Entscheidung des Betreibers gilt (selbst gehostet frei, Hosting gesperrt). */
+    standard: boolean;
+    betriebsart: string;
+}
+
+export interface AdminOrgModulZeile {
+    organization_id: string;
+    organization_name: string;
+    organization_slug: string;
+    is_demo: boolean;
+    module: OrgModule;
+}
+
+export const orgModuleAdminApi = {
+    catalog: () => api.get<OrgModulKatalog>('/api/admin/modules/catalog'),
+    list: () => api.get<AdminOrgModulZeile[]>('/api/admin/modules/organizations'),
+    set: (orgId: string, werte: Partial<OrgModule>) =>
+        api.put<AdminOrgModulZeile>(`/api/admin/modules/organizations/${orgId}`, werte),
+};
+
+export const orgModuleApi = {
+    get: () => api.get<OrgModule>('/api/org/modules'),
 };
 
 /** Kennung einer verwaltbaren Vorlage (siehe backend/app/api/routes/email_template.py). */

@@ -30,6 +30,7 @@ ORG_CREATED = "admin.org.created"
 ORG_DELETED = "admin.org.deleted"
 ORG_PLAN_SET = "admin.org.plan_set"
 ORG_PLAN_REMOVED = "admin.org.plan_removed"
+ORG_MODULES_SET = "admin.org.modules_set"
 # Ein Export trägt alle Daten der Organisation aus dem System — wer ihn wann
 # gezogen hat, gehört ins Protokoll.
 ORG_EXPORTED = "org.exported"

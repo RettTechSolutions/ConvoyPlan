@@ -139,10 +139,16 @@ def org_branding_overrides(org: Organization) -> dict[str, str]:
 
 
 async def org_branding_response(db: AsyncSession, org: Organization) -> BrandingResponse:
-    """Effective branding for an org: platform branding + org overrides on top."""
+    """Effective branding for an org: platform branding + org overrides on top.
+
+    Ohne freigeschaltetes Modul nur das Plattform-Branding; die Einstellungen
+    der Organisation bleiben gespeichert (``services/org_module.py``)."""
+    from app.services import org_module
+
     merged = await _global_branding_dict(db)
-    for key, value in org_branding_overrides(org).items():
-        merged[f"branding.{key}"] = value
+    if await org_module.freigegeben(db, org.id, org_module.BRANDING):
+        for key, value in org_branding_overrides(org).items():
+            merged[f"branding.{key}"] = value
     return _branding_response_from(merged)
 
 

@@ -40,6 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.mcp import areas
 from app.mcp import scopes as scope_svc
 from app.models.org_mcp_policy import OrganizationMcpPolicy
+from app.services import org_module
 
 
 @dataclass(frozen=True)
@@ -133,7 +134,12 @@ def aus_zeile(zeile: OrganizationMcpPolicy | None) -> Policy:
 
 
 async def fuer_org(db: AsyncSession, org_id: uuid.UUID) -> Policy:
-    """Die geltende Richtlinie einer Organisation. Keine Zeile heißt aus."""
+    """Die geltende Richtlinie einer Organisation. Keine Zeile heißt aus.
+
+    Ohne freigeschaltetes Modul ``ki`` ebenfalls aus, gleich was die
+    Organisation eingestellt hat (``services/org_module.py``)."""
+    if not await org_module.freigegeben(db, org_id, org_module.KI):
+        return AUS
     zeile = await db.get(OrganizationMcpPolicy, org_id)
     return aus_zeile(zeile)
 
@@ -155,7 +161,11 @@ async def fuer_orgs(
         )
     ).scalars().all()
     gefunden = {z.organization_id: aus_zeile(z) for z in zeilen}
-    return {org_id: gefunden.get(org_id, AUS) for org_id in org_ids}
+    module = await org_module.fuer_orgs(db, org_ids)
+    return {
+        org_id: gefunden.get(org_id, AUS) if module[org_id][org_module.KI] else AUS
+        for org_id in org_ids
+    }
 
 
 async def setzen(
