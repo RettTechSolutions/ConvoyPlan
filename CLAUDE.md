@@ -378,6 +378,10 @@ Filter beim Empfänger ließe sich mit den Entwicklertools aushebeln:
   nach der Stichzeit liegt, geht nur der Parkplatz eines Halts hinaus, der
   bis jetzt begonnen hat — nie eine Position in Fahrt. Ohne Route bleibt es
   beim Raster von etwa 10 km.
+- **Ziel**: der eigene Zielpunkt des Konvois an der Seite
+  (`public_tracker_convoys.destination_lat/lon`, Migration `0069`), sonst der
+  letzte Wegpunkt. Er gilt auch für „angekommen" und geht nur mit
+  `show_destination` und vergröbert hinaus.
 - **Positivliste**: die Pydantic-Modelle in `api/routes/aktionsseite.py`,
   jedes mit `extra="forbid"`. Sie sind zugleich der Vertrag mit dem
   EventTracker; `tests/test_aktionsseite_felder.py` schreibt sie aus. Kein

@@ -67,6 +67,10 @@ class PublicTrackerConvoy(Base):
     # „Konvoi Bosnien" — der Konvoiname geht nie hinaus.
     display_name: Mapped[str] = mapped_column(String(100))
     destination_label: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Eigener Zielpunkt. Ohne ihn gilt der letzte Wegpunkt — der ist oft nur
+    # die Fähre oder die Grenze, nicht das Ziel (Migration 0069).
+    destination_lat: Mapped[float | None] = mapped_column(Float, nullable=True)
+    destination_lon: Mapped[float | None] = mapped_column(Float, nullable=True)
     color: Mapped[str | None] = mapped_column(String(9), nullable=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
 

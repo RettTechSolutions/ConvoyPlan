@@ -171,10 +171,17 @@ def _require_admin(role: str) -> None:
         raise HTTPException(status_code=403, detail="Org-Adminrechte erforderlich")
 
 
+class Zielpunkt(BaseModel):
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+
+
 class KonvoiEintrag(BaseModel):
     convoy_id: uuid.UUID
     display_name: str = Field(min_length=1, max_length=100)
     destination_label: str | None = Field(default=None, max_length=100)
+    # Ohne Angabe gilt der letzte Wegpunkt des Konvois.
+    destination_point: Zielpunkt | None = None
     color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
 
 
@@ -279,6 +286,11 @@ async def _zeile(db: AsyncSession, request: Request, t: PublicTracker) -> dict:
                 "convoy_name": namen.get(c.convoy_id, ""),
                 "display_name": c.display_name,
                 "destination_label": c.destination_label,
+                "destination_point": (
+                    {"lat": c.destination_lat, "lon": c.destination_lon}
+                    if c.destination_lat is not None
+                    else None
+                ),
                 "color": c.color,
             }
             for c in t.convoys
@@ -311,6 +323,8 @@ async def _konvois_setzen(
                 convoy_id=e.convoy_id,
                 display_name=e.display_name,
                 destination_label=e.destination_label,
+                destination_lat=e.destination_point.lat if e.destination_point else None,
+                destination_lon=e.destination_point.lon if e.destination_point else None,
                 color=e.color,
                 position=nr,
             )

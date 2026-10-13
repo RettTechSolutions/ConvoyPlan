@@ -465,7 +465,12 @@ async def nutzlast(db: AsyncSession, tracker: PublicTracker, jetzt: datetime | N
     stich = stichzeit(jetzt, tracker.delay_minutes)
     konvois = []
     for nr, tc in enumerate(tracker.convoys, start=1):
-        ziel = await _ziel(db, tc.convoy_id)
+        # Der eigene Zielpunkt schlägt den letzten Wegpunkt — auch für
+        # „angekommen": Wer an der Fähre steht, ist nicht am Ziel.
+        if tc.destination_lat is not None and tc.destination_lon is not None:
+            ziel = (tc.destination_lat, tc.destination_lon)
+        else:
+            ziel = await _ziel(db, tc.convoy_id)
         route = (
             await db.execute(
                 select(Route.distance_m, Route.geometry).where(Route.convoy_id == tc.convoy_id)

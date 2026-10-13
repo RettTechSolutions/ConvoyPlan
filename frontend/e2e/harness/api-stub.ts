@@ -113,6 +113,7 @@ export interface AktionsseiteKonvoi {
 	convoy_id: string;
 	display_name: string;
 	destination_label: string | null;
+	destination_point: { lat: number; lon: number } | null;
 	color: string | null;
 }
 export interface AktionsseiteDaten {
