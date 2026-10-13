@@ -104,6 +104,8 @@ Hat mindestens ein Fahrzeug im Verband eine **Höhe** (siehe [Fahrzeuge](Fahrzeu
 | frei | ab 30 cm | Wird erst auf Klick („+ N weitere") angezeigt. |
 | **Höhe fehlt** | – | Kein Fahrzeug im Verband hat eine Höhe; dann wird auch nichts gemieden. |
 
+In der Seitenleiste stehen **Durchfahrtshöhen** und **Gewichtsgrenzen** eingeklappt mit ihrem Befund in einer Zeile (z. B. „✓ frei“ oder „1 eng“). Gibt es etwas zu prüfen — eine enge Stelle, eine überschrittene Grenze —, klappen sie von selbst auf. Die empfohlenen Halte stehen davor, die Eckdaten des Marschverbands als Kurzzeile (Start, Tempo, Routenwahl), der Rest unter „Alle Eckdaten“.
+
 Fahrzeuge ohne Höhenangabe zählen beim Meiden nicht mit — der Block nennt ihre Anzahl. Enge und knappe Stellen stehen zusätzlich im [Marschbefehl](Marschbefehl-Export) unter „Durchfahrtshöhen", und **jede** Stelle steht im [Roadbook](Marschbefehl-Export#roadbook-pdf) an ihrem Kilometer — auch die mit viel Spielraum, damit die Besatzung weiß, wo sie unbesorgt durchfahren kann.
 
 ### Brücken ohne Höhenangabe

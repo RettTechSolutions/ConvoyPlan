@@ -207,6 +207,9 @@ es vor; **gewählt wird weiter von Hand**. Weil die Kennung wechselt und nur die
 Instanz sie zuordnen kann, lässt sich ein Fahrzeug darüber nicht über Tage
 verfolgen. Tracker, die vor dieser Funktion eingerichtet wurden, bekommen ihren
 Schlüssel beim nächsten Kontakt über WLAN oder Mobilfunk von selbst.
+Auch ein Tracker, der seinen Schlüssel verloren hat (Gerätespeicher gelöscht), bekommt beim
+nächsten direkten Kontakt einen **neuen** — nie den alten, damit mitgeschnittene Nachrichten
+nicht wieder gelten.
 
 ### Akku und Empfang
 
