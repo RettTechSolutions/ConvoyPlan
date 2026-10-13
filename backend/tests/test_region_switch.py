@@ -266,3 +266,38 @@ def test_write_request_laesst_die_abbruchmarke_einer_wartenden_anforderung(
         )
 
     assert (tmp_path / region_switch.CANCEL_FILE).exists()
+
+
+def _anfordern(scheduled_for=None):
+    region_switch.write_request("https://download.geofabrik.de/e-latest.osm.pbf",
+                                "e-latest.osm.pbf", "-Xmx4g", "a@b.c",
+                                scheduled_for=scheduled_for)
+
+
+def test_geplanter_wechsel_sperrt_das_update_nicht(tmp_path, monkeypatch):
+    """Ein fuer die Nacht geplanter Wechsel darf das Update tagsueber nicht
+    sperren — bis zum Termin laeuft die bisherige Region unveraendert."""
+    from datetime import timedelta
+    monkeypatch.setattr(region_switch, "VOLUME", str(tmp_path))
+    assert region_switch.sperrt_update() is False
+    _anfordern(datetime.now(timezone.utc) + timedelta(hours=8))
+    assert region_switch.is_busy() is True
+    assert region_switch.sperrt_update() is False
+
+
+def test_faelliger_oder_wartender_wechsel_sperrt_das_update(tmp_path, monkeypatch):
+    from datetime import timedelta
+    monkeypatch.setattr(region_switch, "VOLUME", str(tmp_path))
+    _anfordern()
+    assert region_switch.sperrt_update() is True
+    os.remove(tmp_path / "region_request.json")
+    _anfordern(datetime.now(timezone.utc) - timedelta(minutes=1))
+    assert region_switch.sperrt_update() is True
+
+
+def test_laufender_wechsel_sperrt_das_update(tmp_path, monkeypatch):
+    from datetime import timedelta
+    monkeypatch.setattr(region_switch, "VOLUME", str(tmp_path))
+    _anfordern(datetime.now(timezone.utc) + timedelta(hours=8))
+    (tmp_path / "region.lock").write_text("")
+    assert region_switch.sperrt_update() is True

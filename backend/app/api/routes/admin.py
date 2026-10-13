@@ -1432,9 +1432,10 @@ async def trigger_update(
     # letztlich einen Container-Neustart bzw. -Austausch an. Import bewusst
     # lokal (nicht auf Modulebene) — admin.py und region.py haben sonst keine
     # Abhaengigkeit voneinander, ein Import auf Modulebene wuerde nur fuer
-    # diese eine gespiegelte Pruefung eine erzeugen.
+    # diese eine gespiegelte Pruefung eine erzeugen. Ein auf spaeter geplanter
+    # Wechsel sperrt nicht (siehe sperrt_update).
     from app.services import region_switch
-    if region_switch.is_busy():
+    if region_switch.sperrt_update():
         raise HTTPException(409, "Ein Regionswechsel läuft — Update währenddessen gesperrt.")
     # Write initial message so the SSE terminal shows something immediately
     # (updater may be sleeping up to INTERVAL seconds before it picks up the trigger)

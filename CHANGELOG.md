@@ -46,6 +46,7 @@ ursprünglichen SemVer-Nummern.
 ### Fixed
 
 - **Die Durchfahrtshöhe wurde mit dem niedrigsten Fahrzeug gesperrt.** Statt des höchsten nahm die Routenberechnung das *niedrigste* Fahrzeug im Verband mit Höhenangabe: Ein Wechsellader (3,90 m) neben einem MTW (2,50 m) wurde wie ein 2,50 m hoher Verband geroutet, und die Planungsansicht nannte 2,50 m als „Höchstes Fahrzeug". Betroffen waren alle Verbände mit Fahrzeugen unterschiedlicher Höhe. Routen, die vor diesem Update berechnet wurden, sollten neu berechnet werden.
+- **Ein geplanter Regionswechsel sperrte „Jetzt updaten“.** Solange ein Wechsel auf einen späteren Zeitpunkt gelegt war, lehnte das Backend jedes manuelle Update mit „Ein Regionswechsel läuft“ ab — bei einem nachts geplanten Wechsel den ganzen Tag. Gesperrt wird jetzt nur noch, solange der Wechsel läuft oder unmittelbar ansteht; bis zum Termin läuft die bisherige Region unverändert, und der Updater arbeitet Update und Wechsel nacheinander ab.
 
 ## [2026.8.0] – 2026-10-09
 

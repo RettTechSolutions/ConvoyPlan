@@ -337,6 +337,27 @@ def laeuft() -> bool:
     return os.path.exists(_path(LOCK_FILE))
 
 
+def sperrt_update() -> bool:
+    """True, wenn ein Software-Update jetzt nicht ausgeloest werden darf.
+
+    Strenger als `laeuft()`, milder als `is_busy()`: Eine Anforderung, die auf
+    den naechsten Poll wartet (oder deren Termin erreicht ist), sperrt — sie
+    laeuft gleich an. Eine auf einen spaeteren Zeitpunkt gelegte dagegen nicht:
+    Bis dahin laeuft die bisherige Region unveraendert, und der Updater
+    arbeitet seine Schleife der Reihe nach ab (Trigger vor Regionswechsel,
+    update-images.sh) — beides kann sich nicht ueberschneiden. Sonst sperrte
+    ein fuer die Nacht geplanter Wechsel das Update den ganzen Tag.
+    """
+    if os.path.exists(_path(LOCK_FILE)):
+        return True
+    if not os.path.exists(_path(REQUEST_FILE)):
+        return False
+    due = _request_field("scheduled_for_epoch")
+    if not due or not due.isdigit():
+        return True
+    return int(due) <= int(datetime.now(timezone.utc).timestamp())
+
+
 def request_cancel() -> None:
     """Signalisiert dem Updater, einen laufenden Regionswechsel abzubrechen."""
     os.makedirs(VOLUME, exist_ok=True)
