@@ -522,7 +522,7 @@ async def test_update_trigger_conflicts_with_running_region_switch(monkeypatch):
     """Spiegelbildliche Sperre: laeuft ein Regionswechsel, darf trigger-update
     nicht gleichzeitig anlaufen (beide teilen sich /update_status)."""
     monkeypatch.setattr(admin.os.path, "exists", lambda p: False)
-    monkeypatch.setattr(region_switch, "is_busy", lambda: True)
+    monkeypatch.setattr(region_switch, "sperrt_update", lambda: True)
     test_app = _make_app_with_superadmin()
     transport = ASGITransport(app=test_app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
