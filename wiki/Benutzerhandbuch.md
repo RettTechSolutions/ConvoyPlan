@@ -299,6 +299,7 @@ Superadmins haben Zugriff auf alle Verwaltungsfunktionen.
 
 1. **Admin** → **Benutzer**.
 2. Benutzer aktivieren, deaktivieren oder Rolle ändern.
+3. Die Liste lässt sich über die Spaltenüberschriften sortieren (zweiter Klick dreht die Richtung), per Suchfeld nach Name, E-Mail und Organisation durchsuchen und nach Organisation filtern. Einträge ohne Wert in der sortierten Spalte stehen in beiden Richtungen unten.
 
 ### Branding anpassen
 
