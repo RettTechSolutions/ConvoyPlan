@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import OrgCtx, get_org_context
+from app.api.deps import OrgCtx, get_org_context, require_modul
 from app.api.guards import ROLE_ORDER
 from app.database import get_db
 from app.mcp import areas
@@ -29,9 +29,11 @@ from app.mcp import scopes as scope_svc
 from app.models.oauth_client import OAuthClient
 from app.models.oauth_refresh_token import OAuthRefreshToken
 from app.models.user import User
-from app.services import audit, mcp_config, oauth_tokens, org_mcp_policy
+from app.services import audit, mcp_config, oauth_tokens, org_mcp_policy, org_module
 
-router = APIRouter(prefix="/org/mcp", tags=["mcp"])
+router = APIRouter(
+    prefix="/org/mcp", tags=["mcp"], dependencies=[Depends(require_modul(org_module.KI))]
+)
 
 POLICY_UPDATED = "org.mcp.policy_updated"
 CONNECTION_REVOKED = "org.mcp.connection_revoked"

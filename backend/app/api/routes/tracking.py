@@ -19,6 +19,7 @@ from app.models.vehicle import Vehicle
 from app.models.vehicle_position import VehiclePosition
 from app.services import alarm_quittung
 from app.services import betriebsstoff as betriebsstoff_svc
+from app.services import org_module
 from app.services import ortungsgeraet
 from app.services import belegung
 from app.services import positionsquelle
@@ -159,6 +160,10 @@ async def get_tracker_zustand(
     in seiner Liste. Nur eingerichtete, nicht gesperrte Tracker der Organisation
     des Konvois; keine Kennung, kein Token, kein Gerätename."""
     convoy = await get_convoy_access(convoy_id, current_user, db, require="read")
+    if convoy.organization_id is None or not await org_module.freigegeben(
+        db, convoy.organization_id, org_module.TRACKER
+    ):
+        return []
     fahrzeuge = select(ConvoyVehicle.vehicle_id).where(ConvoyVehicle.convoy_id == convoy_id)
     geraete = (
         await db.execute(

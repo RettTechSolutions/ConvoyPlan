@@ -9,7 +9,7 @@
     import { kontextmenue, kopieren, TRENNER, type Eintraege } from '$lib/kontextmenue/menue';
     import EmailTemplateEditor from '$lib/components/EmailTemplateEditor.svelte';
     import { getStreamTicket } from '$lib/api/client';
-    import { adminApi, mfaApi, leistellenApi, licenseApi, mcpAdminApi, orgPlanAdminApi, type AdminOrgPlanRow, type OrgPlanCatalogEntry, regionApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoStats, type DemoSessionInfo, type DemoLeadInfo, type DemoIpLock, type DemoIpAllowlistEntry, type RegionStatus, type RegionPhase, type McpStatus, type McpClient, type McpConnection, type McpOrgPolicy, feedbackAdminApi, type FeedbackReport, type FeedbackStats, type FeedbackStatus, type FeedbackSeverity, type FeedbackKind } from '$lib/api';
+    import { adminApi, mfaApi, leistellenApi, licenseApi, mcpAdminApi, orgPlanAdminApi, type AdminOrgPlanRow, orgModuleAdminApi, type OrgModul, type OrgModule, type OrgModulKatalog, type OrgPlanCatalogEntry, regionApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoStats, type DemoSessionInfo, type DemoLeadInfo, type DemoIpLock, type DemoIpAllowlistEntry, type RegionStatus, type RegionPhase, type McpStatus, type McpClient, type McpConnection, type McpOrgPolicy, feedbackAdminApi, type FeedbackReport, type FeedbackStats, type FeedbackStatus, type FeedbackSeverity, type FeedbackKind } from '$lib/api';
     import { brandingStore, applyBranding, normalizeBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { brandingApi, type BrandingUpdate } from '$lib/api';
     import SuperadminLogin from '$lib/components/SuperadminLogin.svelte';
@@ -490,6 +490,38 @@
             [orgs, users] = await Promise.all([adminApi.listOrgs(), users.length ? Promise.resolve(users) : adminApi.listUsers()]);
         } catch { orgsError = 'Organisationen konnten nicht geladen werden'; }
         finally { orgsLoading = false; }
+        await loadModule();
+    }
+
+    // ── Module je Organisation ──
+    // Regeln und Begründung: backend/app/services/org_module.py. Ein Klick auf
+    // ein Modul schaltet es für diese Organisation frei oder sperrt es; der
+    // Org-Admin sieht den Reiter danach ausgegraut bzw. bedienbar.
+    let modulKatalog = $state<OrgModulKatalog | null>(null);
+    let orgModule = $state<Record<string, OrgModule>>({});
+    let modulSpeichert = $state<string | null>(null);
+
+    async function loadModule() {
+        try {
+            const [katalog, zeilen] = await Promise.all([orgModuleAdminApi.catalog(), orgModuleAdminApi.list()]);
+            modulKatalog = katalog;
+            orgModule = Object.fromEntries(zeilen.map((z) => [z.organization_id, z.module]));
+        } catch (e: unknown) {
+            orgsError = e instanceof Error ? e.message : 'Module konnten nicht geladen werden.';
+        }
+    }
+
+    async function modulUmschalten(org: AdminOrg, modul: OrgModul) {
+        const jetzt = orgModule[org.id]?.[modul] ?? false;
+        modulSpeichert = `${org.id}:${modul}`;
+        try {
+            const zeile = await orgModuleAdminApi.set(org.id, { [modul]: !jetzt });
+            orgModule = { ...orgModule, [org.id]: zeile.module };
+        } catch (e: unknown) {
+            orgsError = e instanceof Error ? e.message : 'Modul konnte nicht geändert werden.';
+        } finally {
+            modulSpeichert = null;
+        }
     }
 
     async function exportOrg(org: AdminOrg) {
@@ -2242,6 +2274,16 @@
                 </div>
             </div>
 
+            {#if modulKatalog}
+                <p class="hint" style="margin:-.25rem 0 .75rem">
+                    <strong>Module</strong> schalten Sie je Organisation frei; ein gesperrtes Modul sieht der
+                    Org-Admin als ausgegrauten Reiter, und das Backend lehnt es ab (Tracker schweigen,
+                    Aktionsseiten sind nicht abrufbar). Gelöscht wird beim Sperren nichts. Neue
+                    Organisationen bekommen auf dieser Instanz
+                    {modulKatalog.standard ? 'alle Module' : 'zunächst keine Module'}
+                    ({modulKatalog.betriebsart === 'hosting' ? 'Hosting-Server' : 'selbst gehostet'}).
+                </p>
+            {/if}
             {#if orgsLoading}
                 <p class="hint">Lade…</p>
             {:else}
@@ -2252,6 +2294,7 @@
                             <th>Code (Slug)</th>
                             <th>Inhaber</th>
                             <th>Mitglieder</th>
+                            <th title="Klick schaltet ein Modul für diese Organisation frei oder sperrt es">Module</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -2259,7 +2302,7 @@
                         {#each sortedOrgs as org, i}
                             {#if org.is_demo && (i === 0 || !sortedOrgs[i - 1].is_demo)}
                                 <tr class="group-divider-row">
-                                    <td colspan="5">▶ Demo-Sitzungen ({demoOrgCount}) — temporär, werden automatisch gelöscht</td>
+                                    <td colspan="6">▶ Demo-Sitzungen ({demoOrgCount}) — temporär, werden automatisch gelöscht</td>
                                 </tr>
                             {/if}
                             <tr class:demo-row={org.is_demo} use:kontextmenue={() => orgEintraege(org)}>
@@ -2267,6 +2310,22 @@
                                 <td><code>{org.slug}</code></td>
                                 <td class="hint email-cell">{org.owner_email ?? '–'}</td>
                                 <td>{org.member_count}</td>
+                                <td class="module-cell">
+                                    {#if org.is_demo}
+                                        <span class="hint" title="Demo-Organisationen haben immer alle Module">alle</span>
+                                    {:else if modulKatalog && orgModule[org.id]}
+                                        {#each modulKatalog.module as m (m.modul)}
+                                            <button
+                                                class="modul-chip"
+                                                class:an={orgModule[org.id][m.modul]}
+                                                aria-pressed={orgModule[org.id][m.modul]}
+                                                disabled={modulSpeichert === `${org.id}:${m.modul}`}
+                                                title="{m.beschreibung} — {orgModule[org.id][m.modul] ? 'freigeschaltet, Klick sperrt' : 'gesperrt, Klick schaltet frei'}"
+                                                onclick={() => modulUmschalten(org, m.modul)}
+                                            >{orgModule[org.id][m.modul] ? '✓' : '🔒'} {m.label}</button>
+                                        {/each}
+                                    {/if}
+                                </td>
                                 <td class="actions-cell">
                                     <div>
                                         <button class="btn-small" onclick={() => openEditOrgModal(org)} title="Inhaber ändern">✎</button>
@@ -2277,7 +2336,7 @@
                             </tr>
                         {/each}
                         {#if orgs.length === 0}
-                            <tr><td colspan="5" class="hint" style="text-align:center">Keine Organisationen vorhanden.</td></tr>
+                            <tr><td colspan="6" class="hint" style="text-align:center">Keine Organisationen vorhanden.</td></tr>
                         {/if}
                     </tbody>
                 </table>
@@ -4970,6 +5029,10 @@
     .badge-warn { background: rgba(180,60,40,.15); color: var(--color-primary); border: 1px solid rgba(180,60,40,.3); }
     /* „verwaist" ist ein Ordnungshinweis, keine Warnung — gedämpft statt rot. */
     .badge-muted { background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border); }
+    .module-cell { white-space: normal; }
+    .modul-chip { margin: .1rem .2rem .1rem 0; padding: .15rem .45rem; font-size: var(--text-xs); border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-muted); cursor: pointer; }
+    .modul-chip.an { color: var(--text); border-color: var(--color-primary); }
+    .modul-chip:disabled { opacity: .5; cursor: wait; }
     .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(255,255,255,.3); border-top-color: white; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: .3rem; }
     .update-terminal {
         margin-top: .75rem;

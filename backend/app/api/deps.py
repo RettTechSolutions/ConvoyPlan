@@ -421,6 +421,28 @@ async def _pruefe_plan_sperre(request: Request, db: AsyncSession, org: Organizat
         )
 
 
+def require_modul(modul: str):
+    """Abhängigkeit für den Router eines Moduls: 403, solange der Betreiber es
+    dieser Organisation nicht freigeschaltet hat (``services/org_module.py``).
+
+    Hängt an ``get_org_context`` und bekommt von FastAPI denselben Aufruf, den
+    die Route selbst benutzt — keine zweite Prüfung von Token und Mitgliedschaft."""
+
+    async def pruefen(
+        ctx: OrgCtx = Depends(get_org_context),
+        db: AsyncSession = Depends(get_db),
+    ) -> None:
+        from app.services import org_module
+
+        if not await org_module.freigegeben(db, ctx[1].id, modul):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=org_module.gesperrt_text(modul),
+            )
+
+    return pruefen
+
+
 async def _superadmin_from_token(token_data: TokenData, db: AsyncSession) -> User:
     if not token_data.is_superadmin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superadmin required")

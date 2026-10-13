@@ -25,6 +25,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.public_tracker import PublicTracker, PublicTrackerConvoy, VehiclePositionTrail
+from app.services import org_module
 
 MIN_ABSTAND_S = 60
 STEHEND_ABSTAND_S = 300
@@ -76,15 +77,20 @@ async def aktive_konvois(db: AsyncSession, jetzt: datetime) -> frozenset[uuid.UU
     cached = _aktiv.get("konvois")
     if cached is not None and time.monotonic() - cached[1] < _AKTIV_TTL_S:
         return cached[0]
-    rows = await db.execute(
-        select(PublicTrackerConvoy.convoy_id)
-        .join(PublicTracker, PublicTracker.id == PublicTrackerConvoy.tracker_id)
-        .where(
-            PublicTracker.enabled.is_(True),
-            or_(PublicTracker.valid_until.is_(None), PublicTracker.valid_until > jetzt),
+    rows = (
+        await db.execute(
+            select(PublicTrackerConvoy.convoy_id, PublicTracker.organization_id)
+            .join(PublicTracker, PublicTracker.id == PublicTrackerConvoy.tracker_id)
+            .where(
+                PublicTracker.enabled.is_(True),
+                or_(PublicTracker.valid_until.is_(None), PublicTracker.valid_until > jetzt),
+            )
         )
-    )
-    ids = frozenset(rows.scalars().all())
+    ).all()
+    # Ohne freigeschaltetes Modul ist die Seite nicht erreichbar, also wird auch
+    # nichts aufgezeichnet (services/org_module.py).
+    module = await org_module.fuer_orgs(db, list({org for _, org in rows}))
+    ids = frozenset(c for c, org in rows if module[org][org_module.AKTIONSSEITEN])
     _aktiv["konvois"] = (ids, time.monotonic())
     return ids
 
