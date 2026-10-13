@@ -70,6 +70,20 @@ Test: `docker/updater/tests/test_env_kanal.sh` (ohne Docker). Wer eine weitere
 Datei per `source` in `update-images.sh` einbindet, mountet sie in den drei
 Container-Tests mit, die das Skript ausführen.
 
+### Automatische Updates warten auf leere Sitzungen
+
+Solange Nutzer oder Demo-Nutzer aktiv sind (Aktivitäts-Registry, `activity.py`, fünf
+Minuten), hält der Updater ein **automatisches** Update zurück; Superadmins zählen
+nicht, der manuelle Trigger fragt gar nicht. Das Backend schreibt die Zahlen alle 30 s
+nach `/update_status/anwesenheit` (`services/anwesenheit.py`), der Updater entscheidet
+in `docker/updater/anwesenheit.sh` (von **beiden** Varianten gesourct) und meldet seinen
+Zustand in `/update_status/zurueckgehalten` zurück (`held_back` im Update-Status).
+Beide Rückfälle gehen zur Installation hin: keine frische Meldung (Backend hängt) und
+`UPDATE_HOLD_MAX` (24 h am Stück). Nach einem Neustart meldet das Backend fünf Minuten
+lang nicht weniger als zuletzt — die Registry ist flüchtig, und sonst käme im Nightly-
+Kanal der nächste Build gleich hinterher. Tests: `docker/updater/tests/test_anwesenheit.sh`,
+`backend/tests/test_update_bei_anwesenheit.py`.
+
 ### Der Routing-Graph und der Deploy
 
 Zwei Dateien entscheiden hier, und man muss sie auseinanderhalten.

@@ -4092,7 +4092,7 @@
                 </div>
                 <p class="hint" style="margin:-.25rem 0 1rem;">
                     {#if updateMode.mode === 'auto'}
-                        <strong>Automatisch:</strong> Verfügbare Updates im gewählten Kanal werden ohne weiteres Zutun installiert.
+                        <strong>Automatisch:</strong> Verfügbare Updates im gewählten Kanal werden ohne weiteres Zutun installiert — aber erst, wenn keine Nutzer oder Demo-Nutzer mehr angemeldet sind (Superadmins zählen nicht; spätestens nach 24 Stunden, einstellbar über UPDATE_HOLD_MAX). „Jetzt updaten" wartet nicht.
                     {:else}
                         <strong>Benachrichtigen:</strong> Es wird nichts automatisch installiert. Alle Superadmins erhalten eine E-Mail, sobald im gewählten Kanal ein Update verfügbar ist (SMTP muss konfiguriert sein) — installiert wird über „Jetzt updaten".
                     {/if}
@@ -4153,6 +4153,13 @@
                             <span class="hint">Kein automatisches Downgrade — Stable greift wieder, sobald ein neueres Release erscheint. „Jetzt updaten" setzt bewusst auf das Release zurück.</span>
                         {:else if updateStatus.update_available}
                             <span class="badge badge-update">Update verfügbar ↑</span>
+                            {#if updateStatus.held_back && updateMode?.mode !== 'notify'}
+                                <span class="hint" data-testid="update-zurueckgehalten">
+                                    Zurückgehalten seit {new Date(updateStatus.held_back.since).toLocaleString('de-DE')}:
+                                    {updateStatus.held_back.users} Nutzer
+                                    und {updateStatus.held_back.demo_users} Demo-Nutzer angemeldet — wird installiert, sobald niemand mehr aktiv ist.
+                                </span>
+                            {/if}
                         {:else}
                             <span class="badge badge-ok">Aktuell ✓</span>
                         {/if}

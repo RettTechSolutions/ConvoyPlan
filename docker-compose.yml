@@ -302,6 +302,10 @@ services:
     environment:
       COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-convoyplan}
       UPDATE_INTERVAL: "${UPDATE_INTERVAL:-300}"
+      # Automatische Updates warten, solange Nutzer oder Demo-Nutzer angemeldet
+      # sind — hoechstens so viele Sekunden am Stueck (0 = unbegrenzt).
+      # Siehe docker/updater/anwesenheit.sh.
+      UPDATE_HOLD_MAX: "${UPDATE_HOLD_MAX:-86400}"
       # Signaturpruefung der Ziel-Images vor jedem Update (Sigstore/cosign).
       # false nur fuer Air-Gapped-Installationen ohne Zugang zu Rekor/Fulcio —
       # dann zieht der Updater ungeprueft. Siehe .env.example.

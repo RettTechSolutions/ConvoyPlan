@@ -174,6 +174,7 @@ async def _lifespan(_app: FastAPI):
     from app.jobs.metrics import metrics_collector_loop
     from app.services.lizenz_ablauf import lizenz_ablauf_loop
     from app.services.feedback_weiterleitung import weiterleitung_loop
+    from app.services.anwesenheit import anwesenheit_loop
     notify_task = asyncio.create_task(update_notify_loop())
     # Watches /update_status/deploy_alert.json for failed-deploy / auto-rollback
     # / aborted-boot markers written by the updater and entrypoint, and emails
@@ -189,6 +190,9 @@ async def _lifespan(_app: FastAPI):
     # Selbst gehostet: Meldungen, deren sofortige Weiterleitung an den
     # Hersteller scheiterte, erneut zustellen (alle zehn Minuten).
     feedback_task = asyncio.create_task(weiterleitung_loop())
+    # Meldet dem Updater, ob Nutzer angemeldet sind — solange hält er ein
+    # automatisches Update zurück (docker/updater/anwesenheit.sh).
+    anwesenheit_task = asyncio.create_task(anwesenheit_loop())
     try:
         # Der Streamable-HTTP-Transport des MCP-Servers braucht eine laufende
         # Task-Group. Ohne das scheitert der erste MCP-Request mit einem
@@ -204,8 +208,10 @@ async def _lifespan(_app: FastAPI):
         metrics_task.cancel()
         expiry_task.cancel()
         feedback_task.cancel()
+        anwesenheit_task.cancel()
         outcome = await asyncio.gather(
-            notify_task, alert_task, metrics_task, expiry_task, feedback_task, return_exceptions=True
+            notify_task, alert_task, metrics_task, expiry_task, feedback_task, anwesenheit_task,
+            return_exceptions=True,
         )
         logger.debug("Hintergrund-Tasks beendet: %r", outcome)
 
