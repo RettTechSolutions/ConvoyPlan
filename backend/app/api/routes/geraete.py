@@ -243,13 +243,15 @@ async def einloesen(
 def _schluessel_angebot(geraet: Ortungsgeraet, daten: dict[str, Any]) -> str | None:
     """Der Geräteschlüssel für die Antwort auf ein **direktes** ``hallo``, sonst ``None``.
 
-    Nur, wenn das Gerät eine Kennung meldet und sie abweicht. Ein Gerät von vor E14
-    (eingerichtet ohne Schlüssel) meldet ``""`` und bekommt hier seinen ersten."""
+    Nur, wenn das Gerät eine Kennung meldet und sie abweicht. Meldet es ``""`` — vor E14
+    eingerichtet oder NVS verloren —, bekommt es immer einen **neuen**, und ``seq`` fängt
+    von vorn an: Mit dem alten Schlüssel und zurückgesetztem Zähler gälten mitgeschnittene
+    Rahmen wieder (Tracker-Repo, ``PROTOKOLL.md``, „Geräteschlüssel“)."""
     gemeldet = tb.kennung_gemeldet(daten)
     if gemeldet is None:
         return None
     schluessel = tb.schluessel_lesen(geraet.schluessel)
-    if schluessel is None:
+    if schluessel is None or gemeldet == "":
         schluessel = tb.schluessel_erzeugen()
         geraet.schluessel = tb.ablegen(schluessel)
         geraet.ble_seq = None
