@@ -9,10 +9,15 @@ Die Zusagen:
   404. Keine Antwort verrät, dass es den Slug gibt.
 - Ein erneuertes Token gilt sofort, das alte nicht mehr — auch nicht aus dem
   Zwischenspeicher.
+- Was nach der Stichzeit kam, entscheidet nur, ob ein Halt bevorsteht. Ein
+  haltender Konvoi erscheint auf seiner Route neben dem Halt, nie am Halt.
 """
 from datetime import datetime, timedelta, timezone
 
+from app.database import AsyncSessionLocal
+from app.models.route import Route
 from app.services import aktionsseite as a
+from app.services.positionsverlauf import abstand_m
 from tests.aktionsseite_fixtures import (  # noqa: F401 — Fixtures, per Import aktiviert
     aktion,
     client,
@@ -52,6 +57,38 @@ async def test_kein_punkt_ist_juenger_als_die_verzoegerung(aktion, client):
     )
     assert max(lon for lon, _ in k["trail"]) <= letzter_erlaubter + 1e-6
     assert k["position"]["lon"] <= letzter_erlaubter + 1e-6
+
+
+async def test_haltender_konvoi_parkt_auf_seiner_route(aktion, client):
+    seite = await seite_anlegen(client, aktion, delay_minutes=60)
+    jetzt = datetime.now(timezone.utc)
+    async with AsyncSessionLocal() as db:
+        db.add(Route(
+            convoy_id=aktion.convoy_id,
+            geometry="SRID=4326;LINESTRING(12.0 48.5, 13.0 48.5, 14.0 48.5)",
+            distance_m=148_000,
+        ))
+        await db.commit()
+    # Zwei Stunden nach Osten, dann seit 70 Minuten am selben Ort: Zur
+    # Stichzeit steht er erst zehn Minuten — der Blick nach vorn sieht den Halt.
+    anfahrt = fahrt(aktion.spitze, jetzt - timedelta(minutes=70), 120)
+    _, halt_t, halt_lat, halt_lon = anfahrt[-1]
+    stehen = [
+        (aktion.spitze, halt_t + timedelta(minutes=m), halt_lat, halt_lon) for m in range(5, 71, 5)
+    ]
+    await verlauf(aktion, anfahrt + stehen)
+
+    r = await client.get(f"/api/public/aktion/{seite['slug']}", headers=h(seite["fetch_token"]))
+    assert r.status_code == 200, r.text
+    k = r.json()["convoys"][0]
+    assert k["status"] == "pause"
+    pos = k["position"]
+    assert pos["coarse"] is True
+    assert abs(pos["lat"] - 48.5) < 0.001
+    weg = abstand_m(pos["lat"], pos["lon"], halt_lat, halt_lon)
+    assert a.PARKEN_MIN_M * 0.95 <= weg <= a.PARKEN_MAX_M * 1.05
+    ende_lon, ende_lat = k["trail"][-1]
+    assert abstand_m(ende_lat, ende_lon, halt_lat, halt_lon) >= a.LINIE_ABSTAND_ZUM_HALT_M
 
 
 async def test_vorschau_zeigt_dieselbe_verzoegerung(aktion, client):

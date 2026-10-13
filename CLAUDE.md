@@ -365,11 +365,19 @@ Filter beim Empfänger ließe sich mit den Entwicklertools aushebeln:
 
 - **Verzögert**: nur Punkte bis `jetzt − delay_minutes`; mindestens 60, auch
   als CHECK in der Datenbank.
-- **Vergröbert, sobald der Konvoi steht** (20 min im Umkreis von 300 m oder
-  keine Daten): feste Rasterzelle von etwa 10 km, die Linie endet 10 km davor.
-  Die Verzögerung schützt keinen parkenden Lkw — ohne diese Regel stünde der
-  Autohof die ganze Nacht metergenau auf der Seite. Fest gerastert statt
-  verrauscht, weil sich Rauschen über viele Abrufe herausmitteln ließe.
+- **Geparkt, sobald der Konvoi steht** (20 min im Umkreis von 300 m oder
+  keine Daten): Er erscheint auf seiner Route 10–25 km vor oder hinter dem
+  Halt, die Linie endet 10 km vor Halt und Parkplatz. Die Verzögerung schützt
+  keinen parkenden Lkw — ohne diese Regel stünde der Autohof die ganze Nacht
+  metergenau auf der Seite. Der Versatz ist fest je Halt (HMAC aus
+  `jwt_secret`, Seite, Konvoi und Haltbeginn), weil sich ein Versatz je Abruf
+  herausmitteln ließe. Den Halt erkennt `konvoi` mit den Punkten **bis jetzt**,
+  nicht bis zur Stichzeit: Schon auf der Anfahrt und noch nach der Abfahrt
+  (Radius 12–30 km, je Halt zufällig) gilt er als haltend. Sonst verrieten die
+  letzte genaue Position davor oder die erste danach den Ort. Von dem, was
+  nach der Stichzeit liegt, geht nur der Parkplatz eines Halts hinaus, der
+  bis jetzt begonnen hat — nie eine Position in Fahrt. Ohne Route bleibt es
+  beim Raster von etwa 10 km.
 - **Positivliste**: die Pydantic-Modelle in `api/routes/aktionsseite.py`,
   jedes mit `extra="forbid"`. Sie sind zugleich der Vertrag mit dem
   EventTracker; `tests/test_aktionsseite_felder.py` schreibt sie aus. Kein
