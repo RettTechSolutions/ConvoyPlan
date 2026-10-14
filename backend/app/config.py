@@ -94,6 +94,12 @@ class Settings(BaseSettings):
     # Firmware-Ablage für Tracker (services/firmware_angebot.py): ein statisches
     # HTTPS-Verzeichnis je Kanal mit manifest.json. Leer = keine Updates anbieten.
     tracker_firmware_url: str = "https://firmware.convoyplan.de"
+    # Bot-API für die Beiträge der Aktionsseiten (Fotos aus Telegram). Nur in
+    # Tests anders; ein eigener Bot-API-Server ginge auch.
+    telegram_api_url: str = "https://api.telegram.org"
+    # Abholen von Telegram an/aus. Aus heißt: Bots bleiben eingetragen, es wird
+    # nur nicht gefragt (für Instanzen ohne Ausgang nach api.telegram.org).
+    telegram_enabled: bool = True
     # Wurzelzertifikate, die die Instanz an ihre Tracker verteilt
     # (services/tracker_wurzeln.py): Pfad zu einer PEM-Datei mit höchstens drei
     # CA-Zertifikaten. Leer = die Instanz verwaltet keine Wurzeln.

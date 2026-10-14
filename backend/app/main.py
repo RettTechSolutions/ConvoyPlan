@@ -30,6 +30,7 @@ from app.api.routes import org_mcp as org_mcp_router
 from app.api.routes import org_plans as org_plans_router
 from app.api.routes import org_module as org_module_router
 from app.api.routes import aktionsseite as aktionsseite_router
+from app.api.routes import aktionsseite_telegram as aktionsseite_telegram_router
 from app.api.routes import geraete as geraete_router
 from app.api.routes import public_meta as public_meta_router
 from app.api.routes import version as version_router
@@ -175,6 +176,7 @@ async def _lifespan(_app: FastAPI):
     from app.services.lizenz_ablauf import lizenz_ablauf_loop
     from app.services.feedback_weiterleitung import weiterleitung_loop
     from app.services.anwesenheit import anwesenheit_loop
+    from app.services.aktionsseite_telegram import telegram_schleife
     notify_task = asyncio.create_task(update_notify_loop())
     # Watches /update_status/deploy_alert.json for failed-deploy / auto-rollback
     # / aborted-boot markers written by the updater and entrypoint, and emails
@@ -193,6 +195,9 @@ async def _lifespan(_app: FastAPI):
     # Meldet dem Updater, ob Nutzer angemeldet sind — solange hält er ein
     # automatisches Update zurück (docker/updater/anwesenheit.sh).
     anwesenheit_task = asyncio.create_task(anwesenheit_loop())
+    # Holt die Beiträge der Aktionsseiten aus Telegram ab — eine Aufgabe je
+    # Bot, im Cluster nur eine je Bot (pg_try_advisory_lock).
+    telegram_task = asyncio.create_task(telegram_schleife())
     try:
         # Der Streamable-HTTP-Transport des MCP-Servers braucht eine laufende
         # Task-Group. Ohne das scheitert der erste MCP-Request mit einem
@@ -209,8 +214,10 @@ async def _lifespan(_app: FastAPI):
         expiry_task.cancel()
         feedback_task.cancel()
         anwesenheit_task.cancel()
+        telegram_task.cancel()
         outcome = await asyncio.gather(
             notify_task, alert_task, metrics_task, expiry_task, feedback_task, anwesenheit_task,
+            telegram_task,
             return_exceptions=True,
         )
         logger.debug("Hintergrund-Tasks beendet: %r", outcome)
@@ -337,6 +344,8 @@ app.include_router(org_module_router.org_router, prefix="/api")
 # Öffentliche Aktionsseiten: der Abruf durch den EventTracker (eigenes Token,
 # keine Anmeldung) und die Verwaltung im Org-Admin.
 app.include_router(aktionsseite_router.public_router, prefix="/api")
+# Vor org_router: dessen /{tracker_id} finge /telegram sonst ab.
+app.include_router(aktionsseite_telegram_router.router, prefix="/api")
 app.include_router(aktionsseite_router.org_router, prefix="/api")
 app.include_router(geraete_router.geraet_router, prefix="/api")
 app.include_router(geraete_router.org_router, prefix="/api")

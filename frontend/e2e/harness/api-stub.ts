@@ -224,6 +224,165 @@ export const aktionsseitenApi = {
 	}),
 };
 
+// ── Telegram für die Aktionsseiten (`TelegramBotKarte`, `FotosVonUnterwegs`) ──
+//
+// Jeder Aufruf landet in `window.__telegramAufrufe` — der Test prüft dort, dass
+// der Token nur an `botSetzen` geht und die Knöpfe die Aufrufe aus § 8.3
+// schicken. `?mit_seite=1` legt vorab eine Seite mit einem Konvoi an;
+// `?code_s=<n>` lässt Codes nach n Sekunden ablaufen.
+
+export type TelegramBotStatus = 'bereit' | 'privat' | 'ungueltig' | 'konflikt' | 'fehler' | 'ungeprueft';
+export interface TelegramBotStand {
+	eingerichtet: boolean;
+	bot_username?: string | null;
+	status?: TelegramBotStatus | null;
+	last_error?: string | null;
+	checked_at?: string | null;
+}
+export interface TelegramCode {
+	code: string;
+	expires_at: string;
+}
+export interface AktionsseiteTelegram {
+	gruppen: { convoy_id: string; chat_title: string | null; thema: boolean }[];
+	presse: { telegram_user_id: number; display_name: string; username: string | null; added_at: string }[];
+}
+
+declare global {
+	interface Window {
+		__telegramAufrufe?: [string, ...unknown[]][];
+	}
+}
+
+export const BOT_TOKEN = '7712345678:AAFh3kQx9Lm2Pw8Zr5Tn1Vb6Yc4Hd0Gs7Jq';
+
+const suche = new URLSearchParams(location.search);
+let bot: TelegramBotStand = { eingerichtet: false };
+const telegramSeite: AktionsseiteTelegram = {
+	gruppen: [],
+	presse: [{ telegram_user_id: 55, display_name: 'Anna Presse', username: 'anna_p', added_at: '2026-12-20T10:00:00Z' }],
+};
+
+export type BeitragStatus = 'wartet' | 'freigegeben' | 'abgelehnt' | 'zurueckgezogen';
+export interface AktionsseiteBeitrag {
+	id: string;
+	convoy_id: string;
+	taken_at: string;
+	status: BeitragStatus;
+	text_public: string | null;
+	text_raw: string | null;
+	sender_name: string | null;
+	reviewed_at: string | null;
+	public_since: string | null;
+	photos: { id: string; position: number; width: number; height: number }[];
+	link_url?: string | null;
+	link_dienst?: 'instagram' | 'youtube' | 'facebook' | 'tiktok' | null;
+	not_before?: string | null;
+}
+export interface BeitragAenderung {
+	aktion?: 'frei' | 'ablehnen' | 'zurueck';
+	text_public?: string | null;
+	not_before?: string | null;
+}
+
+let beitraege: AktionsseiteBeitrag[] = [];
+
+function tgAufruf(name: string, ...args: unknown[]) {
+	(window.__telegramAufrufe ??= []).push([name, ...args]);
+}
+
+function codeBis(): string {
+	const s = Number(suche.get('code_s') ?? 900);
+	return new Date(Date.now() + s * 1000).toISOString();
+}
+
+if (suche.get('mit_seite') === '1') {
+	seiten.push(
+		zeile('a-1', {
+			title: 'Weihnachtskonvois 2026', subtitle: null, facts: null, theme: 'weihnachten',
+			delay_minutes: 120, show_destination: false, valid_until: null, enabled: true,
+			convoys: [
+				{ convoy_id: 'c-bih', display_name: 'Konvoi Bosnien', destination_label: 'Tuzla', destination_point: null, color: null },
+				{ convoy_id: 'c-rou', display_name: 'Konvoi Rumänien', destination_label: 'Sibiu', destination_point: null, color: null },
+			],
+		}),
+	);
+	telegramSeite.gruppen.push({ convoy_id: 'c-rou', chat_title: 'Weihnachtskonvoi 2026', thema: true });
+	const foto = (id: string) => ({ id, position: 0, width: 1600, height: 1200 });
+	beitraege = [
+		{
+			id: 'p-wartet', convoy_id: 'c-bih', taken_at: '2026-12-27T15:10:00Z', status: 'wartet',
+			text_public: 'Wir stehen an der A3 bei Würzburg', text_raw: 'Wir stehen an der A3 bei Würzburg',
+			sender_name: 'Jonas', reviewed_at: null, public_since: null, photos: [foto('f-1'), { ...foto('f-2'), position: 1 }],
+		},
+		{
+			id: 'p-frei', convoy_id: 'c-rou', taken_at: '2026-12-27T13:40:00Z', status: 'freigegeben',
+			text_public: 'Grenze geschafft', text_raw: 'Grenze geschafft', sender_name: 'Mia',
+			reviewed_at: '2026-12-27T14:00:00Z', public_since: '2026-12-27T15:41:00Z', photos: [foto('f-3')],
+		},
+		{
+			id: 'p-link', convoy_id: 'c-rou', taken_at: '2026-12-27T12:00:00Z', status: 'abgelehnt',
+			text_public: 'Unser Reel', text_raw: 'Unser Reel', sender_name: 'Mia',
+			reviewed_at: '2026-12-27T12:30:00Z', public_since: null, photos: [],
+			link_url: 'https://www.instagram.com/reel/XyZ/', link_dienst: 'instagram',
+		},
+	];
+}
+
+export const aktionsseitenTelegramApi = {
+	bot: async (): Promise<TelegramBotStand> => ({ ...bot }),
+	botSetzen: async (token: string): Promise<TelegramBotStand> => {
+		tgAufruf('botSetzen', token);
+		bot = {
+			eingerichtet: true, bot_username: 'AktionsBot',
+			status: suche.get('privat') === '1' ? 'privat' : 'bereit',
+			last_error: null, checked_at: '2026-12-27T18:00:00Z',
+		};
+		return { ...bot };
+	},
+	botEntfernen: async () => {
+		tgAufruf('botEntfernen');
+		bot = { eingerichtet: false };
+	},
+	seite: async (id: string): Promise<AktionsseiteTelegram> => {
+		tgAufruf('seite', id);
+		return structuredClone(telegramSeite);
+	},
+	verbindenCode: async (id: string, convoyId: string): Promise<TelegramCode> => {
+		tgAufruf('verbindenCode', id, convoyId);
+		return { code: 'K7Q-2MX', expires_at: codeBis() };
+	},
+	trennen: async (id: string, convoyId: string) => {
+		tgAufruf('trennen', id, convoyId);
+		telegramSeite.gruppen = telegramSeite.gruppen.filter((g) => g.convoy_id !== convoyId);
+	},
+	presseCode: async (id: string): Promise<TelegramCode> => {
+		tgAufruf('presseCode', id);
+		return { code: '4TR-8LK', expires_at: new Date(Date.now() + 86_400_000).toISOString() };
+	},
+	presseEntfernen: async (id: string, telegramUserId: number) => {
+		tgAufruf('presseEntfernen', id, telegramUserId);
+		telegramSeite.presse = telegramSeite.presse.filter((p) => p.telegram_user_id !== telegramUserId);
+	},
+	beitraege: async (id: string): Promise<AktionsseiteBeitrag[]> => {
+		tgAufruf('beitraege', id);
+		return structuredClone(beitraege);
+	},
+	beitragAendern: async (id: string, postId: string, aenderung: BeitragAenderung): Promise<AktionsseiteBeitrag> => {
+		tgAufruf('beitragAendern', id, postId, aenderung);
+		const b = beitraege.find((x) => x.id === postId)!;
+		if ('text_public' in aenderung) b.text_public = aenderung.text_public ?? null;
+		if ('not_before' in aenderung) b.not_before = aenderung.not_before ?? null;
+		if (aenderung.aktion) {
+			b.status = { frei: 'freigegeben', ablehnen: 'abgelehnt', zurueck: 'zurueckgezogen' }[aenderung.aktion] as BeitragStatus;
+			if (b.status !== 'freigegeben') b.public_since = null;
+		}
+		return structuredClone(b);
+	},
+	bildUrl: (id: string, photoId: string, groesse: 'gross' | 'klein') =>
+		`/api/org/aktionsseiten/${id}/bilder/${photoId}/${groesse}.webp`,
+};
+
 // ── Passkeys (`PasskeyVerwaltung`) ───────────────────────────────────────────
 //
 // Die Prüfung der Antwort ist Sache des Servers; hier zählt, was die

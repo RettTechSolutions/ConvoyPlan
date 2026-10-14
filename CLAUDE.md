@@ -402,6 +402,54 @@ schlägt sonst an.
 Die Positionen tragen die **Serverzeit**. Puffert ein Gerät im Funkloch und
 sendet später, landen die Punkte gestaucht am Ende der Linie.
 
+**Beiträge** (Fotos aus Telegram, Plan:
+`docs/superpowers/plans/2026-10-13-fotos-auf-der-aktionsseite.md`): Wo einer
+liegt und ob er hinausgeht, entscheiden `beitrag_position` und
+`beitrag_sichtbar` — mit derselben `lage()` wie `konvoi()`. Ein Foto ist eine
+Position, auch ohne Koordinate; es darf nie mehr zeigen als die Karte daneben.
+Im Schutzbereich eines Halts liegt es auf dessen Parkplatz und bleibt zurück,
+bis der Konvoi den Bereich verlassen hat (außer am Ziel nach der Ankunft); hält
+er gerade, geht nur hinaus, was die Linie schon zeigt. Wer an Halten, Parkplatz
+oder Linie dreht, ändert die Beiträge mit. Test:
+`tests/test_aktionsseite_beitraege.py`. Gespeichert (Migration `0070`) wird an
+`public_tracker_convoys (tracker_id, convoy_id)`: Fällt ein Konvoi aus der
+Seite, fallen Gruppe, Codes und Beiträge mit. `_konvois_setzen` ändert deshalb
+bleibende Zeilen, statt sie zu ersetzen — sonst löschte schon ein neuer Titel
+alles (`tests/test_aktionsseite_beitraege_daten.py`). Bilder gehen nur durch
+`services/aktionsseite_bild.py` (neu kodiert, ohne EXIF/XMP/ICC, Größe vor dem
+Dekodieren geprüft) und liegen als `bytea` in der Datenbank, also im Backup.
+Aus Telegram kommen sie per Long Polling (`services/aktionsseite_telegram.py`,
+Draht in `services/telegram.py`): eine Aufgabe je Bot, im Cluster nur eine
+(`pg_try_advisory_lock`, Telegram antwortet zwei Abholern mit 409). Der Token
+steht in jeder Adresse der Bot-API — Fehlermeldungen tragen deshalb nie die URL.
+Freigeben darf nur, wer per Presse-Code an **dieser** Seite eingetragen ist,
+geprüft bei jedem Knopfdruck; `callback_data` wird nichts geglaubt. Nach der
+Freigabe ändert eine Bearbeitung in Telegram den öffentlichen Text nicht mehr.
+Der Router (`api/routes/aktionsseite_telegram.py`) hängt **vor** `org_router`,
+sonst fängt dessen `/{tracker_id}` den Pfad `/telegram` ab. Tests:
+`tests/test_aktionsseite_telegram.py` (gestellte Bot-API),
+`frontend/e2e/aktionsseite-fotos.spec.ts`. Hinaus gehen sie als `posts` je
+Konvoi (Positivliste); ein Bild liefert `/api/public/aktion/{slug}/bild/…`
+nur, solange es in genau dieser Antwort steht (`_oeffentlich`, gemeinsamer
+Zwischenspeicher) — eine eigene Abfrage dort gäbe Bilder vor ihrer Zeit heraus.
+Freigeben und Zurückziehen leeren den Zwischenspeicher der Seite
+(`tests/test_aktionsseite_beitraege_oeffentlich.py`).
+**Link-Beiträge** (Instagram, YouTube, Facebook, TikTok): `services/aktionsseite_link.py`
+erkennt und bereinigt (https, ohne Abfrage außer YouTubes `v`/`t`, keine ähnlich
+klingenden Domains), der CHECK in `0070` kennt dieselben Dienste (`LINK_DIENSTE`).
+Als Antwort auf einen Beitrag übernimmt der Link dessen `taken_at` und damit dessen
+Ort; der Link selbst steht nach dem Anlegen fest, eine Bearbeitung ändert nur den
+Text. Tests: `tests/test_aktionsseite_links.py`.
+**`/ab`** setzt `not_before` (später, nie früher — eine frühere Zeit ist die Regelzeit,
+kein Fehler; nicht mehr nach `public_since`), gelesen in deutscher Ortszeit
+(`termin_lesen`). Tests: `tests/test_aktionsseite_termin.py`.
+**Ansage und Drosselung**: Was der Bot nicht annimmt (Seite nicht aktiv, Tagesgrenze),
+sagt er der Gruppe einmal je Grund und 24 h (`ansage_grund`/`ansage_at` am Chat). Karten,
+die Telegram drosselt (429, Netz, 5xx), stehen mit `karte_faellig_ab` in der Datenbank;
+`karten_nachholen` läuft in jedem Durchgang von `einmal_abholen` und baut aus dem Stand
+von dann. Wer eine Karte sendet oder bearbeitet, geht über `_karte_senden`/
+`karte_aktualisieren`, nie direkt über die API. Tests: `tests/test_aktionsseite_ansage_drossel.py`.
+
 ### Tracker: das Gerät hängt am Fahrzeug, die Position gehört dem Konvoi
 
 Ein festes Ortungsgerät (Repo **ConvoyPlan-Tracker**: Plan, Protokoll, Simulator,

@@ -1707,6 +1707,79 @@ export const aktionsseitenApi = {
     preview: (id: string) => api.get<AktionsseiteVorschau>(`/api/org/aktionsseiten/${id}/vorschau`),
 };
 
+// Beiträge aus Telegram (Plan 2026-10-13, § 8.3/8.4): Bot einmal je
+// Organisation, Gruppen und Presse je Aktionsseite. Den Bot-Token schickt nur
+// `botSetzen`; zurück kommt er nie.
+
+/** bereit · privat (sieht in Gruppen keine Fotos) · ungueltig · konflikt · fehler · ungeprueft */
+export type TelegramBotStatus = 'bereit' | 'privat' | 'ungueltig' | 'konflikt' | 'fehler' | 'ungeprueft';
+
+export interface TelegramBotStand {
+    eingerichtet: boolean;
+    bot_username?: string | null;
+    status?: TelegramBotStatus | null;
+    last_error?: string | null;
+    checked_at?: string | null;
+}
+
+export interface TelegramCode {
+    code: string;
+    expires_at: string;
+}
+
+export interface AktionsseiteTelegram {
+    gruppen: { convoy_id: string; chat_title: string | null; thema: boolean }[];
+    presse: { telegram_user_id: number; display_name: string; username: string | null; added_at: string }[];
+}
+
+export const aktionsseitenTelegramApi = {
+    bot: () => api.get<TelegramBotStand>('/api/org/aktionsseiten/telegram'),
+    botSetzen: (token: string) => api.put<TelegramBotStand>('/api/org/aktionsseiten/telegram', { token }),
+    botEntfernen: () => api.delete<void>('/api/org/aktionsseiten/telegram'),
+    seite: (id: string) => api.get<AktionsseiteTelegram>(`/api/org/aktionsseiten/${id}/telegram`),
+    verbindenCode: (id: string, convoyId: string) =>
+        api.post<TelegramCode>(`/api/org/aktionsseiten/${id}/konvois/${convoyId}/telegram-code`, {}),
+    trennen: (id: string, convoyId: string) =>
+        api.delete<void>(`/api/org/aktionsseiten/${id}/konvois/${convoyId}/telegram`),
+    presseCode: (id: string) => api.post<TelegramCode>(`/api/org/aktionsseiten/${id}/presse-code`, {}),
+    presseEntfernen: (id: string, telegramUserId: number) =>
+        api.delete<void>(`/api/org/aktionsseiten/${id}/presse/${telegramUserId}`),
+    beitraege: (id: string) => api.get<AktionsseiteBeitrag[]>(`/api/org/aktionsseiten/${id}/beitraege`),
+    beitragAendern: (id: string, postId: string, aenderung: BeitragAenderung) =>
+        api.put<AktionsseiteBeitrag>(`/api/org/aktionsseiten/${id}/beitraege/${postId}`, aenderung),
+    /** Für `<img src>`: angemeldet über das Sitzungs-Cookie. */
+    bildUrl: (id: string, photoId: string, groesse: 'gross' | 'klein') =>
+        `/api/org/aktionsseiten/${id}/bilder/${photoId}/${groesse}.webp`,
+};
+
+export type BeitragStatus = 'wartet' | 'freigegeben' | 'abgelehnt' | 'zurueckgezogen';
+
+export interface AktionsseiteBeitrag {
+    id: string;
+    convoy_id: string;
+    taken_at: string;
+    status: BeitragStatus;
+    text_public: string | null;
+    /** Was in Telegram stand — intern, geht nie hinaus. */
+    text_raw: string | null;
+    sender_name: string | null;
+    reviewed_at: string | null;
+    public_since: string | null;
+    photos: { id: string; position: number; width: number; height: number }[];
+    /** Link-Beitrag (Instagram & Co.) statt Bildern — bereinigt, wie er hinausgeht. */
+    link_url?: string | null;
+    link_dienst?: 'instagram' | 'youtube' | 'facebook' | 'tiktok' | null;
+    /** Termin der Presse (`/ab`): nicht vor diesem Zeitpunkt. */
+    not_before?: string | null;
+}
+
+export interface BeitragAenderung {
+    aktion?: 'frei' | 'ablehnen' | 'zurueck';
+    text_public?: string | null;
+    /** Wie `/ab` in Telegram: später, nie früher; `null` nimmt den Termin weg. */
+    not_before?: string | null;
+}
+
 // ── Ortungsgeräte (Tracker) ───────────────────────────────────────────────
 //
 // Feste Tracker im Fahrzeug (Repo ConvoyPlan-Tracker). Der Einmal-Code zum
