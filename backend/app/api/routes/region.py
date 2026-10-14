@@ -852,6 +852,12 @@ async def region_outline():
         return _outline_response(await _build_outline(paths, key))
 
 
+def _vereinigen(teile: list[dict]) -> list:
+    return region_outline_geom.union_coordinates(
+        teile, land=region_outline_geom.landflaeche(teile)
+    )
+
+
 async def _build_outline(paths: list[str], key: str) -> dict:
     """Holt die Geometrien und setzt daraus das Feature zusammen. Nur aus
     `region_outline()` heraus und nur unter dem Lock aufgerufen."""
@@ -879,7 +885,9 @@ async def _build_outline(paths: list[str], key: str) -> dict:
             )
         teile.append(geometry)
 
-    coordinates = region_outline_geom.union_coordinates(teile)
+    # Im Thread: Das Schliessen der Wasserluecken braucht bei einer Region wie
+    # dem halben Balkan knapp eine Sekunde, und das einmal je Region und Prozess.
+    coordinates = await asyncio.to_thread(_vereinigen, teile)
     if not coordinates:
         raise HTTPException(503, "Der Umriss der aktiven Region ist leer.")
 

@@ -127,3 +127,82 @@ def test_leere_eingabe_ergibt_leere_liste():
     """Der Aufrufer meldet daraufhin 503 statt eine leere Maske zu zeichnen."""
     assert union_coordinates([]) == []
     assert union_coordinates([{"type": "Polygon", "coordinates": []}]) == []
+
+
+# ── Luecken ueber Wasser ────────────────────────────────────────────────────
+#
+# Der Befund: Nach der Vereinigung blieben dunkle Dreiecke mitten in der Adria.
+# Gueltige Geometrie, echte Luecken — Geofabrik schneidet Italien, Kroatien und
+# Albanien auf See entlang grober Linien, und dazwischen liegt Meer, das keiner
+# der Extracts abdeckt. Auf See wird nicht geroutet; die Maske dort sagt nichts.
+
+from shapely.geometry import Point, box  # noqa: E402
+
+from app.services.region_outline import landflaeche  # noqa: E402
+
+KEIN_LAND = box(100, 100, 101, 101)
+MIT_LOCH = {
+    "type": "Polygon",
+    "coordinates": [
+        [[0, 0], [6, 0], [6, 6], [0, 6], [0, 0]],
+        [[2, 2], [2, 3], [3, 3], [3, 2], [2, 2]],
+    ],
+}
+WEST = {"type": "Polygon", "coordinates": [[[0, 0], [3, 0], [3, 3], [0, 3], [0, 0]]]}
+OST = {"type": "Polygon", "coordinates": [[[3.5, 0], [6, 0], [6, 3], [3.5, 3], [3.5, 0]]]}
+
+
+def test_loch_ueber_wasser_wird_gefuellt():
+    """Das Dreieck zwischen Italien und Kroatien: ganz von der Region
+    umschlossen, aber kein Land darin."""
+    coords = union_coordinates([MIT_LOCH], land=KEIN_LAND)
+    assert len(coords) == 1
+    assert len(coords[0]) == 1, "das Loch ist zu"
+
+
+def test_loch_auf_land_bleibt():
+    """Eine echte Enklave — Land, dessen Daten fehlen — bleibt maskiert."""
+    coords = union_coordinates([MIT_LOCH], land=box(2, 2, 3, 3))
+    assert len(coords[0]) == 2
+
+
+def test_meerenge_zwischen_zwei_teilen_wird_geschlossen():
+    """Die Strasse von Otranto: ein schmaler Streifen Wasser zwischen zwei
+    Bestandteilen."""
+    coords = union_coordinates([WEST, OST], land=KEIN_LAND)
+    assert len(coords) == 1
+    assert _als_flaeche(coords).contains(Point(3.25, 1.5))
+
+
+def test_fremdes_land_in_der_luecke_bleibt_maskiert():
+    """Kosovo zwischen Serbien und Albanien: Schliessen fuellt nur Wasser."""
+    fremd = box(3.1, 0, 3.4, 3)
+    coords = union_coordinates([WEST, OST], land=fremd)
+    assert not _als_flaeche(coords).intersects(Point(3.25, 1.5))
+
+
+def test_offenes_meer_wird_nicht_freigegeben():
+    """Was weiter auseinanderliegt, bleibt getrennt — sonst verschwaende die
+    Maske um jede Insel herum."""
+    coords = union_coordinates([QUADRAT, ENTFERNT], land=KEIN_LAND)
+    assert len(coords) == 2
+    assert not _als_flaeche(coords).intersects(Point(30, 30))
+
+
+def test_region_wird_nie_kleiner():
+    """Das Schliessen ergaenzt nur. Geladenes Gebiet als gesperrt zu zeigen
+    waere der schlimmere Fehler."""
+    coords = union_coordinates([MIT_LOCH, WEST, OST], land=box(-5, -5, 20, 20))
+    vorher = unary_union([shape(MIT_LOCH), shape(WEST), shape(OST)])
+    assert vorher.difference(_als_flaeche(coords)).area < 1e-9
+
+
+def test_mitgelieferte_landflaeche_kennt_die_adria():
+    """Die Datei liegt im Image und unterscheidet Meer von Land: Mitte der
+    Adria ist Wasser, Kosovo und Korfu sind Land."""
+    adria = {"type": "Polygon", "coordinates": [[[12, 39], [21, 39], [21, 46], [12, 46], [12, 39]]]}
+    land = landflaeche([adria])
+    assert land is not None
+    assert not land.contains(Point(14.0, 44.0))
+    assert land.contains(Point(21.0, 42.6))
+    assert land.contains(Point(19.9, 39.6))
