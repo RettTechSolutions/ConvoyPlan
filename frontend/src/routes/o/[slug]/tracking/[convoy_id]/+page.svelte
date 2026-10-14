@@ -42,6 +42,7 @@
 	import { prefetchRouteTiles } from '$lib/tracking/tileCache';
 	import { buildRoutePoints, computeConvoyProgress, formatDistance, type RoutePoint } from '$lib/tracking/progress';
 	import { notifySignal } from '$lib/tracking/notify';
+	import { reiterMerken } from '$lib/reiter-merken.svelte';
 
 	const convoyId = page.params.convoy_id!;
 
@@ -55,6 +56,7 @@
 	let transmitting = $state(false);
 	let manualMode = $state(false);
 	let activeTab = $state<'fahrzeuge' | 'status' | 'zeitplan'>('fahrzeuge');
+	reiterMerken(['fahrzeuge', 'status', 'zeitplan'], () => activeTab, (r) => (activeTab = r));
 	let sidebarOpen = $state(false);
 	// Desktop/tablet: collapse the sidebar to a thin rail to free the map (landscape).
 	let sidebarCollapsed = $state(false);
@@ -910,7 +912,9 @@
 	// waypoints with a planned arrival). `$derived:` is not a rune in runes mode
 	// — a real $effect is needed for this to react to convoy changes.
 	$effect(() => {
-		if (activeTab === 'zeitplan' && !hasSchedule) {
+		// Erst mit geladenem Konvoi — sonst fiele ein gemerkter Zeitplan-Reiter
+		// beim Neuladen zurück, bevor es einen Zeitplan geben kann.
+		if (convoy && activeTab === 'zeitplan' && !hasSchedule) {
 			activeTab = 'fahrzeuge';
 		}
 	});

@@ -32,6 +32,7 @@
 	import { createLiveSocket, CLOSE_UNAUTHORIZED, type LiveSocket } from '$lib/tracking/socket';
 	import { createBelegung, geraeteKennung, BELEGT_HINWEIS } from '$lib/tracking/belegung';
 	import { TRACKER_HINWEIS, istPositionAbgelehnt, istPositionsquelle, trackerHaeltPosition } from '$lib/tracking/positionsquelle';
+	import { reiterMerken } from '$lib/reiter-merken.svelte';
 
 	const slug = $derived(page.params.slug!);
 
@@ -55,6 +56,7 @@
 	);
 
 	let activeTab = $state<'fahrzeuge' | 'zeitplan' | 'route'>('fahrzeuge');
+	reiterMerken(['fahrzeuge', 'zeitplan', 'route'], () => activeTab, (r) => (activeTab = r));
 	let sidebarOpen = $state(false);
 	let wsState = $state<ConnectionState>('idle');
 
@@ -214,12 +216,13 @@
 
 	// Only offer the schedule tab when at least one waypoint has a planned time.
 	let hasSchedule = $derived((data?.waypoints ?? []).some((w) => w.planned_arrival));
-	$effect(() => { if (!hasSchedule && activeTab === 'zeitplan') activeTab = 'fahrzeuge'; });
+	// Erst mit geladenen Daten — sonst fiele ein gemerkter Reiter beim Neuladen zurück.
+	$effect(() => { if (data && !hasSchedule && activeTab === 'zeitplan') activeTab = 'fahrzeuge'; });
 
 	// Die Abbiegehinweise als Liste — für alle, auch für Beobachter. Der Stand
 	// bezieht sich auf die Verbandsspitze und sagt das dazu.
 	let hasSteps = $derived((data?.route_steps ?? []).length > 0);
-	$effect(() => { if (!hasSteps && activeTab === 'route') activeTab = 'fahrzeuge'; });
+	$effect(() => { if (data && !hasSteps && activeTab === 'route') activeTab = 'fahrzeuge'; });
 
 	function statusOf(v: { id: string; vehicle_status: string | null }): string {
 		return liveStatuses.get(v.id) ?? v.vehicle_status ?? 'planned';
