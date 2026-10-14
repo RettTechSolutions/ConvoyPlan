@@ -657,6 +657,28 @@ Die Bilder im Wiki (`wiki/bilder/kontextmenue-*`) entstehen aus derselben Lage
 Playwright-Lauf mit echten OSM-Kacheln, deshalb mit Netz und nicht in der CI. Wer das
 Menü sichtbar ändert, lässt ihn neu laufen. `sync-wiki.yml` kopiert `wiki/bilder/` mit.
 
+### Admin-Portal am Telefon: Reiter mit Überlauf, Karten zum Zuklappen
+
+Superadmin- und Org-Admin teilen sich `TabLeiste.svelte`: Die Leiste scrollt
+seitlich, verdeckte Reiter laufen aus, auf der verdeckten Seite steht ein Pfeil, und
+der aktive Reiter rollt ins Bild. Die Scrollleiste blieb ausgeblendet; ohne diese
+Zeichen endete die Leiste am Telefon scheinbar nach drei Reitern.
+
+Karten in Reitern mit mehreren Themen (System, MCP, Demo, Branding,
+Systemübersicht, Leitstellenkarte) klappt die Action `use:klappbar={'id'}` aus
+`$lib/klappbar/` zusammen. Sie fügt keine Knoten ein, der Titel
+(`.section-header > strong`) wird zum Schalter. Am Telefon starten die Karten zu,
+am Schreibtisch offen; die Wahl merkt sich der Browser je `id`. Eine Karte, die
+sich beim Aufklappen erst messen muss (MapLibre), braucht einen ResizeObserver,
+wie `LeitstellenOverviewMap`. Was zugeklappt nicht untergehen darf, steht als
+Abzeichen in der Kopfzeile (`kopf-status`): Software-Update (verfügbar,
+zurückgehalten, läuft) und Kartenregion (Wechsel, Graph-Aufbau). Eine Ebene
+höher trägt der Reiter „System" einen Hinweis (`systemHinweis`, nur was ansteht —
+kein alter Fehlschlag, kein unerreichbares GitHub), und liegt ein Reiter mit
+Hinweis oder Zähler hinter einem Pfeil der `TabLeiste`, trägt der Pfeil einen
+Punkt. Test:
+`frontend/e2e/admin-am-telefon.spec.ts`.
+
 ### API-Docs (Swagger/OpenAPI)
 
 `/docs`, `/redoc` und `/openapi.json` sind in Produktion **standardmäßig deaktiviert**

@@ -17,6 +17,7 @@
     let map: maplibregl.Map | undefined;
     let mapReady = $state(false);
     let popup: maplibregl.Popup | undefined;
+    let resizeObserver: ResizeObserver | undefined;
 
     const EMPTY: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
 
@@ -56,6 +57,17 @@
             zoom: 5,
         });
         map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+        // Die Karte kann zugeklappt starten (Admin-Portal am Telefon, $lib/klappbar):
+        // MapLibre misst dann 0 × 0 und erfährt vom Aufklappen nichts. Also
+        // nachmessen — und den Ausschnitt neu setzen, wenn sie vorher unsichtbar war.
+        let warUnsichtbar = mapContainer.clientWidth === 0;
+        resizeObserver = new ResizeObserver(() => {
+            if (!map || !mapContainer) return;
+            map.resize();
+            if (warUnsichtbar && mapContainer.clientWidth > 0) render();
+            warUnsichtbar = mapContainer.clientWidth === 0;
+        });
+        resizeObserver.observe(mapContainer);
         map.on('load', () => {
             // Regionsfokus + Hell/Dunkel-Abstimmung (siehe $lib/map/region)
             addRegionMask(map!, get(themeStore));
@@ -87,7 +99,7 @@
         });
     });
 
-    onDestroy(() => { popup?.remove(); map?.remove(); map = undefined; });
+    onDestroy(() => { resizeObserver?.disconnect(); popup?.remove(); map?.remove(); map = undefined; });
 
     $effect(() => { void geojson; render(); });
 

@@ -25,6 +25,7 @@
         type RegionStatus,
     } from '$lib/api';
     import { ApiError } from '$lib/api/client';
+    import { klappbar } from '$lib/klappbar/klappbar';
     import { folgtDemEnde, zeilenSammler } from '$lib/terminal';
 
     // ── Ruhezustand ──────────────────────────────────────────────────────────
@@ -182,6 +183,17 @@
     const graphBaut = $derived(
         status.graph_build?.phase === 'import' || status.graph_build?.phase === 'download',
     );
+    // Kurzfassung für die Kopfzeile: Am Telefon ist die Karte zugeklappt
+    // ($lib/klappbar), und ein laufender Wechsel oder Graph-Aufbau soll trotzdem
+    // auffallen. Im Ruhezustand steht nichts da — dort gibt es nichts zu melden.
+    const kopfStatus = $derived.by((): { text: string; klasse: string } | null => {
+        if (busy && status.phase === 'scheduled') return { text: 'Wechsel geplant', klasse: 'badge-neutral' };
+        if (busy) return { text: 'Wechsel läuft', klasse: 'badge-update' };
+        if (finished && status.phase === 'failed') return { text: 'Wechsel fehlgeschlagen', klasse: 'badge-warn' };
+        if (status.graph_build?.phase === 'haengt') return { text: 'Graph-Aufbau hängt', klasse: 'badge-warn' };
+        if (graphBaut) return { text: 'Graph wird gebaut', klasse: 'badge-update' };
+        return null;
+    });
 
     onMount(async () => {
         await loadCurrent();
@@ -523,11 +535,14 @@
     }
 </script>
 
-<div class="section region-card">
+<div class="section region-card" use:klappbar={'system-region'}>
     <div class="section-header">
         <strong>Kartenregion</strong>
+        {#if kopfStatus}
+            <span class="badge kopf-status {kopfStatus.klasse}" data-testid="kopf-status">{kopfStatus.text}</span>
+        {/if}
         {#if !showSwitchPanel && !loadingCurrent}
-            <button class="btn-small" onclick={loadCurrent}>↺ Aktualisieren</button>
+            <button class="btn-small" onclick={loadCurrent} title="Aktualisieren" aria-label="Aktualisieren">↺</button>
         {/if}
     </div>
 
@@ -941,6 +956,8 @@
     }
     .section-header {
         display: flex;
+        flex-wrap: wrap;
+        gap: .5rem;
         justify-content: space-between;
         align-items: center;
         margin-bottom: .75rem;
@@ -971,6 +988,7 @@
     .sources-list { display: flex; flex-wrap: wrap; gap: .35rem; min-width: 0; }
     .update-label { width: 130px; color: var(--text-muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; flex-shrink: 0; }
 
+    .kopf-status { margin-right: auto; }
     .badge { display: inline-block; padding: .15rem .5rem; border-radius: 3px; font-size: var(--text-xs); font-weight: 600; }
     .badge-ok { background: rgba(107,127,77,.2); color: #a8c070; border: 1px solid rgba(107,127,77,.4); }
     .badge-update { background: rgba(210,120,30,.2); color: #e8a050; border: 1px solid rgba(210,120,30,.4); }
