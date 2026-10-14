@@ -19,6 +19,7 @@ zwei gleichzeitigen ``getUpdates`` mit 409 antwortet.
 """
 import asyncio
 import hashlib
+import re
 import logging
 import secrets
 import time
@@ -63,6 +64,8 @@ LINKS_JE_TAG = 100
 # Wie lange eine Aufforderung „Neuer Text …" auf ihre Antwort wartet.
 TEXTEINGABE_GUELTIG = timedelta(hours=1)
 ZEITZONE = ZoneInfo("Europe/Berlin")
+# Wie weit die Presse mit ``/ab`` in die Zukunft terminieren darf (§ 3.5).
+TERMIN_MAX = timedelta(days=7)
 
 # Für Tests: die Bot-API gestellt (httpx.MockTransport).
 transport: httpx.AsyncBaseTransport | None = None
@@ -75,6 +78,7 @@ AUDIT_BEITRAG = {
     "zurueck": "org.aktionsseite.beitrag_zurueckgezogen",
 }
 AUDIT_TEXT = "org.aktionsseite.beitrag_text_geaendert"
+AUDIT_TERMIN = "org.aktionsseite.beitrag_terminiert"
 
 TEXT_VERBUNDEN = (
     "Verbunden mit „{konvoi}“ auf der Aktionsseite „{seite}“.\n\n"
@@ -88,6 +92,10 @@ TEXT_CODE_UNBEKANNT = "Der Code ist unbekannt oder abgelaufen. Einen neuen gibt 
 TEXT_SCHON_ANDERS = "Diese Gruppe (oder dieses Thema) ist schon mit einem anderen Konvoi verbunden."
 TEXT_NUR_PRESSE = "Freigeben darf nur die Presse."
 TEXT_BILD_FEHLT = "Dieses Bild kann ich nicht übernehmen — bitte als JPEG, PNG oder WebP schicken."
+TEXT_AB_HILFE = (
+    "So geht's: als Antwort auf die Karte eines Beitrags /ab 18:00 oder /ab 27.12. 18:00 — "
+    "/ab - nimmt den Termin wieder weg. Früher als die Verzögerung geht nie."
+)
 TEXT_HILFE = (
     "Ich nehme Fotos und Links aus den verbundenen Gruppen für die Aktionsseite an.\n\n"
     "Wer freigeben soll, schickt mir hier den Presse-Code: /presse CODE"
@@ -124,6 +132,50 @@ def befehl(text_: str | None, bot_name: str) -> tuple[str, str] | None:
     if an and an.lower() != bot_name.lower():
         return None
     return name.lower(), rest.strip()
+
+
+class TerminFehler(ValueError):
+    pass
+
+
+_TERMIN = re.compile(r"^(?:(\d{1,2})\.(\d{1,2})\.(\d{4})?\s+)?(\d{1,2})[:.](\d{2})(?:\s*uhr)?$", re.IGNORECASE)
+
+
+def termin_lesen(arg: str, jetzt: datetime) -> datetime | None:
+    """``/ab``-Zeit in deutscher Ortszeit. ``18:00`` ist das nächste 18:00
+    (um 23 Uhr also morgen früh), ``27.12. 18:00`` ein Tag im kommenden Jahr,
+    wenn er dieses schon vorbei ist; ``-`` nimmt den Termin weg (``None``).
+    Höchstens ``TERMIN_MAX`` voraus."""
+    arg = arg.strip()
+    if arg in ("-", "weg", "aus"):
+        return None
+    m = _TERMIN.match(arg)
+    if not m:
+        raise TerminFehler(arg)
+    tag, monat, jahr, stunde, minute = m.groups()
+    lokal_jetzt = jetzt.astimezone(ZEITZONE)
+    try:
+        if tag:
+            j = int(jahr) if jahr else lokal_jetzt.year
+            t = datetime(j, int(monat), int(tag), int(stunde), int(minute), tzinfo=ZEITZONE)
+            if not jahr and t < lokal_jetzt - timedelta(days=1):
+                t = t.replace(year=j + 1)
+        else:
+            t = lokal_jetzt.replace(hour=int(stunde), minute=int(minute), second=0, microsecond=0)
+            if t <= lokal_jetzt:
+                t += timedelta(days=1)
+    except ValueError as e:
+        raise TerminFehler(arg) from e
+    t = t.astimezone(timezone.utc)
+    if t > jetzt + TERMIN_MAX:
+        raise TerminFehler(arg)
+    return t
+
+
+def regelzeit(post: PublicTrackerPost, verzoegerung_min: int) -> datetime:
+    """Frühestens dann darf ein Beitrag nach der Verzögerung hinaus. Halte
+    können ihn länger zurückhalten — das weiß erst ``beitrag_sichtbar``."""
+    return post.taken_at + timedelta(minutes=max(verzoegerung_min, aktionsseite.MIN_VERZOEGERUNG_MIN))
 
 
 def callback(post_id: uuid.UUID, aktion: str) -> str:
@@ -189,24 +241,25 @@ def karte(
             "öffentlich bleibt der freigegebene."
         )
     wer = f" von {pruefer}" if pruefer else ""
+    termin = post.not_before and post.not_before > regelzeit(post, verzoegerung_min)
     if post.status == "wartet":
         zeilen.append("\n⏳ Wartet auf Presse")
+        if termin:
+            zeilen.append(f"⏰ Termin: frühestens {_uhrzeit(post.not_before, jetzt)}")
         knoepfe = [[
             {"text": "✅ Freigeben", "callback_data": callback(post.id, "frei")},
             {"text": "✏️ Text ändern", "callback_data": callback(post.id, "text")},
             {"text": "❌ Ablehnen", "callback_data": callback(post.id, "ablehnen")},
         ]]
     elif post.status == "freigegeben":
-        ab = post.taken_at + timedelta(minutes=max(verzoegerung_min, aktionsseite.MIN_VERZOEGERUNG_MIN))
-        if post.not_before and post.not_before > ab:
-            ab = post.not_before
+        ab = post.not_before if termin else regelzeit(post, verzoegerung_min)
         if post.public_since:
             zeilen.append(f"\n🌍 Öffentlich seit {_uhrzeit(post.public_since, jetzt)}")
         else:
+            grund = "Termin der Presse" if termin else f"Verzögerung {verzoegerung_min} min"
             zeilen.append(
                 f"\n✅ Freigegeben{wer} · in der Warteschlange\n"
-                f"erscheint frühestens {_uhrzeit(ab, jetzt)} "
-                f"(Verzögerung {verzoegerung_min} min)"
+                f"erscheint frühestens {_uhrzeit(ab, jetzt)} ({grund})"
             )
         knoepfe = [[
             {"text": "✏️ Text ändern", "callback_data": callback(post.id, "text")},
@@ -354,6 +407,9 @@ async def _gruppe(lauf: _Lauf, nachricht: dict) -> None:
     b = befehl(nachricht.get("text"), lauf.ich.username)
     if b is not None and b[0] == "verbinden":
         await _verbinden(lauf, nachricht, b[1])
+        return
+    if b is not None and b[0] == "ab":
+        await _ab(lauf, nachricht, b[1])
         return
     antwort_auf = nachricht.get("reply_to_message") or {}
     if nachricht.get("text") and (nachricht["chat"]["id"], antwort_auf.get("message_id")) in _texteingaben:
@@ -664,6 +720,67 @@ async def _knopf(lauf: _Lauf, cq: dict) -> None:
         "ablehnen": "Abgelehnt.",
         "zurueck": "Zurückgezogen.",
     }[aktion])
+    await karte_aktualisieren(lauf.db, lauf.api, post, lauf.jetzt)
+
+
+async def _ab(lauf: _Lauf, nachricht: dict, arg: str) -> None:
+    """``/ab 18:00`` als Antwort auf einen Beitrag: später, nie früher (§ 3.5).
+    Wie die Knöpfe nur für die Presse dieser Seite."""
+    chat_id = nachricht["chat"]["id"]
+    bezug = (nachricht.get("reply_to_message") or {}).get("message_id")
+    post = None
+    if bezug is not None:
+        post = (await lauf.db.execute(
+            select(PublicTrackerPost).where(
+                PublicTrackerPost.chat_id == chat_id,
+                (PublicTrackerPost.card_message_id == bezug) | (PublicTrackerPost.message_id == bezug),
+            ).limit(1)
+        )).scalar_one_or_none()
+    if post is None:
+        await lauf.antworten(nachricht, TEXT_AB_HILFE)
+        return
+    seite = await lauf.db.get(PublicTracker, post.tracker_id)
+    if seite is None or seite.organization_id != lauf.bot.organization_id:
+        return
+    von = nachricht.get("from") or {}
+    presse = await lauf.db.get(PublicTrackerPresse, (post.tracker_id, von.get("id")))
+    if presse is None:
+        await lauf.antworten(nachricht, "Terminieren darf nur die Presse.")
+        return
+    if post.status not in ("wartet", "freigegeben"):
+        await lauf.antworten(nachricht, "Der Beitrag ist abgelehnt oder zurückgezogen.")
+        return
+    if post.public_since is not None:
+        await lauf.antworten(
+            nachricht, "Der Beitrag ist schon öffentlich. Zurückholen geht mit „Zurückziehen“."
+        )
+        return
+    try:
+        termin = termin_lesen(arg, lauf.jetzt)
+    except TerminFehler:
+        await lauf.antworten(nachricht, TEXT_AB_HILFE)
+        return
+    regel = regelzeit(post, seite.delay_minutes)
+    if termin is not None and termin <= regel:
+        # Früher geht nie — kein Fehler, nur die Zeit, die ohnehin gilt.
+        termin = None
+        antwort = f"Früher als die Verzögerung geht nicht — er erscheint frühestens {_uhrzeit(regel, lauf.jetzt)}."
+    elif termin is None:
+        antwort = f"Termin entfernt — er erscheint frühestens {_uhrzeit(regel, lauf.jetzt)}."
+    else:
+        antwort = f"Termin gesetzt — frühestens {_uhrzeit(termin, lauf.jetzt)}."
+    post.not_before = termin
+    await lauf.db.commit()
+    await audit.record(
+        lauf.db, AUDIT_TERMIN, org_id=seite.organization_id,
+        target_type="aktionsseite_beitrag", target_id=str(post.id),
+        detail={"not_before": termin.isoformat() if termin else None,
+                "telegram_user_id": von["id"], "name": presse.display_name},
+    )
+    from app.api.routes.aktionsseite import _vergessen
+
+    _vergessen(seite.slug)
+    await lauf.antworten(nachricht, antwort)
     await karte_aktualisieren(lauf.db, lauf.api, post, lauf.jetzt)
 
 

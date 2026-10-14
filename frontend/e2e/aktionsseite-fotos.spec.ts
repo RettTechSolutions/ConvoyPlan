@@ -150,3 +150,31 @@ test('Beiträge: Zähler auch zugeklappt, Aktionen wie die Knöpfe in Telegram',
 		['beitragAendern', 'a-1', 'p-frei', { aktion: 'zurueck' }],
 	]);
 });
+
+test.describe('Termin der Presse', () => {
+	// `datetime-local` rechnet in der Zeitzone des Browsers — die Pressestelle sitzt in Deutschland.
+	test.use({ timezoneId: 'Europe/Berlin' });
+
+	test('„Erst ab …" schickt den Zeitpunkt mit Zeitzone und zeigt ihn an', async ({ page }) => {
+		await page.goto(HUELLE);
+		const fotos = page.getByTestId('fotos-von-unterwegs');
+		await fotos.locator('summary').click();
+		const wartend = fotos.locator('[data-testid="beitrag"][data-status="wartet"]');
+		await wartend.getByRole('button', { name: 'Erst ab …' }).click();
+		await wartend.getByLabel('Erst ab').fill('2026-12-27T19:30');
+		await wartend.getByRole('button', { name: 'Termin speichern' }).click();
+		await expect(wartend.getByTestId('termin')).toContainText('27.12., 19:30');
+		await wartend.getByRole('button', { name: 'Erst ab …' }).click();
+		await wartend.getByRole('button', { name: 'Termin entfernen' }).click();
+		await expect(wartend.getByTestId('termin')).toHaveCount(0);
+		// Öffentlich ist öffentlich: dort gibt es keinen Termin mehr, nur Zurückziehen.
+		const frei = fotos.locator('[data-testid="beitrag"]', { hasText: 'Grenze geschafft' });
+		await expect(frei.getByRole('button', { name: 'Erst ab …' })).toHaveCount(0);
+
+		const gesendet = (await aufrufe(page)).filter((a) => a[0] === 'beitragAendern');
+		expect(gesendet).toEqual([
+			['beitragAendern', 'a-1', 'p-wartet', { not_before: '2026-12-27T18:30:00.000Z' }],
+			['beitragAendern', 'a-1', 'p-wartet', { not_before: null }],
+		]);
+	});
+});

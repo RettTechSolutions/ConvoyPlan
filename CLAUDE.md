@@ -440,6 +440,9 @@ klingenden Domains), der CHECK in `0070` kennt dieselben Dienste (`LINK_DIENSTE`
 Als Antwort auf einen Beitrag übernimmt der Link dessen `taken_at` und damit dessen
 Ort; der Link selbst steht nach dem Anlegen fest, eine Bearbeitung ändert nur den
 Text. Tests: `tests/test_aktionsseite_links.py`.
+**`/ab`** setzt `not_before` (später, nie früher — eine frühere Zeit ist die Regelzeit,
+kein Fehler; nicht mehr nach `public_since`), gelesen in deutscher Ortszeit
+(`termin_lesen`). Tests: `tests/test_aktionsseite_termin.py`.
 
 ### Tracker: das Gerät hängt am Fahrzeug, die Position gehört dem Konvoi
 

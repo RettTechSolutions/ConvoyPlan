@@ -42,6 +42,8 @@
 	let filter = $state<'alle' | AktionsseiteBeitrag['status']>('alle');
 	let textFuer = $state<string | null>(null);
 	let textEntwurf = $state('');
+	let terminFuer = $state<string | null>(null);
+	let terminEntwurf = $state('');
 
 	const STATUS_TEXT: Record<AktionsseiteBeitrag['status'], string> = {
 		wartet: 'wartet auf Presse',
@@ -86,6 +88,7 @@
 			const neu = await aktionsseitenTelegramApi.beitragAendern(seite.id, b.id, aenderung);
 			beitraege = beitraege.map((x) => (x.id === b.id ? neu : x));
 			textFuer = null;
+			terminFuer = null;
 		} catch (e) {
 			fehler = e instanceof Error ? e.message : 'Ändern fehlgeschlagen';
 		}
@@ -94,6 +97,13 @@
 	function textBearbeiten(b: AktionsseiteBeitrag) {
 		textFuer = b.id;
 		textEntwurf = b.text_public ?? '';
+	}
+
+	/** `datetime-local` kennt keine Zeitzone — der Browser rechnet in seiner. */
+	function terminSpeichern(b: AktionsseiteBeitrag) {
+		const t = new Date(terminEntwurf);
+		if (Number.isNaN(t.getTime())) return;
+		aendern(b, { not_before: t.toISOString() });
 	}
 
 	function konvoiName(id: string): string {
@@ -296,13 +306,33 @@
 								<p class="hint">in Telegram: „{b.text_raw}"</p>
 							{/if}
 						{/if}
+						{#if b.not_before && !b.public_since}
+							<p class="hint" data-testid="termin">⏰ frühestens {zeit(b.not_before)} (Termin der Presse)</p>
+						{/if}
+						{#if terminFuer === b.id}
+							<form class="text-form" onsubmit={(e) => { e.preventDefault(); terminSpeichern(b); }}>
+								<input type="datetime-local" bind:value={terminEntwurf} aria-label="Erst ab" required />
+								<span class="knoepfe">
+									<button class="btn-small" type="submit">Termin speichern</button>
+									{#if b.not_before}
+										<button class="btn-small" type="button" onclick={() => aendern(b, { not_before: null })}>Termin entfernen</button>
+									{/if}
+									<button class="btn-small" type="button" onclick={() => (terminFuer = null)}>Abbrechen</button>
+								</span>
+								<span class="hint">Später, nie früher: eine Zeit vor der Verzögerung gilt nicht.</span>
+							</form>
+						{/if}
 						<span class="knoepfe">
 							{#if b.status === 'wartet'}
 								<button class="btn-small" onclick={() => aendern(b, { aktion: 'frei' })}>Freigeben</button>
 								<button class="btn-small" onclick={() => textBearbeiten(b)}>Text ändern</button>
+								<button class="btn-small" onclick={() => { terminFuer = b.id; terminEntwurf = ''; }}>Erst ab …</button>
 								<button class="btn-small" onclick={() => aendern(b, { aktion: 'ablehnen' })}>Ablehnen</button>
 							{:else if b.status === 'freigegeben'}
 								<button class="btn-small" onclick={() => textBearbeiten(b)}>Text ändern</button>
+								{#if !b.public_since}
+									<button class="btn-small" onclick={() => { terminFuer = b.id; terminEntwurf = ''; }}>Erst ab …</button>
+								{/if}
 								<button class="btn-small" onclick={() => aendern(b, { aktion: 'zurueck' })}>Zurückziehen</button>
 							{:else}
 								<button class="btn-small" onclick={() => aendern(b, { aktion: 'frei' })}>Doch freigeben</button>
@@ -351,6 +381,7 @@
 	.status.wartet { border-color: #d4a017; color: #b26a00; }
 	.status.freigegeben { border-color: #2e7d32; color: #2e7d32; }
 	.text-form { display: flex; flex-direction: column; gap: .3rem; }
+	.text-form input { padding: .3rem .5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); color: var(--text-1); font: inherit; width: fit-content; }
 	.text-form textarea { padding: .4rem .5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); color: var(--text-1); font: inherit; }
 	.knoepfe { display: flex; gap: .3rem; flex-wrap: wrap; }
 </style>

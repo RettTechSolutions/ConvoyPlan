@@ -188,8 +188,21 @@ sich bei jedem Abruf des EventTrackers.
 Die Presse kann einen Beitrag zusätzlich **später** terminieren, nie früher:
 `/ab 18:00` als Antwort auf die Karte setzt eine Untergrenze („erst zur
 Pressekonferenz"). Sichtbar wird er dann bei `max(Regelzeit, ab)`. Eine Zeit
-vor der Regelzeit beantwortet der Bot mit der Regelzeit, ohne Fehler. Das ist
-Kür und kommt in Schritt 7.
+vor der Regelzeit beantwortet der Bot mit der Regelzeit, ohne Fehler.
+
+Umgesetzt in Schritt 7 (`_ab`, `termin_lesen` in `services/aktionsseite_telegram.py`):
+
+- Als Antwort auf die Karte **oder** auf das Foto selbst; ohne Bezug erklärt
+  der Bot, wie es geht. Nur die Presse dieser Seite, wie bei den Knöpfen.
+- `18:00` ist das **nächste** 18:00 in deutscher Ortszeit (um 23 Uhr also
+  morgen früh), `27.12. 18:00` oder `27.12.2026 18:00` ein bestimmter Tag,
+  `/ab -` nimmt den Termin weg. Höchstens sieben Tage voraus.
+- Geht auch an wartenden Beiträgen; der Termin gilt dann ab der Freigabe.
+  An einem schon öffentlichen nicht — dafür gibt es *Zurückziehen*.
+- Die Karte sagt „erscheint frühestens … (Termin der Presse)“, der
+  Zwischenspeicher der Seite wird geleert. Audit
+  `org.aktionsseite.beitrag_terminiert`. Im Org-Admin dasselbe über
+  *Erst ab …* (`not_before` in `PUT …/beitraege/{id}`).
 
 Damit die Karte „🌍 Öffentlich seit" zeigen kann, läuft eine zweite Schleife
 im Backend (einmal pro Minute), die für freigegebene Beiträge die
@@ -780,9 +793,9 @@ Mit Datenbank (`aktionsseite_fixtures.py` erweitern):
 | 4 | `posts` in der Positivliste, Bildendpunkt, Sichtbarkeitsschleife („Öffentlich seit"), Beitragsliste im Org-Admin (§ 8.4) (umgesetzt, § 8.5) | ConvoyPlan |
 | 5 | Vertrag, Abholen der Bilder, Polaroid-Ansicht (s. u.) (umgesetzt, Convoyplan-EventTracker#23) | EventTracker |
 | 6 | Link-Beiträge (Instagram & Co.) (umgesetzt, § 11.1) | beide |
-| 7 | `/ab` zum späteren Terminieren, Companion-App als Quelle | beide, optional |
+| 7 | `/ab` zum späteren Terminieren (umgesetzt, § 3.5), Companion-App als Quelle (offen) | beide, optional |
 
-Schritte 1–4 und der ConvoyPlan-Teil von 6 gehen als ein Release hinaus.
+Schritte 1–4, der ConvoyPlan-Teil von 6 und `/ab` gehen als ein Release hinaus.
 `posts` bleibt leer, bis jemand einen Bot einrichtet, und ein EventTracker
 älterer Fassung verwirft das Feld.
 

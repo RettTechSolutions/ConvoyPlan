@@ -1769,11 +1769,15 @@ export interface AktionsseiteBeitrag {
     /** Link-Beitrag (Instagram & Co.) statt Bildern — bereinigt, wie er hinausgeht. */
     link_url?: string | null;
     link_dienst?: 'instagram' | 'youtube' | 'facebook' | 'tiktok' | null;
+    /** Termin der Presse (`/ab`): nicht vor diesem Zeitpunkt. */
+    not_before?: string | null;
 }
 
 export interface BeitragAenderung {
     aktion?: 'frei' | 'ablehnen' | 'zurueck';
     text_public?: string | null;
+    /** Wie `/ab` in Telegram: später, nie früher; `null` nimmt den Termin weg. */
+    not_before?: string | null;
 }
 
 // ── Ortungsgeräte (Tracker) ───────────────────────────────────────────────

@@ -108,6 +108,12 @@ Die Presse gibt sie dort frei; erst dann erscheinen sie auf der Aktionsseite —
   *Freigeben*, *Text ändern*, *Ablehnen*, nach der Freigabe *Zurückziehen*.
   Drücken darf nur, wer als Presse eingetragen ist. Die Karte zeigt, wann der
   Beitrag frühestens erscheint, und später „Öffentlich seit …".
+- **Später zeigen:** `/ab 18:00` als Antwort auf die Karte (oder das Foto)
+  hält einen Beitrag bis dahin zurück, etwa bis zur Pressekonferenz. `18:00`
+  ist das nächste 18:00, `/ab 27.12. 18:00` ein bestimmter Tag, `/ab -` nimmt
+  den Termin weg; höchstens sieben Tage voraus. Früher als die Verzögerung geht
+  nie — eine frühere Zeit beantwortet der Bot mit der, die ohnehin gilt. Im
+  Org-Admin heißt es *Erst ab …*.
 - **Alben** sind ein Beitrag. **Weitergeleitete** Fotos nimmt der Bot nicht an.
 - **Links zu Instagram, YouTube, Facebook oder TikTok** werden ebenfalls ein
   Beitrag, mit derselben Freigabe. Als **Antwort auf ein Foto** (oder auf die

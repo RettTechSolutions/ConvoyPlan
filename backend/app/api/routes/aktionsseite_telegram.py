@@ -331,11 +331,15 @@ class BeitragZeile(BaseModel):
     # Link-Beitrag (§ 11) statt Bildern.
     link_url: str | None = None
     link_dienst: str | None = None
+    # Termin der Presse (``/ab``): nicht vor diesem Zeitpunkt.
+    not_before: datetime | None = None
 
 
 class BeitragAenderung(BaseModel):
     aktion: Literal["frei", "ablehnen", "zurueck"] | None = None
     text_public: str | None = Field(default=None, max_length=BEITRAG_TEXT_MAX)
+    # Wie ``/ab`` in Telegram: später, nie früher; ``null`` nimmt ihn weg.
+    not_before: datetime | None = None
 
 
 @router.get("/{tracker_id}/beitraege", response_model=list[BeitragZeile])
@@ -401,7 +405,7 @@ async def beitrag_aendern(
     """Dieselben Übergänge wie die Knöpfe in Telegram (``tg.UEBERGAENGE``)."""
     user, org, role = ctx
     _require_admin(role)
-    await _laden(db, org.id, tracker_id)
+    seite = await _laden(db, org.id, tracker_id)
     post = (await db.execute(
         select(PublicTrackerPost)
         .where(PublicTrackerPost.id == post_id, PublicTrackerPost.tracker_id == tracker_id)
@@ -415,6 +419,19 @@ async def beitrag_aendern(
         post.text_public = tg.kuerzen(data.text_public)
         post.text_edited_by_presse = True
         ereignisse.append((tg.AUDIT_TEXT, {}))
+    if "not_before" in data.model_fields_set:
+        if post.public_since is not None:
+            raise HTTPException(status_code=409, detail="Schon öffentlich — zurückziehen statt terminieren")
+        termin = data.not_before
+        if termin is not None:
+            if termin.tzinfo is None:
+                raise HTTPException(status_code=422, detail="Zeitpunkt mit Zeitzone angeben")
+            if termin > jetzt + tg.TERMIN_MAX:
+                raise HTTPException(status_code=422, detail="Höchstens sieben Tage voraus")
+            if termin <= tg.regelzeit(post, seite.delay_minutes):
+                termin = None  # früher als die Regeln heißt: die Regeln gelten
+        post.not_before = termin
+        ereignisse.append((tg.AUDIT_TERMIN, {"not_before": termin.isoformat() if termin else None}))
     if data.aktion is not None:
         erlaubt, ziel = tg.UEBERGAENGE[data.aktion]
         if post.status not in erlaubt:

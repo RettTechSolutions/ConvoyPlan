@@ -277,10 +277,12 @@ export interface AktionsseiteBeitrag {
 	photos: { id: string; position: number; width: number; height: number }[];
 	link_url?: string | null;
 	link_dienst?: 'instagram' | 'youtube' | 'facebook' | 'tiktok' | null;
+	not_before?: string | null;
 }
 export interface BeitragAenderung {
 	aktion?: 'frei' | 'ablehnen' | 'zurueck';
 	text_public?: string | null;
+	not_before?: string | null;
 }
 
 let beitraege: AktionsseiteBeitrag[] = [];
@@ -370,6 +372,7 @@ export const aktionsseitenTelegramApi = {
 		tgAufruf('beitragAendern', id, postId, aenderung);
 		const b = beitraege.find((x) => x.id === postId)!;
 		if ('text_public' in aenderung) b.text_public = aenderung.text_public ?? null;
+		if ('not_before' in aenderung) b.not_before = aenderung.not_before ?? null;
 		if (aenderung.aktion) {
 			b.status = { frei: 'freigegeben', ablehnen: 'abgelehnt', zurueck: 'zurueckgezogen' }[aenderung.aktion] as BeitragStatus;
 			if (b.status !== 'freigegeben') b.public_since = null;
