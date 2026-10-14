@@ -13,7 +13,7 @@ sqlalchemy[asyncio]==2.1.4
 asyncpg==0.32.0
 geoalchemy2==0.20.0
 alembic==1.20.0
-pydantic[email]==2.13.5
+pydantic[email]==2.14.1
 # PyJWT replaces python-jose (CVE-2024-33663, CVE-2024-33664 — algorithm confusion / sig bypass).
 # 2.14.0 hardens HMAC key validation against public-key material passed as JWK/JWKS/DER/PEM,
 # rejects JWKS-fetch redirects in PyJWKClient, and rate-limits repeated JWKS refreshes for
