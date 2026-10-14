@@ -21,6 +21,8 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+## [2026.9.0] – 2026-10-14
+
 ### Wichtig beim Update
 
 - **Jede Instanz baut ihren Routing-Graphen erneut neu** — `max_weight`, `max_weight_except` und `max_axle_load` stehen jetzt im Graphen, und die Encoded Values stehen im Fingerprint. Wie unter 2026.8.0: je nach Region 45–75 Minuten ohne Routenplanung, Update außerhalb einer Lage legen. Bis der neue Graph steht, routet das Backend ohne Gewichtsgrenzen statt gar nicht.
@@ -46,6 +48,16 @@ ursprünglichen SemVer-Nummern.
 - **Größte Achslast als Fahrzeugfeld.** Fahrzeuge tragen jetzt ihre größte Achslast (Planung, MCP `fahrzeug_anlegen`/`fahrzeug_aktualisieren` mit `achslast_kg`). Die Routenberechnung meidet Achslastgrenzen (Zeichen 263, OSM `maxaxleload`) unter der größten Achslast im Verband; die Stellen stehen als „Achslast" bei den Gewichtsgrenzen, in Marschbefehl und Roadbook. *Knapp* unter 1 t Reserve, weil der Graph Achslasten auf 0,5 t rundet. Migration `0060`.
 - **Höhen, Gewichtsgrenzen und Brücken ohne Angabe im Roadbook.** Zwischen den Abbiegehinweisen steht an ihrem Kilometer jede Durchfahrtshöhe (↕, mit Spielraum — auch die freien), jede Gewichtsgrenze (⚖, mit Reserve) und jede Brücke ohne Höhenangabe abseits der Autobahn (⚠). Enge Stellen und überschrittene Grenzen sind rot hinterlegt.
 
+- **Kontextmenü mit der rechten Maustaste.** Rechtsklick, Taste *Kontextmenü*/Umschalt+F10 und langes Drücken öffnen ein Menü in Planung (Karte, Marker, Wegpunkte, Fahrzeugpool, Marschfolge, Teilverbände), Konvoi-Ansicht, Org-Admin und Admin-Bereich. Jeder Eintrag tut dasselbe wie der Knopf daneben; in Eingabefeldern, auf Links und mit gedrückter Umschalttaste bleibt das Menü des Browsers. Anwenderdoku mit Bildern im Wiki.
+- **Halte-Empfehlung rechnet mit geplanten Halten.** Ein Wegpunkt mit Haltedauer zählt als Technischer Halt; ein fälliger TH bis 30 min davor oder danach geht in ihm auf, Lenkpause und Tagesruhe ersetzt er ab 45 min bzw. 11 h. Die Liste nennt nur noch, was fehlt, und am Wegpunkt steht, was zusammengelegt wurde („+ TH"), auch in Roadbook und Marschbefehl. Gemeldet war ein TH wenige Kilometer hinter dem Tankhalt.
+- **Eigener Reiter „Route" in der Planung.** Tankstopp, empfohlene Halte, Durchfahrtshöhen und Gewichtsgrenzen stehen jetzt zwischen „Plan" und „Wegpunkte". Höhen und Grenzen sind eingeklappt mit ihrem Befund in einer Zeile und klappen von selbst auf, sobald es eine enge Stelle oder überschrittene Grenze gibt.
+- **Konvoi aktivschalten in der Oberfläche.** Der Status eines Konvois ließ sich bisher nur über API und MCP setzen — fest eingebaute Tracker senden aber nur bei *aktiv*. Neuer Schalter in der Tracking-Ansicht und in der Planung: aktivieren, abschließen, wieder aktivieren, zurück auf „In Planung". Ab Planer. `status` ist kein Freitext mehr (sonst 422).
+- **Kartenblase mit Live-Angaben, Banner bei Abriss und Funkstille.** Die Blase am Fahrzeug zeigt, was die Fahrzeugzeile zeigt — Status, Stärke, Betriebsstoff, Akku und Empfang des Trackers, Zeitpunkt und Quelle der Position, bei Halt oder Ausfall die Bemerkung — und bleibt aktuell. Funkstille eines Fahrzeugs meldet ein Banner, in der Konvoi-Ansicht und am Fahrer-Link, aber nur, solange die eigene Verbindung steht.
+- **Knopf „Konvoi" auf der Karte** zoomt auf alle sendenden Fahrzeuge; er und „Route" lösen dabei das Folgen, damit die nächste Position die Karte nicht zurückzieht.
+- **Benutzerliste im Admin-Bereich** sortierbar (Standard: Nachname), durchsuchbar und nach Organisation filterbar.
+- **Tracker: drei Wege ins Netz.** Neben Mobilfunk sendet ein Tracker über WLAN und, ohne Netz, per Bluetooth über die Begleit-App (`POST /api/track/{slug}/tracker`, signiert mit einem Geräteschlüssel). Über WLAN und Bluetooth geht jeder Fix sofort hinaus; der Sendetakt der Organisation gilt nur im Mobilfunk. WLAN, APN und Funknetz der SIM lassen sich beim Einrichten per USB mitgeben. Migration `0067`. Protokoll im Repo ConvoyPlan-Tracker.
+- **Betriebsart `INSTANCE_MODE` (selfhost/hosting).** Entscheidet über Standards, nicht über Funktionen: Agenten-Auskunft, Module neuer Organisationen, Umgang mit Meldungen. Selbst gehostet geht jede neue Meldung aus dem Melde-Dialog zusätzlich an den Hersteller (erst gespeichert, dann zugestellt, nach 14 Tagen aufgegeben; ältere Meldungen nicht). Der Dialog nennt den Empfänger. **Der Hosting-Server braucht `INSTANCE_MODE=hosting`.** Migration `0061`.
+
 ### Fixed
 
 - **Die Fußzeile meldete nach dem Update noch „Update verfügbar“.** Der Zehn-Minuten-Puffer von `/api/version` galt je Kanal und kannte nach einem Deploy noch den alten Commit, während die Admin-Karte schon „Aktuell ✓“ zeigte. Der Puffer gilt jetzt je Kanal und installiertem Stand, und die Admin-Karte gleicht die Fußzeile ab.
@@ -53,6 +65,23 @@ ursprünglichen SemVer-Nummern.
 
 - **Die Durchfahrtshöhe wurde mit dem niedrigsten Fahrzeug gesperrt.** Statt des höchsten nahm die Routenberechnung das *niedrigste* Fahrzeug im Verband mit Höhenangabe: Ein Wechsellader (3,90 m) neben einem MTW (2,50 m) wurde wie ein 2,50 m hoher Verband geroutet, und die Planungsansicht nannte 2,50 m als „Höchstes Fahrzeug". Betroffen waren alle Verbände mit Fahrzeugen unterschiedlicher Höhe. Routen, die vor diesem Update berechnet wurden, sollten neu berechnet werden.
 - **Ein geplanter Regionswechsel sperrte „Jetzt updaten“.** Solange ein Wechsel auf einen späteren Zeitpunkt gelegt war, lehnte das Backend jedes manuelle Update mit „Ein Regionswechsel läuft“ ab — bei einem nachts geplanten Wechsel den ganzen Tag. Gesperrt wird jetzt nur noch, solange der Wechsel läuft oder unmittelbar ansteht; bis zum Termin läuft die bisherige Region unverändert, und der Updater arbeitet Update und Wechsel nacheinander ab.
+- **Dunkle Dreiecke in der Adria auf der Karte.** Die Maske außerhalb der Kartenregion zeigte zwischen Italien, Kroatien und Albanien Keile über dem Meer. Das waren echte Lücken zwischen den Geofabrik-Umrissen, die auf See entlang grober Linien geschnitten sind. Der Umriss schließt solche Lücken jetzt, aber nur über Wasser (Natural Earth 1:50m, gemeinfrei); fremdes Land wie Kosovo bleibt maskiert, die Region wird nie kleiner.
+- **Tracker hat Vorrang vor „GPS senden".** Mit aktivem Tracker ließ sich im Browser trotzdem senden; der Server verwarf die Punkte, und „Senden stoppen" löschte die Position, die gerade dem Tracker gehörte. Der Knopf ist jetzt gesperrt, solange der Tracker sendet, und ein laufendes Senden endet ohne Löschen.
+- **Tracker-Störung erschien erst nach dem Neuladen.** Hing eine Abfrage, stand die Uhr für „Verbindung unterbrochen" still. Konvoi-Ansicht und Tracker-Liste im Org-Admin aktualisieren sich jetzt laufend.
+- **Tracker ohne Lizenz fragten alle 30 s nach.** Statt 402 bekommen sie `schweigen`; beim Einrichten per USB meldet das Gerät `keine_lizenz`.
+- **Tracker mit verlorenem Speicher** bekommen immer einen neuen Geräteschlüssel, damit mitgeschnittene Rahmen nicht wieder gelten.
+- **Brückensuche meldete „OpenStreetMap-Dienst nicht erreichbar".** Nach einer Berechnung liefen drei Overpass-Abfragen zugleich, der Server erlaubt zwei. Jetzt höchstens zwei, ein besetzter Server wird nach einer Pause erneut gefragt, ein Abbruch mit halber Liste gilt als Fehler. Spiegel per `OVERPASS_URLS`.
+- **Export scheiterte an Sonderzeichen im Konvoinamen** (Gedankenstrich, Emoji): GPX, JSON, Marschbefehl und Roadbook endeten mit 500.
+- **Zustimmungsschirm der KI-Schnittstelle schickte Mitglieder auf die Superadmin-Anmeldung.** Wer nur in seiner Organisation angemeldet war, landete auf `/admin` und verlor den Rücksprung.
+- **Funkstille-Alarm bei eigenem Verbindungsabriss.** Riss der Kanal des Betrachters ab, schlug nach drei Minuten für jedes fahrende Fahrzeug Alarm an.
+
+### Security
+
+- Pfad- und Cookie-Eingaben werden streng geprüft (Firmware-Auslieferung, Organisations-Slug; Funde aus dem Code-Scanning).
+
+### Changed
+
+- **SvelteKit 3** (adapter-node 6). Keine Änderung für den Betrieb.
 
 ## [2026.8.0] – 2026-10-09
 
@@ -1012,7 +1041,8 @@ Das ruft den Update-Modus auf: räumt verwaiste Updater-Container auf, zieht all
 - Capacitor configuration for Android/iOS native wrapper.
 - Docker Compose setup with GraphHopper OSM pre-download.
 
-[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.8.0...HEAD
+[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.9.0...HEAD
+[2026.9.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.8.0...v2026.9.0
 [2026.8.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.7.3...v2026.8.0
 [2026.7.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.6.2...v2026.7.0
 [2026.6.2]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.6.1...v2026.6.2
