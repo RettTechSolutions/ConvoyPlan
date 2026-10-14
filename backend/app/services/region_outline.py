@@ -29,14 +29,53 @@ benachbarte Regionen greifen deshalb immer ineinander, und `europe/dach`
 Die Aufgabe gehört ins Backend: shapely liegt dort ohnehin (`geometry.py`), und
 das Frontend bleibt bei seiner einfachen Regel "erster Ring außen, Rest sind
 Löcher" — die stimmt, sobald die Löcher disjunkt sind.
+
+Der zweite Befund, nach der Vereinigung: Dunkle Dreiecke mitten in der Adria
+(zwischen Italien und Kroatien, vor Albanien, bei Korfu). Das war kein Fehler
+der Triangulierung mehr — die Geometrie war gültig. Es waren echte Lücken:
+Geofabrik schneidet Extracts auf See entlang grober Linien, und zwischen den
+Umrissen von Italien, Kroatien und Albanien bleibt offenes Meer, das keiner
+davon abdeckt. Die Maske zeigte das korrekt als "nicht geladen", nur hat es
+keine Bedeutung — auf See wird nicht geroutet. `wasserluecken_schliessen`
+füllt deshalb, was ein morphologisches Schließen zwischen den Teilen ergänzt,
+aber nur über Wasser. Land außerhalb der Region (Kosovo, Griechenland) bleibt
+maskiert, die Region selbst wird nie kleiner.
 """
+import gzip
+import json
+import logging
+import pathlib
+from functools import lru_cache
+
 from shapely.errors import ShapelyError
 from shapely.geometry import MultiPolygon, Polygon, shape
+from shapely.geometry.base import BaseGeometry
 from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
+from shapely.strtree import STRtree
+
+logger = logging.getLogger(__name__)
+
+# Natural Earth 1:50m Land (gemeinfrei), auf drei Nachkommastellen gerundet.
+# 1:50m statt 1:110m: Dort fehlen Inseln wie Malta oder die dalmatinischen,
+# und eine fehlende Insel ausserhalb der Region wuerde als Wasser freigegeben.
+_LANDFLAECHE = pathlib.Path(__file__).parent.parent / "data" / "landflaeche.geojson.gz"
+
+# Radius des Schliessens in Grad. Die Luecken in der Adria sind bis gut 70 km
+# breit (Strasse von Otranto); 1 Grad schliesst sie, ohne die Region ins
+# offene Meer hinaus wachsen zu lassen — Schliessen fuellt nur Einbuchtungen.
+SCHLIESS_RADIUS = 1.0
+# Abstand, den gefuelltes Wasser von fremdem Land haelt (~2 km). Die Kueste
+# aus 1:50m ist grob; lieber ein Streifen Meer zu viel maskiert als ein
+# Streifen fremder Kueste freigegeben.
+LAND_ABSTAND = 0.02
+# Kleinere Stuecke sind Rechenrauschen entlang der Grenze, keine Luecke.
+_MIN_LUECKE = 1e-3
 
 
-def union_coordinates(geometries: list[dict]) -> list:
+def union_coordinates(
+    geometries: list[dict], *, land: BaseGeometry | None = None
+) -> list:
     """GeoJSON-Geometrien -> Koordinaten EINES MultiPolygons, überschneidungsfrei.
 
     `unary_union` verschmilzt alle Bestandteile und löst dabei jede Überlappung
@@ -53,6 +92,9 @@ def union_coordinates(geometries: list[dict]) -> list:
     äußere Ringe gegen den Uhrzeigersinn, Löcher im Uhrzeigersinn. earcut
     braucht das nicht — es geht nach Ringreihenfolge, nicht nach Drehsinn —
     aber die Antwort ist damit auch für jeden anderen Leser korrekt.
+
+    Mit `land` werden zusätzlich die Lücken über Wasser geschlossen (siehe
+    `wasserluecken_schliessen`). Ohne bleibt es bei der reinen Vereinigung.
     """
     flaechen = []
     for geometry in geometries:
@@ -84,6 +126,8 @@ def union_coordinates(geometries: list[dict]) -> list:
     vereinigt = unary_union(flaechen)
     if vereinigt.is_empty:
         return []
+    if land is not None:
+        vereinigt = wasserluecken_schliessen(vereinigt, land)
 
     if isinstance(vereinigt, Polygon):
         polygone = [vereinigt]
@@ -107,3 +151,58 @@ def _ring_coordinates(polygon: Polygon) -> list:
         list(map(list, polygon.exterior.coords)),
         *(list(map(list, ring.coords)) for ring in polygon.interiors),
     ]
+
+
+def wasserluecken_schliessen(flaeche: BaseGeometry, land: BaseGeometry) -> BaseGeometry:
+    """Füllt Einbuchtungen und Löcher der Region, soweit sie über Wasser liegen.
+
+    Schließen (erst `buffer(+r)`, dann `buffer(-r)`) ergänzt genau das, was
+    schmaler ist als 2r und zwischen Teilen der Region liegt — Löcher und
+    Buchten, nicht das offene Meer davor. Davon bleibt nur, was nicht auf Land
+    liegt: fremdes Land bleibt maskiert, denn dort fehlen tatsächlich Daten.
+    Die Region selbst wird nur vergrößert, nie beschnitten.
+    """
+    try:
+        geschlossen = flaeche.buffer(SCHLIESS_RADIUS, quad_segs=4).buffer(
+            -SCHLIESS_RADIUS, quad_segs=4
+        )
+        nah = land.intersection(flaeche.envelope.buffer(2 * SCHLIESS_RADIUS))
+        dazu = geschlossen.difference(flaeche).difference(nah.buffer(LAND_ABSTAND, quad_segs=2))
+    except ShapelyError:
+        # Reine Anzeige: lieber die Luecken zeigen als gar keine Maske.
+        logger.warning("Wasserluecken im Regionsumriss nicht schliessbar", exc_info=True)
+        return flaeche
+    stuecke = [g for g in getattr(dazu, "geoms", [dazu]) if g.area >= _MIN_LUECKE]
+    if not stuecke:
+        return flaeche
+    return unary_union([flaeche, *stuecke])
+
+
+@lru_cache(maxsize=1)
+def _alle_landflaechen() -> STRtree | None:
+    try:
+        with gzip.open(_LANDFLAECHE, "rt", encoding="utf-8") as f:
+            geometrie = shape(json.load(f))
+    except (OSError, ValueError, ShapelyError):
+        logger.warning("Landflaechen nicht lesbar: %s", _LANDFLAECHE, exc_info=True)
+        return None
+    return STRtree(list(getattr(geometrie, "geoms", [geometrie])))
+
+
+def landflaeche(geometries: list[dict]) -> BaseGeometry | None:
+    """Landflächen im Umkreis der Bestandteile, oder None, wenn die Datei
+    fehlt — dann bleibt es bei der reinen Vereinigung."""
+    baum = _alle_landflaechen()
+    if baum is None:
+        return None
+    rahmen = []
+    for geometry in geometries:
+        try:
+            rahmen.append(shape(geometry).envelope)
+        except (ShapelyError, ValueError, AttributeError, KeyError, TypeError):
+            continue
+    if not rahmen:
+        return None
+    suche = unary_union(rahmen).envelope.buffer(2 * SCHLIESS_RADIUS)
+    treffer = baum.query(suche)
+    return unary_union(baum.geometries.take(treffer))
