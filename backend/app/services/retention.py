@@ -16,7 +16,7 @@ from app.models.oauth_client import OAuthClient
 from app.models.oauth_code import OAuthCode
 from app.models.oauth_refresh_token import OAuthRefreshToken
 from app.models.organization import Organization
-from app.models.public_tracker import VehiclePositionTrail
+from app.models.public_tracker import PublicTrackerCode, PublicTrackerPost, VehiclePositionTrail
 from app.models.share_link import ConvoyShareLink
 from app.models.user import User
 from app.models.vehicle_position import VehiclePosition
@@ -46,6 +46,44 @@ async def purge_old_position_trail(db: AsyncSession, max_age_days: int) -> int:
         delete(VehiclePositionTrail).where(
             VehiclePositionTrail.recorded_at < _cutoff(days=max_age_days)
         )
+    )
+    return result.rowcount or 0
+
+
+# Beiträge der Aktionsseite, die niemand mehr braucht: abgelehnte und
+# zurückgezogene nach einer Woche, nie bearbeitete nach einem Monat.
+BEITRAG_ABGELEHNT_TAGE = 7
+BEITRAG_WARTEND_TAGE = 30
+
+
+async def purge_old_beitraege(db: AsyncSession, max_age_days: int) -> int:
+    """Beiträge der Aktionsseiten löschen; Bilder und ihre Bytes fallen per
+    Fremdschlüssel mit.
+
+    Freigegebene so lange wie der Positionsverlauf, nach dem sie platziert
+    werden: ohne Verlauf wüsste niemand mehr, wo sie hingehören."""
+    result = await db.execute(
+        delete(PublicTrackerPost).where(
+            sa_or(
+                PublicTrackerPost.taken_at < _cutoff(days=max_age_days),
+                sa_and(
+                    PublicTrackerPost.status.in_(("abgelehnt", "zurueckgezogen")),
+                    PublicTrackerPost.updated_at < _cutoff(days=BEITRAG_ABGELEHNT_TAGE),
+                ),
+                sa_and(
+                    PublicTrackerPost.status == "wartet",
+                    PublicTrackerPost.created_at < _cutoff(days=BEITRAG_WARTEND_TAGE),
+                ),
+            )
+        )
+    )
+    return result.rowcount or 0
+
+
+async def purge_expired_beitrag_codes(db: AsyncSession) -> int:
+    """Abgelaufene Codes zum Verbinden einer Gruppe und für die Presse."""
+    result = await db.execute(
+        delete(PublicTrackerCode).where(PublicTrackerCode.expires_at < _cutoff())
     )
     return result.rowcount or 0
 
@@ -275,6 +313,8 @@ async def run_all(db: AsyncSession) -> dict[str, int]:
         "position_trail": await purge_old_position_trail(
             db, settings.retention_position_trail_days
         ),
+        "beitraege": await purge_old_beitraege(db, settings.retention_position_trail_days),
+        "beitrag_codes": await purge_expired_beitrag_codes(db),
         "audit_logs": await purge_old_audit_logs(db, settings.retention_audit_days),
         "share_links": await purge_expired_share_links(db, settings.retention_share_links_days),
         # Always purge expired demo sessions — the demo mode can be toggled at

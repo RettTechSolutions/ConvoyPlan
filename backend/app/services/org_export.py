@@ -90,6 +90,14 @@ NICHT_EXPORTIERT = frozenset({
     "organization_modules",  # Freischaltungen des Betreibers — wie der Plan, kein Inhalt der Organisation
     "oauth_codes",           # kurzlebige Autorisierungscodes (Minuten)
     "oauth_refresh_tokens",  # Zugangstokens — gehören in keine Exportdatei
+    # Beiträge der Aktionsseiten (Fotos aus Telegram). Der Bot-Token ist ein
+    # Geheimnis, Codes leben Minuten; Beiträge, Presse und Gruppen tragen
+    # Telegram-Kennungen Dritter (Fahrer, Presseleute), und die Bilder sind
+    # Bytes, kein Datensatz. Ob und wie Beiträge in den Export gehören, wird
+    # entschieden, wenn es sie gibt (Plan § 9).
+    "public_tracker_telegram", "public_tracker_codes", "public_tracker_chats",
+    "public_tracker_presse", "public_tracker_posts", "public_tracker_photos",
+    "public_tracker_photo_data",
 })
 
 # Schlüssel im Branding-JSON, die auf eine Datei in LOGOS_DIR zeigen.

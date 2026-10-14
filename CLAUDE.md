@@ -411,7 +411,13 @@ Im Schutzbereich eines Halts liegt es auf dessen Parkplatz und bleibt zurück,
 bis der Konvoi den Bereich verlassen hat (außer am Ziel nach der Ankunft); hält
 er gerade, geht nur hinaus, was die Linie schon zeigt. Wer an Halten, Parkplatz
 oder Linie dreht, ändert die Beiträge mit. Test:
-`tests/test_aktionsseite_beitraege.py`.
+`tests/test_aktionsseite_beitraege.py`. Gespeichert (Migration `0070`) wird an
+`public_tracker_convoys (tracker_id, convoy_id)`: Fällt ein Konvoi aus der
+Seite, fallen Gruppe, Codes und Beiträge mit. `_konvois_setzen` ändert deshalb
+bleibende Zeilen, statt sie zu ersetzen — sonst löschte schon ein neuer Titel
+alles (`tests/test_aktionsseite_beitraege_daten.py`). Bilder gehen nur durch
+`services/aktionsseite_bild.py` (neu kodiert, ohne EXIF/XMP/ICC, Größe vor dem
+Dekodieren geprüft) und liegen als `bytea` in der Datenbank, also im Backup.
 
 ### Tracker: das Gerät hängt am Fahrzeug, die Position gehört dem Konvoi
 

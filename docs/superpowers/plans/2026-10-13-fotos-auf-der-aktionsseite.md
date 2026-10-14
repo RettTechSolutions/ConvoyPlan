@@ -260,14 +260,18 @@ führt.
 
 ## 5. Bildverarbeitung
 
-Beim Eingang, einmal, in `services/aktionsseite_beitrag.py`:
+Beim Eingang, einmal, in `services/aktionsseite_bild.py` (`verarbeiten`,
+geprüft von `tests/test_aktionsseite_bild.py`):
 
-- Pillow (schon in `requirements.txt`). `Image.MAX_IMAGE_PIXELS` begrenzen
-  (Dekompressionsbombe), nur JPEG, PNG und WebP. HEIC kommt höchstens als
-  `document` und wird abgelehnt, bis jemand danach fragt. Als `photo` liefert
-  Telegram ohnehin JPEG.
-- `ImageOps.exif_transpose`, danach **ohne** `exif=`, `icc_profile` auf sRGB,
-  neu kodiert. Was in den Metadaten stand, existiert danach nicht mehr.
+- Pillow (schon in `requirements.txt`). Höchstens 20 MB und 40 Megapixel; die
+  Pixelzahl wird aus dem Kopf der Datei geprüft, **bevor** dekodiert wird
+  (Dekompressionsbombe). Nur JPEG, PNG und WebP. GIF, BMP, TIFF, SVG und HEIC
+  werden abgelehnt (`BildFehler`). Als `photo` liefert Telegram ohnehin JPEG.
+  Bei animierten Dateien zählt das erste Bild.
+- `ImageOps.exif_transpose`, ICC-Profil nach sRGB umgerechnet, Transparenz
+  auf weißen Grund, dann in ein **frisches** Bild ohne `info` kopiert und neu
+  kodiert. Was in den Metadaten stand, existiert danach nicht mehr; der Test
+  schreibt ein JPEG mit GPS hinein und sucht danach auch in den rohen Bytes.
 - **Quadratisch zugeschnitten** für die Polaroid-Ansicht (§ 10) wird **nicht**
   hier, sondern im Browser per `object-fit: cover`. Gespeichert wird das
   ganze Bild, damit die Lightbox es ungeschnitten zeigen kann.
@@ -364,7 +368,22 @@ public_tracker_photo_data          (getrennt, damit Listen nie Bytes laden)
 `public_id` statt der Datenbank-Kennung: dieselbe Begründung wie bei `key` je
 Konvoi.
 
-Migration `0070_aktionsseite_beitraege.py` (0069 ist der Zielpunkt je Konvoi).
+Migration `0070_aktionsseite_beitraege.py` (0069 ist der Zielpunkt je Konvoi),
+Modelle in `models/public_tracker.py`. Gegenüber dem Entwurf oben:
+
+- `public_tracker_chats`, `_codes` und `_posts` hängen per zusammengesetztem
+  Fremdschlüssel an `public_tracker_convoys (tracker_id, convoy_id)`, nicht
+  einzeln an Seite und Konvoi: Ein Beitrag kann nur zu einem Konvoi gehören,
+  der auf der Seite steht.
+- Ein Chat je Konvoi einer Seite (`uq_public_tracker_chats_konvoi`), und eine
+  Gruppe oder ein Thema nur einmal überhaupt — zwei Teilindizes, weil `NULL`
+  in einem `UNIQUE` nicht gleich `NULL` ist.
+- Eine Nachricht und ein Album ergeben je einen Beitrag
+  (`uq_public_tracker_posts_nachricht`, `_album`).
+- Status und Textlänge (500) prüft auch die Datenbank, ebenso, dass ein Code
+  `verbinden` einen Konvoi nennt und `presse` keinen.
+- `reviewed_by_user_id` neben `reviewed_by_telegram_id`, für Freigaben aus
+  ConvoyPlan (§ 8.3).
 
 ## 8. Schnittstelle
 
@@ -468,7 +487,7 @@ Bereiche:
 
 | Bereich | Inhalt |
 |---|---|
-| **Gruppen** | Eine Zeile je Konvoi der Seite. Nicht verbunden: [Code erzeugen]. Der Code steht 15 Minuten mit Kopierknopf und Ablaufzeit da, mit dem Satz, wohin er gehört („in die Gruppe oder das Thema des Konvois schreiben“). Verbunden: „*Konvoi Bosnien* → Thema *Bosnien* in *Weihnachtskonvoi 2026*“ und [trennen]. Trennen fragt nach, weil eingegangene Beiträge mit der Bindung fallen (§ 9). |
+| **Gruppen** | Eine Zeile je Konvoi der Seite. Nicht verbunden: [Code erzeugen]. Der Code steht 15 Minuten mit Kopierknopf und Ablaufzeit da, mit dem Satz, wohin er gehört („in die Gruppe oder das Thema des Konvois schreiben“). Verbunden: „*Konvoi Bosnien* → Thema *Bosnien* in *Weihnachtskonvoi 2026*“ und [trennen]. Trennen nimmt nur keine neuen Beiträge mehr an; vorhandene bleiben (§ 9). |
 | **Presse** | Liste mit Telegram-Anzeigename, `@benutzername` falls vorhanden und Datum, je Eintrag [entfernen]. Dazu [Presse-Code erzeugen], 24 h gültig und mehrfach verwendbar, mit dem Satz „dem Bot **privat** schicken: `/presse 4TR-8LK`“. Entfernen wirkt sofort: Ein Knopfdruck danach bekommt den Alert „nur Presse“. |
 | **Beiträge** | Liste, neueste zuerst, gefiltert nach Status. Je Beitrag Vorschaubild (bei Alben das erste mit Zahl), Konvoi, Zeit, öffentlicher Text und Status samt „erscheint frühestens …“ bzw. „öffentlich seit …“. Dieselben Aktionen wie die Knöpfe in Telegram: freigeben, Text ändern, ablehnen, zurückziehen, später terminieren. |
 
@@ -509,12 +528,26 @@ Zwei Entscheidungen dazu, festgehalten am 2026-10-14:
 
 ## 9. Löschen
 
-- `retention.py` löscht Beiträge, Bilder und Presse-Einträge zusammen mit dem
-  Verlauf, also X Tage nach `valid_until` (derselbe Wert wie für
-  `vehicle_position_trail`).
+- `retention.py` (`purge_old_beitraege`) löscht Beiträge, deren Zeitpunkt
+  älter ist als der Positionsverlauf (`RETENTION_POSITION_TRAIL_DAYS`, 45
+  Tage): Ohne Verlauf wüsste niemand mehr, wo sie hingehören. Bilder und ihre
+  Bytes fallen per Fremdschlüssel mit.
 - Abgelehnte und zurückgezogene Beiträge nach 7 Tagen, nie bearbeitete nach
-  30 Tagen.
-- Löschen der Aktionsseite oder Trennen der Gruppe → Kaskade.
+  30 Tagen. Abgelaufene Codes beim nächsten Lauf (`purge_expired_beitrag_codes`).
+- Löschen der Aktionsseite → alles. Fällt ein Konvoi aus der Seite, fallen
+  seine Gruppe, seine Codes und seine Beiträge mit; die Presse gehört der Seite
+  und bleibt. **Bearbeiten** der Seite löscht nichts: `_konvois_setzen` ändert
+  bleibende Konvoi-Zeilen, statt sie zu ersetzen (vorher wurden sie bei jedem
+  Speichern neu angelegt, mit Beiträgen daran hätte schon ein neuer Titel sie
+  gelöscht).
+- **Trennen** einer Gruppe nimmt nur keine neuen Beiträge mehr an; vorhandene
+  bleiben, freigegebene auch öffentlich. Wer sie loswerden will, zieht sie
+  zurück.
+- Im Organisations-Export stehen die neuen Tabellen vorerst in
+  `NICHT_EXPORTIERT`: Bot-Token und Codes sind Geheimnisse, Beiträge, Presse und
+  Gruppen tragen Telegram-Kennungen Dritter, Bilder sind Bytes. Ob Beiträge
+  (ohne Absender, mit Text und Zeit) in den Export gehören, wird mit Schritt 4
+  entschieden.
 - In der Gruppe gelöschte Nachrichten bekommt ein Bot nicht mit. Das steht in
   der Einrichtungsanleitung und im Bot-Satz beim Verbinden: Zurückziehen geht
   über den Knopf, nicht übers Löschen in Telegram.
@@ -662,7 +695,7 @@ Mit Datenbank (`aktionsseite_fixtures.py` erweitern):
 | # | Schritt | Wo |
 |---|---|---|
 | 1 | Regeln (`beitrag_position`, `beitrag_sichtbar`) + Tests (umgesetzt) | ConvoyPlan |
-| 2 | Modell, Migration, Bildverarbeitung, Retention | ConvoyPlan |
+| 2 | Modell, Migration, Bildverarbeitung, Retention (umgesetzt) | ConvoyPlan |
 | 3 | Telegram-Abholer: Verbinden, Presse-Codes, Beiträge, Alben, Karte mit Knöpfen, Text ändern; Bot-Karte, Gruppen und Presse im Org-Admin (§ 8.4) | ConvoyPlan |
 | 4 | `posts` in der Positivliste, Bildendpunkt, Sichtbarkeitsschleife („Öffentlich seit"), Beitragsliste im Org-Admin (§ 8.4) | ConvoyPlan |
 | 5 | Vertrag, Abholen der Bilder, Polaroid-Ansicht (s. u.) | EventTracker |

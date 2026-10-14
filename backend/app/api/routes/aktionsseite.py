@@ -315,20 +315,21 @@ async def _konvois_setzen(
             # Fremde und unbekannte Konvois gleich behandeln: ob es einen
             # Konvoi in einer anderen Organisation gibt, geht niemanden an.
             raise HTTPException(status_code=422, detail="Unbekannter Konvoi")
-    t.convoys.clear()
-    await db.flush()
+    # Bleibende Konvois werden geändert, nicht ersetzt: An ihrer Zeile hängen
+    # Telegram-Gruppen und Beiträge, und ein neuer Titel der Seite darf die
+    # nicht löschen. Nur wer aus der Liste fällt, nimmt seine mit.
+    bisher = {c.convoy_id: c for c in t.convoys}
+    neu = []
     for nr, e in enumerate(eintraege):
-        t.convoys.append(
-            PublicTrackerConvoy(
-                convoy_id=e.convoy_id,
-                display_name=e.display_name,
-                destination_label=e.destination_label,
-                destination_lat=e.destination_point.lat if e.destination_point else None,
-                destination_lon=e.destination_point.lon if e.destination_point else None,
-                color=e.color,
-                position=nr,
-            )
-        )
+        c = bisher.get(e.convoy_id) or PublicTrackerConvoy(convoy_id=e.convoy_id)
+        c.display_name = e.display_name
+        c.destination_label = e.destination_label
+        c.destination_lat = e.destination_point.lat if e.destination_point else None
+        c.destination_lon = e.destination_point.lon if e.destination_point else None
+        c.color = e.color
+        c.position = nr
+        neu.append(c)
+    t.convoys[:] = neu
 
 
 def _felder_setzen(t: PublicTracker, d: AktionsseiteDaten) -> None:
