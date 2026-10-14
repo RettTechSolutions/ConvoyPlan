@@ -248,7 +248,11 @@ async def get_update_status(
     Die eigentliche Logik lebt in app.services.update_check, damit der
     Update-Benachrichtigungs-Task exakt dieselbe Bewertung nutzt.
     """
-    return await fetch_update_state(db)
+    from app.api.routes.version import merke_update_state
+
+    state = await fetch_update_state(db)
+    merke_update_state(state)
+    return state
 
 
 @router.get("/settings/github-token-set")
