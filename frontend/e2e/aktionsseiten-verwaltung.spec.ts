@@ -42,7 +42,10 @@ test('Anlegen zeigt das Token einmal, mit dem Eintrag für den EventTracker', as
 	// Was abgeschickt wurde: der öffentliche Name, nicht der interne.
 	const gesendet = await page.evaluate(() => window.__aktionAngelegt);
 	expect(gesendet?.convoys).toEqual([
-		{ convoy_id: 'c-bih', display_name: 'Konvoi Bosnien', destination_label: 'Tuzla', color: null },
+		{
+			convoy_id: 'c-bih', display_name: 'Konvoi Bosnien', destination_label: 'Tuzla',
+			destination_point: null, color: null,
+		},
 	]);
 	expect(gesendet?.delay_minutes).toBe(120);
 
@@ -53,6 +56,38 @@ test('Anlegen zeigt das Token einmal, mit dem Eintrag für den EventTracker', as
 	await expect(seite).toContainText('Weihnachtskonvois 2026');
 	await expect(seite).toContainText('Konvoi Bosnien');
 	await expect(page.locator('body')).not.toContainText('tok_Zr8Qm2Lw5Xc9Vb3Nh7Kp');
+});
+
+test('der Zielpunkt kommt aus der Ortssuche, nicht vom letzten Wegpunkt', async ({ page }) => {
+	// Der letzte Wegpunkt ist oft nur die Fähre. Gesucht wird über dieselbe
+	// Ortssuche wie in der Planung; was gewählt ist, geht als Punkt mit.
+	await page.route('**/api/geocode/search**', (r) =>
+		r.fulfill({
+			json: {
+				provider: 'photon',
+				results: [{ lat: 42.0683, lon: 19.5126, primary: 'Shkodër', secondary: 'Albanien' }],
+			},
+		}),
+	);
+	await page.goto(HUELLE);
+	await page.getByRole('button', { name: '+ Neue Aktionsseite' }).click();
+	const form = page.getByRole('form', { name: 'Aktionsseite' });
+	await form.getByLabel('Titel', { exact: true }).fill('Albanien');
+	await form.getByLabel('KV 3 / Los B Ladeliste').check();
+	await form.getByLabel('Öffentlicher Name').fill('Konvoi Albanien');
+
+	const ziel = form.getByTestId('zielpunkt');
+	await expect(ziel).toContainText('Ohne: der letzte Wegpunkt');
+	await ziel.getByRole('combobox').fill('Shkod');
+	await page.getByRole('option', { name: /Shkodër/ }).click();
+	await expect(ziel).toContainText('42.0683, 19.5126');
+	// Ein leeres Zielfeld bekommt den Ortsnamen.
+	await expect(form.getByLabel('Ziel optional')).toHaveValue('Shkodër');
+
+	await form.getByRole('button', { name: 'Anlegen' }).click();
+	const gesendet = await page.evaluate(() => window.__aktionAngelegt);
+	expect(gesendet?.convoys[0].destination_point).toEqual({ lat: 42.0683, lon: 19.5126 });
+	expect(gesendet?.convoys[0].destination_label).toBe('Shkodër');
 });
 
 test('unter einer Stunde Verzögerung gibt es nicht zur Auswahl', async ({ page }) => {
@@ -66,7 +101,7 @@ test('unter einer Stunde Verzögerung gibt es nicht zur Auswahl', async ({ page 
 	await expect(page.getByLabel('Verzögerung')).toHaveValue('120');
 });
 
-test('die Vorschau sagt, was vergröbert ist', async ({ page }) => {
+test('die Vorschau sagt, dass der Ort einer Pause nicht der echte ist', async ({ page }) => {
 	await page.goto(HUELLE);
 	await page.getByRole('button', { name: '+ Neue Aktionsseite' }).click();
 	const form = page.getByRole('form', { name: 'Aktionsseite' });
@@ -77,6 +112,6 @@ test('die Vorschau sagt, was vergröbert ist', async ({ page }) => {
 	await page.getByRole('button', { name: 'Vorschau', exact: true }).click();
 	const v = page.getByTestId('vorschau');
 	await expect(v).toContainText('Konvoi Bosnien');
-	await expect(v).toContainText('vergröbert');
+	await expect(v).toContainText('nicht der echte Ort');
 	await expect(v).toContainText('120 Min. verzögert');
 });

@@ -16,6 +16,7 @@ from app.database import AsyncSessionLocal, engine
 from app.models.convoy import Convoy, ConvoyVehicle
 from app.models.organization import Organization, UserOrganization
 from app.models.public_tracker import PublicTracker, VehiclePositionTrail
+from app.models.route import Route
 from app.models.user import User
 from app.models.vehicle import Vehicle
 from app.services import positionsverlauf
@@ -102,6 +103,7 @@ async def aktion():
         await db.execute(delete(PublicTracker).where(PublicTracker.organization_id == ids.org_id))
         await db.execute(delete(VehiclePositionTrail).where(VehiclePositionTrail.convoy_id == ids.convoy_id))
         await db.execute(delete(ConvoyVehicle).where(ConvoyVehicle.convoy_id == ids.convoy_id))
+        await db.execute(delete(Route).where(Route.convoy_id == ids.convoy_id))
         await db.execute(delete(Convoy).where(Convoy.id == ids.convoy_id))
         await db.execute(delete(Vehicle).where(Vehicle.id.in_([ids.spitze, ids.schluss])))
         await db.execute(delete(UserOrganization).where(UserOrganization.organization_id == ids.org_id))

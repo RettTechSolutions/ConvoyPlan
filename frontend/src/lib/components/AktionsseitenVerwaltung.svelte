@@ -13,6 +13,7 @@
 	 * das, was hinausgeht — mit derselben Verzögerung.
 	 */
 	import { onMount } from 'svelte';
+	import LocationSearch from '$lib/components/LocationSearch.svelte';
 	import {
 		aktionsseitenApi,
 		convoysApi,
@@ -27,7 +28,7 @@
 	const STATUS: Record<string, string> = {
 		vor_abfahrt: 'noch nicht losgefahren',
 		unterwegs: 'unterwegs',
-		pause: 'Pause (Ort vergröbert)',
+		pause: 'Pause (Ort versetzt)',
 		angekommen: 'angekommen'
 	};
 
@@ -35,6 +36,8 @@
 		gewaehlt: boolean;
 		display_name: string;
 		destination_label: string;
+		/** Ohne eigenen Punkt gilt der letzte Wegpunkt — oft nur die Fähre. */
+		destination_point: { lat: number; lon: number } | null;
 		color: string;
 	}
 
@@ -80,7 +83,7 @@
 
 	function leereWahl(): Record<string, KonvoiWahl> {
 		return Object.fromEntries(
-			konvois.map((k) => [k.id, { gewaehlt: false, display_name: '', destination_label: '', color: '' }])
+			konvois.map((k) => [k.id, { gewaehlt: false, display_name: '', destination_label: '', destination_point: null, color: '' }])
 		);
 	}
 
@@ -115,6 +118,7 @@
 				gewaehlt: true,
 				display_name: k.display_name,
 				destination_label: k.destination_label ?? '',
+				destination_point: k.destination_point,
 				color: k.color ?? ''
 			};
 		}
@@ -156,6 +160,7 @@
 					convoy_id: k.id,
 					display_name: w.display_name.trim(),
 					destination_label: leer(w.destination_label),
+					destination_point: w.destination_point,
 					color: /^#[0-9a-fA-F]{6}$/.test(w.color) ? w.color : null
 				};
 			})
@@ -393,6 +398,31 @@
 								Ziel <span class="optional">optional</span>
 								<input bind:value={formular.konvois[k.id].destination_label} maxlength="100" placeholder="Tuzla" />
 							</label>
+							<div class="zielpunkt" data-testid="zielpunkt">
+								<span class="feld">Zielpunkt auf der Karte <span class="optional">optional</span></span>
+								{#if formular.konvois[k.id].destination_point}
+									{@const p = formular.konvois[k.id].destination_point!}
+									<span class="gesetzt">
+										{p.lat.toFixed(4)}, {p.lon.toFixed(4)}
+										<button
+											type="button"
+											class="btn-small"
+											onclick={() => { if (formular) formular.konvois[k.id].destination_point = null; }}
+										>Entfernen</button>
+									</span>
+								{:else}
+									<LocationSearch
+										placeholder="Ort suchen, z. B. Shkodra"
+										onSelect={(lat, lon, label) => {
+											if (!formular) return;
+											const w = formular.konvois[k.id];
+											w.destination_point = { lat, lon };
+											if (!w.destination_label.trim()) w.destination_label = label.split(',')[0].trim();
+										}}
+									/>
+									<span class="hint">Ohne: der letzte Wegpunkt des Konvois.</span>
+								{/if}
+							</div>
 							<label class="farbe">
 								Farbe
 								<input type="color" value={formular.konvois[k.id].color || '#f4c542'} oninput={(e) => { if (formular) formular.konvois[k.id].color = e.currentTarget.value; }} />
@@ -463,7 +493,7 @@
 							<li>
 								<strong>{k.name}</strong>: {STATUS[k.status] ?? k.status}
 								{#if k.position}
-									— {k.position.lat.toFixed(3)}, {k.position.lon.toFixed(3)}{#if k.position.coarse}&nbsp;<em>(vergröbert)</em>{/if}, gemeldet {uhrzeit(k.position.at)}
+									— {k.position.lat.toFixed(3)}, {k.position.lon.toFixed(3)}{#if k.position.coarse}&nbsp;<em>(nicht der echte Ort)</em>{/if}, gemeldet {uhrzeit(k.position.at)}
 								{/if}
 								{#if k.driven_km > 0}· {Math.round(k.driven_km)} km gefahren{/if}
 							</li>
@@ -510,6 +540,8 @@
 	.konvoi-felder { display: flex; gap: .5rem; flex-wrap: wrap; margin: .4rem 0 0 1.6rem; }
 	.konvoi-felder label { flex: 1 1 10rem; }
 	.konvoi-felder label.farbe { flex: 0 0 auto; }
+	.zielpunkt { flex: 1 1 14rem; display: flex; flex-direction: column; gap: .2rem; font-size: var(--text-sm); }
+	.zielpunkt .gesetzt { display: flex; align-items: center; gap: .5rem; color: var(--text-1); }
 	.konvoi-felder input[type='color'] { width: 3rem; height: 2.1rem; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: none; }
 
 	.token-box { border-color: #d4a017; }

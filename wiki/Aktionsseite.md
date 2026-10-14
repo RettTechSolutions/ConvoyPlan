@@ -17,10 +17,13 @@ Dazu drei Regeln, die der Server durchsetzt — nicht die Seite im Browser:
 
 - **Verzögert.** Alles ist mindestens eine Stunde alt (einstellbar bis sechs
   Stunden, empfohlen zwei). Die Seite sagt das offen dazu.
-- **Vergröbert, sobald ein Konvoi steht.** Steht er länger als 20 Minuten,
-  zeigt die Seite nur noch eine Fläche von etwa zehn Kilometern, und die Linie
-  endet davor. Sonst stünde der Rastplatz trotz Verzögerung die ganze Nacht
-  metergenau auf der Seite.
+- **Versetzt, sobald ein Konvoi steht.** Hält er, erscheint er nicht am
+  Rastplatz, sondern 10 bis 25 Kilometer davor oder dahinter auf seiner Route,
+  und die Linie endet vorher. Das gilt schon auf den letzten Kilometern vor
+  dem Halt und noch eine Strecke danach — sonst verriete die letzte genaue
+  Position den Ort. Ohne berechnete Route zeigt die Seite die Mitte eines
+  Rasters von etwa zehn Kilometern. Sonst stünde der Rastplatz trotz
+  Verzögerung die ganze Nacht metergenau auf der Seite.
 - **Nur freigegebene Felder.** Was nicht in der Tabelle oben links steht, geht
   nicht hinaus.
 
@@ -32,6 +35,11 @@ Dazu drei Regeln, die der Server durchsetzt — nicht die Seite im Browser:
 2. Verzögerung, Gestaltung (*Neutral* oder *Weihnachten*), optional „Sichtbar bis".
 3. Konvois ankreuzen und **öffentlich benennen** — „Konvoi Bosnien" statt des
    internen Namens. Ziel und Farbe sind optional.
+   **Zielpunkt auf der Karte:** Ohne Angabe gilt der letzte Wegpunkt des
+   Konvois. Der ist oft nicht das Ziel — wer bis zur Fähre in Bari plant,
+   fährt nach Albanien weiter. Dann den Zielort über die Ortssuche setzen; er
+   zählt auch für „angekommen". Auf der Karte erscheint er nur mit dem Haken
+   „Zielort als Punkt auf der Karte zeigen", und auch dann grob.
 4. Anlegen. Danach steht das **Abruf-Token genau einmal** da, zusammen mit dem
    fertigen Eintrag für den EventTracker. Übernehmen, bevor die Seite verlassen
    wird — gespeichert ist nur ein Hash. Der Eintrag enthält auch die Adresse

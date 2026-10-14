@@ -1632,6 +1632,8 @@ export interface AktionsseiteKonvoi {
     convoy_id: string;
     display_name: string;
     destination_label: string | null;
+    /** Eigener Zielpunkt; ohne ihn gilt der letzte Wegpunkt des Konvois. */
+    destination_point: { lat: number; lon: number } | null;
     color: string | null;
 }
 
