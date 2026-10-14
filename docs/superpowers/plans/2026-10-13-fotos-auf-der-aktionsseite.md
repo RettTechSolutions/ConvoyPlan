@@ -437,6 +437,76 @@ Admin-Ansicht ist Übersicht und Notnagel, gearbeitet wird in Telegram. Eine
 Christoph (ConvoyPlan)"). Die vorhandene `vorschau` zeigt Beiträge genau so,
 wie der EventTracker sie bekäme.
 
+### 8.4 Oberfläche im Org-Admin
+
+Alles liegt im vorhandenen Reiter **Aktionsseiten**
+(`AktionsseitenVerwaltung.svelte`), nicht in einem eigenen Reiter und nicht in
+den allgemeinen Einstellungen. Gruppen und Presse hängen an einer Aktionsseite,
+ohne Seite gibt es nichts zu verbinden. Der Reiter sitzt schon am Modul
+`aktionsseiten` und ist nur für Org-Admins da. Ein eigenes Modul „Telegram“
+wäre eine zweite Freischaltung, die man vergessen kann.
+
+**Karte „Telegram-Bot“, einmal je Organisation, oben im Reiter**
+
+- Bot-Token eintragen. Danach steht er nie wieder im Klartext da, sondern nur
+  `@BotName` mit Status. Daneben „Token ersetzen“ und „Bot trennen“.
+- Die Prüfung über `getMe` zeigt eine Ampel. Gelb, wenn
+  `can_read_all_group_messages` falsch ist: „Der Bot sieht in Gruppen keine
+  Fotos“, mit den drei Schritten bei BotFather (`/setprivacy` → Bot →
+  *Disable*) oder dem Hinweis, ihn zum Gruppenadmin zu machen. Rot bei
+  ungültigem Token oder wenn der Abholer seit mehr als fünf Minuten nicht
+  durchkommt (`last_error`, `checked_at`).
+- Ohne Bot sind die Abschnitte in den Aktionsseiten zu sehen, aber gesperrt,
+  mit Verweis auf diese Karte.
+
+**Abschnitt „Fotos von unterwegs“, in jeder Aktionsseiten-Karte**
+
+Zugeklappt (`use:klappbar`) steht nur der Zähler im Kopf: „3 warten · 12 in
+der Warteschlange · 41 öffentlich“. Wartende Beiträge machen den Zähler
+auffällig, damit der Notnagel nicht übersehen wird. Aufgeklappt gibt es drei
+Bereiche:
+
+| Bereich | Inhalt |
+|---|---|
+| **Gruppen** | Eine Zeile je Konvoi der Seite. Nicht verbunden: [Code erzeugen]. Der Code steht 15 Minuten mit Kopierknopf und Ablaufzeit da, mit dem Satz, wohin er gehört („in die Gruppe oder das Thema des Konvois schreiben“). Verbunden: „*Konvoi Bosnien* → Thema *Bosnien* in *Weihnachtskonvoi 2026*“ und [trennen]. Trennen fragt nach, weil eingegangene Beiträge mit der Bindung fallen (§ 9). |
+| **Presse** | Liste mit Telegram-Anzeigename, `@benutzername` falls vorhanden und Datum, je Eintrag [entfernen]. Dazu [Presse-Code erzeugen], 24 h gültig und mehrfach verwendbar, mit dem Satz „dem Bot **privat** schicken: `/presse 4TR-8LK`“. Entfernen wirkt sofort: Ein Knopfdruck danach bekommt den Alert „nur Presse“. |
+| **Beiträge** | Liste, neueste zuerst, gefiltert nach Status. Je Beitrag Vorschaubild (bei Alben das erste mit Zahl), Konvoi, Zeit, öffentlicher Text und Status samt „erscheint frühestens …“ bzw. „öffentlich seit …“. Dieselben Aktionen wie die Knöpfe in Telegram: freigeben, Text ändern, ablehnen, zurückziehen, später terminieren. |
+
+Was hier passiert, steht wie jede Aktion aus Telegram im Audit-Log, und die
+Bot-Karte in der Gruppe zieht mit (§ 8.3).
+
+**Wer was darf**
+
+| Rolle | Wo | Darf |
+|---|---|---|
+| **Org-Admin** | ConvoyPlan | Bot einrichten, Gruppen verbinden und trennen, Presse eintragen und entfernen, Beiträge moderieren |
+| **Presse** | Telegram | Beiträge der Aktionsseite freigeben, Text ändern, ablehnen, zurückziehen, mit `/ab` terminieren |
+| **Fahrer, Begleiter** | Telegram | Fotos mit Text posten, sonst nichts. Wer in der Gruppe ist, darf posten. |
+| **Planer** | ConvoyPlan | nichts, wie heute bei Aktionsseiten |
+
+Zwei Entscheidungen dazu, festgehalten am 2026-10-14:
+
+- **Planer moderieren nicht.** Auch der Bereich „Beiträge“ bekommt keine
+  Ausnahme vom `_require_admin` der Aktionsseiten. Die Pressestelle arbeitet
+  in Telegram. Wer sie zusätzlich in ConvoyPlan moderieren lassen will, macht
+  sie zum Org-Admin.
+- **Freigeben in Telegram braucht immer einen Presse-Eintrag**, auch für
+  Org-Admins. Konten von ConvoyPlan und Telegram werden nicht verknüpft. Das
+  spart einen Kopplungsschritt, und in Telegram gilt genau eine Regel:
+  freigeben darf, wer auf der Presseliste steht.
+
+**Zusagen, die ein E2E-Test festhält** (`frontend/e2e/aktionsseite-fotos.spec.ts`):
+
+- Der Bot-Token steht nach dem Speichern nirgends mehr auf der Seite, auch
+  nicht im DOM eines versteckten Felds.
+- Ein Code steht nur bis zu seinem Ablauf da und verschwindet danach ohne
+  Neuladen.
+- Ein Planer sieht den Reiter nicht (wie heute) und bekommt auch über die
+  Beitrags-API eine 403.
+- Die Aktionen in der Beitragsliste schicken dieselben Aufrufe wie in § 8.3,
+  geprüft am Körper der abgefangenen Anfrage. Dasselbe Muster wie
+  `kontextmenue-planung-und-admin.spec.ts`.
+
 ## 9. Löschen
 
 - `retention.py` löscht Beiträge, Bilder und Presse-Einträge zusammen mit dem
@@ -593,8 +663,8 @@ Mit Datenbank (`aktionsseite_fixtures.py` erweitern):
 |---|---|---|
 | 1 | Regeln (`beitrag_position`, `beitrag_sichtbar`) + Tests (umgesetzt) | ConvoyPlan |
 | 2 | Modell, Migration, Bildverarbeitung, Retention | ConvoyPlan |
-| 3 | Telegram-Abholer: Verbinden, Presse-Codes, Beiträge, Alben, Karte mit Knöpfen, Text ändern | ConvoyPlan |
-| 4 | `posts` in der Positivliste, Bildendpunkt, Sichtbarkeitsschleife („Öffentlich seit"), Admin-Ansicht | ConvoyPlan |
+| 3 | Telegram-Abholer: Verbinden, Presse-Codes, Beiträge, Alben, Karte mit Knöpfen, Text ändern; Bot-Karte, Gruppen und Presse im Org-Admin (§ 8.4) | ConvoyPlan |
+| 4 | `posts` in der Positivliste, Bildendpunkt, Sichtbarkeitsschleife („Öffentlich seit"), Beitragsliste im Org-Admin (§ 8.4) | ConvoyPlan |
 | 5 | Vertrag, Abholen der Bilder, Polaroid-Ansicht (s. u.) | EventTracker |
 | 6 | Link-Beiträge (Instagram & Co.) | beide |
 | 7 | `/ab` zum späteren Terminieren, Companion-App als Quelle | beide, optional |
