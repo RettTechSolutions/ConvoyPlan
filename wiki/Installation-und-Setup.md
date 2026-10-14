@@ -284,6 +284,12 @@ openssl rand -hex 32
 > die Zeile, da der Dateiname (z. B. `dach-latest.osm.pbf`) die Auskunft
 > bereits enthält.
 >
+> Wer eine geladene Karte nur **ergänzen** will, nimmt „Region erweitern"
+> statt „Region wechseln": Die Auswahl beginnt dann mit allen Bestandteilen der
+> geladenen Karte, Suche und Schnellauswahl fügen hinzu. Gebaut wird trotzdem
+> eine vollständig neue Karte aus allen Bestandteilen — Download und Import
+> umfassen also auch die schon vorhandenen Länder.
+>
 > **Wartungsmodus und Terminierung:** Seit `2026.6.0` lässt sich beim Wechsel
 > die Option „Routing während des Imports pausieren" aktivieren. GraphHopper
 > wird dabei angehalten, **bevor** der Graph gebaut wird, statt erst danach —
