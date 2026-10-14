@@ -138,6 +138,8 @@ async def bot_setzen(
     # Ein anderer Bot fängt bei seinen eigenen Updates an.
     bot.update_offset = 0
     await db.commit()
+    # Die Befehle gleich mit, damit „/“ in Gruppe und Privatchat sie anbietet.
+    await tg.befehle_eintragen(tg.api_fuer(data.token))
     await audit.record(
         db, BOT_GESETZT, request=request, actor_id=user.id, actor_email=user.email,
         org_id=org.id, target_type="organization", target_id=str(org.id),

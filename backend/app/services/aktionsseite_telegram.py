@@ -114,6 +114,31 @@ TEXT_HILFE = (
 )
 
 
+# Was Telegram beim Tippen von „/“ anbietet. Getrennt nach Ort, weil jeder
+# Befehl nur an einem gilt: ``/presse`` privat, die übrigen in der Gruppe.
+BEFEHLE: dict[str, list[tuple[str, str]]] = {
+    "all_private_chats": [
+        ("presse", "Als Presse eintragen: /presse CODE (Code aus dem Org-Admin)"),
+    ],
+    "all_group_chats": [
+        ("verbinden", "Gruppe oder Thema mit einem Konvoi verbinden: /verbinden CODE"),
+        ("ab", "Nur Presse, als Antwort auf einen Beitrag: /ab 18:00 zeigt ihn erst dann"),
+    ],
+}
+
+
+async def befehle_eintragen(api: TelegramApi) -> bool:
+    """Legt die Befehle im Bot ab. Scheitert das, bleibt der Bot trotzdem
+    nutzbar — die Befehle gehen auch getippt; deshalb nur ein Eintrag im Log."""
+    try:
+        for bereich, befehle in BEFEHLE.items():
+            await api.befehle_setzen(befehle, bereich)
+    except TelegramFehler as e:
+        logger.info("Telegram: Befehle nicht eingetragen (%s)", e.beschreibung)
+        return False
+    return True
+
+
 def api_fuer(token: str) -> TelegramApi:
     return TelegramApi(token, transport=transport)
 
@@ -1061,6 +1086,15 @@ async def _fehler_merken(db: AsyncSession, bot: PublicTrackerTelegram, e: Telegr
     logger.warning("Telegram-Bot der Organisation %s: %s", bot.organization_id, e.beschreibung)
 
 
+async def _befehle_fuer(org_id: uuid.UUID) -> None:
+    async with AsyncSessionLocal() as db:
+        bot = await db.get(PublicTrackerTelegram, org_id)
+        if bot is None or bot.status == "ungueltig":
+            return
+        token = decrypt_secret(bot.bot_token_enc)
+    await befehle_eintragen(api_fuer(token))
+
+
 def _sperrschluessel(org_id: uuid.UUID) -> int:
     return int.from_bytes(hashlib.sha256(b"telegram:" + org_id.bytes).digest()[:8], "big", signed=True)
 
@@ -1072,6 +1106,8 @@ async def _bot_laufen(org_id: uuid.UUID) -> None:
         if not await conn.scalar(text("SELECT pg_try_advisory_lock(:k)"), {"k": _sperrschluessel(org_id)}):
             return
         try:
+            # Auch für Bots, die vor den Befehlen eingerichtet wurden; einmal je Start.
+            await _befehle_fuer(org_id)
             pause = 1.0
             while True:
                 try:
