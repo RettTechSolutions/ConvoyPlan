@@ -275,6 +275,8 @@ export interface AktionsseiteBeitrag {
 	reviewed_at: string | null;
 	public_since: string | null;
 	photos: { id: string; position: number; width: number; height: number }[];
+	link_url?: string | null;
+	link_dienst?: 'instagram' | 'youtube' | 'facebook' | 'tiktok' | null;
 }
 export interface BeitragAenderung {
 	aktion?: 'frei' | 'ablehnen' | 'zurueck';
@@ -315,6 +317,12 @@ if (suche.get('mit_seite') === '1') {
 			id: 'p-frei', convoy_id: 'c-rou', taken_at: '2026-12-27T13:40:00Z', status: 'freigegeben',
 			text_public: 'Grenze geschafft', text_raw: 'Grenze geschafft', sender_name: 'Mia',
 			reviewed_at: '2026-12-27T14:00:00Z', public_since: '2026-12-27T15:41:00Z', photos: [foto('f-3')],
+		},
+		{
+			id: 'p-link', convoy_id: 'c-rou', taken_at: '2026-12-27T12:00:00Z', status: 'abgelehnt',
+			text_public: 'Unser Reel', text_raw: 'Unser Reel', sender_name: 'Mia',
+			reviewed_at: '2026-12-27T12:30:00Z', public_since: null, photos: [],
+			link_url: 'https://www.instagram.com/reel/XyZ/', link_dienst: 'instagram',
 		},
 	];
 }

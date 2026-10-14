@@ -137,6 +137,12 @@ test('Beiträge: Zähler auch zugeklappt, Aktionen wie die Knöpfe in Telegram',
 	await frei.getByRole('button', { name: 'Zurückziehen' }).click();
 	await expect(frei).toContainText('zurückgezogen');
 
+	// Ein Link-Beitrag zeigt, wohin er führt — statt eines Vorschaubilds.
+	const link = fotos.locator('[data-testid="beitrag"]', { hasText: 'Unser Reel' }).getByTestId('beitrag-link');
+	await expect(link).toHaveText(/Instagram/);
+	await expect(link).toHaveAttribute('href', 'https://www.instagram.com/reel/XyZ/');
+	await expect(link).toHaveAttribute('rel', /noopener noreferrer/);
+
 	const gesendet = (await aufrufe(page)).filter((a) => a[0] === 'beitragAendern');
 	expect(gesendet).toEqual([
 		['beitragAendern', 'a-1', 'p-wartet', { text_public: 'Unterwegs nach Süden' }],

@@ -328,6 +328,9 @@ class BeitragZeile(BaseModel):
     reviewed_at: datetime | None
     public_since: datetime | None
     photos: list[BildZeile]
+    # Link-Beitrag (§ 11) statt Bildern.
+    link_url: str | None = None
+    link_dienst: str | None = None
 
 
 class BeitragAenderung(BaseModel):

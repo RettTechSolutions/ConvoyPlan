@@ -48,7 +48,7 @@ from app.models.public_tracker import (
     PublicTrackerTelegram,
 )
 from app.models.user import User
-from app.services import aktionsseite, aktionsseite_bild, audit, org_module
+from app.services import aktionsseite, aktionsseite_bild, aktionsseite_link, audit, org_module
 from app.services.crypto import decrypt_secret
 from app.services.telegram import BotInfo, TelegramApi, TelegramFehler
 
@@ -58,6 +58,8 @@ VERBINDEN_GUELTIG = timedelta(minutes=15)
 PRESSE_GUELTIG = timedelta(hours=24)
 # Höchstens so viele Bilder je Gruppe und Tag (Plan § 3.1).
 BILDER_JE_TAG = 300
+# Und so viele Link-Beiträge (§ 11).
+LINKS_JE_TAG = 100
 # Wie lange eine Aufforderung „Neuer Text …" auf ihre Antwort wartet.
 TEXTEINGABE_GUELTIG = timedelta(hours=1)
 ZEITZONE = ZoneInfo("Europe/Berlin")
@@ -78,6 +80,8 @@ TEXT_VERBUNDEN = (
     "Verbunden mit „{konvoi}“ auf der Aktionsseite „{seite}“.\n\n"
     "Fotos hier können nach Freigabe durch die Presse öffentlich erscheinen, "
     "mindestens {minuten} Minuten verzögert und nie genauer als die Karte. "
+    "Links zu Instagram, YouTube, Facebook oder TikTok auch, als Link — "
+    "als Antwort auf ein Foto gehören sie zu dessen Zeit und Ort. "
     "Zurückziehen geht über den Knopf am Beitrag, nicht übers Löschen in Telegram."
 )
 TEXT_CODE_UNBEKANNT = "Der Code ist unbekannt oder abgelaufen. Einen neuen gibt es im Org-Admin."
@@ -85,7 +89,7 @@ TEXT_SCHON_ANDERS = "Diese Gruppe (oder dieses Thema) ist schon mit einem andere
 TEXT_NUR_PRESSE = "Freigeben darf nur die Presse."
 TEXT_BILD_FEHLT = "Dieses Bild kann ich nicht übernehmen — bitte als JPEG, PNG oder WebP schicken."
 TEXT_HILFE = (
-    "Ich nehme Fotos aus den verbundenen Gruppen für die Aktionsseite an.\n\n"
+    "Ich nehme Fotos und Links aus den verbundenen Gruppen für die Aktionsseite an.\n\n"
     "Wer freigeben soll, schickt mir hier den Presse-Code: /presse CODE"
 )
 
@@ -165,10 +169,16 @@ def karte(
     jetzt: datetime,
 ) -> tuple[str, list[list[dict]]]:
     """Text und Knöpfe der einen Bot-Nachricht je Beitrag."""
-    kopf = f"📷 Beitrag · {konvoi} · {bilder} {'Bild' if bilder == 1 else 'Bilder'}"
+    if post.link_url:
+        kopf = f"🔗 Link · {konvoi} · {aktionsseite_link.NAMEN.get(post.link_dienst, post.link_dienst)}"
+    else:
+        kopf = f"📷 Beitrag · {konvoi} · {bilder} {'Bild' if bilder == 1 else 'Bilder'}"
     if post.sender_name:
         kopf += f" · von {post.sender_name}"
     zeilen = [kopf, f"„{post.text_public}“" if post.text_public else "(ohne Text)"]
+    if post.link_url:
+        # Die Presse soll sehen, wohin der Link führt — bereinigt, wie er hinausgeht.
+        zeilen.append(post.link_url)
     if (
         post.status == "freigegeben"
         and (post.text_raw or None) != (post.text_public or None)
@@ -351,6 +361,10 @@ async def _gruppe(lauf: _Lauf, nachricht: dict) -> None:
         return
     if nachricht.get("photo") or (nachricht.get("document") or {}).get("mime_type", "").startswith("image/"):
         await _beitrag(lauf, nachricht)
+        return
+    gefunden = aktionsseite_link.finden(nachricht.get("text"))
+    if gefunden is not None:
+        await _link_beitrag(lauf, nachricht, *gefunden)
 
 
 async def _verbinden(lauf: _Lauf, nachricht: dict, arg: str) -> None:
@@ -481,6 +495,67 @@ async def _beitrag(lauf: _Lauf, nachricht: dict) -> None:
         await lauf.db.commit()
     else:
         await karte_aktualisieren(lauf.db, lauf.api, post, lauf.jetzt)
+
+
+async def _link_beitrag(
+    lauf: _Lauf, nachricht: dict, link: aktionsseite_link.Link, text_: str | None
+) -> None:
+    """Ein Link statt eines Fotos (§ 11). Als Antwort auf einen Beitrag gehört
+    er zu dessen Zeitpunkt und damit zu dessen Ort — sonst zur Zeit der
+    Nachricht. Freigabe, Verzögerung und Platzierung wie bei Fotos."""
+    chat_id = nachricht["chat"]["id"]
+    chat, seite = await _bindung(lauf, chat_id, _thema(nachricht))
+    if chat is None or not await _seite_offen(lauf, seite):
+        return
+    if nachricht.get("forward_origin") or nachricht.get("forward_date"):
+        return
+    if await _links_heute(lauf, chat_id) >= LINKS_JE_TAG:
+        logger.info("Telegram: Tagesgrenze für Links in Chat %s erreicht", chat_id)
+        return
+    zeit = datetime.fromtimestamp(nachricht["date"], timezone.utc)
+    bezug = (nachricht.get("reply_to_message") or {}).get("message_id")
+    if bezug is not None:
+        vorher = (await lauf.db.execute(
+            select(PublicTrackerPost).where(
+                PublicTrackerPost.chat_id == chat_id,
+                PublicTrackerPost.tracker_id == chat.tracker_id,
+                PublicTrackerPost.convoy_id == chat.convoy_id,
+                (PublicTrackerPost.message_id == bezug) | (PublicTrackerPost.card_message_id == bezug),
+            ).limit(1)
+        )).scalar_one_or_none()
+        if vorher is not None:
+            zeit = vorher.taken_at
+    von = nachricht.get("from") or {}
+    post = PublicTrackerPost(
+        public_id=secrets.token_urlsafe(16), tracker_id=chat.tracker_id, convoy_id=chat.convoy_id,
+        quelle="telegram", chat_id=chat_id, message_id=nachricht["message_id"],
+        taken_at=zeit, status="wartet", text_raw=text_, text_public=kuerzen(text_),
+        link_url=link.url, link_dienst=link.dienst,
+        sender_telegram_id=von.get("id"), sender_name=_name(von),
+    )
+    lauf.db.add(post)
+    try:
+        await lauf.db.commit()
+    except IntegrityError:
+        await lauf.db.rollback()
+        return
+    text_, knoepfe = await _karte(lauf, post)
+    gesendet = await lauf.api.senden(
+        chat_id, text_, thread_id=_thema(nachricht), antwort_auf=nachricht["message_id"],
+        knoepfe=knoepfe,
+    )
+    post.card_message_id = gesendet["message_id"]
+    await lauf.db.commit()
+
+
+async def _links_heute(lauf: _Lauf, chat_id: int) -> int:
+    return (await lauf.db.execute(
+        select(func.count()).select_from(PublicTrackerPost).where(
+            PublicTrackerPost.chat_id == chat_id,
+            PublicTrackerPost.link_url.is_not(None),
+            PublicTrackerPost.created_at > lauf.jetzt - timedelta(days=1),
+        )
+    )).scalar_one()
 
 
 async def _bilder_heute(lauf: _Lauf, chat_id: int) -> int:
@@ -641,7 +716,12 @@ async def _bearbeitet(lauf: _Lauf, nachricht: dict) -> None:
         )).scalar_one_or_none()
     if post is None or "caption" not in nachricht and "text" not in nachricht:
         return
-    unterschrift = nachricht.get("caption")
+    if post.link_url is not None:
+        # Der Link steht fest; bearbeitet wird nur der Text drumherum.
+        gefunden = aktionsseite_link.finden(nachricht.get("text"))
+        unterschrift = gefunden[1] if gefunden else (nachricht.get("text") or "").strip() or None
+    else:
+        unterschrift = nachricht.get("caption")
     post.text_raw = unterschrift
     if post.status == "wartet" and not post.text_edited_by_presse:
         post.text_public = kuerzen(unterschrift)

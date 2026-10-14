@@ -120,6 +120,9 @@ class VehiclePositionTrail(Base):
 BEITRAG_STATUS = ("wartet", "freigegeben", "abgelehnt", "zurueckgezogen")
 BEITRAG_TEXT_MAX = 500
 BILDER_JE_BEITRAG = 10
+# Link-Beiträge (§ 11): nur diese Dienste, Regeln in ``services/aktionsseite_link.py``.
+LINK_DIENSTE = ("instagram", "youtube", "facebook", "tiktok")
+LINK_MAX = 300
 
 
 class PublicTrackerTelegram(Base):
@@ -245,6 +248,12 @@ class PublicTrackerPost(Base):
             f"char_length(text_public) <= {BEITRAG_TEXT_MAX}",
             name="ck_public_tracker_posts_text",
         ),
+        CheckConstraint(
+            "(link_url IS NULL) = (link_dienst IS NULL) AND "
+            f"char_length(link_url) <= {LINK_MAX} AND "
+            "link_dienst IN (" + ", ".join(f"'{d}'" for d in LINK_DIENSTE) + ")",
+            name="ck_public_tracker_posts_link",
+        ),
         Index("ix_public_tracker_posts_konvoi_zeit", "tracker_id", "convoy_id", "taken_at"),
         # Telegram liefert eine Nachricht unter Umständen zweimal; ein Album
         # kommt als mehrere Updates. Beides darf nur einen Beitrag ergeben.
@@ -277,6 +286,11 @@ class PublicTrackerPost(Base):
     status: Mapped[str] = mapped_column(String(20), default="wartet")
     text_raw: Mapped[str | None] = mapped_column(Text, nullable=True)
     text_public: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Link-Beitrag statt Fotos (§ 11): bereinigte Adresse eines bekannten
+    # Dienstes. Steht fest, sobald der Beitrag angelegt ist — eine Bearbeitung
+    # in Telegram ändert nur den Text.
+    link_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    link_dienst: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # Hat die Presse den Text geändert, ersetzt eine Bearbeitung in Telegram
     # ihn nicht mehr — nach der Freigabe ohnehin nie.
     text_edited_by_presse: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -23,6 +23,13 @@
 		type TelegramCode
 	} from '$lib/api';
 
+	const DIENSTNAME: Record<string, string> = {
+		instagram: 'Instagram',
+		youtube: 'YouTube',
+		facebook: 'Facebook',
+		tiktok: 'TikTok'
+	};
+
 	let { seite, botBereit }: { seite: Aktionsseite; botBereit: boolean } = $props();
 
 	let offen = $state(false);
@@ -255,6 +262,17 @@
 							/>
 							{#if b.photos.length > 1}<span class="anzahl">{b.photos.length}</span>{/if}
 						</a>
+					{:else if b.link_url}
+						<a
+							class="vorschau link"
+							href={b.link_url}
+							target="_blank"
+							rel="noopener noreferrer nofollow"
+							data-testid="beitrag-link"
+							title={b.link_url}
+						>
+							🔗<span>{DIENSTNAME[b.link_dienst ?? ''] ?? 'Link'}</span>
+						</a>
 					{/if}
 					<div class="inhalt">
 						<p class="kopf">
@@ -323,6 +341,8 @@
 	.beitraege li { display: flex; gap: .75rem; padding: .5rem 0; border-top: 1px solid var(--border); }
 	.beitraege li:first-child { border-top: none; }
 	.vorschau { position: relative; flex: 0 0 auto; }
+	.vorschau.link { width: 4.5rem; height: 4.5rem; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .1rem; border-radius: 4px; border: 1px solid var(--border); background: var(--surface-2); font-size: 1.3rem; text-decoration: none; color: var(--text-1); }
+	.vorschau.link span { font-size: var(--text-xs); }
 	.vorschau img { width: 4.5rem; height: 4.5rem; object-fit: cover; border-radius: 4px; border: 1px solid var(--border); background: var(--surface-2); display: block; }
 	.anzahl { position: absolute; top: -.35rem; right: -.35rem; background: var(--color-primary); color: #fff; font-size: var(--text-xs); font-weight: 700; border-radius: 999px; padding: 0 .35rem; }
 	.inhalt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: .2rem; }

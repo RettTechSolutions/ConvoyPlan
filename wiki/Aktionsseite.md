@@ -109,6 +109,14 @@ Die Presse gibt sie dort frei; erst dann erscheinen sie auf der Aktionsseite —
   Drücken darf nur, wer als Presse eingetragen ist. Die Karte zeigt, wann der
   Beitrag frühestens erscheint, und später „Öffentlich seit …".
 - **Alben** sind ein Beitrag. **Weitergeleitete** Fotos nimmt der Bot nicht an.
+- **Links zu Instagram, YouTube, Facebook oder TikTok** werden ebenfalls ein
+  Beitrag, mit derselben Freigabe. Als **Antwort auf ein Foto** (oder auf die
+  Karte des Bots) gehört der Link zu dessen Zeit und Ort, sonst zur Zeit der
+  Nachricht. Auf der Seite erscheint ein Polaroid mit dem Symbol des Dienstes;
+  den Link öffnet erst ein Klick — eingebettet wird nichts, die Seite lädt
+  weiter nichts von außen. Tracking-Anhänge wie `?igsh=…` oder `?si=…` entfernt
+  der Bot, die Karte zeigt die Adresse, wie sie hinausgeht. Andere Adressen
+  nimmt er nicht als Link-Beitrag an.
 - Ändert jemand nach der Freigabe seinen Text in Telegram, bleibt öffentlich
   der freigegebene; die Karte weist darauf hin.
 - **Zurückziehen** über den Knopf, nicht durch Löschen in Telegram — das

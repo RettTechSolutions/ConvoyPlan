@@ -1766,6 +1766,9 @@ export interface AktionsseiteBeitrag {
     reviewed_at: string | null;
     public_since: string | null;
     photos: { id: string; position: number; width: number; height: number }[];
+    /** Link-Beitrag (Instagram & Co.) statt Bildern — bereinigt, wie er hinausgeht. */
+    link_url?: string | null;
+    link_dienst?: 'instagram' | 'youtube' | 'facebook' | 'tiktok' | null;
 }
 
 export interface BeitragAenderung {

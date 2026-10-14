@@ -83,10 +83,17 @@ class OeffentlichesBild(_Streng):
     height: int
 
 
+class OeffentlicherLink(_Streng):
+    """Ein Link statt Bildern (§ 11): bereinigt, nur bekannte Dienste."""
+
+    url: str
+    dienst: Literal["instagram", "youtube", "facebook", "tiktok"]
+
+
 class OeffentlicherBeitrag(_Streng):
-    """Ein freigegebenes Foto oder Album — platziert und zurückgehalten nach
-    ``beitrag_position``/``beitrag_sichtbar``. Absender, Prüfer und die
-    Bildunterschrift aus Telegram gehen nie hinaus."""
+    """Ein freigegebenes Foto, Album oder ein Link — platziert und
+    zurückgehalten nach ``beitrag_position``/``beitrag_sichtbar``. Absender,
+    Prüfer und die Bildunterschrift aus Telegram gehen nie hinaus."""
 
     id: str
     at: datetime
@@ -94,6 +101,7 @@ class OeffentlicherBeitrag(_Streng):
     coarse: bool
     text: str | None
     photos: list[OeffentlichesBild]
+    link: OeffentlicherLink | None
 
 
 class OeffentlicherKonvoi(_Streng):

@@ -694,7 +694,7 @@ verdecken sonst den größten Teil davon. Zwei Regeln halten sie klein:
   Balken ist ausgeblendet. Wird das Fenster breiter, geht die Kopftafel wieder
   ganz auf.
 
-## 11. Instagram: nur als Link, später
+## 11. Instagram: nur als Link
 
 Einbetten (`embed.js`) lädt Skripte und Tracking von Meta in die Seite und
 verstößt gegen die CSP des EventTrackers („nichts von außen"). Abholen und
@@ -709,6 +709,28 @@ zeigt ihn als schlichtes Polaroid mit Instagram-Symbol aus eigenen Dateien
 führt. „Auf der Route hinterlegen" ginge nur mit sichtbaren Wegpunkten, und die
 sind aus gutem Grund standardmäßig aus (Plan vom 2. Oktober, § 3). Ein Beitrag
 hängt am Zeitpunkt, nicht an einem Wegpunkt.
+
+### 11.1 Umgesetzt (Schritt 6)
+
+- **Dienste:** Instagram, YouTube (`youtu.be`), Facebook (`fb.watch`), TikTok —
+  eine feste Liste in `services/aktionsseite_link.py` und im CHECK der Tabelle.
+  Ein beliebiger Link auf einer öffentlichen Seite wäre ein Weg, Zuschauer
+  irgendwohin zu schicken, auch an einer Presse vorbei, die nur überfliegt.
+- **Bereinigt:** https, ohne Anmeldedaten, Port, Fragment und Abfrage (`igsh`,
+  `si`, `utm_*` verraten, wer geteilt hat); YouTube behält `v` und `t`. Die
+  Karte zeigt die Adresse so, wie sie hinausgeht.
+- **Wer:** jede Person in der Gruppe, nicht nur die Presse — freigeben muss sie
+  ohnehin. Nur Textnachrichten; ein Link in einer Bildunterschrift bleibt Text.
+- **Wann:** als Antwort auf einen Beitrag (das Foto oder die Karte des Bots)
+  dessen `taken_at`, sonst die Zeit der Nachricht. Damit gelten Verzögerung,
+  Halte und Platzierung unverändert.
+- **Fest nach dem Anlegen:** Eine Bearbeitung in Telegram ändert nur den Text,
+  nie die Adresse — auch vor der Freigabe, damit niemand eine geprüfte Adresse
+  austauscht, während die Presse schon hinsieht.
+- Höchstens `LINKS_JE_TAG` (100) je Gruppe und Tag.
+- Öffentlich: `link: {url, dienst}` am Beitrag, `photos` leer. Datenmodell:
+  `link_url`/`link_dienst` in `0070` (noch nicht ausgerollt, deshalb keine
+  eigene Migration).
 
 ## 12. Tests
 
@@ -756,12 +778,13 @@ Mit Datenbank (`aktionsseite_fixtures.py` erweitern):
 | 2 | Modell, Migration, Bildverarbeitung, Retention (umgesetzt) | ConvoyPlan |
 | 3 | Telegram-Abholer: Verbinden, Presse-Codes, Beiträge, Alben, Karte mit Knöpfen, Text ändern; Bot-Karte, Gruppen und Presse im Org-Admin (§ 8.4) (umgesetzt, § 6.1) | ConvoyPlan |
 | 4 | `posts` in der Positivliste, Bildendpunkt, Sichtbarkeitsschleife („Öffentlich seit"), Beitragsliste im Org-Admin (§ 8.4) (umgesetzt, § 8.5) | ConvoyPlan |
-| 5 | Vertrag, Abholen der Bilder, Polaroid-Ansicht (s. u.) | EventTracker |
-| 6 | Link-Beiträge (Instagram & Co.) | beide |
+| 5 | Vertrag, Abholen der Bilder, Polaroid-Ansicht (s. u.) (umgesetzt, Convoyplan-EventTracker#23) | EventTracker |
+| 6 | Link-Beiträge (Instagram & Co.) (umgesetzt, § 11.1) | beide |
 | 7 | `/ab` zum späteren Terminieren, Companion-App als Quelle | beide, optional |
 
-Schritte 1–4 gehen als ein Release hinaus. `posts` bleibt leer, bis jemand
-einen Bot einrichtet, und ein EventTracker älterer Fassung verwirft das Feld.
+Schritte 1–4 und der ConvoyPlan-Teil von 6 gehen als ein Release hinaus.
+`posts` bleibt leer, bis jemand einen Bot einrichtet, und ein EventTracker
+älterer Fassung verwirft das Feld.
 
 ### Was im EventTracker dazukommt (Schritt 5)
 

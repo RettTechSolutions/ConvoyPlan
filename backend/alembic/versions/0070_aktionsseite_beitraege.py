@@ -6,8 +6,9 @@ Thema an einen Konvoi einer Seite, ``public_tracker_presse`` sagt, wer dort
 freigeben darf, ``public_tracker_codes`` hält Einmal- und Presse-Codes als
 Hash. ``public_tracker_posts`` sind die Beiträge, ``public_tracker_photos``
 ihre Bilder, ``public_tracker_photo_data`` deren Bytes — getrennt, damit eine
-Liste nie Bilder lädt. Bestehende Daten gibt es nicht, die Migration legt nur
-an. Plan: docs/superpowers/plans/2026-10-13-fotos-auf-der-aktionsseite.md.
+Liste nie Bilder lädt. Ein Beitrag kann statt Bildern einen Link tragen
+(``link_url``/``link_dienst``, § 11). Bestehende Daten gibt es nicht, die
+Migration legt nur an. Plan: docs/superpowers/plans/2026-10-13-fotos-auf-der-aktionsseite.md.
 
 Revision ID: 0070
 Revises: 0069
@@ -114,6 +115,8 @@ def upgrade() -> None:
         sa.Column("status", sa.String(20), nullable=False, server_default="wartet"),
         sa.Column("text_raw", sa.Text(), nullable=True),
         sa.Column("text_public", sa.Text(), nullable=True),
+        sa.Column("link_url", sa.Text(), nullable=True),
+        sa.Column("link_dienst", sa.String(20), nullable=True),
         sa.Column("text_edited_by_presse", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("sender_telegram_id", sa.BigInteger(), nullable=True),
         sa.Column("sender_name", sa.String(255), nullable=True),
@@ -135,6 +138,12 @@ def upgrade() -> None:
         ),
         sa.CheckConstraint(
             "char_length(text_public) <= 500", name="ck_public_tracker_posts_text"
+        ),
+        # Beide oder keins; NULL in einer der Vergleiche lässt den CHECK passieren.
+        sa.CheckConstraint(
+            "(link_url IS NULL) = (link_dienst IS NULL) AND char_length(link_url) <= 300 AND "
+            "link_dienst IN ('instagram', 'youtube', 'facebook', 'tiktok')",
+            name="ck_public_tracker_posts_link",
         ),
     )
     op.create_index(

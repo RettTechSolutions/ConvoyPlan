@@ -434,6 +434,12 @@ nur, solange es in genau dieser Antwort steht (`_oeffentlich`, gemeinsamer
 Zwischenspeicher) — eine eigene Abfrage dort gäbe Bilder vor ihrer Zeit heraus.
 Freigeben und Zurückziehen leeren den Zwischenspeicher der Seite
 (`tests/test_aktionsseite_beitraege_oeffentlich.py`).
+**Link-Beiträge** (Instagram, YouTube, Facebook, TikTok): `services/aktionsseite_link.py`
+erkennt und bereinigt (https, ohne Abfrage außer YouTubes `v`/`t`, keine ähnlich
+klingenden Domains), der CHECK in `0070` kennt dieselben Dienste (`LINK_DIENSTE`).
+Als Antwort auf einen Beitrag übernimmt der Link dessen `taken_at` und damit dessen
+Ort; der Link selbst steht nach dem Anlegen fest, eine Bearbeitung ändert nur den
+Text. Tests: `tests/test_aktionsseite_links.py`.
 
 ### Tracker: das Gerät hängt am Fahrzeug, die Position gehört dem Konvoi
 
