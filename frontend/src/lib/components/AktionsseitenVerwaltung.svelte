@@ -14,6 +14,8 @@
 	 */
 	import { onMount } from 'svelte';
 	import LocationSearch from '$lib/components/LocationSearch.svelte';
+	import TelegramBotKarte from '$lib/components/TelegramBotKarte.svelte';
+	import FotosVonUnterwegs from '$lib/components/FotosVonUnterwegs.svelte';
 	import {
 		aktionsseitenApi,
 		convoysApi,
@@ -64,6 +66,8 @@
 	let neu = $state<AktionsseiteMitToken | null>(null);
 	let vorschau = $state<{ id: string; daten: AktionsseiteVorschau } | null>(null);
 	let kopiert = $state(false);
+	/** Ohne Bot kommen keine Fotos an — dann gibt es auch keine Codes. */
+	let botBereit = $state(false);
 
 	async function neuLaden() {
 		laden = true;
@@ -303,6 +307,8 @@
 	</p>
 </div>
 
+<TelegramBotKarte onStand={(b) => (botBereit = b.eingerichtet && b.status !== 'ungueltig')} />
+
 {#if neu}
 	<div class="section token-box" data-testid="neues-token">
 		<div class="section-header"><strong>Abruf-Token für „{neu.title}"</strong></div>
@@ -481,6 +487,7 @@
 				{/each}
 			</ul>
 			<p class="hint endpunkt">Abruf: <code>{s.endpoint}</code></p>
+			<FotosVonUnterwegs seite={s} {botBereit} />
 
 			{#if vorschau?.id === s.id}
 				<div class="vorschau" data-testid="vorschau">

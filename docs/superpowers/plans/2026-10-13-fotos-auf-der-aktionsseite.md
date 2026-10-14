@@ -314,6 +314,42 @@ geprüft von `tests/test_aktionsseite_bild.py`):
 - Abgelaufene Seite (`valid_until`) oder abgeschaltetes Modul: Der Bot nimmt
   keine Beiträge mehr an und sagt das einmal in der Gruppe.
 
+### 6.1 Umgesetzt (Schritt 3) und was davon abweicht
+
+Draht in `services/telegram.py` (`TelegramApi`), Verarbeitung und Abholen in
+`services/aktionsseite_telegram.py`, Org-Admin in
+`api/routes/aktionsseite_telegram.py`, Tests in
+`tests/test_aktionsseite_telegram.py` gegen eine gestellte Bot-API.
+
+- **Abholen**: `telegram_schleife` im `_lifespan` startet je Bot eine Aufgabe
+  (`_bot_laufen`), die per `pg_try_advisory_lock` auf einer eigenen Verbindung
+  sicherstellt, dass im Cluster nur eine abholt. Je Durchgang `getMe` und
+  `getUpdates` (25 s Long Polling); der Offset wird nach **jedem** Update
+  geschrieben. Ein Update, das scheitert, wird geloggt und übersprungen — sonst
+  hinge die Gruppe an ihm fest. 401/404 setzt `ungueltig` und beendet die
+  Aufgabe, bis ein neuer Token eingetragen ist; 409 `konflikt`; 429 wartet
+  `retry_after`. Abschaltbar mit `TELEGRAM_ENABLED=false`, Adresse der Bot-API
+  `TELEGRAM_API_URL` (nur für Tests oder einen eigenen Bot-API-Server).
+- **Token**: steht in jeder Adresse der Bot-API. `TelegramFehler` trägt deshalb
+  nur Telegrams Beschreibung, httpx-Ausnahmen nur ihren Typ — nie die URL.
+- **Alben** werden nicht zwei Sekunden gesammelt (§ 3.1), sondern sofort: Das
+  erste Bild legt den Beitrag samt Karte an, jedes weitere hängt sich über
+  `(chat_id, media_group_id)` an und bearbeitet die Karte. Kein Zeitgeber, und
+  ein Neustart mitten im Album verliert nichts.
+- **„Text ändern“**: Die Aufforderung merkt sich der Prozess im Speicher (eine
+  Stunde), wie Belegungen und Passkey-Challenges. Nach einem Neustart drückt die
+  Presse eben noch einmal. Wer inzwischen aus der Presse entfernt wurde, ändert
+  auch über eine offene Aufforderung nichts mehr.
+- **Noch nicht** (Schritt 4 und 7): „Öffentlich seit“ auf der Karte (braucht die
+  Sichtbarkeitsschleife), die Warteschlange für Kartenbearbeitungen bei 429,
+  `/ab` zum späteren Terminieren, die einmalige Ansage bei abgelaufener Seite
+  und bei erreichter Tagesgrenze. Bis dahin verwirft der Bot still.
+- **Audit**: `org.aktionsseite.telegram_bot_gesetzt`/`_entfernt`,
+  `telegram_code`, `telegram_verbunden`, `telegram_getrennt`,
+  `presse_eingetragen`/`_entfernt`, `beitrag_freigegeben`/`_abgelehnt`/
+  `_zurueckgezogen`, `beitrag_text_geaendert` — aus Telegram ohne `actor_id`,
+  mit Telegram-ID und Name in `detail`.
+
 ## 7. Datenmodell
 
 ```
@@ -696,7 +732,7 @@ Mit Datenbank (`aktionsseite_fixtures.py` erweitern):
 |---|---|---|
 | 1 | Regeln (`beitrag_position`, `beitrag_sichtbar`) + Tests (umgesetzt) | ConvoyPlan |
 | 2 | Modell, Migration, Bildverarbeitung, Retention (umgesetzt) | ConvoyPlan |
-| 3 | Telegram-Abholer: Verbinden, Presse-Codes, Beiträge, Alben, Karte mit Knöpfen, Text ändern; Bot-Karte, Gruppen und Presse im Org-Admin (§ 8.4) | ConvoyPlan |
+| 3 | Telegram-Abholer: Verbinden, Presse-Codes, Beiträge, Alben, Karte mit Knöpfen, Text ändern; Bot-Karte, Gruppen und Presse im Org-Admin (§ 8.4) (umgesetzt, § 6.1) | ConvoyPlan |
 | 4 | `posts` in der Positivliste, Bildendpunkt, Sichtbarkeitsschleife („Öffentlich seit"), Beitragsliste im Org-Admin (§ 8.4) | ConvoyPlan |
 | 5 | Vertrag, Abholen der Bilder, Polaroid-Ansicht (s. u.) | EventTracker |
 | 6 | Link-Beiträge (Instagram & Co.) | beide |

@@ -418,6 +418,17 @@ bleibende Zeilen, statt sie zu ersetzen — sonst löschte schon ein neuer Titel
 alles (`tests/test_aktionsseite_beitraege_daten.py`). Bilder gehen nur durch
 `services/aktionsseite_bild.py` (neu kodiert, ohne EXIF/XMP/ICC, Größe vor dem
 Dekodieren geprüft) und liegen als `bytea` in der Datenbank, also im Backup.
+Aus Telegram kommen sie per Long Polling (`services/aktionsseite_telegram.py`,
+Draht in `services/telegram.py`): eine Aufgabe je Bot, im Cluster nur eine
+(`pg_try_advisory_lock`, Telegram antwortet zwei Abholern mit 409). Der Token
+steht in jeder Adresse der Bot-API — Fehlermeldungen tragen deshalb nie die URL.
+Freigeben darf nur, wer per Presse-Code an **dieser** Seite eingetragen ist,
+geprüft bei jedem Knopfdruck; `callback_data` wird nichts geglaubt. Nach der
+Freigabe ändert eine Bearbeitung in Telegram den öffentlichen Text nicht mehr.
+Der Router (`api/routes/aktionsseite_telegram.py`) hängt **vor** `org_router`,
+sonst fängt dessen `/{tracker_id}` den Pfad `/telegram` ab. Tests:
+`tests/test_aktionsseite_telegram.py` (gestellte Bot-API),
+`frontend/e2e/aktionsseite-fotos.spec.ts`.
 
 ### Tracker: das Gerät hängt am Fahrzeug, die Position gehört dem Konvoi
 
