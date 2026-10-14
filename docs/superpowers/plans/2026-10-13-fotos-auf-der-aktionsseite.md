@@ -392,7 +392,7 @@ public_tracker_posts               (ein Beitrag = Nachricht oder Album)
   id                                uuid, intern
   public_id                         zufällig, ≥ 16 Zeichen, geht hinaus
   tracker_id, convoy_id
-  quelle                            'telegram' (später 'companion')
+  quelle                            'telegram' (eine App-Quelle ist verworfen, § 13)
   chat_id, message_id, media_group_id, card_message_id
   taken_at                          message.date
   not_before                        `/ab`, nullable
@@ -793,11 +793,17 @@ Mit Datenbank (`aktionsseite_fixtures.py` erweitern):
 | 4 | `posts` in der Positivliste, Bildendpunkt, Sichtbarkeitsschleife („Öffentlich seit"), Beitragsliste im Org-Admin (§ 8.4) (umgesetzt, § 8.5) | ConvoyPlan |
 | 5 | Vertrag, Abholen der Bilder, Polaroid-Ansicht (s. u.) (umgesetzt, Convoyplan-EventTracker#23) | EventTracker |
 | 6 | Link-Beiträge (Instagram & Co.) (umgesetzt, § 11.1) | beide |
-| 7 | `/ab` zum späteren Terminieren (umgesetzt, § 3.5), Companion-App als Quelle (offen) | beide, optional |
+| 7 | `/ab` zum späteren Terminieren (umgesetzt, § 3.5); Companion-App als Quelle **verworfen** (s. u.) | ConvoyPlan |
 
 Schritte 1–4, der ConvoyPlan-Teil von 6 und `/ab` gehen als ein Release hinaus.
 `posts` bleibt leer, bis jemand einen Bot einrichtet, und ein EventTracker
 älterer Fassung verwirft das Feld.
+
+**Keine Beiträge aus der Begleit-App** (entschieden am 14. Oktober). Die App
+ist das Werkzeug für den Einsatz, die Aktionsseite gibt es nur zu einzelnen
+Veranstaltungen. Beides bleibt getrennt: Fotos kommen ausschließlich aus den
+Telegram-Gruppen. `quelle` bleibt als Spalte stehen, sie kostet nichts und
+hält die Herkunft fest.
 
 ### Was im EventTracker dazukommt (Schritt 5)
 
