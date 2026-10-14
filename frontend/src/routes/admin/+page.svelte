@@ -6,6 +6,7 @@
     import LeitstellenTable from '$lib/components/LeitstellenTable.svelte';
     import PasskeyVerwaltung from '$lib/components/PasskeyVerwaltung.svelte';
     import { auth } from '$lib/stores/auth';
+    import { versionStore } from '$lib/stores/version.svelte';
     import { kontextmenue, kopieren, TRENNER, type Eintraege } from '$lib/kontextmenue/menue';
     import EmailTemplateEditor from '$lib/components/EmailTemplateEditor.svelte';
     import { getStreamTicket } from '$lib/api/client';
@@ -867,6 +868,12 @@
         updateError = '';
         try {
             updateStatus = await adminApi.getUpdateStatus();
+            // Die Fußzeile darunter hat /api/version einmal beim Laden geholt;
+            // ohne Abgleich stand dort „Update verfügbar“ neben „Aktuell ✓“.
+            versionStore.uebernehme(
+                updateStatus.update_available,
+                updateStatus.latest_release ?? updateStatus.remote_sha ?? null,
+            );
         } catch {
             updateError = 'Status konnte nicht geladen werden';
         } finally {

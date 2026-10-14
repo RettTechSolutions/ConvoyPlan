@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import TokenData, get_optional_token_data
 from app.config import settings
 from app.database import get_db
-from app.services.update_check import fetch_update_state, resolve_channel
+from app.services.update_check import fetch_update_state, read_deployed, resolve_channel
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,20 @@ _LATEST_TTL = 3600  # seconds
 # GitHub calls, cache the computed state per channel with a short TTL so the
 # public, high-traffic footer request does not trigger a GitHub call every time.
 _STATE_TTL = 600  # seconds
-_state_cache: dict[str, tuple[float, dict]] = {}
+# Schlüssel ist (Kanal, installierter Stand), nicht der Kanal allein: Nach
+# einem Update meldete die Fußzeile bis zu zehn Minuten lang „Update
+# verfügbar“, weil der zwischengespeicherte Stand noch den alten Commit
+# kannte — während die Admin-Karte (ungepuffert) längst „Aktuell“ zeigte.
+# Der Status des Updaters ist eine lokale Datei, ihn zu lesen kostet nichts.
+_state_cache: dict[tuple[str, str | None], tuple[float, dict]] = {}
+
+
+def merke_update_state(state: dict) -> None:
+    """Übernimmt einen frisch berechneten Stand (Admin-Karte) in den Puffer
+    der Fußzeile, damit beide nach „Aktualisieren“ dasselbe sagen."""
+    channel = state.get("channel")
+    if channel:
+        _state_cache[(channel, state.get("deployed_sha"))] = (time.monotonic(), state)
 
 
 class AppOAuthInfo(BaseModel):
@@ -88,7 +101,8 @@ async def _cached_update_state(db: AsyncSession, channel: str) -> dict | None:
     per channel for _STATE_TTL. Fails open (returns None) so offline / air-
     gapped deployments and GitHub outages behave gracefully."""
     now = time.monotonic()
-    cached = _state_cache.get(channel)
+    key = (channel, read_deployed()[0])
+    cached = _state_cache.get(key)
     if cached and now - cached[0] < _STATE_TTL:
         return cached[1]
 
@@ -100,7 +114,7 @@ async def _cached_update_state(db: AsyncSession, channel: str) -> dict | None:
         logger.debug("Update-Status-Abfrage (öffentlich) fehlgeschlagen", exc_info=True)
         return None
 
-    _state_cache[channel] = (now, state)
+    _state_cache[key] = (now, state)
     return state
 
 

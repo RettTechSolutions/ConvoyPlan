@@ -152,6 +152,74 @@ async def test_version_endpoint_suppresses_hint_when_ahead(monkeypatch):
     assert body["latest"] == "v1.0.2"         # release tag still surfaced
 
 
+@pytest.mark.asyncio
+async def test_version_hint_folgt_dem_installierten_stand(monkeypatch):
+    """Nach einem Update darf die Fußzeile nicht zehn Minuten lang den Stand
+    von vor dem Update melden: der Puffer gilt je installiertem Commit."""
+    version_module._state_cache.clear()
+    monkeypatch.setattr(settings, "update_check_enabled", True)
+    installiert = {"sha": "aaaaaaa"}
+    aufrufe = []
+
+    async def fake_resolve_channel(db):
+        return "nightly", "db"
+
+    async def fake_fetch_update_state(db):
+        aufrufe.append(installiert["sha"])
+        return {
+            "deployed_sha": installiert["sha"],
+            "remote_sha": "bbbbbbb",
+            "update_available": installiert["sha"] != "bbbbbbb",
+            "channel": "nightly",
+            "latest_release": None,
+        }
+
+    monkeypatch.setattr(version_module, "resolve_channel", fake_resolve_channel)
+    monkeypatch.setattr(version_module, "fetch_update_state", fake_fetch_update_state)
+    monkeypatch.setattr(version_module, "read_deployed", lambda: (installiert["sha"], None))
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        vorher = (await client.get("/api/version")).json()
+        installiert["sha"] = "bbbbbbb"            # Updater hat ausgerollt
+        nachher = (await client.get("/api/version")).json()
+
+    assert vorher["update_available"] is True
+    assert nachher["update_available"] is False
+    assert aufrufe == ["aaaaaaa", "bbbbbbb"]
+
+
+@pytest.mark.asyncio
+async def test_admin_karte_aktualisiert_den_puffer_der_fusszeile(monkeypatch):
+    """„Aktualisieren“ in der Admin-Karte rechnet frisch; die Fußzeile übernimmt
+    diesen Stand, statt ihren älteren weiter auszuliefern."""
+    version_module._state_cache.clear()
+    monkeypatch.setattr(settings, "update_check_enabled", True)
+
+    async def fake_resolve_channel(db):
+        return "nightly", "db"
+
+    async def nie(db):
+        raise AssertionError("Fußzeile hätte den übernommenen Stand nutzen müssen")
+
+    monkeypatch.setattr(version_module, "resolve_channel", fake_resolve_channel)
+    monkeypatch.setattr(version_module, "fetch_update_state", nie)
+    monkeypatch.setattr(version_module, "read_deployed", lambda: ("ccccccc", None))
+
+    version_module.merke_update_state({
+        "deployed_sha": "ccccccc",
+        "remote_sha": "ccccccc",
+        "update_available": False,
+        "channel": "nightly",
+        "latest_release": None,
+    })
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        body = (await client.get("/api/version")).json()
+
+    assert body["update_available"] is False
+    assert body["latest"] == "ccccccc"
+
+
 def test_core_str_strips_metadata():
     core = version_module._core_str
     assert core("1.0.0") == "1.0.0"

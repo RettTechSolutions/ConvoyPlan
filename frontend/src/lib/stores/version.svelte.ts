@@ -18,6 +18,7 @@ interface VersionStore {
     data: VersionData;
     loaded: boolean;
     load: () => Promise<void>;
+    uebernehme: (update_available: boolean, latest: string | null) => void;
 }
 
 function createVersionStore(): VersionStore {
@@ -47,10 +48,17 @@ function createVersionStore(): VersionStore {
         }
     }
 
+    /** Frischeren Stand aus der Admin-Karte übernehmen (`/api/admin/update-status`). */
+    function uebernehme(update_available: boolean, latest: string | null): void {
+        data = { ...data, update_available, latest };
+        loaded = true;
+    }
+
     return {
         get data() { return data; },
         get loaded() { return loaded; },
         load,
+        uebernehme,
     };
 }
 
