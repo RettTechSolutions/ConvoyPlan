@@ -266,6 +266,39 @@ def vergroebern(lat: float, lon: float) -> tuple[float, float]:
     return round(zlat, 4), round(zlon, 4)
 
 
+def linie_ende(
+    punkte: list[Punkt],
+    halt: tuple[float, float] | None,
+    meiden: list[tuple[float, float]] = (),
+    route: Strecke | None = None,
+    route_bis: float | None = None,
+) -> int:
+    """Wie viele der Punkte die Linie trägt.
+
+    Hält der Konvoi, endet sie ``LINIE_ABSTAND_ZUM_HALT_M`` vor dem Halt und
+    vor jedem Punkt aus ``meiden`` (dem Parkplatz) — und, mit Route, vor der
+    Stelle ``route_bis`` entlang der Route, damit sie nicht über einen
+    Parkplatz hinter dem Halt hinausreicht."""
+    if halt is None or not punkte:
+        return len(punkte)
+    sperren = [halt, *meiden]
+    ende = len(punkte)
+    while ende and (
+        any(
+            abstand_m(punkte[ende - 1].lat, punkte[ende - 1].lon, *q) < LINIE_ABSTAND_ZUM_HALT_M
+            for q in sperren
+        )
+        or (
+            route is not None
+            and route_bis is not None
+            and route.entlang(punkte[ende - 1].lat, punkte[ende - 1].lon)
+            > route_bis - LINIE_ABSTAND_ZUM_HALT_M
+        )
+    ):
+        ende -= 1
+    return ende
+
+
 def linie(
     punkte: list[Punkt],
     halt: tuple[float, float] | None,
@@ -273,29 +306,9 @@ def linie(
     route: Strecke | None = None,
     route_bis: float | None = None,
 ) -> list[list[float]]:
-    """Gefahrene Strecke als [lon, lat]-Liste, vereinfacht.
-
-    Hält der Konvoi, endet sie ``LINIE_ABSTAND_ZUM_HALT_M`` vor dem Halt und
-    vor jedem Punkt aus ``meiden`` (dem Parkplatz) — und, mit Route, vor der
-    Stelle ``route_bis`` entlang der Route, damit sie nicht über einen
-    Parkplatz hinter dem Halt hinausreicht."""
-    if halt is not None and punkte:
-        sperren = [halt, *meiden]
-        ende = len(punkte)
-        while ende and (
-            any(
-                abstand_m(punkte[ende - 1].lat, punkte[ende - 1].lon, *q) < LINIE_ABSTAND_ZUM_HALT_M
-                for q in sperren
-            )
-            or (
-                route is not None
-                and route_bis is not None
-                and route.entlang(punkte[ende - 1].lat, punkte[ende - 1].lon)
-                > route_bis - LINIE_ABSTAND_ZUM_HALT_M
-            )
-        ):
-            ende -= 1
-        punkte = punkte[:ende]
+    """Gefahrene Strecke als [lon, lat]-Liste, vereinfacht, gekürzt nach
+    ``linie_ende``."""
+    punkte = punkte[: linie_ende(punkte, halt, meiden, route, route_bis)]
     koordinaten = [(p.lon, p.lat) for p in punkte]
     if len(koordinaten) < 2:
         return []
@@ -310,7 +323,25 @@ def strecke_km(punkte: list[Punkt]) -> float:
     return round(gesamt / 1000, 1)
 
 
-def konvoi(
+@dataclass(frozen=True)
+class Lage:
+    """Was zur Stichzeit über einen Konvoi entschieden ist.
+
+    ``konvoi`` macht daraus die Antwort, die Beiträge richten sich danach —
+    beides aus derselben Rechnung, damit ein Foto nie mehr zeigt als die
+    Karte daneben."""
+
+    punkte: list[Punkt]  # des Vertreters, bis zur Stichzeit
+    alle: list[Punkt]  # des Vertreters, bis jetzt (Indizes von ``halt``)
+    angekommen: bool
+    halt: Halt | None = None
+    lat: float = 0.0  # Parkplatz, nur mit ``halt``
+    lon: float = 0.0
+    versatz: float = 0.0
+    linie_bis: int = 0  # so viele aus ``punkte`` trägt die Linie
+
+
+def lage(
     kandidaten: list[Kandidat],
     stich: datetime,
     ziel: tuple[float, float] | None,
@@ -318,17 +349,13 @@ def konvoi(
     jetzt: datetime | None = None,
     route: Strecke | None = None,
     schluessel: bytes = b"",
-) -> dict:
-    """Öffentlicher Stand eines Konvois (ohne Namen, die setzt der Aufrufer).
-
-    Die Kandidaten dürfen Punkte bis ``jetzt`` tragen. Was danach kam, sagt
-    nur, ob der Konvoi zur Stichzeit schon auf einen Halt zufährt; hinaus geht
-    davon allein der Parkplatz dieses Halts, nie eine Position in Fahrt."""
+) -> Lage | None:
+    """Die Entscheidungen hinter ``konvoi``; ``None`` ohne jede Position."""
     jetzt = jetzt or stich
     gekuerzt = [Kandidat(k.spitze, k.reihenfolge, bis(k.punkte, stich)) for k in kandidaten]
     v = vertreter(gekuerzt)
     if v is None:
-        return {"status": "vor_abfahrt", "position": None, "trail": [], "driven_km": 0.0}
+        return None
     alle = bis(kandidaten[gekuerzt.index(v)].punkte, jetzt)
     punkte = v.punkte
     letzter = punkte[-1]
@@ -347,44 +374,178 @@ def konvoi(
         alle = punkte
 
     if aktuell is None:
-        return {
-            "status": "angekommen" if angekommen else "unterwegs",
-            "position": {
-                "lat": round(letzter.lat, 5),
-                "lon": round(letzter.lon, 5),
-                "coarse": False,
-                "at": letzter.t,
-            },
-            "trail": linie(punkte, None),
-            "driven_km": strecke_km(punkte),
-        }
+        return Lage(punkte, alle, angekommen, linie_bis=len(punkte))
 
-    u_weit, u_richtung, _, _ = _zufall(schluessel, alle[aktuell.anfang].t)
     if angekommen:
         # Am Ziel kein Versatz die Route zurück: Die Lagerhalle steht nicht
         # auf der Seite, ein Parkplatz 20 km davor wäre aber falsch.
         lat, lon = vergroebern(aktuell.lat, aktuell.lon)
         versatz = 0.0
     else:
+        u_weit, u_richtung, _, _ = _zufall(schluessel, alle[aktuell.anfang].t)
         lat, lon, versatz = parkplatz(aktuell.lat, aktuell.lon, route, u_weit, u_richtung)
     s_halt = route.entlang(aktuell.lat, aktuell.lon) if route else None
-    gefahren = strecke_km(alle[: aktuell.anfang + 1]) + versatz / 1000
+    # Nur bis zum Halt: Nach der Abfahrt zeigte die Linie sonst die genaue
+    # Spitze, während der Konvoi noch als haltend gilt.
+    ende = linie_ende(
+        punkte[: aktuell.anfang + 1],
+        (aktuell.lat, aktuell.lon),
+        [(lat, lon)],
+        route,
+        None if s_halt is None else s_halt + min(versatz, 0.0),
+    )
+    return Lage(punkte, alle, angekommen, aktuell, lat, lon, versatz, ende)
+
+
+def konvoi(
+    kandidaten: list[Kandidat],
+    stich: datetime,
+    ziel: tuple[float, float] | None,
+    *,
+    jetzt: datetime | None = None,
+    route: Strecke | None = None,
+    schluessel: bytes = b"",
+) -> dict:
+    """Öffentlicher Stand eines Konvois (ohne Namen, die setzt der Aufrufer).
+
+    Die Kandidaten dürfen Punkte bis ``jetzt`` tragen. Was danach kam, sagt
+    nur, ob der Konvoi zur Stichzeit schon auf einen Halt zufährt; hinaus geht
+    davon allein der Parkplatz dieses Halts, nie eine Position in Fahrt."""
+    lg = lage(kandidaten, stich, ziel, jetzt=jetzt, route=route, schluessel=schluessel)
+    if lg is None:
+        return {"status": "vor_abfahrt", "position": None, "trail": [], "driven_km": 0.0}
+    letzter = lg.punkte[-1]
+    if lg.halt is None:
+        return {
+            "status": "angekommen" if lg.angekommen else "unterwegs",
+            "position": {
+                "lat": round(letzter.lat, 5),
+                "lon": round(letzter.lon, 5),
+                "coarse": False,
+                "at": letzter.t,
+            },
+            "trail": linie(lg.punkte, None),
+            "driven_km": strecke_km(lg.punkte),
+        }
+    gefahren = strecke_km(lg.alle[: lg.halt.anfang + 1]) + lg.versatz / 1000
     return {
-        "status": "angekommen" if angekommen else "pause",
-        "position": {"lat": lat, "lon": lon, "coarse": True, "at": letzter.t},
-        # Nur bis zum Halt: Nach der Abfahrt zeigte die Linie sonst die genaue
-        # Spitze, während der Konvoi noch als haltend gilt.
-        "trail": linie(
-            punkte[: aktuell.anfang + 1],
-            (aktuell.lat, aktuell.lon),
-            [(lat, lon)],
-            route,
-            None if s_halt is None else s_halt + min(versatz, 0.0),
-        ),
+        "status": "angekommen" if lg.angekommen else "pause",
+        "position": {"lat": lg.lat, "lon": lg.lon, "coarse": True, "at": letzter.t},
+        "trail": linie(lg.punkte[: lg.linie_bis], None),
         # Ganze Kilometer, passend zum Parkplatz — der genaue Stand verriete
         # mit der Gesamtlänge der Route die Stelle des Halts.
         "driven_km": float(max(round(gefahren), 0)),
     }
+
+
+# ── Beiträge (Fotos von unterwegs) ─────────────────────────────────────────
+#
+# Plan: docs/superpowers/plans/2026-10-13-fotos-auf-der-aktionsseite.md, § 4.
+# Ein Foto ist eine Position, auch ohne Koordinate: Ortsschild, Rastplatz,
+# Kirchturm. Es darf deshalb nie mehr zeigen als die Karte daneben — es kommt
+# an dieselbe Stelle wie der Konvoi zu seiner Zeit, und es erscheint erst,
+# wenn die Linie bis dorthin reicht.
+
+# So nah muss ein Verlaufspunkt am Zeitpunkt des Beitrags liegen, damit er
+# eine Position bekommt. Weiter weg wäre geraten.
+BEITRAG_NAEHE = timedelta(minutes=15)
+
+
+def halt_bei(
+    alle: list[Punkt], t: datetime, jetzt: datetime, schluessel: bytes
+) -> tuple[Halt, datetime | None] | None:
+    """Der Halt, in dessen Schutzbereich ``t`` fällt, mit dem Ende des
+    Bereichs (``None``: noch nicht verlassen)."""
+    for h in halte(alle, jetzt):
+        von, bis_ = schutzbereich(alle, h, schluessel)
+        if von <= t and (bis_ is None or t < bis_):
+            return h, bis_
+    return None
+
+
+def beitrag_position(
+    kandidaten: list[Kandidat],
+    t: datetime,
+    stich: datetime,
+    ziel: tuple[float, float] | None,
+    *,
+    jetzt: datetime,
+    route: Strecke | None = None,
+    schluessel: bytes = b"",
+) -> dict | None:
+    """Wo ein Beitrag vom Zeitpunkt ``t`` auf der Karte liegt.
+
+    Aus dem Verlauf, nie aus dem Foto: EXIF ist frei setzbar. Fällt ``t`` in
+    den Schutzbereich eines Halts, liegt er auf dessen Parkplatz — derselben
+    Stelle, an der der Konvoi in dieser Zeit zu sehen war. Sonst dazwischen,
+    wo der Konvoi zu ``t`` war. Ohne Verlaufspunkt in ``BEITRAG_NAEHE``
+    keine Position: im Zweifel nicht auf die Karte."""
+    lg = lage(kandidaten, stich, ziel, jetzt=jetzt, route=route, schluessel=schluessel)
+    if lg is None:
+        return None
+    alle = lg.alle
+    im_halt = halt_bei(alle, t, jetzt, schluessel)
+    if im_halt is not None:
+        h, _ = im_halt
+        if ziel is not None and abstand_m(h.lat, h.lon, *ziel) <= ANKUNFT_RADIUS_M:
+            lat, lon = vergroebern(h.lat, h.lon)
+        else:
+            u_weit, u_richtung, _, _ = _zufall(schluessel, alle[h.anfang].t)
+            lat, lon, _ = parkplatz(h.lat, h.lon, route, u_weit, u_richtung)
+        return {"lat": lat, "lon": lon, "coarse": True}
+
+    davor = [p for p in alle if p.t <= t and t - p.t <= BEITRAG_NAEHE]
+    danach = [p for p in alle if p.t > t and p.t - t <= BEITRAG_NAEHE]
+    if davor and danach:
+        p0, p1 = davor[-1], danach[0]
+        f = (t - p0.t) / (p1.t - p0.t)
+        lat, lon = p0.lat + f * (p1.lat - p0.lat), p0.lon + f * (p1.lon - p0.lon)
+    elif davor or danach:
+        p = davor[-1] if davor else danach[0]
+        lat, lon = p.lat, p.lon
+    else:
+        return None
+    return {"lat": round(lat, 5), "lon": round(lon, 5), "coarse": False}
+
+
+def beitrag_sichtbar(
+    kandidaten: list[Kandidat],
+    t: datetime,
+    stich: datetime,
+    ziel: tuple[float, float] | None,
+    *,
+    jetzt: datetime,
+    route: Strecke | None = None,
+    schluessel: bytes = b"",
+    ab: datetime | None = None,
+) -> bool:
+    """Ob ein freigegebener Beitrag vom Zeitpunkt ``t`` hinausgeht.
+
+    1. Nicht vor der Stichzeit — dieselbe Verzögerung wie die Positionen.
+    2. Nicht vor ``ab``, dem späteren Termin der Presse (nie früher).
+    3. Nicht, solange der Konvoi noch im Schutzbereich des Halts ist, an dem
+       das Foto entstand: Das Foto vom Autohof erscheint erst, wenn er auf
+       der Seite wieder fährt. Ausnahme ist das Ziel, wenn er angekommen ist —
+       die Übergabe ist das Foto, auf das alle warten, und der Ort steht
+       vergröbert ohnehin da.
+    4. Hält er gerade irgendwo, nur was die Linie schon zeigt. Sonst stünde
+       ein Foto hinter dem Ende der Linie und verriete, wie weit er ist.
+    """
+    if t > stich or (ab is not None and jetzt < ab):
+        return False
+    lg = lage(kandidaten, stich, ziel, jetzt=jetzt, route=route, schluessel=schluessel)
+    if lg is None:
+        return False
+    im_halt = halt_bei(lg.alle, t, jetzt, schluessel)
+    if im_halt is not None:
+        h, bis_ = im_halt
+        if bis_ is None or stich < bis_:
+            return lg.angekommen and lg.halt == h
+    if lg.halt is None:
+        return True
+    if lg.linie_bis == 0:
+        return False
+    return t <= lg.punkte[lg.linie_bis - 1].t
 
 
 # ── Zusammensetzen ────────────────────────────────────────────────────────

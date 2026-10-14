@@ -402,6 +402,17 @@ schlägt sonst an.
 Die Positionen tragen die **Serverzeit**. Puffert ein Gerät im Funkloch und
 sendet später, landen die Punkte gestaucht am Ende der Linie.
 
+**Beiträge** (Fotos aus Telegram, Plan:
+`docs/superpowers/plans/2026-10-13-fotos-auf-der-aktionsseite.md`): Wo einer
+liegt und ob er hinausgeht, entscheiden `beitrag_position` und
+`beitrag_sichtbar` — mit derselben `lage()` wie `konvoi()`. Ein Foto ist eine
+Position, auch ohne Koordinate; es darf nie mehr zeigen als die Karte daneben.
+Im Schutzbereich eines Halts liegt es auf dessen Parkplatz und bleibt zurück,
+bis der Konvoi den Bereich verlassen hat (außer am Ziel nach der Ankunft); hält
+er gerade, geht nur hinaus, was die Linie schon zeigt. Wer an Halten, Parkplatz
+oder Linie dreht, ändert die Beiträge mit. Test:
+`tests/test_aktionsseite_beitraege.py`.
+
 ### Tracker: das Gerät hängt am Fahrzeug, die Position gehört dem Konvoi
 
 Ein festes Ortungsgerät (Repo **ConvoyPlan-Tracker**: Plan, Protokoll, Simulator,

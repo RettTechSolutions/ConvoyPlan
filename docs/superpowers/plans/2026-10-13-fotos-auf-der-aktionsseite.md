@@ -198,36 +198,50 @@ dieselbe Funktion, die auch `nutzlast` benutzt.
 
 ## 4. Die Regeln
 
-Alle drei sind reine Funktionen in `services/aktionsseite.py`, ohne Datenbank
-und Uhr, wie `steht` und `vergroebern`.
+Reine Funktionen in `services/aktionsseite.py`, ohne Datenbank und Uhr:
+`beitrag_position` und `beitrag_sichtbar`, geprüft von
+`tests/test_aktionsseite_beitraege.py`. Beide rechnen mit **derselben** `lage()`
+wie `konvoi()` (Vertreter, Halte mit Schutzbereich, Parkplatz, Ende der Linie).
+Ein Foto zeigt damit nie mehr als die Karte daneben, und wer an den Halteregeln
+dreht, ändert die Beiträge mit.
 
 ### 4.1 Platzierung aus dem Verlauf, nie aus dem Foto
 
-Ein Beitrag bekommt die Position des **Vertreters** (`vertreter()`) zum
-Zeitpunkt `message.date`, interpoliert zwischen den beiden Verlaufspunkten
-davor und danach. Hat der Konvoi zu diesem Zeitpunkt gestanden (`steht()`
-angewandt auf den Verlauf bis zum Beitragszeitpunkt), wird die Position
-vergröbert (`vergroebern()`), genau wie der Konvoipunkt.
+Ein Beitrag liegt dort, wo der **Vertreter** des Konvois zum Zeitpunkt
+`message.date` war, interpoliert zwischen den Verlaufspunkten davor und danach.
 
-Ohne Verlaufspunkt in ±15 min um den Zeitpunkt hat der Beitrag **keine
-Position**. Er erscheint dann in der Leiste des Konvois, aber nicht auf der
-Karte. Die Begründung ist dieselbe wie bei `steht()` ohne Daten: im Zweifel
-grob.
+- Fällt der Zeitpunkt in den **Schutzbereich eines Halts** (`halt_bei`, also
+  auch schon auf der Anfahrt und noch nach der Abfahrt, und ebenso in einem
+  Funkloch ab 20 min), liegt der Beitrag auf dem **Parkplatz dieses Halts**:
+  derselben Stelle, an der der Konvoi in dieser Zeit auf der Seite stand,
+  `coarse: true`. Kein zweiter Versatz, sonst ließen sich beide gegeneinander
+  rechnen.
+- Liegt der Halt am Ziel (`ANKUNFT_RADIUS_M`), wird wie bei der Ankunft nur
+  vergröbert.
+- Ohne Verlaufspunkt in ±15 min (`BEITRAG_NAEHE`) und außerhalb jedes Halts
+  hat der Beitrag **keine Position**. Er erscheint dann nur in der Leiste des
+  Konvois. Typischer Fall ist ein Foto von vor der Abfahrt.
 
 ### 4.2 Sichtbar ab der Stichzeit, zurückgehalten während eines Halts
 
 Ein freigegebener Beitrag geht hinaus, wenn **alle** Bedingungen gelten:
 
 1. `beitrag.at <= stichzeit` (dieselbe Stichzeit wie für die Positionen),
-2. der Konvoi steht zur Stichzeit **nicht** innerhalb von
-   `LINIE_ABSTAND_ZUM_HALT_M` um den Ort des Beitrags,
-3. `ab` ist leer oder vorbei (§ 3.5).
+2. `ab` ist leer oder vorbei (§ 3.5),
+3. liegt der Beitrag im Schutzbereich eines Halts, hat der Konvoi diesen
+   Bereich zur Stichzeit **verlassen**. Ausnahme: der Halt am Ziel, sobald der
+   Konvoi angekommen ist. Sonst käme das Übergabefoto nie, und der Ort steht
+   vergröbert ohnehin da.
+4. Hält der Konvoi zur Stichzeit irgendwo, nur Beiträge, die die Linie schon
+   zeigt (`beitrag.at` nicht nach dem letzten Punkt der Linie).
 
-Bedingung 2 schließt die Lücke aus § 1, letzte Zeile: Das Foto vom Autohof
-erscheint erst, wenn der Konvoi auf der Seite wieder fährt. Ein schon
-sichtbarer Beitrag kann nach dieser Regel wieder verschwinden, nämlich wenn
-der Konvoi später erneut im Umkreis seines Ortes hält. Das ist gewollt: Er
-geht nur kurz aus der Antwort, und der EventTracker holt ihn danach erneut.
+Bedingung 3 schließt die Lücke aus § 1, letzte Zeile: Das Foto vom Autohof
+erscheint erst, wenn der Konvoi auf der Seite wieder fährt. Bedingung 4 hält
+Fotos zurück, die zwischen dem Ende der Linie und dem Halt entstanden sind; sie
+verrieten sonst, wie weit er schon ist. Ein schon sichtbarer Beitrag kann
+dadurch kurz wieder verschwinden, wenn der Konvoi kurz danach hält. Das ist
+gewollt: Er geht nur aus der Antwort, und der EventTracker holt ihn danach
+erneut.
 
 Damit ist ein Beitrag nie früher sichtbar als die Linie, die zu seinem Ort
 führt.
@@ -577,7 +591,7 @@ Mit Datenbank (`aktionsseite_fixtures.py` erweitern):
 
 | # | Schritt | Wo |
 |---|---|---|
-| 1 | Regeln (`beitrag_position`, `beitrag_sichtbar`) + Tests | ConvoyPlan |
+| 1 | Regeln (`beitrag_position`, `beitrag_sichtbar`) + Tests (umgesetzt) | ConvoyPlan |
 | 2 | Modell, Migration, Bildverarbeitung, Retention | ConvoyPlan |
 | 3 | Telegram-Abholer: Verbinden, Presse-Codes, Beiträge, Alben, Karte mit Knöpfen, Text ändern | ConvoyPlan |
 | 4 | `posts` in der Positivliste, Bildendpunkt, Sichtbarkeitsschleife („Öffentlich seit"), Admin-Ansicht | ConvoyPlan |
