@@ -248,6 +248,21 @@ export async function downloadFile(path: string, filename: string): Promise<void
 	setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+/**
+ * Ein angemeldetes Bild als `blob:`-Adresse. Ein `<img src>` schickt nur das
+ * Cookie, nicht den `X-Org-Slug`-Kopf — das Backend nähme dann die globale
+ * Sitzung und wiese ab. Wer die Adresse nicht mehr braucht, gibt sie mit
+ * `URL.revokeObjectURL` frei.
+ */
+export async function blobUrl(path: string): Promise<string> {
+	const res = await fetch(`${getBaseUrl()}${path}`, {
+		credentials: 'same-origin',
+		headers: authHeaders(),
+	});
+	if (!res.ok) throw await toApiError(res, 'Bild nicht geladen');
+	return URL.createObjectURL(await res.blob());
+}
+
 export async function uploadFile<T>(path: string, file: File): Promise<T> {
 	// Do NOT set Content-Type — browser sets multipart/form-data + boundary automatically
 	const formData = new FormData();

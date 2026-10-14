@@ -379,8 +379,12 @@ export const aktionsseitenTelegramApi = {
 		}
 		return structuredClone(b);
 	},
-	bildUrl: (id: string, photoId: string, groesse: 'gross' | 'klein') =>
-		`/api/org/aktionsseiten/${id}/bilder/${photoId}/${groesse}.webp`,
+	bild: async (id: string, photoId: string, groesse: 'gross' | 'klein'): Promise<string> => {
+		tgAufruf('bild', id, photoId, groesse);
+		// 1×1 PNG — was hier zählt, ist der Weg über den API-Client, nicht das Bild.
+		const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0));
+		return URL.createObjectURL(new Blob([png], { type: 'image/png' }));
+	},
 };
 
 // ── Passkeys (`PasskeyVerwaltung`) ───────────────────────────────────────────

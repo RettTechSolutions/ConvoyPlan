@@ -106,6 +106,47 @@
 		aendern(b, { not_before: t.toISOString() });
 	}
 
+	/**
+	 * Vorschaubilder holt der API-Client: Ein `<img src>` mit der Pfadadresse
+	 * schickte nur das Cookie, nicht `X-Org-Slug`, und das Backend wiese ab.
+	 */
+	function geschuetzt(img: HTMLImageElement, photoId: string) {
+		let url: string | null = null;
+		let aktiv = true;
+		async function laden(id: string) {
+			try {
+				const neu = await aktionsseitenTelegramApi.bild(seite.id, id, 'klein');
+				if (!aktiv) return URL.revokeObjectURL(neu);
+				if (url) URL.revokeObjectURL(url);
+				url = neu;
+				img.src = neu;
+			} catch {
+				img.classList.add('fehlt');
+			}
+		}
+		laden(photoId);
+		return {
+			update: laden,
+			destroy() {
+				aktiv = false;
+				if (url) URL.revokeObjectURL(url);
+			}
+		};
+	}
+
+	/** Das Fenster gleich öffnen — nach dem Laden ließe ein Popup-Blocker es nicht mehr zu. */
+	async function grossOeffnen(photoId: string) {
+		const fenster = window.open('', '_blank');
+		try {
+			const url = await aktionsseitenTelegramApi.bild(seite.id, photoId, 'gross');
+			if (fenster) fenster.location.href = url;
+			else window.location.href = url;
+		} catch (e) {
+			fenster?.close();
+			fehler = e instanceof Error ? e.message : 'Bild nicht geladen';
+		}
+	}
+
 	function konvoiName(id: string): string {
 		return seite.convoys.find((k) => k.convoy_id === id)?.display_name ?? '?';
 	}
@@ -259,19 +300,18 @@
 			{#each gezeigt as b (b.id)}
 				<li data-testid="beitrag" data-status={b.status}>
 					{#if b.photos[0]}
-						<a
+						<button
+							type="button"
 							class="vorschau"
-							href={aktionsseitenTelegramApi.bildUrl(seite.id, b.photos[0].id, 'gross')}
-							target="_blank"
-							rel="noopener noreferrer"
+							title="Groß ansehen"
+							onclick={() => grossOeffnen(b.photos[0].id)}
 						>
 							<img
-								src={aktionsseitenTelegramApi.bildUrl(seite.id, b.photos[0].id, 'klein')}
+								use:geschuetzt={b.photos[0].id}
 								alt={b.text_public ?? `Foto von ${konvoiName(b.convoy_id)}`}
-								loading="lazy"
 							/>
 							{#if b.photos.length > 1}<span class="anzahl">{b.photos.length}</span>{/if}
-						</a>
+						</button>
 					{:else if b.link_url}
 						<a
 							class="vorschau link"
@@ -370,7 +410,8 @@
 	.beitraege { list-style: none; margin: .5rem 0; padding: 0; }
 	.beitraege li { display: flex; gap: .75rem; padding: .5rem 0; border-top: 1px solid var(--border); }
 	.beitraege li:first-child { border-top: none; }
-	.vorschau { position: relative; flex: 0 0 auto; }
+	.vorschau { position: relative; flex: 0 0 auto; padding: 0; border: 0; background: none; cursor: pointer; }
+	.vorschau img:not([src]), .vorschau :global(img.fehlt) { visibility: hidden; }
 	.vorschau.link { width: 4.5rem; height: 4.5rem; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .1rem; border-radius: 4px; border: 1px solid var(--border); background: var(--surface-2); font-size: 1.3rem; text-decoration: none; color: var(--text-1); }
 	.vorschau.link span { font-size: var(--text-xs); }
 	.vorschau img { width: 4.5rem; height: 4.5rem; object-fit: cover; border-radius: 4px; border: 1px solid var(--border); background: var(--surface-2); display: block; }
