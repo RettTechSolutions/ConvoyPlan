@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { adminBereich } from './kontextmenue-attrappe';
+import { BENUTZER, GRUNDLAGE, ORGS, adminBereich, mockApi } from './kontextmenue-attrappe';
 
 // Admin-Portal am Telefon. Zwei Zusagen, die man einem Bildschirmfoto nur halb
 // ansieht:
@@ -9,6 +9,8 @@ import { adminBereich } from './kontextmenue-attrappe';
 // - **Lange Reiter sind eine Liste von Themen, keine Wand.** Am Telefon
 //   starten die Karten zugeklappt, ein Tipp auf den Titel öffnet sie, und der
 //   Browser merkt sich das.
+// - **Was ansteht, steht in der Kopfzeile.** Ein verfügbares Update oder ein
+//   laufender Graph-Aufbau fällt auch an der zugeklappten Karte auf.
 
 const TELEFON = { width: 390, height: 844 };
 
@@ -101,6 +103,62 @@ test.describe('am Telefon', () => {
 		await karte.locator('.section-header .btn-small').click();
 		await expect.poll(() => aufrufe.length).toBeGreaterThan(vorher);
 		await expect(titel(page, 'Lizenz')).toHaveAttribute('aria-expanded', 'false');
+	});
+});
+
+test.describe('Status in der Kopfzeile', () => {
+	test.use({ viewport: TELEFON, hasTouch: true });
+
+	const STAND = {
+		deployed_sha: 'aaaaaaa', deployed_at: null, remote_sha: 'bbbbbbb', update_available: true,
+		github_reachable: true, channel: 'stable', latest_release: 'v2026.10.0', no_release: false,
+		ahead_of_release: false, held_back: null,
+	};
+
+	async function updateKarte(page: Page, stand: object) {
+		await mockApi(page, {
+			...GRUNDLAGE,
+			'GET /api/admin/users': BENUTZER,
+			'GET /api/admin/organizations': ORGS,
+			'GET /api/admin/update-status': stand,
+		});
+		await page.goto('/admin', { waitUntil: 'domcontentloaded' });
+		await expect(page.getByRole('cell', { name: 'anna@example.org' })).toBeVisible();
+		const system = page.locator('.tab', { hasText: /^System$/ });
+		await system.scrollIntoViewIfNeeded();
+		await system.click();
+		return page.locator('.section', { has: titel(page, 'Software-Update') });
+	}
+
+	test('ein verfügbares Update steht an der zugeklappten Karte', async ({ page }) => {
+		const karte = await updateKarte(page, STAND);
+		await expect(titel(page, 'Software-Update')).toHaveAttribute('aria-expanded', 'false');
+		await expect(karte.getByTestId('kopf-status')).toHaveText('Update verfügbar');
+		await expect(karte.getByTestId('kopf-status')).toBeVisible();
+	});
+
+	test('zurückgehalten und aktuell heißen auch so', async ({ page }) => {
+		const karte = await updateKarte(page, {
+			...STAND, held_back: { since: '2026-10-14T08:00:00Z', users: 2, demo_users: 0 },
+		});
+		await expect(karte.getByTestId('kopf-status')).toHaveText('Update zurückgehalten');
+
+		const aktuell = await updateKarte(page, { ...STAND, update_available: false, remote_sha: 'aaaaaaa' });
+		await expect(aktuell.getByTestId('kopf-status')).toHaveText('Aktuell');
+	});
+
+	test('die Kartenregion meldet einen laufenden oder hängenden Graph-Aufbau', async ({ page }) => {
+		const status = page.locator('.region-card .section-header').getByTestId('kopf-status');
+		for (const [bau, text] of [['import', 'Graph wird gebaut'], ['haengt', 'Graph-Aufbau hängt']]) {
+			await page.goto(`http://localhost:4174/?k=region&bau=${bau}`);
+			await expect(page.getByText('dach-latest.osm.pbf')).toBeAttached(); // zugeklappt, aber geladen
+			await expect(status).toHaveText(text);
+			await expect(status).toBeVisible();
+		}
+		// Ohne Bau gibt es nichts zu melden.
+		await page.goto('http://localhost:4174/?k=region&bau=keiner');
+		await expect(page.getByText('dach-latest.osm.pbf')).toBeAttached(); // zugeklappt, aber geladen
+		await expect(status).toHaveCount(0);
 	});
 });
 

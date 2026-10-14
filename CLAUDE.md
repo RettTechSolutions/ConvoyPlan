@@ -670,7 +670,10 @@ Systemübersicht, Leitstellenkarte) klappt die Action `use:klappbar={'id'}` aus
 (`.section-header > strong`) wird zum Schalter. Am Telefon starten die Karten zu,
 am Schreibtisch offen; die Wahl merkt sich der Browser je `id`. Eine Karte, die
 sich beim Aufklappen erst messen muss (MapLibre), braucht einen ResizeObserver,
-wie `LeitstellenOverviewMap`. Test: `frontend/e2e/admin-am-telefon.spec.ts`.
+wie `LeitstellenOverviewMap`. Was zugeklappt nicht untergehen darf, steht als
+Abzeichen in der Kopfzeile (`kopf-status`): Software-Update (verfügbar,
+zurückgehalten, läuft) und Kartenregion (Wechsel, Graph-Aufbau). Test:
+`frontend/e2e/admin-am-telefon.spec.ts`.
 
 ### API-Docs (Swagger/OpenAPI)
 

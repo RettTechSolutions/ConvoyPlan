@@ -772,6 +772,21 @@
     let regionStatus = $state<RegionStatus>({ phase: 'idle' });
     let regionStatusTimer: ReturnType<typeof setInterval> | null = null;
     const regionSwitchBusy = $derived(REGION_ACTIVE_PHASES.includes(regionStatus.phase));
+    // Kurzfassung für die Kopfzeile der Update-Karte: Am Telefon ist sie
+    // zugeklappt ($lib/klappbar), und ob ein Update ansteht, soll man trotzdem
+    // sehen. Dieselben Fälle wie die Statuszeile in der Karte, knapper benannt.
+    const updateKopfStatus = $derived.by((): { text: string; klasse: string } | null => {
+        if (updateTriggering) return { text: 'Update läuft', klasse: 'badge-update' };
+        if (!updateStatus) return null;
+        if (!updateStatus.github_reachable) return { text: 'GitHub nicht erreichbar', klasse: 'badge-warn' };
+        if (updateStatus.no_release || updateStatus.ahead_of_release) return { text: 'Aktuell', klasse: 'badge-ok' };
+        if (updateStatus.update_available) {
+            return updateStatus.held_back && updateMode?.mode !== 'notify'
+                ? { text: 'Update zurückgehalten', klasse: 'badge-update' }
+                : { text: 'Update verfügbar', klasse: 'badge-update' };
+        }
+        return { text: 'Aktuell', klasse: 'badge-ok' };
+    });
 
     async function loadRegionStatus() {
         try {
@@ -4020,8 +4035,11 @@
         <div class="section" use:klappbar={'system-update'}>
             <div class="section-header">
                 <strong>Software-Update</strong>
+                {#if updateKopfStatus}
+                    <span class="badge kopf-status {updateKopfStatus.klasse}" data-testid="kopf-status">{updateKopfStatus.text}</span>
+                {/if}
                 {#if !updateTriggering}
-                    <button class="btn-small" onclick={loadUpdateStatus}>↺ Aktualisieren</button>
+                    <button class="btn-small" onclick={loadUpdateStatus} title="Aktualisieren" aria-label="Aktualisieren">↺</button>
                 {/if}
             </div>
 
@@ -4825,7 +4843,7 @@
     /* overflow-x: Breite Tabellen scrollen innerhalb der Karte statt rechts
        über den Kartenrand hinauszulaufen. */
     .section { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; box-shadow: var(--shadow); overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: .75rem; font-size: var(--text-sm); font-weight: 500; color: var(--text-1); }
+    .section-header { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: space-between; align-items: center; margin-bottom: .75rem; font-size: var(--text-sm); font-weight: 500; color: var(--text-1); }
     /* Titel + Statusabzeichen bleiben beieinander, statt auseinandergezogen zu werden. */
 
     .create-form { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1rem; padding: .75rem; background: var(--surface-2); border-radius: 6px; border: 1px solid var(--border); max-width: var(--admin-field, 34rem); }
@@ -4995,6 +5013,8 @@
     .kpi-attention { border-color: rgba(180,60,40,.45); }
     .kpi-attention .kpi-value { color: var(--color-primary); }
 
+    /* Status in der Kopfzeile: klebt am Titel, Knöpfe bleiben rechts. */
+    .kopf-status { margin-right: auto; }
     .badge { display: inline-block; padding: .15rem .5rem; border-radius: 3px; font-size: var(--text-xs); font-weight: 600; }
 
     /* ── Meldungen ──────────────────────────────────────────────────────── */
