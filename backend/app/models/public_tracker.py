@@ -176,6 +176,10 @@ class PublicTrackerChat(Base):
     thread_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     # Nur intern, für die Zeile im Org-Admin.
     chat_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Die letzte Ansage des Bots in der Gruppe (Seite zu, Tagesgrenze) — damit
+    # sie einmal kommt und nicht auf jedes Foto eines Albums.
+    ansage_grund: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    ansage_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -302,6 +306,10 @@ class PublicTrackerPost(Base):
     )
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     public_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Die Karte in der Gruppe ist nicht auf dem Stand (Telegram hat mit 429
+    # gedrosselt): ab dann neu senden oder bearbeiten. In der Datenbank, damit
+    # ein Neustart die Warteschlange nicht verliert.
+    karte_faellig_ab: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

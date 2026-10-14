@@ -127,6 +127,12 @@ Die Presse gibt sie dort frei; erst dann erscheinen sie auf der Aktionsseite —
   der freigegebene; die Karte weist darauf hin.
 - **Zurückziehen** über den Knopf, nicht durch Löschen in Telegram — das
   bekommt der Bot nicht mit.
+- Ist die Aktionsseite nicht aktiv (abgelaufen, abgeschaltet) oder die
+  Tagesgrenze erreicht (300 Fotos bzw. 100 Links in 24 Stunden je Gruppe),
+  **sagt der Bot es in der Gruppe** — einmal, nicht auf jedes Foto. Was er dann
+  nicht annimmt, wird nicht gespeichert.
+- Bremst Telegram den Bot (viele Fotos in kurzer Zeit), kommen seine Karten
+  etwas später, aber sie kommen.
 - Im Org-Admin stehen alle Beiträge mit Zähler („3 warten …") und denselben
   Aktionen — für den Fall, dass in Telegram gerade niemand erreichbar ist.
 - **Gruppe trennen** nimmt keine neuen Fotos mehr an; vorhandene Beiträge

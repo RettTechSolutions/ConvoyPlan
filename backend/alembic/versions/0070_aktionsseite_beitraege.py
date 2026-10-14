@@ -7,7 +7,8 @@ freigeben darf, ``public_tracker_codes`` hält Einmal- und Presse-Codes als
 Hash. ``public_tracker_posts`` sind die Beiträge, ``public_tracker_photos``
 ihre Bilder, ``public_tracker_photo_data`` deren Bytes — getrennt, damit eine
 Liste nie Bilder lädt. Ein Beitrag kann statt Bildern einen Link tragen
-(``link_url``/``link_dienst``, § 11). Bestehende Daten gibt es nicht, die
+(``link_url``/``link_dienst``, § 11). ``karte_faellig_ab`` ist die
+Warteschlange für Karten, die Telegram gedrosselt hat. Bestehende Daten gibt es nicht, die
 Migration legt nur an. Plan: docs/superpowers/plans/2026-10-13-fotos-auf-der-aktionsseite.md.
 
 Revision ID: 0070
@@ -53,6 +54,8 @@ def upgrade() -> None:
         sa.Column("chat_id", sa.BigInteger(), nullable=False),
         sa.Column("thread_id", sa.BigInteger(), nullable=True),
         sa.Column("chat_title", sa.String(255), nullable=True),
+        sa.Column("ansage_grund", sa.String(20), nullable=True),
+        sa.Column("ansage_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.ForeignKeyConstraint(*_KONVOI_DER_SEITE, ondelete="CASCADE"),
         sa.UniqueConstraint("tracker_id", "convoy_id", name="uq_public_tracker_chats_konvoi"),
@@ -129,6 +132,7 @@ def upgrade() -> None:
         ),
         sa.Column("reviewed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("public_since", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("karte_faellig_ab", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.ForeignKeyConstraint(*_KONVOI_DER_SEITE, ondelete="CASCADE"),

@@ -443,6 +443,12 @@ Text. Tests: `tests/test_aktionsseite_links.py`.
 **`/ab`** setzt `not_before` (später, nie früher — eine frühere Zeit ist die Regelzeit,
 kein Fehler; nicht mehr nach `public_since`), gelesen in deutscher Ortszeit
 (`termin_lesen`). Tests: `tests/test_aktionsseite_termin.py`.
+**Ansage und Drosselung**: Was der Bot nicht annimmt (Seite nicht aktiv, Tagesgrenze),
+sagt er der Gruppe einmal je Grund und 24 h (`ansage_grund`/`ansage_at` am Chat). Karten,
+die Telegram drosselt (429, Netz, 5xx), stehen mit `karte_faellig_ab` in der Datenbank;
+`karten_nachholen` läuft in jedem Durchgang von `einmal_abholen` und baut aus dem Stand
+von dann. Wer eine Karte sendet oder bearbeitet, geht über `_karte_senden`/
+`karte_aktualisieren`, nie direkt über die API. Tests: `tests/test_aktionsseite_ansage_drossel.py`.
 
 ### Tracker: das Gerät hängt am Fahrzeug, die Position gehört dem Konvoi
 

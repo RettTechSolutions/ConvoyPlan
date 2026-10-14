@@ -61,6 +61,10 @@ PRESSE_GUELTIG = timedelta(hours=24)
 BILDER_JE_TAG = 300
 # Und so viele Link-Beiträge (§ 11).
 LINKS_JE_TAG = 100
+# Dieselbe Ansage in derselben Gruppe höchstens so oft (Seite zu, Tagesgrenze).
+ANSAGE_WIEDER = timedelta(hours=24)
+# Höchstens so viele gedrosselte Karten je Durchgang nachholen.
+KARTEN_JE_DURCHGANG = 20
 # Wie lange eine Aufforderung „Neuer Text …" auf ihre Antwort wartet.
 TEXTEINGABE_GUELTIG = timedelta(hours=1)
 ZEITZONE = ZoneInfo("Europe/Berlin")
@@ -92,6 +96,14 @@ TEXT_CODE_UNBEKANNT = "Der Code ist unbekannt oder abgelaufen. Einen neuen gibt 
 TEXT_SCHON_ANDERS = "Diese Gruppe (oder dieses Thema) ist schon mit einem anderen Konvoi verbunden."
 TEXT_NUR_PRESSE = "Freigeben darf nur die Presse."
 TEXT_BILD_FEHLT = "Dieses Bild kann ich nicht übernehmen — bitte als JPEG, PNG oder WebP schicken."
+TEXT_SEITE_ZU = (
+    "Die Aktionsseite „{seite}“ ist gerade nicht aktiv. Fotos und Links von hier nehme ich "
+    "nicht an — sie erscheinen nicht und werden nicht gespeichert."
+)
+TEXT_TAGESGRENZE = (
+    "Für den Moment nehme ich aus dieser Gruppe keine weiteren {was} an "
+    "(höchstens {n} in 24 Stunden). Später geht es weiter."
+)
 TEXT_AB_HILFE = (
     "So geht's: als Antwort auf die Karte eines Beitrags /ab 18:00 oder /ab 27.12. 18:00 — "
     "/ab - nimmt den Termin wieder weg. Früher als die Verzögerung geht nie."
@@ -478,7 +490,10 @@ async def _seite_offen(lauf: _Lauf, seite: PublicTracker) -> bool:
 async def _beitrag(lauf: _Lauf, nachricht: dict) -> None:
     chat_id = nachricht["chat"]["id"]
     chat, seite = await _bindung(lauf, chat_id, _thema(nachricht))
-    if chat is None or not await _seite_offen(lauf, seite):
+    if chat is None:
+        return  # Eine fremde Gruppe bekommt nicht einmal eine Antwort.
+    if not await _seite_offen(lauf, seite):
+        await _ansagen(lauf, nachricht, chat, "seite_zu", TEXT_SEITE_ZU.format(seite=seite.title))
         return
     # Weitergeleitetes kann alt sein oder von woanders — Zeit und Ort passen nicht.
     if nachricht.get("forward_origin") or nachricht.get("forward_date"):
@@ -497,6 +512,8 @@ async def _beitrag(lauf: _Lauf, nachricht: dict) -> None:
         return
     if await _bilder_heute(lauf, chat_id) >= BILDER_JE_TAG:
         logger.info("Telegram: Tagesgrenze für Chat %s erreicht", chat_id)
+        await _ansagen(lauf, nachricht, chat, "tagesgrenze",
+                       TEXT_TAGESGRENZE.format(was="Fotos", n=BILDER_JE_TAG))
         return
 
     datei = nachricht["photo"][-1] if nachricht.get("photo") else nachricht["document"]
@@ -542,13 +559,7 @@ async def _beitrag(lauf: _Lauf, nachricht: dict) -> None:
         await lauf.db.rollback()
         return
     if neu:
-        text_, knoepfe = await _karte(lauf, post)
-        gesendet = await lauf.api.senden(
-            chat_id, text_, thread_id=_thema(nachricht), antwort_auf=nachricht["message_id"],
-            knoepfe=knoepfe,
-        )
-        post.card_message_id = gesendet["message_id"]
-        await lauf.db.commit()
+        await _karte_senden(lauf.db, lauf.api, post, _thema(nachricht), lauf.jetzt)
     else:
         await karte_aktualisieren(lauf.db, lauf.api, post, lauf.jetzt)
 
@@ -561,12 +572,17 @@ async def _link_beitrag(
     Nachricht. Freigabe, Verzögerung und Platzierung wie bei Fotos."""
     chat_id = nachricht["chat"]["id"]
     chat, seite = await _bindung(lauf, chat_id, _thema(nachricht))
-    if chat is None or not await _seite_offen(lauf, seite):
+    if chat is None:
+        return
+    if not await _seite_offen(lauf, seite):
+        await _ansagen(lauf, nachricht, chat, "seite_zu", TEXT_SEITE_ZU.format(seite=seite.title))
         return
     if nachricht.get("forward_origin") or nachricht.get("forward_date"):
         return
     if await _links_heute(lauf, chat_id) >= LINKS_JE_TAG:
         logger.info("Telegram: Tagesgrenze für Links in Chat %s erreicht", chat_id)
+        await _ansagen(lauf, nachricht, chat, "linkgrenze",
+                       TEXT_TAGESGRENZE.format(was="Links", n=LINKS_JE_TAG))
         return
     zeit = datetime.fromtimestamp(nachricht["date"], timezone.utc)
     bezug = (nachricht.get("reply_to_message") or {}).get("message_id")
@@ -595,13 +611,7 @@ async def _link_beitrag(
     except IntegrityError:
         await lauf.db.rollback()
         return
-    text_, knoepfe = await _karte(lauf, post)
-    gesendet = await lauf.api.senden(
-        chat_id, text_, thread_id=_thema(nachricht), antwort_auf=nachricht["message_id"],
-        knoepfe=knoepfe,
-    )
-    post.card_message_id = gesendet["message_id"]
-    await lauf.db.commit()
+    await _karte_senden(lauf.db, lauf.api, post, _thema(nachricht), lauf.jetzt)
 
 
 async def _links_heute(lauf: _Lauf, chat_id: int) -> int:
@@ -612,6 +622,21 @@ async def _links_heute(lauf: _Lauf, chat_id: int) -> int:
             PublicTrackerPost.created_at > lauf.jetzt - timedelta(days=1),
         )
     )).scalar_one()
+
+
+async def _ansagen(lauf: _Lauf, nachricht: dict, chat: PublicTrackerChat, grund: str, text_: str) -> None:
+    """Sagt der Gruppe, warum ihre Fotos nicht ankommen — einmal je Grund und
+    ``ANSAGE_WIEDER``, nicht auf jedes Bild eines Albums. Still verwerfen hieße,
+    dass die Fahrer weiter posten und sich wundern."""
+    if chat.ansage_grund == grund and chat.ansage_at and chat.ansage_at > lauf.jetzt - ANSAGE_WIEDER:
+        return
+    chat.ansage_grund, chat.ansage_at = grund, lauf.jetzt
+    await lauf.db.commit()
+    try:
+        await lauf.antworten(nachricht, text_)
+    except TelegramFehler as e:
+        # Eine Ansage holt niemand nach; das nächste Foto nach der Frist sagt es wieder.
+        logger.info("Telegram: Ansage nicht gesendet (%s)", e.beschreibung)
 
 
 async def _bilder_heute(lauf: _Lauf, chat_id: int) -> int:
@@ -645,18 +670,96 @@ async def _karte(lauf_or_db, post: PublicTrackerPost, jetzt: datetime | None = N
     )
 
 
+def _spaeter_versuchen(e: TelegramFehler) -> bool:
+    """Gedrosselt, Netz weg oder Telegram gestört: die Karte kommt später. Alles
+    andere (Bot aus der Gruppe geworfen, Nachricht gelöscht) wird nicht besser."""
+    return e.code in (0, 429) or e.code >= 500
+
+
+async def _nachholen(db: AsyncSession, post: PublicTrackerPost, e: TelegramFehler, jetzt: datetime) -> None:
+    post.karte_faellig_ab = jetzt + timedelta(seconds=max(e.warten or 30, 1))
+    await db.commit()
+    logger.info("Telegram: Karte für Beitrag %s später (%s)", post.id, e.beschreibung)
+
+
+async def _thema_von(db: AsyncSession, post: PublicTrackerPost) -> int | None:
+    return (await db.execute(
+        select(PublicTrackerChat.thread_id).where(
+            PublicTrackerChat.tracker_id == post.tracker_id,
+            PublicTrackerChat.convoy_id == post.convoy_id,
+            PublicTrackerChat.chat_id == post.chat_id,
+        )
+    )).scalar_one_or_none()
+
+
+async def _karte_senden(
+    db: AsyncSession, api: TelegramApi, post: PublicTrackerPost, thread_id: int | None,
+    jetzt: datetime | None = None,
+) -> None:
+    """Die eine Karte je Beitrag, als Antwort auf ihn. Kommt sie nicht an, steht
+    der Beitrag in der Warteschlange (``karte_faellig_ab``) — ohne Karte
+    könnte die Presse ihn in Telegram nicht freigeben."""
+    jetzt = jetzt or datetime.now(timezone.utc)
+    text_, knoepfe = await _karte(db, post, jetzt)
+    try:
+        gesendet = await api.senden(
+            post.chat_id, text_, thread_id=thread_id, antwort_auf=post.message_id, knoepfe=knoepfe,
+        )
+    except TelegramFehler as e:
+        if _spaeter_versuchen(e):
+            await _nachholen(db, post, e, jetzt)
+        else:
+            logger.info("Telegram: Karte nicht gesendet (%s)", e.beschreibung)
+        return
+    post.card_message_id = gesendet["message_id"]
+    post.karte_faellig_ab = None
+    await db.commit()
+
+
 async def karte_aktualisieren(
     db: AsyncSession, api: TelegramApi, post: PublicTrackerPost, jetzt: datetime | None = None
 ) -> None:
     """Die Karte in der Gruppe auf den Stand bringen — auch nach einer
-    Änderung im Org-Admin (§ 8.3)."""
-    if post.chat_id is None or post.card_message_id is None:
+    Änderung im Org-Admin (§ 8.3). Gedrosselt kommt sie in die Warteschlange
+    und wird dann aus dem **dann** gültigen Stand gebaut, nicht aus dem jetzigen."""
+    if post.chat_id is None:
+        return
+    jetzt = jetzt or datetime.now(timezone.utc)
+    if post.card_message_id is None:
+        await _karte_senden(db, api, post, await _thema_von(db, post), jetzt)
         return
     text_, knoepfe = await _karte(db, post, jetzt)
     try:
         await api.bearbeiten(post.chat_id, post.card_message_id, text_, knoepfe)
     except TelegramFehler as e:
+        if _spaeter_versuchen(e):
+            await _nachholen(db, post, e, jetzt)
+            return
         logger.info("Telegram: Karte nicht bearbeitet (%s)", e.beschreibung)
+    if post.karte_faellig_ab is not None:
+        post.karte_faellig_ab = None
+        await db.commit()
+
+
+async def karten_nachholen(db: AsyncSession, api: TelegramApi, org_id: uuid.UUID,
+                           jetzt: datetime | None = None) -> int:
+    """Karten, die Telegram gedrosselt hat, nachholen — die ältesten zuerst.
+    Drosselt Telegram wieder, endet der Durchgang: der Rest wartet ohnehin."""
+    jetzt = jetzt or datetime.now(timezone.utc)
+    faellig = (await db.execute(
+        select(PublicTrackerPost)
+        .join(PublicTracker, PublicTracker.id == PublicTrackerPost.tracker_id)
+        .where(PublicTracker.organization_id == org_id, PublicTrackerPost.karte_faellig_ab <= jetzt)
+        .order_by(PublicTrackerPost.karte_faellig_ab)
+        .limit(KARTEN_JE_DURCHGANG)
+    )).scalars().all()
+    erledigt = 0
+    for post in faellig:
+        await karte_aktualisieren(db, api, post, jetzt)
+        if post.karte_faellig_ab is not None:
+            break
+        erledigt += 1
+    return erledigt
 
 
 async def _knopf(lauf: _Lauf, cq: dict) -> None:
@@ -942,6 +1045,11 @@ async def einmal_abholen(org_id: uuid.UUID, warten: int = 25, pause_bei_fehler: 
                 return False
             bot.update_offset = max(bot.update_offset, u["update_id"] + 1)
             await db.commit()
+        try:
+            await karten_nachholen(db, api, org_id)
+        except Exception:
+            logger.exception("Telegram: Karten nicht nachgeholt")
+            await db.rollback()
     return True
 
 

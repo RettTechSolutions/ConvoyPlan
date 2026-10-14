@@ -353,10 +353,21 @@ Draht in `services/telegram.py` (`TelegramApi`), Verarbeitung und Abholen in
   Stunde), wie Belegungen und Passkey-Challenges. Nach einem Neustart drückt die
   Presse eben noch einmal. Wer inzwischen aus der Presse entfernt wurde, ändert
   auch über eine offene Aufforderung nichts mehr.
-- **Noch nicht** (Schritt 4 und 7): „Öffentlich seit“ auf der Karte (braucht die
-  Sichtbarkeitsschleife), die Warteschlange für Kartenbearbeitungen bei 429,
-  `/ab` zum späteren Terminieren, die einmalige Ansage bei abgelaufener Seite
-  und bei erreichter Tagesgrenze. Bis dahin verwirft der Bot still.
+- **Nachgetragen** (nach Schritt 7): „Öffentlich seit“ (Schritt 4), `/ab`
+  (Schritt 7) und:
+  - **Ansage** bei nicht aktiver Seite (abgelaufen, abgeschaltet, Modul
+    gesperrt) und bei erreichter Tagesgrenze für Fotos oder Links: als Antwort
+    auf die Nachricht, einmal je Grund und 24 Stunden je Gruppe
+    (`public_tracker_chats.ansage_grund`/`ansage_at`), nicht auf jedes Bild
+    eines Albums. Eine nicht verbundene Gruppe bekommt weiter keine Antwort.
+  - **Warteschlange bei 429**: Kann der Bot eine Karte nicht senden oder
+    bearbeiten (429, Netzfehler, 5xx), steht der Beitrag mit
+    `karte_faellig_ab` (`retry_after`, sonst 30 s) in der Datenbank und
+    überlebt so einen Neustart. Jeder Durchgang des Long Pollings holt bis zu
+    20 fällige Karten nach, die ältesten zuerst, und hört beim nächsten 429
+    auf. Gebaut wird die Karte aus dem Stand **beim Nachholen**. Ein 403 (Bot
+    aus der Gruppe geworfen) wird nicht besser und kommt nicht in die
+    Warteschlange.
 - **Audit**: `org.aktionsseite.telegram_bot_gesetzt`/`_entfernt`,
   `telegram_code`, `telegram_verbunden`, `telegram_getrennt`,
   `presse_eingetragen`/`_entfernt`, `beitrag_freigegeben`/`_abgelehnt`/
