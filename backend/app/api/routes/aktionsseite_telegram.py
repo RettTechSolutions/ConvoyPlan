@@ -10,25 +10,32 @@ UUID ab.
 """
 import uuid
 from datetime import datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.api.deps import OrgCtx, get_org_context, require_modul
-from app.api.routes.aktionsseite import _laden, _require_admin
+from app.api.routes.aktionsseite import _laden, _require_admin, _vergessen
 from app.database import get_db
 from app.models.public_tracker import (
+    BEITRAG_STATUS,
     PublicTrackerChat,
     PublicTrackerCode,
+    BEITRAG_TEXT_MAX,
     PublicTrackerConvoy,
+    PublicTrackerPhoto,
+    PublicTrackerPhotoData,
+    PublicTrackerPost,
     PublicTrackerPresse,
     PublicTrackerTelegram,
 )
 from app.services import aktionsseite_telegram as tg
 from app.services import audit, org_module
-from app.services.crypto import encrypt_secret
+from app.services.crypto import decrypt_secret, encrypt_secret
 from app.services.telegram import TelegramFehler
 
 router = APIRouter(
@@ -293,3 +300,140 @@ async def presse_entfernen(
         detail={"telegram_user_id": telegram_user_id},
     )
     return Response(status_code=204)
+
+
+# ── Beiträge (Schritt 4) ───────────────────────────────────────────────────
+# Übersicht und Notnagel; gearbeitet wird in Telegram. Was hier geschieht,
+# zieht die Karte in der Gruppe mit (§ 8.3).
+
+BEITRAG_LIMIT = 200
+
+
+class BildZeile(BaseModel):
+    id: uuid.UUID
+    position: int
+    width: int
+    height: int
+
+
+class BeitragZeile(BaseModel):
+    id: uuid.UUID
+    convoy_id: uuid.UUID
+    taken_at: datetime
+    status: str
+    text_public: str | None
+    # Intern: was in Telegram stand und wer es geschickt hat.
+    text_raw: str | None
+    sender_name: str | None
+    reviewed_at: datetime | None
+    public_since: datetime | None
+    photos: list[BildZeile]
+
+
+class BeitragAenderung(BaseModel):
+    aktion: Literal["frei", "ablehnen", "zurueck"] | None = None
+    text_public: str | None = Field(default=None, max_length=BEITRAG_TEXT_MAX)
+
+
+@router.get("/{tracker_id}/beitraege", response_model=list[BeitragZeile])
+async def beitraege(
+    tracker_id: uuid.UUID,
+    status: str | None = None,
+    ctx: OrgCtx = Depends(get_org_context),
+    db: AsyncSession = Depends(get_db),
+):
+    _, org, role = ctx
+    _require_admin(role)
+    await _laden(db, org.id, tracker_id)
+    q = (
+        select(PublicTrackerPost)
+        .where(PublicTrackerPost.tracker_id == tracker_id)
+        .options(selectinload(PublicTrackerPost.photos))
+        .order_by(PublicTrackerPost.taken_at.desc())
+        .limit(BEITRAG_LIMIT)
+    )
+    if status:
+        if status not in BEITRAG_STATUS:
+            raise HTTPException(status_code=422, detail="Unbekannter Status")
+        q = q.where(PublicTrackerPost.status == status)
+    return (await db.execute(q)).scalars().all()
+
+
+@router.get("/{tracker_id}/bilder/{photo_id}/{groesse}.webp")
+async def bild(
+    tracker_id: uuid.UUID,
+    photo_id: uuid.UUID,
+    groesse: Literal["gross", "klein"],
+    ctx: OrgCtx = Depends(get_org_context),
+    db: AsyncSession = Depends(get_db),
+):
+    """Jedes Bild der Seite, auch wartende — nur für Org-Admins."""
+    _, org, role = ctx
+    _require_admin(role)
+    await _laden(db, org.id, tracker_id)
+    daten = (await db.execute(
+        select(PublicTrackerPhotoData)
+        .join(PublicTrackerPhoto, PublicTrackerPhoto.id == PublicTrackerPhotoData.photo_id)
+        .join(PublicTrackerPost, PublicTrackerPost.id == PublicTrackerPhoto.post_id)
+        .where(PublicTrackerPhoto.id == photo_id, PublicTrackerPost.tracker_id == tracker_id)
+    )).scalar_one_or_none()
+    if daten is None:
+        raise HTTPException(status_code=404, detail="Bild nicht gefunden")
+    return Response(
+        content=daten.gross if groesse == "gross" else daten.klein,
+        media_type="image/webp",
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
+
+
+@router.put("/{tracker_id}/beitraege/{post_id}", response_model=BeitragZeile)
+async def beitrag_aendern(
+    tracker_id: uuid.UUID,
+    post_id: uuid.UUID,
+    data: BeitragAenderung,
+    request: Request,
+    ctx: OrgCtx = Depends(get_org_context),
+    db: AsyncSession = Depends(get_db),
+):
+    """Dieselben Übergänge wie die Knöpfe in Telegram (``tg.UEBERGAENGE``)."""
+    user, org, role = ctx
+    _require_admin(role)
+    await _laden(db, org.id, tracker_id)
+    post = (await db.execute(
+        select(PublicTrackerPost)
+        .where(PublicTrackerPost.id == post_id, PublicTrackerPost.tracker_id == tracker_id)
+        .options(selectinload(PublicTrackerPost.photos))
+    )).scalar_one_or_none()
+    if post is None:
+        raise HTTPException(status_code=404, detail="Beitrag nicht gefunden")
+    jetzt = datetime.now(timezone.utc)
+    ereignisse = []
+    if "text_public" in data.model_fields_set:
+        post.text_public = tg.kuerzen(data.text_public)
+        post.text_edited_by_presse = True
+        ereignisse.append((tg.AUDIT_TEXT, {}))
+    if data.aktion is not None:
+        erlaubt, ziel = tg.UEBERGAENGE[data.aktion]
+        if post.status not in erlaubt:
+            raise HTTPException(status_code=409, detail="Schon erledigt")
+        ereignisse.append((tg.AUDIT_BEITRAG[data.aktion], {"von": post.status}))
+        post.status = ziel
+        post.reviewed_by_user_id = user.id
+        post.reviewed_by_telegram_id = None
+        post.reviewed_at = jetzt
+        if ziel != "freigegeben":
+            post.public_since = None
+    await db.commit()
+    for aktion, detail in ereignisse:
+        await audit.record(
+            db, aktion, request=request, actor_id=user.id, actor_email=user.email,
+            org_id=org.id, target_type="aktionsseite_beitrag", target_id=str(post.id), detail=detail,
+        )
+    # Die Karte in der Gruppe zieht mit.
+    bot = await db.get(PublicTrackerTelegram, org.id)
+    if bot is not None and bot.status != "ungueltig":
+        await tg.karte_aktualisieren(db, tg.api_fuer(decrypt_secret(bot.bot_token_enc)), post, jetzt)
+    # Die öffentliche Antwort liegt bis zu einer Minute im Zwischenspeicher;
+    # ein Zurückziehen soll sofort wirken.
+    _vergessen((await _laden(db, org.id, tracker_id)).slug)
+    return post

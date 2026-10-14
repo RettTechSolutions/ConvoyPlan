@@ -32,10 +32,14 @@ POSITIVLISTE = {
     },
     "OeffentlicherKonvoi": {
         "key", "name", "destination", "destination_point", "color", "status",
-        "position", "trail", "driven_km", "total_km",
+        "position", "trail", "driven_km", "total_km", "posts",
     },
     "OeffentlichePosition": {"lat", "lon", "coarse", "at"},
     "OeffentlicherPunkt": {"lat", "lon"},
+    # Beiträge (Fotos aus Telegram): kein Absender, kein Prüfer, nicht die
+    # Bildunterschrift aus Telegram, keine Datenbank-Kennung.
+    "OeffentlicherBeitrag": {"id", "at", "position", "coarse", "text", "photos"},
+    "OeffentlichesBild": {"id", "width", "height"},
 }
 
 

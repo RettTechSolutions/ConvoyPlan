@@ -39,10 +39,11 @@ from geoalchemy2.shape import to_shape
 from shapely.geometry import LineString, Point
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.models.convoy import ConvoyVehicle
-from app.models.public_tracker import PublicTracker, VehiclePositionTrail
+from app.models.public_tracker import PublicTracker, PublicTrackerPost, VehiclePositionTrail
 from app.models.route import Route
 from app.models.waypoint import Waypoint
 from app.services import geometry as geo_svc
@@ -472,6 +473,7 @@ def beitrag_position(
     jetzt: datetime,
     route: Strecke | None = None,
     schluessel: bytes = b"",
+    lg: "Lage | None" = None,
 ) -> dict | None:
     """Wo ein Beitrag vom Zeitpunkt ``t`` auf der Karte liegt.
 
@@ -479,8 +481,11 @@ def beitrag_position(
     den Schutzbereich eines Halts, liegt er auf dessen Parkplatz — derselben
     Stelle, an der der Konvoi in dieser Zeit zu sehen war. Sonst dazwischen,
     wo der Konvoi zu ``t`` war. Ohne Verlaufspunkt in ``BEITRAG_NAEHE``
-    keine Position: im Zweifel nicht auf die Karte."""
-    lg = lage(kandidaten, stich, ziel, jetzt=jetzt, route=route, schluessel=schluessel)
+    keine Position: im Zweifel nicht auf die Karte.
+
+    ``lg`` ist die schon berechnete ``lage()`` — für viele Beiträge eines
+    Konvois muss sie nicht jedes Mal neu entstehen."""
+    lg = lg or lage(kandidaten, stich, ziel, jetzt=jetzt, route=route, schluessel=schluessel)
     if lg is None:
         return None
     alle = lg.alle
@@ -518,6 +523,7 @@ def beitrag_sichtbar(
     route: Strecke | None = None,
     schluessel: bytes = b"",
     ab: datetime | None = None,
+    lg: "Lage | None" = None,
 ) -> bool:
     """Ob ein freigegebener Beitrag vom Zeitpunkt ``t`` hinausgeht.
 
@@ -533,7 +539,7 @@ def beitrag_sichtbar(
     """
     if t > stich or (ab is not None and jetzt < ab):
         return False
-    lg = lage(kandidaten, stich, ziel, jetzt=jetzt, route=route, schluessel=schluessel)
+    lg = lg or lage(kandidaten, stich, ziel, jetzt=jetzt, route=route, schluessel=schluessel)
     if lg is None:
         return False
     im_halt = halt_bei(lg.alle, t, jetzt, schluessel)
@@ -620,6 +626,64 @@ def _schluessel(tracker_id: uuid.UUID, convoy_id: uuid.UUID) -> bytes:
     ).digest()
 
 
+# Höchstens so viele Beiträge je Konvoi in der Antwort, neueste zuerst.
+BEITRAEGE_JE_KONVOI = 100
+
+
+async def _beitraege(
+    db: AsyncSession,
+    tracker_id: uuid.UUID,
+    convoy_id: uuid.UUID,
+    kandidaten: list[Kandidat],
+    stich: datetime,
+    ziel: tuple[float, float] | None,
+    *,
+    jetzt: datetime,
+    route: Strecke | None,
+    schluessel: bytes,
+) -> list[dict]:
+    """Die freigegebenen Beiträge, die nach § 4.2 hinausgehen dürfen.
+
+    Nur ``text_public`` und die öffentlichen Kennungen — Absender, Prüfer und
+    die Bildunterschrift aus Telegram bleiben drinnen."""
+    posts = (await db.execute(
+        select(PublicTrackerPost)
+        .where(
+            PublicTrackerPost.tracker_id == tracker_id,
+            PublicTrackerPost.convoy_id == convoy_id,
+            PublicTrackerPost.status == "freigegeben",
+            PublicTrackerPost.taken_at <= stich,
+        )
+        .options(selectinload(PublicTrackerPost.photos))
+        .order_by(PublicTrackerPost.taken_at.desc())
+    )).scalars().all()
+    if not posts:
+        return []
+    lg = lage(kandidaten, stich, ziel, jetzt=jetzt, route=route, schluessel=schluessel)
+    raus = []
+    for p in posts:
+        if not p.photos or not beitrag_sichtbar(
+            kandidaten, p.taken_at, stich, ziel, jetzt=jetzt, route=route,
+            schluessel=schluessel, ab=p.not_before, lg=lg,
+        ):
+            continue
+        pos = beitrag_position(
+            kandidaten, p.taken_at, stich, ziel, jetzt=jetzt, route=route,
+            schluessel=schluessel, lg=lg,
+        )
+        raus.append({
+            "id": p.public_id,
+            "at": p.taken_at,
+            "position": {"lat": pos["lat"], "lon": pos["lon"]} if pos else None,
+            "coarse": bool(pos and pos["coarse"]),
+            "text": p.text_public,
+            "photos": [{"id": f.public_id, "width": f.width, "height": f.height} for f in p.photos],
+        })
+        if len(raus) >= BEITRAEGE_JE_KONVOI:
+            break
+    return raus
+
+
 async def nutzlast(db: AsyncSession, tracker: PublicTracker, jetzt: datetime | None = None) -> dict:
     """Die öffentliche Antwort einer Aktionsseite."""
     jetzt = jetzt or datetime.now(timezone.utc)
@@ -637,13 +701,15 @@ async def nutzlast(db: AsyncSession, tracker: PublicTracker, jetzt: datetime | N
                 select(Route.distance_m, Route.geometry).where(Route.convoy_id == tc.convoy_id)
             )
         ).one_or_none()
+        kandidaten = await _kandidaten(db, tc.convoy_id, stich, jetzt)
+        strecke_ = _strecke(route.geometry if route else None)
+        schluessel = _schluessel(tracker.id, tc.convoy_id)
         stand = konvoi(
-            await _kandidaten(db, tc.convoy_id, stich, jetzt),
-            stich,
-            ziel,
-            jetzt=jetzt,
-            route=_strecke(route.geometry if route else None),
-            schluessel=_schluessel(tracker.id, tc.convoy_id),
+            kandidaten, stich, ziel, jetzt=jetzt, route=strecke_, schluessel=schluessel
+        )
+        beitraege = await _beitraege(
+            db, tracker.id, tc.convoy_id, kandidaten, stich, ziel,
+            jetzt=jetzt, route=strecke_, schluessel=schluessel,
         )
         ziel_punkt = None
         if tracker.show_destination and ziel is not None:
@@ -660,6 +726,7 @@ async def nutzlast(db: AsyncSession, tracker: PublicTracker, jetzt: datetime | N
                 "color": tc.color,
                 "total_km": round(route.distance_m / 1000, 1) if route and route.distance_m else None,
                 **stand,
+                "posts": beitraege,
             }
         )
     return {

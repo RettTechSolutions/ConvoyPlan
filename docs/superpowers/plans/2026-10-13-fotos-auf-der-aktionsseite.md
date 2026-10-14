@@ -562,6 +562,28 @@ Zwei Entscheidungen dazu, festgehalten am 2026-10-14:
   geprüft am Körper der abgefangenen Anfrage. Dasselbe Muster wie
   `kontextmenue-planung-und-admin.spec.ts`.
 
+### 8.5 Umgesetzt (Schritt 4)
+
+- `nutzlast` hängt je Konvoi `posts` an: freigegebene Beiträge bis zur
+  Stichzeit, gefiltert mit `beitrag_sichtbar`, platziert mit
+  `beitrag_position`, beide mit **einer** `lage()` je Konvoi. Höchstens 100,
+  neueste zuerst. Ein Beitrag ohne Bild geht nicht hinaus.
+- Der Bildendpunkt prüft an **genau** der Antwort, die `abrufen` liefert
+  (gemeinsamer Zwischenspeicher, `_oeffentlich`). Steht das Bild dort nicht,
+  ist es dieselbe 404 wie für einen unbekannten Slug.
+- „Öffentlich seit": `oeffentlich_markieren` läuft in der Telegram-Schleife
+  alle 30 s, entscheidet ebenfalls mit `nutzlast` und bearbeitet die Karte.
+  Es läuft auch mit `TELEGRAM_ENABLED=false` (nur ohne Karte).
+- Freigeben und Zurückziehen — in Telegram wie im Org-Admin — leeren den
+  Zwischenspeicher der Seite: Zurückgezogen ist sofort weg, nicht erst nach
+  einer Minute.
+- Org-Admin: `GET …/beitraege`, `GET …/bilder/{id}/{groesse}.webp` (auch
+  wartende), `PUT …/beitraege/{id}` mit `aktion` und/oder `text_public`.
+  Prüfer aus ConvoyPlan erscheinen auf der Karte mit Vornamen und
+  „(ConvoyPlan)", nie mit Adresse. `not_before` (`/ab`) bleibt für Schritt 7.
+- Export: Die Tabellen bleiben vorerst draußen (§ 9). Beiträge ohne Absender
+  in den Export aufzunehmen ist möglich, wenn eine Organisation danach fragt.
+
 ## 9. Löschen
 
 - `retention.py` (`purge_old_beitraege`) löscht Beiträge, deren Zeitpunkt
@@ -733,7 +755,7 @@ Mit Datenbank (`aktionsseite_fixtures.py` erweitern):
 | 1 | Regeln (`beitrag_position`, `beitrag_sichtbar`) + Tests (umgesetzt) | ConvoyPlan |
 | 2 | Modell, Migration, Bildverarbeitung, Retention (umgesetzt) | ConvoyPlan |
 | 3 | Telegram-Abholer: Verbinden, Presse-Codes, Beiträge, Alben, Karte mit Knöpfen, Text ändern; Bot-Karte, Gruppen und Presse im Org-Admin (§ 8.4) (umgesetzt, § 6.1) | ConvoyPlan |
-| 4 | `posts` in der Positivliste, Bildendpunkt, Sichtbarkeitsschleife („Öffentlich seit"), Beitragsliste im Org-Admin (§ 8.4) | ConvoyPlan |
+| 4 | `posts` in der Positivliste, Bildendpunkt, Sichtbarkeitsschleife („Öffentlich seit"), Beitragsliste im Org-Admin (§ 8.4) (umgesetzt, § 8.5) | ConvoyPlan |
 | 5 | Vertrag, Abholen der Bilder, Polaroid-Ansicht (s. u.) | EventTracker |
 | 6 | Link-Beiträge (Instagram & Co.) | beide |
 | 7 | `/ab` zum späteren Terminieren, Companion-App als Quelle | beide, optional |

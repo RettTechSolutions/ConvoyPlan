@@ -86,7 +86,7 @@ test('Gruppen und Presse: die Knöpfe schicken die Aufrufe der Seite und des Kon
 	await fotos.getByRole('button', { name: 'entfernen' }).click();
 	await expect(fotos).toContainText('Noch niemand.');
 
-	const gesendet = (await aufrufe(page)).filter((a) => a[0] !== 'seite' && a[0] !== 'botSetzen');
+	const gesendet = (await aufrufe(page)).filter((a) => !['seite', 'beitraege', 'botSetzen'].includes(a[0]));
 	expect(gesendet).toEqual([
 		['verbindenCode', 'a-1', 'c-bih'],
 		['trennen', 'a-1', 'c-rou'],
@@ -107,4 +107,40 @@ test('ein Code verschwindet bei seinem Ablauf, ohne Neuladen', async ({ page }) 
 	await expect(bosnien.getByTestId('verbinden-code')).toBeVisible();
 	await expect(bosnien.getByTestId('verbinden-code')).toHaveCount(0, { timeout: 5000 });
 	await expect(bosnien.getByRole('button', { name: 'Code erzeugen', exact: true })).toBeEnabled();
+});
+
+test('Beiträge: Zähler auch zugeklappt, Aktionen wie die Knöpfe in Telegram', async ({ page }) => {
+	await page.goto(HUELLE);
+	const fotos = page.getByTestId('fotos-von-unterwegs');
+	// Zugeklappt steht schon da, was wartet — und fällt auf.
+	const zaehler = fotos.getByTestId('beitrag-zaehler');
+	await expect(zaehler).toContainText('1 warten');
+	await expect(zaehler).toContainText('0 in der Warteschlange · 1 öffentlich');
+	await expect(zaehler.locator('.auffaellig')).toHaveText('1 warten');
+
+	await fotos.locator('summary').click();
+	const wartend = fotos.locator('[data-testid="beitrag"][data-status="wartet"]');
+	await expect(wartend).toContainText('von Jonas');
+	await expect(wartend.locator('.anzahl')).toHaveText('2');
+	// Das Vorschaubild kommt von dieser Instanz, angemeldet — nicht von Telegram.
+	await expect(wartend.locator('img')).toHaveAttribute('src', '/api/org/aktionsseiten/a-1/bilder/f-1/klein.webp');
+
+	await wartend.getByRole('button', { name: 'Text ändern' }).click();
+	await wartend.getByLabel('Öffentlicher Text').fill('Unterwegs nach Süden');
+	await wartend.getByRole('button', { name: 'Text speichern' }).click();
+	await expect(wartend).toContainText('„Unterwegs nach Süden"');
+	await expect(wartend).toContainText('in Telegram: „Wir stehen an der A3 bei Würzburg"');
+	await wartend.getByRole('button', { name: 'Freigeben' }).click();
+
+	const frei = fotos.locator('[data-testid="beitrag"]', { hasText: 'Grenze geschafft' });
+	await expect(frei).toContainText('öffentlich seit');
+	await frei.getByRole('button', { name: 'Zurückziehen' }).click();
+	await expect(frei).toContainText('zurückgezogen');
+
+	const gesendet = (await aufrufe(page)).filter((a) => a[0] === 'beitragAendern');
+	expect(gesendet).toEqual([
+		['beitragAendern', 'a-1', 'p-wartet', { text_public: 'Unterwegs nach Süden' }],
+		['beitragAendern', 'a-1', 'p-wartet', { aktion: 'frei' }],
+		['beitragAendern', 'a-1', 'p-frei', { aktion: 'zurueck' }],
+	]);
 });

@@ -7,13 +7,19 @@
 	 * Codes stehen nur bis zu ihrem Ablauf da und verschwinden dann von selbst
 	 * — ein abgelaufener Code auf dem Bildschirm schickte jemanden mit einem
 	 * Befehl in die Gruppe, auf den der Bot nur noch „unbekannt" antwortet.
-	 * Die Beitragsliste kommt mit Schritt 4 dazu.
+	 *
+	 * Die Beiträge stehen hier als Übersicht und Notnagel: dieselben Aktionen
+	 * wie die Knöpfe in Telegram, und die Karte in der Gruppe zieht mit. Der
+	 * Zähler steht auch zugeklappt da — wartende Beiträge dürfen nicht hinter
+	 * einem geschlossenen Abschnitt verschwinden.
 	 */
-	import { onDestroy } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import {
 		aktionsseitenTelegramApi,
 		type Aktionsseite,
+		type AktionsseiteBeitrag,
 		type AktionsseiteTelegram,
+		type BeitragAenderung,
 		type TelegramCode
 	} from '$lib/api';
 
@@ -25,6 +31,17 @@
 	let codes = $state<Record<string, TelegramCode>>({});
 	let presseCode = $state<TelegramCode | null>(null);
 	let jetzt = $state(Date.now());
+	let beitraege = $state<AktionsseiteBeitrag[]>([]);
+	let filter = $state<'alle' | AktionsseiteBeitrag['status']>('alle');
+	let textFuer = $state<string | null>(null);
+	let textEntwurf = $state('');
+
+	const STATUS_TEXT: Record<AktionsseiteBeitrag['status'], string> = {
+		wartet: 'wartet auf Presse',
+		freigegeben: 'in der Warteschlange',
+		abgelehnt: 'abgelehnt',
+		zurueckgezogen: 'zurückgezogen'
+	};
 
 	const uhr = setInterval(() => (jetzt = Date.now()), 1000);
 	onDestroy(() => clearInterval(uhr));
@@ -41,16 +58,51 @@
 	async function laden() {
 		fehler = '';
 		try {
-			daten = await aktionsseitenTelegramApi.seite(seite.id);
+			[daten, beitraege] = await Promise.all([
+				aktionsseitenTelegramApi.seite(seite.id),
+				aktionsseitenTelegramApi.beitraege(seite.id)
+			]);
 		} catch (e) {
 			fehler = e instanceof Error ? e.message : 'Laden fehlgeschlagen';
 		}
 	}
 
+	onMount(laden);
+
 	function umschalten(e: Event) {
 		offen = (e.currentTarget as HTMLDetailsElement).open;
-		if (offen && daten === null) laden();
 	}
+
+	async function aendern(b: AktionsseiteBeitrag, aenderung: BeitragAenderung) {
+		fehler = '';
+		try {
+			const neu = await aktionsseitenTelegramApi.beitragAendern(seite.id, b.id, aenderung);
+			beitraege = beitraege.map((x) => (x.id === b.id ? neu : x));
+			textFuer = null;
+		} catch (e) {
+			fehler = e instanceof Error ? e.message : 'Ändern fehlgeschlagen';
+		}
+	}
+
+	function textBearbeiten(b: AktionsseiteBeitrag) {
+		textFuer = b.id;
+		textEntwurf = b.text_public ?? '';
+	}
+
+	function konvoiName(id: string): string {
+		return seite.convoys.find((k) => k.convoy_id === id)?.display_name ?? '?';
+	}
+
+	function zeit(iso: string): string {
+		return new Date(iso).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+	}
+
+	const zaehler = $derived({
+		wartet: beitraege.filter((b) => b.status === 'wartet').length,
+		schlange: beitraege.filter((b) => b.status === 'freigegeben' && !b.public_since).length,
+		oeffentlich: beitraege.filter((b) => b.status === 'freigegeben' && b.public_since).length
+	});
+	const gezeigt = $derived(filter === 'alle' ? beitraege : beitraege.filter((b) => b.status === filter));
 
 	async function codeFuer(convoyId: string) {
 		try {
@@ -108,8 +160,14 @@
 <details class="fotos" data-testid="fotos-von-unterwegs" ontoggle={umschalten}>
 	<summary>
 		<strong>Fotos von unterwegs</strong>
-		{#if zusammenfassung}<span class="hint"> · {zusammenfassung}</span>{/if}
+		{#if daten}
+			<span class="zaehler" data-testid="beitrag-zaehler">
+				· <span class:auffaellig={zaehler.wartet > 0}>{zaehler.wartet} warten</span>
+				· {zaehler.schlange} in der Warteschlange · {zaehler.oeffentlich} öffentlich
+			</span>
+		{/if}
 	</summary>
+	{#if zusammenfassung && offen}<p class="hint">{zusammenfassung}</p>{/if}
 
 	{#if !botBereit}
 		<p class="hint gesperrt">Erst oben einen Telegram-Bot eintragen — ohne ihn kommen keine Fotos an.</p>
@@ -169,6 +227,75 @@
 		{:else}
 			<button class="btn-small" disabled={!botBereit} onclick={neuerPresseCode}>Presse-Code erzeugen</button>
 		{/if}
+		<h4>Beiträge</h4>
+		<label class="filter">
+			Zeigen
+			<select bind:value={filter}>
+				<option value="alle">alle</option>
+				<option value="wartet">wartend</option>
+				<option value="freigegeben">freigegeben</option>
+				<option value="abgelehnt">abgelehnt</option>
+				<option value="zurueckgezogen">zurückgezogen</option>
+			</select>
+		</label>
+		<ul class="beitraege">
+			{#each gezeigt as b (b.id)}
+				<li data-testid="beitrag" data-status={b.status}>
+					{#if b.photos[0]}
+						<a
+							class="vorschau"
+							href={aktionsseitenTelegramApi.bildUrl(seite.id, b.photos[0].id, 'gross')}
+							target="_blank"
+							rel="noopener noreferrer"
+						>
+							<img
+								src={aktionsseitenTelegramApi.bildUrl(seite.id, b.photos[0].id, 'klein')}
+								alt={b.text_public ?? `Foto von ${konvoiName(b.convoy_id)}`}
+								loading="lazy"
+							/>
+							{#if b.photos.length > 1}<span class="anzahl">{b.photos.length}</span>{/if}
+						</a>
+					{/if}
+					<div class="inhalt">
+						<p class="kopf">
+							<strong>{konvoiName(b.convoy_id)}</strong> · {zeit(b.taken_at)}
+							{#if b.sender_name}<span class="hint">· von {b.sender_name}</span>{/if}
+							<span class="status {b.status}">
+								{b.status === 'freigegeben' && b.public_since ? `öffentlich seit ${zeit(b.public_since)}` : STATUS_TEXT[b.status]}
+							</span>
+						</p>
+						{#if textFuer === b.id}
+							<form class="text-form" onsubmit={(e) => { e.preventDefault(); aendern(b, { text_public: textEntwurf.trim() || null }); }}>
+								<textarea bind:value={textEntwurf} maxlength="500" rows="2" aria-label="Öffentlicher Text"></textarea>
+								<span class="knoepfe">
+									<button class="btn-small" type="submit">Text speichern</button>
+									<button class="btn-small" type="button" onclick={() => (textFuer = null)}>Abbrechen</button>
+								</span>
+							</form>
+						{:else}
+							<p class="text">{b.text_public ? `„${b.text_public}"` : '(ohne Text)'}</p>
+							{#if b.text_raw && b.text_raw !== b.text_public}
+								<p class="hint">in Telegram: „{b.text_raw}"</p>
+							{/if}
+						{/if}
+						<span class="knoepfe">
+							{#if b.status === 'wartet'}
+								<button class="btn-small" onclick={() => aendern(b, { aktion: 'frei' })}>Freigeben</button>
+								<button class="btn-small" onclick={() => textBearbeiten(b)}>Text ändern</button>
+								<button class="btn-small" onclick={() => aendern(b, { aktion: 'ablehnen' })}>Ablehnen</button>
+							{:else if b.status === 'freigegeben'}
+								<button class="btn-small" onclick={() => textBearbeiten(b)}>Text ändern</button>
+								<button class="btn-small" onclick={() => aendern(b, { aktion: 'zurueck' })}>Zurückziehen</button>
+							{:else}
+								<button class="btn-small" onclick={() => aendern(b, { aktion: 'frei' })}>Doch freigeben</button>
+							{/if}
+						</span>
+					</div>
+				</li>
+			{:else}
+				<li class="hint">Keine Beiträge{filter !== 'alle' ? ' mit diesem Status' : ''}.</li>
+			{/each}
+		</ul>
 	{:else if offen}
 		<p class="hint">Lade…</p>
 	{/if}
@@ -188,4 +315,22 @@
 	.code { font-size: var(--text-sm); padding: .1rem .4rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px; user-select: all; }
 	.btn-small { padding: .2rem .5rem; font-size: var(--text-xs); border-radius: 3px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); cursor: pointer; }
 	.btn-small:disabled { opacity: .5; cursor: not-allowed; }
+	.zaehler { color: var(--text-muted); font-size: var(--text-sm); }
+	.auffaellig { color: #b26a00; font-weight: 700; }
+	.filter { display: inline-flex; align-items: center; gap: .4rem; font-size: var(--text-sm); color: var(--text-2); }
+	.filter select { padding: .2rem .4rem; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--text-1); }
+	.beitraege { list-style: none; margin: .5rem 0; padding: 0; }
+	.beitraege li { display: flex; gap: .75rem; padding: .5rem 0; border-top: 1px solid var(--border); }
+	.beitraege li:first-child { border-top: none; }
+	.vorschau { position: relative; flex: 0 0 auto; }
+	.vorschau img { width: 4.5rem; height: 4.5rem; object-fit: cover; border-radius: 4px; border: 1px solid var(--border); background: var(--surface-2); display: block; }
+	.anzahl { position: absolute; top: -.35rem; right: -.35rem; background: var(--color-primary); color: #fff; font-size: var(--text-xs); font-weight: 700; border-radius: 999px; padding: 0 .35rem; }
+	.inhalt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: .2rem; }
+	.kopf, .text { margin: 0; overflow-wrap: anywhere; }
+	.status { margin-left: .25rem; font-size: var(--text-xs); padding: .05rem .4rem; border-radius: 999px; border: 1px solid var(--border); }
+	.status.wartet { border-color: #d4a017; color: #b26a00; }
+	.status.freigegeben { border-color: #2e7d32; color: #2e7d32; }
+	.text-form { display: flex; flex-direction: column; gap: .3rem; }
+	.text-form textarea { padding: .4rem .5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-2); color: var(--text-1); font: inherit; }
+	.knoepfe { display: flex; gap: .3rem; flex-wrap: wrap; }
 </style>

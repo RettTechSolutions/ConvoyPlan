@@ -428,7 +428,12 @@ Freigabe ändert eine Bearbeitung in Telegram den öffentlichen Text nicht mehr.
 Der Router (`api/routes/aktionsseite_telegram.py`) hängt **vor** `org_router`,
 sonst fängt dessen `/{tracker_id}` den Pfad `/telegram` ab. Tests:
 `tests/test_aktionsseite_telegram.py` (gestellte Bot-API),
-`frontend/e2e/aktionsseite-fotos.spec.ts`.
+`frontend/e2e/aktionsseite-fotos.spec.ts`. Hinaus gehen sie als `posts` je
+Konvoi (Positivliste); ein Bild liefert `/api/public/aktion/{slug}/bild/…`
+nur, solange es in genau dieser Antwort steht (`_oeffentlich`, gemeinsamer
+Zwischenspeicher) — eine eigene Abfrage dort gäbe Bilder vor ihrer Zeit heraus.
+Freigeben und Zurückziehen leeren den Zwischenspeicher der Seite
+(`tests/test_aktionsseite_beitraege_oeffentlich.py`).
 
 ### Tracker: das Gerät hängt am Fahrzeug, die Position gehört dem Konvoi
 

@@ -21,6 +21,15 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Wichtig beim Update
+
+- Datenbank-Migration `0070` läuft beim Start des Backends.
+- Das Backend fragt `api.telegram.org` an, sobald eine Organisation einen Telegram-Bot einträgt (sonst nicht). Ohne Ausgang dorthin: `TELEGRAM_ENABLED=false`.
+
+### Added
+
+- **Fotos von unterwegs auf der Aktionsseite.** Fahrer und Begleiter posten Fotos in eine Telegram-Gruppe, die Presse gibt sie dort per Knopf frei. Freigegebene Beiträge stehen in der öffentlichen Antwort (`posts` je Konvoi) — verzögert wie die Positionen, platziert aus dem Positionsverlauf statt aus den GPS-Daten im Bild, und Fotos von einem Halt erst, wenn der Konvoi wieder fährt. Bilder werden beim Eingang neu kodiert, ohne EXIF; Absender und Telegram-Text gehen nie hinaus. Einrichten unter **Org-Admin → Aktionsseiten**: Telegram-Bot, Gruppe je Konvoi per Code, Presse per Code; dort auch alle Beiträge mit denselben Aktionen. Anzeigen muss sie der EventTracker ab seiner nächsten Fassung. Migration `0070`. Anwenderdoku: `wiki/Aktionsseite.md`, „Fotos von unterwegs".
+
 ## [2026.9.0] – 2026-10-14
 
 ### Wichtig beim Update

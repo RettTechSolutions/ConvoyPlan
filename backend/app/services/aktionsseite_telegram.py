@@ -47,6 +47,7 @@ from app.models.public_tracker import (
     PublicTrackerPresse,
     PublicTrackerTelegram,
 )
+from app.models.user import User
 from app.services import aktionsseite, aktionsseite_bild, audit, org_module
 from app.services.crypto import decrypt_secret
 from app.services.telegram import BotInfo, TelegramApi, TelegramFehler
@@ -501,7 +502,9 @@ async def _karte(lauf_or_db, post: PublicTrackerPost, jetzt: datetime | None = N
         p = await db.get(PublicTrackerPresse, (post.tracker_id, post.reviewed_by_telegram_id))
         pruefer = p.display_name if p else None
     elif post.reviewed_by_user_id is not None:
-        pruefer = "ConvoyPlan"
+        # Nur der Vorname: Die Gruppe sieht die Karte, die Adresse geht sie nichts an.
+        u = await db.get(User, post.reviewed_by_user_id)
+        pruefer = f"{u.first_name} (ConvoyPlan)" if u and u.first_name else "ConvoyPlan"
     bilder = (await db.execute(
         select(func.count()).select_from(PublicTrackerPhoto).where(PublicTrackerPhoto.post_id == post.id)
     )).scalar_one()
@@ -577,6 +580,10 @@ async def _knopf(lauf: _Lauf, cq: dict) -> None:
         target_type="aktionsseite_beitrag", target_id=str(post.id),
         detail={"von": vorher, "telegram_user_id": von["id"], "name": presse.display_name},
     )
+    # Zurückziehen soll sofort wirken, nicht erst nach dem Zwischenspeicher.
+    from app.api.routes.aktionsseite import _vergessen
+
+    _vergessen(seite.slug)
     await lauf.api.quittieren(cq["id"], {
         "frei": "Freigegeben — erscheint nach der Verzögerung.",
         "ablehnen": "Abgelehnt.",
@@ -640,6 +647,59 @@ async def _bearbeitet(lauf: _Lauf, nachricht: dict) -> None:
         post.text_public = kuerzen(unterschrift)
     await lauf.db.commit()
     await karte_aktualisieren(lauf.db, lauf.api, post, lauf.jetzt)
+
+
+# ── „Öffentlich seit" ──────────────────────────────────────────────────────
+
+
+async def oeffentlich_markieren(jetzt: datetime | None = None) -> int:
+    """Freigegebene Beiträge, die jetzt hinausgehen, bekommen ``public_since``,
+    und ihre Karte in der Gruppe sagt es.
+
+    Entschieden wird mit genau der Antwort, die der EventTracker bekäme
+    (``aktionsseite.nutzlast``), nicht mit einer eigenen Regel. Gibt die
+    Zahl der neu markierten Beiträge zurück."""
+    jetzt = jetzt or datetime.now(timezone.utc)
+    markiert = 0
+    async with AsyncSessionLocal() as db:
+        seiten_ids = set((await db.execute(
+            select(PublicTrackerPost.tracker_id).where(
+                PublicTrackerPost.status == "freigegeben",
+                PublicTrackerPost.public_since.is_(None),
+                PublicTrackerPost.taken_at <= jetzt - timedelta(minutes=aktionsseite.MIN_VERZOEGERUNG_MIN),
+            )
+        )).scalars().all())
+        for seite_id in seiten_ids:
+            seite = (await db.execute(
+                select(PublicTracker).where(PublicTracker.id == seite_id)
+                .options(selectinload(PublicTracker.convoys))
+            )).scalar_one_or_none()
+            if seite is None or not aktionsseite.ist_aktiv(seite, jetzt) or not await org_module.freigegeben(
+                db, seite.organization_id, org_module.AKTIONSSEITEN
+            ):
+                continue
+            nutz = await aktionsseite.nutzlast(db, seite, jetzt)
+            sichtbar = {p["id"] for k in nutz["convoys"] for p in k["posts"]}
+            if not sichtbar:
+                continue
+            posts = (await db.execute(
+                select(PublicTrackerPost).where(
+                    PublicTrackerPost.tracker_id == seite_id,
+                    PublicTrackerPost.status == "freigegeben",
+                    PublicTrackerPost.public_since.is_(None),
+                    PublicTrackerPost.public_id.in_(sichtbar),
+                )
+            )).scalars().all()
+            for p in posts:
+                p.public_since = jetzt
+            await db.commit()
+            markiert += len(posts)
+            bot = await db.get(PublicTrackerTelegram, seite.organization_id)
+            if posts and bot is not None and bot.status != "ungueltig" and settings.telegram_enabled:
+                api = api_fuer(decrypt_secret(bot.bot_token_enc))
+                for p in posts:
+                    await karte_aktualisieren(db, api, p, jetzt)
+    return markiert
 
 
 # ── Abholen ────────────────────────────────────────────────────────────────
@@ -724,7 +784,8 @@ async def _bot_laufen(org_id: uuid.UUID) -> None:
 
 
 async def telegram_schleife(intervall: float = 30.0) -> None:
-    """Startet je eingetragenem Bot eine Abholaufgabe und räumt beendete weg.
+    """Startet je eingetragenem Bot eine Abholaufgabe und räumt beendete weg;
+    setzt nebenbei „Öffentlich seit" (``oeffentlich_markieren``).
 
     Eine Aufgabe, die endet (Token ungültig, Modul gesperrt, Bot entfernt), wird
     beim nächsten Durchgang neu gestartet, falls es den Bot noch gibt — ein
@@ -732,6 +793,10 @@ async def telegram_schleife(intervall: float = 30.0) -> None:
     laufend: dict[uuid.UUID, asyncio.Task] = {}
     try:
         while True:
+            try:
+                await oeffentlich_markieren()
+            except Exception:
+                logger.exception("Telegram-Schleife: „Öffentlich seit“ nicht gesetzt")
             if settings.telegram_enabled:
                 try:
                     async with AsyncSessionLocal() as db:

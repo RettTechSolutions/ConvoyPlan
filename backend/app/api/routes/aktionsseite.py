@@ -19,6 +19,7 @@ import secrets
 import time
 import uuid
 from datetime import datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -30,7 +31,12 @@ from app.api.deps import OrgCtx, get_org_context, require_modul
 from app.api.guards import ROLE_ORDER
 from app.database import get_db
 from app.models.convoy import Convoy
-from app.models.public_tracker import PublicTracker, PublicTrackerConvoy
+from app.models.public_tracker import (
+    PublicTracker,
+    PublicTrackerConvoy,
+    PublicTrackerPhoto,
+    PublicTrackerPhotoData,
+)
 from app.services import aktionsseite, audit, org_module, positionsverlauf
 
 public_router = APIRouter(prefix="/public/aktion", tags=["aktionsseite"])
@@ -71,6 +77,25 @@ class OeffentlicherPunkt(_Streng):
     lon: float
 
 
+class OeffentlichesBild(_Streng):
+    id: str
+    width: int
+    height: int
+
+
+class OeffentlicherBeitrag(_Streng):
+    """Ein freigegebenes Foto oder Album — platziert und zurückgehalten nach
+    ``beitrag_position``/``beitrag_sichtbar``. Absender, Prüfer und die
+    Bildunterschrift aus Telegram gehen nie hinaus."""
+
+    id: str
+    at: datetime
+    position: OeffentlicherPunkt | None
+    coarse: bool
+    text: str | None
+    photos: list[OeffentlichesBild]
+
+
 class OeffentlicherKonvoi(_Streng):
     key: str
     name: str
@@ -82,6 +107,7 @@ class OeffentlicherKonvoi(_Streng):
     trail: list[list[float]]
     driven_km: float
     total_km: float | None
+    posts: list[OeffentlicherBeitrag]
 
 
 class OeffentlicheAktion(_Streng):
@@ -122,13 +148,8 @@ def _passt(token: str | None, token_hash: str) -> bool:
     return token is not None and hmac.compare_digest(_hash(token), token_hash)
 
 
-@public_router.get("/{slug}", response_model=OeffentlicheAktion)
-async def abrufen(
-    slug: str,
-    response: Response,
-    authorization: str | None = Header(default=None),
-    db: AsyncSession = Depends(get_db),
-):
+async def _oeffentlich(slug: str, authorization: str | None, db: AsyncSession) -> dict:
+    """Die öffentliche Antwort einer Seite — oder dieselbe 404 für alles."""
     token = _token_aus(authorization)
     jetzt = datetime.now(timezone.utc)
     treffer = _cache.get(slug)
@@ -137,7 +158,6 @@ async def abrufen(
         if time.monotonic() - erzeugt < _CACHE_TTL_S and (gueltig_bis is None or gueltig_bis > jetzt):
             if not _passt(token, token_hash):
                 raise HTTPException(status_code=404, detail=_NICHT_GEFUNDEN)
-            response.headers["Cache-Control"] = "private, max-age=60"
             return nutz
 
     tracker = (
@@ -159,8 +179,53 @@ async def abrufen(
         await aktionsseite.nutzlast(db, tracker, jetzt)
     ).model_dump(mode="json")
     _cache[slug] = (nutz, time.monotonic(), tracker.fetch_token_hash, tracker.valid_until)
+    return nutz
+
+
+@public_router.get("/{slug}", response_model=OeffentlicheAktion)
+async def abrufen(
+    slug: str,
+    response: Response,
+    authorization: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    nutz = await _oeffentlich(slug, authorization, db)
     response.headers["Cache-Control"] = "private, max-age=60"
     return nutz
+
+
+@public_router.get("/{slug}/bild/{bild_id}/{groesse}.webp")
+async def bild(
+    slug: str,
+    bild_id: str,
+    groesse: Literal["gross", "klein"],
+    authorization: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Ein Bild eines Beitrags — nur, wenn es gerade in der Antwort steht.
+
+    Geprüft wird an genau der Antwort, die ``abrufen`` liefert, nicht mit
+    einer eigenen Abfrage: Sonst ließe sich ein Bild vor seiner Zeit über die
+    Kennung holen, sobald sie einmal bekannt ist. Alles andere ist dieselbe 404."""
+    nutz = await _oeffentlich(slug, authorization, db)
+    if not any(
+        f["id"] == bild_id for k in nutz["convoys"] for p in k["posts"] for f in p["photos"]
+    ):
+        raise HTTPException(status_code=404, detail=_NICHT_GEFUNDEN)
+    daten = (await db.execute(
+        select(PublicTrackerPhotoData)
+        .join(PublicTrackerPhoto, PublicTrackerPhoto.id == PublicTrackerPhotoData.photo_id)
+        .where(PublicTrackerPhoto.public_id == bild_id)
+    )).scalar_one_or_none()
+    if daten is None:
+        raise HTTPException(status_code=404, detail=_NICHT_GEFUNDEN)
+    return Response(
+        content=daten.gross if groesse == "gross" else daten.klein,
+        media_type="image/webp",
+        # Ein freigegebenes Bild ändert sich nicht; zurückgezogen fällt es aus
+        # der Antwort, und der EventTracker löscht seine Kopie.
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
 
 
 # ── Verwaltung im Org-Admin ───────────────────────────────────────────────

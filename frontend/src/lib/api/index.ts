@@ -1744,7 +1744,34 @@ export const aktionsseitenTelegramApi = {
     presseCode: (id: string) => api.post<TelegramCode>(`/api/org/aktionsseiten/${id}/presse-code`, {}),
     presseEntfernen: (id: string, telegramUserId: number) =>
         api.delete<void>(`/api/org/aktionsseiten/${id}/presse/${telegramUserId}`),
+    beitraege: (id: string) => api.get<AktionsseiteBeitrag[]>(`/api/org/aktionsseiten/${id}/beitraege`),
+    beitragAendern: (id: string, postId: string, aenderung: BeitragAenderung) =>
+        api.put<AktionsseiteBeitrag>(`/api/org/aktionsseiten/${id}/beitraege/${postId}`, aenderung),
+    /** Für `<img src>`: angemeldet über das Sitzungs-Cookie. */
+    bildUrl: (id: string, photoId: string, groesse: 'gross' | 'klein') =>
+        `/api/org/aktionsseiten/${id}/bilder/${photoId}/${groesse}.webp`,
 };
+
+export type BeitragStatus = 'wartet' | 'freigegeben' | 'abgelehnt' | 'zurueckgezogen';
+
+export interface AktionsseiteBeitrag {
+    id: string;
+    convoy_id: string;
+    taken_at: string;
+    status: BeitragStatus;
+    text_public: string | null;
+    /** Was in Telegram stand — intern, geht nie hinaus. */
+    text_raw: string | null;
+    sender_name: string | null;
+    reviewed_at: string | null;
+    public_since: string | null;
+    photos: { id: string; position: number; width: number; height: number }[];
+}
+
+export interface BeitragAenderung {
+    aktion?: 'frei' | 'ablehnen' | 'zurueck';
+    text_public?: string | null;
+}
 
 // ── Ortungsgeräte (Tracker) ───────────────────────────────────────────────
 //
