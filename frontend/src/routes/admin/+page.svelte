@@ -18,6 +18,7 @@
     import RegionCard from '$lib/components/RegionCard.svelte';
     import QRCode from 'qrcode';
     import { benutzerListe, orgsSortiert, umschalten, STANDARD_SORTIERUNG, type BenutzerSortierung, type BenutzerSpalte } from '$lib/admin/benutzerliste';
+    import { reiterMerken } from '$lib/reiter-merken.svelte';
 
     // ── Auth gate ──────────────────────────────────────────────────────────────
     // /admin is self-gated: when not logged in as a superadmin we render the
@@ -26,6 +27,25 @@
 
     // ── Tab ──────────────────────────────────────────────────────────────────
     let activeTab = $state<'benutzer' | 'organisationen' | 'plaene' | 'api-keys' | 'mcp' | 'meldungen' | 'leitstellen' | 'branding' | 'demo' | 'uebersicht' | 'system'>('benutzer');
+    reiterMerken(['benutzer', 'organisationen', 'plaene', 'api-keys', 'mcp', 'meldungen', 'leitstellen', 'branding', 'demo', 'uebersicht', 'system'], () => activeTab, (r) => (activeTab = r));
+
+    /** Was ein Reiter beim Öffnen nachlädt — beim Klick und nach einem Neuladen. */
+    function reiterLaden(tab: typeof activeTab) {
+        switch (tab) {
+            case 'organisationen': loadOrgs(); break;
+            case 'plaene': loadPlans(); break;
+            case 'api-keys': loadApiKeyOrgs(); break;
+            case 'mcp': loadMcp(); break;
+            case 'meldungen': loadFeedback(); break;
+            case 'demo': loadDemoSettings(); break;
+            case 'system': loadUpdateStatus(); loadUpdateChannel(); loadUpdateMode(); loadLicenseStatus(); loadGithubTokenStatus(); loadMcp(); break;
+        }
+    }
+
+    function waehleReiter(tab: typeof activeTab) {
+        activeTab = tab;
+        reiterLaden(tab);
+    }
 
     // ── Meldungen (Fehler und Wünsche aus der Anwendung) ─────────────────────
     // Zwei Abfragen statt einer: die Kennzahlen zählen über den *ganzen*
@@ -203,6 +223,7 @@
 
     /** Load all portal data — called on mount (if already authed) and after login. */
     async function initPortal() {
+        reiterLaden(activeTab);
         await loadUsers();
         await loadLeitstellen();
         await loadBranding();
@@ -2053,20 +2074,20 @@
     </div>
 
     <div class="tab-bar">
-        <button class="tab" class:active={activeTab === 'benutzer'} onclick={() => (activeTab = 'benutzer')}>Benutzer</button>
-        <button class="tab" class:active={activeTab === 'organisationen'} onclick={() => { activeTab = 'organisationen'; loadOrgs(); }}>Organisationen</button>
-        <button class="tab" class:active={activeTab === 'plaene'} onclick={() => { activeTab = 'plaene'; loadPlans(); }}>Pläne</button>
-        <button class="tab" class:active={activeTab === 'api-keys'} onclick={() => { activeTab = 'api-keys'; loadApiKeyOrgs(); }}>API-Keys</button>
-        <button class="tab" class:active={activeTab === 'mcp'} onclick={() => { activeTab = 'mcp'; loadMcp(); }}>MCP</button>
-        <button class="tab" class:active={activeTab === 'meldungen'} onclick={() => { activeTab = 'meldungen'; loadFeedback(); }}>
+        <button class="tab" class:active={activeTab === 'benutzer'} onclick={() => waehleReiter('benutzer')}>Benutzer</button>
+        <button class="tab" class:active={activeTab === 'organisationen'} onclick={() => waehleReiter('organisationen')}>Organisationen</button>
+        <button class="tab" class:active={activeTab === 'plaene'} onclick={() => waehleReiter('plaene')}>Pläne</button>
+        <button class="tab" class:active={activeTab === 'api-keys'} onclick={() => waehleReiter('api-keys')}>API-Keys</button>
+        <button class="tab" class:active={activeTab === 'mcp'} onclick={() => waehleReiter('mcp')}>MCP</button>
+        <button class="tab" class:active={activeTab === 'meldungen'} onclick={() => waehleReiter('meldungen')}>
             Meldungen
             {#if feedbackStats && feedbackStats.offen > 0}<span class="tab-zaehler">{feedbackStats.offen}</span>{/if}
         </button>
-        <button class="tab" class:active={activeTab === 'leitstellen'} onclick={() => (activeTab = 'leitstellen')}>Leitstellen</button>
-        <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>Branding</button>
-        <button class="tab" class:active={activeTab === 'demo'} onclick={() => { activeTab = 'demo'; loadDemoSettings(); }}>Demo</button>
-        <button class="tab" class:active={activeTab === 'uebersicht'} onclick={() => (activeTab = 'uebersicht')}>Systemübersicht</button>
-        <button class="tab" class:active={activeTab === 'system'} onclick={() => { activeTab = 'system'; loadUpdateStatus(); loadUpdateChannel(); loadUpdateMode(); loadLicenseStatus(); loadGithubTokenStatus(); loadMcp(); }}>System</button>
+        <button class="tab" class:active={activeTab === 'leitstellen'} onclick={() => waehleReiter('leitstellen')}>Leitstellen</button>
+        <button class="tab" class:active={activeTab === 'branding'} onclick={() => waehleReiter('branding')}>Branding</button>
+        <button class="tab" class:active={activeTab === 'demo'} onclick={() => waehleReiter('demo')}>Demo</button>
+        <button class="tab" class:active={activeTab === 'uebersicht'} onclick={() => waehleReiter('uebersicht')}>Systemübersicht</button>
+        <button class="tab" class:active={activeTab === 'system'} onclick={() => waehleReiter('system')}>System</button>
     </div>
 
     <!-- ── Benutzer ── -->
