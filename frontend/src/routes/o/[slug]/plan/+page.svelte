@@ -43,6 +43,7 @@
 	import HaltVermerk from '$lib/components/HaltVermerk.svelte';
 	import { tutorialStore } from '$lib/stores/tutorial';
 	import QRCode from 'qrcode';
+	import { reiterMerken } from '$lib/reiter-merken.svelte';
 
 	// ── State ──────────────────────────────────────────────────────────
 	let allVehicles = $state<Vehicle[]>([]);
@@ -79,6 +80,7 @@
 		bundesstrasse: 'Standard (veraltet)', landstrasse: 'Standard (veraltet)',
 	};
 	let activeTab = $state<'convoy'|'route'|'fahrzeuge'|'wegpunkte'|'zeitplan'|'export'|'konto'>('convoy');
+	reiterMerken(['convoy', 'route', 'fahrzeuge', 'wegpunkte', 'zeitplan', 'export', 'konto'], () => activeTab, (r) => (activeTab = r));
 	let loading = $state(false);
 	let dndWaypoints = $state<Waypoint[]>([]);
 	let dndVehicles = $state<Vehicle[]>([]);
@@ -275,6 +277,7 @@
 	onMount(async () => {
 		pwaStore.init();
 		void loadFlowProvider();
+		if (activeTab === 'konto') loadMfaStatus();
 		await loadData();
 		if (demoSession) {
 			try {
@@ -294,7 +297,10 @@
 			]);
 			dndVehicles = [...allVehicles];
 			convoys.set(convoyList);
-			if (!selected && convoyList.length) selectConvoy(convoyList[0]);
+			if (!selected && convoyList.length) {
+				const gemerkt = gemerkterKonvoi();
+				selectConvoy(convoyList.find((c) => c.id === gemerkt) ?? convoyList[0]);
+			}
 		} catch { error = 'Fehler beim Laden'; }
 	}
 
@@ -313,8 +319,15 @@
 		return c;
 	}
 
+	// Wie der Reiter: ein Neuladen soll beim selben Konvoi landen, nicht beim ersten.
+	const konvoiSchluessel = () => `convoyplan.konvoi:${location.pathname}`;
+	function gemerkterKonvoi(): string | null {
+		try { return sessionStorage.getItem(konvoiSchluessel()); } catch { return null; }
+	}
+
 	function selectConvoy(c: Convoy) {
 		selected = withVehicleIds(c);
+		try { sessionStorage.setItem(konvoiSchluessel(), c.id); } catch { /* ignore */ }
 		activeConvoy.set(selected);
 		route = null;
 		routeGeojson = null;

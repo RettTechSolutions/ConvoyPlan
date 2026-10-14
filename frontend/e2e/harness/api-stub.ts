@@ -294,6 +294,8 @@ export interface GraphBuild {
 }
 export interface RegionStatus {
 	phase: RegionPhase;
+	at?: string;
+	seen?: boolean;
 	scheduled_for?: string;
 	graph_build?: GraphBuild;
 	waiting_for_graph?: boolean;
@@ -314,7 +316,50 @@ const GRAPH_BUILD: Record<string, GraphBuild | undefined> = {
 declare global {
 	interface Window {
 		__regionWechsel?: string[];
+		__regionLogZeile?: (zeile: string) => void;
 	}
+}
+
+// `?log=<n>&phase=done|importing`: ein Wechsel mit Log. Der Strom spielt wie
+// der echte beim Verbinden alle bisherigen Zeilen ab Byte 0 nach — als ein
+// Schwall, so wie sie in einem Netzpaket ankommen, aber jede als eigenes
+// Ereignis; bei `done` endet er danach, sonst bleibt er offen, und
+// `window.__regionLogZeile` hängt eine weitere Zeile an.
+const logZeilen = Number(new URLSearchParams(location.search).get('log') ?? 0);
+const logPhase = new URLSearchParams(location.search).get('phase');
+// Fest statt relativ: Die Quittung muss über ein Neuladen hinweg passen.
+const LOG_ENDE_AT = '2026-10-14T06:08:13Z';
+// Die Quittung des Servers (`POST …/seen`) überlebt ein Neuladen wie dort —
+// hier in sessionStorage, damit jeder Test frisch anfängt.
+const gesehen = () => sessionStorage.getItem('region.gesehen');
+
+function logStrom(): EventSource {
+	const lauscher: Record<string, ((e: MessageEvent) => void)[]> = {};
+	let offen = true;
+	const es = {
+		onmessage: null as ((e: MessageEvent) => void) | null,
+		onerror: null as (() => void) | null,
+		addEventListener(typ: string, fn: (e: MessageEvent) => void) {
+			(lauscher[typ] ??= []).push(fn);
+		},
+		close() {
+			offen = false;
+		},
+	};
+	const senden = (data: string) => {
+		if (offen) es.onmessage?.(new MessageEvent('message', { data }));
+	};
+	window.__regionLogZeile = senden;
+	void (async () => {
+		await new Promise((r) => setTimeout(r, 50));
+		for (let i = 1; i <= logZeilen; i++) {
+			senden(i === logZeilen ? 'Regionswechsel abgeschlossen' : `INFO Zeile ${i}`);
+		}
+		if (logPhase === 'done' && offen) {
+			for (const fn of lauscher.done ?? []) fn(new MessageEvent('done', { data: 'done' }));
+		}
+	})();
+	return es as unknown as EventSource;
 }
 const quellen = new URLSearchParams(location.search).get('quellen')?.split(',') ?? ['europe/dach'];
 
@@ -338,17 +383,24 @@ export const regionApi = {
 	],
 	status: async (): Promise<RegionStatus> => {
 		const gb = GRAPH_BUILD[bau];
+		if (logPhase) {
+			const ende = { phase: logPhase, at: LOG_ENDE_AT };
+			return gesehen() === `${logPhase}@${LOG_ENDE_AT}` ? { ...ende, seen: true } : ende;
+		}
 		if (bau === 'wartet') {
 			return { phase: 'scheduled', scheduled_for: vorMinuten(20), graph_build: gb, waiting_for_graph: true };
 		}
 		return gb ? { phase: 'idle', graph_build: gb } : { phase: 'idle' };
 	},
-	logStream: async () => null,
+	logStream: async () => (logZeilen ? logStrom() : null),
 	switch: async (urls: string[]) => {
 		window.__regionWechsel = urls;
 		return { status: 'queued' };
 	},
 	cancel: async () => ({ status: 'cancelling' }),
+	seen: async (phase: string, at: string) => {
+		if (phase === logPhase && at === LOG_ENDE_AT) sessionStorage.setItem('region.gesehen', `${phase}@${at}`);
+	},
 };
 
 // ── Ortungsgeräte (`TrackerVerwaltung`) ──────────────────────────────────────

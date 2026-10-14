@@ -85,8 +85,9 @@ test.describe('am Telefon', () => {
 		await expect(lizenz).toHaveAttribute('aria-expanded', 'false');
 
 		// Nach dem Neuladen gilt, was jemand gewählt hat, nicht der Standard.
+		// Der Reiter selbst bleibt seit reiterMerken ohnehin „System".
 		await page.reload();
-		await expect(page.getByRole('cell', { name: 'anna@example.org' })).toBeVisible();
+		await expect(systemReiter(page)).toHaveClass(/active/);
 		await systemReiter(page).click();
 		await expect(titel(page, 'E-Mail (SMTP)')).toHaveAttribute('aria-expanded', 'true');
 		await expect(titel(page, 'Lizenz')).toHaveAttribute('aria-expanded', 'false');
@@ -125,7 +126,8 @@ test.describe('Status in der Kopfzeile', () => {
 			'GET /api/admin/update-status': stand,
 		});
 		await page.goto('/admin', { waitUntil: 'domcontentloaded' });
-		await expect(page.getByRole('cell', { name: 'anna@example.org' })).toBeVisible();
+		// Beim zweiten Aufruf steht der gemerkte Reiter offen (reiterMerken), nicht „Benutzer".
+		await expect(page.locator('.tab.active')).toBeVisible();
 		const system = systemReiter(page);
 		await system.scrollIntoViewIfNeeded();
 		await system.click();

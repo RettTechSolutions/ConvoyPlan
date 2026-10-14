@@ -16,12 +16,14 @@
     import { brandingStore, applyBranding, setOrgBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { orgBrandingApi, orgMcpApi, type BrandingUpdate, type OrgMcpPolicy, type OrgMcpConnection } from '$lib/api';
     import { orgModuleApi, type OrgModul, type OrgModule } from '$lib/api';
+    import { reiterMerken } from '$lib/reiter-merken.svelte';
 
     // ── Slug ─────────────────────────────────────────────────────────────────
     const slug = $derived((page.params as Record<string, string>).slug);
 
     // ── Tab ──────────────────────────────────────────────────────────────────
     let activeTab = $state<'mitglieder' | 'leitstellen' | 'gps' | 'tracker' | 'aktion' | 'branding' | 'ki' | 'daten'>('mitglieder');
+    reiterMerken(['mitglieder', 'leitstellen', 'gps', 'tracker', 'aktion', 'branding', 'ki', 'daten'], () => activeTab, (r) => (activeTab = r));
 
     // ── Module ───────────────────────────────────────────────────────────────
     // Was der Betreiber freigeschaltet hat (backend/app/services/org_module.py).
@@ -64,7 +66,12 @@
             // wird im Backend, der Reiter ist nur die Ansicht davon.
             module = { tracker: true, aktionsseiten: true, branding: true, ki: true };
         }
-        await Promise.all([loadMembers(), loadLeitstellen(), frei('branding') ? loadBranding() : undefined]);
+        // Was sonst der Klick auf den Reiter lädt — nach einem Neuladen steht er schon offen.
+        await Promise.all([
+            loadMembers(), loadLeitstellen(), frei('branding') ? loadBranding() : undefined,
+            activeTab === 'gps' ? loadGpsShares() : undefined,
+            activeTab === 'ki' && frei('ki') ? loadKi() : undefined,
+        ]);
     });
 
     // ── Mitglieder ───────────────────────────────────────────────────────────

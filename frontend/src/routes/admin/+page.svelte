@@ -18,8 +18,10 @@
     import SuperadminLogin from '$lib/components/SuperadminLogin.svelte';
     import SystemOverview from '$lib/components/SystemOverview.svelte';
     import RegionCard from '$lib/components/RegionCard.svelte';
+    import { folgtDemEnde, zeilenSammler } from '$lib/terminal';
     import QRCode from 'qrcode';
     import { benutzerListe, orgsSortiert, umschalten, STANDARD_SORTIERUNG, type BenutzerSortierung, type BenutzerSpalte } from '$lib/admin/benutzerliste';
+    import { reiterMerken } from '$lib/reiter-merken.svelte';
 
     // ── Auth gate ──────────────────────────────────────────────────────────────
     // /admin is self-gated: when not logged in as a superadmin we render the
@@ -28,6 +30,25 @@
 
     // ── Tab ──────────────────────────────────────────────────────────────────
     let activeTab = $state<'benutzer' | 'organisationen' | 'plaene' | 'api-keys' | 'mcp' | 'meldungen' | 'leitstellen' | 'branding' | 'demo' | 'uebersicht' | 'system'>('benutzer');
+    reiterMerken(['benutzer', 'organisationen', 'plaene', 'api-keys', 'mcp', 'meldungen', 'leitstellen', 'branding', 'demo', 'uebersicht', 'system'], () => activeTab, (r) => (activeTab = r));
+
+    /** Was ein Reiter beim Öffnen nachlädt — beim Klick und nach einem Neuladen. */
+    function reiterLaden(tab: typeof activeTab) {
+        switch (tab) {
+            case 'organisationen': loadOrgs(); break;
+            case 'plaene': loadPlans(); break;
+            case 'api-keys': loadApiKeyOrgs(); break;
+            case 'mcp': loadMcp(); break;
+            case 'meldungen': loadFeedback(); break;
+            case 'demo': loadDemoSettings(); break;
+            case 'system': loadUpdateStatus(); loadUpdateChannel(); loadUpdateMode(); loadLicenseStatus(); loadGithubTokenStatus(); loadMcp(); break;
+        }
+    }
+
+    function waehleReiter(tab: typeof activeTab) {
+        activeTab = tab;
+        reiterLaden(tab);
+    }
 
     // ── Meldungen (Fehler und Wünsche aus der Anwendung) ─────────────────────
     // Zwei Abfragen statt einer: die Kennzahlen zählen über den *ganzen*
@@ -205,6 +226,7 @@
 
     /** Load all portal data — called on mount (if already authed) and after login. */
     async function initPortal() {
+        reiterLaden(activeTab);
         await loadUsers();
         await loadLeitstellen();
         await loadBranding();
@@ -832,7 +854,10 @@
     let showUpdateLog = $state(false);
     let updateLogDone = $state(false);
     let _updateLogSource: EventSource | null = null;
-    let logContainer: HTMLDivElement | null = null;
+    // Zeilen je Bildaufbau statt einzeln — siehe `$lib/terminal`.
+    const updateLogSammler = zeilenSammler((zeilen) => {
+        updateLogLines = [...updateLogLines, ...zeilen];
+    });
 
     async function loadUpdateChannel() {
         try {
@@ -914,6 +939,7 @@
 
     async function startLogStream() {
         if (_updateLogSource) { _updateLogSource.close(); _updateLogSource = null; }
+        updateLogSammler.verwerfen();
         updateLogLines = [];
         updateLogDone = false;
         showUpdateLog = true;
@@ -930,14 +956,11 @@
         _updateLogSource = es;
 
         es.onmessage = (e) => {
-            updateLogLines = [...updateLogLines, e.data];
-            // auto-scroll to bottom
-            setTimeout(() => {
-                if (logContainer) logContainer.scrollTop = logContainer.scrollHeight;
-            }, 0);
+            updateLogSammler.push(e.data);
         };
 
         es.addEventListener('done', () => {
+            updateLogSammler.leeren();
             updateLogDone = true;
             es.close();
             _updateLogSource = null;
@@ -953,6 +976,7 @@
 
         es.onerror = () => {
             // Connection dropped (e.g. backend restarted after update)
+            updateLogSammler.leeren();
             updateLogLines = [...updateLogLines, '[Verbindung getrennt — Backend wird neu gestartet…]'];
             updateLogDone = true;
             es.close();
@@ -2084,20 +2108,20 @@
     </div>
 
     <TabLeiste aktiv={activeTab}>
-        <button class="tab" class:active={activeTab === 'benutzer'} onclick={() => (activeTab = 'benutzer')}>Benutzer</button>
-        <button class="tab" class:active={activeTab === 'organisationen'} onclick={() => { activeTab = 'organisationen'; loadOrgs(); }}>Organisationen</button>
-        <button class="tab" class:active={activeTab === 'plaene'} onclick={() => { activeTab = 'plaene'; loadPlans(); }}>Pläne</button>
-        <button class="tab" class:active={activeTab === 'api-keys'} onclick={() => { activeTab = 'api-keys'; loadApiKeyOrgs(); }}>API-Keys</button>
-        <button class="tab" class:active={activeTab === 'mcp'} onclick={() => { activeTab = 'mcp'; loadMcp(); }}>MCP</button>
-        <button class="tab" class:active={activeTab === 'meldungen'} onclick={() => { activeTab = 'meldungen'; loadFeedback(); }}>
+        <button class="tab" class:active={activeTab === 'benutzer'} onclick={() => waehleReiter('benutzer')}>Benutzer</button>
+        <button class="tab" class:active={activeTab === 'organisationen'} onclick={() => waehleReiter('organisationen')}>Organisationen</button>
+        <button class="tab" class:active={activeTab === 'plaene'} onclick={() => waehleReiter('plaene')}>Pläne</button>
+        <button class="tab" class:active={activeTab === 'api-keys'} onclick={() => waehleReiter('api-keys')}>API-Keys</button>
+        <button class="tab" class:active={activeTab === 'mcp'} onclick={() => waehleReiter('mcp')}>MCP</button>
+        <button class="tab" class:active={activeTab === 'meldungen'} onclick={() => waehleReiter('meldungen')}>
             Meldungen
             {#if feedbackStats && feedbackStats.offen > 0}<span class="tab-zaehler">{feedbackStats.offen}</span>{/if}
         </button>
-        <button class="tab" class:active={activeTab === 'leitstellen'} onclick={() => (activeTab = 'leitstellen')}>Leitstellen</button>
-        <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>Branding</button>
-        <button class="tab" class:active={activeTab === 'demo'} onclick={() => { activeTab = 'demo'; loadDemoSettings(); }}>Demo</button>
-        <button class="tab" class:active={activeTab === 'uebersicht'} onclick={() => (activeTab = 'uebersicht')}>Systemübersicht</button>
-        <button class="tab" class:active={activeTab === 'system'} onclick={() => { activeTab = 'system'; loadUpdateStatus(); loadUpdateChannel(); loadUpdateMode(); loadLicenseStatus(); loadGithubTokenStatus(); loadMcp(); }}
+        <button class="tab" class:active={activeTab === 'leitstellen'} onclick={() => waehleReiter('leitstellen')}>Leitstellen</button>
+        <button class="tab" class:active={activeTab === 'branding'} onclick={() => waehleReiter('branding')}>Branding</button>
+        <button class="tab" class:active={activeTab === 'demo'} onclick={() => waehleReiter('demo')}>Demo</button>
+        <button class="tab" class:active={activeTab === 'uebersicht'} onclick={() => waehleReiter('uebersicht')}>Systemübersicht</button>
+        <button class="tab" class:active={activeTab === 'system'} onclick={() => waehleReiter('system')}
             aria-label={systemHinweis ? `System – ${systemHinweis.text}` : undefined}
             title={systemHinweis?.text}
         >
@@ -4242,7 +4266,7 @@
                 {/if}
 
                 {#if showUpdateLog}
-                    <div class="update-terminal" bind:this={logContainer}>
+                    <div class="update-terminal" use:folgtDemEnde>
                         {#each updateLogLines as line}
                             <div class="log-line">{line}</div>
                         {/each}
@@ -5103,7 +5127,6 @@
         color: #c9d1d9;
         max-height: 260px;
         overflow-y: auto;
-        scroll-behavior: smooth;
     }
     .log-line { white-space: pre-wrap; word-break: break-all; }
     .log-done { color: #58a6ff; margin-top: .25rem; }
