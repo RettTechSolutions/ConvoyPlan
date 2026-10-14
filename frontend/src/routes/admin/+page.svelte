@@ -16,6 +16,7 @@
     import SuperadminLogin from '$lib/components/SuperadminLogin.svelte';
     import SystemOverview from '$lib/components/SystemOverview.svelte';
     import RegionCard from '$lib/components/RegionCard.svelte';
+    import { folgtDemEnde, zeilenSammler } from '$lib/terminal';
     import QRCode from 'qrcode';
     import { benutzerListe, orgsSortiert, umschalten, STANDARD_SORTIERUNG, type BenutzerSortierung, type BenutzerSpalte } from '$lib/admin/benutzerliste';
     import { reiterMerken } from '$lib/reiter-merken.svelte';
@@ -822,7 +823,10 @@
     let showUpdateLog = $state(false);
     let updateLogDone = $state(false);
     let _updateLogSource: EventSource | null = null;
-    let logContainer: HTMLDivElement | null = null;
+    // Zeilen je Bildaufbau statt einzeln — siehe `$lib/terminal`.
+    const updateLogSammler = zeilenSammler((zeilen) => {
+        updateLogLines = [...updateLogLines, ...zeilen];
+    });
 
     async function loadUpdateChannel() {
         try {
@@ -904,6 +908,7 @@
 
     async function startLogStream() {
         if (_updateLogSource) { _updateLogSource.close(); _updateLogSource = null; }
+        updateLogSammler.verwerfen();
         updateLogLines = [];
         updateLogDone = false;
         showUpdateLog = true;
@@ -920,14 +925,11 @@
         _updateLogSource = es;
 
         es.onmessage = (e) => {
-            updateLogLines = [...updateLogLines, e.data];
-            // auto-scroll to bottom
-            setTimeout(() => {
-                if (logContainer) logContainer.scrollTop = logContainer.scrollHeight;
-            }, 0);
+            updateLogSammler.push(e.data);
         };
 
         es.addEventListener('done', () => {
+            updateLogSammler.leeren();
             updateLogDone = true;
             es.close();
             _updateLogSource = null;
@@ -943,6 +945,7 @@
 
         es.onerror = () => {
             // Connection dropped (e.g. backend restarted after update)
+            updateLogSammler.leeren();
             updateLogLines = [...updateLogLines, '[Verbindung getrennt — Backend wird neu gestartet…]'];
             updateLogDone = true;
             es.close();
@@ -4222,7 +4225,7 @@
                 {/if}
 
                 {#if showUpdateLog}
-                    <div class="update-terminal" bind:this={logContainer}>
+                    <div class="update-terminal" use:folgtDemEnde>
                         {#each updateLogLines as line}
                             <div class="log-line">{line}</div>
                         {/each}
@@ -5081,7 +5084,6 @@
         color: #c9d1d9;
         max-height: 260px;
         overflow-y: auto;
-        scroll-behavior: smooth;
     }
     .log-line { white-space: pre-wrap; word-break: break-all; }
     .log-done { color: #58a6ff; margin-top: .25rem; }

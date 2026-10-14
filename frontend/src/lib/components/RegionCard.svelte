@@ -25,6 +25,7 @@
         type RegionStatus,
     } from '$lib/api';
     import { ApiError } from '$lib/api/client';
+    import { folgtDemEnde, zeilenSammler } from '$lib/terminal';
 
     // ── Ruhezustand ──────────────────────────────────────────────────────────
     let current = $state<RegionCurrent | null>(null);
@@ -101,10 +102,11 @@
     // $state, weil das Terminal am offenen Strom erkennt, ob es noch etwas
     // erwarten darf (Cursor) — die Zuweisung muss also ein Rendern auslösen.
     let logSource = $state<EventSource | null>(null);
-    let logContainer = $state<HTMLDivElement | null>(null);
-    // true nach "Schließen" auf einem abgeschlossenen/fehlgeschlagenen Wechsel —
-    // blendet die Phasenkarte lokal aus, obwohl der Server denselben Endstatus
-    // bis zum nächsten Wechsel weiter meldet.
+    // true nach "Schließen" auf einem abgeschlossenen/fehlgeschlagenen Wechsel,
+    // sofort und ohne auf den Server zu warten. Dauerhaft gilt es über
+    // `status.seen`: Der Server merkt sich die Quittung, sonst klappte jeder
+    // Seitenaufruf denselben Endstatus samt Log wieder auf. Lokal bleibt es,
+    // für diesen Seitenaufruf, falls die Quittung nicht ankommt.
     let dismissed = $state(false);
     let timer: ReturnType<typeof setInterval> | null = null;
 
@@ -169,7 +171,7 @@
     // sehen, dass sein Abbruch tatsächlich durchgelaufen ist, und hätte keinen
     // „Schließen"-Knopf.
     const ENDED: RegionPhase[] = ['done', 'failed', 'cancelled'];
-    const finished = $derived(!dismissed && ENDED.includes(status.phase));
+    const finished = $derived(!dismissed && !status.seen && ENDED.includes(status.phase));
     const showSwitchPanel = $derived(busy || finished);
     const canCancel = $derived(busy && CANCELLABLE_PHASES.includes(status.phase));
     const blocked = $derived(preview?.verdict === 'reicht nicht');
@@ -205,9 +207,15 @@
     // ueberholt hat, verwirft sein Ergebnis, statt den neuen zu ueberschreiben.
     let logStreamSeq = 0;
 
+    // Zeilen je Bildaufbau statt einzeln — siehe `$lib/terminal`.
+    const logSammler = zeilenSammler((zeilen) => {
+        logLines = [...logLines, ...zeilen];
+    });
+
     function stopLogStream() {
         // Entwertet auch alle noch schwebenden Starts.
         logStreamSeq += 1;
+        logSammler.verwerfen();
         if (logSource) {
             logSource.close();
             logSource = null;
@@ -234,14 +242,11 @@
         logSource = es;
         es.onmessage = (e) => {
             if (seq !== logStreamSeq) return;
-            logLines = [...logLines, e.data];
-            // ans Ende scrollen, nachdem Svelte die neue Zeile gerendert hat
-            setTimeout(() => {
-                if (logContainer) logContainer.scrollTop = logContainer.scrollHeight;
-            }, 0);
+            logSammler.push(e.data);
         };
         es.addEventListener('done', (e) => {
             if (seq !== logStreamSeq) return;
+            logSammler.leeren();
             stopLogStream();
             // "timeout": der Strom hat sein Zeitlimit erreicht, der Wechsel
             // läuft aber noch. Neu aufbauen — der Strom liest wieder ab Byte 0,
@@ -250,6 +255,7 @@
         });
         es.onerror = () => {
             if (seq !== logStreamSeq) return;
+            logSammler.leeren();
             // Verbindung weg (Backend startet neu, Proxy-Timeout). Nicht selbst
             // weiterverbinden lassen: EventSource würde von Byte 0 neu lesen und
             // alles doppelt anhängen. Stattdessen ein Knopf zum Neuladen.
@@ -483,6 +489,12 @@
         stopLogStream();
         logLines = [];
         logError = '';
+        // Quittung für alle Superadmins und jeden weiteren Seitenaufruf. Schlägt
+        // sie fehl (409: inzwischen endete ein anderer Wechsel), bleibt es beim
+        // lokalen Ausblenden — der nächste Endstatus soll ja erscheinen.
+        if (status.at) {
+            regionApi.seen(status.phase, status.at).catch(() => {});
+        }
         await loadCurrent();
     }
 
@@ -567,7 +579,7 @@
             </p>
         {/if}
 
-        <div class="update-terminal" bind:this={logContainer}>
+        <div class="update-terminal" use:folgtDemEnde>
             {#each logLines as line}
                 <div class="log-line">{line}</div>
             {/each}
@@ -985,7 +997,6 @@
         color: #c9d1d9;
         max-height: 260px;
         overflow-y: auto;
-        scroll-behavior: smooth;
     }
     .log-line { white-space: pre-wrap; word-break: break-all; }
     .log-done { color: #58a6ff; margin-top: .25rem; }
