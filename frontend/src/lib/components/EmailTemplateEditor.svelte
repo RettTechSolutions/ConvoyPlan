@@ -11,8 +11,10 @@
     import { auth } from '$lib/stores/auth';
     import { emailTemplateApi, type EmailTemplate, type EmailTemplateKind } from '$lib/api';
     import { authHeaders } from '$lib/api/client';
+    import { klappbar } from '$lib/klappbar/klappbar';
 
-    let { kind, title }: { kind: EmailTemplateKind; title: string } = $props();
+    // klappId: zusammenklappbar (siehe $lib/klappbar), gemerkt unter dieser Kennung.
+    let { kind, title, klappId }: { kind: EmailTemplateKind; title: string; klappId?: string } = $props();
 
     let template = $state<EmailTemplate | null>(null);
     let form = $state({ subject: '', html: '' });
@@ -128,7 +130,7 @@
     }
 </script>
 
-<div class="section branding-panel">
+<div class="section branding-panel" use:klappbar={klappId}>
     <div class="section-header sh-inline">
         <strong>{title}</strong>
         {#if template}

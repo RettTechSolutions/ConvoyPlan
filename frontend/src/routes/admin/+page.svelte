@@ -9,6 +9,8 @@
     import { versionStore } from '$lib/stores/version.svelte';
     import { kontextmenue, kopieren, TRENNER, type Eintraege } from '$lib/kontextmenue/menue';
     import EmailTemplateEditor from '$lib/components/EmailTemplateEditor.svelte';
+    import TabLeiste from '$lib/components/TabLeiste.svelte';
+    import { klappbar } from '$lib/klappbar/klappbar';
     import { getStreamTicket } from '$lib/api/client';
     import { adminApi, mfaApi, leistellenApi, licenseApi, mcpAdminApi, orgPlanAdminApi, type AdminOrgPlanRow, orgModuleAdminApi, type OrgModul, type OrgModule, type OrgModulKatalog, type OrgPlanCatalogEntry, regionApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoStats, type DemoSessionInfo, type DemoLeadInfo, type DemoIpLock, type DemoIpAllowlistEntry, type RegionStatus, type RegionPhase, type McpStatus, type McpClient, type McpConnection, type McpOrgPolicy, feedbackAdminApi, type FeedbackReport, type FeedbackStats, type FeedbackStatus, type FeedbackSeverity, type FeedbackKind } from '$lib/api';
     import { brandingStore, applyBranding, normalizeBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
@@ -2052,7 +2054,7 @@
         </div>
     </div>
 
-    <div class="tab-bar">
+    <TabLeiste aktiv={activeTab}>
         <button class="tab" class:active={activeTab === 'benutzer'} onclick={() => (activeTab = 'benutzer')}>Benutzer</button>
         <button class="tab" class:active={activeTab === 'organisationen'} onclick={() => { activeTab = 'organisationen'; loadOrgs(); }}>Organisationen</button>
         <button class="tab" class:active={activeTab === 'plaene'} onclick={() => { activeTab = 'plaene'; loadPlans(); }}>Pläne</button>
@@ -2067,7 +2069,7 @@
         <button class="tab" class:active={activeTab === 'demo'} onclick={() => { activeTab = 'demo'; loadDemoSettings(); }}>Demo</button>
         <button class="tab" class:active={activeTab === 'uebersicht'} onclick={() => (activeTab = 'uebersicht')}>Systemübersicht</button>
         <button class="tab" class:active={activeTab === 'system'} onclick={() => { activeTab = 'system'; loadUpdateStatus(); loadUpdateChannel(); loadUpdateMode(); loadLicenseStatus(); loadGithubTokenStatus(); loadMcp(); }}>System</button>
-    </div>
+    </TabLeiste>
 
     <!-- ── Benutzer ── -->
     {#if activeTab === 'benutzer'}
@@ -2599,7 +2601,7 @@
             <div class="error-bar">{mcpError} <button onclick={() => (mcpError = '')}>✕</button></div>
         {/if}
 
-        <div class="section">
+        <div class="section" use:klappbar={'mcp-schalter'}>
             <div class="section-header">
                 <strong>KI-Schnittstelle (MCP)</strong>
                 <button class="btn-small" onclick={loadMcp} disabled={mcpLoading} title="Aktualisieren">⟳</button>
@@ -2680,7 +2682,7 @@
         </div>
 
         <!-- ── Organisationen und ihr KI-Zugriff ── -->
-        <div class="section">
+        <div class="section" use:klappbar={'mcp-organisationen'}>
             <div class="section-header">
                 <strong>
                     Organisationen mit KI-Zugriff
@@ -2757,7 +2759,7 @@
         </div>
 
         <!-- ── Aktive Verbindungen ── -->
-        <div class="section">
+        <div class="section" use:klappbar={'mcp-verbindungen'}>
             <div class="section-header"><strong>Aktive Verbindungen</strong></div>
             {#if mcpConnections.length === 0}
                 <p class="hint">Derzeit ist keine Verbindung erteilt.</p>
@@ -2801,7 +2803,7 @@
         </div>
 
         <!-- ── Registrierte Clients ── -->
-        <div class="section">
+        <div class="section" use:klappbar={'mcp-programme'}>
             <div class="section-header">
                 <strong>Registrierte Programme</strong>
                 {#if mcpVerwaiste.length > 0}
@@ -3095,7 +3097,7 @@
         {/if}
 
         {#if lsGeojson && lsGeojson.features.length > 0}
-            <div class="section">
+            <div class="section" use:klappbar={'leitstellen-karte'}>
                 <div class="section-header"><strong>Übersicht</strong></div>
                 <LeitstellenOverviewMap geojson={lsGeojson} />
                 <p class="hint" style="margin:.4rem 0 0">Blau = global · Rot = org-eigen/Vorschlag</p>
@@ -3153,7 +3155,7 @@
 
     <!-- ── Branding ── -->
     {#if activeTab === 'branding'}
-    <div class="section branding-panel">
+    <div class="section branding-panel" use:klappbar={'branding'}>
         <div class="section-header"><strong>Branding</strong></div>
 
         {#if brandingError}
@@ -3258,7 +3260,7 @@
     </div>
 
     <!-- ── E-Mail-Vorlage: Zugangsdaten ── -->
-    <EmailTemplateEditor kind="password" title="E-Mail-Vorlage: Zugangsdaten" />
+    <EmailTemplateEditor kind="password" title="E-Mail-Vorlage: Zugangsdaten" klappId="branding-vorlage" />
     {/if}
 
     <!-- ── Systemübersicht ── -->
@@ -3270,7 +3272,7 @@
 
     {#if activeTab === 'demo'}
         <!-- ── Übersicht ── -->
-        <div class="section">
+        <div class="section" use:klappbar={'demo-uebersicht'}>
             <div class="section-header">
                 <strong>Übersicht</strong>
                 <button class="btn-small" onclick={loadDemoSettings} title="Aktualisieren">⟳</button>
@@ -3350,7 +3352,7 @@
 
 
         <!-- ── Demo-Modus ── -->
-        <div class="section">
+        <div class="section" use:klappbar={'demo-modus'}>
             <div class="section-header">
                 <strong>Demo-Modus</strong>
             </div>
@@ -3707,12 +3709,13 @@
         <EmailTemplateEditor
             kind="demo_followup"
             title="E-Mail-Vorlage: Nachfrage nach der Demo"
+            klappId="demo-vorlage"
         />
     {/if}
 
     {#if activeTab === 'system'}
         <!-- ── KI-Schnittstelle (MCP) ── -->
-        <div class="section">
+        <div class="section" use:klappbar={'system-mcp'}>
             <div class="section-header">
                 <strong>KI-Schnittstelle (MCP)</strong>
                 <button class="btn-small" onclick={loadMcp}>↺</button>
@@ -3872,7 +3875,7 @@
         </div>
 
         <!-- ── Lizenz-Sektion ── -->
-        <div class="section">
+        <div class="section" use:klappbar={'system-lizenz'}>
             <div class="section-header">
                 <strong>Lizenz</strong>
                 <button class="btn-small" onclick={loadLicenseStatus}>↺</button>
@@ -4014,7 +4017,7 @@
         </div>
 
         <!-- ── Software-Update ── -->
-        <div class="section">
+        <div class="section" use:klappbar={'system-update'}>
             <div class="section-header">
                 <strong>Software-Update</strong>
                 {#if !updateTriggering}
@@ -4221,7 +4224,7 @@
         <RegionCard />
 
         <!-- ── GitHub-Konfiguration ── -->
-        <div class="section">
+        <div class="section" use:klappbar={'system-github'}>
             <div class="section-header">
                 <strong>GitHub-Konfiguration</strong>
             </div>
@@ -4279,7 +4282,7 @@
         </div>
 
         <!-- ── Live-Verkehrslage (HERE / TomTom) ── -->
-        <div class="section">
+        <div class="section" use:klappbar={'system-verkehr'}>
             <div class="section-header">
                 <strong>Live-Verkehrslage (Stau)</strong>
             </div>
@@ -4374,7 +4377,7 @@
 
 
         <!-- ── Zwei-Faktor-Authentifizierung ── -->
-        <div class="section">
+        <div class="section" use:klappbar={'system-mfa'}>
             <div class="section-header">
                 <strong>Zwei-Faktor-Authentifizierung (MFA)</strong>
             </div>
@@ -4449,7 +4452,7 @@
         </div>
 
         <!-- ── Passkeys ── -->
-        <div class="section">
+        <div class="section" use:klappbar={'system-passkeys'}>
             <div class="section-header">
                 <strong>Passkeys</strong>
             </div>
@@ -4457,7 +4460,7 @@
         </div>
 
         <!-- ── E-Mail / SMTP ── -->
-        <div class="section">
+        <div class="section" use:klappbar={'system-smtp'}>
             <div class="section-header">
                 <strong>E-Mail (SMTP)</strong>
             </div>
@@ -4813,12 +4816,7 @@
     }
     .logout-btn:hover { background: var(--surface-1); border-color: var(--color-primary); color: var(--color-primary); }
 
-    /* overflow-x statt Umbruch: Mit dem Demo-Tab sind es acht Reiter, die auf
-       einem Telefon nicht mehr nebeneinander passen. Eine zweite Zeile würde
-       die Unterkante zerreißen, an der die aktive Lasche hängt — also scrollt
-       die Leiste seitlich, wie es Tabellen in .section ohnehin tun. */
-    .tab-bar { display: flex; gap: .25rem; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem; padding: .25rem .25rem 0; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
-    .tab-bar::-webkit-scrollbar { display: none; }
+    /* Die Leiste selbst (Scrollen, Überlauf) steht in TabLeiste.svelte. */
     .tab { flex: 0 0 auto; white-space: nowrap; padding: .5rem 1rem; background: none; border: none; cursor: pointer; font-size: var(--text-sm); color: var(--text-2); border-radius: 4px 4px 0 0; margin-bottom: -1px; }
     .tab.active { color: var(--color-primary); background: var(--surface-2); font-weight: 600; border-bottom: 2px solid var(--color-primary); }
 
@@ -5111,16 +5109,6 @@
         }
         .admin-header { margin-bottom: .75rem; }
 
-        /* Tabs scroll horizontally instead of squashing — touch-friendly. */
-        .tab-bar {
-            overflow-x: auto;
-            flex-wrap: nowrap;
-            scrollbar-width: none;
-            -webkit-overflow-scrolling: touch;
-            margin: 0 -.75rem 1rem;
-            padding: .25rem .75rem 0;
-        }
-        .tab-bar::-webkit-scrollbar { display: none; }
         .tab { flex-shrink: 0; padding: .55rem .85rem; font-size: var(--text-sm); }
 
         .section { padding: .75rem; }

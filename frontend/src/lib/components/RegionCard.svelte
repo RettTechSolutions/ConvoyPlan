@@ -25,6 +25,7 @@
         type RegionStatus,
     } from '$lib/api';
     import { ApiError } from '$lib/api/client';
+    import { klappbar } from '$lib/klappbar/klappbar';
 
     // ── Ruhezustand ──────────────────────────────────────────────────────────
     let current = $state<RegionCurrent | null>(null);
@@ -511,7 +512,7 @@
     }
 </script>
 
-<div class="section region-card">
+<div class="section region-card" use:klappbar={'system-region'}>
     <div class="section-header">
         <strong>Kartenregion</strong>
         {#if !showSwitchPanel && !loadingCurrent}

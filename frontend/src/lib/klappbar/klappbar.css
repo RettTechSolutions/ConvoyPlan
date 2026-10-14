@@ -1,0 +1,35 @@
+/* Global, weil die Karten in mehreren Komponenten mit je eigenen, gekapselten
+   Stilen stehen (Admin-Seite, RegionCard, SystemOverview, EmailTemplateEditor).
+   `!important`, weil deren Regeln (.klasse.svelte-xyz) spezifischer sind. */
+.klapp-zu > :not(.klapp-kopf) { display: none !important; }
+.klapp-zu > .klapp-kopf { margin-bottom: 0 !important; }
+
+.klapp-titel {
+	cursor: pointer;
+	user-select: none;
+	display: inline-flex;
+	align-items: center;
+	gap: .4rem;
+	/* Größere Trefferfläche am Telefon, ohne die Kopfzeile höher zu machen. */
+	padding: .25rem 0;
+	margin: -.25rem 0;
+	border-radius: 4px;
+}
+.klapp-titel::before {
+	content: '';
+	flex: 0 0 auto;
+	width: .45em;
+	height: .45em;
+	border-right: 2px solid currentColor;
+	border-bottom: 2px solid currentColor;
+	transform: rotate(45deg) translate(-.1em, -.1em);
+	transition: transform .15s ease;
+	opacity: .6;
+}
+.klapp-zu .klapp-titel::before { transform: rotate(-45deg); }
+.klapp-titel:hover::before { opacity: 1; }
+.klapp-titel:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+	.klapp-titel::before { transition: none; }
+}
