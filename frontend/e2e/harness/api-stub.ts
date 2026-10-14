@@ -308,12 +308,21 @@ const GRAPH_BUILD: Record<string, GraphBuild | undefined> = {
 	wartet: { phase: 'import', since: vorMinuten(12), grace_hours: 4 },
 };
 
+// `?quellen=europe/dach,europe/italy` lädt eine zusammengesetzte Karte;
+// was der Wechsel abschickt, steht in `window.__regionWechsel`.
+declare global {
+	interface Window {
+		__regionWechsel?: string[];
+	}
+}
+const quellen = new URLSearchParams(location.search).get('quellen')?.split(',') ?? ['europe/dach'];
+
 export const regionApi = {
 	current: async () => ({
-		url: 'https://download.geofabrik.de/europe/dach-latest.osm.pbf',
-		filename: 'dach-latest.osm.pbf',
+		url: `https://download.geofabrik.de/${quellen[0]}-latest.osm.pbf`,
+		filename: quellen.length > 1 ? 'merged-19b731a7.osm.pbf' : 'dach-latest.osm.pbf',
 		java_opts: '-Xmx8g',
-		sources: ['europe/dach'],
+		sources: quellen,
 	}),
 	preview: async () => ({
 		sources: ['europe/dach'], composed: false, overlapping: [],
@@ -323,7 +332,9 @@ export const regionApi = {
 		disk_needed_bytes: 20_000_000_000, disk_free_bytes: 92_000_000_000,
 		duration_minutes: [45, 75], verdict: 'ok', reason: 'Reicht.',
 	}),
-	list: async () => [],
+	list: async () => [
+		{ id: 'europe/poland', name: 'Poland', path: 'Europe › Poland', url: 'https://download.geofabrik.de/europe/poland-latest.osm.pbf' },
+	],
 	status: async (): Promise<RegionStatus> => {
 		const gb = GRAPH_BUILD[bau];
 		if (bau === 'wartet') {
@@ -332,7 +343,10 @@ export const regionApi = {
 		return gb ? { phase: 'idle', graph_build: gb } : { phase: 'idle' };
 	},
 	logStream: async () => null,
-	switch: async () => ({ status: 'queued' }),
+	switch: async (urls: string[]) => {
+		window.__regionWechsel = urls;
+		return { status: 'queued' };
+	},
 	cancel: async () => ({ status: 'cancelling' }),
 };
 

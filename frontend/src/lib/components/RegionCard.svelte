@@ -66,6 +66,11 @@
     // die der Updater zu einer Karte verschmilzt. Schnellauswahl ERSETZT diese
     // Liste ("einfach DACH"), Suchtreffer FÜGEN HINZU.
     let selectedList = $state<RegionEntry[]>([]);
+    // „Region erweitern": Die Auswahl startet mit den Bestandteilen der
+    // geladenen Karte, und auch die Schnellauswahl fügt dann hinzu. Sonst
+    // musste, wer zu acht Ländern ein neuntes wollte, die acht aus der
+    // Bestandteil-Liste abschreiben und einzeln wieder heraussuchen.
+    let erweitern = $state(false);
 
     // ── Wartungsmodus und Terminierung ───────────────────────────────────────
     // Ohne pausiertes Routing hält der laufende GraphHopper seinen Heap
@@ -320,11 +325,21 @@
     }
 
     function openPicker() {
+        erweitern = false;
         showPicker = true;
+    }
+
+    async function openErweitern() {
+        if (!current?.sources?.length) return;
+        erweitern = true;
+        showPicker = true;
+        selectedList = current.sources.map((id) => ({ id, name: id, path: id, url: quickPickUrl(id) }));
+        await refreshPreview();
     }
 
     function closePicker() {
         showPicker = false;
+        erweitern = false;
         selectedList = [];
         preview = null;
         previewError = '';
@@ -349,8 +364,15 @@
     }
 
     // Schnellauswahl ERSETZT die Auswahl — gedacht als "einfach DACH", nicht
-    // als weiterer Bestandteil einer Kombination.
+    // als weiterer Bestandteil einer Kombination. Beim Erweitern fügt sie
+    // hinzu: dort ist die bestehende Karte der Ausgangspunkt, und ein Klick
+    // auf „Bayern" soll sie nicht stillschweigend verwerfen.
     async function chooseQuick(qp: { id: string; label: string }) {
+        const entry = { id: qp.id, name: qp.label, path: qp.label, url: quickPickUrl(qp.id) };
+        if (erweitern) {
+            await addRegion(entry);
+            return;
+        }
         selectedList = [{ id: qp.id, name: qp.label, path: qp.label, url: quickPickUrl(qp.id) }];
         await refreshPreview();
     }
@@ -419,6 +441,7 @@
                 scheduledFor,
             });
             showPicker = false;
+            erweitern = false;
             selectedList = [];
             preview = null;
             scheduledLocal = '';
@@ -675,8 +698,11 @@
             {/if}
 
             {#if !showPicker}
-                <div style="margin-top:1rem">
+                <div style="margin-top:1rem; display:flex; gap:.5rem; flex-wrap:wrap">
                     <button class="btn-primary" onclick={openPicker}>Region wechseln</button>
+                    {#if current.sources?.length}
+                        <button class="btn-secondary" onclick={openErweitern}>Region erweitern</button>
+                    {/if}
                 </div>
             {/if}
         {/if}
@@ -693,9 +719,18 @@
                     {/each}
                 </div>
 
-                {#if selectedList.length > 1}
-                    <!-- Nur bei kombinierter Auswahl — bei genau einer Region soll
-                         die Karte wie bisher aussehen (keine Marken-Leiste). -->
+                {#if erweitern}
+                    <p class="hint">
+                        Die geladene Karte ist übernommen — weitere Regionen über die Suche oder
+                        die Schnellauswahl hinzufügen. Gebaut wird danach eine neue Karte aus allen
+                        Bestandteilen; die bisherige läuft bis dahin weiter.
+                    </p>
+                {/if}
+
+                {#if selectedList.length > 1 || erweitern}
+                    <!-- Sonst nur bei kombinierter Auswahl — bei genau einer Region soll
+                         die Karte wie bisher aussehen (keine Marken-Leiste). Beim
+                         Erweitern immer: man soll sehen, was übernommen ist. -->
                     <div class="chip-row">
                         {#each selectedList as entry (entry.id)}
                             <span class="chip">
