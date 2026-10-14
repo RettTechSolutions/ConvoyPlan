@@ -672,7 +672,11 @@ am Schreibtisch offen; die Wahl merkt sich der Browser je `id`. Eine Karte, die
 sich beim Aufklappen erst messen muss (MapLibre), braucht einen ResizeObserver,
 wie `LeitstellenOverviewMap`. Was zugeklappt nicht untergehen darf, steht als
 Abzeichen in der Kopfzeile (`kopf-status`): Software-Update (verfügbar,
-zurückgehalten, läuft) und Kartenregion (Wechsel, Graph-Aufbau). Test:
+zurückgehalten, läuft) und Kartenregion (Wechsel, Graph-Aufbau). Eine Ebene
+höher trägt der Reiter „System" einen Hinweis (`systemHinweis`, nur was ansteht —
+kein alter Fehlschlag, kein unerreichbares GitHub), und liegt ein Reiter mit
+Hinweis oder Zähler hinter einem Pfeil der `TabLeiste`, trägt der Pfeil einen
+Punkt. Test:
 `frontend/e2e/admin-am-telefon.spec.ts`.
 
 ### API-Docs (Swagger/OpenAPI)

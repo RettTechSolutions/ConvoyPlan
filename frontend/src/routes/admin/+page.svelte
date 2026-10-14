@@ -775,6 +775,20 @@
     // Kurzfassung für die Kopfzeile der Update-Karte: Am Telefon ist sie
     // zugeklappt ($lib/klappbar), und ob ein Update ansteht, soll man trotzdem
     // sehen. Dieselben Fälle wie die Statuszeile in der Karte, knapper benannt.
+    // Dasselbe eine Ebene höher, am Reiter „System": Wer am Telefon bei den
+    // Benutzern steht, sieht den Reiter oft nicht einmal (Überlauf der Leiste).
+    // Nur was ansteht — ein Hinweis, der immer da ist, wird übersehen. Bewusst
+    // nicht dabei: ein früher fehlgeschlagener Wechsel (bleibt bis zum nächsten
+    // gemeldet) und ein unerreichbares GitHub (Normalzustand ohne Internet).
+    const systemHinweis = $derived.by((): { zeichen: string; text: string; klasse: string } | null => {
+        const bau = regionStatus.graph_build?.phase;
+        if (bau === 'haengt') return { zeichen: '!', text: 'Graph-Aufbau hängt', klasse: 'warn' };
+        if (updateTriggering) return { zeichen: '…', text: 'Update läuft', klasse: 'laeuft' };
+        if (regionSwitchBusy) return { zeichen: '…', text: 'Regionswechsel läuft', klasse: 'laeuft' };
+        if (bau === 'import' || bau === 'download') return { zeichen: '…', text: 'Graph wird gebaut', klasse: 'laeuft' };
+        if (updateStatus?.update_available) return { zeichen: '↑', text: 'Update verfügbar', klasse: 'update' };
+        return null;
+    });
     const updateKopfStatus = $derived.by((): { text: string; klasse: string } | null => {
         if (updateTriggering) return { text: 'Update läuft', klasse: 'badge-update' };
         if (!updateStatus) return null;
@@ -2083,7 +2097,13 @@
         <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>Branding</button>
         <button class="tab" class:active={activeTab === 'demo'} onclick={() => { activeTab = 'demo'; loadDemoSettings(); }}>Demo</button>
         <button class="tab" class:active={activeTab === 'uebersicht'} onclick={() => (activeTab = 'uebersicht')}>Systemübersicht</button>
-        <button class="tab" class:active={activeTab === 'system'} onclick={() => { activeTab = 'system'; loadUpdateStatus(); loadUpdateChannel(); loadUpdateMode(); loadLicenseStatus(); loadGithubTokenStatus(); loadMcp(); }}>System</button>
+        <button class="tab" class:active={activeTab === 'system'} onclick={() => { activeTab = 'system'; loadUpdateStatus(); loadUpdateChannel(); loadUpdateMode(); loadLicenseStatus(); loadGithubTokenStatus(); loadMcp(); }}
+            aria-label={systemHinweis ? `System – ${systemHinweis.text}` : undefined}
+            title={systemHinweis?.text}
+        >
+            System
+            {#if systemHinweis}<span class="tab-hinweis {systemHinweis.klasse}" data-testid="system-hinweis">{systemHinweis.zeichen}</span>{/if}
+        </button>
     </TabLeiste>
 
     <!-- ── Benutzer ── -->
@@ -5018,6 +5038,11 @@
     .badge { display: inline-block; padding: .15rem .5rem; border-radius: 3px; font-size: var(--text-xs); font-weight: 600; }
 
     /* ── Meldungen ──────────────────────────────────────────────────────── */
+    /* Hinweis am Reiter „System" (systemHinweis): gleiche Form wie der Zähler,
+       Farbe wie das Abzeichen in der Kopfzeile der betroffenen Karte. */
+    .tab-hinweis { display: inline-block; min-width: 1.1rem; margin-left: .35rem; padding: .05rem .3rem; border-radius: 999px; font-size: .65rem; font-weight: 700; line-height: 1.5; text-align: center; color: #fff; }
+    .tab-hinweis.update, .tab-hinweis.laeuft { background: #c46a1a; }
+    .tab-hinweis.warn { background: var(--color-primary); }
     .tab-zaehler { display: inline-block; margin-left: .35rem; padding: .05rem .35rem; border-radius: 999px; background: var(--color-primary); color: #fff; font-size: .65rem; font-weight: 700; line-height: 1.5; }
     .meldungs-filter { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin: .9rem 0 .75rem; }
     .meldungs-filter select { padding: .3rem .5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-1); color: var(--text-1); font-size: var(--text-sm); }

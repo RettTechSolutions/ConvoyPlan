@@ -15,12 +15,28 @@
     let leiste: HTMLDivElement;
     let links = $state(false);
     let rechts = $state(false);
+    // Liegt hinter einem Pfeil ein Reiter mit Hinweis oder Zähler, trägt der
+    // Pfeil einen Punkt — sonst ginge „Update verfügbar" am Telefon genau dort
+    // unter, wo der Reiter nicht zu sehen ist.
+    let linksMeldung = $state(false);
+    let rechtsMeldung = $state(false);
+    const MELDUNG = '.tab-hinweis, .tab-zaehler';
 
     function messen() {
         if (!leiste) return;
         // 1 px Spiel: gebrochene Pixel bei Zoom lassen scrollLeft nie ganz ans Ende kommen.
         links = leiste.scrollLeft > 1;
         rechts = leiste.scrollLeft + leiste.clientWidth < leiste.scrollWidth - 1;
+        const sicht = leiste.getBoundingClientRect();
+        let l = false;
+        let r = false;
+        for (const m of leiste.querySelectorAll(MELDUNG)) {
+            const b = m.getBoundingClientRect();
+            if (b.right <= sicht.left + 1) l = true;
+            if (b.left >= sicht.right - 1) r = true;
+        }
+        linksMeldung = l;
+        rechtsMeldung = r;
     }
 
     function blaettern(richtung: 1 | -1) {
@@ -32,8 +48,11 @@
         beobachter.observe(leiste);
         // Ein Reiter kann seine Breite ändern (Zähler bei „Meldungen").
         for (const kind of leiste.children) beobachter.observe(kind);
+        // Hinweise kommen nach dem Laden dazu (Update-Status, Meldungen).
+        const aenderungen = new MutationObserver(messen);
+        aenderungen.observe(leiste, { childList: true, subtree: true });
         messen();
-        return () => beobachter.disconnect();
+        return () => { beobachter.disconnect(); aenderungen.disconnect(); };
     });
 
     // Der aktive Reiter soll sichtbar sein — auch nach einem Wechsel per
@@ -56,10 +75,10 @@
         {@render children()}
     </div>
     {#if links}
-        <button type="button" class="pfeil pfeil-links" aria-label="Weitere Reiter links" tabindex="-1" onclick={() => blaettern(-1)}>‹</button>
+        <button type="button" class="pfeil pfeil-links" class:meldung={linksMeldung} aria-label="Weitere Reiter links" tabindex="-1" onclick={() => blaettern(-1)}>‹</button>
     {/if}
     {#if rechts}
-        <button type="button" class="pfeil pfeil-rechts" aria-label="Weitere Reiter rechts" tabindex="-1" onclick={() => blaettern(1)}>›</button>
+        <button type="button" class="pfeil pfeil-rechts" class:meldung={rechtsMeldung} aria-label="Weitere Reiter rechts" tabindex="-1" onclick={() => blaettern(1)}>›</button>
     {/if}
 </div>
 
@@ -114,6 +133,17 @@
     .pfeil-links { left: 0; }
     .pfeil-rechts { right: 0; }
     .pfeil:hover { color: var(--text-1); }
+    .pfeil.meldung::after {
+        content: '';
+        position: absolute;
+        top: .35rem;
+        width: .45rem;
+        height: .45rem;
+        border-radius: 50%;
+        background: #c46a1a;
+    }
+    .pfeil-rechts.meldung::after { right: .2rem; }
+    .pfeil-links.meldung::after { left: .2rem; }
 
     @media (max-width: 768px) {
         /* Randlos bis an den Bildschirmrand — die Seite hat .75rem Innenabstand. */

@@ -17,6 +17,8 @@ const TELEFON = { width: 390, height: 844 };
 const pfeil = (page: Page, seite: 'links' | 'rechts') =>
 	page.getByRole('button', { name: `Weitere Reiter ${seite}` });
 const leiste = (page: Page) => page.locator('.tab-leiste .tab-bar');
+// „System" und nicht „Systemübersicht"; ein Hinweis am Reiter darf dahinter stehen.
+const systemReiter = (page: Page) => page.locator('.tab', { hasText: /^System(?!übersicht)/ });
 const titel = (page: Page, name: string) => page.getByRole('button', { name, exact: true });
 
 test.describe('am Telefon', () => {
@@ -58,7 +60,7 @@ test.describe('am Telefon', () => {
 
 	test('die Karten im System-Reiter starten zugeklappt und merken sich den Zustand', async ({ page }) => {
 		await adminBereich(page);
-		const system = page.locator('.tab', { hasText: /^System$/ });
+		const system = systemReiter(page);
 		await system.scrollIntoViewIfNeeded();
 		await system.click();
 
@@ -85,7 +87,7 @@ test.describe('am Telefon', () => {
 		// Nach dem Neuladen gilt, was jemand gewählt hat, nicht der Standard.
 		await page.reload();
 		await expect(page.getByRole('cell', { name: 'anna@example.org' })).toBeVisible();
-		await page.locator('.tab', { hasText: /^System$/ }).click();
+		await systemReiter(page).click();
 		await expect(titel(page, 'E-Mail (SMTP)')).toHaveAttribute('aria-expanded', 'true');
 		await expect(titel(page, 'Lizenz')).toHaveAttribute('aria-expanded', 'false');
 	});
@@ -94,7 +96,7 @@ test.describe('am Telefon', () => {
 		const aufrufe: string[] = [];
 		await adminBereich(page);
 		page.on('request', (r) => { if (r.url().includes('/api/license/status')) aufrufe.push(r.url()); });
-		const system = page.locator('.tab', { hasText: /^System$/ });
+		const system = systemReiter(page);
 		await system.scrollIntoViewIfNeeded();
 		await system.click();
 
@@ -124,7 +126,7 @@ test.describe('Status in der Kopfzeile', () => {
 		});
 		await page.goto('/admin', { waitUntil: 'domcontentloaded' });
 		await expect(page.getByRole('cell', { name: 'anna@example.org' })).toBeVisible();
-		const system = page.locator('.tab', { hasText: /^System$/ });
+		const system = systemReiter(page);
 		await system.scrollIntoViewIfNeeded();
 		await system.click();
 		return page.locator('.section', { has: titel(page, 'Software-Update') });
@@ -147,6 +149,28 @@ test.describe('Status in der Kopfzeile', () => {
 		await expect(aktuell.getByTestId('kopf-status')).toHaveText('Aktuell');
 	});
 
+	test('der Reiter „System" zeigt ein verfügbares Update, der Pfeil davor auch', async ({ page }) => {
+		await updateKarte(page, STAND);
+		await leiste(page).evaluate((el) => { el.style.scrollBehavior = 'auto'; el.scrollLeft = 0; });
+		// Am Telefon liegt „System" hinter dem rechten Pfeil — der trägt deshalb einen Punkt.
+		await expect(pfeil(page, 'rechts')).toHaveClass(/meldung/);
+		await expect(systemReiter(page).getByTestId('system-hinweis')).toHaveText('↑');
+		await expect(page.getByRole('button', { name: 'System – Update verfügbar' })).toHaveCount(1);
+
+		// Ganz nach rechts gerollt: Reiter sichtbar, kein Pfeil mehr nötig.
+		await leiste(page).evaluate((el) => { el.scrollLeft = el.scrollWidth; });
+		await expect(pfeil(page, 'rechts')).toHaveCount(0);
+		await expect(systemReiter(page).getByTestId('system-hinweis')).toBeInViewport();
+	});
+
+	test('ohne anstehendes Update kein Hinweis am Reiter und kein Punkt am Pfeil', async ({ page }) => {
+		await updateKarte(page, { ...STAND, update_available: false, remote_sha: 'aaaaaaa' });
+		await leiste(page).evaluate((el) => { el.style.scrollBehavior = 'auto'; el.scrollLeft = 0; });
+		await expect(pfeil(page, 'rechts')).toBeVisible();
+		await expect(pfeil(page, 'rechts')).not.toHaveClass(/meldung/);
+		await expect(page.getByTestId('system-hinweis')).toHaveCount(0);
+	});
+
 	test('die Kartenregion meldet einen laufenden oder hängenden Graph-Aufbau', async ({ page }) => {
 		const status = page.locator('.region-card .section-header').getByTestId('kopf-status');
 		for (const [bau, text] of [['import', 'Graph wird gebaut'], ['haengt', 'Graph-Aufbau hängt']]) {
@@ -164,7 +188,7 @@ test.describe('Status in der Kopfzeile', () => {
 
 test('am Schreibtisch starten die Karten offen', async ({ page }) => {
 	await adminBereich(page);
-	await page.locator('.tab', { hasText: /^System$/ }).click();
+	await systemReiter(page).click();
 	await expect(titel(page, 'E-Mail (SMTP)')).toHaveAttribute('aria-expanded', 'true');
 	await expect(page.getByText('Host', { exact: true })).toBeVisible();
 	// Zuklappen geht trotzdem.
