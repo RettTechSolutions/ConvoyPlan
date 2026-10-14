@@ -1127,6 +1127,11 @@ export interface RegionStatus {
      * Wechsel zurück, bis GraphHopper seinen laufenden Graph-Aufbau beendet hat.
      */
     waiting_for_graph?: boolean;
+    /**
+     * Nur bei einer Endphase: Ein Superadmin hat genau diesen Endstatus mit
+     * „Schließen" quittiert. Das Panel klappt ihn dann nicht wieder auf.
+     */
+    seen?: boolean;
 }
 
 export interface GraphBuild {
@@ -1169,6 +1174,9 @@ export const regionApi = {
         }),
     status: () => api.get<RegionStatus>('/api/admin/region/status'),
     cancel: () => api.post<{ status: string }>('/api/admin/region/cancel', {}),
+    /** Beendeten Wechsel quittieren — genau den, der angezeigt wurde (409 sonst). */
+    seen: (phase: RegionPhase, at: string) =>
+        api.post<void>('/api/admin/region/seen', { phase, at }),
     /**
      * SSE-Strom der Live-Ausgabe des Updaters (`region.log`) — inklusive der
      * Ausgabe des Import-Containers. Ohne ihn zeigte das Terminal nur die

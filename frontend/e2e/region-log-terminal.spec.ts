@@ -77,3 +77,19 @@ test('wer hochgescrollt hat, bleibt dort; wer am Ende steht, folgt', async ({ pa
 	await expect(terminal(page)).toContainText('neue Zeile am Ende');
 	await expect.poll(() => amEnde(page)).toBe(true);
 });
+
+// „Schließen" gilt am Server, nicht nur für den Seitenaufruf: Vorher klappte
+// jedes Öffnen des Admin-Portals denselben Endstatus samt Log wieder auf, bis
+// zum nächsten Wechsel.
+test('ein geschlossener Wechsel bleibt nach dem Neuladen zu', async ({ page }) => {
+	await page.goto(`${HUELLE}/?k=region&log=50&phase=done`);
+	await expect(terminal(page)).toContainText('─── Abgeschlossen ───');
+
+	await page.getByRole('button', { name: 'Schließen' }).click();
+	await expect(terminal(page)).toHaveCount(0);
+
+	await page.reload();
+	await expect(page.getByText('dach-latest.osm.pbf')).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Region wechseln' })).toBeVisible();
+	await expect(terminal(page)).toHaveCount(0);
+});

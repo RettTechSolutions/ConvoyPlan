@@ -295,6 +295,7 @@ export interface GraphBuild {
 export interface RegionStatus {
 	phase: RegionPhase;
 	at?: string;
+	seen?: boolean;
 	scheduled_for?: string;
 	graph_build?: GraphBuild;
 	waiting_for_graph?: boolean;
@@ -326,6 +327,11 @@ declare global {
 // `window.__regionLogZeile` hängt eine weitere Zeile an.
 const logZeilen = Number(new URLSearchParams(location.search).get('log') ?? 0);
 const logPhase = new URLSearchParams(location.search).get('phase');
+// Fest statt relativ: Die Quittung muss über ein Neuladen hinweg passen.
+const LOG_ENDE_AT = '2026-10-14T06:08:13Z';
+// Die Quittung des Servers (`POST …/seen`) überlebt ein Neuladen wie dort —
+// hier in sessionStorage, damit jeder Test frisch anfängt.
+const gesehen = () => sessionStorage.getItem('region.gesehen');
 
 function logStrom(): EventSource {
 	const lauscher: Record<string, ((e: MessageEvent) => void)[]> = {};
@@ -377,7 +383,10 @@ export const regionApi = {
 	],
 	status: async (): Promise<RegionStatus> => {
 		const gb = GRAPH_BUILD[bau];
-		if (logPhase) return { phase: logPhase, at: vorMinuten(3) };
+		if (logPhase) {
+			const ende = { phase: logPhase, at: LOG_ENDE_AT };
+			return gesehen() === `${logPhase}@${LOG_ENDE_AT}` ? { ...ende, seen: true } : ende;
+		}
 		if (bau === 'wartet') {
 			return { phase: 'scheduled', scheduled_for: vorMinuten(20), graph_build: gb, waiting_for_graph: true };
 		}
@@ -389,6 +398,9 @@ export const regionApi = {
 		return { status: 'queued' };
 	},
 	cancel: async () => ({ status: 'cancelling' }),
+	seen: async (phase: string, at: string) => {
+		if (phase === logPhase && at === LOG_ENDE_AT) sessionStorage.setItem('region.gesehen', `${phase}@${at}`);
+	},
 };
 
 // ── Ortungsgeräte (`TrackerVerwaltung`) ──────────────────────────────────────

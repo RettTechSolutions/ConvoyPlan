@@ -102,9 +102,11 @@
     // $state, weil das Terminal am offenen Strom erkennt, ob es noch etwas
     // erwarten darf (Cursor) — die Zuweisung muss also ein Rendern auslösen.
     let logSource = $state<EventSource | null>(null);
-    // true nach "Schließen" auf einem abgeschlossenen/fehlgeschlagenen Wechsel —
-    // blendet die Phasenkarte lokal aus, obwohl der Server denselben Endstatus
-    // bis zum nächsten Wechsel weiter meldet.
+    // true nach "Schließen" auf einem abgeschlossenen/fehlgeschlagenen Wechsel,
+    // sofort und ohne auf den Server zu warten. Dauerhaft gilt es über
+    // `status.seen`: Der Server merkt sich die Quittung, sonst klappte jeder
+    // Seitenaufruf denselben Endstatus samt Log wieder auf. Lokal bleibt es,
+    // für diesen Seitenaufruf, falls die Quittung nicht ankommt.
     let dismissed = $state(false);
     let timer: ReturnType<typeof setInterval> | null = null;
 
@@ -169,7 +171,7 @@
     // sehen, dass sein Abbruch tatsächlich durchgelaufen ist, und hätte keinen
     // „Schließen"-Knopf.
     const ENDED: RegionPhase[] = ['done', 'failed', 'cancelled'];
-    const finished = $derived(!dismissed && ENDED.includes(status.phase));
+    const finished = $derived(!dismissed && !status.seen && ENDED.includes(status.phase));
     const showSwitchPanel = $derived(busy || finished);
     const canCancel = $derived(busy && CANCELLABLE_PHASES.includes(status.phase));
     const blocked = $derived(preview?.verdict === 'reicht nicht');
@@ -487,6 +489,12 @@
         stopLogStream();
         logLines = [];
         logError = '';
+        // Quittung für alle Superadmins und jeden weiteren Seitenaufruf. Schlägt
+        // sie fehl (409: inzwischen endete ein anderer Wechsel), bleibt es beim
+        // lokalen Ausblenden — der nächste Endstatus soll ja erscheinen.
+        if (status.at) {
+            regionApi.seen(status.phase, status.at).catch(() => {});
+        }
         await loadCurrent();
     }
 
