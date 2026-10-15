@@ -123,6 +123,7 @@ export interface AktionsseiteDaten {
 	theme: AktionsseitenThema;
 	delay_minutes: number;
 	show_destination: boolean;
+	show_sender: boolean;
 	valid_until: string | null;
 	enabled: boolean;
 	convoys: AktionsseiteKonvoi[];
@@ -300,7 +301,7 @@ if (suche.get('mit_seite') === '1') {
 	seiten.push(
 		zeile('a-1', {
 			title: 'Weihnachtskonvois 2026', subtitle: null, facts: null, theme: 'weihnachten',
-			delay_minutes: 120, show_destination: false, valid_until: null, enabled: true,
+			delay_minutes: 120, show_destination: false, show_sender: true, valid_until: null, enabled: true,
 			convoys: [
 				{ convoy_id: 'c-bih', display_name: 'Konvoi Bosnien', destination_label: 'Tuzla', destination_point: null, color: null },
 				{ convoy_id: 'c-rou', display_name: 'Konvoi Rumänien', destination_label: 'Sibiu', destination_point: null, color: null },

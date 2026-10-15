@@ -80,7 +80,10 @@ Die Presse gibt sie dort frei; erst dann erscheinen sie auf der Aktionsseite —
   Kirchturm. Am Ziel kommen die Übergabefotos, sobald er angekommen ist.
 - **Nichts über die Absender.** Auf der Seite steht der Konvoi und die Uhrzeit,
   nicht wer das Foto geschickt hat. Hinaus geht nur der Text, den die Presse
-  freigegeben hat.
+  freigegeben hat. Intern nennt die Karte des Bots den Absender („von Jonas“),
+  damit die Presse nachfragen kann. Wer das nicht will, nimmt an der Seite den
+  Haken *Absender auf den Beiträgen nennen* heraus: Dann speichert ConvoyPlan
+  keinen Namen mehr, und die schon gespeicherten der Seite werden gelöscht.
 
 ### Einrichten
 

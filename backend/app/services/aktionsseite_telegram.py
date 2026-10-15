@@ -258,6 +258,11 @@ def _name(person: dict | None) -> str:
     return (" ".join(t for t in teile if t) or person.get("username") or "unbekannt")[:255]
 
 
+def _absender(seite: PublicTracker, von: dict) -> str | None:
+    """Der Name für die Karte — nur, wenn die Seite ihn zeigen soll (§ 14.4)."""
+    return _name(von) if seite.show_sender else None
+
+
 def _uhrzeit(t: datetime, bezug: datetime) -> str:
     lokal = t.astimezone(ZEITZONE)
     if lokal.date() == bezug.astimezone(ZEITZONE).date():
@@ -665,7 +670,7 @@ async def _beitrag(lauf: _Lauf, nachricht: dict) -> None:
             # sich frei setzen.
             taken_at=datetime.fromtimestamp(nachricht["date"], timezone.utc),
             status="wartet", text_raw=unterschrift, text_public=kuerzen(unterschrift),
-            sender_telegram_id=von.get("id"), sender_name=_name(von),
+            sender_telegram_id=von.get("id"), sender_name=_absender(seite, von),
             photos=[],
         )
         lauf.db.add(post)
@@ -732,7 +737,7 @@ async def _link_beitrag(
         quelle="telegram", chat_id=chat_id, message_id=nachricht["message_id"],
         taken_at=zeit, status="wartet", text_raw=text_, text_public=kuerzen(text_),
         link_url=link.url, link_dienst=link.dienst,
-        sender_telegram_id=von.get("id"), sender_name=_name(von),
+        sender_telegram_id=von.get("id"), sender_name=_absender(seite, von),
     )
     lauf.db.add(post)
     try:

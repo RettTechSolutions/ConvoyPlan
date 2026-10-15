@@ -625,11 +625,10 @@ Zwei Entscheidungen dazu, festgehalten am 2026-10-14:
 - **Trennen** einer Gruppe nimmt nur keine neuen Beiträge mehr an; vorhandene
   bleiben, freigegebene auch öffentlich. Wer sie loswerden will, zieht sie
   zurück.
-- Im Organisations-Export stehen die neuen Tabellen vorerst in
-  `NICHT_EXPORTIERT`: Bot-Token und Codes sind Geheimnisse, Beiträge, Presse und
-  Gruppen tragen Telegram-Kennungen Dritter, Bilder sind Bytes. Ob Beiträge
-  (ohne Absender, mit Text und Zeit) in den Export gehören, wird mit Schritt 4
-  entschieden.
+- Im Organisations-Export (entschieden am 15. Oktober) stehen Beiträge und
+  Bildzeilen (`beitraege`, `beitrag_bilder`), ohne Absender und ohne
+  Telegram-Kennungen; die Bilder liegen als WebP unter `beitraege/` im ZIP. Bot,
+  Codes, Presse und Gruppen bleiben draußen.
 - In der Gruppe gelöschte Nachrichten bekommt ein Bot nicht mit. Das steht in
   der Einrichtungsanleitung und im Bot-Satz beim Verbinden: Zurückziehen geht
   über den Knopf, nicht übers Löschen in Telegram.
@@ -847,4 +846,5 @@ hält die Herkunft fest.
    Presse beim Freigeben, und sie sollte eine kurze Linie dafür haben.
 4. **Absendernamen in der Gruppe:** „von Jonas" auf der Karte des Bots hilft
    der Presse beim Nachfragen. Wer das nicht will, bekommt eine Einstellung,
-   die es weglässt.
+   die es weglässt. (Umgesetzt: Haken *Absender auf den Beiträgen nennen* je
+   Seite, `show_sender`, Migration `0071`; aus löscht auch vorhandene Namen.)

@@ -1654,6 +1654,7 @@ export interface Aktionsseite {
     theme: AktionsseitenThema;
     delay_minutes: number;
     show_destination: boolean;
+    show_sender: boolean;
     valid_until: string | null;
     enabled: boolean;
     /** Eingeschaltet und nicht abgelaufen — so sieht es auch der Abruf. */
@@ -1675,6 +1676,7 @@ export interface AktionsseiteDaten {
     theme: AktionsseitenThema;
     delay_minutes: number;
     show_destination: boolean;
+    show_sender: boolean;
     valid_until: string | null;
     enabled: boolean;
     convoys: AktionsseiteKonvoi[];

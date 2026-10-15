@@ -459,6 +459,12 @@ ein Thema. Fehlende Rechte sagt der Bot, andere Fehler gehen ins Log — das Ver
 daran. `allowed_updates` enthält deshalb `my_chat_member`. Neue Mitglieder begrüßt `_begruessen`
 höchstens einmal je `WILLKOMMEN_PAUSE` und löscht die vorige Begrüßung (Zustand im Speicher).
 Tests: `tests/test_aktionsseite_gruppe_einrichten.py`.
+**Absender** (`public_trackers.show_sender`, Migration `0071`): aus heißt, `_absender` gibt `None` —
+der Name wird gar nicht erst gespeichert —, und `aendern` löscht die vorhandenen der Seite. Ein
+neuer Weg, der `sender_name` setzt, geht über `_absender`. Tests: `tests/test_aktionsseite_absender.py`.
+**Export**: Beiträge und Bilder stehen in `org_export` (`beitraege`, `beitrag_bilder`, Dateien unter
+`beitraege/`); Absender und alle Telegram-Kennungen in `_GEHEIM`. Presse, Gruppen, Codes, Bot bleiben
+draußen (`NICHT_EXPORTIERT`).
 
 ### Tracker: das Gerät hängt am Fahrzeug, die Position gehört dem Konvoi
 
