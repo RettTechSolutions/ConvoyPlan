@@ -134,6 +134,9 @@ class OeffentlicherKonvoi(_Streng):
     trail: list[list[float]]
     driven_km: float
     total_km: float | None
+    # Wie viele Fahrzeuge eingeplant sind — die Zahl, kein Fahrzeug selbst.
+    # Der EventTracker zeichnet so viele hintereinander.
+    vehicles: int
     posts: list[OeffentlicherBeitrag]
 
 

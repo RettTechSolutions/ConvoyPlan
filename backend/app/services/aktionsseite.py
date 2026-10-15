@@ -740,6 +740,9 @@ async def nutzlast(db: AsyncSession, tracker: PublicTracker, jetzt: datetime | N
                 "destination_point": ziel_punkt,
                 "color": tc.color,
                 "total_km": round(route.distance_m / 1000, 1) if route and route.distance_m else None,
+                # Eingeplant, nicht gerade unterwegs: Die Zahl ändert sich mit
+                # der Planung, nicht mit einem Ausfall auf der Strecke.
+                "vehicles": len(kandidaten),
                 **stand,
                 "posts": beitraege,
             }
