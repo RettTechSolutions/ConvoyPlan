@@ -299,7 +299,25 @@
 		<ul class="beitraege">
 			{#each gezeigt as b (b.id)}
 				<li data-testid="beitrag" data-status={b.status}>
-					{#if b.photos[0]}
+					{#if b.link_url}
+						<!-- Am Link ist das Bild die Vorschau des Dienstes, die mit hinausgeht. -->
+						<a
+							class="vorschau link"
+							class:mit-bild={b.photos[0]}
+							href={b.link_url}
+							target="_blank"
+							rel="noopener noreferrer nofollow"
+							data-testid="beitrag-link"
+							title={b.link_url}
+						>
+							{#if b.photos[0]}
+								<img use:geschuetzt={b.photos[0].id} alt="Vorschaubild von {DIENSTNAME[b.link_dienst ?? ''] ?? 'Link'}" />
+							{:else}
+								🔗
+							{/if}
+							<span>{DIENSTNAME[b.link_dienst ?? ''] ?? 'Link'}</span>
+						</a>
+					{:else if b.photos[0]}
 						<button
 							type="button"
 							class="vorschau"
@@ -312,17 +330,6 @@
 							/>
 							{#if b.photos.length > 1}<span class="anzahl">{b.photos.length}</span>{/if}
 						</button>
-					{:else if b.link_url}
-						<a
-							class="vorschau link"
-							href={b.link_url}
-							target="_blank"
-							rel="noopener noreferrer nofollow"
-							data-testid="beitrag-link"
-							title={b.link_url}
-						>
-							🔗<span>{DIENSTNAME[b.link_dienst ?? ''] ?? 'Link'}</span>
-						</a>
 					{/if}
 					<div class="inhalt">
 						<p class="kopf">
@@ -414,6 +421,8 @@
 	.vorschau img:not([src]), .vorschau :global(img.fehlt) { visibility: hidden; }
 	.vorschau.link { width: 4.5rem; height: 4.5rem; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .1rem; border-radius: 4px; border: 1px solid var(--border); background: var(--surface-2); font-size: 1.3rem; text-decoration: none; color: var(--text-1); }
 	.vorschau.link span { font-size: var(--text-xs); }
+	.vorschau.link.mit-bild { padding: 0; overflow: hidden; border: 0; }
+	.vorschau.link.mit-bild span { position: absolute; left: 0; right: 0; bottom: 0; padding: .05rem 0; text-align: center; background: rgba(0, 0, 0, .6); color: #fff; border-radius: 0 0 4px 4px; }
 	.vorschau img { width: 4.5rem; height: 4.5rem; object-fit: cover; border-radius: 4px; border: 1px solid var(--border); background: var(--surface-2); display: block; }
 	.anzahl { position: absolute; top: -.35rem; right: -.35rem; background: var(--color-primary); color: #fff; font-size: var(--text-xs); font-weight: 700; border-radius: 999px; padding: 0 .35rem; }
 	.inhalt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: .2rem; }

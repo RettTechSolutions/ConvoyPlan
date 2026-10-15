@@ -89,6 +89,9 @@ class OeffentlicherLink(_Streng):
 
     url: str
     dienst: Literal["instagram", "youtube", "facebook", "tiktok"]
+    # Vorschaubild des Dienstes (§ 11.2), einmal beim Eingang geholt und neu
+    # kodiert; ausgeliefert über denselben Bildendpunkt wie die Fotos.
+    vorschau: OeffentlichesBild | None
 
 
 class OeffentlicherBeitrag(_Streng):
@@ -203,6 +206,12 @@ async def abrufen(
     return nutz
 
 
+def _bilder(beitrag: dict) -> list[dict]:
+    """Alle Bilder eines öffentlichen Beitrags: Fotos und Vorschau des Links."""
+    link = beitrag["link"]
+    return beitrag["photos"] + ([link["vorschau"]] if link and link["vorschau"] else [])
+
+
 @public_router.get("/{slug}/bild/{bild_id}/{groesse}.webp")
 async def bild(
     slug: str,
@@ -218,7 +227,7 @@ async def bild(
     Kennung holen, sobald sie einmal bekannt ist. Alles andere ist dieselbe 404."""
     nutz = await _oeffentlich(slug, authorization, db)
     if not any(
-        f["id"] == bild_id for k in nutz["convoys"] for p in k["posts"] for f in p["photos"]
+        f["id"] == bild_id for k in nutz["convoys"] for p in k["posts"] for f in _bilder(p)
     ):
         raise HTTPException(status_code=404, detail=_NICHT_GEFUNDEN)
     daten = (await db.execute(

@@ -100,6 +100,9 @@ class Settings(BaseSettings):
     # Abholen von Telegram an/aus. Aus heißt: Bots bleiben eingetragen, es wird
     # nur nicht gefragt (für Instanzen ohne Ausgang nach api.telegram.org).
     telegram_enabled: bool = True
+    # Vorschaubilder für Link-Beiträge (YouTube, TikTok) beim Eingang holen
+    # (services/aktionsseite_vorschau.py). Aus: Links bleiben ohne Bild.
+    link_vorschau_enabled: bool = True
     # Wurzelzertifikate, die die Instanz an ihre Tracker verteilt
     # (services/tracker_wurzeln.py): Pfad zu einer PEM-Datei mit höchstens drei
     # CA-Zertifikaten. Leer = die Instanz verwaltet keine Wurzeln.

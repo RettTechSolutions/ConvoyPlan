@@ -172,7 +172,7 @@ async def test_freigegebener_link_geht_hinaus_ohne_bilder(aktion, client, seite,
     r = await client.get(f"/api/public/aktion/{slug}", headers=h(token))
     assert r.status_code == 200, r.text
     [beitrag] = r.json()["convoys"][0]["posts"]
-    assert beitrag["link"] == {"url": "https://www.instagram.com/p/Abc/", "dienst": "instagram"}
+    assert beitrag["link"] == {"url": "https://www.instagram.com/p/Abc/", "dienst": "instagram", "vorschau": None}
     assert beitrag["photos"] == []
     assert beitrag["position"] is not None
     assert "Jonas" not in r.text

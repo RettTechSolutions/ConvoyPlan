@@ -40,8 +40,9 @@ POSITIVLISTE = {
     # Bildunterschrift aus Telegram, keine Datenbank-Kennung.
     "OeffentlicherBeitrag": {"id", "at", "position", "coarse", "text", "photos", "link"},
     "OeffentlichesBild": {"id", "width", "height"},
-    # Link-Beiträge (§ 11): die bereinigte Adresse und der Dienst, sonst nichts.
-    "OeffentlicherLink": {"url", "dienst"},
+    # Link-Beiträge (§ 11): die bereinigte Adresse, der Dienst und dessen
+    # Vorschaubild, neu kodiert und von hier ausgeliefert (§ 11.2).
+    "OeffentlicherLink": {"url", "dienst", "vorschau"},
 }
 
 

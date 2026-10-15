@@ -755,6 +755,39 @@ hängt am Zeitpunkt, nicht an einem Wegpunkt.
   `link_url`/`link_dienst` in `0070` (noch nicht ausgerollt, deshalb keine
   eigene Migration).
 
+### 11.2 Vorschaubilder (entschieden am 15. Oktober)
+
+§ 11 hatte das Abholen verworfen. Für das **Vorschaubild** — nicht den Inhalt —
+gilt das nicht mehr: Ein Polaroid mit Bild trägt auf der Karte mehr als eines
+mit Symbol. Geändert hat sich nur, woher das Bild kommt; der Weg in den
+Browser bleibt derselbe.
+
+- **Wann und wie oft:** einmal, beim Eingang des Links in der Gruppe — vor der
+  Karte, damit die Presse sieht, ob ein Bild mit hinausgeht („🖼 mit
+  Vorschaubild des Dienstes"). Der Dienst sieht einen Abruf je Link, keinen je
+  Zuschauer; der EventTracker lädt weiter nichts von außen.
+- **Welche Dienste:** YouTube (`i.ytimg.com/vi/<kennung>/maxresdefault.jpg`,
+  sonst `hqdefault.jpg`, ohne API) und TikTok (`thumbnail_url` aus dem
+  öffentlichen oEmbed). Instagram und Facebook nicht: Meta hat `thumbnail_url`
+  zum 3. November 2025 aus seinem oEmbed genommen und empfiehlt, die Seite
+  selbst auszulesen — hinter einer Anmeldesperre, also scrapen. Dort bleibt es
+  beim Symbol.
+- **Sicher abholen:** nur feste Hosts je Dienst, https, kein Port, keine
+  Weiterleitung, Größe begrenzt (5 MB), kurze Zeitgrenzen. Die Bildadresse aus
+  oEmbed bestimmt TikTok, nicht wir.
+- **Verarbeitet wie ein Foto** (§ 5): neu kodiert, ohne Metadaten, als
+  einziges Bild des Link-Beitrags gespeichert; es zählt bei `LINKS_JE_TAG`,
+  nicht bei `BILDER_JE_TAG`.
+- **Öffentlich:** `link: {url, dienst, vorschau: {id, width, height} | null}`,
+  `photos` bleibt leer. Das Bild gehört zum Link: Verwirft der EventTracker den
+  Link, verschwindet es mit, statt als fremdes Foto „von unterwegs" stehen zu
+  bleiben. Ausgeliefert über denselben Bildendpunkt (§ 8.2).
+- **Urheberrecht:** Das Vorschaubild ist ein fremdes Bild, aber genau das, was
+  der Dienst selbst zum Teilen des Links anbietet, und es führt dorthin. Es
+  geht nur nach Freigabe durch die Presse hinaus, wie jeder Beitrag.
+- **Aus:** `LINK_VORSCHAU_ENABLED=false` für Instanzen ohne Ausgang oder wer es
+  nicht will; Links bleiben dann wie in § 11.1.
+
 ## 12. Tests
 
 Reine Funktionen (ohne Datenbank):

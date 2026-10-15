@@ -630,6 +630,10 @@ def _schluessel(tracker_id: uuid.UUID, convoy_id: uuid.UUID) -> bytes:
 BEITRAEGE_JE_KONVOI = 100
 
 
+def _bild(f) -> dict:
+    return {"id": f.public_id, "width": f.width, "height": f.height}
+
+
 async def _beitraege(
     db: AsyncSession,
     tracker_id: uuid.UUID,
@@ -677,8 +681,13 @@ async def _beitraege(
             "position": {"lat": pos["lat"], "lon": pos["lon"]} if pos else None,
             "coarse": bool(pos and pos["coarse"]),
             "text": p.text_public,
-            "photos": [{"id": f.public_id, "width": f.width, "height": f.height} for f in p.photos],
-            "link": {"url": p.link_url, "dienst": p.link_dienst} if p.link_url else None,
+            # Am Link-Beitrag ist das Bild die Vorschau des Dienstes, kein Foto
+            # von unterwegs: Es geht nur zusammen mit dem Link hinaus (§ 11.2).
+            "photos": [] if p.link_url else [_bild(f) for f in p.photos],
+            "link": {
+                "url": p.link_url, "dienst": p.link_dienst,
+                "vorschau": _bild(p.photos[0]) if p.photos else None,
+            } if p.link_url else None,
         })
         if len(raus) >= BEITRAEGE_JE_KONVOI:
             break

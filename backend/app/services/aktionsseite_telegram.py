@@ -54,6 +54,7 @@ from app.services import (
     aktionsseite_bild,
     aktionsseite_gruppe,
     aktionsseite_link,
+    aktionsseite_vorschau,
     audit,
     org_module,
 )
@@ -297,6 +298,8 @@ def karte(
     if post.link_url:
         # Die Presse soll sehen, wohin der Link führt — bereinigt, wie er hinausgeht.
         zeilen.append(post.link_url)
+        # Und ob ein Bild des Dienstes mit hinausgeht (§ 11.2).
+        zeilen.append("🖼 mit Vorschaubild des Dienstes" if bilder else "ohne Vorschaubild")
     if (
         post.status == "freigegeben"
         and (post.text_raw or None) != (post.text_public or None)
@@ -732,14 +735,26 @@ async def _link_beitrag(
         if vorher is not None:
             zeit = vorher.taken_at
     von = nachricht.get("from") or {}
+    # Vor dem Anlegen: Die Karte soll gleich sagen, ob ein Bild mit hinausgeht.
+    vorschau = await aktionsseite_vorschau.holen(link)
     post = PublicTrackerPost(
         public_id=secrets.token_urlsafe(16), tracker_id=chat.tracker_id, convoy_id=chat.convoy_id,
         quelle="telegram", chat_id=chat_id, message_id=nachricht["message_id"],
         taken_at=zeit, status="wartet", text_raw=text_, text_public=kuerzen(text_),
         link_url=link.url, link_dienst=link.dienst,
         sender_telegram_id=von.get("id"), sender_name=_absender(seite, von),
+        photos=[],
     )
     lauf.db.add(post)
+    if vorschau is not None:
+        # Das einzige Bild eines Link-Beitrags ist seine Vorschau (§ 11.2).
+        foto = PublicTrackerPhoto(
+            public_id=secrets.token_urlsafe(16), position=0,
+            width=vorschau.breite, height=vorschau.hoehe,
+        )
+        post.photos.append(foto)
+        await lauf.db.flush()
+        lauf.db.add(PublicTrackerPhotoData(photo_id=foto.id, gross=vorschau.gross, klein=vorschau.klein))
     try:
         await lauf.db.commit()
     except IntegrityError:
@@ -777,6 +792,8 @@ async def _bilder_heute(lauf: _Lauf, chat_id: int) -> int:
     return (await lauf.db.execute(
         select(func.count()).select_from(PublicTrackerPhoto).join(PublicTrackerPost).where(
             PublicTrackerPost.chat_id == chat_id,
+            # Vorschaubilder zählen bei den Links (``LINKS_JE_TAG``), nicht hier.
+            PublicTrackerPost.link_url.is_(None),
             PublicTrackerPost.created_at > lauf.jetzt - timedelta(days=1),
         )
     )).scalar_one()

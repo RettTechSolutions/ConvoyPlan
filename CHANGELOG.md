@@ -21,6 +21,14 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Wichtig beim Update
+
+- Das Backend fragt `i.ytimg.com` und `www.tiktok.com` an, sobald jemand einen YouTube- oder TikTok-Link in eine verbundene Telegram-Gruppe schickt — einmal je Link. Ohne Ausgang dorthin oder wenn das nicht gewünscht ist: `LINK_VORSCHAU_ENABLED=false`.
+
+### Added
+
+- **Link-Beiträge mit Vorschaubild.** Bei YouTube- und TikTok-Links holt ConvoyPlan beim Eingang einmal das Vorschaubild des Dienstes, kodiert es neu (ohne Metadaten) und gibt es nach der Freigabe als `link.vorschau` an den EventTracker. Die Zuschauer laden weiter nichts vom Dienst. Die Karte des Bots sagt der Presse, ob ein Bild mit hinausgeht; im Org-Admin steht es auf dem Link. Instagram und Facebook bleiben ohne Bild: Meta gibt seit November 2025 keine Vorschaubilder mehr über oEmbed heraus. Anzeigen kann es der EventTracker ab der nächsten Fassung; ältere zeigen den Link wie bisher.
+
 ## [2026.10.0] – 2026-10-15
 
 ### Wichtig beim Update

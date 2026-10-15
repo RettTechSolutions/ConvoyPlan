@@ -140,7 +140,10 @@ Die Presse gibt sie dort frei; erst dann erscheinen sie auf der Aktionsseite —
   Karte des Bots) gehört der Link zu dessen Zeit und Ort, sonst zur Zeit der
   Nachricht. Auf der Seite erscheint ein Polaroid mit dem Symbol des Dienstes;
   den Link öffnet erst ein Klick — eingebettet wird nichts, die Seite lädt
-  weiter nichts von außen. Tracking-Anhänge wie `?igsh=…` oder `?si=…` entfernt
+  weiter nichts von außen. Bei **YouTube und TikTok** holt ConvoyPlan einmal
+  das Vorschaubild des Dienstes und zeigt es im Polaroid; die Karte des Bots
+  sagt, ob eins mit hinausgeht. Instagram und Facebook geben keins her, dort
+  bleibt es beim Symbol. Abschalten: `LINK_VORSCHAU_ENABLED=false`. Tracking-Anhänge wie `?igsh=…` oder `?si=…` entfernt
   der Bot, die Karte zeigt die Adresse, wie sie hinausgeht. Andere Adressen
   nimmt er nicht als Link-Beitrag an.
 - Ändert jemand nach der Freigabe seinen Text in Telegram, bleibt öffentlich
