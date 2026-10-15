@@ -38,11 +38,13 @@ POSITIVLISTE = {
     "OeffentlicherPunkt": {"lat", "lon"},
     # Beiträge (Fotos aus Telegram): kein Absender, kein Prüfer, nicht die
     # Bildunterschrift aus Telegram, keine Datenbank-Kennung.
-    "OeffentlicherBeitrag": {"id", "at", "position", "coarse", "text", "photos", "link"},
+    "OeffentlicherBeitrag": {"id", "at", "position", "coarse", "text", "photos", "link", "video"},
     "OeffentlichesBild": {"id", "width", "height"},
     # Link-Beiträge (§ 11): die bereinigte Adresse, der Dienst und dessen
     # Vorschaubild, neu kodiert und von hier ausgeliefert (§ 11.2).
     "OeffentlicherLink": {"url", "dienst", "vorschau"},
+    # Videos (§ 15): Maße, Länge, ob Ton drin ist, und das Standbild.
+    "OeffentlichesVideo": {"id", "width", "height", "seconds", "sound", "poster"},
 }
 
 

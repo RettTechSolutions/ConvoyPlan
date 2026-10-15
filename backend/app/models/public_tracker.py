@@ -323,6 +323,10 @@ class PublicTrackerPost(Base):
         cascade="all, delete-orphan",
         order_by="PublicTrackerPhoto.position",
     )
+    # Video-Beitrag: das Video selbst; sein Standbild ist das einzige Foto.
+    video: Mapped["PublicTrackerVideo | None"] = relationship(
+        back_populates="post", cascade="all, delete-orphan", uselist=False,
+    )
 
 
 class PublicTrackerPhoto(Base):
@@ -362,3 +366,30 @@ class PublicTrackerPhotoData(Base):
     )
     gross: Mapped[bytes] = mapped_column(LargeBinary)
     klein: Mapped[bytes] = mapped_column(LargeBinary)
+
+
+class PublicTrackerVideo(Base):
+    """Ein Video eines Beitrags, neu kodiert im Medien-Container
+    (``services/aktionsseite_video.py``). Die Datei liegt unter
+    ``/uploads/aktionsseite/videos/<public_id>.mp4`` — mit dem Upload-Volume im
+    Backup, aber nicht in der Datenbank: zwölf Megabyte je Video gehören nicht in
+    jede Sicherung der Tabellen. Fällt die Zeile (Retention, Konvoi aus der
+    Seite, Seite gelöscht), räumt ``aufraeumen`` die Datei weg.
+
+    Das Standbild ist das einzige ``PublicTrackerPhoto`` des Beitrags."""
+
+    __tablename__ = "public_tracker_videos"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    post_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("public_tracker_posts.id", ondelete="CASCADE"), unique=True
+    )
+    public_id: Mapped[str] = mapped_column(String(32), unique=True)
+    width: Mapped[int] = mapped_column(Integer)
+    height: Mapped[int] = mapped_column(Integer)
+    seconds: Mapped[float] = mapped_column(Float)
+    # Ton geht mit hinaus; abgespielt wird stumm, bis jemand ihn einschaltet.
+    sound: Mapped[bool] = mapped_column(Boolean)
+    bytes: Mapped[int] = mapped_column(Integer)
+
+    post: Mapped[PublicTrackerPost] = relationship(back_populates="video")

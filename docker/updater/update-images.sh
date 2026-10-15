@@ -231,6 +231,7 @@ _apply_channel_images() {
     # eine auf eine Version gepinnte Installation beim Regionswechsel gegen ein
     # beliebig neueres osmium:latest.
     export REGION_MERGE_IMAGE="$(_retag "${REGION_MERGE_IMAGE:-ghcr.io/retttechsolutions/convoyplan/osmium:latest}" "${tag}")"
+    export MEDIEN_IMAGE="$(_retag "${MEDIEN_IMAGE:-ghcr.io/retttechsolutions/convoyplan/medien:latest}" "${tag}")"
 }
 
 # Nightly-Kanal-Ziel: Commit-SHA des letzten ERFOLGREICHEN :nightly-Image-Builds.
@@ -558,7 +559,7 @@ _signature_check_enabled() {
     esac
 }
 
-# Prueft die fuenf Ziel-Images des aktiven Kanals. 0 = alle gut (oder Pruefung
+# Prueft die sechs Ziel-Images des aktiven Kanals. 0 = alle gut (oder Pruefung
 # abgeschaltet), 1 = mindestens eines nicht verifizierbar.
 #
 # Geprueft wird der Tag, nicht der Digest: das ist genau der Ref, den
@@ -582,7 +583,7 @@ _verify_target_images() {
 
     local img failed=""
     for img in "${BACKEND_IMAGE:-}" "${FRONTEND_IMAGE:-}" "${GRAPHHOPPER_IMAGE:-}" \
-               "${UPDATER_IMAGE:-}" "${REGION_MERGE_IMAGE:-}"; do
+               "${UPDATER_IMAGE:-}" "${REGION_MERGE_IMAGE:-}" "${MEDIEN_IMAGE:-}"; do
         [ -z "${img}" ] && continue
         if cosign verify \
                 --certificate-identity-regexp "${SIGNATURE_IDENTITY}" \

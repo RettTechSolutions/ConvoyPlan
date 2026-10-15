@@ -16,7 +16,7 @@
 # einem anderen Graph-Fingerprint, also ein weiterer kompletter Neuaufbau.
 #
 # Deshalb schreibt der Updater den Kanal-Tag zusaetzlich in die .env. Umgeschrieben
-# werden nur die fuenf *_IMAGE-Zeilen, die auf ein Image dieses Projekts zeigen
+# werden nur die sechs *_IMAGE-Zeilen, die auf ein Image dieses Projekts zeigen
 # und einen Tag tragen — ein eigener Mirror, ein Digest (@sha256:…) oder eine
 # Zeile in Anfuehrungszeichen bleiben, wie sie sind: lieber eine Zeile nicht
 # anfassen als eine fremde Angabe kaputt umschreiben. Alles andere in der Datei
@@ -40,7 +40,7 @@ _env_kanal_umschreiben() {
     local tag="$1" zeile key val name
     while IFS= read -r zeile || [ -n "${zeile}" ]; do
         case "${zeile}" in
-            BACKEND_IMAGE=*|FRONTEND_IMAGE=*|GRAPHHOPPER_IMAGE=*|UPDATER_IMAGE=*|REGION_MERGE_IMAGE=*)
+            BACKEND_IMAGE=*|FRONTEND_IMAGE=*|GRAPHHOPPER_IMAGE=*|UPDATER_IMAGE=*|REGION_MERGE_IMAGE=*|MEDIEN_IMAGE=*)
                 key="${zeile%%=*}"
                 val="${zeile#*=}"
                 name="${val#"${_ENV_KANAL_PREFIX}"}"

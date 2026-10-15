@@ -29,6 +29,7 @@ from app.models.public_tracker import (
     PublicTrackerPhoto,
     PublicTrackerPhotoData,
     PublicTrackerPost,
+    PublicTrackerVideo,
 )
 from app.models.route import Route
 from app.models.share_link import ConvoyShareLink
@@ -36,7 +37,7 @@ from app.models.system_metric import UserActivityDay
 from app.models.user import User
 from app.models.vehicle import Vehicle
 from app.models.waypoint import Waypoint
-from app.services import org_export
+from app.services import aktionsseite_video, org_export
 from tests.fake_request import fake_request
 
 PASSWORT_HASH = "$2b$12$geheim-passwort-hash-000000000000000000000000000"
@@ -283,6 +284,29 @@ async def test_beitraege_mit_bildern_ohne_absender(zwei_orgs, tmp_path):
         assert f"beitraege/{fremd}.webp" not in zf.namelist()
 
 
+async def test_videos_als_dateien_im_zip(zwei_orgs, tmp_path, monkeypatch):
+    monkeypatch.setattr(aktionsseite_video, "VIDEOS_DIR", tmp_path / "videos")
+    await _seite_mit_beitrag(zwei_orgs["org_a"], zwei_orgs["konvoi"], "A", b"RIFF-a-WEBP")
+    async with AsyncSessionLocal() as db:
+        post = (await db.execute(select(PublicTrackerPost).where(PublicTrackerPost.text_public == "Grenze A"))).scalar_one()
+        db.add_all([
+            PublicTrackerVideo(post_id=post.id, public_id="filmDaFilmDaFilmDa0000", width=1280, height=720,
+                               seconds=12.5, sound=True, bytes=8),
+        ])
+        await db.commit()
+    aktionsseite_video.ablegen("filmDaFilmDaFilmDa0000", b"\0\0\0\x18ftypmp4")
+    b = await _export(zwei_orgs["org_a"])
+    assert [v["public_id"] for v in b["beitrag_videos"]] == ["filmDaFilmDaFilmDa0000"]
+    async with AsyncSessionLocal() as db:
+        org = await db.get(Organization, zwei_orgs["org_a"])
+        videos = await org_export.beitrag_videos(db, org)
+    videos.append(("weg.mp4", tmp_path / "videos" / "weg.mp4"))
+    inhalt = org_export.export_zip(b, logos_dir=tmp_path, videos=videos)
+    with zipfile.ZipFile(io.BytesIO(inhalt)) as zf:
+        assert zf.read("beitraege/videos/filmDaFilmDaFilmDa0000.mp4") == b"\0\0\0\x18ftypmp4"
+        assert json.loads(zf.read("organisation.json"))["videos_missing"] == ["weg.mp4"]
+
+
 # ── Endpunkte ─────────────────────────────────────────────────────────────────
 
 async def _audit_eintraege(org_id) -> list:
@@ -305,7 +329,10 @@ async def test_admin_der_organisation_zieht_den_export(zwei_orgs):
     resp = await _org_export_als(zwei_orgs["planer"], zwei_orgs["org_a"], "admin")
     assert resp.media_type == "application/zip"
     assert f"convoyplan-a-{zwei_orgs['m']}-" in resp.headers["content-disposition"]
-    with zipfile.ZipFile(io.BytesIO(resp.body)) as zf:
+    # Gestreamt aus einer Datei — mit Videos passt ein Export nicht mehr in den Speicher.
+    inhalt = b"".join([stueck async for stueck in resp.body_iterator])
+    assert int(resp.headers["content-length"]) == len(inhalt)
+    with zipfile.ZipFile(io.BytesIO(inhalt)) as zf:
         assert "organisation.json" in zf.namelist()
     [eintrag] = await _audit_eintraege(zwei_orgs["org_a"])
     assert eintrag.actor_id == zwei_orgs["planer"]
@@ -342,7 +369,8 @@ async def test_superadmin_zieht_jeden_export(zwei_orgs):
         resp = await admin_routes.admin_export_organization(
             zwei_orgs["org_a"], fake_request(), db, superadmin,
         )
-    with zipfile.ZipFile(io.BytesIO(resp.body)) as zf:
+    inhalt = b"".join([stueck async for stueck in resp.body_iterator])
+    with zipfile.ZipFile(io.BytesIO(inhalt)) as zf:
         doc = json.loads(zf.read("organisation.json"))
     assert doc["organization"]["id"] == str(zwei_orgs["org_a"])
 
