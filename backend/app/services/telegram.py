@@ -10,6 +10,7 @@ darf deshalb in keiner Fehlermeldung landen — ``TelegramFehler`` trägt nur di
 Beschreibung von Telegram, nie die URL, und httpx-Ausnahmen werden ohne ihre
 Anfrage weitergereicht.
 """
+import json
 from dataclasses import dataclass
 
 import httpx
@@ -55,11 +56,19 @@ class TelegramApi:
     def _client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(timeout=TIMEOUT, transport=self._transport)
 
-    async def aufruf(self, methode: str, **params) -> dict | list | bool:
+    async def aufruf(
+        self, methode: str, _dateien: dict[str, tuple[str, bytes, str]] | None = None, **params
+    ) -> dict | list | bool:
         daten = {k: v for k, v in params.items() if v is not None}
+        if _dateien:
+            # Hochladen geht nur als multipart; die übrigen Felder dann als Text.
+            felder = {k: v if isinstance(v, str) else json.dumps(v) for k, v in daten.items()}
+            anfrage = {"data": felder, "files": _dateien}
+        else:
+            anfrage = {"json": daten}
         try:
             async with self._client() as c:
-                r = await c.post(f"{self._basis}/bot{self._token}/{methode}", json=daten)
+                r = await c.post(f"{self._basis}/bot{self._token}/{methode}", **anfrage)
         except httpx.HTTPError as e:
             # Nur der Typ: ``str(e)`` kann die Adresse samt Token enthalten.
             raise TelegramFehler(0, type(e).__name__) from None
@@ -98,8 +107,28 @@ class TelegramApi:
             "getUpdates",
             offset=offset,
             timeout=warten,
-            allowed_updates=["message", "edited_message", "callback_query"],
+            # ``my_chat_member``: Der Bot erfährt, wann er in eine Gruppe kommt
+            # und wann er dort Adminrechte bekommt.
+            allowed_updates=["message", "edited_message", "callback_query", "my_chat_member"],
         )
+
+    async def beschreibung_setzen(self, chat_id: int, text: str) -> None:
+        try:
+            await self.aufruf("setChatDescription", chat_id=chat_id, description=text)
+        except TelegramFehler as e:
+            if "not modified" not in e.beschreibung:
+                raise
+
+    async def bild_setzen(self, chat_id: int, jpeg: bytes) -> None:
+        await self.aufruf("setChatPhoto", chat_id=chat_id, _dateien={"photo": ("gruppe.jpg", jpeg, "image/jpeg")})
+
+    async def anheften(self, chat_id: int, message_id: int) -> None:
+        await self.aufruf(
+            "pinChatMessage", chat_id=chat_id, message_id=message_id, disable_notification=True
+        )
+
+    async def loeschen(self, chat_id: int, message_id: int) -> None:
+        await self.aufruf("deleteMessage", chat_id=chat_id, message_id=message_id)
 
     async def senden(
         self,

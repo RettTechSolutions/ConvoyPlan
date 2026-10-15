@@ -49,7 +49,14 @@ from app.models.public_tracker import (
     PublicTrackerTelegram,
 )
 from app.models.user import User
-from app.services import aktionsseite, aktionsseite_bild, aktionsseite_link, audit, org_module
+from app.services import (
+    aktionsseite,
+    aktionsseite_bild,
+    aktionsseite_gruppe,
+    aktionsseite_link,
+    audit,
+    org_module,
+)
 from app.services.crypto import decrypt_secret
 from app.services.telegram import BotInfo, TelegramApi, TelegramFehler
 
@@ -108,6 +115,23 @@ TEXT_AB_HILFE = (
     "So geht's: als Antwort auf die Karte eines Beitrags /ab 18:00 oder /ab 27.12. 18:00 — "
     "/ab - nimmt den Termin wieder weg. Früher als die Verzögerung geht nie."
 )
+TEXT_HALLO = (
+    "Hallo! Ich bringe Fotos und Links aus dieser Gruppe auf eine Aktionsseite.\n\n"
+    "Verbinden: /verbinden CODE — den Code gibt es im Org-Admin am Konvoi der Seite. "
+    "Am besten macht ihr mich hier zum Admin ({rechte}), dann richte ich Beschreibung, "
+    "Gruppenbild und eine angeheftete Anleitung selbst ein."
+)
+TEXT_HALLO_PRIVAT = (
+    "\n\nNoch sehe ich in Gruppen keine Fotos: Bei @BotFather /setprivacy → Disable, "
+    "danach mich einmal entfernen und neu hinzufügen — oder mich zum Admin machen."
+)
+TEXT_WILLKOMMEN = (
+    "Willkommen, {namen}! Fotos und Links, die ihr hier postet, können nach Freigabe durch "
+    "die Presse auf der Aktionsseite „{seite}“ erscheinen — mindestens {minuten} Minuten "
+    "verzögert und nie genauer als die Karte. Wer das nicht möchte, postet hier keine Fotos."
+)
+# Höchstens eine Begrüßung je Gruppe und Minute; die vorige löscht der Bot.
+WILLKOMMEN_PAUSE = timedelta(minutes=1)
 TEXT_HILFE = (
     "Ich nehme Fotos und Links aus den verbundenen Gruppen für die Aktionsseite an.\n\n"
     "Wer freigeben soll, schickt mir hier den Presse-Code: /presse CODE"
@@ -330,8 +354,14 @@ def _eingabe_merken(chat_id: int, prompt_id: int, post_id: uuid.UUID, user_id: i
     _texteingaben[(chat_id, prompt_id)] = (post_id, user_id, jetzt + TEXTEINGABE_GUELTIG.total_seconds())
 
 
+# Gruppe → (Zeitpunkt, Nachricht) der letzten Begrüßung. Im Speicher: Nach
+# einem Neustart käme höchstens eine Begrüßung zu viel.
+_willkommen: dict[int, tuple[float, int]] = {}
+
+
 def vergessen() -> None:
     _texteingaben.clear()
+    _willkommen.clear()
 
 
 # ── Verarbeitung eines Updates ─────────────────────────────────────────────
@@ -344,8 +374,8 @@ class _Lauf:
                  jetzt: datetime):
         self.db, self.bot, self.ich, self.api, self.jetzt = db, bot, ich, api, jetzt
 
-    async def antworten(self, nachricht: dict, text_: str) -> None:
-        await self.api.senden(
+    async def antworten(self, nachricht: dict, text_: str) -> dict:
+        return await self.api.senden(
             nachricht["chat"]["id"], text_,
             thread_id=_thema(nachricht), antwort_auf=nachricht.get("message_id"),
         )
@@ -377,6 +407,8 @@ async def verarbeiten(
             await _gruppe(lauf, nachricht)
     elif bearbeitet := update.get("edited_message"):
         await _bearbeitet(lauf, bearbeitet)
+    elif mitglied := update.get("my_chat_member"):
+        await _ich_in_gruppe(lauf, mitglied)
 
 
 async def _privat(lauf: _Lauf, nachricht: dict) -> None:
@@ -441,6 +473,9 @@ async def _bindung(lauf: _Lauf, chat_id: int, thema: int | None):
 
 
 async def _gruppe(lauf: _Lauf, nachricht: dict) -> None:
+    if neu := nachricht.get("new_chat_members"):
+        await _begruessen(lauf, nachricht, [m for m in neu if not m.get("is_bot")])
+        return
     b = befehl(nachricht.get("text"), lauf.ich.username)
     if b is not None and b[0] == "verbinden":
         await _verbinden(lauf, nachricht, b[1])
@@ -500,10 +535,79 @@ async def _verbinden(lauf: _Lauf, nachricht: dict, arg: str) -> None:
         detail={"convoy_id": str(konvoi.convoy_id), "chat_id": chat_id, "thread_id": thema,
                 "telegram_user_id": (nachricht.get("from") or {}).get("id")},
     )
-    await lauf.antworten(nachricht, TEXT_VERBUNDEN.format(
-        konvoi=konvoi.display_name, seite=seite.title,
-        minuten=max(seite.delay_minutes, aktionsseite.MIN_VERZOEGERUNG_MIN),
-    ))
+    anleitung = await lauf.antworten(nachricht, _anleitung(seite, konvoi))
+    if thema is None:
+        await _einrichten(lauf, chat_id, seite, konvoi, anleitung.get("message_id"))
+
+
+def _minuten(seite: PublicTracker) -> int:
+    return max(seite.delay_minutes, aktionsseite.MIN_VERZOEGERUNG_MIN)
+
+
+def _anleitung(seite: PublicTracker, konvoi: PublicTrackerConvoy) -> str:
+    return TEXT_VERBUNDEN.format(konvoi=konvoi.display_name, seite=seite.title, minuten=_minuten(seite))
+
+
+async def _einrichten(
+    lauf: _Lauf, chat_id: int, seite: PublicTracker, konvoi: PublicTrackerConvoy, anleitung_id: int | None
+) -> None:
+    """Beschreibung, Bild, Anleitung — und ein Satz, wenn Rechte fehlen."""
+    fehlt = await aktionsseite_gruppe.einrichten(
+        lauf.api, chat_id, seite=seite.title, konvoi=konvoi.display_name,
+        minuten=_minuten(seite), farbe=konvoi.color, anleitung_id=anleitung_id,
+    )
+    if fehlt:
+        await lauf.api.senden(chat_id, aktionsseite_gruppe.TEXT_RECHTE.format(rechte=", ".join(fehlt)))
+
+
+async def _ich_in_gruppe(lauf: _Lauf, mitglied: dict) -> None:
+    """Der Bot kommt in eine Gruppe oder wird dort Admin."""
+    chat = mitglied.get("chat") or {}
+    if chat.get("type") not in ("group", "supergroup"):
+        return
+    vorher = (mitglied.get("old_chat_member") or {}).get("status")
+    jetzt = (mitglied.get("new_chat_member") or {}).get("status")
+    gebunden, seite = await _bindung(lauf, chat["id"], None)
+    if vorher in ("left", "kicked", None) and jetzt in ("member", "administrator"):
+        if gebunden is None:
+            text_ = TEXT_HALLO.format(
+                rechte=f"{aktionsseite_gruppe.RECHT_INFO}, {aktionsseite_gruppe.RECHT_ANHEFTEN}"
+            )
+            if not lauf.ich.liest_alles and jetzt != "administrator":
+                text_ += TEXT_HALLO_PRIVAT
+            await lauf.api.senden(chat["id"], text_)
+            return
+    if jetzt != "administrator" or vorher == "administrator" or gebunden is None:
+        return
+    # Rechte kamen nach dem Verbinden: jetzt nachholen, mit frischer Anleitung.
+    konvoi = await lauf.db.get(PublicTrackerConvoy, (gebunden.tracker_id, gebunden.convoy_id))
+    if konvoi is None or not await _seite_offen(lauf, seite):
+        return
+    anleitung = await lauf.api.senden(chat["id"], _anleitung(seite, konvoi))
+    await _einrichten(lauf, chat["id"], seite, konvoi, anleitung.get("message_id"))
+
+
+async def _begruessen(lauf: _Lauf, nachricht: dict, neu: list[dict]) -> None:
+    chat_id = nachricht["chat"]["id"]
+    gebunden, seite = await _bindung(lauf, chat_id, None)
+    if not neu or gebunden is None or not await _seite_offen(lauf, seite):
+        return
+    jetzt = time.monotonic()
+    zuletzt = _willkommen.get(chat_id)
+    if zuletzt and jetzt - zuletzt[0] < WILLKOMMEN_PAUSE.total_seconds():
+        return
+    namen = [_name(m) for m in neu[:5]]
+    if len(neu) > 5:
+        namen.append("und alle anderen")
+    gesendet = await lauf.api.senden(
+        chat_id, TEXT_WILLKOMMEN.format(namen=", ".join(namen), seite=seite.title, minuten=_minuten(seite))
+    )
+    _willkommen[chat_id] = (jetzt, gesendet.get("message_id"))
+    if zuletzt:
+        try:
+            await lauf.api.loeschen(chat_id, zuletzt[1])
+        except TelegramFehler:
+            pass  # älter als 48 h oder schon weg — dann bleibt sie eben stehen
 
 
 async def _seite_offen(lauf: _Lauf, seite: PublicTracker) -> bool:
