@@ -156,6 +156,50 @@ async def test_zu_lang_oder_zu_gross_fragt_niemanden(aktion, seite, telegram, me
     assert await _videos(seite) == []
 
 
+def _q(file_id, breite, hoehe, groesse, codec="h264") -> dict:
+    return {"file_id": file_id, "file_unique_id": file_id, "width": breite, "height": hoehe,
+            "codec": codec, "file_size": groesse}
+
+
+@pytest.mark.parametrize("video, erwartet", [
+    # Das Original passt: es bleibt beim Original.
+    ({"file_id": "orig", "file_size": 19_000_000, "qualities": [_q("q", 1280, 720, 4_000_000)]}, "orig"),
+    # Zu groß: die kleinste Fassung, die noch 720p hat — nicht die 1080p.
+    ({"file_id": "orig", "file_size": 60_000_000, "qualities": [
+        _q("1080", 1920, 1080, 15_000_000), _q("720", 1280, 720, 8_000_000), _q("480", 854, 480, 3_000_000),
+    ]}, "720"),
+    # Hochkant zählt die kurze Seite.
+    ({"file_id": "orig", "file_size": 60_000_000, "qualities": [
+        _q("hoch720", 720, 1280, 7_000_000), _q("hoch480", 480, 854, 2_000_000),
+    ]}, "hoch720"),
+    # Keine mit 720p passt: die größte, die passt.
+    ({"file_id": "orig", "file_size": 60_000_000, "qualities": [
+        _q("1080", 1920, 1080, 25_000_000), _q("480", 854, 480, 3_000_000), _q("360", 640, 360, 1_000_000),
+    ]}, "480"),
+    # AV1 dekodiert der Container nicht, eine Fassung ohne Größe zählt nicht.
+    ({"file_id": "orig", "file_size": 60_000_000, "qualities": [
+        _q("av1", 1280, 720, 5_000_000, codec="av01"), {**_q("ohne", 1280, 720, 0), "file_size": None},
+    ]}, None),
+    # Als Datei geschickt: keine Fassungen.
+    ({"file_id": "orig", "file_size": 60_000_000}, None),
+])
+def test_welche_fassung_geholt_wird(video, erwartet):
+    fassung = tg.video_fassung(video)
+    assert (fassung or {}).get("file_id") == erwartet
+
+
+async def test_zu_gross_holt_eine_kleinere_fassung(aktion, seite, telegram, medien):
+    """Gemeldet: 12 s vom iPhone, über 20 MB — „so groß gibt Telegram es mir
+    nicht", obwohl Telegram eine kleinere Fassung bereithält."""
+    await _verbunden(aktion, seite)
+    await _update("message", _nachricht(video={
+        "file_id": "orig", "duration": 12, "file_size": 48_000_000, "width": 2160, "height": 3840,
+        "qualities": [_q("hoch1080", 1080, 1920, 14_000_000), _q("hoch720", 720, 1280, 6_000_000)],
+    }))
+    assert len(await _videos(seite)) == 1
+    assert [a["file_id"] for a in telegram.gesendet("getFile")] == ["hoch720"]
+
+
 async def test_abgelehnt_sagt_der_bot_warum_und_legt_nichts_ab(aktion, seite, telegram, medien):
     medien.antwort = httpx.Response(422, json={"grund": "Das Video ist länger als 60 Sekunden."})
     await _verbunden(aktion, seite)

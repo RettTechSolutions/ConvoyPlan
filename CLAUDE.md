@@ -454,7 +454,9 @@ Medien-Container (`docker/medien`, Dienst `medien`, `MEDIEN_URL`), der sie mit f
 kodiert — eigener Container, weil ffmpeg mit x264 GPL ist und ConvoyPlan auch kommerziell
 lizenziert wird; **nie** ffmpeg/PyAV ins Backend-Image. Höchstens 60 s, 720p, mit Ton (die
 Karte sagt der Presse „vor dem Freigeben anhören"). Die Datei liegt unter
-`/uploads/aktionsseite/videos/<public_id>.mp4`, das Standbild ist das einzige Bild des
+`/uploads/aktionsseite/videos/<public_id>.mp4`; über den 20 MB von `getFile` holt
+`video_fassung` eine von Telegrams kleineren Fassungen (`qualities`, nur Codecs, die der
+Container dekodiert). Das Standbild ist das einzige Bild des
 Beitrags und geht wie die Link-Vorschau nicht in `photos`, sondern als `video.poster` hinaus.
 Gelöscht werden Dateien nicht beim Löschen der Zeile (Retention läuft ohne das Volume),
 sondern von `aufraeumen` in der Telegram-Schleife: was keine Zeile hat und älter als 30 min

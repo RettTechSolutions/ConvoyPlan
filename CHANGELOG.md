@@ -21,6 +21,10 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Videos über 20 MB.** Telegram gibt einem Bot nur Dateien bis 20 MB heraus, und ein Video in voller Telefonqualität ist schon nach wenigen Sekunden größer — der Bot lehnte es ab („so groß gibt Telegram es mir nicht"). Jetzt nimmt er die kleinere Fassung, die Telegram selbst anlegt (`qualities`): die kleinste mit mindestens 720p, sonst die größte, die passt. Nur wenn es keine gibt (etwa *als Datei* geschickt), lehnt er ab und sagt, wie es geht.
+
 ## [2026.11.0] – 2026-10-15
 
 ### Wichtig beim Update

@@ -114,7 +114,11 @@ TEXT_VIDEO_ZU_LANG = (
     f"Dieses Video ist länger als {aktionsseite_video.MAX_SEKUNDEN} Sekunden — "
     "bitte kürzen und noch einmal schicken."
 )
-TEXT_VIDEO_ZU_GROSS = "Dieses Video ist größer als 20 MB — so groß gibt Telegram es mir nicht."
+TEXT_VIDEO_ZU_GROSS = (
+    "Dieses Video ist größer als 20 MB, und Telegram hat keine kleinere Fassung davon — so groß "
+    "gibt es mir Telegram nicht. Bitte als Video statt als Datei schicken, kürzer oder in "
+    "geringerer Qualität."
+)
 TEXT_VIDEO_AUS = "Videos kann ich hier nicht annehmen, nur Fotos."
 TEXT_VIDEO_FEHLT = "Dieses Video konnte ich gerade nicht holen — bitte noch einmal schicken."
 TEXT_SEITE_ZU = (
@@ -797,6 +801,42 @@ async def _links_heute(lauf: _Lauf, chat_id: int) -> int:
     )).scalar_one()
 
 
+# Was der Medien-Container dekodiert (``--enable-decoder`` in docker/medien);
+# AV1 nicht.
+_VIDEO_CODECS = {"h264", "h265", "hevc", "vp9"}
+
+
+def video_fassung(datei: dict) -> dict | None:
+    """Welche Fassung eines Videos geholt wird — oder ``None``, wenn keine
+    unter die 20 MB von ``getFile`` passt.
+
+    Das Original, solange es passt. Sonst eine der kleineren Fassungen, die
+    Telegram selbst anlegt (``qualities``): Ein Clip vom Telefon in voller
+    Qualität ist nach wenigen Sekunden größer als 20 MB, und hier wird ohnehin
+    auf 720p umgerechnet. Unter den passenden die kleinste mit mindestens 720
+    Pixeln an der kurzen Seite, sonst die größte. Eine Fassung ohne Größe zählt
+    nicht — 20 MB ist eine Grenze von Telegram, nicht von hier.
+    """
+    grenze = aktionsseite_video.MAX_EINGANG
+    if (datei.get("file_size") or 0) <= grenze:
+        return datei
+    passend = [
+        q for q in datei.get("qualities") or []
+        if isinstance(q, dict) and q.get("file_id") and q.get("codec") in _VIDEO_CODECS
+        and 0 < (q.get("file_size") or 0) <= grenze
+    ]
+    if not passend:
+        return None
+
+    def kurz(q: dict) -> int:
+        return min(q.get("width") or 0, q.get("height") or 0)
+
+    genug = [q for q in passend if kurz(q) >= 720]
+    if genug:
+        return min(genug, key=lambda q: q["file_size"])
+    return max(passend, key=lambda q: (kurz(q), q["file_size"]))
+
+
 async def _video_beitrag(lauf: _Lauf, nachricht: dict) -> None:
     """Ein Video (§ 15): neu kodiert im Medien-Container, abgelegt als Datei,
     das Standbild als einziges Bild. Freigabe, Verzögerung und Platzierung wie
@@ -815,11 +855,13 @@ async def _video_beitrag(lauf: _Lauf, nachricht: dict) -> None:
         await _ansagen(lauf, nachricht, chat, "video_aus", TEXT_VIDEO_AUS)
         return
     datei = nachricht.get("video") or nachricht["document"]
-    # Was Telegram vorab sagt, spart den Abruf: zu lang, zu groß.
+    # Was Telegram vorab sagt, spart den Abruf: zu lang, zu groß (und dann
+    # vielleicht eine kleinere Fassung).
     if (datei.get("duration") or 0) > aktionsseite_video.MAX_SEKUNDEN:
         await lauf.antworten(nachricht, TEXT_VIDEO_ZU_LANG)
         return
-    if (datei.get("file_size") or 0) > aktionsseite_video.MAX_EINGANG:
+    fassung = video_fassung(datei)
+    if fassung is None:
         await lauf.antworten(nachricht, TEXT_VIDEO_ZU_GROSS)
         return
     if await _videos_heute(lauf, chat_id) >= VIDEOS_JE_TAG:
@@ -828,7 +870,7 @@ async def _video_beitrag(lauf: _Lauf, nachricht: dict) -> None:
                        TEXT_TAGESGRENZE.format(was="Videos", n=VIDEOS_JE_TAG))
         return
     try:
-        video = await aktionsseite_video.umwandeln(await lauf.api.datei(datei["file_id"]))
+        video = await aktionsseite_video.umwandeln(await lauf.api.datei(fassung["file_id"]))
     except aktionsseite_video.VideoFehler as e:
         logger.info("Telegram: Video nicht übernommen (%s)", e)
         await lauf.antworten(nachricht, str(e))

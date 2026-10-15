@@ -142,7 +142,11 @@ Die Presse gibt sie dort frei; erst dann erscheinen sie auf der Aktionsseite —
   „🔊 mit Ton — vor dem Freigeben anhören“: Durchsagen und Gespräche verraten
   Orte, die das Bild nicht zeigt. Im Org-Admin öffnet ein Klick auf das
   Standbild das Video. Längere Videos lehnt der Bot mit Begründung ab; ein
-  Video in einem Album wird ein eigener Beitrag. Ohne `medien`
+  Video in einem Album wird ein eigener Beitrag. Telegram gibt einem Bot nur
+  Dateien bis 20 MB heraus — ist das Original größer (schnell der Fall bei
+  Videos in voller Telefonqualität), nimmt der Bot die kleinere Fassung, die
+  Telegram selbst anlegt. Gibt es keine (etwa *als Datei* geschickt), sagt er
+  es und bittet um eine kleinere. Ohne `medien`
   (`MEDIEN_URL=` leer) sagt der Bot einmal, dass er nur Fotos annimmt.
 - **Links zu Instagram, YouTube, Facebook oder TikTok** werden ebenfalls ein
   Beitrag, mit derselben Freigabe. Als **Antwort auf ein Foto** (oder auf die
