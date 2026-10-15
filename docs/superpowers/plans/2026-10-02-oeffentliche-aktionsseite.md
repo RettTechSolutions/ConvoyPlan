@@ -111,9 +111,12 @@ public_trackers                      public_tracker_convoys
   die verrät, dass es den Slug gibt.
 - `GET /api/public/aktion/{slug}` liefert je Konvoi: Anzeigename, Ziel, Status
   (`vor_abfahrt`, `unterwegs`, `pause`, `angekommen`), einen Punkt, die
-  gefahrene Linie (vereinfacht, Douglas-Peucker), gefahrene/gesamte km.
-  **Nichts sonst** — keine Fahrzeuge, Rufnamen, Telefonnummern, Stärke,
-  Betriebsstoff, Alarme.
+  gefahrene Linie (vereinfacht, Douglas-Peucker), gefahrene/gesamte km und die
+  Zahl der eingeplanten Fahrzeuge (`vehicles`, nachgetragen am 15. Oktober:
+  Der EventTracker zeichnet so viele hintereinander). **Nichts sonst** — keine
+  Fahrzeuge selbst, Rufnamen, Telefonnummern, Stärke, Betriebsstoff, Alarme.
+  Die Zahl ist die der Planung, nicht der gerade fahrenden: Ein Ausfall
+  unterwegs zeigt sich auf der Seite nicht.
 - **Ein Punkt je Konvoi**: das Fahrzeug mit `sonderfunktion = spitzenführer`,
   sonst das erste in der Reihenfolge mit Position. Dreißig Punkte, die sich über
   50 km verteilen, erklären nichts und verraten mehr.

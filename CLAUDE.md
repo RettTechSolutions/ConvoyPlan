@@ -385,7 +385,8 @@ Filter beim Empfänger ließe sich mit den Entwicklertools aushebeln:
 - **Positivliste**: die Pydantic-Modelle in `api/routes/aktionsseite.py`,
   jedes mit `extra="forbid"`. Sie sind zugleich der Vertrag mit dem
   EventTracker; `tests/test_aktionsseite_felder.py` schreibt sie aus. Kein
-  interner Konvoiname, keine Datenbank-Kennung, nichts aus dem Fahrzeug.
+  interner Konvoiname, keine Datenbank-Kennung, nichts aus dem Fahrzeug —
+  nur ihre Zahl (`vehicles`, die eingeplanten, nicht die gerade fahrenden).
 
 Unbekannt, abgeschaltet, abgelaufen oder falsches Token ergeben **dieselbe**
 404. Das Token liegt nur als SHA-256 vor, sichtbar ist es einmal beim Anlegen
