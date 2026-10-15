@@ -23,7 +23,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -36,6 +36,7 @@ from app.models.public_tracker import (
     PublicTrackerConvoy,
     PublicTrackerPhoto,
     PublicTrackerPhotoData,
+    PublicTrackerPost,
 )
 from app.services import aktionsseite, audit, org_module, positionsverlauf
 
@@ -269,6 +270,7 @@ class AktionsseiteDaten(BaseModel):
         le=aktionsseite.MAX_VERZOEGERUNG_MIN,
     )
     show_destination: bool = False
+    show_sender: bool = True
     valid_until: datetime | None = None
     enabled: bool = True
     convoys: list[KonvoiEintrag] = Field(default_factory=list, max_length=10)
@@ -301,6 +303,7 @@ class AktionsseiteZeile(BaseModel):
     theme: str
     delay_minutes: int
     show_destination: bool
+    show_sender: bool
     valid_until: datetime | None
     enabled: bool
     active: bool
@@ -349,6 +352,7 @@ async def _zeile(db: AsyncSession, request: Request, t: PublicTracker) -> dict:
         "theme": t.theme,
         "delay_minutes": t.delay_minutes,
         "show_destination": t.show_destination,
+        "show_sender": t.show_sender,
         "valid_until": t.valid_until,
         "enabled": t.enabled,
         "active": aktionsseite.ist_aktiv(t, datetime.now(timezone.utc)),
@@ -412,6 +416,7 @@ def _felder_setzen(t: PublicTracker, d: AktionsseiteDaten) -> None:
     t.theme = d.theme
     t.delay_minutes = d.delay_minutes
     t.show_destination = d.show_destination
+    t.show_sender = d.show_sender
     t.valid_until = d.valid_until
     t.enabled = d.enabled
 
@@ -478,6 +483,13 @@ async def aendern(
     t = await _laden(db, org.id, tracker_id)
     _felder_setzen(t, data)
     await _konvois_setzen(db, org.id, t, data.convoys)
+    if not data.show_sender:
+        # Abgeschaltet heißt auch: die schon gespeicherten Namen gehen (Plan § 14.4).
+        await db.execute(
+            update(PublicTrackerPost)
+            .where(PublicTrackerPost.tracker_id == t.id, PublicTrackerPost.sender_name.is_not(None))
+            .values(sender_name=None)
+        )
     await db.commit()
     t = await _laden(db, org.id, tracker_id)
     await audit.record(

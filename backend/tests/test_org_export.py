@@ -23,6 +23,13 @@ from app.models.api_key import SCOPE_ORGANIZATION, ApiKey
 from app.models.audit_log import AuditLog
 from app.models.convoy import Convoy, ConvoyVehicle
 from app.models.organization import Organization, UserOrganization
+from app.models.public_tracker import (
+    PublicTracker,
+    PublicTrackerConvoy,
+    PublicTrackerPhoto,
+    PublicTrackerPhotoData,
+    PublicTrackerPost,
+)
 from app.models.route import Route
 from app.models.share_link import ConvoyShareLink
 from app.models.system_metric import UserActivityDay
@@ -223,6 +230,57 @@ async def test_fehlendes_logo_bricht_den_export_nicht(zwei_orgs, tmp_path):
     with zipfile.ZipFile(io.BytesIO(inhalt)) as zf:
         assert zf.namelist() == ["organisation.json"]
         assert json.loads(zf.read("organisation.json"))["logos_missing"] == [f"logo-{zwei_orgs['m']}.png"]
+
+
+# ── Beiträge der Aktionsseiten ────────────────────────────────────────────────
+
+async def _seite_mit_beitrag(org_id, convoy_id, m: str, bild: bytes) -> str:
+    """Eine Aktionsseite mit einem Foto-Beitrag; zurück kommt die Bildkennung."""
+    async with AsyncSessionLocal() as db:
+        seite = PublicTracker(
+            organization_id=org_id, slug=uuid.uuid4().hex[:12], title=f"Seite {m}",
+            delay_minutes=120, fetch_token_hash="0" * 64,
+        )
+        db.add(seite)
+        await db.flush()
+        db.add(PublicTrackerConvoy(tracker_id=seite.id, convoy_id=convoy_id, display_name="Konvoi"))
+        await db.flush()
+        post = PublicTrackerPost(
+            public_id=uuid.uuid4().hex[:22], tracker_id=seite.id, convoy_id=convoy_id,
+            taken_at=datetime(2026, 12, 27, 12, tzinfo=timezone.utc), status="freigegeben",
+            text_public=f"Grenze {m}", chat_id=-100777 - ord(m), message_id=4711, card_message_id=4712,
+            sender_telegram_id=987654321, sender_name="Jonas Fahrer", reviewed_by_telegram_id=123123,
+        )
+        db.add(post)
+        await db.flush()
+        foto = PublicTrackerPhoto(post_id=post.id, public_id=uuid.uuid4().hex[:22], width=1600, height=1200)
+        db.add(foto)
+        await db.flush()
+        db.add(PublicTrackerPhotoData(photo_id=foto.id, gross=bild, klein=b"klein"))
+        await db.commit()
+        return foto.public_id
+
+
+async def test_beitraege_mit_bildern_ohne_absender(zwei_orgs, tmp_path):
+    eigen = await _seite_mit_beitrag(zwei_orgs["org_a"], zwei_orgs["konvoi"], "A", b"RIFF-a-WEBP")
+    fremd = await _seite_mit_beitrag(zwei_orgs["org_b"], zwei_orgs["fremd_konvoi"], "B", b"RIFF-b-WEBP")
+    b = await _export(zwei_orgs["org_a"])
+    [beitrag] = b["beitraege"]
+    assert beitrag["text_public"] == "Grenze A" and beitrag["status"] == "freigegeben"
+    assert [f["public_id"] for f in b["beitrag_bilder"]] == [eigen]
+    text = json.dumps(org_export.jsonable_encoder(b))
+    # Absender, Presse und die Telegram-Kennungen gehören Dritten.
+    for dritte in ("Jonas Fahrer", "987654321", "123123", "-100842", "4711", "sender_", "chat_id"):
+        assert dritte not in text, dritte
+
+    async with AsyncSessionLocal() as db:
+        org = await db.get(Organization, zwei_orgs["org_a"])
+        bilder = await org_export.beitrag_bilder(db, org)
+    assert bilder == [(f"{eigen}.webp", b"RIFF-a-WEBP")]
+    inhalt = org_export.export_zip(b, logos_dir=tmp_path, bilder=bilder)
+    with zipfile.ZipFile(io.BytesIO(inhalt)) as zf:
+        assert zf.read(f"beitraege/{eigen}.webp") == b"RIFF-a-WEBP"
+        assert f"beitraege/{fremd}.webp" not in zf.namelist()
 
 
 # ── Endpunkte ─────────────────────────────────────────────────────────────────

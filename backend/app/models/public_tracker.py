@@ -25,6 +25,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
     text,
+    true,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -48,6 +49,8 @@ class PublicTracker(Base):
     delay_minutes: Mapped[int] = mapped_column(Integer)
     # Zielort als Punkt zeigen (vergröbert) — sonst nur der Text.
     show_destination: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Absender auf der Karte des Bots („von Jonas“). Aus: Name wird nicht gespeichert.
+    show_sender: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
     # Danach gibt es die Seite nicht mehr, und es wird nicht mehr aufgezeichnet.
     valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
