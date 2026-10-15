@@ -21,6 +21,8 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+## [2026.10.0] – 2026-10-15
+
 ### Wichtig beim Update
 
 - Datenbank-Migrationen `0070` und `0071` laufen beim Start des Backends.
@@ -28,7 +30,7 @@ ursprünglichen SemVer-Nummern.
 
 ### Added
 
-- **Fotos von unterwegs auf der Aktionsseite.** Fahrer und Begleiter posten Fotos in eine Telegram-Gruppe, die Presse gibt sie dort per Knopf frei. Freigegebene Beiträge stehen in der öffentlichen Antwort (`posts` je Konvoi) — verzögert wie die Positionen, platziert aus dem Positionsverlauf statt aus den GPS-Daten im Bild, und Fotos von einem Halt erst, wenn der Konvoi wieder fährt. Bilder werden beim Eingang neu kodiert, ohne EXIF; Absender und Telegram-Text gehen nie hinaus. Einrichten unter **Org-Admin → Aktionsseiten**: Telegram-Bot, Gruppe je Konvoi per Code, Presse per Code; dort auch alle Beiträge mit denselben Aktionen. Auch **Links zu Instagram, YouTube, Facebook und TikTok** werden Beiträge (`link` in der Antwort, bereinigt um Tracking-Anhänge); als Antwort auf ein Foto mit dessen Zeit und Ort. Mit `/ab 18:00` (im Org-Admin *Erst ab …*) hält die Presse einen Beitrag bis zu einer Uhrzeit zurück, nie kürzer als die Verzögerung. Ist die Seite nicht aktiv oder die Tagesgrenze erreicht, sagt der Bot es der Gruppe einmal; bremst Telegram ihn, holt er seine Karten nach. Anzeigen muss sie der EventTracker ab seiner nächsten Fassung. Migration `0070`. Anwenderdoku: `wiki/Aktionsseite.md`, „Fotos von unterwegs".
+- **Fotos von unterwegs auf der Aktionsseite.** Fahrer und Begleiter posten Fotos in eine Telegram-Gruppe, die Presse gibt sie dort per Knopf frei. Freigegebene Beiträge stehen in der öffentlichen Antwort (`posts` je Konvoi) — verzögert wie die Positionen, platziert aus dem Positionsverlauf statt aus den GPS-Daten im Bild, und Fotos von einem Halt erst, wenn der Konvoi wieder fährt. Bilder werden beim Eingang neu kodiert, ohne EXIF; Absender und Telegram-Text gehen nie hinaus. Einrichten unter **Org-Admin → Aktionsseiten**: Telegram-Bot, Gruppe je Konvoi per Code, Presse per Code; dort auch alle Beiträge mit denselben Aktionen. Auch **Links zu Instagram, YouTube, Facebook und TikTok** werden Beiträge (`link` in der Antwort, bereinigt um Tracking-Anhänge); als Antwort auf ein Foto mit dessen Zeit und Ort. Mit `/ab 18:00` (im Org-Admin *Erst ab …*) hält die Presse einen Beitrag bis zu einer Uhrzeit zurück, nie kürzer als die Verzögerung. Ist die Seite nicht aktiv oder die Tagesgrenze erreicht, sagt der Bot es der Gruppe einmal; bremst Telegram ihn, holt er seine Karten nach. Anzeigen kann sie der EventTracker ab 1.2.0. Migration `0070`. Anwenderdoku: `wiki/Aktionsseite.md`, „Fotos von unterwegs".
 - **Der Telegram-Bot bringt seine Befehle mit.** Beim Eintragen im Org-Admin (und für schon eingerichtete Bots beim nächsten Start) legt ConvoyPlan die Befehlsliste im Bot ab: `/presse` im Privatchat, `/verbinden` und `/ab` in der Gruppe. Telegram bietet sie beim Tippen von „/“ an; bei @BotFather ist dafür nichts mehr zu tun.
 - **Absendernamen abschaltbar.** Je Aktionsseite: Ohne den Haken *Absender auf den Beiträgen nennen* zeigt die Karte des Bots kein „von …“ mehr, ConvoyPlan speichert den Namen nicht, und vorhandene Namen der Seite werden gelöscht. Migration `0071`, Standard wie bisher an.
 - **Fotos im Organisations-Export.** Beiträge der Aktionsseiten stehen im JSON (`beitraege`, `beitrag_bilder`) — ohne Absender und ohne Telegram-Kennungen —, die Bilder liegen als WebP unter `beitraege/` im ZIP.
@@ -1060,7 +1062,8 @@ Das ruft den Update-Modus auf: räumt verwaiste Updater-Container auf, zieht all
 - Capacitor configuration for Android/iOS native wrapper.
 - Docker Compose setup with GraphHopper OSM pre-download.
 
-[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.9.0...HEAD
+[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.10.0...HEAD
+[2026.10.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.9.0...v2026.10.0
 [2026.9.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.8.0...v2026.9.0
 [2026.8.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.7.3...v2026.8.0
 [2026.7.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.6.2...v2026.7.0
