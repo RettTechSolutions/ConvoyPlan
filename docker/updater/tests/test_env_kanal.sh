@@ -46,6 +46,7 @@ FRONTEND_IMAGE=$P/frontend:latest
 GRAPHHOPPER_IMAGE=$P/graphhopper:latest
 UPDATER_IMAGE=$P/updater:latest
 REGION_MERGE_IMAGE=$P/osmium:latest
+MEDIEN_IMAGE=$P/medien:latest
 DOCKER_PROXY_IMAGE=ghcr.io/tecnativa/docker-socket-proxy:v0.5.0
 JAVA_OPTS=-Xmx6g -Xms1g -XX:+UseG1GC"
 
@@ -56,10 +57,11 @@ FRONTEND_IMAGE=$P/frontend:nightly
 GRAPHHOPPER_IMAGE=$P/graphhopper:nightly
 UPDATER_IMAGE=$P/updater:nightly
 REGION_MERGE_IMAGE=$P/osmium:nightly
+MEDIEN_IMAGE=$P/medien:nightly
 DOCKER_PROXY_IMAGE=ghcr.io/tecnativa/docker-socket-proxy:v0.5.0
 JAVA_OPTS=-Xmx6g -Xms1g -XX:+UseG1GC"
 
-check "alle fuenf Images auf :nightly, alles andere Byte fuer Byte gleich" \
+check "alle sechs Images auf :nightly, alles andere Byte fuer Byte gleich" \
     "$(printf '%s\n' "$EINGABE" | _env_kanal_umschreiben nightly)" "$ERWARTET"
 
 check "zurueck auf Stable ergibt wieder die Ausgangsdatei" \

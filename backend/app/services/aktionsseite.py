@@ -658,7 +658,7 @@ async def _beitraege(
             PublicTrackerPost.status == "freigegeben",
             PublicTrackerPost.taken_at <= stich,
         )
-        .options(selectinload(PublicTrackerPost.photos))
+        .options(selectinload(PublicTrackerPost.photos), selectinload(PublicTrackerPost.video))
         .order_by(PublicTrackerPost.taken_at.desc())
     )).scalars().all()
     if not posts:
@@ -666,7 +666,7 @@ async def _beitraege(
     lg = lage(kandidaten, stich, ziel, jetzt=jetzt, route=route, schluessel=schluessel)
     raus = []
     for p in posts:
-        if not (p.photos or p.link_url) or not beitrag_sichtbar(
+        if not (p.photos or p.link_url or p.video) or not beitrag_sichtbar(
             kandidaten, p.taken_at, stich, ziel, jetzt=jetzt, route=route,
             schluessel=schluessel, ab=p.not_before, lg=lg,
         ):
@@ -681,13 +681,18 @@ async def _beitraege(
             "position": {"lat": pos["lat"], "lon": pos["lon"]} if pos else None,
             "coarse": bool(pos and pos["coarse"]),
             "text": p.text_public,
-            # Am Link-Beitrag ist das Bild die Vorschau des Dienstes, kein Foto
-            # von unterwegs: Es geht nur zusammen mit dem Link hinaus (§ 11.2).
-            "photos": [] if p.link_url else [_bild(f) for f in p.photos],
+            # Am Link-Beitrag ist das Bild die Vorschau des Dienstes, am
+            # Video-Beitrag sein Standbild — kein Foto von unterwegs: Es geht
+            # nur zusammen mit Link oder Video hinaus (§ 11.2, § 15).
+            "photos": [] if (p.link_url or p.video) else [_bild(f) for f in p.photos],
             "link": {
                 "url": p.link_url, "dienst": p.link_dienst,
                 "vorschau": _bild(p.photos[0]) if p.photos else None,
             } if p.link_url else None,
+            "video": {
+                "id": p.video.public_id, "width": p.video.width, "height": p.video.height,
+                "seconds": p.video.seconds, "sound": p.video.sound, "poster": _bild(p.photos[0]),
+            } if p.video and p.photos else None,
         })
         if len(raus) >= BEITRAEGE_JE_KONVOI:
             break

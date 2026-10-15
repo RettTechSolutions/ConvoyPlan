@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,7 +39,7 @@ from app.models.public_tracker import (
     PublicTrackerPhotoData,
     PublicTrackerPost,
 )
-from app.services import aktionsseite, audit, org_module, positionsverlauf
+from app.services import aktionsseite, aktionsseite_video, audit, org_module, positionsverlauf
 
 public_router = APIRouter(prefix="/public/aktion", tags=["aktionsseite"])
 org_router = APIRouter(
@@ -94,6 +95,19 @@ class OeffentlicherLink(_Streng):
     vorschau: OeffentlichesBild | None
 
 
+class OeffentlichesVideo(_Streng):
+    """Ein Video (§ 15): neu kodiert, ohne Metadaten, höchstens 60 s. Das
+    Standbild kommt über den Bildendpunkt, das Video über ``/video/{id}.mp4``."""
+
+    id: str
+    width: int
+    height: int
+    seconds: float
+    # Ton ist drin; abgespielt wird stumm, bis jemand ihn einschaltet.
+    sound: bool
+    poster: OeffentlichesBild
+
+
 class OeffentlicherBeitrag(_Streng):
     """Ein freigegebenes Foto, Album oder ein Link — platziert und
     zurückgehalten nach ``beitrag_position``/``beitrag_sichtbar``. Absender,
@@ -106,6 +120,7 @@ class OeffentlicherBeitrag(_Streng):
     text: str | None
     photos: list[OeffentlichesBild]
     link: OeffentlicherLink | None
+    video: OeffentlichesVideo | None
 
 
 class OeffentlicherKonvoi(_Streng):
@@ -207,9 +222,14 @@ async def abrufen(
 
 
 def _bilder(beitrag: dict) -> list[dict]:
-    """Alle Bilder eines öffentlichen Beitrags: Fotos und Vorschau des Links."""
-    link = beitrag["link"]
-    return beitrag["photos"] + ([link["vorschau"]] if link and link["vorschau"] else [])
+    """Alle Bilder eines öffentlichen Beitrags: Fotos, Vorschau des Links,
+    Standbild des Videos."""
+    link, video = beitrag["link"], beitrag["video"]
+    return (
+        beitrag["photos"]
+        + ([link["vorschau"]] if link and link["vorschau"] else [])
+        + ([video["poster"]] if video else [])
+    )
 
 
 @public_router.get("/{slug}/bild/{bild_id}/{groesse}.webp")
@@ -242,6 +262,30 @@ async def bild(
         media_type="image/webp",
         # Ein freigegebenes Bild ändert sich nicht; zurückgezogen fällt es aus
         # der Antwort, und der EventTracker löscht seine Kopie.
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
+
+
+@public_router.get("/{slug}/video/{video_id}.mp4")
+async def video(
+    slug: str,
+    video_id: str,
+    authorization: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Ein Video eines Beitrags (§ 15) — wie die Bilder nur, solange es in der
+    Antwort steht. Der EventTracker holt es einmal ganz und liefert es selbst
+    aus; Teilabrufe braucht es hier nicht."""
+    nutz = await _oeffentlich(slug, authorization, db)
+    if not any(
+        p["video"] and p["video"]["id"] == video_id for k in nutz["convoys"] for p in k["posts"]
+    ):
+        raise HTTPException(status_code=404, detail=_NICHT_GEFUNDEN)
+    datei = aktionsseite_video.pfad(video_id)
+    if not datei.is_file():
+        raise HTTPException(status_code=404, detail=_NICHT_GEFUNDEN)
+    return FileResponse(
+        datei, media_type="video/mp4",
         headers={"Cache-Control": "private, max-age=86400"},
     )
 

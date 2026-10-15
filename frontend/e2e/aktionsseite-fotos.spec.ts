@@ -150,6 +150,15 @@ test('Beiträge: Zähler auch zugeklappt, Aktionen wie die Knöpfe in Telegram',
 	await expect(video).toHaveAttribute('href', 'https://youtu.be/dQw4w9WgXcQ');
 	await expect(video.locator('img')).toHaveAttribute('src', /^blob:/);
 
+	// Ein Video zeigt sein Standbild, Länge und dass Ton drin ist — und öffnet über den API-Client.
+	const film = fotos.locator('[data-testid="beitrag"]', { hasText: 'Über den Tauern' }).getByTestId('beitrag-video');
+	await expect(film).toContainText('0:42 · 🔊');
+	await expect(film).toHaveAttribute('title', /vor dem Freigeben anhören/);
+	const neu = page.waitForEvent('popup');
+	await film.click();
+	await (await neu).close();
+	expect((await aufrufe(page)).filter((a) => a[0] === 'video')).toEqual([['video', 'a-1', 'v-1']]);
+
 	const gesendet = (await aufrufe(page)).filter((a) => a[0] === 'beitragAendern');
 	expect(gesendet).toEqual([
 		['beitragAendern', 'a-1', 'p-wartet', { text_public: 'Unterwegs nach Süden' }],
