@@ -25,6 +25,8 @@ ursprünglichen SemVer-Nummern.
 
 - **Aktionsseite: Fahrzeugzahl je Konvoi.** Die öffentliche Antwort trägt `vehicles`, die Zahl der im Konvoi eingeplanten Fahrzeuge (nicht der gerade fahrenden — ein Ausfall unterwegs zeigt sich nicht). Der EventTracker zeichnet damit eine Kolonne statt eines einzelnen Lkw. Sonst geht nichts aus den Fahrzeugen hinaus; die Positivliste ist entsprechend erweitert.
 
+## [2026.11.1] – 2026-10-15
+
 ### Fixed
 
 - **Videos über 20 MB.** Telegram gibt einem Bot nur Dateien bis 20 MB heraus, und ein Video in voller Telefonqualität ist schon nach wenigen Sekunden größer — der Bot lehnte es ab („so groß gibt Telegram es mir nicht"). Jetzt nimmt er die kleinere Fassung, die Telegram selbst anlegt (`qualities`): die kleinste mit mindestens 720p, sonst die größte, die passt. Nur wenn es keine gibt (etwa *als Datei* geschickt), lehnt er ab und sagt, wie es geht.
@@ -1084,7 +1086,8 @@ Das ruft den Update-Modus auf: räumt verwaiste Updater-Container auf, zieht all
 - Capacitor configuration for Android/iOS native wrapper.
 - Docker Compose setup with GraphHopper OSM pre-download.
 
-[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.11.0...HEAD
+[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.11.1...HEAD
+[2026.11.1]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.11.0...v2026.11.1
 [2026.11.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.10.0...v2026.11.0
 [2026.10.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.9.0...v2026.10.0
 [2026.9.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.8.0...v2026.9.0
