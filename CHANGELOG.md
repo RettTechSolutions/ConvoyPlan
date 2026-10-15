@@ -21,6 +21,8 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+## [2026.11.0] – 2026-10-15
+
 ### Wichtig beim Update
 
 - **Neuer Dienst `medien`** (Image `ghcr.io/retttechsolutions/convoyplan/medien`): Er kodiert Videos aus Telegram neu und läuft als eigener Container, weil sein ffmpeg mit x264 unter der GPL steht. Der Updater zieht ihn mit; wer ohne Updater aktualisiert, braucht `docker compose pull && docker compose up -d`. Er nimmt bis zu 2 CPU-Kerne und 1 GB Speicher, solange ein Video umgerechnet wird (rund 15–60 s je Video), sonst nichts. Ohne ihn (`MEDIEN_URL=` leer) nimmt der Bot nur Fotos an.
@@ -30,8 +32,8 @@ ursprünglichen SemVer-Nummern.
 
 ### Added
 
-- **Videos von unterwegs.** Videos bis 60 Sekunden aus der Telegram-Gruppe werden Beiträge der Aktionsseite, mit derselben Freigabe, Verzögerung und Platzierung wie Fotos. Ein neuer Dienst **`medien`** kodiert sie mit ffmpeg neu — höchstens 720p, 30 Bilder/s, H.264/AAC, ohne GPS-Daten, Gerät und Aufnahmezeit, aufrecht gedreht. Der Ton bleibt; die Karte des Bots sagt der Presse, dass sie vor dem Freigeben hinhören muss. Gespeichert unter `/uploads/aktionsseite/videos/` (Upload-Volume, im Backup), das Standbild in der Datenbank; im Org-Admin öffnet ein Klick das Video, im Organisations-Export liegen sie unter `beitraege/videos/`. Öffentlich als `video` am Beitrag; anzeigen kann sie der EventTracker ab der nächsten Fassung. Migration `0072`.
-- **Link-Beiträge mit Vorschaubild.** Bei YouTube- und TikTok-Links holt ConvoyPlan beim Eingang einmal das Vorschaubild des Dienstes, kodiert es neu (ohne Metadaten) und gibt es nach der Freigabe als `link.vorschau` an den EventTracker. Die Zuschauer laden weiter nichts vom Dienst. Die Karte des Bots sagt der Presse, ob ein Bild mit hinausgeht; im Org-Admin steht es auf dem Link. Instagram und Facebook bleiben ohne Bild: Meta gibt seit November 2025 keine Vorschaubilder mehr über oEmbed heraus. Anzeigen kann es der EventTracker ab der nächsten Fassung; ältere zeigen den Link wie bisher.
+- **Videos von unterwegs.** Videos bis 60 Sekunden aus der Telegram-Gruppe werden Beiträge der Aktionsseite, mit derselben Freigabe, Verzögerung und Platzierung wie Fotos. Ein neuer Dienst **`medien`** kodiert sie mit ffmpeg neu — höchstens 720p, 30 Bilder/s, H.264/AAC, ohne GPS-Daten, Gerät und Aufnahmezeit, aufrecht gedreht. Der Ton bleibt; die Karte des Bots sagt der Presse, dass sie vor dem Freigeben hinhören muss. Gespeichert unter `/uploads/aktionsseite/videos/` (Upload-Volume, im Backup), das Standbild in der Datenbank; im Org-Admin öffnet ein Klick das Video, im Organisations-Export liegen sie unter `beitraege/videos/`. Öffentlich als `video` am Beitrag; anzeigen kann sie der EventTracker ab 1.3.0. Migration `0072`.
+- **Link-Beiträge mit Vorschaubild.** Bei YouTube- und TikTok-Links holt ConvoyPlan beim Eingang einmal das Vorschaubild des Dienstes, kodiert es neu (ohne Metadaten) und gibt es nach der Freigabe als `link.vorschau` an den EventTracker. Die Zuschauer laden weiter nichts vom Dienst. Die Karte des Bots sagt der Presse, ob ein Bild mit hinausgeht; im Org-Admin steht es auf dem Link. Instagram und Facebook bleiben ohne Bild: Meta gibt seit November 2025 keine Vorschaubilder mehr über oEmbed heraus. Anzeigen kann es der EventTracker ab 1.3.0; ältere zeigen den Link wie bisher.
 
 ## [2026.10.0] – 2026-10-15
 
@@ -1074,7 +1076,8 @@ Das ruft den Update-Modus auf: räumt verwaiste Updater-Container auf, zieht all
 - Capacitor configuration for Android/iOS native wrapper.
 - Docker Compose setup with GraphHopper OSM pre-download.
 
-[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.10.0...HEAD
+[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.11.0...HEAD
+[2026.11.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.10.0...v2026.11.0
 [2026.10.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.9.0...v2026.10.0
 [2026.9.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.8.0...v2026.9.0
 [2026.8.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.7.3...v2026.8.0
