@@ -72,6 +72,16 @@ def no_geofabrik_backoff():
 
 
 @pytest.fixture(autouse=True)
+def keine_link_vorschau():
+    """Vorschaubilder für Link-Beiträge nicht bei YouTube oder TikTok holen.
+    Tests der Vorschau schalten sie wieder an und stellen den Dienst."""
+    previous = settings.link_vorschau_enabled
+    settings.link_vorschau_enabled = False
+    yield
+    settings.link_vorschau_enabled = previous
+
+
+@pytest.fixture(autouse=True)
 def disable_update_check():
     """Disable the GitHub release update check so the /api/version endpoint
     never hits the network during tests."""

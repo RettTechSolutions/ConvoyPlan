@@ -144,6 +144,11 @@ test('Beiträge: Zähler auch zugeklappt, Aktionen wie die Knöpfe in Telegram',
 	await expect(link).toHaveText(/Instagram/);
 	await expect(link).toHaveAttribute('href', 'https://www.instagram.com/reel/XyZ/');
 	await expect(link).toHaveAttribute('rel', /noopener noreferrer/);
+	// Mit Vorschaubild des Dienstes: Das Bild gehört zum Link, nicht in die Großansicht.
+	const video = fotos.locator('[data-testid="beitrag"]', { hasText: 'Im Fernsehen' }).getByTestId('beitrag-link');
+	await expect(video).toHaveText(/YouTube/);
+	await expect(video).toHaveAttribute('href', 'https://youtu.be/dQw4w9WgXcQ');
+	await expect(video.locator('img')).toHaveAttribute('src', /^blob:/);
 
 	const gesendet = (await aufrufe(page)).filter((a) => a[0] === 'beitragAendern');
 	expect(gesendet).toEqual([

@@ -440,6 +440,15 @@ klingenden Domains), der CHECK in `0070` kennt dieselben Dienste (`LINK_DIENSTE`
 Als Antwort auf einen Beitrag übernimmt der Link dessen `taken_at` und damit dessen
 Ort; der Link selbst steht nach dem Anlegen fest, eine Bearbeitung ändert nur den
 Text. Tests: `tests/test_aktionsseite_links.py`.
+**Vorschaubilder** für Links (`services/aktionsseite_vorschau.py`, Plan § 11.2): beim Eingang
+einmal geholt — YouTube aus der Video-Kennung (`i.ytimg.com`), TikTok über oEmbed —, durch
+`aktionsseite_bild` neu kodiert und als einziges Bild des Link-Beitrags gespeichert. Hinaus geht
+es als `link.vorschau`, nie in `photos`: Fällt der Link (beim EventTracker), fällt das Bild mit.
+Bilder nur von `_HOSTS`, https, ohne Weiterleitung — die Adresse aus oEmbed ist fremdbestimmt.
+Instagram und Facebook bleiben ohne (Meta liefert seit November 2025 kein `thumbnail_url` mehr;
+scrapen hinter der Anmeldesperre tun wir nicht). Jeder Fehler heißt: ohne Vorschau, nie ohne
+Beitrag. Abschaltbar mit `LINK_VORSCHAU_ENABLED`; in Tests aus (`conftest.py`), Tests der
+Vorschau stellen die Dienste selbst. Tests: `tests/test_aktionsseite_link_vorschau.py`.
 **`/ab`** setzt `not_before` (später, nie früher — eine frühere Zeit ist die Regelzeit,
 kein Fehler; nicht mehr nach `public_since`), gelesen in deutscher Ortszeit
 (`termin_lesen`). Tests: `tests/test_aktionsseite_termin.py`.

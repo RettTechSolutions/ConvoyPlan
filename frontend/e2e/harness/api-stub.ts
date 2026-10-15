@@ -327,6 +327,12 @@ if (suche.get('mit_seite') === '1') {
 			reviewed_at: '2026-12-27T12:30:00Z', public_since: null, photos: [],
 			link_url: 'https://www.instagram.com/reel/XyZ/', link_dienst: 'instagram',
 		},
+		{
+			id: 'p-video', convoy_id: 'c-rou', taken_at: '2026-12-27T11:00:00Z', status: 'abgelehnt',
+			text_public: 'Im Fernsehen', text_raw: 'Im Fernsehen', sender_name: 'Mia',
+			reviewed_at: '2026-12-27T11:30:00Z', public_since: null, photos: [{ ...foto('f-4'), width: 1280, height: 720 }],
+			link_url: 'https://youtu.be/dQw4w9WgXcQ', link_dienst: 'youtube',
+		},
 	];
 }
 
