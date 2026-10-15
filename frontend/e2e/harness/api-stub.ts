@@ -333,6 +333,12 @@ if (suche.get('mit_seite') === '1') {
 			reviewed_at: '2026-12-27T11:30:00Z', public_since: null, photos: [{ ...foto('f-4'), width: 1280, height: 720 }],
 			link_url: 'https://youtu.be/dQw4w9WgXcQ', link_dienst: 'youtube',
 		},
+		{
+			id: 'p-film', convoy_id: 'c-bih', taken_at: '2026-12-27T10:00:00Z', status: 'abgelehnt',
+			text_public: 'Über den Tauern', text_raw: 'Über den Tauern', sender_name: 'Jonas',
+			reviewed_at: '2026-12-27T10:30:00Z', public_since: null, photos: [{ ...foto('f-5'), width: 1280, height: 720 }],
+			video: { id: 'v-1', width: 1280, height: 720, seconds: 42.3, sound: true },
+		},
 	];
 }
 
@@ -391,6 +397,10 @@ export const aktionsseitenTelegramApi = {
 		// 1×1 PNG — was hier zählt, ist der Weg über den API-Client, nicht das Bild.
 		const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0));
 		return URL.createObjectURL(new Blob([png], { type: 'image/png' }));
+	},
+	video: async (id: string, videoId: string): Promise<string> => {
+		tgAufruf('video', id, videoId);
+		return URL.createObjectURL(new Blob([new Uint8Array(8)], { type: 'video/mp4' }));
 	},
 };
 

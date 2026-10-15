@@ -265,6 +265,7 @@ if ((Test-Path $EnvFile)) {
             Add-EnvKeyIfMissing 'FRONTEND_IMAGE'        'ghcr.io/retttechsolutions/convoyplan/frontend:latest'   $EnvFile
             Add-EnvKeyIfMissing 'GRAPHHOPPER_IMAGE'     'ghcr.io/retttechsolutions/convoyplan/graphhopper:latest' $EnvFile
             Add-EnvKeyIfMissing 'REGION_MERGE_IMAGE'    'ghcr.io/retttechsolutions/convoyplan/osmium:latest'      $EnvFile
+            Add-EnvKeyIfMissing 'MEDIEN_IMAGE'          'ghcr.io/retttechsolutions/convoyplan/medien:latest'      $EnvFile
             Add-EnvKeyIfMissing 'GITHUB_REPO'           'RettTechSolutions/ConvoyPlan'                          $EnvFile
 
             Write-Host ''
@@ -433,6 +434,7 @@ FRONTEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/frontend:latest
 GRAPHHOPPER_IMAGE=ghcr.io/retttechsolutions/convoyplan/graphhopper:latest
 UPDATER_IMAGE=ghcr.io/retttechsolutions/convoyplan/updater:latest
 REGION_MERGE_IMAGE=ghcr.io/retttechsolutions/convoyplan/osmium:latest
+MEDIEN_IMAGE=ghcr.io/retttechsolutions/convoyplan/medien:latest
 GITHUB_REPO=RettTechSolutions/ConvoyPlan
 INSTANCE_MODE=$InstanceMode
 STACK_FILE_PATH=$InstallDir\docker-compose.yml

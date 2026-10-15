@@ -135,6 +135,23 @@
 	}
 
 	/** Das Fenster gleich öffnen — nach dem Laden ließe ein Popup-Blocker es nicht mehr zu. */
+	function dauer(sekunden: number): string {
+		const s = Math.round(sekunden);
+		return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+	}
+
+	async function videoOeffnen(videoId: string) {
+		const fenster = window.open('', '_blank');
+		try {
+			const url = await aktionsseitenTelegramApi.video(seite.id, videoId);
+			if (fenster) fenster.location.href = url;
+			else window.location.href = url;
+		} catch (e) {
+			fenster?.close();
+			fehler = e instanceof Error ? e.message : 'Video nicht geladen';
+		}
+	}
+
 	async function grossOeffnen(photoId: string) {
 		const fenster = window.open('', '_blank');
 		try {
@@ -317,6 +334,19 @@
 							{/if}
 							<span>{DIENSTNAME[b.link_dienst ?? ''] ?? 'Link'}</span>
 						</a>
+					{:else if b.video && b.photos[0]}
+						<!-- Das Video öffnet zum Anhören: der Ton geht mit hinaus. -->
+						<button
+							type="button"
+							class="vorschau"
+							title={b.video.sound ? 'Video ansehen — mit Ton, vor dem Freigeben anhören' : 'Video ansehen'}
+							data-testid="beitrag-video"
+							onclick={() => videoOeffnen(b.video!.id)}
+						>
+							<img use:geschuetzt={b.photos[0].id} alt={b.text_public ?? `Video von ${konvoiName(b.convoy_id)}`} />
+							<span class="spielen" aria-hidden="true">▶</span>
+							<span class="dauer">{dauer(b.video.seconds)}{b.video.sound ? ' · 🔊' : ''}</span>
+						</button>
 					{:else if b.photos[0]}
 						<button
 							type="button"
@@ -424,6 +454,8 @@
 	.vorschau.link.mit-bild { padding: 0; overflow: hidden; border: 0; }
 	.vorschau.link.mit-bild span { position: absolute; left: 0; right: 0; bottom: 0; padding: .05rem 0; text-align: center; background: rgba(0, 0, 0, .6); color: #fff; border-radius: 0 0 4px 4px; }
 	.vorschau img { width: 4.5rem; height: 4.5rem; object-fit: cover; border-radius: 4px; border: 1px solid var(--border); background: var(--surface-2); display: block; }
+	.spielen { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 1.4rem; text-shadow: 0 1px 3px rgba(0, 0, 0, .7); }
+	.dauer { position: absolute; left: 0; right: 0; bottom: 0; text-align: center; font-size: var(--text-xs); color: #fff; background: rgba(0, 0, 0, .6); border-radius: 0 0 4px 4px; }
 	.anzahl { position: absolute; top: -.35rem; right: -.35rem; background: var(--color-primary); color: #fff; font-size: var(--text-xs); font-weight: 700; border-radius: 999px; padding: 0 .35rem; }
 	.inhalt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: .2rem; }
 	.kopf, .text { margin: 0; overflow-wrap: anywhere; }

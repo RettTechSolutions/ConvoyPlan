@@ -71,3 +71,10 @@ updates:
     labels:
       - "dependencies"
       - "auto-merge"
+  - package-ecosystem: "docker"
+    directory: "/docker/medien"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "auto-merge"

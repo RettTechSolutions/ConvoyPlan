@@ -182,6 +182,22 @@ jobs:
             type=raw,value=latest,enable=${{ steps.appver.outputs.prerelease == 'false' && steps.appver.outputs.newest == 'true' }}
             type=raw,value=beta,enable=${{ steps.appver.outputs.prerelease == 'true' }}
 
+      # ffmpeg fuer die Videos der Aktionsseite, als Dienst im Stack
+      # (docker-compose.yml: medien). Statisch wie osmium: haengt nicht am
+      # Anwendungscode und wird nur bei einem Grund neu gebaut.
+      - name: Docker metadata – medien
+        id: meta-medien
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ghcr.io/${{ github.repository }}/medien
+          flavor: |
+            latest=false
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ steps.appver.outputs.prerelease == 'false' }}
+            type=raw,value=latest,enable=${{ steps.appver.outputs.prerelease == 'false' && steps.appver.outputs.newest == 'true' }}
+            type=raw,value=beta,enable=${{ steps.appver.outputs.prerelease == 'true' }}
+
       # Base-Images stammen alle von Docker Hub und sind gelegentlich von
       # transienten Registry-Timeouts betroffen ("i/o timeout" beim Auflösen
       # der Manifest-Metadaten). Wir ziehen sie deshalb vorab mit Retry +
@@ -245,8 +261,8 @@ jobs:
             GIT_SHA=${{ github.sha }}
             APP_VERSION=${{ steps.appver.outputs.version }}
 
-      # ── Die drei statischen Images ──────────────────────────────────────
-      # graphhopper, updater und osmium haengen nicht am Anwendungscode: ihre
+      # ── Die vier statischen Images ──────────────────────────────────────
+      # graphhopper, updater, osmium und medien haengen nicht am Anwendungscode: ihre
       # Verzeichnisse aendern sich selten, gebaut wurden sie bisher trotzdem
       # bei jedem Lauf. Jeder Bau erzeugt einen neuen Digest — Commit-SHA und
       # Zeitstempel stehen als Label in der Image-Konfiguration, und die
@@ -295,6 +311,18 @@ jobs:
           labels: ${{ steps.meta-osmium.outputs.labels }}
           force: ${{ inputs.force_rebuild || false }}
 
+      - name: medien bauen oder weiterverwenden
+        id: build-medien
+        uses: ./.github/actions/build-or-reuse
+        with:
+          image: ghcr.io/${{ steps.repo.outputs.lowercase }}/medien
+          context: ./docker/medien
+          source-path: docker/medien
+          channel-tag: ${{ steps.appver.outputs.prerelease == 'true' && 'beta' || steps.appver.outputs.newest == 'true' && 'latest' || 'lts' }}
+          tags: ${{ steps.meta-medien.outputs.tags }}
+          labels: ${{ steps.meta-medien.outputs.labels }}
+          force: ${{ inputs.force_rebuild || false }}
+
       # ── Signatur (Sigstore/cosign, keyless) ─────────────────────────────
       # Ohne Signatur heisst "Image mit dem richtigen Tag" nur: irgendjemand
       # mit Schreibrecht auf GHCR hat es dort abgelegt. Der Updater auf jeder
@@ -309,7 +337,7 @@ jobs:
       # :lts zeigt auf die Images des neuesten Releases der LTS-Linie. Per
       # imagetools und nicht ueber die metadata-Tags: build-or-reuse setzt bei
       # einem weiterverwendeten Image gar keine Tags — :lts bliebe sonst fuer
-      # graphhopper/updater/osmium auf dem Digest einer anderen Linie stehen.
+      # graphhopper/updater/osmium/medien auf dem Digest einer anderen Linie stehen.
       # Ein Manifest-Umzeiger, kein Bau; die Signatur gilt dem Digest.
       - name: LTS-Tag setzen
         if: steps.appver.outputs.lts == 'true'
@@ -320,6 +348,7 @@ jobs:
           DIGEST_GRAPHHOPPER: ${{ steps.build-graphhopper.outputs.digest }}
           DIGEST_UPDATER: ${{ steps.build-updater.outputs.digest }}
           DIGEST_OSMIUM: ${{ steps.build-osmium.outputs.digest }}
+          DIGEST_MEDIEN: ${{ steps.build-medien.outputs.digest }}
         run: |
           set -euo pipefail
           for entry in \
@@ -327,7 +356,8 @@ jobs:
             "frontend|${DIGEST_FRONTEND}" \
             "graphhopper|${DIGEST_GRAPHHOPPER}" \
             "updater|${DIGEST_UPDATER}" \
-            "osmium|${DIGEST_OSMIUM}"
+            "osmium|${DIGEST_OSMIUM}" \
+            "medien|${DIGEST_MEDIEN}"
           do
             IFS='|' read -r name digest <<<"${entry}"
             if [ -z "$digest" ]; then
@@ -352,15 +382,17 @@ jobs:
           DIGEST_GRAPHHOPPER: ${{ steps.build-graphhopper.outputs.digest }}
           DIGEST_UPDATER: ${{ steps.build-updater.outputs.digest }}
           DIGEST_OSMIUM: ${{ steps.build-osmium.outputs.digest }}
-          # Ob die drei statischen Images in DIESEM Lauf wirklich gebaut
+          DIGEST_MEDIEN: ${{ steps.build-medien.outputs.digest }}
+          # Ob die vier statischen Images in DIESEM Lauf wirklich gebaut
           # wurden — siehe .github/actions/build-or-reuse.
           REBUILT_GRAPHHOPPER: ${{ steps.build-graphhopper.outputs.rebuilt }}
           REBUILT_UPDATER: ${{ steps.build-updater.outputs.rebuilt }}
           REBUILT_OSMIUM: ${{ steps.build-osmium.outputs.rebuilt }}
+          REBUILT_MEDIEN: ${{ steps.build-medien.outputs.rebuilt }}
         run: |
           set -euo pipefail
           # backend und frontend werden immer gebaut (der Commit-SHA steckt als
-          # Build-Arg im Image), die drei anderen nur bei Bedarf. Ein
+          # Build-Arg im Image), die vier anderen nur bei Bedarf. Ein
           # weiterverwendetes Image braucht keine zweite Signatur: cosign
           # signiert den DIGEST, und genau der ist unveraendert — ein erneuter
           # Aufruf legte nur einen weiteren Eintrag ins Transparenzlog.
@@ -369,7 +401,8 @@ jobs:
             "frontend|${DIGEST_FRONTEND}|true" \
             "graphhopper|${DIGEST_GRAPHHOPPER}|${REBUILT_GRAPHHOPPER}" \
             "updater|${DIGEST_UPDATER}|${REBUILT_UPDATER}" \
-            "osmium|${DIGEST_OSMIUM}|${REBUILT_OSMIUM}"
+            "osmium|${DIGEST_OSMIUM}|${REBUILT_OSMIUM}" \
+            "medien|${DIGEST_MEDIEN}|${REBUILT_MEDIEN}"
           do
             IFS='|' read -r name digest rebuilt <<<"${entry}"
             if [ -z "$digest" ]; then

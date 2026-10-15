@@ -350,6 +350,7 @@ if [[ -f "$INSTALL_DIR/.env" ]] && \
     _patch_env "FRONTEND_IMAGE"          "ghcr.io/retttechsolutions/convoyplan/frontend:latest"
     _patch_env "GRAPHHOPPER_IMAGE"       "ghcr.io/retttechsolutions/convoyplan/graphhopper:latest"
     _patch_env "REGION_MERGE_IMAGE"      "ghcr.io/retttechsolutions/convoyplan/osmium:latest"
+    _patch_env "MEDIEN_IMAGE"            "ghcr.io/retttechsolutions/convoyplan/medien:latest"
     _patch_env "GITHUB_REPO"             "RettTechSolutions/ConvoyPlan"
     _patch_env "INSTANCE_MODE"           "selfhost"
 
@@ -536,6 +537,7 @@ FRONTEND_IMAGE=ghcr.io/retttechsolutions/convoyplan/frontend:latest
 GRAPHHOPPER_IMAGE=ghcr.io/retttechsolutions/convoyplan/graphhopper:latest
 UPDATER_IMAGE=ghcr.io/retttechsolutions/convoyplan/updater:latest
 REGION_MERGE_IMAGE=ghcr.io/retttechsolutions/convoyplan/osmium:latest
+MEDIEN_IMAGE=ghcr.io/retttechsolutions/convoyplan/medien:latest
 GITHUB_REPO=RettTechSolutions/ConvoyPlan
 # Betriebsart: selfhost = eigene Instanz einer Organisation. Meldungen aus der
 # Anwendung gehen zusätzlich an den Hersteller (CENTRAL_URL= leer schaltet das ab).

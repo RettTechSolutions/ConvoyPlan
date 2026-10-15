@@ -57,6 +57,10 @@ services:
       QUOTA_TRAFFIC_PER_HOUR: ${QUOTA_TRAFFIC_PER_HOUR:-600}
       QUOTA_TRAFFIC_DEMO_PER_HOUR: ${QUOTA_TRAFFIC_DEMO_PER_HOUR:-100}
       GRAPHHOPPER_URL: http://graphhopper:8989
+      # Medien-Container (Dienst `medien` unten): kodiert Videos aus Telegram
+      # neu. Bewusst kein depends_on — Videos sind optional, ohne ihn startet
+      # das Backend trotzdem und nimmt dann nur keine Videos an.
+      MEDIEN_URL: ${MEDIEN_URL:-http://medien:8090}
       BACKEND_PORT: ${BACKEND_PORT:-8000}
       # Betriebsart: "selfhost" (eine Organisation betreibt ihre eigene
       # Instanz) oder "hosting" (der Server, der viele Organisationen trägt).
@@ -245,6 +249,27 @@ services:
       retries: 360
       start_period: 120s
 
+  medien:
+    # Kodiert Videos aus Telegram mit ffmpeg neu (Metadaten weg, aufrecht,
+    # höchstens 720p), bevor das Backend sie speichert. Eigener Container,
+    # weil ffmpeg mit x264 unter der GPL steht und ConvoyPlan auch kommerziell
+    # lizenziert wird: ein getrenntes Programm, über HTTP angesprochen, statt
+    # gelinkter Bibliothek — siehe docker/medien/Dockerfile. Nur im Compose-Netz
+    # erreichbar (kein `ports:`), kein Volume, kein Ausgang nach draußen nötig;
+    # geschrieben wird nur ins tmpfs. Die Grenzen halten ein langes Video davon
+    # ab, Routing und Backend die CPU wegzunehmen. Healthcheck steckt im Image.
+    image: ${MEDIEN_IMAGE:-ghcr.io/retttechsolutions/convoyplan/medien:latest}
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+    cpus: "2"
+    mem_limit: 1g
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
   frontend:
     image: ${FRONTEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/frontend:latest}
     restart: unless-stopped
@@ -350,6 +375,8 @@ services:
       FRONTEND_IMAGE: ${FRONTEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/frontend:latest}
       GRAPHHOPPER_IMAGE: ${GRAPHHOPPER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/graphhopper:latest}
       UPDATER_IMAGE: ${UPDATER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/updater:latest}
+      MEDIEN_IMAGE: ${MEDIEN_IMAGE:-ghcr.io/retttechsolutions/convoyplan/medien:latest}
+      MEDIEN_URL: ${MEDIEN_URL:-http://medien:8090}
       # Wegwerf-Image fuer das Zusammenfuehren mehrerer Kartenregionen
       # (docker/updater/merge-extracts.sh). Kein Stack-Dienst — es laeuft nur
       # fuer die Dauer eines Merge und wird deshalb hier nur durchgereicht.
