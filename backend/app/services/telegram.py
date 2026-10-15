@@ -84,6 +84,15 @@ class TelegramApi:
             liest_alles=bool(r.get("can_read_all_group_messages")),
         )
 
+    async def befehle_setzen(self, befehle: list[tuple[str, str]], bereich: str) -> None:
+        """Die Befehlsliste, die Telegram beim Tippen von „/“ zeigt — je
+        ``bereich`` (``all_private_chats``, ``all_group_chats``) eine eigene."""
+        await self.aufruf(
+            "setMyCommands",
+            commands=[{"command": c, "description": d} for c, d in befehle],
+            scope={"type": bereich},
+        )
+
     async def updates(self, offset: int, warten: int = POLL_SEKUNDEN) -> list[dict]:
         return await self.aufruf(
             "getUpdates",

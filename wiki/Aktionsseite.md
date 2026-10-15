@@ -88,7 +88,9 @@ Die Presse gibt sie dort frei; erst dann erscheinen sie auf der Aktionsseite —
 
 1. **Bot anlegen** bei [@BotFather](https://t.me/BotFather) mit `/newbot` und
    den Token oben in der Karte *Telegram-Bot* eintragen. Er wird verschlüsselt
-   gespeichert und nie wieder angezeigt.
+   gespeichert und nie wieder angezeigt. ConvoyPlan legt dabei die Befehle im
+   Bot ab: Wer `/` tippt, bekommt im Privatchat `/presse` und in der Gruppe
+   `/verbinden` und `/ab` angeboten — bei @BotFather ist dafür nichts zu tun.
 2. **Privacy Mode abschalten:** bei @BotFather `/setprivacy` → den Bot wählen →
    *Disable*. Sonst sieht der Bot in Gruppen keine Fotos; die Karte zeigt das
    gelb an. Alternativ den Bot in jeder Gruppe zum Admin machen.

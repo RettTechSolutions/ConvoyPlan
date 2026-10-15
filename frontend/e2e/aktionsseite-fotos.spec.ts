@@ -86,7 +86,7 @@ test('Gruppen und Presse: die Knöpfe schicken die Aufrufe der Seite und des Kon
 	await fotos.getByRole('button', { name: 'entfernen' }).click();
 	await expect(fotos).toContainText('Noch niemand.');
 
-	const gesendet = (await aufrufe(page)).filter((a) => !['seite', 'beitraege', 'botSetzen'].includes(a[0]));
+	const gesendet = (await aufrufe(page)).filter((a) => !['seite', 'beitraege', 'botSetzen', 'bild'].includes(a[0]));
 	expect(gesendet).toEqual([
 		['verbindenCode', 'a-1', 'c-bih'],
 		['trennen', 'a-1', 'c-rou'],
@@ -122,8 +122,10 @@ test('Beiträge: Zähler auch zugeklappt, Aktionen wie die Knöpfe in Telegram',
 	const wartend = fotos.locator('[data-testid="beitrag"][data-status="wartet"]');
 	await expect(wartend).toContainText('von Jonas');
 	await expect(wartend.locator('.anzahl')).toHaveText('2');
-	// Das Vorschaubild kommt von dieser Instanz, angemeldet — nicht von Telegram.
-	await expect(wartend.locator('img')).toHaveAttribute('src', '/api/org/aktionsseiten/a-1/bilder/f-1/klein.webp');
+	// Das Vorschaubild kommt über den API-Client (mit X-Org-Slug), nicht als
+	// <img src> mit dem Pfad: das schickte nur das Cookie, und das Backend wiese ab.
+	await expect(wartend.locator('img')).toHaveAttribute('src', /^blob:/);
+	expect((await aufrufe(page)).filter((a) => a[0] === 'bild')).toContainEqual(['bild', 'a-1', 'f-1', 'klein']);
 
 	await wartend.getByRole('button', { name: 'Text ändern' }).click();
 	await wartend.getByLabel('Öffentlicher Text').fill('Unterwegs nach Süden');

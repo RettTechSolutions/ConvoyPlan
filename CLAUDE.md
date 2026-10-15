@@ -449,6 +449,9 @@ die Telegram drosselt (429, Netz, 5xx), stehen mit `karte_faellig_ab` in der Dat
 `karten_nachholen` läuft in jedem Durchgang von `einmal_abholen` und baut aus dem Stand
 von dann. Wer eine Karte sendet oder bearbeitet, geht über `_karte_senden`/
 `karte_aktualisieren`, nie direkt über die API. Tests: `tests/test_aktionsseite_ansage_drossel.py`.
+**Befehle im Bot** (`BEFEHLE`, `setMyCommands` je Ort): beim Eintragen und beim Start jeder
+Abholschleife, Fehler nur im Log. Wer einen Befehl hinzufügt oder umbenennt, zieht die Liste
+mit; `tests/test_aktionsseite_bot_befehle.py` prüft, dass der Bot jeden angebotenen versteht.
 
 ### Tracker: das Gerät hängt am Fahrzeug, die Position gehört dem Konvoi
 

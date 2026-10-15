@@ -1,4 +1,4 @@
-import { api, uploadFile, downloadFile, getStreamTicket, type Sitzung } from './client';
+import { api, blobUrl, uploadFile, downloadFile, getStreamTicket, type Sitzung } from './client';
 import type { Geometry } from 'geojson';
 import type { AnmeldeOptionenJSON, ErstellOptionenJSON } from '$lib/passkey';
 
@@ -1748,8 +1748,9 @@ export const aktionsseitenTelegramApi = {
     beitragAendern: (id: string, postId: string, aenderung: BeitragAenderung) =>
         api.put<AktionsseiteBeitrag>(`/api/org/aktionsseiten/${id}/beitraege/${postId}`, aenderung),
     /** Für `<img src>`: angemeldet über das Sitzungs-Cookie. */
-    bildUrl: (id: string, photoId: string, groesse: 'gross' | 'klein') =>
-        `/api/org/aktionsseiten/${id}/bilder/${photoId}/${groesse}.webp`,
+    /** Als `blob:`-Adresse — ein `<img>` mit der Pfadadresse käme ohne Organisationssitzung an. */
+    bild: (id: string, photoId: string, groesse: 'gross' | 'klein') =>
+        blobUrl(`/api/org/aktionsseiten/${id}/bilder/${photoId}/${groesse}.webp`),
 };
 
 export type BeitragStatus = 'wartet' | 'freigegeben' | 'abgelehnt' | 'zurueckgezogen';
