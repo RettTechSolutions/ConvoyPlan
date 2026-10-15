@@ -95,17 +95,32 @@ Die Presse gibt sie dort frei; erst dann erscheinen sie auf der Aktionsseite —
    *Disable*. Sonst sieht der Bot in Gruppen keine Fotos; die Karte zeigt das
    gelb an. Alternativ den Bot in jeder Gruppe zum Admin machen.
 3. **Bot in die Gruppe holen** — eine Gruppe je Konvoi oder eine Gruppe mit
-   *Themen*, ein Thema je Konvoi (empfohlen ab drei Konvois).
+   *Themen*, ein Thema je Konvoi (empfohlen ab drei Konvois). Der Bot meldet
+   sich dort und erklärt, wie man ihn verbindet. Am besten macht ihr ihn zum
+   **Admin** mit *Gruppeninfo ändern* und *Nachrichten anheften*.
 4. **Verbinden:** In der Aktionsseite unter *Fotos von unterwegs* beim Konvoi
    *Code erzeugen* und `/verbinden CODE` in die Gruppe bzw. das Thema schreiben
    (15 Minuten gültig). Der Bot bestätigt in der Gruppe, was mit den Fotos
-   geschieht.
+   geschieht, und richtet eine ganze Gruppe gleich ein:
+   - **Beschreibung**: wofür die Gruppe da ist, wie verzögert die Seite ist;
+   - **Gruppenbild**: die Konvoifarbe der Seite mit den Anfangsbuchstaben des
+     öffentlichen Namens („Konvoi Albanien“ → *A*);
+   - seine Bestätigung als **angeheftete Anleitung**.
+
+   Den Gruppennamen lässt er, wie er ist. Ein Thema richtet er nicht ein —
+   Bild und Beschreibung gälten sonst für alle Konvois der Gruppe. Fehlen ihm
+   die Rechte, sagt er welche, und holt alles nach, sobald er Admin wird.
 5. **Presse eintragen:** *Presse-Code erzeugen* und an die Pressestelle geben.
    Jede Person schickt dem Bot **privat** `/presse CODE` (24 Stunden gültig,
    für mehrere Personen).
 
 ### Im Betrieb
 
+- **Wer neu in die Gruppe kommt**, bekommt vom Bot gesagt, dass Fotos von hier
+  nach Freigabe öffentlich erscheinen können — und dass, wer das nicht möchte,
+  hier keine Fotos postet. Höchstens einmal je Minute; die vorige Begrüßung
+  löscht er, damit die Gruppe nicht zuläuft. In Gruppen mit Themen begrüßt er
+  nicht.
 - Auf jeden Beitrag antwortet der Bot mit **einer** Karte und Knöpfen:
   *Freigeben*, *Text ändern*, *Ablehnen*, nach der Freigabe *Zurückziehen*.
   Drücken darf nur, wer als Presse eingetragen ist. Die Karte zeigt, wann der

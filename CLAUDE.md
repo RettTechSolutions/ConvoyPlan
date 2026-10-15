@@ -452,6 +452,13 @@ von dann. Wer eine Karte sendet oder bearbeitet, geht über `_karte_senden`/
 **Befehle im Bot** (`BEFEHLE`, `setMyCommands` je Ort): beim Eintragen und beim Start jeder
 Abholschleife, Fehler nur im Log. Wer einen Befehl hinzufügt oder umbenennt, zieht die Liste
 mit; `tests/test_aktionsseite_bot_befehle.py` prüft, dass der Bot jeden angebotenen versteht.
+**Gruppe einrichten** (`services/aktionsseite_gruppe.py`): nach `/verbinden` und bei `my_chat_member`
+→ Admin in einer verbundenen Gruppe Beschreibung, Bild (gezeichnet aus Konvoifarbe und Kürzel —
+Org-Logos sind oft SVG, das Backend rastert keine) und Anleitung anheften; **nie den Titel**, nie für
+ein Thema. Fehlende Rechte sagt der Bot, andere Fehler gehen ins Log — das Verbinden scheitert nie
+daran. `allowed_updates` enthält deshalb `my_chat_member`. Neue Mitglieder begrüßt `_begruessen`
+höchstens einmal je `WILLKOMMEN_PAUSE` und löscht die vorige Begrüßung (Zustand im Speicher).
+Tests: `tests/test_aktionsseite_gruppe_einrichten.py`.
 
 ### Tracker: das Gerät hängt am Fahrzeug, die Position gehört dem Konvoi
 

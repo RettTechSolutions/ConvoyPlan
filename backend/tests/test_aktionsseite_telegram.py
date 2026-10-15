@@ -67,7 +67,10 @@ class FalscheBotApi:
         if pfad.startswith("/file/"):
             return httpx.Response(200, content=_jpeg_mit_gps())
         methode = pfad.rsplit("/", 1)[-1]
-        daten = json.loads(request.content or b"{}")
+        if request.headers.get("content-type", "").startswith("multipart/"):
+            daten = {"multipart": request.content}  # hochgeladene Datei, roh
+        else:
+            daten = json.loads(request.content or b"{}")
         self.aufrufe.append((methode, daten))
         if methode in self.fehler:
             code, text_ = self.fehler[methode]
