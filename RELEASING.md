@@ -189,7 +189,7 @@ git tag v2026.8.3 && git push origin lts/2026.8 v2026.8.3
 ```
 
 `release.yml` recognises a release whose `<YEAR>.<MASTER>` matches the current
-line and points the floating **`:lts`** tag of all six images at its digests
+line and points the floating **`:lts`** tag of all five images at its digests
 (via `imagetools`, because `build-or-reuse` sets no tags on a reused image).
 If the version is not the highest overall, `:latest` and "Latest" stay put.
 
@@ -218,8 +218,8 @@ cosign verify \
   ghcr.io/retttechsolutions/convoyplan/backend:latest
 ```
 
-The same six images are covered: `backend`, `frontend`, `graphhopper`,
-`updater`, `osmium`, `medien`.
+The same five images are covered: `backend`, `frontend`, `graphhopper`,
+`updater`, `osmium`.
 
 > **Note:** the `--certificate-identity-regexp` deliberately matches the whole
 > repository, not one workflow file — `release.yml` and `nightly-images.yml`

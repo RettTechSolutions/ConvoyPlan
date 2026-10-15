@@ -135,15 +135,6 @@ Die Presse gibt sie dort frei; erst dann erscheinen sie auf der Aktionsseite —
   nie — eine frühere Zeit beantwortet der Bot mit der, die ohnehin gilt. Im
   Org-Admin heißt es *Erst ab …*.
 - **Alben** sind ein Beitrag. **Weitergeleitete** Fotos nimmt der Bot nicht an.
-- **Videos** bis 60 Sekunden werden ebenfalls ein Beitrag. ConvoyPlan rechnet
-  sie neu (höchstens 720p, ohne GPS-Daten, Gerät und Aufnahmezeit) — dafür
-  läuft der Dienst `medien` mit. Der **Ton bleibt drin**; auf der Seite startet
-  ein Video stumm, Zuschauer können ihn einschalten. Die Karte des Bots sagt
-  „🔊 mit Ton — vor dem Freigeben anhören“: Durchsagen und Gespräche verraten
-  Orte, die das Bild nicht zeigt. Im Org-Admin öffnet ein Klick auf das
-  Standbild das Video. Längere Videos lehnt der Bot mit Begründung ab; ein
-  Video in einem Album wird ein eigener Beitrag. Ohne `medien`
-  (`MEDIEN_URL=` leer) sagt der Bot einmal, dass er nur Fotos annimmt.
 - **Links zu Instagram, YouTube, Facebook oder TikTok** werden ebenfalls ein
   Beitrag, mit derselben Freigabe. Als **Antwort auf ein Foto** (oder auf die
   Karte des Bots) gehört der Link zu dessen Zeit und Ort, sonst zur Zeit der

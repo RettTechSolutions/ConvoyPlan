@@ -47,7 +47,7 @@ def _kurz(text_: str, n: int) -> str:
 
 def beschreibung(seite: str, konvoi: str, minuten: int) -> str:
     text_ = (
-        f"Fotos, Videos und Links von „{_kurz(konvoi, 40)}“ für die Aktionsseite „{_kurz(seite, 50)}“. "
+        f"Fotos und Links von „{_kurz(konvoi, 40)}“ für die Aktionsseite „{_kurz(seite, 50)}“. "
         f"Öffentlich erst nach Freigabe durch die Presse, mindestens {minuten} Minuten "
         "verzögert und nie genauer als die Karte."
     )

@@ -47,7 +47,6 @@ from app.models.public_tracker import (
     PublicTrackerPost,
     PublicTrackerPresse,
     PublicTrackerTelegram,
-    PublicTrackerVideo,
 )
 from app.models.user import User
 from app.services import (
@@ -55,7 +54,6 @@ from app.services import (
     aktionsseite_bild,
     aktionsseite_gruppe,
     aktionsseite_link,
-    aktionsseite_video,
     aktionsseite_vorschau,
     audit,
     org_module,
@@ -71,12 +69,8 @@ PRESSE_GUELTIG = timedelta(hours=24)
 BILDER_JE_TAG = 300
 # Und so viele Link-Beiträge (§ 11).
 LINKS_JE_TAG = 100
-# Und so viele Videos (§ 15) — jedes kostet den Medien-Container eine Minute CPU.
-VIDEOS_JE_TAG = 50
 # Dieselbe Ansage in derselben Gruppe höchstens so oft (Seite zu, Tagesgrenze).
 ANSAGE_WIEDER = timedelta(hours=24)
-# Videodateien ohne Beitrag (Retention, Konvoi aus der Seite) so oft wegräumen.
-AUFRAEUMEN_ALLE = 3600.0
 # Höchstens so viele gedrosselte Karten je Durchgang nachholen.
 KARTEN_JE_DURCHGANG = 20
 # Wie lange eine Aufforderung „Neuer Text …" auf ihre Antwort wartet.
@@ -100,8 +94,8 @@ AUDIT_TERMIN = "org.aktionsseite.beitrag_terminiert"
 
 TEXT_VERBUNDEN = (
     "Verbunden mit „{konvoi}“ auf der Aktionsseite „{seite}“.\n\n"
-    "Fotos und Videos (bis 60 Sekunden, mit Ton) hier können nach Freigabe durch die Presse "
-    "öffentlich erscheinen, mindestens {minuten} Minuten verzögert und nie genauer als die Karte. "
+    "Fotos hier können nach Freigabe durch die Presse öffentlich erscheinen, "
+    "mindestens {minuten} Minuten verzögert und nie genauer als die Karte. "
     "Links zu Instagram, YouTube, Facebook oder TikTok auch, als Link — "
     "als Antwort auf ein Foto gehören sie zu dessen Zeit und Ort. "
     "Zurückziehen geht über den Knopf am Beitrag, nicht übers Löschen in Telegram."
@@ -110,15 +104,8 @@ TEXT_CODE_UNBEKANNT = "Der Code ist unbekannt oder abgelaufen. Einen neuen gibt 
 TEXT_SCHON_ANDERS = "Diese Gruppe (oder dieses Thema) ist schon mit einem anderen Konvoi verbunden."
 TEXT_NUR_PRESSE = "Freigeben darf nur die Presse."
 TEXT_BILD_FEHLT = "Dieses Bild kann ich nicht übernehmen — bitte als JPEG, PNG oder WebP schicken."
-TEXT_VIDEO_ZU_LANG = (
-    f"Dieses Video ist länger als {aktionsseite_video.MAX_SEKUNDEN} Sekunden — "
-    "bitte kürzen und noch einmal schicken."
-)
-TEXT_VIDEO_ZU_GROSS = "Dieses Video ist größer als 20 MB — so groß gibt Telegram es mir nicht."
-TEXT_VIDEO_AUS = "Videos kann ich hier nicht annehmen, nur Fotos."
-TEXT_VIDEO_FEHLT = "Dieses Video konnte ich gerade nicht holen — bitte noch einmal schicken."
 TEXT_SEITE_ZU = (
-    "Die Aktionsseite „{seite}“ ist gerade nicht aktiv. Fotos, Videos und Links von hier nehme ich "
+    "Die Aktionsseite „{seite}“ ist gerade nicht aktiv. Fotos und Links von hier nehme ich "
     "nicht an — sie erscheinen nicht und werden nicht gespeichert."
 )
 TEXT_TAGESGRENZE = (
@@ -130,7 +117,7 @@ TEXT_AB_HILFE = (
     "/ab - nimmt den Termin wieder weg. Früher als die Verzögerung geht nie."
 )
 TEXT_HALLO = (
-    "Hallo! Ich bringe Fotos, Videos und Links aus dieser Gruppe auf eine Aktionsseite.\n\n"
+    "Hallo! Ich bringe Fotos und Links aus dieser Gruppe auf eine Aktionsseite.\n\n"
     "Verbinden: /verbinden CODE — den Code gibt es im Org-Admin am Konvoi der Seite. "
     "Am besten macht ihr mich hier zum Admin ({rechte}), dann richte ich Beschreibung, "
     "Gruppenbild und eine angeheftete Anleitung selbst ein."
@@ -140,14 +127,14 @@ TEXT_HALLO_PRIVAT = (
     "danach mich einmal entfernen und neu hinzufügen — oder mich zum Admin machen."
 )
 TEXT_WILLKOMMEN = (
-    "Willkommen, {namen}! Fotos, Videos und Links, die ihr hier postet, können nach Freigabe durch "
+    "Willkommen, {namen}! Fotos und Links, die ihr hier postet, können nach Freigabe durch "
     "die Presse auf der Aktionsseite „{seite}“ erscheinen — mindestens {minuten} Minuten "
     "verzögert und nie genauer als die Karte. Wer das nicht möchte, postet hier keine Fotos."
 )
 # Höchstens eine Begrüßung je Gruppe und Minute; die vorige löscht der Bot.
 WILLKOMMEN_PAUSE = timedelta(minutes=1)
 TEXT_HILFE = (
-    "Ich nehme Fotos, Videos und Links aus den verbundenen Gruppen für die Aktionsseite an.\n\n"
+    "Ich nehme Fotos und Links aus den verbundenen Gruppen für die Aktionsseite an.\n\n"
     "Wer freigeben soll, schickt mir hier den Presse-Code: /presse CODE"
 )
 
@@ -299,14 +286,10 @@ def karte(
     verzoegerung_min: int,
     pruefer: str | None,
     jetzt: datetime,
-    video: PublicTrackerVideo | None = None,
 ) -> tuple[str, list[list[dict]]]:
     """Text und Knöpfe der einen Bot-Nachricht je Beitrag."""
     if post.link_url:
         kopf = f"🔗 Link · {konvoi} · {aktionsseite_link.NAMEN.get(post.link_dienst, post.link_dienst)}"
-    elif video is not None:
-        sek = round(video.seconds)
-        kopf = f"🎬 Video · {konvoi} · {sek // 60}:{sek % 60:02d}"
     else:
         kopf = f"📷 Beitrag · {konvoi} · {bilder} {'Bild' if bilder == 1 else 'Bilder'}"
     if post.sender_name:
@@ -317,10 +300,6 @@ def karte(
         zeilen.append(post.link_url)
         # Und ob ein Bild des Dienstes mit hinausgeht (§ 11.2).
         zeilen.append("🖼 mit Vorschaubild des Dienstes" if bilder else "ohne Vorschaubild")
-    if video is not None:
-        # Der Ton geht mit hinaus (§ 15): Durchsagen und Gespräche verraten,
-        # was das Bild nicht zeigt.
-        zeilen.append("🔊 mit Ton — vor dem Freigeben anhören" if video.sound else "🔇 ohne Ton")
     if (
         post.status == "freigegeben"
         and (post.text_raw or None) != (post.text_public or None)
@@ -515,9 +494,6 @@ async def _gruppe(lauf: _Lauf, nachricht: dict) -> None:
     antwort_auf = nachricht.get("reply_to_message") or {}
     if nachricht.get("text") and (nachricht["chat"]["id"], antwort_auf.get("message_id")) in _texteingaben:
         await _neuer_text(lauf, nachricht)
-        return
-    if nachricht.get("video") or (nachricht.get("document") or {}).get("mime_type", "").startswith("video/"):
-        await _video_beitrag(lauf, nachricht)
         return
     if nachricht.get("photo") or (nachricht.get("document") or {}).get("mime_type", "").startswith("image/"):
         await _beitrag(lauf, nachricht)
@@ -797,91 +773,6 @@ async def _links_heute(lauf: _Lauf, chat_id: int) -> int:
     )).scalar_one()
 
 
-async def _video_beitrag(lauf: _Lauf, nachricht: dict) -> None:
-    """Ein Video (§ 15): neu kodiert im Medien-Container, abgelegt als Datei,
-    das Standbild als einziges Bild. Freigabe, Verzögerung und Platzierung wie
-    bei Fotos. Ein Video im Album wird ein eigener Beitrag — ein Beitrag hat
-    Fotos oder ein Video, nie beides."""
-    chat_id = nachricht["chat"]["id"]
-    chat, seite = await _bindung(lauf, chat_id, _thema(nachricht))
-    if chat is None:
-        return
-    if not await _seite_offen(lauf, seite):
-        await _ansagen(lauf, nachricht, chat, "seite_zu", TEXT_SEITE_ZU.format(seite=seite.title))
-        return
-    if nachricht.get("forward_origin") or nachricht.get("forward_date"):
-        return
-    if not aktionsseite_video.an():
-        await _ansagen(lauf, nachricht, chat, "video_aus", TEXT_VIDEO_AUS)
-        return
-    datei = nachricht.get("video") or nachricht["document"]
-    # Was Telegram vorab sagt, spart den Abruf: zu lang, zu groß.
-    if (datei.get("duration") or 0) > aktionsseite_video.MAX_SEKUNDEN:
-        await lauf.antworten(nachricht, TEXT_VIDEO_ZU_LANG)
-        return
-    if (datei.get("file_size") or 0) > aktionsseite_video.MAX_EINGANG:
-        await lauf.antworten(nachricht, TEXT_VIDEO_ZU_GROSS)
-        return
-    if await _videos_heute(lauf, chat_id) >= VIDEOS_JE_TAG:
-        logger.info("Telegram: Tagesgrenze für Videos in Chat %s erreicht", chat_id)
-        await _ansagen(lauf, nachricht, chat, "videogrenze",
-                       TEXT_TAGESGRENZE.format(was="Videos", n=VIDEOS_JE_TAG))
-        return
-    try:
-        video = await aktionsseite_video.umwandeln(await lauf.api.datei(datei["file_id"]))
-    except aktionsseite_video.VideoFehler as e:
-        logger.info("Telegram: Video nicht übernommen (%s)", e)
-        await lauf.antworten(nachricht, str(e))
-        return
-    except TelegramFehler as e:
-        logger.info("Telegram: Video nicht geholt (%s)", e.beschreibung)
-        await lauf.antworten(nachricht, TEXT_VIDEO_ZU_GROSS if e.code == 400 else TEXT_VIDEO_FEHLT)
-        return
-
-    unterschrift = nachricht.get("caption")
-    von = nachricht.get("from") or {}
-    post = PublicTrackerPost(
-        public_id=secrets.token_urlsafe(16), tracker_id=chat.tracker_id, convoy_id=chat.convoy_id,
-        quelle="telegram", chat_id=chat_id, message_id=nachricht["message_id"],
-        taken_at=datetime.fromtimestamp(nachricht["date"], timezone.utc),
-        status="wartet", text_raw=unterschrift, text_public=kuerzen(unterschrift),
-        sender_telegram_id=von.get("id"), sender_name=_absender(seite, von),
-        photos=[],
-    )
-    lauf.db.add(post)
-    foto = PublicTrackerPhoto(
-        public_id=secrets.token_urlsafe(16), position=0,
-        width=video.poster.breite, height=video.poster.hoehe,
-    )
-    post.photos.append(foto)
-    eintrag = PublicTrackerVideo(
-        public_id=secrets.token_urlsafe(16), width=video.breite, height=video.hoehe,
-        seconds=video.sekunden, sound=video.ton, bytes=len(video.mp4),
-    )
-    post.video = eintrag
-    await lauf.db.flush()
-    lauf.db.add(PublicTrackerPhotoData(photo_id=foto.id, gross=video.poster.gross, klein=video.poster.klein))
-    # Erst die Datei, dann die Zeile: Eine Zeile ohne Datei wäre ein Loch auf
-    # der Seite, eine Datei ohne Zeile räumt ``aufraeumen`` weg.
-    aktionsseite_video.ablegen(eintrag.public_id, video.mp4)
-    try:
-        await lauf.db.commit()
-    except IntegrityError:
-        await lauf.db.rollback()
-        aktionsseite_video.loeschen(eintrag.public_id)
-        return
-    await _karte_senden(lauf.db, lauf.api, post, _thema(nachricht), lauf.jetzt)
-
-
-async def _videos_heute(lauf: _Lauf, chat_id: int) -> int:
-    return (await lauf.db.execute(
-        select(func.count()).select_from(PublicTrackerVideo).join(PublicTrackerPost).where(
-            PublicTrackerPost.chat_id == chat_id,
-            PublicTrackerPost.created_at > lauf.jetzt - timedelta(days=1),
-        )
-    )).scalar_one()
-
-
 async def _ansagen(lauf: _Lauf, nachricht: dict, chat: PublicTrackerChat, grund: str, text_: str) -> None:
     """Sagt der Gruppe, warum ihre Fotos nicht ankommen — einmal je Grund und
     ``ANSAGE_WIEDER``, nicht auf jedes Bild eines Albums. Still verwerfen hieße,
@@ -901,10 +792,8 @@ async def _bilder_heute(lauf: _Lauf, chat_id: int) -> int:
     return (await lauf.db.execute(
         select(func.count()).select_from(PublicTrackerPhoto).join(PublicTrackerPost).where(
             PublicTrackerPost.chat_id == chat_id,
-            # Vorschaubilder zählen bei den Links (``LINKS_JE_TAG``), nicht hier,
-            # Standbilder bei den Videos (``VIDEOS_JE_TAG``).
+            # Vorschaubilder zählen bei den Links (``LINKS_JE_TAG``), nicht hier.
             PublicTrackerPost.link_url.is_(None),
-            ~PublicTrackerPost.video.has(),
             PublicTrackerPost.created_at > lauf.jetzt - timedelta(days=1),
         )
     )).scalar_one()
@@ -926,12 +815,9 @@ async def _karte(lauf_or_db, post: PublicTrackerPost, jetzt: datetime | None = N
     bilder = (await db.execute(
         select(func.count()).select_from(PublicTrackerPhoto).where(PublicTrackerPhoto.post_id == post.id)
     )).scalar_one()
-    video = (await db.execute(
-        select(PublicTrackerVideo).where(PublicTrackerVideo.post_id == post.id)
-    )).scalar_one_or_none()
     return karte(
         post, konvoi=konvoi.display_name if konvoi else "?", bilder=bilder,
-        verzoegerung_min=seite.delay_minutes, pruefer=pruefer, jetzt=jetzt, video=video,
+        verzoegerung_min=seite.delay_minutes, pruefer=pruefer, jetzt=jetzt,
     )
 
 
@@ -1372,20 +1258,12 @@ async def telegram_schleife(intervall: float = 30.0) -> None:
     beim nächsten Durchgang neu gestartet, falls es den Bot noch gibt — ein
     neuer Token setzt den Status zurück."""
     laufend: dict[uuid.UUID, asyncio.Task] = {}
-    zuletzt_aufgeraeumt = 0.0
     try:
         while True:
             try:
                 await oeffentlich_markieren()
             except Exception:
                 logger.exception("Telegram-Schleife: „Öffentlich seit“ nicht gesetzt")
-            if time.monotonic() - zuletzt_aufgeraeumt > AUFRAEUMEN_ALLE:
-                zuletzt_aufgeraeumt = time.monotonic()
-                try:
-                    async with AsyncSessionLocal() as db:
-                        await aktionsseite_video.aufraeumen(db)
-                except Exception:
-                    logger.exception("Telegram-Schleife: Videos nicht aufgeräumt")
             if settings.telegram_enabled:
                 try:
                     async with AsyncSessionLocal() as db:

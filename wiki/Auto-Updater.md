@@ -45,7 +45,7 @@ Fallback-Env: `UPDATE_CHANNEL=stable|beta|nightly|lts`.
 
 Der Updater trägt die Tags des gewählten Kanals auch in die `.env` im
 Installationsverzeichnis ein (`BACKEND_IMAGE`, `FRONTEND_IMAGE`,
-`GRAPHHOPPER_IMAGE`, `UPDATER_IMAGE`, `REGION_MERGE_IMAGE`, `MEDIEN_IMAGE`) — beim Start und nach
+`GRAPHHOPPER_IMAGE`, `UPDATER_IMAGE`, `REGION_MERGE_IMAGE`) — beim Start und nach
 jedem Kanalwechsel. Ein `docker compose pull && docker compose up -d` von Hand
 zieht damit dieselben Images wie der Updater. Vorher las es die `.env` mit
 `:latest` und tauschte eine Nightly-Installation still auf das ältere

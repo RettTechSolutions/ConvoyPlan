@@ -177,7 +177,6 @@ Container Registry:
 | `GRAPHHOPPER_IMAGE` | `ghcr.io/retttechsolutions/convoyplan/graphhopper:latest` |
 | `UPDATER_IMAGE` | `ghcr.io/retttechsolutions/convoyplan/updater:latest` |
 | `REGION_MERGE_IMAGE` | `ghcr.io/retttechsolutions/convoyplan/osmium:latest` |
-| `MEDIEN_IMAGE` | `ghcr.io/retttechsolutions/convoyplan/medien:latest` |
 | `POSTGRES_PASSWORD` | sicheres Datenbankpasswort (Pflicht) |
 | `JWT_SECRET` | mit `openssl rand -hex 32` erzeugen (Pflicht) |
 | `DOMAIN` / `ACME_EMAIL` | FQDN bzw. E-Mail für Let's Encrypt |

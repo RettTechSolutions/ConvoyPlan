@@ -103,9 +103,6 @@ class Settings(BaseSettings):
     # Vorschaubilder für Link-Beiträge (YouTube, TikTok) beim Eingang holen
     # (services/aktionsseite_vorschau.py). Aus: Links bleiben ohne Bild.
     link_vorschau_enabled: bool = True
-    # Medien-Container (docker/medien), der Videos aus Telegram neu kodiert
-    # (services/aktionsseite_video.py). Leer = Videos werden nicht angenommen.
-    medien_url: str = "http://medien:8090"
     # Wurzelzertifikate, die die Instanz an ihre Tracker verteilt
     # (services/tracker_wurzeln.py): Pfad zu einer PEM-Datei mit höchstens drei
     # CA-Zertifikaten. Leer = die Instanz verwaltet keine Wurzeln.

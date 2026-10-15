@@ -315,7 +315,7 @@ gereicht, um auf jeder Installation mit Auto-Update root zu bekommen.
 ### Wie es abgesichert ist
 
 1. **Signiert in der CI.** `release.yml` und `nightly-images.yml` signieren jedes
-   der sechs Images (`backend`, `frontend`, `graphhopper`, `updater`, `osmium`, `medien`)
+   der fünf Images (`backend`, `frontend`, `graphhopper`, `updater`, `osmium`)
    **keyless** mit [Sigstore/cosign](https://docs.sigstore.dev/). Die Identität
    ist der Workflow selbst — GitHub stellt ein OIDC-Token aus, Fulcio tauscht es
    gegen ein kurzlebiges Zertifikat. **Es gibt keinen privaten Schlüssel**, weder

@@ -25,7 +25,6 @@ from app.models.public_tracker import (
     PublicTrackerPost,
     PublicTrackerPresse,
     PublicTrackerTelegram,
-    PublicTrackerVideo,
     VehiclePositionTrail,
 )
 from app.models.ortungsgeraet import Ortungsgeraet
@@ -43,7 +42,7 @@ __all__ = [
     "OrganizationModule",
     "PublicTracker", "PublicTrackerConvoy", "VehiclePositionTrail", "Ortungsgeraet",
     "PublicTrackerTelegram", "PublicTrackerChat", "PublicTrackerPresse", "PublicTrackerCode",
-    "PublicTrackerPost", "PublicTrackerPhoto", "PublicTrackerPhotoData", "PublicTrackerVideo",
+    "PublicTrackerPost", "PublicTrackerPhoto", "PublicTrackerPhotoData",
     "DemoOrigin", "DemoIpAllowlistEntry", "DemoLead", "FeedbackReport",
     "SystemMetricSample", "SystemMetricDaily", "UserActivityDay",
 ]

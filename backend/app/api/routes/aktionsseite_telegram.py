@@ -13,7 +13,6 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,10 +32,9 @@ from app.models.public_tracker import (
     PublicTrackerPost,
     PublicTrackerPresse,
     PublicTrackerTelegram,
-    PublicTrackerVideo,
 )
 from app.services import aktionsseite_telegram as tg
-from app.services import aktionsseite_video, audit, org_module
+from app.services import audit, org_module
 from app.services.crypto import decrypt_secret, encrypt_secret
 from app.services.telegram import TelegramFehler
 
@@ -320,14 +318,6 @@ class BildZeile(BaseModel):
     height: int
 
 
-class VideoZeile(BaseModel):
-    id: uuid.UUID
-    width: int
-    height: int
-    seconds: float
-    sound: bool
-
-
 class BeitragZeile(BaseModel):
     id: uuid.UUID
     convoy_id: uuid.UUID
@@ -343,8 +333,6 @@ class BeitragZeile(BaseModel):
     # Link-Beitrag (§ 11) statt Bildern.
     link_url: str | None = None
     link_dienst: str | None = None
-    # Video-Beitrag (§ 15): ``photos`` hält dann nur das Standbild.
-    video: VideoZeile | None = None
     # Termin der Presse (``/ab``): nicht vor diesem Zeitpunkt.
     not_before: datetime | None = None
 
@@ -369,7 +357,7 @@ async def beitraege(
     q = (
         select(PublicTrackerPost)
         .where(PublicTrackerPost.tracker_id == tracker_id)
-        .options(selectinload(PublicTrackerPost.photos), selectinload(PublicTrackerPost.video))
+        .options(selectinload(PublicTrackerPost.photos))
         .order_by(PublicTrackerPost.taken_at.desc())
         .limit(BEITRAG_LIMIT)
     )
@@ -407,28 +395,6 @@ async def bild(
     )
 
 
-@router.get("/{tracker_id}/videos/{video_id}.mp4")
-async def video(
-    tracker_id: uuid.UUID,
-    video_id: uuid.UUID,
-    ctx: OrgCtx = Depends(get_org_context),
-    db: AsyncSession = Depends(get_db),
-):
-    """Jedes Video der Seite, auch wartende — nur für Org-Admins."""
-    _, org, role = ctx
-    _require_admin(role)
-    await _laden(db, org.id, tracker_id)
-    eintrag = (await db.execute(
-        select(PublicTrackerVideo)
-        .join(PublicTrackerPost, PublicTrackerPost.id == PublicTrackerVideo.post_id)
-        .where(PublicTrackerVideo.id == video_id, PublicTrackerPost.tracker_id == tracker_id)
-    )).scalar_one_or_none()
-    datei = aktionsseite_video.pfad(eintrag.public_id) if eintrag else None
-    if datei is None or not datei.is_file():
-        raise HTTPException(status_code=404, detail="Video nicht gefunden")
-    return FileResponse(datei, media_type="video/mp4", headers={"Cache-Control": "private, max-age=3600"})
-
-
 @router.put("/{tracker_id}/beitraege/{post_id}", response_model=BeitragZeile)
 async def beitrag_aendern(
     tracker_id: uuid.UUID,
@@ -445,7 +411,7 @@ async def beitrag_aendern(
     post = (await db.execute(
         select(PublicTrackerPost)
         .where(PublicTrackerPost.id == post_id, PublicTrackerPost.tracker_id == tracker_id)
-        .options(selectinload(PublicTrackerPost.photos), selectinload(PublicTrackerPost.video))
+        .options(selectinload(PublicTrackerPost.photos))
     )).scalar_one_or_none()
     if post is None:
         raise HTTPException(status_code=404, detail="Beitrag nicht gefunden")

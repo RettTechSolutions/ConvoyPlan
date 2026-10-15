@@ -122,8 +122,8 @@ run_updater
 
 grep -q "Signatur ok:" /update_status/update.log
 check $? "Fall 1: jede Signatur wird als gueltig protokolliert"
-grep -c "^cosign verify" /update_status/cosign_calls.txt | grep -qx 6
-check $? "Fall 1: alle sechs Images werden geprueft"
+grep -c "^cosign verify" /update_status/cosign_calls.txt | grep -qx 5
+check $? "Fall 1: alle fuenf Images werden geprueft"
 grep -q -- "--certificate-oidc-issuer https://token.actions.githubusercontent.com" \
     /update_status/cosign_calls.txt
 check $? "Fall 1: der erwartete OIDC-Aussteller wird verlangt"

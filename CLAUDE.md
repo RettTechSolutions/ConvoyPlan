@@ -29,7 +29,7 @@ dem Website-Repo heraus als statisches Astro-Build deployt.
 
 ### Images werden nur gebaut, wenn es einen Grund gibt
 
-`graphhopper`, `updater`, `osmium` und `medien` hängen nicht am Anwendungscode. Gebaut
+`graphhopper`, `updater` und `osmium` hängen nicht am Anwendungscode. Gebaut
 wurden sie trotzdem bei jedem Lauf — und jeder Bau erzeugt einen neuen Digest,
 weil `metadata-action` Commit-SHA und Zeitstempel als Label in die
 Image-Konfiguration schreibt und die zum Digest gehört. Der Updater vergleicht
@@ -37,7 +37,7 @@ Image-IDs, sieht eine neue und tauscht den Container: bei GraphHopper mit
 minutenlangem Routing-Ausfall für das erneute Laden des Graphen, im
 Nightly-Kanal mehrmals täglich, ohne dass sich ein Byte geändert hätte.
 
-`.github/actions/build-or-reuse/` entscheidet deshalb vor jedem dieser vier
+`.github/actions/build-or-reuse/` entscheidet deshalb vor jedem dieser drei
 Bauten. Gebaut wird bei geändertem Quelltext (Tree-Hash des Verzeichnisses,
 liegt als `de.convoyplan.source-tree` im Image), bei bewegtem Base-Image
 (Digest der letzten `FROM`-Zeile, `de.convoyplan.base-digest`) oder wenn das
@@ -60,7 +60,7 @@ Den Kanal setzt der Updater nur in seiner eigenen Umgebung durch
 (`_apply_channel_images`); die `.env` des Hosts blieb auf dem `:latest` des
 Installers. Ein `docker compose pull` von Hand tauschte deshalb eine
 Nightly-Instanz still auf das ältere Stable-Image — am 2026-10-09 samt erneutem
-Neuaufbau des Graphen. `docker/updater/env-kanal.sh` zieht die sechs `*_IMAGE`-Zeilen
+Neuaufbau des Graphen. `docker/updater/env-kanal.sh` zieht die fünf `*_IMAGE`-Zeilen
 beim Start des Updaters und nach jedem Kanalwechsel nach, über einen Hilfscontainer
 wie beim Zurückschreiben der Compose-Datei. Gemountet wird das **Verzeichnis**, nicht
 die Datei (ein Datei-Mount legte bei fehlender `.env` ein Verzeichnis an), und
@@ -449,18 +449,6 @@ Instagram und Facebook bleiben ohne (Meta liefert seit November 2025 kein `thumb
 scrapen hinter der Anmeldesperre tun wir nicht). Jeder Fehler heißt: ohne Vorschau, nie ohne
 Beitrag. Abschaltbar mit `LINK_VORSCHAU_ENABLED`; in Tests aus (`conftest.py`), Tests der
 Vorschau stellen die Dienste selbst. Tests: `tests/test_aktionsseite_link_vorschau.py`.
-**Videos** (§ 15, Migration `0072`): `services/aktionsseite_video.py` schickt sie an den
-Medien-Container (`docker/medien`, Dienst `medien`, `MEDIEN_URL`), der sie mit ffmpeg neu
-kodiert — eigener Container, weil ffmpeg mit x264 GPL ist und ConvoyPlan auch kommerziell
-lizenziert wird; **nie** ffmpeg/PyAV ins Backend-Image. Höchstens 60 s, 720p, mit Ton (die
-Karte sagt der Presse „vor dem Freigeben anhören"). Die Datei liegt unter
-`/uploads/aktionsseite/videos/<public_id>.mp4`, das Standbild ist das einzige Bild des
-Beitrags und geht wie die Link-Vorschau nicht in `photos`, sondern als `video.poster` hinaus.
-Gelöscht werden Dateien nicht beim Löschen der Zeile (Retention läuft ohne das Volume),
-sondern von `aufraeumen` in der Telegram-Schleife: was keine Zeile hat und älter als 30 min
-ist. Ein neuer Weg, der Videos anlegt, schreibt die Datei **vor** dem Commit. Der
-Organisations-Export legt sie unter `beitraege/videos/` ab und baut das ZIP deshalb in einer
-temporären Datei. Tests: `tests/test_aktionsseite_videos.py` (Container gestellt).
 **`/ab`** setzt `not_before` (später, nie früher — eine frühere Zeit ist die Regelzeit,
 kein Fehler; nicht mehr nach `public_since`), gelesen in deutscher Ortszeit
 (`termin_lesen`). Tests: `tests/test_aktionsseite_termin.py`.
@@ -1217,14 +1205,9 @@ Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste
   YAML-Datei heraus**, statt es nachzubauen — ein Nachbau prüft die Kopie. Wer
   dort einen weiteren Test anlegt, braucht nichts zu verdrahten: der Job
   sammelt `test_*.sh` aus allen vier Verzeichnissen ein.
-- **Container** — Trivy scannt alle sechs Images (`backend`, `frontend`,
-  `graphhopper`, `updater`, `osmium`, `medien`) auf HIGH/CRITICAL mit verfügbarem Fix.
+- **Container** — Trivy scannt alle fünf Images (`backend`, `frontend`,
+  `graphhopper`, `updater`, `osmium`) auf HIGH/CRITICAL mit verfügbarem Fix.
   Ausnahmen gehören mit Begründung in `.trivyignore`.
-- **Medien** — Job `Medien – ffmpeg und Metadaten` baut `docker/medien` und fährt
-  `docker/medien/tests/test_medien.sh` gegen echte Handyvideos aus `tests/proben/`
-  (GPS, Gerät, Aufnahmezeit weg; hochkant aufrecht; 720p/30 fps; zu lang abgelehnt).
-  Nur, wenn sich `docker/medien/` oder `ci.yml` ändern. Wer am `configure` in der
-  Dockerfile dreht, sieht hier, ob ein Filter fehlt.
 - **Docker Hub über einen Spiegel** — jeder Job, der Images zieht, beginnt nach dem
   Checkout mit `./.github/actions/docker-spiegel` (Daemon auf `mirror.gcr.io`). Ohne
   Anmeldung teilen sich die Runner das Pull-Limit von Docker Hub, und am 2026-10-09

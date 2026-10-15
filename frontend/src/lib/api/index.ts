@@ -1753,8 +1753,6 @@ export const aktionsseitenTelegramApi = {
     /** Als `blob:`-Adresse — ein `<img>` mit der Pfadadresse käme ohne Organisationssitzung an. */
     bild: (id: string, photoId: string, groesse: 'gross' | 'klein') =>
         blobUrl(`/api/org/aktionsseiten/${id}/bilder/${photoId}/${groesse}.webp`),
-    /** Das Video eines Beitrags, auch wartend — zum Anhören vor der Freigabe. */
-    video: (id: string, videoId: string) => blobUrl(`/api/org/aktionsseiten/${id}/videos/${videoId}.mp4`),
 };
 
 export type BeitragStatus = 'wartet' | 'freigegeben' | 'abgelehnt' | 'zurueckgezogen';
@@ -1774,8 +1772,6 @@ export interface AktionsseiteBeitrag {
     /** Link-Beitrag (Instagram & Co.) statt Bildern — bereinigt, wie er hinausgeht. */
     link_url?: string | null;
     link_dienst?: 'instagram' | 'youtube' | 'facebook' | 'tiktok' | null;
-    /** Video-Beitrag: `photos` hält dann nur das Standbild. Der Ton geht mit hinaus. */
-    video?: { id: string; width: number; height: number; seconds: number; sound: boolean } | null;
     /** Termin der Presse (`/ab`): nicht vor diesem Zeitpunkt. */
     not_before?: string | null;
 }
