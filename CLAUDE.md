@@ -1176,7 +1176,7 @@ Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste
   `<style>`-Block aus `src/app.html` in die Seite und setzt `__APP_VERSION__` —
   ein Test, der Geometrie misst, misst sonst gegen Farben und Schriftgrößen, die
   es in der App gar nicht gibt. Der Job läuft im **Playwright-Image**
-  (`mcr.microsoft.com/playwright:v1.63.0-noble`), weil `npx playwright install` auf
+  (`mcr.microsoft.com/playwright:v1.64.1-noble`), weil `npx playwright install` auf
   dem Runner nach dem Download beim Entpacken stehenblieb — ohne Ausgabe, ohne
   Abbruch. Dessen Marke muss zur Fassung von `@playwright/test` passen: Wer die
   Abhängigkeit hebt, hebt die Marke in `ci.yml` mit.
@@ -1185,7 +1185,7 @@ Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste
   in `frontend/`. Bleibt der Befehl nach dem Download ohne Ausgabe stehen, liegt
   es an der Node-Fassung — dann entweder eine ältere nehmen oder die Suite im
   selben Image fahren wie die CI:
-  `docker run --rm -v "$PWD":/w -w /w/frontend mcr.microsoft.com/playwright:v1.63.0-noble
+  `docker run --rm -v "$PWD":/w -w /w/frontend mcr.microsoft.com/playwright:v1.64.1-noble
   sh -c 'npm ci && npm run test:e2e'`.
 - **Shell** — die Suiten unter `docker/updater/tests/` und für den
   GraphHopper-Entrypoint; sie tragen den Regionswechsel und laufen im Job
