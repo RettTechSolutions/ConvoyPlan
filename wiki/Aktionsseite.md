@@ -9,6 +9,7 @@ mitfiebern, aber niemand wissen soll, wo die beladenen Lkw gerade stehen.
 | Sichtbar | Nicht sichtbar |
 |---|---|
 | ein Punkt je Konvoi, die gefahrene Strecke | einzelne Fahrzeuge, Rufnamen, Kennzeichen |
+| die Zahl der eingeplanten Fahrzeuge (nicht der gerade fahrenden) | alles Weitere aus den Fahrzeugen |
 | Status: noch nicht los, unterwegs, Pause, angekommen | Stärke, Betriebsstoff, Alarme, Telefonnummern |
 | gefahrene und verbleibende Kilometer | der interne Konvoiname |
 | Ziel als Text, auf Wunsch als grober Punkt | die geplante Route und die Wegpunkte |
