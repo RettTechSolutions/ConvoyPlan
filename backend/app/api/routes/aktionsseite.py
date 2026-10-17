@@ -284,7 +284,10 @@ async def video(
         p["video"] and p["video"]["id"] == video_id for k in nutz["convoys"] for p in k["posts"]
     ):
         raise HTTPException(status_code=404, detail=_NICHT_GEFUNDEN)
-    datei = aktionsseite_video.pfad(video_id)
+    try:
+        datei = aktionsseite_video.pfad(video_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail=_NICHT_GEFUNDEN)
     if not datei.is_file():
         raise HTTPException(status_code=404, detail=_NICHT_GEFUNDEN)
     return FileResponse(
