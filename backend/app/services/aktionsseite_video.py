@@ -23,6 +23,7 @@ import base64
 import binascii
 import logging
 import os
+import re
 import time
 import uuid
 from dataclasses import dataclass
@@ -116,7 +117,15 @@ async def umwandeln(daten: bytes) -> Video:
     return Video(mp4=mp4, poster=poster, breite=breite, hoehe=hoehe, sekunden=sekunden, ton=ton)
 
 
+_KENNUNG = re.compile(r"[A-Za-z0-9_-]{1,64}")
+
+
 def pfad(public_id: str) -> Path:
+    """Die Datei zu einer Kennung. Eine Kennung, die keine ist (Pfadtrenner,
+    ``..``), wirft — sie darf nie zu einem Pfad außerhalb von ``VIDEOS_DIR``
+    werden, auch wenn alle Aufrufer sie heute aus der Datenbank nehmen."""
+    if not _KENNUNG.fullmatch(public_id):
+        raise ValueError("Ungültige Video-Kennung")
     return VIDEOS_DIR / f"{public_id}.mp4"
 
 

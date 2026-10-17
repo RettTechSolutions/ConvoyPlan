@@ -353,3 +353,11 @@ async def test_aufraeumen_loescht_nur_dateien_ohne_beitrag(aktion, client, medie
         assert await av.aufraeumen(db, jetzt=time.time() + av.AUFRAEUMEN_AB + 60) == 2
     assert list(av.VIDEOS_DIR.iterdir()) == []
 
+
+
+def test_pfad_lehnt_fremde_kennungen_ab():
+    from app.services import aktionsseite_video as av
+
+    for schlecht in ("../x", "a/b", "..", "", "a\\b", "x\x00"):
+        with pytest.raises(ValueError):
+            av.pfad(schlecht)
