@@ -142,6 +142,20 @@ CVE-2026-84304
 # und diesen Eintrag streichen. Review by: 2026-10-15.
 CVE-2026-84445
 
+# golang.org/x/text: das PRECIS-Nickname-Profil kann mit einem Out-of-Bounds-
+# Slice paniken. Gebuendelt im cosign-Binary des Updater-Images (cosign 3.1.3
+# haengt an golang.org/x/text v0.38.0, fix in 0.41.0).
+#
+# cosign laeuft hier nur als CLI-Client fuer `cosign verify` gegen die eigenen
+# Images auf ghcr.io und wendet keine PRECIS-Profile auf fremden Text an.
+# Schlimmstenfalls bricht ein einzelner Prueflauf mit einem Panic ab; dann
+# unterbleibt das Update (fail closed), es wird nichts Ungeprueftes ausgerollt.
+#
+# Sobald ein cosign-Release x/text >= 0.41.0 mitbringt, COSIGN_VERSION in
+# docker/updater/Dockerfile heben und diesen Eintrag streichen.
+# Review by: 2026-11-15.
+CVE-2026-56851
+
 # golang.org/x/text norm.Iter infinite loop on crafted input (DoS). Bundled in
 # the docker-buildx/docker-compose plugin Go binaries; the updater only passes
 # operator-trusted image refs and compose files to the docker CLI — it feeds no
