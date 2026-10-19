@@ -161,7 +161,7 @@
 			lead: 'Im Tab „Export“ gibst du die fertige Planung weiter.',
 			bullets: [
 				{ label: 'GPX / JSON', text: 'Route für Navigationsgeräte oder andere Systeme herunterladen.' },
-				{ label: 'PDF-Marschbefehl', text: 'formatierter Marschbefehl mit allen Eckdaten zum Ausdrucken.' },
+				{ label: 'Marschbefehl', text: 'als PDF mit allen Eckdaten zum Ausdrucken, oder als Word-Dokument aus der Vorlage eurer Organisation.' },
 				{ label: 'Import', text: 'weiter unten: bestehende Wegpunkte/Routen aus Dateien einlesen (hinzufügen oder ersetzen).' },
 			],
 		},

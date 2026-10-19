@@ -15,6 +15,7 @@ from app.models.oauth_refresh_token import OAuthRefreshToken
 from app.models.org_mcp_policy import OrganizationMcpPolicy
 from app.models.org_plan import OrganizationPlan
 from app.models.org_module import OrganizationModule
+from app.models.marschbefehl_vorlage import MarschbefehlVorlage
 from app.models.public_tracker import (
     PublicTracker,
     PublicTrackerChat,
@@ -37,7 +38,7 @@ from app.models.system_metric import SystemMetricDaily, SystemMetricSample, User
 
 __all__ = [
     "User", "Passkey", "Vehicle", "Organization", "UserOrganization",
-    "Convoy", "ConvoyVehicle", "Waypoint", "Route",
+    "Convoy", "ConvoyVehicle", "MarschbefehlVorlage", "Waypoint", "Route",
     "VehiclePosition", "ConvoyShareLink", "AuditLog", "ApiKey",
     "OAuthClient", "OAuthCode", "OAuthRefreshToken", "OrganizationMcpPolicy", "OrganizationPlan",
     "OrganizationModule",

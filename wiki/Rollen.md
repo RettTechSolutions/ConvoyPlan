@@ -53,6 +53,7 @@ Alle Rechte des Planers, zusätzlich:
 - **Konvois löschen**
 - **Organisationsmitglieder** einladen, Rollen ändern, Mitglieder entfernen
 - Organisations-Einstellungen bearbeiten
+- **Marschbefehl-Vorlage** (Word) hochladen und entfernen, siehe [Marschbefehl & Export](Marschbefehl-Export#marschbefehl-als-word-dokument-eigene-vorlage)
 
 ---
 

@@ -314,6 +314,41 @@ Tests: `tests/test_durchfahrtshoehen.py`, `tests/test_bruecken_ohne_hoehe.py`,
 `frontend/e2e/durchfahrtshoehen.spec.ts`, `frontend/e2e/gewichtsgrenzen.spec.ts`.
 Anwenderdoku: `wiki/Konvoi-Planung.md`, „Durchfahrtshöhen" und „Gewichtsgrenzen".
 
+### Marschbefehl aus der Word-Vorlage: die Vorlage ist fremder Code
+
+Neben dem fest gesetzten PDF (`services/pdf.py`) exportiert `GET /api/convoys/{id}/export/docx`
+aus einer `.docx`-Vorlage der Organisation (`docxtpl`, Jinja2 im Word-Dokument). Der Org-Admin
+lädt sie unter **Org-Admin → Marschbefehl** hoch (`api/routes/marschbefehl_vorlage.py`, Tabelle
+`marschbefehl_vorlagen`, Migration `0073`, `bytea` wie die Bilder der Aktionsseite); ohne eigene
+gilt die Beispielvorlage. Regeln in `services/marschbefehl_vorlage.py`. Vier Dinge, die man kennen
+muss:
+
+- **Sandbox, nicht nur Autoescape.** Jinja wertet Ausdrücke aus, und auf dem Hosting-Server teilen
+  sich alle Organisationen einen Prozess. `_Sandbox` nimmt `range`, alle Filter außer `_FILTER`
+  und die Breiten-Formatierer an `str` weg und deckelt `*`/`**`/`%`. `str.format` geht in Jinja an
+  `is_safe_attribute` vorbei (`wrap_str_format`) — gesperrt wird deshalb in `getattr`/`getitem`.
+  Wer einen Filter freigibt, prüft, ob er eine Breite oder Wiederholung nimmt. Gegen Rechenzeit
+  (rekursive Makros, verschachtelte Schleifen) hilft keine Sandbox: `fuellen` läuft deshalb in
+  einem **Kindprozess** (`spawn`) mit Frist (`FRIST_S`) und Adressraumdeckel (`SPEICHER_BYTES`)
+  und wird danach beendet — ein Thread ließe sich nicht abbrechen. Nie in-process füllen, auch
+  nicht „nur zum Prüfen".
+- **Geprüft wird beim Hochladen.** `StrictUndefined` und ein Probelauf gegen `beispiel_kontext()`,
+  in dem jede Liste Einträge hat: Was dort durchgeht, geht bei jedem Export durch. Ein neues Feld
+  gehört deshalb in `kontext()` **und** in `FELDER`/`LISTEN`; `tests/test_marschbefehl_vorlage.py`
+  hält beide deckungsgleich und verlangt Einträge in jeder Beispielliste. Ein Feld umbenennen oder
+  entfernen bricht hochgeladene Vorlagen (der Export antwortet dann 422) — nur hinzufügen.
+- **Die Beispielvorlage wird erzeugt** (`beispielvorlage()`, python-docx), nicht als Datei
+  mitgeliefert; ihre Feldübersicht steht in einem `{%p if false %}`-Block. Darin keine wörtlichen
+  `{%p`/`{%tr`: docxtpl schreibt sie **vor** Jinja um, auch dort, und ein `{%tr` außerhalb einer
+  Tabelle griffe in die Tabelle davor.
+- **Werte sind fertige deutsche Texte, fehlende `""`** (nicht „-"), damit `{% if %}` greift.
+  PDF und Vorlage bekommen dieselben Daten (`routing._marschbefehl_daten`).
+
+Im Organisations-Export liegt die Vorlage unter `vorlagen/marschbefehl.docx`. Hochladen und
+Entfernen stehen im Audit-Log. Tests: `tests/test_marschbefehl_vorlage.py`,
+`frontend/e2e/marschbefehl-vorlage.spec.ts`. Anwenderdoku: `wiki/Marschbefehl-Export.md`,
+„Marschbefehl als Word-Dokument".
+
 ### Fahrzeugbelegung: ein Fahrzeug, ein Gerät
 
 Wer ein Fahrzeug wählt, belegt es — am Server, für alle drei Oberflächen zugleich:

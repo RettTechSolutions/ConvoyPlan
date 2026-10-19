@@ -7,6 +7,7 @@
     import LeitstellenTable from '$lib/components/LeitstellenTable.svelte';
     import AktionsseitenVerwaltung from '$lib/components/AktionsseitenVerwaltung.svelte';
     import TrackerVerwaltung from '$lib/components/TrackerVerwaltung.svelte';
+    import MarschbefehlVorlage from '$lib/components/MarschbefehlVorlage.svelte';
     import TabLeiste from '$lib/components/TabLeiste.svelte';
     import { klappbar } from '$lib/klappbar/klappbar';
     import { orgStore } from '$lib/stores/org';
@@ -22,8 +23,8 @@
     const slug = $derived((page.params as Record<string, string>).slug);
 
     // ── Tab ──────────────────────────────────────────────────────────────────
-    let activeTab = $state<'mitglieder' | 'leitstellen' | 'gps' | 'tracker' | 'aktion' | 'branding' | 'ki' | 'daten'>('mitglieder');
-    reiterMerken(['mitglieder', 'leitstellen', 'gps', 'tracker', 'aktion', 'branding', 'ki', 'daten'], () => activeTab, (r) => (activeTab = r));
+    let activeTab = $state<'mitglieder' | 'leitstellen' | 'gps' | 'tracker' | 'aktion' | 'marschbefehl' | 'branding' | 'ki' | 'daten'>('mitglieder');
+    reiterMerken(['mitglieder', 'leitstellen', 'gps', 'tracker', 'aktion', 'marschbefehl', 'branding', 'ki', 'daten'], () => activeTab, (r) => (activeTab = r));
 
     // ── Module ───────────────────────────────────────────────────────────────
     // Was der Betreiber freigeschaltet hat (backend/app/services/org_module.py).
@@ -595,10 +596,16 @@
         <button class="tab" class:active={activeTab === 'gps'} onclick={() => { activeTab = 'gps'; loadGpsShares(); }}>GPS-Freigaben</button>
         <button class="tab" class:active={activeTab === 'tracker'} class:inaktiv={gesperrt('tracker')} title={gesperrt('tracker') ? MODUL_GESPERRT : undefined} onclick={() => (activeTab = 'tracker')}>{#if gesperrt('tracker')}🔒 {/if}Tracker</button>
         <button class="tab" class:active={activeTab === 'aktion'} class:inaktiv={gesperrt('aktionsseiten')} title={gesperrt('aktionsseiten') ? MODUL_GESPERRT : undefined} onclick={() => (activeTab = 'aktion')}>{#if gesperrt('aktionsseiten')}🔒 {/if}Aktionsseiten</button>
+        <button class="tab" class:active={activeTab === 'marschbefehl'} onclick={() => (activeTab = 'marschbefehl')}>Marschbefehl</button>
         <button class="tab" class:active={activeTab === 'branding'} class:inaktiv={gesperrt('branding')} title={gesperrt('branding') ? MODUL_GESPERRT : undefined} onclick={() => activeTab = 'branding'}>{#if gesperrt('branding')}🔒 {/if}Branding</button>
         <button class="tab" class:active={activeTab === 'ki'} class:inaktiv={gesperrt('ki')} title={gesperrt('ki') ? MODUL_GESPERRT : undefined} onclick={() => { activeTab = 'ki'; if (frei('ki')) loadKi(); }}>{#if gesperrt('ki')}🔒 {/if}KI-Zugriff</button>
         <button class="tab" class:active={activeTab === 'daten'} onclick={() => (activeTab = 'daten')}>Datenexport</button>
     </TabLeiste>
+
+    <!-- ── Marschbefehl-Vorlage ── -->
+    {#if activeTab === 'marschbefehl'}
+        <MarschbefehlVorlage />
+    {/if}
 
     <!-- ── Datenexport ── -->
     {#if activeTab === 'daten'}

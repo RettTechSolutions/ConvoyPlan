@@ -1373,7 +1373,7 @@
         .sort((a, b) => a.position - b.position);
     }
   });
-	async function downloadExport(format: 'gpx' | 'json' | 'pdf' | 'roadbook') {
+	async function downloadExport(format: 'gpx' | 'json' | 'pdf' | 'docx' | 'roadbook') {
 		if (!selected) return;
 		try {
 			const res = await fetch(`/api/convoys/${selected.id}/export/${format}`, {
@@ -1391,7 +1391,10 @@
 			const url = URL.createObjectURL(blob);
 			const a = document.createElement('a');
 			a.href = url;
-			a.download = format === 'roadbook' ? `Roadbook ${selected.name}.pdf` : `${selected.name}.${format}`;
+			a.download =
+				format === 'roadbook' ? `Roadbook ${selected.name}.pdf`
+				: format === 'docx' ? `Marschbefehl ${selected.name}.docx`
+				: `${selected.name}.${format}`;
 			document.body.appendChild(a);
 			a.click();
 			document.body.removeChild(a);
@@ -2488,6 +2491,9 @@
 				</button>
 				<button class="modal-btn-export" onclick={async () => { if (await saveBefehlForm()) downloadExport('pdf'); }} disabled={befehlSaving}>
 					🖨 Speichern & PDF
+				</button>
+				<button class="modal-btn-export" title="Aus der Word-Vorlage der Organisation (Org-Admin → Marschbefehl)" onclick={async () => { if (await saveBefehlForm()) downloadExport('docx'); }} disabled={befehlSaving}>
+					📝 Speichern & Word
 				</button>
 			</div>
 		</div>

@@ -11,6 +11,7 @@ from app.api.routes import (
     tracking, weather, overpass, status, users, leitstellen, traffic, geocoding,
 )
 from app.api.routes import org_branding as org_branding_router
+from app.api.routes import marschbefehl_vorlage as marschbefehl_vorlage_router
 from app.api.routes import passkeys as passkeys_router
 from app.api.routes import app_oauth as app_oauth_router
 from app.api.routes import org_leitstellen as org_leitstellen_router
@@ -326,6 +327,7 @@ app.include_router(leitstellen.router, prefix="/api")
 app.include_router(org_leitstellen_router.router, prefix="/api")
 app.include_router(branding_router.router, prefix="/api")
 app.include_router(org_branding_router.router, prefix="/api")
+app.include_router(marschbefehl_vorlage_router.router, prefix="/api")
 app.include_router(email_template_router.router, prefix="/api")
 # Melden und Auswerten liegen im selben Modul — siehe dessen Kopfkommentar.
 app.include_router(feedback_router.router, prefix="/api")
