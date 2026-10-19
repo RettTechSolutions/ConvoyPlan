@@ -19,8 +19,9 @@ Betreiber (``feedback_reports``), Kontaktdaten aus der Demo (``demo_leads``),
 kurzlebige OAuth-Codes und -Tokens.
 
 Format: ein ZIP mit ``organisation.json``, den hochgeladenen Logos unter
-``logos/``, den Fotos der Aktionsseiten unter ``beitraege/<bild>.webp`` und
-ihren Videos unter ``beitraege/videos/<video>.mp4``. ``format`` und ``version``
+``logos/``, den Fotos der Aktionsseiten unter ``beitraege/<bild>.webp``,
+ihren Videos unter ``beitraege/videos/<video>.mp4`` und der Word-Vorlage des
+Marschbefehls unter ``vorlagen/marschbefehl.docx``. ``format`` und ``version``
 im JSON sagen einem späteren Import, was er vor sich hat.
 
 Gebaut wird in eine temporäre Datei, nicht im Speicher: Mit Videos werden das
@@ -50,6 +51,7 @@ from app.models.api_key import ApiKey
 from app.models.audit_log import AuditLog
 from app.models.convoy import Convoy, ConvoyVehicle
 from app.models.leitstelle import Leitstelle
+from app.models.marschbefehl_vorlage import MarschbefehlVorlage
 from app.models.org_mcp_policy import OrganizationMcpPolicy
 from app.models.organization import Organization, UserOrganization
 from app.models.ortungsgeraet import Ortungsgeraet
@@ -90,6 +92,9 @@ _GEHEIM: dict[str, frozenset[str]] = {
         "sender_telegram_id", "sender_name", "reviewed_by_telegram_id",
         "chat_id", "message_id", "card_message_id", "media_group_id",
     }),
+    # Kein Geheimnis, aber Bytes: die Vorlage geht als Datei hinaus
+    # (``vorlagen/marschbefehl.docx``), nicht als Zahlenkolonne im JSON.
+    "marschbefehl_vorlagen": frozenset({"daten"}),
 }
 
 # Welche Tabellen der Export abdeckt und welche er bewusst auslässt. Ein Test
@@ -103,7 +108,7 @@ EXPORTIERT = frozenset({
     "user_activity_days", "audit_logs",
     "public_trackers", "public_tracker_convoys", "vehicle_position_trail",
     "ortungsgeraete", "public_tracker_posts", "public_tracker_photos",
-    "public_tracker_videos",
+    "public_tracker_videos", "marschbefehl_vorlagen",
 })
 NICHT_EXPORTIERT = frozenset({
     "feedback_reports",      # Rückmeldungen an den Betreiber, nicht Daten der Organisation
@@ -298,8 +303,23 @@ async def build_org_export(db: AsyncSession, org: Organization) -> dict:
             )
         ],
         "logos": _logo_dateien(org),
+        "marschbefehl_vorlage": next(
+            (
+                zeile(v) for v in await _alle(
+                    db, select(MarschbefehlVorlage).where(MarschbefehlVorlage.organization_id == org.id)
+                )
+            ),
+            None,
+        ),
     }
     return bundle
+
+
+async def marschbefehl_vorlage(db: AsyncSession, org: Organization) -> bytes | None:
+    """Die hochgeladene Word-Vorlage des Marschbefehls, falls es eine gibt."""
+    return (await db.execute(
+        select(MarschbefehlVorlage.daten).where(MarschbefehlVorlage.organization_id == org.id)
+    )).scalar_one_or_none()
 
 
 async def beitrag_bilder(db: AsyncSession, org: Organization) -> list[tuple[str, bytes]]:
@@ -331,22 +351,22 @@ async def beitrag_videos(db: AsyncSession, org: Organization) -> list[tuple[str,
 
 def export_zip(
     bundle: dict, logos_dir: Path = LOGOS_DIR, bilder: list[tuple[str, bytes]] = (),
-    videos: list[tuple[str, Path]] = (),
+    videos: list[tuple[str, Path]] = (), vorlage: bytes | None = None,
 ) -> bytes:
     """Das ZIP im Speicher — für Tests und kleine Exporte; ``export_response``
     schreibt mit ``zip_schreiben`` in eine Datei."""
     puffer = io.BytesIO()
-    zip_schreiben(puffer, bundle, logos_dir, bilder, videos)
+    zip_schreiben(puffer, bundle, logos_dir, bilder, videos, vorlage)
     return puffer.getvalue()
 
 
 def zip_schreiben(
     ziel, bundle: dict, logos_dir: Path = LOGOS_DIR, bilder: list[tuple[str, bytes]] = (),
-    videos: list[tuple[str, Path]] = (),
+    videos: list[tuple[str, Path]] = (), vorlage: bytes | None = None,
 ) -> None:
     """ZIP aus ``organisation.json``, den Logo-Dateien, die es noch gibt, den
-    Fotos der Aktionsseiten (``bilder``, siehe ``beitrag_bilder``) und ihren
-    Videos (``videos``, siehe ``beitrag_videos``).
+    Fotos der Aktionsseiten (``bilder``, siehe ``beitrag_bilder``), ihren
+    Videos (``videos``, siehe ``beitrag_videos``) und der Marschbefehl-Vorlage.
 
     Ein Logo oder Video, das in den Daten steht, aber auf der Platte fehlt,
     wird im JSON unter ``logos_missing`` bzw. ``videos_missing`` vermerkt,
@@ -369,6 +389,8 @@ def zip_schreiben(
                 zf.write(pfad, f"beitraege/videos/{name}", compress_type=zipfile.ZIP_STORED)
             else:
                 videos_fehlend.append(name)
+        if vorlage is not None:
+            zf.writestr("vorlagen/marschbefehl.docx", vorlage)
         doc = {**bundle, "logos_missing": fehlend, "videos_missing": videos_fehlend}
         zf.writestr(
             "organisation.json",
@@ -389,7 +411,10 @@ async def export_response(
     den Superadmin (``/api/admin/organizations/{id}/export``)."""
     bundle = await build_org_export(db, org)
     datei = tempfile.TemporaryFile()
-    zip_schreiben(datei, bundle, bilder=await beitrag_bilder(db, org), videos=await beitrag_videos(db, org))
+    zip_schreiben(
+        datei, bundle, bilder=await beitrag_bilder(db, org), videos=await beitrag_videos(db, org),
+        vorlage=await marschbefehl_vorlage(db, org),
+    )
     groesse = datei.tell()
     datei.seek(0)
     await audit.record(

@@ -18,8 +18,10 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import get_current_user
 from app.api.guards import get_convoy_access
 from app.api.quota import routing_quota
+from app.api.routes import marschbefehl_vorlage as vorlage_routen
 from app.database import get_db
 from app.models.convoy import Convoy, ConvoyVehicle
+from app.models.organization import Organization
 from app.models.route import Route
 from app.models.user import User
 from app.models.waypoint import Waypoint
@@ -31,6 +33,7 @@ from app.services import gewichtsgrenzen as gewicht_svc
 from app.services import routing as routing_svc
 from app.services import schedule as schedule_svc
 from app.services import export as export_svc
+from app.services import marschbefehl_vorlage as vorlage_svc
 from app.services import pdf as pdf_svc
 from app.services import roadbook as roadbook_svc
 from app.services import static_map as static_map_svc
@@ -841,12 +844,9 @@ async def export_json(
     )
 
 
-@router.get("/{convoy_id}/export/pdf")
-async def export_pdf(
-    convoy_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
+async def _marschbefehl_daten(convoy_id: uuid.UUID, current_user: User, db: AsyncSession) -> tuple:
+    """Was der Marschbefehl braucht — für das PDF und für die Word-Vorlage
+    derselbe Aufbau, damit beide nicht auseinanderlaufen."""
     convoy = await _load_convoy(convoy_id, current_user, db, require="read")
     route_result = await db.execute(select(Route).where(Route.convoy_id == convoy_id))
     route = route_result.scalar_one_or_none()
@@ -886,19 +886,60 @@ async def export_pdf(
     durchfahrtshoehen = route.durchfahrtshoehen if route else None
     bruecken = route.bruecken if route else None
     gewichtsgrenzen = route.gewichtsgrenzen if route else None
+    return convoy, waypoints, vehicles, route, kanalwechsel, durchfahrtshoehen, bruecken, gewichtsgrenzen
+
+
+@router.get("/{convoy_id}/export/pdf")
+async def export_pdf(
+    convoy_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    daten = await _marschbefehl_daten(convoy_id, current_user, db)
+    convoy = daten[0]
     # PDF generation (FPDF, font loading, many tables) is CPU-bound and
     # blocking — run it in the default thread pool so it does not stall the
     # event loop for concurrent requests.
     loop = asyncio.get_running_loop()
-    pdf_bytes = await loop.run_in_executor(
-        None, pdf_svc.generate_marschbefehl, convoy, waypoints, vehicles, route, kanalwechsel,
-        durchfahrtshoehen, bruecken, gewichtsgrenzen,
-    )
+    pdf_bytes = await loop.run_in_executor(None, pdf_svc.generate_marschbefehl, *daten)
     filename = f"Marschbefehl_{convoy.name.replace(' ', '_')}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
         headers=_attachment(filename),
+    )
+
+
+@router.get("/{convoy_id}/export/docx")
+async def export_docx(
+    convoy_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Marschbefehl aus der Word-Vorlage der Organisation, ohne eigene aus der
+    Beispielvorlage (``services/marschbefehl_vorlage.py``)."""
+    convoy, waypoints, vehicles, route, kanalwechsel, hoehen, _bruecken, gewichte = (
+        await _marschbefehl_daten(convoy_id, current_user, db)
+    )
+    org_name = None
+    if convoy.organization_id is not None:
+        org = await db.get(Organization, convoy.organization_id)
+        org_name = org.name if org else None
+    vorlage = await vorlage_routen.vorlage_fuer(db, convoy.organization_id)
+    werte = vorlage_svc.kontext(
+        convoy, waypoints, vehicles, route, kanalwechsel, hoehen, gewichte, org_name=org_name,
+    )
+    loop = asyncio.get_running_loop()
+    try:
+        inhalt = await loop.run_in_executor(None, vorlage_svc.fuellen, vorlage, werte)
+    except vorlage_svc.VorlageFehler as exc:
+        # Beim Hochladen geprüft — kommt also nur bei einer Vorlage aus einer
+        # älteren Fassung, die ein Feld nicht mehr kennt.
+        raise HTTPException(status_code=422, detail=f"Die Marschbefehl-Vorlage passt nicht: {exc}")
+    return Response(
+        content=inhalt,
+        media_type=vorlage_svc.DOCX_MIME,
+        headers=_attachment(f"Marschbefehl_{convoy.name.replace(' ', '_')}.docx"),
     )
 
 

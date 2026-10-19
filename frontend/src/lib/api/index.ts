@@ -1415,6 +1415,34 @@ export const orgBrandingApi = {
     reset: () => api.delete<BrandingData>('/api/org/branding'),
 };
 
+// Marschbefehl aus der Word-Vorlage der Organisation
+// (backend/app/services/marschbefehl_vorlage.py).
+export interface MarschbefehlVorlageStatus {
+    eigene: boolean;
+    dateiname: string | null;
+    groesse: number | null;
+    hochgeladen_at: string | null;
+}
+
+export interface VorlageFeld {
+    name: string;
+    beschreibung: string;
+}
+
+export interface VorlageFelder {
+    gruppen: { name: string; titel: string; felder: VorlageFeld[] }[];
+    listen: { name: string; titel: string; felder: VorlageFeld[] }[];
+}
+
+export const marschbefehlVorlageApi = {
+    status: () => api.get<MarschbefehlVorlageStatus>('/api/org/marschbefehl-vorlage'),
+    felder: () => api.get<VorlageFelder>('/api/org/marschbefehl-vorlage/felder'),
+    beispiel: () => downloadFile('/api/org/marschbefehl-vorlage/beispiel', 'Marschbefehl-Vorlage.docx'),
+    eigene: (dateiname: string) => downloadFile('/api/org/marschbefehl-vorlage/datei', dateiname),
+    hochladen: (file: File) => uploadFile<MarschbefehlVorlageStatus>('/api/org/marschbefehl-vorlage', file),
+    entfernen: () => api.delete<MarschbefehlVorlageStatus>('/api/org/marschbefehl-vorlage'),
+};
+
 export interface ZusatzKanal {
     name: string;
     kanal: string;

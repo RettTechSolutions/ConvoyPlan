@@ -60,3 +60,11 @@ mcp==2.3.0
 # Passkeys (WebAuthn) — Prüfen von Registrierung und Anmeldung
 # (app/services/passkey.py). Zieht cbor2, pyOpenSSL und pyasn1 mit.
 webauthn==3.0.1
+
+# Marschbefehl aus der Word-Vorlage der Organisation
+# (app/services/marschbefehl_vorlage.py). docxtpl ist LGPL-2.1 und wird nur
+# eingebunden, nicht verändert. python-docx und Jinja2 benutzt der Code direkt
+# (Beispielvorlage, Sandbox), deshalb gepinnt; lxml kommt mit.
+docxtpl==0.20.2
+python-docx==1.2.0
+Jinja2==3.1.6
