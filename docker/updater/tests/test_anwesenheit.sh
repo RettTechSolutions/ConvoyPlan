@@ -42,6 +42,7 @@ entscheide() {
 meldung() {
     printf 'stand=%s\nnutzer=%s\ndemo=%s\n' "$1" "$2" "$3" > "$ANW"
     if [ -n "${4:-}" ]; then printf 'fahrer=%s\n' "$4" >> "$ANW"; fi
+    if [ -n "${5:-}" ]; then printf 'tracker=%s\n' "$5" >> "$ANW"; fi
 }
 neu()     { rm -f "$ANW" "$HOLD"; : > "$LOGF"; }
 
@@ -66,6 +67,13 @@ eq "4: nur Demo-Nutzer angemeldet → halten" "$(entscheide $T0 'stable v1')" ha
 neu; meldung $T0 0 0 1
 eq "4b: nur ein Fahrer-Link verbunden → halten" "$(entscheide $T0 'nightly abc')" halten
 eq "4b: Fahrer-Links im Zustand fuers Panel" "$(grep '^fahrer=' "$HOLD")" "fahrer=1"
+
+neu; meldung $T0 0 0 0 2
+eq "4f: nur Tracker senden → halten" "$(entscheide $T0 'nightly abc')" halten
+eq "4f: Tracker im Zustand fuers Panel" "$(grep '^tracker=' "$HOLD")" "tracker=2"
+
+neu; meldung $T0 0 0 0 0
+eq "4g: Tracker-Zeile mit 0 → installieren" "$(entscheide $T0 'nightly abc')" installieren
 
 neu; meldung $T0 0 0 0
 eq "4c: Fahrer-Zeile mit 0 → installieren" "$(entscheide $T0 'nightly abc')" installieren
