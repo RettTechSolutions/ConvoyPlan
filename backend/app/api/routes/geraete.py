@@ -48,18 +48,18 @@ from app.api.deps import OrgCtx, get_org_context, require_modul
 from app.api.guards import ROLE_ORDER
 from app.config import settings
 from app.database import get_db
-from app.middleware.license_guard import is_licensed
 from app.models.convoy import Convoy, ConvoyVehicle
 from app.models.organization import Organization
 from app.models.ortungsgeraet import Ortungsgeraet
 from app.models.share_link import ConvoyShareLink
 from app.models.vehicle import Vehicle
 from app.models.vehicle_position import VehiclePosition
-from app.services import alarm_quittung, audit, firmware_angebot, org_module, org_plan, positionsquelle, positionsverlauf
+from app.services import alarm_quittung, audit, firmware_angebot, org_module, positionsquelle, positionsverlauf
 from app.services import belegung
 from app.services import nahfunk
 from app.services import share_links as share_links_svc
 from app.services import tracker_ble as tb
+from app.services import tracker_sperre
 from app.services import tracker_wurzeln as tw
 from app.services import ortungsgeraet as og
 from app.services.rate_limit import rate_limit, register_failure
@@ -132,12 +132,11 @@ async def _org_takt(db: AsyncSession, geraet: Ortungsgeraet) -> int | None:
 
 
 async def _schweigt(db: AsyncSession, org_id: uuid.UUID) -> bool:
-    """Plansperre, fehlende Lizenz oder nicht freigeschaltetes Modul: das Gerät schweigt."""
-    return (
-        await org_plan.ist_gesperrt(db, org_id)
-        or not await is_licensed()
-        or not await org_module.freigegeben(db, org_id, org_module.TRACKER)
-    )
+    """Plansperre, fehlende Lizenz oder nicht freigeschaltetes Modul: das Gerät schweigt.
+
+    Die Regel steht in ``services/tracker_sperre.py``; die Zählung für den Updater
+    fragt dieselbe."""
+    return await tracker_sperre.gesperrt(db, org_id)
 
 
 async def _anweisung(

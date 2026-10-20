@@ -1,21 +1,22 @@
 """Ein Tracker, der für einen laufenden Konvoi sendet, hält automatische Updates zurück.
 
 Gezählt wird aus der Datenbank (``anwesenheit.aktive_tracker``): aktiv, in den letzten
-fünf Minuten gemeldet, am Fahrzeug eines Konvois mit Status aktiv/läuft. Verband und
-Organisation kommen aus ``test_tracker_geraete`` — dort steht der HLF in einem
+fünf Minuten gemeldet, am Fahrzeug eines Konvois mit Status aktiv/läuft, nicht in einer
+gesperrten Organisation (``tracker_sperre``). Verband und Organisation kommen aus ``test_tracker_geraete`` — dort steht der HLF in einem
 laufenden und einem geplanten Konvoi, der MTW nur im laufenden.
 """
 
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import update
+from sqlalchemy import delete, update
 
 from app.database import AsyncSessionLocal
 from app.models.convoy import Convoy
+from app.models.org_module import OrganizationModule
 from app.models.ortungsgeraet import Ortungsgeraet
 from app.services import anwesenheit
-from tests.test_tracker_geraete import org, reset_db_engine  # noqa: F401 — Fixtures
+from tests.test_tracker_geraete import ohne_lizenz, org, reset_db_engine  # noqa: F401 — Fixtures
 
 JETZT = datetime.now(timezone.utc)
 
@@ -63,3 +64,27 @@ async def test_nur_bei_laufendem_konvoi(org):
         await db.commit()
     # Der MTW steht nur im jetzt abgeschlossenen Konvoi.
     assert await _zaehlt() == mit - 1
+
+
+async def test_tracker_einer_gesperrten_organisation_zaehlt_nicht(org):
+    # Modul Tracker entzogen: das Gerät bekommt `schweigen`, also hält es auch nichts auf.
+    from app.services import org_module
+
+    await _tracker(org, org.mtw, gesehen=JETZT)
+    mit = await _zaehlt()
+    async with AsyncSessionLocal() as db:
+        await org_module.setzen(db, org.org_id, {org_module.TRACKER: False})
+        await db.commit()
+    try:
+        assert await _zaehlt() == mit - 1
+    finally:
+        async with AsyncSessionLocal() as db:
+            await db.execute(
+                delete(OrganizationModule).where(OrganizationModule.organization_id == org.org_id)
+            )
+            await db.commit()
+
+
+async def test_ohne_lizenz_zaehlt_kein_tracker(org, ohne_lizenz):
+    await _tracker(org, org.mtw, gesehen=JETZT)
+    assert await _zaehlt() == 0

@@ -194,20 +194,22 @@ async def aktive_tracker(jetzt: datetime | None = None) -> int:
 
     Aktiv, in den letzten ``TRACKER_FRIST_S`` gemeldet (dieselbe Frist, mit der ein
     Tracker Vorrang vor dem Telefon hat) und am Fahrzeug eines Konvois mit Status
-    aktiv/läuft — wie der Tracker selbst entscheidet, ob er sendet (E7).
+    aktiv/läuft — wie der Tracker selbst entscheidet, ob er sendet (E7). Ein Tracker
+    einer gesperrten Organisation (``tracker_sperre``) schweigt und zählt nicht.
     """
     from sqlalchemy import func, select
 
     from app.database import AsyncSessionLocal
     from app.models.convoy import Convoy, ConvoyVehicle
     from app.models.ortungsgeraet import Ortungsgeraet
+    from app.services import tracker_sperre
     from app.services.ortungsgeraet import LAUFEND
 
     grenze = (jetzt or datetime.now(timezone.utc)) - timedelta(seconds=TRACKER_FRIST_S)
     async with AsyncSessionLocal() as db:
-        return (
+        zeilen = (
             await db.execute(
-                select(func.count(func.distinct(Ortungsgeraet.id)))
+                select(Ortungsgeraet.organization_id, func.count(func.distinct(Ortungsgeraet.id)))
                 .join(ConvoyVehicle, ConvoyVehicle.vehicle_id == Ortungsgeraet.vehicle_id)
                 .join(Convoy, Convoy.id == ConvoyVehicle.convoy_id)
                 .where(
@@ -215,8 +217,14 @@ async def aktive_tracker(jetzt: datetime | None = None) -> int:
                     Ortungsgeraet.zuletzt_gesehen >= grenze,
                     Convoy.status.in_(LAUFEND),
                 )
+                .group_by(Ortungsgeraet.organization_id)
             )
-        ).scalar_one()
+        ).all()
+        anzahl = 0
+        for org_id, je_org in zeilen:
+            if not await tracker_sperre.gesperrt(db, org_id):
+                anzahl += je_org
+        return anzahl
 
 
 def schreiben(laufend: set[str] | None = None, tracker: int = 0) -> None:

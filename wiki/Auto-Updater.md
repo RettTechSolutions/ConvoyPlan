@@ -93,7 +93,7 @@ Im Modus **Automatisch** wartet der Updater, solange **Nutzer oder Demo-Nutzer**
 - **„Jetzt updaten“ wartet nicht.** Wer den Knopf drückt, hat entschieden.
 - **Höchstens `UPDATE_HOLD_MAX` Sekunden am Stück** (Standard `86400` = 24 h, `0` = unbegrenzt). Danach wird trotzdem installiert — eine Instanz, auf der rund um die Uhr gearbeitet wird, bekäme sonst nie ein Update, auch keinen Sicherheitsfix.
 - **Meldet das Backend nichts** (kein Lebenszeichen seit drei Minuten), wird installiert: Ein Backend, das hängt, darf das Update, das es reparieren könnte, nicht blockieren.
-- **Tracker zählen**, wenn sie sich in den letzten fünf Minuten gemeldet haben und ihr Fahrzeug in einem Konvoi mit Status *aktiv* oder *läuft* steht — ein Deploy mitten in der Fahrt ließe ihre Bündel ins Leere laufen, auch wenn niemand mit Telefon dabei ist. Gesperrte Tracker zählen nicht.
+- **Tracker zählen**, wenn sie sich in den letzten fünf Minuten gemeldet haben und ihr Fahrzeug in einem Konvoi mit Status *aktiv* oder *läuft* steht — ein Deploy mitten in der Fahrt ließe ihre Bündel ins Leere laufen, auch wenn niemand mit Telefon dabei ist. Gesperrte Tracker zählen nicht, ebenso wenig Tracker einer gesperrten Organisation (Plan abgelaufen, Modul *Tracker* nicht freigegeben, Instanz ohne Lizenz) — sie bekommen ohnehin die Anweisung zu schweigen.
 - Lese-Links zählen **nicht**: Über sie plant und fährt niemand.
 
 ---

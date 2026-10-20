@@ -78,7 +78,9 @@ Minuten) oder ein Fahrer-Link verbunden ist (`anwesenheit.FahrerLinks`, verdraht
 Konvoi läuft** (`ortungsgeraet.LAUFEND`, wie beim Tracker — gefragt wird bei jedem
 Schreiben, damit ein Statuswechsel während der Verbindung gilt) oder ein Tracker für einen
 laufenden Konvoi sendet (`anwesenheit.aktive_tracker`: aktiv, `zuletzt_gesehen` innerhalb
-`TRACKER_FRIST_S` = `positionsquelle.VORRANG_S`, aus der Datenbank und deshalb ohne Anlauf),
+`TRACKER_FRIST_S` = `positionsquelle.VORRANG_S`, aus der Datenbank und deshalb ohne Anlauf;
+nicht in einer gesperrten Organisation — `services/tracker_sperre.py`, dieselbe Regel, nach der
+`geraete._schweigt` dem Gerät `schweigen` sagt),
 hält der Updater ein **automatisches** Update zurück; Superadmins zählen
 nicht, der manuelle Trigger fragt gar nicht. Das Backend schreibt die Zahlen alle 30 s
 nach `/update_status/anwesenheit` (`services/anwesenheit.py`), der Updater entscheidet
@@ -1167,7 +1169,7 @@ Mitglieder, Leitstellen, GPS-Freigaben und Datenexport sind keine Module.
   Moduls (403); Tracker bekommen `schweigen` (`geraete._schweigt`, neben Plansperre
   und Lizenz), `GET /api/convoys/{id}/tracker` liefert `[]`; die öffentliche
   Aktionsseite ist die übliche 404 und `positionsverlauf.aktive_konvois` lässt den
-  Konvoi aus; `branding.org_branding_response` fällt aufs Plattform-Branding zurück;
+  Konvoi aus; die Updater-Zählung (`anwesenheit.aktive_tracker`) lässt seine Tracker weg; `branding.org_branding_response` fällt aufs Plattform-Branding zurück;
   `org_mcp_policy.fuer_org`/`fuer_orgs` geben `AUS`. Wer einem Modul einen weiteren
   Weg baut (neuer Router, neuer Leser), zieht die Prüfung dort mit.
 - **Gelöscht wird nichts.** Geräte, Seiten, Logos und Richtlinie bleiben stehen und
