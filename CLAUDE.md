@@ -807,9 +807,12 @@ kein alter Fehlschlag, kein unerreichbares GitHub), und liegt ein Reiter mit
 Hinweis oder Zähler hinter einem Pfeil der `TabLeiste`, trägt der Pfeil einen
 Punkt. In der Planung steht im Reiter Fahrzeuge die Marschfolge offen; der Pool startet
 nur zu, wenn der Verband schon Fahrzeuge hat. Am Telefon ist der Kopf der Schublade
-klein (Logo, zwei Knöpfe), damit die Reiter oben stehen. Tests:
+klein (Logo, zwei Knöpfe), damit die Reiter oben stehen. In der Tracking-Ansicht
+ebenso; dort sind die Kartenknöpfe hochkant runde Symbole (`.ctrl-text` versteckt,
+Name in `aria-label` ohne Emoji) über der OSM-Nennung, quer bleiben sie Pillen mit
+Text. Tests:
 `frontend/e2e/admin-am-telefon.spec.ts`, `frontend/e2e/org-admin-am-telefon.spec.ts`,
-`frontend/e2e/planung-am-telefon.spec.ts`.
+`frontend/e2e/planung-am-telefon.spec.ts`, `frontend/e2e/tracking-am-telefon.spec.ts`.
 
 ### API-Docs (Swagger/OpenAPI)
 

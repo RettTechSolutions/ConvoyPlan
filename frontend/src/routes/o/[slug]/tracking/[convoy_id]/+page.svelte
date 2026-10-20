@@ -1353,8 +1353,8 @@
 
 		<div class="map-controls">
 			{#if fullscreenSupported}
-				<button class="map-ctrl-btn" class:active={isFullscreen} onclick={toggleFullscreen} title={isFullscreen ? 'Vollbild verlassen' : 'Vollbild – gesamten Bildschirm nutzen'}>
-					{isFullscreen ? '🔳 Vollbild aus' : '⛶ Vollbild'}
+				<button class="map-ctrl-btn" class:active={isFullscreen} onclick={toggleFullscreen} title={isFullscreen ? 'Vollbild verlassen' : 'Vollbild – gesamten Bildschirm nutzen'} aria-label={isFullscreen ? 'Vollbild aus' : 'Vollbild'}>
+					<span aria-hidden="true">{isFullscreen ? '🔳' : '⛶'}</span><span class="ctrl-text">{isFullscreen ? 'Vollbild aus' : 'Vollbild'}</span>
 				</button>
 			{/if}
 			{#if routeGeojson}
@@ -1362,8 +1362,9 @@
 					class="map-ctrl-btn"
 					onclick={async () => { await ansichtFreigeben(); mapView?.showRoute(); }}
 					title="Gesamte Route anzeigen"
+					aria-label="Route"
 				>
-					🗺️ Route
+					<span aria-hidden="true">🗺️</span><span class="ctrl-text">Route</span>
 				</button>
 			{/if}
 			{#if $livePositions.size > 0}
@@ -1371,12 +1372,13 @@
 					class="map-ctrl-btn"
 					onclick={async () => { await ansichtFreigeben(); mapView?.showConvoy(); }}
 					title="Auf alle Fahrzeuge des Konvois zoomen"
+					aria-label="Konvoi"
 				>
-					🚐 Konvoi
+					<span aria-hidden="true">🚐</span><span class="ctrl-text">Konvoi</span>
 				</button>
 			{/if}
-			<button class="map-ctrl-btn" onclick={() => { headingUp = false; mapView?.resetNorth(); }} title="Nach Norden ausrichten">
-				🧭 Norden
+			<button class="map-ctrl-btn" onclick={() => { headingUp = false; mapView?.resetNorth(); }} title="Nach Norden ausrichten" aria-label="Norden">
+				<span aria-hidden="true">🧭</span><span class="ctrl-text">Norden</span>
 			</button>
 			{#if myVehicleId && $livePositions.has(myVehicleId)}
 				<button
@@ -1384,16 +1386,18 @@
 					class:active={headingUp}
 					onclick={() => { headingUp = !headingUp; if (headingUp) followMyVehicle = true; }}
 					title="Karte in Fahrtrichtung ausrichten"
+					aria-label="Fahrtrichtung"
 				>
-					{headingUp ? '🧭 Fahrtrichtung' : '⬆️ Fahrtrichtung'}
+					<span aria-hidden="true">{headingUp ? '🧭' : '⬆️'}</span><span class="ctrl-text">Fahrtrichtung</span>
 				</button>
 				<button
 					class="map-ctrl-btn"
 					class:active={followMyVehicle}
 					onclick={() => (followMyVehicle = !followMyVehicle)}
 					title={followMyVehicle ? 'Folgen beenden' : 'Karte auf mein Fahrzeug locken'}
+					aria-label={followMyVehicle ? 'Folgt Fahrzeug' : 'Mein Fahrzeug'}
 				>
-					{followMyVehicle ? '🔒 Folgt Fahrzeug' : '🎯 Mein Fahrzeug'}
+					<span aria-hidden="true">{followMyVehicle ? '🔒' : '🎯'}</span><span class="ctrl-text">{followMyVehicle ? 'Folgt Fahrzeug' : 'Mein Fahrzeug'}</span>
 				</button>
 			{/if}
 		</div>
@@ -1638,6 +1642,23 @@
 		.point-banner.with-net { top: calc(48px + .5rem + 3.6rem); }
 		.next-point { top: calc(48px + .5rem); }
 		.next-point.with-net { top: calc(48px + .5rem + 3.6rem); }
+
+		/* Kopf der Schublade: Das Logo in voller Breite stand am Telefon über
+		   allem, was im Einsatz gebraucht wird (Konvoistatus, eigenes Fahrzeug,
+		   Liste); Name und Organisation darunter bleiben. */
+		.sidebar-header { padding: .5rem .75rem; }
+		.logo-wrap :global(img) { max-width: 150px; }
+	}
+
+	/* Telefon im Hochformat: Die Kartenknöpfe sind runde Symbole statt Pillen
+	   mit Text. Sechs Pillen untereinander deckten ein Drittel der Karte zu und
+	   lagen auf dem Kartenhinweis (OSM-Nennung). Der Text steht weiter in
+	   `title` und `aria-label`. Quer bleibt die Zeile mit Text (unten). */
+	@media (max-width: 700px) and (orientation: portrait) {
+		/* 4rem: Die OSM-Nennung ist hochkant zweizeilig. */
+		.map-controls { bottom: calc(4rem + env(safe-area-inset-bottom, 0px)); gap: .45rem; }
+		.map-ctrl-btn { width: 44px; height: 44px; padding: 0; justify-content: center; border-radius: 50%; font-size: 1.15rem; }
+		.ctrl-text { display: none; }
 	}
 
 	/* Short landscape (phones held sideways): the stacked map control buttons

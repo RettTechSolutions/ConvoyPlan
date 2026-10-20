@@ -87,7 +87,8 @@ test.describe('Überblick in der angemeldeten Ansicht beendet das Folgen', () =>
 		await expect(page.getByRole('button', { name: /Folgt Fahrzeug/ })).toBeVisible();
 	}
 
-	for (const knopf of ['🗺️ Route', '🚐 Konvoi']) {
+	// Ohne Emoji im Namen: Ein Screenreader läse „🗺️" als „Weltkarte" vor.
+	for (const knopf of ['Route', 'Konvoi']) {
 		test(`„${knopf}" löst das Folgen und zeigt beide Fahrzeuge`, async ({ page }) => {
 			await oeffnenUndFolgen(page);
 
