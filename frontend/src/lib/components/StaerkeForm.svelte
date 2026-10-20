@@ -107,7 +107,8 @@
 	.sub-label { font-size: var(--text-xs); color: var(--text-muted); }
 	.staerke-felder { display: flex; gap: .4rem; margin: .35rem 0 .5rem; }
 	.staerke-feld { display: flex; flex-direction: column; gap: .15rem; flex: 1; min-width: 0; font-size: .7rem; }
-	.staerke-feld input { width: 100%; padding: .3rem; text-align: center; font-variant-numeric: tabular-nums; }
+	/* Ohne eigene Farben blieben die Felder browserweiß — im dunklen Design ein greller Block. */
+	.staerke-feld input { width: 100%; padding: .3rem; text-align: center; font-variant-numeric: tabular-nums; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); color: var(--text-1); box-sizing: border-box; }
 	.staerke-summe output { display: block; padding: .3rem; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
 	.btn-primary { width: 100%; padding: .5rem 1rem; background: var(--color-primary); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: var(--text-sm); }
 	.btn-primary:disabled { opacity: .5; cursor: not-allowed; }

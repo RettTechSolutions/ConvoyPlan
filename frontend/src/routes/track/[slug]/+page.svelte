@@ -1230,6 +1230,14 @@
 		/* Rechts bleibt Platz für die Zoomknöpfe der Karte — sonst läge das
 		   Manöver genau über „−". */
 		.top-stack { top: calc(48px + .5rem); left: .75rem; right: 3.5rem; transform: none; width: auto; max-width: none; align-items: flex-start; }
+
+		/* Kopf der Schublade: Das Logo in voller Breite stand über allem, was
+		   die Besatzung braucht (eigenes Fahrzeug, Status, Stärke). */
+		.sidebar-header { padding: .5rem .75rem; }
+		.logo-wrap :global(img) { max-width: 150px; }
+		/* Über der OSM-Nennung, die am Telefon zweizeilig ist — vorher lag
+		   „Konvoi" darauf. Nur zwei Knöpfe, deshalb kein „⋯" wie im Tracking. */
+		.map-controls { bottom: calc(4rem + env(safe-area-inset-bottom, 0px)); }
 	}
 	/* Quittung der Führung für den eigenen Alarm */
 	.alarm-quittung { margin: .4rem 0; font-size: .85rem; color: #27ae60; }
