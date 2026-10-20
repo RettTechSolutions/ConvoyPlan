@@ -48,6 +48,8 @@ test('Anlegen zeigt das Token einmal, mit dem Eintrag für den EventTracker', as
 		},
 	]);
 	expect(gesendet?.delay_minutes).toBe(120);
+	// Absender nennen ist der Standard, wie bisher.
+	expect(gesendet?.show_sender).toBe(true);
 
 	// Bestätigt: Box weg, die Seite steht in der Liste — ohne Token.
 	await box.getByRole('button', { name: 'Ich habe es übernommen' }).click();

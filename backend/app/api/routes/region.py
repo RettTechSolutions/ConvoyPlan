@@ -601,7 +601,33 @@ async def region_status(_: User = Depends(require_superadmin)):
             ),
             "grace_hours": graph_aufbau.IMPORT_FRIST_S // 3600,
         }
+    # Mit „Schließen" quittierter Endstatus: Das Panel blendet ihn aus, statt
+    # ihn samt Log bei jedem Seitenaufruf wieder aufzuklappen.
+    if region_switch.is_seen(status):
+        status["seen"] = True
     return status
+
+
+class SeenBody(BaseModel):
+    """Der Endstatus, den der Bediener geschlossen hat — so, wie er ihn sah."""
+    phase: str
+    at: str
+
+
+@router.post("/seen", status_code=204)
+async def mark_region_switch_seen(body: SeenBody, _: User = Depends(require_superadmin)):
+    """Quittiert einen beendeten Wechsel für alle Superadmins.
+
+    409, wenn der genannte nicht (mehr) der aktuelle Endstatus ist — ein
+    inzwischen beendeter oder neu gestarteter Wechsel wird nicht ungesehen
+    weggeklickt.
+    """
+    try:
+        ok = region_switch.mark_seen(body.phase, body.at)
+    except OSError as exc:
+        raise HTTPException(503, "Status-Volume nicht beschreibbar.") from exc
+    if not ok:
+        raise HTTPException(409, "Dieser Regionswechsel ist nicht mehr der aktuelle.")
 
 
 async def _require_superadmin_stream_token(token: str, db: AsyncSession) -> None:

@@ -16,6 +16,7 @@ STATUS_FILE = "region_status.json"
 LOG_FILE = "region.log"
 CANCEL_FILE = "region.cancel"
 LOCK_FILE = "region.lock"
+SEEN_FILE = "region.gesehen"
 
 
 def _path(name: str) -> str:
@@ -363,3 +364,48 @@ def request_cancel() -> None:
     os.makedirs(VOLUME, exist_ok=True)
     with open(_path(CANCEL_FILE), "w") as f:
         f.write(datetime.now(timezone.utc).isoformat())
+
+
+def _end_key(status: dict) -> str | None:
+    """Kennung eines beendeten Wechsels: Endphase und Zeitpunkt des Endstatus.
+
+    Der Updater schreibt `at` bei jeder Phase neu, im Endstatus ist es also der
+    Zeitpunkt des Endes — zwei Wechsel teilen ihn nicht. Ohne Endphase oder
+    ohne `at` gibt es nichts, was als gesehen gelten koennte.
+    """
+    phase, at = status.get("phase"), status.get("at")
+    if phase not in END_PHASES or not isinstance(at, str) or not at:
+        return None
+    return f"{phase}@{at}"
+
+
+def is_seen(status: dict) -> bool:
+    """Ob ein Superadmin diesen beendeten Wechsel mit „Schließen" quittiert hat.
+
+    Ohne diese Marke zeigte das Panel denselben Endstatus samt komplettem Log
+    bei jedem Seitenaufruf wieder an, bis zum naechsten Wechsel — „Schließen"
+    galt nur fuer den einen Seitenaufruf.
+    """
+    key = _end_key(status)
+    if key is None:
+        return False
+    try:
+        with open(_path(SEEN_FILE)) as f:
+            return f.read().strip() == key
+    except OSError:
+        return False
+
+
+def mark_seen(phase: str, at: str) -> bool:
+    """Quittiert den beendeten Wechsel, den der Aufrufer gesehen hat.
+
+    Nur, wenn genau dieser noch der aktuelle ist: Endete inzwischen ein
+    anderer (oder laeuft schon der naechste), quittierte ein veralteter Klick
+    sonst einen Endstatus, den niemand gesehen hat. False heisst: nichts
+    geschrieben. OSError (Volume nicht beschreibbar) geht an den Aufrufer.
+    """
+    key = _end_key(read_status())
+    if key is None or key != _end_key({"phase": phase, "at": at}):
+        return False
+    _write_atomic(_path(SEEN_FILE), key)
+    return True

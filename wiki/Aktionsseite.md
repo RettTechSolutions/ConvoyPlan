@@ -9,6 +9,7 @@ mitfiebern, aber niemand wissen soll, wo die beladenen Lkw gerade stehen.
 | Sichtbar | Nicht sichtbar |
 |---|---|
 | ein Punkt je Konvoi, die gefahrene Strecke | einzelne Fahrzeuge, Rufnamen, Kennzeichen |
+| die Zahl der eingeplanten Fahrzeuge (nicht der gerade fahrenden) | alles Weitere aus den Fahrzeugen |
 | Status: noch nicht los, unterwegs, Pause, angekommen | Stärke, Betriebsstoff, Alarme, Telefonnummern |
 | gefahrene und verbleibende Kilometer | der interne Konvoiname |
 | Ziel als Text, auf Wunsch als grober Punkt | die geplante Route und die Wegpunkte |
@@ -63,7 +64,121 @@ umstellen — sonst bleibt die öffentliche Seite leer.
 - **Löschen** entfernt Seite und Zuordnung. Der Positionsverlauf geht nach
   45 Tagen von selbst (`RETENTION_POSITION_TRAIL_DAYS`).
 
-## Datenschutz
+## Fotos von unterwegs (Telegram)
+
+Fahrer und Begleiter posten Fotos mit ein paar Worten in eine Telegram-Gruppe.
+Die Presse gibt sie dort frei; erst dann erscheinen sie auf der Aktionsseite —
+**nach denselben Regeln wie der Konvoi selbst**:
+
+- **Verzögert** wie die Positionen. Ein Foto von 14:00 Uhr erscheint bei zwei
+  Stunden Verzögerung frühestens um 16:00 Uhr.
+- **Dort, wo der Konvoi zu der Zeit war**, aus seinem Positionsverlauf — nie aus
+  den GPS-Daten im Foto. Die werden beim Eingang entfernt, das Bild neu
+  gespeichert.
+- **Fotos von einem Halt** (Rastplatz, Autohof, Übernachtung) erscheinen erst,
+  wenn der Konvoi auf der Seite wieder fährt, und dann an seinem versetzten
+  Punkt. Ein Foto zeigt den Ort auch ohne Koordinate — Ortsschild, Rastplatz,
+  Kirchturm. Am Ziel kommen die Übergabefotos, sobald er angekommen ist.
+- **Nichts über die Absender.** Auf der Seite steht der Konvoi und die Uhrzeit,
+  nicht wer das Foto geschickt hat. Hinaus geht nur der Text, den die Presse
+  freigegeben hat. Intern nennt die Karte des Bots den Absender („von Jonas“),
+  damit die Presse nachfragen kann. Wer das nicht will, nimmt an der Seite den
+  Haken *Absender auf den Beiträgen nennen* heraus: Dann speichert ConvoyPlan
+  keinen Namen mehr, und die schon gespeicherten der Seite werden gelöscht.
+
+### Einrichten
+
+**Org-Admin → Aktionsseiten** (Rolle *Admin*):
+
+1. **Bot anlegen** bei [@BotFather](https://t.me/BotFather) mit `/newbot` und
+   den Token oben in der Karte *Telegram-Bot* eintragen. Er wird verschlüsselt
+   gespeichert und nie wieder angezeigt. ConvoyPlan legt dabei die Befehle im
+   Bot ab: Wer `/` tippt, bekommt im Privatchat `/presse` und in der Gruppe
+   `/verbinden` und `/ab` angeboten — bei @BotFather ist dafür nichts zu tun.
+2. **Privacy Mode abschalten:** bei @BotFather `/setprivacy` → den Bot wählen →
+   *Disable*. Sonst sieht der Bot in Gruppen keine Fotos; die Karte zeigt das
+   gelb an. Alternativ den Bot in jeder Gruppe zum Admin machen.
+3. **Bot in die Gruppe holen** — eine Gruppe je Konvoi oder eine Gruppe mit
+   *Themen*, ein Thema je Konvoi (empfohlen ab drei Konvois). Der Bot meldet
+   sich dort und erklärt, wie man ihn verbindet. Am besten macht ihr ihn zum
+   **Admin** mit *Gruppeninfo ändern* und *Nachrichten anheften*.
+4. **Verbinden:** In der Aktionsseite unter *Fotos von unterwegs* beim Konvoi
+   *Code erzeugen* und `/verbinden CODE` in die Gruppe bzw. das Thema schreiben
+   (15 Minuten gültig). Der Bot bestätigt in der Gruppe, was mit den Fotos
+   geschieht, und richtet eine ganze Gruppe gleich ein:
+   - **Beschreibung**: wofür die Gruppe da ist, wie verzögert die Seite ist;
+   - **Gruppenbild**: die Konvoifarbe der Seite mit den Anfangsbuchstaben des
+     öffentlichen Namens („Konvoi Albanien“ → *A*);
+   - seine Bestätigung als **angeheftete Anleitung**.
+
+   Den Gruppennamen lässt er, wie er ist. Ein Thema richtet er nicht ein —
+   Bild und Beschreibung gälten sonst für alle Konvois der Gruppe. Fehlen ihm
+   die Rechte, sagt er welche, und holt alles nach, sobald er Admin wird.
+5. **Presse eintragen:** *Presse-Code erzeugen* und an die Pressestelle geben.
+   Jede Person schickt dem Bot **privat** `/presse CODE` (24 Stunden gültig,
+   für mehrere Personen).
+
+### Im Betrieb
+
+- **Wer neu in die Gruppe kommt**, bekommt vom Bot gesagt, dass Fotos von hier
+  nach Freigabe öffentlich erscheinen können — und dass, wer das nicht möchte,
+  hier keine Fotos postet. Höchstens einmal je Minute; die vorige Begrüßung
+  löscht er, damit die Gruppe nicht zuläuft. In Gruppen mit Themen begrüßt er
+  nicht.
+- Auf jeden Beitrag antwortet der Bot mit **einer** Karte und Knöpfen:
+  *Freigeben*, *Text ändern*, *Ablehnen*, nach der Freigabe *Zurückziehen*.
+  Drücken darf nur, wer als Presse eingetragen ist. Die Karte zeigt, wann der
+  Beitrag frühestens erscheint, und später „Öffentlich seit …".
+- **Später zeigen:** `/ab 18:00` als Antwort auf die Karte (oder das Foto)
+  hält einen Beitrag bis dahin zurück, etwa bis zur Pressekonferenz. `18:00`
+  ist das nächste 18:00, `/ab 27.12. 18:00` ein bestimmter Tag, `/ab -` nimmt
+  den Termin weg; höchstens sieben Tage voraus. Früher als die Verzögerung geht
+  nie — eine frühere Zeit beantwortet der Bot mit der, die ohnehin gilt. Im
+  Org-Admin heißt es *Erst ab …*.
+- **Alben** sind ein Beitrag. **Weitergeleitete** Fotos nimmt der Bot nicht an.
+- **Videos** bis 60 Sekunden werden ebenfalls ein Beitrag. ConvoyPlan rechnet
+  sie neu (höchstens 720p, ohne GPS-Daten, Gerät und Aufnahmezeit) — dafür
+  läuft der Dienst `medien` mit. Der **Ton bleibt drin**; auf der Seite startet
+  ein Video stumm, Zuschauer können ihn einschalten. Die Karte des Bots sagt
+  „🔊 mit Ton — vor dem Freigeben anhören“: Durchsagen und Gespräche verraten
+  Orte, die das Bild nicht zeigt. Im Org-Admin öffnet ein Klick auf das
+  Standbild das Video. Längere Videos lehnt der Bot mit Begründung ab; ein
+  Video in einem Album wird ein eigener Beitrag. Telegram gibt einem Bot nur
+  Dateien bis 20 MB heraus — ist das Original größer (schnell der Fall bei
+  Videos in voller Telefonqualität), nimmt der Bot die kleinere Fassung, die
+  Telegram selbst anlegt. Gibt es keine (etwa *als Datei* geschickt), sagt er
+  es und bittet um eine kleinere. Ohne `medien`
+  (`MEDIEN_URL=` leer) sagt der Bot einmal, dass er nur Fotos annimmt.
+- **Links zu Instagram, YouTube, Facebook oder TikTok** werden ebenfalls ein
+  Beitrag, mit derselben Freigabe. Als **Antwort auf ein Foto** (oder auf die
+  Karte des Bots) gehört der Link zu dessen Zeit und Ort, sonst zur Zeit der
+  Nachricht. Auf der Seite erscheint ein Polaroid mit dem Symbol des Dienstes;
+  den Link öffnet erst ein Klick — eingebettet wird nichts, die Seite lädt
+  weiter nichts von außen. Bei **YouTube und TikTok** holt ConvoyPlan einmal
+  das Vorschaubild des Dienstes und zeigt es im Polaroid; die Karte des Bots
+  sagt, ob eins mit hinausgeht. Instagram und Facebook geben keins her, dort
+  bleibt es beim Symbol. Abschalten: `LINK_VORSCHAU_ENABLED=false`. Tracking-Anhänge wie `?igsh=…` oder `?si=…` entfernt
+  der Bot, die Karte zeigt die Adresse, wie sie hinausgeht. Andere Adressen
+  nimmt er nicht als Link-Beitrag an.
+- Ändert jemand nach der Freigabe seinen Text in Telegram, bleibt öffentlich
+  der freigegebene; die Karte weist darauf hin.
+- **Zurückziehen** über den Knopf, nicht durch Löschen in Telegram — das
+  bekommt der Bot nicht mit.
+- Ist die Aktionsseite nicht aktiv (abgelaufen, abgeschaltet) oder die
+  Tagesgrenze erreicht (300 Fotos bzw. 100 Links in 24 Stunden je Gruppe),
+  **sagt der Bot es in der Gruppe** — einmal, nicht auf jedes Foto. Was er dann
+  nicht annimmt, wird nicht gespeichert.
+- Bremst Telegram den Bot (viele Fotos in kurzer Zeit), kommen seine Karten
+  etwas später, aber sie kommen.
+- Im Org-Admin stehen alle Beiträge mit Zähler („3 warten …") und denselben
+  Aktionen — für den Fall, dass in Telegram gerade niemand erreichbar ist.
+- **Gruppe trennen** nimmt keine neuen Fotos mehr an; vorhandene Beiträge
+  bleiben. Fotos werden nach 45 Tagen gelöscht, abgelehnte und
+  zurückgezogene nach 7, nie bearbeitete nach 30 Tagen.
+
+Auf Fotos sind Menschen. Wer freigibt, entscheidet auch, ob die Abgebildeten
+einverstanden sein dürften — Grenzbeamte, Empfänger, Kinder bei der Übergabe.
+
 
 Positionen werden für die Aktionsseite nur aufgezeichnet, solange ein Konvoi an
 einer eingeschalteten, nicht abgelaufenen Seite hängt — ein Bewegungsprofil

@@ -15,7 +15,20 @@ from app.models.oauth_refresh_token import OAuthRefreshToken
 from app.models.org_mcp_policy import OrganizationMcpPolicy
 from app.models.org_plan import OrganizationPlan
 from app.models.org_module import OrganizationModule
-from app.models.public_tracker import PublicTracker, PublicTrackerConvoy, VehiclePositionTrail
+from app.models.marschbefehl_vorlage import MarschbefehlVorlage
+from app.models.public_tracker import (
+    PublicTracker,
+    PublicTrackerChat,
+    PublicTrackerCode,
+    PublicTrackerConvoy,
+    PublicTrackerPhoto,
+    PublicTrackerPhotoData,
+    PublicTrackerPost,
+    PublicTrackerPresse,
+    PublicTrackerTelegram,
+    PublicTrackerVideo,
+    VehiclePositionTrail,
+)
 from app.models.ortungsgeraet import Ortungsgeraet
 from app.models.feedback import FeedbackReport
 from app.models.demo_ip_allowlist import DemoIpAllowlistEntry
@@ -25,11 +38,13 @@ from app.models.system_metric import SystemMetricDaily, SystemMetricSample, User
 
 __all__ = [
     "User", "Passkey", "Vehicle", "Organization", "UserOrganization",
-    "Convoy", "ConvoyVehicle", "Waypoint", "Route",
+    "Convoy", "ConvoyVehicle", "MarschbefehlVorlage", "Waypoint", "Route",
     "VehiclePosition", "ConvoyShareLink", "AuditLog", "ApiKey",
     "OAuthClient", "OAuthCode", "OAuthRefreshToken", "OrganizationMcpPolicy", "OrganizationPlan",
     "OrganizationModule",
     "PublicTracker", "PublicTrackerConvoy", "VehiclePositionTrail", "Ortungsgeraet",
+    "PublicTrackerTelegram", "PublicTrackerChat", "PublicTrackerPresse", "PublicTrackerCode",
+    "PublicTrackerPost", "PublicTrackerPhoto", "PublicTrackerPhotoData", "PublicTrackerVideo",
     "DemoOrigin", "DemoIpAllowlistEntry", "DemoLead", "FeedbackReport",
     "SystemMetricSample", "SystemMetricDaily", "UserActivityDay",
 ]

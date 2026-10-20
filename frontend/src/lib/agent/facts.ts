@@ -90,7 +90,7 @@ export const FEATURES: readonly Feature[] = [
 		id: 'marschbefehl',
 		title: 'Marschbefehl und Export',
 		summary:
-			'Am Ende steht der fertige Marschbefehl als PDF. Route und Wegpunkte gehen zusätzlich als GPX oder JSON an Navigationsgeräte und Fremdsysteme.'
+			'Am Ende steht der fertige Marschbefehl als PDF oder als Word-Dokument aus der eigenen Vorlage der Organisation. Route und Wegpunkte gehen zusätzlich als GPX oder JSON an Navigationsgeräte und Fremdsysteme.'
 	},
 	{
 		id: 'mandanten',

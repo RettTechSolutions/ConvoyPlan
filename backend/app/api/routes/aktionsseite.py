@@ -19,10 +19,12 @@ import secrets
 import time
 import uuid
 from datetime import datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -30,8 +32,14 @@ from app.api.deps import OrgCtx, get_org_context, require_modul
 from app.api.guards import ROLE_ORDER
 from app.database import get_db
 from app.models.convoy import Convoy
-from app.models.public_tracker import PublicTracker, PublicTrackerConvoy
-from app.services import aktionsseite, audit, org_module, positionsverlauf
+from app.models.public_tracker import (
+    PublicTracker,
+    PublicTrackerConvoy,
+    PublicTrackerPhoto,
+    PublicTrackerPhotoData,
+    PublicTrackerPost,
+)
+from app.services import aktionsseite, aktionsseite_video, audit, org_module, positionsverlauf
 
 public_router = APIRouter(prefix="/public/aktion", tags=["aktionsseite"])
 org_router = APIRouter(
@@ -71,6 +79,50 @@ class OeffentlicherPunkt(_Streng):
     lon: float
 
 
+class OeffentlichesBild(_Streng):
+    id: str
+    width: int
+    height: int
+
+
+class OeffentlicherLink(_Streng):
+    """Ein Link statt Bildern (§ 11): bereinigt, nur bekannte Dienste."""
+
+    url: str
+    dienst: Literal["instagram", "youtube", "facebook", "tiktok"]
+    # Vorschaubild des Dienstes (§ 11.2), einmal beim Eingang geholt und neu
+    # kodiert; ausgeliefert über denselben Bildendpunkt wie die Fotos.
+    vorschau: OeffentlichesBild | None
+
+
+class OeffentlichesVideo(_Streng):
+    """Ein Video (§ 15): neu kodiert, ohne Metadaten, höchstens 60 s. Das
+    Standbild kommt über den Bildendpunkt, das Video über ``/video/{id}.mp4``."""
+
+    id: str
+    width: int
+    height: int
+    seconds: float
+    # Ton ist drin; abgespielt wird stumm, bis jemand ihn einschaltet.
+    sound: bool
+    poster: OeffentlichesBild
+
+
+class OeffentlicherBeitrag(_Streng):
+    """Ein freigegebenes Foto, Album oder ein Link — platziert und
+    zurückgehalten nach ``beitrag_position``/``beitrag_sichtbar``. Absender,
+    Prüfer und die Bildunterschrift aus Telegram gehen nie hinaus."""
+
+    id: str
+    at: datetime
+    position: OeffentlicherPunkt | None
+    coarse: bool
+    text: str | None
+    photos: list[OeffentlichesBild]
+    link: OeffentlicherLink | None
+    video: OeffentlichesVideo | None
+
+
 class OeffentlicherKonvoi(_Streng):
     key: str
     name: str
@@ -82,6 +134,10 @@ class OeffentlicherKonvoi(_Streng):
     trail: list[list[float]]
     driven_km: float
     total_km: float | None
+    # Wie viele Fahrzeuge eingeplant sind — die Zahl, kein Fahrzeug selbst.
+    # Der EventTracker zeichnet so viele hintereinander.
+    vehicles: int
+    posts: list[OeffentlicherBeitrag]
 
 
 class OeffentlicheAktion(_Streng):
@@ -122,13 +178,8 @@ def _passt(token: str | None, token_hash: str) -> bool:
     return token is not None and hmac.compare_digest(_hash(token), token_hash)
 
 
-@public_router.get("/{slug}", response_model=OeffentlicheAktion)
-async def abrufen(
-    slug: str,
-    response: Response,
-    authorization: str | None = Header(default=None),
-    db: AsyncSession = Depends(get_db),
-):
+async def _oeffentlich(slug: str, authorization: str | None, db: AsyncSession) -> dict:
+    """Die öffentliche Antwort einer Seite — oder dieselbe 404 für alles."""
     token = _token_aus(authorization)
     jetzt = datetime.now(timezone.utc)
     treffer = _cache.get(slug)
@@ -137,7 +188,6 @@ async def abrufen(
         if time.monotonic() - erzeugt < _CACHE_TTL_S and (gueltig_bis is None or gueltig_bis > jetzt):
             if not _passt(token, token_hash):
                 raise HTTPException(status_code=404, detail=_NICHT_GEFUNDEN)
-            response.headers["Cache-Control"] = "private, max-age=60"
             return nutz
 
     tracker = (
@@ -159,8 +209,91 @@ async def abrufen(
         await aktionsseite.nutzlast(db, tracker, jetzt)
     ).model_dump(mode="json")
     _cache[slug] = (nutz, time.monotonic(), tracker.fetch_token_hash, tracker.valid_until)
+    return nutz
+
+
+@public_router.get("/{slug}", response_model=OeffentlicheAktion)
+async def abrufen(
+    slug: str,
+    response: Response,
+    authorization: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    nutz = await _oeffentlich(slug, authorization, db)
     response.headers["Cache-Control"] = "private, max-age=60"
     return nutz
+
+
+def _bilder(beitrag: dict) -> list[dict]:
+    """Alle Bilder eines öffentlichen Beitrags: Fotos, Vorschau des Links,
+    Standbild des Videos."""
+    link, video = beitrag["link"], beitrag["video"]
+    return (
+        beitrag["photos"]
+        + ([link["vorschau"]] if link and link["vorschau"] else [])
+        + ([video["poster"]] if video else [])
+    )
+
+
+@public_router.get("/{slug}/bild/{bild_id}/{groesse}.webp")
+async def bild(
+    slug: str,
+    bild_id: str,
+    groesse: Literal["gross", "klein"],
+    authorization: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Ein Bild eines Beitrags — nur, wenn es gerade in der Antwort steht.
+
+    Geprüft wird an genau der Antwort, die ``abrufen`` liefert, nicht mit
+    einer eigenen Abfrage: Sonst ließe sich ein Bild vor seiner Zeit über die
+    Kennung holen, sobald sie einmal bekannt ist. Alles andere ist dieselbe 404."""
+    nutz = await _oeffentlich(slug, authorization, db)
+    if not any(
+        f["id"] == bild_id for k in nutz["convoys"] for p in k["posts"] for f in _bilder(p)
+    ):
+        raise HTTPException(status_code=404, detail=_NICHT_GEFUNDEN)
+    daten = (await db.execute(
+        select(PublicTrackerPhotoData)
+        .join(PublicTrackerPhoto, PublicTrackerPhoto.id == PublicTrackerPhotoData.photo_id)
+        .where(PublicTrackerPhoto.public_id == bild_id)
+    )).scalar_one_or_none()
+    if daten is None:
+        raise HTTPException(status_code=404, detail=_NICHT_GEFUNDEN)
+    return Response(
+        content=daten.gross if groesse == "gross" else daten.klein,
+        media_type="image/webp",
+        # Ein freigegebenes Bild ändert sich nicht; zurückgezogen fällt es aus
+        # der Antwort, und der EventTracker löscht seine Kopie.
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
+
+
+@public_router.get("/{slug}/video/{video_id}.mp4")
+async def video(
+    slug: str,
+    video_id: str,
+    authorization: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Ein Video eines Beitrags (§ 15) — wie die Bilder nur, solange es in der
+    Antwort steht. Der EventTracker holt es einmal ganz und liefert es selbst
+    aus; Teilabrufe braucht es hier nicht."""
+    nutz = await _oeffentlich(slug, authorization, db)
+    if not any(
+        p["video"] and p["video"]["id"] == video_id for k in nutz["convoys"] for p in k["posts"]
+    ):
+        raise HTTPException(status_code=404, detail=_NICHT_GEFUNDEN)
+    try:
+        datei = aktionsseite_video.pfad(video_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail=_NICHT_GEFUNDEN)
+    if not datei.is_file():
+        raise HTTPException(status_code=404, detail=_NICHT_GEFUNDEN)
+    return FileResponse(
+        datei, media_type="video/mp4",
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
 
 
 # ── Verwaltung im Org-Admin ───────────────────────────────────────────────
@@ -196,6 +329,7 @@ class AktionsseiteDaten(BaseModel):
         le=aktionsseite.MAX_VERZOEGERUNG_MIN,
     )
     show_destination: bool = False
+    show_sender: bool = True
     valid_until: datetime | None = None
     enabled: bool = True
     convoys: list[KonvoiEintrag] = Field(default_factory=list, max_length=10)
@@ -228,6 +362,7 @@ class AktionsseiteZeile(BaseModel):
     theme: str
     delay_minutes: int
     show_destination: bool
+    show_sender: bool
     valid_until: datetime | None
     enabled: bool
     active: bool
@@ -276,6 +411,7 @@ async def _zeile(db: AsyncSession, request: Request, t: PublicTracker) -> dict:
         "theme": t.theme,
         "delay_minutes": t.delay_minutes,
         "show_destination": t.show_destination,
+        "show_sender": t.show_sender,
         "valid_until": t.valid_until,
         "enabled": t.enabled,
         "active": aktionsseite.ist_aktiv(t, datetime.now(timezone.utc)),
@@ -315,20 +451,21 @@ async def _konvois_setzen(
             # Fremde und unbekannte Konvois gleich behandeln: ob es einen
             # Konvoi in einer anderen Organisation gibt, geht niemanden an.
             raise HTTPException(status_code=422, detail="Unbekannter Konvoi")
-    t.convoys.clear()
-    await db.flush()
+    # Bleibende Konvois werden geändert, nicht ersetzt: An ihrer Zeile hängen
+    # Telegram-Gruppen und Beiträge, und ein neuer Titel der Seite darf die
+    # nicht löschen. Nur wer aus der Liste fällt, nimmt seine mit.
+    bisher = {c.convoy_id: c for c in t.convoys}
+    neu = []
     for nr, e in enumerate(eintraege):
-        t.convoys.append(
-            PublicTrackerConvoy(
-                convoy_id=e.convoy_id,
-                display_name=e.display_name,
-                destination_label=e.destination_label,
-                destination_lat=e.destination_point.lat if e.destination_point else None,
-                destination_lon=e.destination_point.lon if e.destination_point else None,
-                color=e.color,
-                position=nr,
-            )
-        )
+        c = bisher.get(e.convoy_id) or PublicTrackerConvoy(convoy_id=e.convoy_id)
+        c.display_name = e.display_name
+        c.destination_label = e.destination_label
+        c.destination_lat = e.destination_point.lat if e.destination_point else None
+        c.destination_lon = e.destination_point.lon if e.destination_point else None
+        c.color = e.color
+        c.position = nr
+        neu.append(c)
+    t.convoys[:] = neu
 
 
 def _felder_setzen(t: PublicTracker, d: AktionsseiteDaten) -> None:
@@ -338,6 +475,7 @@ def _felder_setzen(t: PublicTracker, d: AktionsseiteDaten) -> None:
     t.theme = d.theme
     t.delay_minutes = d.delay_minutes
     t.show_destination = d.show_destination
+    t.show_sender = d.show_sender
     t.valid_until = d.valid_until
     t.enabled = d.enabled
 
@@ -404,6 +542,13 @@ async def aendern(
     t = await _laden(db, org.id, tracker_id)
     _felder_setzen(t, data)
     await _konvois_setzen(db, org.id, t, data.convoys)
+    if not data.show_sender:
+        # Abgeschaltet heißt auch: die schon gespeicherten Namen gehen (Plan § 14.4).
+        await db.execute(
+            update(PublicTrackerPost)
+            .where(PublicTrackerPost.tracker_id == t.id, PublicTrackerPost.sender_name.is_not(None))
+            .values(sender_name=None)
+        )
     await db.commit()
     t = await _laden(db, org.id, tracker_id)
     await audit.record(

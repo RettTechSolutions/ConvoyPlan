@@ -188,17 +188,20 @@ für einen Umzug, etwa vom Hosting auf die eigene Installation. Admins der Organ
 finden ihn unter **Organisation → Admin → Datenexport**, der Superadmin mit ⬇ in der
 Organisationsliste.
 
-- **Inhalt:** ein ZIP mit `organisation.json` und den hochgeladenen Logos unter `logos/`.
+- **Inhalt:** ein ZIP mit `organisation.json`, den hochgeladenen Logos unter `logos/`
+  und den Fotos der Aktionsseiten unter `beitraege/` (WebP, so wie sie hinausgehen).
   Das JSON enthält Organisation, Mitgliedschaften, Mitglieder, Fahrzeuge, Konvois mit
   Fahrzeugzuordnungen, Wegpunkten, Routen (GeoJSON), letzten Positionen und
-  Tracking-Links, Leitstellen, API-Schlüssel, KI-Freigabe, Aktivitätstage und das
-  Audit-Log der Organisation.
+  Tracking-Links, Leitstellen, API-Schlüssel, KI-Freigabe, Aktivitätstage, Aktionsseiten
+  samt Beiträgen (`beitraege`, `beitrag_bilder`) und das Audit-Log der Organisation.
 - **Jede Spalte:** Die Felder werden aus dem Datenmodell gelesen, nicht von Hand
   aufgezählt. Ein Test prüft außerdem, dass jede Tabelle mit Bezug zu einer
   Organisation entweder im Export steht oder bewusst ausgenommen ist.
 - **Nicht enthalten:** Passwort- und Schlüssel-Hashes, MFA-Geheimnisse, die Adressen
   (Slugs) der Tracking-Links, OAuth-Tokens sowie Rückmeldungen an den Betreiber und
-  Demo-Kontaktdaten.
+  Demo-Kontaktdaten. Von den Beiträgen fehlen Absender und alle Telegram-Kennungen
+  (Gruppe, Nachrichten, Fahrer, Presse) — sie gehören Dritten; ebenso Bot-Token, Codes,
+  die Liste der Presse und die verbundenen Gruppen.
 - **Nur mit Anmeldung:** Ein API-Key bekommt keinen Export, auch nicht mit Admin-Rolle.
   Jeder Export steht als `org.exported` im Audit-Log.
 
@@ -312,7 +315,7 @@ gereicht, um auf jeder Installation mit Auto-Update root zu bekommen.
 ### Wie es abgesichert ist
 
 1. **Signiert in der CI.** `release.yml` und `nightly-images.yml` signieren jedes
-   der fünf Images (`backend`, `frontend`, `graphhopper`, `updater`, `osmium`)
+   der sechs Images (`backend`, `frontend`, `graphhopper`, `updater`, `osmium`, `medien`)
    **keyless** mit [Sigstore/cosign](https://docs.sigstore.dev/). Die Identität
    ist der Workflow selbst — GitHub stellt ein OIDC-Token aus, Fulcio tauscht es
    gegen ein kurzlebiges Zertifikat. **Es gibt keinen privaten Schlüssel**, weder

@@ -21,6 +21,51 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Added
+
+- **Aktionsseite: Fahrzeugzahl je Konvoi.** Die öffentliche Antwort trägt `vehicles`, die Zahl der im Konvoi eingeplanten Fahrzeuge (nicht der gerade fahrenden — ein Ausfall unterwegs zeigt sich nicht). Der EventTracker zeichnet damit eine Kolonne statt eines einzelnen Lkw. Sonst geht nichts aus den Fahrzeugen hinaus; die Positivliste ist entsprechend erweitert.
+
+## [2026.11.1] – 2026-10-15
+
+### Fixed
+
+- **Videos über 20 MB.** Telegram gibt einem Bot nur Dateien bis 20 MB heraus, und ein Video in voller Telefonqualität ist schon nach wenigen Sekunden größer — der Bot lehnte es ab („so groß gibt Telegram es mir nicht"). Jetzt nimmt er die kleinere Fassung, die Telegram selbst anlegt (`qualities`): die kleinste mit mindestens 720p, sonst die größte, die passt. Nur wenn es keine gibt (etwa *als Datei* geschickt), lehnt er ab und sagt, wie es geht.
+
+## [2026.11.0] – 2026-10-15
+
+### Wichtig beim Update
+
+- **Neuer Dienst `medien`** (Image `ghcr.io/retttechsolutions/convoyplan/medien`): Er kodiert Videos aus Telegram neu und läuft als eigener Container, weil sein ffmpeg mit x264 unter der GPL steht. Der Updater zieht ihn mit; wer ohne Updater aktualisiert, braucht `docker compose pull && docker compose up -d`. Er nimmt bis zu 2 CPU-Kerne und 1 GB Speicher, solange ein Video umgerechnet wird (rund 15–60 s je Video), sonst nichts. Ohne ihn (`MEDIEN_URL=` leer) nimmt der Bot nur Fotos an.
+- Datenbank-Migration `0072` läuft beim Start des Backends.
+- Der Organisations-Export wird jetzt in einer temporären Datei gebaut und gestreamt, nicht mehr im Speicher.
+- Das Backend fragt `i.ytimg.com` und `www.tiktok.com` an, sobald jemand einen YouTube- oder TikTok-Link in eine verbundene Telegram-Gruppe schickt — einmal je Link. Ohne Ausgang dorthin oder wenn das nicht gewünscht ist: `LINK_VORSCHAU_ENABLED=false`.
+
+### Added
+
+- **Videos von unterwegs.** Videos bis 60 Sekunden aus der Telegram-Gruppe werden Beiträge der Aktionsseite, mit derselben Freigabe, Verzögerung und Platzierung wie Fotos. Ein neuer Dienst **`medien`** kodiert sie mit ffmpeg neu — höchstens 720p, 30 Bilder/s, H.264/AAC, ohne GPS-Daten, Gerät und Aufnahmezeit, aufrecht gedreht. Der Ton bleibt; die Karte des Bots sagt der Presse, dass sie vor dem Freigeben hinhören muss. Gespeichert unter `/uploads/aktionsseite/videos/` (Upload-Volume, im Backup), das Standbild in der Datenbank; im Org-Admin öffnet ein Klick das Video, im Organisations-Export liegen sie unter `beitraege/videos/`. Öffentlich als `video` am Beitrag; anzeigen kann sie der EventTracker ab 1.3.0. Migration `0072`.
+- **Link-Beiträge mit Vorschaubild.** Bei YouTube- und TikTok-Links holt ConvoyPlan beim Eingang einmal das Vorschaubild des Dienstes, kodiert es neu (ohne Metadaten) und gibt es nach der Freigabe als `link.vorschau` an den EventTracker. Die Zuschauer laden weiter nichts vom Dienst. Die Karte des Bots sagt der Presse, ob ein Bild mit hinausgeht; im Org-Admin steht es auf dem Link. Instagram und Facebook bleiben ohne Bild: Meta gibt seit November 2025 keine Vorschaubilder mehr über oEmbed heraus. Anzeigen kann es der EventTracker ab 1.3.0; ältere zeigen den Link wie bisher.
+
+## [2026.10.0] – 2026-10-15
+
+### Wichtig beim Update
+
+- Datenbank-Migrationen `0070` und `0071` laufen beim Start des Backends.
+- Das Backend fragt `api.telegram.org` an, sobald eine Organisation einen Telegram-Bot einträgt (sonst nicht). Ohne Ausgang dorthin: `TELEGRAM_ENABLED=false`.
+
+### Added
+
+- **Fotos von unterwegs auf der Aktionsseite.** Fahrer und Begleiter posten Fotos in eine Telegram-Gruppe, die Presse gibt sie dort per Knopf frei. Freigegebene Beiträge stehen in der öffentlichen Antwort (`posts` je Konvoi) — verzögert wie die Positionen, platziert aus dem Positionsverlauf statt aus den GPS-Daten im Bild, und Fotos von einem Halt erst, wenn der Konvoi wieder fährt. Bilder werden beim Eingang neu kodiert, ohne EXIF; Absender und Telegram-Text gehen nie hinaus. Einrichten unter **Org-Admin → Aktionsseiten**: Telegram-Bot, Gruppe je Konvoi per Code, Presse per Code; dort auch alle Beiträge mit denselben Aktionen. Auch **Links zu Instagram, YouTube, Facebook und TikTok** werden Beiträge (`link` in der Antwort, bereinigt um Tracking-Anhänge); als Antwort auf ein Foto mit dessen Zeit und Ort. Mit `/ab 18:00` (im Org-Admin *Erst ab …*) hält die Presse einen Beitrag bis zu einer Uhrzeit zurück, nie kürzer als die Verzögerung. Ist die Seite nicht aktiv oder die Tagesgrenze erreicht, sagt der Bot es der Gruppe einmal; bremst Telegram ihn, holt er seine Karten nach. Anzeigen kann sie der EventTracker ab 1.2.0. Migration `0070`. Anwenderdoku: `wiki/Aktionsseite.md`, „Fotos von unterwegs".
+- **Der Telegram-Bot bringt seine Befehle mit.** Beim Eintragen im Org-Admin (und für schon eingerichtete Bots beim nächsten Start) legt ConvoyPlan die Befehlsliste im Bot ab: `/presse` im Privatchat, `/verbinden` und `/ab` in der Gruppe. Telegram bietet sie beim Tippen von „/“ an; bei @BotFather ist dafür nichts mehr zu tun.
+- **Absendernamen abschaltbar.** Je Aktionsseite: Ohne den Haken *Absender auf den Beiträgen nennen* zeigt die Karte des Bots kein „von …“ mehr, ConvoyPlan speichert den Namen nicht, und vorhandene Namen der Seite werden gelöscht. Migration `0071`, Standard wie bisher an.
+- **Fotos im Organisations-Export.** Beiträge der Aktionsseiten stehen im JSON (`beitraege`, `beitrag_bilder`) — ohne Absender und ohne Telegram-Kennungen —, die Bilder liegen als WebP unter `beitraege/` im ZIP.
+- **Der Bot richtet die Gruppe ein und holt die Leute ab.** Nach `/verbinden` setzt er Beschreibung und Gruppenbild (Konvoifarbe mit Anfangsbuchstaben) und heftet seine Anleitung an; den Gruppennamen lässt er stehen, ein Thema richtet er nicht ein. Fehlen ihm die Adminrechte, sagt er welche und holt es nach, sobald er sie bekommt. In einer noch nicht verbundenen Gruppe erklärt er, wie man ihn verbindet. Neue Mitglieder erfahren, dass ihre Fotos nach Freigabe öffentlich erscheinen können.
+- **Admin-Portal am Telefon.** Die Reiterleiste von Superadmin- und Org-Admin-Portal scrollt seitlich, zeigt auf der verdeckten Seite einen Pfeil (mit Punkt, wenn dahinter ein Reiter mit Hinweis liegt), und der aktive Reiter rollt ins Bild. Karten in Reitern mit mehreren Themen (System, MCP, Demo, Branding, Systemübersicht, Leitstellenkarte) lassen sich über ihren Titel zuklappen; am Telefon starten sie zu, am Schreibtisch offen, die Wahl merkt sich der Browser. Software-Update und Kartenregion zeigen ihren Zustand als Abzeichen in der Kopfzeile, der Reiter „System“ einen Hinweis, wenn etwas ansteht.
+
+### Fixed
+
+- **Reiter bleiben beim Neuladen stehen.** Admin-Portal, Org-Admin, Planung und Tracking-/Fahrer-Link springen nach einem Neuladen nicht mehr auf den ersten Reiter; der gewählte Reiter wird je Seite im Browser (nicht in der Adresse) gemerkt.
+- **Regionswechsel: Log spult nicht mehr, „Schließen“ gilt dauerhaft.** Das Log-Terminal spielte bei jedem Öffnen eines abgeschlossenen Wechsels Hunderte Zeilen sichtbar durch und reißt Hochgescrollte nicht mehr nach unten. „Schließen“ wird am Server quittiert (`POST /api/admin/region/seen`, `seen` im Status), sodass Phasenkarte und Log nicht bei jedem Seitenaufruf wieder aufklappen; ein laufender oder neuer Wechsel bleibt sichtbar.
+
 ## [2026.9.0] – 2026-10-14
 
 ### Wichtig beim Update
@@ -1041,7 +1086,10 @@ Das ruft den Update-Modus auf: räumt verwaiste Updater-Container auf, zieht all
 - Capacitor configuration for Android/iOS native wrapper.
 - Docker Compose setup with GraphHopper OSM pre-download.
 
-[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.9.0...HEAD
+[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.11.1...HEAD
+[2026.11.1]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.11.0...v2026.11.1
+[2026.11.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.10.0...v2026.11.0
+[2026.10.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.9.0...v2026.10.0
 [2026.9.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.8.0...v2026.9.0
 [2026.8.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.7.3...v2026.8.0
 [2026.7.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.6.2...v2026.7.0

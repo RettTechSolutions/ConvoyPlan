@@ -12,6 +12,7 @@
      */
     import { onDestroy, onMount } from 'svelte';
     import MetricChart from './MetricChart.svelte';
+    import { klappbar } from '$lib/klappbar/klappbar';
     import {
         systemApi,
         type MetricRange,
@@ -280,7 +281,7 @@
     {/if}
 
     <!-- ── Live-Zustand ─────────────────────────────────────────────────── -->
-    <div class="section">
+    <div class="section" use:klappbar={'uebersicht-zustand'}>
         <div class="section-header">
             <strong>Aktueller Zustand</strong>
             <div class="head-actions">
@@ -442,7 +443,7 @@
 
     <!-- ── Container ────────────────────────────────────────────────────── -->
     {#if overview?.docker.available}
-        <div class="section">
+        <div class="section" use:klappbar={'uebersicht-container'}>
             <div class="section-header"><strong>Container ({overview.docker.total})</strong></div>
             <table class="user-table">
                 <thead>
@@ -479,7 +480,7 @@
     {/if}
 
     <!-- ── Verlauf ──────────────────────────────────────────────────────── -->
-    <div class="section">
+    <div class="section" use:klappbar={'uebersicht-verlauf'}>
         <div class="section-header">
             <strong>Verlauf</strong>
             <div class="head-actions">
@@ -587,7 +588,7 @@
     </div>
 
     <!-- ── Nutzung je Tag ───────────────────────────────────────────────── -->
-    <div class="section">
+    <div class="section" use:klappbar={'uebersicht-nutzung'}>
         <div class="section-header">
             <strong>Portalnutzung (30 Tage)</strong>
             {#if usage}
@@ -617,7 +618,7 @@
     </div>
 
     <!-- ── Monatsbericht ────────────────────────────────────────────────── -->
-    <div class="section">
+    <div class="section" use:klappbar={'uebersicht-bericht'}>
         <div class="section-header">
             <strong>Monatsbericht</strong>
             <div class="head-actions">

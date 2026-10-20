@@ -18,20 +18,28 @@ Nicht im Export, weil es nicht Daten der Organisation sind: Rückmeldungen an de
 Betreiber (``feedback_reports``), Kontaktdaten aus der Demo (``demo_leads``),
 kurzlebige OAuth-Codes und -Tokens.
 
-Format: ein ZIP mit ``organisation.json`` und den hochgeladenen Logos unter
-``logos/``. ``format`` und ``version`` im JSON sagen einem späteren Import, was
-er vor sich hat.
+Format: ein ZIP mit ``organisation.json``, den hochgeladenen Logos unter
+``logos/``, den Fotos der Aktionsseiten unter ``beitraege/<bild>.webp``,
+ihren Videos unter ``beitraege/videos/<video>.mp4`` und der Word-Vorlage des
+Marschbefehls unter ``vorlagen/marschbefehl.docx``. ``format`` und ``version``
+im JSON sagen einem späteren Import, was er vor sich hat.
+
+Gebaut wird in eine temporäre Datei, nicht im Speicher: Mit Videos werden das
+schnell Hunderte Megabyte.
 """
 
 from __future__ import annotations
 
 import io
 import json
+import tempfile
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import Request, Response
+from fastapi import Request
+from fastapi.responses import StreamingResponse
+from starlette.background import BackgroundTask
 from fastapi.encoders import jsonable_encoder
 from geoalchemy2.elements import WKBElement
 from geoalchemy2.shape import to_shape
@@ -43,10 +51,19 @@ from app.models.api_key import ApiKey
 from app.models.audit_log import AuditLog
 from app.models.convoy import Convoy, ConvoyVehicle
 from app.models.leitstelle import Leitstelle
+from app.models.marschbefehl_vorlage import MarschbefehlVorlage
 from app.models.org_mcp_policy import OrganizationMcpPolicy
 from app.models.organization import Organization, UserOrganization
 from app.models.ortungsgeraet import Ortungsgeraet
-from app.models.public_tracker import PublicTracker, PublicTrackerConvoy, VehiclePositionTrail
+from app.models.public_tracker import (
+    PublicTracker,
+    PublicTrackerConvoy,
+    PublicTrackerPhoto,
+    PublicTrackerPhotoData,
+    PublicTrackerPost,
+    PublicTrackerVideo,
+    VehiclePositionTrail,
+)
 from app.models.route import Route
 from app.models.share_link import ConvoyShareLink
 from app.models.system_metric import UserActivityDay
@@ -54,7 +71,7 @@ from app.models.user import User
 from app.models.vehicle import Vehicle
 from app.models.vehicle_position import VehiclePosition
 from app.models.waypoint import Waypoint
-from app.services import audit
+from app.services import aktionsseite_video, audit
 
 EXPORT_FORMAT = "convoyplan-organisation"
 EXPORT_VERSION = 1
@@ -69,6 +86,15 @@ _GEHEIM: dict[str, frozenset[str]] = {
     "public_trackers": frozenset({"fetch_token_hash", "slug"}),
     # Einmal-Code und Gerätetoken: wer beides hätte, könnte als das Gerät senden.
     "ortungsgeraete": frozenset({"code_hash", "token_hash"}),
+    # Beiträge ohne Absender und ohne Telegram-Kennungen (Gruppe, Nachrichten,
+    # Fahrer, Presse) — die gehören Dritten, nicht der Organisation (Plan § 9).
+    "public_tracker_posts": frozenset({
+        "sender_telegram_id", "sender_name", "reviewed_by_telegram_id",
+        "chat_id", "message_id", "card_message_id", "media_group_id",
+    }),
+    # Kein Geheimnis, aber Bytes: die Vorlage geht als Datei hinaus
+    # (``vorlagen/marschbefehl.docx``), nicht als Zahlenkolonne im JSON.
+    "marschbefehl_vorlagen": frozenset({"daten"}),
 }
 
 # Welche Tabellen der Export abdeckt und welche er bewusst auslässt. Ein Test
@@ -81,7 +107,8 @@ EXPORTIERT = frozenset({
     "convoy_share_links", "leitstellen", "api_keys", "organization_mcp_policies",
     "user_activity_days", "audit_logs",
     "public_trackers", "public_tracker_convoys", "vehicle_position_trail",
-    "ortungsgeraete",
+    "ortungsgeraete", "public_tracker_posts", "public_tracker_photos",
+    "public_tracker_videos", "marschbefehl_vorlagen",
 })
 NICHT_EXPORTIERT = frozenset({
     "feedback_reports",      # Rückmeldungen an den Betreiber, nicht Daten der Organisation
@@ -90,6 +117,11 @@ NICHT_EXPORTIERT = frozenset({
     "organization_modules",  # Freischaltungen des Betreibers — wie der Plan, kein Inhalt der Organisation
     "oauth_codes",           # kurzlebige Autorisierungscodes (Minuten)
     "oauth_refresh_tokens",  # Zugangstokens — gehören in keine Exportdatei
+    # Rund um die Beiträge der Aktionsseiten: Der Bot-Token ist ein Geheimnis,
+    # Codes leben Minuten, Presse und Gruppen sind Telegram-Kennungen Dritter.
+    # Die Bilder selbst gehen als Dateien hinaus (``beitraege/``), nicht als Zeilen.
+    "public_tracker_telegram", "public_tracker_codes", "public_tracker_chats",
+    "public_tracker_presse", "public_tracker_photo_data",
 })
 
 # Schlüssel im Branding-JSON, die auf eine Datei in LOGOS_DIR zeigen.
@@ -184,6 +216,35 @@ async def build_org_export(db: AsyncSession, org: Organization) -> dict:
                 db, select(PublicTracker).where(PublicTracker.organization_id == org.id)
             )
         ],
+        "beitraege": [
+            zeile(p) for p in await _alle(
+                db,
+                select(PublicTrackerPost)
+                .join(PublicTracker, PublicTracker.id == PublicTrackerPost.tracker_id)
+                .where(PublicTracker.organization_id == org.id)
+                .order_by(PublicTrackerPost.taken_at),
+            )
+        ],
+        "beitrag_bilder": [
+            zeile(b) for b in await _alle(
+                db,
+                select(PublicTrackerPhoto)
+                .join(PublicTrackerPost, PublicTrackerPost.id == PublicTrackerPhoto.post_id)
+                .join(PublicTracker, PublicTracker.id == PublicTrackerPost.tracker_id)
+                .where(PublicTracker.organization_id == org.id)
+                .order_by(PublicTrackerPhoto.post_id, PublicTrackerPhoto.position),
+            )
+        ],
+        "beitrag_videos": [
+            zeile(v) for v in await _alle(
+                db,
+                select(PublicTrackerVideo)
+                .join(PublicTrackerPost, PublicTrackerPost.id == PublicTrackerVideo.post_id)
+                .join(PublicTracker, PublicTracker.id == PublicTrackerPost.tracker_id)
+                .where(PublicTracker.organization_id == org.id)
+                .order_by(PublicTrackerVideo.post_id),
+            )
+        ],
         "aktionsseiten_konvois": [
             zeile(tc) for tc in await _alle(
                 db,
@@ -242,52 +303,135 @@ async def build_org_export(db: AsyncSession, org: Organization) -> dict:
             )
         ],
         "logos": _logo_dateien(org),
+        "marschbefehl_vorlage": next(
+            (
+                zeile(v) for v in await _alle(
+                    db, select(MarschbefehlVorlage).where(MarschbefehlVorlage.organization_id == org.id)
+                )
+            ),
+            None,
+        ),
     }
     return bundle
 
 
-def export_zip(bundle: dict, logos_dir: Path = LOGOS_DIR) -> bytes:
-    """ZIP aus ``organisation.json`` und den Logo-Dateien, die es noch gibt.
+async def marschbefehl_vorlage(db: AsyncSession, org: Organization) -> bytes | None:
+    """Die hochgeladene Word-Vorlage des Marschbefehls, falls es eine gibt."""
+    return (await db.execute(
+        select(MarschbefehlVorlage.daten).where(MarschbefehlVorlage.organization_id == org.id)
+    )).scalar_one_or_none()
 
-    Ein Logo, das im Branding steht, aber auf der Platte fehlt, wird im JSON
-    unter ``logos_missing`` vermerkt, statt den ganzen Export scheitern zu lassen.
+
+async def beitrag_bilder(db: AsyncSession, org: Organization) -> list[tuple[str, bytes]]:
+    """Die Fotos der Aktionsseiten als ``(Dateiname, WebP)``, in voller Größe.
+
+    Benannt nach ``public_id`` — so stehen sie auch in ``beitrag_bilder`` im
+    JSON. Die Bytes sind schon neu kodiert und ohne Metadaten (``aktionsseite_bild``)."""
+    zeilen = await db.execute(
+        select(PublicTrackerPhoto.public_id, PublicTrackerPhotoData.gross)
+        .join(PublicTrackerPhotoData, PublicTrackerPhotoData.photo_id == PublicTrackerPhoto.id)
+        .join(PublicTrackerPost, PublicTrackerPost.id == PublicTrackerPhoto.post_id)
+        .join(PublicTracker, PublicTracker.id == PublicTrackerPost.tracker_id)
+        .where(PublicTracker.organization_id == org.id)
+    )
+    return [(f"{pid}.webp", gross) for pid, gross in zeilen.all()]
+
+
+async def beitrag_videos(db: AsyncSession, org: Organization) -> list[tuple[str, Path]]:
+    """Die Videos der Aktionsseiten als ``(Dateiname, Pfad)`` — gelesen wird
+    erst beim Schreiben ins ZIP."""
+    kennungen = (await db.execute(
+        select(PublicTrackerVideo.public_id)
+        .join(PublicTrackerPost, PublicTrackerPost.id == PublicTrackerVideo.post_id)
+        .join(PublicTracker, PublicTracker.id == PublicTrackerPost.tracker_id)
+        .where(PublicTracker.organization_id == org.id)
+    )).scalars().all()
+    return [(f"{vid}.mp4", aktionsseite_video.pfad(vid)) for vid in kennungen]
+
+
+def export_zip(
+    bundle: dict, logos_dir: Path = LOGOS_DIR, bilder: list[tuple[str, bytes]] = (),
+    videos: list[tuple[str, Path]] = (), vorlage: bytes | None = None,
+) -> bytes:
+    """Das ZIP im Speicher — für Tests und kleine Exporte; ``export_response``
+    schreibt mit ``zip_schreiben`` in eine Datei."""
+    puffer = io.BytesIO()
+    zip_schreiben(puffer, bundle, logos_dir, bilder, videos, vorlage)
+    return puffer.getvalue()
+
+
+def zip_schreiben(
+    ziel, bundle: dict, logos_dir: Path = LOGOS_DIR, bilder: list[tuple[str, bytes]] = (),
+    videos: list[tuple[str, Path]] = (), vorlage: bytes | None = None,
+) -> None:
+    """ZIP aus ``organisation.json``, den Logo-Dateien, die es noch gibt, den
+    Fotos der Aktionsseiten (``bilder``, siehe ``beitrag_bilder``), ihren
+    Videos (``videos``, siehe ``beitrag_videos``) und der Marschbefehl-Vorlage.
+
+    Ein Logo oder Video, das in den Daten steht, aber auf der Platte fehlt,
+    wird im JSON unter ``logos_missing`` bzw. ``videos_missing`` vermerkt,
+    statt den ganzen Export scheitern zu lassen.
     """
     fehlend = []
-    puffer = io.BytesIO()
-    with zipfile.ZipFile(puffer, "w", zipfile.ZIP_DEFLATED) as zf:
+    videos_fehlend = []
+    with zipfile.ZipFile(ziel, "w", zipfile.ZIP_DEFLATED) as zf:
         for name in bundle.get("logos", []):
             pfad = logos_dir / name
             if pfad.is_file():
                 zf.write(pfad, f"logos/{name}")
             else:
                 fehlend.append(name)
-        doc = {**bundle, "logos_missing": fehlend}
+        for name, inhalt in bilder:
+            # WebP ist schon komprimiert — noch einmal Deflate kostet nur Zeit.
+            zf.writestr(f"beitraege/{name}", inhalt, compress_type=zipfile.ZIP_STORED)
+        for name, pfad in videos:
+            if pfad.is_file():
+                zf.write(pfad, f"beitraege/videos/{name}", compress_type=zipfile.ZIP_STORED)
+            else:
+                videos_fehlend.append(name)
+        if vorlage is not None:
+            zf.writestr("vorlagen/marschbefehl.docx", vorlage)
+        doc = {**bundle, "logos_missing": fehlend, "videos_missing": videos_fehlend}
         zf.writestr(
             "organisation.json",
             json.dumps(jsonable_encoder(doc), ensure_ascii=False, indent=2),
         )
-    return puffer.getvalue()
 
 
 def export_filename(org: Organization, at: datetime) -> str:
     return f"convoyplan-{org.slug}-{at:%Y-%m-%d}.zip"
 
 
-async def export_response(db: AsyncSession, org: Organization, request: Request, actor: User) -> Response:
+async def export_response(
+    db: AsyncSession, org: Organization, request: Request, actor: User
+) -> StreamingResponse:
     """Export bauen, im Audit-Log vermerken und als Download ausliefern.
 
     Gemeinsamer Weg für den Inhaber (``/api/organizations/{id}/export``) und
     den Superadmin (``/api/admin/organizations/{id}/export``)."""
     bundle = await build_org_export(db, org)
-    inhalt = export_zip(bundle)
+    datei = tempfile.TemporaryFile()
+    zip_schreiben(
+        datei, bundle, bilder=await beitrag_bilder(db, org), videos=await beitrag_videos(db, org),
+        vorlage=await marschbefehl_vorlage(db, org),
+    )
+    groesse = datei.tell()
+    datei.seek(0)
     await audit.record(
         db, audit.ORG_EXPORTED, request=request, actor_id=actor.id, actor_email=actor.email,
         org_id=org.id, target_type="organization", target_id=str(org.id),
-        detail={"bytes": len(inhalt), "convoys": len(bundle["convoys"])},
+        detail={"bytes": groesse, "convoys": len(bundle["convoys"])},
     )
     dateiname = export_filename(org, datetime.now(timezone.utc))
-    return Response(
-        content=inhalt,
+
+
+    def stuecke():
+        while stueck := datei.read(1024 * 1024):
+            yield stueck
+
+    return StreamingResponse(
+        stuecke(),
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{dateiname}"'},
+        headers={"Content-Disposition": f'attachment; filename="{dateiname}"', "Content-Length": str(groesse)},
+        background=BackgroundTask(datei.close),
     )

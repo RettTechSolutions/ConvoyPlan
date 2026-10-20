@@ -23,13 +23,21 @@ from app.models.api_key import SCOPE_ORGANIZATION, ApiKey
 from app.models.audit_log import AuditLog
 from app.models.convoy import Convoy, ConvoyVehicle
 from app.models.organization import Organization, UserOrganization
+from app.models.public_tracker import (
+    PublicTracker,
+    PublicTrackerConvoy,
+    PublicTrackerPhoto,
+    PublicTrackerPhotoData,
+    PublicTrackerPost,
+    PublicTrackerVideo,
+)
 from app.models.route import Route
 from app.models.share_link import ConvoyShareLink
 from app.models.system_metric import UserActivityDay
 from app.models.user import User
 from app.models.vehicle import Vehicle
 from app.models.waypoint import Waypoint
-from app.services import org_export
+from app.services import aktionsseite_video, org_export
 from tests.fake_request import fake_request
 
 PASSWORT_HASH = "$2b$12$geheim-passwort-hash-000000000000000000000000000"
@@ -225,6 +233,80 @@ async def test_fehlendes_logo_bricht_den_export_nicht(zwei_orgs, tmp_path):
         assert json.loads(zf.read("organisation.json"))["logos_missing"] == [f"logo-{zwei_orgs['m']}.png"]
 
 
+# ── Beiträge der Aktionsseiten ────────────────────────────────────────────────
+
+async def _seite_mit_beitrag(org_id, convoy_id, m: str, bild: bytes) -> str:
+    """Eine Aktionsseite mit einem Foto-Beitrag; zurück kommt die Bildkennung."""
+    async with AsyncSessionLocal() as db:
+        seite = PublicTracker(
+            organization_id=org_id, slug=uuid.uuid4().hex[:12], title=f"Seite {m}",
+            delay_minutes=120, fetch_token_hash="0" * 64,
+        )
+        db.add(seite)
+        await db.flush()
+        db.add(PublicTrackerConvoy(tracker_id=seite.id, convoy_id=convoy_id, display_name="Konvoi"))
+        await db.flush()
+        post = PublicTrackerPost(
+            public_id=uuid.uuid4().hex[:22], tracker_id=seite.id, convoy_id=convoy_id,
+            taken_at=datetime(2026, 12, 27, 12, tzinfo=timezone.utc), status="freigegeben",
+            text_public=f"Grenze {m}", chat_id=-100777 - ord(m), message_id=4711, card_message_id=4712,
+            sender_telegram_id=987654321, sender_name="Jonas Fahrer", reviewed_by_telegram_id=123123,
+        )
+        db.add(post)
+        await db.flush()
+        foto = PublicTrackerPhoto(post_id=post.id, public_id=uuid.uuid4().hex[:22], width=1600, height=1200)
+        db.add(foto)
+        await db.flush()
+        db.add(PublicTrackerPhotoData(photo_id=foto.id, gross=bild, klein=b"klein"))
+        await db.commit()
+        return foto.public_id
+
+
+async def test_beitraege_mit_bildern_ohne_absender(zwei_orgs, tmp_path):
+    eigen = await _seite_mit_beitrag(zwei_orgs["org_a"], zwei_orgs["konvoi"], "A", b"RIFF-a-WEBP")
+    fremd = await _seite_mit_beitrag(zwei_orgs["org_b"], zwei_orgs["fremd_konvoi"], "B", b"RIFF-b-WEBP")
+    b = await _export(zwei_orgs["org_a"])
+    [beitrag] = b["beitraege"]
+    assert beitrag["text_public"] == "Grenze A" and beitrag["status"] == "freigegeben"
+    assert [f["public_id"] for f in b["beitrag_bilder"]] == [eigen]
+    text = json.dumps(org_export.jsonable_encoder(b))
+    # Absender, Presse und die Telegram-Kennungen gehören Dritten.
+    for dritte in ("Jonas Fahrer", "987654321", "123123", "-100842", "4711", "sender_", "chat_id"):
+        assert dritte not in text, dritte
+
+    async with AsyncSessionLocal() as db:
+        org = await db.get(Organization, zwei_orgs["org_a"])
+        bilder = await org_export.beitrag_bilder(db, org)
+    assert bilder == [(f"{eigen}.webp", b"RIFF-a-WEBP")]
+    inhalt = org_export.export_zip(b, logos_dir=tmp_path, bilder=bilder)
+    with zipfile.ZipFile(io.BytesIO(inhalt)) as zf:
+        assert zf.read(f"beitraege/{eigen}.webp") == b"RIFF-a-WEBP"
+        assert f"beitraege/{fremd}.webp" not in zf.namelist()
+
+
+async def test_videos_als_dateien_im_zip(zwei_orgs, tmp_path, monkeypatch):
+    monkeypatch.setattr(aktionsseite_video, "VIDEOS_DIR", tmp_path / "videos")
+    await _seite_mit_beitrag(zwei_orgs["org_a"], zwei_orgs["konvoi"], "A", b"RIFF-a-WEBP")
+    async with AsyncSessionLocal() as db:
+        post = (await db.execute(select(PublicTrackerPost).where(PublicTrackerPost.text_public == "Grenze A"))).scalar_one()
+        db.add_all([
+            PublicTrackerVideo(post_id=post.id, public_id="filmDaFilmDaFilmDa0000", width=1280, height=720,
+                               seconds=12.5, sound=True, bytes=8),
+        ])
+        await db.commit()
+    aktionsseite_video.ablegen("filmDaFilmDaFilmDa0000", b"\0\0\0\x18ftypmp4")
+    b = await _export(zwei_orgs["org_a"])
+    assert [v["public_id"] for v in b["beitrag_videos"]] == ["filmDaFilmDaFilmDa0000"]
+    async with AsyncSessionLocal() as db:
+        org = await db.get(Organization, zwei_orgs["org_a"])
+        videos = await org_export.beitrag_videos(db, org)
+    videos.append(("weg.mp4", tmp_path / "videos" / "weg.mp4"))
+    inhalt = org_export.export_zip(b, logos_dir=tmp_path, videos=videos)
+    with zipfile.ZipFile(io.BytesIO(inhalt)) as zf:
+        assert zf.read("beitraege/videos/filmDaFilmDaFilmDa0000.mp4") == b"\0\0\0\x18ftypmp4"
+        assert json.loads(zf.read("organisation.json"))["videos_missing"] == ["weg.mp4"]
+
+
 # ── Endpunkte ─────────────────────────────────────────────────────────────────
 
 async def _audit_eintraege(org_id) -> list:
@@ -247,7 +329,10 @@ async def test_admin_der_organisation_zieht_den_export(zwei_orgs):
     resp = await _org_export_als(zwei_orgs["planer"], zwei_orgs["org_a"], "admin")
     assert resp.media_type == "application/zip"
     assert f"convoyplan-a-{zwei_orgs['m']}-" in resp.headers["content-disposition"]
-    with zipfile.ZipFile(io.BytesIO(resp.body)) as zf:
+    # Gestreamt aus einer Datei — mit Videos passt ein Export nicht mehr in den Speicher.
+    inhalt = b"".join([stueck async for stueck in resp.body_iterator])
+    assert int(resp.headers["content-length"]) == len(inhalt)
+    with zipfile.ZipFile(io.BytesIO(inhalt)) as zf:
         assert "organisation.json" in zf.namelist()
     [eintrag] = await _audit_eintraege(zwei_orgs["org_a"])
     assert eintrag.actor_id == zwei_orgs["planer"]
@@ -284,7 +369,8 @@ async def test_superadmin_zieht_jeden_export(zwei_orgs):
         resp = await admin_routes.admin_export_organization(
             zwei_orgs["org_a"], fake_request(), db, superadmin,
         )
-    with zipfile.ZipFile(io.BytesIO(resp.body)) as zf:
+    inhalt = b"".join([stueck async for stueck in resp.body_iterator])
+    with zipfile.ZipFile(io.BytesIO(inhalt)) as zf:
         doc = json.loads(zf.read("organisation.json"))
     assert doc["organization"]["id"] == str(zwei_orgs["org_a"])
 

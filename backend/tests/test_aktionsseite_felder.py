@@ -32,10 +32,19 @@ POSITIVLISTE = {
     },
     "OeffentlicherKonvoi": {
         "key", "name", "destination", "destination_point", "color", "status",
-        "position", "trail", "driven_km", "total_km",
+        "position", "trail", "driven_km", "total_km", "vehicles", "posts",
     },
     "OeffentlichePosition": {"lat", "lon", "coarse", "at"},
     "OeffentlicherPunkt": {"lat", "lon"},
+    # Beiträge (Fotos aus Telegram): kein Absender, kein Prüfer, nicht die
+    # Bildunterschrift aus Telegram, keine Datenbank-Kennung.
+    "OeffentlicherBeitrag": {"id", "at", "position", "coarse", "text", "photos", "link", "video"},
+    "OeffentlichesBild": {"id", "width", "height"},
+    # Link-Beiträge (§ 11): die bereinigte Adresse, der Dienst und dessen
+    # Vorschaubild, neu kodiert und von hier ausgeliefert (§ 11.2).
+    "OeffentlicherLink": {"url", "dienst", "vorschau"},
+    # Videos (§ 15): Maße, Länge, ob Ton drin ist, und das Standbild.
+    "OeffentlichesVideo": {"id", "width", "height", "seconds", "sound", "poster"},
 }
 
 
@@ -61,6 +70,13 @@ async def test_antwort_enthaelt_nichts_aus_dem_einsatz(aktion, client):
         assert geheim not in text, geheim
     k = json.loads(text)["convoys"][0]
     assert (k["key"], k["name"], k["destination"]) == ("1", "Konvoi Bosnien", "Tuzla")
+
+
+async def test_fahrzeugzahl_ist_die_eingeplante(aktion, client):
+    # Spitze und Schlussfahrzeug, auch ohne eine einzige Position.
+    seite = await seite_anlegen(client, aktion)
+    r = await client.get(f"/api/public/aktion/{seite['slug']}", headers=h(seite["fetch_token"]))
+    assert r.json()["convoys"][0]["vehicles"] == 2
 
 
 async def test_zielpunkt_nur_auf_wunsch_und_nur_grob(aktion, client):

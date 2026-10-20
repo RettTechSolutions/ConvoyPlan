@@ -9,6 +9,8 @@
     import { versionStore } from '$lib/stores/version.svelte';
     import { kontextmenue, kopieren, TRENNER, type Eintraege } from '$lib/kontextmenue/menue';
     import EmailTemplateEditor from '$lib/components/EmailTemplateEditor.svelte';
+    import TabLeiste from '$lib/components/TabLeiste.svelte';
+    import { klappbar } from '$lib/klappbar/klappbar';
     import { getStreamTicket } from '$lib/api/client';
     import { adminApi, mfaApi, leistellenApi, licenseApi, mcpAdminApi, orgPlanAdminApi, type AdminOrgPlanRow, orgModuleAdminApi, type OrgModul, type OrgModule, type OrgModulKatalog, type OrgPlanCatalogEntry, regionApi, type AdminUser, type AdminUserCreate, type AdminOrg, type Leitstelle, type LeistelleDetail, type ZusatzKanal, type LicenseStatus, type SmtpConfig, type SmtpConfigResponse, type ApiKey, type ApiKeyCreated, type DemoSettings, type DemoStats, type DemoSessionInfo, type DemoLeadInfo, type DemoIpLock, type DemoIpAllowlistEntry, type RegionStatus, type RegionPhase, type McpStatus, type McpClient, type McpConnection, type McpOrgPolicy, feedbackAdminApi, type FeedbackReport, type FeedbackStats, type FeedbackStatus, type FeedbackSeverity, type FeedbackKind } from '$lib/api';
     import { brandingStore, applyBranding, normalizeBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
@@ -16,8 +18,10 @@
     import SuperadminLogin from '$lib/components/SuperadminLogin.svelte';
     import SystemOverview from '$lib/components/SystemOverview.svelte';
     import RegionCard from '$lib/components/RegionCard.svelte';
+    import { folgtDemEnde, zeilenSammler } from '$lib/terminal';
     import QRCode from 'qrcode';
     import { benutzerListe, orgsSortiert, umschalten, STANDARD_SORTIERUNG, type BenutzerSortierung, type BenutzerSpalte } from '$lib/admin/benutzerliste';
+    import { reiterMerken } from '$lib/reiter-merken.svelte';
 
     // ── Auth gate ──────────────────────────────────────────────────────────────
     // /admin is self-gated: when not logged in as a superadmin we render the
@@ -26,6 +30,25 @@
 
     // ── Tab ──────────────────────────────────────────────────────────────────
     let activeTab = $state<'benutzer' | 'organisationen' | 'plaene' | 'api-keys' | 'mcp' | 'meldungen' | 'leitstellen' | 'branding' | 'demo' | 'uebersicht' | 'system'>('benutzer');
+    reiterMerken(['benutzer', 'organisationen', 'plaene', 'api-keys', 'mcp', 'meldungen', 'leitstellen', 'branding', 'demo', 'uebersicht', 'system'], () => activeTab, (r) => (activeTab = r));
+
+    /** Was ein Reiter beim Öffnen nachlädt — beim Klick und nach einem Neuladen. */
+    function reiterLaden(tab: typeof activeTab) {
+        switch (tab) {
+            case 'organisationen': loadOrgs(); break;
+            case 'plaene': loadPlans(); break;
+            case 'api-keys': loadApiKeyOrgs(); break;
+            case 'mcp': loadMcp(); break;
+            case 'meldungen': loadFeedback(); break;
+            case 'demo': loadDemoSettings(); break;
+            case 'system': loadUpdateStatus(); loadUpdateChannel(); loadUpdateMode(); loadLicenseStatus(); loadGithubTokenStatus(); loadMcp(); break;
+        }
+    }
+
+    function waehleReiter(tab: typeof activeTab) {
+        activeTab = tab;
+        reiterLaden(tab);
+    }
 
     // ── Meldungen (Fehler und Wünsche aus der Anwendung) ─────────────────────
     // Zwei Abfragen statt einer: die Kennzahlen zählen über den *ganzen*
@@ -203,6 +226,7 @@
 
     /** Load all portal data — called on mount (if already authed) and after login. */
     async function initPortal() {
+        reiterLaden(activeTab);
         await loadUsers();
         await loadLeitstellen();
         await loadBranding();
@@ -770,6 +794,35 @@
     let regionStatus = $state<RegionStatus>({ phase: 'idle' });
     let regionStatusTimer: ReturnType<typeof setInterval> | null = null;
     const regionSwitchBusy = $derived(REGION_ACTIVE_PHASES.includes(regionStatus.phase));
+    // Kurzfassung für die Kopfzeile der Update-Karte: Am Telefon ist sie
+    // zugeklappt ($lib/klappbar), und ob ein Update ansteht, soll man trotzdem
+    // sehen. Dieselben Fälle wie die Statuszeile in der Karte, knapper benannt.
+    // Dasselbe eine Ebene höher, am Reiter „System": Wer am Telefon bei den
+    // Benutzern steht, sieht den Reiter oft nicht einmal (Überlauf der Leiste).
+    // Nur was ansteht — ein Hinweis, der immer da ist, wird übersehen. Bewusst
+    // nicht dabei: ein früher fehlgeschlagener Wechsel (bleibt bis zum nächsten
+    // gemeldet) und ein unerreichbares GitHub (Normalzustand ohne Internet).
+    const systemHinweis = $derived.by((): { zeichen: string; text: string; klasse: string } | null => {
+        const bau = regionStatus.graph_build?.phase;
+        if (bau === 'haengt') return { zeichen: '!', text: 'Graph-Aufbau hängt', klasse: 'warn' };
+        if (updateTriggering) return { zeichen: '…', text: 'Update läuft', klasse: 'laeuft' };
+        if (regionSwitchBusy) return { zeichen: '…', text: 'Regionswechsel läuft', klasse: 'laeuft' };
+        if (bau === 'import' || bau === 'download') return { zeichen: '…', text: 'Graph wird gebaut', klasse: 'laeuft' };
+        if (updateStatus?.update_available) return { zeichen: '↑', text: 'Update verfügbar', klasse: 'update' };
+        return null;
+    });
+    const updateKopfStatus = $derived.by((): { text: string; klasse: string } | null => {
+        if (updateTriggering) return { text: 'Update läuft', klasse: 'badge-update' };
+        if (!updateStatus) return null;
+        if (!updateStatus.github_reachable) return { text: 'GitHub nicht erreichbar', klasse: 'badge-warn' };
+        if (updateStatus.no_release || updateStatus.ahead_of_release) return { text: 'Aktuell', klasse: 'badge-ok' };
+        if (updateStatus.update_available) {
+            return updateStatus.held_back && updateMode?.mode !== 'notify'
+                ? { text: 'Update zurückgehalten', klasse: 'badge-update' }
+                : { text: 'Update verfügbar', klasse: 'badge-update' };
+        }
+        return { text: 'Aktuell', klasse: 'badge-ok' };
+    });
 
     async function loadRegionStatus() {
         try {
@@ -801,7 +854,10 @@
     let showUpdateLog = $state(false);
     let updateLogDone = $state(false);
     let _updateLogSource: EventSource | null = null;
-    let logContainer: HTMLDivElement | null = null;
+    // Zeilen je Bildaufbau statt einzeln — siehe `$lib/terminal`.
+    const updateLogSammler = zeilenSammler((zeilen) => {
+        updateLogLines = [...updateLogLines, ...zeilen];
+    });
 
     async function loadUpdateChannel() {
         try {
@@ -883,6 +939,7 @@
 
     async function startLogStream() {
         if (_updateLogSource) { _updateLogSource.close(); _updateLogSource = null; }
+        updateLogSammler.verwerfen();
         updateLogLines = [];
         updateLogDone = false;
         showUpdateLog = true;
@@ -899,14 +956,11 @@
         _updateLogSource = es;
 
         es.onmessage = (e) => {
-            updateLogLines = [...updateLogLines, e.data];
-            // auto-scroll to bottom
-            setTimeout(() => {
-                if (logContainer) logContainer.scrollTop = logContainer.scrollHeight;
-            }, 0);
+            updateLogSammler.push(e.data);
         };
 
         es.addEventListener('done', () => {
+            updateLogSammler.leeren();
             updateLogDone = true;
             es.close();
             _updateLogSource = null;
@@ -922,6 +976,7 @@
 
         es.onerror = () => {
             // Connection dropped (e.g. backend restarted after update)
+            updateLogSammler.leeren();
             updateLogLines = [...updateLogLines, '[Verbindung getrennt — Backend wird neu gestartet…]'];
             updateLogDone = true;
             es.close();
@@ -2052,22 +2107,28 @@
         </div>
     </div>
 
-    <div class="tab-bar">
-        <button class="tab" class:active={activeTab === 'benutzer'} onclick={() => (activeTab = 'benutzer')}>Benutzer</button>
-        <button class="tab" class:active={activeTab === 'organisationen'} onclick={() => { activeTab = 'organisationen'; loadOrgs(); }}>Organisationen</button>
-        <button class="tab" class:active={activeTab === 'plaene'} onclick={() => { activeTab = 'plaene'; loadPlans(); }}>Pläne</button>
-        <button class="tab" class:active={activeTab === 'api-keys'} onclick={() => { activeTab = 'api-keys'; loadApiKeyOrgs(); }}>API-Keys</button>
-        <button class="tab" class:active={activeTab === 'mcp'} onclick={() => { activeTab = 'mcp'; loadMcp(); }}>MCP</button>
-        <button class="tab" class:active={activeTab === 'meldungen'} onclick={() => { activeTab = 'meldungen'; loadFeedback(); }}>
+    <TabLeiste aktiv={activeTab}>
+        <button class="tab" class:active={activeTab === 'benutzer'} onclick={() => waehleReiter('benutzer')}>Benutzer</button>
+        <button class="tab" class:active={activeTab === 'organisationen'} onclick={() => waehleReiter('organisationen')}>Organisationen</button>
+        <button class="tab" class:active={activeTab === 'plaene'} onclick={() => waehleReiter('plaene')}>Pläne</button>
+        <button class="tab" class:active={activeTab === 'api-keys'} onclick={() => waehleReiter('api-keys')}>API-Keys</button>
+        <button class="tab" class:active={activeTab === 'mcp'} onclick={() => waehleReiter('mcp')}>MCP</button>
+        <button class="tab" class:active={activeTab === 'meldungen'} onclick={() => waehleReiter('meldungen')}>
             Meldungen
             {#if feedbackStats && feedbackStats.offen > 0}<span class="tab-zaehler">{feedbackStats.offen}</span>{/if}
         </button>
-        <button class="tab" class:active={activeTab === 'leitstellen'} onclick={() => (activeTab = 'leitstellen')}>Leitstellen</button>
-        <button class="tab" class:active={activeTab === 'branding'} onclick={() => activeTab = 'branding'}>Branding</button>
-        <button class="tab" class:active={activeTab === 'demo'} onclick={() => { activeTab = 'demo'; loadDemoSettings(); }}>Demo</button>
-        <button class="tab" class:active={activeTab === 'uebersicht'} onclick={() => (activeTab = 'uebersicht')}>Systemübersicht</button>
-        <button class="tab" class:active={activeTab === 'system'} onclick={() => { activeTab = 'system'; loadUpdateStatus(); loadUpdateChannel(); loadUpdateMode(); loadLicenseStatus(); loadGithubTokenStatus(); loadMcp(); }}>System</button>
-    </div>
+        <button class="tab" class:active={activeTab === 'leitstellen'} onclick={() => waehleReiter('leitstellen')}>Leitstellen</button>
+        <button class="tab" class:active={activeTab === 'branding'} onclick={() => waehleReiter('branding')}>Branding</button>
+        <button class="tab" class:active={activeTab === 'demo'} onclick={() => waehleReiter('demo')}>Demo</button>
+        <button class="tab" class:active={activeTab === 'uebersicht'} onclick={() => waehleReiter('uebersicht')}>Systemübersicht</button>
+        <button class="tab" class:active={activeTab === 'system'} onclick={() => waehleReiter('system')}
+            aria-label={systemHinweis ? `System – ${systemHinweis.text}` : undefined}
+            title={systemHinweis?.text}
+        >
+            System
+            {#if systemHinweis}<span class="tab-hinweis {systemHinweis.klasse}" data-testid="system-hinweis">{systemHinweis.zeichen}</span>{/if}
+        </button>
+    </TabLeiste>
 
     <!-- ── Benutzer ── -->
     {#if activeTab === 'benutzer'}
@@ -2599,7 +2660,7 @@
             <div class="error-bar">{mcpError} <button onclick={() => (mcpError = '')}>✕</button></div>
         {/if}
 
-        <div class="section">
+        <div class="section" use:klappbar={'mcp-schalter'}>
             <div class="section-header">
                 <strong>KI-Schnittstelle (MCP)</strong>
                 <button class="btn-small" onclick={loadMcp} disabled={mcpLoading} title="Aktualisieren">⟳</button>
@@ -2680,7 +2741,7 @@
         </div>
 
         <!-- ── Organisationen und ihr KI-Zugriff ── -->
-        <div class="section">
+        <div class="section" use:klappbar={'mcp-organisationen'}>
             <div class="section-header">
                 <strong>
                     Organisationen mit KI-Zugriff
@@ -2757,7 +2818,7 @@
         </div>
 
         <!-- ── Aktive Verbindungen ── -->
-        <div class="section">
+        <div class="section" use:klappbar={'mcp-verbindungen'}>
             <div class="section-header"><strong>Aktive Verbindungen</strong></div>
             {#if mcpConnections.length === 0}
                 <p class="hint">Derzeit ist keine Verbindung erteilt.</p>
@@ -2801,7 +2862,7 @@
         </div>
 
         <!-- ── Registrierte Clients ── -->
-        <div class="section">
+        <div class="section" use:klappbar={'mcp-programme'}>
             <div class="section-header">
                 <strong>Registrierte Programme</strong>
                 {#if mcpVerwaiste.length > 0}
@@ -3095,7 +3156,7 @@
         {/if}
 
         {#if lsGeojson && lsGeojson.features.length > 0}
-            <div class="section">
+            <div class="section" use:klappbar={'leitstellen-karte'}>
                 <div class="section-header"><strong>Übersicht</strong></div>
                 <LeitstellenOverviewMap geojson={lsGeojson} />
                 <p class="hint" style="margin:.4rem 0 0">Blau = global · Rot = org-eigen/Vorschlag</p>
@@ -3153,7 +3214,7 @@
 
     <!-- ── Branding ── -->
     {#if activeTab === 'branding'}
-    <div class="section branding-panel">
+    <div class="section branding-panel" use:klappbar={'branding'}>
         <div class="section-header"><strong>Branding</strong></div>
 
         {#if brandingError}
@@ -3258,7 +3319,7 @@
     </div>
 
     <!-- ── E-Mail-Vorlage: Zugangsdaten ── -->
-    <EmailTemplateEditor kind="password" title="E-Mail-Vorlage: Zugangsdaten" />
+    <EmailTemplateEditor kind="password" title="E-Mail-Vorlage: Zugangsdaten" klappId="branding-vorlage" />
     {/if}
 
     <!-- ── Systemübersicht ── -->
@@ -3270,7 +3331,7 @@
 
     {#if activeTab === 'demo'}
         <!-- ── Übersicht ── -->
-        <div class="section">
+        <div class="section" use:klappbar={'demo-uebersicht'}>
             <div class="section-header">
                 <strong>Übersicht</strong>
                 <button class="btn-small" onclick={loadDemoSettings} title="Aktualisieren">⟳</button>
@@ -3350,7 +3411,7 @@
 
 
         <!-- ── Demo-Modus ── -->
-        <div class="section">
+        <div class="section" use:klappbar={'demo-modus'}>
             <div class="section-header">
                 <strong>Demo-Modus</strong>
             </div>
@@ -3707,12 +3768,13 @@
         <EmailTemplateEditor
             kind="demo_followup"
             title="E-Mail-Vorlage: Nachfrage nach der Demo"
+            klappId="demo-vorlage"
         />
     {/if}
 
     {#if activeTab === 'system'}
         <!-- ── KI-Schnittstelle (MCP) ── -->
-        <div class="section">
+        <div class="section" use:klappbar={'system-mcp'}>
             <div class="section-header">
                 <strong>KI-Schnittstelle (MCP)</strong>
                 <button class="btn-small" onclick={loadMcp}>↺</button>
@@ -3872,7 +3934,7 @@
         </div>
 
         <!-- ── Lizenz-Sektion ── -->
-        <div class="section">
+        <div class="section" use:klappbar={'system-lizenz'}>
             <div class="section-header">
                 <strong>Lizenz</strong>
                 <button class="btn-small" onclick={loadLicenseStatus}>↺</button>
@@ -4014,11 +4076,14 @@
         </div>
 
         <!-- ── Software-Update ── -->
-        <div class="section">
+        <div class="section" use:klappbar={'system-update'}>
             <div class="section-header">
                 <strong>Software-Update</strong>
+                {#if updateKopfStatus}
+                    <span class="badge kopf-status {updateKopfStatus.klasse}" data-testid="kopf-status">{updateKopfStatus.text}</span>
+                {/if}
                 {#if !updateTriggering}
-                    <button class="btn-small" onclick={loadUpdateStatus}>↺ Aktualisieren</button>
+                    <button class="btn-small" onclick={loadUpdateStatus} title="Aktualisieren" aria-label="Aktualisieren">↺</button>
                 {/if}
             </div>
 
@@ -4201,7 +4266,7 @@
                 {/if}
 
                 {#if showUpdateLog}
-                    <div class="update-terminal" bind:this={logContainer}>
+                    <div class="update-terminal" use:folgtDemEnde>
                         {#each updateLogLines as line}
                             <div class="log-line">{line}</div>
                         {/each}
@@ -4221,7 +4286,7 @@
         <RegionCard />
 
         <!-- ── GitHub-Konfiguration ── -->
-        <div class="section">
+        <div class="section" use:klappbar={'system-github'}>
             <div class="section-header">
                 <strong>GitHub-Konfiguration</strong>
             </div>
@@ -4279,7 +4344,7 @@
         </div>
 
         <!-- ── Live-Verkehrslage (HERE / TomTom) ── -->
-        <div class="section">
+        <div class="section" use:klappbar={'system-verkehr'}>
             <div class="section-header">
                 <strong>Live-Verkehrslage (Stau)</strong>
             </div>
@@ -4374,7 +4439,7 @@
 
 
         <!-- ── Zwei-Faktor-Authentifizierung ── -->
-        <div class="section">
+        <div class="section" use:klappbar={'system-mfa'}>
             <div class="section-header">
                 <strong>Zwei-Faktor-Authentifizierung (MFA)</strong>
             </div>
@@ -4449,7 +4514,7 @@
         </div>
 
         <!-- ── Passkeys ── -->
-        <div class="section">
+        <div class="section" use:klappbar={'system-passkeys'}>
             <div class="section-header">
                 <strong>Passkeys</strong>
             </div>
@@ -4457,7 +4522,7 @@
         </div>
 
         <!-- ── E-Mail / SMTP ── -->
-        <div class="section">
+        <div class="section" use:klappbar={'system-smtp'}>
             <div class="section-header">
                 <strong>E-Mail (SMTP)</strong>
             </div>
@@ -4813,12 +4878,7 @@
     }
     .logout-btn:hover { background: var(--surface-1); border-color: var(--color-primary); color: var(--color-primary); }
 
-    /* overflow-x statt Umbruch: Mit dem Demo-Tab sind es acht Reiter, die auf
-       einem Telefon nicht mehr nebeneinander passen. Eine zweite Zeile würde
-       die Unterkante zerreißen, an der die aktive Lasche hängt — also scrollt
-       die Leiste seitlich, wie es Tabellen in .section ohnehin tun. */
-    .tab-bar { display: flex; gap: .25rem; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem; padding: .25rem .25rem 0; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
-    .tab-bar::-webkit-scrollbar { display: none; }
+    /* Die Leiste selbst (Scrollen, Überlauf) steht in TabLeiste.svelte. */
     .tab { flex: 0 0 auto; white-space: nowrap; padding: .5rem 1rem; background: none; border: none; cursor: pointer; font-size: var(--text-sm); color: var(--text-2); border-radius: 4px 4px 0 0; margin-bottom: -1px; }
     .tab.active { color: var(--color-primary); background: var(--surface-2); font-weight: 600; border-bottom: 2px solid var(--color-primary); }
 
@@ -4827,7 +4887,7 @@
     /* overflow-x: Breite Tabellen scrollen innerhalb der Karte statt rechts
        über den Kartenrand hinauszulaufen. */
     .section { background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; box-shadow: var(--shadow); overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: .75rem; font-size: var(--text-sm); font-weight: 500; color: var(--text-1); }
+    .section-header { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: space-between; align-items: center; margin-bottom: .75rem; font-size: var(--text-sm); font-weight: 500; color: var(--text-1); }
     /* Titel + Statusabzeichen bleiben beieinander, statt auseinandergezogen zu werden. */
 
     .create-form { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1rem; padding: .75rem; background: var(--surface-2); border-radius: 6px; border: 1px solid var(--border); max-width: var(--admin-field, 34rem); }
@@ -4997,9 +5057,16 @@
     .kpi-attention { border-color: rgba(180,60,40,.45); }
     .kpi-attention .kpi-value { color: var(--color-primary); }
 
+    /* Status in der Kopfzeile: klebt am Titel, Knöpfe bleiben rechts. */
+    .kopf-status { margin-right: auto; }
     .badge { display: inline-block; padding: .15rem .5rem; border-radius: 3px; font-size: var(--text-xs); font-weight: 600; }
 
     /* ── Meldungen ──────────────────────────────────────────────────────── */
+    /* Hinweis am Reiter „System" (systemHinweis): gleiche Form wie der Zähler,
+       Farbe wie das Abzeichen in der Kopfzeile der betroffenen Karte. */
+    .tab-hinweis { display: inline-block; min-width: 1.1rem; margin-left: .35rem; padding: .05rem .3rem; border-radius: 999px; font-size: .65rem; font-weight: 700; line-height: 1.5; text-align: center; color: #fff; }
+    .tab-hinweis.update, .tab-hinweis.laeuft { background: #c46a1a; }
+    .tab-hinweis.warn { background: var(--color-primary); }
     .tab-zaehler { display: inline-block; margin-left: .35rem; padding: .05rem .35rem; border-radius: 999px; background: var(--color-primary); color: #fff; font-size: .65rem; font-weight: 700; line-height: 1.5; }
     .meldungs-filter { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin: .9rem 0 .75rem; }
     .meldungs-filter select { padding: .3rem .5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-1); color: var(--text-1); font-size: var(--text-sm); }
@@ -5060,7 +5127,6 @@
         color: #c9d1d9;
         max-height: 260px;
         overflow-y: auto;
-        scroll-behavior: smooth;
     }
     .log-line { white-space: pre-wrap; word-break: break-all; }
     .log-done { color: #58a6ff; margin-top: .25rem; }
@@ -5111,16 +5177,6 @@
         }
         .admin-header { margin-bottom: .75rem; }
 
-        /* Tabs scroll horizontally instead of squashing — touch-friendly. */
-        .tab-bar {
-            overflow-x: auto;
-            flex-wrap: nowrap;
-            scrollbar-width: none;
-            -webkit-overflow-scrolling: touch;
-            margin: 0 -.75rem 1rem;
-            padding: .25rem .75rem 0;
-        }
-        .tab-bar::-webkit-scrollbar { display: none; }
         .tab { flex-shrink: 0; padding: .55rem .85rem; font-size: var(--text-sm); }
 
         .section { padding: .75rem; }

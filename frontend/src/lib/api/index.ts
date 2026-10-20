@@ -1,4 +1,4 @@
-import { api, uploadFile, downloadFile, getStreamTicket, type Sitzung } from './client';
+import { api, blobUrl, uploadFile, downloadFile, getStreamTicket, type Sitzung } from './client';
 import type { Geometry } from 'geojson';
 import type { AnmeldeOptionenJSON, ErstellOptionenJSON } from '$lib/passkey';
 
@@ -1127,6 +1127,11 @@ export interface RegionStatus {
      * Wechsel zurück, bis GraphHopper seinen laufenden Graph-Aufbau beendet hat.
      */
     waiting_for_graph?: boolean;
+    /**
+     * Nur bei einer Endphase: Ein Superadmin hat genau diesen Endstatus mit
+     * „Schließen" quittiert. Das Panel klappt ihn dann nicht wieder auf.
+     */
+    seen?: boolean;
 }
 
 export interface GraphBuild {
@@ -1169,6 +1174,9 @@ export const regionApi = {
         }),
     status: () => api.get<RegionStatus>('/api/admin/region/status'),
     cancel: () => api.post<{ status: string }>('/api/admin/region/cancel', {}),
+    /** Beendeten Wechsel quittieren — genau den, der angezeigt wurde (409 sonst). */
+    seen: (phase: RegionPhase, at: string) =>
+        api.post<void>('/api/admin/region/seen', { phase, at }),
     /**
      * SSE-Strom der Live-Ausgabe des Updaters (`region.log`) — inklusive der
      * Ausgabe des Import-Containers. Ohne ihn zeigte das Terminal nur die
@@ -1405,6 +1413,34 @@ export const orgBrandingApi = {
     uploadLogo: (slot: 'main' | 'horizontal', file: File) =>
         uploadFile<BrandingData>(`/api/org/branding/logo/${slot}`, file),
     reset: () => api.delete<BrandingData>('/api/org/branding'),
+};
+
+// Marschbefehl aus der Word-Vorlage der Organisation
+// (backend/app/services/marschbefehl_vorlage.py).
+export interface MarschbefehlVorlageStatus {
+    eigene: boolean;
+    dateiname: string | null;
+    groesse: number | null;
+    hochgeladen_at: string | null;
+}
+
+export interface VorlageFeld {
+    name: string;
+    beschreibung: string;
+}
+
+export interface VorlageFelder {
+    gruppen: { name: string; titel: string; felder: VorlageFeld[] }[];
+    listen: { name: string; titel: string; felder: VorlageFeld[] }[];
+}
+
+export const marschbefehlVorlageApi = {
+    status: () => api.get<MarschbefehlVorlageStatus>('/api/org/marschbefehl-vorlage'),
+    felder: () => api.get<VorlageFelder>('/api/org/marschbefehl-vorlage/felder'),
+    beispiel: () => downloadFile('/api/org/marschbefehl-vorlage/beispiel', 'Marschbefehl-Vorlage.docx'),
+    eigene: (dateiname: string) => downloadFile('/api/org/marschbefehl-vorlage/datei', dateiname),
+    hochladen: (file: File) => uploadFile<MarschbefehlVorlageStatus>('/api/org/marschbefehl-vorlage', file),
+    entfernen: () => api.delete<MarschbefehlVorlageStatus>('/api/org/marschbefehl-vorlage'),
 };
 
 export interface ZusatzKanal {
@@ -1646,6 +1682,7 @@ export interface Aktionsseite {
     theme: AktionsseitenThema;
     delay_minutes: number;
     show_destination: boolean;
+    show_sender: boolean;
     valid_until: string | null;
     enabled: boolean;
     /** Eingeschaltet und nicht abgelaufen — so sieht es auch der Abruf. */
@@ -1667,6 +1704,7 @@ export interface AktionsseiteDaten {
     theme: AktionsseitenThema;
     delay_minutes: number;
     show_destination: boolean;
+    show_sender: boolean;
     valid_until: string | null;
     enabled: boolean;
     convoys: AktionsseiteKonvoi[];
@@ -1698,6 +1736,84 @@ export const aktionsseitenApi = {
     delete: (id: string) => api.delete<void>(`/api/org/aktionsseiten/${id}`),
     preview: (id: string) => api.get<AktionsseiteVorschau>(`/api/org/aktionsseiten/${id}/vorschau`),
 };
+
+// Beiträge aus Telegram (Plan 2026-10-13, § 8.3/8.4): Bot einmal je
+// Organisation, Gruppen und Presse je Aktionsseite. Den Bot-Token schickt nur
+// `botSetzen`; zurück kommt er nie.
+
+/** bereit · privat (sieht in Gruppen keine Fotos) · ungueltig · konflikt · fehler · ungeprueft */
+export type TelegramBotStatus = 'bereit' | 'privat' | 'ungueltig' | 'konflikt' | 'fehler' | 'ungeprueft';
+
+export interface TelegramBotStand {
+    eingerichtet: boolean;
+    bot_username?: string | null;
+    status?: TelegramBotStatus | null;
+    last_error?: string | null;
+    checked_at?: string | null;
+}
+
+export interface TelegramCode {
+    code: string;
+    expires_at: string;
+}
+
+export interface AktionsseiteTelegram {
+    gruppen: { convoy_id: string; chat_title: string | null; thema: boolean }[];
+    presse: { telegram_user_id: number; display_name: string; username: string | null; added_at: string }[];
+}
+
+export const aktionsseitenTelegramApi = {
+    bot: () => api.get<TelegramBotStand>('/api/org/aktionsseiten/telegram'),
+    botSetzen: (token: string) => api.put<TelegramBotStand>('/api/org/aktionsseiten/telegram', { token }),
+    botEntfernen: () => api.delete<void>('/api/org/aktionsseiten/telegram'),
+    seite: (id: string) => api.get<AktionsseiteTelegram>(`/api/org/aktionsseiten/${id}/telegram`),
+    verbindenCode: (id: string, convoyId: string) =>
+        api.post<TelegramCode>(`/api/org/aktionsseiten/${id}/konvois/${convoyId}/telegram-code`, {}),
+    trennen: (id: string, convoyId: string) =>
+        api.delete<void>(`/api/org/aktionsseiten/${id}/konvois/${convoyId}/telegram`),
+    presseCode: (id: string) => api.post<TelegramCode>(`/api/org/aktionsseiten/${id}/presse-code`, {}),
+    presseEntfernen: (id: string, telegramUserId: number) =>
+        api.delete<void>(`/api/org/aktionsseiten/${id}/presse/${telegramUserId}`),
+    beitraege: (id: string) => api.get<AktionsseiteBeitrag[]>(`/api/org/aktionsseiten/${id}/beitraege`),
+    beitragAendern: (id: string, postId: string, aenderung: BeitragAenderung) =>
+        api.put<AktionsseiteBeitrag>(`/api/org/aktionsseiten/${id}/beitraege/${postId}`, aenderung),
+    /** Für `<img src>`: angemeldet über das Sitzungs-Cookie. */
+    /** Als `blob:`-Adresse — ein `<img>` mit der Pfadadresse käme ohne Organisationssitzung an. */
+    bild: (id: string, photoId: string, groesse: 'gross' | 'klein') =>
+        blobUrl(`/api/org/aktionsseiten/${id}/bilder/${photoId}/${groesse}.webp`),
+    /** Das Video eines Beitrags, auch wartend — zum Anhören vor der Freigabe. */
+    video: (id: string, videoId: string) => blobUrl(`/api/org/aktionsseiten/${id}/videos/${videoId}.mp4`),
+};
+
+export type BeitragStatus = 'wartet' | 'freigegeben' | 'abgelehnt' | 'zurueckgezogen';
+
+export interface AktionsseiteBeitrag {
+    id: string;
+    convoy_id: string;
+    taken_at: string;
+    status: BeitragStatus;
+    text_public: string | null;
+    /** Was in Telegram stand — intern, geht nie hinaus. */
+    text_raw: string | null;
+    sender_name: string | null;
+    reviewed_at: string | null;
+    public_since: string | null;
+    photos: { id: string; position: number; width: number; height: number }[];
+    /** Link-Beitrag (Instagram & Co.) statt Bildern — bereinigt, wie er hinausgeht. */
+    link_url?: string | null;
+    link_dienst?: 'instagram' | 'youtube' | 'facebook' | 'tiktok' | null;
+    /** Video-Beitrag: `photos` hält dann nur das Standbild. Der Ton geht mit hinaus. */
+    video?: { id: string; width: number; height: number; seconds: number; sound: boolean } | null;
+    /** Termin der Presse (`/ab`): nicht vor diesem Zeitpunkt. */
+    not_before?: string | null;
+}
+
+export interface BeitragAenderung {
+    aktion?: 'frei' | 'ablehnen' | 'zurueck';
+    text_public?: string | null;
+    /** Wie `/ab` in Telegram: später, nie früher; `null` nimmt den Termin weg. */
+    not_before?: string | null;
+}
 
 // ── Ortungsgeräte (Tracker) ───────────────────────────────────────────────
 //

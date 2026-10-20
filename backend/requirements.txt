@@ -1,33 +1,33 @@
-fastapi==0.142.2
+fastapi==0.143.2
 # starlette is pulled in by fastapi; pin to >=1.3.1 to clear PYSEC-2026-161,
 # CVE-2024-47874, CVE-2025-54121, CVE-2026-54282 and CVE-2026-54283
 # (all <0.47.2/<1.3.1 are vulnerable). fastapi 0.136.3 allows starlette>=0.46.0.
 # CVE-2024-47874, CVE-2025-54121, CVE-2026-54282 (URL path authority injection),
 # and CVE-2026-54283 (urlencoded form limits not enforced — DoS).
-starlette==1.7.0
+starlette==1.8.0
 defusedxml==0.7.1
 uvicorn[standard]==0.54.0
-sqlalchemy[asyncio]==2.1.3
+sqlalchemy[asyncio]==2.1.4
 # asyncpg 0.31.0 is the first release with cp314 wheels (needed for the
 # python:3.14-slim base image; 0.29.0 has no 3.14 wheel and fails to build).
-asyncpg==0.31.0
+asyncpg==0.32.0
 geoalchemy2==0.20.0
 alembic==1.20.0
-pydantic[email]==2.13.5
+pydantic[email]==2.14.1
 # PyJWT replaces python-jose (CVE-2024-33663, CVE-2024-33664 — algorithm confusion / sig bypass).
 # 2.14.0 hardens HMAC key validation against public-key material passed as JWK/JWKS/DER/PEM,
 # rejects JWKS-fetch redirects in PyJWKClient, and rate-limits repeated JWKS refreshes for
 # unknown key IDs. 2.15.0 wraps recursion errors from deeply nested JWT payloads in
 # DecodeError instead of leaking a raw RecursionError.
 PyJWT==2.15.1
-pydantic-settings==2.15.0
+pydantic-settings==2.16.0
 # cryptography 50.0.1 rebuilds wheels against OpenSSL 4.0.3 (50.0.2; 50.0.1 shipped 4.0.2), which fixes
 # several CVEs bundled in the statically-linked OpenSSL (CVE-2026-63072,
 # CVE-2026-63076, CVE-2026-14456, CVE-2026-14457, CVE-2026-54874,
 # CVE-2026-54876, CVE-2026-18798, CVE-2026-63074, CVE-2026-63075,
 # CVE-2026-75803).
 cryptography==50.0.2
-shapely==2.1.2
+shapely==2.2.0
 python-multipart==0.0.32
 bcrypt==5.0.0
 httpx==0.28.1
@@ -60,3 +60,11 @@ mcp==2.3.0
 # Passkeys (WebAuthn) — Prüfen von Registrierung und Anmeldung
 # (app/services/passkey.py). Zieht cbor2, pyOpenSSL und pyasn1 mit.
 webauthn==3.0.1
+
+# Marschbefehl aus der Word-Vorlage der Organisation
+# (app/services/marschbefehl_vorlage.py). docxtpl ist LGPL-2.1 und wird nur
+# eingebunden, nicht verändert. python-docx und Jinja2 benutzt der Code direkt
+# (Beispielvorlage, Sandbox), deshalb gepinnt; lxml kommt mit.
+docxtpl==0.20.2
+python-docx==1.2.0
+Jinja2==3.1.6

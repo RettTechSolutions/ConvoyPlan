@@ -1,7 +1,7 @@
 {
 	"name": "frontend",
 	"private": true,
-	"version": "2026.9.0",
+	"version": "2026.11.1",
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
@@ -15,7 +15,7 @@
 		"wiki:bilder": "playwright test -c playwright.wiki.config.ts"
 	},
 	"devDependencies": {
-		"@playwright/test": "^1.63.0",
+		"@playwright/test": "^1.64.1",
 		"@sveltejs/adapter-node": "^6.0.0",
 		"@sveltejs/kit": "^3.0.1",
 		"@sveltejs/vite-plugin-svelte": "^7.3.1",

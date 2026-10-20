@@ -25,6 +25,8 @@
         type RegionStatus,
     } from '$lib/api';
     import { ApiError } from '$lib/api/client';
+    import { klappbar } from '$lib/klappbar/klappbar';
+    import { folgtDemEnde, zeilenSammler } from '$lib/terminal';
 
     // ── Ruhezustand ──────────────────────────────────────────────────────────
     let current = $state<RegionCurrent | null>(null);
@@ -101,10 +103,11 @@
     // $state, weil das Terminal am offenen Strom erkennt, ob es noch etwas
     // erwarten darf (Cursor) — die Zuweisung muss also ein Rendern auslösen.
     let logSource = $state<EventSource | null>(null);
-    let logContainer = $state<HTMLDivElement | null>(null);
-    // true nach "Schließen" auf einem abgeschlossenen/fehlgeschlagenen Wechsel —
-    // blendet die Phasenkarte lokal aus, obwohl der Server denselben Endstatus
-    // bis zum nächsten Wechsel weiter meldet.
+    // true nach "Schließen" auf einem abgeschlossenen/fehlgeschlagenen Wechsel,
+    // sofort und ohne auf den Server zu warten. Dauerhaft gilt es über
+    // `status.seen`: Der Server merkt sich die Quittung, sonst klappte jeder
+    // Seitenaufruf denselben Endstatus samt Log wieder auf. Lokal bleibt es,
+    // für diesen Seitenaufruf, falls die Quittung nicht ankommt.
     let dismissed = $state(false);
     let timer: ReturnType<typeof setInterval> | null = null;
 
@@ -169,7 +172,7 @@
     // sehen, dass sein Abbruch tatsächlich durchgelaufen ist, und hätte keinen
     // „Schließen"-Knopf.
     const ENDED: RegionPhase[] = ['done', 'failed', 'cancelled'];
-    const finished = $derived(!dismissed && ENDED.includes(status.phase));
+    const finished = $derived(!dismissed && !status.seen && ENDED.includes(status.phase));
     const showSwitchPanel = $derived(busy || finished);
     const canCancel = $derived(busy && CANCELLABLE_PHASES.includes(status.phase));
     const blocked = $derived(preview?.verdict === 'reicht nicht');
@@ -180,6 +183,17 @@
     const graphBaut = $derived(
         status.graph_build?.phase === 'import' || status.graph_build?.phase === 'download',
     );
+    // Kurzfassung für die Kopfzeile: Am Telefon ist die Karte zugeklappt
+    // ($lib/klappbar), und ein laufender Wechsel oder Graph-Aufbau soll trotzdem
+    // auffallen. Im Ruhezustand steht nichts da — dort gibt es nichts zu melden.
+    const kopfStatus = $derived.by((): { text: string; klasse: string } | null => {
+        if (busy && status.phase === 'scheduled') return { text: 'Wechsel geplant', klasse: 'badge-neutral' };
+        if (busy) return { text: 'Wechsel läuft', klasse: 'badge-update' };
+        if (finished && status.phase === 'failed') return { text: 'Wechsel fehlgeschlagen', klasse: 'badge-warn' };
+        if (status.graph_build?.phase === 'haengt') return { text: 'Graph-Aufbau hängt', klasse: 'badge-warn' };
+        if (graphBaut) return { text: 'Graph wird gebaut', klasse: 'badge-update' };
+        return null;
+    });
 
     onMount(async () => {
         await loadCurrent();
@@ -205,9 +219,15 @@
     // ueberholt hat, verwirft sein Ergebnis, statt den neuen zu ueberschreiben.
     let logStreamSeq = 0;
 
+    // Zeilen je Bildaufbau statt einzeln — siehe `$lib/terminal`.
+    const logSammler = zeilenSammler((zeilen) => {
+        logLines = [...logLines, ...zeilen];
+    });
+
     function stopLogStream() {
         // Entwertet auch alle noch schwebenden Starts.
         logStreamSeq += 1;
+        logSammler.verwerfen();
         if (logSource) {
             logSource.close();
             logSource = null;
@@ -234,14 +254,11 @@
         logSource = es;
         es.onmessage = (e) => {
             if (seq !== logStreamSeq) return;
-            logLines = [...logLines, e.data];
-            // ans Ende scrollen, nachdem Svelte die neue Zeile gerendert hat
-            setTimeout(() => {
-                if (logContainer) logContainer.scrollTop = logContainer.scrollHeight;
-            }, 0);
+            logSammler.push(e.data);
         };
         es.addEventListener('done', (e) => {
             if (seq !== logStreamSeq) return;
+            logSammler.leeren();
             stopLogStream();
             // "timeout": der Strom hat sein Zeitlimit erreicht, der Wechsel
             // läuft aber noch. Neu aufbauen — der Strom liest wieder ab Byte 0,
@@ -250,6 +267,7 @@
         });
         es.onerror = () => {
             if (seq !== logStreamSeq) return;
+            logSammler.leeren();
             // Verbindung weg (Backend startet neu, Proxy-Timeout). Nicht selbst
             // weiterverbinden lassen: EventSource würde von Byte 0 neu lesen und
             // alles doppelt anhängen. Stattdessen ein Knopf zum Neuladen.
@@ -483,6 +501,12 @@
         stopLogStream();
         logLines = [];
         logError = '';
+        // Quittung für alle Superadmins und jeden weiteren Seitenaufruf. Schlägt
+        // sie fehl (409: inzwischen endete ein anderer Wechsel), bleibt es beim
+        // lokalen Ausblenden — der nächste Endstatus soll ja erscheinen.
+        if (status.at) {
+            regionApi.seen(status.phase, status.at).catch(() => {});
+        }
         await loadCurrent();
     }
 
@@ -511,11 +535,14 @@
     }
 </script>
 
-<div class="section region-card">
+<div class="section region-card" use:klappbar={'system-region'}>
     <div class="section-header">
         <strong>Kartenregion</strong>
+        {#if kopfStatus}
+            <span class="badge kopf-status {kopfStatus.klasse}" data-testid="kopf-status">{kopfStatus.text}</span>
+        {/if}
         {#if !showSwitchPanel && !loadingCurrent}
-            <button class="btn-small" onclick={loadCurrent}>↺ Aktualisieren</button>
+            <button class="btn-small" onclick={loadCurrent} title="Aktualisieren" aria-label="Aktualisieren">↺</button>
         {/if}
     </div>
 
@@ -567,7 +594,7 @@
             </p>
         {/if}
 
-        <div class="update-terminal" bind:this={logContainer}>
+        <div class="update-terminal" use:folgtDemEnde>
             {#each logLines as line}
                 <div class="log-line">{line}</div>
             {/each}
@@ -929,6 +956,8 @@
     }
     .section-header {
         display: flex;
+        flex-wrap: wrap;
+        gap: .5rem;
         justify-content: space-between;
         align-items: center;
         margin-bottom: .75rem;
@@ -959,6 +988,7 @@
     .sources-list { display: flex; flex-wrap: wrap; gap: .35rem; min-width: 0; }
     .update-label { width: 130px; color: var(--text-muted); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .04em; flex-shrink: 0; }
 
+    .kopf-status { margin-right: auto; }
     .badge { display: inline-block; padding: .15rem .5rem; border-radius: 3px; font-size: var(--text-xs); font-weight: 600; }
     .badge-ok { background: rgba(107,127,77,.2); color: #a8c070; border: 1px solid rgba(107,127,77,.4); }
     .badge-update { background: rgba(210,120,30,.2); color: #e8a050; border: 1px solid rgba(210,120,30,.4); }
@@ -985,7 +1015,6 @@
         color: #c9d1d9;
         max-height: 260px;
         overflow-y: auto;
-        scroll-behavior: smooth;
     }
     .log-line { white-space: pre-wrap; word-break: break-all; }
     .log-done { color: #58a6ff; margin-top: .25rem; }

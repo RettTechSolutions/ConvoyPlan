@@ -123,6 +123,7 @@ export interface AktionsseiteDaten {
 	theme: AktionsseitenThema;
 	delay_minutes: number;
 	show_destination: boolean;
+	show_sender: boolean;
 	valid_until: string | null;
 	enabled: boolean;
 	convoys: AktionsseiteKonvoi[];
@@ -224,6 +225,185 @@ export const aktionsseitenApi = {
 	}),
 };
 
+// ── Telegram für die Aktionsseiten (`TelegramBotKarte`, `FotosVonUnterwegs`) ──
+//
+// Jeder Aufruf landet in `window.__telegramAufrufe` — der Test prüft dort, dass
+// der Token nur an `botSetzen` geht und die Knöpfe die Aufrufe aus § 8.3
+// schicken. `?mit_seite=1` legt vorab eine Seite mit einem Konvoi an;
+// `?code_s=<n>` lässt Codes nach n Sekunden ablaufen.
+
+export type TelegramBotStatus = 'bereit' | 'privat' | 'ungueltig' | 'konflikt' | 'fehler' | 'ungeprueft';
+export interface TelegramBotStand {
+	eingerichtet: boolean;
+	bot_username?: string | null;
+	status?: TelegramBotStatus | null;
+	last_error?: string | null;
+	checked_at?: string | null;
+}
+export interface TelegramCode {
+	code: string;
+	expires_at: string;
+}
+export interface AktionsseiteTelegram {
+	gruppen: { convoy_id: string; chat_title: string | null; thema: boolean }[];
+	presse: { telegram_user_id: number; display_name: string; username: string | null; added_at: string }[];
+}
+
+declare global {
+	interface Window {
+		__telegramAufrufe?: [string, ...unknown[]][];
+	}
+}
+
+export const BOT_TOKEN = '7712345678:AAFh3kQx9Lm2Pw8Zr5Tn1Vb6Yc4Hd0Gs7Jq';
+
+const suche = new URLSearchParams(location.search);
+let bot: TelegramBotStand = { eingerichtet: false };
+const telegramSeite: AktionsseiteTelegram = {
+	gruppen: [],
+	presse: [{ telegram_user_id: 55, display_name: 'Anna Presse', username: 'anna_p', added_at: '2026-12-20T10:00:00Z' }],
+};
+
+export type BeitragStatus = 'wartet' | 'freigegeben' | 'abgelehnt' | 'zurueckgezogen';
+export interface AktionsseiteBeitrag {
+	id: string;
+	convoy_id: string;
+	taken_at: string;
+	status: BeitragStatus;
+	text_public: string | null;
+	text_raw: string | null;
+	sender_name: string | null;
+	reviewed_at: string | null;
+	public_since: string | null;
+	photos: { id: string; position: number; width: number; height: number }[];
+	link_url?: string | null;
+	link_dienst?: 'instagram' | 'youtube' | 'facebook' | 'tiktok' | null;
+	not_before?: string | null;
+}
+export interface BeitragAenderung {
+	aktion?: 'frei' | 'ablehnen' | 'zurueck';
+	text_public?: string | null;
+	not_before?: string | null;
+}
+
+let beitraege: AktionsseiteBeitrag[] = [];
+
+function tgAufruf(name: string, ...args: unknown[]) {
+	(window.__telegramAufrufe ??= []).push([name, ...args]);
+}
+
+function codeBis(): string {
+	const s = Number(suche.get('code_s') ?? 900);
+	return new Date(Date.now() + s * 1000).toISOString();
+}
+
+if (suche.get('mit_seite') === '1') {
+	seiten.push(
+		zeile('a-1', {
+			title: 'Weihnachtskonvois 2026', subtitle: null, facts: null, theme: 'weihnachten',
+			delay_minutes: 120, show_destination: false, show_sender: true, valid_until: null, enabled: true,
+			convoys: [
+				{ convoy_id: 'c-bih', display_name: 'Konvoi Bosnien', destination_label: 'Tuzla', destination_point: null, color: null },
+				{ convoy_id: 'c-rou', display_name: 'Konvoi Rumänien', destination_label: 'Sibiu', destination_point: null, color: null },
+			],
+		}),
+	);
+	telegramSeite.gruppen.push({ convoy_id: 'c-rou', chat_title: 'Weihnachtskonvoi 2026', thema: true });
+	const foto = (id: string) => ({ id, position: 0, width: 1600, height: 1200 });
+	beitraege = [
+		{
+			id: 'p-wartet', convoy_id: 'c-bih', taken_at: '2026-12-27T15:10:00Z', status: 'wartet',
+			text_public: 'Wir stehen an der A3 bei Würzburg', text_raw: 'Wir stehen an der A3 bei Würzburg',
+			sender_name: 'Jonas', reviewed_at: null, public_since: null, photos: [foto('f-1'), { ...foto('f-2'), position: 1 }],
+		},
+		{
+			id: 'p-frei', convoy_id: 'c-rou', taken_at: '2026-12-27T13:40:00Z', status: 'freigegeben',
+			text_public: 'Grenze geschafft', text_raw: 'Grenze geschafft', sender_name: 'Mia',
+			reviewed_at: '2026-12-27T14:00:00Z', public_since: '2026-12-27T15:41:00Z', photos: [foto('f-3')],
+		},
+		{
+			id: 'p-link', convoy_id: 'c-rou', taken_at: '2026-12-27T12:00:00Z', status: 'abgelehnt',
+			text_public: 'Unser Reel', text_raw: 'Unser Reel', sender_name: 'Mia',
+			reviewed_at: '2026-12-27T12:30:00Z', public_since: null, photos: [],
+			link_url: 'https://www.instagram.com/reel/XyZ/', link_dienst: 'instagram',
+		},
+		{
+			id: 'p-video', convoy_id: 'c-rou', taken_at: '2026-12-27T11:00:00Z', status: 'abgelehnt',
+			text_public: 'Im Fernsehen', text_raw: 'Im Fernsehen', sender_name: 'Mia',
+			reviewed_at: '2026-12-27T11:30:00Z', public_since: null, photos: [{ ...foto('f-4'), width: 1280, height: 720 }],
+			link_url: 'https://youtu.be/dQw4w9WgXcQ', link_dienst: 'youtube',
+		},
+		{
+			id: 'p-film', convoy_id: 'c-bih', taken_at: '2026-12-27T10:00:00Z', status: 'abgelehnt',
+			text_public: 'Über den Tauern', text_raw: 'Über den Tauern', sender_name: 'Jonas',
+			reviewed_at: '2026-12-27T10:30:00Z', public_since: null, photos: [{ ...foto('f-5'), width: 1280, height: 720 }],
+			video: { id: 'v-1', width: 1280, height: 720, seconds: 42.3, sound: true },
+		},
+	];
+}
+
+export const aktionsseitenTelegramApi = {
+	bot: async (): Promise<TelegramBotStand> => ({ ...bot }),
+	botSetzen: async (token: string): Promise<TelegramBotStand> => {
+		tgAufruf('botSetzen', token);
+		bot = {
+			eingerichtet: true, bot_username: 'AktionsBot',
+			status: suche.get('privat') === '1' ? 'privat' : 'bereit',
+			last_error: null, checked_at: '2026-12-27T18:00:00Z',
+		};
+		return { ...bot };
+	},
+	botEntfernen: async () => {
+		tgAufruf('botEntfernen');
+		bot = { eingerichtet: false };
+	},
+	seite: async (id: string): Promise<AktionsseiteTelegram> => {
+		tgAufruf('seite', id);
+		return structuredClone(telegramSeite);
+	},
+	verbindenCode: async (id: string, convoyId: string): Promise<TelegramCode> => {
+		tgAufruf('verbindenCode', id, convoyId);
+		return { code: 'K7Q-2MX', expires_at: codeBis() };
+	},
+	trennen: async (id: string, convoyId: string) => {
+		tgAufruf('trennen', id, convoyId);
+		telegramSeite.gruppen = telegramSeite.gruppen.filter((g) => g.convoy_id !== convoyId);
+	},
+	presseCode: async (id: string): Promise<TelegramCode> => {
+		tgAufruf('presseCode', id);
+		return { code: '4TR-8LK', expires_at: new Date(Date.now() + 86_400_000).toISOString() };
+	},
+	presseEntfernen: async (id: string, telegramUserId: number) => {
+		tgAufruf('presseEntfernen', id, telegramUserId);
+		telegramSeite.presse = telegramSeite.presse.filter((p) => p.telegram_user_id !== telegramUserId);
+	},
+	beitraege: async (id: string): Promise<AktionsseiteBeitrag[]> => {
+		tgAufruf('beitraege', id);
+		return structuredClone(beitraege);
+	},
+	beitragAendern: async (id: string, postId: string, aenderung: BeitragAenderung): Promise<AktionsseiteBeitrag> => {
+		tgAufruf('beitragAendern', id, postId, aenderung);
+		const b = beitraege.find((x) => x.id === postId)!;
+		if ('text_public' in aenderung) b.text_public = aenderung.text_public ?? null;
+		if ('not_before' in aenderung) b.not_before = aenderung.not_before ?? null;
+		if (aenderung.aktion) {
+			b.status = { frei: 'freigegeben', ablehnen: 'abgelehnt', zurueck: 'zurueckgezogen' }[aenderung.aktion] as BeitragStatus;
+			if (b.status !== 'freigegeben') b.public_since = null;
+		}
+		return structuredClone(b);
+	},
+	bild: async (id: string, photoId: string, groesse: 'gross' | 'klein'): Promise<string> => {
+		tgAufruf('bild', id, photoId, groesse);
+		// 1×1 PNG — was hier zählt, ist der Weg über den API-Client, nicht das Bild.
+		const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0));
+		return URL.createObjectURL(new Blob([png], { type: 'image/png' }));
+	},
+	video: async (id: string, videoId: string): Promise<string> => {
+		tgAufruf('video', id, videoId);
+		return URL.createObjectURL(new Blob([new Uint8Array(8)], { type: 'video/mp4' }));
+	},
+};
+
 // ── Passkeys (`PasskeyVerwaltung`) ───────────────────────────────────────────
 //
 // Die Prüfung der Antwort ist Sache des Servers; hier zählt, was die
@@ -294,6 +474,8 @@ export interface GraphBuild {
 }
 export interface RegionStatus {
 	phase: RegionPhase;
+	at?: string;
+	seen?: boolean;
 	scheduled_for?: string;
 	graph_build?: GraphBuild;
 	waiting_for_graph?: boolean;
@@ -314,7 +496,50 @@ const GRAPH_BUILD: Record<string, GraphBuild | undefined> = {
 declare global {
 	interface Window {
 		__regionWechsel?: string[];
+		__regionLogZeile?: (zeile: string) => void;
 	}
+}
+
+// `?log=<n>&phase=done|importing`: ein Wechsel mit Log. Der Strom spielt wie
+// der echte beim Verbinden alle bisherigen Zeilen ab Byte 0 nach — als ein
+// Schwall, so wie sie in einem Netzpaket ankommen, aber jede als eigenes
+// Ereignis; bei `done` endet er danach, sonst bleibt er offen, und
+// `window.__regionLogZeile` hängt eine weitere Zeile an.
+const logZeilen = Number(new URLSearchParams(location.search).get('log') ?? 0);
+const logPhase = new URLSearchParams(location.search).get('phase');
+// Fest statt relativ: Die Quittung muss über ein Neuladen hinweg passen.
+const LOG_ENDE_AT = '2026-10-14T06:08:13Z';
+// Die Quittung des Servers (`POST …/seen`) überlebt ein Neuladen wie dort —
+// hier in sessionStorage, damit jeder Test frisch anfängt.
+const gesehen = () => sessionStorage.getItem('region.gesehen');
+
+function logStrom(): EventSource {
+	const lauscher: Record<string, ((e: MessageEvent) => void)[]> = {};
+	let offen = true;
+	const es = {
+		onmessage: null as ((e: MessageEvent) => void) | null,
+		onerror: null as (() => void) | null,
+		addEventListener(typ: string, fn: (e: MessageEvent) => void) {
+			(lauscher[typ] ??= []).push(fn);
+		},
+		close() {
+			offen = false;
+		},
+	};
+	const senden = (data: string) => {
+		if (offen) es.onmessage?.(new MessageEvent('message', { data }));
+	};
+	window.__regionLogZeile = senden;
+	void (async () => {
+		await new Promise((r) => setTimeout(r, 50));
+		for (let i = 1; i <= logZeilen; i++) {
+			senden(i === logZeilen ? 'Regionswechsel abgeschlossen' : `INFO Zeile ${i}`);
+		}
+		if (logPhase === 'done' && offen) {
+			for (const fn of lauscher.done ?? []) fn(new MessageEvent('done', { data: 'done' }));
+		}
+	})();
+	return es as unknown as EventSource;
 }
 const quellen = new URLSearchParams(location.search).get('quellen')?.split(',') ?? ['europe/dach'];
 
@@ -338,17 +563,24 @@ export const regionApi = {
 	],
 	status: async (): Promise<RegionStatus> => {
 		const gb = GRAPH_BUILD[bau];
+		if (logPhase) {
+			const ende = { phase: logPhase, at: LOG_ENDE_AT };
+			return gesehen() === `${logPhase}@${LOG_ENDE_AT}` ? { ...ende, seen: true } : ende;
+		}
 		if (bau === 'wartet') {
 			return { phase: 'scheduled', scheduled_for: vorMinuten(20), graph_build: gb, waiting_for_graph: true };
 		}
 		return gb ? { phase: 'idle', graph_build: gb } : { phase: 'idle' };
 	},
-	logStream: async () => null,
+	logStream: async () => (logZeilen ? logStrom() : null),
 	switch: async (urls: string[]) => {
 		window.__regionWechsel = urls;
 		return { status: 'queued' };
 	},
 	cancel: async () => ({ status: 'cancelling' }),
+	seen: async (phase: string, at: string) => {
+		if (phase === logPhase && at === LOG_ENDE_AT) sessionStorage.setItem('region.gesehen', `${phase}@${at}`);
+	},
 };
 
 // ── Ortungsgeräte (`TrackerVerwaltung`) ──────────────────────────────────────

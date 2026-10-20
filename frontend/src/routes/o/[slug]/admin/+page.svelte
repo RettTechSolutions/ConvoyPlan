@@ -7,6 +7,9 @@
     import LeitstellenTable from '$lib/components/LeitstellenTable.svelte';
     import AktionsseitenVerwaltung from '$lib/components/AktionsseitenVerwaltung.svelte';
     import TrackerVerwaltung from '$lib/components/TrackerVerwaltung.svelte';
+    import MarschbefehlVorlage from '$lib/components/MarschbefehlVorlage.svelte';
+    import TabLeiste from '$lib/components/TabLeiste.svelte';
+    import { klappbar } from '$lib/klappbar/klappbar';
     import { orgStore } from '$lib/stores/org';
     import { kontextmenue, kopieren, TRENNER, type Eintraege } from '$lib/kontextmenue/menue';
     import { feedbackStore } from '$lib/stores/feedback';
@@ -14,12 +17,14 @@
     import { brandingStore, applyBranding, setOrgBranding, BRANDING_DEFAULTS } from '$lib/stores/branding';
     import { orgBrandingApi, orgMcpApi, type BrandingUpdate, type OrgMcpPolicy, type OrgMcpConnection } from '$lib/api';
     import { orgModuleApi, type OrgModul, type OrgModule } from '$lib/api';
+    import { reiterMerken } from '$lib/reiter-merken.svelte';
 
     // ── Slug ─────────────────────────────────────────────────────────────────
     const slug = $derived((page.params as Record<string, string>).slug);
 
     // ── Tab ──────────────────────────────────────────────────────────────────
-    let activeTab = $state<'mitglieder' | 'leitstellen' | 'gps' | 'tracker' | 'aktion' | 'branding' | 'ki' | 'daten'>('mitglieder');
+    let activeTab = $state<'mitglieder' | 'leitstellen' | 'gps' | 'tracker' | 'aktion' | 'marschbefehl' | 'branding' | 'ki' | 'daten'>('mitglieder');
+    reiterMerken(['mitglieder', 'leitstellen', 'gps', 'tracker', 'aktion', 'marschbefehl', 'branding', 'ki', 'daten'], () => activeTab, (r) => (activeTab = r));
 
     // ── Module ───────────────────────────────────────────────────────────────
     // Was der Betreiber freigeschaltet hat (backend/app/services/org_module.py).
@@ -62,7 +67,12 @@
             // wird im Backend, der Reiter ist nur die Ansicht davon.
             module = { tracker: true, aktionsseiten: true, branding: true, ki: true };
         }
-        await Promise.all([loadMembers(), loadLeitstellen(), frei('branding') ? loadBranding() : undefined]);
+        // Was sonst der Klick auf den Reiter lädt — nach einem Neuladen steht er schon offen.
+        await Promise.all([
+            loadMembers(), loadLeitstellen(), frei('branding') ? loadBranding() : undefined,
+            activeTab === 'gps' ? loadGpsShares() : undefined,
+            activeTab === 'ki' && frei('ki') ? loadKi() : undefined,
+        ]);
     });
 
     // ── Mitglieder ───────────────────────────────────────────────────────────
@@ -580,16 +590,22 @@
         </div>
     </div>
 
-    <div class="tab-bar">
+    <TabLeiste aktiv={activeTab}>
         <button class="tab" class:active={activeTab === 'mitglieder'} onclick={() => { activeTab = 'mitglieder'; loadMembers(); }}>Mitglieder</button>
         <button class="tab" class:active={activeTab === 'leitstellen'} onclick={() => (activeTab = 'leitstellen')}>Leitstellen</button>
         <button class="tab" class:active={activeTab === 'gps'} onclick={() => { activeTab = 'gps'; loadGpsShares(); }}>GPS-Freigaben</button>
         <button class="tab" class:active={activeTab === 'tracker'} class:inaktiv={gesperrt('tracker')} title={gesperrt('tracker') ? MODUL_GESPERRT : undefined} onclick={() => (activeTab = 'tracker')}>{#if gesperrt('tracker')}🔒 {/if}Tracker</button>
         <button class="tab" class:active={activeTab === 'aktion'} class:inaktiv={gesperrt('aktionsseiten')} title={gesperrt('aktionsseiten') ? MODUL_GESPERRT : undefined} onclick={() => (activeTab = 'aktion')}>{#if gesperrt('aktionsseiten')}🔒 {/if}Aktionsseiten</button>
+        <button class="tab" class:active={activeTab === 'marschbefehl'} onclick={() => (activeTab = 'marschbefehl')}>Marschbefehl</button>
         <button class="tab" class:active={activeTab === 'branding'} class:inaktiv={gesperrt('branding')} title={gesperrt('branding') ? MODUL_GESPERRT : undefined} onclick={() => activeTab = 'branding'}>{#if gesperrt('branding')}🔒 {/if}Branding</button>
         <button class="tab" class:active={activeTab === 'ki'} class:inaktiv={gesperrt('ki')} title={gesperrt('ki') ? MODUL_GESPERRT : undefined} onclick={() => { activeTab = 'ki'; if (frei('ki')) loadKi(); }}>{#if gesperrt('ki')}🔒 {/if}KI-Zugriff</button>
         <button class="tab" class:active={activeTab === 'daten'} onclick={() => (activeTab = 'daten')}>Datenexport</button>
-    </div>
+    </TabLeiste>
+
+    <!-- ── Marschbefehl-Vorlage ── -->
+    {#if activeTab === 'marschbefehl'}
+        <MarschbefehlVorlage />
+    {/if}
 
     <!-- ── Datenexport ── -->
     {#if activeTab === 'daten'}
@@ -722,7 +738,7 @@
         {/if}
 
         {#if lsGeojson && lsGeojson.features.length > 0}
-            <div class="section">
+            <div class="section" use:klappbar={'org-leitstellen-karte'}>
                 <div class="section-header"><strong>Übersicht</strong></div>
                 <LeitstellenOverviewMap geojson={lsGeojson} />
                 <p class="hint" style="margin:.4rem 0 0">Blau = global · Rot = org-eigen</p>
@@ -1189,8 +1205,8 @@
     .back-link { color: var(--text-2); font-size: var(--text-sm); text-decoration: none; }
     .back-link:hover { color: var(--text-1); }
 
-    .tab-bar { display: flex; gap: .25rem; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem; padding: .25rem .25rem 0; }
-    .tab { padding: .5rem 1rem; background: none; border: none; cursor: pointer; font-size: var(--text-sm); color: var(--text-2); border-radius: 4px 4px 0 0; margin-bottom: -1px; }
+    /* Die Leiste selbst (Scrollen, Überlauf) steht in TabLeiste.svelte. */
+    .tab { flex: 0 0 auto; white-space: nowrap; padding: .5rem 1rem; background: none; border: none; cursor: pointer; font-size: var(--text-sm); color: var(--text-2); border-radius: 4px 4px 0 0; margin-bottom: -1px; }
     .tab.active { color: var(--color-primary); background: var(--surface-2); font-weight: 600; border-bottom: 2px solid var(--color-primary); }
     /* Modul nicht freigeschaltet: sichtbar, aber erkennbar nicht bedienbar. */
     .tab.inaktiv { color: var(--text-muted); opacity: .6; }
@@ -1308,16 +1324,6 @@
         }
         .admin-header { margin-bottom: .75rem; }
 
-        /* Tabs scroll horizontally instead of squashing. */
-        .tab-bar {
-            overflow-x: auto;
-            flex-wrap: nowrap;
-            scrollbar-width: none;
-            -webkit-overflow-scrolling: touch;
-            margin: 0 -.75rem 1rem;
-            padding: .25rem .75rem 0;
-        }
-        .tab-bar::-webkit-scrollbar { display: none; }
         .tab { flex-shrink: 0; padding: .55rem .85rem; font-size: var(--text-sm); }
 
         .section {

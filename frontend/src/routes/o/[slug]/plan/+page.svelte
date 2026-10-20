@@ -43,6 +43,7 @@
 	import HaltVermerk from '$lib/components/HaltVermerk.svelte';
 	import { tutorialStore } from '$lib/stores/tutorial';
 	import QRCode from 'qrcode';
+	import { reiterMerken } from '$lib/reiter-merken.svelte';
 
 	// ── State ──────────────────────────────────────────────────────────
 	let allVehicles = $state<Vehicle[]>([]);
@@ -79,6 +80,7 @@
 		bundesstrasse: 'Standard (veraltet)', landstrasse: 'Standard (veraltet)',
 	};
 	let activeTab = $state<'convoy'|'route'|'fahrzeuge'|'wegpunkte'|'zeitplan'|'export'|'konto'>('convoy');
+	reiterMerken(['convoy', 'route', 'fahrzeuge', 'wegpunkte', 'zeitplan', 'export', 'konto'], () => activeTab, (r) => (activeTab = r));
 	let loading = $state(false);
 	let dndWaypoints = $state<Waypoint[]>([]);
 	let dndVehicles = $state<Vehicle[]>([]);
@@ -275,6 +277,7 @@
 	onMount(async () => {
 		pwaStore.init();
 		void loadFlowProvider();
+		if (activeTab === 'konto') loadMfaStatus();
 		await loadData();
 		if (demoSession) {
 			try {
@@ -294,7 +297,10 @@
 			]);
 			dndVehicles = [...allVehicles];
 			convoys.set(convoyList);
-			if (!selected && convoyList.length) selectConvoy(convoyList[0]);
+			if (!selected && convoyList.length) {
+				const gemerkt = gemerkterKonvoi();
+				selectConvoy(convoyList.find((c) => c.id === gemerkt) ?? convoyList[0]);
+			}
 		} catch { error = 'Fehler beim Laden'; }
 	}
 
@@ -313,8 +319,15 @@
 		return c;
 	}
 
+	// Wie der Reiter: ein Neuladen soll beim selben Konvoi landen, nicht beim ersten.
+	const konvoiSchluessel = () => `convoyplan.konvoi:${location.pathname}`;
+	function gemerkterKonvoi(): string | null {
+		try { return sessionStorage.getItem(konvoiSchluessel()); } catch { return null; }
+	}
+
 	function selectConvoy(c: Convoy) {
 		selected = withVehicleIds(c);
+		try { sessionStorage.setItem(konvoiSchluessel(), c.id); } catch { /* ignore */ }
 		activeConvoy.set(selected);
 		route = null;
 		routeGeojson = null;
@@ -1360,7 +1373,7 @@
         .sort((a, b) => a.position - b.position);
     }
   });
-	async function downloadExport(format: 'gpx' | 'json' | 'pdf' | 'roadbook') {
+	async function downloadExport(format: 'gpx' | 'json' | 'pdf' | 'docx' | 'roadbook') {
 		if (!selected) return;
 		try {
 			const res = await fetch(`/api/convoys/${selected.id}/export/${format}`, {
@@ -1378,7 +1391,10 @@
 			const url = URL.createObjectURL(blob);
 			const a = document.createElement('a');
 			a.href = url;
-			a.download = format === 'roadbook' ? `Roadbook ${selected.name}.pdf` : `${selected.name}.${format}`;
+			a.download =
+				format === 'roadbook' ? `Roadbook ${selected.name}.pdf`
+				: format === 'docx' ? `Marschbefehl ${selected.name}.docx`
+				: `${selected.name}.${format}`;
 			document.body.appendChild(a);
 			a.click();
 			document.body.removeChild(a);
@@ -2475,6 +2491,9 @@
 				</button>
 				<button class="modal-btn-export" onclick={async () => { if (await saveBefehlForm()) downloadExport('pdf'); }} disabled={befehlSaving}>
 					🖨 Speichern & PDF
+				</button>
+				<button class="modal-btn-export" title="Aus der Word-Vorlage der Organisation (Org-Admin → Marschbefehl)" onclick={async () => { if (await saveBefehlForm()) downloadExport('docx'); }} disabled={befehlSaving}>
+					📝 Speichern & Word
 				</button>
 			</div>
 		</div>

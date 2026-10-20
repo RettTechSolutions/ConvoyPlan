@@ -42,6 +42,10 @@ CONVOY_UPDATED = "convoy.updated"
 CONVOY_DELETED = "convoy.deleted"
 SHARE_LINK_CREATED = "convoy.share_link.created"
 SHARE_LINK_REVOKED = "convoy.share_link.revoked"
+# Eine Marschbefehl-Vorlage enthält Ausdrücke, die der Server auswertet (in
+# einer Sandbox) — wer sie ausgetauscht hat, gehört ins Protokoll.
+MARSCHBEFEHL_VORLAGE_SET = "org.marschbefehl_vorlage.set"
+MARSCHBEFEHL_VORLAGE_REMOVED = "org.marschbefehl_vorlage.removed"
 # Meldungen aus der Anwendung. Das Eingehen wird mitgeschrieben, weil der
 # Melde-Dialog der einzige Weg ist, auf dem ein beliebiges Mitglied Text und
 # ein Bild auf die Instanz legen kann — wer das missbraucht, soll auffindbar

@@ -14,6 +14,8 @@
 	 */
 	import { onMount } from 'svelte';
 	import LocationSearch from '$lib/components/LocationSearch.svelte';
+	import TelegramBotKarte from '$lib/components/TelegramBotKarte.svelte';
+	import FotosVonUnterwegs from '$lib/components/FotosVonUnterwegs.svelte';
 	import {
 		aktionsseitenApi,
 		convoysApi,
@@ -49,6 +51,7 @@
 		theme: AktionsseitenThema;
 		delay_minutes: number;
 		show_destination: boolean;
+		show_sender: boolean;
 		valid_until: string;
 		enabled: boolean;
 		konvois: Record<string, KonvoiWahl>;
@@ -64,6 +67,8 @@
 	let neu = $state<AktionsseiteMitToken | null>(null);
 	let vorschau = $state<{ id: string; daten: AktionsseiteVorschau } | null>(null);
 	let kopiert = $state(false);
+	/** Ohne Bot kommen keine Fotos an — dann gibt es auch keine Codes. */
+	let botBereit = $state(false);
 
 	async function neuLaden() {
 		laden = true;
@@ -104,6 +109,7 @@
 			theme: 'neutral',
 			delay_minutes: 120,
 			show_destination: false,
+			show_sender: true,
 			valid_until: '',
 			enabled: true,
 			konvois: leereWahl()
@@ -130,6 +136,7 @@
 			theme: s.theme,
 			delay_minutes: s.delay_minutes,
 			show_destination: s.show_destination,
+			show_sender: s.show_sender,
 			valid_until: zuLokal(s.valid_until),
 			enabled: s.enabled,
 			konvois: wahl
@@ -152,6 +159,7 @@
 			theme: f.theme,
 			delay_minutes: f.delay_minutes,
 			show_destination: f.show_destination,
+			show_sender: f.show_sender,
 			valid_until: f.valid_until ? new Date(f.valid_until).toISOString() : null,
 			enabled: f.enabled,
 			convoys: gewaehlte.map((k) => {
@@ -303,6 +311,8 @@
 	</p>
 </div>
 
+<TelegramBotKarte onStand={(b) => (botBereit = b.eingerichtet && b.status !== 'ungueltig')} />
+
 {#if neu}
 	<div class="section token-box" data-testid="neues-token">
 		<div class="section-header"><strong>Abruf-Token für „{neu.title}"</strong></div>
@@ -367,6 +377,13 @@
 		<label class="haken">
 			<input type="checkbox" bind:checked={formular.show_destination} />
 			<span>Zielort als Punkt auf der Karte zeigen (vergröbert) — sonst nur als Text</span>
+		</label>
+		<label class="haken">
+			<input type="checkbox" bind:checked={formular.show_sender} />
+			<span
+				>Absender auf den Beiträgen nennen („von Jonas“ in Telegram und hier) — aus: Namen werden
+				nicht gespeichert, vorhandene gelöscht</span
+			>
 		</label>
 		<label class="haken">
 			<input type="checkbox" bind:checked={formular.enabled} />
@@ -481,6 +498,7 @@
 				{/each}
 			</ul>
 			<p class="hint endpunkt">Abruf: <code>{s.endpoint}</code></p>
+			<FotosVonUnterwegs seite={s} {botBereit} />
 
 			{#if vorschau?.id === s.id}
 				<div class="vorschau" data-testid="vorschau">

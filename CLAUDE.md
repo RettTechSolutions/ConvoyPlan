@@ -29,7 +29,7 @@ dem Website-Repo heraus als statisches Astro-Build deployt.
 
 ### Images werden nur gebaut, wenn es einen Grund gibt
 
-`graphhopper`, `updater` und `osmium` hängen nicht am Anwendungscode. Gebaut
+`graphhopper`, `updater`, `osmium` und `medien` hängen nicht am Anwendungscode. Gebaut
 wurden sie trotzdem bei jedem Lauf — und jeder Bau erzeugt einen neuen Digest,
 weil `metadata-action` Commit-SHA und Zeitstempel als Label in die
 Image-Konfiguration schreibt und die zum Digest gehört. Der Updater vergleicht
@@ -37,7 +37,7 @@ Image-IDs, sieht eine neue und tauscht den Container: bei GraphHopper mit
 minutenlangem Routing-Ausfall für das erneute Laden des Graphen, im
 Nightly-Kanal mehrmals täglich, ohne dass sich ein Byte geändert hätte.
 
-`.github/actions/build-or-reuse/` entscheidet deshalb vor jedem dieser drei
+`.github/actions/build-or-reuse/` entscheidet deshalb vor jedem dieser vier
 Bauten. Gebaut wird bei geändertem Quelltext (Tree-Hash des Verzeichnisses,
 liegt als `de.convoyplan.source-tree` im Image), bei bewegtem Base-Image
 (Digest der letzten `FROM`-Zeile, `de.convoyplan.base-digest`) oder wenn das
@@ -60,7 +60,7 @@ Den Kanal setzt der Updater nur in seiner eigenen Umgebung durch
 (`_apply_channel_images`); die `.env` des Hosts blieb auf dem `:latest` des
 Installers. Ein `docker compose pull` von Hand tauschte deshalb eine
 Nightly-Instanz still auf das ältere Stable-Image — am 2026-10-09 samt erneutem
-Neuaufbau des Graphen. `docker/updater/env-kanal.sh` zieht die fünf `*_IMAGE`-Zeilen
+Neuaufbau des Graphen. `docker/updater/env-kanal.sh` zieht die sechs `*_IMAGE`-Zeilen
 beim Start des Updaters und nach jedem Kanalwechsel nach, über einen Hilfscontainer
 wie beim Zurückschreiben der Compose-Datei. Gemountet wird das **Verzeichnis**, nicht
 die Datei (ein Datei-Mount legte bei fehlender `.env` ein Verzeichnis an), und
@@ -314,6 +314,41 @@ Tests: `tests/test_durchfahrtshoehen.py`, `tests/test_bruecken_ohne_hoehe.py`,
 `frontend/e2e/durchfahrtshoehen.spec.ts`, `frontend/e2e/gewichtsgrenzen.spec.ts`.
 Anwenderdoku: `wiki/Konvoi-Planung.md`, „Durchfahrtshöhen" und „Gewichtsgrenzen".
 
+### Marschbefehl aus der Word-Vorlage: die Vorlage ist fremder Code
+
+Neben dem fest gesetzten PDF (`services/pdf.py`) exportiert `GET /api/convoys/{id}/export/docx`
+aus einer `.docx`-Vorlage der Organisation (`docxtpl`, Jinja2 im Word-Dokument). Der Org-Admin
+lädt sie unter **Org-Admin → Marschbefehl** hoch (`api/routes/marschbefehl_vorlage.py`, Tabelle
+`marschbefehl_vorlagen`, Migration `0073`, `bytea` wie die Bilder der Aktionsseite); ohne eigene
+gilt die Beispielvorlage. Regeln in `services/marschbefehl_vorlage.py`. Vier Dinge, die man kennen
+muss:
+
+- **Sandbox, nicht nur Autoescape.** Jinja wertet Ausdrücke aus, und auf dem Hosting-Server teilen
+  sich alle Organisationen einen Prozess. `_Sandbox` nimmt `range`, alle Filter außer `_FILTER`
+  und die Breiten-Formatierer an `str` weg und deckelt `*`/`**`/`%`. `str.format` geht in Jinja an
+  `is_safe_attribute` vorbei (`wrap_str_format`) — gesperrt wird deshalb in `getattr`/`getitem`.
+  Wer einen Filter freigibt, prüft, ob er eine Breite oder Wiederholung nimmt. Gegen Rechenzeit
+  (rekursive Makros, verschachtelte Schleifen) hilft keine Sandbox: `fuellen` läuft deshalb in
+  einem **Kindprozess** (`spawn`) mit Frist (`FRIST_S`) und Adressraumdeckel (`SPEICHER_BYTES`)
+  und wird danach beendet — ein Thread ließe sich nicht abbrechen. Nie in-process füllen, auch
+  nicht „nur zum Prüfen".
+- **Geprüft wird beim Hochladen.** `StrictUndefined` und ein Probelauf gegen `beispiel_kontext()`,
+  in dem jede Liste Einträge hat: Was dort durchgeht, geht bei jedem Export durch. Ein neues Feld
+  gehört deshalb in `kontext()` **und** in `FELDER`/`LISTEN`; `tests/test_marschbefehl_vorlage.py`
+  hält beide deckungsgleich und verlangt Einträge in jeder Beispielliste. Ein Feld umbenennen oder
+  entfernen bricht hochgeladene Vorlagen (der Export antwortet dann 422) — nur hinzufügen.
+- **Die Beispielvorlage wird erzeugt** (`beispielvorlage()`, python-docx), nicht als Datei
+  mitgeliefert; ihre Feldübersicht steht in einem `{%p if false %}`-Block. Darin keine wörtlichen
+  `{%p`/`{%tr`: docxtpl schreibt sie **vor** Jinja um, auch dort, und ein `{%tr` außerhalb einer
+  Tabelle griffe in die Tabelle davor.
+- **Werte sind fertige deutsche Texte, fehlende `""`** (nicht „-"), damit `{% if %}` greift.
+  PDF und Vorlage bekommen dieselben Daten (`routing._marschbefehl_daten`).
+
+Im Organisations-Export liegt die Vorlage unter `vorlagen/marschbefehl.docx`. Hochladen und
+Entfernen stehen im Audit-Log. Tests: `tests/test_marschbefehl_vorlage.py`,
+`frontend/e2e/marschbefehl-vorlage.spec.ts`. Anwenderdoku: `wiki/Marschbefehl-Export.md`,
+„Marschbefehl als Word-Dokument".
+
 ### Fahrzeugbelegung: ein Fahrzeug, ein Gerät
 
 Wer ein Fahrzeug wählt, belegt es — am Server, für alle drei Oberflächen zugleich:
@@ -385,7 +420,8 @@ Filter beim Empfänger ließe sich mit den Entwicklertools aushebeln:
 - **Positivliste**: die Pydantic-Modelle in `api/routes/aktionsseite.py`,
   jedes mit `extra="forbid"`. Sie sind zugleich der Vertrag mit dem
   EventTracker; `tests/test_aktionsseite_felder.py` schreibt sie aus. Kein
-  interner Konvoiname, keine Datenbank-Kennung, nichts aus dem Fahrzeug.
+  interner Konvoiname, keine Datenbank-Kennung, nichts aus dem Fahrzeug —
+  nur ihre Zahl (`vehicles`, die eingeplanten, nicht die gerade fahrenden).
 
 Unbekannt, abgeschaltet, abgelaufen oder falsches Token ergeben **dieselbe**
 404. Das Token liegt nur als SHA-256 vor, sichtbar ist es einmal beim Anlegen
@@ -401,6 +437,93 @@ schlägt sonst an.
 
 Die Positionen tragen die **Serverzeit**. Puffert ein Gerät im Funkloch und
 sendet später, landen die Punkte gestaucht am Ende der Linie.
+
+**Beiträge** (Fotos aus Telegram, Plan:
+`docs/superpowers/plans/2026-10-13-fotos-auf-der-aktionsseite.md`): Wo einer
+liegt und ob er hinausgeht, entscheiden `beitrag_position` und
+`beitrag_sichtbar` — mit derselben `lage()` wie `konvoi()`. Ein Foto ist eine
+Position, auch ohne Koordinate; es darf nie mehr zeigen als die Karte daneben.
+Im Schutzbereich eines Halts liegt es auf dessen Parkplatz und bleibt zurück,
+bis der Konvoi den Bereich verlassen hat (außer am Ziel nach der Ankunft); hält
+er gerade, geht nur hinaus, was die Linie schon zeigt. Wer an Halten, Parkplatz
+oder Linie dreht, ändert die Beiträge mit. Test:
+`tests/test_aktionsseite_beitraege.py`. Gespeichert (Migration `0070`) wird an
+`public_tracker_convoys (tracker_id, convoy_id)`: Fällt ein Konvoi aus der
+Seite, fallen Gruppe, Codes und Beiträge mit. `_konvois_setzen` ändert deshalb
+bleibende Zeilen, statt sie zu ersetzen — sonst löschte schon ein neuer Titel
+alles (`tests/test_aktionsseite_beitraege_daten.py`). Bilder gehen nur durch
+`services/aktionsseite_bild.py` (neu kodiert, ohne EXIF/XMP/ICC, Größe vor dem
+Dekodieren geprüft) und liegen als `bytea` in der Datenbank, also im Backup.
+Aus Telegram kommen sie per Long Polling (`services/aktionsseite_telegram.py`,
+Draht in `services/telegram.py`): eine Aufgabe je Bot, im Cluster nur eine
+(`pg_try_advisory_lock`, Telegram antwortet zwei Abholern mit 409). Der Token
+steht in jeder Adresse der Bot-API — Fehlermeldungen tragen deshalb nie die URL.
+Freigeben darf nur, wer per Presse-Code an **dieser** Seite eingetragen ist,
+geprüft bei jedem Knopfdruck; `callback_data` wird nichts geglaubt. Nach der
+Freigabe ändert eine Bearbeitung in Telegram den öffentlichen Text nicht mehr.
+Der Router (`api/routes/aktionsseite_telegram.py`) hängt **vor** `org_router`,
+sonst fängt dessen `/{tracker_id}` den Pfad `/telegram` ab. Tests:
+`tests/test_aktionsseite_telegram.py` (gestellte Bot-API),
+`frontend/e2e/aktionsseite-fotos.spec.ts`. Hinaus gehen sie als `posts` je
+Konvoi (Positivliste); ein Bild liefert `/api/public/aktion/{slug}/bild/…`
+nur, solange es in genau dieser Antwort steht (`_oeffentlich`, gemeinsamer
+Zwischenspeicher) — eine eigene Abfrage dort gäbe Bilder vor ihrer Zeit heraus.
+Freigeben und Zurückziehen leeren den Zwischenspeicher der Seite
+(`tests/test_aktionsseite_beitraege_oeffentlich.py`).
+**Link-Beiträge** (Instagram, YouTube, Facebook, TikTok): `services/aktionsseite_link.py`
+erkennt und bereinigt (https, ohne Abfrage außer YouTubes `v`/`t`, keine ähnlich
+klingenden Domains), der CHECK in `0070` kennt dieselben Dienste (`LINK_DIENSTE`).
+Als Antwort auf einen Beitrag übernimmt der Link dessen `taken_at` und damit dessen
+Ort; der Link selbst steht nach dem Anlegen fest, eine Bearbeitung ändert nur den
+Text. Tests: `tests/test_aktionsseite_links.py`.
+**Vorschaubilder** für Links (`services/aktionsseite_vorschau.py`, Plan § 11.2): beim Eingang
+einmal geholt — YouTube aus der Video-Kennung (`i.ytimg.com`), TikTok über oEmbed —, durch
+`aktionsseite_bild` neu kodiert und als einziges Bild des Link-Beitrags gespeichert. Hinaus geht
+es als `link.vorschau`, nie in `photos`: Fällt der Link (beim EventTracker), fällt das Bild mit.
+Bilder nur von `_HOSTS`, https, ohne Weiterleitung — die Adresse aus oEmbed ist fremdbestimmt.
+Instagram und Facebook bleiben ohne (Meta liefert seit November 2025 kein `thumbnail_url` mehr;
+scrapen hinter der Anmeldesperre tun wir nicht). Jeder Fehler heißt: ohne Vorschau, nie ohne
+Beitrag. Abschaltbar mit `LINK_VORSCHAU_ENABLED`; in Tests aus (`conftest.py`), Tests der
+Vorschau stellen die Dienste selbst. Tests: `tests/test_aktionsseite_link_vorschau.py`.
+**Videos** (§ 15, Migration `0072`): `services/aktionsseite_video.py` schickt sie an den
+Medien-Container (`docker/medien`, Dienst `medien`, `MEDIEN_URL`), der sie mit ffmpeg neu
+kodiert — eigener Container, weil ffmpeg mit x264 GPL ist und ConvoyPlan auch kommerziell
+lizenziert wird; **nie** ffmpeg/PyAV ins Backend-Image. Höchstens 60 s, 720p, mit Ton (die
+Karte sagt der Presse „vor dem Freigeben anhören"). Die Datei liegt unter
+`/uploads/aktionsseite/videos/<public_id>.mp4`; über den 20 MB von `getFile` holt
+`video_fassung` eine von Telegrams kleineren Fassungen (`qualities`, nur Codecs, die der
+Container dekodiert). Das Standbild ist das einzige Bild des
+Beitrags und geht wie die Link-Vorschau nicht in `photos`, sondern als `video.poster` hinaus.
+Gelöscht werden Dateien nicht beim Löschen der Zeile (Retention läuft ohne das Volume),
+sondern von `aufraeumen` in der Telegram-Schleife: was keine Zeile hat und älter als 30 min
+ist. Ein neuer Weg, der Videos anlegt, schreibt die Datei **vor** dem Commit. Der
+Organisations-Export legt sie unter `beitraege/videos/` ab und baut das ZIP deshalb in einer
+temporären Datei. Tests: `tests/test_aktionsseite_videos.py` (Container gestellt).
+**`/ab`** setzt `not_before` (später, nie früher — eine frühere Zeit ist die Regelzeit,
+kein Fehler; nicht mehr nach `public_since`), gelesen in deutscher Ortszeit
+(`termin_lesen`). Tests: `tests/test_aktionsseite_termin.py`.
+**Ansage und Drosselung**: Was der Bot nicht annimmt (Seite nicht aktiv, Tagesgrenze),
+sagt er der Gruppe einmal je Grund und 24 h (`ansage_grund`/`ansage_at` am Chat). Karten,
+die Telegram drosselt (429, Netz, 5xx), stehen mit `karte_faellig_ab` in der Datenbank;
+`karten_nachholen` läuft in jedem Durchgang von `einmal_abholen` und baut aus dem Stand
+von dann. Wer eine Karte sendet oder bearbeitet, geht über `_karte_senden`/
+`karte_aktualisieren`, nie direkt über die API. Tests: `tests/test_aktionsseite_ansage_drossel.py`.
+**Befehle im Bot** (`BEFEHLE`, `setMyCommands` je Ort): beim Eintragen und beim Start jeder
+Abholschleife, Fehler nur im Log. Wer einen Befehl hinzufügt oder umbenennt, zieht die Liste
+mit; `tests/test_aktionsseite_bot_befehle.py` prüft, dass der Bot jeden angebotenen versteht.
+**Gruppe einrichten** (`services/aktionsseite_gruppe.py`): nach `/verbinden` und bei `my_chat_member`
+→ Admin in einer verbundenen Gruppe Beschreibung, Bild (gezeichnet aus Konvoifarbe und Kürzel —
+Org-Logos sind oft SVG, das Backend rastert keine) und Anleitung anheften; **nie den Titel**, nie für
+ein Thema. Fehlende Rechte sagt der Bot, andere Fehler gehen ins Log — das Verbinden scheitert nie
+daran. `allowed_updates` enthält deshalb `my_chat_member`. Neue Mitglieder begrüßt `_begruessen`
+höchstens einmal je `WILLKOMMEN_PAUSE` und löscht die vorige Begrüßung (Zustand im Speicher).
+Tests: `tests/test_aktionsseite_gruppe_einrichten.py`.
+**Absender** (`public_trackers.show_sender`, Migration `0071`): aus heißt, `_absender` gibt `None` —
+der Name wird gar nicht erst gespeichert —, und `aendern` löscht die vorhandenen der Seite. Ein
+neuer Weg, der `sender_name` setzt, geht über `_absender`. Tests: `tests/test_aktionsseite_absender.py`.
+**Export**: Beiträge und Bilder stehen in `org_export` (`beitraege`, `beitrag_bilder`, Dateien unter
+`beitraege/`); Absender und alle Telegram-Kennungen in `_GEHEIM`. Presse, Gruppen, Codes, Bot bleiben
+draußen (`NICHT_EXPORTIERT`).
 
 ### Tracker: das Gerät hängt am Fahrzeug, die Position gehört dem Konvoi
 
@@ -656,6 +779,28 @@ Die Bilder im Wiki (`wiki/bilder/kontextmenue-*`) entstehen aus derselben Lage
 (`e2e/kontextmenue-attrappe.ts`) mit `npm run wiki:bilder` in `frontend/` — ein eigener
 Playwright-Lauf mit echten OSM-Kacheln, deshalb mit Netz und nicht in der CI. Wer das
 Menü sichtbar ändert, lässt ihn neu laufen. `sync-wiki.yml` kopiert `wiki/bilder/` mit.
+
+### Admin-Portal am Telefon: Reiter mit Überlauf, Karten zum Zuklappen
+
+Superadmin- und Org-Admin teilen sich `TabLeiste.svelte`: Die Leiste scrollt
+seitlich, verdeckte Reiter laufen aus, auf der verdeckten Seite steht ein Pfeil, und
+der aktive Reiter rollt ins Bild. Die Scrollleiste blieb ausgeblendet; ohne diese
+Zeichen endete die Leiste am Telefon scheinbar nach drei Reitern.
+
+Karten in Reitern mit mehreren Themen (System, MCP, Demo, Branding,
+Systemübersicht, Leitstellenkarte) klappt die Action `use:klappbar={'id'}` aus
+`$lib/klappbar/` zusammen. Sie fügt keine Knoten ein, der Titel
+(`.section-header > strong`) wird zum Schalter. Am Telefon starten die Karten zu,
+am Schreibtisch offen; die Wahl merkt sich der Browser je `id`. Eine Karte, die
+sich beim Aufklappen erst messen muss (MapLibre), braucht einen ResizeObserver,
+wie `LeitstellenOverviewMap`. Was zugeklappt nicht untergehen darf, steht als
+Abzeichen in der Kopfzeile (`kopf-status`): Software-Update (verfügbar,
+zurückgehalten, läuft) und Kartenregion (Wechsel, Graph-Aufbau). Eine Ebene
+höher trägt der Reiter „System" einen Hinweis (`systemHinweis`, nur was ansteht —
+kein alter Fehlschlag, kein unerreichbares GitHub), und liegt ein Reiter mit
+Hinweis oder Zähler hinter einem Pfeil der `TabLeiste`, trägt der Pfeil einen
+Punkt. Test:
+`frontend/e2e/admin-am-telefon.spec.ts`.
 
 ### API-Docs (Swagger/OpenAPI)
 
@@ -1090,7 +1235,7 @@ Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste
   `<style>`-Block aus `src/app.html` in die Seite und setzt `__APP_VERSION__` —
   ein Test, der Geometrie misst, misst sonst gegen Farben und Schriftgrößen, die
   es in der App gar nicht gibt. Der Job läuft im **Playwright-Image**
-  (`mcr.microsoft.com/playwright:v1.63.0-noble`), weil `npx playwright install` auf
+  (`mcr.microsoft.com/playwright:v1.64.1-noble`), weil `npx playwright install` auf
   dem Runner nach dem Download beim Entpacken stehenblieb — ohne Ausgabe, ohne
   Abbruch. Dessen Marke muss zur Fassung von `@playwright/test` passen: Wer die
   Abhängigkeit hebt, hebt die Marke in `ci.yml` mit.
@@ -1099,7 +1244,7 @@ Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste
   in `frontend/`. Bleibt der Befehl nach dem Download ohne Ausgabe stehen, liegt
   es an der Node-Fassung — dann entweder eine ältere nehmen oder die Suite im
   selben Image fahren wie die CI:
-  `docker run --rm -v "$PWD":/w -w /w/frontend mcr.microsoft.com/playwright:v1.63.0-noble
+  `docker run --rm -v "$PWD":/w -w /w/frontend mcr.microsoft.com/playwright:v1.64.1-noble
   sh -c 'npm ci && npm run test:e2e'`.
 - **Shell** — die Suiten unter `docker/updater/tests/` und für den
   GraphHopper-Entrypoint; sie tragen den Regionswechsel und laufen im Job
@@ -1110,9 +1255,14 @@ Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste
   YAML-Datei heraus**, statt es nachzubauen — ein Nachbau prüft die Kopie. Wer
   dort einen weiteren Test anlegt, braucht nichts zu verdrahten: der Job
   sammelt `test_*.sh` aus allen vier Verzeichnissen ein.
-- **Container** — Trivy scannt alle fünf Images (`backend`, `frontend`,
-  `graphhopper`, `updater`, `osmium`) auf HIGH/CRITICAL mit verfügbarem Fix.
+- **Container** — Trivy scannt alle sechs Images (`backend`, `frontend`,
+  `graphhopper`, `updater`, `osmium`, `medien`) auf HIGH/CRITICAL mit verfügbarem Fix.
   Ausnahmen gehören mit Begründung in `.trivyignore`.
+- **Medien** — Job `Medien – ffmpeg und Metadaten` baut `docker/medien` und fährt
+  `docker/medien/tests/test_medien.sh` gegen echte Handyvideos aus `tests/proben/`
+  (GPS, Gerät, Aufnahmezeit weg; hochkant aufrecht; 720p/30 fps; zu lang abgelehnt).
+  Nur, wenn sich `docker/medien/` oder `ci.yml` ändern. Wer am `configure` in der
+  Dockerfile dreht, sieht hier, ob ein Filter fehlt.
 - **Docker Hub über einen Spiegel** — jeder Job, der Images zieht, beginnt nach dem
   Checkout mit `./.github/actions/docker-spiegel` (Daemon auf `mirror.gcr.io`). Ohne
   Anmeldung teilen sich die Runner das Pull-Limit von Docker Hub, und am 2026-10-09

@@ -33,6 +33,7 @@ jobs:
     outputs:
       region: ${{ steps.paths.outputs.region }}
       code: ${{ steps.paths.outputs.code }}
+      medien: ${{ steps.paths.outputs.medien }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: github.event_name != 'schedule'
@@ -48,6 +49,7 @@ jobs:
         run: |
           region=true
           code=true
+          medien=true
           case "$EVENT" in
             pull_request) range="$PR_BASE...$PR_HEAD" ;;
             merge_group) range="$QUEUE_BASE..HEAD" ;;
@@ -62,9 +64,15 @@ jobs:
             if ! grep -qvE '^(frontend/|docs/)|^[^/]+\.(md|rst)$' "$RUNNER_TEMP/ci-paths"; then
               region=false
             fi
+            # Der Medien-Container baut ffmpeg aus der Quelle (mehrere Minuten);
+            # geprueft wird er nur, wenn er selbst oder dieser Workflow sich aendert.
+            if ! grep -qE '^docker/medien/|^\.github/workflows/ci\.yml$' "$RUNNER_TEMP/ci-paths"; then
+              medien=false
+            fi
           fi
           echo "region=$region" >> "$GITHUB_OUTPUT"
           echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "medien=$medien" >> "$GITHUB_OUTPUT"
 
   backend-lint-test:
     name: Backend – Lint & Tests
@@ -142,7 +150,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "26"
           cache: npm
@@ -174,7 +182,7 @@ jobs:
     # verlangt, dass Programm und Browser aus demselben Stand kommen. Wer
     # `@playwright/test` hebt, hebt hier mit.
     container:
-      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -226,7 +234,7 @@ jobs:
           pip install pip-audit
           pip-audit -r backend/requirements.txt --strict
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "26"
           cache: npm
@@ -259,6 +267,10 @@ jobs:
           # in denselben Scan wie die uebrigen vier.
           - name: osmium
             context: ./docker/osmium
+          # Laeuft im Stack und nimmt Videos von aussen (Telegram) entgegen —
+          # ffmpeg ist genau die Art Parser, in der HIGH/CRITICAL auftauchen.
+          - name: medien
+            context: ./docker/medien
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -358,6 +370,34 @@ jobs:
             echo "::endgroup::"
           done
           exit "$rc"
+
+  medien:
+    name: Medien – ffmpeg und Metadaten
+    # Kein Sicherheits-Job — beim wöchentlichen Lauf übersprungen. Den Scan
+    # des Images macht container-scan.
+    needs: changes
+    if: github.event_name != 'schedule' && needs.changes.outputs.medien == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # Der Medien-Container gegen echte Handyvideos (docker/medien/tests/proben/):
+    # GPS, Gerät und Aufnahmezeit sind danach weg, hochkant steht aufrecht, zu
+    # lange und kaputte werden abgelehnt. Der Dockerfile schaltet in ffmpeg
+    # alles ab und nur das Nötige wieder frei — fehlt ein Filter oder Decoder,
+    # fällt das hier auf und nicht erst bei einem Video in der Gruppe.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/docker-spiegel
+        with:
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
+          images: debian:trixie-slim
+
+      - name: Medien-Image bauen
+        run: docker build -t convoyplan-medien:ci ./docker/medien
+
+      - name: Proben umwandeln und prüfen
+        run: MEDIEN_IMAGE=convoyplan-medien:ci bash docker/medien/tests/test_medien.sh
 
   region-switch:
     name: Region – Wechsel end-to-end (Berlin)
