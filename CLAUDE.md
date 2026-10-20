@@ -789,7 +789,7 @@ Zeichen endete die Leiste am Telefon scheinbar nach drei Reitern.
 
 Karten in Reitern mit mehreren Themen (System, MCP, Demo, Branding,
 Systemübersicht, Leitstellenkarte; im Org-Admin Tracker, Aktionsseiten,
-KI-Verbindungen) klappt die Action `use:klappbar={'id'}` aus
+KI-Verbindungen; in der Planung Fahrzeuge und Konto) klappt die Action `use:klappbar={'id'}` aus
 `$lib/klappbar/` zusammen. Die eine Arbeitskarte eines Reiters (Mitglieder,
 GPS-Freigaben, Datenexport …) startet mit `{ id, offen: true }` auch am Telefon
 offen. Steht der Titel mit einem Abzeichen in einem `<div>` (Tracker,
@@ -805,8 +805,11 @@ zurückgehalten, läuft) und Kartenregion (Wechsel, Graph-Aufbau). Eine Ebene
 höher trägt der Reiter „System" einen Hinweis (`systemHinweis`, nur was ansteht —
 kein alter Fehlschlag, kein unerreichbares GitHub), und liegt ein Reiter mit
 Hinweis oder Zähler hinter einem Pfeil der `TabLeiste`, trägt der Pfeil einen
-Punkt. Tests:
-`frontend/e2e/admin-am-telefon.spec.ts`, `frontend/e2e/org-admin-am-telefon.spec.ts`.
+Punkt. In der Planung steht im Reiter Fahrzeuge die Marschfolge offen; der Pool startet
+nur zu, wenn der Verband schon Fahrzeuge hat. Am Telefon ist der Kopf der Schublade
+klein (Logo, zwei Knöpfe), damit die Reiter oben stehen. Tests:
+`frontend/e2e/admin-am-telefon.spec.ts`, `frontend/e2e/org-admin-am-telefon.spec.ts`,
+`frontend/e2e/planung-am-telefon.spec.ts`.
 
 ### API-Docs (Swagger/OpenAPI)
 
