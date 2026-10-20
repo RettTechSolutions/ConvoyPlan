@@ -849,11 +849,12 @@
     let updateMode = $state<import('$lib/api').UpdateMode | null>(null);
 
     // Worauf ein zurückgehaltenes Update wartet; nur, was nicht null ist.
-    function wartetAuf(h: { users: number; demo_users: number; drivers?: number }): string {
+    function wartetAuf(h: { users: number; demo_users: number; drivers?: number; trackers?: number }): string {
         const teile = [
             h.users ? `${h.users} Nutzer` : '',
             h.demo_users ? `${h.demo_users} Demo-Nutzer` : '',
             h.drivers ? `${h.drivers} ${h.drivers === 1 ? 'Fahrer-Link' : 'Fahrer-Links'}` : '',
+            h.trackers ? `${h.trackers} Tracker` : '',
         ].filter(Boolean);
         return teile.join(', ') || 'jemand';
     }
@@ -4174,7 +4175,7 @@
                 </div>
                 <p class="hint" style="margin:-.25rem 0 1rem;">
                     {#if updateMode.mode === 'auto'}
-                        <strong>Automatisch:</strong> Verfügbare Updates im gewählten Kanal werden ohne weiteres Zutun installiert — aber erst, wenn keine Nutzer, Demo-Nutzer oder Fahrer-Links laufender Konvois mehr aktiv sind (Superadmins zählen nicht; spätestens nach 24 Stunden, einstellbar über UPDATE_HOLD_MAX). „Jetzt updaten" wartet nicht.
+                        <strong>Automatisch:</strong> Verfügbare Updates im gewählten Kanal werden ohne weiteres Zutun installiert — aber erst, wenn keine Nutzer, Demo-Nutzer, Fahrer-Links oder Tracker laufender Konvois mehr aktiv sind (Superadmins zählen nicht; spätestens nach 24 Stunden, einstellbar über UPDATE_HOLD_MAX). „Jetzt updaten" wartet nicht.
                     {:else}
                         <strong>Benachrichtigen:</strong> Es wird nichts automatisch installiert. Alle Superadmins erhalten eine E-Mail, sobald im gewählten Kanal ein Update verfügbar ist (SMTP muss konfiguriert sein) — installiert wird über „Jetzt updaten".
                     {/if}

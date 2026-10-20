@@ -925,7 +925,7 @@ export interface UpdateStatus {
     no_release: boolean;             // channel has no (pre-)release/build target yet
     ahead_of_release: boolean;       // deployed build is newer than the target tag (e.g. was on nightly)
     // Der Updater hält das automatische Update zurück, solange Nutzer angemeldet sind
-    held_back?: { since: string; users: number; demo_users: number; drivers?: number } | null;
+    held_back?: { since: string; users: number; demo_users: number; drivers?: number; trackers?: number } | null;
 }
 
 export interface UpdateChannel {

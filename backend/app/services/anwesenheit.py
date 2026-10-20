@@ -11,6 +11,12 @@ Live-Kanal, und gerade dort fällt das auf. Sie laufen über den WebSocket
 ``track_ws``, den die Aktivitäts-Middleware nicht sieht, und haben kein Konto —
 deshalb ein eigenes kleines Register hier (:class:`FahrerLinks`).
 
+Tracker zählen ebenso, wenn ihr Fahrzeug in einem laufenden Konvoi steht und sie
+sich in den letzten fünf Minuten gemeldet haben (:func:`aktive_tracker`): Ein Deploy
+während einer Fahrt lässt ihre Bündel ins Leere laufen, auch wenn niemand mit
+Telefon dabei ist. Gezählt wird aus der Datenbank (``zuletzt_gesehen``), nicht aus
+einem Register — die Geräte melden sich per HTTP, und die Spalte gibt es schon.
+
 Superadmins zählen nicht: der Betreiber sitzt selbst im Admin-Portal und hielte
 sonst sein eigenes Update auf. Der manuelle Trigger („Jetzt updaten") fragt gar
 nicht nach.
@@ -25,7 +31,7 @@ import asyncio
 import logging
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.services import activity
 
@@ -44,6 +50,9 @@ ANLAUF_S = activity.ACTIVE_WINDOW_SECONDS
 # Standard 300 s) neu; was älter ist, stammt von einem Updater, der nicht mehr
 # zurückhält oder nicht mehr läuft.
 HOLD_FRISCH_S = 900
+# Wie ``positionsquelle.VORRANG_S``: so lange gilt ein Tracker nach seinem letzten
+# Kontakt als sendend.
+TRACKER_FRIST_S = 300
 
 _gestartet = time.monotonic()
 
@@ -140,14 +149,21 @@ def meldung(
     im_anlauf: bool,
     vorher: str | None,
     fahrer: int = 0,
+    tracker: int = 0,
 ) -> str:
-    """Inhalt von ``ANWESENHEIT_FILE``. Im Anlauf nie weniger als zuletzt gemeldet."""
+    """Inhalt von ``ANWESENHEIT_FILE``. Im Anlauf nie weniger als zuletzt gemeldet.
+
+    Die Tracker kommen aus der Datenbank und sind nach einem Neustart sofort
+    vollständig — für sie gilt der Anlauf nicht.
+    """
     if im_anlauf and vorher:
         alt = lesen(vorher)
         nutzer = max(nutzer, _zahl(alt, "nutzer") or 0)
         demo = max(demo, _zahl(alt, "demo") or 0)
         fahrer = max(fahrer, _zahl(alt, "fahrer") or 0)
-    return f"stand={jetzt}\nnutzer={nutzer}\ndemo={demo}\nfahrer={fahrer}\n"
+    return (
+        f"stand={jetzt}\nnutzer={nutzer}\ndemo={demo}\nfahrer={fahrer}\ntracker={tracker}\n"
+    )
 
 
 async def laufende_konvois(convoy_ids: set[str]) -> set[str]:
@@ -173,8 +189,39 @@ async def laufende_konvois(convoy_ids: set[str]) -> set[str]:
         return {str(r) for r in rows.scalars()}
 
 
-def schreiben(laufend: set[str] | None = None) -> None:
-    """``laufend``: Konvois mit Status aktiv/läuft; ohne Angabe zählt kein Fahrer-Link."""
+async def aktive_tracker(jetzt: datetime | None = None) -> int:
+    """Tracker, die gerade für einen laufenden Konvoi senden.
+
+    Aktiv, in den letzten ``TRACKER_FRIST_S`` gemeldet (dieselbe Frist, mit der ein
+    Tracker Vorrang vor dem Telefon hat) und am Fahrzeug eines Konvois mit Status
+    aktiv/läuft — wie der Tracker selbst entscheidet, ob er sendet (E7).
+    """
+    from sqlalchemy import func, select
+
+    from app.database import AsyncSessionLocal
+    from app.models.convoy import Convoy, ConvoyVehicle
+    from app.models.ortungsgeraet import Ortungsgeraet
+    from app.services.ortungsgeraet import LAUFEND
+
+    grenze = (jetzt or datetime.now(timezone.utc)) - timedelta(seconds=TRACKER_FRIST_S)
+    async with AsyncSessionLocal() as db:
+        return (
+            await db.execute(
+                select(func.count(func.distinct(Ortungsgeraet.id)))
+                .join(ConvoyVehicle, ConvoyVehicle.vehicle_id == Ortungsgeraet.vehicle_id)
+                .join(Convoy, Convoy.id == ConvoyVehicle.convoy_id)
+                .where(
+                    Ortungsgeraet.aktiv.is_(True),
+                    Ortungsgeraet.zuletzt_gesehen >= grenze,
+                    Convoy.status.in_(LAUFEND),
+                )
+            )
+        ).scalar_one()
+
+
+def schreiben(laufend: set[str] | None = None, tracker: int = 0) -> None:
+    """``laufend``: Konvois mit Status aktiv/läuft; ohne Angabe zählt kein Fahrer-Link.
+    ``tracker``: aus :func:`aktive_tracker`."""
     nutzer, demo = zaehlen(activity.active_users())
     vorher = None
     im_anlauf = time.monotonic() - _gestartet < ANLAUF_S
@@ -191,6 +238,7 @@ def schreiben(laufend: set[str] | None = None) -> None:
         im_anlauf=im_anlauf,
         vorher=vorher,
         fahrer=fahrer_links.anzahl(laufend or set()),
+        tracker=tracker,
     )
     try:
         with open(ANWESENHEIT_FILE, "w") as f:
@@ -206,7 +254,10 @@ async def anwesenheit_loop() -> None:
             # Scheitert die Abfrage, wird in dieser Runde nicht geschrieben: Die
             # Meldung veraltet dann, und der Updater installiert — dieselbe
             # Richtung wie bei einem hängenden Backend.
-            schreiben(await laufende_konvois(fahrer_links.konvois()))
+            schreiben(
+                await laufende_konvois(fahrer_links.konvois()),
+                tracker=await aktive_tracker(),
+            )
         except Exception:  # pragma: no cover — die Schleife darf nicht sterben
             logger.exception("Anwesenheit für den Updater nicht geschrieben")
         await asyncio.sleep(INTERVALL_S)
@@ -224,6 +275,7 @@ def zurueckgehalten_aus(text: str, jetzt: int) -> dict | None:
         "users": _zahl(werte, "nutzer") or 0,
         "demo_users": _zahl(werte, "demo") or 0,
         "drivers": _zahl(werte, "fahrer") or 0,
+        "trackers": _zahl(werte, "tracker") or 0,
     }
 
 
