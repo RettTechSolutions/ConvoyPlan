@@ -8,9 +8,11 @@
 # Ein Deploy tauscht Backend und Frontend; wer gerade plant, verliert den
 # Live-Kanal, und im Nightly-Kanal geschah das mehrmals taeglich mitten in der
 # Arbeit. Zurueckgehalten wird deshalb, solange angemeldete Nutzer,
-# Demo-Nutzer oder Fahrer-Links aktiv sind (ein Fahrer-Link zaehlt, solange er
-# verbunden ist, und fuenf Minuten nach dem Abriss). Superadmins zaehlen NICHT: der Betreiber sitzt selbst
-# im Admin-Portal, und sonst hielte er sein eigenes Update auf.
+# Demo-Nutzer oder Fahrer-Links aktiv sind (ein Fahrer-Link zaehlt nur bei
+# laufendem Konvoi, solange er verbunden ist, und fuenf Minuten nach dem
+# Abriss; das entscheidet das Backend). Superadmins zaehlen NICHT: der
+# Betreiber sitzt selbst im Admin-Portal, und sonst hielte er sein eigenes
+# Update auf.
 #
 # Gilt nur fuer das AUTOMATISCHE Update. Der manuelle Trigger ("Jetzt updaten")
 # ruft diese Funktion nicht auf — wer ihn drueckt, hat entschieden.

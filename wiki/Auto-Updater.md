@@ -88,7 +88,7 @@ Ergänzende Env-Variablen:
 
 ### Kein automatisches Update, solange jemand angemeldet ist
 
-Im Modus **Automatisch** wartet der Updater, solange **Nutzer oder Demo-Nutzer** im Portal aktiv sind (eine Anfrage in den letzten fünf Minuten) oder ein **Fahrer-Link** verbunden ist (auch die Begleit-App; nach einem Verbindungsabriss noch fünf Minuten — ein Funkloch ist kein Feierabend). Superadmins zählen nicht — sonst hielte der Betreiber sein eigenes Update auf. Der Admin-Bereich zeigt neben „Update verfügbar“, seit wann und wegen wie vieler Nutzer zurückgehalten wird; installiert wird beim ersten Zyklus, in dem niemand mehr aktiv ist.
+Im Modus **Automatisch** wartet der Updater, solange **Nutzer oder Demo-Nutzer** im Portal aktiv sind (eine Anfrage in den letzten fünf Minuten) oder ein **Fahrer-Link** eines Konvois mit Status *aktiv* oder *läuft* verbunden ist (auch die Begleit-App; ein Fahrer-Link an einem Konvoi in Planung oder einem abgeschlossenen hält nichts auf; nach einem Verbindungsabriss noch fünf Minuten — ein Funkloch ist kein Feierabend). Superadmins zählen nicht — sonst hielte der Betreiber sein eigenes Update auf. Der Admin-Bereich zeigt neben „Update verfügbar“, seit wann und wegen wie vieler Nutzer zurückgehalten wird; installiert wird beim ersten Zyklus, in dem niemand mehr aktiv ist.
 
 - **„Jetzt updaten“ wartet nicht.** Wer den Knopf drückt, hat entschieden.
 - **Höchstens `UPDATE_HOLD_MAX` Sekunden am Stück** (Standard `86400` = 24 h, `0` = unbegrenzt). Danach wird trotzdem installiert — eine Instanz, auf der rund um die Uhr gearbeitet wird, bekäme sonst nie ein Update, auch keinen Sicherheitsfix.

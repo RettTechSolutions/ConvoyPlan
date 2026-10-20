@@ -4174,7 +4174,7 @@
                 </div>
                 <p class="hint" style="margin:-.25rem 0 1rem;">
                     {#if updateMode.mode === 'auto'}
-                        <strong>Automatisch:</strong> Verfügbare Updates im gewählten Kanal werden ohne weiteres Zutun installiert — aber erst, wenn keine Nutzer, Demo-Nutzer oder Fahrer-Links mehr aktiv sind (Superadmins zählen nicht; spätestens nach 24 Stunden, einstellbar über UPDATE_HOLD_MAX). „Jetzt updaten" wartet nicht.
+                        <strong>Automatisch:</strong> Verfügbare Updates im gewählten Kanal werden ohne weiteres Zutun installiert — aber erst, wenn keine Nutzer, Demo-Nutzer oder Fahrer-Links laufender Konvois mehr aktiv sind (Superadmins zählen nicht; spätestens nach 24 Stunden, einstellbar über UPDATE_HOLD_MAX). „Jetzt updaten" wartet nicht.
                     {:else}
                         <strong>Benachrichtigen:</strong> Es wird nichts automatisch installiert. Alle Superadmins erhalten eine E-Mail, sobald im gewählten Kanal ein Update verfügbar ist (SMTP muss konfiguriert sein) — installiert wird über „Jetzt updaten".
                     {/if}
