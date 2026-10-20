@@ -76,7 +76,9 @@ Solange Nutzer oder Demo-Nutzer aktiv sind (Aktivitäts-Registry, `activity.py`,
 Minuten) oder ein Fahrer-Link verbunden ist (`anwesenheit.FahrerLinks`, verdrahtet in
 `track_ws`, fünf Minuten Nachlauf nach dem Abriss; Lese-Links zählen nicht) **und sein
 Konvoi läuft** (`ortungsgeraet.LAUFEND`, wie beim Tracker — gefragt wird bei jedem
-Schreiben, damit ein Statuswechsel während der Verbindung gilt) oder ein Tracker für einen
+Schreiben, damit ein Statuswechsel während der Verbindung gilt; nicht, wenn der Plan seiner
+Organisation abgelaufen ist, `org_plan.ist_gesperrt` — die Lizenz zählt hier nicht, im
+Demo-Modus funktionieren Fahrer-Links normal) oder ein Tracker für einen
 laufenden Konvoi sendet (`anwesenheit.aktive_tracker`: aktiv, `zuletzt_gesehen` innerhalb
 `TRACKER_FRIST_S` = `positionsquelle.VORRANG_S`, aus der Datenbank und deshalb ohne Anlauf;
 nicht in einer gesperrten Organisation — `services/tracker_sperre.py`, dieselbe Regel, nach der

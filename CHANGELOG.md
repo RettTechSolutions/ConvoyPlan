@@ -23,6 +23,7 @@ ursprünglichen SemVer-Nummern.
 
 ### Added
 
+- **Fahrer-Links gesperrter Organisationen halten kein automatisches Update auf.** Ist der Plan einer Organisation abgelaufen (nur noch lesbar), zählen ihre Fahrer-Links für den Updater nicht mehr — wie schon ihre Tracker.
 - **Automatische Updates warten auch auf Tracker.** Ein Tracker, der sich in den letzten fünf Minuten gemeldet hat und dessen Fahrzeug in einem Konvoi mit Status *aktiv* oder *läuft* steht, hält ein automatisches Update zurück wie ein verbundener Fahrer-Link. Tracker einer gesperrten Organisation (Plan abgelaufen, Modul nicht freigegeben, keine Lizenz) zählen nicht — sie schweigen ohnehin. Das Admin-Panel nennt die Tracker mit.
 - **Automatische Updates warten auch auf Fahrer-Links.** Solange ein Fahrer-Link (Browser oder Begleit-App) eines Konvois mit Status *aktiv* oder *läuft* verbunden ist, hält der Updater ein automatisches Update zurück — nach einem Verbindungsabriss noch fünf Minuten, damit ein Funkloch nicht als Feierabend gilt. Lese-Links zählen nicht. Das Admin-Panel nennt die Fahrer-Links neben Nutzern und Demo-Nutzern.
 - **Aktionsseite: Fahrzeugzahl je Konvoi.** Die öffentliche Antwort trägt `vehicles`, die Zahl der im Konvoi eingeplanten Fahrzeuge (nicht der gerade fahrenden — ein Ausfall unterwegs zeigt sich nicht). Der EventTracker zeichnet damit eine Kolonne statt eines einzelnen Lkw. Sonst geht nichts aus den Fahrzeugen hinaus; die Positivliste ist entsprechend erweitert.
