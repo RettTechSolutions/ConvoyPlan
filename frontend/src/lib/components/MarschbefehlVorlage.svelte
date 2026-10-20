@@ -9,6 +9,7 @@
 	 * Vorlage in Word korrigiert. Die Feldübersicht kommt aus derselben Quelle wie
 	 * die in der Beispieldatei.
 	 */
+	import { klappbar } from '$lib/klappbar/klappbar';
 	import { onMount } from 'svelte';
 	import { marschbefehlVorlageApi, type MarschbefehlVorlageStatus, type VorlageFelder } from '$lib/api';
 
@@ -85,7 +86,7 @@
 	}
 </script>
 
-<div class="section">
+<div class="section" use:klappbar={{ id: 'org-marschbefehl', offen: true }}>
 	<div class="section-header"><strong>Marschbefehl-Vorlage (Word)</strong></div>
 	<p class="hint">
 		Der Marschbefehl lässt sich neben dem PDF auch als Word-Dokument exportieren — aus einer

@@ -23,6 +23,7 @@
 	 * erreichbar" und „auf Akku seit" läuft eigenständig weiter — nicht erst
 	 * nach einer gelungenen Abfrage, sonst stünde sie bei einem hängenden Abruf.
 	 */
+	import { klappbar } from '$lib/klappbar/klappbar';
 	import { onMount } from 'svelte';
 	import TrackerZustand from '$lib/components/TrackerZustand.svelte';
 	import { stoerung, STOERUNG_TEXT } from '$lib/tracking/trackerzustand';
@@ -458,7 +459,7 @@
 	<div class="success-bar" role="status">{erfolg}</div>
 {/if}
 
-<div class="section">
+<div class="section" use:klappbar={'org-tracker'}>
 	<div class="section-header">
 		<strong>Tracker</strong>
 		<div class="kopf-knoepfe">
@@ -637,7 +638,7 @@
 {:else}
 	{#each geraete as g (g.id)}
 		{@const z = zustand(g)}
-		<div class="section geraet" data-testid="tracker">
+		<div class="section geraet" data-testid="tracker" use:klappbar={`tracker-${g.id}`}>
 			<div class="section-header">
 				<div>
 					<strong>{g.name}</strong>
@@ -699,7 +700,7 @@
 {/if}
 
 {#if takt}
-	<div class="section formular" data-testid="sendetakt">
+	<div class="section formular" data-testid="sendetakt" use:klappbar={'org-tracker-takt'}>
 		<div class="section-header"><strong>Sendetakt</strong></div>
 		<p class="hint">
 			Wie oft die Tracker <strong>während der Fahrt</strong> ihre Position senden. Öfter heißt: Die Karte ist

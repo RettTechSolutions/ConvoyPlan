@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import AppLogo from '$lib/components/AppLogo.svelte';
+	import { klappbar } from '$lib/klappbar/klappbar';
 	import MapView, { type KartenKontext } from '$lib/components/MapView.svelte';
 	import {
 		kontextmenue, oeffnen as menueOeffnen, kopieren, ortEintraege, reihenfolgeEintraege,
@@ -1725,10 +1726,11 @@
 
 				<!-- ── TAB: Fahrzeuge ── -->
 				{#if activeTab === 'fahrzeuge'}
-					<div class="section">
+					<div class="section" use:klappbar={{ id: 'plan-fahrzeuge', offen: !selected?.convoy_vehicles.length }}>
 						<div class="section-header" data-tour="vehicles">
-							<strong>Meine Fahrzeuge</strong>
-							<button class="btn-small" onclick={() => (showVehicleForm = !showVehicleForm)}>+ Neu</button>
+							<strong>Meine Fahrzeuge ({allVehicles.length})</strong>
+							<!-- Das Formular erscheint in dieser Karte: zugeklappt bliebe es unsichtbar. -->
+							<button class="btn-small" data-klapp-oeffnen={showVehicleForm ? undefined : ''} onclick={() => (showVehicleForm = !showVehicleForm)}>+ Neu</button>
 						</div>
 						{#if showVehicleForm}
 							<form class="inline-form" onsubmit={(e) => { e.preventDefault(); createVehicle(); }}>
@@ -1848,8 +1850,10 @@
 								</li>
 							{/each}
 						</ul>
-						{#if selected?.convoy_vehicles.length}
-							<div class="section-header" style="margin-top:.75rem"><strong>Im Verband (Marschfolge)</strong></div>
+					</div>
+					{#if selected?.convoy_vehicles.length}
+						<div class="section" use:klappbar={{ id: 'plan-marschfolge', offen: true }}>
+							<div class="section-header"><strong>Im Verband (Marschfolge)</strong></div>
 							<ul
 								class="vehicle-list"
 								use:dndzone={{ items: dndConvoyVehicles, flipDurationMs: 200, type: 'march-order' }}
@@ -1875,9 +1879,12 @@
 							</ul>
 							<p class="hint" style="margin-top:.4rem">Ziehen zum Umsortieren · Position 1 = Spitzenführer, letztes Fahrzeug = Schließender</p>
 
-							<!-- Sollstärke: bewusst außerhalb der Ziehliste. Zahlenfelder in einem
-							     ziehbaren Element lassen sich am Telefon kaum treffen. -->
-							<div class="section-header" style="margin-top:.75rem"><strong>Sollstärke (Führer/Unterführer/Mannschaften)</strong></div>
+						</div>
+
+						<!-- Sollstärke: bewusst außerhalb der Ziehliste. Zahlenfelder in einem
+						     ziehbaren Element lassen sich am Telefon kaum treffen. -->
+						<div class="section" use:klappbar={'plan-sollstaerke'}>
+							<div class="section-header"><strong>Sollstärke (Führer/Unterführer/Mannschaften)</strong></div>
 							<table class="soll-tabelle">
 								<thead>
 									<tr><th>Fahrzeug</th><th>F</th><th>U</th><th>M</th><th>Gesamt</th></tr>
@@ -1914,8 +1921,8 @@
 								Gespeichert wird beim Verlassen des Feldes — es gibt keinen Knopf dafür.
 								Leer heißt „nicht geplant“. Was die Besatzungen unterwegs melden, steht in der Tracking-Ansicht daneben.
 							</p>
-						{/if}
-					</div>
+						</div>
+					{/if}
 				{/if}
 
 				<!-- ── TAB: Konto ── -->
@@ -1929,7 +1936,7 @@
 							</div>
 						</div>
 					{:else}
-					<div class="section" data-tour="konto">
+					<div class="section" data-tour="konto" use:klappbar={'plan-passwort'}>
 						<div class="section-header" style="margin-top:0">
 							<strong>Passwort ändern</strong>
 						</div>
@@ -1947,7 +1954,7 @@
 						</form>
 					</div>
 
-					<div class="section">
+					<div class="section" use:klappbar={'plan-mfa'}>
 						<div class="section-header">
 							<strong>Zwei-Faktor-Authentifizierung (MFA)</strong>
 						</div>
@@ -2018,7 +2025,7 @@
 						{/if}
 					</div>
 
-					<div class="section">
+					<div class="section" use:klappbar={'plan-passkeys'}>
 						<div class="section-header">
 							<strong>Passkeys</strong>
 						</div>
@@ -2889,6 +2896,12 @@
 			transform: translateX(0);
 		}
 
+		/* Der Kopf der Schublade zeigt nur Logo und zwei Knöpfe — am Schreibtisch
+		   Begrüßung, am Telefon aber ein Sechstel der Höhe, über den Reitern.
+		   Den Namen des Verbands trägt ohnehin die Kopfleiste. */
+		.sidebar-header { padding: .5rem .75rem; }
+		.logo-wrap { flex: 0 1 150px; }
+
 		/* Backdrop behind open sidebar */
 		.sidebar-backdrop {
 			display: block;
@@ -2984,7 +2997,8 @@
 	.soll-tabelle th:first-child { text-align: left; }
 	.soll-tabelle td { padding: .15rem .2rem; border-top: 1px solid var(--border); }
 	.soll-name { max-width: 10rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.soll-tabelle input { width: 3rem; padding: .2rem; text-align: center; font-variant-numeric: tabular-nums; }
+	/* Ohne eigene Farben blieben die Felder browserweiß — im dunklen Design ein greller Block. */
+	.soll-tabelle input { width: 3rem; padding: .2rem; text-align: center; font-variant-numeric: tabular-nums; border: 1px solid var(--border); border-radius: 3px; background: var(--surface-2); color: var(--text-1); }
 	.soll-gesamt { text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
 	/* Regelbesatzung im Fahrzeugformular */
 	.besatzung-felder { display: flex; align-items: center; gap: .4rem; }

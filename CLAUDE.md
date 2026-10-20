@@ -798,8 +798,14 @@ der aktive Reiter rollt ins Bild. Die Scrollleiste blieb ausgeblendet; ohne dies
 Zeichen endete die Leiste am Telefon scheinbar nach drei Reitern.
 
 Karten in Reitern mit mehreren Themen (System, MCP, Demo, Branding,
-Systemübersicht, Leitstellenkarte) klappt die Action `use:klappbar={'id'}` aus
-`$lib/klappbar/` zusammen. Sie fügt keine Knoten ein, der Titel
+Systemübersicht, Leitstellenkarte; im Org-Admin Tracker, Aktionsseiten,
+KI-Verbindungen; in der Planung Fahrzeuge und Konto) klappt die Action `use:klappbar={'id'}` aus
+`$lib/klappbar/` zusammen. Die eine Arbeitskarte eines Reiters (Mitglieder,
+GPS-Freigaben, Datenexport …) startet mit `{ id, offen: true }` auch am Telefon
+offen. Steht der Titel mit einem Abzeichen in einem `<div>` (Tracker,
+Aktionsseite), findet die Action ihn dort; ein Kopfzeilenknopf mit
+`data-klapp-oeffnen` klappt seine Karte auf, bevor sein Ergebnis darin erscheint
+(„Vorschau"). Sie fügt keine Knoten ein, der Titel
 (`.section-header > strong`) wird zum Schalter. Am Telefon starten die Karten zu,
 am Schreibtisch offen; die Wahl merkt sich der Browser je `id`. Eine Karte, die
 sich beim Aufklappen erst messen muss (MapLibre), braucht einen ResizeObserver,
@@ -809,8 +815,18 @@ zurückgehalten, läuft) und Kartenregion (Wechsel, Graph-Aufbau). Eine Ebene
 höher trägt der Reiter „System" einen Hinweis (`systemHinweis`, nur was ansteht —
 kein alter Fehlschlag, kein unerreichbares GitHub), und liegt ein Reiter mit
 Hinweis oder Zähler hinter einem Pfeil der `TabLeiste`, trägt der Pfeil einen
-Punkt. Test:
-`frontend/e2e/admin-am-telefon.spec.ts`.
+Punkt. In der Planung steht im Reiter Fahrzeuge die Marschfolge offen; der Pool startet
+nur zu, wenn der Verband schon Fahrzeuge hat. Am Telefon ist der Kopf der Schublade
+klein (Logo, zwei Knöpfe), damit die Reiter oben stehen. In der Tracking-Ansicht
+ebenso; dort stehen die Kartenknöpfe hochkant hinter einem „⋯" über der
+OSM-Nennung (`kartenKnoepfeOffen`), klappen nach einer Wahl oder einem Tipp daneben
+wieder zu, und ein grüner Punkt sagt, dass die Karte gerade folgt. Ihr Name steht in
+`aria-label` ohne Emoji. Quer und am Schreibtisch sind sie immer zu sehen. Der
+Fahrer-Link hat nur zwei Kartenknöpfe; sie stehen ohne „⋯" über der Nennung, und
+sein Schubladenkopf ist ebenso klein. Tests:
+`frontend/e2e/admin-am-telefon.spec.ts`, `frontend/e2e/org-admin-am-telefon.spec.ts`,
+`frontend/e2e/planung-am-telefon.spec.ts`, `frontend/e2e/tracking-am-telefon.spec.ts`,
+`frontend/e2e/fahrer-link-am-telefon.spec.ts`.
 
 ### API-Docs (Swagger/OpenAPI)
 

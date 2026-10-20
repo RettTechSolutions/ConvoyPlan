@@ -12,6 +12,7 @@
 	 * der Server (`services/aktionsseite.py`). Die Vorschau zeigt deshalb genau
 	 * das, was hinausgeht — mit derselben Verzögerung.
 	 */
+	import { klappbar } from '$lib/klappbar/klappbar';
 	import { onMount } from 'svelte';
 	import LocationSearch from '$lib/components/LocationSearch.svelte';
 	import TelegramBotKarte from '$lib/components/TelegramBotKarte.svelte';
@@ -293,7 +294,7 @@
 	<div class="success-bar" role="status">{erfolg}</div>
 {/if}
 
-<div class="section">
+<div class="section" use:klappbar={'org-aktionsseiten'}>
 	<div class="section-header">
 		<strong>Öffentliche Aktionsseiten</strong>
 		<div class="kopf-knoepfe">
@@ -465,14 +466,14 @@
 	<div class="section"><p class="hint">Noch keine Aktionsseite.</p></div>
 {:else}
 	{#each seiten as s (s.id)}
-		<div class="section seite" data-testid="aktionsseite">
+		<div class="section seite" data-testid="aktionsseite" use:klappbar={`aktionsseite-${s.id}`}>
 			<div class="section-header">
 				<div>
 					<strong>{s.title}</strong>
 					<span class="marke" class:aus={!s.active}>{s.active ? 'aktiv' : s.enabled ? 'abgelaufen' : 'aus'}</span>
 				</div>
 				<div class="kopf-knoepfe">
-					<button class="btn-small" onclick={() => zeigeVorschau(s)}>{vorschau?.id === s.id ? 'Vorschau schließen' : 'Vorschau'}</button>
+					<button class="btn-small" data-klapp-oeffnen={vorschau?.id === s.id ? undefined : ''} onclick={() => zeigeVorschau(s)}>{vorschau?.id === s.id ? 'Vorschau schließen' : 'Vorschau'}</button>
 					<button class="btn-small" onclick={() => bearbeiten(s)}>Bearbeiten</button>
 					<button class="btn-small" onclick={() => tokenErneuern(s)}>Token erneuern</button>
 					<button class="btn-small danger" onclick={() => loeschen(s)}>Löschen</button>
