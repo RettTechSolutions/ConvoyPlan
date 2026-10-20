@@ -167,13 +167,22 @@ def meldung(
 
 
 async def laufende_konvois(convoy_ids: set[str]) -> set[str]:
-    """Welche der Konvois gerade laufen (``ortungsgeraet.LAUFEND``)."""
+    """Welche der Konvois gerade laufen (``ortungsgeraet.LAUFEND``) — und nicht
+    zu einer gesperrten Organisation gehören.
+
+    Gesperrt heißt hier: Plan abgelaufen, die Organisation ist nur noch lesbar
+    (``org_plan.ist_gesperrt``). Eine fehlende Lizenz zählt bewusst nicht dazu,
+    anders als bei den Trackern (``tracker_sperre``): Im Demo-Modus funktionieren
+    Fahrer-Links normal, und sonst hielte auf einer Instanz ohne Lizenz kein
+    einziger ein Update auf.
+    """
     if not convoy_ids:
         return set()
     from sqlalchemy import select
 
     from app.database import AsyncSessionLocal
     from app.models.convoy import Convoy
+    from app.services import org_plan
     from app.services.ortungsgeraet import LAUFEND
 
     ids = []
@@ -183,10 +192,23 @@ async def laufende_konvois(convoy_ids: set[str]) -> set[str]:
         except ValueError:
             continue
     async with AsyncSessionLocal() as db:
-        rows = await db.execute(
-            select(Convoy.id).where(Convoy.id.in_(ids), Convoy.status.in_(LAUFEND))
-        )
-        return {str(r) for r in rows.scalars()}
+        rows = (
+            await db.execute(
+                select(Convoy.id, Convoy.organization_id).where(
+                    Convoy.id.in_(ids), Convoy.status.in_(LAUFEND)
+                )
+            )
+        ).all()
+        gesperrt: dict = {}
+        laufend = set()
+        for convoy_id, org_id in rows:
+            if org_id is not None:
+                if org_id not in gesperrt:
+                    gesperrt[org_id] = await org_plan.ist_gesperrt(db, org_id)
+                if gesperrt[org_id]:
+                    continue
+            laufend.add(str(convoy_id))
+        return laufend
 
 
 async def aktive_tracker(jetzt: datetime | None = None) -> int:

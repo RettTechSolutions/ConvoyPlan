@@ -2,15 +2,20 @@
 
 Die Regel prüft ``test_update_bei_anwesenheit.py`` ohne Datenbank; hier geht es um
 die Verdrahtung: ein Fahrer-Link zählt, solange er verbunden ist und sein Konvoi
-aktiv ist oder läuft, ein Lese-Link gar nicht. Verbindungen und Verband kommen
+aktiv ist oder läuft und seine Organisation nicht gesperrt ist, ein Lese-Link gar nicht. Verbindungen und Verband kommen
 aus ``test_fahrzeug_belegung_kanal``.
 """
 
+import uuid
+from datetime import date, timedelta
+
 import pytest
-from sqlalchemy import update
+from sqlalchemy import delete, update
 
 from app.database import AsyncSessionLocal
 from app.models.convoy import Convoy
+from app.models.org_plan import OrganizationPlan
+from app.models.organization import Organization
 from app.models.share_link import ConvoyShareLink
 from app.services import anwesenheit
 from tests.test_fahrzeug_belegung_kanal import (  # noqa: F401 — Fixtures
@@ -70,3 +75,40 @@ async def test_lese_link_zaehlt_nicht(verband, frische_fahrer_links):
     ws.trennen()
     await _beendet(task)
     assert await _zaehlt(frische_fahrer_links) == 0
+
+
+async def test_fahrer_link_einer_gesperrten_organisation_zaehlt_nicht(verband, frische_fahrer_links):
+    # Plan abgelaufen, Kulanz vorbei: die Organisation ist nur noch lesbar
+    # (org_plan.ist_gesperrt) — ein offener Fahrer-Link hält dann kein Update auf.
+    marker = uuid.uuid4().hex[:8]
+    async with AsyncSessionLocal() as db:
+        org = Organization(name=f"Gesperrt {marker}", slug=f"g{marker[:7]}", owner_id=verband.user_id)
+        db.add(org)
+        await db.flush()
+        org_id = org.id
+        await db.execute(
+            update(Convoy).where(Convoy.id == verband.convoy_id).values(
+                organization_id=org_id, status="running",
+            )
+        )
+        await db.commit()
+    try:
+        ws, task = await _verbinden(verband.slug, [], APP)
+        assert await _zaehlt(frische_fahrer_links) == 1
+        async with AsyncSessionLocal() as db:
+            db.add(OrganizationPlan(
+                organization_id=org_id, plan="basis",
+                valid_until=date.today() - timedelta(days=60),
+            ))
+            await db.commit()
+        assert await _zaehlt(frische_fahrer_links) == 0
+        ws.trennen()
+        await _beendet(task)
+    finally:
+        async with AsyncSessionLocal() as db:
+            await db.execute(delete(OrganizationPlan).where(OrganizationPlan.organization_id == org_id))
+            await db.execute(
+                update(Convoy).where(Convoy.id == verband.convoy_id).values(organization_id=None)
+            )
+            await db.execute(delete(Organization).where(Organization.id == org_id))
+            await db.commit()
