@@ -130,7 +130,7 @@
            reicht bis unter Statusleiste/Toolbar (siehe app.html). */
         min-height: 100vh;
         min-height: 100dvh;
-        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
         background: var(--bg);
     }
     .demo-card {
@@ -231,4 +231,9 @@
         text-decoration: none;
     }
     .back-link:hover { text-decoration: underline; }
+
+    /* Mindestens 1rem Rand: Nur die Safe-Area als Abstand ließ die Karte auf einem
+       Telefon ohne Notch bis auf 5 px an den Bildschirmrand laufen. Schmal auch
+       weniger Innenabstand, damit die Felder Breite behalten. */
+    @media (max-width: 420px) { .demo-card { padding: 1.75rem 1.25rem; } }
 </style>

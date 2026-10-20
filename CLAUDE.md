@@ -825,10 +825,15 @@ OSM-Nennung (`kartenKnoepfeOffen`), klappen nach einer Wahl oder einem Tipp dane
 wieder zu, und ein grüner Punkt sagt, dass die Karte gerade folgt. Ihr Name steht in
 `aria-label` ohne Emoji. Quer und am Schreibtisch sind sie immer zu sehen. Der
 Fahrer-Link hat nur zwei Kartenknöpfe; sie stehen ohne „⋯" über der Nennung, und
-sein Schubladenkopf ist ebenso klein. Tests:
+sein Schubladenkopf ist ebenso klein. Der Share-Link (`/share/<token>`) ist ein
+Raster aus Kopf, Zeitplan und Karte: am Schreibtisch Leiste links, am Telefon
+untereinander. Die Anmelde- und Demo-Karten halten mindestens `1rem` Rand
+(`max(1rem, env(safe-area-inset-*))`, nicht die Safe-Area allein), und
+`routes/+error.svelte` ersetzt die ungestaltete Fehlerseite von SvelteKit. Tests:
 `frontend/e2e/admin-am-telefon.spec.ts`, `frontend/e2e/org-admin-am-telefon.spec.ts`,
 `frontend/e2e/planung-am-telefon.spec.ts`, `frontend/e2e/tracking-am-telefon.spec.ts`,
-`frontend/e2e/fahrer-link-am-telefon.spec.ts`.
+`frontend/e2e/fahrer-link-am-telefon.spec.ts`, `frontend/e2e/share-link-am-telefon.spec.ts`,
+`frontend/e2e/seiten-am-telefon.spec.ts`.
 
 ### API-Docs (Swagger/OpenAPI)
 
