@@ -98,51 +98,74 @@ class Uhr:
         return self.t
 
 
+K = "konvoi-1"
+LAUFEND = {K}
+
+
 def test_fahrer_link_zaehlt_solange_er_verbunden_ist():
     uhr = Uhr()
     links = anwesenheit.FahrerLinks(uhr=uhr, nachlauf_s=300)
-    links.verbunden("app-1")
+    links.verbunden("app-1", K)
     uhr.t += 3600  # sendet nichts, ist aber verbunden
-    assert links.anzahl() == 1
+    assert links.anzahl(LAUFEND) == 1
 
 
 def test_fahrer_link_zaehlt_nach_dem_abriss_noch_fuenf_minuten():
     # Das Funkloch ist der Normalfall — wie bei der Belegung.
     uhr = Uhr()
     links = anwesenheit.FahrerLinks(uhr=uhr, nachlauf_s=300)
-    links.verbunden("app-1")
-    links.getrennt("app-1")
+    links.verbunden("app-1", K)
+    links.getrennt("app-1", K)
     uhr.t += 299
-    assert links.anzahl() == 1
+    assert links.anzahl(LAUFEND) == 1
     uhr.t += 2
-    assert links.anzahl() == 0
+    assert links.anzahl(LAUFEND) == 0
+    assert links.konvois() == set()
 
 
 def test_ein_geraet_mit_zwei_verbindungen_zaehlt_einmal():
     uhr = Uhr()
     links = anwesenheit.FahrerLinks(uhr=uhr, nachlauf_s=300)
-    links.verbunden("app-1")
-    links.verbunden("app-1")
-    links.verbunden("web-1")
-    assert links.anzahl() == 2
-    links.getrennt("app-1")
+    links.verbunden("app-1", K)
+    links.verbunden("app-1", K)
+    links.verbunden("web-1", K)
+    assert links.anzahl(LAUFEND) == 2
+    links.getrennt("app-1", K)
     uhr.t += 600
-    assert links.anzahl() == 2  # die zweite Verbindung von app-1 steht noch
-    links.getrennt("app-1")
-    links.getrennt("web-1")
+    assert links.anzahl(LAUFEND) == 2  # die zweite Verbindung von app-1 steht noch
+    links.getrennt("app-1", K)
+    links.getrennt("web-1", K)
     uhr.t += 301
-    assert links.anzahl() == 0
+    assert links.anzahl(LAUFEND) == 0
 
 
 def test_ein_frame_verlaengert_den_nachlauf():
     uhr = Uhr()
     links = anwesenheit.FahrerLinks(uhr=uhr, nachlauf_s=300)
-    links.verbunden("app-1")
-    links.getrennt("app-1")
+    links.verbunden("app-1", K)
+    links.getrennt("app-1", K)
     uhr.t += 200
-    links.aktiv("app-1")
+    links.aktiv("app-1", K)
     uhr.t += 200
-    assert links.anzahl() == 1
+    assert links.anzahl(LAUFEND) == 1
+
+
+def test_nur_laufende_konvois_zaehlen():
+    links = anwesenheit.FahrerLinks()
+    links.verbunden("app-1", "geplant")
+    links.verbunden("app-2", K)
+    assert links.konvois() == {"geplant", K}
+    assert links.anzahl(LAUFEND) == 1
+    assert links.anzahl(set()) == 0
+    # Läuft der geplante später an, zählt er beim nächsten Schreiben mit.
+    assert links.anzahl({"geplant", K}) == 2
+
+
+def test_ein_geraet_in_zwei_laufenden_konvois_zaehlt_einmal():
+    links = anwesenheit.FahrerLinks()
+    links.verbunden("app-1", K)
+    links.verbunden("app-1", "konvoi-2")
+    assert links.anzahl({K, "konvoi-2"}) == 1
 
 
 def test_schreiben_zaehlt_fahrer_links(monkeypatch, tmp_path):
@@ -150,8 +173,11 @@ def test_schreiben_zaehlt_fahrer_links(monkeypatch, tmp_path):
     monkeypatch.setattr(anwesenheit, "ANWESENHEIT_FILE", str(ziel))
     monkeypatch.setattr(anwesenheit, "ANLAUF_S", 0)
     links = anwesenheit.FahrerLinks()
-    links.verbunden("app-1")
+    links.verbunden("app-1", K)
+    links.verbunden("app-2", "geplant")
     monkeypatch.setattr(anwesenheit, "fahrer_links", links)
     activity.reset()
-    anwesenheit.schreiben()
+    anwesenheit.schreiben(LAUFEND)
     assert anwesenheit.lesen(ziel.read_text())["fahrer"] == "1"
+    anwesenheit.schreiben()
+    assert anwesenheit.lesen(ziel.read_text())["fahrer"] == "0"

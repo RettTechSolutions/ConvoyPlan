@@ -607,9 +607,10 @@ async def track_ws(
 
     await tracking_manager.connect(convoy_id, ws, mit_kennung=durchsetzen)
     # Ein verbundener Fahrer-Link hält automatische Updates zurück
-    # (services/anwesenheit.py). Nur Fahrer: ein Lese-Link plant und fährt nicht.
+    # (services/anwesenheit.py), solange sein Konvoi läuft. Nur Fahrer: ein
+    # Lese-Link plant und fährt nicht.
     if is_driver:
-        anwesenheit.fahrer_links.verbunden(kennung)
+        anwesenheit.fahrer_links.verbunden(kennung, convoy_id)
     if durchsetzen:
         await belegung.stand_senden(convoy_id, kennung, ws)
     if durchsetzen:
@@ -623,7 +624,7 @@ async def track_ws(
             if not isinstance(raw, dict):
                 continue
             if is_driver:
-                anwesenheit.fahrer_links.aktiv(kennung)
+                anwesenheit.fahrer_links.aktiv(kennung, convoy_id)
             kind = raw.get("type")
             client_id = _client_id(raw) if kind in (*_QUITTIERT, "alarm_quittieren") else None
             # Viewer links are read-only — drained frames (heartbeats) are ignored.
@@ -684,4 +685,4 @@ async def track_ws(
     finally:
         tracking_manager.disconnect(convoy_id, ws)
         if is_driver:
-            anwesenheit.fahrer_links.getrennt(kennung)
+            anwesenheit.fahrer_links.getrennt(kennung, convoy_id)

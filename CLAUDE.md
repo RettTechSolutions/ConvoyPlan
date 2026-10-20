@@ -74,7 +74,9 @@ Container-Tests mit, die das Skript ausführen.
 
 Solange Nutzer oder Demo-Nutzer aktiv sind (Aktivitäts-Registry, `activity.py`, fünf
 Minuten) oder ein Fahrer-Link verbunden ist (`anwesenheit.FahrerLinks`, verdrahtet in
-`track_ws`, fünf Minuten Nachlauf nach dem Abriss; Lese-Links zählen nicht), hält der Updater ein **automatisches** Update zurück; Superadmins zählen
+`track_ws`, fünf Minuten Nachlauf nach dem Abriss; Lese-Links zählen nicht) **und sein
+Konvoi läuft** (`ortungsgeraet.LAUFEND`, wie beim Tracker — gefragt wird bei jedem
+Schreiben, damit ein Statuswechsel während der Verbindung gilt), hält der Updater ein **automatisches** Update zurück; Superadmins zählen
 nicht, der manuelle Trigger fragt gar nicht. Das Backend schreibt die Zahlen alle 30 s
 nach `/update_status/anwesenheit` (`services/anwesenheit.py`), der Updater entscheidet
 in `docker/updater/anwesenheit.sh` (von **beiden** Varianten gesourct) und meldet seinen
