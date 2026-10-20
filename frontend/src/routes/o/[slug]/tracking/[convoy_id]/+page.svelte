@@ -72,6 +72,29 @@
 	let followMyVehicle = $state(false);
 	// Heading-up: rotate the map into the driving direction while following.
 	let headingUp = $state(false);
+
+	// Telefon hochkant: Die Kartenknöpfe stehen hinter einem „⋯"-Knopf, damit
+	// sie die Karte nicht zudecken. Nach einer Wahl oder einem Tipp daneben
+	// klappen sie wieder zu. Quer und am Schreibtisch hat der Zustand keine
+	// Wirkung — dort sind die Knöpfe immer zu sehen (CSS).
+	let kartenKnoepfeOffen = $state(false);
+
+	function kartenKnoepfeSchliessen(node: HTMLElement) {
+		const nachWahl = (e: Event) => {
+			if ((e.target as Element | null)?.closest('.map-ctrl-btn')) kartenKnoepfeOffen = false;
+		};
+		const daneben = (e: Event) => {
+			if (!node.contains(e.target as Node)) kartenKnoepfeOffen = false;
+		};
+		node.addEventListener('click', nachWahl);
+		document.addEventListener('pointerdown', daneben);
+		return {
+			destroy() {
+				node.removeEventListener('click', nachWahl);
+				document.removeEventListener('pointerdown', daneben);
+			},
+		};
+	}
 	// In-flight sub-status picker ('technical_halt' | 'breakdown' | null).
 	let pendingStatus = $state<'technical_halt' | 'breakdown' | null>(null);
 	let pendingNote = $state('');
@@ -1351,7 +1374,15 @@
 			</div>
 		{/if}
 
-		<div class="map-controls">
+		<div class="map-controls" class:offen={kartenKnoepfeOffen} use:kartenKnoepfeSchliessen>
+			<button
+				class="ctrl-more"
+				class:folgt={followMyVehicle || headingUp}
+				onclick={() => (kartenKnoepfeOffen = !kartenKnoepfeOffen)}
+				aria-expanded={kartenKnoepfeOffen}
+				aria-label={kartenKnoepfeOffen ? 'Kartenknöpfe schließen' : 'Kartenknöpfe'}
+				title={followMyVehicle ? 'Karte folgt dem Fahrzeug' : headingUp ? 'Karte in Fahrtrichtung' : 'Kartenknöpfe'}
+			>{kartenKnoepfeOffen ? '✕' : '⋯'}</button>
 			{#if fullscreenSupported}
 				<button class="map-ctrl-btn" class:active={isFullscreen} onclick={toggleFullscreen} title={isFullscreen ? 'Vollbild verlassen' : 'Vollbild – gesamten Bildschirm nutzen'} aria-label={isFullscreen ? 'Vollbild aus' : 'Vollbild'}>
 					<span aria-hidden="true">{isFullscreen ? '🔳' : '⛶'}</span><span class="ctrl-text">{isFullscreen ? 'Vollbild aus' : 'Vollbild'}</span>
@@ -1654,11 +1685,27 @@
 	   mit Text. Sechs Pillen untereinander deckten ein Drittel der Karte zu und
 	   lagen auf dem Kartenhinweis (OSM-Nennung). Der Text steht weiter in
 	   `title` und `aria-label`. Quer bleibt die Zeile mit Text (unten). */
+	/* Telefon im Hochformat: Die Kartenknöpfe stehen hinter „⋯". Sechs Pillen
+	   untereinander deckten ein Drittel der Karte zu und lagen auf der
+	   OSM-Nennung; nur als Symbole waren sie rätselhaft. Aufgeklappt sind es
+	   wieder Pillen mit Text. Quer bleibt die Zeile, die immer zu sehen ist. */
+	.ctrl-more { display: none; }
 	@media (max-width: 700px) and (orientation: portrait) {
 		/* 4rem: Die OSM-Nennung ist hochkant zweizeilig. */
-		.map-controls { bottom: calc(4rem + env(safe-area-inset-bottom, 0px)); gap: .45rem; }
-		.map-ctrl-btn { width: 44px; height: 44px; padding: 0; justify-content: center; border-radius: 50%; font-size: 1.15rem; }
-		.ctrl-text { display: none; }
+		.map-controls { bottom: calc(4rem + env(safe-area-inset-bottom, 0px)); gap: .45rem; flex-direction: column-reverse; }
+		.map-controls:not(.offen) .map-ctrl-btn { display: none; }
+		.ctrl-more {
+			display: flex; align-items: center; justify-content: center; position: relative;
+			width: 48px; height: 48px; border-radius: 50%; border: none; cursor: pointer;
+			background: var(--color-primary); color: white; font-size: 1.4rem; font-weight: 700; line-height: 1;
+			box-shadow: 0 2px 8px rgba(0,0,0,.35);
+		}
+		.map-controls.offen .ctrl-more { background: var(--sidebar-bg); }
+		/* Folgt die Karte gerade, soll man das auch zugeklappt sehen. */
+		.ctrl-more.folgt::after {
+			content: ''; position: absolute; top: 2px; right: 2px; width: 12px; height: 12px;
+			border-radius: 50%; background: #27ae60; border: 2px solid white;
+		}
 	}
 
 	/* Short landscape (phones held sideways): the stacked map control buttons

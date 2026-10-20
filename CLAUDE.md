@@ -808,9 +808,10 @@ Hinweis oder Zähler hinter einem Pfeil der `TabLeiste`, trägt der Pfeil einen
 Punkt. In der Planung steht im Reiter Fahrzeuge die Marschfolge offen; der Pool startet
 nur zu, wenn der Verband schon Fahrzeuge hat. Am Telefon ist der Kopf der Schublade
 klein (Logo, zwei Knöpfe), damit die Reiter oben stehen. In der Tracking-Ansicht
-ebenso; dort sind die Kartenknöpfe hochkant runde Symbole (`.ctrl-text` versteckt,
-Name in `aria-label` ohne Emoji) über der OSM-Nennung, quer bleiben sie Pillen mit
-Text. Tests:
+ebenso; dort stehen die Kartenknöpfe hochkant hinter einem „⋯" über der
+OSM-Nennung (`kartenKnoepfeOffen`), klappen nach einer Wahl oder einem Tipp daneben
+wieder zu, und ein grüner Punkt sagt, dass die Karte gerade folgt. Ihr Name steht in
+`aria-label` ohne Emoji. Quer und am Schreibtisch sind sie immer zu sehen. Tests:
 `frontend/e2e/admin-am-telefon.spec.ts`, `frontend/e2e/org-admin-am-telefon.spec.ts`,
 `frontend/e2e/planung-am-telefon.spec.ts`, `frontend/e2e/tracking-am-telefon.spec.ts`.
 
