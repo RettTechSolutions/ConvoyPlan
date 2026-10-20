@@ -33,6 +33,7 @@ from app.schemas.share_link import (
     TrackWaypoint,
 )
 from app.services import alarm_quittung
+from app.services import anwesenheit
 from app.services import betriebsstoff as betriebsstoff_svc
 from app.services import belegung
 from app.services import geometry as geo_svc
@@ -605,6 +606,10 @@ async def track_ws(
     bekannt: set[str] = set()
 
     await tracking_manager.connect(convoy_id, ws, mit_kennung=durchsetzen)
+    # Ein verbundener Fahrer-Link hält automatische Updates zurück
+    # (services/anwesenheit.py). Nur Fahrer: ein Lese-Link plant und fährt nicht.
+    if is_driver:
+        anwesenheit.fahrer_links.verbunden(kennung)
     if durchsetzen:
         await belegung.stand_senden(convoy_id, kennung, ws)
     if durchsetzen:
@@ -617,6 +622,8 @@ async def track_ws(
             raw = await ws.receive_json()
             if not isinstance(raw, dict):
                 continue
+            if is_driver:
+                anwesenheit.fahrer_links.aktiv(kennung)
             kind = raw.get("type")
             client_id = _client_id(raw) if kind in (*_QUITTIERT, "alarm_quittieren") else None
             # Viewer links are read-only — drained frames (heartbeats) are ignored.
@@ -676,3 +683,5 @@ async def track_ws(
         logger.warning("track_ws error for slug %s: %s", slug, exc)
     finally:
         tracking_manager.disconnect(convoy_id, ws)
+        if is_driver:
+            anwesenheit.fahrer_links.getrennt(kennung)

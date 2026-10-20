@@ -6,6 +6,11 @@ Datenbank und keinen Zugang zur Aktivitäts-Registry dieses Prozesses; das
 Backend schreibt ihm die Zahlen deshalb alle ``INTERVALL_S`` Sekunden in das
 geteilte Volume, wie Kanal und Modus (``update_check``).
 
+Fahrer-Links zählen auch: wer im Konvoi fährt, verliert beim Deploy den
+Live-Kanal, und gerade dort fällt das auf. Sie laufen über den WebSocket
+``track_ws``, den die Aktivitäts-Middleware nicht sieht, und haben kein Konto —
+deshalb ein eigenes kleines Register hier (:class:`FahrerLinks`).
+
 Superadmins zählen nicht: der Betreiber sitzt selbst im Admin-Portal und hielte
 sonst sein eigenes Update auf. Der manuelle Trigger („Jetzt updaten") fragt gar
 nicht nach.
@@ -42,6 +47,53 @@ HOLD_FRISCH_S = 900
 _gestartet = time.monotonic()
 
 
+class FahrerLinks:
+    """Welche Geräte gerade über einen Fahrer-Link verbunden sind.
+
+    Gezählt wird je Gerätekennung: jede offene Verbindung und noch
+    ``nachlauf_s`` nach der letzten — ein Abriss im Funkloch ist der Normalfall
+    (wie bei der Belegung) und kein Feierabend. Im Speicher wie
+    ``tracking_manager``; nach einem Neustart bauen die Geräte die Verbindung
+    von selbst wieder auf, und bis dahin hält der Anlauf (``ANLAUF_S``) die
+    zuletzt gemeldete Zahl.
+    """
+
+    def __init__(self, uhr=time.monotonic, nachlauf_s: float = activity.ACTIVE_WINDOW_SECONDS):
+        self._uhr = uhr
+        self._nachlauf_s = nachlauf_s
+        self._offen: dict[str, int] = {}
+        self._zuletzt: dict[str, float] = {}
+
+    def verbunden(self, kennung: str) -> None:
+        self._offen[kennung] = self._offen.get(kennung, 0) + 1
+        self._zuletzt[kennung] = self._uhr()
+
+    def aktiv(self, kennung: str) -> None:
+        self._zuletzt[kennung] = self._uhr()
+
+    def getrennt(self, kennung: str) -> None:
+        rest = self._offen.get(kennung, 0) - 1
+        if rest > 0:
+            self._offen[kennung] = rest
+        else:
+            self._offen.pop(kennung, None)
+        self._zuletzt[kennung] = self._uhr()
+
+    def anzahl(self) -> int:
+        jetzt = self._uhr()
+        for kennung, zeit in list(self._zuletzt.items()):
+            if kennung not in self._offen and jetzt - zeit > self._nachlauf_s:
+                del self._zuletzt[kennung]
+        return len(self._offen.keys() | self._zuletzt.keys())
+
+    def leeren(self) -> None:
+        self._offen.clear()
+        self._zuletzt.clear()
+
+
+fahrer_links = FahrerLinks()
+
+
 def zaehlen(entries: list[activity.UserActivity]) -> tuple[int, int]:
     """(Nutzer, Demo-Nutzer) aus den aktiven Einträgen — ohne Superadmins."""
     counts = activity.count_by_kind(entries)
@@ -64,14 +116,21 @@ def _zahl(werte: dict[str, str], name: str) -> int | None:
 
 
 def meldung(
-    nutzer: int, demo: int, jetzt: int, *, im_anlauf: bool, vorher: str | None
+    nutzer: int,
+    demo: int,
+    jetzt: int,
+    *,
+    im_anlauf: bool,
+    vorher: str | None,
+    fahrer: int = 0,
 ) -> str:
     """Inhalt von ``ANWESENHEIT_FILE``. Im Anlauf nie weniger als zuletzt gemeldet."""
     if im_anlauf and vorher:
         alt = lesen(vorher)
         nutzer = max(nutzer, _zahl(alt, "nutzer") or 0)
         demo = max(demo, _zahl(alt, "demo") or 0)
-    return f"stand={jetzt}\nnutzer={nutzer}\ndemo={demo}\n"
+        fahrer = max(fahrer, _zahl(alt, "fahrer") or 0)
+    return f"stand={jetzt}\nnutzer={nutzer}\ndemo={demo}\nfahrer={fahrer}\n"
 
 
 def schreiben() -> None:
@@ -84,7 +143,14 @@ def schreiben() -> None:
                 vorher = f.read()
         except OSError:
             pass
-    inhalt = meldung(nutzer, demo, int(time.time()), im_anlauf=im_anlauf, vorher=vorher)
+    inhalt = meldung(
+        nutzer,
+        demo,
+        int(time.time()),
+        im_anlauf=im_anlauf,
+        vorher=vorher,
+        fahrer=fahrer_links.anzahl(),
+    )
     try:
         with open(ANWESENHEIT_FILE, "w") as f:
             f.write(inhalt)
@@ -113,6 +179,7 @@ def zurueckgehalten_aus(text: str, jetzt: int) -> dict | None:
         "since": datetime.fromtimestamp(seit, tz=timezone.utc).isoformat(),
         "users": _zahl(werte, "nutzer") or 0,
         "demo_users": _zahl(werte, "demo") or 0,
+        "drivers": _zahl(werte, "fahrer") or 0,
     }
 
 

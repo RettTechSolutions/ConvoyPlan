@@ -88,12 +88,12 @@ Ergänzende Env-Variablen:
 
 ### Kein automatisches Update, solange jemand angemeldet ist
 
-Im Modus **Automatisch** wartet der Updater, solange **Nutzer oder Demo-Nutzer** im Portal aktiv sind (eine Anfrage in den letzten fünf Minuten). Superadmins zählen nicht — sonst hielte der Betreiber sein eigenes Update auf. Der Admin-Bereich zeigt neben „Update verfügbar“, seit wann und wegen wie vieler Nutzer zurückgehalten wird; installiert wird beim ersten Zyklus, in dem niemand mehr aktiv ist.
+Im Modus **Automatisch** wartet der Updater, solange **Nutzer oder Demo-Nutzer** im Portal aktiv sind (eine Anfrage in den letzten fünf Minuten) oder ein **Fahrer-Link** verbunden ist (auch die Begleit-App; nach einem Verbindungsabriss noch fünf Minuten — ein Funkloch ist kein Feierabend). Superadmins zählen nicht — sonst hielte der Betreiber sein eigenes Update auf. Der Admin-Bereich zeigt neben „Update verfügbar“, seit wann und wegen wie vieler Nutzer zurückgehalten wird; installiert wird beim ersten Zyklus, in dem niemand mehr aktiv ist.
 
 - **„Jetzt updaten“ wartet nicht.** Wer den Knopf drückt, hat entschieden.
 - **Höchstens `UPDATE_HOLD_MAX` Sekunden am Stück** (Standard `86400` = 24 h, `0` = unbegrenzt). Danach wird trotzdem installiert — eine Instanz, auf der rund um die Uhr gearbeitet wird, bekäme sonst nie ein Update, auch keinen Sicherheitsfix.
 - **Meldet das Backend nichts** (kein Lebenszeichen seit drei Minuten), wird installiert: Ein Backend, das hängt, darf das Update, das es reparieren könnte, nicht blockieren.
-- Fahrer-Links und Tracker zählen **nicht** als angemeldete Nutzer.
+- Lese-Links und Tracker zählen **nicht**: Ein Lese-Link plant und fährt nicht, und ein Tracker sendet ohnehin nur, während sein Konvoi läuft — dann ist meist auch ein Fahrer-Link offen.
 
 ---
 

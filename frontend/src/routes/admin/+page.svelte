@@ -847,6 +847,16 @@
 
     // Update mode (auto / notify)
     let updateMode = $state<import('$lib/api').UpdateMode | null>(null);
+
+    // Worauf ein zurückgehaltenes Update wartet; nur, was nicht null ist.
+    function wartetAuf(h: { users: number; demo_users: number; drivers?: number }): string {
+        const teile = [
+            h.users ? `${h.users} Nutzer` : '',
+            h.demo_users ? `${h.demo_users} Demo-Nutzer` : '',
+            h.drivers ? `${h.drivers} ${h.drivers === 1 ? 'Fahrer-Link' : 'Fahrer-Links'}` : '',
+        ].filter(Boolean);
+        return teile.join(', ') || 'jemand';
+    }
     let modeSaving = $state(false);
 
     // Live log terminal
@@ -4164,7 +4174,7 @@
                 </div>
                 <p class="hint" style="margin:-.25rem 0 1rem;">
                     {#if updateMode.mode === 'auto'}
-                        <strong>Automatisch:</strong> Verfügbare Updates im gewählten Kanal werden ohne weiteres Zutun installiert — aber erst, wenn keine Nutzer oder Demo-Nutzer mehr angemeldet sind (Superadmins zählen nicht; spätestens nach 24 Stunden, einstellbar über UPDATE_HOLD_MAX). „Jetzt updaten" wartet nicht.
+                        <strong>Automatisch:</strong> Verfügbare Updates im gewählten Kanal werden ohne weiteres Zutun installiert — aber erst, wenn keine Nutzer, Demo-Nutzer oder Fahrer-Links mehr aktiv sind (Superadmins zählen nicht; spätestens nach 24 Stunden, einstellbar über UPDATE_HOLD_MAX). „Jetzt updaten" wartet nicht.
                     {:else}
                         <strong>Benachrichtigen:</strong> Es wird nichts automatisch installiert. Alle Superadmins erhalten eine E-Mail, sobald im gewählten Kanal ein Update verfügbar ist (SMTP muss konfiguriert sein) — installiert wird über „Jetzt updaten".
                     {/if}
@@ -4228,8 +4238,7 @@
                             {#if updateStatus.held_back && updateMode?.mode !== 'notify'}
                                 <span class="hint" data-testid="update-zurueckgehalten">
                                     Zurückgehalten seit {new Date(updateStatus.held_back.since).toLocaleString('de-DE')}:
-                                    {updateStatus.held_back.users} Nutzer
-                                    und {updateStatus.held_back.demo_users} Demo-Nutzer angemeldet — wird installiert, sobald niemand mehr aktiv ist.
+                                    {wartetAuf(updateStatus.held_back)} aktiv — wird installiert, sobald niemand mehr aktiv ist.
                                 </span>
                             {/if}
                         {:else}

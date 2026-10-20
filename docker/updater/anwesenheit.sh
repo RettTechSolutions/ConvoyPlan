@@ -7,8 +7,9 @@
 #
 # Ein Deploy tauscht Backend und Frontend; wer gerade plant, verliert den
 # Live-Kanal, und im Nightly-Kanal geschah das mehrmals taeglich mitten in der
-# Arbeit. Zurueckgehalten wird deshalb, solange angemeldete Nutzer oder
-# Demo-Nutzer aktiv sind. Superadmins zaehlen NICHT: der Betreiber sitzt selbst
+# Arbeit. Zurueckgehalten wird deshalb, solange angemeldete Nutzer,
+# Demo-Nutzer oder Fahrer-Links aktiv sind (ein Fahrer-Link zaehlt, solange er
+# verbunden ist, und fuenf Minuten nach dem Abriss). Superadmins zaehlen NICHT: der Betreiber sitzt selbst
 # im Admin-Portal, und sonst hielte er sein eigenes Update auf.
 #
 # Gilt nur fuer das AUTOMATISCHE Update. Der manuelle Trigger ("Jetzt updaten")
@@ -56,12 +57,15 @@ _anw_wert() {
 }
 
 update_zurueckhalten() {
-    local ziel="$1" jetzt stand nutzer demo seit zuletzt alt_ziel
+    local ziel="$1" jetzt stand nutzer demo fahrer seit zuletzt alt_ziel
     jetzt="$(_anw_jetzt)"
 
     stand="$(_anw_wert "${ANWESENHEIT_FILE}" stand)"
     nutzer="$(_anw_wert "${ANWESENHEIT_FILE}" nutzer)"
     demo="$(_anw_wert "${ANWESENHEIT_FILE}" demo)"
+    # Optional: ein Backend von vor den Fahrer-Links schreibt die Zeile nicht.
+    fahrer="$(_anw_wert "${ANWESENHEIT_FILE}" fahrer)"
+    fahrer="${fahrer:-0}"
     if [ -z "${stand}" ] || [ -z "${nutzer}" ] || [ -z "${demo}" ] \
        || [ $((jetzt - stand)) -gt "${ANWESENHEIT_MAX_ALTER}" ]; then
         if [ -f "${HOLD_FILE}" ]; then
@@ -71,7 +75,7 @@ update_zurueckhalten() {
         return 1
     fi
 
-    if [ $((nutzer + demo)) -eq 0 ]; then
+    if [ $((nutzer + demo + fahrer)) -eq 0 ]; then
         if [ -f "${HOLD_FILE}" ]; then
             log "Niemand mehr angemeldet — zurueckgehaltenes Update wird installiert."
         fi
@@ -91,15 +95,15 @@ update_zurueckhalten() {
     [ -z "${seit}" ] && seit="${jetzt}"
 
     if [ "${UPDATE_HOLD_MAX}" -gt 0 ] && [ $((jetzt - seit)) -ge "${UPDATE_HOLD_MAX}" ]; then
-        log "Update seit $(( (jetzt - seit) / 3600 )) h zurueckgehalten — wird trotz ${nutzer} angemeldeter Nutzer und ${demo} Demo-Nutzer installiert (UPDATE_HOLD_MAX=${UPDATE_HOLD_MAX})."
+        log "Update seit $(( (jetzt - seit) / 3600 )) h zurueckgehalten — wird trotz ${nutzer} angemeldeter Nutzer, ${demo} Demo-Nutzer und ${fahrer} Fahrer-Links installiert (UPDATE_HOLD_MAX=${UPDATE_HOLD_MAX})."
         rm -f "${HOLD_FILE}"
         return 1
     fi
 
     if [ "${alt_ziel}" != "${ziel}" ]; then
-        log "Update ${ziel} zurueckgehalten: ${nutzer} Nutzer und ${demo} Demo-Nutzer angemeldet — installiert wird, sobald niemand mehr aktiv ist."
+        log "Update ${ziel} zurueckgehalten: ${nutzer} Nutzer, ${demo} Demo-Nutzer und ${fahrer} Fahrer-Links aktiv — installiert wird, sobald niemand mehr aktiv ist."
     fi
-    printf 'seit=%s\nzuletzt=%s\nziel=%s\nnutzer=%s\ndemo=%s\n' \
-        "${seit}" "${jetzt}" "${ziel}" "${nutzer}" "${demo}" > "${HOLD_FILE}" 2>/dev/null || true
+    printf 'seit=%s\nzuletzt=%s\nziel=%s\nnutzer=%s\ndemo=%s\nfahrer=%s\n' \
+        "${seit}" "${jetzt}" "${ziel}" "${nutzer}" "${demo}" "${fahrer}" > "${HOLD_FILE}" 2>/dev/null || true
     return 0
 }
