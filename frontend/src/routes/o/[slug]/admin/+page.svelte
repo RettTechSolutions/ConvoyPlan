@@ -613,7 +613,7 @@
             <div class="error-bar">{exportFehler} <button onclick={() => (exportFehler = '')}>✕</button></div>
         {/if}
 
-        <div class="section">
+        <div class="section" use:klappbar={{ id: 'org-datenexport', offen: true }}>
             <div class="section-header">
                 <strong>Alle Daten der Organisation herunterladen</strong>
             </div>
@@ -639,7 +639,7 @@
             <div class="error-bar">{membersError} <button onclick={() => (membersError = '')}>✕</button></div>
         {/if}
 
-        <div class="section">
+        <div class="section" use:klappbar={{ id: 'org-mitglieder', offen: true }}>
             <div class="section-header">
                 <strong>Mitglieder ({members.length})</strong>
                 <div style="display:flex;gap:.4rem">
@@ -745,7 +745,7 @@
             </div>
         {/if}
 
-        <div class="section">
+        <div class="section" use:klappbar={{ id: 'org-leitstellen', offen: true }}>
             <div class="section-header">
                 <strong>Leitstellen ({leitstellen.length})</strong>
                 <button class="btn-small" onclick={openCreateLs}>+ Neu</button>
@@ -777,7 +777,7 @@
             <div class="error-bar">{gpsError} <button onclick={() => (gpsError = '')}>✕</button></div>
         {/if}
 
-        <div class="section">
+        <div class="section" use:klappbar={{ id: 'org-gps', offen: true }}>
             <div class="section-header">
                 <strong>Aktive GPS-Freigaben ({gpsShares.length})</strong>
                 <button class="btn-small" onclick={loadGpsShares}>↺</button>
@@ -873,7 +873,7 @@
         {#if kiLoading || !kiPolicy}
             <div class="section"><p class="hint">Lade…</p></div>
         {:else}
-            <div class="section">
+            <div class="section" use:klappbar={{ id: 'org-ki-richtlinie', offen: true }}>
                 <div class="section-header">
                     <strong>KI-Zugriff auf diese Organisation</strong>
                     <button class="btn-small" onclick={loadKi}>↺</button>
@@ -960,7 +960,7 @@
                 </button>
             </div>
 
-            <div class="section">
+            <div class="section" use:klappbar={'org-ki-verbindungen'}>
                 <div class="section-header">
                     <strong>Bestehende Verbindungen ({kiConnections.length})</strong>
                 </div>
@@ -1004,7 +1004,7 @@
     {#if activeTab === 'branding' && gesperrt('branding')}
         {@render modulGesperrt('Branding')}
     {:else if activeTab === 'branding'}
-    <div class="section branding-panel">
+    <div class="section branding-panel" use:klappbar={{ id: 'org-branding', offen: true }}>
         <div class="section-header"><strong>Branding</strong></div>
         <p class="hint" style="margin:-.25rem 0 1rem">
             Anpassungen gelten nur für diese Organisation — die restliche Plattform bleibt unverändert.

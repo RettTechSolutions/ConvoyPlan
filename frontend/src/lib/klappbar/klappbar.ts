@@ -13,6 +13,18 @@ import './klappbar.css';
  * eine Wand aus neun Karten, und wer zur letzten will, scrollt an allen vorbei.
  * Am Schreibtisch starten sie offen. Was jemand einmal auf- oder zugeklappt
  * hat, merkt sich der Browser je `id`; das schlägt den Standard.
+ *
+ * `{ id, offen: true }` startet auch am Telefon offen — für die eine
+ * Arbeitskarte eines Reiters (Mitglieder, GPS-Freigaben …): zugeklappt wäre
+ * sie nur ein Tipp mehr bis zur Arbeit.
+ *
+ * Der Titel ist das erste `strong` der Kopfzeile, auch eine Ebene tiefer
+ * (`<div><strong>Name</strong> <span class="marke">…</span></div>`): So bleibt
+ * ein Abzeichen neben dem Namen zugeklappt sichtbar, etwa an Trackern.
+ *
+ * Ein Knopf in der Kopfzeile mit `data-klapp-oeffnen` klappt die Karte auf,
+ * bevor er wirkt — für Knöpfe, deren Ergebnis *in* der Karte erscheint
+ * (Vorschau). Alle anderen lassen den Zustand, wie er ist.
  */
 
 export const SCHMAL = '(max-width: 768px)';
@@ -35,13 +47,16 @@ function merken(id: string, zu: boolean): void {
 	}
 }
 
-export function klappbar(node: HTMLElement, id: string | undefined) {
-	if (!id) return;
+export type KlappAngabe = string | { id: string; offen?: boolean } | undefined;
+
+export function klappbar(node: HTMLElement, angabe: KlappAngabe) {
+	if (!angabe) return;
+	const { id, offen = false } = typeof angabe === 'string' ? { id: angabe } : angabe;
 	const kopf = node.querySelector<HTMLElement>(':scope > .section-header');
-	const titel = kopf?.querySelector<HTMLElement>(':scope > strong');
+	const titel = kopf?.querySelector<HTMLElement>(':scope > strong, :scope > :first-child > strong:first-child');
 	if (!kopf || !titel) return;
 
-	let zu = gemerkt(id) ?? window.matchMedia(SCHMAL).matches;
+	let zu = gemerkt(id) ?? (!offen && window.matchMedia(SCHMAL).matches);
 
 	kopf.classList.add('klapp-kopf');
 	titel.classList.add('klapp-titel');
@@ -52,26 +67,32 @@ export function klappbar(node: HTMLElement, id: string | undefined) {
 		node.classList.toggle('klapp-zu', zu);
 		titel.setAttribute('aria-expanded', String(!zu));
 	};
-	const umschalten = () => {
-		zu = !zu;
+	const setzen = (wert: boolean) => {
+		zu = wert;
 		merken(id, zu);
 		zeigen();
 	};
+	const umschalten = () => setzen(!zu);
 	const taste = (e: KeyboardEvent) => {
 		if (e.key === 'Enter' || e.key === ' ') {
 			e.preventDefault();
 			umschalten();
 		}
 	};
+	const kopfKlick = (e: MouseEvent) => {
+		if (zu && (e.target as Element | null)?.closest('[data-klapp-oeffnen]')) setzen(false);
+	};
 
 	titel.addEventListener('click', umschalten);
 	titel.addEventListener('keydown', taste);
+	kopf.addEventListener('click', kopfKlick);
 	zeigen();
 
 	return {
 		destroy() {
 			titel.removeEventListener('click', umschalten);
 			titel.removeEventListener('keydown', taste);
+			kopf.removeEventListener('click', kopfKlick);
 		},
 	};
 }
