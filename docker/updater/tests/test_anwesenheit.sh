@@ -37,7 +37,13 @@ entscheide() {
       . "$UPDATER_DIR/anwesenheit.sh"
       if update_zurueckhalten "$2"; then echo halten; else echo installieren; fi )
 }
-meldung() { printf 'stand=%s\nnutzer=%s\ndemo=%s\n' "$1" "$2" "$3" > "$ANW"; }
+# $4 = Fahrer-Links; ohne Angabe fehlt die Zeile, wie bei einem Backend von
+# vor den Fahrer-Links.
+meldung() {
+    printf 'stand=%s\nnutzer=%s\ndemo=%s\n' "$1" "$2" "$3" > "$ANW"
+    if [ -n "${4:-}" ]; then printf 'fahrer=%s\n' "$4" >> "$ANW"; fi
+    if [ -n "${5:-}" ]; then printf 'tracker=%s\n' "$5" >> "$ANW"; fi
+}
 neu()     { rm -f "$ANW" "$HOLD"; : > "$LOGF"; }
 
 echo "── Teil 1: die Entscheidung ─────────────────────────────────────────"
@@ -57,6 +63,26 @@ grep -q "zurueckgehalten" "$LOGF"; check $? "3: geloggt"
 
 neu; meldung $T0 0 1
 eq "4: nur Demo-Nutzer angemeldet → halten" "$(entscheide $T0 'stable v1')" halten
+
+neu; meldung $T0 0 0 1
+eq "4b: nur ein Fahrer-Link verbunden → halten" "$(entscheide $T0 'nightly abc')" halten
+eq "4b: Fahrer-Links im Zustand fuers Panel" "$(grep '^fahrer=' "$HOLD")" "fahrer=1"
+
+neu; meldung $T0 0 0 0 2
+eq "4f: nur Tracker senden → halten" "$(entscheide $T0 'nightly abc')" halten
+eq "4f: Tracker im Zustand fuers Panel" "$(grep '^tracker=' "$HOLD")" "tracker=2"
+
+neu; meldung $T0 0 0 0 0
+eq "4g: Tracker-Zeile mit 0 → installieren" "$(entscheide $T0 'nightly abc')" installieren
+
+neu; meldung $T0 0 0 0
+eq "4c: Fahrer-Zeile mit 0 → installieren" "$(entscheide $T0 'nightly abc')" installieren
+
+neu; meldung $T0 0 0
+eq "4d: altes Backend ohne Fahrer-Zeile, niemand da → installieren" "$(entscheide $T0 'nightly abc')" installieren
+
+neu; printf 'stand=%s\nnutzer=0\ndemo=0\nfahrer=x\n' $T0 > "$ANW"
+eq "4e: unlesbare Fahrer-Zeile zaehlt als 0" "$(entscheide $T0 'nightly abc')" installieren
 
 neu; meldung $((T0 - 600)) 3 0
 eq "5: veraltete Meldung (Backend schreibt nicht mehr) → installieren" "$(entscheide $T0 'stable v1')" installieren

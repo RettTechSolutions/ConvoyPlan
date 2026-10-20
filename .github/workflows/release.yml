@@ -450,9 +450,35 @@ jobs:
             echo "make_latest=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Release-Notes aus dem CHANGELOG
+        run: |
+          # Der Abschnitt der Version aus CHANGELOG.md steht über der
+          # automatischen PR-Liste. Die allein nennt nur Titel; was beim
+          # Update zu beachten ist (Graph-Neuaufbau, Migrationen), stand bei
+          # 2026.8.0 und 2026.9.0 nur im CHANGELOG und musste von Hand in
+          # die Notes. GitHub stellt `body` den erzeugten Notes voran.
+          # Ohne Abschnitt (Beta-Tag, vergessener CHANGELOG) bleibt die
+          # Datei leer und es gibt nur die PR-Liste wie bisher.
+          # Geprüft von .github/workflows/tests/test_release_notes_changelog.sh.
+          version="${GITHUB_REF_NAME#v}"
+          awk -v kopf="## [${version}]" '
+            index($0, kopf) == 1 { drin = 1; next }
+            drin && /^## /       { exit }
+            drin                 { print }
+          ' CHANGELOG.md \
+            | sed -e '/./,$!d' \
+            | sed -e ':a' -e '/^\n*$/{$d;N;ba' -e '}' > release-notes.md
+          if [ -s release-notes.md ]; then
+            printf '\n---\n' >> release-notes.md
+            echo "Abschnitt [${version}] aus CHANGELOG.md übernommen ($(wc -l < release-notes.md) Zeilen)."
+          else
+            echo "::notice::Kein Abschnitt [${version}] in CHANGELOG.md — nur die automatische PR-Liste."
+          fi
+
       - name: Create release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
+          body_path: release-notes.md
           generate_release_notes: true
           draft: false
           prerelease: ${{ steps.pre.outputs.prerelease }}

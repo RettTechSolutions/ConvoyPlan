@@ -146,6 +146,18 @@ test.describe('Status in der Kopfzeile', () => {
 			...STAND, held_back: { since: '2026-10-14T08:00:00Z', users: 2, demo_users: 0 },
 		});
 		await expect(karte.getByTestId('kopf-status')).toHaveText('Update zurückgehalten');
+		await expect(karte.getByTestId('update-zurueckgehalten')).toContainText('2 Nutzer aktiv');
+
+		// Ein Fahrer-Link hält genauso zurück; genannt wird nur, was nicht null ist.
+		const fahrer = await updateKarte(page, {
+			...STAND, held_back: { since: '2026-10-14T08:00:00Z', users: 0, demo_users: 0, drivers: 1 },
+		});
+		await expect(fahrer.getByTestId('update-zurueckgehalten')).toContainText('1 Fahrer-Link aktiv');
+
+		const tracker = await updateKarte(page, {
+			...STAND, held_back: { since: '2026-10-14T08:00:00Z', users: 1, demo_users: 0, trackers: 2 },
+		});
+		await expect(tracker.getByTestId('update-zurueckgehalten')).toContainText('1 Nutzer, 2 Tracker aktiv');
 
 		const aktuell = await updateKarte(page, { ...STAND, update_available: false, remote_sha: 'aaaaaaa' });
 		await expect(aktuell.getByTestId('kopf-status')).toHaveText('Aktuell');
