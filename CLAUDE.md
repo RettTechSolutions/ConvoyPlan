@@ -73,7 +73,8 @@ Container-Tests mit, die das Skript ausführen.
 ### Automatische Updates warten auf leere Sitzungen
 
 Solange Nutzer oder Demo-Nutzer aktiv sind (Aktivitäts-Registry, `activity.py`, fünf
-Minuten), hält der Updater ein **automatisches** Update zurück; Superadmins zählen
+Minuten) oder ein Fahrer-Link verbunden ist (`anwesenheit.FahrerLinks`, verdrahtet in
+`track_ws`, fünf Minuten Nachlauf nach dem Abriss; Lese-Links zählen nicht), hält der Updater ein **automatisches** Update zurück; Superadmins zählen
 nicht, der manuelle Trigger fragt gar nicht. Das Backend schreibt die Zahlen alle 30 s
 nach `/update_status/anwesenheit` (`services/anwesenheit.py`), der Updater entscheidet
 in `docker/updater/anwesenheit.sh` (von **beiden** Varianten gesourct) und meldet seinen
@@ -81,8 +82,10 @@ Zustand in `/update_status/zurueckgehalten` zurück (`held_back` im Update-Statu
 Beide Rückfälle gehen zur Installation hin: keine frische Meldung (Backend hängt) und
 `UPDATE_HOLD_MAX` (24 h am Stück). Nach einem Neustart meldet das Backend fünf Minuten
 lang nicht weniger als zuletzt — die Registry ist flüchtig, und sonst käme im Nightly-
-Kanal der nächste Build gleich hinterher. Tests: `docker/updater/tests/test_anwesenheit.sh`,
-`backend/tests/test_update_bei_anwesenheit.py`.
+Kanal der nächste Build gleich hinterher. Die Zeile `fahrer=` ist für den Updater
+optional (fehlt = 0), damit ein neuer Updater mit einem alten Backend weiterläuft. Tests:
+`docker/updater/tests/test_anwesenheit.sh`, `backend/tests/test_update_bei_anwesenheit.py`,
+`backend/tests/test_update_bei_fahrer_links.py`.
 
 ### Der Routing-Graph und der Deploy
 
