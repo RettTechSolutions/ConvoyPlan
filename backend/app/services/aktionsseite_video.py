@@ -126,7 +126,13 @@ def pfad(public_id: str) -> Path:
     werden, auch wenn alle Aufrufer sie heute aus der Datenbank nehmen."""
     if not _KENNUNG.fullmatch(public_id):
         raise ValueError("Ungültige Video-Kennung")
-    return VIDEOS_DIR / f"{public_id}.mp4"
+    # Zusätzlich über den aufgelösten Pfad abgesichert (Symlinks, Normalisierung):
+    # Das Muster oben ist die Regel, dieser Vergleich der Beleg dafür.
+    basis = os.path.realpath(VIDEOS_DIR)
+    voll = os.path.realpath(os.path.join(basis, f"{public_id}.mp4"))
+    if not voll.startswith(basis + os.sep):
+        raise ValueError("Ungültige Video-Kennung")
+    return Path(voll)
 
 
 def ablegen(public_id: str, mp4: bytes) -> None:
