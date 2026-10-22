@@ -5,9 +5,9 @@ RUN apk upgrade --no-cache && apk add --no-cache git bash curl
 # UPDATE_VERIFY_SIGNATURES). Version und Pruefsumme sind gepinnt: ein
 # Downloader, der irgendein Binary akzeptiert, waere selbst die Luecke, die er
 # schliessen soll. Pruefsummen aus cosign_checksums.txt des Releases.
-ARG COSIGN_VERSION=3.1.3
-ARG COSIGN_SHA256_AMD64=4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71
-ARG COSIGN_SHA256_ARM64=c5d324e091826b0d7a78eb16fef316450b4eb9aaec045611c08ba06f5e73220a
+ARG COSIGN_VERSION=3.1.4
+ARG COSIGN_SHA256_AMD64=424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa
+ARG COSIGN_SHA256_ARM64=ade83b7aac62e131cacfe96d958948b2150cc9efec46a570a2649b8e27dedad2
 RUN set -eu; \
     case "$(apk --print-arch)" in \
         x86_64)  cosign_arch=amd64; cosign_sha="${COSIGN_SHA256_AMD64}" ;; \
