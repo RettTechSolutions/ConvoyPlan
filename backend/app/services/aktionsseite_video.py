@@ -126,7 +126,13 @@ def pfad(public_id: str) -> Path:
     werden, auch wenn alle Aufrufer sie heute aus der Datenbank nehmen."""
     if not _KENNUNG.fullmatch(public_id):
         raise ValueError("Ungültige Video-Kennung")
-    return VIDEOS_DIR / f"{public_id}.mp4"
+    wurzel = os.path.realpath(VIDEOS_DIR)
+    ziel = os.path.realpath(os.path.join(wurzel, f"{public_id}.mp4"))
+    # Zweiter Riegel neben der Kennung: auch ein Symlink im Verzeichnis darf
+    # nicht aus ``VIDEOS_DIR`` hinausführen.
+    if not ziel.startswith(wurzel + os.sep):
+        raise ValueError("Ungültige Video-Kennung")
+    return Path(ziel)
 
 
 def ablegen(public_id: str, mp4: bytes) -> None:
