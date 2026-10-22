@@ -139,6 +139,19 @@ def _ids(rows) -> set:
     return {r["id"] for r in rows}
 
 
+def _blaetter(x):
+    """Alle Schlüssel und Einzelwerte eines JSON-Dokuments, einzeln statt als Text."""
+    if isinstance(x, dict):
+        for k, v in x.items():
+            yield k
+            yield from _blaetter(v)
+    elif isinstance(x, list):
+        for v in x:
+            yield from _blaetter(v)
+    else:
+        yield x
+
+
 # ── Inhalt ────────────────────────────────────────────────────────────────────
 
 async def test_export_enthaelt_alles_der_organisation(zwei_orgs):
@@ -269,10 +282,15 @@ async def test_beitraege_mit_bildern_ohne_absender(zwei_orgs, tmp_path):
     [beitrag] = b["beitraege"]
     assert beitrag["text_public"] == "Grenze A" and beitrag["status"] == "freigegeben"
     assert [f["public_id"] for f in b["beitrag_bilder"]] == [eigen]
-    text = json.dumps(org_export.jsonable_encoder(b))
-    # Absender, Presse und die Telegram-Kennungen gehören Dritten.
-    for dritte in ("Jonas Fahrer", "987654321", "123123", "-100842", "4711", "sender_", "chat_id"):
-        assert dritte not in text, dritte
+    werte = list(_blaetter(org_export.jsonable_encoder(b)))
+    texte = [w for w in werte if isinstance(w, str)]
+    # Absender, Presse und die Telegram-Kennungen gehören Dritten. Die Kennungen
+    # werden als Werte verglichen, nicht als Teiltext: „4711" steht sonst auch
+    # mal in einer zufälligen UUID.
+    for kennung in (987654321, 123123, -100842, 4711):
+        assert kennung not in werte and str(kennung) not in werte, kennung
+    for dritte in ("Jonas Fahrer", "sender_", "chat_id"):
+        assert not any(dritte in t for t in texte), dritte
 
     async with AsyncSessionLocal() as db:
         org = await db.get(Organization, zwei_orgs["org_a"])

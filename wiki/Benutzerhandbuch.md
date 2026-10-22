@@ -196,13 +196,13 @@ Die Liste **Vorhandene Links** zeigt Rolle, Passwortschutz, letzten Zugriff und 
 1. Den Konvoi öffnen → Reiter **Tracking** (oder einen **Fahrer-Tracking-Link** öffnen).
 2. Das eigene Fahrzeug auswählen und die Browser-Standortfreigabe erlauben.
 3. **Tracking starten** – die Position wird laufend übermittelt. Ohne HTTPS oder ohne Freigabe lässt sie sich per Tippen auf die Karte setzen.
-
-> **Am Telefon:** Die Reiter der Seitenleiste scrollen seitlich (ein Pfeil zeigt verdeckte Reiter), Karten im Admin-Bereich lassen sich zuklappen, und die Kartenknöpfe der Tracking-Ansicht stehen hinter einem „⋯". Share-Link und Fahrer-Link ordnen Zeitplan und Karte untereinander an.
 4. Status im Reiter **Status** unter **Mein Status** melden:
    - *Geplant* → *Unterwegs* → *Angekommen*
    - **Techn. Halt** mit Dringlichkeit *Standard*, *Dringend* oder *Sehr dringend*
    - **Ausfall/Störung** als *Totalausfall – sofort halten* oder *Eingeschränkt – in Sicherheit fahren*
    - Zu Halt und Ausfall lässt sich eine kurze Bemerkung mitgeben.
+
+> **Am Telefon:** Die Reiter der Seitenleiste scrollen seitlich (ein Pfeil zeigt verdeckte Reiter), Karten im Admin-Bereich lassen sich zuklappen, und die Kartenknöpfe der Tracking-Ansicht stehen hinter einem „⋯". Share-Link und Fahrer-Link ordnen Zeitplan und Karte untereinander an.
 
 ### Als Beobachter / Planer
 
