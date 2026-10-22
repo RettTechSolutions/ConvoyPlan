@@ -7,12 +7,12 @@ fastapi==0.154.0
 starlette==1.9.0
 defusedxml==0.7.1
 uvicorn[standard]==0.54.0
-sqlalchemy[asyncio]==2.1.5
+sqlalchemy[asyncio]==2.1.6
 # asyncpg 0.31.0 is the first release with cp314 wheels (needed for the
 # python:3.14-slim base image; 0.29.0 has no 3.14 wheel and fails to build).
 asyncpg==0.32.0
 geoalchemy2==0.20.0
-alembic==1.20.0
+alembic==1.20.1
 pydantic[email]==2.14.1
 # PyJWT replaces python-jose (CVE-2024-33663, CVE-2024-33664 — algorithm confusion / sig bypass).
 # 2.14.0 hardens HMAC key validation against public-key material passed as JWK/JWKS/DER/PEM,
