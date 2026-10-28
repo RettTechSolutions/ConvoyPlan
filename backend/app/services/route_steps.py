@@ -25,6 +25,44 @@ def cumulative_m(coords: list[list[float]]) -> list[float]:
     return out
 
 
+# Ab dieser Länge ist eine Beschränkung ein Abschnitt und kein Punkt: Die Liste
+# nennt die Länge, die Karte zeigt die Teilstrecke. Darunter (Unterführung,
+# Brücke) reicht der Punkt. Dieselbe Grenze steht in `$lib/route/abschnitt.ts`.
+ABSCHNITT_AB_M = 200
+# Höchstens so viele Stützpunkte trägt die Linie eines Abschnitts. Eine
+# Lkw-Sperre über 30 km soll die gespeicherte Route nicht aufblähen.
+ABSCHNITT_PUNKTE = 60
+
+
+def abschnitt(coords: list[list[float]], von: int, bis: int) -> list[list[float]]:
+    """Die Teilstrecke ``coords[von..bis]`` als Linie, ausgedünnt auf ``ABSCHNITT_PUNKTE``.
+
+    GraphHopper kennt eine Beschränkung je Kante, nicht je Schild. Wo genau auf
+    der Kante das Schild steht, weiß niemand — der erste Stützpunkt allein sah
+    deshalb aus wie die Stelle selbst. Gemeldet: die Mautzufahrt am
+    Karawankentunnel (``maxheight=4`` ab dem Brückenende) erschien als Brücke
+    mit 4,0 m. Anfang und Ende bleiben immer erhalten.
+    """
+    teil = [[round(c[0], 6), round(c[1], 6)] for c in coords[von:bis + 1]]
+    if len(teil) <= ABSCHNITT_PUNKTE:
+        return teil
+    schritt = (len(teil) - 1) / (ABSCHNITT_PUNKTE - 1)
+    return [teil[round(i * schritt)] for i in range(ABSCHNITT_PUNKTE)]
+
+
+def abschnitt_text(laenge_m: Any) -> str:
+    """„auf 350 m" bzw. „auf 1,1 km" — leer unter ``ABSCHNITT_AB_M``.
+
+    Derselbe Text steht in `$lib/route/abschnitt.ts`; wer einen ändert, zieht
+    den anderen mit.
+    """
+    if not isinstance(laenge_m, (int, float)) or isinstance(laenge_m, bool) or laenge_m < ABSCHNITT_AB_M:
+        return ""
+    if laenge_m < 1000:
+        return f"auf {round(laenge_m / 10) * 10:.0f} m"
+    return f"auf {laenge_m / 1000:.1f} km".replace(".", ",")
+
+
 def instruction_m(interval: Any, along: list[float]) -> float | None:
     """Meter der Stelle, an der eine Anweisung beginnt — aus GraphHoppers ``interval``.
 

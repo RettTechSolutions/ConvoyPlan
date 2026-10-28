@@ -76,6 +76,8 @@ def test_eine_grenze_steht_mit_reserve_in_der_liste():
     assert e["reserve_t"] == 1.3
     assert e["stufe"] == "knapp"
     assert e["ausnahme"] is None
+    # Die Teilstrecke für die Karte: die Grenze gilt über die Kante, nicht am Schild.
+    assert e["linie"] == COORDS[1:3]
 
 
 @pytest.mark.parametrize(
@@ -112,6 +114,7 @@ def test_achslastgrenze_steht_als_achslast_in_der_liste():
     assert (e["art"], e["grenze_t"], e["reserve_t"], e["ausnahme"]) == ("achslast", 10.0, 0.5, None)
     # Raster 0,5 t: unter 1 t Reserve ist knapp.
     assert e["stufe"] == "knapp"
+    assert e["linie"] == COORDS[1:3]
     [frei] = gg.achslasten([[1, 2, 11.5]], COORDS, 9.5)
     assert frei["stufe"] == "frei"
 

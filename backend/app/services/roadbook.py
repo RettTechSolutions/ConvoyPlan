@@ -20,6 +20,7 @@ from typing import Any, Iterable
 
 from fpdf.fonts import FontFace
 
+from app.services import route_steps as route_steps_svc
 from app.services.pdf import PURPOSE_LABELS, TYPE_LABELS, _PDF, halt_vermerk
 from app.services.static_map import END_COLOR, START_COLOR, STOP_COLOR, WAYPOINT_COLOR, Marker
 
@@ -213,6 +214,8 @@ def hinweis_rows(route: Any) -> list[Row]:
     out: list[tuple[float, Row]] = []
     for e in getattr(route, "durchfahrtshoehen", None) or []:
         teile = [f"Spielraum {_cm(e['spielraum_m'])}"] if e.get("spielraum_m") is not None else []
+        if (laenge := route_steps_svc.abschnitt_text(e.get("laenge_m"))):
+            teile.append(laenge)
         if (zusatz := _HOEHE_DETAIL.get(e.get("stufe", ""))):
             teile.append(zusatz)
         out.append((_m_von(e), Row(
@@ -221,6 +224,8 @@ def hinweis_rows(route: Any) -> list[Row]:
         )))
     for e in getattr(route, "gewichtsgrenzen", None) or []:
         teile = [f"Reserve {_t(e['reserve_t'], True)}"] if e.get("reserve_t") is not None else []
+        if (laenge := route_steps_svc.abschnitt_text(e.get("laenge_m"))):
+            teile.append(laenge)
         if (ausnahme := _AUSNAHMEN.get(e.get("ausnahme") or "")):
             teile.append(ausnahme)
         if (zusatz := _GEWICHT_DETAIL.get(e.get("stufe", ""))):

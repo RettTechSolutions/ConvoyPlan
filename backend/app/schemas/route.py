@@ -108,6 +108,8 @@ class DurchfahrtshoeheEntry(BaseModel):
     lat: float
     lon: float
     laenge_m: int
+    # Die Teilstrecke [[lon, lat], …], ausgedünnt; fehlt bei älteren Routen.
+    linie: list[list[float]] | None = None
     # Angeschriebene Höhe aus OSM, im Graphen auf 0,1 m gerundet.
     hoehe_m: float
     # Höhe minus höchstes Fahrzeug; None ohne erfasste Fahrzeughöhe.
@@ -121,6 +123,8 @@ class GewichtsgrenzeEntry(BaseModel):
     lat: float
     lon: float
     laenge_m: int
+    # Die Teilstrecke [[lon, lat], …], ausgedünnt; fehlt bei älteren Routen.
+    linie: list[list[float]] | None = None
     # Grenze aus OSM (maxweight, auch Lkw-Verbote), auf 0,1 t gerundet.
     grenze_t: float
     # Grenze minus schwerstes Fahrzeug; None ohne erfasstes Fahrzeuggewicht.

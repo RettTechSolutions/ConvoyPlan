@@ -12,6 +12,7 @@
 	 * eine Stelle über der Grenze, knapp oder ohne Gewicht ist oder kein
 	 * Fahrzeuggewicht erfasst ist.
 	 */
+	import { abschnittLinie, abschnittText } from '$lib/route/abschnitt';
 	import type { GewichtsgrenzeEntry } from '$lib/api';
 
 	let {
@@ -29,7 +30,7 @@
 		/** Fahrzeuge im Verband ohne Gewicht — die zählen beim Sperren nicht mit. */
 		ohneGewicht?: number;
 		/** Stelle auf der Karte zeigen; fehlt er, bleibt der Kilometer reiner Text. */
-		onZeigen?: (lat: number, lon: number) => void;
+		onZeigen?: (lat: number, lon: number, linie?: number[][]) => void;
 	} = $props();
 
 	const STUFE: Record<GewichtsgrenzeEntry['stufe'], string> = {
@@ -73,10 +74,10 @@
 	const reserve = (t: number) => `${t >= 0 ? '+' : '−'}${Math.abs(t).toFixed(1).replace('.', ',')} t`;
 </script>
 
-{#snippet km(e: { km: number; lat: number; lon: number })}
+{#snippet km(e: { km: number; lat: number; lon: number; laenge_m?: number | null; linie?: number[][] | null })}
 	{@const text = `km ${e.km.toFixed(1).replace('.', ',')}`}
 	{#if onZeigen}
-		<button type="button" class="gg-km gg-zeigen" title="Auf der Karte zeigen" aria-label="{text} auf der Karte zeigen" onclick={() => onZeigen?.(e.lat, e.lon)}>📍 {text}</button>
+		<button type="button" class="gg-km gg-zeigen" title="Auf der Karte zeigen" aria-label="{text} auf der Karte zeigen" onclick={() => onZeigen?.(e.lat, e.lon, abschnittLinie(e))}>📍 {text}</button>
 	{:else}
 		<span class="gg-km">{text}</span>
 	{/if}
@@ -123,6 +124,7 @@
 								<li class="gg-eintrag" data-stufe={e.stufe}>
 									{@render km(e)}
 									<span class="gg-grenze">{e.art === 'achslast' ? `Achslast ${tonnen(e.grenze_t)}` : tonnen(e.grenze_t)}</span>
+									{#if abschnittText(e.laenge_m)}<span class="gg-blass gg-abschnitt">{abschnittText(e.laenge_m)}</span>{/if}
 									{#if e.reserve_t != null}<span>{reserve(e.reserve_t)}</span>{/if}
 									{#if e.ausnahme && AUSNAHME[e.ausnahme]}<span class="gg-blass">{AUSNAHME[e.ausnahme]}</span>{/if}
 									{#if STUFE[e.stufe]}<span class="gg-stufe">{STUFE[e.stufe]}</span>{/if}
