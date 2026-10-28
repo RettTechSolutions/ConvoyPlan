@@ -145,6 +145,7 @@ def halteplan(
     route_coords: list[list[float]],
     vehicle_count: int,
     geplante_halte: list[tuple] = (),
+    faehren: list[dict] = (),
 ) -> tuple[list[dict], list[dict]]:
     """
     Simuliert die Marschzeit und leitet daraus die empfohlenen Halte ab.
@@ -181,12 +182,21 @@ def halteplan(
     if route_duration_s <= TH_TRIGGER_S:
         return [], []
 
-    # Geplante Halte auf der Lenkzeit-Achse, wie die Vorschläge über den
-    # Streckenanteil umgerechnet.
+    # ``faehren`` (services/faehre.py): Auf See vergeht keine Lenkzeit, und die
+    # Überfahrt ist selbst ein Halt — ab 9 h eine Tagesruhe. Ohne Fähren ist die
+    # Achse die bisherige lineare Umrechnung über den Streckenanteil.
+    from app.services import faehre as faehre_svc
+
+    achse = faehre_svc.Zeitachse(route_km * 1000, route_duration_s, faehren)
+    halte_mit_faehren = [
+        *geplante_halte,
+        *((f["von_m"] / 1000, faehre_svc.als_halt_min(f), None) for f in faehren or []),
+    ]
+    # Geplante Halte auf der Lenkzeit-Achse.
     geplant = sorted(
         (
-            (g[0] / route_km * route_duration_s, g[1], g[2] if len(g) > 2 else None)
-            for g in geplante_halte
+            (achse.lenkzeit(g[0] * 1000), g[1], g[2] if len(g) > 2 else None)
+            for g in halte_mit_faehren
             if route_km > 0 and g[1] > 0
         ),
         key=lambda g: g[0],
@@ -235,7 +245,7 @@ def halteplan(
                         "waypoint_id": kennung,
                         "kind": art,
                         "duration_min": noetig,
-                        "faellig_km": round(faellig / route_duration_s * route_km, 1),
+                        "faellig_km": round(achse.meter_bei_lenkzeit(faellig) / 1000, 1),
                     })
             gefahren = max(0.0, bei - driven)
             driven += gefahren
@@ -258,7 +268,7 @@ def halteplan(
                 since_break = 0.0
             else:
                 continue
-            halts.append(_halt(driven, route_km, route_duration_s, route_coords, kind, duration, True))
+            halts.append(_halt(driven, achse, route_coords, kind, duration, True))
             continue
 
         driven += step
@@ -293,21 +303,21 @@ def halteplan(
         # Nach jedem Halt läuft das TH-Intervall neu an
         next_th = driven + TH_INTERVAL_S
 
-        halts.append(_halt(driven, route_km, route_duration_s, route_coords, kind, duration, covers_break))
+        halts.append(_halt(driven, achse, route_coords, kind, duration, covers_break))
 
     return halts, zusammengelegt
 
 
 def _halt(
     driven: float,
-    route_km: float,
-    route_duration_s: float,
+    achse: Any,
     route_coords: list[list[float]],
     kind: str,
     duration: int,
     covers_break: bool,
 ) -> dict:
-    km = round(driven / route_duration_s * route_km, 1)
+    # Fällt der Halt in eine Überfahrt, liegt er am Hafen davor.
+    km = round(achse.meter_bei_lenkzeit(driven) / 1000, 1)
     pos = interpolate_along_route(route_coords, km * 1000) if route_coords else None
     return {
         "stop_km": km,
@@ -326,6 +336,7 @@ def analyse_fuel(
     route_coords: list[list[float]],
     route_duration_s: float = 0,
     geplante_halte: list[tuple] = (),
+    faehren: list[dict] = (),
 ) -> dict:
     """
     Returns a fuel analysis dict.
@@ -341,7 +352,9 @@ def analyse_fuel(
     vehicle_count = len(convoy_vehicles)
 
     # Duration-based TH recommendations (independent of fuel)
-    dur_halts, zusammengelegt = halteplan(route_km, route_duration_s, route_coords, vehicle_count, geplante_halte)
+    dur_halts, zusammengelegt = halteplan(
+        route_km, route_duration_s, route_coords, vehicle_count, geplante_halte, faehren
+    )
 
     ranges = []
     for cv in convoy_vehicles:

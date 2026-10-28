@@ -91,8 +91,14 @@ def convoy_duration_s(
     speed_urban_kmh: int,
     speed_rural_kmh: int,
     max_speed_details: list | None = None,
+    ohne: list[tuple[int, int]] | None = None,
 ) -> int:
-    """Calculate convoy travel time using posted speed limits (preferred) or road class."""
+    """Calculate convoy travel time using posted speed limits (preferred) or road class.
+
+    ``ohne``: Koordinaten-Bereiche, die nicht gefahren werden — Fähren
+    (``services/faehre.py``). Ihre Dauer kommt von dort, als Reisezeit ohne
+    Lenkzeit; hier zählten sie sonst als Landstraße mit Tempo außerorts.
+    """
     speed_urban_kmh = max(1, speed_urban_kmh)
     speed_rural_kmh = max(1, speed_rural_kmh)
 
@@ -133,10 +139,17 @@ def convoy_duration_s(
             for i in range(from_i, min(to_i, n_segs)):
                 is_urban[i] = urban
 
+        auf_see = [False] * n_segs
+        for from_i, to_i in ohne or []:
+            for i in range(from_i, min(to_i, n_segs)):
+                auf_see[i] = True
+
         urban_dist = 0.0
         nonurban_dist = 0.0
         unknown_dist = 0.0
         for i in range(n_segs):
+            if auf_see[i]:
+                continue
             d = _haversine_m(coords[i][0], coords[i][1], coords[i + 1][0], coords[i + 1][1])
             flag = is_urban[i]
             if flag is True:
@@ -154,7 +167,8 @@ def convoy_duration_s(
     else:
         # No geometry details — fixed 70/30 split
         avg_speed = 0.7 * speed_rural_kmh + 0.3 * speed_urban_kmh
-        h = distance_m / 1000 / avg_speed
+        see_m = sum(_segment_dist_m(coords, a, b) for a, b in ohne or []) if n_coords >= 2 else 0.0
+        h = max(0.0, distance_m - see_m) / 1000 / avg_speed
     return max(1, int(h * 3600))
 
 
@@ -205,8 +219,14 @@ def _payload(
     vehicle_params: dict[str, Any] | None,
     road_preference: str,
     mit_gewicht: bool,
+    mit_faehre: bool = True,
 ) -> dict[str, Any]:
     details = ["road_class", "max_speed", "max_height"]
+    if mit_faehre:
+        # Fähren erkennen und ihre Dauer (aus dem OSM-Tag `duration`) nehmen —
+        # services/faehre.py. `time` ist GraphHoppers Pkw-Zeit je Kante und wird
+        # nur für die Fährkanten gelesen.
+        details += ["road_environment", "time"]
     if mit_gewicht:
         # Gewichts- und Achslastgrenzen als Hinweis (services/gewichtsgrenzen.py),
         # gesperrt wird wie bei der Höhe im Custom Model.
@@ -289,16 +309,23 @@ async def calculate_route(
     # Dann ohne Gewicht und Achslast routen statt gar nicht — die Liste bleibt
     # „nicht ermittelt".
     gewicht = True
-    try:
-        data = await _anfrage(_payload(points, vehicle_params, road_preference, True))
-    except (RoutingOutOfBoundsError, RoutingNoConnectionError):
-        raise
-    except ValueError as exc:
-        if "max_weight" not in str(exc) and "max_axle_load" not in str(exc):
+    faehre = True
+    while True:
+        try:
+            data = await _anfrage(_payload(points, vehicle_params, road_preference, gewicht, faehre))
+            break
+        except (RoutingOutOfBoundsError, RoutingNoConnectionError):
             raise
-        logger.warning("GraphHopper graph without max_weight/max_axle_load — routing without weight limits")
-        gewicht = False
-        data = await _anfrage(_payload(points, vehicle_params, road_preference, False))
+        except ValueError as exc:
+            if gewicht and ("max_weight" in str(exc) or "max_axle_load" in str(exc)):
+                logger.warning("GraphHopper graph without max_weight/max_axle_load — routing without weight limits")
+                gewicht = False
+            elif faehre and "road_environment" in str(exc):
+                # Ohne Fährerkennung routen statt gar nicht; die Liste bleibt „nicht ermittelt".
+                logger.warning("GraphHopper graph without road_environment — routing without ferry detection")
+                faehre = False
+            else:
+                raise
 
     path = data["paths"][0]
     details = path.get("details", {})
@@ -313,6 +340,9 @@ async def calculate_route(
         "max_weight_details": details.get("max_weight", []) if gewicht else None,
         "max_weight_except_details": details.get("max_weight_except", []) if gewicht else None,
         "max_axle_load_details": details.get("max_axle_load", []) if gewicht else None,
+        # None: nicht ermittelt (Graph ohne road_environment) — nicht dasselbe wie [].
+        "road_environment_details": details.get("road_environment", []) if faehre else None,
+        "time_details": details.get("time", []) if faehre else None,
         "instructions": compact_instructions(
             path.get("instructions", []), path["points"].get("coordinates", [])
         ),

@@ -22,7 +22,7 @@
 		convoysApi, vehiclesApi, orgsApi, overpassApi, trafficApi, authApi, mfaApi,
 		type Convoy, type Vehicle, type Organization, type OrgMember,
 		type FuelAnalysis, type FuelStation, type Waypoint, type RoadPreference,
-		type KanalwechselEntry, type ConvoyVehicleItem, type DurchfahrtshoeheEntry, type RouteResult, type BrueckenPruefung, type GewichtsgrenzeEntry,
+		type KanalwechselEntry, type ConvoyVehicleItem, type DurchfahrtshoeheEntry, type RouteResult, type BrueckenPruefung, type GewichtsgrenzeEntry, type FaehreEntry,
 	} from '$lib/api';
 	import { MAX_JE_ROLLE, formatStaerke, gesamt, sollAus } from '$lib/tracking/staerke';
 
@@ -56,7 +56,7 @@
 	// changes on every recalculation (avoids issues with the `unknown` type not
 	// being deeply proxied, which prevented the map from updating on re-clicks).
 	let routeGeojson = $state<Geometry | null>(null);
-	let route = $state<{ distance_m: number | null; duration_s: number | null; fuel_analysis: FuelAnalysis | null; kanalwechsel: KanalwechselEntry[]; durchfahrtshoehen: DurchfahrtshoeheEntry[] | null; bruecken: BrueckenPruefung | null; fahrzeughoehe_m: number | null; gewichtsgrenzen: GewichtsgrenzeEntry[] | null; fahrzeuggewicht_t: number | null; achslast_t: number | null; planned_departure?: string | null; planned_arrival?: string | null } | null>(null);
+	let route = $state<{ distance_m: number | null; duration_s: number | null; fuel_analysis: FuelAnalysis | null; kanalwechsel: KanalwechselEntry[]; durchfahrtshoehen: DurchfahrtshoeheEntry[] | null; bruecken: BrueckenPruefung | null; fahrzeughoehe_m: number | null; gewichtsgrenzen: GewichtsgrenzeEntry[] | null; faehren?: FaehreEntry[] | null; fahrzeuggewicht_t: number | null; achslast_t: number | null; planned_departure?: string | null; planned_arrival?: string | null } | null>(null);
 	let fuelStations = $state<FuelStation[]>([]);
 	let showFuelStations = $state(false);
 	let fuelStationsLoading = $state(false);
@@ -371,6 +371,7 @@
 				bruecken: r.bruecken ?? null,
 				fahrzeughoehe_m: fahrzeughoehe(r),
 				gewichtsgrenzen: r.gewichtsgrenzen ?? null,
+				faehren: r.faehren ?? null,
 				fahrzeuggewicht_t: fahrzeuggewicht(r),
 				achslast_t: achslast(r),
 				planned_departure: r.planned_departure ?? null,
@@ -1033,7 +1034,7 @@
 		try {
 			const r = await convoysApi.calculateRoute(selected.id);
 			routeGeojson = r.geojson;
-			route = { distance_m: r.distance_m, duration_s: r.duration_s, fuel_analysis: r.fuel_analysis, kanalwechsel: r.kanalwechsel ?? [], durchfahrtshoehen: r.durchfahrtshoehen ?? null, bruecken: null, fahrzeughoehe_m: fahrzeughoehe(r), gewichtsgrenzen: r.gewichtsgrenzen ?? null, fahrzeuggewicht_t: fahrzeuggewicht(r), achslast_t: achslast(r), planned_departure: r.planned_departure ?? null, planned_arrival: r.planned_arrival ?? null };
+			route = { distance_m: r.distance_m, duration_s: r.duration_s, fuel_analysis: r.fuel_analysis, kanalwechsel: r.kanalwechsel ?? [], durchfahrtshoehen: r.durchfahrtshoehen ?? null, bruecken: null, fahrzeughoehe_m: fahrzeughoehe(r), gewichtsgrenzen: r.gewichtsgrenzen ?? null, faehren: r.faehren ?? null, fahrzeuggewicht_t: fahrzeuggewicht(r), achslast_t: achslast(r), planned_departure: r.planned_departure ?? null, planned_arrival: r.planned_arrival ?? null };
 			fuelStations = [];
 			showFuelStations = false;
 			activeRoute.set(r);
@@ -1754,6 +1755,26 @@
 										{/each}
 									</ul>
 								</div>
+							{/if}
+							{#if route.faehren?.length}
+								<section class="th-warning faehren" aria-label="Fähren">
+									<p class="th-title">⛴ {route.faehren.length === 1 ? 'Fähre' : 'Fähren'}</p>
+									<ul class="th-list">
+										{#each route.faehren as f}
+											{@const min = Math.round(f.dauer_s / 60)}
+											<li class="th-item">
+												<div>
+													<button type="button" class="faehre-zeigen" aria-label={`Fähre bei km ${f.km} auf der Karte zeigen`} onclick={() => zeigeStelle(f.lat, f.lon)}>📍 km {String(f.km).replace('.', ',')}</button>
+													· {String(f.laenge_km).replace('.', ',')} km · <strong>{formatHaltDuration(min)}</strong>{f.geschaetzt ? ' (geschätzt)' : ''}
+													<span class="th-after">
+														{#if min >= 540}zählt als Tagesruhe – nur mit Schlafkabine (Art. 9 VO 561/2006){:else if min >= 45}zählt als Lenkpause{:else}zählt als Technischer Halt{/if}
+													</span>
+												</div>
+											</li>
+										{/each}
+									</ul>
+									<p class="th-detail">Auf See vergeht Reisezeit, aber keine Lenkzeit. Die Überfahrt ist im Zeitplan enthalten{route.faehren.some((f) => f.geschaetzt) ? '; ohne Fahrplandauer in OpenStreetMap ist sie mit 25 km/h geschätzt' : ''}.</p>
+								</section>
 							{/if}
 							<DurchfahrtsHoehen
 								eintraege={route.durchfahrtshoehen}
@@ -2821,6 +2842,7 @@
 	/* Gelb wie „knapp": nichts ist falsch, aber es ist zu tun. */
 	.th-warning.neu-verteilen { background: rgba(241,196,15,.12); border-color: rgba(241,196,15,.45); }
 	.th-warning.neu-verteilen .btn-small { align-self: flex-start; }
+	.faehre-zeigen { background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
 	.th-warning p { margin: 0; font-size: .83rem; }
 	.th-title { font-weight: 700; font-size: .88rem; color: #7fbde8; }
 	.th-detail { color: rgba(255,255,255,.8); }

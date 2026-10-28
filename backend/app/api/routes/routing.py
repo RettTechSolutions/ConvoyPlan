@@ -37,6 +37,7 @@ from app.services import marschbefehl_vorlage as vorlage_svc
 from app.services import pdf as pdf_svc
 from app.services import roadbook as roadbook_svc
 from app.services import static_map as static_map_svc
+from app.services import faehre as faehre_svc
 from app.services import fuel as fuel_svc
 from app.services import halte_vorschlag
 from app.services import overpass as overpass_svc
@@ -113,21 +114,34 @@ _EIGENE_ART = {
 }
 
 
-def _halteanalyse(convoy: Convoy, distance_m: float, route_coords: list[list[float]], duration_s: float) -> dict:
-    """``analyse_fuel`` mit den geplanten Halten — eine Stelle für Ansicht und Ausdruck."""
+def _halteanalyse(
+    convoy: Convoy,
+    distance_m: float,
+    route_coords: list[list[float]],
+    duration_s: float,
+    faehren: list[dict] | None = None,
+) -> dict:
+    """``analyse_fuel`` mit den geplanten Halten — eine Stelle für Ansicht und Ausdruck.
+
+    *duration_s* ist die Reisezeit der Route; die Überfahrten (*faehren*) sind
+    darin enthalten, zählen aber nicht als Lenkzeit (services/faehre.py).
+    """
+    faehren = faehren or []
+    lenkzeit_s = max(0.0, duration_s - faehre_svc.dauer_gesamt_s(faehren))
     analyse = fuel_svc.analyse_fuel(
         convoy.convoy_vehicles,
         distance_m,
         route_coords,
-        route_duration_s=duration_s,
+        route_duration_s=lenkzeit_s,
         geplante_halte=_geplante_halte(convoy.waypoints, route_coords),
+        faehren=faehren,
     )
     by_id = {str(wp.id): wp for wp in convoy.waypoints}
     analyse["zusammengelegt"] = [
         z for z in analyse["zusammengelegt"]
         if not ((wp := by_id.get(z["waypoint_id"])) and _EIGENE_ART[z["kind"]](wp))
     ]
-    veraltet, fehlend = _vorschlaege_abgleichen(convoy, distance_m, route_coords, duration_s)
+    veraltet, fehlend = _vorschlaege_abgleichen(convoy, distance_m, route_coords, lenkzeit_s, faehren)
     analyse["neu_verteilen"] = (
         {"veraltet": veraltet, "neu": len(fehlend)} if veraltet else None
     )
@@ -135,7 +149,11 @@ def _halteanalyse(convoy: Convoy, distance_m: float, route_coords: list[list[flo
 
 
 def _vorschlaege_abgleichen(
-    convoy: Convoy, distance_m: float, route_coords: list[list[float]], duration_s: float
+    convoy: Convoy,
+    distance_m: float,
+    route_coords: list[list[float]],
+    duration_s: float,
+    faehren: list[dict] | None = None,
 ) -> tuple[list[str], list[dict]]:
     """Passen die übernommenen Halte-Vorschläge noch zur Route?
 
@@ -160,7 +178,7 @@ def _vorschlaege_abgleichen(
         [wp for wp in convoy.waypoints if not getattr(wp, "vorschlag_art", None)], route_coords
     )
     frisch, _ = fuel_svc.halteplan(
-        route_km, duration_s, route_coords, len(convoy.convoy_vehicles), fest
+        route_km, duration_s, route_coords, len(convoy.convoy_vehicles), fest, faehren or []
     )
     return halte_vorschlag.abgleich(
         frisch, uebernommen, halte_vorschlag.toleranz_km(route_km, duration_s)
@@ -177,7 +195,7 @@ def _zusammengelegte_halte(convoy: Convoy, route: Route | None, route_coords: li
         return {}
     # Beiwerk wie die Karte: ohne Vermerk gibt es trotzdem einen Ausdruck.
     try:
-        analyse = _halteanalyse(convoy, route.distance_m, route_coords, route.duration_s or 0)
+        analyse = _halteanalyse(convoy, route.distance_m, route_coords, route.duration_s or 0, getattr(route, "faehren", None))
     except Exception:
         logger.exception("Halte-Vermerke für den Ausdruck fehlgeschlagen (Konvoi %s)", getattr(convoy, "id", "?"))
         return {}
@@ -515,7 +533,7 @@ async def get_route(
     fuel_analysis = None
     if route.distance_m is not None:
         route_coords = geojson["coordinates"] if geojson else []
-        fuel_analysis = _halteanalyse(convoy, route.distance_m, route_coords, route.duration_s or 0)
+        fuel_analysis = _halteanalyse(convoy, route.distance_m, route_coords, route.duration_s or 0, getattr(route, "faehren", None))
 
     # Departure + destination ETA, recomputed so a reloaded route shows the same
     # total arrival as right after calculation (drive time + all waypoint holds).
@@ -534,6 +552,7 @@ async def get_route(
         durchfahrtshoehen=route.durchfahrtshoehen,
         bruecken=route.bruecken,
         gewichtsgrenzen=route.gewichtsgrenzen,
+        faehren=route.faehren,
         planned_departure=route_planned_departure,
         planned_arrival=route_planned_arrival,
     )
@@ -622,6 +641,14 @@ async def calculate_route(
     if len(coords) < 2:
         logger.error("Routing returned invalid geometry for convoy %s (%d coords)", convoy_id, len(coords))
         raise HTTPException(status_code=502, detail="Routing-Dienst lieferte keine gültige Routengeometrie")
+    # Fähren: Reisezeit ohne Lenkzeit (services/faehre.py). None = der Graph
+    # kennt road_environment nicht — dann rechnet alles wie bisher.
+    env_details = route_data.get("road_environment_details")
+    faehren = (
+        None if env_details is None
+        else faehre_svc.abschnitte(env_details, route_data.get("time_details") or [], coords)
+    )
+    see = faehre_svc.index_bereiche(env_details or [])
     try:
         convoy_duration_s = routing_svc.convoy_duration_s(
             route_data["distance_m"],
@@ -630,6 +657,7 @@ async def calculate_route(
             convoy.speed_urban_kmh,
             convoy.speed_rural_kmh,
             max_speed_details=route_data.get("max_speed_details", []),
+            ohne=see,
         )
     except Exception as exc:
         logger.warning("Duration calculation failed, falling back: %s", exc)
@@ -639,7 +667,11 @@ async def calculate_route(
             route_data.get("road_class_details", []),
             convoy.speed_urban_kmh,
             convoy.speed_rural_kmh,
+            ohne=see,
         )
+    # Lenkzeit an Land; gespeichert wird die Reisezeit mit den Überfahrten.
+    lenkzeit_s = convoy_duration_s
+    convoy_duration_s = lenkzeit_s + faehre_svc.dauer_gesamt_s(faehren)
 
     # Abbiegehinweise fürs Roadbook. Die Wegpunkt-IDs kommen hier dazu, weil nur
     # hier feststeht, welcher Zwischenpunkt welcher war (services/roadbook.py).
@@ -684,6 +716,7 @@ async def calculate_route(
         route.durchfahrtshoehen = durchfahrtshoehen
         route.schnellstrassen = schnellstrassen
         route.gewichtsgrenzen = gewichtsgrenzen
+        route.faehren = faehren
         # Gesucht wurde an der alten Linie.
         route.bruecken = None
     else:
@@ -697,6 +730,7 @@ async def calculate_route(
             durchfahrtshoehen=durchfahrtshoehen,
             schnellstrassen=schnellstrassen,
             gewichtsgrenzen=gewichtsgrenzen,
+            faehren=faehren,
         )
         db.add(route)
 
@@ -736,9 +770,15 @@ async def calculate_route(
             for cum in cumulative:
                 seg_distances.append(max(0.0, cum - prev))
                 prev = cum
-            seg_durations = schedule_svc.split_duration_by_distance(
-                convoy_duration_s, seg_distances, total_distance_m
-            )
+            if faehren:
+                # Die Überfahrt gehört in das Teilstück, das über die Fähre führt.
+                seg_durations = faehre_svc.Zeitachse(
+                    total_distance_m, lenkzeit_s, faehren
+                ).abschnittszeiten(cumulative)
+            else:
+                seg_durations = schedule_svc.split_duration_by_distance(
+                    convoy_duration_s, seg_distances, total_distance_m
+                )
             schedule = schedule_svc.calculate_schedule(waypoints_sorted, start_dt, seg_durations)
             for item, wp in zip(schedule, waypoints_sorted):
                 wp.planned_arrival = item["planned_arrival"]
@@ -763,7 +803,7 @@ async def calculate_route(
     await db.commit()
 
     # Fuel analysis
-    fuel_analysis = _halteanalyse(convoy, route_data["distance_m"], route_coords, convoy_duration_s)
+    fuel_analysis = _halteanalyse(convoy, route_data["distance_m"], route_coords, convoy_duration_s, faehren)
 
     return {
         "id": route.id,
@@ -777,6 +817,7 @@ async def calculate_route(
         "durchfahrtshoehen": durchfahrtshoehen,
         "bruecken": None,
         "gewichtsgrenzen": gewichtsgrenzen,
+        "faehren": faehren,
         "planned_departure": route_planned_departure,
         "planned_arrival": route_planned_arrival,
     }
@@ -814,7 +855,11 @@ async def halte_neu_verteilen(
         raise HTTPException(status_code=409, detail="Noch keine Route berechnet")
     route_coords = line["coordinates"]
 
-    veraltet, fehlend = _vorschlaege_abgleichen(convoy, route.distance_m, route_coords, route.duration_s or 0)
+    faehren = route.faehren or []
+    veraltet, fehlend = _vorschlaege_abgleichen(
+        convoy, route.distance_m, route_coords,
+        max(0.0, (route.duration_s or 0) - faehre_svc.dauer_gesamt_s(faehren)), faehren,
+    )
     if not veraltet:
         return {"entfernt": 0, "hinzugefuegt": 0}
 

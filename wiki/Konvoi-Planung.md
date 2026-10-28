@@ -93,6 +93,15 @@ Dabei gilt:
 
 Jeder empfohlene Halt zeigt in der Planungsansicht seine Art, die Haltedauer und die kumulierte Lenkzeit bis zu diesem Punkt an. Die empfohlenen Positionen werden auf der Route interpoliert und können per Klick als Wegpunkte übernommen werden.
 
+### Fähren
+
+Führt die Route über eine Fähre, erkennt ConvoyPlan die Überfahrt aus den Kartendaten und zeigt sie im Tab **Route** im Block **Fähre** mit Kilometer, Länge und Dauer. Die Dauer stammt aus der Fahrplanangabe der Fährlinie in OpenStreetMap; fehlt sie oder ist sie unplausibel, wird mit 25 km/h geschätzt und „(geschätzt)" dazugeschrieben.
+
+- **Auf See vergeht keine Lenkzeit.** Die Strecke über das Wasser zählt nicht als Fahrt; die Dauer der Überfahrt steht aber im Zeitplan und in der Ankunftszeit.
+- **Kein Halt auf dem Wasser.** Wäre ein Halt während der Überfahrt fällig, liegt er am Hafen davor.
+- **Die Überfahrt ist selbst ein Halt:** ab 45 Minuten als Lenkpause, ab **9 Stunden als Tagesruhe**. Das ist die reduzierte Tagesruhezeit der VO (EG) 561/2006; an Bord gilt sie nur mit **Schlafkabine** (Art. 9). Ob der Verband Kabinen gebucht hat, weiß die Planung nicht — ohne Kabine ist vor oder nach der Fähre eine Tagesruhe einzuplanen.
+- Routen, die vor dieser Funktion berechnet wurden, rechnen wie bisher, bis sie neu berechnet werden.
+
 ### Nach einer Umplanung: Halte neu verteilen
 
 Ein übernommener Halt steht dort, wo er für die Route **zum Zeitpunkt der Übernahme** fällig war. Ändert sich die Route danach — anderer Weg, weil Höhe oder Gewicht sperren, ein zusätzlicher Wegpunkt —, kann er zu spät kommen. Die Empfehlung legt dann einen neuen Halt davor, und ohne Eingreifen stünden zwei Tagesruhezeiten kurz hintereinander in der Planung.

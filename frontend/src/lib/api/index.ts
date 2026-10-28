@@ -169,6 +169,21 @@ export interface DurchfahrtshoeheEntry {
 	stufe: 'eng' | 'knapp' | 'frei' | 'unbekannt';
 }
 
+/** Eine Fährüberfahrt: Reisezeit ohne Lenkzeit, zählt als Halt (Backend: services/faehre.py). */
+export interface FaehreEntry {
+	km: number;
+	von_m: number;
+	bis_m: number;
+	laenge_km: number;
+	dauer_s: number;
+	lat: number;
+	lon: number;
+	ziel_lat: number;
+	ziel_lon: number;
+	/** Dauer aus der Länge geschätzt, weil OpenStreetMap keine passende nennt. */
+	geschaetzt: boolean;
+}
+
 /** Gewichtsgrenze entlang der Route (Backend: services/gewichtsgrenzen.py). */
 export interface GewichtsgrenzeEntry {
 	km: number;
@@ -217,6 +232,8 @@ export interface RouteResult {
 	bruecken?: BrueckenPruefung | null;
 	/** null: nicht ermittelt (alte Route, Import, Graph ohne max_weight); []: keine bekannte Grenze. */
 	gewichtsgrenzen?: GewichtsgrenzeEntry[] | null;
+	/** Fährüberfahrten (Backend: services/faehre.py); null: nicht ermittelt. duration_s enthält sie. */
+	faehren?: FaehreEntry[] | null;
 	/** Abmarschzeit (ISO), auf derselben Zeitbasis wie die Wegpunkt-Zeiten. */
 	planned_departure?: string | null;
 	/** Geplante Ankunft am Ziel (ISO); Abmarsch + Fahrzeit + Haltezeiten. */

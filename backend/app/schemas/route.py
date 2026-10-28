@@ -42,6 +42,21 @@ class ZusammengelegterHalt(BaseModel):
     faellig_km: float
 
 
+class FaehreEntry(BaseModel):
+    """Eine Fährüberfahrt auf der Route (services/faehre.py)."""
+    km: float
+    von_m: int
+    bis_m: int
+    laenge_km: float
+    dauer_s: int
+    lat: float
+    lon: float
+    ziel_lat: float
+    ziel_lon: float
+    # Dauer aus Länge und ERSATZ_KMH geschätzt, weil GraphHopper keine passende kannte.
+    geschaetzt: bool = False
+
+
 class NeuVerteilen(BaseModel):
     """Übernommene Halte, die nach einer neuen Route nicht mehr passen
     (``services/halte_vorschlag.py``). ``neu`` zählt die Halte, die das
@@ -152,6 +167,8 @@ class RouteResponse(BaseModel):
     bruecken: BrueckenPruefung | None = None
     # None = nicht ermittelt, [] = keine bekannte Gewichtsgrenze.
     gewichtsgrenzen: list[GewichtsgrenzeEntry] | None = None
+    # None = nicht ermittelt, [] = keine Fähre. duration_s enthält die Überfahrten.
+    faehren: list[FaehreEntry] | None = None
     # Abmarschzeit und geplante Ankunft am Ziel. Beide werden auf derselben
     # Zeitbasis wie die Wegpunkt-Zeiten berechnet, damit der Zeitplan konsistent
     # dargestellt wird. planned_arrival = Abmarsch + Fahrzeit + alle Haltezeiten.
