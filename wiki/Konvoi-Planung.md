@@ -36,6 +36,22 @@ Die Routenberechnung deckt standardmäßig den gesamten DACH-Raum ab (Deutschlan
 
 Für jeden Wegpunkt kann eine **Haltedauer** (Minuten) sowie eine **Notiz** erfasst werden.
 
+### Route auf eine andere Straße ziehen
+Wie bei Google Maps: Mit der Maus über die berechnete Route fahren, bis die
+Hand erscheint, die Linie greifen und auf die gewünschte Straße ziehen. Beim
+Loslassen entsteht dort ein Wegpunkt, und die Route wird neu berechnet.
+
+Der Wegpunkt kommt nicht ans Ende der Liste, sondern **zwischen die beiden
+Wegpunkte, zwischen denen das gegriffene Stück lag** — die gestrichelte
+Vorschau zeigt beim Ziehen genau diese beiden Nachbarn. Name, Typ und
+Haltedauer lassen sich danach im Reiter *Wegpunkte* ändern.
+
+- `Esc` während des Ziehens bricht ab, ein bloßer Klick auf die Route legt nichts an.
+- Nur mit der Maus: Am Telefon verschiebt dieselbe Geste die Karte. Dort
+  legt langes Drücken → *Wegpunkt hier anlegen* einen Punkt an (er landet am
+  Listenende und lässt sich in der Liste an seinen Platz ziehen).
+- Beobachter können die Route nicht ziehen.
+
 ### Routing-Präferenz
 Wähle im Konvoi-Menü die bevorzugte Streckenführung:
 

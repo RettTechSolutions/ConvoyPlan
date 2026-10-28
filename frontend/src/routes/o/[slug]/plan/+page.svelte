@@ -41,6 +41,7 @@
 	import RouteHinweisMarke from '$lib/components/RouteHinweisMarke.svelte';
 	import { routeHinweise } from '$lib/route/hinweise';
 	import { vermerkeJeWegpunkt, vermerkText } from '$lib/route/halte';
+	import { einordnen, linienpunkte } from '$lib/route/einfuegen';
 	import HaltVermerk from '$lib/components/HaltVermerk.svelte';
 	import { tutorialStore } from '$lib/stores/tutorial';
 	import QRCode from 'qrcode';
@@ -717,6 +718,41 @@
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Wegpunkt konnte nicht angelegt werden';
 		}
+	}
+
+	// Route auf der Karte auf eine andere Straße gezogen: ein Wegpunkt dort, an
+	// der Stelle der Liste, zwischen deren Nachbarn das gegriffene Stück lag
+	// (`$lib/route/einfuegen.ts`), danach gleich die neue Route.
+	const darfRouteZiehen = $derived($orgStore?.user_role !== 'beobachter');
+
+	function routeEinordnen(griff: { lat: number; lon: number }) {
+		return einordnen(
+			linienpunkte(routeGeojson),
+			selected?.waypoints ?? [],
+			griff,
+			selected?.start_point ?? null,
+			selected?.end_point ?? null,
+		);
+	}
+
+	async function routeGezogen(griff: { lat: number; lon: number }, ziel: { lat: number; lon: number }) {
+		if (!selected) return;
+		const { order_index } = routeEinordnen(griff);
+		try {
+			await convoysApi.createWaypoint(selected.id, {
+				name: `WP ${selected.waypoints.length + 1}`,
+				type: 'waypoint',
+				lat: ziel.lat,
+				lon: ziel.lon,
+				hold_duration_min: 0,
+				order_index,
+			});
+			await refreshConvoy();
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Wegpunkt konnte nicht angelegt werden';
+			return;
+		}
+		await calculateRoute();
 	}
 
 	function wegpunktEintraege(wp: Waypoint): Eintraege {
@@ -2339,6 +2375,8 @@
 		<MapView
 			bind:this={mapView}
 			onKontextmenue={kartenMenue}
+			onRouteZiehen={darfRouteZiehen && routeGeojson && !loading ? routeGezogen : undefined}
+			routeZiehenNachbarn={(griff) => routeEinordnen(griff)}
 			startPoint={selected?.start_point}
 			endPoint={selected?.end_point}
 			waypoints={selected?.waypoints ?? []}

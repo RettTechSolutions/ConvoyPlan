@@ -22,7 +22,7 @@
 	import { wennStilBereit } from '$lib/map/stilBereit';
 	import { konvoiAusschnitt } from '$lib/map/konvoiAusschnitt';
 	import type { Waypoint, VehiclePosition } from '$lib/api';
-	import type { Geometry, FeatureCollection } from 'geojson';
+	import type { Geometry, Feature, FeatureCollection } from 'geojson';
 	import { positionsZeile, type BlasenZeile } from '$lib/tracking/fahrzeugblase';
 
 	interface Props {
@@ -57,6 +57,15 @@
 		 * bleibt es beim Verhalten des Browsers.
 		 */
 		onKontextmenue?: (ort: KartenKontext) => void;
+		/**
+		 * Route mit der Maus greifen und auf eine andere Straße ziehen, wie bei
+		 * Google Maps: *griff* ist die Stelle auf der Linie, *ziel* die, an der
+		 * losgelassen wurde. Die Vorschau bleibt stehen, bis das Versprechen
+		 * erfüllt ist. Ohne Angabe ist die Linie nicht greifbar.
+		 */
+		onRouteZiehen?: (griff: { lat: number; lon: number }, ziel: { lat: number; lon: number }) => Promise<void> | void;
+		/** Die Nachbarn des Griffs auf der Strecke — die Enden des Gummibands in der Vorschau. */
+		routeZiehenNachbarn?: (griff: { lat: number; lon: number }) => { vor: { lat: number; lon: number } | null; nach: { lat: number; lon: number } | null };
 	}
 
 	let {
@@ -78,6 +87,8 @@
 		headingUp = false,
 		vehicleInfo = new Map(),
 		onKontextmenue,
+		onRouteZiehen,
+		routeZiehenNachbarn,
 	}: Props = $props();
 
 	const DEFAULT_MARKER_COLOR = '#e74c3c';
@@ -221,6 +232,31 @@
 				layout: { 'line-join': 'round', 'line-cap': 'round' },
 				paint: { 'line-color': '#e74c3c', 'line-width': 4 },
 			});
+			// Unsichtbar und breiter als die Linie: die Fläche, an der man sie greift.
+			map.addLayer({
+				id: 'route-griff',
+				type: 'line',
+				source: 'route',
+				layout: { 'line-join': 'round', 'line-cap': 'round' },
+				paint: { 'line-color': '#000', 'line-width': 18, 'line-opacity': 0 },
+			});
+			// Vorschau beim Ziehen: Gummiband zu den Nachbarn und der Punkt unter dem Zeiger.
+			map.addSource('route-ziehen', { type: 'geojson', data: empty() });
+			map.addLayer({
+				id: 'route-ziehen-linie',
+				type: 'line',
+				source: 'route-ziehen',
+				filter: ['==', '$type', 'LineString'],
+				paint: { 'line-color': '#e74c3c', 'line-width': 3, 'line-dasharray': [2, 1.5], 'line-opacity': 0.85 },
+			});
+			map.addLayer({
+				id: 'route-ziehen-punkt',
+				type: 'circle',
+				source: 'route-ziehen',
+				filter: ['==', '$type', 'Point'],
+				paint: { 'circle-radius': 6, 'circle-color': '#fff', 'circle-stroke-color': '#e74c3c', 'circle-stroke-width': 2.5 },
+			});
+			routeZiehenVerdrahten();
 
 			// Sperrungen layer — Farbe nach Schweregrad: rot = Voll-/Sperrung,
 			// gelb = Verkehrswarnung (Unfall/Hindernis), orange = Baustelle.
@@ -264,7 +300,110 @@
 		});
 	});
 
-	onDestroy(() => map?.remove());
+	onDestroy(() => {
+		ziehenAbbrechen();
+		map?.remove();
+	});
+
+	// ── Route ziehen ────────────────────────────────────────────────────
+	// Nur mit der Maus: am Telefon ist dieselbe Geste das Verschieben der
+	// Karte. Dort bleibt „Wegpunkt hier anlegen" im Kontextmenü (langes Drücken).
+
+	type Ort = { lat: number; lon: number };
+	let ziehen: { griff: Ort; x: number; y: number; vor: Ort | null; nach: Ort | null; bewegt: boolean } | null = null;
+	/** Zwischen Loslassen und erfülltem `onRouteZiehen` — kein zweiter Griff. */
+	let ziehenLaeuft = false;
+
+	function routeGreifbar(): boolean {
+		return !!onRouteZiehen && !ziehenLaeuft && get(mapMode) === 'idle';
+	}
+
+	function zeigeZiehen(zeiger: Ort | null) {
+		const src = map?.getSource('route-ziehen') as maplibregl.GeoJSONSource | undefined;
+		if (!src) return;
+		const features: Feature[] = [];
+		if (zeiger) {
+			const pt = (o: Ort) => [o.lon, o.lat];
+			if (ziehen?.bewegt) {
+				const band = [ziehen.vor, zeiger, ziehen.nach].filter((o): o is Ort => !!o).map(pt);
+				if (band.length < 2) band.unshift(pt(ziehen.griff));
+				features.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: band }, properties: {} });
+			}
+			features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: pt(zeiger) }, properties: {} });
+		}
+		src.setData({ type: 'FeatureCollection', features });
+	}
+
+	function ortUnterZeiger(e: MouseEvent): Ort {
+		const r = map.getCanvas().getBoundingClientRect();
+		const ll = map.unproject([e.clientX - r.left, e.clientY - r.top]);
+		return { lat: ll.lat, lon: ll.lng };
+	}
+
+	function ziehenBewegen(e: MouseEvent) {
+		if (!ziehen) return;
+		if (!ziehen.bewegt && Math.hypot(e.clientX - ziehen.x, e.clientY - ziehen.y) < 5) return;
+		ziehen.bewegt = true;
+		zeigeZiehen(ortUnterZeiger(e));
+	}
+
+	async function ziehenEnde(e: MouseEvent) {
+		const z = ziehen;
+		ziehen = null;
+		ziehenLoesen();
+		if (!z?.bewegt || !onRouteZiehen) { ziehenAbbrechen(); return; }
+		ziehenLaeuft = true;
+		try {
+			await onRouteZiehen(z.griff, ortUnterZeiger(e));
+		} finally {
+			ziehenLaeuft = false;
+			zeigeZiehen(null);
+		}
+	}
+
+	function ziehenTaste(e: KeyboardEvent) {
+		if (e.key === 'Escape') ziehenAbbrechen();
+	}
+
+	function ziehenLoesen() {
+		window.removeEventListener('mousemove', ziehenBewegen);
+		window.removeEventListener('mouseup', ziehenEnde);
+		window.removeEventListener('keydown', ziehenTaste);
+		if (map) map.getCanvas().style.cursor = '';
+	}
+
+	function ziehenAbbrechen() {
+		ziehenLoesen();
+		ziehen = null;
+		zeigeZiehen(null);
+	}
+
+	function routeZiehenVerdrahten() {
+		// Über der Linie: Hand und ein Punkt, an dem man anfasst.
+		map.on('mousemove', 'route-griff', (e) => {
+			if (ziehen || !routeGreifbar()) return;
+			map.getCanvas().style.cursor = 'grab';
+			zeigeZiehen({ lat: e.lngLat.lat, lon: e.lngLat.lng });
+		});
+		map.on('mouseleave', 'route-griff', () => {
+			if (ziehen || ziehenLaeuft) return;
+			map.getCanvas().style.cursor = get(mapMode) !== 'idle' ? 'crosshair' : '';
+			zeigeZiehen(null);
+		});
+		map.on('mousedown', 'route-griff', (e) => {
+			if (!routeGreifbar() || e.originalEvent.button !== 0) return;
+			// Hält MapLibre davon ab, mit derselben Bewegung die Karte zu verschieben.
+			e.preventDefault();
+			const griff = { lat: e.lngLat.lat, lon: e.lngLat.lng };
+			const nachbarn = routeZiehenNachbarn?.(griff) ?? { vor: null, nach: null };
+			ziehen = { griff, x: e.originalEvent.clientX, y: e.originalEvent.clientY, ...nachbarn, bewegt: false };
+			map.getCanvas().style.cursor = 'grabbing';
+			// Am Fenster, nicht an der Karte: losgelassen wird auch mal daneben.
+			window.addEventListener('mousemove', ziehenBewegen);
+			window.addEventListener('mouseup', ziehenEnde);
+			window.addEventListener('keydown', ziehenTaste);
+		});
+	}
 
 	function empty(): FeatureCollection {
 		return { type: 'FeatureCollection', features: [] };

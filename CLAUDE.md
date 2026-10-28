@@ -227,6 +227,14 @@ Migration steht aus demselben Grund als Funktion daneben und nicht in einer
 `WHERE`-Bedingung (`tests/test_wegpunkt_platzierung_migration.py`, wie bei
 `0039`): er entscheidet über Bestandsdaten.
 
+**Route auf der Karte ziehen** (wie bei Google Maps) legt einen Wegpunkt *zwischen*
+zwei bestehende: `$lib/route/einfuegen.ts` bestimmt den Platz aus der Lage des Griffs
+auf der aktuellen Route (vorgeschlagene Halte sind keine Bezugspunkte), und
+`POST …/waypoints` mit **ausdrücklichem** `order_index` rückt alle ab dieser Stelle
+eins weiter. Nicht über den Reorder-Weg — der platzierte jeden wartenden Vorschlag
+mit. Ohne `order_index` im Körper verschiebt das Anlegen nichts. Tests:
+`tests/test_wegpunkt_reihenfolge.py` (Einfügen), `frontend/e2e/route-ziehen.spec.ts`.
+
 Die Kilometrierung für den Zeitplan kommt weiter aus der Projektion, sortiert aber
 nichts mehr um. Sie wird monoton gehalten (`cumulative_along_route`): wo die Route
 ein Stück doppelt befährt, trifft die Suche nach dem nächsten Streckenpunkt sonst
