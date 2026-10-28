@@ -21,7 +21,7 @@ from app.schemas.convoy import (
     UpdateVehicleInConvoyRequest,
 )
 from app.schemas.waypoint import WaypointCreate, WaypointReorderItem, WaypointResponse, WaypointUpdate
-from app.services import audit
+from app.services import audit, halte_vorschlag
 from app.services import geometry as geo_svc
 
 router = APIRouter(prefix="/convoys", tags=["convoys"])
@@ -458,6 +458,15 @@ async def update_waypoint(
     if not wp:
         raise HTTPException(status_code=404, detail="Waypoint not found")
     update_data = data.model_dump(exclude_none=True, exclude={"lat", "lon"})
+    neue_lage = (data.lat, data.lon) if data.lat is not None and data.lon is not None else None
+    alte_lage = geo_svc.waypoint_coords(wp)
+    if not halte_vorschlag.bleibt_vorschlag(
+        wp, update_data, neue_lage,
+        (alte_lage["lat"], alte_lage["lon"]) if alte_lage.get("lat") is not None else None,
+    ):
+        # Angefasst: ab jetzt sein Halt, kein Vorschlag mehr, den eine neue
+        # Route ersetzen dürfte.
+        wp.vorschlag_art = None
     for key, value in update_data.items():
         setattr(wp, key, value)
     if "order_index" in update_data:

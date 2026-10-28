@@ -47,6 +47,13 @@ export interface ZusammengelegterHalt {
 	duration_min: number;
 	faellig_km: number;
 }
+/** Übernommene Halte, die nach einer neuen Route nicht mehr passen. */
+export interface NeuVerteilen {
+	/** Wegpunkt-IDs der veralteten Vorschläge. */
+	veraltet: string[];
+	/** So viele Halte legt das Neuverteilen dafür an. */
+	neu: number;
+}
 export interface FuelAnalysis {
 	vehicles_with_range: VehicleRangeInfo[];
 	min_range_km: number | null;
@@ -63,6 +70,8 @@ export interface FuelAnalysis {
 	duration_halts: DurationHalt[];
 	/** Fehlt bei Antworten älterer Backends. */
 	zusammengelegt?: ZusammengelegterHalt[];
+	/** null: alles passt; fehlt bei Antworten älterer Backends. */
+	neu_verteilen?: NeuVerteilen | null;
 	rest_needed: boolean;
 }
 
@@ -81,6 +90,10 @@ export interface Waypoint {
 	// Von der Anwendung vorgeschlagen und noch nicht einsortiert — die nächste
 	// Routenberechnung gibt ihm seinen Platz entlang der Route.
 	pending_placement?: boolean;
+	// Aus der Halte-Empfehlung übernommen und seitdem unberührt (Backend:
+	// `services/halte_vorschlag.py`). Nach einer neuen Route kann die Analyse
+	// ihn als veraltet melden (`FuelAnalysis.neu_verteilen`).
+	vorschlag_art?: HaltKind | null;
 }
 
 export interface ConvoyVehicleItem {
@@ -156,6 +169,21 @@ export interface DurchfahrtshoeheEntry {
 	stufe: 'eng' | 'knapp' | 'frei' | 'unbekannt';
 }
 
+/** Eine Fährüberfahrt: Reisezeit ohne Lenkzeit, zählt als Halt (Backend: services/faehre.py). */
+export interface FaehreEntry {
+	km: number;
+	von_m: number;
+	bis_m: number;
+	laenge_km: number;
+	dauer_s: number;
+	lat: number;
+	lon: number;
+	ziel_lat: number;
+	ziel_lon: number;
+	/** Dauer aus der Länge geschätzt, weil OpenStreetMap keine passende nennt. */
+	geschaetzt: boolean;
+}
+
 /** Gewichtsgrenze entlang der Route (Backend: services/gewichtsgrenzen.py). */
 export interface GewichtsgrenzeEntry {
 	km: number;
@@ -204,6 +232,8 @@ export interface RouteResult {
 	bruecken?: BrueckenPruefung | null;
 	/** null: nicht ermittelt (alte Route, Import, Graph ohne max_weight); []: keine bekannte Grenze. */
 	gewichtsgrenzen?: GewichtsgrenzeEntry[] | null;
+	/** Fährüberfahrten (Backend: services/faehre.py); null: nicht ermittelt. duration_s enthält sie. */
+	faehren?: FaehreEntry[] | null;
 	/** Abmarschzeit (ISO), auf derselben Zeitbasis wie die Wegpunkt-Zeiten. */
 	planned_departure?: string | null;
 	/** Geplante Ankunft am Ziel (ISO); Abmarsch + Fahrzeit + Haltezeiten. */
@@ -448,6 +478,9 @@ export const convoysApi = {
 	calculateRoute: (id: string) =>
 		api.post<RouteResult>(`/api/convoys/${id}/calculate-route`, {}),
 	/** Brücken über der gespeicherten Route ohne Höhenangabe suchen (Overpass, dauert). */
+	/** Veraltete übernommene Halte durch die aktuelle Empfehlung ersetzen. */
+	halteNeuVerteilen: (id: string) =>
+		api.post<{ entfernt: number; hinzugefuegt: number }>(`/api/convoys/${id}/halte/neu-verteilen`, {}),
 	findBridges: (id: string) =>
 		api.post<BrueckenPruefung>(`/api/convoys/${id}/route/bruecken`, {}),
 	findFuelStations: (id: string, lat: number, lon: number, radiusM = 3000) =>

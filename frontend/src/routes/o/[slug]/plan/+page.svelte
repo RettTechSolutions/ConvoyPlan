@@ -22,7 +22,7 @@
 		convoysApi, vehiclesApi, orgsApi, overpassApi, trafficApi, authApi, mfaApi,
 		type Convoy, type Vehicle, type Organization, type OrgMember,
 		type FuelAnalysis, type FuelStation, type Waypoint, type RoadPreference,
-		type KanalwechselEntry, type ConvoyVehicleItem, type DurchfahrtshoeheEntry, type RouteResult, type BrueckenPruefung, type GewichtsgrenzeEntry,
+		type KanalwechselEntry, type ConvoyVehicleItem, type DurchfahrtshoeheEntry, type RouteResult, type BrueckenPruefung, type GewichtsgrenzeEntry, type FaehreEntry,
 	} from '$lib/api';
 	import { MAX_JE_ROLLE, formatStaerke, gesamt, sollAus } from '$lib/tracking/staerke';
 
@@ -36,6 +36,7 @@
 	import OnboardingTutorial from '$lib/components/OnboardingTutorial.svelte';
 	import SidebarFooter from '$lib/components/SidebarFooter.svelte';
 	import DurchfahrtsHoehen from '$lib/components/DurchfahrtsHoehen.svelte';
+	import { haltegrundText } from '$lib/route/haltegrund';
 	import KonvoiStatusSchalter from '$lib/components/KonvoiStatusSchalter.svelte';
 	import GewichtsGrenzen from '$lib/components/GewichtsGrenzen.svelte';
 	import RouteHinweisMarke from '$lib/components/RouteHinweisMarke.svelte';
@@ -56,7 +57,7 @@
 	// changes on every recalculation (avoids issues with the `unknown` type not
 	// being deeply proxied, which prevented the map from updating on re-clicks).
 	let routeGeojson = $state<Geometry | null>(null);
-	let route = $state<{ distance_m: number | null; duration_s: number | null; fuel_analysis: FuelAnalysis | null; kanalwechsel: KanalwechselEntry[]; durchfahrtshoehen: DurchfahrtshoeheEntry[] | null; bruecken: BrueckenPruefung | null; fahrzeughoehe_m: number | null; gewichtsgrenzen: GewichtsgrenzeEntry[] | null; fahrzeuggewicht_t: number | null; achslast_t: number | null; planned_departure?: string | null; planned_arrival?: string | null } | null>(null);
+	let route = $state<{ distance_m: number | null; duration_s: number | null; fuel_analysis: FuelAnalysis | null; kanalwechsel: KanalwechselEntry[]; durchfahrtshoehen: DurchfahrtshoeheEntry[] | null; bruecken: BrueckenPruefung | null; fahrzeughoehe_m: number | null; gewichtsgrenzen: GewichtsgrenzeEntry[] | null; faehren?: FaehreEntry[] | null; fahrzeuggewicht_t: number | null; achslast_t: number | null; planned_departure?: string | null; planned_arrival?: string | null } | null>(null);
 	let fuelStations = $state<FuelStation[]>([]);
 	let showFuelStations = $state(false);
 	let fuelStationsLoading = $state(false);
@@ -371,6 +372,7 @@
 				bruecken: r.bruecken ?? null,
 				fahrzeughoehe_m: fahrzeughoehe(r),
 				gewichtsgrenzen: r.gewichtsgrenzen ?? null,
+				faehren: r.faehren ?? null,
 				fahrzeuggewicht_t: fahrzeuggewicht(r),
 				achslast_t: achslast(r),
 				planned_departure: r.planned_departure ?? null,
@@ -720,6 +722,12 @@
 		}
 	}
 
+	/** Eine Stelle aus Durchfahrtshöhen oder Gewichtsgrenzen auf der Karte zeigen. */
+	function zeigeStelle(lat: number, lon: number) {
+		sidebarOpen = false;
+		mapView?.zeigeStelle(lat, lon);
+	}
+
 	// Route auf der Karte auf eine andere Straße gezogen: ein Wegpunkt dort, an
 	// der Stelle der Liste, zwischen deren Nachbarn das gegriffene Stück lag
 	// (`$lib/route/einfuegen.ts`), danach gleich die neue Route.
@@ -795,7 +803,7 @@
 				r && { label: 'Halt hier anlegen', icon: '⏸', aktion: () => wegpunktHier(lat, lon, 'stop') },
 				!r && { label: 'Neuer Marschverband…', icon: '＋', aktion: () => (showConvoyForm = true) },
 				TRENNER,
-				r && { label: 'Route berechnen', icon: '🗺', aus: !r.start_point || !r.end_point ? 'Start und Ziel fehlen noch' : loading, aktion: calculateRoute },
+				r && { label: 'Route berechnen', icon: '🗺', aus: !r.start_point || !r.end_point ? 'Start und Ziel fehlen noch' : loading, aktion: () => calculateRoute() },
 				routeGeojson && { label: 'Ganze Route zeigen', icon: '⤢', aktion: () => mapView?.showRoute() },
 				mapView?.istGedreht() && { label: 'Karte einnorden', icon: '🧭', aktion: () => mapView?.resetNorth() },
 				TRENNER,
@@ -844,7 +852,7 @@
 		return [
 			{ titel: r.name },
 			{ label: 'Bearbeiten…', icon: '✎', aktion: openEditConvoyForm },
-			{ label: 'Route berechnen', icon: '🗺', aus: !r.start_point || !r.end_point ? 'Start und Ziel fehlen noch' : loading, aktion: calculateRoute },
+			{ label: 'Route berechnen', icon: '🗺', aus: !r.start_point || !r.end_point ? 'Start und Ziel fehlen noch' : loading, aktion: () => calculateRoute() },
 			{ label: 'Marschbefehl…', icon: '📋', aktion: openBefehlModal },
 			{ label: 'Roadbook (PDF)', icon: '🧭', aus: routeGeojson ? false : 'Zuerst die Route berechnen', aktion: () => downloadExport('roadbook') },
 			{ label: 'GPX herunterladen', icon: '📍', aktion: () => downloadExport('gpx') },
@@ -1051,19 +1059,24 @@
   }
 
 	// ── Route ────────────────────────────────────────────────────────
-	async function calculateRoute() {
+	/**
+	 * `reiterWechseln: false` vom Knopf auf der Karte: wer im Reiter Wegpunkte
+	 * umsortiert und neu berechnet, will dort weiterarbeiten. Hinweise sagt die
+	 * Marke am Reiter Route trotzdem.
+	 */
+	async function calculateRoute({ reiterWechseln = true }: { reiterWechseln?: boolean } = {}) {
 		if (!selected) return;
 		loading = true; error = '';
 		try {
 			const r = await convoysApi.calculateRoute(selected.id);
 			routeGeojson = r.geojson;
-			route = { distance_m: r.distance_m, duration_s: r.duration_s, fuel_analysis: r.fuel_analysis, kanalwechsel: r.kanalwechsel ?? [], durchfahrtshoehen: r.durchfahrtshoehen ?? null, bruecken: null, fahrzeughoehe_m: fahrzeughoehe(r), gewichtsgrenzen: r.gewichtsgrenzen ?? null, fahrzeuggewicht_t: fahrzeuggewicht(r), achslast_t: achslast(r), planned_departure: r.planned_departure ?? null, planned_arrival: r.planned_arrival ?? null };
+			route = { distance_m: r.distance_m, duration_s: r.duration_s, fuel_analysis: r.fuel_analysis, kanalwechsel: r.kanalwechsel ?? [], durchfahrtshoehen: r.durchfahrtshoehen ?? null, bruecken: null, fahrzeughoehe_m: fahrzeughoehe(r), gewichtsgrenzen: r.gewichtsgrenzen ?? null, faehren: r.faehren ?? null, fahrzeuggewicht_t: fahrzeuggewicht(r), achslast_t: achslast(r), planned_departure: r.planned_departure ?? null, planned_arrival: r.planned_arrival ?? null };
 			fuelStations = [];
 			showFuelStations = false;
 			activeRoute.set(r);
 			await refreshConvoy();
 			// Gibt es etwas zu tun (Tankstopp, Halte, enge Stellen), zuerst dorthin.
-			activeTab = routeHinweiseJetzt.anzahl > 0 ? 'route' : 'zeitplan';
+			if (reiterWechseln) activeTab = routeHinweiseJetzt.anzahl > 0 ? 'route' : 'zeitplan';
 
 			// Fuel stations and closures use the public Overpass API which can be
 			// very slow — run them in the background AFTER releasing the loading
@@ -1263,7 +1276,9 @@
 		if (!selected) return;
 		try {
 			await convoysApi.createWaypoint(selected.id, {
-				name: `${HALT_NAME[halt.kind] ?? 'Technischer Halt'} (km ${halt.stop_km})`,
+				// Ohne Kilometer: der gälte nur für die Route von jetzt und stünde
+				// nach jeder Umplanung falsch im Namen.
+				name: HALT_NAME[halt.kind] ?? 'Technischer Halt',
 				type: 'technical_stop',
 				halt_purpose: halt.is_rest ? 'rest' : null,
 				lat: halt.stop_position?.lat ?? null,
@@ -1272,10 +1287,28 @@
 				// Wie beim Tankstopp: angehängt, aber noch nicht einsortiert.
 				order_index: selected.waypoints.length,
 				pending_placement: true,
+				// Herkunft: solange niemand ihn ändert, darf „Halte neu verteilen"
+				// ihn nach einer neuen Route ersetzen.
+				vorschlag_art: halt.kind,
 			});
 			await refreshConvoy();
 		} catch { error = 'Fehler beim Hinzufügen des Halts'; }
 	}
+
+	let neuVerteilenLaeuft = $state(false);
+	async function halteNeuVerteilen() {
+		if (!selected) return;
+		neuVerteilenLaeuft = true;
+		try {
+			await convoysApi.halteNeuVerteilen(selected.id);
+			await refreshConvoy();
+			// Die neuen Halte hängen am Listenende; die Berechnung sortiert sie ein.
+			await calculateRoute({ reiterWechseln: false });
+		} catch { error = 'Halte konnten nicht neu verteilt werden'; }
+		finally { neuVerteilenLaeuft = false; }
+	}
+
+	const veralteteHalte = $derived(new Set(route?.fuel_analysis?.neu_verteilen?.veraltet ?? []));
 
 	// ── Closures ─────────────────────────────────────────────────────
 	async function toggleClosures() {
@@ -1591,7 +1624,7 @@
 						</div>
 					{/if}
 					<div class="route-actions" data-tour="route-actions">
-						<button class="btn-primary" onclick={calculateRoute} disabled={loading}>
+						<button class="btn-primary" onclick={() => calculateRoute()} disabled={loading}>
 							{loading ? 'Berechne…' : '🗺 Route berechnen'}
 						</button>
 						{#if route}
@@ -1638,7 +1671,7 @@
 					<div class="section">
 						<div class="section-header" style="margin-top:0">
 							<span>Route</span>
-							<button class="btn-small" onclick={calculateRoute} disabled={loading}>{loading ? 'Berechne…' : '↻ Neu berechnen'}</button>
+							<button class="btn-small" onclick={() => calculateRoute()} disabled={loading}>{loading ? 'Berechne…' : '↻ Neu berechnen'}</button>
 						</div>
 						{#if !route}
 							<p class="hint">Noch keine Route berechnet. Start und Ziel setzen und im Reiter <strong>Plan</strong> auf „Route berechnen“.</p>
@@ -1699,6 +1732,23 @@
 							{:else if route.fuel_analysis && route.fuel_analysis.vehicles_with_range.length === 0 && allVehicles.length > 0}
 								<p class="hint" style="margin-top:.4rem">⚠ Keine Fahrzeuge im Verband – gehe zu <strong>Fahrzeuge</strong> und füge sie mit + hinzu, um die Reichweitenanalyse zu nutzen.</p>
 							{/if}
+							{#if route.fuel_analysis?.neu_verteilen}
+								{@const nv = route.fuel_analysis.neu_verteilen}
+								<div class="th-warning neu-verteilen" role="status">
+									<p class="th-title">🔄 Übernommene Halte passen nicht mehr zur Route</p>
+									<p class="th-detail">
+										{nv.veraltet.length === 1 ? '1 übernommener Halt liegt' : `${nv.veraltet.length} übernommene Halte liegen`}
+										noch dort, wo {nv.veraltet.length === 1 ? 'er' : 'sie'} für die vorherige Route fällig
+										{nv.veraltet.length === 1 ? 'war' : 'waren'}. Neu verteilen ersetzt
+										{nv.veraltet.length === 1 ? 'ihn' : 'sie'} durch die aktuelle Empfehlung
+										({nv.neu === 1 ? '1 Halt' : `${nv.neu} Halte`}). Halte, die du selbst gesetzt oder
+										geändert hast, bleiben stehen.
+									</p>
+									<button class="btn-small" onclick={halteNeuVerteilen} disabled={neuVerteilenLaeuft || loading}>
+										{neuVerteilenLaeuft ? 'Verteile…' : 'Halte neu verteilen'}
+									</button>
+								</div>
+							{/if}
 							{#if route.fuel_analysis?.duration_halt_needed}
 								{@const remaining = route.fuel_analysis.duration_halts}
 								{#if remaining.length > 0}
@@ -1742,6 +1792,26 @@
 									</ul>
 								</div>
 							{/if}
+							{#if route.faehren?.length}
+								<section class="th-warning faehren" aria-label="Fähren">
+									<p class="th-title">⛴ {route.faehren.length === 1 ? 'Fähre' : 'Fähren'}</p>
+									<ul class="th-list">
+										{#each route.faehren as f}
+											{@const min = Math.round(f.dauer_s / 60)}
+											<li class="th-item">
+												<div>
+													<button type="button" class="faehre-zeigen" aria-label={`Fähre bei km ${f.km} auf der Karte zeigen`} onclick={() => zeigeStelle(f.lat, f.lon)}>📍 km {String(f.km).replace('.', ',')}</button>
+													· {String(f.laenge_km).replace('.', ',')} km · <strong>{formatHaltDuration(min)}</strong>{f.geschaetzt ? ' (geschätzt)' : ''}
+													<span class="th-after">
+														{#if min >= 540}zählt als Tagesruhe – nur mit Schlafkabine (Art. 9 VO 561/2006){:else if min >= 45}zählt als Lenkpause{:else}zählt als Technischer Halt{/if}
+													</span>
+												</div>
+											</li>
+										{/each}
+									</ul>
+									<p class="th-detail">Auf See vergeht Reisezeit, aber keine Lenkzeit. Die Überfahrt ist im Zeitplan enthalten{route.faehren.some((f) => f.geschaetzt) ? '; ohne Fahrplandauer in OpenStreetMap ist sie mit 25 km/h geschätzt' : ''}.</p>
+								</section>
+							{/if}
 							<DurchfahrtsHoehen
 								eintraege={route.durchfahrtshoehen}
 								fahrzeughoeheM={route.fahrzeughoehe_m}
@@ -1749,12 +1819,14 @@
 								bruecken={route.bruecken}
 								suche={brueckenSuche}
 								onSuchen={darfBrueckenSuchen ? () => selected && sucheBruecken(selected.id) : undefined}
+								onZeigen={zeigeStelle}
 							/>
 							<GewichtsGrenzen
 								eintraege={route.gewichtsgrenzen}
 								fahrzeuggewichtT={route.fahrzeuggewicht_t}
 								achslastT={route.achslast_t}
 								ohneGewicht={selected?.convoy_vehicles.filter((cv) => !cv.vehicle.weight_kg).length ?? 0}
+								onZeigen={zeigeStelle}
 							/>
 						{/if}
 					</div>
@@ -2093,9 +2165,10 @@
 									<div class="wp-main">
 										<strong>{wp.name}</strong>
 										<span class="tag">{WP_TYPE_LABELS[wp.type] ?? wp.type}</span>
-										{#if wp.halt_purpose && wp.halt_purpose !== 'technical'}<span class="tag orange">{wp.halt_purpose}</span>{/if}
+										{#if wp.halt_purpose && wp.halt_purpose !== 'technical'}<span class="tag orange">{haltegrundText(wp.halt_purpose)}</span>{/if}
 										{#if wp.hold_duration_min > 0}<span class="tag">{wp.hold_duration_min} min</span>{/if}
 										<HaltVermerk eintraege={haltVermerke.get(wp.id)} haltMin={wp.hold_duration_min} />
+										{#if veralteteHalte.has(wp.id)}<span class="tag veraltet" title="Für die vorherige Route übernommen – im Reiter Route neu verteilen">veraltet</span>{/if}
 									</div>
 									<div class="wp-actions">
 										<button class="btn-small" onclick={() => startEditWp(wp)} title="Bearbeiten">✎</button>
@@ -2340,9 +2413,23 @@
 	<!-- ── Karte ─────────────────────────────────────────────────────── -->
 	<main class="map-area">
 		<!-- FAB route button shown on mobile only -->
-		<button class="fab-route" onclick={calculateRoute} disabled={loading}>
+		<button class="fab-route" onclick={() => calculateRoute()} disabled={loading}>
 			{loading ? 'Berechne…' : '🗺 Route'}
 		</button>
+		<!-- Am Schreibtisch: außerhalb des Reiters Plan, wo der große Knopf steht,
+		     schwebt er links unten über der Karte. Am Telefon gilt der FAB oben. -->
+		{#if wizardStep === 0 && selected && activeTab !== 'convoy'}
+			{@const ohneEndpunkte = !selected.start_point || !selected.end_point}
+			<button
+				type="button"
+				class="karte-route"
+				onclick={() => calculateRoute({ reiterWechseln: false })}
+				disabled={loading || ohneEndpunkte}
+				title={ohneEndpunkte ? 'Start und Ziel fehlen noch' : undefined}
+			>
+				{loading ? 'Berechne…' : routeGeojson ? '↻ Route neu berechnen' : '🗺 Route berechnen'}
+			</button>
+		{/if}
 		{#if $mapMode !== 'idle'}
 			<div class="map-hint-bar">
 				<div class="map-hint-row">
@@ -2689,6 +2776,7 @@
 
 	.tag { display: inline-block; padding: .1rem .3rem; background: var(--surface-2); border-radius: 3px; font-size: var(--text-xs); margin-left: .2rem; }
 	.tag.orange { background: rgba(230,126,34,.4); }
+	.tag.veraltet { background: rgba(241,196,15,.25); color: #e0b928; }
 
 	.wp-list { list-style: none; padding: 0; margin: 0; }
 	.wp-item { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; padding: .35rem 0; border-bottom: 1px solid var(--border); font-size: var(--text-sm); cursor: grab; }
@@ -2740,6 +2828,10 @@
 	.topbar { display: none; }
 	.sidebar-backdrop { display: none; }
 	.fab-route { display: none; }
+	/* Über der OSM-Nennung (MapLibre, links unten), nicht auf ihr. */
+	.karte-route { position: absolute; left: 10px; bottom: 44px; z-index: 10; padding: .55rem 1rem; background: var(--color-primary); color: white; border: none; border-radius: 10px; font-size: .9rem; font-weight: 600; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,.35); }
+	.karte-route:hover:not(:disabled) { filter: brightness(1.1); }
+	.karte-route:disabled { opacity: .55; cursor: not-allowed; }
 	.map-hint-bar { position: absolute; top: 1rem; left: 50%; transform: translateX(-50%); z-index: 10; background: rgba(15,27,36,.92); color: white; padding: .55rem .85rem; border-radius: 16px; display: flex; flex-direction: column; gap: .45rem; font-size: .85rem; width: min(420px, calc(100% - 2rem)); box-sizing: border-box; box-shadow: 0 4px 16px rgba(0,0,0,.35); }
 	.map-hint-row { display: flex; align-items: center; gap: .75rem; }
 	.map-hint-text { flex: 1; line-height: 1.3; }
@@ -2785,6 +2877,10 @@
 	.fuel-ok { font-size: .8rem; color: #a9dfbf; margin: .3rem 0 0; }
 
 	.th-warning { background: rgba(52,152,219,.12); border: 1px solid rgba(52,152,219,.4); border-radius: 6px; padding: .65rem; margin-top: .5rem; display: flex; flex-direction: column; gap: .3rem; }
+	/* Gelb wie „knapp": nichts ist falsch, aber es ist zu tun. */
+	.th-warning.neu-verteilen { background: rgba(241,196,15,.12); border-color: rgba(241,196,15,.45); }
+	.th-warning.neu-verteilen .btn-small { align-self: flex-start; }
+	.faehre-zeigen { background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
 	.th-warning p { margin: 0; font-size: .83rem; }
 	.th-title { font-weight: 700; font-size: .88rem; color: #7fbde8; }
 	.th-detail { color: rgba(255,255,255,.8); }
@@ -2853,6 +2949,7 @@
 		   otherwise sit on top of the sidebar (InfoPill) or look stranded
 		   along the visible edge of the map (route FAB). */
 		.app.sidebar-open :global(.pill-wrap),
+		.karte-route { display: none; }
 		.app.sidebar-open .fab-route,
 		.app.sidebar-open .map-hint-bar {
 			display: none;

@@ -260,6 +260,33 @@ steht zweimal: `pdf.halt_vermerk` (Roadbook, Marschbefehl) und `$lib/route/halte
 (`HaltVermerk.svelte`); wer einen ändert, zieht den anderen mit. Tests:
 `tests/test_halte_mit_geplanten_halten.py`, `frontend/e2e/halt-vermerk.spec.ts`.
 
+**Übernommene Vorschläge veralten mit der Route.** Gemeldet: nach einer Umplanung (Höhe und
+Gewicht sperrten den Brenner-Weg) lagen alle übernommenen Halte zu weit hinten, die Empfehlung
+legte vor jeden einen neuen — zwei Tagesruhezeiten 45 km auseinander. Seitdem trägt ein
+übernommener Halt `vorschlag_art` (Migration `0074`, Backfill über den alten Namen „Lenkpause
+(km …)" als Funktion daneben), bis jemand Name, Art, Lage, Dauer oder Grund ändert
+(`halte_vorschlag.bleibt_vorschlag`, in `update_waypoint` und damit auch über MCP).
+`routing._vorschlaege_abgleichen` rechnet die Empfehlung **ohne** diese Halte und gleicht ab
+(gleiche Art, ±15 min Fahrzeit); was nicht passt, steht in `fuel_analysis.neu_verteilen`.
+Ersetzt wird nur auf Knopfdruck (`POST …/halte/neu-verteilen`, ein Commit, neue Halte mit
+`pending_placement`) — die Halteliste gehört dem Menschen wie die Reihenfolge. Kein Kilometer
+mehr im Namen; er galt nur für die Route von damals. Tests: `tests/test_halte_neu_verteilen.py`,
+`tests/test_wegpunkt_vorschlag_migration.py`, `frontend/e2e/halte-neu-verteilen.spec.ts`.
+
+**Fähren sind Reisezeit, keine Lenkzeit.** Gemeldet: ein TH mitten in der Adria (Bari–Durrës),
+die Tagesruhe kurz vor dem Hafen. `convoy_duration_s` rechnete die Strecke über See als
+Landstraße. Jetzt fragt `routing.calculate_route` die Details `road_environment` und `time` mit
+an; `services/faehre.py` macht daraus die Abschnitte (`routes.faehren`, Migration `0075`, `None` =
+nicht ermittelt, `[]` = keine Fähre) mit der Dauer aus GraphHoppers Kantenzeit (OSM-Tag `duration`;
+unplausibel → 25 km/h geschätzt, `geschaetzt`). `convoy_duration_s(ohne=…)` lässt die Meter auf See
+aus, **`routes.duration_s` ist die Reisezeit mit den Überfahrten**; die Lenkzeit ist
+`duration_s − Σ dauer_s` (`_halteanalyse`). `faehre.Zeitachse` ersetzt in `fuel.halteplan` und im
+Zeitplan die lineare Umrechnung km↔Zeit: auf See keine Lenkzeit, ein dort fälliger Halt liegt am
+Hafen davor. Die Überfahrt ist ein geplanter Halt, ab 9 h als Tagesruhe (reduzierte Tagesruhe,
+Art. 4 g, an Bord nur mit Schlafkabine, Art. 9 — die Oberfläche sagt das dazu). Kennt der Graph
+`road_environment` nicht, wird ohne Fährerkennung geroutet, wie beim Gewicht. Tests:
+`tests/test_faehre.py`, `frontend/e2e/faehre.spec.ts`.
+
 ### Durchfahrtshöhen und Gewichtsgrenzen: gesperrt wird beim Routing, gezeigt wird danach
 
 Das Custom Model in `services/routing.py` nimmt jede Kante mit `max_height` unter

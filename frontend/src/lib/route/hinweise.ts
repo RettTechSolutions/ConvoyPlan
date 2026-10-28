@@ -5,8 +5,9 @@
  * auffallen, wenn jemand zufällig hinüberklickt.
  *
  * Gezählt wird, was Handlung oder Prüfung braucht: ein Tankstopp, der noch
- * nicht als Wegpunkt steht, jeder empfohlene Halt, der noch fehlt, und jede
- * Höhen- oder Gewichtsstelle, die nicht `frei` ist. `kritisch` färbt die
+ * nicht als Wegpunkt steht, jeder empfohlene Halt, der noch fehlt, übernommene
+ * Halte, die nach einer neuen Route nicht mehr passen (einmal, nicht je Halt),
+ * und jede Höhen- oder Gewichtsstelle, die nicht `frei` ist. `kritisch` färbt die
  * Marke rot: fehlender Tankstopp, enge Durchfahrt, überschrittene Grenze.
  */
 import type { DurchfahrtshoeheEntry, FuelAnalysis, GewichtsgrenzeEntry } from '$lib/api';
@@ -31,10 +32,11 @@ export function routeHinweise(
 	// Das Backend rechnet geplante Halte schon heraus: die Liste nennt nur,
 	// was fehlt (`fuel._duration_halts`, `geplante_halte`).
 	const halte = fa?.duration_halt_needed ? fa.duration_halts.length : 0;
+	const neuVerteilen = fa?.neu_verteilen ? 1 : 0;
 	const hoehen = (route.durchfahrtshoehen ?? []).filter((e) => e.stufe !== 'frei');
 	const gewicht = (route.gewichtsgrenzen ?? []).filter((e) => e.stufe !== 'frei');
 	return {
-		anzahl: tankstopp + halte + hoehen.length + gewicht.length,
+		anzahl: tankstopp + halte + neuVerteilen + hoehen.length + gewicht.length,
 		kritisch: tankstopp > 0 || hoehen.some((e) => e.stufe === 'eng') || gewicht.some((e) => e.stufe === 'ueberschritten'),
 	};
 }

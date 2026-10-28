@@ -35,4 +35,9 @@ class Waypoint(Base):
         Boolean, default=False, server_default=false()
     )
 
+    # Aus der Halte-Empfehlung übernommen und seitdem unberührt: tech | break |
+    # daily_rest. Nach einer neuen Route prüft die Analyse diese Halte gegen eine
+    # frische Empfehlung — app/services/halte_vorschlag.py, Migration 0074.
+    vorschlag_art: Mapped[str | None] = mapped_column(String(20))
+
     convoy: Mapped["Convoy"] = relationship(back_populates="waypoints")

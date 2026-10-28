@@ -118,7 +118,8 @@ export const KONVOI = {
 	ablaufführer: null, versorgung: null, funkgruppe: null, anlagen: null,
 };
 
-export async function planung(page: Page): Promise<Aufruf[]> {
+/** `extra` ersetzt oder ergänzt Antworten, etwa eine gespeicherte Route. */
+export async function planung(page: Page, extra: Record<string, Antwort> = {}): Promise<Aufruf[]> {
 	const aufrufe = await mockApi(page, {
 		...GRUNDLAGE,
 		'GET /api/vehicles/': [HLF, MTW, ELW],
@@ -126,6 +127,7 @@ export async function planung(page: Page): Promise<Aufruf[]> {
 		[`GET /api/convoys/${CONVOY}`]: KONVOI,
 		[`GET /api/convoys/${CONVOY}/route`]: null,
 		'GET /api/organizations/': [],
+		...extra,
 	});
 	// Das Tutorial für Erstbesucher legt sich sonst über alles.
 	await page.addInitScript((slug) => localStorage.setItem(`cp_tutorial_seen_v1__${slug}`, '1'), SLUG);

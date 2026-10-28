@@ -1,6 +1,8 @@
 import uuid
 from datetime import datetime
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -18,6 +20,9 @@ class WaypointCreate(BaseModel):
     # nächste Routenberechnung ordnet ihn entlang der Route ein. Wer einen
     # Wegpunkt selbst setzt, lässt das Feld weg.
     pending_placement: bool = False
+    # Übernommen aus der Halte-Empfehlung (tech | break | daily_rest) — siehe
+    # app/services/halte_vorschlag.py. Wer selbst einen Halt setzt, lässt es weg.
+    vorschlag_art: Literal["tech", "break", "daily_rest"] | None = None
 
 
 class WaypointUpdate(BaseModel):
@@ -46,6 +51,7 @@ class WaypointResponse(BaseModel):
     notes: str | None
     order_index: int
     pending_placement: bool = False
+    vorschlag_art: str | None = None
 
     model_config = {"from_attributes": True}
 

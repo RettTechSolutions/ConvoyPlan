@@ -36,6 +36,8 @@ Die Routenberechnung deckt standardmäßig den gesamten DACH-Raum ab (Deutschlan
 
 Für jeden Wegpunkt kann eine **Haltedauer** (Minuten) sowie eine **Notiz** erfasst werden.
 
+Berechnet wird im Tab **Plan** mit „Route berechnen". Wer gerade in einem anderen Tab ist (etwa Wegpunkte umsortiert), findet links unten auf der Karte denselben Knopf, nach der ersten Berechnung als „Route neu berechnen". Er lässt den Tab stehen, statt nach der Berechnung zur Route oder zum Zeitplan zu springen. Am Telefon gibt es dafür den Knopf rechts unten.
+
 ### Route auf eine andere Straße ziehen
 Wie bei Google Maps: Mit der Maus über die berechnete Route fahren, bis die
 Hand erscheint, die Linie greifen und auf die gewünschte Straße ziehen. Beim
@@ -107,6 +109,25 @@ Dabei gilt:
 
 Jeder empfohlene Halt zeigt in der Planungsansicht seine Art, die Haltedauer und die kumulierte Lenkzeit bis zu diesem Punkt an. Die empfohlenen Positionen werden auf der Route interpoliert und können per Klick als Wegpunkte übernommen werden.
 
+### Fähren
+
+Führt die Route über eine Fähre, erkennt ConvoyPlan die Überfahrt aus den Kartendaten und zeigt sie im Tab **Route** im Block **Fähre** mit Kilometer, Länge und Dauer. Die Dauer stammt aus der Fahrplanangabe der Fährlinie in OpenStreetMap; fehlt sie oder ist sie unplausibel, wird mit 25 km/h geschätzt und „(geschätzt)" dazugeschrieben.
+
+- **Auf See vergeht keine Lenkzeit.** Die Strecke über das Wasser zählt nicht als Fahrt; die Dauer der Überfahrt steht aber im Zeitplan und in der Ankunftszeit.
+- **Kein Halt auf dem Wasser.** Wäre ein Halt während der Überfahrt fällig, liegt er am Hafen davor.
+- **Die Überfahrt ist selbst ein Halt:** ab 45 Minuten als Lenkpause, ab **9 Stunden als Tagesruhe**. Das ist die reduzierte Tagesruhezeit der VO (EG) 561/2006; an Bord gilt sie nur mit **Schlafkabine** (Art. 9). Ob der Verband Kabinen gebucht hat, weiß die Planung nicht — ohne Kabine ist vor oder nach der Fähre eine Tagesruhe einzuplanen.
+- Routen, die vor dieser Funktion berechnet wurden, rechnen wie bisher, bis sie neu berechnet werden.
+
+### Nach einer Umplanung: Halte neu verteilen
+
+Ein übernommener Halt steht dort, wo er für die Route **zum Zeitpunkt der Übernahme** fällig war. Ändert sich die Route danach — anderer Weg, weil Höhe oder Gewicht sperren, ein zusätzlicher Wegpunkt —, kann er zu spät kommen. Die Empfehlung legt dann einen neuen Halt davor, und ohne Eingreifen stünden zwei Tagesruhezeiten kurz hintereinander in der Planung.
+
+ConvoyPlan merkt sich deshalb, welche Halte aus der Empfehlung übernommen und seitdem **nicht geändert** wurden. Passen sie nach einer neuen Berechnung nicht mehr (Abweichung mehr als etwa 15 Minuten Fahrzeit), zeigt der Tab **Route** den Hinweis **„Übernommene Halte passen nicht mehr zur Route"**, und die Halte tragen in der Wegpunktliste die Marke **„veraltet"**. **Halte neu verteilen** entfernt genau diese Halte, legt die aktuell empfohlenen an und berechnet die Route neu. Automatisch geschieht das nicht.
+
+- Halte, die du selbst gesetzt hast, bleiben immer stehen. Das gilt auch für übernommene Halte, an denen du **Name, Art, Lage, Dauer oder Grund** geändert hast. Umsortieren und Notizen zählen nicht als Änderung.
+- Übernommene Halte heißen nur noch „Technischer Halt", „Lenkpause" oder „Tagesruhezeit", ohne Kilometer im Namen. Der Kilometer galt nur für die Route von damals.
+- Halte, die vor diesem Update übernommen wurden, werden erkannt, solange ihr Name noch die Form „Lenkpause (km 252.2)" hat und Dauer und Grund unverändert sind.
+
 ---
 
 ## Durchfahrtshöhen
@@ -121,6 +142,8 @@ Hat mindestens ein Fahrzeug im Verband eine **Höhe** (siehe [Fahrzeuge](Fahrzeu
 | **Höhe fehlt** | – | Kein Fahrzeug im Verband hat eine Höhe; dann wird auch nichts gemieden. |
 
 In der Seitenleiste stehen **Durchfahrtshöhen** und **Gewichtsgrenzen** eingeklappt mit ihrem Befund in einer Zeile (z. B. „✓ frei“ oder „1 eng“). Gibt es etwas zu prüfen — eine enge Stelle, eine überschrittene Grenze —, klappen sie von selbst auf. Die empfohlenen Halte stehen davor, die Eckdaten des Marschverbands als Kurzzeile (Start, Tempo, Routenwahl), der Rest unter „Alle Eckdaten“.
+
+Ein Klick auf den **Kilometer** (📍 km …) holt die Stelle auf die Karte und markiert sie mit einem roten Ring; das gilt auch für die Brücken ohne Höhenangabe und die Gewichtsgrenzen. Ein Klick auf den Ring nimmt die Markierung wieder weg.
 
 Fahrzeuge ohne Höhenangabe zählen beim Meiden nicht mit — der Block nennt ihre Anzahl. Enge und knappe Stellen stehen zusätzlich im [Marschbefehl](Marschbefehl-Export) unter „Durchfahrtshöhen", und **jede** Stelle steht im [Roadbook](Marschbefehl-Export#roadbook-pdf) an ihrem Kilometer — auch die mit viel Spielraum, damit die Besatzung weiß, wo sie unbesorgt durchfahren kann.
 

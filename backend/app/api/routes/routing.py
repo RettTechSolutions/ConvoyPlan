@@ -15,7 +15,7 @@ from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import get_current_user
+from app.api.deps import OrgCtx, get_current_user, get_org_context
 from app.api.guards import get_convoy_access
 from app.api.quota import routing_quota
 from app.api.routes import marschbefehl_vorlage as vorlage_routen
@@ -37,7 +37,9 @@ from app.services import marschbefehl_vorlage as vorlage_svc
 from app.services import pdf as pdf_svc
 from app.services import roadbook as roadbook_svc
 from app.services import static_map as static_map_svc
+from app.services import faehre as faehre_svc
 from app.services import fuel as fuel_svc
+from app.services import halte_vorschlag
 from app.services import overpass as overpass_svc
 from app.services import importer as importer_svc
 from app.services import waypoint_order
@@ -112,21 +114,75 @@ _EIGENE_ART = {
 }
 
 
-def _halteanalyse(convoy: Convoy, distance_m: float, route_coords: list[list[float]], duration_s: float) -> dict:
-    """``analyse_fuel`` mit den geplanten Halten — eine Stelle für Ansicht und Ausdruck."""
+def _halteanalyse(
+    convoy: Convoy,
+    distance_m: float,
+    route_coords: list[list[float]],
+    duration_s: float,
+    faehren: list[dict] | None = None,
+) -> dict:
+    """``analyse_fuel`` mit den geplanten Halten — eine Stelle für Ansicht und Ausdruck.
+
+    *duration_s* ist die Reisezeit der Route; die Überfahrten (*faehren*) sind
+    darin enthalten, zählen aber nicht als Lenkzeit (services/faehre.py).
+    """
+    faehren = faehren or []
+    lenkzeit_s = max(0.0, duration_s - faehre_svc.dauer_gesamt_s(faehren))
     analyse = fuel_svc.analyse_fuel(
         convoy.convoy_vehicles,
         distance_m,
         route_coords,
-        route_duration_s=duration_s,
+        route_duration_s=lenkzeit_s,
         geplante_halte=_geplante_halte(convoy.waypoints, route_coords),
+        faehren=faehren,
     )
     by_id = {str(wp.id): wp for wp in convoy.waypoints}
     analyse["zusammengelegt"] = [
         z for z in analyse["zusammengelegt"]
         if not ((wp := by_id.get(z["waypoint_id"])) and _EIGENE_ART[z["kind"]](wp))
     ]
+    veraltet, fehlend = _vorschlaege_abgleichen(convoy, distance_m, route_coords, lenkzeit_s, faehren)
+    analyse["neu_verteilen"] = (
+        {"veraltet": veraltet, "neu": len(fehlend)} if veraltet else None
+    )
     return analyse
+
+
+def _vorschlaege_abgleichen(
+    convoy: Convoy,
+    distance_m: float,
+    route_coords: list[list[float]],
+    duration_s: float,
+    faehren: list[dict] | None = None,
+) -> tuple[list[str], list[dict]]:
+    """Passen die übernommenen Halte-Vorschläge noch zur Route?
+
+    Die Empfehlung wird ohne sie neu gerechnet — gegen die Halte, die dem
+    Menschen gehören — und mit ihnen verglichen (``halte_vorschlag.abgleich``).
+    Zurück: die IDs der veralteten Vorschläge und die Halte, die fehlen.
+    """
+    uebernommen = []
+    for wp in convoy.waypoints:
+        art = getattr(wp, "vorschlag_art", None)
+        if art not in halte_vorschlag.ARTEN or not route_coords:
+            continue
+        c = _waypoint_latlon(wp)
+        if c is None:
+            continue
+        km = fuel_svc.project_onto_route(route_coords, c[0], c[1]) / 1000
+        uebernommen.append(halte_vorschlag.Uebernommen(str(wp.id), art, km))
+    if not uebernommen or duration_s <= 0:
+        return [], []
+    route_km = distance_m / 1000
+    fest = _geplante_halte(
+        [wp for wp in convoy.waypoints if not getattr(wp, "vorschlag_art", None)], route_coords
+    )
+    frisch, _ = fuel_svc.halteplan(
+        route_km, duration_s, route_coords, len(convoy.convoy_vehicles), fest, faehren or []
+    )
+    return halte_vorschlag.abgleich(
+        frisch, uebernommen, halte_vorschlag.toleranz_km(route_km, duration_s)
+    )
 
 
 def _zusammengelegte_halte(convoy: Convoy, route: Route | None, route_coords: list[list[float]]) -> dict[str, list[dict]]:
@@ -139,7 +195,7 @@ def _zusammengelegte_halte(convoy: Convoy, route: Route | None, route_coords: li
         return {}
     # Beiwerk wie die Karte: ohne Vermerk gibt es trotzdem einen Ausdruck.
     try:
-        analyse = _halteanalyse(convoy, route.distance_m, route_coords, route.duration_s or 0)
+        analyse = _halteanalyse(convoy, route.distance_m, route_coords, route.duration_s or 0, getattr(route, "faehren", None))
     except Exception:
         logger.exception("Halte-Vermerke für den Ausdruck fehlgeschlagen (Konvoi %s)", getattr(convoy, "id", "?"))
         return {}
@@ -477,7 +533,7 @@ async def get_route(
     fuel_analysis = None
     if route.distance_m is not None:
         route_coords = geojson["coordinates"] if geojson else []
-        fuel_analysis = _halteanalyse(convoy, route.distance_m, route_coords, route.duration_s or 0)
+        fuel_analysis = _halteanalyse(convoy, route.distance_m, route_coords, route.duration_s or 0, getattr(route, "faehren", None))
 
     # Departure + destination ETA, recomputed so a reloaded route shows the same
     # total arrival as right after calculation (drive time + all waypoint holds).
@@ -496,6 +552,7 @@ async def get_route(
         durchfahrtshoehen=route.durchfahrtshoehen,
         bruecken=route.bruecken,
         gewichtsgrenzen=route.gewichtsgrenzen,
+        faehren=route.faehren,
         planned_departure=route_planned_departure,
         planned_arrival=route_planned_arrival,
     )
@@ -584,6 +641,14 @@ async def calculate_route(
     if len(coords) < 2:
         logger.error("Routing returned invalid geometry for convoy %s (%d coords)", convoy_id, len(coords))
         raise HTTPException(status_code=502, detail="Routing-Dienst lieferte keine gültige Routengeometrie")
+    # Fähren: Reisezeit ohne Lenkzeit (services/faehre.py). None = der Graph
+    # kennt road_environment nicht — dann rechnet alles wie bisher.
+    env_details = route_data.get("road_environment_details")
+    faehren = (
+        None if env_details is None
+        else faehre_svc.abschnitte(env_details, route_data.get("time_details") or [], coords)
+    )
+    see = faehre_svc.index_bereiche(env_details or [])
     try:
         convoy_duration_s = routing_svc.convoy_duration_s(
             route_data["distance_m"],
@@ -592,6 +657,7 @@ async def calculate_route(
             convoy.speed_urban_kmh,
             convoy.speed_rural_kmh,
             max_speed_details=route_data.get("max_speed_details", []),
+            ohne=see,
         )
     except Exception as exc:
         logger.warning("Duration calculation failed, falling back: %s", exc)
@@ -601,7 +667,11 @@ async def calculate_route(
             route_data.get("road_class_details", []),
             convoy.speed_urban_kmh,
             convoy.speed_rural_kmh,
+            ohne=see,
         )
+    # Lenkzeit an Land; gespeichert wird die Reisezeit mit den Überfahrten.
+    lenkzeit_s = convoy_duration_s
+    convoy_duration_s = lenkzeit_s + faehre_svc.dauer_gesamt_s(faehren)
 
     # Abbiegehinweise fürs Roadbook. Die Wegpunkt-IDs kommen hier dazu, weil nur
     # hier feststeht, welcher Zwischenpunkt welcher war (services/roadbook.py).
@@ -646,6 +716,7 @@ async def calculate_route(
         route.durchfahrtshoehen = durchfahrtshoehen
         route.schnellstrassen = schnellstrassen
         route.gewichtsgrenzen = gewichtsgrenzen
+        route.faehren = faehren
         # Gesucht wurde an der alten Linie.
         route.bruecken = None
     else:
@@ -659,6 +730,7 @@ async def calculate_route(
             durchfahrtshoehen=durchfahrtshoehen,
             schnellstrassen=schnellstrassen,
             gewichtsgrenzen=gewichtsgrenzen,
+            faehren=faehren,
         )
         db.add(route)
 
@@ -698,9 +770,15 @@ async def calculate_route(
             for cum in cumulative:
                 seg_distances.append(max(0.0, cum - prev))
                 prev = cum
-            seg_durations = schedule_svc.split_duration_by_distance(
-                convoy_duration_s, seg_distances, total_distance_m
-            )
+            if faehren:
+                # Die Überfahrt gehört in das Teilstück, das über die Fähre führt.
+                seg_durations = faehre_svc.Zeitachse(
+                    total_distance_m, lenkzeit_s, faehren
+                ).abschnittszeiten(cumulative)
+            else:
+                seg_durations = schedule_svc.split_duration_by_distance(
+                    convoy_duration_s, seg_distances, total_distance_m
+                )
             schedule = schedule_svc.calculate_schedule(waypoints_sorted, start_dt, seg_durations)
             for item, wp in zip(schedule, waypoints_sorted):
                 wp.planned_arrival = item["planned_arrival"]
@@ -725,7 +803,7 @@ async def calculate_route(
     await db.commit()
 
     # Fuel analysis
-    fuel_analysis = _halteanalyse(convoy, route_data["distance_m"], route_coords, convoy_duration_s)
+    fuel_analysis = _halteanalyse(convoy, route_data["distance_m"], route_coords, convoy_duration_s, faehren)
 
     return {
         "id": route.id,
@@ -739,9 +817,74 @@ async def calculate_route(
         "durchfahrtshoehen": durchfahrtshoehen,
         "bruecken": None,
         "gewichtsgrenzen": gewichtsgrenzen,
+        "faehren": faehren,
         "planned_departure": route_planned_departure,
         "planned_arrival": route_planned_arrival,
     }
+
+
+@router.post("/{convoy_id}/halte/neu-verteilen")
+async def halte_neu_verteilen(
+    convoy_id: uuid.UUID,
+    ctx: OrgCtx = Depends(get_org_context),
+    db: AsyncSession = Depends(get_db),
+):
+    """Veraltete übernommene Halte durch die aktuelle Empfehlung ersetzen.
+
+    Nur auf Knopfdruck — die Analyse meldet in ``neu_verteilen``, *dass* es
+    nötig ist. Entfernt werden nur unberührte Vorschläge, die nicht mehr
+    passen; die fehlenden Halte kommen als neue Vorschläge hinzu, ans
+    Listenende und mit ``pending_placement``, damit die folgende Berechnung sie
+    einsortiert wie jeden übernommenen Vorschlag. In einem Commit: zwischen
+    Löschen und Anlegen soll keine Planung ohne Halte stehen.
+    """
+    user, org, role = ctx
+    if (await get_convoy_access(convoy_id, user, db, require="write", role=role)).organization_id != org.id:
+        raise HTTPException(status_code=404, detail="Convoy not found")
+    convoy = (
+        await db.execute(
+            select(Convoy).where(Convoy.id == convoy_id).options(
+                selectinload(Convoy.waypoints),
+                selectinload(Convoy.convoy_vehicles).selectinload(ConvoyVehicle.vehicle),
+            )
+        )
+    ).scalar_one()
+    route = (await db.execute(select(Route).where(Route.convoy_id == convoy_id))).scalar_one_or_none()
+    line = geo_svc.linestring_to_geojson(route.geometry) if route is not None and route.geometry is not None else None
+    if route is None or route.distance_m is None or not line:
+        raise HTTPException(status_code=409, detail="Noch keine Route berechnet")
+    route_coords = line["coordinates"]
+
+    faehren = route.faehren or []
+    veraltet, fehlend = _vorschlaege_abgleichen(
+        convoy, route.distance_m, route_coords,
+        max(0.0, (route.duration_s or 0) - faehre_svc.dauer_gesamt_s(faehren)), faehren,
+    )
+    if not veraltet:
+        return {"entfernt": 0, "hinzugefuegt": 0}
+
+    weg = set(veraltet)
+    for wp in list(convoy.waypoints):
+        if str(wp.id) in weg:
+            await db.delete(wp)
+    naechster = max((wp.order_index for wp in convoy.waypoints), default=-1) + 1
+    for i, halt in enumerate(fehlend):
+        pos = halt.get("stop_position")
+        if not pos:
+            continue
+        db.add(Waypoint(
+            convoy_id=convoy.id,
+            name=halte_vorschlag.NAME[halt["kind"]],
+            type="technical_stop",
+            halt_purpose="rest" if halt["is_rest"] else None,
+            location=geo_svc.point_to_wkt(pos["lat"], pos["lon"]),
+            hold_duration_min=halt["duration_min"],
+            order_index=naechster + i,
+            pending_placement=True,
+            vorschlag_art=halt["kind"],
+        ))
+    await db.commit()
+    return {"entfernt": len(weg), "hinzugefuegt": len(fehlend)}
 
 
 @router.post("/{convoy_id}/route/bruecken", response_model=BrueckenPruefung)
