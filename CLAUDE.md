@@ -191,6 +191,11 @@ Model und `ch.disable`). `profiles_ch` fehlt deshalb; jede Anfrage läuft
 flexibel. Nicht im Fingerprint: ein fertiger Graph mit CH-Daten lädt weiter
 (`test_entrypoint_start_phasen.sh`, Fall 1c). Wird „schnell" auf langen
 Strecken zu langsam, ist LM (`profiles_lm`) der nächste Schritt, nicht CH.
+Bis dahin trägt die Frist: `GRAPHHOPPER_TIMEOUT_S` (Standard 180 s, früher fest 30 s).
+Gemeldet war Bayern–Albanien, 3.250 km, das nach 30 s mit „Routing-Dienst nicht
+verfügbar" abbrach, obwohl GraphHopper lief. Ein Abbruch nach der Frist ist jetzt
+`RoutingTimeoutError` → 504 mit eigener Meldung, ohne Rückfall-Wiederholung
+(`tests/test_routing_frist.py`).
 
 ### Die Wegpunktreihenfolge gehört dem Menschen
 

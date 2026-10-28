@@ -57,6 +57,9 @@ services:
       QUOTA_TRAFFIC_PER_HOUR: ${QUOTA_TRAFFIC_PER_HOUR:-600}
       QUOTA_TRAFFIC_DEMO_PER_HOUR: ${QUOTA_TRAFFIC_DEMO_PER_HOUR:-100}
       GRAPHHOPPER_URL: http://graphhopper:8989
+      # Frist einer Routenanfrage in Sekunden. Ohne CH rechnet GraphHopper
+      # lange Routen über mehrere Länder deutlich länger als die früheren 30 s.
+      GRAPHHOPPER_TIMEOUT_S: ${GRAPHHOPPER_TIMEOUT_S:-180}
       # Medien-Container (Dienst `medien` unten): kodiert Videos aus Telegram
       # neu. Bewusst kein depends_on — Videos sind optional, ohne ihn startet
       # das Backend trotzdem und nimmt dann nur keine Videos an.

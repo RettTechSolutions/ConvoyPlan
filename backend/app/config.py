@@ -7,6 +7,12 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 24 * 7  # 7 days
     graphhopper_url: str = "http://localhost:8989"
+    # Wie lange eine Routenanfrage an GraphHopper dauern darf. Ohne CH (siehe
+    # graphhopper/entrypoint.sh) läuft jede Anfrage flexibel, und eine lange
+    # Route über mehrere Länder braucht dann deutlich mehr als die 30 s, die
+    # hier bis 2026-10 fest standen — gemeldet: Bayern–Albanien, 3.250 km,
+    # jedes Mal „Routing-Dienst nicht verfügbar" nach 30 s.
+    graphhopper_timeout_s: float = 180.0
     # Overpass-Server für Sperrungen, Tankstellen und Brücken (services/
     # overpass.py), kommagetrennt, in dieser Reihenfolge versucht. Nur Server
     # mit weltweiten Daten — ein regionaler wie overpass.osm.ch antwortet
