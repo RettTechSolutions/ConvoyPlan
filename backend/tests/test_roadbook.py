@@ -285,6 +285,23 @@ def test_hinweise_stehen_mit_zahl_spielraum_und_stufe_da():
     assert all("Straßenbrücke" not in z.text for z in zeilen)
 
 
+def test_ein_abschnitt_nennt_seine_laenge():
+    """Eine Beschränkung über einen Kilometer ist kein Punkt — die Besatzung soll
+    nicht an der ersten Brücke nach dem Schild suchen."""
+    route = SimpleNamespace(durchfahrtshoehen=[
+        {"km": 3.0, "m": 3000, "laenge_m": 1090, "hoehe_m": 4.0, "spielraum_m": 0.0, "stufe": "eng"},
+        {"km": 5.0, "m": 5000, "laenge_m": 40, "hoehe_m": 4.5, "spielraum_m": 0.5, "stufe": "frei"},
+    ], gewichtsgrenzen=[
+        {"km": 7.0, "m": 7000, "laenge_m": 350, "grenze_t": 7.5, "reserve_t": 1.0, "ausnahme": None,
+         "stufe": "frei"},
+    ])
+    assert [z.detail for z in roadbook.hinweis_rows(route)] == [
+        "Spielraum +0 cm · auf 1,1 km · ENG – vor Ort prüfen",
+        "Spielraum +50 cm",
+        "Reserve +1,0 t · auf 350 m",
+    ]
+
+
 def test_achslastgrenze_heisst_so():
     route = SimpleNamespace(gewichtsgrenzen=[
         {"km": 2.0, "m": 2000, "grenze_t": 10.0, "reserve_t": 0.5, "ausnahme": None, "stufe": "knapp",

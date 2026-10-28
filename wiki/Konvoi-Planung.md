@@ -145,6 +145,8 @@ In der Seitenleiste stehen **Durchfahrtshöhen** und **Gewichtsgrenzen** eingekl
 
 Ein Klick auf den **Kilometer** (📍 km …) holt die Stelle auf die Karte und markiert sie mit einem roten Ring; das gilt auch für die Brücken ohne Höhenangabe und die Gewichtsgrenzen. Ein Klick auf den Ring nimmt die Markierung wieder weg.
 
+**Abschnitte statt Punkte.** Die Kartendaten kennen eine Beschränkung je Straßenabschnitt, nicht je Schild — wo genau auf dem Abschnitt das Schild steht, weiß niemand. Reicht eine Beschränkung über mindestens 200 m, steht ihre Länge dabei („4,0 m auf 1,1 km"), und die Karte hebt die ganze Teilstrecke gelb hervor; der rote Ring sitzt an ihrem Anfang. Ein Beispiel: An der Mautstelle des Karawankentunnels gilt `maxheight=4` ab dem Ende einer Brücke für gut einen Kilometer. Ohne die Teilstrecke sah es so aus, als hätte die Brücke 4,0 m. Liste, Marschbefehl und Roadbook nennen die Länge ebenso, bei Durchfahrtshöhen und Gewichtsgrenzen.
+
 Fahrzeuge ohne Höhenangabe zählen beim Meiden nicht mit — der Block nennt ihre Anzahl. Enge und knappe Stellen stehen zusätzlich im [Marschbefehl](Marschbefehl-Export) unter „Durchfahrtshöhen", und **jede** Stelle steht im [Roadbook](Marschbefehl-Export#roadbook-pdf) an ihrem Kilometer — auch die mit viel Spielraum, damit die Besatzung weiß, wo sie unbesorgt durchfahren kann.
 
 ### Brücken ohne Höhenangabe

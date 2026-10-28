@@ -13,6 +13,8 @@ import { test, expect, type Page } from '@playwright/test';
 //  - Brücken über der Route ohne Höhenangabe stehen darunter, die auf Autobahn
 //    und Kraftfahrstraße erst auf Nachfrage; ob gesucht wurde, läuft oder
 //    scheiterte, ist zu unterscheiden — „nichts gefunden" sagt nur, wer gesucht hat;
+//  - gilt eine Beschränkung über einen Abschnitt, steht seine Länge da, und
+//    die Karte bekommt die Teilstrecke — nicht nur deren Anfang;
 //  - ist alles frei, steht der Block eingeklappt mit seinem Befund in einer
 //    Zeile da; eine enge oder knappe Stelle liegt nie hinter einem Klick.
 
@@ -163,4 +165,24 @@ test('ohne Karte bleibt der Kilometer Text', async ({ page }) => {
 	await oeffnen(page, 'ohne_karte');
 	await expect(bekannte(page).first()).toContainText('km 12,4');
 	await expect(bekannte(page).first().getByRole('button')).toHaveCount(0);
+});
+
+// Gemeldet: `maxheight=4` an der Mautzufahrt des Karawankentunnels beginnt am
+// Ende einer Brücke. Der Ring lag auf der Brücke, und die Brücke stand mit
+// 4,0 m da. GraphHopper kennt die Beschränkung je Kante, nicht je Schild — also
+// zeigt der Block, wie weit sie reicht, und die Karte den ganzen Abschnitt.
+test('ein Abschnitt nennt seine Länge und zeigt die Teilstrecke', async ({ page }) => {
+	await oeffnen(page, 'abschnitt');
+	await expect(bekannte(page).nth(0)).toContainText('auf 1,1 km');
+	await expect(bekannte(page).nth(1)).toContainText('auf 450 m');
+	await bekannte(page).nth(0).getByRole('button', { name: 'km 12,4 auf der Karte zeigen' }).click();
+	await expect(page.getByText('Gezeigt: 47.124, 11.100 · Abschnitt mit 3 Punkten')).toBeVisible();
+});
+
+// Eine Unterführung ist ein Punkt: keine Länge, keine Linie.
+test('eine kurze Stelle bleibt ein Punkt', async ({ page }) => {
+	await oeffnen(page, 'gemischt');
+	await expect(bekannte(page).nth(0)).not.toContainText(' auf ');
+	await bekannte(page).nth(0).getByRole('button', { name: 'km 12,4 auf der Karte zeigen' }).click();
+	await expect(page.getByText('Gezeigt: 47.124, 11.100', { exact: true })).toBeVisible();
 });

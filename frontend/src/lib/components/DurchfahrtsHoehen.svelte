@@ -14,6 +14,7 @@
 	 * Seitenleiste soll nicht mit grünen Haken voll stehen, aber eine enge
 	 * Stelle darf nicht hinter einem Klick liegen.
 	 */
+	import { abschnittLinie, abschnittText } from '$lib/route/abschnitt';
 	import type { BrueckenPruefung, DurchfahrtshoeheEntry } from '$lib/api';
 
 	let {
@@ -36,7 +37,7 @@
 		/** Fehlt, wer nicht suchen darf — dann gibt es keinen Knopf. */
 		onSuchen?: () => void;
 		/** Stelle auf der Karte zeigen; fehlt er, bleibt der Kilometer reiner Text. */
-		onZeigen?: (lat: number, lon: number) => void;
+		onZeigen?: (lat: number, lon: number, linie?: number[][]) => void;
 	} = $props();
 
 	const STUFE: Record<DurchfahrtshoeheEntry['stufe'], string> = {
@@ -89,10 +90,10 @@
 	const cm = (m: number) => `${m >= 0 ? '+' : '−'}${Math.round(Math.abs(m) * 100)} cm`;
 </script>
 
-{#snippet km(e: { km: number; lat: number; lon: number })}
+{#snippet km(e: { km: number; lat: number; lon: number; laenge_m?: number | null; linie?: number[][] | null })}
 	{@const text = `km ${e.km.toFixed(1).replace('.', ',')}`}
 	{#if onZeigen}
-		<button type="button" class="dh-km dh-zeigen" title="Auf der Karte zeigen" aria-label="{text} auf der Karte zeigen" onclick={() => onZeigen?.(e.lat, e.lon)}>📍 {text}</button>
+		<button type="button" class="dh-km dh-zeigen" title="Auf der Karte zeigen" aria-label="{text} auf der Karte zeigen" onclick={() => onZeigen?.(e.lat, e.lon, abschnittLinie(e))}>📍 {text}</button>
 	{:else}
 		<span class="dh-km">{text}</span>
 	{/if}
@@ -138,6 +139,7 @@
 								<li class="dh-eintrag" data-stufe={e.stufe}>
 									{@render km(e)}
 									<span class="dh-hoehe">{meter(e.hoehe_m, 1)}</span>
+									{#if abschnittText(e.laenge_m)}<span class="dh-abschnitt">{abschnittText(e.laenge_m)}</span>{/if}
 									{#if e.spielraum_m != null}<span class="dh-spielraum">{cm(e.spielraum_m)}</span>{/if}
 									{#if STUFE[e.stufe]}<span class="dh-stufe">{STUFE[e.stufe]}</span>{/if}
 								</li>
@@ -221,6 +223,7 @@
 	.dh-eintrag { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .5rem; padding: .3rem .4rem; background: rgba(127,127,127,.1); border-radius: 4px; font-size: .82rem; }
 	.dh-km { min-width: 4.2rem; color: var(--text-muted); }
 	.dh-hoehe { font-weight: 700; }
+	.dh-abschnitt { color: var(--text-muted); }
 	.dh-stufe { margin-left: auto; padding: .05rem .35rem; border-radius: 3px; font-size: .75rem; background: rgba(127,127,127,.2); }
 	[data-stufe='eng'] .dh-stufe { background: rgba(226,61,40,.3); color: #ff9c8a; font-weight: 700; }
 	[data-stufe='knapp'] .dh-stufe { background: rgba(241,196,15,.22); color: #e0b928; }

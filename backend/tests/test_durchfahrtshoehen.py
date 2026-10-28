@@ -57,6 +57,32 @@ def test_beschraenkungen_stehen_mit_kilometer_und_spielraum_in_der_liste():
     assert eintrag["laenge_m"] == pytest.approx(1112, abs=2)
 
 
+def test_der_eintrag_bringt_seine_teilstrecke_mit():
+    """Die Karte zeigt den Abschnitt, nicht nur seinen Anfang.
+
+    Gemeldet: ``maxheight=4`` an der Mautzufahrt des Karawankentunnels begann am
+    Ende einer Brücke — der erste Stützpunkt allein sah aus wie die Brücke.
+    """
+    [eintrag] = dh.engstellen([[1, 3, 4.0]], COORDS, 4.0)
+    assert eintrag["linie"] == COORDS[1:]
+    assert route_steps.abschnitt_text(eintrag["laenge_m"]) == "auf 2,2 km"
+
+
+def test_lange_abschnitte_werden_ausgeduennt_anfang_und_ende_bleiben():
+    coords = [[11.0, 47.0 + i / 10_000] for i in range(500)]
+    linie = route_steps.abschnitt(coords, 10, 400)
+    assert len(linie) == route_steps.ABSCHNITT_PUNKTE
+    assert linie[0] == coords[10] and linie[-1] == coords[400]
+
+
+@pytest.mark.parametrize(("laenge", "text"), [
+    (None, ""), (40, ""), (199, ""), (200, "auf 200 m"), (454, "auf 450 m"), (999, "auf 1000 m"),
+    (1090, "auf 1,1 km"), (23_456, "auf 23,5 km"),
+])
+def test_abschnitt_text(laenge, text):
+    assert route_steps.abschnitt_text(laenge) == text
+
+
 def test_graphhoppers_kommastellen_werden_auf_das_raster_gerundet():
     # 0.1 * 39 ist in Gleitkomma 3.9000000000000004.
     [eintrag] = dh.engstellen([[0, 1, 0.1 * 39]], COORDS, 3.8)
@@ -339,7 +365,8 @@ async def test_berechnung_speichert_die_liste_und_liefert_sie_wieder_aus(verband
     assert {"if": "max_height < 3.65", "multiply_by": "0"} in gesendet["custom_model"]["priority"]
     erwartet = [{
         "km": KM[1], "m": pytest.approx(1112, abs=2), "lat": COORDS[1][1], "lon": COORDS[1][0],
-        "laenge_m": pytest.approx(1112, abs=2), "hoehe_m": 3.7, "spielraum_m": 0.05, "stufe": "eng",
+        "laenge_m": pytest.approx(1112, abs=2), "linie": COORDS[1:3],
+        "hoehe_m": 3.7, "spielraum_m": 0.05, "stufe": "eng",
     }]
     assert berechnet.json()["durchfahrtshoehen"] == erwartet
     assert geladen.json()["durchfahrtshoehen"] == erwartet

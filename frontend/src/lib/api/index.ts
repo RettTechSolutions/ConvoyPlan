@@ -162,6 +162,8 @@ export interface DurchfahrtshoeheEntry {
 	lat: number;
 	lon: number;
 	laenge_m: number;
+	/** Die Teilstrecke `[[lon, lat], …]`, ausgedünnt; fehlt bei älteren Routen. */
+	linie?: number[][] | null;
 	/** Angeschriebene Höhe aus OSM, im Graphen auf 0,1 m gerundet. */
 	hoehe_m: number;
 	/** Höhe minus höchstes Fahrzeug; null ohne erfasste Fahrzeughöhe. */
@@ -191,6 +193,8 @@ export interface GewichtsgrenzeEntry {
 	lat: number;
 	lon: number;
 	laenge_m: number;
+	/** Die Teilstrecke `[[lon, lat], …]`, ausgedünnt; fehlt bei älteren Routen. */
+	linie?: number[][] | null;
 	/** Grenze aus OSM (auch Lkw-Verbote), auf 0,1 t gerundet. */
 	grenze_t: number;
 	/** Grenze minus schwerstes Fahrzeug; null ohne erfasstes Gewicht. */

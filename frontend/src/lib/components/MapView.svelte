@@ -532,17 +532,49 @@
 	 * Gewichtsgrenze). Ohne Markierung sähe man bei Zoom 16 nur Straße — welche
 	 * der Unterführungen gemeint ist, sagte die Karte nicht. Die Markierung
 	 * bleibt bis zur nächsten Stelle; ein Klick auf sie nimmt sie weg.
+	 *
+	 * Gilt die Beschränkung über einen Abschnitt (`linie`, siehe
+	 * `$lib/route/abschnitt.ts`), liegt der Ring an dessen Anfang und die
+	 * Teilstrecke ist hervorgehoben; die Karte zeigt den ganzen Abschnitt.
+	 * Sonst stand der Ring allein am Anfang, und der war einmal eine Brücke.
 	 */
 	let stellenMarker: maplibregl.Marker | null = null;
-	export function zeigeStelle(lat: number, lon: number) {
-		if (!map) return;
+	function stelleEntfernen() {
 		stellenMarker?.remove();
+		stellenMarker = null;
+		(map?.getSource('stelle-abschnitt') as maplibregl.GeoJSONSource | undefined)?.setData(empty());
+	}
+	export function zeigeStelle(lat: number, lon: number, linie?: number[][]) {
+		if (!map) return;
+		stelleEntfernen();
 		const el = document.createElement('div');
 		el.className = 'stellen-marker';
 		el.title = 'Markierung entfernen';
-		el.addEventListener('click', () => { stellenMarker?.remove(); stellenMarker = null; });
+		el.addEventListener('click', stelleEntfernen);
 		stellenMarker = new maplibregl.Marker({ element: el }).setLngLat([lon, lat]).addTo(map);
-		map.flyTo({ center: [lon, lat], zoom: Math.max(16, map.getZoom()), duration: 800 });
+		if (!linie || linie.length < 2) {
+			map.flyTo({ center: [lon, lat], zoom: Math.max(16, map.getZoom()), duration: 800 });
+			return;
+		}
+		const daten: Feature = { type: 'Feature', geometry: { type: 'LineString', coordinates: linie }, properties: {} };
+		const quelle = map.getSource('stelle-abschnitt') as maplibregl.GeoJSONSource | undefined;
+		if (quelle) quelle.setData(daten);
+		else {
+			map.addSource('stelle-abschnitt', { type: 'geojson', data: daten });
+			map.addLayer({
+				id: 'stelle-abschnitt-linie',
+				type: 'line',
+				source: 'stelle-abschnitt',
+				layout: { 'line-join': 'round', 'line-cap': 'round' },
+				paint: { 'line-color': '#ffd23f', 'line-width': 9, 'line-opacity': 0.85 },
+			}, map.getLayer('route-line') ? 'route-line' : undefined);
+		}
+		const lons = linie.map((c) => c[0]);
+		const lats = linie.map((c) => c[1]);
+		map.fitBounds(
+			[[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+			{ padding: 80, maxZoom: 16, duration: 800 },
+		);
 	}
 
 	/** Ein Fahrzeug mit Position heranholen; `false`, wenn es keine gibt. */

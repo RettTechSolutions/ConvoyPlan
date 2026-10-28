@@ -308,6 +308,13 @@ Drei Dinge, die man kennen muss:
   Sperre `max_height < Fahrzeughöhe` kann deshalb ein Fahrzeug von 3,88 m unter
   ein 3,85-m-Schild schicken. Die Stufe `eng` (< 10 cm Spielraum) ist genau dafür
   da; die Sperre selbst ist unverändert.
+- **Eine Beschränkung gilt je Kante, nicht je Schild.** `lat`/`lon` sind der erste
+  Stützpunkt des Abschnitts; gemeldet war die Mautzufahrt am Karawankentunnel
+  (`maxheight=4` ab dem Brückenende), deren Ring auf der Brücke lag. Jeder Eintrag
+  (Höhe und Gewicht) trägt deshalb `linie` (`route_steps.abschnitt`, ausgedünnt),
+  ab `ABSCHNITT_AB_M` (200 m) nennen Liste, Marschbefehl und Roadbook die Länge, und
+  die Karte hebt die Teilstrecke hervor. Grenze und Text stehen zweimal:
+  `route_steps.abschnitt_text` und `$lib/route/abschnitt.ts`.
 - **`None` ist nicht `[]`.** `None` heißt „nicht ermittelt" (alte oder importierte
   Route), `[]` heißt „keine bekannte Beschränkung". Wer das zusammenlegt, behauptet
   bei jeder alten Route freie Fahrt.
