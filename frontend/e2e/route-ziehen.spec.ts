@@ -20,10 +20,6 @@ const ROUTE = {
 	durchfahrtshoehen: null, bruecken: null, gewichtsgrenzen: null,
 };
 
-const KACHEL = Buffer.from(
-	'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64',
-);
-
 async function planungMitRoute(page: Page, rolle = 'admin') {
 	const aufrufe = await mockApi(page, {
 		...GRUNDLAGE,
@@ -35,9 +31,6 @@ async function planungMitRoute(page: Page, rolle = 'admin') {
 		[`POST /api/convoys/${CONVOY}/calculate-route`]: ROUTE,
 		'GET /api/organizations/': [],
 	});
-	// Echte Kacheln statt der 404 aus `mockApi`: scheitern alle, feuert MapLibre
-	// `load` nicht, und die Route kommt nie auf die Karte.
-	await page.route('**/api/tiles/**', (r) => r.fulfill({ contentType: 'image/png', body: KACHEL }));
 	await page.addInitScript((slug) => localStorage.setItem(`cp_tutorial_seen_v1__${slug}`, '1'), SLUG);
 	await page.goto(`/o/${SLUG}/plan`, { waitUntil: 'domcontentloaded' });
 	await expect(page.locator('.maplibregl-marker', { hasText: 'WP Erfurt' })).toBeAttached();
