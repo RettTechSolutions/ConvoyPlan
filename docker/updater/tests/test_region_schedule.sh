@@ -215,6 +215,23 @@ rm -rf "$D/graph" "$D/osm"
 run_hook "$D"
 started "$D"; check $? "switch-region.sh wurde gestartet"
 
+echo "── Fall 17: Landmarks eines fertigen Graphen halten den Wechsel an ─────"
+# graphhopper/entrypoint.sh rechnet sie in einem eigenen Lauf nach (Marke
+# .lm_vorbereitung, edges liegt schon) — dieselbe Regel wie graph_aufbau.py.
+D="$(setup_case case17)"; write_request "$D" "$(( NOW - 60 ))"
+: > "$D/graph/edges"; touch -d "@$(( NOW - 120 ))" "$D/graph/.lm_vorbereitung"
+run_hook "$D"
+not_started "$D"; check $? "switch-region.sh NICHT gestartet"
+rm -f "$D/graph/.lm_vorbereitung"
+run_hook "$D"
+started "$D"; check $? "nach den Landmarks laeuft der Wechsel an"
+
+echo "── Fall 18: haengende Landmark-Berechnung haelt nichts an ──────────────"
+D="$(setup_case case18)"; write_request "$D" "$(( NOW - 60 ))"
+: > "$D/graph/edges"; touch -d "@$(( NOW - 14400 - 60 ))" "$D/graph/.lm_vorbereitung"
+run_hook "$D"
+started "$D"; check $? "switch-region.sh wurde gestartet"
+
 echo
 if [ "$FAILED" = 0 ]; then
     echo "ALLE TESTS GRUEN"

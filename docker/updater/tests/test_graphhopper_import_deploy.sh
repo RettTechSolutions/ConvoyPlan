@@ -88,6 +88,19 @@ out="$(STUB_GH_RUNNING=1 mit_funktionen '_plan_deploy_services "$ALLE"; echo "$D
 eq "fertiger Graph: alle Dienste werden deployt" "$out" "$ALLE"
 [ ! -e "$DEFER" ]; check $? "fertiger Graph: eine alte Marke wird aufgeraeumt"
 
+# Fall 2b: fertiger Graph, aber die Landmarks werden nachgerechnet
+# (.lm_vorbereitung, graphhopper/entrypoint.sh) — kein Torso-Risiko, aber ein
+# Deploy liesse die Rechnung von vorn beginnen, und so lange routet nichts.
+: > "$GRAPH/.lm_vorbereitung"
+out="$(STUB_GH_RUNNING=1 mit_funktionen '_plan_deploy_services "$ALLE"; echo "$DEPLOY_SERVICES"')"
+eq "Landmarks in Arbeit: graphhopper faellt aus der Deploy-Liste" "$out" "backend frontend caddy db retention "
+STUB_GH_RUNNING=1 mit_funktionen '_deploy_deferred_graphhopper'
+! grep -q "DEPLOY" "$LOGF"; check $? "Landmarks in Arbeit: es wird NICHT nachgezogen"
+rm -f "$GRAPH/.lm_vorbereitung"
+STUB_GH_RUNNING=1 mit_funktionen '_deploy_deferred_graphhopper'
+grep -q "DEPLOY" "$LOGF"; check $? "Landmarks fertig: der zurueckgestellte Deploy wird nachgeholt"
+rm -f "$DEFER"
+
 # Fall 3: Container gestoppt — ein gestoppter Container baut nichts
 rm -f "$GRAPH/edges" "$DEFER"
 out="$(mit_funktionen '_plan_deploy_services "$ALLE"; echo "$DEPLOY_SERVICES"')"

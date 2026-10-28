@@ -189,13 +189,40 @@ kantenbasiert — die teuerste Phase des Imports an Heap und Zeit, für einen
 Nutzen nur bei „schnell" ohne Fahrzeughöhe (alles andere schickt ein Custom
 Model und `ch.disable`). `profiles_ch` fehlt deshalb; jede Anfrage läuft
 flexibel. Nicht im Fingerprint: ein fertiger Graph mit CH-Daten lädt weiter
-(`test_entrypoint_start_phasen.sh`, Fall 1c). Wird „schnell" auf langen
-Strecken zu langsam, ist LM (`profiles_lm`) der nächste Schritt, nicht CH.
-Bis dahin trägt die Frist: `GRAPHHOPPER_TIMEOUT_S` (Standard 180 s, früher fest 30 s).
-Gemeldet war Bayern–Albanien, 3.250 km, das nach 30 s mit „Routing-Dienst nicht
-verfügbar" abbrach, obwohl GraphHopper lief. Ein Abbruch nach der Frist ist jetzt
-`RoutingTimeoutError` → 504 mit eigener Meldung, ohne Rückfall-Wiederholung
-(`tests/test_routing_frist.py`).
+(`test_entrypoint_start_phasen.sh`, Fall 1c).
+
+**Stattdessen LM** (`profiles_lm`, nur `car`), seit eine Route Bayern–Albanien an der
+Frist des Backends abbrach. Gemessen auf Österreich: „schnell" und „standard" 2–2,6×
+schneller, Routen bitgleich; „kürzeste" wurde mit LM *langsamer* und schickt deshalb
+`lm.disable` (`routing._payload`). LM verträgt das Custom Model je Anfrage nur, solange
+es Gewichte **nicht senkt** — Priority ≤ 1, Geschwindigkeit nur per `limit_to`,
+`distance_influence` ≥ 90 (`car.json`); sonst werden Routen falsch, nicht nur langsam.
+`tests/test_routing_landmarks.py` hält das fest. Vier Dinge im Entrypoint:
+
+- **Nicht im Fingerprint.** Einem fertigen Graphen ohne Landmarks rechnet ein eigener
+  `import`-Lauf (RAM_STORE, JAVA_OPTS) sie nach — kein Neuaufbau beim Update. Getrennt
+  vom eigentlichen Import, damit dessen Speicherspitze bleibt (Österreich: Import
+  10,2 GB Heap, LM 4,3 GB).
+- **Der Server bekommt `profiles_lm` nur, wenn `landmarks_car` fertig daliegt.** Sonst
+  rechnete GraphHopper sie beim Laden selbst — per MMAP, mit `ExitOnOutOfMemoryError`.
+- **`.lm_vorbereitung`** liegt, solange gerechnet wird; ein Start, der sie vorfindet,
+  verwirft die halben `landmarks_*`. Dieselbe Marke lesen `graphhopper-deploy.sh`,
+  `region_graph_building` und `graph_aufbau.py` (gemeldet als `import`) — `edges` liegt
+  dann schon und belegt nichts. Wer die Marke umbenennt, zieht alle drei mit.
+- **Scheitern ist kein Ausfall.** Der Server läuft ohne LM; `.lm_gescheitert` hält den
+  Fingerprint fest, ein neuer Versuch kommt erst mit neuem Graphen oder nach Löschen der
+  Datei — bewusst nicht mit anderen `JAVA_OPTS`: der Import-Container des Wechsels hat
+  andere als der Server danach, und dessen Versuch fiele in die Gesundheitsfrist. `GH_COMMAND=import` (Regionswechsel) rechnet LM gleich mit, weil
+  `switch-region.sh` nach dem Tausch nur `REGION_HEALTH_TIMEOUT` auf den Server wartet.
+
+`GH_LM=false` schaltet LM ab. Tests: `test_entrypoint_start_phasen.sh` (Fälle 1, 6, 8–11, 10b),
+`test_entrypoint_graph_zustand.sh` (7, 8), `test_graphhopper_import_deploy.sh` (2b),
+`test_region_schedule.sh` (17, 18), `tests/test_graph_aufbau.py`.
+
+Die Frist des Backends trägt den Rest: `GRAPHHOPPER_TIMEOUT_S` (Standard 180 s, früher
+fest 30 s). Ein Abbruch danach ist `RoutingTimeoutError` → 504 mit eigener Meldung, ohne
+Rückfall-Wiederholung (`tests/test_routing_frist.py`) — nicht „Routing-Dienst nicht
+verfügbar", denn GraphHopper lief.
 
 ### Die Wegpunktreihenfolge gehört dem Menschen
 

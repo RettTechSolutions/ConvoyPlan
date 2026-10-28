@@ -96,6 +96,8 @@ region_switch_due() {
 #     der Entrypoint laedt gerade das Extract;
 #   - ein .graph_fingerprint ohne edges, juenger als die Frist — der Entrypoint
 #     schreibt ihn unmittelbar VOR dem Import, edges entsteht erst am Ende.
+#   - eine .lm_vorbereitung neben edges, juenger als die Frist — der
+#     Entrypoint rechnet die Landmarks des fertigen Graphen nach.
 #
 # Ein Wechsel, der jetzt anliefe, importierte daneben: zwei Importe um denselben
 # Speicher, und am Ende tauschte er das Graph-Verzeichnis und startete
@@ -117,8 +119,13 @@ region_graph_building() {
         [ "$((now - mtime))" -le "${REGION_DOWNLOAD_STALL}" ] && return 0
     done
 
-    [ -f "${REGION_GRAPH_DIR}/edges" ] && return 1
-    mtime="$(stat -c %Y "${REGION_GRAPH_DIR}/.graph_fingerprint" 2>/dev/null)"
+    # Fertiger Graph: gebaut wird nur, solange der Entrypoint seine Landmarks
+    # nachrechnet (.lm_vorbereitung) — dieselbe Regel wie graph_aufbau.py.
+    if [ -f "${REGION_GRAPH_DIR}/edges" ]; then
+        mtime="$(stat -c %Y "${REGION_GRAPH_DIR}/.lm_vorbereitung" 2>/dev/null)"
+    else
+        mtime="$(stat -c %Y "${REGION_GRAPH_DIR}/.graph_fingerprint" 2>/dev/null)"
+    fi
     case "${mtime:-}" in ''|*[!0-9]*) return 1 ;; esac
     [ "$((now - mtime))" -le "${REGION_GRAPH_GRACE}" ]
 }
