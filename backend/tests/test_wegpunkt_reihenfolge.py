@@ -245,3 +245,52 @@ async def test_eine_namensaenderung_platziert_nichts(monkeypatch):
     )
 
     assert vorschlag.pending_placement is True
+
+
+# ── Einfügen mit ausdrücklichem Platz ─────────────────────────────────────────
+#
+# Die Route auf der Karte auf eine andere Straße ziehen legt einen Wegpunkt
+# *zwischen* zwei bestehende. Die dahinter rücken weiter, ohne dass ein
+# vorgeschlagener Halt dabei seine Marke verliert — über den Reorder-Weg
+# verlöre er sie.
+
+def _anlegen(order_index=None):
+    from app.schemas.waypoint import WaypointCreate
+
+    felder = {"name": "WP neu", "lat": 50.0, "lon": 10.0}
+    if order_index is not None:
+        felder["order_index"] = order_index
+    return WaypointCreate(**felder)
+
+
+@pytest.mark.asyncio
+async def test_einfuegen_schiebt_die_folgenden_weiter(monkeypatch):
+    dahinter = _db_wegpunkt(order_index=1, pending=False)
+    vorschlag = _db_wegpunkt(order_index=2, pending=True)
+    convoys, convoy, ctx, db = _konvoi_mit([dahinter, vorschlag], monkeypatch)
+    monkeypatch.setattr(convoys.geo_svc, "point_to_wkt", lambda lat, lon: "POINT")
+    db.add = MagicMock()
+
+    await convoys.create_waypoint(convoy_id=convoy.id, data=_anlegen(1), ctx=ctx, db=db)
+
+    neu = db.add.call_args.args[0]
+    assert neu.order_index == 1
+    assert dahinter.order_index == 2
+    assert vorschlag.order_index == 3
+    assert vorschlag.pending_placement is True
+    abfrage = str(db.execute.call_args.args[0].compile(compile_kwargs={"literal_binds": True}))
+    assert "order_index >= 1" in abfrage
+
+
+@pytest.mark.asyncio
+async def test_ohne_platz_wird_nichts_verschoben(monkeypatch):
+    """Wer `order_index` weglässt, bekommt wie bisher 0 — und niemand rückt."""
+    andere = _db_wegpunkt(order_index=0, pending=False)
+    convoys, convoy, ctx, db = _konvoi_mit([andere], monkeypatch)
+    monkeypatch.setattr(convoys.geo_svc, "point_to_wkt", lambda lat, lon: "POINT")
+    db.add = MagicMock()
+
+    await convoys.create_waypoint(convoy_id=convoy.id, data=_anlegen(), ctx=ctx, db=db)
+
+    db.execute.assert_not_called()
+    assert andere.order_index == 0
