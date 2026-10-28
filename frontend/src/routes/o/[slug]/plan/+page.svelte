@@ -723,9 +723,9 @@
 	}
 
 	/** Eine Stelle aus Durchfahrtshöhen oder Gewichtsgrenzen auf der Karte zeigen. */
-	function zeigeStelle(lat: number, lon: number) {
+	function zeigeStelle(lat: number, lon: number, linie?: number[][]) {
 		sidebarOpen = false;
-		mapView?.zeigeStelle(lat, lon);
+		mapView?.zeigeStelle(lat, lon, linie);
 	}
 
 	// Route auf der Karte auf eine andere Straße gezogen: ein Wegpunkt dort, an

@@ -68,13 +68,22 @@
 	let suchenGeklickt = $state(0);
 	/** „Auf der Karte zeigen“: die zuletzt übergebene Stelle. */
 	let gezeigt = $state('');
-	const zeigen = (lat: number, lon: number) => (gezeigt = `${lat.toFixed(3)}, ${lon.toFixed(3)}`);
+	const zeigen = (lat: number, lon: number, linie?: number[][]) =>
+		(gezeigt = `${lat.toFixed(3)}, ${lon.toFixed(3)}` + (linie ? ` · Abschnitt mit ${linie.length} Punkten` : ''));
 	const HOEHEN: Record<string, { eintraege: DurchfahrtshoeheEntry[] | null; hoehe: number | null; ohne: number }> = {
 		gemischt: {
 			eintraege: [stelle(12.4, 3.7, 0.05, 'eng'), stelle(30.1, 4.5, 0.85, 'frei'), stelle(48.9, 3.9, 0.25, 'knapp'), stelle(60, 4.2, 0.55, 'frei')],
 			hoehe: 3.65, ohne: 1,
 		},
 		alle_frei: { eintraege: [stelle(30.1, 4.5, 0.85, 'frei')], hoehe: 3.65, ohne: 0 },
+		// Mautzufahrt Karawankentunnel: `maxheight=4` ab dem Brückenende, gut ein Kilometer.
+		abschnitt: {
+			eintraege: [
+				{ ...stelle(12.4, 4.0, 0, 'eng'), laenge_m: 1090, linie: [[14.029, 46.5237], [14.0301, 46.5284], [14.0306, 46.5331]] },
+				{ ...stelle(20.2, 3.9, -0.1, 'eng'), laenge_m: 450, linie: [[11.1, 47.2], [11.1, 47.204]] },
+			],
+			hoehe: 4.0, ohne: 0,
+		},
 		ohne_hoehe: { eintraege: [stelle(12.4, 3.5, null, 'unbekannt')], hoehe: null, ohne: 3 },
 		leer: { eintraege: [], hoehe: 3.2, ohne: 0 },
 		alt: { eintraege: null, hoehe: 3.2, ohne: 0 },

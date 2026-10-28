@@ -104,6 +104,7 @@ def engstellen(
             "lat": lat,
             "lon": lon,
             "laenge_m": round(along[bis] - along[von]),
+            "linie": route_steps_svc.abschnitt(coords, von, bis),
             "hoehe_m": h,
             "spielraum_m": spielraum,
             "stufe": stufe(spielraum),

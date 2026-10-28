@@ -4,6 +4,7 @@ from math import asin, cos, radians, sin, sqrt
 from typing import Any, Iterable
 
 import httpx
+from httpx import ReadTimeout, Timeout
 
 from app.config import settings
 from app.services import route_steps as route_steps_svc
@@ -272,12 +273,27 @@ def _payload(
     return payload
 
 
+class RoutingTimeoutError(Exception):
+    """GraphHopper ist erreichbar, hat aber nicht innerhalb der Frist geantwortet.
+
+    Kein ValueError: der Rückfall in ``calculate_route`` (ohne Gewicht, ohne
+    Fähre) hilft hier nicht, er stellte nur dieselbe lange Anfrage noch einmal.
+    """
+
+
 async def _anfrage(payload: dict[str, Any]) -> dict:
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(
-            f"{settings.graphhopper_url}/route",
-            json=payload,
-        )
+    # Verbinden darf nicht lange dauern — ein nicht erreichbarer Dienst soll
+    # nicht erst nach Minuten auffallen. Nur das Warten auf die Antwort bekommt
+    # die lange Frist.
+    timeout = Timeout(settings.graphhopper_timeout_s, connect=10.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        try:
+            resp = await client.post(
+                f"{settings.graphhopper_url}/route",
+                json=payload,
+            )
+        except ReadTimeout as exc:
+            raise RoutingTimeoutError(settings.graphhopper_timeout_s) from exc
         if not resp.is_success:
             try:
                 detail = resp.json().get("message", resp.text)

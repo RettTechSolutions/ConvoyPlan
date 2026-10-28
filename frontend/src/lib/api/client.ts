@@ -182,7 +182,10 @@ async function toApiError(res: Response, fallback: string): Promise<ApiError> {
 			: typeof data?.message === 'string'
 				? (data.message as string)
 				: null;
-	return new ApiError(res.status, detail, res.statusText || fallback, data);
+	// Ohne JSON (Fehlerseite eines vorgeschalteten Proxys) und ohne statusText
+	// (HTTP/2) bliebe nur „Request failed" — der Status sagt dann wenigstens,
+	// wo man suchen muss.
+	return new ApiError(res.status, detail, res.statusText || `${fallback} (HTTP ${res.status})`, data);
 }
 
 async function request<T>(

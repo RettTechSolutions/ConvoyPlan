@@ -219,6 +219,11 @@ es Gewichte **nicht senkt** — Priority ≤ 1, Geschwindigkeit nur per `limit_t
 `test_entrypoint_graph_zustand.sh` (7, 8), `test_graphhopper_import_deploy.sh` (2b),
 `test_region_schedule.sh` (17, 18), `tests/test_graph_aufbau.py`.
 
+Die Frist des Backends trägt den Rest: `GRAPHHOPPER_TIMEOUT_S` (Standard 180 s, früher
+fest 30 s). Ein Abbruch danach ist `RoutingTimeoutError` → 504 mit eigener Meldung, ohne
+Rückfall-Wiederholung (`tests/test_routing_frist.py`) — nicht „Routing-Dienst nicht
+verfügbar", denn GraphHopper lief.
+
 ### Die Wegpunktreihenfolge gehört dem Menschen
 
 `order_index` ist die Wahrheit, und `calculate_route` leitet ihn **nicht** aus der
@@ -335,6 +340,13 @@ Drei Dinge, die man kennen muss:
   Sperre `max_height < Fahrzeughöhe` kann deshalb ein Fahrzeug von 3,88 m unter
   ein 3,85-m-Schild schicken. Die Stufe `eng` (< 10 cm Spielraum) ist genau dafür
   da; die Sperre selbst ist unverändert.
+- **Eine Beschränkung gilt je Kante, nicht je Schild.** `lat`/`lon` sind der erste
+  Stützpunkt des Abschnitts; gemeldet war die Mautzufahrt am Karawankentunnel
+  (`maxheight=4` ab dem Brückenende), deren Ring auf der Brücke lag. Jeder Eintrag
+  (Höhe und Gewicht) trägt deshalb `linie` (`route_steps.abschnitt`, ausgedünnt),
+  ab `ABSCHNITT_AB_M` (200 m) nennen Liste, Marschbefehl und Roadbook die Länge, und
+  die Karte hebt die Teilstrecke hervor. Grenze und Text stehen zweimal:
+  `route_steps.abschnitt_text` und `$lib/route/abschnitt.ts`.
 - **`None` ist nicht `[]`.** `None` heißt „nicht ermittelt" (alte oder importierte
   Route), `[]` heißt „keine bekannte Beschränkung". Wer das zusammenlegt, behauptet
   bei jeder alten Route freie Fahrt.

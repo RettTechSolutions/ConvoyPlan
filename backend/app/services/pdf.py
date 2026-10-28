@@ -6,6 +6,7 @@ from fpdf import FPDF
 
 from app.services import durchfahrtshoehe as hoehe_svc
 from app.services import gewichtsgrenzen as gewicht_svc
+from app.services import route_steps as route_steps_svc
 
 MARSCHFORM_LABELS = {
     "geschlossener_verband": "Geschlossener Gesamtverband",
@@ -196,7 +197,10 @@ def _durchfahrtshoehen(
             pdf.cell(cols[0][0], 6, f"{e.get('km', 0):.1f} km", border=1, fill=fill)
             pdf.cell(cols[1][0], 6, f"{e.get('hoehe_m', 0):.1f} m".replace(".", ","), border=1, fill=fill)
             pdf.cell(cols[2][0], 6, "-" if sp is None else f"{sp * 100:+.0f} cm", border=1, fill=fill)
-            pdf.cell(cols[3][0], 6, _STUFE_LABELS.get(e.get("stufe", ""), ""), border=1, fill=fill,
+            hinweis = ", ".join(t for t in (
+                route_steps_svc.abschnitt_text(e.get("laenge_m")), _STUFE_LABELS.get(e.get("stufe", ""), ""),
+            ) if t)
+            pdf.cell(cols[3][0], 6, hinweis, border=1, fill=fill,
                      new_x="LMARGIN", new_y="NEXT")
             fill = not fill
     rest = len(eintraege) - len(zeigen)
@@ -315,7 +319,10 @@ def _gewichtsgrenzen(
             pdf.cell(cols[1][0], 6, grenze, border=1, fill=fill)
             pdf.cell(cols[2][0], 6, "-" if r is None else f"{r:+.1f} t".replace(".", ","), border=1, fill=fill)
             pdf.cell(cols[3][0], 6, gewicht_svc.AUSNAHMEN.get(e.get("ausnahme") or "", "-"), border=1, fill=fill)
-            pdf.cell(cols[4][0], 6, _GEWICHT_LABELS.get(e.get("stufe", ""), ""), border=1, fill=fill,
+            hinweis = ", ".join(t for t in (
+                route_steps_svc.abschnitt_text(e.get("laenge_m")), _GEWICHT_LABELS.get(e.get("stufe", ""), ""),
+            ) if t)
+            pdf.cell(cols[4][0], 6, hinweis, border=1, fill=fill,
                      new_x="LMARGIN", new_y="NEXT")
             fill = not fill
     rest = len(eintraege) - len(zeigen)
