@@ -19,6 +19,7 @@ from app.api.deps import OrgCtx, get_current_user, get_org_context
 from app.api.guards import get_convoy_access
 from app.api.quota import routing_quota
 from app.api.routes import marschbefehl_vorlage as vorlage_routen
+from app.config import settings
 from app.database import get_db
 from app.models.convoy import Convoy, ConvoyVehicle
 from app.models.organization import Organization
@@ -627,6 +628,21 @@ async def calculate_route(
     except routing_svc.RoutingNoConnectionError:
         logger.warning("No connection for convoy %s with %s", convoy_id, vehicle_params)
         raise HTTPException(status_code=422, detail=_keine_verbindung_message(vehicle_params))
+    except routing_svc.RoutingTimeoutError:
+        # Erreichbar, aber zu langsam — nicht dasselbe wie „nicht verfügbar":
+        # dort hilft Warten, hier eine kürzere Route oder eine längere Frist.
+        logger.warning(
+            "Routing timed out for convoy %s after %ss (%d points)",
+            convoy_id, settings.graphhopper_timeout_s, len(points),
+        )
+        raise HTTPException(
+            status_code=504,
+            detail=(
+                f"Die Routenberechnung hat länger als {settings.graphhopper_timeout_s:.0f} s gedauert "
+                "und wurde abgebrochen. Sehr lange Routen über mehrere Länder brauchen viel "
+                "Rechenzeit; der Betreiber kann die Frist mit GRAPHHOPPER_TIMEOUT_S verlängern."
+            ),
+        )
     except ValueError as exc:
         # GraphHopper hat geantwortet, aber die Anfrage abgelehnt (z. B. Punkt
         # außerhalb der Kartendaten, fehlende Encoded Values) — Meldung
@@ -634,7 +650,7 @@ async def calculate_route(
         logger.error("Routing rejected for convoy %s: %s", convoy_id, exc)
         raise HTTPException(status_code=502, detail=f"Routing fehlgeschlagen: {exc}")
     except Exception as exc:
-        logger.error("Routing service error for convoy %s: %s", convoy_id, exc, exc_info=True)
+        logger.error("Routing service error for convoy %s: %r", convoy_id, exc, exc_info=True)
         raise HTTPException(status_code=502, detail="Routing-Dienst nicht verfügbar")
 
     coords = route_data["geometry"].get("coordinates", [])
