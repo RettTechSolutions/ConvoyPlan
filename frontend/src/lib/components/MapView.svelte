@@ -19,6 +19,7 @@
 	import { mapMode } from '$lib/stores/map';
 	import { themeStore } from '$lib/stores/theme';
 	import { addRegionMask, applyMapTheme } from '$lib/map/region';
+	import { wennStilBereit } from '$lib/map/stilBereit';
 	import { konvoiAusschnitt } from '$lib/map/konvoiAusschnitt';
 	import type { Waypoint, VehiclePosition } from '$lib/api';
 	import type { Geometry, FeatureCollection } from 'geojson';
@@ -183,7 +184,7 @@
 			if (e.originalEvent && followVehicleId) onFollowEnd?.();
 		});
 
-		map.on('load', () => {
+		wennStilBereit(map, () => {
 			// Regionsfokus: alles außerhalb der aktiv geladenen Kartenregion wird
 			// abgedunkelt, weil die Routenberechnung nur dort möglich ist. Der
 			// Umriss kommt vom Backend und folgt damit einem Regionswechsel im

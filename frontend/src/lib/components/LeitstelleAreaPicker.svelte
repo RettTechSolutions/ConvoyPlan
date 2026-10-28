@@ -15,6 +15,7 @@
     import { get } from 'svelte/store';
     import { themeStore } from '$lib/stores/theme';
     import { addRegionMask, applyMapTheme } from '$lib/map/region';
+    import { wennStilBereit } from '$lib/map/stilBereit';
     import {
         loadDistricts, districtSubtitle, DISTRICTS_ATTRIBUTION,
         type DistrictFeature, type DistrictProps,
@@ -167,7 +168,7 @@
             zoom: 6,
         });
 
-        map.on('load', () => {
+        wennStilBereit(map, () => {
             // Regionsfokus + Hell/Dunkel-Abstimmung (siehe $lib/map/region)
             addRegionMask(map!, get(themeStore));
             applyMapTheme(map!, get(themeStore));
