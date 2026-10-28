@@ -6,6 +6,7 @@
     import { get } from 'svelte/store';
     import { themeStore } from '$lib/stores/theme';
     import { addRegionMask, applyMapTheme } from '$lib/map/region';
+    import { wennStilBereit } from '$lib/map/stilBereit';
 
     interface Props {
         geojson?: GeoJSON.FeatureCollection | null;
@@ -68,7 +69,7 @@
             warUnsichtbar = mapContainer.clientWidth === 0;
         });
         resizeObserver.observe(mapContainer);
-        map.on('load', () => {
+        wennStilBereit(map, () => {
             // Regionsfokus + Hell/Dunkel-Abstimmung (siehe $lib/map/region)
             addRegionMask(map!, get(themeStore));
             applyMapTheme(map!, get(themeStore));

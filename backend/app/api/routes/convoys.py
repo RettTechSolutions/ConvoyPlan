@@ -418,6 +418,19 @@ async def create_waypoint(
     if convoy.organization_id != org.id:
         raise HTTPException(status_code=404, detail="Convoy not found")
     wp_data = data.model_dump(exclude={"lat", "lon"})
+    if "order_index" in data.model_fields_set:
+        # Ein ausdrücklicher Platz ist ein Einfügen, kein Gleichstand: wer an
+        # dieser Stelle oder dahinter steht, rückt eins weiter (Route auf der
+        # Karte auf eine andere Straße gezogen). Bewusst nicht über den
+        # Reorder-Weg — der platzierte jeden vorgeschlagenen Halt mit; hier
+        # bleibt `pending_placement` der anderen, wie es ist.
+        result = await db.execute(
+            select(Waypoint).where(
+                Waypoint.convoy_id == convoy_id, Waypoint.order_index >= data.order_index
+            )
+        )
+        for folgender in result.scalars().all():
+            folgender.order_index += 1
     wp = Waypoint(**wp_data, convoy_id=convoy_id)
     wp.location = geo_svc.point_to_wkt(data.lat, data.lon)
     db.add(wp)
