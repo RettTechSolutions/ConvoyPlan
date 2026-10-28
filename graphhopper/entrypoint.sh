@@ -206,7 +206,8 @@ if [ -n "$(ls -A "$GRAPH_DIR" 2>/dev/null | grep -vE '^\.(graph_fingerprint|enco
         echo "  $REBUILD_REASON – Routing-Graph wird"
         echo "  aus den OSM-Daten neu gebaut (kann mehrere Minuten dauern)."
         echo "================================================================"
-        rm -rf "$GRAPH_DIR"/* "$FINGERPRINT_FILE" "$LEGACY_FINGERPRINT_FILE"
+        rm -rf "$GRAPH_DIR"/* "$FINGERPRINT_FILE" "$LEGACY_FINGERPRINT_FILE" \
+            "$GRAPH_DIR/.lm_vorbereitung" "$GRAPH_DIR/.lm_gescheitert"
     fi
 fi
 printf '%s' "$FINGERPRINT" > "$FINGERPRINT_FILE"
@@ -267,9 +268,37 @@ CONFIG_FILE="/tmp/graphhopper-config.yml"
 # Nicht im Fingerprint: einen fertigen Graphen MIT CH-Daten laedt 10.2 unter
 # dieser Konfiguration anstandslos, ein Neuaufbau braeuchte es dafuer nicht.
 #
+# Statt CH: Landmarks (LM, profiles_lm) fuer `car`. Ohne jede Beschleunigung
+# brach eine Route Bayern–Albanien (3.250 km) an der Frist des Backends ab.
+# LM vertraegt das Custom Model je Anfrage, solange es Gewichte nur ERHOEHT —
+# das tun alle in routing.py (priority <= 1, limit_to, hoeheres
+# distance_influence); wer dort ein multiply_by > 1 einbaut, macht LM-Routen
+# falsch, nicht nur langsamer. `truck` fragt das Backend nicht an, es bekommt
+# keine. GH_LM=false schaltet LM ab (Speicher; die Landmarks kosten 64 Byte je
+# Knoten im Seitencache).
+#
+# Nicht im Fingerprint, und das ist der Punkt: einem fertigen Graphen ohne
+# Landmarks rechnet GraphHopper sie beim Laden nach, ein Neuaufbau ist nicht
+# noetig. Nur soll das nicht der Server tun (MMAP, kleiner Heap), sondern ein
+# eigener Lauf vorweg — siehe unten bei LM_MARKE.
+GH_LM="${GH_LM:-true}"
+LM_DATEI="$GRAPH_DIR/landmarks_car"
+# Liegt, solange die Landmarks eines fertigen Graphen nachgerechnet werden.
+# Daran erkennen Deploy (docker/updater/graphhopper-deploy.sh), Regionswechsel
+# (region-hook.sh) und Statusseite (backend/app/services/graph_aufbau.py) den
+# Aufbau — `edges` liegt dann schon da und sagt nichts mehr.
+LM_MARKE="$GRAPH_DIR/.lm_vorbereitung"
+
 # $1: Zugriffsart (RAM_STORE oder MMAP). Wird je Phase neu geschrieben, weil
 # sich die beiden Laeufe genau in dieser einen Zeile unterscheiden sollen.
+# $2: mit Landmarks (ja/nein).
 write_config() {
+    LM_BLOCK=""
+    if [ "$2" = "ja" ]; then
+        LM_BLOCK="  profiles_lm:
+    - profile: car
+"
+    fi
     cat > "$CONFIG_FILE" << CONF
 graphhopper:
   datareader.file: $OSM_FILE
@@ -296,7 +325,7 @@ graphhopper:
         vehicle_types: [$TURN_COSTS_VEHICLES]
         u_turn_costs: 60
       custom_model_files: [car.json]
-
+${LM_BLOCK}
 server:
   application_connectors:
     - type: http
@@ -314,26 +343,90 @@ CONF
 # Vielfaches) und mit JAVA_OPTS allein, und erst der Server bekommt die
 # sparsamen Einstellungen. `edges` ist dabei dasselbe Vollstaendigkeitsmerkmal
 # wie im Block darueber, in graphhopper-deploy.sh und in switch-region.sh.
+#
+# Landmarks gehoeren nur dann in die Konfiguration, wenn sie fertig daliegen:
+# fehlen sie, rechnete GraphHopper sie beim Laden selbst nach — im Server also
+# per MMAP und mit dessen Optionen, und ein OutOfMemoryError beendete dort den
+# Dienst (ExitOnOutOfMemoryError), der ohne Landmarks einwandfrei liefe.
+lm_bereit() {
+    [ "$GH_LM" != "false" ] && [ -f "$LM_DATEI" ] && [ ! -f "$LM_MARKE" ]
+}
+
+# Rechnet die Landmarks eines fertigen Graphen nach, als eigener `import`-Lauf
+# (RAM_STORE, JAVA_OPTS) — GraphHopper liest dabei keine OSM-Daten, er laedt den
+# Graphen und ergaenzt nur die Landmarks. Getrennt vom eigentlichen Import,
+# damit dessen Speicherspitze bleibt, wie sie war: Scheitert dieser Schritt,
+# laeuft das Routing weiter wie vor LM, statt im Kreis neu zu importieren.
+#
+# LM_MARKE liegt, solange gerechnet wird. Findet ein Start sie vor, wurde der
+# Lauf abgebrochen (Deploy, OOM, Neustart): was an landmarks_* liegt, ist dann
+# unvollstaendig und wird verworfen. LM_GESCHEITERT haelt fest, fuer welchen
+# Graphen es nicht ging — sonst kostete jeder Neustart denselben vergeblichen
+# Versuch, und nach einem Regionswechsel liefe er in die Gesundheitsfrist von
+# switch-region.sh. Bewusst NICHT an JAVA_OPTS gebunden: der Import-Container des
+# Wechsels laeuft mit anderen als der Server danach, und der versuchte es dann
+# erneut, genau in dieser Frist. Neuer Versuch: neuer Graph oder die Datei
+# loeschen.
+LM_GESCHEITERT="$GRAPH_DIR/.lm_gescheitert"
+lm_nachrechnen() {
+    [ "$GH_LM" != "false" ] || return 0
+    [ -f "$GRAPH_DIR/edges" ] || return 0
+    if [ -f "$LM_MARKE" ]; then
+        echo "Abgebrochene Landmark-Berechnung gefunden — wird verworfen und neu gestartet."
+        rm -f "$GRAPH_DIR"/landmarks_* "$LM_MARKE"
+    fi
+    [ -f "$LM_DATEI" ] && return 0
+    if [ "$(cat "$LM_GESCHEITERT" 2>/dev/null || true)" = "$FINGERPRINT" ]; then
+        echo "WARNUNG: Landmarks liessen sich fuer diesen Graphen schon einmal nicht berechnen — Routing ohne LM. Neuer Versuch: $LM_GESCHEITERT loeschen (etwa nach mehr Heap in JAVA_OPTS); GH_LM=false schaltet LM ab."
+        return 0
+    fi
+    : > "$LM_MARKE"
+    write_config RAM_STORE ja
+    echo "Berechne Landmarks fuer car (import, RAM_STORE, Graph-Cache: $GRAPH_DIR)..."
+    if java $JAVA_OPTS $GH_IMPORT_JAVA_OPTS -jar "$GH_JAR" import "$CONFIG_FILE"; then
+        rm -f "$LM_MARKE" "$LM_GESCHEITERT"
+    else
+        echo "WARNUNG: Landmark-Berechnung fehlgeschlagen — Routing laeuft ohne LM weiter (langsamer bei langen Routen)."
+        rm -f "$GRAPH_DIR"/landmarks_* "$LM_MARKE"
+        printf '%s' "$FINGERPRINT" > "$LM_GESCHEITERT"
+    fi
+}
+
+lm_konfig() {
+    if lm_bereit; then echo ja; else echo nein; fi
+}
+
 if [ "$GH_COMMAND" = "server" ] && [ ! -f "$GRAPH_DIR/edges" ]; then
-    write_config RAM_STORE
+    rm -f "$LM_GESCHEITERT"
+    write_config RAM_STORE nein
     echo "Baue Routing-Graph (import, RAM_STORE, Graph-Cache: $GRAPH_DIR)..."
     java $JAVA_OPTS $GH_IMPORT_JAVA_OPTS -jar "$GH_JAR" import "$CONFIG_FILE"
 fi
 
 if [ "$GH_COMMAND" = "server" ]; then
-    write_config "$GH_DATAACCESS"
-    echo "Starte GraphHopper (server, $GH_DATAACCESS, Graph-Cache: $GRAPH_DIR)..."
+    lm_nachrechnen
+    write_config "$GH_DATAACCESS" "$(lm_konfig)"
+    echo "Starte GraphHopper (server, $GH_DATAACCESS, Landmarks: $(lm_konfig), Graph-Cache: $GRAPH_DIR)..."
     exec java $JAVA_OPTS $GH_SERVER_JAVA_OPTS \
         -jar "$GH_JAR" \
         server "$CONFIG_FILE"
 fi
 
-# Jeder andere Unterbefehl (der Regionswechsel ruft `import` direkt) laeuft wie
-# bisher: eine Phase, RAM_STORE, JAVA_OPTS — beim Import samt der Messung oben.
-write_config RAM_STORE
+# Der Regionswechsel ruft `import` direkt und wartet danach nur kurz auf einen
+# gesunden Server (REGION_HEALTH_TIMEOUT in switch-region.sh) — die Landmarks
+# rechnet deshalb schon dieser Container, nicht erst der Server nach dem Tausch.
+if [ "$GH_COMMAND" = "import" ]; then
+    rm -f "$LM_GESCHEITERT"
+    write_config RAM_STORE nein
+    echo "Starte GraphHopper (import, RAM_STORE, Graph-Cache: $GRAPH_DIR)..."
+    java $JAVA_OPTS $GH_IMPORT_JAVA_OPTS -jar "$GH_JAR" import "$CONFIG_FILE"
+    lm_nachrechnen
+    exit 0
+fi
+
+# Jeder andere Unterbefehl laeuft wie bisher: eine Phase, RAM_STORE, JAVA_OPTS.
+write_config RAM_STORE "$(lm_konfig)"
 echo "Starte GraphHopper ($GH_COMMAND, RAM_STORE, Graph-Cache: $GRAPH_DIR)..."
-EXTRA_JAVA_OPTS=""
-[ "$GH_COMMAND" = "import" ] && EXTRA_JAVA_OPTS="$GH_IMPORT_JAVA_OPTS"
-exec java $JAVA_OPTS $EXTRA_JAVA_OPTS \
+exec java $JAVA_OPTS \
     -jar "$GH_JAR" \
     "$GH_COMMAND" "$CONFIG_FILE"

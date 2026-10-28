@@ -164,4 +164,24 @@ run_block "$D6" >/dev/null
 check ".staging bleibt beim Wipe erhalten" "$(cat "$D6/.staging/edges" 2>/dev/null)" "NEU"
 check ".old bleibt beim Wipe erhalten"     "$(cat "$D6/.old/edges" 2>/dev/null)"     "ALT"
 
+# ── Fall 7: Landmarks sind kein Grund fuer einen Neuaufbau ──────────────────
+# Sie stehen bewusst nicht im Fingerprint: einem fertigen Graphen ohne
+# Landmarks rechnet der Entrypoint sie nach, statt neu zu importieren.
+D7="$TMP/ohne_lm"; mkdir -p "$D7"
+printf 'x' > "$D7/edges"
+printf '%s' "$FP" > "$D7/.graph_fingerprint"
+check "Graph ohne Landmarks wird nicht neu gebaut" "$(run_block "$D7")" "KEINER"
+
+# ── Fall 8: ein Neuaufbau raeumt die Punktdateien der Landmarks mit weg ─────
+# Sonst hielte eine alte .lm_vorbereitung den Deploy zurueck, oder ein altes
+# .lm_gescheitert verhinderte die Landmarks des neuen Graphen.
+D8="$TMP/lm_reste"; mkdir -p "$D8"
+printf 'x' > "$D8/location_index"
+: > "$D8/.lm_vorbereitung"
+printf 'alt' > "$D8/.lm_gescheitert"
+printf '%s' "$FP" > "$D8/.graph_fingerprint"
+run_block "$D8" >/dev/null
+check "Neuaufbau: .lm_vorbereitung und .lm_gescheitert weg" \
+    "$(ls -A "$D8" | grep -c '^\.lm_')" "0"
+
 exit $FAILED

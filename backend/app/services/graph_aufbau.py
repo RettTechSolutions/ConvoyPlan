@@ -12,6 +12,11 @@ dort eindeutige Spuren:
   wird unmittelbar *vor* dem Import geschrieben, ``edges`` legt GraphHopper erst
   bei einem vollständigen Graphen an. Dazwischen läuft der Import, und die
   Änderungszeit des Fingerprints ist sein Beginn.
+- ``.lm_vorbereitung`` in ``/data/graph``: der Entrypoint rechnet die Landmarks
+  eines fertigen Graphen nach (ein eigener ``import``-Lauf, ``edges`` liegt dann
+  schon da). Die Marke liegt nur währenddessen, ihre Änderungszeit ist der
+  Beginn. Gemeldet wird das als ``import`` — für Admin-Portal und Statusseite ist
+  es derselbe Zustand: das Routing pausiert, weil der Graph vorbereitet wird.
 
 Für den zweiten Fall gibt es keinen Lebensbeweis — der Import hält den Graphen
 im Heap (``RAM_STORE``) und schreibt bis zum Schluss nichts. Ein Container, der
@@ -33,6 +38,7 @@ OSM_DIR = "/data/osm"
 
 FINGERPRINT = ".graph_fingerprint"
 EDGES = "edges"
+LM_MARKE = ".lm_vorbereitung"
 
 #: Wie lange ein Import höchstens als laufend gilt. Gleich ``GH_IMPORT_GRACE``.
 IMPORT_FRIST_S = 4 * 3600
@@ -88,8 +94,9 @@ def graph_zustand(
         return download
 
     if os.path.exists(os.path.join(graph_dir, EDGES)):
-        return None
-    beginn = _mtime(os.path.join(graph_dir, FINGERPRINT))
+        beginn = _mtime(os.path.join(graph_dir, LM_MARKE))
+    else:
+        beginn = _mtime(os.path.join(graph_dir, FINGERPRINT))
     if beginn is None:
         return None
     if jetzt - beginn > IMPORT_FRIST_S:

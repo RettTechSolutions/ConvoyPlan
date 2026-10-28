@@ -246,6 +246,7 @@ openssl rand -hex 32
 | `JAVA_OPTS` | `-Xmx8g -Xms1g -XX:+UseG1GC` | JVM-Speicherkonfiguration für den **Graph-Import** |
 | `GH_DATAACCESS` | `MMAP` | Speicherzugriff des laufenden Routing-Servers: `MMAP` (Graph im Seitencache des Kernels, JVM bleibt klein) oder `RAM_STORE` (Graph komplett im Java-Heap) |
 | `GH_SERVER_JAVA_OPTS` | *(leer = Standard)* | Zusätzliche JVM-Optionen nur für den Server; Standard gibt ungenutzten Heap im Leerlauf zurück und beendet die JVM bei `OutOfMemoryError` |
+| `GH_LM` | `true` | Landmarks (LM) für schnelleres Routing langer Strecken; `false` schaltet sie ab |
 
 > Richtwerte: DACH `-Xmx8g`, Deutschland `-Xmx6g`, Bayern `-Xmx3g`, Berlin `-Xmx1g`.
 > Sie gelten für den Import. Im Betrieb liegt der Graph mit `GH_DATAACCESS=MMAP`
@@ -255,6 +256,18 @@ openssl rand -hex 32
 > setzt `GH_DATAACCESS=RAM_STORE`. MMAP blendet den Graphen in 1-MB-Segmenten
 > ein; ein 14-GB-Graph braucht damit rund 14 000 Mappings, der Linux-Standard
 > `vm.max_map_count=65530` reicht also bis weit über 50 GB Graph.
+
+> **Landmarks:** Zum Graphen rechnet GraphHopper Landmarks, die lange Routen bei
+> „schnell" und „standard" gut doppelt so schnell machen (gemessen auf
+> Österreich: 682 km in 3,7 s statt 6,5 s). Das kostet nach dem Import einen
+> zweiten Lauf etwa derselben Dauer und 64 Byte je Knoten auf der Platte und
+> im Seitencache — für Österreich 262 MB zu 421 MB Graph. Der Heap des Imports
+> reicht dafür; neu gebaut wird nichts: Nach dem Update rechnet jede
+> Installation die Landmarks einmal zu ihrem vorhandenen Graphen nach, während
+> der Zeit pausiert das Routing (Statusseite und Admin-Panel zeigen den Aufbau).
+> Scheitert die Rechnung, etwa am Speicher, routet GraphHopper ohne LM weiter
+> wie bisher. Einen neuen Versuch (etwa nach mehr Heap in `JAVA_OPTS`) startet,
+> wer `.lm_gescheitert` im Graph-Volume löscht und GraphHopper neu startet.
 
 > **Regionswechsel:** Die Variablen hier gelten nur für den **Erststart**. Zum
 > Wechseln der Kartenregion im laufenden Betrieb gibt es seit `2026.4.0` die

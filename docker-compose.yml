@@ -233,6 +233,8 @@ services:
       # Zusaetzliche JVM-Optionen nur fuer die Server-Phase; leer = Default
       # aus dem Entrypoint (Heap im Leerlauf zurueckgeben, bei OOM beenden).
       GH_SERVER_JAVA_OPTS: ${GH_SERVER_JAVA_OPTS:-}
+      # Landmarks (LM) fuer lange Routen; false = ohne (graphhopper/entrypoint.sh).
+      GH_LM: ${GH_LM:-true}
     volumes:
       - osm_data:/data/osm
       - gh_graph:/data/graph
@@ -371,6 +373,8 @@ services:
       JAVA_OPTS: ${JAVA_OPTS:--Xmx8g -Xms1g -XX:+UseG1GC}
       GH_DATAACCESS: ${GH_DATAACCESS:-MMAP}
       GH_SERVER_JAVA_OPTS: ${GH_SERVER_JAVA_OPTS:-}
+      # Landmarks (LM) fuer lange Routen; false = ohne (graphhopper/entrypoint.sh).
+      GH_LM: ${GH_LM:-true}
       BACKEND_IMAGE: ${BACKEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/backend:latest}
       FRONTEND_IMAGE: ${FRONTEND_IMAGE:-ghcr.io/retttechsolutions/convoyplan/frontend:latest}
       GRAPHHOPPER_IMAGE: ${GRAPHHOPPER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/graphhopper:latest}

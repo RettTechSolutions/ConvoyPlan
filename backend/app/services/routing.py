@@ -260,6 +260,11 @@ def _payload(
 
     if road_preference == "kuerzeste":
         custom_model["distance_influence"] = _SHORTEST_DISTANCE_INFLUENCE
+        # Die Landmarks (graphhopper/entrypoint.sh) sind mit der Zeitgewichtung
+        # gerechnet; gegen ein Gewicht, in dem die Strecke dominiert, schätzen
+        # sie so schlecht, dass die Suche mit ihnen langsamer wird als ohne
+        # (gemessen auf Österreich: 6,2 s statt 5,0 s, 9,2 s statt 5,7 s).
+        payload["lm.disable"] = True
 
     if custom_model:
         payload["custom_model"] = custom_model

@@ -57,6 +57,16 @@ gemessen. Den Heap-Bedarf belegt die Messung nur nach unten (mit RAM_STORE
 muss der Graph in den Heap passen); die Gerade oben bleibt deshalb, bis
 `gc+heap+exit` aus graphhopper/entrypoint.sh echte Hoechststaende liefert.
 
+Landmarks (seit 2026-10, graphhopper/entrypoint.sh)
+--------------------------------------------------
+Gemessen an Oesterreich (971 MB Extract, 4,1 Mio. Knoten, 4 Kerne): Import
+128 s mit Heap-Hoechststand 10,2 GB, danach die Landmarks als eigener Lauf
+158 s mit 4,3 GB. Der Lauf hebt den Heap-Bedarf also nicht; die Gerade oben
+bleibt. Auf der Platte kommen 64 Byte je Knoten dazu (262 MB auf 421 MB
+Graph): zusammen das 0,70-fache des Extracts, noch unter `_GRAPH_FACTOR`. Die
+Dauer verdoppelt sich gut, bleibt mit 4,8 min aber weit unter der Schaetzung
+von 12-25 min fuer diese Groesse — die Koeffizienten bleiben, wie sie sind.
+
 Ein Import am Rand des Aufschlags
 ---------------------------------
 Das Panel stufte bis 2026-10 mit dem Bedarf INKLUSIVE der 20 % ein und

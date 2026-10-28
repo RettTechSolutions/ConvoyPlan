@@ -53,6 +53,26 @@ def test_import_ueber_der_frist_gilt_nicht_mehr_als_laufend(tmp_path):
     assert _frage(graph, osm) is None
 
 
+def test_landmarks_eines_fertigen_graphen_sind_ein_laufender_import(tmp_path):
+    """Der Entrypoint rechnet sie in einem eigenen ``import``-Lauf nach; ``edges``
+    liegt dann schon da und belegt nichts mehr. Die Marke ist der Beginn."""
+    graph, osm = _dirs(tmp_path)
+    _datei(graph / ".graph_fingerprint", alter_s=86_400)
+    _datei(graph / "edges", alter_s=86_400)
+    _datei(graph / ".lm_vorbereitung", alter_s=300)
+
+    assert _frage(graph, osm) == Aufbau("import", JETZT - 300)
+
+
+def test_landmarks_ueber_der_frist_haengen(tmp_path):
+    graph, osm = _dirs(tmp_path)
+    _datei(graph / "edges")
+    _datei(graph / ".lm_vorbereitung", alter_s=graph_aufbau.IMPORT_FRIST_S + 1)
+
+    assert _frage(graph, osm) is None
+    assert graph_zustand(str(graph), str(osm), jetzt=JETZT).phase == "haengt"
+
+
 def test_leeres_graphverzeichnis_ist_kein_aufbau(tmp_path):
     graph, osm = _dirs(tmp_path)
 

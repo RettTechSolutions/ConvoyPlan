@@ -71,7 +71,11 @@ _graphhopper_cid() {
         --filter "label=com.docker.compose.service=graphhopper" | head -1
 }
 
-# Baut GraphHopper gerade? Laufender Container UND kein fertiger Graph.
+# Baut GraphHopper gerade? Laufender Container UND kein fertiger Graph — oder
+# ein fertiger, dem der Entrypoint gerade die Landmarks nachrechnet
+# (.lm_vorbereitung, siehe graphhopper/entrypoint.sh). Ein Deploy mitten darin
+# hinterliesse keinen Torso, aber die Rechnung finge von vorn an, und so lange
+# routet nichts.
 #
 # Fehlt das Graph-Volume in diesem Container (Altinstallation ohne den Mount),
 # lautet die Antwort NEIN: lieber wie bisher deployen als wegen einer Datei, die
@@ -79,7 +83,7 @@ _graphhopper_cid() {
 # Ein gestoppter Container baut nichts — dann deployt es normal.
 _graphhopper_importing() {
     if [ ! -d "${GRAPH_DIR}" ]; then return 1; fi
-    if [ -f "${GRAPH_DIR}/edges" ]; then return 1; fi
+    if [ -f "${GRAPH_DIR}/edges" ] && [ ! -f "${GRAPH_DIR}/.lm_vorbereitung" ]; then return 1; fi
     if [ -z "$(_graphhopper_cid)" ]; then return 1; fi
     return 0
 }
@@ -108,11 +112,11 @@ _plan_deploy_services() {
         echo "${since}" > "${GH_DEFER_FILE}" 2>/dev/null || true
     fi
     if [ "$((now - since))" -ge "${GH_IMPORT_GRACE}" ]; then
-        log "GraphHopper hat seit $(( (now - since) / 60 )) Minuten noch immer keinen fertigen Graphen (kein ${GRAPH_DIR}/edges) — Geduldsfrist abgelaufen, der Dienst wird jetzt mitgetauscht."
+        log "GraphHopper hat seit $(( (now - since) / 60 )) Minuten noch immer keinen fertigen Graphen (kein ${GRAPH_DIR}/edges oder Landmarks in Arbeit) — Geduldsfrist abgelaufen, der Dienst wird jetzt mitgetauscht."
         rm -f "${GH_DEFER_FILE}" 2>/dev/null || true
         return 0
     fi
-    log "GraphHopper baut gerade den Routing-Graphen (kein ${GRAPH_DIR}/edges) — dieser Dienst wird aus dem Deploy herausgenommen und nach dem Import nachgezogen; alle anderen werden aktualisiert."
+    log "GraphHopper baut gerade den Routing-Graphen (kein ${GRAPH_DIR}/edges oder Landmarks in Arbeit) — dieser Dienst wird aus dem Deploy herausgenommen und nach dem Import nachgezogen; alle anderen werden aktualisiert."
     DEPLOY_SERVICES="$(echo "${all}" | tr ' ' '\n' | grep -v '^graphhopper$' | tr '\n' ' ')"
 }
 
