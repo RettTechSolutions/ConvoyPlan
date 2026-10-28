@@ -311,14 +311,6 @@ CVE-2026-68497
 CVE-2026-54399
 CVE-2026-54428
 
-# Guava: DoS durch unbegrenzte Speicherallokation bei der Deserialisierung.
-# Gebündelt im upstream-graphhopper.jar 10.2 (Guava 33.3.0-jre). GraphHopper
-# deserialisiert keine fremden Daten per Java-Serialisierung; erreichbar ist es
-# nur für unser Backend im internen Docker-Netz. Fixed in Guava 33.7.2;
-# erledigt sich mit dem eigenen Build (siehe Jackson-Einträge oben).
-# Review by: 2027-01-31.
-CVE-2026-102554
-
 # ─────────────────────────────────────────────────────────────────────────────
 # convoyplan-frontend: vulnerability in the undici package bundled inside
 # Node.js 26 (not an npm-installed dependency — Trivy reads Node's internal
