@@ -273,6 +273,16 @@ CVE-2026-89425
 CVE-2026-91776
 CVE-2026-91777
 
+# Guava: DoS durch ungebremste Speicheranforderung beim Deserialisieren
+# (Java-Serialisierung von Guava-Sammlungen). Gebündelt im upstream
+# graphhopper.jar 10.2 (guava 33.3.0-jre), behoben in 33.7.2. GraphHopper
+# deserialisiert keine Java-Objekte aus fremder Hand — es liest seine eigene
+# config.yml, den selbst gebauten Graphen und JSON-Anfragen unseres Backends im
+# internen Docker-Netz. Gemeldet seit dem Trivy-Datenbankstand vom 2026-10-28,
+# ohne Änderung am Image. Löst sich mit dem eigenen Build (siehe oben).
+# Review by: 2027-01-31.
+CVE-2026-102554
+
 # jackson-core: DoS über einen unvollständigen Fix im async-JSON-Parser.
 # Gebündelt im upstream-graphhopper.jar 9.1 (jackson 2.13.5). GraphHopper parst
 # nur seine eigene Konfiguration und wohlgeformte Routing-Anfragen unseres
