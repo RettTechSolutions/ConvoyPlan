@@ -23,6 +23,7 @@
 		bruecken = null,
 		suche = 'idle',
 		onSuchen,
+		onZeigen,
 	}: {
 		eintraege: DurchfahrtshoeheEntry[] | null | undefined;
 		/** Höchstes Fahrzeug, mit dem gesperrt wurde (`routing_params.max_height_m`). */
@@ -34,6 +35,8 @@
 		suche?: 'idle' | 'laeuft' | 'fehler';
 		/** Fehlt, wer nicht suchen darf — dann gibt es keinen Knopf. */
 		onSuchen?: () => void;
+		/** Stelle auf der Karte zeigen; fehlt er, bleibt der Kilometer reiner Text. */
+		onZeigen?: (lat: number, lon: number) => void;
 	} = $props();
 
 	const STUFE: Record<DurchfahrtshoeheEntry['stufe'], string> = {
@@ -86,6 +89,15 @@
 	const cm = (m: number) => `${m >= 0 ? '+' : '−'}${Math.round(Math.abs(m) * 100)} cm`;
 </script>
 
+{#snippet km(e: { km: number; lat: number; lon: number })}
+	{@const text = `km ${e.km.toFixed(1).replace('.', ',')}`}
+	{#if onZeigen}
+		<button type="button" class="dh-km dh-zeigen" title="Auf der Karte zeigen" aria-label="{text} auf der Karte zeigen" onclick={() => onZeigen?.(e.lat, e.lon)}>📍 {text}</button>
+	{:else}
+		<span class="dh-km">{text}</span>
+	{/if}
+{/snippet}
+
 {#if eintraege}
 	<section class="dh" class:eng aria-label="Durchfahrtshöhen">
 		<details bind:open={offen}>
@@ -124,7 +136,7 @@
 						<ul class="dh-liste" aria-label="Bekannte Höhenbeschränkungen">
 							{#each sichtbar as e}
 								<li class="dh-eintrag" data-stufe={e.stufe}>
-									<span class="dh-km">km {e.km.toFixed(1).replace('.', ',')}</span>
+									{@render km(e)}
 									<span class="dh-hoehe">{meter(e.hoehe_m, 1)}</span>
 									{#if e.spielraum_m != null}<span class="dh-spielraum">{cm(e.spielraum_m)}</span>{/if}
 									{#if STUFE[e.stufe]}<span class="dh-stufe">{STUFE[e.stufe]}</span>{/if}
@@ -158,7 +170,7 @@
 							<ul class="dh-liste" aria-label="Brücken ohne Höhenangabe">
 								{#each brueckenSichtbar as b}
 									<li class="dh-eintrag dh-bruecke">
-										<span class="dh-km">km {b.km.toFixed(1).replace('.', ',')}</span>
+										{@render km(b)}
 										<span class="dh-art">{b.art}</span>
 										{#if b.name}<span class="dh-name">{b.name}</span>{/if}
 										{#if b.osm_ids.length}
@@ -219,4 +231,6 @@
 	.dh-name { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 	.dh-osm { margin-left: auto; font-size: .75rem; color: inherit; opacity: .8; }
 	.dh-hinweis { font-size: .75rem; font-style: italic; color: var(--text-muted); }
+	.dh-zeigen { background: none; border: none; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
+	.dh-zeigen:hover, .dh-zeigen:focus-visible { text-decoration-style: solid; }
 </style>

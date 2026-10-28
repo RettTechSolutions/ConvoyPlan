@@ -147,3 +147,20 @@ test('der Klick auf „Jetzt suchen" klappt den Block nicht zu', async ({ page }
 	await block(page).getByRole('button', { name: 'Jetzt suchen' }).click();
 	await expect(block(page).getByText('Suche läuft …')).toBeVisible();
 });
+
+// Eine enge Stelle sagt „vor Ort prüfen" — der Planer will sie dann sehen,
+// ohne die Route nach dem Kilometer abzusuchen. Der Kilometer ist der Knopf,
+// und er zeigt genau diese Stelle, nicht die erste der Liste.
+test('der Kilometer zeigt die Stelle auf der Karte', async ({ page }) => {
+	await oeffnen(page, 'gemischt');
+	await bekannte(page).nth(1).getByRole('button', { name: 'km 48,9 auf der Karte zeigen' }).click();
+	await expect(page.getByText('Gezeigt: 47.489, 11.100')).toBeVisible();
+	await bruecken(page).first().getByRole('button', { name: 'km 5,2 auf der Karte zeigen' }).click();
+	await expect(page.getByText('Gezeigt: 47.052, 11.100')).toBeVisible();
+});
+
+test('ohne Karte bleibt der Kilometer Text', async ({ page }) => {
+	await oeffnen(page, 'ohne_karte');
+	await expect(bekannte(page).first()).toContainText('km 12,4');
+	await expect(bekannte(page).first().getByRole('button')).toHaveCount(0);
+});

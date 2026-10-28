@@ -99,3 +99,16 @@ test('eine überschrittene Grenze klappt den Block auf und steht schon in der Ko
 	await expect(kopf).toContainText('1 über der Grenze');
 	await expect(eintraege(page).first()).toBeVisible();
 });
+
+// Wie bei den Durchfahrtshöhen: der Kilometer holt die Stelle auf die Karte.
+test('der Kilometer zeigt die Stelle auf der Karte', async ({ page }) => {
+	await oeffnen(page, 'gemischt');
+	await eintraege(page).first().getByRole('button', { name: 'km 3,1 auf der Karte zeigen' }).click();
+	await expect(page.getByText('Gezeigt: 47.031, 11.100')).toBeVisible();
+});
+
+test('ohne Karte bleibt der Kilometer Text', async ({ page }) => {
+	await oeffnen(page, 'ohne_karte');
+	await expect(eintraege(page).first()).toContainText('km 3,1');
+	await expect(eintraege(page).first().getByRole('button')).toHaveCount(0);
+});

@@ -20,6 +20,7 @@
 	import { themeStore } from '$lib/stores/theme';
 	import { addRegionMask, applyMapTheme } from '$lib/map/region';
 	import { konvoiAusschnitt } from '$lib/map/konvoiAusschnitt';
+	import { haltegrundText } from '$lib/route/haltegrund';
 	import type { Waypoint, VehiclePosition } from '$lib/api';
 	import type { Geometry, FeatureCollection } from 'geojson';
 	import { positionsZeile, type BlasenZeile } from '$lib/tracking/fahrzeugblase';
@@ -386,6 +387,24 @@
 		map?.flyTo({ center: [lon, lat], zoom: Math.max(zoom, map.getZoom()), duration: 800 });
 	}
 
+	/**
+	 * Eine Stelle an der Route heranholen und markieren (enge Durchfahrt,
+	 * Gewichtsgrenze). Ohne Markierung sähe man bei Zoom 16 nur Straße — welche
+	 * der Unterführungen gemeint ist, sagte die Karte nicht. Die Markierung
+	 * bleibt bis zur nächsten Stelle; ein Klick auf sie nimmt sie weg.
+	 */
+	let stellenMarker: maplibregl.Marker | null = null;
+	export function zeigeStelle(lat: number, lon: number) {
+		if (!map) return;
+		stellenMarker?.remove();
+		const el = document.createElement('div');
+		el.className = 'stellen-marker';
+		el.title = 'Markierung entfernen';
+		el.addEventListener('click', () => { stellenMarker?.remove(); stellenMarker = null; });
+		stellenMarker = new maplibregl.Marker({ element: el }).setLngLat([lon, lat]).addTo(map);
+		map.flyTo({ center: [lon, lat], zoom: Math.max(16, map.getZoom()), duration: 800 });
+	}
+
 	/** Ein Fahrzeug mit Position heranholen; `false`, wenn es keine gibt. */
 	export function zeigeFahrzeug(vehicleId: string): boolean {
 		const pos = livePositions.get(vehicleId);
@@ -481,7 +500,7 @@
 					.setLngLat([w.lon!, w.lat!])
 					.setPopup(
 						new maplibregl.Popup({ offset: 12 }).setDOMContent(
-							popupNode(w.name, `${w.type}${w.halt_purpose ? ` – ${w.halt_purpose}` : ''}`)
+							popupNode(w.name, `${w.type}${w.halt_purpose ? ` – ${haltegrundText(w.halt_purpose)}` : ''}`)
 						)
 					)
 					.addTo(map);
@@ -626,6 +645,9 @@
 
 <style>
 	.map { width: 100%; height: 100%; }
+	/* Ring statt Punkt: die Straße darunter muss zu sehen bleiben. */
+	.map :global(.stellen-marker) { width: 34px; height: 34px; border-radius: 50%; border: 3px solid #e23d28; box-shadow: 0 0 0 3px rgba(255,255,255,.85), 0 0 12px rgba(226,61,40,.7); cursor: pointer; animation: stelle-puls 1.4s ease-out 3; }
+	@keyframes stelle-puls { 0% { transform: scale(1.8); opacity: .3; } 100% { transform: scale(1); opacity: 1; } }
 	/* Die Blase hängt maplibre an den Kartencontainer, außerhalb dieser Komponente. */
 	.map :global(.fz-blase) { font: 13px/1.45 system-ui, sans-serif; color: #1f2d3a; }
 	.map :global(.fz-blase strong) { display: block; margin-bottom: .15rem; padding-right: 1rem; }

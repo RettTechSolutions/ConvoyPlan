@@ -36,6 +36,8 @@ Die Routenberechnung deckt standardmäßig den gesamten DACH-Raum ab (Deutschlan
 
 Für jeden Wegpunkt kann eine **Haltedauer** (Minuten) sowie eine **Notiz** erfasst werden.
 
+Berechnet wird im Tab **Plan** mit „Route berechnen". Wer gerade in einem anderen Tab ist (etwa Wegpunkte umsortiert), findet links unten auf der Karte denselben Knopf, nach der ersten Berechnung als „Route neu berechnen". Er lässt den Tab stehen, statt nach der Berechnung zur Route oder zum Zeitplan zu springen. Am Telefon gibt es dafür den Knopf rechts unten.
+
 ### Routing-Präferenz
 Wähle im Konvoi-Menü die bevorzugte Streckenführung:
 
@@ -105,6 +107,8 @@ Hat mindestens ein Fahrzeug im Verband eine **Höhe** (siehe [Fahrzeuge](Fahrzeu
 | **Höhe fehlt** | – | Kein Fahrzeug im Verband hat eine Höhe; dann wird auch nichts gemieden. |
 
 In der Seitenleiste stehen **Durchfahrtshöhen** und **Gewichtsgrenzen** eingeklappt mit ihrem Befund in einer Zeile (z. B. „✓ frei“ oder „1 eng“). Gibt es etwas zu prüfen — eine enge Stelle, eine überschrittene Grenze —, klappen sie von selbst auf. Die empfohlenen Halte stehen davor, die Eckdaten des Marschverbands als Kurzzeile (Start, Tempo, Routenwahl), der Rest unter „Alle Eckdaten“.
+
+Ein Klick auf den **Kilometer** (📍 km …) holt die Stelle auf die Karte und markiert sie mit einem roten Ring; das gilt auch für die Brücken ohne Höhenangabe und die Gewichtsgrenzen. Ein Klick auf den Ring nimmt die Markierung wieder weg.
 
 Fahrzeuge ohne Höhenangabe zählen beim Meiden nicht mit — der Block nennt ihre Anzahl. Enge und knappe Stellen stehen zusätzlich im [Marschbefehl](Marschbefehl-Export) unter „Durchfahrtshöhen", und **jede** Stelle steht im [Roadbook](Marschbefehl-Export#roadbook-pdf) an ihrem Kilometer — auch die mit viel Spielraum, damit die Besatzung weiß, wo sie unbesorgt durchfahren kann.
 

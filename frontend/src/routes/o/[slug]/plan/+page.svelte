@@ -36,6 +36,7 @@
 	import OnboardingTutorial from '$lib/components/OnboardingTutorial.svelte';
 	import SidebarFooter from '$lib/components/SidebarFooter.svelte';
 	import DurchfahrtsHoehen from '$lib/components/DurchfahrtsHoehen.svelte';
+	import { haltegrundText } from '$lib/route/haltegrund';
 	import KonvoiStatusSchalter from '$lib/components/KonvoiStatusSchalter.svelte';
 	import GewichtsGrenzen from '$lib/components/GewichtsGrenzen.svelte';
 	import RouteHinweisMarke from '$lib/components/RouteHinweisMarke.svelte';
@@ -719,6 +720,12 @@
 		}
 	}
 
+	/** Eine Stelle aus Durchfahrtshöhen oder Gewichtsgrenzen auf der Karte zeigen. */
+	function zeigeStelle(lat: number, lon: number) {
+		sidebarOpen = false;
+		mapView?.zeigeStelle(lat, lon);
+	}
+
 	function wegpunktEintraege(wp: Waypoint): Eintraege {
 		const liste = dndWaypoints;
 		const i = liste.findIndex((w) => w.id === wp.id);
@@ -759,7 +766,7 @@
 				r && { label: 'Halt hier anlegen', icon: '⏸', aktion: () => wegpunktHier(lat, lon, 'stop') },
 				!r && { label: 'Neuer Marschverband…', icon: '＋', aktion: () => (showConvoyForm = true) },
 				TRENNER,
-				r && { label: 'Route berechnen', icon: '🗺', aus: !r.start_point || !r.end_point ? 'Start und Ziel fehlen noch' : loading, aktion: calculateRoute },
+				r && { label: 'Route berechnen', icon: '🗺', aus: !r.start_point || !r.end_point ? 'Start und Ziel fehlen noch' : loading, aktion: () => calculateRoute() },
 				routeGeojson && { label: 'Ganze Route zeigen', icon: '⤢', aktion: () => mapView?.showRoute() },
 				mapView?.istGedreht() && { label: 'Karte einnorden', icon: '🧭', aktion: () => mapView?.resetNorth() },
 				TRENNER,
@@ -808,7 +815,7 @@
 		return [
 			{ titel: r.name },
 			{ label: 'Bearbeiten…', icon: '✎', aktion: openEditConvoyForm },
-			{ label: 'Route berechnen', icon: '🗺', aus: !r.start_point || !r.end_point ? 'Start und Ziel fehlen noch' : loading, aktion: calculateRoute },
+			{ label: 'Route berechnen', icon: '🗺', aus: !r.start_point || !r.end_point ? 'Start und Ziel fehlen noch' : loading, aktion: () => calculateRoute() },
 			{ label: 'Marschbefehl…', icon: '📋', aktion: openBefehlModal },
 			{ label: 'Roadbook (PDF)', icon: '🧭', aus: routeGeojson ? false : 'Zuerst die Route berechnen', aktion: () => downloadExport('roadbook') },
 			{ label: 'GPX herunterladen', icon: '📍', aktion: () => downloadExport('gpx') },
@@ -1015,7 +1022,12 @@
   }
 
 	// ── Route ────────────────────────────────────────────────────────
-	async function calculateRoute() {
+	/**
+	 * `reiterWechseln: false` vom Knopf auf der Karte: wer im Reiter Wegpunkte
+	 * umsortiert und neu berechnet, will dort weiterarbeiten. Hinweise sagt die
+	 * Marke am Reiter Route trotzdem.
+	 */
+	async function calculateRoute({ reiterWechseln = true }: { reiterWechseln?: boolean } = {}) {
 		if (!selected) return;
 		loading = true; error = '';
 		try {
@@ -1027,7 +1039,7 @@
 			activeRoute.set(r);
 			await refreshConvoy();
 			// Gibt es etwas zu tun (Tankstopp, Halte, enge Stellen), zuerst dorthin.
-			activeTab = routeHinweiseJetzt.anzahl > 0 ? 'route' : 'zeitplan';
+			if (reiterWechseln) activeTab = routeHinweiseJetzt.anzahl > 0 ? 'route' : 'zeitplan';
 
 			// Fuel stations and closures use the public Overpass API which can be
 			// very slow — run them in the background AFTER releasing the loading
@@ -1555,7 +1567,7 @@
 						</div>
 					{/if}
 					<div class="route-actions" data-tour="route-actions">
-						<button class="btn-primary" onclick={calculateRoute} disabled={loading}>
+						<button class="btn-primary" onclick={() => calculateRoute()} disabled={loading}>
 							{loading ? 'Berechne…' : '🗺 Route berechnen'}
 						</button>
 						{#if route}
@@ -1602,7 +1614,7 @@
 					<div class="section">
 						<div class="section-header" style="margin-top:0">
 							<span>Route</span>
-							<button class="btn-small" onclick={calculateRoute} disabled={loading}>{loading ? 'Berechne…' : '↻ Neu berechnen'}</button>
+							<button class="btn-small" onclick={() => calculateRoute()} disabled={loading}>{loading ? 'Berechne…' : '↻ Neu berechnen'}</button>
 						</div>
 						{#if !route}
 							<p class="hint">Noch keine Route berechnet. Start und Ziel setzen und im Reiter <strong>Plan</strong> auf „Route berechnen“.</p>
@@ -1713,12 +1725,14 @@
 								bruecken={route.bruecken}
 								suche={brueckenSuche}
 								onSuchen={darfBrueckenSuchen ? () => selected && sucheBruecken(selected.id) : undefined}
+								onZeigen={zeigeStelle}
 							/>
 							<GewichtsGrenzen
 								eintraege={route.gewichtsgrenzen}
 								fahrzeuggewichtT={route.fahrzeuggewicht_t}
 								achslastT={route.achslast_t}
 								ohneGewicht={selected?.convoy_vehicles.filter((cv) => !cv.vehicle.weight_kg).length ?? 0}
+								onZeigen={zeigeStelle}
 							/>
 						{/if}
 					</div>
@@ -2057,7 +2071,7 @@
 									<div class="wp-main">
 										<strong>{wp.name}</strong>
 										<span class="tag">{WP_TYPE_LABELS[wp.type] ?? wp.type}</span>
-										{#if wp.halt_purpose && wp.halt_purpose !== 'technical'}<span class="tag orange">{wp.halt_purpose}</span>{/if}
+										{#if wp.halt_purpose && wp.halt_purpose !== 'technical'}<span class="tag orange">{haltegrundText(wp.halt_purpose)}</span>{/if}
 										{#if wp.hold_duration_min > 0}<span class="tag">{wp.hold_duration_min} min</span>{/if}
 										<HaltVermerk eintraege={haltVermerke.get(wp.id)} haltMin={wp.hold_duration_min} />
 									</div>
@@ -2304,9 +2318,23 @@
 	<!-- ── Karte ─────────────────────────────────────────────────────── -->
 	<main class="map-area">
 		<!-- FAB route button shown on mobile only -->
-		<button class="fab-route" onclick={calculateRoute} disabled={loading}>
+		<button class="fab-route" onclick={() => calculateRoute()} disabled={loading}>
 			{loading ? 'Berechne…' : '🗺 Route'}
 		</button>
+		<!-- Am Schreibtisch: außerhalb des Reiters Plan, wo der große Knopf steht,
+		     schwebt er links unten über der Karte. Am Telefon gilt der FAB oben. -->
+		{#if wizardStep === 0 && selected && activeTab !== 'convoy'}
+			{@const ohneEndpunkte = !selected.start_point || !selected.end_point}
+			<button
+				type="button"
+				class="karte-route"
+				onclick={() => calculateRoute({ reiterWechseln: false })}
+				disabled={loading || ohneEndpunkte}
+				title={ohneEndpunkte ? 'Start und Ziel fehlen noch' : undefined}
+			>
+				{loading ? 'Berechne…' : routeGeojson ? '↻ Route neu berechnen' : '🗺 Route berechnen'}
+			</button>
+		{/if}
 		{#if $mapMode !== 'idle'}
 			<div class="map-hint-bar">
 				<div class="map-hint-row">
@@ -2702,6 +2730,10 @@
 	.topbar { display: none; }
 	.sidebar-backdrop { display: none; }
 	.fab-route { display: none; }
+	/* Über der OSM-Nennung (MapLibre, links unten), nicht auf ihr. */
+	.karte-route { position: absolute; left: 10px; bottom: 44px; z-index: 10; padding: .55rem 1rem; background: var(--color-primary); color: white; border: none; border-radius: 10px; font-size: .9rem; font-weight: 600; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,.35); }
+	.karte-route:hover:not(:disabled) { filter: brightness(1.1); }
+	.karte-route:disabled { opacity: .55; cursor: not-allowed; }
 	.map-hint-bar { position: absolute; top: 1rem; left: 50%; transform: translateX(-50%); z-index: 10; background: rgba(15,27,36,.92); color: white; padding: .55rem .85rem; border-radius: 16px; display: flex; flex-direction: column; gap: .45rem; font-size: .85rem; width: min(420px, calc(100% - 2rem)); box-sizing: border-box; box-shadow: 0 4px 16px rgba(0,0,0,.35); }
 	.map-hint-row { display: flex; align-items: center; gap: .75rem; }
 	.map-hint-text { flex: 1; line-height: 1.3; }
@@ -2815,6 +2847,7 @@
 		   otherwise sit on top of the sidebar (InfoPill) or look stranded
 		   along the visible edge of the map (route FAB). */
 		.app.sidebar-open :global(.pill-wrap),
+		.karte-route { display: none; }
 		.app.sidebar-open .fab-route,
 		.app.sidebar-open .map-hint-bar {
 			display: none;

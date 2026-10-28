@@ -19,6 +19,7 @@
 		fahrzeuggewichtT = null,
 		achslastT = null,
 		ohneGewicht = 0,
+		onZeigen,
 	}: {
 		eintraege: GewichtsgrenzeEntry[] | null | undefined;
 		/** Schwerstes Fahrzeug, mit dem gesperrt wurde (`routing_params.max_weight_t`). */
@@ -27,6 +28,8 @@
 		achslastT?: number | null;
 		/** Fahrzeuge im Verband ohne Gewicht — die zählen beim Sperren nicht mit. */
 		ohneGewicht?: number;
+		/** Stelle auf der Karte zeigen; fehlt er, bleibt der Kilometer reiner Text. */
+		onZeigen?: (lat: number, lon: number) => void;
 	} = $props();
 
 	const STUFE: Record<GewichtsgrenzeEntry['stufe'], string> = {
@@ -70,6 +73,15 @@
 	const reserve = (t: number) => `${t >= 0 ? '+' : '−'}${Math.abs(t).toFixed(1).replace('.', ',')} t`;
 </script>
 
+{#snippet km(e: { km: number; lat: number; lon: number })}
+	{@const text = `km ${e.km.toFixed(1).replace('.', ',')}`}
+	{#if onZeigen}
+		<button type="button" class="gg-km gg-zeigen" title="Auf der Karte zeigen" aria-label="{text} auf der Karte zeigen" onclick={() => onZeigen?.(e.lat, e.lon)}>📍 {text}</button>
+	{:else}
+		<span class="gg-km">{text}</span>
+	{/if}
+{/snippet}
+
 {#if eintraege}
 	<section class="gg" class:ueber aria-label="Gewichtsgrenzen">
 		<details bind:open={offen}>
@@ -109,7 +121,7 @@
 						<ul class="gg-liste" aria-label="Gewichtsgrenzen an der Route">
 							{#each sichtbar as e}
 								<li class="gg-eintrag" data-stufe={e.stufe}>
-									<span class="gg-km">km {e.km.toFixed(1).replace('.', ',')}</span>
+									{@render km(e)}
 									<span class="gg-grenze">{e.art === 'achslast' ? `Achslast ${tonnen(e.grenze_t)}` : tonnen(e.grenze_t)}</span>
 									{#if e.reserve_t != null}<span>{reserve(e.reserve_t)}</span>{/if}
 									{#if e.ausnahme && AUSNAHME[e.ausnahme]}<span class="gg-blass">{AUSNAHME[e.ausnahme]}</span>{/if}
@@ -164,4 +176,6 @@
 	[data-stufe='knapp'] .gg-stufe { background: rgba(241,196,15,.22); color: #e0b928; }
 	.gg-mehr { align-self: flex-start; background: none; border: none; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; font-size: .8rem; opacity: .8; }
 	.gg-hinweis { font-size: .75rem; font-style: italic; color: var(--text-muted); }
+	.gg-zeigen { background: none; border: none; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
+	.gg-zeigen:hover, .gg-zeigen:focus-visible { text-decoration-style: solid; }
 </style>

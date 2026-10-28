@@ -50,9 +50,9 @@
 	/** Durchfahrtshöhen: `?k=hoehen&fall=…`, die Fälle stehen im Test. */
 	const fall = new URLSearchParams(location.search).get('fall') ?? 'gemischt';
 	const stelle = (km: number, hoehe_m: number, spielraum_m: number | null, stufe: DurchfahrtshoeheEntry['stufe']) =>
-		({ km, lat: 47.8, lon: 11.1, laenge_m: 40, hoehe_m, spielraum_m, stufe });
+		({ km, lat: 47 + km / 100, lon: 11.1, laenge_m: 40, hoehe_m, spielraum_m, stufe });
 	const bruecke = (km: number, art: string, name: string | null, osm: number, schnellstrasse = false) =>
-		({ km, m: km * 1000, lat: 47.8, lon: 11.1, art, name, osm_ids: [osm], schnellstrasse });
+		({ km, m: km * 1000, lat: 47 + km / 100, lon: 11.1, art, name, osm_ids: [osm], schnellstrasse });
 	const GESUCHT: BrueckenPruefung = {
 		geprueft_at: '2026-10-09T10:00:00Z',
 		eintraege: [
@@ -66,6 +66,9 @@
 		fall === 'gemischt' ? GESUCHT : fall === 'leer' || fall === 'alle_frei' ? { geprueft_at: '2026-10-09T10:00:00Z', eintraege: [] } : null,
 	);
 	let suchenGeklickt = $state(0);
+	/** „Auf der Karte zeigen“: die zuletzt übergebene Stelle. */
+	let gezeigt = $state('');
+	const zeigen = (lat: number, lon: number) => (gezeigt = `${lat.toFixed(3)}, ${lon.toFixed(3)}`);
 	const HOEHEN: Record<string, { eintraege: DurchfahrtshoeheEntry[] | null; hoehe: number | null; ohne: number }> = {
 		gemischt: {
 			eintraege: [stelle(12.4, 3.7, 0.05, 'eng'), stelle(30.1, 4.5, 0.85, 'frei'), stelle(48.9, 3.9, 0.25, 'knapp'), stelle(60, 4.2, 0.55, 'frei')],
@@ -79,12 +82,13 @@
 		suche_laeuft: { eintraege: [], hoehe: 3.2, ohne: 0 },
 		ungesucht: { eintraege: [], hoehe: 3.2, ohne: 0 },
 		ohne_knopf: { eintraege: [], hoehe: 3.2, ohne: 0 },
+		ohne_karte: { eintraege: [stelle(12.4, 3.7, 0.05, 'eng')], hoehe: 3.65, ohne: 0 },
 	};
 	const hoehen = HOEHEN[fall];
 
 	/** Gewichtsgrenzen: `?k=gewicht&fall=…`, die Fälle stehen im Test. */
 	const grenze = (km: number, grenze_t: number, reserve_t: number | null, stufe: GewichtsgrenzeEntry['stufe'], ausnahme: string | null = null, art: 'gewicht' | 'achslast' = 'gewicht') =>
-		({ km, m: km * 1000, lat: 47.8, lon: 11.1, laenge_m: 300, grenze_t, reserve_t, ausnahme, stufe, art });
+		({ km, m: km * 1000, lat: 47 + km / 100, lon: 11.1, laenge_m: 300, grenze_t, reserve_t, ausnahme, stufe, art });
 	const GEWICHT: Record<string, { eintraege: GewichtsgrenzeEntry[] | null; gewicht: number | null; achse?: number; ohne: number }> = {
 		gemischt: {
 			eintraege: [
@@ -97,6 +101,7 @@
 		ohne_gewicht: { eintraege: [grenze(3.1, 7.5, null, 'unbekannt')], gewicht: null, ohne: 3 },
 		leer: { eintraege: [], gewicht: 12, ohne: 0 },
 		alt: { eintraege: null, gewicht: 12, ohne: 0 },
+		ohne_karte: { eintraege: [grenze(3.1, 7.5, -18.5, 'ueberschritten')], gewicht: 26, ohne: 0 },
 	};
 	const gewicht = GEWICHT[fall] ?? GEWICHT.gemischt;
 
@@ -134,7 +139,8 @@
 	<div class="leiste" data-theme="dark">
 		<div class="leiste-inhalt">
 			<p>Route berechnet.</p>
-			<GewichtsGrenzen eintraege={gewicht.eintraege} fahrzeuggewichtT={gewicht.gewicht} achslastT={gewicht.achse ?? null} ohneGewicht={gewicht.ohne} />
+			<GewichtsGrenzen eintraege={gewicht.eintraege} fahrzeuggewichtT={gewicht.gewicht} achslastT={gewicht.achse ?? null} ohneGewicht={gewicht.ohne} onZeigen={fall === 'ohne_karte' ? undefined : zeigen} />
+			<p class="geklickt">Gezeigt: {gezeigt}</p>
 		</div>
 	</div>
 {:else if welche === 'route'}
@@ -153,8 +159,10 @@
 				bruecken={gesucht}
 				{suche}
 				onSuchen={fall === 'ohne_knopf' ? undefined : () => { suchenGeklickt++; suche = 'laeuft'; }}
+				onZeigen={fall === 'ohne_karte' ? undefined : zeigen}
 			/>
 			<p class="geklickt">Suchen geklickt: {suchenGeklickt}</p>
+			<p class="geklickt">Gezeigt: {gezeigt}</p>
 		</div>
 	</div>
 {:else if welche === 'aktion'}
