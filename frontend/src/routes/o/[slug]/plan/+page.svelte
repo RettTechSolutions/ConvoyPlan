@@ -1239,7 +1239,9 @@
 		if (!selected) return;
 		try {
 			await convoysApi.createWaypoint(selected.id, {
-				name: `${HALT_NAME[halt.kind] ?? 'Technischer Halt'} (km ${halt.stop_km})`,
+				// Ohne Kilometer: der gälte nur für die Route von jetzt und stünde
+				// nach jeder Umplanung falsch im Namen.
+				name: HALT_NAME[halt.kind] ?? 'Technischer Halt',
 				type: 'technical_stop',
 				halt_purpose: halt.is_rest ? 'rest' : null,
 				lat: halt.stop_position?.lat ?? null,
@@ -1248,10 +1250,28 @@
 				// Wie beim Tankstopp: angehängt, aber noch nicht einsortiert.
 				order_index: selected.waypoints.length,
 				pending_placement: true,
+				// Herkunft: solange niemand ihn ändert, darf „Halte neu verteilen"
+				// ihn nach einer neuen Route ersetzen.
+				vorschlag_art: halt.kind,
 			});
 			await refreshConvoy();
 		} catch { error = 'Fehler beim Hinzufügen des Halts'; }
 	}
+
+	let neuVerteilenLaeuft = $state(false);
+	async function halteNeuVerteilen() {
+		if (!selected) return;
+		neuVerteilenLaeuft = true;
+		try {
+			await convoysApi.halteNeuVerteilen(selected.id);
+			await refreshConvoy();
+			// Die neuen Halte hängen am Listenende; die Berechnung sortiert sie ein.
+			await calculateRoute({ reiterWechseln: false });
+		} catch { error = 'Halte konnten nicht neu verteilt werden'; }
+		finally { neuVerteilenLaeuft = false; }
+	}
+
+	const veralteteHalte = $derived(new Set(route?.fuel_analysis?.neu_verteilen?.veraltet ?? []));
 
 	// ── Closures ─────────────────────────────────────────────────────
 	async function toggleClosures() {
@@ -1675,6 +1695,23 @@
 							{:else if route.fuel_analysis && route.fuel_analysis.vehicles_with_range.length === 0 && allVehicles.length > 0}
 								<p class="hint" style="margin-top:.4rem">⚠ Keine Fahrzeuge im Verband – gehe zu <strong>Fahrzeuge</strong> und füge sie mit + hinzu, um die Reichweitenanalyse zu nutzen.</p>
 							{/if}
+							{#if route.fuel_analysis?.neu_verteilen}
+								{@const nv = route.fuel_analysis.neu_verteilen}
+								<div class="th-warning neu-verteilen" role="status">
+									<p class="th-title">🔄 Übernommene Halte passen nicht mehr zur Route</p>
+									<p class="th-detail">
+										{nv.veraltet.length === 1 ? '1 übernommener Halt liegt' : `${nv.veraltet.length} übernommene Halte liegen`}
+										noch dort, wo {nv.veraltet.length === 1 ? 'er' : 'sie'} für die vorherige Route fällig
+										{nv.veraltet.length === 1 ? 'war' : 'waren'}. Neu verteilen ersetzt
+										{nv.veraltet.length === 1 ? 'ihn' : 'sie'} durch die aktuelle Empfehlung
+										({nv.neu === 1 ? '1 Halt' : `${nv.neu} Halte`}). Halte, die du selbst gesetzt oder
+										geändert hast, bleiben stehen.
+									</p>
+									<button class="btn-small" onclick={halteNeuVerteilen} disabled={neuVerteilenLaeuft || loading}>
+										{neuVerteilenLaeuft ? 'Verteile…' : 'Halte neu verteilen'}
+									</button>
+								</div>
+							{/if}
 							{#if route.fuel_analysis?.duration_halt_needed}
 								{@const remaining = route.fuel_analysis.duration_halts}
 								{#if remaining.length > 0}
@@ -2074,6 +2111,7 @@
 										{#if wp.halt_purpose && wp.halt_purpose !== 'technical'}<span class="tag orange">{haltegrundText(wp.halt_purpose)}</span>{/if}
 										{#if wp.hold_duration_min > 0}<span class="tag">{wp.hold_duration_min} min</span>{/if}
 										<HaltVermerk eintraege={haltVermerke.get(wp.id)} haltMin={wp.hold_duration_min} />
+										{#if veralteteHalte.has(wp.id)}<span class="tag veraltet" title="Für die vorherige Route übernommen – im Reiter Route neu verteilen">veraltet</span>{/if}
 									</div>
 									<div class="wp-actions">
 										<button class="btn-small" onclick={() => startEditWp(wp)} title="Bearbeiten">✎</button>
@@ -2679,6 +2717,7 @@
 
 	.tag { display: inline-block; padding: .1rem .3rem; background: var(--surface-2); border-radius: 3px; font-size: var(--text-xs); margin-left: .2rem; }
 	.tag.orange { background: rgba(230,126,34,.4); }
+	.tag.veraltet { background: rgba(241,196,15,.25); color: #e0b928; }
 
 	.wp-list { list-style: none; padding: 0; margin: 0; }
 	.wp-item { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; padding: .35rem 0; border-bottom: 1px solid var(--border); font-size: var(--text-sm); cursor: grab; }
@@ -2779,6 +2818,9 @@
 	.fuel-ok { font-size: .8rem; color: #a9dfbf; margin: .3rem 0 0; }
 
 	.th-warning { background: rgba(52,152,219,.12); border: 1px solid rgba(52,152,219,.4); border-radius: 6px; padding: .65rem; margin-top: .5rem; display: flex; flex-direction: column; gap: .3rem; }
+	/* Gelb wie „knapp": nichts ist falsch, aber es ist zu tun. */
+	.th-warning.neu-verteilen { background: rgba(241,196,15,.12); border-color: rgba(241,196,15,.45); }
+	.th-warning.neu-verteilen .btn-small { align-self: flex-start; }
 	.th-warning p { margin: 0; font-size: .83rem; }
 	.th-title { font-weight: 700; font-size: .88rem; color: #7fbde8; }
 	.th-detail { color: rgba(255,255,255,.8); }

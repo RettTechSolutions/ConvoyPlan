@@ -42,6 +42,14 @@ class ZusammengelegterHalt(BaseModel):
     faellig_km: float
 
 
+class NeuVerteilen(BaseModel):
+    """Übernommene Halte, die nach einer neuen Route nicht mehr passen
+    (``services/halte_vorschlag.py``). ``neu`` zählt die Halte, die das
+    Neuverteilen dafür anlegt."""
+    veraltet: list[str]
+    neu: int
+
+
 class FuelAnalysis(BaseModel):
     vehicles_with_range: list[VehicleRangeInfo]
     min_range_km: float | None
@@ -57,6 +65,7 @@ class FuelAnalysis(BaseModel):
     duration_halt_needed: bool = False
     duration_halts: list[DurationHalt] = []
     zusammengelegt: list[ZusammengelegterHalt] = []
+    neu_verteilen: NeuVerteilen | None = None
     rest_needed: bool = False
 
 

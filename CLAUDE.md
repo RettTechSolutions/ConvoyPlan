@@ -252,6 +252,19 @@ steht zweimal: `pdf.halt_vermerk` (Roadbook, Marschbefehl) und `$lib/route/halte
 (`HaltVermerk.svelte`); wer einen ändert, zieht den anderen mit. Tests:
 `tests/test_halte_mit_geplanten_halten.py`, `frontend/e2e/halt-vermerk.spec.ts`.
 
+**Übernommene Vorschläge veralten mit der Route.** Gemeldet: nach einer Umplanung (Höhe und
+Gewicht sperrten den Brenner-Weg) lagen alle übernommenen Halte zu weit hinten, die Empfehlung
+legte vor jeden einen neuen — zwei Tagesruhezeiten 45 km auseinander. Seitdem trägt ein
+übernommener Halt `vorschlag_art` (Migration `0074`, Backfill über den alten Namen „Lenkpause
+(km …)" als Funktion daneben), bis jemand Name, Art, Lage, Dauer oder Grund ändert
+(`halte_vorschlag.bleibt_vorschlag`, in `update_waypoint` und damit auch über MCP).
+`routing._vorschlaege_abgleichen` rechnet die Empfehlung **ohne** diese Halte und gleicht ab
+(gleiche Art, ±15 min Fahrzeit); was nicht passt, steht in `fuel_analysis.neu_verteilen`.
+Ersetzt wird nur auf Knopfdruck (`POST …/halte/neu-verteilen`, ein Commit, neue Halte mit
+`pending_placement`) — die Halteliste gehört dem Menschen wie die Reihenfolge. Kein Kilometer
+mehr im Namen; er galt nur für die Route von damals. Tests: `tests/test_halte_neu_verteilen.py`,
+`tests/test_wegpunkt_vorschlag_migration.py`, `frontend/e2e/halte-neu-verteilen.spec.ts`.
+
 ### Durchfahrtshöhen und Gewichtsgrenzen: gesperrt wird beim Routing, gezeigt wird danach
 
 Das Custom Model in `services/routing.py` nimmt jede Kante mit `max_height` unter

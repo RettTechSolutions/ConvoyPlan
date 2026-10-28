@@ -15,7 +15,7 @@ from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import get_current_user
+from app.api.deps import OrgCtx, get_current_user, get_org_context
 from app.api.guards import get_convoy_access
 from app.api.quota import routing_quota
 from app.api.routes import marschbefehl_vorlage as vorlage_routen
@@ -38,6 +38,7 @@ from app.services import pdf as pdf_svc
 from app.services import roadbook as roadbook_svc
 from app.services import static_map as static_map_svc
 from app.services import fuel as fuel_svc
+from app.services import halte_vorschlag
 from app.services import overpass as overpass_svc
 from app.services import importer as importer_svc
 from app.services import waypoint_order
@@ -126,7 +127,44 @@ def _halteanalyse(convoy: Convoy, distance_m: float, route_coords: list[list[flo
         z for z in analyse["zusammengelegt"]
         if not ((wp := by_id.get(z["waypoint_id"])) and _EIGENE_ART[z["kind"]](wp))
     ]
+    veraltet, fehlend = _vorschlaege_abgleichen(convoy, distance_m, route_coords, duration_s)
+    analyse["neu_verteilen"] = (
+        {"veraltet": veraltet, "neu": len(fehlend)} if veraltet else None
+    )
     return analyse
+
+
+def _vorschlaege_abgleichen(
+    convoy: Convoy, distance_m: float, route_coords: list[list[float]], duration_s: float
+) -> tuple[list[str], list[dict]]:
+    """Passen die übernommenen Halte-Vorschläge noch zur Route?
+
+    Die Empfehlung wird ohne sie neu gerechnet — gegen die Halte, die dem
+    Menschen gehören — und mit ihnen verglichen (``halte_vorschlag.abgleich``).
+    Zurück: die IDs der veralteten Vorschläge und die Halte, die fehlen.
+    """
+    uebernommen = []
+    for wp in convoy.waypoints:
+        art = getattr(wp, "vorschlag_art", None)
+        if art not in halte_vorschlag.ARTEN or not route_coords:
+            continue
+        c = _waypoint_latlon(wp)
+        if c is None:
+            continue
+        km = fuel_svc.project_onto_route(route_coords, c[0], c[1]) / 1000
+        uebernommen.append(halte_vorschlag.Uebernommen(str(wp.id), art, km))
+    if not uebernommen or duration_s <= 0:
+        return [], []
+    route_km = distance_m / 1000
+    fest = _geplante_halte(
+        [wp for wp in convoy.waypoints if not getattr(wp, "vorschlag_art", None)], route_coords
+    )
+    frisch, _ = fuel_svc.halteplan(
+        route_km, duration_s, route_coords, len(convoy.convoy_vehicles), fest
+    )
+    return halte_vorschlag.abgleich(
+        frisch, uebernommen, halte_vorschlag.toleranz_km(route_km, duration_s)
+    )
 
 
 def _zusammengelegte_halte(convoy: Convoy, route: Route | None, route_coords: list[list[float]]) -> dict[str, list[dict]]:
@@ -742,6 +780,66 @@ async def calculate_route(
         "planned_departure": route_planned_departure,
         "planned_arrival": route_planned_arrival,
     }
+
+
+@router.post("/{convoy_id}/halte/neu-verteilen")
+async def halte_neu_verteilen(
+    convoy_id: uuid.UUID,
+    ctx: OrgCtx = Depends(get_org_context),
+    db: AsyncSession = Depends(get_db),
+):
+    """Veraltete übernommene Halte durch die aktuelle Empfehlung ersetzen.
+
+    Nur auf Knopfdruck — die Analyse meldet in ``neu_verteilen``, *dass* es
+    nötig ist. Entfernt werden nur unberührte Vorschläge, die nicht mehr
+    passen; die fehlenden Halte kommen als neue Vorschläge hinzu, ans
+    Listenende und mit ``pending_placement``, damit die folgende Berechnung sie
+    einsortiert wie jeden übernommenen Vorschlag. In einem Commit: zwischen
+    Löschen und Anlegen soll keine Planung ohne Halte stehen.
+    """
+    user, org, role = ctx
+    if (await get_convoy_access(convoy_id, user, db, require="write", role=role)).organization_id != org.id:
+        raise HTTPException(status_code=404, detail="Convoy not found")
+    convoy = (
+        await db.execute(
+            select(Convoy).where(Convoy.id == convoy_id).options(
+                selectinload(Convoy.waypoints),
+                selectinload(Convoy.convoy_vehicles).selectinload(ConvoyVehicle.vehicle),
+            )
+        )
+    ).scalar_one()
+    route = (await db.execute(select(Route).where(Route.convoy_id == convoy_id))).scalar_one_or_none()
+    line = geo_svc.linestring_to_geojson(route.geometry) if route is not None and route.geometry is not None else None
+    if route is None or route.distance_m is None or not line:
+        raise HTTPException(status_code=409, detail="Noch keine Route berechnet")
+    route_coords = line["coordinates"]
+
+    veraltet, fehlend = _vorschlaege_abgleichen(convoy, route.distance_m, route_coords, route.duration_s or 0)
+    if not veraltet:
+        return {"entfernt": 0, "hinzugefuegt": 0}
+
+    weg = set(veraltet)
+    for wp in list(convoy.waypoints):
+        if str(wp.id) in weg:
+            await db.delete(wp)
+    naechster = max((wp.order_index for wp in convoy.waypoints), default=-1) + 1
+    for i, halt in enumerate(fehlend):
+        pos = halt.get("stop_position")
+        if not pos:
+            continue
+        db.add(Waypoint(
+            convoy_id=convoy.id,
+            name=halte_vorschlag.NAME[halt["kind"]],
+            type="technical_stop",
+            halt_purpose="rest" if halt["is_rest"] else None,
+            location=geo_svc.point_to_wkt(pos["lat"], pos["lon"]),
+            hold_duration_min=halt["duration_min"],
+            order_index=naechster + i,
+            pending_placement=True,
+            vorschlag_art=halt["kind"],
+        ))
+    await db.commit()
+    return {"entfernt": len(weg), "hinzugefuegt": len(fehlend)}
 
 
 @router.post("/{convoy_id}/route/bruecken", response_model=BrueckenPruefung)

@@ -93,6 +93,16 @@ Dabei gilt:
 
 Jeder empfohlene Halt zeigt in der Planungsansicht seine Art, die Haltedauer und die kumulierte Lenkzeit bis zu diesem Punkt an. Die empfohlenen Positionen werden auf der Route interpoliert und können per Klick als Wegpunkte übernommen werden.
 
+### Nach einer Umplanung: Halte neu verteilen
+
+Ein übernommener Halt steht dort, wo er für die Route **zum Zeitpunkt der Übernahme** fällig war. Ändert sich die Route danach — anderer Weg, weil Höhe oder Gewicht sperren, ein zusätzlicher Wegpunkt —, kann er zu spät kommen. Die Empfehlung legt dann einen neuen Halt davor, und ohne Eingreifen stünden zwei Tagesruhezeiten kurz hintereinander in der Planung.
+
+ConvoyPlan merkt sich deshalb, welche Halte aus der Empfehlung übernommen und seitdem **nicht geändert** wurden. Passen sie nach einer neuen Berechnung nicht mehr (Abweichung mehr als etwa 15 Minuten Fahrzeit), zeigt der Tab **Route** den Hinweis **„Übernommene Halte passen nicht mehr zur Route"**, und die Halte tragen in der Wegpunktliste die Marke **„veraltet"**. **Halte neu verteilen** entfernt genau diese Halte, legt die aktuell empfohlenen an und berechnet die Route neu. Automatisch geschieht das nicht.
+
+- Halte, die du selbst gesetzt hast, bleiben immer stehen. Das gilt auch für übernommene Halte, an denen du **Name, Art, Lage, Dauer oder Grund** geändert hast. Umsortieren und Notizen zählen nicht als Änderung.
+- Übernommene Halte heißen nur noch „Technischer Halt", „Lenkpause" oder „Tagesruhezeit", ohne Kilometer im Namen. Der Kilometer galt nur für die Route von damals.
+- Halte, die vor diesem Update übernommen wurden, werden erkannt, solange ihr Name noch die Form „Lenkpause (km 252.2)" hat und Dauer und Grund unverändert sind.
+
 ---
 
 ## Durchfahrtshöhen
