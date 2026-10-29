@@ -8,6 +8,7 @@
 	 * im Quelltext nicht an — nur auf einem Bildschirmfoto.
 	 */
 	import { themeStore } from '$lib/stores/theme';
+	import { saisonStore } from '$lib/saison/store';
 	import { tutorialStore } from '$lib/stores/tutorial';
 	import { feedbackStore } from '$lib/stores/feedback';
 	import { versionStore } from '$lib/stores/version.svelte';
@@ -36,6 +37,19 @@
 		🐞
 		<span>Melden</span>
 	</button>
+	{#if $saisonStore.saison}
+		<!-- Nur im Fenster einer Saison, und nur auf Klick: ein Easter Egg. -->
+		<button
+			class="theme-toggle"
+			onclick={() => saisonStore.umschalten()}
+			aria-pressed={$saisonStore.aktiv}
+			aria-label="Saison-Design {$saisonStore.saison.name} {$saisonStore.aktiv ? 'ausschalten' : 'einschalten'}"
+			title="Saison-Design {$saisonStore.aktiv ? 'ausschalten' : 'einschalten'}"
+		>
+			{$saisonStore.saison.symbol}
+			<span>{$saisonStore.saison.name}</span>
+		</button>
+	{/if}
 	<InstallButton />
 	<span class="app-version" title="Build {__APP_VERSION__}">
 		v{build.base}{#if build.commit}&nbsp;· {build.commit}{/if}

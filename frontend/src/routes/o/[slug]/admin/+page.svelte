@@ -2,6 +2,7 @@
     import { onMount } from 'svelte';
     import { goto } from '$app/navigation';
     import { page } from '$app/state';
+    import { saisonStore } from '$lib/saison/store';
     import LeitstelleAreaPicker, { type AreaSelection } from '$lib/components/LeitstelleAreaPicker.svelte';
     import LeitstellenOverviewMap from '$lib/components/LeitstellenOverviewMap.svelte';
     import LeitstellenTable from '$lib/components/LeitstellenTable.svelte';
@@ -583,8 +584,16 @@
 
 <div class="admin-page">
     <div class="admin-header">
-        <h1>Org-Admin — {$orgStore?.org_name ?? ''}</h1>
+        <h1 class="saison-deko">Org-Admin — {$orgStore?.org_name ?? ''}</h1>
         <div class="kopf-aktionen">
+            {#if $saisonStore.saison}
+                <button
+                    class="melden-link"
+                    onclick={() => saisonStore.umschalten()}
+                    aria-pressed={$saisonStore.aktiv}
+                    aria-label="Saison-Design {$saisonStore.saison.name} {$saisonStore.aktiv ? 'ausschalten' : 'einschalten'}"
+                >{$saisonStore.saison.symbol}</button>
+            {/if}
             <button class="melden-link" onclick={() => feedbackStore.open('bug')}>🐞 Melden</button>
             <a href="/o/{slug}/plan" class="back-link">← Plan</a>
         </div>
@@ -1201,6 +1210,7 @@
     .kopf-aktionen { display: flex; align-items: center; gap: .75rem; }
     .melden-link { background: none; border: 1px solid var(--border); border-radius: 6px; padding: .3rem .6rem; cursor: pointer; color: var(--text-2); font-size: var(--text-sm); }
     .melden-link:hover { color: var(--text-1); }
+    .melden-link[aria-pressed='true'] { border-color: var(--color-primary); }
     h1 { margin: 0; font-size: var(--text-lg); }
     .back-link { color: var(--text-2); font-size: var(--text-sm); text-decoration: none; }
     .back-link:hover { color: var(--text-1); }

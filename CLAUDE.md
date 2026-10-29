@@ -909,6 +909,32 @@ untereinander. Die Anmelde- und Demo-Karten halten mindestens `1rem` Rand
 `frontend/e2e/fahrer-link-am-telefon.spec.ts`, `frontend/e2e/share-link-am-telefon.spec.ts`,
 `frontend/e2e/seiten-am-telefon.spec.ts`.
 
+### Saison-Designs: ein Easter Egg, nur auf Klick
+
+Halloween (30.10.–1.11.), Advent (1.–26.12., am 5.12. Gruß zum Tag des Ehrenamts),
+Winter (27.12.–6.1., Silvesternacht 23–1 Uhr Feuerwerk), Fasching (Weiberfastnacht bis
+Faschingsdienstag), 112 (11.2.), 1. April, Ostern (Gründonnerstag bis Ostermontag) und
+Wiesn. Wann was ist, rechnet `$lib/saison/kalender.ts` ohne DOM (Ortszeit des Browsers;
+eintägige Anlässe gehen den langen vor). Im Fenster erscheint in der Fußzeile der
+Planung, im Org-Admin und im Admin ein Knopf; eingeschaltet wird nur per Klick oder
+Konami-Code. Gemerkt je Saison **und Jahr** (`convoyplan-saison:<id>-<startjahr>`,
+`winter-2026` gilt bis 6.1.2027). `?saison=<id>` zeigt ein Design außerhalb seines
+Fensters (für den Tab, `sessionStorage`).
+
+Drei Regeln, die `frontend/e2e/saison-easteregg.spec.ts` festhält:
+
+- **Nur auf erlaubten Seiten** (`erlaubt()` in `store.ts`: Planung, Org-Admin, Admin).
+  Fahrer-Link, Tracking-Ansicht, Share-Link und Statusseite bleiben neutral, auch wenn
+  die Saison eingeschaltet ist — dort schaut jemand im Einsatz drauf.
+- **Nur Flächen werden getönt** (`--bg`, `--sidebar-bg` in `saisons.css`). Branding
+  (`--color-*`), Status-, Alarm- und Routenfarben und die Karte bleiben, wie sie sind.
+- **Reduzierte Bewegung heißt keine Partikel.** Die Leinwand (`Partikel.svelte`) wird
+  per `import()` nachgeladen und liegt mit `pointer-events: none` über der Seite.
+
+Deko am Logo hängt an der Klasse `saison-deko`, nicht an `AppLogo` — das Logo steht auch
+auf öffentlichen Seiten. Tests: `e2e/saison-kalender.spec.ts` (Grenzen, Ostern, Wiesn),
+`e2e/saison-easteregg.spec.ts`.
+
 ### API-Docs (Swagger/OpenAPI)
 
 `/docs`, `/redoc` und `/openapi.json` sind in Produktion **standardmäßig deaktiviert**
