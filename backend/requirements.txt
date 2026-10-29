@@ -20,7 +20,7 @@ pydantic[email]==2.14.1
 # unknown key IDs. 2.15.0 wraps recursion errors from deeply nested JWT payloads in
 # DecodeError instead of leaking a raw RecursionError.
 PyJWT==2.15.1
-pydantic-settings==2.16.1
+pydantic-settings==2.16.2
 # cryptography 50.0.1 rebuilds wheels against OpenSSL 4.0.3 (50.0.2; 50.0.1 shipped 4.0.2), which fixes
 # several CVEs bundled in the statically-linked OpenSSL (CVE-2026-63072,
 # CVE-2026-63076, CVE-2026-14456, CVE-2026-14457, CVE-2026-54874,
