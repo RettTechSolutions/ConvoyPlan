@@ -1506,7 +1506,7 @@
 	<!-- ── Sidebar ──────────────────────────────────────────────────── -->
 	<aside id="sidebar" class="sidebar" class:open={sidebarOpen}>
 		<div class="sidebar-header">
-			<div class="logo-wrap"><AppLogo width={null} /></div>
+			<div class="logo-wrap saison-deko"><AppLogo width={null} /></div>
 			<div style="display:flex;align-items:center;gap:.5rem">
 				{#if $orgStore?.user_role === 'admin'}
 					<a href="/o/{(page.params as Record<string, string>).slug}/admin" class="admin-link" data-tour="admin-link">⚙ Admin</a>

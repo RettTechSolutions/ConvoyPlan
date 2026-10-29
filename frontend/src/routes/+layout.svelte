@@ -13,6 +13,7 @@
 	import ChangelogModal from '$lib/components/ChangelogModal.svelte';
 	import LizenzAblaufHinweis from '$lib/components/LizenzAblaufHinweis.svelte';
 	import Kontextmenue from '$lib/kontextmenue/Kontextmenue.svelte';
+	import SaisonRahmen from '$lib/saison/SaisonRahmen.svelte';
 
 	let { children } = $props();
 
@@ -165,6 +166,10 @@
 <!-- Das eine Kontextmenü der Anwendung; geöffnet wird es aus den Seiten über
      `$lib/kontextmenue/menue.ts`. -->
 <Kontextmenue />
+
+<!-- Saison-Designs (Easter Egg, nur auf Klick): zeigt sich nur auf den
+     Seiten, die `erlaubt()` in `$lib/saison/store.ts` nennt. -->
+<SaisonRahmen />
 
 <!-- Auf /track-Seiten greift die eigenständige Tracking-App-Installation
      (eigenes Manifest + eigene Install-CTA), daher hier kein generischer Banner. -->
