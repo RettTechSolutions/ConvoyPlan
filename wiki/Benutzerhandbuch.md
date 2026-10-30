@@ -336,6 +336,17 @@ Jede Demo-Nutzung läuft als eigene, befristete Organisation.
 
 ---
 
+## Saison-Designs (Easter Egg)
+
+Zu bestimmten Anlässen färbt die Oberfläche auf Wunsch ihre Flächen ein: Halloween (30.10.–1.11.), Advent (1.–26.12.), Winter (27.12.–6.1., zu Silvester mit Feuerwerk), Fasching, 112-Tag (11.2.), 1. April, Ostern und Wiesn. Im jeweiligen Zeitraum erscheint in der Fußzeile der Planung, des Org-Admins und des Admin-Bereichs ein Knopf; eingeschaltet wird das Design nur per Klick (oder Konami-Code). Die Wahl merkt sich der Browser je Saison und Jahr.
+
+- Nur Hintergrundflächen werden getönt. Branding, Status-, Alarm- und Routenfarben sowie die Karte bleiben unverändert.
+- Fahrer-Link, Tracking-Ansicht, Share-Link und Statusseite bleiben immer neutral — dort schaut jemand im Einsatz drauf.
+- Bei aktivierter Einstellung „Bewegung reduzieren“ im Betriebssystem gibt es keine Animationen.
+- **Ostereiersuche:** Zu Ostern sind in der Planung zehn Eier versteckt, dazu ein goldenes im Org-Admin. Der Fortschritt steht am Saison-Knopf.
+
+---
+
 ## Häufige Probleme
 
 | Problem | Lösung |
