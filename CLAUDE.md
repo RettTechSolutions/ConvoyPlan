@@ -935,6 +935,13 @@ Deko am Logo hängt an der Klasse `saison-deko`, nicht an `AppLogo` — das Logo
 auf öffentlichen Seiten. Tests: `e2e/saison-kalender.spec.ts` (Grenzen, Ostern, Wiesn),
 `e2e/saison-easteregg.spec.ts`.
 
+**Ostereiersuche** (`$lib/saison/ostereier.ts`, `Ostereier.svelte`): zu Ostern liegen zehn
+Eier in der Planung, je eines an einem `data-tour`-Anker des Tutorials, dazu ein goldenes
+als Bonus im Org-Admin (`data-versteck="gold"`). Die Lage am Anker würfelt das Jahr.
+Gemerkt in `convoyplan-ostereier:<schluessel>`, der Stand steht am Saison-Knopf. Wer einen
+`data-tour`-Anker umbenennt oder entfernt, zieht `VERSTECKE` mit —
+`e2e/ostereier.spec.ts` prüft, dass jeder Anker in einem Reiter der Planung existiert.
+
 ### API-Docs (Swagger/OpenAPI)
 
 `/docs`, `/redoc` und `/openapi.json` sind in Produktion **standardmäßig deaktiviert**

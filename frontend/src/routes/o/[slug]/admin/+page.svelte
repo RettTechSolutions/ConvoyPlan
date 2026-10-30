@@ -584,7 +584,7 @@
 
 <div class="admin-page">
     <div class="admin-header">
-        <h1 class="saison-deko">Org-Admin — {$orgStore?.org_name ?? ''}</h1>
+        <h1 class="saison-deko" data-versteck="gold">Org-Admin — {$orgStore?.org_name ?? ''}</h1>
         <div class="kopf-aktionen">
             {#if $saisonStore.saison}
                 <button

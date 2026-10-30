@@ -45,7 +45,7 @@ const VORLAGEN: Record<SaisonId, Vorlage> = {
 		id: 'april', name: 'Route', symbol: '🃏', partikel: null,
 		gruss: ['Route wird über Sylt berechnet …', 'April, April! 🃏 Deine Route ist unverändert.'],
 	},
-	ostern: { id: 'ostern', name: 'Ostern', symbol: '🐣', partikel: null, gruss: ['Frohe Ostern! Die Eier liegen nicht auf der Route.'] },
+	ostern: { id: 'ostern', name: 'Ostern', symbol: '🐣', partikel: null, gruss: ['Frohe Ostern! In der Planung sind 10 Eier versteckt — viel Spaß beim Suchen.'] },
 	wiesn: { id: 'wiesn', name: 'Wiesn', symbol: '🥨', partikel: null, gruss: ["O'zapft is! Der Fahrer bleibt bei Spezi."] },
 	halloween: { id: 'halloween', name: 'Halloween', symbol: '🎃', partikel: 'fledermaeuse', gruss: ['Süßes oder Saures? Die Route ist jedenfalls nicht verhext.'] },
 	advent: { id: 'advent', name: 'Advent', symbol: '🎄', partikel: 'schnee', gruss: ['Frohe Weihnachten! Schneeketten bitte trotzdem selbst einplanen.'] },
