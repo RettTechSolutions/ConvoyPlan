@@ -76,8 +76,11 @@
 	{#if saison.id === 'halloween'}
 		<div class="saison-spinne" aria-hidden="true"><span>🕷️</span></div>
 	{/if}
-	{#if saison.id === 'ostern' && !ruhig}
-		<div class="saison-hase" aria-hidden="true">🐇</div>
+	{#if saison.id === 'ostern'}
+		{#if !ruhig}<div class="saison-hase" aria-hidden="true">🐇</div>{/if}
+		{#await import('./Ostereier.svelte') then { default: Ostereier }}
+			<Ostereier schluessel={saison.schluessel} {ruhig} />
+		{/await}
 	{/if}
 	{#if saison.partikel && !ruhig}
 		{#await import('./Partikel.svelte') then { default: Partikel }}
