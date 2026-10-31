@@ -942,6 +942,23 @@ Gemerkt in `convoyplan-ostereier:<schluessel>`, der Stand steht am Saison-Knopf.
 `data-tour`-Anker umbenennt oder entfernt, zieht `VERSTECKE` mit —
 `e2e/ostereier.spec.ts` prüft, dass jeder Anker in einem Reiter der Planung existiert.
 
+### Handbücher als PDF: öffentlich ist, was im Wiki steht
+
+`/handbuecher` (öffentlich wie `/status`, in `PUBLIC_ROUTES`) listet die PDFs aus
+`frontend/static/handbuecher/`; verlinkt aus `LegalFooter`, der Seitenleiste der Planung
+(`SidebarFooter`), dem Org-Admin und der Einführungstour. Die Instanz liefert sie selbst
+aus, nicht GitHub — eine Instanz ohne Internet hat ihr Handbuch trotzdem.
+
+Erzeugt werden sie mit `docs/handbuecher/build.py` aus `wiki/`, `docs/` und den Geschwister-
+Repos; Seitenzahl und Größe für die Seite schreibt derselbe Lauf nach
+`frontend/src/lib/handbuecher/katalog.json`, beides gehört in einen Commit. **Begleit-App,
+Tracker und EventTracker sind private Repos.** Öffentlich (`ziel=OEFFENTLICH`) geht nur,
+was ohnehin öffentlich ist oder für Anwender geschrieben wurde; die vollständigen Bücher
+landen in `docs/handbuch/` des jeweiligen Repos. Wer ein Kapitel aus einem privaten Repo
+in ein öffentliches Buch nimmt, veröffentlicht es. Bildschirmfotos (`docs/handbuecher/bilder/`)
+zeigen keine echten Namen, Adressen, Slugs oder Gerätekennungen — siehe README dort.
+Test: `frontend/e2e/handbuecher.spec.ts`.
+
 ### API-Docs (Swagger/OpenAPI)
 
 `/docs`, `/redoc` und `/openapi.json` sind in Produktion **standardmäßig deaktiviert**

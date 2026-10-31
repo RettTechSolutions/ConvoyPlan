@@ -225,6 +225,7 @@
 				{ label: '☾ / ☀', text: 'zwischen hellem und dunklem Design wechseln.' },
 				{ label: 'App installieren', text: 'ConvoyPlan als App (PWA) aufs Gerät holen.' },
 				{ label: '? Hilfe', text: 'diese Tour jederzeit erneut starten.' },
+				{ label: '📖 Handbuch', text: 'alle Funktionen zum Nachlesen und Ausdrucken, als PDF.' },
 				{ text: isDemo
 					? 'Viel Spaß beim Ausprobieren der Demo!'
 					: 'Du bist startklar – lege jetzt deinen ersten Marschverband an.' },

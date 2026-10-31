@@ -1,6 +1,6 @@
 <script lang="ts">
 	/**
-	 * Fußzeile der Planungs-Seitenleiste: Theme, Hilfe, Melden, Installation
+	 * Fußzeile der Planungs-Seitenleiste: Theme, Hilfe, Handbuch, Melden, Installation
 	 * und der Build-Stand.
 	 *
 	 * Eigene Komponente, damit die Hülle unter `e2e/harness/` sie ohne die
@@ -32,6 +32,12 @@
 		?
 		<span>Hilfe</span>
 	</button>
+	<!-- Ein Link und kein Knopf: das Handbuch öffnet in einem eigenen Reiter,
+	     die Planung bleibt, wie sie war. -->
+	<a class="theme-toggle" href="/handbuecher" target="_blank" rel="noopener" aria-label="Handbücher (PDF)" title="Handbücher als PDF">
+		📖
+		<span>Handbuch</span>
+	</a>
 	<!-- Neben der Hilfe und nicht als schwebender Knopf über der Karte:
 	     dort verdeckte er genau das, worüber gemeldet wird. -->
 	<button class="theme-toggle" onclick={() => feedbackStore.open('bug')} aria-label="Fehler melden oder Funktion vorschlagen" title="Fehler melden / Funktion vorschlagen">
@@ -94,6 +100,7 @@
 		white-space: nowrap;
 	}
 	.theme-toggle:hover { background: var(--surface-2); }
+	a.theme-toggle { text-decoration: none; }
 	/* `margin-left: auto` hält die Version rechts, solange sie in die Zeile der
 	   Knöpfe passt, und stellt sie sonst an den rechten Rand der nächsten. */
 	.app-version {

@@ -43,7 +43,7 @@
 	// aufgeführt statt als `/oauth/`: eine weitere Seite darunter soll nicht
 	// still öffentlich werden.
 	const PUBLIC_ROUTES = [
-		'/share', '/track', '/setup', '/o/', '/admin', '/status', '/demo',
+		'/share', '/track', '/setup', '/o/', '/admin', '/status', '/demo', '/handbuecher',
 		'/about', '/contact', '/privacy', '/terms', '/pricing', '/developers', '/docs',
 		'/oauth/app', '/oauth/consent'
 	];
