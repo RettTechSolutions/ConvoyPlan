@@ -10,6 +10,8 @@
 	import { themeStore } from '$lib/stores/theme';
 	import { saisonStore } from '$lib/saison/store';
 	import { anzahl, eierStore, VERSTECKE } from '$lib/saison/ostereier';
+	import { kalenderStore } from '$lib/saison/adventskalender';
+	import { geisterStore, ZIEL } from '$lib/saison/geisterjagd';
 	import { tutorialStore } from '$lib/stores/tutorial';
 	import { feedbackStore } from '$lib/stores/feedback';
 	import { versionStore } from '$lib/stores/version.svelte';
@@ -48,7 +50,7 @@
 			title="Saison-Design {$saisonStore.aktiv ? 'ausschalten' : 'einschalten'}"
 		>
 			{$saisonStore.saison.symbol}
-			<span>{$saisonStore.saison.name}{#if $saisonStore.saison.id === 'ostern' && $saisonStore.aktiv}&nbsp;· 🥚&nbsp;{anzahl($eierStore.gefunden)}/{VERSTECKE.length}{/if}</span>
+			<span>{$saisonStore.saison.name}{#if $saisonStore.saison.id === 'ostern' && $saisonStore.aktiv}&nbsp;· 🥚&nbsp;{anzahl($eierStore.gefunden)}/{VERSTECKE.length}{:else if $saisonStore.saison.id === 'halloween' && $saisonStore.aktiv}&nbsp;· {$geisterStore.gefangen >= ZIEL ? '🏆' : '👻'}&nbsp;{$geisterStore.gefangen}{#if $geisterStore.gefangen < ZIEL}/{ZIEL}{/if}{:else if $saisonStore.saison.id === 'advent' && $saisonStore.aktiv}&nbsp;· 🎁&nbsp;{$kalenderStore.offen.length}/24{/if}</span>
 		</button>
 	{/if}
 	<InstallButton />

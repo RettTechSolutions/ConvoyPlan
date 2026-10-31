@@ -6,6 +6,7 @@
 	 * geschlossenen Reiter, ist auch das Ei weg.
 	 */
 	import { onMount } from 'svelte';
+	import { mitverfolgen, platzieren } from './anker';
 	import { anzahl, eierStore, GOLDENES_EI, lage, VERSTECKE, type Versteck } from './ostereier';
 	import Partikel from './Partikel.svelte';
 
@@ -27,28 +28,6 @@
 			: document.querySelector(`[data-tour="${versteck}"]`);
 	}
 
-	/** Der sichtbare Teil eines Elements: geschnitten mit jedem scrollenden Vorfahren und dem Fenster. */
-	function sichtbar(el: Element): DOMRect | null {
-		let r = el.getBoundingClientRect();
-		if (r.width === 0 || r.height === 0) return null;
-		let links = Math.max(r.left, 0);
-		let oben = Math.max(r.top, 0);
-		let rechts = Math.min(r.right, window.innerWidth);
-		let unten = Math.min(r.bottom, window.innerHeight);
-		for (let p = el.parentElement; p; p = p.parentElement) {
-			const s = getComputedStyle(p);
-			if (s.overflowX !== 'visible' || s.overflowY !== 'visible') {
-				const q = p.getBoundingClientRect();
-				links = Math.max(links, q.left);
-				oben = Math.max(oben, q.top);
-				rechts = Math.min(rechts, q.right);
-				unten = Math.min(unten, q.bottom);
-			}
-		}
-		if (rechts - links < 1 || unten - oben < 1) return null;
-		return new DOMRect(links, oben, rechts - links, unten - oben);
-	}
-
 	function verteilen() {
 		const gefunden = $eierStore.gefunden;
 		const neu: Ei[] = [];
@@ -56,24 +35,9 @@
 			if (gefunden.includes(versteck)) continue;
 			const el = anker(versteck);
 			if (!el) continue;
-			const rahmen = el.getBoundingClientRect();
 			const l = lage(versteck, schluessel);
-			// Das Ei liegt auf der Kante seines Ankers, halb darüber hinaus.
-			let x: number;
-			let y: number;
-			if (l.kante === 'rechts') {
-				x = rahmen.right - GROESSE * 0.6;
-				y = rahmen.top + rahmen.height * l.anteil - GROESSE / 2;
-			} else {
-				x = rahmen.left + rahmen.width * l.anteil - GROESSE / 2;
-				y = l.kante === 'oben' ? rahmen.top - GROESSE * 0.45 : rahmen.bottom - GROESSE * 0.55;
-			}
-			// Nur zeigen, wenn die Mitte des Eis im sichtbaren Teil des Ankers liegt.
-			const s = sichtbar(el);
-			const mx = x + GROESSE / 2;
-			const my = y + GROESSE / 2;
-			if (!s || mx < s.left || mx > s.right || my < s.top - GROESSE || my > s.bottom + GROESSE) continue;
-			neu.push({ versteck, x, y, farbton: l.farbton });
+			const ort = platzieren(el, l, GROESSE);
+			if (ort) neu.push({ versteck, ...ort, farbton: l.farbton });
 		}
 		eier = neu;
 	}
@@ -99,25 +63,7 @@
 		return () => clearTimeout(t);
 	});
 
-	onMount(() => {
-		verteilen();
-		// Reiterwechsel, aufklappende Karten und Schubladen melden sich nicht —
-		// ein kurzer Takt fängt alles, und scrollen/resize sofort.
-		const takt = setInterval(verteilen, 400);
-		let geplant = 0;
-		const bald = () => {
-			cancelAnimationFrame(geplant);
-			geplant = requestAnimationFrame(verteilen);
-		};
-		window.addEventListener('scroll', bald, true);
-		window.addEventListener('resize', bald);
-		return () => {
-			clearInterval(takt);
-			cancelAnimationFrame(geplant);
-			window.removeEventListener('scroll', bald, true);
-			window.removeEventListener('resize', bald);
-		};
-	});
+	onMount(() => mitverfolgen(verteilen));
 </script>
 
 {#each eier as ei (ei.versteck)}
