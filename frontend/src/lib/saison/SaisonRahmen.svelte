@@ -82,6 +82,11 @@
 			<Ostereier schluessel={saison.schluessel} {ruhig} />
 		{/await}
 	{/if}
+	{#if saison.id === 'advent'}
+		{#await import('./Adventskalender.svelte') then { default: Adventskalender }}
+			<Adventskalender schluessel={saison.schluessel} {ruhig} />
+		{/await}
+	{/if}
 	{#if saison.partikel && !ruhig}
 		{#await import('./Partikel.svelte') then { default: Partikel }}
 			<Partikel art={saison.partikel} />
