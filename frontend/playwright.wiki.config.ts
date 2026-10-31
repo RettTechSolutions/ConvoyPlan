@@ -21,10 +21,19 @@ export default defineConfig({
 		deviceScaleFactor: 2,
 		colorScheme: 'dark',
 	},
-	webServer: {
-		command: 'npm run build && npm run preview -- --port 4173 --strictPort',
-		url: 'http://localhost:4173/',
-		reuseExistingServer: true,
-		timeout: 180_000,
-	},
+	webServer: [
+		{
+			command: 'npm run build && npm run preview -- --port 4173 --strictPort',
+			url: 'http://localhost:4173/',
+			reuseExistingServer: true,
+			timeout: 180_000,
+		},
+		{
+			// Die Komponentenhülle für den Teilen-Dialog, wie in den E2E-Tests.
+			command: 'npx vite --config e2e/harness/vite.config.ts',
+			url: 'http://localhost:4174/',
+			reuseExistingServer: true,
+			timeout: 120_000,
+		},
+	],
 });

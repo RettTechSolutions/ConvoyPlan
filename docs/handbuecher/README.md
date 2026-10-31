@@ -42,8 +42,10 @@ Abbild jedes Commits; was zwischen zwei Läufen im Wiki dazukommt, steht im Wiki
 
 ## Bildschirmfotos
 
-`bilder/` stammt aus einer Demo-Organisation auf `web.convoyplan.de` (28. und
-31.10.2026). **Vor jeder Aufnahme ersetzt**: Namen und E-Mail-Adressen echter
+Die meisten Bilder in `bilder/` stammen aus einer Demo-Organisation auf `web.convoyplan.de`
+(28. und 31.10.2026). Fahrer-Link und Teilen-Dialog (`fahrer-*`, `teilen-*`) sind gestellt wie
+in den E2E-Tests und entstehen mit `npm run wiki:bilder` in `frontend/`
+(`wiki-bilder/fahrer-link.bilder.ts`) — ein echter Fahrer-Link hieße, Positionen freizugeben. **Vor jeder Aufnahme ersetzt**: Namen und E-Mail-Adressen echter
 Mitglieder, der Slug in der Abruf-Adresse einer Aktionsseite, die IMEI eines Trackers
 und der Name des Telegram-Bots. Wer neue aufnimmt, tut dasselbe — ein Handbuch hier
 ist öffentlich. Wo welches Bild steht, sagt `FIGURES` (Kapitel und Überschrift);
