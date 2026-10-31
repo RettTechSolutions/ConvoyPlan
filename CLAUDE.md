@@ -942,6 +942,13 @@ Gemerkt in `convoyplan-ostereier:<schluessel>`, der Stand steht am Saison-Knopf.
 `data-tour`-Anker umbenennt oder entfernt, zieht `VERSTECKE` mit —
 `e2e/ostereier.spec.ts` prüft, dass jeder Anker in einem Reiter der Planung existiert.
 
+**Geisterjagd** (`$lib/saison/geisterjagd.ts`, `Geisterjagd.svelte`): zu Halloween lugt in
+Abständen ein Geist an einem gerade **sichtbaren** Oster-Anker hervor, für `SICHTBAR_MS`.
+Gefangen gibt es Süßes oder Saures; Saures (Fledermausschwarm, Spinne lässt sich fallen über
+`data-saures` auf `<html>`) entfällt bei reduzierter Bewegung und berührt weder Karte noch
+Eingaben. Nur das Gespenst schwebt, die Trefferfläche steht still. Gemerkt in
+`convoyplan-geister:<schluessel>`, ab `ZIEL` (13) Geisterjäger. Test: `e2e/geisterjagd.spec.ts`.
+
 **Adventskalender** (`$lib/saison/adventskalender.ts`, `Adventskalender.svelte`): vom 1. bis
 24.12. liegt das Türchen des Tages an einem der Oster-Anker (`versteck()`, je Jahr anders);
 gefunden wird es geöffnet, danach liegt dort der Kalender, in dem frühere Tage nachzuholen

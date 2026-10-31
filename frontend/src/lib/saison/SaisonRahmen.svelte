@@ -75,6 +75,9 @@
 	<div class="saison-band" aria-hidden="true"></div>
 	{#if saison.id === 'halloween'}
 		<div class="saison-spinne" aria-hidden="true"><span>🕷️</span></div>
+		{#await import('./Geisterjagd.svelte') then { default: Geisterjagd }}
+			<Geisterjagd schluessel={saison.schluessel} {ruhig} />
+		{/await}
 	{/if}
 	{#if saison.id === 'ostern'}
 		{#if !ruhig}<div class="saison-hase" aria-hidden="true">🐇</div>{/if}
