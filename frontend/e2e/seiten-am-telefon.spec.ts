@@ -9,6 +9,10 @@ import { GRUNDLAGE, mockApi } from './kontextmenue-attrappe';
 //   Bildschirmrand.
 // - **Die Fehlerseite ist lesbar und führt zurück.** Vorher stand die Vorgabe
 //   von SvelteKit da — schwarze Schrift auf dunklem Grund, ohne Weg zurück.
+// - **Eine unbekannte Adresse bleibt die 404, auch ohne Sitzung.** Der Wächter
+//   im Wurzel-Layout schickte sie auf die Superadmin-Anmeldung, sobald
+//   `auth.init()` geantwortet hatte; der Test sah die 404 nur, wenn er
+//   schneller war (3 von 8 Läufen rot).
 
 const TELEFON = { width: 390, height: 844 };
 test.use({ viewport: TELEFON, hasTouch: true });
@@ -18,7 +22,19 @@ async function oeffnen(page: Page, pfad: string) {
 	// zeigte das Portal statt der Anmeldung.
 	const { 'GET /api/auth/me': _sitzung, ...ohneSitzung } = GRUNDLAGE;
 	await mockApi(page, ohneSitzung);
+	// Erst wenn beide beantwortet sind, entscheidet der Wächter im Wurzel-Layout
+	// (`setupChecked` und `$auth.ready`). Wer vorher prüft, prüft den Zustand,
+	// bevor der Wächter umleiten konnte.
+	const entschieden = Promise.all([
+		page.waitForResponse((r) => new URL(r.url()).pathname === '/api/setup/status'),
+		page.waitForResponse((r) => new URL(r.url()).pathname === '/api/auth/me'),
+	]);
 	await page.goto(pfad, { waitUntil: 'domcontentloaded' });
+	await entschieden;
+	// Ein `goto('/admin')` lädt erst den Code der Zielseite und ändert die Adresse
+	// danach; zwei Frames nach der Antwort ist sie noch die alte. Erst wenn das Netz
+	// ruhig ist, hätte eine Umleitung stattgefunden.
+	await page.waitForLoadState('networkidle');
 }
 
 for (const [name, pfad, karte] of [
@@ -39,6 +55,7 @@ for (const [name, pfad, karte] of [
 
 test('die Fehlerseite ist lesbar und führt zur Startseite', async ({ page }) => {
 	await oeffnen(page, '/gibt-es-nicht');
+	expect(new URL(page.url()).pathname, 'keine Umleitung auf die Anmeldung').toBe('/gibt-es-nicht');
 	const titel = page.getByRole('heading', { name: 'Seite nicht gefunden' });
 	await expect(titel).toBeVisible();
 	await expect(page.getByText('Fehler 404')).toBeVisible();
