@@ -48,7 +48,7 @@ const VORLAGEN: Record<SaisonId, Vorlage> = {
 	ostern: { id: 'ostern', name: 'Ostern', symbol: '🐣', partikel: null, gruss: ['Frohe Ostern! In der Planung sind 10 Eier versteckt — viel Spaß beim Suchen.'] },
 	wiesn: { id: 'wiesn', name: 'Wiesn', symbol: '🥨', partikel: null, gruss: ["O'zapft is! Der Fahrer bleibt bei Spezi."] },
 	halloween: { id: 'halloween', name: 'Halloween', symbol: '🎃', partikel: 'fledermaeuse', gruss: ['Süßes oder Saures? Die Route ist jedenfalls nicht verhext.'] },
-	advent: { id: 'advent', name: 'Advent', symbol: '🎄', partikel: 'schnee', gruss: ['Frohe Weihnachten! Schneeketten bitte trotzdem selbst einplanen.'] },
+	advent: { id: 'advent', name: 'Advent', symbol: '🎄', partikel: 'schnee', gruss: ['Frohe Weihnachten! Bis Heiligabend versteckt sich jeden Tag ein Türchen 🎁 in der Planung.'] },
 	winter: { id: 'winter', name: 'Winter', symbol: '❄️', partikel: 'schnee', gruss: ['Guten Rutsch und eine gute Fahrt ins neue Jahr!'] },
 };
 

@@ -942,6 +942,15 @@ Gemerkt in `convoyplan-ostereier:<schluessel>`, der Stand steht am Saison-Knopf.
 `data-tour`-Anker umbenennt oder entfernt, zieht `VERSTECKE` mit —
 `e2e/ostereier.spec.ts` prüft, dass jeder Anker in einem Reiter der Planung existiert.
 
+**Adventskalender** (`$lib/saison/adventskalender.ts`, `Adventskalender.svelte`): vom 1. bis
+24.12. liegt das Türchen des Tages an einem der Oster-Anker (`versteck()`, je Jahr anders);
+gefunden wird es geöffnet, danach liegt dort der Kalender, in dem frühere Tage nachzuholen
+sind — einen Weg zum heutigen ohne Finden gibt es nicht. Gemerkt in
+`convoyplan-advent:<schluessel>`. Platzieren, Mitverfolgen und Speichern teilen sich
+Eier und Türchen in `anker.ts`. Die Texte in `TUERCHEN` sind teils Kniffe aus ConvoyPlan —
+wer eine dort genannte Funktion ändert, zieht den Text mit. Türchen 24 schickt einen
+Schlittenkonvoi (nicht bei reduzierter Bewegung). Test: `e2e/adventskalender.spec.ts`.
+
 ### Handbücher als PDF: öffentlich ist, was im Wiki steht
 
 `/handbuecher` (öffentlich wie `/status`, in `PUBLIC_ROUTES`) listet die PDFs aus
