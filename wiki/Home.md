@@ -10,6 +10,14 @@ Kartenbasierte Routenplanung · Live-Tracking · Marschbefehl-PDF · Self-hosted
 
 ConvoyPlan ist eine selbst gehostete Web-Anwendung, die Einsatzorganisationen (BOS) bei der strukturierten Planung und Durchführung von Marschverbänden und Konvoifahrten unterstützt. Die Software läuft vollständig on-premise und erfordert keine Cloud-Dienste.
 
+> 📖 **Lieber auf Papier?** Diese Doku gibt es auch als PDF — auf jeder Instanz unter `/handbuecher`, oder hier:
+>
+> | Handbuch | Für |
+> |---|---|
+> | [Anwenderhandbuch](https://github.com/RettTechSolutions/ConvoyPlan/raw/main/frontend/static/handbuecher/ConvoyPlan-Anwenderhandbuch.pdf) | Planer, Fahrer und Beobachter |
+> | [Betriebs- und Administrationshandbuch](https://github.com/RettTechSolutions/ConvoyPlan/raw/main/frontend/static/handbuecher/ConvoyPlan-Betriebshandbuch.pdf) | Betreiber und Administratoren einer Instanz |
+> | [Begleit-App](https://github.com/RettTechSolutions/ConvoyPlan/raw/main/frontend/static/handbuecher/ConvoyPlan-Begleit-App.pdf) | Besatzungen und Planer unterwegs |
+
 ---
 
 ## Highlights

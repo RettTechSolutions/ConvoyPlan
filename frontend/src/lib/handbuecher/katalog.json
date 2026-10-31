@@ -1,0 +1,29 @@
+[
+	{
+		"datei": "ConvoyPlan-Anwenderhandbuch.pdf",
+		"titel": "ConvoyPlan – Anwenderhandbuch",
+		"beschreibung": "Konvois planen, Fahrzeuge führen, live verfolgen — für Planer, Fahrer und Beobachter",
+		"fuer": "Planer, Fahrer und Beobachter",
+		"seiten": 89,
+		"bytes": 7504254,
+		"stand": "2026-10-31"
+	},
+	{
+		"datei": "ConvoyPlan-Betriebshandbuch.pdf",
+		"titel": "ConvoyPlan – Betriebs- und Administrationshandbuch",
+		"beschreibung": "Installation, Betrieb, Sicherheit, Lizenz und Schnittstellen einer ConvoyPlan-Instanz",
+		"fuer": "Betreiber und Administratoren einer Instanz",
+		"seiten": 95,
+		"bytes": 2525552,
+		"stand": "2026-10-31"
+	},
+	{
+		"datei": "ConvoyPlan-Begleit-App.pdf",
+		"titel": "ConvoyPlan Companion – Begleit-App",
+		"beschreibung": "ConvoyPlan Companion für iOS und Android — anmelden, mitfahren, melden, am Autodisplay",
+		"fuer": "Besatzungen und Planer unterwegs",
+		"seiten": 11,
+		"bytes": 561693,
+		"stand": "2026-10-31"
+	}
+]
