@@ -127,7 +127,10 @@ FIGURES = {
     "Live-Tracking": [
         ("LiveTracking.png", "Live-Tracking mit Fahrzeugpositionen und Status", None),
         ("tracking.jpg", "Tracking-Ansicht: Konvoistatus, eigene Position, Verbandsstärke und Betriebsstoff je Fahrzeug", "Übersicht"),
+        (["fahrer-tel-karte.jpg", "fahrer-tel-schublade.jpg"], "Fahrer-Link am Telefon: Karte mit Hinweis auf den nächsten Wegpunkt (links), eigenes Fahrzeug mit Status und Stärke (rechts)", "Tracking als Fahrer starten"),
+        ("teilen-qr.jpg", "QR-Code eines Fahrer-Links zum Weitergeben", "Den Link weitergeben (QR)"),
         ("tracking-status.jpg", "Reiter „Status“ in der Tracking-Ansicht", "Fahrzeugstatus melden"),
+        ("fahrer-desktop.jpg", "Fahrer-Link am Schreibtisch: Status melden, Stärke melden, Fahrzeugliste", "Fahrzeugstatus melden"),
         ("tel-tracking.jpg", "Tracking am Telefon mit Hinweis auf den nächsten Wegpunkt", "Karte bedienen"),
     ],
     "Marschbefehl-Export": [
@@ -137,6 +140,7 @@ FIGURES = {
         ("export-pdf-s-1.jpg", "Erzeugter Marschbefehl (PDF), erste Seite", "PDF generieren"),
         ("export-roadbook-s-1.jpg", "Erzeugtes Roadbook (PDF), erste Seite mit Karte und Abbiegehinweisen", "Roadbook (PDF)"),
     ],
+    "Teilen": [("teilen-dialog.jpg", "Teilen-Dialog: Lese- oder Fahrer-Link anlegen, vorhandene Links mit QR-Code und Widerruf", "Link erstellen")],
     "Rollen": [("admin-tel.jpg", "Mitgliederverwaltung am Telefon", "Rollenänderung"), ("Berechtigungen.png", "Rollen und Berechtigungen im Org-Admin", None)],
     "Benutzerhandbuch": [("Leitstellen.png", "Leitstellen und Kanalwechsel", "Leitstellen und Kanalwechsel"),
                          ("Branding.png", "Branding einer Organisation", "Organisationen"),
