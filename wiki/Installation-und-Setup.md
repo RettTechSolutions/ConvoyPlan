@@ -247,6 +247,7 @@ openssl rand -hex 32
 | `GH_DATAACCESS` | `MMAP` | Speicherzugriff des laufenden Routing-Servers: `MMAP` (Graph im Seitencache des Kernels, JVM bleibt klein) oder `RAM_STORE` (Graph komplett im Java-Heap) |
 | `GH_SERVER_JAVA_OPTS` | *(leer = Standard)* | Zusätzliche JVM-Optionen nur für den Server; Standard gibt ungenutzten Heap im Leerlauf zurück und beendet die JVM bei `OutOfMemoryError` |
 | `GH_LM` | `true` | Landmarks (LM) für schnelleres Routing langer Strecken; `false` schaltet sie ab |
+| `GRAPHHOPPER_TIMEOUT_S` | `180` | Frist einer Routenanfrage in Sekunden. Sehr lange Routen über mehrere Länder brauchen deutlich länger als früher fest eingestellte 30 s; bei Überschreitung meldet ConvoyPlan eine Zeitüberschreitung (504) statt „Routing-Dienst nicht verfügbar" |
 
 > Richtwerte: DACH `-Xmx8g`, Deutschland `-Xmx6g`, Bayern `-Xmx3g`, Berlin `-Xmx1g`.
 > Sie gelten für den Import. Im Betrieb liegt der Graph mit `GH_DATAACCESS=MMAP`
