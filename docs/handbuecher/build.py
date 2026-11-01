@@ -141,6 +141,18 @@ FIGURES = {
         ("export-roadbook-s-1.jpg", "Erzeugtes Roadbook (PDF), erste Seite mit Karte und Abbiegehinweisen", "Roadbook (PDF)"),
     ],
     "Teilen": [("teilen-dialog.jpg", "Teilen-Dialog: Lese- oder Fahrer-Link anlegen, vorhandene Links mit QR-Code und Widerruf", "Link erstellen")],
+    # Begleit-App: Aufnahmen vom Gerät aus Convoyplan-Companion/store/*/screenshots/quelle/
+    # (dieselben wie in den Store-Einträgen, also ohnehin öffentlich).
+    "ANLEITUNG": [
+        (["app-verband.jpg", "app-route.jpg"], "Reiter „Verband“ mit Marschstreifen (links) und „Route“ mit Abbiegehinweisen (rechts)", "Was angezeigt wird"),
+        (["app-fahrzeugwahl.jpg", "app-jetzt.jpg"], "Fahrzeug wählen (links), danach der Reiter „Jetzt“ mit laufender Übertragung und nächstem Wegpunkt (rechts)", "Als Fahrer senden"),
+        ("app-status.jpg", "Status melden: Geplant, Unterwegs, Angekommen, Technischer Halt, Ausfall", "Status melden"),
+        ("app-staerke.jpg", "Mannschaftsstärke melden", "Stärke melden"),
+        ("app-fahrzeug.jpg", "Fahrzeug melden: Verbrauch, Tankvolumen, Füllstand und Reichweite", "Fahrzeug melden"),
+        ("app-planer.jpg", "Planer-Zugang: Organisation mit ihren Marschverbänden", "Für Planer: mit der Organisation verbinden"),
+        (["app-android-auto.jpg", "app-ansagen.jpg"], "Einstellungen für das Autodisplay (links, Android) und für Übertragung und Sprachansagen (rechts, iPhone)", "Am Autodisplay (CarPlay, Android Auto)"),
+        ("app-daten.jpg", "Einstellungen: Alarmton, Planer-Zugang und die auf dem Gerät gespeicherten Daten", "Was die App an Daten erhebt"),
+    ],
     "Rollen": [("admin-tel.jpg", "Mitgliederverwaltung am Telefon", "Rollenänderung"), ("Berechtigungen.png", "Rollen und Berechtigungen im Org-Admin", None)],
     "Benutzerhandbuch": [("Leitstellen.png", "Leitstellen und Kanalwechsel", "Leitstellen und Kanalwechsel"),
                          ("Branding.png", "Branding einer Organisation", "Organisationen"),
