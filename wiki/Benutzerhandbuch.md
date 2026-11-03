@@ -344,6 +344,7 @@ Zu bestimmten Anlässen färbt die Oberfläche auf Wunsch ihre Flächen ein: Hal
 - Fahrer-Link, Tracking-Ansicht, Share-Link und Statusseite bleiben immer neutral — dort schaut jemand im Einsatz drauf.
 - Bei aktivierter Einstellung „Bewegung reduzieren“ im Betriebssystem gibt es keine Animationen.
 - **Ostereiersuche:** Zu Ostern sind in der Planung zehn Eier versteckt, dazu ein goldenes im Org-Admin. Der Fortschritt steht am Saison-Knopf.
+- **Geisterjagd:** Zu Halloween lugt in der Planung ab und zu ein Geist 👻 hinter einem Bedienelement hervor. Wer ihn antippt, fängt ihn – und bekommt Süßes oder Saures. Ab 13 Geistern ist man Geisterjäger.
 - **Adventskalender:** Vom 1. bis 24. Dezember versteckt sich jeden Tag ein Türchen 🎁 in der Planung, mal in diesem Reiter, mal in einem anderen. Wer es findet, öffnet es; danach liegt an derselben Stelle der Kalender 📅, in dem sich verpasste Tage nachholen lassen. Türchen 24 hat eine Überraschung.
 
 ---

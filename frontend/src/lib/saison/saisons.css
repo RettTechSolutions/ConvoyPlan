@@ -144,6 +144,14 @@ html[data-saison='april'] .saison-deko::after { content: '🃏'; }
 	from { height: 55px; transform: rotate(-4deg); }
 	to { height: 95px; transform: rotate(4deg); }
 }
+/* Saures aus der Geisterjagd: die Spinne lässt sich fallen und klettert zurück. */
+html[data-saures='spinne'] .saison-spinne { animation: saison-fallen 2.6s ease-in-out 1; }
+@keyframes saison-fallen {
+	0% { height: 70px; }
+	35% { height: 45vh; }
+	55% { height: 42vh; }
+	100% { height: 70px; }
+}
 
 /* Ostern: der Hase hoppelt einmal unten durchs Bild. */
 .saison-hase {
