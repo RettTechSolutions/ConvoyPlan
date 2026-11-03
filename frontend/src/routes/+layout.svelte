@@ -43,7 +43,7 @@
 	// aufgeführt statt als `/oauth/`: eine weitere Seite darunter soll nicht
 	// still öffentlich werden.
 	const PUBLIC_ROUTES = [
-		'/share', '/track', '/setup', '/o/', '/admin', '/status', '/demo',
+		'/share', '/track', '/setup', '/o/', '/admin', '/status', '/demo', '/handbuecher',
 		'/about', '/contact', '/privacy', '/terms', '/pricing', '/developers', '/docs',
 		'/oauth/app', '/oauth/consent'
 	];
@@ -110,8 +110,16 @@
 		// Befund — wer hier schon umleitet, wirft jeden Angemeldeten beim
 		// Laden auf die Anmeldemaske.
 		if (!$auth.ready) return;
+		// Eine Fehlerseite (unbekannte Adresse, Fehler beim Laden) ist keine
+		// geschützte Seite: Hinter ihr liegt nichts, was eine Anmeldung schützen
+		// müsste. Ohne diese Ausnahme schickte der Wächter jeden Tippfehler ohne
+		// Sitzung auf die Superadmin-Anmeldung — je nachdem, wie schnell
+		// `auth.init()` antwortete, mal sofort, mal nach einem Blick auf die 404.
+		// Wer gar keinen Superadmin-Zugang hat, stand dann vor der falschen Maske
+		// statt vor „Seite nicht gefunden" mit dem Weg zur Startseite.
+		const isFehlerseite = page.error !== null;
 		const isPublic = isPublicPath(page.url.pathname);
-		if (!isPublic && !$auth.is_authenticated) {
+		if (!isPublic && !isFehlerseite && !$auth.is_authenticated) {
 			goto('/admin');
 			return;
 		}

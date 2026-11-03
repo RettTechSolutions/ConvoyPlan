@@ -594,6 +594,7 @@
                     aria-label="Saison-Design {$saisonStore.saison.name} {$saisonStore.aktiv ? 'ausschalten' : 'einschalten'}"
                 >{$saisonStore.saison.symbol}</button>
             {/if}
+            <a class="melden-link handbuch-link" href="/handbuecher" target="_blank" rel="noopener" title="Handbücher als PDF">📖 Handbuch</a>
             <button class="melden-link" onclick={() => feedbackStore.open('bug')}>🐞 Melden</button>
             <a href="/o/{slug}/plan" class="back-link">← Plan</a>
         </div>
@@ -1210,6 +1211,7 @@
     .kopf-aktionen { display: flex; align-items: center; gap: .75rem; }
     .melden-link { background: none; border: 1px solid var(--border); border-radius: 6px; padding: .3rem .6rem; cursor: pointer; color: var(--text-2); font-size: var(--text-sm); }
     .melden-link:hover { color: var(--text-1); }
+    .handbuch-link { text-decoration: none; }
     .melden-link[aria-pressed='true'] { border-color: var(--color-primary); }
     h1 { margin: 0; font-size: var(--text-lg); }
     .back-link { color: var(--text-2); font-size: var(--text-sm); text-decoration: none; }

@@ -28,7 +28,7 @@ pydantic-settings==2.16.2
 # CVE-2026-75803).
 cryptography==50.0.2
 shapely==2.2.0
-python-multipart==0.0.32
+python-multipart==0.0.33
 bcrypt==5.0.0
 httpx==0.28.1
 gpxpy==1.6.2

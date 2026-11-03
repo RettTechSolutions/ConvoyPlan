@@ -10,6 +10,9 @@
   steht unter `/privacy`. Die Seite gehört zur Agenten-Auskunft und existiert
   ohne sie nicht; dann bleibt nur der Verweis auf den Hersteller.
 
+  Die Handbücher stehen hier, weil man sie am ehesten vor der Anmeldung sucht
+  — auf der Startseite, der Anmeldung einer Organisation, der Statusseite.
+
   `showStatus` blendet den Status-Link dort aus, wo er ins Leere zeigen würde —
   namentlich auf der Statusseite selbst.
 -->
@@ -32,6 +35,8 @@
 	{:else}
 		<a href="https://convoyplan.de/datenschutz" target="_blank" rel="noopener">Datenschutz</a>
 	{/if}
+	<span aria-hidden="true">·</span>
+	<a href="/handbuecher">Handbücher</a>
 	{#if showStatus}
 		<span aria-hidden="true">·</span>
 		<a href="/status">Systemstatus</a>
@@ -43,6 +48,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		flex-wrap: wrap;
 		gap: 0.6rem;
 		margin-top: 1.5rem;
 		font-size: var(--text-sm, 0.8125rem);
