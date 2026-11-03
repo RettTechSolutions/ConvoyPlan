@@ -13,6 +13,7 @@
 	import ChangelogModal from '$lib/components/ChangelogModal.svelte';
 	import LizenzAblaufHinweis from '$lib/components/LizenzAblaufHinweis.svelte';
 	import Kontextmenue from '$lib/kontextmenue/Kontextmenue.svelte';
+	import SaisonRahmen from '$lib/saison/SaisonRahmen.svelte';
 
 	let { children } = $props();
 
@@ -42,7 +43,7 @@
 	// aufgeführt statt als `/oauth/`: eine weitere Seite darunter soll nicht
 	// still öffentlich werden.
 	const PUBLIC_ROUTES = [
-		'/share', '/track', '/setup', '/o/', '/admin', '/status', '/demo',
+		'/share', '/track', '/setup', '/o/', '/admin', '/status', '/demo', '/handbuecher',
 		'/about', '/contact', '/privacy', '/terms', '/pricing', '/developers', '/docs',
 		'/oauth/app', '/oauth/consent'
 	];
@@ -109,8 +110,16 @@
 		// Befund — wer hier schon umleitet, wirft jeden Angemeldeten beim
 		// Laden auf die Anmeldemaske.
 		if (!$auth.ready) return;
+		// Eine Fehlerseite (unbekannte Adresse, Fehler beim Laden) ist keine
+		// geschützte Seite: Hinter ihr liegt nichts, was eine Anmeldung schützen
+		// müsste. Ohne diese Ausnahme schickte der Wächter jeden Tippfehler ohne
+		// Sitzung auf die Superadmin-Anmeldung — je nachdem, wie schnell
+		// `auth.init()` antwortete, mal sofort, mal nach einem Blick auf die 404.
+		// Wer gar keinen Superadmin-Zugang hat, stand dann vor der falschen Maske
+		// statt vor „Seite nicht gefunden" mit dem Weg zur Startseite.
+		const isFehlerseite = page.error !== null;
 		const isPublic = isPublicPath(page.url.pathname);
-		if (!isPublic && !$auth.is_authenticated) {
+		if (!isPublic && !isFehlerseite && !$auth.is_authenticated) {
 			goto('/admin');
 			return;
 		}
@@ -165,6 +174,10 @@
 <!-- Das eine Kontextmenü der Anwendung; geöffnet wird es aus den Seiten über
      `$lib/kontextmenue/menue.ts`. -->
 <Kontextmenue />
+
+<!-- Saison-Designs (Easter Egg, nur auf Klick): zeigt sich nur auf den
+     Seiten, die `erlaubt()` in `$lib/saison/store.ts` nennt. -->
+<SaisonRahmen />
 
 <!-- Auf /track-Seiten greift die eigenständige Tracking-App-Installation
      (eigenes Manifest + eigene Install-CTA), daher hier kein generischer Banner. -->

@@ -13,14 +13,14 @@ sqlalchemy[asyncio]==2.1.6
 asyncpg==0.32.0
 geoalchemy2==0.20.0
 alembic==1.20.1
-pydantic[email]==2.14.1
+pydantic[email]==2.14.2
 # PyJWT replaces python-jose (CVE-2024-33663, CVE-2024-33664 — algorithm confusion / sig bypass).
 # 2.14.0 hardens HMAC key validation against public-key material passed as JWK/JWKS/DER/PEM,
 # rejects JWKS-fetch redirects in PyJWKClient, and rate-limits repeated JWKS refreshes for
 # unknown key IDs. 2.15.0 wraps recursion errors from deeply nested JWT payloads in
 # DecodeError instead of leaking a raw RecursionError.
 PyJWT==2.15.1
-pydantic-settings==2.16.1
+pydantic-settings==2.16.2
 # cryptography 50.0.1 rebuilds wheels against OpenSSL 4.0.3 (50.0.2; 50.0.1 shipped 4.0.2), which fixes
 # several CVEs bundled in the statically-linked OpenSSL (CVE-2026-63072,
 # CVE-2026-63076, CVE-2026-14456, CVE-2026-14457, CVE-2026-54874,
@@ -28,7 +28,7 @@ pydantic-settings==2.16.1
 # CVE-2026-75803).
 cryptography==50.0.2
 shapely==2.2.0
-python-multipart==0.0.32
+python-multipart==0.0.33
 bcrypt==5.0.0
 httpx==0.28.1
 gpxpy==1.6.2

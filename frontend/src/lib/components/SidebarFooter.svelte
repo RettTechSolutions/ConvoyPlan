@@ -1,6 +1,6 @@
 <script lang="ts">
 	/**
-	 * Fußzeile der Planungs-Seitenleiste: Theme, Hilfe, Melden, Installation
+	 * Fußzeile der Planungs-Seitenleiste: Theme, Hilfe, Handbuch, Melden, Installation
 	 * und der Build-Stand.
 	 *
 	 * Eigene Komponente, damit die Hülle unter `e2e/harness/` sie ohne die
@@ -8,6 +8,10 @@
 	 * im Quelltext nicht an — nur auf einem Bildschirmfoto.
 	 */
 	import { themeStore } from '$lib/stores/theme';
+	import { saisonStore } from '$lib/saison/store';
+	import { anzahl, eierStore, VERSTECKE } from '$lib/saison/ostereier';
+	import { kalenderStore } from '$lib/saison/adventskalender';
+	import { geisterStore, ZIEL } from '$lib/saison/geisterjagd';
 	import { tutorialStore } from '$lib/stores/tutorial';
 	import { feedbackStore } from '$lib/stores/feedback';
 	import { versionStore } from '$lib/stores/version.svelte';
@@ -30,12 +34,31 @@
 		?
 		<span>Hilfe</span>
 	</button>
+	<!-- Ein Link und kein Knopf: das Handbuch öffnet in einem eigenen Reiter,
+	     die Planung bleibt, wie sie war. -->
+	<a class="theme-toggle" href="/handbuecher" target="_blank" rel="noopener" aria-label="Handbücher (PDF)" title="Handbücher als PDF">
+		📖
+		<span>Handbuch</span>
+	</a>
 	<!-- Neben der Hilfe und nicht als schwebender Knopf über der Karte:
 	     dort verdeckte er genau das, worüber gemeldet wird. -->
 	<button class="theme-toggle" onclick={() => feedbackStore.open('bug')} aria-label="Fehler melden oder Funktion vorschlagen" title="Fehler melden / Funktion vorschlagen">
 		🐞
 		<span>Melden</span>
 	</button>
+	{#if $saisonStore.saison}
+		<!-- Nur im Fenster einer Saison, und nur auf Klick: ein Easter Egg. -->
+		<button
+			class="theme-toggle"
+			onclick={() => saisonStore.umschalten()}
+			aria-pressed={$saisonStore.aktiv}
+			aria-label="Saison-Design {$saisonStore.saison.name} {$saisonStore.aktiv ? 'ausschalten' : 'einschalten'}"
+			title="Saison-Design {$saisonStore.aktiv ? 'ausschalten' : 'einschalten'}"
+		>
+			{$saisonStore.saison.symbol}
+			<span>{$saisonStore.saison.name}{#if $saisonStore.saison.id === 'ostern' && $saisonStore.aktiv}&nbsp;· 🥚&nbsp;{anzahl($eierStore.gefunden)}/{VERSTECKE.length}{:else if $saisonStore.saison.id === 'halloween' && $saisonStore.aktiv}&nbsp;· {$geisterStore.gefangen >= ZIEL ? '🏆' : '👻'}&nbsp;{$geisterStore.gefangen}{#if $geisterStore.gefangen < ZIEL}/{ZIEL}{/if}{:else if $saisonStore.saison.id === 'advent' && $saisonStore.aktiv}&nbsp;· 🎁&nbsp;{$kalenderStore.offen.length}/24{/if}</span>
+		</button>
+	{/if}
 	<InstallButton />
 	<span class="app-version" title="Build {__APP_VERSION__}">
 		v{build.base}{#if build.commit}&nbsp;· {build.commit}{/if}
@@ -79,6 +102,7 @@
 		white-space: nowrap;
 	}
 	.theme-toggle:hover { background: var(--surface-2); }
+	a.theme-toggle { text-decoration: none; }
 	/* `margin-left: auto` hält die Version rechts, solange sie in die Zeile der
 	   Knöpfe passt, und stellt sie sonst an den rechten Rand der nächsten. */
 	.app-version {

@@ -3,6 +3,7 @@
  * Wird einmalig aus dem Root-Layout (onMount, nur Browser) aufgerufen.
  */
 import { getBaseUrl, authHeaders } from '$lib/api/client';
+import { aktuelleSaison } from '$lib/saison/kalender';
 
 const ASCII_ART = String.raw`
   ____                                ____  _
@@ -16,14 +17,25 @@ const ASCII_ART = String.raw`
       'O--O'  'O--O'  'O--O'  'O--O'
 `;
 
+/** Am 1. April fährt der Konvoi andersherum. */
+const KONVOI_RUECKWAERTS = String.raw`       ____    ____    ____    ____
+    <=|LEAD|==| o o|==| o o|==| o o|
+      'O--O'  'O--O'  'O--O'  'O--O'
+`;
+
 let printed = false;
 
 export function printConsoleBanner(): void {
 	if (printed || typeof window === 'undefined') return;
 	printed = true;
 
+	const saison = aktuelleSaison(new Date());
+	const kunst = saison?.id === 'april'
+		? ASCII_ART.slice(0, ASCII_ART.indexOf('       ____    ____')) + KONVOI_RUECKWAERTS
+		: ASCII_ART;
+
 	console.log(
-		'%c' + ASCII_ART,
+		'%c' + kunst,
 		'color:#E23D28; font-family:ui-monospace,monospace; line-height:1.2;'
 	);
 	console.log(
@@ -61,6 +73,14 @@ export function printConsoleBanner(): void {
 		'color:inherit;',
 		'color:#888; font-style:italic;'
 	);
+
+	// ── Easter Egg: Saison-Designs ──────────────────────────────────────
+	if (saison) {
+		console.log(
+			`%c${saison.symbol} Psst: In der Seitenleiste der Planung gibt es heute einen Knopf mehr. Oder ↑↑↓↓←→←→BA.`,
+			'color:#888; font-style:italic;'
+		);
+	}
 
 	// Backend-Infos asynchron nachreichen, sobald verfügbar (non-blocking)
 	// /api/version ist öffentlich, verrät den exakten Build (git-describe +

@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onDestroy, onMount } from 'svelte';
+    import { saisonStore } from '$lib/saison/store';
     import { LIZENZ_GEAENDERT } from '$lib/components/LizenzAblaufHinweis.svelte';
     import LeitstelleAreaPicker, { type AreaSelection } from '$lib/components/LeitstelleAreaPicker.svelte';
     import LeitstellenOverviewMap from '$lib/components/LeitstellenOverviewMap.svelte';
@@ -2111,8 +2112,16 @@
 {#if authed}
 <div class="admin-page">
     <div class="admin-header">
-        <h1>Admin</h1>
+        <h1 class="saison-deko">Admin</h1>
         <div class="header-actions">
+            {#if $saisonStore.saison}
+                <button
+                    class="saison-knopf"
+                    onclick={() => saisonStore.umschalten()}
+                    aria-pressed={$saisonStore.aktiv}
+                    aria-label="Saison-Design {$saisonStore.saison.name} {$saisonStore.aktiv ? 'ausschalten' : 'einschalten'}"
+                >{$saisonStore.saison.symbol}</button>
+            {/if}
             <a href="/plan" class="back-link">← Plan</a>
             <button class="logout-btn" onclick={logout}>Abmelden</button>
         </div>
@@ -4877,6 +4886,8 @@
     .back-link { color: var(--text-2); font-size: var(--text-sm); text-decoration: none; }
     .back-link:hover { color: var(--text-1); }
     .header-actions { display: flex; align-items: center; gap: 1rem; }
+    .saison-knopf { background: none; border: 1px solid var(--border); border-radius: 6px; padding: .3rem .6rem; cursor: pointer; font-size: var(--text-sm); }
+    .saison-knopf[aria-pressed='true'] { border-color: var(--color-primary); }
     .logout-btn {
         padding: .4rem .8rem;
         background: var(--surface-2);

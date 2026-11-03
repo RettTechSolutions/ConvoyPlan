@@ -4,6 +4,7 @@
 - [Home](Home)
 - [Funktionsumfang](Funktionsumfang)
 - [FAQ](FAQ)
+- [Handbücher als PDF](Home)
 
 **Einrichtung & Referenz**
 - [Installation und Setup](Installation-und-Setup)

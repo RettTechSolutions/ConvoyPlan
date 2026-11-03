@@ -73,3 +73,7 @@ CLAUDE.local.md
 .superpowers/
 .remember/
 # docs/ ist tracked — enthält Specs und Design-Dokumente
+
+# Handbücher: Zwischenstände und Mermaid-Cache des Generators
+docs/handbuecher/.work/
+docs/handbuecher/.cache/

@@ -106,6 +106,16 @@ Caddy terminiert TLS und leitet `/api/*` und `/ws/*` ans FastAPI-Backend, alles 
 
 Die vollständige Anwender- und Betriebsdokumentation liegt im **[GitHub Wiki](https://github.com/RettTechSolutions/ConvoyPlan/wiki)**.
 
+**Als PDF** zum Ausdrucken und Mitnehmen gibt es sie in drei Handbüchern. Jede Instanz liefert sie selbst aus, unter `/handbuecher` (verlinkt unter der Anmeldung, in der Seitenleiste der Planung und im Org-Admin):
+
+| Handbuch | Für |
+|---|---|
+| [Anwenderhandbuch](https://github.com/RettTechSolutions/ConvoyPlan/raw/main/frontend/static/handbuecher/ConvoyPlan-Anwenderhandbuch.pdf) | Planer, Fahrer und Beobachter |
+| [Betriebs- und Administrationshandbuch](https://github.com/RettTechSolutions/ConvoyPlan/raw/main/frontend/static/handbuecher/ConvoyPlan-Betriebshandbuch.pdf) | Betreiber und Administratoren einer Instanz |
+| [Begleit-App](https://github.com/RettTechSolutions/ConvoyPlan/raw/main/frontend/static/handbuecher/ConvoyPlan-Begleit-App.pdf) | Besatzungen und Planer unterwegs |
+
+Erzeugt werden sie aus `wiki/` und `docs/` mit [`docs/handbuecher/build.py`](docs/handbuecher/README.md).
+
 Die Markdown-Quellen dazu liegen im Ordner [`wiki/`](wiki/). Bei jedem Push auf `main` werden sie über den Workflow [`.github/workflows/sync-wiki.yml`](.github/workflows/sync-wiki.yml) automatisch ins GitHub Wiki gespiegelt — Bearbeitungen also bitte immer in `wiki/` vornehmen, nicht direkt im Wiki.
 
 | Seite | Inhalt |
