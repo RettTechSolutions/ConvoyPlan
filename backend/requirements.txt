@@ -32,7 +32,7 @@ python-multipart==0.0.33
 bcrypt==5.0.0
 httpx==0.28.1
 gpxpy==1.6.2
-fpdf2==2.8.9
+fpdf2==2.9.0
 # Übersichtskarte im Roadbook (services/static_map.py). Kam schon als
 # Abhängigkeit von fpdf2 mit; gepinnt, weil der Code es jetzt direkt benutzt.
 Pillow==13.0.0
