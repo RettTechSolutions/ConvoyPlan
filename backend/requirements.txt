@@ -43,7 +43,7 @@ pyotp==2.10.0
 # (the 5.1.1 fix only rejected CR/LF; 5.1.3 also rejects whitespace/angle
 # brackets that could smuggle extra ESMTP parameters via mail()/rcpt()).
 aiosmtplib==5.1.3
-pytest>=9.1.1
+pytest>=9.2.0
 pytest-asyncio>=1.4.0
 
 # MCP-Server (Model Context Protocol) unter /mcp — liefert Transport,
