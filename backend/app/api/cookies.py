@@ -77,6 +77,8 @@ etwas schreibt, wäre hier die Lücke und nicht diese Liste."""
 _SLUG = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 _SLUG_MAX = 80
 _COOKIE_WERT = re.compile(r"[A-Za-z0-9._~+/=-]+")
+# Name = Präfix + optional ``__<slug>``; nur Zeichen, die in einem Header nichts verändern.
+_COOKIE_NAME = re.compile(r"[A-Za-z0-9_-]+")
 
 
 def ist_gueltiger_slug(org_slug: str | None) -> bool:
@@ -129,8 +131,11 @@ def set_session_cookie(
     # andere hätte hier nichts zu suchen und könnte den Header verändern.
     if not _COOKIE_WERT.fullmatch(token):
         raise ValueError("Ungültiges Sitzungstoken für Cookie")
+    name = cookie_name(org_slug)
+    if not _COOKIE_NAME.fullmatch(name):
+        raise ValueError("Ungültiger Cookie-Name")
     response.set_cookie(
-        cookie_name(org_slug),
+        name,
         token,
         max_age=settings.jwt_expire_minutes * 60,
         httponly=True,
