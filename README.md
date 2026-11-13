@@ -19,6 +19,13 @@
 </p>
 
 <p align="center">
+  🌐 <a href="https://convoyplan.de/"><strong>convoyplan.de</strong></a>
+  · <a href="https://web.convoyplan.de/demo">Demo ausprobieren</a>
+  · <a href="https://convoyplan.de/marschbefehl/">Marschbefehl-Vorlage nach FwDV 100</a>
+  · <a href="https://convoyplan.de/kolonnenfahrt/">Kolonnenfahrt nach StVO</a>
+</p>
+
+<p align="center">
   <img src="docs/screenshots/Routenplanung.png" alt="ConvoyPlan – Kartenbasierte Marschplanung mit Route, Zeitschätzung und empfohlenen technischen Halten" width="880">
 </p>
 
