@@ -272,9 +272,16 @@ export async function dispatch(
 	request: Request,
 	fetchFn: typeof fetch
 ): Promise<Response | null> {
-	if (!discoveryEnabled()) return null;
-
 	const path = normalize(url.pathname);
+
+	// Die robots.txt gibt es auf jeder Instanz, auch ohne Agenten-Auskunft —
+	// dann in der knappen Fassung ohne Verweise auf Dokumente, die fehlen.
+	if (!discoveryEnabled()) {
+		return path === '/robots.txt' && ['GET', 'HEAD'].includes(request.method)
+			? text(docs.robotsTxtMinimal(), 'text/plain')
+			: null;
+	}
+
 	// Erst prüfen, ob der Pfad überhaupt uns gehört. `buildContext` fragt das
 	// Backend; das darf nicht an jedem Seitenaufruf hängen.
 	if (!handles(path)) return null;

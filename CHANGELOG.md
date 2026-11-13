@@ -33,6 +33,10 @@ ursprünglichen SemVer-Nummern.
 - **Medien- und Osmium-Image mit aktuellem Debian-Sicherheitsstand.** Beide führen `apt-get upgrade` aus, aber Docker hatte die Schicht aus dem Cache genommen: Das Medien-Image enthielt noch ein zlib mit CVE-2026-76844 und CVE-2026-85091 (HIGH, behoben in DSA-6613). Ein neues Build-Argument `DEBIAN_SICHERHEITSSTAND` erzwingt jetzt einen frischen Lauf. Beide Images werden beim nächsten Release neu gebaut.
 - **Updater: CVE-2026-78661 begründet zurückgestellt.** Die DoS-Lücke in `golang.org/x/net/html` steckt in cosign 3.1.4 und im Compose-Plugin von `docker:cli`. Für beides gibt es noch kein korrigiertes Release, und keins der beiden Programme verarbeitet hier fremdes HTML. Der Eintrag in `.trivyignore` ist bis 2026-12-13 befristet.
 
+### Fixed
+
+- **`/robots.txt` auch ohne Agenten-Auskunft.** Auf selbst gehosteten Instanzen (und bei `AGENT_DISCOVERY=false`) antwortete `/robots.txt` mit der HTML-404-Seite. Jetzt kommt eine knappe robots.txt, die die Bereiche hinter der Anmeldung (`/admin`, `/setup`, `/o/`, `/oauth/`, `/share/`, `/plan`) sperrt und sonst nichts — kein `Disallow: /`, damit Suchmaschinen das `noindex` öffentlicher Seiten wie `/demo` weiterhin sehen. In der ausführlichen Fassung gelten dieselben Sperren jetzt auch in den Abschnitten der KI-Crawler; dort fehlten `/oauth/`, `/share/` und `/plan`.
+
 ## [2026.11.1] – 2026-10-15
 
 ### Fixed
