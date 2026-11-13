@@ -21,12 +21,7 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
-### Added
-
-- **Fahrer-Links gesperrter Organisationen halten kein automatisches Update auf.** Ist der Plan einer Organisation abgelaufen (nur noch lesbar), zählen ihre Fahrer-Links für den Updater nicht mehr — wie schon ihre Tracker.
-- **Automatische Updates warten auch auf Tracker.** Ein Tracker, der sich in den letzten fünf Minuten gemeldet hat und dessen Fahrzeug in einem Konvoi mit Status *aktiv* oder *läuft* steht, hält ein automatisches Update zurück wie ein verbundener Fahrer-Link. Tracker einer gesperrten Organisation (Plan abgelaufen, Modul nicht freigegeben, keine Lizenz) zählen nicht — sie schweigen ohnehin. Das Admin-Panel nennt die Tracker mit.
-- **Automatische Updates warten auch auf Fahrer-Links.** Solange ein Fahrer-Link (Browser oder Begleit-App) eines Konvois mit Status *aktiv* oder *läuft* verbunden ist, hält der Updater ein automatisches Update zurück — nach einem Verbindungsabriss noch fünf Minuten, damit ein Funkloch nicht als Feierabend gilt. Lese-Links zählen nicht. Das Admin-Panel nennt die Fahrer-Links neben Nutzern und Demo-Nutzern.
-- **Aktionsseite: Fahrzeugzahl je Konvoi.** Die öffentliche Antwort trägt `vehicles`, die Zahl der im Konvoi eingeplanten Fahrzeuge (nicht der gerade fahrenden — ein Ausfall unterwegs zeigt sich nicht). Der EventTracker zeichnet damit eine Kolonne statt eines einzelnen Lkw. Sonst geht nichts aus den Fahrzeugen hinaus; die Positivliste ist entsprechend erweitert.
+## [2026.11.5] – 2026-11-13
 
 ### Security
 
@@ -36,6 +31,17 @@ ursprünglichen SemVer-Nummern.
 ### Fixed
 
 - **`/robots.txt` auch ohne Agenten-Auskunft.** Auf selbst gehosteten Instanzen (und bei `AGENT_DISCOVERY=false`) antwortete `/robots.txt` mit der HTML-404-Seite. Jetzt kommt eine knappe robots.txt, die die Bereiche hinter der Anmeldung (`/admin`, `/setup`, `/o/`, `/oauth/`, `/share/`, `/plan`) sperrt und sonst nichts — kein `Disallow: /`, damit Suchmaschinen das `noindex` öffentlicher Seiten wie `/demo` weiterhin sehen. In der ausführlichen Fassung gelten dieselben Sperren jetzt auch in den Abschnitten der KI-Crawler; dort fehlten `/oauth/`, `/share/` und `/plan`.
+
+## [2026.11.4] – 2026-11-06
+
+> Ausgeliefert über die automatischen Fix-Releases 2026.11.2 bis 2026.11.4 (Dependabot-Wellen, `auto-release.yml`); der CHANGELOG wurde dabei nicht mitgezogen und wird hier nachgetragen.
+
+### Added
+
+- **Fahrer-Links gesperrter Organisationen halten kein automatisches Update auf.** Ist der Plan einer Organisation abgelaufen (nur noch lesbar), zählen ihre Fahrer-Links für den Updater nicht mehr — wie schon ihre Tracker.
+- **Automatische Updates warten auch auf Tracker.** Ein Tracker, der sich in den letzten fünf Minuten gemeldet hat und dessen Fahrzeug in einem Konvoi mit Status *aktiv* oder *läuft* steht, hält ein automatisches Update zurück wie ein verbundener Fahrer-Link. Tracker einer gesperrten Organisation (Plan abgelaufen, Modul nicht freigegeben, keine Lizenz) zählen nicht — sie schweigen ohnehin. Das Admin-Panel nennt die Tracker mit.
+- **Automatische Updates warten auch auf Fahrer-Links.** Solange ein Fahrer-Link (Browser oder Begleit-App) eines Konvois mit Status *aktiv* oder *läuft* verbunden ist, hält der Updater ein automatisches Update zurück — nach einem Verbindungsabriss noch fünf Minuten, damit ein Funkloch nicht als Feierabend gilt. Lese-Links zählen nicht. Das Admin-Panel nennt die Fahrer-Links neben Nutzern und Demo-Nutzern.
+- **Aktionsseite: Fahrzeugzahl je Konvoi.** Die öffentliche Antwort trägt `vehicles`, die Zahl der im Konvoi eingeplanten Fahrzeuge (nicht der gerade fahrenden — ein Ausfall unterwegs zeigt sich nicht). Der EventTracker zeichnet damit eine Kolonne statt eines einzelnen Lkw. Sonst geht nichts aus den Fahrzeugen hinaus; die Positivliste ist entsprechend erweitert.
 
 ## [2026.11.1] – 2026-10-15
 
@@ -1098,7 +1104,9 @@ Das ruft den Update-Modus auf: räumt verwaiste Updater-Container auf, zieht all
 - Capacitor configuration for Android/iOS native wrapper.
 - Docker Compose setup with GraphHopper OSM pre-download.
 
-[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.11.1...HEAD
+[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.11.5...HEAD
+[2026.11.5]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.11.4...v2026.11.5
+[2026.11.4]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.11.1...v2026.11.4
 [2026.11.1]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.11.0...v2026.11.1
 [2026.11.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.10.0...v2026.11.0
 [2026.10.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.9.0...v2026.10.0
