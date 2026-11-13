@@ -400,6 +400,35 @@ Tests: `tests/test_durchfahrtshoehen.py`, `tests/test_bruecken_ohne_hoehe.py`,
 `frontend/e2e/durchfahrtshoehen.spec.ts`, `frontend/e2e/gewichtsgrenzen.spec.ts`.
 Anwenderdoku: `wiki/Konvoi-Planung.md`, „Durchfahrtshöhen" und „Gewichtsgrenzen".
 
+### Marschbefehl nach FwDV 100, Anlage 4
+
+`services/pdf.py` setzt den Marschbefehl nach dem *Muster für einen Marschbefehl* der FwDV 100,
+Anlage 4 (Stand 1999; gleichlautend z. B. bei der LFS Sachsen, S. 59–60). Die Website
+(`convoyplan.de/marschbefehl/`) verspricht genau diese Gliederung und bietet eine Vorlage in
+derselben an — wer hier umsortiert oder umbenennt, bricht diese Zusage.
+
+- **Reihenfolge und Begriffe der FwDV**: Kopf (befehlende Stelle, Abgangsort/-datum/-zeit, „Befehl
+  für den Marsch in den Raum …“, Karte), 1.–5. mit ihren Unterpunkten, dann **Anlagen** und
+  **Verteiler ohne Ziffer**, Unterschrift (Name, Dienststellung). Jeder Punkt wird gedruckt, ein
+  leerer mit „-“ — „die Reihenfolge der Hauptziffern ist aber immer einzuhalten“. Eine Hauptziffer
+  nicht wieder wegfallen lassen, wenn sie leer ist.
+- **App-Ergänzungen an FwDV-Stellen**, nie als eigene Ziffer: Beflaggung, Durchlaufpunkte,
+  Fahrzeugmaße, Durchfahrtshöhen, Gewichtsgrenzen unter 3. „Besondere Einzelheiten je nach Lage“,
+  Kanalwechsel unter 5. „Kommunikationsverbindungen während des Marsches“.
+- **Abgeleitet wird an einer Stelle** (`pdf.feld`, `schliessender`, `platz_fuehrung`,
+  `aerztliche_versorgung`, `durchschnitt_kmh`, `marschpausen`, `marschraum`, die `*_STANDARD`-Texte);
+  die Word-Vorlage ruft dieselben Funktionen. Geraten wird nicht: ohne Sonderfunktion
+  „Führungsfahrzeug“ bleibt der Platz der Führungskraft leer.
+- **Marschpausen a) / b)**: Technischer Halt sowie Tank- und Wartungshalt unter a), **jeder** andere
+  Halt unter b) — damit kein Halt aus dem Befehl fällt.
+- **Abgangsdatum/-zeit = Export**, nicht der Marschbeginn; der steht unter „Ablaufzeit“.
+- Felder: Migration `0076`. Das alte `versorgung` bleibt als „Ergänzend“ unter 4.; ein Freitext
+  lässt sich nicht verlässlich auf die vier Unterpunkte verteilen. `update_convoy` leert die Felder
+  aus `MARSCHBEFEHL_FELDER` bei mitgeschicktem `null` (das Formular schickt geleerte Felder so).
+- Tests: `tests/test_marschbefehl_fwdv.py` (Reihenfolge im PDF und in der Beispielvorlage,
+  Ableitungen, Leeren). Ändert sich die Gliederung, zieht die Website mit
+  (`src/data/marschbefehl.ts`, `scripts/marschbefehl-vorlage.py` im Website-Repo).
+
 ### Marschbefehl aus der Word-Vorlage: die Vorlage ist fremder Code
 
 Neben dem fest gesetzten PDF (`services/pdf.py`) exportiert `GET /api/convoys/{id}/export/docx`

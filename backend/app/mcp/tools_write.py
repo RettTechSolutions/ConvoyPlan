@@ -144,6 +144,26 @@ def register(mcp) -> None:
         versorgung: str | None = None,
         funkgruppe: str | None = None,
         anlagen: str | None = None,
+        abgangsort: str | None = None,
+        marschraum: str | None = None,
+        karte: str | None = None,
+        lage_eigene: str | None = None,
+        kraefte: str | None = None,
+        marschfuehrer: str | None = None,
+        einzelgruppen_fuehrer: str | None = None,
+        marschabstand: str | None = None,
+        beleuchtung: str | None = None,
+        marschueberwachung: str | None = None,
+        besonderes: str | None = None,
+        verpflegung: str | None = None,
+        betriebsstoff: str | None = None,
+        instandsetzung: str | None = None,
+        aerztliche_versorgung: str | None = None,
+        verbindungen: str | None = None,
+        platz_fuehrung: str | None = None,
+        verteiler: str | None = None,
+        unterschrift_name: str | None = None,
+        unterschrift_dienststellung: str | None = None,
         start_lat: float | None = None,
         start_lon: float | None = None,
         ziel_lat: float | None = None,
@@ -159,12 +179,32 @@ def register(mcp) -> None:
             name: Neue Bezeichnung.
             status: planning | active | completed.
             marschform: geschlossener_verband | einzelgruppen | individuell.
-            lage: Abschnitt „Lage" des Marschbefehls.
-            auftrag: Abschnitt „Auftrag".
+            lage: 1. Lage — Gefahren- / Schadenlage (Marschbefehl nach FwDV 100, Anlage 4).
+            auftrag: 2. Auftrag — Erhaltener Auftrag.
             ablaufpunkt: Ablaufpunkt der Kolonne.
-            versorgung: Abschnitt „Versorgung".
-            funkgruppe: Zugewiesene Funkgruppe.
-            anlagen: Abschnitt „Anlagen".
+            versorgung: 4. Versorgung — Ergänzung zu den vier Unterpunkten.
+            funkgruppe: Funkgruppe (5. Kommunikationsverbindungen während des Marsches).
+            anlagen: Anlagen.
+            abgangsort: Kopf: Abgangsort.
+            marschraum: Kopf: „Befehl für den Marsch in den Raum …“ (sonst das Marschziel).
+            karte: Kopf: Kartenwerk.
+            lage_eigene: 1. Lage — Eigene Lage (``lage`` ist die Gefahren- / Schadenlage).
+            kraefte: 2. Auftrag — Zuteilung, Unterstellung und Abgabe von Kräften.
+            marschfuehrer: 3. Marschführer/in.
+            einzelgruppen_fuehrer: 3. Führer/innen der Einzelgruppen.
+            marschabstand: 3. Marschabstand zwischen Marschgruppen.
+            beleuchtung: 3. Beleuchtung (sonst Standardtext).
+            marschueberwachung: 3. Marschüberwachung und Verkehrssicherung.
+            besonderes: 3. Besondere Einzelheiten je nach Lage.
+            verpflegung: 4. Verpflegung.
+            betriebsstoff: 4. Betriebsstoff (sonst „vollgetankt am Ablaufpunkt“).
+            instandsetzung: 4. Instandsetzungsdienst.
+            aerztliche_versorgung: 4. Ärztliche Versorgung.
+            verbindungen: 5. Sonstige Verbindungen, Lotsenstellen und Verkehrsleitpunkte.
+            platz_fuehrung: 5. Platz der Führungskraft.
+            verteiler: Verteiler.
+            unterschrift_name: Unterschrift: Name.
+            unterschrift_dienststellung: Unterschrift: Dienststellung.
             start_lat: Breitengrad des Startpunkts.
             start_lon: Längengrad des Startpunkts.
             ziel_lat: Breitengrad des Zielpunkts.
@@ -176,6 +216,26 @@ def register(mcp) -> None:
                 "name": name, "status": status, "marschform": marschform,
                 "lage": lage, "auftrag": auftrag, "ablaufpunkt": ablaufpunkt,
                 "versorgung": versorgung, "funkgruppe": funkgruppe, "anlagen": anlagen,
+                "abgangsort": abgangsort,
+                "marschraum": marschraum,
+                "karte": karte,
+                "lage_eigene": lage_eigene,
+                "kraefte": kraefte,
+                "marschfuehrer": marschfuehrer,
+                "einzelgruppen_fuehrer": einzelgruppen_fuehrer,
+                "marschabstand": marschabstand,
+                "beleuchtung": beleuchtung,
+                "marschueberwachung": marschueberwachung,
+                "besonderes": besonderes,
+                "verpflegung": verpflegung,
+                "betriebsstoff": betriebsstoff,
+                "instandsetzung": instandsetzung,
+                "aerztliche_versorgung": aerztliche_versorgung,
+                "verbindungen": verbindungen,
+                "platz_fuehrung": platz_fuehrung,
+                "verteiler": verteiler,
+                "unterschrift_name": unterschrift_name,
+                "unterschrift_dienststellung": unterschrift_dienststellung,
             }
             payload = {k: v for k, v in felder.items() if v is not None}
             if status is not None and status not in ("planning", "active", "completed"):

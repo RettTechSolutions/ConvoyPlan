@@ -34,7 +34,7 @@ class Convoy(Base):
     share_token: Mapped[uuid.UUID] = mapped_column(default=uuid.uuid4, unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
-    # Marschbefehl fields (official 7-section format)
+    # Marschbefehl (FwDV 100, Anlage 4) — services/pdf.py
     lage: Mapped[str | None] = mapped_column(Text, nullable=True)
     auftrag: Mapped[str | None] = mapped_column(Text, nullable=True)
     marschform: Mapped[str | None] = mapped_column(String(50), nullable=True)  # geschlossener_verband|einzelgruppen|individuell
@@ -44,6 +44,28 @@ class Convoy(Base):
     versorgung: Mapped[str | None] = mapped_column(Text, nullable=True)
     funkgruppe: Mapped[str | None] = mapped_column(String(100), nullable=True)
     anlagen: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # FwDV 100, Anlage 4 (Migration 0076): Kopf, Unterpunkte der Hauptziffern,
+    # Verteiler und Unterschrift. Leer heißt „nichts angeordnet“.
+    abgangsort: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    marschraum: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    karte: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    lage_eigene: Mapped[str | None] = mapped_column(Text, nullable=True)
+    kraefte: Mapped[str | None] = mapped_column(Text, nullable=True)
+    marschfuehrer: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    einzelgruppen_fuehrer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    marschabstand: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    beleuchtung: Mapped[str | None] = mapped_column(Text, nullable=True)
+    marschueberwachung: Mapped[str | None] = mapped_column(Text, nullable=True)
+    besonderes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    verpflegung: Mapped[str | None] = mapped_column(Text, nullable=True)
+    betriebsstoff: Mapped[str | None] = mapped_column(Text, nullable=True)
+    instandsetzung: Mapped[str | None] = mapped_column(Text, nullable=True)
+    aerztliche_versorgung: Mapped[str | None] = mapped_column(Text, nullable=True)
+    verbindungen: Mapped[str | None] = mapped_column(Text, nullable=True)
+    platz_fuehrung: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    verteiler: Mapped[str | None] = mapped_column(Text, nullable=True)
+    unterschrift_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    unterschrift_dienststellung: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     owner: Mapped["User"] = relationship(back_populates="convoys")
     org: Mapped["Organization | None"] = relationship(back_populates="convoys", foreign_keys=[organization_id])
