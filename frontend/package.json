@@ -47,7 +47,7 @@
 		}
 	},
 	"dependencies": {
-		"maplibre-gl": "^6.16.0",
+		"maplibre-gl": "^6.17.0",
 		"qrcode": "^1.5.4",
 		"svelte-dnd-action": "^0.9.79"
 	}
