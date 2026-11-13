@@ -28,6 +28,11 @@ ursprünglichen SemVer-Nummern.
 - **Automatische Updates warten auch auf Fahrer-Links.** Solange ein Fahrer-Link (Browser oder Begleit-App) eines Konvois mit Status *aktiv* oder *läuft* verbunden ist, hält der Updater ein automatisches Update zurück — nach einem Verbindungsabriss noch fünf Minuten, damit ein Funkloch nicht als Feierabend gilt. Lese-Links zählen nicht. Das Admin-Panel nennt die Fahrer-Links neben Nutzern und Demo-Nutzern.
 - **Aktionsseite: Fahrzeugzahl je Konvoi.** Die öffentliche Antwort trägt `vehicles`, die Zahl der im Konvoi eingeplanten Fahrzeuge (nicht der gerade fahrenden — ein Ausfall unterwegs zeigt sich nicht). Der EventTracker zeichnet damit eine Kolonne statt eines einzelnen Lkw. Sonst geht nichts aus den Fahrzeugen hinaus; die Positivliste ist entsprechend erweitert.
 
+### Security
+
+- **Medien- und Osmium-Image mit aktuellem Debian-Sicherheitsstand.** Beide führen `apt-get upgrade` aus, aber Docker hatte die Schicht aus dem Cache genommen: Das Medien-Image enthielt noch ein zlib mit CVE-2026-76844 und CVE-2026-85091 (HIGH, behoben in DSA-6613). Ein neues Build-Argument `DEBIAN_SICHERHEITSSTAND` erzwingt jetzt einen frischen Lauf. Beide Images werden beim nächsten Release neu gebaut.
+- **Updater: CVE-2026-78661 begründet zurückgestellt.** Die DoS-Lücke in `golang.org/x/net/html` steckt in cosign 3.1.4 und im Compose-Plugin von `docker:cli`. Für beides gibt es noch kein korrigiertes Release, und keins der beiden Programme verarbeitet hier fremdes HTML. Der Eintrag in `.trivyignore` ist bis 2026-12-13 befristet.
+
 ## [2026.11.1] – 2026-10-15
 
 ### Fixed
