@@ -28,6 +28,10 @@ ursprünglichen SemVer-Nummern.
 - **Automatische Updates warten auch auf Fahrer-Links.** Solange ein Fahrer-Link (Browser oder Begleit-App) eines Konvois mit Status *aktiv* oder *läuft* verbunden ist, hält der Updater ein automatisches Update zurück — nach einem Verbindungsabriss noch fünf Minuten, damit ein Funkloch nicht als Feierabend gilt. Lese-Links zählen nicht. Das Admin-Panel nennt die Fahrer-Links neben Nutzern und Demo-Nutzern.
 - **Aktionsseite: Fahrzeugzahl je Konvoi.** Die öffentliche Antwort trägt `vehicles`, die Zahl der im Konvoi eingeplanten Fahrzeuge (nicht der gerade fahrenden — ein Ausfall unterwegs zeigt sich nicht). Der EventTracker zeichnet damit eine Kolonne statt eines einzelnen Lkw. Sonst geht nichts aus den Fahrzeugen hinaus; die Positivliste ist entsprechend erweitert.
 
+### Fixed
+
+- **`/robots.txt` auch ohne Agenten-Auskunft.** Auf selbst gehosteten Instanzen (und bei `AGENT_DISCOVERY=false`) antwortete `/robots.txt` mit der HTML-404-Seite. Jetzt kommt eine knappe robots.txt, die die Bereiche hinter der Anmeldung (`/admin`, `/setup`, `/o/`, `/oauth/`, `/share/`, `/plan`) sperrt und sonst nichts — kein `Disallow: /`, damit Suchmaschinen das `noindex` öffentlicher Seiten wie `/demo` weiterhin sehen. In der ausführlichen Fassung gelten dieselben Sperren jetzt auch in den Abschnitten der KI-Crawler; dort fehlten `/oauth/`, `/share/` und `/plan`.
+
 ## [2026.11.1] – 2026-10-15
 
 ### Fixed
