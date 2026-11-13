@@ -14,6 +14,19 @@ class PointSchema(BaseModel):
     lon: float
 
 
+# Die Felder des Marschbefehls (services/pdf.py, FwDV 100 Anlage 4). Alle
+# nullbar; ``update_convoy`` leert sie bei mitgeschicktem ``null``.
+MARSCHBEFEHL_FELDER = frozenset({
+    "lage", "auftrag", "marschform", "ablaufpunkt", "ablaufzeit", "ablaufführer",
+    "versorgung", "funkgruppe", "anlagen",
+    "abgangsort", "marschraum", "karte", "lage_eigene", "kraefte", "marschfuehrer",
+    "einzelgruppen_fuehrer", "marschabstand", "beleuchtung", "marschueberwachung",
+    "besonderes", "verpflegung", "betriebsstoff", "instandsetzung", "aerztliche_versorgung",
+    "verbindungen", "platz_fuehrung", "verteiler", "unterschrift_name",
+    "unterschrift_dienststellung",
+})
+
+
 class ConvoyCreate(BaseModel):
     name: str
     organization: str | None = None
@@ -37,6 +50,26 @@ class ConvoyCreate(BaseModel):
     versorgung: str | None = None
     funkgruppe: str | None = None
     anlagen: str | None = None
+    abgangsort: str | None = None
+    marschraum: str | None = None
+    karte: str | None = None
+    lage_eigene: str | None = None
+    kraefte: str | None = None
+    marschfuehrer: str | None = None
+    einzelgruppen_fuehrer: str | None = None
+    marschabstand: str | None = None
+    beleuchtung: str | None = None
+    marschueberwachung: str | None = None
+    besonderes: str | None = None
+    verpflegung: str | None = None
+    betriebsstoff: str | None = None
+    instandsetzung: str | None = None
+    aerztliche_versorgung: str | None = None
+    verbindungen: str | None = None
+    platz_fuehrung: str | None = None
+    verteiler: str | None = None
+    unterschrift_name: str | None = None
+    unterschrift_dienststellung: str | None = None
 
 
 class ConvoyUpdate(BaseModel):
@@ -64,6 +97,26 @@ class ConvoyUpdate(BaseModel):
     versorgung: str | None = None
     funkgruppe: str | None = None
     anlagen: str | None = None
+    abgangsort: str | None = None
+    marschraum: str | None = None
+    karte: str | None = None
+    lage_eigene: str | None = None
+    kraefte: str | None = None
+    marschfuehrer: str | None = None
+    einzelgruppen_fuehrer: str | None = None
+    marschabstand: str | None = None
+    beleuchtung: str | None = None
+    marschueberwachung: str | None = None
+    besonderes: str | None = None
+    verpflegung: str | None = None
+    betriebsstoff: str | None = None
+    instandsetzung: str | None = None
+    aerztliche_versorgung: str | None = None
+    verbindungen: str | None = None
+    platz_fuehrung: str | None = None
+    verteiler: str | None = None
+    unterschrift_name: str | None = None
+    unterschrift_dienststellung: str | None = None
 
 
 class ConvoyVehicleItem(BaseModel):
@@ -125,6 +178,26 @@ class ConvoyResponse(BaseModel):
     versorgung: str | None = None
     funkgruppe: str | None = None
     anlagen: str | None = None
+    abgangsort: str | None = None
+    marschraum: str | None = None
+    karte: str | None = None
+    lage_eigene: str | None = None
+    kraefte: str | None = None
+    marschfuehrer: str | None = None
+    einzelgruppen_fuehrer: str | None = None
+    marschabstand: str | None = None
+    beleuchtung: str | None = None
+    marschueberwachung: str | None = None
+    besonderes: str | None = None
+    verpflegung: str | None = None
+    betriebsstoff: str | None = None
+    instandsetzung: str | None = None
+    aerztliche_versorgung: str | None = None
+    verbindungen: str | None = None
+    platz_fuehrung: str | None = None
+    verteiler: str | None = None
+    unterschrift_name: str | None = None
+    unterschrift_dienststellung: str | None = None
 
     model_config = {"from_attributes": True}
 

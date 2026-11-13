@@ -21,6 +21,15 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Changed
+
+- **Marschbefehl nach FwDV 100, Anlage 4.** Das PDF folgt jetzt dem Muster der Dienstvorschrift: Kopf mit Abgangsort, -datum und -zeit, „Befehl für den Marsch in den Raum …“ und Karte; unter den Hauptziffern 1–5 die Unterpunkte der FwDV in deren Reihenfolge (u. a. Eigene Lage, Zuteilung/Unterstellung von Kräften, Marschführer/in, Schließende/r, Marschabstand, Marschüberwachung und Verkehrssicherung, Marschpausen getrennt nach Technischen Halten und Rasten, die vier Punkte der Versorgung, Platz der Führungskraft); Anlagen und Verteiler ohne Ziffer, Unterschrift mit Name und Dienststellung. Jede Hauptziffer steht auch leer da. Die Marschgeschwindigkeit nennt zusätzlich die theoretische Durchschnittsgeschwindigkeit. Beflaggung, Durchlaufpunkte, Fahrzeugmaße, Durchfahrtshöhen und Gewichtsgrenzen stehen unter „Besondere Einzelheiten je nach Lage“, die Kanalwechsel unter den Kommunikationsverbindungen. 20 neue Felder im Formular (Migration `0076`), in der Word-Vorlage und im MCP-Werkzeug `konvoi_aktualisieren`; bestehende Vorlagen bleiben gültig.
+
+### Fixed
+
+- **Geleerte Marschbefehl-Felder werden gelöscht.** Das Formular schickte ein geleertes Feld als `null`, das Backend verwarf es, und der alte Text blieb stehen.
+
+
 ## [2026.11.5] – 2026-11-13
 
 ### Security
