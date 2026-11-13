@@ -22,7 +22,19 @@ FROM debian:trixie-slim
 # Basisimage hinkt den Sicherheitsaktualisierungen regelmaessig hinterher —
 # beim ersten Bau waren es zwei behebbare HIGH-Befunde in openssl, die der
 # Trivy-Scan zu Recht abgewiesen hat.
-RUN apt-get update \
+#
+# `DEBIAN_SICHERHEITSSTAND` erzwingt einen frischen `upgrade`. Docker cached
+# die RUN-Zeile, solange sich weder sie noch das Basisimage aendern — Debians
+# Sicherheitsupdates kommen dann nie an, obwohl `upgrade` dasteht. Im CI baut
+# der Scan mit GHA-Cache (nur der woechentliche Lauf ohne), und
+# `build-or-reuse` verwendet das Image weiter, solange Quelltext und Base-Digest
+# stehen. So lief am 2026-11-13 der medien-Scan mit einem zlib von vor DSA-6613
+# rot, waehrend osmium mit gleicher Basis gruen war. Meldet Trivy einen Befund,
+# den Debian schon behoben hat: Datum hochsetzen. Die Aenderung bewegt den
+# Tree-Hash, also baut auch das ausgelieferte Image neu.
+ARG DEBIAN_SICHERHEITSSTAND=2026-11-13
+RUN echo "Debian-Sicherheitsstand ${DEBIAN_SICHERHEITSSTAND}" \
+ && apt-get update \
  && apt-get upgrade -y \
  && apt-get install -y --no-install-recommends osmium-tool \
  && rm -rf /var/lib/apt/lists/*

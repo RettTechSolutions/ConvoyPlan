@@ -338,3 +338,16 @@ CVE-2026-12151
 # never reached (VEX: not_affected). Re-evaluate once a python:3.14-slim
 # base image ships without the stale bundled copy. Review by: 2026-09-10.
 CVE-2025-47273
+
+# golang.org/x/net/html: Denial of Service via crafted HTML input, fixed in
+# x/net 0.62.0. Reported in two upstream Go binaries of the updater image:
+# cosign 3.1.4 (x/net 0.61.0, latest release as of 2026-11-13 — cosign main
+# already pins 0.62.0, no release yet) and the docker-compose plugin from
+# docker:cli (x/net 0.60.0). Neither parses untrusted HTML here: cosign only
+# verifies image signatures against the Sigstore/registry endpoints, compose
+# only reads our own compose file. Worst case is a hung update run, not code
+# execution (VEX: vulnerable_code_not_in_execute_path).
+# Drop this entry once cosign > 3.1.4 and a docker:cli with a fixed compose
+# are out (bump COSIGN_VERSION + checksums in docker/updater/Dockerfile).
+# Review by: 2026-12-13.
+CVE-2026-78661
