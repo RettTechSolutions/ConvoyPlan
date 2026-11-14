@@ -38,6 +38,9 @@
 		"browserslist": "^4.28.9",
 		"brace-expansion": "^5.0.12",
 		"minimatch": "^11.0.1",
+		"workbox-build": {
+			"glob": "^14.0.4"
+		},
 		"postcss": "^8.5.28",
 		"vite-plugin-pwa": {
 			"vite": "^7.3.5"
