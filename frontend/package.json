@@ -44,7 +44,8 @@
 		},
 		"@vite-pwa/sveltekit": {
 			"@sveltejs/kit": "$@sveltejs/kit"
-		}
+		},
+		"glob": "^14.0.6"
 	},
 	"dependencies": {
 		"maplibre-gl": "^6.17.0",
