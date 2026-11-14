@@ -127,6 +127,12 @@ AGENT_DISCOVERY=false   # oder true
 Abgeschaltet gibt es keinen der oben genannten Pfade (404), und die Startseite zeigt
 nur die Anmeldung. Der Rest der Anwendung ist davon unberührt.
 
+Einzige Ausnahme ist `/robots.txt`: Sie wird auch abgeschaltet ausgeliefert, dann in einer
+knappen Fassung ohne Sitemap- und `llms.txt`-Verweis, die nur die Bereiche hinter der
+Anmeldung sperrt (`/admin`, `/setup`, `/o/`, `/oauth/`, `/share/`, `/plan`). Bewusst **kein**
+`Disallow: /` — eine gesperrte Seite kann eine Suchmaschine nicht abrufen, sähe also auch das
+`noindex` von `/demo` nicht und nähme sie als nackte URL in den Index.
+
 > **Bis 2026-10** war die Auskunft überall an. Wer sie auf einer selbst gehosteten
 > Instanz behalten will, setzt nach dem Update `AGENT_DISCOVERY=true` in die `.env`.
 
