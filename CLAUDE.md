@@ -1470,7 +1470,10 @@ Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste
   täglichen Lauf — mit **denselben** Schlüsseln wie die Jobs, die sie lesen. Wer dort
   einen Schlüssel oder Pfad ändert (Extracts, pip, npm, Buildx-Scope), zieht ihn mit.
   Die E2E-Suite läuft in zwei Teilen; Pflicht-Check ist der Sammeljob
-  `Frontend – E2E (Playwright)`.
+  `Frontend – E2E (Playwright)`. Das Grenzrouting (`region-merge`) läuft nur bei
+  Änderungen an `graphhopper/`, `docker/osmium/`, `docker/updater/` (Ausgabe
+  `grenzrouting`); der Regionswechsel bleibt bei `region`, weil er als einziger Test
+  den Backend-Container startet.
 - **Medien** — Job `Medien – ffmpeg und Metadaten` baut `docker/medien` und fährt
   `docker/medien/tests/test_medien.sh` gegen echte Handyvideos aus `tests/proben/`
   (GPS, Gerät, Aufnahmezeit weg; hochkant aufrecht; 720p/30 fps; zu lang abgelehnt).

@@ -71,7 +71,7 @@ print(" ".join(sorted(e["name"] for e in json.loads(sys.argv[1]))))
 ' "$(wert images)"
 }
 
-pruefe() {  # pruefe <fall> <erwartete images> [code] [medien]
+pruefe() {  # pruefe <fall> <erwartete images> [code] [medien] [grenzrouting]
     local fall="$1" soll="$2" ist
     if ! ist="$(images 2>&1)"; then
         bad "$fall: images ist kein gueltiges JSON ($(wert images))"
@@ -85,31 +85,42 @@ pruefe() {  # pruefe <fall> <erwartete images> [code] [medien]
     if [ -n "${4:-}" ]; then
         [ "$(wert medien)" = "$4" ] && ok "$fall: medien=$4" || bad "$fall: medien=$(wert medien), erwartet $4"
     fi
+    if [ -n "${5:-}" ]; then
+        [ "$(wert grenzrouting)" = "$5" ] && ok "$fall: grenzrouting=$5" \
+            || bad "$fall: grenzrouting=$(wert grenzrouting), erwartet $5"
+    fi
 }
 
 ALLE="backend frontend graphhopper medien osmium updater"
 
 lauf pull_request "$(aendern docs/a.md README.md)"
-pruefe "Nur Doku" "" false false
+pruefe "Nur Doku" "" false false false
 
 lauf pull_request "$(aendern backend/app/x.py)"
-pruefe "Backend" "backend" true false
+pruefe "Backend" "backend" true false false
+[ "$(wert region)" = true ] && ok "Backend: region=true (Regionswechsel startet den Backend-Container)" \
+    || bad "Backend: region=$(wert region), erwartet true"
 
 lauf pull_request "$(aendern frontend/src/x.ts wiki/y.md)"
-pruefe "Frontend und Wiki" "frontend" true
+pruefe "Frontend und Wiki" "frontend" true "" false
 
 lauf pull_request "$(aendern docker/medien/Dockerfile)"
-pruefe "Medien" "medien" true true
+pruefe "Medien" "medien" true true false
 
 lauf pull_request "$(aendern docker/updater/x.sh docker/osmium/Dockerfile graphhopper/entrypoint.sh)"
-pruefe "Updater, osmium, GraphHopper" "graphhopper osmium updater"
+pruefe "Updater, osmium, GraphHopper" "graphhopper osmium updater" true false true
+for einzeln in graphhopper/x docker/osmium/x docker/updater/x; do
+    lauf pull_request "$(aendern "$einzeln")"
+    [ "$(wert grenzrouting)" = true ] && ok "$einzeln: grenzrouting=true" \
+        || bad "$einzeln: grenzrouting=$(wert grenzrouting), erwartet true"
+done
 
 # Nicht nur der Praefix: docker/updater-alt/ ist nicht docker/updater/.
 lauf pull_request "$(aendern docker/updater-alt/x.sh backendx/y.py)"
-pruefe "Aehnlich benannte Ordner" ""
+pruefe "Aehnlich benannte Ordner" "" "" "" false
 
 lauf pull_request "$(aendern .github/workflows/ci.yml)"
-pruefe "Workflow geaendert" "$ALLE"
+pruefe "Workflow geaendert" "$ALLE" true true true
 
 lauf pull_request "$(aendern .trivyignore)"
 pruefe ".trivyignore geaendert" "$ALLE"
@@ -119,7 +130,7 @@ pruefe "Docker-Spiegel geaendert" "$ALLE"
 
 # Scheitert der Vergleich, wird alles gescannt — nie nichts.
 lauf pull_request "0000000000000000000000000000000000000000"
-pruefe "Vergleich gescheitert" "$ALLE" true
+pruefe "Vergleich gescheitert" "$ALLE" true true true
 
 # Die Cron-Zeilen stehen hier wie in ci.yml; aendert sie jemand dort, muss
 # dieser Fall rot werden statt still den Wochenscan abzuschalten.

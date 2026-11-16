@@ -44,6 +44,7 @@ jobs:
       region: ${{ steps.paths.outputs.region }}
       code: ${{ steps.paths.outputs.code }}
       medien: ${{ steps.paths.outputs.medien }}
+      grenzrouting: ${{ steps.paths.outputs.grenzrouting }}
       images: ${{ steps.paths.outputs.images }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -61,6 +62,7 @@ jobs:
           region=true
           code=true
           medien=true
+          grenzrouting=true
           # Image-Name -> Build-Kontext. Gescannt wird ein Image, wenn sich sein
           # Kontext geaendert hat oder etwas, das jeden Scan betrifft (dieser
           # Workflow, .trivyignore, der Docker-Hub-Spiegel). Neue CVEs ohne
@@ -85,6 +87,13 @@ jobs:
             if ! grep -qE '^docker/medien/|^\.github/workflows/ci\.yml$' "$RUNNER_TEMP/ci-paths"; then
               medien=false
             fi
+            # `region-merge` baut nur osmium, Updater (merge-extracts.sh) und
+            # GraphHopper; Backend und Frontend kommen darin nicht vor. Der
+            # Regionswechsel bleibt bei `region`, weil er als einziger Test den
+            # Backend-Container wirklich startet (der Updater haengt an ihm).
+            if ! grep -qE '^(graphhopper|docker/osmium|docker/updater)/|^\.github/workflows/ci\.yml$' "$RUNNER_TEMP/ci-paths"; then
+              grenzrouting=false
+            fi
             if ! grep -qE '^\.github/workflows/ci\.yml$|^\.trivyignore$|^\.github/actions/docker-spiegel/' "$RUNNER_TEMP/ci-paths"; then
               scan_alle=false
             fi
@@ -108,6 +117,7 @@ jobs:
           echo "region=$region" >> "$GITHUB_OUTPUT"
           echo "code=$code" >> "$GITHUB_OUTPUT"
           echo "medien=$medien" >> "$GITHUB_OUTPUT"
+          echo "grenzrouting=$grenzrouting" >> "$GITHUB_OUTPUT"
 
   backend-lint-test:
     name: Backend – Lint & Tests
@@ -807,7 +817,7 @@ jobs:
     name: Region – Grenzrouting bei zusammengeführten Extracts
     # Kein Sicherheits-Job — beim wöchentlichen Lauf übersprungen.
     needs: changes
-    if: github.event_name != 'schedule' && needs.changes.outputs.region == 'true'
+    if: github.event_name != 'schedule' && needs.changes.outputs.grenzrouting == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     # Beantwortet fortlaufend die Frage, die vor dem Entwurf einmalig als
