@@ -1457,9 +1457,20 @@ Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste
   YAML-Datei heraus**, statt es nachzubauen — ein Nachbau prüft die Kopie. Wer
   dort einen weiteren Test anlegt, braucht nichts zu verdrahten: der Job
   sammelt `test_*.sh` aus allen vier Verzeichnissen ein.
-- **Container** — Trivy scannt alle sechs Images (`backend`, `frontend`,
+- **Container** — Trivy scannt die sechs Images (`backend`, `frontend`,
   `graphhopper`, `updater`, `osmium`, `medien`) auf HIGH/CRITICAL mit verfügbarem Fix.
-  Ausnahmen gehören mit Begründung in `.trivyignore`.
+  Ausnahmen gehören mit Begründung in `.trivyignore`. Auf PR und Queue nur die, deren
+  Kontext sich geändert hat (alle bei `ci.yml`, `.trivyignore`, `docker-spiegel`),
+  wöchentlich alle ohne Cache; welche, entscheidet `changes` (Ausgabe `images`,
+  `.github/workflows/tests/test_ci_aenderungen.sh`). Ein siebtes Image kommt dort in
+  `kontexte` und in `caches-images`.
+- **Wann CI läuft** — PR, Merge Queue, wöchentlich, täglich, von Hand; **nicht** beim
+  Push auf `main`, denn die Queue hat genau diesen Stand schon geprüft. Caches sieht
+  jeder PR nur, wenn sie auf `main` liegen; die füllen deshalb die Jobs `caches*` im
+  täglichen Lauf — mit **denselben** Schlüsseln wie die Jobs, die sie lesen. Wer dort
+  einen Schlüssel oder Pfad ändert (Extracts, pip, npm, Buildx-Scope), zieht ihn mit.
+  Die E2E-Suite läuft in zwei Teilen; Pflicht-Check ist der Sammeljob
+  `Frontend – E2E (Playwright)`.
 - **Medien** — Job `Medien – ffmpeg und Metadaten` baut `docker/medien` und fährt
   `docker/medien/tests/test_medien.sh` gegen echte Handyvideos aus `tests/proben/`
   (GPS, Gerät, Aufnahmezeit weg; hochkant aufrecht; 720p/30 fps; zu lang abgelehnt).
