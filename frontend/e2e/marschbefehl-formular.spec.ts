@@ -28,14 +28,17 @@ const modal = (page: Page) => page.locator('.befehl-modal');
  *  Verankert, weil sich Namen überschneiden („Name“, „Ablaufpunkt (Ort)“). */
 const feld = (page: Page, beschriftung: string) =>
 	modal(page).getByRole('textbox', {
-		name: new RegExp(`^${beschriftung.replace(/[/()]/g, '\\$&')}( \\*)?$`),
+		name: new RegExp(`^${woertlich(beschriftung)}( \\*)?$`),
 	});
+
+/** Text wörtlich in einen regulären Ausdruck — alle Sonderzeichen, auch der Backslash. */
+const woertlich = (text: string) => text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
 
 /** Anlagen und Verteiler haben keine eigene Beschriftung, nur den Abschnittstitel. */
 const abschnittsfeld = (page: Page, titel: string) =>
 	modal(page)
 		.locator('.befehl-section')
-		.filter({ has: page.locator('.befehl-section-title', { hasText: new RegExp(`^${titel}$`) }) })
+		.filter({ has: page.locator('.befehl-section-title', { hasText: new RegExp(`^${woertlich(titel)}$`) }) })
 		.locator('textarea');
 
 async function oeffnen(page: Page, konvoi: Record<string, unknown> = {}): Promise<Aufruf[]> {
