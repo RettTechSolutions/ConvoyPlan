@@ -426,7 +426,9 @@ derselben an — wer hier umsortiert oder umbenennt, bricht diese Zusage.
   lässt sich nicht verlässlich auf die vier Unterpunkte verteilen. `update_convoy` leert die Felder
   aus `MARSCHBEFEHL_FELDER` bei mitgeschicktem `null` (das Formular schickt geleerte Felder so).
 - Tests: `tests/test_marschbefehl_fwdv.py` (Reihenfolge im PDF und in der Beispielvorlage,
-  Ableitungen, Leeren). Ändert sich die Gliederung, zieht die Website mit
+  Ableitungen, Leeren) und `frontend/e2e/marschbefehl-formular.spec.ts` (Gliederung des
+  Formulars, jedes Feld in seine Spalte, geleert = `null`, Pflichtfelder). Ein neues Feld
+  gehört in `BEFEHL_FWDV` im Formular **und** in die Liste der Spec. Ändert sich die Gliederung, zieht die Website mit
   (`src/data/marschbefehl.ts`, `scripts/marschbefehl-vorlage.py` im Website-Repo).
 
 ### Marschbefehl aus der Word-Vorlage: die Vorlage ist fremder Code
