@@ -70,7 +70,7 @@ ConvoyPlan/
 │   └── config.yml
 ├── .github/
 │   ├── workflows/
-│   │   ├── ci.yml            # Tests + Typecheck + Docker-Build + Dependency-Audit
+│   │   ├── ci.yml            # Tests + Typecheck + E2E + Docker-Build + Scans (PR, Merge Queue, zeitgesteuert)
 │   │   ├── release.yml       # Docker-Images zu GHCR + GitHub Release bei Tag
 │   │   └── sync-wiki.yml     # Spiegelt wiki/ ins GitHub Wiki bei Push auf main
 │   └── dependabot.yml        # Dependency-Updates (pip/npm/Actions/Docker)
@@ -195,7 +195,11 @@ npx cap open android
 
 ## CI und Releases
 
-CI-Checks (Backend-Tests, Frontend-Typecheck, Docker-Build, Dependency-Audit) laufen automatisch auf Push und Pull Requests gegen `main`.
+CI-Checks (Backend-Tests, Frontend-Typecheck, E2E-Tests, Docker-Build, Container-Scan, Dependency-Audit) laufen auf Pull Requests gegen `main` und in der Merge Queue — **nicht** mehr beim Push auf `main`, denn die Queue hat genau diesen Stand schon geprüft. Dazu kommen ein täglicher Lauf, der die Caches auf `main` füllt, ein wöchentlicher Sicherheitslauf (alle Images ohne Cache gescannt) und der Start von Hand.
+
+- **Container-Scan nur für geänderte Images:** Auf PR und Queue scannt Trivy nur die Images, deren Build-Kontext sich geändert hat; bei Änderungen an `ci.yml`, `.trivyignore` oder der Spiegel-Action alle.
+- **E2E in zwei Teilen:** Die Playwright-Suite läuft in zwei Shards. Pflicht-Check ist der Sammeljob `Frontend – E2E (Playwright)`.
+- **Grenzrouting nur bei Bedarf:** Der Test `region-merge` läuft nur bei Änderungen an `graphhopper/`, `docker/osmium/` oder `docker/updater/`.
 
 Die Versionierung folgt dem kalenderbasierten Schema **`YYYY.MASTER.FIX`** (z. B. `2026.1.1`): `YYYY` ist die Jahreszahl, `MASTER` das Master-Release (größere Feature-Veröffentlichung innerhalb des Jahres) und `FIX` das Fix-/Beta-Release (Bugfixes, Sicherheits-Patches, Dependabot-Wellen). Das Schema löst die frühere semantische Versionierung ab; das erste Release nach `1.0.2` ist `2026.1.1`.
 
