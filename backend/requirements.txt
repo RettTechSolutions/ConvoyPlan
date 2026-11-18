@@ -36,7 +36,7 @@ fpdf2==2.9.0
 # Übersichtskarte im Roadbook (services/static_map.py). Kam schon als
 # Abhängigkeit von fpdf2 mit; gepinnt, weil der Code es jetzt direkt benutzt.
 Pillow==13.0.0
-pyotp==2.10.0
+pyotp==2.11.2
 # aiosmtplib 5.1.2 fixes GHSA-vxj7-4xrp-5vr4: discard buffered server data
 # before STARTTLS handshake (response-injection attack prevention).
 # 5.1.3 is a follow-up hardening to CVE-2026-53533 / GHSA-v3q9-hj7j-63hq
