@@ -1043,7 +1043,10 @@ aber nie angemeldet — und hätte auch nicht gestartet. Vier Dinge, die man ken
 
 Alle übrigen E2E-Specs laufen mit `serviceWorkers: 'block'` (`playwright.config.ts`);
 `frontend/e2e/service-worker.spec.ts` lässt ihn zu und prüft Anmeldung, Scope, Übernahme,
-eine vorab abgelegte Kachel offline (samt Gegenprobe) und den Precache ohne Logos.
+eine vorab abgelegte und eine einmal angezeigte Kachel offline (samt Gegenprobe), den
+Precache ohne Logos und dass Navigationen vom Server kommen (`fromServiceWorker()`, am
+Verhalten, weil `sw.js` minifizierte Namen trägt). Die zweite Kachel holt der Service Worker
+selbst, deshalb steht ihr Mock an `context.route`, nicht an `page.route`.
 
 ### Handbücher als PDF: öffentlich ist, was im Wiki steht
 

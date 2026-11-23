@@ -93,3 +93,44 @@ test('Logos und App-Icons liegen nicht im Precache, der Code der App schon', asy
 	expect(urls.some((u) => u.startsWith('/_app/immutable/'))).toBe(true);
 	expect(urls.filter((u) => u.startsWith('/logo/') || u.startsWith('/icons/'))).toEqual([]);
 });
+
+test('eine einmal angezeigte Kachel landet in "osm-tiles" und kommt offline wieder', async ({ page, context }) => {
+	// Der zweite Weg in den Cache neben tileCache.ts: StaleWhileRevalidate legt jede
+	// Kachel ab, die die Karte online holt. Daran hängt, dass auch der Ausschnitt
+	// neben dem vorgeladenen Korridor im Funkloch stehen bleibt.
+	await bereit(page);
+	const kachel = '/api/tiles/12/2201/1343.png';
+	let ausDemNetz = 0;
+	// Die Anfrage stellt der Service Worker, nicht die Seite: `page.route` sähe sie nicht.
+	await context.route('**/api/tiles/**', async (route) => {
+		ausDemNetz++;
+		await route.fulfill({ body: PNG, contentType: 'image/png' });
+	});
+
+	expect(await page.evaluate(async (url) => (await fetch(url)).status, kachel)).toBe(200);
+	expect(ausDemNetz).toBe(1);
+	// Abgelegt wird nach dem Ausliefern; darauf warten, nicht raten.
+	await expect
+		.poll(() => page.evaluate(async (url) => !!(await (await caches.open('osm-tiles')).match(url)), kachel))
+		.toBe(true);
+
+	await context.unroute('**/api/tiles/**');
+	await context.route('**/api/tiles/**', (route) => route.abort('internetdisconnected'));
+	await context.setOffline(true);
+	const antwort = await page.evaluate(async (url) => {
+		const r = await fetch(url);
+		return { status: r.status, laenge: (await r.arrayBuffer()).byteLength };
+	}, kachel);
+	expect(antwort).toEqual({ status: 200, laenge: PNG.length });
+});
+
+test('eine Navigation beantwortet der Server, nicht der Service Worker', async ({ page }) => {
+	// Ohne `navigateFallback: null` baut das Plugin einen Navigations-Fallback auf die
+	// Basis, und Workbox beantwortete jede Navigation mit einer precachten Seite, die es
+	// unter SSR nicht gibt. Geprüft am Verhalten: die Namen in `sw.js` sind minifiziert,
+	// eine Suche nach "NavigationRoute" bestünde immer.
+	await bereit(page);
+	const antwort = await page.goto('/status');
+	expect(antwort?.fromServiceWorker()).toBe(false);
+	expect(antwort?.status()).toBe(200);
+});
