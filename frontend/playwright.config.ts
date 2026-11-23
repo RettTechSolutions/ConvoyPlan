@@ -23,6 +23,10 @@ export default defineConfig({
 		// Kein Netz nach draußen: Die Tests fangen alles ab, was sie brauchen.
 		// Was trotzdem hinausginge (Kartenkacheln), soll auffallen statt hängen.
 		navigationTimeout: 15_000,
+		// Seit der Service Worker angemeldet wird (Wurzel-Layout), stuende er
+		// sonst zwischen jedem Test und seinen abgefangenen Antworten.
+		// `e2e/service-worker.spec.ts` laesst ihn ausdruecklich zu.
+		serviceWorkers: 'block',
 	},
 	projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 	webServer: [

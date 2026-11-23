@@ -55,16 +55,25 @@ export default defineConfig({
 			// (siehe +layout.svelte und TrackingPwaHead.svelte).
 			// Das Plugin erzeugt/registriert hier nur noch den Service Worker.
 			manifest: false,
+			// Angemeldet wird von Hand im Wurzel-Layout ($lib/pwa/serviceWorker.ts):
+			// SvelteKit nutzt keine index.html, in die das Plugin ein Skript setzen
+			// koennte. `registerType` 'prompt' ohne Dialog heisst: nie erzwingen.
+			injectRegister: false,
+			registerType: 'prompt',
 			// SvelteKit 3 setzt Vites `base` relativ (`./`); die App liegt aber unter `/`,
-			// und der Service Worker soll für alle Routen gelten (Pfad und Scope in
-			// `registerSW.js`). In 1.x hieß das `kit.base` und erzeugte zusätzlich einen
-			// Navigations-Fallback auf `/` — den 2.0 ohne `adapterFallback` nicht mehr
-			// baut. Gut so: `/` liegt nicht im Precache, der Fallback hätte bei jeder
-			// Navigation einen Fehler geworfen.
+			// und der Service Worker soll für alle Routen gelten (Pfad und Scope der
+			// Anmeldung). In 1.x hieß das `kit.base`.
 			base: '/',
 			maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
 			// In 1.x `workbox`, seit 2.0 nach der Strategie benannt.
 			generateSW: {
+				// Kein Navigations-Fallback. Das Plugin setzt sonst einen auf die
+				// Basis (`./`, in 1.x `/`), und den gibt es nicht im Precache: die App
+				// rendert auf dem Server, vorgerendert wird nichts. Workbox wirft dann
+				// schon beim Laden des Service Workers (`non-precached-url`), er
+				// startet nie. Navigationen gehen deshalb immer ans Netz; offline
+				// bleibt die schon offene Seite mit ihren Kacheln.
+				navigateFallback: null,
 				// Das Plugin hängt `prerendered/**` an die Muster an; mit adapter-node wird
 				// nichts vorgerendert, das Verzeichnis fehlt. Seit 2.0 bricht ein leeres
 				// Muster den Build sonst ab („One of the glob patterns doesn't match").
@@ -75,6 +84,22 @@ export default defineConfig({
 				// `globIgnores: ['logo/**', 'icons/**']` hat nie gegriffen, weil die
 				// Pfade mit `client/` beginnen — Logos und Icons waren immer dabei.
 				globPatterns: ['client/**/*.{js,css,ico,png,svg,webp,webmanifest}'],
+				// Logos und App-Icons gehoeren nicht in den Precache: 21,6 der 26,3 MB,
+				// die sonst jedes Geraet beim ersten Aufruf laedt, auch der Fahrer-Link
+				// ueber Mobilfunk. Uebrig bleibt der Code der App (~4,7 MB). Die Pfade
+				// beginnen mit `client/` — ohne das griff die Ausnahme frueher nie.
+				globIgnores: ['client/logo/**', 'client/icons/**'],
+				// Updates ohne Neuladen: ein neuer Service Worker wartet, bis alle Tabs
+				// geschlossen sind (`skipWaiting: false`, und kein Dialog, der ihn
+				// vorzieht). Nightly deployt mehrmals am Tag; ein Fahrer-Link, der sich
+				// mitten im Einsatz neu laedt, waere schlimmer als einer mit dem Code
+				// von heute frueh. Die Seite holt ihr HTML weiter vom Server und damit
+				// die neuen Chunks; offline bleiben die alten im Precache.
+				skipWaiting: false,
+				// Beim allerersten Einrichten uebernimmt er die offene Seite sofort —
+				// sonst griffe der eben vorgeladene Kachelkorridor erst nach einem
+				// Neuladen, und das passiert im Funkloch gerade nicht.
+				clientsClaim: true,
 				runtimeCaching: [
 					{
 						// Cache map tiles as they are viewed so the map keeps rendering
