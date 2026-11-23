@@ -171,6 +171,9 @@ for a in "$@"; do
     case "$a" in https://*) url="$a" ;; esac
     prev="$a"
 done
+# Optional: jede angefragte Adresse protokollieren (Faelle 1g/1h pruefen,
+# WOHER geladen wird, nicht nur, dass geladen wurde).
+[ -n "${STUB_CURL_URLS:-}" ] && [ -n "$url" ] && printf '%s\n' "$url" >> "$STUB_CURL_URLS"
 
 # Der Stub bildet nach, dass Geofabrik die `-latest`-Dateien taeglich ersetzt:
 # Inhalt UND .md5 haengen an einer gemeinsamen "Generation" auf der Serverseite.
@@ -226,10 +229,10 @@ EOF
 chmod +x "$BIN/docker" "$BIN/curl" "$BIN/mv"
 export PATH="$BIN:$PATH"
 
-REQ_JSON='{"url": "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf", "filename": "berlin-latest.osm.pbf", "java_opts": "-Xmx3g -XX:MaxRAMPercentage=75.0", "requested_by": "a@b.c", "requested_at": "2026-09-03T10:00:00+00:00"}'
+REQ_JSON='{"url": "https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf", "filename": "berlin-latest.osm.pbf", "java_opts": "-Xmx3g -XX:MaxRAMPercentage=75.0", "requested_by": "a@b.c", "requested_at": "2026-09-03T10:00:00+00:00"}'
 # Dieselbe Anforderung mit pausiertem Routing: GraphHopper wird VOR dem Import
 # gestoppt, damit sein Heap dem Import zur Verfuegung steht.
-REQ_PAUSE='{"url": "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf", "filename": "berlin-latest.osm.pbf", "java_opts": "-Xmx3g -XX:MaxRAMPercentage=75.0", "pause_routing": "1", "requested_by": "a@b.c", "requested_at": "2026-09-16T10:00:00+00:00"}'
+REQ_PAUSE='{"url": "https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf", "filename": "berlin-latest.osm.pbf", "java_opts": "-Xmx3g -XX:MaxRAMPercentage=75.0", "pause_routing": "1", "requested_by": "a@b.c", "requested_at": "2026-09-16T10:00:00+00:00"}'
 
 # Legt eine frische Ablage an und gibt ihr Wurzelverzeichnis aus.
 setup_case() {
@@ -240,7 +243,7 @@ setup_case() {
     echo "ALT" > "$d/graph/edges"
     printf '%s' "dach-latest.osm.pbf|ev" > "$d/graph/.graph_fingerprint"
     printf 'OSM_DOWNLOAD_URL=%s\nOSM_FILENAME=%s\nJAVA_OPTS=%s\n' \
-        "https://download.geofabrik.de/europe/dach-latest.osm.pbf" \
+        "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf" \
         "dach-latest.osm.pbf" "-Xmx8g" > "$d/osm/.region"
     : > "$d/osm/dach-latest.osm.pbf"
     # Compose-Datei, damit das Skript einen Stack findet (nur Existenz zaehlt —
@@ -289,7 +292,7 @@ grep -qE "docker compose .* -f [^ ]+ .*up -d --force-recreate graphhopper" "$D/c
 [ -f "$D/osm/.region" ]; check $? ".region geschrieben"
 grep -q "^JAVA_OPTS=-Xmx3g -XX:MaxRAMPercentage=75.0$" "$D/osm/.region"; check $? "Heap wandert mit (Leerzeichen und = im Wert)"
 grep -q "^OSM_FILENAME=berlin-latest.osm.pbf$" "$D/osm/.region"; check $? "Dateiname in .region"
-grep -q "^OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf$" "$D/osm/.region"; check $? "URL in .region"
+grep -q "^OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf$" "$D/osm/.region"; check $? "URL in .region"
 [ "$(wc -l < "$D/osm/.region" | tr -d ' ')" = 3 ]; check $? ".region hat genau drei Zeilen"
 [ "$(cat "$D/graph/edges" 2>/dev/null)" = "NEU" ]; check $? "neuer Graph ist aktiv"
 [ ! -e "$D/graph/.staging" ] && [ ! -e "$D/graph/.old" ]; check $? "Staging und alter Graph aufgeraeumt"
@@ -309,7 +312,7 @@ echo "── Fall 1b: ZUSAMMENGESETZTE Region ───────────�
 # Eingangsvalidierung wies den Merged-Dateinamen ab, und OSM_SOURCES wurde
 # nirgends in .region geschrieben. Beide Stuecke waren einzeln getestet, nur
 # nie zusammen durch dieses Skript hindurch.
-REQ_MERGED='{"url": "https://download.geofabrik.de/europe/germany-latest.osm.pbf", "filename": "merged-a3f9c21e.osm.pbf", "java_opts": "-Xmx12g", "sources": "europe/germany|europe/poland", "requested_by": "a@b.c", "requested_at": "2026-09-04T10:00:00+00:00"}'
+REQ_MERGED='{"url": "https://download.geofabrik.de/europe/germany/germany-latest.osm.pbf", "filename": "merged-a3f9c21e.osm.pbf", "java_opts": "-Xmx12g", "sources": "europe/germany|europe/poland", "requested_by": "a@b.c", "requested_at": "2026-09-04T10:00:00+00:00"}'
 D="$(setup_case case1b)"; printf '%s' "$REQ_MERGED" > "$D/status/region_request.json"
 # Merge-Skript-Stub: erzeugt die Zieldatei, ohne osmium zu brauchen.
 cat > "$D/merge-stub.sh" <<'MSTUB'
@@ -357,7 +360,7 @@ echo "── Fall 1d: kollidierende Basenamen (europe/georgia + us/georgia) ─�
 # enthielte zweimal dieselbe Datei, und osmium fuehrte Georgien mit sich selbst
 # zusammen. Das Ergebnis besteht jede Groessenpruefung und enthaelt trotzdem
 # nur eine der beiden Regionen. Beide sind im Panel frei waehlbar.
-REQ_GEO='{"url": "https://download.geofabrik.de/europe/georgia-latest.osm.pbf", "filename": "merged-deadbeef.osm.pbf", "java_opts": "-Xmx4g", "sources": "europe/georgia|north-america/us/georgia", "requested_by": "a@b.c", "requested_at": "2026-09-05T10:00:00+00:00"}'
+REQ_GEO='{"url": "https://download.geofabrik.de/europe/georgia/georgia-latest.osm.pbf", "filename": "merged-deadbeef.osm.pbf", "java_opts": "-Xmx4g", "sources": "europe/georgia|north-america/us/georgia", "requested_by": "a@b.c", "requested_at": "2026-09-05T10:00:00+00:00"}'
 D="$(setup_case case1d)"; printf '%s' "$REQ_GEO" > "$D/status/region_request.json"
 cp "$ROOT/case1b/merge-stub.sh" "$D/merge-stub.sh" 2>/dev/null || {
     printf '#!/usr/bin/env bash\ntarget="$1"; shift\n[ -n "${MERGE_ARGS_FILE:-}" ] && printf "%%s\\n" "$@" > "$MERGE_ARGS_FILE"\n: > "$target"\n' > "$D/merge-stub.sh"
@@ -391,7 +394,7 @@ fi
 echo "── Fall 1f: doppelter Bestandteil wird abgelehnt ───────────────────────"
 # Das Backend entdoppelt bereits; dies ist die Sperre im Updater, der dem
 # Backend nicht traut. Ohne sie liefe derselbe Extract zweimal in den Merge.
-REQ_DUP='{"url": "https://download.geofabrik.de/europe/germany-latest.osm.pbf", "filename": "merged-a3f9c21e.osm.pbf", "java_opts": "-Xmx4g", "sources": "europe/germany|europe/germany", "requested_by": "a@b.c", "requested_at": "2026-09-05T10:00:00+00:00"}'
+REQ_DUP='{"url": "https://download.geofabrik.de/europe/germany/germany-latest.osm.pbf", "filename": "merged-a3f9c21e.osm.pbf", "java_opts": "-Xmx4g", "sources": "europe/germany|europe/germany", "requested_by": "a@b.c", "requested_at": "2026-09-05T10:00:00+00:00"}'
 D="$(setup_case case1f)"; printf '%s' "$REQ_DUP" > "$D/status/region_request.json"
 cp "$ROOT/case1b/merge-stub.sh" "$D/merge-stub.sh"; chmod +x "$D/merge-stub.sh"
 REGION_MERGE_SCRIPT="$D/merge-stub.sh" run_case "$D" MERGE_ARGS_FILE="$D/merge-args.txt"
@@ -401,6 +404,34 @@ REGION_MERGE_SCRIPT="$D/merge-stub.sh" run_case "$D" MERGE_ARGS_FILE="$D/merge-a
 ! grep -q "Phase 2/6" "$D/status/region.log"; check $? "Abbruch schon vor Phase 2"
 grep -q "^OSM_FILENAME=dach-latest.osm.pbf$" "$D/osm/.region"; check $? "alte Region laeuft unveraendert weiter"
 [ "$(cat "$D/graph/edges")" = "ALT" ]; check $? "alter Graph unangetastet"
+
+echo "── Fall 1g: Anforderung im alten Geofabrik-Schema wird gehoben ─────────"
+# Seit November 2026 liefert Geofabrik `<pfad>-latest.osm.pbf` nicht mehr aus
+# (404), sondern `<pfad>/<name>/<name>-latest.osm.pbf`. Ein geplanter Wechsel
+# von vor der Umstellung liegt mit der alten Adresse im Volume — er muss
+# trotzdem durchgehen, und .region bekommt die neue.
+REQ_ALT='{"url": "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf", "filename": "berlin-latest.osm.pbf", "java_opts": "-Xmx3g", "requested_by": "a@b.c", "requested_at": "2026-09-03T10:00:00+00:00"}'
+D="$(setup_case case1g)"; printf '%s' "$REQ_ALT" > "$D/status/region_request.json"
+run_case "$D" STUB_CURL_URLS="$D/urls.txt"
+[ "$(phase_of "$D/status/region_status.json")" = "done" ]; check $? "Endphase done"
+grep -q "^OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf$" "$D/osm/.region"; check $? "neue Adresse in .region"
+grep -q "^OSM_FILENAME=berlin-latest.osm.pbf$" "$D/osm/.region"; check $? "Dateiname bleibt (Fingerprint unveraendert)"
+! grep -q "europe/germany/berlin-latest" "$D/urls.txt"; check $? "alte Adresse wird nicht angefragt"
+grep -q "^https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf$" "$D/urls.txt"; check $? "geladen wird von der neuen"
+grep -q "alten Geofabrik-Schema" "$D/status/region.log"; check $? "das Heben steht im Log"
+
+echo "── Fall 1h: Bestandteile werden im neuen Schema geladen ────────────────"
+D="$(setup_case case1h)"; printf '%s' "$REQ_MERGED" > "$D/status/region_request.json"
+printf '#!/usr/bin/env bash\n: > "$1"\n' > "$D/merge-stub.sh"; chmod +x "$D/merge-stub.sh"
+export REGION_MERGE_SCRIPT="$D/merge-stub.sh"
+run_case "$D" STUB_CURL_URLS="$D/urls.txt"
+[ "$(phase_of "$D/status/region_status.json")" = "done" ]; check $? "Endphase done"
+grep -q "^https://download.geofabrik.de/europe/germany/germany-latest.osm.pbf$" "$D/urls.txt" \
+    && grep -q "^https://download.geofabrik.de/europe/poland/poland-latest.osm.pbf$" "$D/urls.txt"
+check $? "beide Bestandteile von der neuen Adresse"
+! grep -qE "^https://download.geofabrik.de/europe/(germany|poland)-latest" "$D/urls.txt"; check $? "keine alte Adresse angefragt"
+grep -q "^OSM_SOURCES=europe/germany|europe/poland$" "$D/osm/.region"; check $? "Quellen bleiben Pfade (Hash unveraendert)"
+unset REGION_MERGE_SCRIPT
 
 echo "── Fall 2: Fehlschlag in Phase 3 (Graph-Bau) ───────────────────────────"
 D="$(setup_case case2)"; printf '%s' "$REQ_JSON" > "$D/status/region_request.json"
@@ -569,7 +600,7 @@ grep -q "Plattenplatz" "$D/status/region.log"; check $? "Meldung nennt den Platt
 
 echo "── Fall 10: JAVA_OPTS mit Zeilenumbruch wird abgelehnt ─────────────────"
 D="$(setup_case case10)"
-printf '%s' '{"url": "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf", "filename": "berlin-latest.osm.pbf", "java_opts": "-Xmx3g\nOSM_FILENAME=boese.pbf", "requested_by": "a@b.c"}' > "$D/status/region_request.json"
+printf '%s' '{"url": "https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf", "filename": "berlin-latest.osm.pbf", "java_opts": "-Xmx3g\nOSM_FILENAME=boese.pbf", "requested_by": "a@b.c"}' > "$D/status/region_request.json"
 run_case "$D"
 [ "$(phase_of "$D/status/region_status.json")" = "failed" ]; check $? "Endphase failed"
 grep -q "^OSM_FILENAME=dach-latest.osm.pbf$" "$D/osm/.region"; check $? ".region nicht manipuliert"

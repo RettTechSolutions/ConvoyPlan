@@ -377,8 +377,13 @@
         }
     }
 
+    // Geofabrik legt seit November 2026 jede Region in ein eigenes Verzeichnis:
+    // `europe/dach` liegt unter `europe/dach/dach-latest.osm.pbf` (die alte
+    // Adresse `europe/dach-latest.osm.pbf` gibt 404). Dieselbe Regel wie
+    // `geofabrik.pbf_url` im Backend, das ältere Adressen ohnehin hebt.
     function quickPickUrl(id: string): string {
-        return `https://download.geofabrik.de/${id}-latest.osm.pbf`;
+        const name = id.split('/').pop();
+        return `https://download.geofabrik.de/${id}/${name}-latest.osm.pbf`;
     }
 
     // Schnellauswahl ERSETZT die Auswahl — gedacht als "einfach DACH", nicht
