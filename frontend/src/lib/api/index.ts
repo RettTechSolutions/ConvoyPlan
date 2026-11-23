@@ -135,6 +135,27 @@ export interface Convoy {
 	lage: string | null; auftrag: string | null; marschform: string | null;
 	ablaufpunkt: string | null; ablaufzeit: string | null; ablaufführer: string | null;
 	versorgung: string | null; funkgruppe: string | null; anlagen: string | null;
+	// FwDV 100, Anlage 4 (Migration 0076) — optional, damit ältere Antworten und Attrappen passen.
+	abgangsort?: string | null;
+	marschraum?: string | null;
+	karte?: string | null;
+	lage_eigene?: string | null;
+	kraefte?: string | null;
+	marschfuehrer?: string | null;
+	einzelgruppen_fuehrer?: string | null;
+	marschabstand?: string | null;
+	beleuchtung?: string | null;
+	marschueberwachung?: string | null;
+	besonderes?: string | null;
+	verpflegung?: string | null;
+	betriebsstoff?: string | null;
+	instandsetzung?: string | null;
+	aerztliche_versorgung?: string | null;
+	verbindungen?: string | null;
+	platz_fuehrung?: string | null;
+	verteiler?: string | null;
+	unterschrift_name?: string | null;
+	unterschrift_dienststellung?: string | null;
 }
 
 export interface KanalwechselEntry {

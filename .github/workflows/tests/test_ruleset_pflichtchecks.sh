@@ -51,11 +51,13 @@ while IFS= read -r ctx; do
         drin && /^  [a-z]/ { exit }
         drin && /^    if: / { sub(/^    if: /, ""); print; exit }
     ' "$CI")"
-    case "$bedingung" in
-        ""|"github.event_name != 'schedule'"|"always() && github.event_name != 'schedule'"|"github.event_name != 'schedule' && needs.changes.outputs.region == 'true'"|"github.event_name != 'schedule' && needs.changes.outputs.code == 'true'")
-            ok "'$ctx' meldet auf PR und Merge Queue (ausgefuehrt oder uebersprungen)" ;;
-        *) bad "'$ctx' hat die Bedingung '$bedingung' — meldet er auf jedem PR?" ;;
-    esac
+    # Uebersprungen meldet ein Job auch — erlaubt ist deshalb jede Ausgabe von
+    # `changes`, solange die Bedingung sonst nur den Zeitplan ausnimmt.
+    if [[ "$bedingung" =~ ^(|github\.event_name\ !=\ \'schedule\'|always\(\)\ \&\&\ github\.event_name\ !=\ \'schedule\'|github\.event_name\ !=\ \'schedule\'\ \&\&\ needs\.changes\.outputs\.[a-z_]+\ ==\ \'true\')$ ]]; then
+        ok "'$ctx' meldet auf PR und Merge Queue (ausgefuehrt oder uebersprungen)"
+    else
+        bad "'$ctx' hat die Bedingung '$bedingung' — meldet er auf jedem PR?"
+    fi
 done <<< "$PFLICHT"
 
 # Die Ausloeser selbst: merge_group fuer die Queue, kein Pfadfilter.

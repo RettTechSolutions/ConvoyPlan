@@ -109,7 +109,7 @@ def _convoy_full(convoy: Convoy) -> dict:
             # der Client die Organisation in der URI sonst nicht kennt —
             # und ohne sie kein Abo aufmachen kann.
             "live_uri": live.live_uri(convoy.organization_id, convoy.id),
-            # Die sieben Abschnitte des Marschbefehls. Genau dafür wird ein
+            # Der Marschbefehl (FwDV 100, Anlage 4). Genau dafür wird ein
             # Modell hier am ehesten gebraucht, also gehören sie mit hinein.
             "marschbefehl": {
                 "lage": convoy.lage,
@@ -120,6 +120,26 @@ def _convoy_full(convoy: Convoy) -> dict:
                 "versorgung": convoy.versorgung,
                 "funkgruppe": convoy.funkgruppe,
                 "anlagen": convoy.anlagen,
+                "abgangsort": convoy.abgangsort,
+                "marschraum": convoy.marschraum,
+                "karte": convoy.karte,
+                "lage_eigene": convoy.lage_eigene,
+                "kraefte": convoy.kraefte,
+                "marschfuehrer": convoy.marschfuehrer,
+                "einzelgruppen_fuehrer": convoy.einzelgruppen_fuehrer,
+                "marschabstand": convoy.marschabstand,
+                "beleuchtung": convoy.beleuchtung,
+                "marschueberwachung": convoy.marschueberwachung,
+                "besonderes": convoy.besonderes,
+                "verpflegung": convoy.verpflegung,
+                "betriebsstoff": convoy.betriebsstoff,
+                "instandsetzung": convoy.instandsetzung,
+                "aerztliche_versorgung": convoy.aerztliche_versorgung,
+                "verbindungen": convoy.verbindungen,
+                "platz_fuehrung": convoy.platz_fuehrung,
+                "verteiler": convoy.verteiler,
+                "unterschrift_name": convoy.unterschrift_name,
+                "unterschrift_dienststellung": convoy.unterschrift_dienststellung,
             },
             "fahrzeuge": [
                 {
