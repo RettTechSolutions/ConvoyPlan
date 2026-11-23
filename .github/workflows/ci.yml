@@ -555,6 +555,13 @@ jobs:
       BACKEND_IMAGE: convoyplan-backend:latest
       GRAPHHOPPER_IMAGE: convoyplan-graphhopper:latest
       UPDATER_IMAGE: convoyplan-updater:latest
+      # Geofabrik-Spiegel (.github/region-spiegel/, Begruendung in spiegel.py):
+      # Jeder `docker compose`-Aufruf im Job liest die Erweiterung mit. Der
+      # Updater selbst ruft Compose mit -f /compose.yml (STACK_FILE_PATH, nur
+      # die echte Datei) — er tauscht damit nur GraphHopper, und der braucht
+      # den Spiegel nicht.
+      COMPOSE_FILE: docker-compose.yml:.github/region-spiegel/compose.yml
+      SPIEGEL_DIR: ${{ github.workspace }}/spiegel
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -571,10 +578,12 @@ jobs:
       # followed), und der Job war auf PRs rot, die weder Updater noch Karten
       # anfassten.
       #
-      # Berlin laedt switch-region.sh weiterhin selbst von Geofabrik: genau
-      # diese Phase (Groesse per HEAD, Pruefsumme, Download) prueft der Job.
-      # Faellt Geofabrik aus, bleibt er deshalb an dieser Stelle rot — dann
-      # mit einer klaren Meldung aus dem Schritt unten statt mitten im Wechsel.
+      # Berlin laedt switch-region.sh selbst — Groesse per HEAD, Pruefsumme,
+      # Download, genau die Phase, die der Job prueft —, aber vom
+      # Geofabrik-Spiegel weiter unten statt von Geofabrik. Bis 2026-11-23
+      # hing der Job daran, dass Geofabrik in diesem Moment antwortete; an dem
+      # Tag tat es das von den Runnern aus stundenlang nur zeitweise, und jeder
+      # Merge war Glueckssache.
       - name: Tagesstempel fuer den Extract-Cache
         id: osm-day
         run: echo "day=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
@@ -628,17 +637,60 @@ jobs:
           path: osm/liechtenstein-latest.osm.pbf
           key: osm-extract-liechtenstein-${{ steps.osm-day.outputs.day }}
 
-      # Vor dem Wechsel pruefen, ob Geofabrik das Berlin-Extract ueberhaupt
-      # ausliefert. Sonst laeuft der Job erst Minuten in den Wechsel und
-      # scheitert dort mit "Extract nicht abrufbar" — eine Meldung, die nach
-      # einem Fehler im Updater aussieht, obwohl nur die Quelle fehlt.
-      - name: Geofabrik erreichbar? (Berlin-Extract fuer den Wechsel)
+      # Berlin wie Liechtenstein: der Tagescache, den `caches` fuellt. Fehlt
+      # der Eintrag von heute, versucht es der Job selbst bei Geofabrik und
+      # faellt sonst auf einen frueheren Tag zurueck — fuer den Test ist ein
+      # Extract von gestern so gut wie eines von heute.
+      - name: Berlin aus dem Cache holen
+        id: berlin-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: osm/berlin-latest.osm.pbf
+          key: osm-extract-berlin-${{ steps.osm-day.outputs.day }}
+          restore-keys: |
+            osm-extract-berlin-
+
+      - name: Berlin laden
+        id: berlin-download
+        env:
+          EXACT_HIT: ${{ steps.berlin-cache.outputs.cache-hit }}
         run: |
-          url=https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf
-          if ! curl -fsSIL --max-time 60 --retry 3 --retry-all-errors --retry-delay 10 "$url" >/dev/null; then
-            echo "::error::Geofabrik liefert $url nicht aus. Der Regionswechsel laedt Berlin selbst von dort und kann ohne die Quelle nicht geprueft werden — das liegt nicht am Stand dieses PRs. Den Job neu starten, sobald Geofabrik wieder antwortet."
+          mkdir -p osm
+          fresh=false
+          if [ "$EXACT_HIT" = "true" ]; then
+            echo "Berlin von heute liegt im Cache — kein Download noetig."
+          else
+            url=https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf
+            if curl -fsSL --retry 3 --retry-all-errors --retry-delay 15 \
+                    --retry-max-time 300 -o osm/berlin-latest.osm.pbf.part "$url"; then
+              mv osm/berlin-latest.osm.pbf.part osm/berlin-latest.osm.pbf
+              fresh=true
+            else
+              rm -f osm/berlin-latest.osm.pbf.part
+              echo "::warning::Download von $url fehlgeschlagen — es gilt das Extract aus dem Cache, falls eines da ist."
+            fi
+          fi
+          if [ ! -s osm/berlin-latest.osm.pbf ]; then
+            echo "::error::Kein Berlin-Extract: weder im Cache noch von Geofabrik. Der Job \`caches\` (taeglich oder von Hand) legt eines ab."
             exit 1
           fi
+          echo "fresh=$fresh" >> "$GITHUB_OUTPUT"
+          ls -lh osm/
+
+      - name: Berlin in den Cache legen
+        if: steps.berlin-download.outputs.fresh == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: osm/berlin-latest.osm.pbf
+          key: osm-extract-berlin-${{ steps.osm-day.outputs.day }}
+
+      # Ablage im Geofabrik-Schema samt .md5 und ein Zertifikat einer Test-CA
+      # fuer download.geofabrik.de. Geprueft von
+      # .github/workflows/tests/test_geofabrik_spiegel.sh.
+      - name: Geofabrik-Spiegel vorbereiten
+        run: |
+          bash .github/region-spiegel/vorbereiten.sh "$SPIEGEL_DIR" \
+            europe/germany/berlin osm/berlin-latest.osm.pbf
 
       - name: Images aus dem PR-Stand bauen (lokale Tags, nicht die von GHCR)
         run: |
@@ -661,7 +713,26 @@ jobs:
             /src/liechtenstein-latest.osm.pbf /data/osm/
 
       - name: Stack starten (Entrypoint update-images.sh, wie docker-compose.yml:273 es real festlegt)
-        run: docker compose up -d graphhopper updater
+        run: docker compose up -d geofabrik-spiegel graphhopper updater
+
+      # Aus dem Updater heraus, mit seinem curl und seinem Vertrauen: Ist der
+      # Spiegel hier nicht da, scheiterte der Wechsel spaeter mit "Extract
+      # nicht abrufbar" — eine Meldung, die nach einem Fehler im Updater
+      # aussieht.
+      - name: Geofabrik-Spiegel aus Sicht des Updaters erreichbar
+        run: |
+          url=https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf
+          for _ in $(seq 1 30); do
+            if docker compose exec -T updater curl -fsSI --max-time 10 "$url" >/dev/null 2>&1; then
+              echo "Spiegel antwortet dem Updater unter $url."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Der Updater erreicht den Geofabrik-Spiegel nicht."
+          docker compose exec -T updater curl -sSI --max-time 10 "$url" || true
+          docker compose logs --no-color geofabrik-spiegel || true
+          exit 1
 
       - name: Auf gesunden Ersteinstieg warten (Liechtenstein, max. 8 min)
         run: |
@@ -808,6 +879,23 @@ jobs:
             done
             echo "region.lock, region_request.json und region.cancel sind wie erwartet weg."
           '
+
+      # Ohne diesen Beleg koennte der Wechsel gruen sein, weil der Updater am
+      # Spiegel vorbei doch Geofabrik erreicht hat — dann hinge der Job wieder
+      # an Geofabrik, nur ohne dass es jemand merkt.
+      - name: "Beleg: Berlin kam vom Geofabrik-Spiegel"
+        run: |
+          logs="$(docker compose logs --no-color geofabrik-spiegel)"
+          for zeile in "HEAD /europe/germany/berlin/berlin-latest.osm.pbf " \
+                       "GET /europe/germany/berlin/berlin-latest.osm.pbf.md5 " \
+                       "GET /europe/germany/berlin/berlin-latest.osm.pbf "; do
+            if ! echo "$logs" | grep -qF "$zeile"; then
+              echo "::error::Der Spiegel hat '$zeile' nicht gesehen — der Wechsel hat sein Extract woanders her."
+              echo "$logs"
+              exit 1
+            fi
+          done
+          echo "Groesse, Pruefsumme und Extract kamen vom Spiegel."
 
       - name: Stack stoppen
         if: always()
@@ -1095,6 +1183,14 @@ jobs:
           key: osm-extract-liechtenstein-${{ steps.osm-day.outputs.day }}
           lookup-only: true
 
+      - name: Berlin schon im Cache?
+        id: be
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: osm/berlin-latest.osm.pbf
+          key: osm-extract-berlin-${{ steps.osm-day.outputs.day }}
+          lookup-only: true
+
       - name: Sachsen und Niederschlesien schon im Cache?
         id: sd
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -1112,6 +1208,7 @@ jobs:
         id: osm-download
         env:
           LI_HIT: ${{ steps.li.outputs.cache-hit }}
+          BE_HIT: ${{ steps.be.outputs.cache-hit }}
           SD_HIT: ${{ steps.sd.outputs.cache-hit }}
         run: |
           mkdir -p osm
@@ -1119,13 +1216,24 @@ jobs:
             curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 \
                  --retry-max-time 600 -o "$1.part" "$2" && mv "$1.part" "$1"
           }
-          li=false; sd=false
+          li=false; be=false; sd=false
           if [ "$LI_HIT" != true ]; then
             if laden osm/liechtenstein-latest.osm.pbf \
                  https://download.geofabrik.de/europe/liechtenstein/liechtenstein-latest.osm.pbf; then
               li=true
             else
               echo "::warning::Liechtenstein nicht geladen."
+            fi
+          fi
+          # Berlin fuer den Geofabrik-Spiegel des Regionswechsels. Hier und nur
+          # hier kommt es von Geofabrik selbst — dieser Lauf ist damit auch der,
+          # der eine erneute Umstellung der Ablage bemerkt.
+          if [ "$BE_HIT" != true ]; then
+            if laden osm/berlin-latest.osm.pbf \
+                 https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf; then
+              be=true
+            else
+              echo "::warning::Berlin nicht geladen."
             fi
           fi
           if [ "$SD_HIT" != true ]; then
@@ -1139,6 +1247,7 @@ jobs:
             fi
           fi
           echo "li=$li" >> "$GITHUB_OUTPUT"
+          echo "be=$be" >> "$GITHUB_OUTPUT"
           echo "sd=$sd" >> "$GITHUB_OUTPUT"
           ls -lh osm/
 
@@ -1148,6 +1257,13 @@ jobs:
         with:
           path: osm/liechtenstein-latest.osm.pbf
           key: osm-extract-liechtenstein-${{ steps.osm-day.outputs.day }}
+
+      - name: Berlin in den Cache legen
+        if: steps.osm-download.outputs.be == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: osm/berlin-latest.osm.pbf
+          key: osm-extract-berlin-${{ steps.osm-day.outputs.day }}
 
       - name: Sachsen und Niederschlesien in den Cache legen
         if: steps.osm-download.outputs.sd == 'true'
