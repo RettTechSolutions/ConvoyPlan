@@ -935,10 +935,39 @@ const AI_CRAWLERS = [
 	'YouBot'
 ];
 
+/**
+ * Bereiche, die in keinen Index gehören — auf jeder Instanz, ob die
+ * Agenten-Auskunft an ist oder nicht. Sie sind ohnehin durch die Anmeldung
+ * geschützt; die Zeilen sparen nur nutzlose Abrufe.
+ */
+const ROBOTS_DISALLOW = ['/admin', '/setup', '/o/', '/oauth/', '/share/', '/plan'];
+const disallowLines = (paths: string[]): string => paths.map((p) => `Disallow: ${p}`).join('\n');
+
+/**
+ * robots.txt für eine Instanz ohne Agenten-Auskunft (selbst gehostet oder
+ * `AGENT_DISCOVERY=false`).
+ *
+ * Ohne sie antwortete `/robots.txt` mit der HTML-404-Seite. Für Google heißt
+ * ein 404 zwar „alles erlaubt", aber ausgerechnet die internen Bereiche
+ * standen damit offen, und Prüfdienste melden die fehlende Datei.
+ *
+ * Bewusst **kein** `Disallow: /`: eine gesperrte Seite kann Google nicht
+ * abrufen, sieht also auch ihr `noindex` nicht — und nimmt sie, sobald sie
+ * irgendwo verlinkt ist (die Marketingsite verlinkt `/demo`), als nackte URL
+ * ohne Beschreibung in den Index. Gesperrt wird nur, was hinter der Anmeldung
+ * liegt. Kein Sitemap- und kein llms.txt-Verweis: beides gibt es hier nicht.
+ */
+export function robotsTxtMinimal(): string {
+	return `# ${PRODUCT.name}
+User-agent: *
+${disallowLines(ROBOTS_DISALLOW)}
+`;
+}
+
 export function robotsTxt(ctx: AgentContext): string {
 	const { base } = ctx;
 	const crawlers = AI_CRAWLERS.map(
-		(ua) => `User-agent: ${ua}\nAllow: /\nDisallow: /admin\nDisallow: /setup\nDisallow: /o/\n`
+		(ua) => `User-agent: ${ua}\nAllow: /\n${disallowLines(ROBOTS_DISALLOW)}\n`
 	).join('\n');
 	return `# ${PRODUCT.name} — ${line(PRODUCT.tagline)}
 # Einstieg für KI-Agenten: ${base}/llms.txt
@@ -947,12 +976,7 @@ User-agent: *
 Allow: /
 # Organisationsinterne Bereiche gehören nicht in einen Index. Sie sind ohnehin
 # durch die Anmeldung geschützt; das hier spart nur nutzlose Abrufe.
-Disallow: /admin
-Disallow: /setup
-Disallow: /o/
-Disallow: /oauth/
-Disallow: /share/
-Disallow: /plan
+${disallowLines(ROBOTS_DISALLOW)}
 
 ${crawlers}
 Sitemap: ${base}/sitemap.xml

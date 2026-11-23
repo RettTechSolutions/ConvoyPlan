@@ -1,7 +1,7 @@
 {
 	"name": "frontend",
 	"private": true,
-	"version": "2026.11.1",
+	"version": "2026.11.5",
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
@@ -16,8 +16,8 @@
 	},
 	"devDependencies": {
 		"@playwright/test": "^1.64.1",
-		"@sveltejs/adapter-node": "^6.0.0",
-		"@sveltejs/kit": "^3.0.1",
+		"@sveltejs/adapter-node": "^6.0.2",
+		"@sveltejs/kit": "^3.2.0",
 		"@sveltejs/vite-plugin-svelte": "^7.3.1",
 		"@types/geojson": "^7946.0.16",
 		"@types/node": "^26.6.1",
@@ -27,7 +27,7 @@
 		"svelte": "^5.57.3",
 		"svelte-check": "^4.7.8",
 		"typescript": "^6.0.2",
-		"vite": "^8.3.6",
+		"vite": "^8.3.8",
 		"workbox-window": "^7.4.1"
 	},
 	"overrides": {
@@ -38,16 +38,18 @@
 		"browserslist": "^4.28.9",
 		"brace-expansion": "^5.0.12",
 		"minimatch": "^11.0.1",
+		"glob": "^14.0.2",
 		"postcss": "^8.5.28",
 		"vite-plugin-pwa": {
 			"vite": "^7.3.5"
 		},
 		"@vite-pwa/sveltekit": {
 			"@sveltejs/kit": "$@sveltejs/kit"
-		}
+		},
+		"glob": "^14.0.6"
 	},
 	"dependencies": {
-		"maplibre-gl": "^6.16.0",
+		"maplibre-gl": "^6.18.0",
 		"qrcode": "^1.5.4",
 		"svelte-dnd-action": "^0.9.79"
 	}
