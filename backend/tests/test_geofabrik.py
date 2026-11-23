@@ -6,7 +6,7 @@ import pytest
 from app.services import geofabrik
 from app.services.geofabrik import validate_region_url
 
-OK = "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+OK = "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf"
 
 
 def test_accepts_canonical_geofabrik_url():
@@ -14,9 +14,9 @@ def test_accepts_canonical_geofabrik_url():
 
 
 @pytest.mark.parametrize("canonical", [
-    "https://download.geofabrik.de/europe/dach-latest.osm.pbf",
-    "https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf",
-    "https://download.geofabrik.de/north-america/us/california-latest.osm.pbf",
+    "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf",
+    "https://download.geofabrik.de/europe/germany/bayern/bayern-latest.osm.pbf",
+    "https://download.geofabrik.de/north-america/us/california/california-latest.osm.pbf",
 ])
 def test_returns_canonical_url_unchanged(canonical):
     # Fuer eine kanonische Geofabrik-URL muss die rekonstruierte Rueckgabe
@@ -37,12 +37,12 @@ def test_returns_canonical_url_unchanged(canonical):
     #   das alte Iterationslimit von 5 gab hier stillschweigend auf)
     "https://download.geofabrik.de/%2525252525252e%2525252525252e/x-latest.osm.pbf",
     # ^ Traversal, 7-fach prozent-kodiert (noch tiefer als der 6-fach-Fall)
-    "https://download.geofabrik.de/x-latest.osm.pbf?../../etc/passwd",  # Traversal im Query
-    "https://download.geofabrik.de/x-latest.osm.pbf#../../etc/passwd",  # Traversal im Fragment
-    "https://download.geofabrik.de/europe/dach-latest.osm.pbf?foo=bar", # harmloser Query
-    "https://download.geofabrik.de/europe/dach-latest.osm.pbf#section", # harmloses Fragment
-    "https://download.geofabrik.de/europe/dach-latest.osm.pbf;..",        # Traversal in params
-    "https://download.geofabrik.de/europe/dach-latest.osm.pbf;type=binary", # harmlos aussehendes params-Segment
+    "https://download.geofabrik.de/x/x-latest.osm.pbf?../../etc/passwd",  # Traversal im Query
+    "https://download.geofabrik.de/x/x-latest.osm.pbf#../../etc/passwd",  # Traversal im Fragment
+    "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf?foo=bar", # harmloser Query
+    "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf#section", # harmloses Fragment
+    "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf;..",        # Traversal in params
+    "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf;type=binary", # harmlos aussehendes params-Segment
     "https://download.geofabrik.de:9999/europe/dach-latest.osm.pbf",  # nicht-Standard-Port
     "https://user@download.geofabrik.de/e-latest.osm.pbf",          # Userinfo
     "file:///data/osm/x-latest.osm.pbf",                            # anderes Schema
@@ -100,7 +100,7 @@ async def test_head_size_bytes_requests_the_validated_url(monkeypatch):
     raw = "https://DOWNLOAD.GEOFABRIK.DE/europe/dach-latest.osm.pbf"
     assert await geofabrik.head_size_bytes(raw) == 42
     assert requested == [validate_region_url(raw)]
-    assert requested == ["https://download.geofabrik.de/europe/dach-latest.osm.pbf"]
+    assert requested == ["https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf"]
 
 
 @pytest.mark.asyncio
@@ -129,7 +129,7 @@ async def test_head_size_bytes_translates_connect_error(monkeypatch):
 
     with pytest.raises(ConnectionError):
         await geofabrik.head_size_bytes(
-            "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+            "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf"
         )
 
 
@@ -156,7 +156,7 @@ async def test_head_size_bytes_translates_timeout(monkeypatch):
 
     with pytest.raises(ConnectionError):
         await geofabrik.head_size_bytes(
-            "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+            "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf"
         )
 
 
@@ -165,18 +165,18 @@ async def test_head_size_bytes_translates_timeout(monkeypatch):
     # 555 Regionen) — je Segmenttiefe 1 bis 5 mindestens ein Vertreter.
     # Die Zeichen-Allowlist darf keine davon ablehnen: ein Fehlalarm hier
     # faellt erst auf, wenn jemand genau diese Region auswaehlt.
-    "https://download.geofabrik.de/africa-latest.osm.pbf",
-    "https://download.geofabrik.de/australia-oceania-latest.osm.pbf",
-    "https://download.geofabrik.de/europe/dach-latest.osm.pbf",
-    "https://download.geofabrik.de/africa/canary-islands-latest.osm.pbf",
-    "https://download.geofabrik.de/europe/azores-latest.osm.pbf",
-    "https://download.geofabrik.de/north-america/us/california-latest.osm.pbf",
-    "https://download.geofabrik.de/europe/france/alsace-latest.osm.pbf",
-    "https://download.geofabrik.de/australia-oceania/australia/act-latest.osm.pbf",
-    "https://download.geofabrik.de/north-america/us/california/norcal-latest.osm.pbf",
-    "https://download.geofabrik.de/europe/germany/nordrhein-westfalen/arnsberg-regbez-latest.osm.pbf",
-    "https://download.geofabrik.de/europe/united-kingdom/england/bedfordshire-latest.osm.pbf",
-    "https://download.geofabrik.de/europe/united-kingdom/england/london/enfield-latest.osm.pbf",
+    "https://download.geofabrik.de/africa/africa-latest.osm.pbf",
+    "https://download.geofabrik.de/australia-oceania/australia-oceania-latest.osm.pbf",
+    "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf",
+    "https://download.geofabrik.de/africa/canary-islands/canary-islands-latest.osm.pbf",
+    "https://download.geofabrik.de/europe/azores/azores-latest.osm.pbf",
+    "https://download.geofabrik.de/north-america/us/california/california-latest.osm.pbf",
+    "https://download.geofabrik.de/europe/france/alsace/alsace-latest.osm.pbf",
+    "https://download.geofabrik.de/australia-oceania/australia/act/act-latest.osm.pbf",
+    "https://download.geofabrik.de/north-america/us/california/norcal/norcal-latest.osm.pbf",
+    "https://download.geofabrik.de/europe/germany/nordrhein-westfalen/arnsberg-regbez/arnsberg-regbez-latest.osm.pbf",
+    "https://download.geofabrik.de/europe/united-kingdom/england/bedfordshire/bedfordshire-latest.osm.pbf",
+    "https://download.geofabrik.de/europe/united-kingdom/england/london/enfield/enfield-latest.osm.pbf",
 ])
 def test_accepts_all_real_geofabrik_path_shapes(real):
     assert validate_region_url(real) == real
@@ -273,7 +273,7 @@ async def test_head_size_bytes_follows_redirect_chain_to_final_size(monkeypatch)
         _FakeRedirectClient(responses, requested),
     )
 
-    canonical = "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+    canonical = "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf"
     size = await geofabrik.head_size_bytes(canonical)
 
     assert size == 123456789
@@ -306,7 +306,7 @@ async def test_head_size_bytes_rejects_redirect_to_http(monkeypatch):
 
     with pytest.raises(ValueError, match="unverschlüsselte"):
         await geofabrik.head_size_bytes(
-            "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+            "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf"
         )
 
 
@@ -325,7 +325,7 @@ async def test_head_size_bytes_aborts_after_too_many_redirects(monkeypatch):
     responses = [
         _FakeRedirectResponse(
             302,
-            {"location": "https://download.geofabrik.de/x-latest.osm.pbf"},
+            {"location": "https://download.geofabrik.de/x/x-latest.osm.pbf"},
         )
         for _ in range(7)
     ]
@@ -337,7 +337,7 @@ async def test_head_size_bytes_aborts_after_too_many_redirects(monkeypatch):
 
     with pytest.raises(ValueError, match="Zu viele Weiterleitungen"):
         await geofabrik.head_size_bytes(
-            "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+            "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf"
         )
     # Urspruengliche Anfrage + hoechstens 5 gefolgte Weiterleitungen = 6.
     assert len(requested) == 6
@@ -359,7 +359,7 @@ async def test_head_size_bytes_missing_content_length_is_error(monkeypatch):
 
     with pytest.raises(ValueError, match="Content-Length"):
         await geofabrik.head_size_bytes(
-            "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+            "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf"
         )
 
 
@@ -385,7 +385,7 @@ async def test_head_size_bytes_never_forwards_redirect_target_as_url(monkeypatch
         _FakeRedirectClient(responses, requested),
     )
 
-    canonical = "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+    canonical = "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf"
     result = await geofabrik.head_size_bytes(canonical)
 
     assert result == 999
@@ -418,7 +418,7 @@ async def test_head_size_bytes_against_real_geofabrik():
     # einen Testlauf, aber real genug, um die tatsaechliche 302-Kette zu
     # durchlaufen.
     size = await geofabrik.head_size_bytes(
-        "https://download.geofabrik.de/europe/liechtenstein-latest.osm.pbf"
+        "https://download.geofabrik.de/europe/liechtenstein/liechtenstein-latest.osm.pbf"
     )
     assert size > 0
 
@@ -431,13 +431,13 @@ def test_path_from_pbf_url_liefert_den_vollen_pfad():
     id ist im Index kontextfrei ("dach"), waehrend `.region` und das Panel
     durchgehend mit dem vollen Pfad arbeiten ("europe/dach")."""
     assert geofabrik.path_from_pbf_url(
-        "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+        "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf"
     ) == "europe/dach"
     assert geofabrik.path_from_pbf_url(
-        "https://download.geofabrik.de/africa-latest.osm.pbf"
+        "https://download.geofabrik.de/africa/africa-latest.osm.pbf"
     ) == "africa"
     assert geofabrik.path_from_pbf_url(
-        "https://download.geofabrik.de/north-america/us/california/norcal-latest.osm.pbf"
+        "https://download.geofabrik.de/north-america/us/california/norcal/norcal-latest.osm.pbf"
     ) == "north-america/us/california/norcal"
 
 
@@ -486,7 +486,7 @@ async def test_region_outlines_ordnet_ueber_die_pbf_url_zu(monkeypatch):
             "properties": {
                 "id": "dach",
                 "name": "DACH",
-                "urls": {"pbf": "https://download.geofabrik.de/europe/dach-latest.osm.pbf"},
+                "urls": {"pbf": "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf"},
             },
             "geometry": {"type": "MultiPolygon", "coordinates": [[[[0, 0]]]]},
         },
@@ -494,7 +494,7 @@ async def test_region_outlines_ordnet_ueber_die_pbf_url_zu(monkeypatch):
             "properties": {
                 "id": "italy",
                 "name": "Italy",
-                "urls": {"pbf": "https://download.geofabrik.de/europe/italy-latest.osm.pbf"},
+                "urls": {"pbf": "https://download.geofabrik.de/europe/italy/italy-latest.osm.pbf"},
             },
             "geometry": {"type": "Polygon", "coordinates": [[[9, 45]]]},
         },
@@ -518,7 +518,7 @@ async def test_region_outlines_ueberspringt_eintraege_ohne_geometrie(monkeypatch
         {
             "properties": {
                 "id": "dach",
-                "urls": {"pbf": "https://download.geofabrik.de/europe/dach-latest.osm.pbf"},
+                "urls": {"pbf": "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf"},
             },
             # kein "geometry"
         },
@@ -619,7 +619,7 @@ async def test_head_size_bytes_wiederholt_nach_transportfehler(monkeypatch):
     )
 
     assert await geofabrik.head_size_bytes(
-        "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+        "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf"
     ) == 42
     assert len(calls) == 2
 
@@ -646,7 +646,7 @@ async def test_head_size_bytes_faengt_auch_readerror_ab(monkeypatch):
 
     with pytest.raises(ConnectionError):
         await geofabrik.head_size_bytes(
-            "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+            "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf"
         )
     assert len(calls) == geofabrik._RETRY_ATTEMPTS
 
@@ -669,7 +669,7 @@ async def test_head_size_bytes_wiederholt_nach_502_vom_spiegel(monkeypatch):
     )
 
     assert await geofabrik.head_size_bytes(
-        "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+        "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf"
     ) == 7
     assert len(calls) == 2
 
@@ -687,7 +687,7 @@ async def test_head_size_bytes_wiederholt_404_nicht(monkeypatch):
 
     with pytest.raises(ValueError):
         await geofabrik.head_size_bytes(
-            "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+            "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf"
         )
     assert len(calls) == 1
 
@@ -709,7 +709,7 @@ async def test_fehlermeldung_nennt_die_betroffene_region(monkeypatch):
 
     with pytest.raises(ConnectionError) as exc:
         await geofabrik.head_size_bytes(
-            "https://download.geofabrik.de/europe/montenegro-latest.osm.pbf"
+            "https://download.geofabrik.de/europe/montenegro/montenegro-latest.osm.pbf"
         )
     assert "europe/montenegro" in str(exc.value)
 
@@ -725,7 +725,7 @@ async def test_head_size_bytes_lehnt_unlesbare_content_length_ab(monkeypatch):
 
     with pytest.raises(ValueError) as exc:
         await geofabrik.head_size_bytes(
-            "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+            "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf"
         )
     # Nicht die rohe Python-Meldung ("invalid literal for int() ..."), die die
     # Route ungefiltert als 400-Text weiterreichen wuerde.
@@ -739,9 +739,9 @@ async def test_head_sizes_haelt_die_eingabereihenfolge(monkeypatch):
     from app.services import geofabrik
 
     groessen = {
-        "https://download.geofabrik.de/europe/dach-latest.osm.pbf": 3,
-        "https://download.geofabrik.de/europe/italy-latest.osm.pbf": 2,
-        "https://download.geofabrik.de/europe/albania-latest.osm.pbf": 1,
+        "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf": 3,
+        "https://download.geofabrik.de/europe/italy/italy-latest.osm.pbf": 2,
+        "https://download.geofabrik.de/europe/albania/albania-latest.osm.pbf": 1,
     }
 
     async def _size(url):
@@ -821,9 +821,9 @@ async def test_head_sizes_meldet_den_ersten_fehlschlag_der_eingabe(monkeypatch):
 
     with pytest.raises(ConnectionError) as exc:
         await geofabrik.head_sizes([
-            "https://download.geofabrik.de/europe/dach-latest.osm.pbf",
-            "https://download.geofabrik.de/europe/italy-latest.osm.pbf",
-            "https://download.geofabrik.de/europe/albania-latest.osm.pbf",
+            "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf",
+            "https://download.geofabrik.de/europe/italy/italy-latest.osm.pbf",
+            "https://download.geofabrik.de/europe/albania/albania-latest.osm.pbf",
         ])
     assert "Italien" in str(exc.value)
 
@@ -862,7 +862,7 @@ async def test_index_wiederholt_nach_unbrauchbarer_antwort(monkeypatch):
             return {"features": [{
                 "properties": {
                     "id": "dach", "name": "DACH",
-                    "urls": {"pbf": "https://download.geofabrik.de/europe/dach-latest.osm.pbf"},
+                    "urls": {"pbf": "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf"},
                 },
             }]}
 
@@ -901,7 +901,7 @@ async def test_list_regions_uebergeht_unvollstaendige_eintraege(monkeypatch):
         {"properties": {"id": "leer", "name": "ohne urls"}},
         {"properties": {
             "id": "dach", "name": "DACH",
-            "urls": {"pbf": "https://download.geofabrik.de/europe/dach-latest.osm.pbf"},
+            "urls": {"pbf": "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf"},
         }},
     ]
     monkeypatch.setattr(geofabrik.httpx, "AsyncClient", _index_client(features))
