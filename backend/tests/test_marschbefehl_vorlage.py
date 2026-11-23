@@ -141,12 +141,15 @@ def test_beispielvorlage_nennt_jedes_feld():
             assert f"{{{{ {li.name[0]}.{f.name} }}}}" in vorlage
 
 
-def test_leere_abschnitte_fallen_weg():
+def test_leere_listen_fallen_weg_die_hauptziffern_bleiben():
+    """Die FwDV verlangt die Hauptziffern immer in ihrer Reihenfolge — auch
+    leer. Wegfallen dürfen nur die Tabellen der App ohne Einträge."""
     text = _text(mv.fuellen(mv.beispielvorlage(), mv.kontext(_leerer_konvoi(), [], [], None)))
-    assert "1. Lage" not in text
-    assert "Kanalwechsel" not in text
+    for ziffer in ("1. Lage", "2. Auftrag", "3. Durchführung", "4. Versorgung", "5. Führung und Verbindung"):
+        assert ziffer in text
+    assert "Leitstelle" not in text  # Kanalwechsel-Tabelle
     assert "Durchfahrtshöhen" not in text
-    assert "3. Durchführung" in text
+    assert "Ergänzend" not in text
 
 
 # ── Werte im Dokument ────────────────────────────────────────────────────

@@ -167,7 +167,7 @@ Der Reverse Proxy braucht Routen für `/mcp` und die OAuth-Pfade an der Wurzel d
 
 ## Verbinden
 
-1. Im Admin-Portal unter **MCP** die **Adresse** kopieren (`https://<domain>/mcp`).
+1. Im Admin-Portal unter **MCP** die **Adresse** kopieren (`https://<domain>/mcp`). Auf der gehosteten Instanz lautet sie `https://web.convoyplan.de/mcp`.
 2. Im KI-Programm als *Remote-MCP-Server* eintragen.
 3. Das Programm öffnet den Browser auf der ConvoyPlan-Anmeldung.
 4. **Anmelden** — mit dem eigenen Konto, inklusive MFA, falls eingerichtet.
