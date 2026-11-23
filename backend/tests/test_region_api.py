@@ -21,7 +21,7 @@ from app.main import app
 from app.services import geofabrik, region_switch
 
 GB = 1024 ** 3
-URL = "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+URL = "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf"
 
 
 def _superadmin():
@@ -623,7 +623,7 @@ async def test_current_region_reads_region_file(tmp_path, monkeypatch):
 
     monkeypatch.setattr(region_routes, "OSM_PATH", str(tmp_path))
     (tmp_path / ".region").write_text(
-        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf\n"
+        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf\n"
         "OSM_FILENAME=berlin-latest.osm.pbf\n"
         "JAVA_OPTS=-Xmx3g -Xms1g -XX:+UseG1GC\n"
     )
@@ -669,7 +669,7 @@ async def test_list_regions_returns_entries_with_path(monkeypatch):
                 id="act",
                 name="Australian Capital Territory",
                 path="Australia-Oceania › Australia › Australian Capital Territory",
-                url="https://download.geofabrik.de/australia-oceania/australia/act-latest.osm.pbf",
+                url="https://download.geofabrik.de/australia-oceania/australia/act/act-latest.osm.pbf",
                 size_bytes=None,
             )
         ]
@@ -731,7 +731,7 @@ async def test_geofabrik_list_regions_builds_path_from_parent_chain_and_uses_pbf
             "properties": {
                 "id": "australia-oceania",
                 "name": "Australia and Oceania",
-                "urls": {"pbf": "https://download.geofabrik.de/australia-oceania-latest.osm.pbf"},
+                "urls": {"pbf": "https://download.geofabrik.de/australia-oceania/australia-oceania-latest.osm.pbf"},
             }
         },
         {
@@ -739,7 +739,7 @@ async def test_geofabrik_list_regions_builds_path_from_parent_chain_and_uses_pbf
                 "id": "australia",
                 "name": "Australia",
                 "parent": "australia-oceania",
-                "urls": {"pbf": "https://download.geofabrik.de/australia-oceania/australia-latest.osm.pbf"},
+                "urls": {"pbf": "https://download.geofabrik.de/australia-oceania/australia/australia-latest.osm.pbf"},
             }
         },
         {
@@ -748,7 +748,7 @@ async def test_geofabrik_list_regions_builds_path_from_parent_chain_and_uses_pbf
                 "name": "Australian Capital Territory",
                 "parent": "australia",
                 "urls": {
-                    "pbf": "https://download.geofabrik.de/australia-oceania/australia/act-latest.osm.pbf",
+                    "pbf": "https://download.geofabrik.de/australia-oceania/australia/act/act-latest.osm.pbf",
                     "pbf-internal": "https://osm-internal.download.geofabrik.de/australia-oceania/australia/act-latest-internal.osm.pbf",
                     "history": "https://osm-internal.download.geofabrik.de/australia-oceania/australia/act-internal.osh.pbf",
                 },
@@ -783,7 +783,7 @@ async def test_geofabrik_list_regions_builds_path_from_parent_chain_and_uses_pbf
     entries = await geofabrik.list_regions()
     by_id = {e.id: e for e in entries}
     assert by_id["act"].path == "Australia and Oceania › Australia › Australian Capital Territory"
-    assert by_id["act"].url == "https://download.geofabrik.de/australia-oceania/australia/act-latest.osm.pbf"
+    assert by_id["act"].url == "https://download.geofabrik.de/australia-oceania/australia/act/act-latest.osm.pbf"
     assert "osm-internal" not in by_id["act"].url
 
 
@@ -937,7 +937,7 @@ async def test_geofabrik_list_regions_skips_entry_without_pbf_url(monkeypatch):
             "properties": {
                 "id": "dach",
                 "name": "DACH",
-                "urls": {"pbf": "https://download.geofabrik.de/europe/dach-latest.osm.pbf"},
+                "urls": {"pbf": "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf"},
             }
         },
     ]
@@ -1077,9 +1077,9 @@ async def test_region_log_requires_token():
 
 # ── Zusammengesetzte Regionen (mehrere Extracts zu einer Karte) ─────────────
 
-_DE = "https://download.geofabrik.de/europe/germany-latest.osm.pbf"
-_PL = "https://download.geofabrik.de/europe/poland-latest.osm.pbf"
-_BY = "https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf"
+_DE = "https://download.geofabrik.de/europe/germany/germany-latest.osm.pbf"
+_PL = "https://download.geofabrik.de/europe/poland/poland-latest.osm.pbf"
+_BY = "https://download.geofabrik.de/europe/germany/bayern/bayern-latest.osm.pbf"
 
 
 def _async_size_per_url(mapping):
@@ -1412,7 +1412,7 @@ async def test_outline_folgt_der_aktiven_region(tmp_path, monkeypatch):
     monkeypatch.setattr(region_routes, "OSM_PATH", str(tmp_path))
     _reset_outline_cache(monkeypatch)
     (tmp_path / ".region").write_text(
-        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/italy-latest.osm.pbf\n"
+        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/italy/italy-latest.osm.pbf\n"
         "OSM_FILENAME=italy-latest.osm.pbf\n"
     )
     monkeypatch.setattr(
@@ -1450,7 +1450,7 @@ async def test_outline_ist_ohne_anmeldung_erreichbar(tmp_path, monkeypatch):
     monkeypatch.setattr(region_routes, "OSM_PATH", str(tmp_path))
     _reset_outline_cache(monkeypatch)
     (tmp_path / ".region").write_text(
-        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/dach-latest.osm.pbf\n"
+        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf\n"
     )
     monkeypatch.setattr(
         geofabrik.httpx, "AsyncClient", _fake_index([_feature("europe/dach", _QUADRAT)])
@@ -1475,7 +1475,7 @@ async def test_outline_setzt_zusammengesetzte_region_aus_allen_teilen(
     monkeypatch.setattr(region_routes, "OSM_PATH", str(tmp_path))
     _reset_outline_cache(monkeypatch)
     (tmp_path / ".region").write_text(
-        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/dach-latest.osm.pbf\n"
+        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf\n"
         "OSM_FILENAME=merged-53e53d81.osm.pbf\n"
         "OSM_SOURCES=europe/dach|europe/italy\n"
     )
@@ -1537,7 +1537,7 @@ async def test_outline_meldet_503_statt_eines_unvollstaendigen_umrisses(
     monkeypatch.setattr(region_routes, "OSM_PATH", str(tmp_path))
     _reset_outline_cache(monkeypatch)
     (tmp_path / ".region").write_text(
-        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/dach-latest.osm.pbf\n"
+        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf\n"
         "OSM_SOURCES=europe/dach|europe/gibt-es-nicht\n"
     )
     monkeypatch.setattr(
@@ -1563,7 +1563,7 @@ async def test_outline_cacht_pro_region_und_holt_den_index_nur_einmal(
     monkeypatch.setattr(region_routes, "OSM_PATH", str(tmp_path))
     _reset_outline_cache(monkeypatch)
     (tmp_path / ".region").write_text(
-        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/dach-latest.osm.pbf\n"
+        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf\n"
     )
     aufrufe = {"n": 0}
     echte = geofabrik.region_outlines
@@ -1605,7 +1605,7 @@ async def test_outline_holt_den_index_auch_bei_gleichzeitigen_aufrufen_nur_einma
     _reset_outline_cache(monkeypatch)
     monkeypatch.setattr(region_routes, "_outline_lock", None)
     (tmp_path / ".region").write_text(
-        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/dach-latest.osm.pbf\n"
+        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf\n"
     )
 
     aufrufe = {"n": 0}
@@ -1655,7 +1655,7 @@ async def test_outline_verschmilzt_ueberlappende_bestandteile(tmp_path, monkeypa
     monkeypatch.setattr(region_routes, "OSM_PATH", str(tmp_path))
     _reset_outline_cache(monkeypatch)
     (tmp_path / ".region").write_text(
-        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/dach-latest.osm.pbf\n"
+        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf\n"
         "OSM_SOURCES=europe/dach|europe/italy\n"
     )
     links = {"type": "Polygon", "coordinates": [[[0, 0], [20, 0], [20, 20], [0, 20], [0, 0]]]}
@@ -1700,7 +1700,7 @@ async def test_outline_repariert_ungueltige_geometrie(tmp_path, monkeypatch):
     monkeypatch.setattr(region_routes, "OSM_PATH", str(tmp_path))
     _reset_outline_cache(monkeypatch)
     (tmp_path / ".region").write_text(
-        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/dach-latest.osm.pbf\n"
+        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf\n"
     )
     # Sanduhr: der Ring kreuzt sich selbst — ungueltig nach OGC.
     sanduhr = {
@@ -1736,7 +1736,7 @@ async def test_current_region_nennt_die_bestandteile(tmp_path, monkeypatch):
 
     monkeypatch.setattr(region_routes, "OSM_PATH", str(tmp_path))
     (tmp_path / ".region").write_text(
-        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/dach-latest.osm.pbf\n"
+        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf\n"
         "OSM_FILENAME=merged-53e53d81.osm.pbf\n"
         "OSM_SOURCES=europe/albania|europe/croatia|europe/dach|europe/italy"
         "|europe/montenegro|europe/slovenia\n"
@@ -1771,7 +1771,7 @@ async def test_current_region_nennt_auch_eine_einzelne_region(tmp_path, monkeypa
 
     monkeypatch.setattr(region_routes, "OSM_PATH", str(tmp_path))
     (tmp_path / ".region").write_text(
-        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf\n"
+        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf\n"
         "OSM_FILENAME=berlin-latest.osm.pbf\n"
     )
     test_app = _make_app_with_superadmin()
