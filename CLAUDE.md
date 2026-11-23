@@ -165,6 +165,19 @@ geplanten Wechseln. Sie werden **gehoben**, nicht abgelehnt, an drei Stellen mit
 ändert, zieht die anderen mit. Tests: `tests/test_geofabrik_neue_pfade.py`,
 `test_entrypoint_region.sh` (Fälle 4–8), `test_switch_region.sh` (1g, 1h).
 
+**Der Region-Job der CI fragt Geofabrik nicht.** Am selben Tag war Geofabrik von den
+Runnern aus stundenlang nur zeitweise erreichbar, und jeder Merge hing am Glück. Seitdem
+antwortet im Job `region-switch` ein Spiegel (`.github/region-spiegel/`) unter dem Namen
+`download.geofabrik.de`: Netzwerk-Alias im Compose-Netz, Zertifikat einer Test-CA, der
+nur der Updater dort vertraut (`CURL_CA_BUNDLE`), Berlin aus dem Tagescache, den `caches`
+füllt. Der Updater bleibt unverändert, auch seine Allowlist — wer stattdessen eine
+Basis-URL einführt, öffnet die Sicherheitsgrenze. Eine erneute Umstellung bei Geofabrik
+bemerkt damit nur noch `caches` beim Laden, nicht mehr jeder PR. Der Spiegel liegt im
+**selben** Schema wie `pbf_url`/`_geofabrik_url`; `test_geofabrik_spiegel.sh` prüft das am
+Original. Der Schritt „Beleg: Berlin kam vom Geofabrik-Spiegel“ im Job verlangt HEAD,
+`.md5` und Download im Protokoll des Spiegels — sonst wäre ein grüner Lauf, der am
+Spiegel vorbei doch Geofabrik erreicht hat, nicht von einem echten zu unterscheiden.
+
 ### Speicher: Import im Heap, Betrieb per MMAP
 
 `graphhopper/entrypoint.sh` startet in **zwei Phasen**, wenn `GH_COMMAND=server`

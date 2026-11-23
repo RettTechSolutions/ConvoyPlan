@@ -1,0 +1,38 @@
+# Erweiterung der docker-compose.yml fuer den Job `region-switch` in ci.yml —
+# nur dort, ueber COMPOSE_FILE, nie auf einer Installation.
+#
+# Haengt einen Geofabrik-Spiegel (spiegel.py) unter dem Namen
+# download.geofabrik.de ins Compose-Netz und laesst den Updater dessen Test-CA
+# vertrauen. Begruendung in spiegel.py.
+#
+# SPIEGEL_DIR: Ausgabe von vorbereiten.sh (daten/ und tls/).
+# Relative Pfade gelten ab dem Projektverzeichnis, also der Wurzel des Repos
+# (dort liegt die erste Datei in COMPOSE_FILE).
+services:
+  geofabrik-spiegel:
+    # Das im Job gebaute Backend-Image bringt Python mit — kein weiteres Image
+    # aus einer Registry, also auch kein Pull-Limit.
+    image: ${BACKEND_IMAGE}
+    user: "0"
+    entrypoint:
+      - python
+      - /spiegel/spiegel.py
+      - /spiegel/daten
+      - /spiegel/tls/server.pem
+      - /spiegel/tls/server.key
+    healthcheck:
+      disable: true
+    volumes:
+      - ./.github/region-spiegel/spiegel.py:/spiegel/spiegel.py:ro
+      - ${SPIEGEL_DIR}/daten:/spiegel/daten:ro
+      - ${SPIEGEL_DIR}/tls:/spiegel/tls:ro
+    networks:
+      default:
+        aliases:
+          - download.geofabrik.de
+
+  updater:
+    environment:
+      CURL_CA_BUNDLE: /spiegel-ca/bundle.pem
+    volumes:
+      - ${SPIEGEL_DIR}/tls/bundle.pem:/spiegel-ca/bundle.pem:ro
