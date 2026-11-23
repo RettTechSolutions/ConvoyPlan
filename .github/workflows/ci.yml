@@ -1,20 +1,30 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
+  # Kein `push` auf main: Das Ruleset erzwingt die Merge Queue, und deren Lauf
+  # hat genau den Stand geprüft, der danach auf main landet. Ein Push-Lauf
+  # prüfte ihn ein drittes Mal (nach PR und Queue) — 15 Jobs, die nichts Neues
+  # sagen und der Queue die Runner wegnehmen. Was er nebenbei tat, nämlich die
+  # Caches auf main zu füllen (nur die sehen alle PRs), macht jetzt der tägliche
+  # Job `caches` unten.
   pull_request:
     branches: [main]
   # Merge Queue: GitHub baut temporäre Merge-Branches (PR + aktueller main) und
   # verlangt die Required Checks darauf. Ohne diesen Trigger würden Einträge in
   # der Queue endlos auf ihre Checks warten.
   merge_group:
-  # Wöchentlich, nur für die beiden Sicherheits-Jobs (die übrigen tragen dafür
-  # `if: github.event_name != 'schedule'`). Neue CVEs erscheinen unabhängig
-  # davon, ob jemand etwas pusht — ohne diesen Lauf merkt eine ruhige Woche
-  # nichts davon, und die Ausnahmen in .trivyignore altern unbeobachtet.
   schedule:
+    # Wöchentlich, nur für die beiden Sicherheits-Jobs (die übrigen tragen dafür
+    # `if: github.event_name != 'schedule'`). Neue CVEs erscheinen unabhängig
+    # davon, ob jemand etwas pusht — ohne diesen Lauf merkt eine ruhige Woche
+    # nichts davon, und die Ausnahmen in .trivyignore altern unbeobachtet.
     - cron: "17 5 * * 1"
+    # Täglich, für `caches`. Der Dependency Audit (eine halbe Minute) läuft
+    # mit; den Container-Scan hält `changes` auf den wöchentlichen Lauf
+    # beschränkt (images=[]), denn er baut dort jedes Image ohne Cache.
+    - cron: "41 3 * * *"
+  # Von Hand: voller Lauf auf dem gewählten Stand, samt Cache-Auffrischung.
+  workflow_dispatch:
 
 # Least privilege: jobs only read the repo. No job needs write access to
 # contents, packages, deployments, etc. Overrides the permissive default
@@ -34,6 +44,8 @@ jobs:
       region: ${{ steps.paths.outputs.region }}
       code: ${{ steps.paths.outputs.code }}
       medien: ${{ steps.paths.outputs.medien }}
+      grenzrouting: ${{ steps.paths.outputs.grenzrouting }}
+      images: ${{ steps.paths.outputs.images }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: github.event_name != 'schedule'
@@ -45,15 +57,21 @@ jobs:
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           QUEUE_BASE: ${{ github.event.merge_group.base_sha }}
-          BEFORE: ${{ github.event.before }}
+          SCHEDULE: ${{ github.event.schedule }}
         run: |
           region=true
           code=true
           medien=true
+          grenzrouting=true
+          # Image-Name -> Build-Kontext. Gescannt wird ein Image, wenn sich sein
+          # Kontext geaendert hat oder etwas, das jeden Scan betrifft (dieser
+          # Workflow, .trivyignore, der Docker-Hub-Spiegel). Neue CVEs ohne
+          # Codeaenderung findet der woechentliche Lauf, der alle sechs scannt.
+          kontexte="backend:backend frontend:frontend graphhopper:graphhopper updater:docker/updater osmium:docker/osmium medien:docker/medien"
+          scan_alle=true
           case "$EVENT" in
             pull_request) range="$PR_BASE...$PR_HEAD" ;;
             merge_group) range="$QUEUE_BASE..HEAD" ;;
-            push) range="$BEFORE..HEAD" ;;
             *) range="" ;;
           esac
           # Unknown files and failed comparisons keep the full checks enabled.
@@ -69,10 +87,37 @@ jobs:
             if ! grep -qE '^docker/medien/|^\.github/workflows/ci\.yml$' "$RUNNER_TEMP/ci-paths"; then
               medien=false
             fi
+            # `region-merge` baut nur osmium, Updater (merge-extracts.sh) und
+            # GraphHopper; Backend und Frontend kommen darin nicht vor. Der
+            # Regionswechsel bleibt bei `region`, weil er als einziger Test den
+            # Backend-Container wirklich startet (der Updater haengt an ihm).
+            if ! grep -qE '^(graphhopper|docker/osmium|docker/updater)/|^\.github/workflows/ci\.yml$' "$RUNNER_TEMP/ci-paths"; then
+              grenzrouting=false
+            fi
+            if ! grep -qE '^\.github/workflows/ci\.yml$|^\.trivyignore$|^\.github/actions/docker-spiegel/' "$RUNNER_TEMP/ci-paths"; then
+              scan_alle=false
+            fi
           fi
+          images="["
+          for paar in $kontexte; do
+            name="${paar%%:*}"
+            kontext="${paar#*:}"
+            if [ "$scan_alle" = true ] || grep -q "^$kontext/" "$RUNNER_TEMP/ci-paths"; then
+              images="$images{\"name\":\"$name\",\"context\":\"./$kontext\"},"
+            fi
+          done
+          images="${images%,}]"
+          # Der taegliche Lauf ist nur fuer `caches` da; der Scan gehoert dem
+          # woechentlichen, der jedes Image ohne Cache neu baut.
+          if [ "$EVENT" = schedule ] && [ "$SCHEDULE" != "17 5 * * 1" ]; then
+            images="[]"
+          fi
+          echo "images=$images" >> "$GITHUB_OUTPUT"
+          echo "Zu scannende Images: $images"
           echo "region=$region" >> "$GITHUB_OUTPUT"
           echo "code=$code" >> "$GITHUB_OUTPUT"
           echo "medien=$medien" >> "$GITHUB_OUTPUT"
+          echo "grenzrouting=$grenzrouting" >> "$GITHUB_OUTPUT"
 
   backend-lint-test:
     name: Backend – Lint & Tests
@@ -163,14 +208,20 @@ jobs:
         run: cd frontend && npm run check
 
   frontend-e2e:
-    name: Frontend – E2E (Playwright)
+    name: Frontend – E2E (Teil ${{ matrix.shard }}/2)
     # Kein Sicherheits-Job — beim wöchentlichen Lauf übersprungen.
     needs: changes
     if: github.event_name != 'schedule' && needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    # Die Suite braucht rund eine Minute. Ein Deckel darüber, damit ein
-    # hängender Schritt nicht stundenlang einen Runner belegt, statt als
-    # Fehlschlag sichtbar zu werden.
+    # Zwei Teile, weil dieser Job die Laufzeit des ganzen Workflows bestimmte
+    # (rund fünf Minuten, alle anderen sind nach drei fertig). Jeder Teil baut
+    # die App selbst; der Pflicht-Check ist der Sammeljob `frontend-e2e-ergebnis`.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    # Ein Deckel, damit ein hängender Schritt nicht stundenlang einen Runner
+    # belegt, statt als Fehlschlag sichtbar zu werden.
     timeout-minutes: 15
     # Im Playwright-Image steckt Chromium bereits — es gibt nichts zu
     # installieren. `npx playwright install` blieb auf dem Runner nach dem
@@ -198,11 +249,33 @@ jobs:
       # Nur Chromium: Die Tests prüfen Verhalten (Druckblatt, QR-Inhalt,
       # Rollentexte), nicht die Darstellung in mehreren Programmen.
       - name: End-to-end tests
-        run: cd frontend && npm run test:e2e
+        run: cd frontend && npm run test:e2e -- --shard=${{ matrix.shard }}/2
+
+  frontend-e2e-ergebnis:
+    name: Frontend – E2E (Playwright)
+    # Pflicht-Check im Ruleset. Übersprungen gilt nur, wenn `changes` sauber
+    # durchlief und keinen Code sah (reine Doku-Änderung).
+    needs: [changes, frontend-e2e]
+    if: always() && github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Beide Teile grün
+        env:
+          RESULT: ${{ needs.frontend-e2e.result }}
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          CODE: ${{ needs.changes.outputs.code }}
+        run: |
+          test "$CHANGES_RESULT" = success
+          if [ "$CODE" = true ]; then
+            test "$RESULT" = success
+          else
+            test "$RESULT" = skipped
+          fi
 
   docker-build:
     name: Docker – Build check
-    # The scan matrix already builds all images. Keep the required check name.
+    # The scan matrix already builds the images. Keep the required check name.
+    # Skipped is fine only when `changes` succeeded and found no image to scan.
     needs: [changes, container-scan]
     if: always() && github.event_name != 'schedule'
     runs-on: ubuntu-latest
@@ -211,9 +284,15 @@ jobs:
         env:
           RESULT: ${{ needs.container-scan.result }}
           CHANGES_RESULT: ${{ needs.changes.result }}
+          IMAGES: ${{ needs.changes.outputs.images }}
         run: |
           test "$CHANGES_RESULT" = success
-          test "$RESULT" = success
+          if [ "$IMAGES" = "[]" ]; then
+            echo "Kein Image-Kontext geaendert — nichts zu bauen."
+            test "$RESULT" = skipped
+          else
+            test "$RESULT" = success
+          fi
 
   dependency-audit:
     name: Security – Dependency Audit
@@ -250,27 +329,18 @@ jobs:
     # (ISO 27001 A.8.8 / T10). Fails on HIGH/CRITICAL findings that have a fix
     # available (ignore-unfixed), so unpatchable upstream issues don't block
     # merges while actionable ones do. See docs/iso-certifications-review.md.
+    #
+    # Welche Images, entscheidet `changes` (Ausgabe `images`): auf PR und Queue
+    # nur die mit geaendertem Kontext, woechentlich alle sechs. Die Liste dort
+    # ist die einzige — auch osmium (laeuft nicht im Stack, bekommt aber beim
+    # Regionswechsel Schreibzugriff auf die Kartendaten) und medien (ffmpeg,
+    # nimmt Videos von aussen entgegen) gehoeren hinein.
+    needs: changes
+    if: needs.changes.outputs.images != '[]'
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: backend
-            context: ./backend
-          - name: frontend
-            context: ./frontend
-          - name: graphhopper
-            context: ./graphhopper
-          - name: updater
-            context: ./docker/updater
-          # Laeuft nicht im Stack, wird aber mit ausgeliefert und bekommt beim
-          # Regionswechsel Schreibzugriff auf die Kartendaten — also gehoert es
-          # in denselben Scan wie die uebrigen vier.
-          - name: osmium
-            context: ./docker/osmium
-          # Laeuft im Stack und nimmt Videos von aussen (Telegram) entgegen —
-          # ffmpeg ist genau die Art Parser, in der HIGH/CRITICAL auftauchen.
-          - name: medien
-            context: ./docker/medien
+        include: ${{ fromJSON(needs.changes.outputs.images) }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -451,7 +521,7 @@ jobs:
       # wirklich weichen), nicht zu einem Wechsel auf dieselbe Region.
       # Liechtenstein ist auch in GraphHoppers eigenen Beispielen die
       # Standard-Winzregion für genau diesen Zweck.
-      OSM_DOWNLOAD_URL: https://download.geofabrik.de/europe/liechtenstein-latest.osm.pbf
+      OSM_DOWNLOAD_URL: https://download.geofabrik.de/europe/liechtenstein/liechtenstein-latest.osm.pbf
       OSM_FILENAME: liechtenstein-latest.osm.pbf
       JAVA_OPTS: "-Xmx2g -Xms512m -XX:+UseG1GC"
       # PR-Stand statt der veröffentlichten Images von GHCR — sonst würde
@@ -485,6 +555,13 @@ jobs:
       BACKEND_IMAGE: convoyplan-backend:latest
       GRAPHHOPPER_IMAGE: convoyplan-graphhopper:latest
       UPDATER_IMAGE: convoyplan-updater:latest
+      # Geofabrik-Spiegel (.github/region-spiegel/, Begruendung in spiegel.py):
+      # Jeder `docker compose`-Aufruf im Job liest die Erweiterung mit. Der
+      # Updater selbst ruft Compose mit -f /compose.yml (STACK_FILE_PATH, nur
+      # die echte Datei) — er tauscht damit nur GraphHopper, und der braucht
+      # den Spiegel nicht.
+      COMPOSE_FILE: docker-compose.yml:.github/region-spiegel/compose.yml
+      SPIEGEL_DIR: ${{ github.workspace }}/spiegel
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -501,10 +578,12 @@ jobs:
       # followed), und der Job war auf PRs rot, die weder Updater noch Karten
       # anfassten.
       #
-      # Berlin laedt switch-region.sh weiterhin selbst von Geofabrik: genau
-      # diese Phase (Groesse per HEAD, Pruefsumme, Download) prueft der Job.
-      # Faellt Geofabrik aus, bleibt er deshalb an dieser Stelle rot — dann
-      # mit einer klaren Meldung aus dem Schritt unten statt mitten im Wechsel.
+      # Berlin laedt switch-region.sh selbst — Groesse per HEAD, Pruefsumme,
+      # Download, genau die Phase, die der Job prueft —, aber vom
+      # Geofabrik-Spiegel weiter unten statt von Geofabrik. Bis 2026-11-23
+      # hing der Job daran, dass Geofabrik in diesem Moment antwortete; an dem
+      # Tag tat es das von den Runnern aus stundenlang nur zeitweise, und jeder
+      # Merge war Glueckssache.
       - name: Tagesstempel fuer den Extract-Cache
         id: osm-day
         run: echo "day=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
@@ -531,7 +610,7 @@ jobs:
             # Wie in `region-merge`: nach .part laden und erst danach
             # umbenennen, damit ein halber Download die brauchbare Datei aus
             # einem frueheren Cache nicht ueberschreibt.
-            url=https://download.geofabrik.de/europe/liechtenstein-latest.osm.pbf
+            url=https://download.geofabrik.de/europe/liechtenstein/liechtenstein-latest.osm.pbf
             if curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 \
                     --retry-max-time 600 -o osm/liechtenstein-latest.osm.pbf.part "$url"; then
               mv osm/liechtenstein-latest.osm.pbf.part osm/liechtenstein-latest.osm.pbf
@@ -558,17 +637,60 @@ jobs:
           path: osm/liechtenstein-latest.osm.pbf
           key: osm-extract-liechtenstein-${{ steps.osm-day.outputs.day }}
 
-      # Vor dem Wechsel pruefen, ob Geofabrik das Berlin-Extract ueberhaupt
-      # ausliefert. Sonst laeuft der Job erst Minuten in den Wechsel und
-      # scheitert dort mit "Extract nicht abrufbar" — eine Meldung, die nach
-      # einem Fehler im Updater aussieht, obwohl nur die Quelle fehlt.
-      - name: Geofabrik erreichbar? (Berlin-Extract fuer den Wechsel)
+      # Berlin wie Liechtenstein: der Tagescache, den `caches` fuellt. Fehlt
+      # der Eintrag von heute, versucht es der Job selbst bei Geofabrik und
+      # faellt sonst auf einen frueheren Tag zurueck — fuer den Test ist ein
+      # Extract von gestern so gut wie eines von heute.
+      - name: Berlin aus dem Cache holen
+        id: berlin-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: osm/berlin-latest.osm.pbf
+          key: osm-extract-berlin-${{ steps.osm-day.outputs.day }}
+          restore-keys: |
+            osm-extract-berlin-
+
+      - name: Berlin laden
+        id: berlin-download
+        env:
+          EXACT_HIT: ${{ steps.berlin-cache.outputs.cache-hit }}
         run: |
-          url=https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf
-          if ! curl -fsSIL --max-time 60 --retry 3 --retry-all-errors --retry-delay 10 "$url" >/dev/null; then
-            echo "::error::Geofabrik liefert $url nicht aus. Der Regionswechsel laedt Berlin selbst von dort und kann ohne die Quelle nicht geprueft werden — das liegt nicht am Stand dieses PRs. Den Job neu starten, sobald Geofabrik wieder antwortet."
+          mkdir -p osm
+          fresh=false
+          if [ "$EXACT_HIT" = "true" ]; then
+            echo "Berlin von heute liegt im Cache — kein Download noetig."
+          else
+            url=https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf
+            if curl -fsSL --retry 3 --retry-all-errors --retry-delay 15 \
+                    --retry-max-time 300 -o osm/berlin-latest.osm.pbf.part "$url"; then
+              mv osm/berlin-latest.osm.pbf.part osm/berlin-latest.osm.pbf
+              fresh=true
+            else
+              rm -f osm/berlin-latest.osm.pbf.part
+              echo "::warning::Download von $url fehlgeschlagen — es gilt das Extract aus dem Cache, falls eines da ist."
+            fi
+          fi
+          if [ ! -s osm/berlin-latest.osm.pbf ]; then
+            echo "::error::Kein Berlin-Extract: weder im Cache noch von Geofabrik. Der Job \`caches\` (taeglich oder von Hand) legt eines ab."
             exit 1
           fi
+          echo "fresh=$fresh" >> "$GITHUB_OUTPUT"
+          ls -lh osm/
+
+      - name: Berlin in den Cache legen
+        if: steps.berlin-download.outputs.fresh == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: osm/berlin-latest.osm.pbf
+          key: osm-extract-berlin-${{ steps.osm-day.outputs.day }}
+
+      # Ablage im Geofabrik-Schema samt .md5 und ein Zertifikat einer Test-CA
+      # fuer download.geofabrik.de. Geprueft von
+      # .github/workflows/tests/test_geofabrik_spiegel.sh.
+      - name: Geofabrik-Spiegel vorbereiten
+        run: |
+          bash .github/region-spiegel/vorbereiten.sh "$SPIEGEL_DIR" \
+            europe/germany/berlin osm/berlin-latest.osm.pbf
 
       - name: Images aus dem PR-Stand bauen (lokale Tags, nicht die von GHCR)
         run: |
@@ -591,7 +713,26 @@ jobs:
             /src/liechtenstein-latest.osm.pbf /data/osm/
 
       - name: Stack starten (Entrypoint update-images.sh, wie docker-compose.yml:273 es real festlegt)
-        run: docker compose up -d graphhopper updater
+        run: docker compose up -d geofabrik-spiegel graphhopper updater
+
+      # Aus dem Updater heraus, mit seinem curl und seinem Vertrauen: Ist der
+      # Spiegel hier nicht da, scheiterte der Wechsel spaeter mit "Extract
+      # nicht abrufbar" — eine Meldung, die nach einem Fehler im Updater
+      # aussieht.
+      - name: Geofabrik-Spiegel aus Sicht des Updaters erreichbar
+        run: |
+          url=https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf
+          for _ in $(seq 1 30); do
+            if docker compose exec -T updater curl -fsSI --max-time 10 "$url" >/dev/null 2>&1; then
+              echo "Spiegel antwortet dem Updater unter $url."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Der Updater erreicht den Geofabrik-Spiegel nicht."
+          docker compose exec -T updater curl -sSI --max-time 10 "$url" || true
+          docker compose logs --no-color geofabrik-spiegel || true
+          exit 1
 
       - name: Auf gesunden Ersteinstieg warten (Liechtenstein, max. 8 min)
         run: |
@@ -608,7 +749,7 @@ jobs:
 
       - name: Regionswechsel auf Berlin auslösen
         run: |
-          printf '%s' '{"url":"https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf","filename":"berlin-latest.osm.pbf","java_opts":"-Xmx3g -Xms512m -XX:+UseG1GC","requested_by":"ci@convoyplan"}' \
+          printf '%s' '{"url":"https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf","filename":"berlin-latest.osm.pbf","java_opts":"-Xmx3g -Xms512m -XX:+UseG1GC","requested_by":"ci@convoyplan"}' \
             | docker compose exec -T updater tee /update_status/region_request.json >/dev/null
 
       - name: Auf Abschluss warten (max. 40 min)
@@ -739,6 +880,23 @@ jobs:
             echo "region.lock, region_request.json und region.cancel sind wie erwartet weg."
           '
 
+      # Ohne diesen Beleg koennte der Wechsel gruen sein, weil der Updater am
+      # Spiegel vorbei doch Geofabrik erreicht hat — dann hinge der Job wieder
+      # an Geofabrik, nur ohne dass es jemand merkt.
+      - name: "Beleg: Berlin kam vom Geofabrik-Spiegel"
+        run: |
+          logs="$(docker compose logs --no-color geofabrik-spiegel)"
+          for zeile in "HEAD /europe/germany/berlin/berlin-latest.osm.pbf " \
+                       "GET /europe/germany/berlin/berlin-latest.osm.pbf.md5 " \
+                       "GET /europe/germany/berlin/berlin-latest.osm.pbf "; do
+            if ! echo "$logs" | grep -qF "$zeile"; then
+              echo "::error::Der Spiegel hat '$zeile' nicht gesehen — der Wechsel hat sein Extract woanders her."
+              echo "$logs"
+              exit 1
+            fi
+          done
+          echo "Groesse, Pruefsumme und Extract kamen vom Spiegel."
+
       - name: Stack stoppen
         if: always()
         run: docker compose down -v
@@ -747,7 +905,7 @@ jobs:
     name: Region – Grenzrouting bei zusammengeführten Extracts
     # Kein Sicherheits-Job — beim wöchentlichen Lauf übersprungen.
     needs: changes
-    if: github.event_name != 'schedule' && needs.changes.outputs.region == 'true'
+    if: github.event_name != 'schedule' && needs.changes.outputs.grenzrouting == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     # Beantwortet fortlaufend die Frage, die vor dem Entwurf einmalig als
@@ -820,8 +978,8 @@ jobs:
           # ueberschreiben.
           ok=1
           for entry in \
-            "osm/sachsen.osm.pbf|https://download.geofabrik.de/europe/germany/sachsen-latest.osm.pbf" \
-            "osm/dolnoslaskie.osm.pbf|https://download.geofabrik.de/europe/poland/dolnoslaskie-latest.osm.pbf"
+            "osm/sachsen.osm.pbf|https://download.geofabrik.de/europe/germany/sachsen/sachsen-latest.osm.pbf" \
+            "osm/dolnoslaskie.osm.pbf|https://download.geofabrik.de/europe/poland/dolnoslaskie/dolnoslaskie-latest.osm.pbf"
           do
             file="${entry%%|*}"
             url="${entry##*|}"
@@ -934,7 +1092,7 @@ jobs:
           docker run -d --name gh -p 8989:8989 \
             -v "$PWD/osm:/data/osm" -v gh_merge_graph:/data/graph \
             -e OSM_FILENAME=merged.osm.pbf \
-            -e OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/sachsen-latest.osm.pbf \
+            -e OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/sachsen/sachsen-latest.osm.pbf \
             -e JAVA_OPTS=-Xmx6g \
             -e REGION_SOURCE_SCRIPT=/dev/null \
             gh-merge:latest
@@ -992,3 +1150,206 @@ jobs:
         if: failure()
         run: docker logs gh 2>&1 | tail -60
 
+
+  # ── Caches auf main ─────────────────────────────────────────────────────────
+  # GitHub gibt einen Cache nur an den Ref weiter, der ihn geschrieben hat, und
+  # an Refs, die von ihm abzweigen. Was ein PR- oder Queue-Lauf speichert, sieht
+  # also kein anderer PR — nur Caches auf main sehen alle. Die schrieb früher der
+  # Push-Lauf nach jedem Merge. Ohne ihn lüde jeder PR die Extracts (rund 430 MB)
+  # neu von Geofabrik, baute die Images ohne Schichten-Cache und hätte bei einem
+  # Ausfall von Geofabrik keinen Rückfall auf die Extracts eines früheren Tages.
+  #
+  # Die Schlüssel und Pfade müssen genau denen der Jobs oben entsprechen, sonst
+  # füllt dieser Job einen Cache, den niemand liest. Wer dort einen ändert,
+  # zieht ihn hier mit.
+  caches:
+    name: Caches – Extracts, pip, npm
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Tagesstempel fuer den Extract-Cache
+        id: osm-day
+        run: echo "day=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      # lookup-only: nur fragen, ob es den heutigen Eintrag schon gibt.
+      - name: Liechtenstein schon im Cache?
+        id: li
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: osm/liechtenstein-latest.osm.pbf
+          key: osm-extract-liechtenstein-${{ steps.osm-day.outputs.day }}
+          lookup-only: true
+
+      - name: Berlin schon im Cache?
+        id: be
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: osm/berlin-latest.osm.pbf
+          key: osm-extract-berlin-${{ steps.osm-day.outputs.day }}
+          lookup-only: true
+
+      - name: Sachsen und Niederschlesien schon im Cache?
+        id: sd
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            osm/sachsen.osm.pbf
+            osm/dolnoslaskie.osm.pbf
+          key: osm-extracts-sachsen-dolnoslaskie-${{ steps.osm-day.outputs.day }}
+          lookup-only: true
+
+      # Wie in den Region-Jobs: nach .part laden und nur vollständige Dateien
+      # cachen. Scheitert ein Download, bleibt der Eintrag von heute leer — die
+      # Jobs versuchen es dann selbst und fallen auf einen früheren Tag zurück.
+      - name: Extracts laden
+        id: osm-download
+        env:
+          LI_HIT: ${{ steps.li.outputs.cache-hit }}
+          BE_HIT: ${{ steps.be.outputs.cache-hit }}
+          SD_HIT: ${{ steps.sd.outputs.cache-hit }}
+        run: |
+          mkdir -p osm
+          laden() {
+            curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 \
+                 --retry-max-time 600 -o "$1.part" "$2" && mv "$1.part" "$1"
+          }
+          li=false; be=false; sd=false
+          if [ "$LI_HIT" != true ]; then
+            if laden osm/liechtenstein-latest.osm.pbf \
+                 https://download.geofabrik.de/europe/liechtenstein/liechtenstein-latest.osm.pbf; then
+              li=true
+            else
+              echo "::warning::Liechtenstein nicht geladen."
+            fi
+          fi
+          # Berlin fuer den Geofabrik-Spiegel des Regionswechsels. Hier und nur
+          # hier kommt es von Geofabrik selbst — dieser Lauf ist damit auch der,
+          # der eine erneute Umstellung der Ablage bemerkt.
+          if [ "$BE_HIT" != true ]; then
+            if laden osm/berlin-latest.osm.pbf \
+                 https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf; then
+              be=true
+            else
+              echo "::warning::Berlin nicht geladen."
+            fi
+          fi
+          if [ "$SD_HIT" != true ]; then
+            if laden osm/sachsen.osm.pbf \
+                 https://download.geofabrik.de/europe/germany/sachsen/sachsen-latest.osm.pbf &&
+               laden osm/dolnoslaskie.osm.pbf \
+                 https://download.geofabrik.de/europe/poland/dolnoslaskie/dolnoslaskie-latest.osm.pbf; then
+              sd=true
+            else
+              echo "::warning::Sachsen/Niederschlesien nicht geladen."
+            fi
+          fi
+          echo "li=$li" >> "$GITHUB_OUTPUT"
+          echo "be=$be" >> "$GITHUB_OUTPUT"
+          echo "sd=$sd" >> "$GITHUB_OUTPUT"
+          ls -lh osm/
+
+      - name: Liechtenstein in den Cache legen
+        if: steps.osm-download.outputs.li == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: osm/liechtenstein-latest.osm.pbf
+          key: osm-extract-liechtenstein-${{ steps.osm-day.outputs.day }}
+
+      - name: Berlin in den Cache legen
+        if: steps.osm-download.outputs.be == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: osm/berlin-latest.osm.pbf
+          key: osm-extract-berlin-${{ steps.osm-day.outputs.day }}
+
+      - name: Sachsen und Niederschlesien in den Cache legen
+        if: steps.osm-download.outputs.sd == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            osm/sachsen.osm.pbf
+            osm/dolnoslaskie.osm.pbf
+          key: osm-extracts-sachsen-dolnoslaskie-${{ steps.osm-day.outputs.day }}
+
+      # setup-python/setup-node speichern im Post-Schritt, wenn ihr Schlüssel
+      # (Hash der Lockdatei) noch fehlt — dafür muss der Cache-Ordner gefüllt sein.
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: pip-Cache füllen
+        run: pip install -r backend/requirements.txt "ruff==0.15.0" pytest-asyncio
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "26"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: npm-Cache füllen
+        run: cd frontend && npm ci --prefer-offline --no-audit --fund=false
+
+  caches-e2e:
+    name: Caches – npm im Playwright-Image
+    # Eigener Job, weil `frontend-e2e` im Container unter /root/.npm cacht —
+    # anderer Pfad, also anderer Cache-Eintrag als der von setup-node.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /root/.npm
+          key: e2e-npm-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: e2e-npm-${{ runner.os }}-
+      - name: npm-Cache füllen
+        run: cd frontend && npm ci --prefer-offline --no-audit --fund=false
+
+  caches-images:
+    name: Caches – Image-Schichten (${{ matrix.name }})
+    # Füllt dieselben Buildx-Scopes wie `container-scan`. Der wöchentliche Scan
+    # baut ohne Cache, also mit frischen Paketen; dieser Bau nimmt die
+    # vorhandenen Schichten und legt nur nach, was sich geändert hat.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: backend, context: ./backend }
+          - { name: frontend, context: ./frontend }
+          - { name: graphhopper, context: ./graphhopper }
+          - { name: updater, context: ./docker/updater }
+          - { name: osmium, context: ./docker/osmium }
+          - { name: medien, context: ./docker/medien }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/docker-spiegel
+        with:
+          dockerhub-username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub-token: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          buildkitd-config-inline: |
+            [registry."docker.io"]
+              mirrors = ["mirror.gcr.io"]
+
+      - name: ${{ matrix.name }} bauen (nur Cache)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          pull: true
+          outputs: type=cacheonly
+          cache-from: type=gha,scope=ci-${{ matrix.name }}
+          cache-to: type=gha,mode=min,scope=ci-${{ matrix.name }},ignore-error=true

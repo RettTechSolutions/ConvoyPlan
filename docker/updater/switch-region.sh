@@ -247,6 +247,40 @@ _json_str() {
 # Container den falschen oder gar keinen Stack (dieselbe Konstruktion wie in
 # update.sh:24; update-images.sh nutzt stattdessen /stack/docker-compose.yml).
 COMPOSE_FILES=(-p "$COMPOSE_PROJECT")
+# ── Geofabrik-Adressen ──────────────────────────────────────────────────────
+# Seit November 2026 liegt bei Geofabrik jede Region in ihrem eigenen
+# Verzeichnis: `europe/germany/berlin/berlin-latest.osm.pbf` statt
+# `europe/germany/berlin-latest.osm.pbf` (das liefert 404). Der Regionspfad
+# (`europe/germany/berlin`) bleibt derselbe; nur die Adresse daraus aendert
+# sich. Dieselbe Regel steht in backend/app/services/geofabrik.py
+# (`pfad_aus_stamm`, `pbf_url`) und graphhopper/entrypoint.sh — wer sie
+# aendert, zieht beide mit.
+
+# Regionspfad -> Adresse im neuen Schema.
+_geofabrik_url() {
+    printf 'https://download.geofabrik.de/%s/%s-latest.osm.pbf' "$1" "${1##*/}"
+}
+
+# Adresse im alten Schema -> neues; eine neue (oder fremde) bleibt, wie sie ist.
+# Erkannt wird das neue Schema an den beiden gleichen letzten Segmenten des
+# Dateistamms (`berlin/berlin`), siehe pfad_aus_stamm im Backend.
+_geofabrik_neu() {
+    local stamm last dir
+    case "$1" in
+        https://download.geofabrik.de/*-latest.osm.pbf) ;;
+        *) printf '%s' "$1"; return ;;
+    esac
+    stamm="${1#https://download.geofabrik.de/}"
+    stamm="${stamm%-latest.osm.pbf}"
+    last="${stamm##*/}"
+    dir="${stamm%/*}"
+    if [ "$dir" != "$stamm" ] && [ "${dir##*/}" = "$last" ]; then
+        printf '%s' "$1"
+    else
+        _geofabrik_url "$stamm"
+    fi
+}
+
 _resolve_compose_files() {
     if [ -n "${REGION_COMPOSE_FILE:-}" ] && [ -s "${REGION_COMPOSE_FILE}" ]; then
         COMPOSE_FILES+=(-f "$REGION_COMPOSE_FILE")
@@ -902,6 +936,15 @@ case "$URL" in
     https://download.geofabrik.de/*-latest.osm.pbf) ;;
     *) fail "URL nicht zugelassen: $URL" ;;
 esac
+# Eine Anforderung im alten Schema (vor allem ein geplanter Wechsel, der von
+# vor der Umstellung im Volume liegt) wird gehoben statt an der 404 zu
+# scheitern. Erst NACH der Allowlist: gehoben wird nur, was zugelassen ist,
+# und das Ergebnis besteht aus denselben Zeichen.
+_url_neu="$(_geofabrik_neu "$URL")"
+if [ "$_url_neu" != "$URL" ]; then
+    log "Adresse im alten Geofabrik-Schema, gehoben auf: $_url_neu"
+    URL="$_url_neu"
+fi
 # Zwei zulaessige Formen: der Geofabrik-Originalname bei einer Einzelregion,
 # und merged-<8 Hex>.osm.pbf bei einer zusammengesetzten. Der Hash kommt aus
 # der sortierten Bestandteilsliste (backend/app/services/region_compose.py);
@@ -1034,7 +1077,7 @@ if [ -n "$SOURCES" ]; then
     _old_ifs="$IFS"; IFS='|'
     for _s in $SOURCES; do
         IFS="$_old_ifs"
-        _sz="$(_head_size "https://download.geofabrik.de/${_s}-latest.osm.pbf")"
+        _sz="$(_head_size "$(_geofabrik_url "$_s")")"
         [ "${_sz:-0}" -gt 0 ] 2>/dev/null || fail "Extract nicht abrufbar: $_s"
         SIZE=$(( SIZE + _sz ))
         SOURCE_SIZES+=("$_sz")
@@ -1230,7 +1273,7 @@ if [ -n "$SOURCES" ]; then
         # Regionen geprueft: nur [a-z0-9./-]) und matcht weiterhin das
         # Aufraeum-`find` auf `*-latest.osm.pbf`.
         _src_name="$(printf '%s' "$_src" | tr '/' '-')-latest.osm.pbf"
-        _src_url="https://download.geofabrik.de/${_src}-latest.osm.pbf"
+        _src_url="$(_geofabrik_url "$_src")"
         # Die Bestandteile sind oben bereits gegen die Zeichen-Allowlist
         # geprueft worden; ein case auf die hier gebaute URL waere
         # unerreichbar, weil sie aus genau diesem Praefix entsteht.

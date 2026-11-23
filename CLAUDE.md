@@ -147,6 +147,37 @@ einen fälligen Regionswechsel zurück, solange gebaut wird — das Backend lehn
 den *sofortigen* ab, geplante dürfen liegen (`test_region_schedule.sh`, Fälle 9–16).
 Zwei Umsetzungen derselben Regel; wer eine ändert, zieht die andere mit.
 
+### Geofabrik-Adressen: der Pfad bleibt, die Adresse wird gehoben
+
+Seit November 2026 legt Geofabrik jede Region in ein eigenes Verzeichnis:
+`europe/germany/berlin/berlin-latest.osm.pbf` statt `europe/germany/berlin-latest.osm.pbf`
+(die alte Adresse liefert 404, ohne Weiterleitung; Kontinente lagen vorher in der Wurzel).
+Der **Regionspfad** (`europe/germany/berlin`) ist derselbe geblieben, und an ihm hängt alles
+Bestehende: `OSM_SOURCES`, der Hash im Dateinamen einer Kombination und damit der
+Graph-Fingerprint. Der Dateiname einer Einzelregion (`berlin-latest.osm.pbf`) ändert sich auch
+nicht — ein Update baut deshalb keinen Graphen neu.
+
+Adressen im alten Schema stehen auf Bestandsinstallationen in `.env`, `.region` und
+geplanten Wechseln. Sie werden **gehoben**, nicht abgelehnt, an drei Stellen mit derselben Regel
+(neues Schema = die letzten beiden Segmente des Dateistamms sind gleich):
+`geofabrik.pfad_aus_stamm`/`pbf_url` (auch in `validate_region_url`), der Kopf von
+`graphhopper/entrypoint.sh` und `_geofabrik_neu`/`_geofabrik_url` in `switch-region.sh`. Wer eine
+ändert, zieht die anderen mit. Tests: `tests/test_geofabrik_neue_pfade.py`,
+`test_entrypoint_region.sh` (Fälle 4–8), `test_switch_region.sh` (1g, 1h).
+
+**Der Region-Job der CI fragt Geofabrik nicht.** Am selben Tag war Geofabrik von den
+Runnern aus stundenlang nur zeitweise erreichbar, und jeder Merge hing am Glück. Seitdem
+antwortet im Job `region-switch` ein Spiegel (`.github/region-spiegel/`) unter dem Namen
+`download.geofabrik.de`: Netzwerk-Alias im Compose-Netz, Zertifikat einer Test-CA, der
+nur der Updater dort vertraut (`CURL_CA_BUNDLE`), Berlin aus dem Tagescache, den `caches`
+füllt. Der Updater bleibt unverändert, auch seine Allowlist — wer stattdessen eine
+Basis-URL einführt, öffnet die Sicherheitsgrenze. Eine erneute Umstellung bei Geofabrik
+bemerkt damit nur noch `caches` beim Laden, nicht mehr jeder PR. Der Spiegel liegt im
+**selben** Schema wie `pbf_url`/`_geofabrik_url`; `test_geofabrik_spiegel.sh` prüft das am
+Original. Der Schritt „Beleg: Berlin kam vom Geofabrik-Spiegel“ im Job verlangt HEAD,
+`.md5` und Download im Protokoll des Spiegels — sonst wäre ein grüner Lauf, der am
+Spiegel vorbei doch Geofabrik erreicht hat, nicht von einem echten zu unterscheiden.
+
 ### Speicher: Import im Heap, Betrieb per MMAP
 
 `graphhopper/entrypoint.sh` startet in **zwei Phasen**, wenn `GH_COMMAND=server`
@@ -399,6 +430,37 @@ Tests: `tests/test_durchfahrtshoehen.py`, `tests/test_bruecken_ohne_hoehe.py`,
 `tests/test_gewichtsgrenzen.py`, `tests/test_roadbook.py` (Hinweise),
 `frontend/e2e/durchfahrtshoehen.spec.ts`, `frontend/e2e/gewichtsgrenzen.spec.ts`.
 Anwenderdoku: `wiki/Konvoi-Planung.md`, „Durchfahrtshöhen" und „Gewichtsgrenzen".
+
+### Marschbefehl nach FwDV 100, Anlage 4
+
+`services/pdf.py` setzt den Marschbefehl nach dem *Muster für einen Marschbefehl* der FwDV 100,
+Anlage 4 (Stand 1999; gleichlautend z. B. bei der LFS Sachsen, S. 59–60). Die Website
+(`convoyplan.de/marschbefehl/`) verspricht genau diese Gliederung und bietet eine Vorlage in
+derselben an — wer hier umsortiert oder umbenennt, bricht diese Zusage.
+
+- **Reihenfolge und Begriffe der FwDV**: Kopf (befehlende Stelle, Abgangsort/-datum/-zeit, „Befehl
+  für den Marsch in den Raum …“, Karte), 1.–5. mit ihren Unterpunkten, dann **Anlagen** und
+  **Verteiler ohne Ziffer**, Unterschrift (Name, Dienststellung). Jeder Punkt wird gedruckt, ein
+  leerer mit „-“ — „die Reihenfolge der Hauptziffern ist aber immer einzuhalten“. Eine Hauptziffer
+  nicht wieder wegfallen lassen, wenn sie leer ist.
+- **App-Ergänzungen an FwDV-Stellen**, nie als eigene Ziffer: Beflaggung, Durchlaufpunkte,
+  Fahrzeugmaße, Durchfahrtshöhen, Gewichtsgrenzen unter 3. „Besondere Einzelheiten je nach Lage“,
+  Kanalwechsel unter 5. „Kommunikationsverbindungen während des Marsches“.
+- **Abgeleitet wird an einer Stelle** (`pdf.feld`, `schliessender`, `platz_fuehrung`,
+  `aerztliche_versorgung`, `durchschnitt_kmh`, `marschpausen`, `marschraum`, die `*_STANDARD`-Texte);
+  die Word-Vorlage ruft dieselben Funktionen. Geraten wird nicht: ohne Sonderfunktion
+  „Führungsfahrzeug“ bleibt der Platz der Führungskraft leer.
+- **Marschpausen a) / b)**: Technischer Halt sowie Tank- und Wartungshalt unter a), **jeder** andere
+  Halt unter b) — damit kein Halt aus dem Befehl fällt.
+- **Abgangsdatum/-zeit = Export**, nicht der Marschbeginn; der steht unter „Ablaufzeit“.
+- Felder: Migration `0076`. Das alte `versorgung` bleibt als „Ergänzend“ unter 4.; ein Freitext
+  lässt sich nicht verlässlich auf die vier Unterpunkte verteilen. `update_convoy` leert die Felder
+  aus `MARSCHBEFEHL_FELDER` bei mitgeschicktem `null` (das Formular schickt geleerte Felder so).
+- Tests: `tests/test_marschbefehl_fwdv.py` (Reihenfolge im PDF und in der Beispielvorlage,
+  Ableitungen, Leeren) und `frontend/e2e/marschbefehl-formular.spec.ts` (Gliederung des
+  Formulars, jedes Feld in seine Spalte, geleert = `null`, Pflichtfelder). Ein neues Feld
+  gehört in `BEFEHL_FWDV` im Formular **und** in die Liste der Spec. Ändert sich die Gliederung, zieht die Website mit
+  (`src/data/marschbefehl.ts`, `scripts/marschbefehl-vorlage.py` im Website-Repo).
 
 ### Marschbefehl aus der Word-Vorlage: die Vorlage ist fremder Code
 
@@ -1428,9 +1490,23 @@ Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste
   YAML-Datei heraus**, statt es nachzubauen — ein Nachbau prüft die Kopie. Wer
   dort einen weiteren Test anlegt, braucht nichts zu verdrahten: der Job
   sammelt `test_*.sh` aus allen vier Verzeichnissen ein.
-- **Container** — Trivy scannt alle sechs Images (`backend`, `frontend`,
+- **Container** — Trivy scannt die sechs Images (`backend`, `frontend`,
   `graphhopper`, `updater`, `osmium`, `medien`) auf HIGH/CRITICAL mit verfügbarem Fix.
-  Ausnahmen gehören mit Begründung in `.trivyignore`.
+  Ausnahmen gehören mit Begründung in `.trivyignore`. Auf PR und Queue nur die, deren
+  Kontext sich geändert hat (alle bei `ci.yml`, `.trivyignore`, `docker-spiegel`),
+  wöchentlich alle ohne Cache; welche, entscheidet `changes` (Ausgabe `images`,
+  `.github/workflows/tests/test_ci_aenderungen.sh`). Ein siebtes Image kommt dort in
+  `kontexte` und in `caches-images`.
+- **Wann CI läuft** — PR, Merge Queue, wöchentlich, täglich, von Hand; **nicht** beim
+  Push auf `main`, denn die Queue hat genau diesen Stand schon geprüft. Caches sieht
+  jeder PR nur, wenn sie auf `main` liegen; die füllen deshalb die Jobs `caches*` im
+  täglichen Lauf — mit **denselben** Schlüsseln wie die Jobs, die sie lesen. Wer dort
+  einen Schlüssel oder Pfad ändert (Extracts, pip, npm, Buildx-Scope), zieht ihn mit.
+  Die E2E-Suite läuft in zwei Teilen; Pflicht-Check ist der Sammeljob
+  `Frontend – E2E (Playwright)`. Das Grenzrouting (`region-merge`) läuft nur bei
+  Änderungen an `graphhopper/`, `docker/osmium/`, `docker/updater/` (Ausgabe
+  `grenzrouting`); der Regionswechsel bleibt bei `region`, weil er als einziger Test
+  den Backend-Container startet.
 - **Medien** — Job `Medien – ffmpeg und Metadaten` baut `docker/medien` und fährt
   `docker/medien/tests/test_medien.sh` gegen echte Handyvideos aus `tests/proben/`
   (GPS, Gerät, Aufnahmezeit weg; hochkant aufrecht; 720p/30 fps; zu lang abgelehnt).

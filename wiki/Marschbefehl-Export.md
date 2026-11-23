@@ -2,43 +2,63 @@
 
 ## Marschbefehl (PDF)
 
-Der Marschbefehl ist das offizielle Führungsdokument für den Konvoi. ConvoyPlan generiert ihn im standardisierten 7-Abschnitte-Format — oder als Word-Dokument aus der eigenen Vorlage der Organisation (siehe [unten](#marschbefehl-als-word-dokument-eigene-vorlage)).
+Der Marschbefehl ist das Führungsdokument für den Konvoi. ConvoyPlan setzt ihn nach dem **Muster für einen Marschbefehl der FwDV 100, Anlage 4** — oder als Word-Dokument aus der eigenen Vorlage der Organisation (siehe [unten](#marschbefehl-als-word-dokument-eigene-vorlage)).
 
-### Pflichtfelder befüllen
+Die FwDV sagt dazu: *„Es ist nicht immer zu jedem Punkt etwas anzuordnen. Die Reihenfolge der Hauptziffern ist aber immer einzuhalten.“* Deshalb steht im PDF jeder Punkt in dieser Reihenfolge; was nicht angeordnet ist, steht mit „-“ da.
 
-Öffne den Konvoi und wechsle zum Tab **Marschbefehl**. Folgende Felder stehen zur Verfügung:
+### Gliederung und woher die Angaben kommen
 
-| Abschnitt | Feld | Beschreibung |
-|-----------|------|-------------|
-| 1 | **Lage** | Operative Ausgangslage, Lagebeschreibung |
-| 2 | **Auftrag** | Aufgabe und Ziel des Konvois |
-| 3 | **Marschform** | Geschlossener Verband / Gruppen / Einzeln |
-| 4 | **Ablaufpunkt** | Name des Startorts |
-| 4 | **Ablaufzeit** | Geplante Abfahrtszeit |
-| 4 | **Ablaufführer** | Verantwortliche Person |
-| 5 | **Versorgung** | Kraftstoff, Verpflegung, Logistik |
-| 6 | **Funkgruppe** | Primäre Funkgruppe / Netz |
-| 7 | **Anlagen** | Verweis auf Beilagen und Anhänge |
+Öffne den Konvoi, Tab **Export** → **Marschbefehl ausfüllen**. Was ConvoyPlan aus Route, Fahrzeugen und Wegpunkten kennt, muss nicht eingetragen werden.
+
+| FwDV-Punkt | Im Formular | Sonst |
+|---|---|---|
+| **Kopf:** Befehlende Stelle | – | Organisation des Konvois |
+| Abgangsort | **Abgangsort** | |
+| Abgangsdatum, Abgangszeit | – | Zeitpunkt des Exports |
+| Befehl für den Marsch in den Raum … | **Marsch in den Raum** | Marschziel |
+| Karte | **Karte** | |
+| **1. Lage:** Gefahren- / Schadenlage | **Gefahren- / Schadenlage** (Pflicht) | |
+| Eigene Lage | **Eigene Lage** | |
+| **2. Auftrag:** Zuteilung, Unterstellung und Abgabe von Kräften | **Zuteilung, Unterstellung …** | |
+| Erhaltener Auftrag | **Erhaltener Auftrag** (Pflicht) | |
+| **3. Durchführung:** Marschziel, Marschweg, Marschentfernung | – | letzter Wegpunkt, „von A über B nach C“, Länge der Route |
+| Marschform | **Marschform** | |
+| Marschfolge | – | Fahrzeuge in Reihenfolge, mit Funkrufname, Kennzeichen, Mobiltelefon, Sonderfunktion |
+| Marschführer/in | **Marschführer/in** | |
+| Führer/innen der Einzelgruppen | **Führer/innen der Einzelgruppen** | |
+| Schließende/r | – | Fahrzeug mit Sonderfunktion „Schließender“, sonst das letzte |
+| Marschabstand | **Marschabstand** | |
+| Fahrzeugabstand | (Konvoi-Einstellungen) | innerorts, außerorts, Autobahn |
+| Ablaufpunkt, Ablaufzeit, Ablaufführer/in | **Ablaufpunkt** (Pflicht), **Ablaufzeit** (Pflicht), **Ablaufführer** | |
+| Marschgeschwindigkeit | (Konvoi-Einstellungen) | Ø aus Marschentfernung und Fahrzeit ohne Halte (*theoretische Durchschnittsgeschwindigkeit*), dazu die Höchstwerte innerorts/außerorts |
+| Beleuchtung | **Beleuchtung** | Abblendlicht auch am Tag; Katastrophenschutz: blaues Blinklicht ohne Einsatzhorn |
+| Marschüberwachung und Verkehrssicherung | **Marschüberwachung …** | |
+| Marschpausen a) Technische Halte, b) Raste | – | Halte der Route: Technische Halte sowie Tank- und Wartungshalte unter a), alle übrigen Halte unter b) |
+| Besondere Einzelheiten je nach Lage | **Besondere Einzelheiten** | dazu Beflaggung, Durchlaufpunkte, Fahrzeuge im Verband (Höhe, Gewicht), Durchfahrtshöhen und Gewichtsgrenzen (siehe [Konvoi planen](Konvoi-Planung#durchfahrtshöhen)) |
+| **4. Versorgung:** Verpflegung | **Verpflegung** | |
+| Betriebsstoff | **Betriebsstoff** | „Alle Fahrzeuge haben sich grundsätzlich vollgetankt am Ablaufpunkt einzufinden.“ |
+| Instandsetzungsdienst | **Instandsetzungsdienst** | |
+| Ärztliche Versorgung | **Ärztliche Versorgung** | Fahrzeuge mit Sonderfunktion „Sanitätsdienst“ |
+| **5. Führung und Verbindung:** Kommunikationsverbindungen während des Marsches | **Funkgruppe** | dazu die Kanalwechsel an Leitstellengrenzen |
+| Sonstige Verbindungen, Lotsenstellen und Verkehrsleitpunkte | **Sonstige Verbindungen …** | |
+| Platz der Führungskraft | **Platz der Führungskraft** | Fahrzeug mit Sonderfunktion „Führungsfahrzeug“ |
+| **Anlagen** (ohne Ziffer) | **Anlagen** | |
+| **Verteiler** | **Verteiler** | |
+| **Unterschrift** (Name, Dienststellung) | **Name**, **Dienststellung** | Linie zum Unterschreiben |
+
+Ein Text, der vor dieser Gliederung unter **Versorgung** eingetragen wurde, bleibt erhalten und steht unter 4. als „Ergänzend“.
 
 ### Marschform-Optionen
 
 | Option | Bedeutung |
 |--------|-----------|
-| **Geschlossener Verband** | Alle Fahrzeuge fahren gemeinsam als Einheit |
-| **Gruppenweise** | Fahrzeuggruppen mit Abstand |
-| **Einzeln** | Fahrzeuge fahren unabhängig voneinander |
+| **Geschlossener Gesamtverband** | Alle Fahrzeuge fahren gemeinsam als Einheit |
+| **Einzelgruppen** | Fahrzeuggruppen mit Marschabstand |
+| **Individuelle Anreise** | Fahrzeuge fahren unabhängig voneinander |
 
 ### PDF generieren
 
-1. Klicke auf **Marschbefehl exportieren** → **Als PDF herunterladen**
-2. Das PDF enthält automatisch:
-   - Alle ausgefüllten Abschnitte
-   - Routenkarte mit Wegpunkten
-   - Zeitplan-Tabelle (Wegpunkte, Ankunft, Abfahrt)
-   - Fahrzeugliste mit Positionen und Sonderfunktionen
-   - Kraftstoffanalyse
-   - Kanalwechsel-Punkte (falls Leitstellen konfiguriert)
-   - Durchfahrtshöhen: enge und knappe Unterführungen auf der Route und Brücken ohne Höhenangabe (siehe [Konvoi planen](Konvoi-Planung#durchfahrtshöhen))
+Im Formular **Speichern & PDF**, oder im Tab **Export** → Marschbefehl als PDF. Eine Karte enthält der Marschbefehl nicht; die steht im [Roadbook](#roadbook-pdf), das sich als Anlage eignet.
 
 ---
 
@@ -67,9 +87,9 @@ Die Steuerzeilen mit `{%p …%}` und `{%tr …%}` fallen beim Export samt Absatz
 
 Die Gruppen der Felder:
 
-- **`konvoi`**: Name, befehlende Stelle, Datum/Uhrzeit, Lage, Auftrag, Marschziel, Marschweg, Marschstrecke, Marschform, Ablaufpunkt/-zeit/-führer, Geschwindigkeiten, Abstände, Versorgung, Funkgruppe, Anlagen, Zahl der Fahrzeuge, höchstes und schwerstes Fahrzeug
+- **`konvoi`**: Name, befehlende Stelle, Datum/Uhrzeit, Lage, Auftrag, Marschziel, Marschweg, Marschstrecke, Marschform, Ablaufpunkt/-zeit/-führer, Geschwindigkeiten, Abstände, Versorgung, Funkgruppe, Anlagen, Zahl der Fahrzeuge, höchstes und schwerstes Fahrzeug; dazu alle Punkte der FwDV 100, Anlage 4 (Abgangsort, -datum, -zeit, Raum, Karte, Eigene Lage, Kräfte, Marschentfernung, Marschführer/in, Führer/innen der Einzelgruppen, Schließende/r, Marschabstand, Durchschnittsgeschwindigkeit, Beleuchtung, Marschüberwachung, Besondere Einzelheiten, Verpflegung, Betriebsstoff, Instandsetzungsdienst, Ärztliche Versorgung, Sonstige Verbindungen, Platz der Führungskraft, Verteiler, Unterschrift Name und Dienststellung). `marschstrecke` und `marschentfernung` sind derselbe Wert; ältere Vorlagen funktionieren weiter.
 - **`organisation`**, **`erstellt`**: Name der Organisation, Datum und Uhrzeit des Exports
-- **Listen** (für Tabellen): `fahrzeuge`, `wegpunkte`, `durchlaufpunkte`, `marschpausen`, `kanalwechsel`, `durchfahrtshoehen`, `gewichtsgrenzen`
+- **Listen** (für Tabellen): `fahrzeuge`, `wegpunkte`, `durchlaufpunkte`, `marschpausen`, `technische_halte`, `raste`, `kanalwechsel`, `durchfahrtshoehen`, `gewichtsgrenzen`
 
 Die vollständige Liste mit allen Unterfeldern steht in der Feldübersicht der Beispielvorlage und im Org-Admin unter **Verfügbare Platzhalter**.
 

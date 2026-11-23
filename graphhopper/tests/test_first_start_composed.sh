@@ -55,7 +55,7 @@ run_head() {
 # ── Fall 1: OSM_SOURCES gesetzt, Datei fehlt -> warten statt laden ──────────
 D1="$TMP/d1"; mkdir -p "$D1"
 cat > "$D1/.region" <<'EOF'
-OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany-latest.osm.pbf
+OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/germany-latest.osm.pbf
 OSM_FILENAME=merged-a3f9c21e.osm.pbf
 JAVA_OPTS=-Xmx6g -Xms1g -XX:+UseG1GC
 OSM_SOURCES=europe/germany|europe/poland
@@ -79,7 +79,7 @@ vals2="$( set +e
     export OSM_DIR="$D2" GRAPH_DIR="$D2/graph" \
            REGION_SOURCE_SCRIPT="$REGION_SOURCE" REGION_COMPOSED_WAIT_ONCE=1 \
            OSM_FILENAME=berlin-latest.osm.pbf \
-           OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf
+           OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf
     # shellcheck source=/dev/null
     . "$HEAD_SH" >/dev/null 2>&1
     echo "${OSM_FILENAME}|${OSM_SOURCES:-LEER}" )"
@@ -88,7 +88,7 @@ check "ohne .region bleibt OSM_SOURCES leer" "${vals2##*|}" "LEER"
 
 out2="$(run_head "$D2" \
         "OSM_FILENAME=berlin-latest.osm.pbf" \
-        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf")"
+        "OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf")"
 echo "$out2" | grep -q "Zusammengesetzte Kartenregion" && r=ja || r=nein
 check "ohne OSM_SOURCES kein Warte-Hinweis" "$r" "nein"
 
@@ -97,7 +97,7 @@ check "ohne OSM_SOURCES kein Warte-Hinweis" "$r" "nein"
 # Alles-oder-nichts-Regel nicht ausloesen.
 D3="$TMP/d3"; mkdir -p "$D3/graph"
 cat > "$D3/.region" <<'REGEOF'
-OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf
+OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf
 OSM_FILENAME=berlin-latest.osm.pbf
 JAVA_OPTS=-Xmx3g -Xms1g -XX:+UseG1GC
 REGEOF
@@ -141,7 +141,7 @@ vals5="$( set +e
     . "$REGION_SOURCE" >/dev/null 2>&1
     first="${OSM_SOURCES:-LEER}"
     cat > "$D5/.region" <<'REG5'
-OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf
+OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf
 OSM_FILENAME=berlin-latest.osm.pbf
 JAVA_OPTS=-Xmx3g
 REG5
