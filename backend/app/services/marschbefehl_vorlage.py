@@ -47,6 +47,7 @@ from jinja2.sandbox import ImmutableSandboxedEnvironment, SecurityError
 
 from app.services import durchfahrtshoehe as hoehe_svc
 from app.services import gewichtsgrenzen as gewicht_svc
+from app.services import pdf as pdf_svc
 from app.services.pdf import (
     MARSCHFORM_LABELS,
     PURPOSE_LABELS,
@@ -105,11 +106,11 @@ KONVOI_FELDER: tuple[Feld, ...] = (
     Feld("befehlende_stelle", "Befehlende Stelle (sonst Name der Organisation)"),
     Feld("datum", "Datum des Marschbeginns (sonst heute)"),
     Feld("uhrzeit", "Uhrzeit des Marschbeginns"),
-    Feld("lage", "1. Lage (Freitext, mehrzeilig)"),
-    Feld("auftrag", "2. Auftrag (Freitext, mehrzeilig)"),
+    Feld("lage", "1. Lage — Gefahren- / Schadenlage (Freitext, mehrzeilig)"),
+    Feld("auftrag", "2. Auftrag — Erhaltener Auftrag (Freitext, mehrzeilig)"),
     Feld("marschziel", "Name des letzten Wegpunkts"),
     Feld("marschweg", "„von A über B nach C“ aus den Wegpunkten"),
-    Feld("marschstrecke", "Länge der berechneten Route, z. B. „412,3 km“"),
+    Feld("marschstrecke", "Länge der berechneten Route, z. B. „412,3 km“ (ältere Bezeichnung)"),
     Feld("marschform", "Marschform"),
     Feld("ablaufpunkt", "Ablaufpunkt"),
     Feld("ablaufzeit", "Ablaufzeit (Datum und Uhrzeit)"),
@@ -119,12 +120,39 @@ KONVOI_FELDER: tuple[Feld, ...] = (
     Feld("abstand_innerorts", "Fahrzeugabstand innerorts, z. B. „15 m“"),
     Feld("abstand_ausserorts", "Fahrzeugabstand außerorts"),
     Feld("abstand_autobahn", "Fahrzeugabstand auf der Autobahn"),
-    Feld("versorgung", "4. Versorgung (Freitext, mehrzeilig)"),
+    Feld("versorgung", "4. Versorgung — Ergänzung zu den vier Unterpunkten (Freitext)"),
     Feld("funkgruppe", "Funkgruppe"),
-    Feld("anlagen", "6. Anlagen (Freitext, mehrzeilig)"),
+    Feld("anlagen", "Anlagen (Freitext, mehrzeilig)"),
     Feld("anzahl_fahrzeuge", "Zahl der Fahrzeuge im Verband"),
     Feld("hoechstes_fahrzeug", "Höhe des höchsten Fahrzeugs, mit der die Route berechnet wurde"),
     Feld("schwerstes_fahrzeug", "Gewicht des schwersten Fahrzeugs, mit dem die Route berechnet wurde"),
+    # FwDV 100, Anlage 4 (Migration 0076). Nur angehängt: Umbenennen oder
+    # Entfernen bräche hochgeladene Vorlagen.
+    Feld("abgangsort", "Kopf: Abgangsort"),
+    Feld("abgangsdatum", "Kopf: Abgangsdatum (Tag des Exports)"),
+    Feld("abgangszeit", "Kopf: Abgangszeit (Uhrzeit des Exports)"),
+    Feld("marschraum", "Kopf: „Befehl für den Marsch in den Raum …“ (sonst das Marschziel)"),
+    Feld("karte", "Kopf: Karte"),
+    Feld("lage_eigene", "1. Lage — Eigene Lage (die Gefahren- / Schadenlage steht in „lage“)"),
+    Feld("kraefte", "2. Auftrag — Zuteilung, Unterstellung und Abgabe von Kräften"),
+    Feld("marschentfernung", "3. Marschentfernung, z. B. „412,3 km“ (gleich „marschstrecke“)"),
+    Feld("marschfuehrer", "3. Marschführer/in"),
+    Feld("einzelgruppen_fuehrer", "3. Führer/innen der Einzelgruppen"),
+    Feld("schliessender", "3. Schließende/r: Fahrzeug mit dieser Sonderfunktion, sonst das letzte"),
+    Feld("marschabstand", "3. Marschabstand (zwischen Marschgruppen)"),
+    Feld("durchschnittsgeschwindigkeit", "3. Theoretische Durchschnittsgeschwindigkeit, z. B. „58 km/h“"),
+    Feld("beleuchtung", "3. Beleuchtung (sonst Standardtext)"),
+    Feld("marschueberwachung", "3. Marschüberwachung und Verkehrssicherung"),
+    Feld("besonderes", "3. Besondere Einzelheiten je nach Lage"),
+    Feld("verpflegung", "4. Verpflegung"),
+    Feld("betriebsstoff", "4. Betriebsstoff (sonst „vollgetankt am Ablaufpunkt“)"),
+    Feld("instandsetzung", "4. Instandsetzungsdienst"),
+    Feld("aerztliche_versorgung", "4. Ärztliche Versorgung (sonst Fahrzeuge mit Sanitätsdienst)"),
+    Feld("verbindungen", "5. Sonstige Verbindungen, Lotsenstellen und Verkehrsleitpunkte"),
+    Feld("platz_fuehrung", "5. Platz der Führungskraft (sonst das Führungsfahrzeug)"),
+    Feld("verteiler", "Verteiler"),
+    Feld("unterschrift_name", "Unterschrift: Name"),
+    Feld("unterschrift_dienststellung", "Unterschrift: Dienststellung"),
 )
 
 ORGANISATION_FELDER: tuple[Feld, ...] = (
@@ -134,6 +162,14 @@ ORGANISATION_FELDER: tuple[Feld, ...] = (
 ERSTELLT_FELDER: tuple[Feld, ...] = (
     Feld("datum", "Tag des Exports"),
     Feld("uhrzeit", "Uhrzeit des Exports"),
+)
+
+_PAUSE_FELDER: tuple[Feld, ...] = (
+    Feld("ort", "Ort"),
+    Feld("art", "Art, mit Zweck (Betriebsstoff, Rast, …)"),
+    Feld("dauer", "Dauer"),
+    Feld("ankunft", "Geplante Ankunft"),
+    Feld("vermerk", "Zusammengelegter Halt"),
 )
 
 LISTEN: tuple[Liste, ...] = (
@@ -163,13 +199,9 @@ LISTEN: tuple[Liste, ...] = (
         Feld("zeit", "Geplante Durchlaufzeit"),
         Feld("anmerkung", "Anmerkungen"),
     )),
-    Liste("marschpausen", "Halte und Technische Halte", (
-        Feld("ort", "Ort"),
-        Feld("art", "Art, mit Zweck (Betriebsstoff, Rast, …)"),
-        Feld("dauer", "Dauer"),
-        Feld("ankunft", "Geplante Ankunft"),
-        Feld("vermerk", "Zusammengelegter Halt"),
-    )),
+    Liste("marschpausen", "Halte und Technische Halte", _PAUSE_FELDER),
+    Liste("technische_halte", "Marschpausen a) Technische Halte (auch Tank- und Wartungshalte)", _PAUSE_FELDER),
+    Liste("raste", "Marschpausen b) Raste (alle übrigen Halte)", _PAUSE_FELDER),
     Liste("kanalwechsel", "Funk-Kanalwechsel entlang der Route", (
         Feld("km", "Kilometer, z. B. „87,4 km“"),
         Feld("aktion", "Anmelden, Abmelden, Convoy Anmeldung"),
@@ -269,6 +301,7 @@ def kontext(
     params = getattr(route, "routing_params", None) or {}
     hoehe_m = params.get("max_height_m")
     gewicht_t = params.get("max_weight_t")
+    schnitt = pdf_svc.durchschnitt_kmh(route)
 
     konvoi = {
         "name": _text(convoy.name),
@@ -295,6 +328,32 @@ def kontext(
         "anzahl_fahrzeuge": str(len(vehicles)),
         "hoechstes_fahrzeug": f"{_komma(hoehe_m, 2)} m" if hoehe_m else "",
         "schwerstes_fahrzeug": f"{_komma(gewicht_t, 1)} t" if gewicht_t else "",
+        # FwDV 100, Anlage 4 — dieselben Ableitungen und Vorgaben wie im PDF.
+        "abgangsort": _text(pdf_svc.feld(convoy, "abgangsort")),
+        "abgangsdatum": _datum(jetzt),
+        "abgangszeit": _zeit(jetzt),
+        "marschraum": _text(pdf_svc.marschraum(convoy, waypoints)),
+        "karte": _text(pdf_svc.feld(convoy, "karte")),
+        "lage_eigene": _text(pdf_svc.feld(convoy, "lage_eigene")),
+        "kraefte": _text(pdf_svc.feld(convoy, "kraefte")),
+        "marschentfernung": _km(dist_km) if dist_km else "",
+        "marschfuehrer": _text(pdf_svc.feld(convoy, "marschfuehrer")),
+        "einzelgruppen_fuehrer": _text(pdf_svc.feld(convoy, "einzelgruppen_fuehrer")),
+        "schliessender": _text(pdf_svc.schliessender(vehicles)),
+        "marschabstand": _text(pdf_svc.feld(convoy, "marschabstand")),
+        "durchschnittsgeschwindigkeit": f"{schnitt} km/h" if schnitt else "",
+        "beleuchtung": _text(pdf_svc.feld(convoy, "beleuchtung") or pdf_svc.BELEUCHTUNG_STANDARD),
+        "marschueberwachung": _text(pdf_svc.feld(convoy, "marschueberwachung")),
+        "besonderes": _text(pdf_svc.feld(convoy, "besonderes")),
+        "verpflegung": _text(pdf_svc.feld(convoy, "verpflegung")),
+        "betriebsstoff": _text(pdf_svc.feld(convoy, "betriebsstoff") or pdf_svc.BETRIEBSSTOFF_STANDARD),
+        "instandsetzung": _text(pdf_svc.feld(convoy, "instandsetzung")),
+        "aerztliche_versorgung": _text(pdf_svc.aerztliche_versorgung(convoy, vehicles)),
+        "verbindungen": _text(pdf_svc.feld(convoy, "verbindungen")),
+        "platz_fuehrung": _text(pdf_svc.platz_fuehrung(convoy, vehicles)),
+        "verteiler": _text(pdf_svc.feld(convoy, "verteiler")),
+        "unterschrift_name": _text(pdf_svc.feld(convoy, "unterschrift_name")),
+        "unterschrift_dienststellung": _text(pdf_svc.feld(convoy, "unterschrift_dienststellung")),
     }
 
     fahrzeuge = [
@@ -345,16 +404,17 @@ def kontext(
         }
         for w in waypoints if w.get("type") in ("checkpoint", "waypoint")
     ]
-    marschpausen = [
-        {
+    def _pause(w: dict) -> dict:
+        return {
             "ort": _text(w.get("name")),
             "art": _art(w),
             "dauer": _dauer(w),
             "ankunft": _zeit(_iso(w.get("planned_arrival"))),
             "vermerk": _vermerk(w),
         }
-        for w in waypoints if w.get("type") in ("stop", "technical_stop")
-    ]
+
+    marschpausen = [_pause(w) for w in waypoints if w.get("type") in ("stop", "technical_stop")]
+    technische_halte, raste = (list(map(_pause, teil)) for teil in pdf_svc.marschpausen(waypoints))
 
     aktionen = {"abmelden": "Abmelden", "convoy_anmeldung": "Convoy Anmeldung"}
     kanaele = [
@@ -401,6 +461,8 @@ def kontext(
         "wegpunkte": wegpunkte,
         "durchlaufpunkte": durchlaufpunkte,
         "marschpausen": marschpausen,
+        "technische_halte": technische_halte,
+        "raste": raste,
         "kanalwechsel": kanaele,
         "durchfahrtshoehen": hoehen,
         "gewichtsgrenzen": gewichte,
@@ -417,10 +479,25 @@ def beispiel_kontext() -> dict:
         marschform="geschlossener_verband", ablaufpunkt="Feuerwache Musterstadt",
         ablaufzeit=datetime(2026, 11, 7, 6, 45), ablaufführer="BI Muster",
         speed_urban_kmh=40, speed_rural_kmh=65, spacing_urban_m=15, spacing_rural_m=50,
-        spacing_motorway_m=100, versorgung="Verpflegung am Technischen Halt.",
+        spacing_motorway_m=100, versorgung="Kraftstoffkarte im ELW.",
         funkgruppe="TMO 312_Musterstadt", anlagen="Roadbook, Fahrzeugliste",
+        abgangsort="Musterstadt", marschraum="Grafschaft", karte="TK 1:50 000, Roadbook (Anlage)",
+        lage_eigene="Abrollbehälter-Zug einsatzbereit, 2 Fahrzeuge.",
+        kraefte="Der Zug wird der Einsatzleitung Ahrweiler unterstellt.",
+        marschfuehrer="BI Muster", einzelgruppen_fuehrer="entfällt (geschlossener Verband)",
+        marschabstand="entfällt",
+        beleuchtung=None, marschueberwachung="Lotse an der AS Grafschaft.",
+        besonderes="Baustelle A 3 bei Montabaur, einspurig.",
+        verpflegung="Verpflegung am Technischen Halt.", betriebsstoff=None,
+        instandsetzung="WLF übernimmt Abschleppen.", aerztliche_versorgung="RTW des Kreises am Schluss.",
+        verbindungen="Lotsenstelle AS Grafschaft, Mobil +49 171 0000001.",
+        platz_fuehrung="ELW an der Spitze",
+        verteiler="Alle Fahrzeugführer, Einsatzleitung Ahrweiler",
+        unterschrift_name="M. Muster", unterschrift_dienststellung="Kreisbrandinspektor",
     )
-    route = SimpleNamespace(distance_m=412_300, routing_params={"max_height_m": 3.4, "max_weight_t": 18.0})
+    route = SimpleNamespace(
+        distance_m=412_300, duration_s=25_600, routing_params={"max_height_m": 3.4, "max_weight_t": 18.0},
+    )
     waypoints = [
         {"name": "Feuerwache Musterstadt", "type": "waypoint", "planned_arrival": "2026-11-07T06:45:00"},
         {"name": "Rastplatz Hösbach", "type": "stop", "halt_purpose": "fuel",
@@ -428,7 +505,7 @@ def beispiel_kontext() -> dict:
          "planned_departure": "2026-11-07T09:20:00", "zusammengelegt": [{"kind": "tech", "duration_min": 30}]},
         {"name": "AS Montabaur", "type": "checkpoint", "planned_arrival": "2026-11-07T11:05:00",
          "notes": "Meldung an Führung"},
-        {"name": "BR Grafschaft", "type": "stop", "hold_duration_min": 60,
+        {"name": "BR Grafschaft", "type": "stop", "halt_purpose": "rest", "hold_duration_min": 60,
          "planned_arrival": "2026-11-07T12:10:00"},
     ]
     vehicles = [
@@ -628,7 +705,8 @@ def pruefe(vorlage: bytes) -> None:
 
 
 def beispielvorlage() -> bytes:
-    """Eine ``.docx`` in der Gliederung des eingebauten Marschbefehls, mit
+    """Eine ``.docx`` in der Gliederung des eingebauten Marschbefehls (FwDV 100,
+    Anlage 4), mit
     Platzhaltern statt Werten und einer Feldübersicht am Ende, die beim
     Export nicht mitgedruckt wird."""
     from docx import Document
@@ -673,53 +751,65 @@ def beispielvorlage() -> bytes:
         return t
 
     doc.add_heading("MARSCHBEFEHL", level=0).alignment = WD_ALIGN_PARAGRAPH.CENTER
+    # Kopf nach FwDV 100, Anlage 4
     absatz("{{ konvoi.befehlende_stelle }}", fett=True)
+    absatz("(Befehlende Stelle, taktische Bezeichnung)")
+    absatz("{{ [konvoi.abgangsort, konvoi.abgangsdatum, konvoi.abgangszeit] | select | join(', ') }} Uhr",
+           ausrichtung=WD_ALIGN_PARAGRAPH.RIGHT)
+    absatz("(Abgangsort, Abgangsdatum, Abgangszeit)", ausrichtung=WD_ALIGN_PARAGRAPH.RIGHT)
     absatz("Marschverband: {{ konvoi.name }}")
-    absatz("{{ konvoi.datum }} {{ konvoi.uhrzeit }}", ausrichtung=WD_ALIGN_PARAGRAPH.RIGHT)
+    absatz("Befehl für den Marsch in den Raum {{ konvoi.marschraum }}", fett=True,
+           ausrichtung=WD_ALIGN_PARAGRAPH.CENTER)
+    absatz("Karte: {{ konvoi.karte }}", ausrichtung=WD_ALIGN_PARAGRAPH.CENTER)
 
-    steuer("{%p if konvoi.lage %}")
     doc.add_heading("1. Lage", level=1)
-    absatz("{{ konvoi.lage }}")
-    steuer("{%p endif %}")
+    absatz("Gefahren- / Schadenlage: {{ konvoi.lage }}")
+    absatz("Eigene Lage: {{ konvoi.lage_eigene }}")
 
-    steuer("{%p if konvoi.auftrag %}")
     doc.add_heading("2. Auftrag", level=1)
-    absatz("{{ konvoi.auftrag }}")
-    steuer("{%p endif %}")
+    absatz("Zuteilung, Unterstellung und Abgabe von Kräften: {{ konvoi.kraefte }}")
+    absatz("Erhaltener Auftrag: {{ konvoi.auftrag }}")
 
     doc.add_heading("3. Durchführung", level=1)
-    doc.add_heading("Marschbewegung", level=2)
     absatz("Marschziel: {{ konvoi.marschziel }}")
     absatz("Marschweg: {{ konvoi.marschweg }}")
-    absatz("Marschstrecke: {{ konvoi.marschstrecke }}")
+    absatz("Marschentfernung: {{ konvoi.marschentfernung }}")
     absatz("Marschform: {{ konvoi.marschform }}")
-    steuer("{%p if konvoi.ablaufpunkt %}")
-    doc.add_heading("Ablaufpunkt", level=2)
-    absatz("Ablaufpunkt: {{ konvoi.ablaufpunkt }}")
-    absatz("Ablaufzeit: {{ konvoi.ablaufzeit }}")
-    absatz("Ablaufführer: {{ konvoi.ablauffuehrer }}")
-    steuer("{%p endif %}")
-
-    doc.add_heading("Marschfolge", level=2)
+    absatz("Marschfolge:")
     tabelle([("Pos.", "pos"), ("Funkrufname", "funkrufname"), ("Kennzeichen", "kennzeichen"),
              ("Mobiltelefon", "mobiltelefon"), ("Sonderfunktion", "sonderfunktion")], "fahrzeuge", "f")
-
-    doc.add_heading("Marschgeschwindigkeit", level=2)
-    absatz("Innerorts: {{ konvoi.geschwindigkeit_innerorts }}, außerorts: {{ konvoi.geschwindigkeit_ausserorts }}")
-    absatz("Die jeweils gültige Höchstgeschwindigkeit darf nicht überschritten werden.")
-    doc.add_heading("Fahrzeugabstände", level=2)
-    absatz("Innerorts: {{ konvoi.abstand_innerorts }}, außerorts: {{ konvoi.abstand_ausserorts }}, "
-           "Autobahn: {{ konvoi.abstand_autobahn }}")
+    absatz("Marschführer/in: {{ konvoi.marschfuehrer }}")
+    absatz("Führer/innen der Einzelgruppen: {{ konvoi.einzelgruppen_fuehrer }}")
+    absatz("Schließende/r: {{ konvoi.schliessender }}")
+    absatz("Marschabstand: {{ konvoi.marschabstand }}")
+    absatz("Fahrzeugabstand: innerorts {{ konvoi.abstand_innerorts }}, außerorts {{ konvoi.abstand_ausserorts }}, "
+           "Autobahn {{ konvoi.abstand_autobahn }}")
+    absatz("Ablaufpunkt: {{ konvoi.ablaufpunkt }}")
+    absatz("Ablaufzeit: {{ konvoi.ablaufzeit }}")
+    absatz("Ablaufführer/in: {{ konvoi.ablauffuehrer }}")
+    absatz("Marschgeschwindigkeit: {{ konvoi.durchschnittsgeschwindigkeit }} (theoretische "
+           "Durchschnittsgeschwindigkeit); höchstens innerorts {{ konvoi.geschwindigkeit_innerorts }}, "
+           "außerorts {{ konvoi.geschwindigkeit_ausserorts }}. Die jeweils gültige Höchstgeschwindigkeit "
+           "darf nicht überschritten werden.")
+    absatz("Beleuchtung: {{ konvoi.beleuchtung }}")
+    absatz("Marschüberwachung und Verkehrssicherung: {{ konvoi.marschueberwachung }}")
+    absatz("Marschpausen:")
+    absatz("a) Technische Halte")
+    steuer("{%p if technische_halte %}")
+    tabelle([("Ort", "ort"), ("Art", "art"), ("Ankunft", "ankunft"), ("Dauer", "dauer"), ("Hinweis", "vermerk")],
+            "technische_halte", "t")
+    steuer("{%p endif %}")
+    absatz("b) Raste")
+    steuer("{%p if raste %}")
+    tabelle([("Ort", "ort"), ("Art", "art"), ("Ankunft", "ankunft"), ("Dauer", "dauer"), ("Hinweis", "vermerk")],
+            "raste", "r")
+    steuer("{%p endif %}")
+    absatz("Besondere Einzelheiten je nach Lage: {{ konvoi.besonderes }}")
 
     steuer("{%p if durchlaufpunkte %}")
     doc.add_heading("Durchlaufpunkte", level=2)
     tabelle([("Durchlaufpunkt", "name"), ("Geplante Durchlaufzeit", "zeit"), ("Anmerkungen", "anmerkung")],
             "durchlaufpunkte", "d")
-    steuer("{%p endif %}")
-
-    steuer("{%p if marschpausen %}")
-    doc.add_heading("Marschpausen", level=2)
-    tabelle([("Ort", "ort"), ("Art", "art"), ("Dauer", "dauer"), ("Hinweis", "vermerk")], "marschpausen", "m")
     steuer("{%p endif %}")
 
     doc.add_heading("Fahrzeuge im Verband", level=2)
@@ -741,24 +831,35 @@ def beispielvorlage() -> bytes:
     steuer("{%p endif %}")
 
     doc.add_heading("4. Versorgung", level=1)
-    absatz("{{ konvoi.versorgung }}")
-    absatz("Alle Fahrzeuge haben sich grundsätzlich vollgetankt am Ablaufpunkt einzufinden!")
+    absatz("Verpflegung: {{ konvoi.verpflegung }}")
+    absatz("Betriebsstoff: {{ konvoi.betriebsstoff }}")
+    absatz("Instandsetzungsdienst: {{ konvoi.instandsetzung }}")
+    absatz("Ärztliche Versorgung: {{ konvoi.aerztliche_versorgung }}")
+    steuer("{%p if konvoi.versorgung %}")
+    absatz("Ergänzend: {{ konvoi.versorgung }}")
+    steuer("{%p endif %}")
 
     doc.add_heading("5. Führung und Verbindung", level=1)
-    absatz("Funkgruppe: {{ konvoi.funkgruppe }}")
+    absatz("Kommunikationsverbindungen während des Marsches: Funkgruppe {{ konvoi.funkgruppe }}")
     steuer("{%p if kanalwechsel %}")
-    doc.add_heading("Kanalwechsel", level=2)
     tabelle([("km", "km"), ("Aktion", "aktion"), ("Leitstelle", "leitstelle"), ("Anrufgruppe", "anrufgruppe"),
              ("Weitere Kanäle", "zusatzkanaele")], "kanalwechsel", "k")
     steuer("{%p endif %}")
+    absatz("Sonstige Verbindungen, Lotsenstellen und Verkehrsleitpunkte: {{ konvoi.verbindungen }}")
+    absatz("Platz der Führungskraft: {{ konvoi.platz_fuehrung }}")
 
-    steuer("{%p if konvoi.anlagen %}")
-    doc.add_heading("6. Anlagen", level=1)
+    doc.add_heading("Anlagen", level=1)
     absatz("{{ konvoi.anlagen }}")
-    steuer("{%p endif %}")
+    doc.add_heading("Verteiler", level=1)
+    absatz("{{ konvoi.verteiler }}")
 
     absatz()
-    absatz("Ort, Datum: ______________________    Unterschrift Marschverbandsführer/in: ______________________")
+    absatz("Unterschrift", ausrichtung=WD_ALIGN_PARAGRAPH.RIGHT)
+    absatz()
+    absatz("______________________________", ausrichtung=WD_ALIGN_PARAGRAPH.RIGHT)
+    absatz("{{ [konvoi.unterschrift_name, konvoi.unterschrift_dienststellung] | select | join(', ') }}",
+           ausrichtung=WD_ALIGN_PARAGRAPH.RIGHT)
+    absatz("(Name, Dienststellung)", ausrichtung=WD_ALIGN_PARAGRAPH.RIGHT)
     absatz("Erstellt mit ConvoyPlan am {{ erstellt.datum }} um {{ erstellt.uhrzeit }} Uhr")
 
     # Feldübersicht — steht in der Datei, nicht im Export. Im Erklärtext

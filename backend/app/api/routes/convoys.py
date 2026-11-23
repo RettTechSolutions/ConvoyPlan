@@ -12,6 +12,7 @@ from app.models.convoy import Convoy, ConvoyVehicle
 from app.models.vehicle import Vehicle
 from app.models.waypoint import Waypoint
 from app.schemas.convoy import (
+    MARSCHBEFEHL_FELDER,
     AddVehicleRequest,
     ConvoyCreate,
     ConvoyResponse,
@@ -65,6 +66,26 @@ def _serialize_convoy(convoy: Convoy) -> dict:
         "versorgung": convoy.versorgung,
         "funkgruppe": convoy.funkgruppe,
         "anlagen": convoy.anlagen,
+        "abgangsort": convoy.abgangsort,
+        "marschraum": convoy.marschraum,
+        "karte": convoy.karte,
+        "lage_eigene": convoy.lage_eigene,
+        "kraefte": convoy.kraefte,
+        "marschfuehrer": convoy.marschfuehrer,
+        "einzelgruppen_fuehrer": convoy.einzelgruppen_fuehrer,
+        "marschabstand": convoy.marschabstand,
+        "beleuchtung": convoy.beleuchtung,
+        "marschueberwachung": convoy.marschueberwachung,
+        "besonderes": convoy.besonderes,
+        "verpflegung": convoy.verpflegung,
+        "betriebsstoff": convoy.betriebsstoff,
+        "instandsetzung": convoy.instandsetzung,
+        "aerztliche_versorgung": convoy.aerztliche_versorgung,
+        "verbindungen": convoy.verbindungen,
+        "platz_fuehrung": convoy.platz_fuehrung,
+        "verteiler": convoy.verteiler,
+        "unterschrift_name": convoy.unterschrift_name,
+        "unterschrift_dienststellung": convoy.unterschrift_dienststellung,
         # Ganze Zeile statt Feldauswahl: `ConvoyVehicleItem` hat für jedes Feld
         # einen Vorgabewert, also fällt ein hier vergessenes nicht auf — die
         # Antwort enthält es dann als `null`, und das Eingetragene sieht beim
@@ -155,7 +176,15 @@ async def update_convoy(
     if convoy.organization_id != org.id:
         raise HTTPException(status_code=404, detail="Convoy not found")
 
-    update_data = data.model_dump(exclude_none=True, exclude={"start_point", "end_point"})
+    # Mitgeschickt und ``null`` heißt bei den Marschbefehl-Feldern „leeren“:
+    # Das Formular schickt ein geleertes Feld als ``null``. Vorher fiel es hier
+    # heraus, und der alte Text blieb stehen. Alle anderen Felder sind nicht
+    # nullbar und behalten das Weglassen von ``null``.
+    update_data = {
+        k: v
+        for k, v in data.model_dump(exclude_unset=True, exclude={"start_point", "end_point"}).items()
+        if v is not None or k in MARSCHBEFEHL_FELDER
+    }
     for key, value in update_data.items():
         setattr(convoy, key, value)
     if data.start_point:
