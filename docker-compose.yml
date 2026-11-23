@@ -224,7 +224,7 @@ services:
     image: ${GRAPHHOPPER_IMAGE:-ghcr.io/retttechsolutions/convoyplan/graphhopper:latest}
     restart: unless-stopped
     environment:
-      OSM_DOWNLOAD_URL: ${OSM_DOWNLOAD_URL:-https://download.geofabrik.de/europe/dach-latest.osm.pbf}
+      OSM_DOWNLOAD_URL: ${OSM_DOWNLOAD_URL:-https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf}
       OSM_FILENAME: ${OSM_FILENAME:-dach-latest.osm.pbf}
       JAVA_OPTS: ${JAVA_OPTS:--Xmx8g -Xms1g -XX:+UseG1GC}
       # Speicherzugriff der SERVER-Phase. MMAP (Standard) blendet den fertigen
@@ -371,7 +371,7 @@ services:
       FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-*}
       FRONTEND_PORT: ${FRONTEND_PORT:-3000}
       GH_PORT: ${GH_PORT:-8989}
-      OSM_DOWNLOAD_URL: ${OSM_DOWNLOAD_URL:-https://download.geofabrik.de/europe/dach-latest.osm.pbf}
+      OSM_DOWNLOAD_URL: ${OSM_DOWNLOAD_URL:-https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf}
       OSM_FILENAME: ${OSM_FILENAME:-dach-latest.osm.pbf}
       JAVA_OPTS: ${JAVA_OPTS:--Xmx8g -Xms1g -XX:+UseG1GC}
       GH_DATAACCESS: ${GH_DATAACCESS:-MMAP}

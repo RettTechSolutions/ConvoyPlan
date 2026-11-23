@@ -74,10 +74,10 @@ write_request() {
     local d="$1"
     local due="${2:-}"
     if [ -n "$due" ]; then
-        printf '{"url": "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf", "filename": "berlin-latest.osm.pbf", "java_opts": "-Xmx3g", "pause_routing": "1", "scheduled_for": "2099-01-01T03:00:00+00:00", "scheduled_for_epoch": "%s", "requested_by": "a@b.c"}' \
+        printf '{"url": "https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf", "filename": "berlin-latest.osm.pbf", "java_opts": "-Xmx3g", "pause_routing": "1", "scheduled_for": "2099-01-01T03:00:00+00:00", "scheduled_for_epoch": "%s", "requested_by": "a@b.c"}' \
             "$due" > "$d/status/region_request.json"
     else
-        printf '{"url": "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf", "filename": "berlin-latest.osm.pbf", "java_opts": "-Xmx3g", "requested_by": "a@b.c"}' \
+        printf '{"url": "https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf", "filename": "berlin-latest.osm.pbf", "java_opts": "-Xmx3g", "requested_by": "a@b.c"}' \
             > "$d/status/region_request.json"
     fi
 }
@@ -136,7 +136,7 @@ echo "── Fall 7: unlesbarer Termin laeuft nicht ins Blaue ──────
 # jemand angefordert hat, soll stattfinden; verloren ginge sonst nur, dass er
 # spaeter stattfindet.
 D="$(setup_case case7)"
-printf '{"url": "https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf", "filename": "berlin-latest.osm.pbf", "java_opts": "-Xmx3g", "scheduled_for_epoch": "bald", "requested_by": "a@b.c"}' \
+printf '{"url": "https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf", "filename": "berlin-latest.osm.pbf", "java_opts": "-Xmx3g", "scheduled_for_epoch": "bald", "requested_by": "a@b.c"}' \
     > "$D/status/region_request.json"
 run_hook "$D"
 started "$D"; check $? "switch-region.sh wurde gestartet"

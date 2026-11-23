@@ -68,12 +68,12 @@ export PATH="/stub:$PATH"
 
 # ── Der eigentliche Fall: DACH, 6,2 GB, ueber 2^31 ────────────────────────
 check "Groesse ueber 2^31 wird exakt durchgereicht" \
-      "$(STUB_LEN=6215032253 _head_size https://download.geofabrik.de/europe/dach-latest.osm.pbf)" \
+      "$(STUB_LEN=6215032253 _head_size https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf)" \
       "6215032253"
 
 # ── Regressionsschutz: kleine Regionen bleiben unveraendert ───────────────
 check "Berlin-Groesse unveraendert" \
-      "$(STUB_LEN=99195978 _head_size https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf)" \
+      "$(STUB_LEN=99195978 _head_size https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf)" \
       "99195978"
 
 # ── Genau an der Grenze ───────────────────────────────────────────────────
