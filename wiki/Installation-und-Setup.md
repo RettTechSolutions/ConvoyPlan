@@ -241,7 +241,7 @@ openssl rand -hex 32
 
 | Variable | Standard | Beschreibung |
 |---|---|---|
-| `OSM_DOWNLOAD_URL` | `https://download.geofabrik.de/europe/dach-latest.osm.pbf` | Download-URL der OSM-PBF-Datei |
+| `OSM_DOWNLOAD_URL` | `https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf` | Download-URL der OSM-PBF-Datei |
 | `OSM_FILENAME` | `dach-latest.osm.pbf` | Dateiname im persistenten OSM-Volume |
 | `JAVA_OPTS` | `-Xmx8g -Xms1g -XX:+UseG1GC` | JVM-Speicherkonfiguration für den **Graph-Import** |
 | `GH_DATAACCESS` | `MMAP` | Speicherzugriff des laufenden Routing-Servers: `MMAP` (Graph im Seitencache des Kernels, JVM bleibt klein) oder `RAM_STORE` (Graph komplett im Java-Heap) |

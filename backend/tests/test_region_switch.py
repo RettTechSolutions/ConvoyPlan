@@ -10,7 +10,7 @@ from app.services import region_switch
 def test_write_request_creates_readable_json(tmp_path, monkeypatch):
     monkeypatch.setattr(region_switch, "VOLUME", str(tmp_path))
     region_switch.write_request(
-        url="https://download.geofabrik.de/europe/dach-latest.osm.pbf",
+        url="https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf",
         filename="dach-latest.osm.pbf",
         java_opts="-Xmx8g -Xms1g -XX:+UseG1GC",
         actor_email="admin@example.org",
@@ -25,7 +25,7 @@ def test_write_request_creates_readable_json(tmp_path, monkeypatch):
 def test_is_busy_true_while_request_pending(tmp_path, monkeypatch):
     monkeypatch.setattr(region_switch, "VOLUME", str(tmp_path))
     assert region_switch.is_busy() is False
-    region_switch.write_request("https://download.geofabrik.de/e-latest.osm.pbf",
+    region_switch.write_request("https://download.geofabrik.de/e/e-latest.osm.pbf",
                                 "e-latest.osm.pbf", "-Xmx4g", "a@b.c")
     assert region_switch.is_busy() is True
 
@@ -50,7 +50,7 @@ def test_is_busy_true_while_lock_held(tmp_path, monkeypatch):
 
 def test_write_request_leaves_no_temp_file_behind(tmp_path, monkeypatch):
     monkeypatch.setattr(region_switch, "VOLUME", str(tmp_path))
-    region_switch.write_request("https://download.geofabrik.de/e-latest.osm.pbf",
+    region_switch.write_request("https://download.geofabrik.de/e/e-latest.osm.pbf",
                                 "e-latest.osm.pbf", "-Xmx4g", "a@b.c")
     remaining = os.listdir(tmp_path)
     assert set(remaining) == {region_switch.LOG_FILE, region_switch.REQUEST_FILE}
@@ -63,7 +63,7 @@ def test_write_request_second_call_raises_and_first_survives(tmp_path, monkeypat
     überschreiben, sondern muss mit FileExistsError scheitern."""
     monkeypatch.setattr(region_switch, "VOLUME", str(tmp_path))
     region_switch.write_request(
-        url="https://download.geofabrik.de/europe/dach-latest.osm.pbf",
+        url="https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf",
         filename="dach-latest.osm.pbf",
         java_opts="-Xmx8g",
         actor_email="first@example.org",
@@ -71,7 +71,7 @@ def test_write_request_second_call_raises_and_first_survives(tmp_path, monkeypat
 
     with pytest.raises(FileExistsError):
         region_switch.write_request(
-            url="https://download.geofabrik.de/europe/berlin-latest.osm.pbf",
+            url="https://download.geofabrik.de/europe/berlin/berlin-latest.osm.pbf",
             filename="berlin-latest.osm.pbf",
             java_opts="-Xmx3g",
             actor_email="second@example.org",
@@ -89,7 +89,7 @@ def test_write_request_second_call_raises_and_first_survives(tmp_path, monkeypat
 
 def _write_request(tmp_path):
     region_switch.write_request(
-        "https://download.geofabrik.de/europe/poland-latest.osm.pbf",
+        "https://download.geofabrik.de/europe/poland/poland-latest.osm.pbf",
         "poland-latest.osm.pbf", "-Xmx6g", "a@b.c",
     )
 
@@ -157,7 +157,7 @@ def test_write_request_schreibt_wartungsmodus_und_termin_als_strings(tmp_path, m
     monkeypatch.setattr(region_switch, "VOLUME", str(tmp_path))
     wann = datetime(2099, 3, 1, 2, 30, tzinfo=timezone.utc)
     region_switch.write_request(
-        url="https://download.geofabrik.de/europe/dach-latest.osm.pbf",
+        url="https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf",
         filename="dach-latest.osm.pbf",
         java_opts="-Xmx14g",
         actor_email="admin@example.org",
@@ -176,7 +176,7 @@ def test_write_request_ohne_termin_schreibt_keine_terminfelder(tmp_path, monkeyp
     nicht erst in der Datei, und region-hook.sh behandelt die Anforderung als
     sofort faellig."""
     monkeypatch.setattr(region_switch, "VOLUME", str(tmp_path))
-    region_switch.write_request("https://download.geofabrik.de/e-latest.osm.pbf",
+    region_switch.write_request("https://download.geofabrik.de/e/e-latest.osm.pbf",
                                 "e-latest.osm.pbf", "-Xmx4g", "a@b.c")
     data = json.loads((tmp_path / "region_request.json").read_text())
     assert "scheduled_for" not in data
@@ -190,7 +190,7 @@ def test_read_status_meldet_geplant_statt_wartend(tmp_path, monkeypatch):
     Operator hielte das fuer eine Stoerung."""
     monkeypatch.setattr(region_switch, "VOLUME", str(tmp_path))
     wann = datetime(2099, 3, 1, 2, 30, tzinfo=timezone.utc)
-    region_switch.write_request("https://download.geofabrik.de/e-latest.osm.pbf",
+    region_switch.write_request("https://download.geofabrik.de/e/e-latest.osm.pbf",
                                 "e-latest.osm.pbf", "-Xmx4g", "a@b.c",
                                 pause_routing=True, scheduled_for=wann)
     status = region_switch.read_status()
@@ -202,7 +202,7 @@ def test_read_status_meldet_geplant_statt_wartend(tmp_path, monkeypatch):
 def test_read_status_meldet_wartend_wenn_kein_termin_gesetzt_ist(tmp_path, monkeypatch):
     """Gegenprobe: Ohne Termin bleibt es beim bisherigen `queued`."""
     monkeypatch.setattr(region_switch, "VOLUME", str(tmp_path))
-    region_switch.write_request("https://download.geofabrik.de/e-latest.osm.pbf",
+    region_switch.write_request("https://download.geofabrik.de/e/e-latest.osm.pbf",
                                 "e-latest.osm.pbf", "-Xmx4g", "a@b.c")
     assert region_switch.read_status()["phase"] == "queued"
 
@@ -212,7 +212,7 @@ def test_read_status_haelt_sich_ans_lock_auch_bei_geplantem_wechsel(tmp_path, mo
     Anforderung noch ein Termin steht. Sonst zeigte das Panel "geplant",
     waehrend der Wechsel laengst laeuft."""
     monkeypatch.setattr(region_switch, "VOLUME", str(tmp_path))
-    region_switch.write_request("https://download.geofabrik.de/e-latest.osm.pbf",
+    region_switch.write_request("https://download.geofabrik.de/e/e-latest.osm.pbf",
                                 "e-latest.osm.pbf", "-Xmx4g", "a@b.c",
                                 scheduled_for=datetime(2099, 3, 1, tzinfo=timezone.utc))
     (tmp_path / "region.lock").write_text("")
@@ -231,7 +231,7 @@ def test_write_request_entfernt_eine_verwaiste_abbruchmarke(tmp_path, monkeypatc
     (tmp_path / region_switch.CANCEL_FILE).write_text("von vorgestern")
 
     region_switch.write_request(
-        url="https://download.geofabrik.de/europe/dach-latest.osm.pbf",
+        url="https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf",
         filename="dach-latest.osm.pbf",
         java_opts="-Xmx8g",
         actor_email="a@b.c",
@@ -250,7 +250,7 @@ def test_write_request_laesst_die_abbruchmarke_einer_wartenden_anforderung(
     liefe der abbestellte Wechsel zu seinem Termin doch los."""
     monkeypatch.setattr(region_switch, "VOLUME", str(tmp_path))
     region_switch.write_request(
-        url="https://download.geofabrik.de/europe/dach-latest.osm.pbf",
+        url="https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf",
         filename="dach-latest.osm.pbf",
         java_opts="-Xmx8g",
         actor_email="a@b.c",
@@ -259,7 +259,7 @@ def test_write_request_laesst_die_abbruchmarke_einer_wartenden_anforderung(
 
     with pytest.raises(FileExistsError):
         region_switch.write_request(
-            url="https://download.geofabrik.de/europe/berlin-latest.osm.pbf",
+            url="https://download.geofabrik.de/europe/berlin/berlin-latest.osm.pbf",
             filename="berlin-latest.osm.pbf",
             java_opts="-Xmx3g",
             actor_email="a@b.c",
@@ -269,7 +269,7 @@ def test_write_request_laesst_die_abbruchmarke_einer_wartenden_anforderung(
 
 
 def _anfordern(scheduled_for=None):
-    region_switch.write_request("https://download.geofabrik.de/e-latest.osm.pbf",
+    region_switch.write_request("https://download.geofabrik.de/e/e-latest.osm.pbf",
                                 "e-latest.osm.pbf", "-Xmx4g", "a@b.c",
                                 scheduled_for=scheduled_for)
 
