@@ -461,16 +461,16 @@ if [[ -z "$OSM_CHOICE" && -n "$PREV_OSM_FILE" ]]; then
 else
   OSM_CHOICE="${OSM_CHOICE:-1}"
   case "$OSM_CHOICE" in
-    1) OSM_URL="https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+    1) OSM_URL="https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf"
        OSM_FILE="dach-latest.osm.pbf"
        JAVA_OPTS="-Xmx8g -Xms1g -XX:+UseG1GC" ;;
-    2) OSM_URL="https://download.geofabrik.de/europe/germany-latest.osm.pbf"
+    2) OSM_URL="https://download.geofabrik.de/europe/germany/germany-latest.osm.pbf"
        OSM_FILE="germany-latest.osm.pbf"
        JAVA_OPTS="-Xmx6g -Xms1g -XX:+UseG1GC" ;;
-    3) OSM_URL="https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf"
+    3) OSM_URL="https://download.geofabrik.de/europe/germany/bayern/bayern-latest.osm.pbf"
        OSM_FILE="bayern-latest.osm.pbf"
        JAVA_OPTS="-Xmx3g -Xms512m -XX:+UseG1GC" ;;
-    4) OSM_URL="https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf"
+    4) OSM_URL="https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf"
        OSM_FILE="berlin-latest.osm.pbf"
        JAVA_OPTS="-Xmx1g -Xms256m -XX:+UseG1GC" ;;
     5) prompt "OSM-Download-URL" "" OSM_URL

@@ -10,6 +10,8 @@ verschiedene Hashes und damit einen ueberfluessigen, stundenlangen Neubau.
 """
 import hashlib
 
+from app.services import geofabrik
+
 _SEP = "|"
 
 
@@ -65,7 +67,8 @@ def overlapping(paths: list[str]) -> list[tuple[str, str]]:
 def path_from_url(url: str) -> str:
     """Geofabrik-URL -> Regionspfad ohne Schema und Suffix.
 
-    `https://download.geofabrik.de/europe/germany-latest.osm.pbf`
+    `https://download.geofabrik.de/europe/germany/germany-latest.osm.pbf`
+    (oder im alten Schema `…/europe/germany-latest.osm.pbf`)
       -> `europe/germany`
 
     Die Umkehrung von dem, was das Panel schickt: Es kennt Pfade (aus dem
@@ -77,4 +80,8 @@ def path_from_url(url: str) -> str:
     path = path.split("/", 1)[-1] if "/" in path else path
     if path.endswith("-latest.osm.pbf"):
         path = path[: -len("-latest.osm.pbf")]
-    return path.lstrip("/")
+    # Seit Geofabriks Umstellung liegt jede Region in ihrem eigenen
+    # Verzeichnis (`europe/germany/germany-latest.osm.pbf`); der Pfad ist
+    # trotzdem `europe/germany` — sonst aenderte sich der Hash bestehender
+    # Kombinationen. Regel: `geofabrik.pfad_aus_stamm`.
+    return geofabrik.pfad_aus_stamm(path.lstrip("/"))

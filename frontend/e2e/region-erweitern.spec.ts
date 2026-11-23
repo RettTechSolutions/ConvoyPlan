@@ -8,7 +8,7 @@ import { test, expect, type Page } from '@playwright/test';
 //  - „Region wechseln" beginnt weiter leer — wer neu anfangen will, kann das.
 
 const HUELLE = 'http://localhost:4174';
-const geo = (id: string) => `https://download.geofabrik.de/${id}-latest.osm.pbf`;
+const geo = (id: string) => `https://download.geofabrik.de/${id}/${id.split('/').pop()}-latest.osm.pbf`;
 const marken = (page: Page) => page.locator('.chip');
 
 async function oeffnen(page: Page) {
