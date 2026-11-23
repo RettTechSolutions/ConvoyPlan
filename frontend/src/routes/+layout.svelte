@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { serviceWorkerAnmelden } from '$lib/pwa/serviceWorker';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { auth } from '$lib/stores/auth';
@@ -70,6 +71,9 @@
 		auth.init();
 
 		printConsoleBanner();
+
+		// Offline-Kacheln im Funkloch (siehe $lib/pwa/serviceWorker.ts).
+		void serviceWorkerAnmelden();
 
 		// Load build version info (public, non-blocking)
 		versionStore.load();

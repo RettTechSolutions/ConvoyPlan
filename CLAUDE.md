@@ -1020,6 +1020,31 @@ Eier und Türchen in `anker.ts`. Die Texte in `TUERCHEN` sind teils Kniffe aus C
 wer eine dort genannte Funktion ändert, zieht den Text mit. Türchen 24 schickt einen
 Schlittenkonvoi (nicht bei reduzierter Bewegung). Test: `e2e/adventskalender.spec.ts`.
 
+### Service Worker: angemeldet, schmal, ohne Zwang
+
+Der Service Worker (`@vite-pwa/sveltekit` 2.x, `generateSW` in `frontend/vite.config.ts`)
+trägt die Offline-Kacheln: `$lib/tracking/tileCache.ts` legt den Korridor einer Route in
+den Cache `osm-tiles`, ausliefern kann ihn im Funkloch nur er. Bis 2026-11 wurde er gebaut,
+aber nie angemeldet — und hätte auch nicht gestartet. Vier Dinge, die man kennen muss:
+
+- **Angemeldet wird von Hand** (`$lib/pwa/serviceWorker.ts`, aus dem Wurzel-Layout,
+  `injectRegister: false`). SvelteKit hat keine `index.html`, in die das Plugin ein Skript
+  setzen könnte; ohne den Aufruf läuft kein Service Worker, ohne dass es jemand merkt.
+- **`navigateFallback: null`.** Sonst baut das Plugin einen Fallback auf die Basis, die
+  nicht im Precache liegt (SSR, nichts vorgerendert), und Workbox wirft schon beim Laden
+  (`non-precached-url`) — der Worker startet nie. Navigationen gehen immer ans Netz.
+- **Precache ohne `client/logo/**` und `client/icons/**`** (4,8 statt 26,3 MB je Gerät).
+  Die Muster beginnen mit `client/`, weil ab `.svelte-kit/output` gesucht wird; ohne das
+  stünde jedes Asset doppelt da, und eine Ausnahme ohne `client/` greift nie.
+- **Kein erzwungenes Update** (`skipWaiting: false`, `registerType: 'prompt'` ohne Dialog):
+  ein neuer Worker wartet, bis alle Tabs zu sind — Nightly deployt mehrmals täglich, und
+  ein Fahrer-Link darf sich nicht im Einsatz neu laden. Dafür `clientsClaim: true`: beim
+  ersten Einrichten übernimmt er die offene Seite sofort.
+
+Alle übrigen E2E-Specs laufen mit `serviceWorkers: 'block'` (`playwright.config.ts`);
+`frontend/e2e/service-worker.spec.ts` lässt ihn zu und prüft Anmeldung, Scope, Übernahme,
+eine vorab abgelegte Kachel offline (samt Gegenprobe) und den Precache ohne Logos.
+
 ### Handbücher als PDF: öffentlich ist, was im Wiki steht
 
 `/handbuecher` (öffentlich wie `/status`, in `PUBLIC_ROUTES`) listet die PDFs aus
