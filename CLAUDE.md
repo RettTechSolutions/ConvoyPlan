@@ -1039,7 +1039,13 @@ aber nie angemeldet — und hätte auch nicht gestartet. Vier Dinge, die man ken
 - **Kein erzwungenes Update** (`skipWaiting: false`, `registerType: 'prompt'` ohne Dialog):
   ein neuer Worker wartet, bis alle Tabs zu sind — Nightly deployt mehrmals täglich, und
   ein Fahrer-Link darf sich nicht im Einsatz neu laden. Dafür `clientsClaim: true`: beim
-  ersten Einrichten übernimmt er die offene Seite sofort.
+  ersten Einrichten übernimmt er die offene Seite sofort. **Falle:** Die Hülle aus
+  `virtual:pwa-register` hängt im Modus `prompt`, sobald ein neuer Worker wartet, ein
+  `location.reload()` an dessen Übernahme (`controlling`). Heute löst das nichts aus, weil
+  niemand `updateServiceWorker()` ruft. Wer ein „Neue Version laden" baut, lädt damit
+  **jeden** offenen Tab der Instanz neu, auch den Fahrer-Link im Einsatz — also nur auf
+  Klick im selben Tab anbieten und nie in Tracking-Ansicht oder Fahrer-Link. Abstellen lässt
+  es sich mit `onNeedReload` in `registerSW` (ersetzt das `reload()`, seit 2.x).
 
 Alle übrigen E2E-Specs laufen mit `serviceWorkers: 'block'` (`playwright.config.ts`);
 `frontend/e2e/service-worker.spec.ts` lässt ihn zu und prüft Anmeldung, Scope, Übernahme,
