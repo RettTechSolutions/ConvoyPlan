@@ -1353,7 +1353,13 @@
 	let assignedIds = $derived(new Set(selected?.convoy_vehicles.map(cv => cv.vehicle.id) ?? []));
 
 	// Marschbefehl edit form (Export tab)
-	let befehlForm = $state({ marschform:'', ablaufpunkt:'', ablaufzeit:'', ablaufführer:'', lage:'', auftrag:'', versorgung:'', funkgruppe:'', anlagen:'' });
+	// Freitextfelder des Marschbefehls nach FwDV 100, Anlage 4 (Migration 0076).
+	// Laden und Speichern gehen über diese Liste; ein geleertes Feld geht als null
+	// und wird im Backend gelöscht.
+	const BEFEHL_FWDV = ['abgangsort', 'marschraum', 'karte', 'lage_eigene', 'kraefte', 'marschfuehrer', 'einzelgruppen_fuehrer', 'marschabstand', 'beleuchtung', 'marschueberwachung', 'besonderes', 'verpflegung', 'betriebsstoff', 'instandsetzung', 'aerztliche_versorgung', 'verbindungen', 'platz_fuehrung', 'verteiler', 'unterschrift_name', 'unterschrift_dienststellung'] as const;
+	type BefehlFwdv = (typeof BEFEHL_FWDV)[number];
+	const leereFwdv = () => Object.fromEntries(BEFEHL_FWDV.map((k) => [k, ''])) as Record<BefehlFwdv, string>;
+	let befehlForm = $state({ marschform:'', ablaufpunkt:'', ablaufzeit:'', ablaufführer:'', lage:'', auftrag:'', versorgung:'', funkgruppe:'', anlagen:'', ...leereFwdv() });
 	let befehlSaving = $state(false);
 	let befehlSaved = $state(false);
 	let befehlError = $state('');
@@ -1392,6 +1398,7 @@
 				versorgung: selected.versorgung ?? '',
 				funkgruppe: selected.funkgruppe ?? '',
 				anlagen: selected.anlagen ?? '',
+				...(Object.fromEntries(BEFEHL_FWDV.map((k) => [k, selected?.[k] ?? ''])) as Record<BefehlFwdv, string>),
 			};
 		}
 	});
@@ -1400,8 +1407,8 @@
 	// would be blank in the generated document.
 	function validateBefehlForm(): string | null {
 		const missing: string[] = [];
-		if (!befehlForm.lage.trim()) missing.push('Lage');
-		if (!befehlForm.auftrag.trim()) missing.push('Auftrag');
+		if (!befehlForm.lage.trim()) missing.push('Gefahren- / Schadenlage');
+		if (!befehlForm.auftrag.trim()) missing.push('Erhaltener Auftrag');
 		if (!befehlForm.ablaufpunkt.trim()) missing.push('Ablaufpunkt');
 		if (!befehlForm.ablaufzeit) missing.push('Ablaufzeit');
 		return missing.length ? `Bitte ausfüllen: ${missing.join(', ')}` : null;
@@ -1425,6 +1432,7 @@
 				versorgung: befehlForm.versorgung || null,
 				funkgruppe: befehlForm.funkgruppe || null,
 				anlagen: befehlForm.anlagen || null,
+				...Object.fromEntries(BEFEHL_FWDV.map((k) => [k, befehlForm[k].trim() || null])),
 			});
 			await refreshConvoy();
 			befehlSaved = true;
@@ -2517,23 +2525,58 @@
 
 			<div class="befehl-modal-body">
 				{#if befehlError}<p class="error-bar">{befehlError}</p>{/if}
-				<p class="befehl-hint">Gegliedert nach dem 5-Punkte-Befehl. Pflichtfelder sind mit <span class="req-mark">*</span> markiert.</p>
+				<p class="befehl-hint">Gegliedert nach dem Muster der FwDV 100, Anlage 4. Nicht zu jedem Punkt muss etwas angeordnet werden; leere Punkte stehen im PDF mit „-“. Pflichtfelder sind mit <span class="req-mark">*</span> markiert.</p>
+
+				<!-- Kopf -->
+				<div class="befehl-section">
+					<div class="befehl-section-title">Kopf</div>
+					<div class="befehl-row befehl-row-3">
+						<label class="bf-label">
+							<span class="bf-label-text">Abgangsort</span>
+							<input type="text" placeholder="z.B. Musterstadt" bind:value={befehlForm.abgangsort} />
+						</label>
+						<label class="bf-label">
+							<span class="bf-label-text">Marsch in den Raum</span>
+							<input type="text" placeholder="leer = Marschziel" bind:value={befehlForm.marschraum} />
+						</label>
+						<label class="bf-label">
+							<span class="bf-label-text">Karte</span>
+							<input type="text" placeholder="z.B. TK 1:50 000" bind:value={befehlForm.karte} />
+						</label>
+					</div>
+					<p class="befehl-hint">Befehlende Stelle ist die Organisation des Konvois; Abgangsdatum und -zeit setzt der Export.</p>
+				</div>
 
 				<!-- 1. Lage -->
 				<div class="befehl-section">
-					<div class="befehl-section-title">1. Lage <span class="req-mark">*</span></div>
-					<textarea class="befehl-textarea" class:field-invalid={befehlError && !befehlForm.lage.trim()} rows="4" placeholder="Lagebeschreibung – Eigene und feindliche/gegnerische Kräfte, Lage der Bevölkerung, zivile Behörden…" bind:value={befehlForm.lage}></textarea>
+					<div class="befehl-section-title">1. Lage</div>
+					<label class="bf-label">
+						<span class="bf-label-text">Gefahren- / Schadenlage <span class="req-mark">*</span></span>
+						<textarea class="befehl-textarea" class:field-invalid={befehlError && !befehlForm.lage.trim()} rows="3" placeholder="Was am Zielort geschehen ist oder droht, soweit bekannt…" bind:value={befehlForm.lage}></textarea>
+					</label>
+					<label class="bf-label">
+						<span class="bf-label-text">Eigene Lage</span>
+						<textarea class="befehl-textarea" rows="2" placeholder="Eigene Kräfte und Mittel, Besonderheiten auf der Strecke…" bind:value={befehlForm.lage_eigene}></textarea>
+					</label>
 				</div>
 
 				<!-- 2. Auftrag -->
 				<div class="befehl-section">
-					<div class="befehl-section-title">2. Auftrag <span class="req-mark">*</span></div>
-					<textarea class="befehl-textarea" class:field-invalid={befehlError && !befehlForm.auftrag.trim()} rows="4" placeholder="Aufgabe des Verbandes – Wer, Was, Wann, Wo, Warum…" bind:value={befehlForm.auftrag}></textarea>
+					<div class="befehl-section-title">2. Auftrag</div>
+					<label class="bf-label">
+						<span class="bf-label-text">Zuteilung, Unterstellung und Abgabe von Kräften</span>
+						<textarea class="befehl-textarea" rows="2" placeholder="Wer zum Verband gehört und wem er unterstellt wird…" bind:value={befehlForm.kraefte}></textarea>
+					</label>
+					<label class="bf-label">
+						<span class="bf-label-text">Erhaltener Auftrag <span class="req-mark">*</span></span>
+						<textarea class="befehl-textarea" class:field-invalid={befehlError && !befehlForm.auftrag.trim()} rows="3" placeholder="Wer, Was, Wann, Wo – wie von der anfordernden Stelle erhalten…" bind:value={befehlForm.auftrag}></textarea>
+					</label>
 				</div>
 
 				<!-- 3. Durchführung -->
 				<div class="befehl-section">
 					<div class="befehl-section-title">3. Durchführung</div>
+					<p class="befehl-hint">Marschziel, Marschweg, Marschentfernung, Marschfolge, Schließende/r, Fahrzeugabstand, Marschgeschwindigkeit und Marschpausen übernimmt ConvoyPlan aus Route, Fahrzeugen und Wegpunkten.</p>
 					<div class="befehl-row">
 						<label class="bf-label">
 							<span class="bf-label-text">Marschform</span>
@@ -2559,12 +2602,59 @@
 							<input type="text" placeholder="Name / Rufname" bind:value={befehlForm.ablaufführer} />
 						</label>
 					</div>
+					<div class="befehl-row">
+						<label class="bf-label">
+							<span class="bf-label-text">Marschführer/in</span>
+							<input type="text" placeholder="Name / Rufname" bind:value={befehlForm.marschfuehrer} />
+						</label>
+						<label class="bf-label">
+							<span class="bf-label-text">Marschabstand</span>
+							<input type="text" placeholder="zwischen Marschgruppen, z.B. 5 min" bind:value={befehlForm.marschabstand} />
+						</label>
+					</div>
+					<label class="bf-label">
+						<span class="bf-label-text">Führer/innen der Einzelgruppen</span>
+						<textarea class="befehl-textarea" rows="2" placeholder="Bei Gliederung in Marschgruppen…" bind:value={befehlForm.einzelgruppen_fuehrer}></textarea>
+					</label>
+					<label class="bf-label">
+						<span class="bf-label-text">Beleuchtung</span>
+						<textarea class="befehl-textarea" rows="2" placeholder="leer = Abblendlicht auch am Tag; Katastrophenschutz: blaues Blinklicht ohne Einsatzhorn" bind:value={befehlForm.beleuchtung}></textarea>
+					</label>
+					<label class="bf-label">
+						<span class="bf-label-text">Marschüberwachung und Verkehrssicherung</span>
+						<textarea class="befehl-textarea" rows="2" placeholder="Lotsen, Absicherung an Engstellen, Polizeibegleitung…" bind:value={befehlForm.marschueberwachung}></textarea>
+					</label>
+					<label class="bf-label">
+						<span class="bf-label-text">Besondere Einzelheiten je nach Lage</span>
+						<textarea class="befehl-textarea" rows="2" placeholder="Beflaggung, Durchlaufpunkte, Durchfahrtshöhen und Gewichtsgrenzen ergänzt ConvoyPlan." bind:value={befehlForm.besonderes}></textarea>
+					</label>
 				</div>
 
 				<!-- 4. Versorgung -->
 				<div class="befehl-section">
 					<div class="befehl-section-title">4. Versorgung</div>
-					<textarea class="befehl-textarea" rows="3" placeholder="Verpflegung, Betriebsstoff, Instandsetzung, sanitätsdienstliche Versorgung…" bind:value={befehlForm.versorgung}></textarea>
+					<label class="bf-label">
+						<span class="bf-label-text">Verpflegung</span>
+						<textarea class="befehl-textarea" rows="2" placeholder="Mitgeführt oder an einem Halt…" bind:value={befehlForm.verpflegung}></textarea>
+					</label>
+					<label class="bf-label">
+						<span class="bf-label-text">Betriebsstoff</span>
+						<textarea class="befehl-textarea" rows="2" placeholder="leer = Alle Fahrzeuge vollgetankt am Ablaufpunkt" bind:value={befehlForm.betriebsstoff}></textarea>
+					</label>
+					<label class="bf-label">
+						<span class="bf-label-text">Instandsetzungsdienst</span>
+						<textarea class="befehl-textarea" rows="2" placeholder="Wer bei Pannen hilft oder abschleppt…" bind:value={befehlForm.instandsetzung}></textarea>
+					</label>
+					<label class="bf-label">
+						<span class="bf-label-text">Ärztliche Versorgung</span>
+						<textarea class="befehl-textarea" rows="2" placeholder="leer = Fahrzeuge mit Sonderfunktion Sanitätsdienst" bind:value={befehlForm.aerztliche_versorgung}></textarea>
+					</label>
+					{#if befehlForm.versorgung}
+						<label class="bf-label">
+							<span class="bf-label-text">Ergänzend (frühere Angabe „Versorgung“)</span>
+							<textarea class="befehl-textarea" rows="2" bind:value={befehlForm.versorgung}></textarea>
+						</label>
+					{/if}
 				</div>
 
 				<!-- 5. Führung und Verbindung -->
@@ -2607,12 +2697,37 @@
 							</table>
 						</div>
 					{/if}
+					<label class="bf-label">
+						<span class="bf-label-text">Sonstige Verbindungen, Lotsenstellen und Verkehrsleitpunkte</span>
+						<textarea class="befehl-textarea" rows="2" placeholder="Verbindung zur Ablaufstelle, Lotsenstellen, Meldeköpfe…" bind:value={befehlForm.verbindungen}></textarea>
+					</label>
+					<label class="bf-label">
+						<span class="bf-label-text">Platz der Führungskraft</span>
+						<input type="text" placeholder="leer = Führungsfahrzeug aus der Marschfolge" bind:value={befehlForm.platz_fuehrung} />
+					</label>
 				</div>
 
-				<!-- 6. Anlagen -->
+				<!-- Anlagen, Verteiler, Unterschrift — in der FwDV ohne Hauptziffer -->
 				<div class="befehl-section">
-					<div class="befehl-section-title">6. Anlagen</div>
+					<div class="befehl-section-title">Anlagen</div>
 					<textarea class="befehl-textarea" rows="2" placeholder="Beigefügte Dokumente, Karten, Skizzen…" bind:value={befehlForm.anlagen}></textarea>
+				</div>
+				<div class="befehl-section">
+					<div class="befehl-section-title">Verteiler</div>
+					<textarea class="befehl-textarea" rows="2" placeholder="Wer eine Ausfertigung bekommt…" bind:value={befehlForm.verteiler}></textarea>
+				</div>
+				<div class="befehl-section">
+					<div class="befehl-section-title">Unterschrift</div>
+					<div class="befehl-row">
+						<label class="bf-label">
+							<span class="bf-label-text">Name</span>
+							<input type="text" bind:value={befehlForm.unterschrift_name} />
+						</label>
+						<label class="bf-label">
+							<span class="bf-label-text">Dienststellung</span>
+							<input type="text" placeholder="z.B. Kreisbrandinspektor/in" bind:value={befehlForm.unterschrift_dienststellung} />
+						</label>
+					</div>
 				</div>
 			</div>
 

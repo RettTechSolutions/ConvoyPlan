@@ -21,6 +21,30 @@ ursprünglichen SemVer-Nummern.
 
 ## [Unreleased]
 
+### Changed
+
+- **Marschbefehl nach FwDV 100, Anlage 4.** Das PDF folgt jetzt dem Muster der Dienstvorschrift: Kopf mit Abgangsort, -datum und -zeit, „Befehl für den Marsch in den Raum …“ und Karte; unter den Hauptziffern 1–5 die Unterpunkte der FwDV in deren Reihenfolge (u. a. Eigene Lage, Zuteilung/Unterstellung von Kräften, Marschführer/in, Schließende/r, Marschabstand, Marschüberwachung und Verkehrssicherung, Marschpausen getrennt nach Technischen Halten und Rasten, die vier Punkte der Versorgung, Platz der Führungskraft); Anlagen und Verteiler ohne Ziffer, Unterschrift mit Name und Dienststellung. Jede Hauptziffer steht auch leer da. Die Marschgeschwindigkeit nennt zusätzlich die theoretische Durchschnittsgeschwindigkeit. Beflaggung, Durchlaufpunkte, Fahrzeugmaße, Durchfahrtshöhen und Gewichtsgrenzen stehen unter „Besondere Einzelheiten je nach Lage“, die Kanalwechsel unter den Kommunikationsverbindungen. 20 neue Felder im Formular (Migration `0076`), in der Word-Vorlage und im MCP-Werkzeug `konvoi_aktualisieren`; bestehende Vorlagen bleiben gültig.
+
+### Fixed
+
+- **Geleerte Marschbefehl-Felder werden gelöscht.** Das Formular schickte ein geleertes Feld als `null`, das Backend verwarf es, und der alte Text blieb stehen.
+
+
+## [2026.11.5] – 2026-11-13
+
+### Security
+
+- **Medien- und Osmium-Image mit aktuellem Debian-Sicherheitsstand.** Beide führen `apt-get upgrade` aus, aber Docker hatte die Schicht aus dem Cache genommen: Das Medien-Image enthielt noch ein zlib mit CVE-2026-76844 und CVE-2026-85091 (HIGH, behoben in DSA-6613). Ein neues Build-Argument `DEBIAN_SICHERHEITSSTAND` erzwingt jetzt einen frischen Lauf. Beide Images werden beim nächsten Release neu gebaut.
+- **Updater: CVE-2026-78661 begründet zurückgestellt.** Die DoS-Lücke in `golang.org/x/net/html` steckt in cosign 3.1.4 und im Compose-Plugin von `docker:cli`. Für beides gibt es noch kein korrigiertes Release, und keins der beiden Programme verarbeitet hier fremdes HTML. Der Eintrag in `.trivyignore` ist bis 2026-12-13 befristet.
+
+### Fixed
+
+- **`/robots.txt` auch ohne Agenten-Auskunft.** Auf selbst gehosteten Instanzen (und bei `AGENT_DISCOVERY=false`) antwortete `/robots.txt` mit der HTML-404-Seite. Jetzt kommt eine knappe robots.txt, die die Bereiche hinter der Anmeldung (`/admin`, `/setup`, `/o/`, `/oauth/`, `/share/`, `/plan`) sperrt und sonst nichts — kein `Disallow: /`, damit Suchmaschinen das `noindex` öffentlicher Seiten wie `/demo` weiterhin sehen. In der ausführlichen Fassung gelten dieselben Sperren jetzt auch in den Abschnitten der KI-Crawler; dort fehlten `/oauth/`, `/share/` und `/plan`.
+
+## [2026.11.4] – 2026-11-06
+
+> Ausgeliefert über die automatischen Fix-Releases 2026.11.2 bis 2026.11.4 (Dependabot-Wellen, `auto-release.yml`); der CHANGELOG wurde dabei nicht mitgezogen und wird hier nachgetragen.
+
 ### Added
 
 - **Fahrer-Links gesperrter Organisationen halten kein automatisches Update auf.** Ist der Plan einer Organisation abgelaufen (nur noch lesbar), zählen ihre Fahrer-Links für den Updater nicht mehr — wie schon ihre Tracker.
@@ -1089,7 +1113,9 @@ Das ruft den Update-Modus auf: räumt verwaiste Updater-Container auf, zieht all
 - Capacitor configuration for Android/iOS native wrapper.
 - Docker Compose setup with GraphHopper OSM pre-download.
 
-[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.11.1...HEAD
+[Unreleased]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.11.5...HEAD
+[2026.11.5]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.11.4...v2026.11.5
+[2026.11.4]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.11.1...v2026.11.4
 [2026.11.1]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.11.0...v2026.11.1
 [2026.11.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.10.0...v2026.11.0
 [2026.10.0]: https://github.com/RettTechSolutions/ConvoyPlan/compare/v2026.9.0...v2026.10.0

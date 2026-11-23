@@ -400,6 +400,37 @@ Tests: `tests/test_durchfahrtshoehen.py`, `tests/test_bruecken_ohne_hoehe.py`,
 `frontend/e2e/durchfahrtshoehen.spec.ts`, `frontend/e2e/gewichtsgrenzen.spec.ts`.
 Anwenderdoku: `wiki/Konvoi-Planung.md`, „Durchfahrtshöhen" und „Gewichtsgrenzen".
 
+### Marschbefehl nach FwDV 100, Anlage 4
+
+`services/pdf.py` setzt den Marschbefehl nach dem *Muster für einen Marschbefehl* der FwDV 100,
+Anlage 4 (Stand 1999; gleichlautend z. B. bei der LFS Sachsen, S. 59–60). Die Website
+(`convoyplan.de/marschbefehl/`) verspricht genau diese Gliederung und bietet eine Vorlage in
+derselben an — wer hier umsortiert oder umbenennt, bricht diese Zusage.
+
+- **Reihenfolge und Begriffe der FwDV**: Kopf (befehlende Stelle, Abgangsort/-datum/-zeit, „Befehl
+  für den Marsch in den Raum …“, Karte), 1.–5. mit ihren Unterpunkten, dann **Anlagen** und
+  **Verteiler ohne Ziffer**, Unterschrift (Name, Dienststellung). Jeder Punkt wird gedruckt, ein
+  leerer mit „-“ — „die Reihenfolge der Hauptziffern ist aber immer einzuhalten“. Eine Hauptziffer
+  nicht wieder wegfallen lassen, wenn sie leer ist.
+- **App-Ergänzungen an FwDV-Stellen**, nie als eigene Ziffer: Beflaggung, Durchlaufpunkte,
+  Fahrzeugmaße, Durchfahrtshöhen, Gewichtsgrenzen unter 3. „Besondere Einzelheiten je nach Lage“,
+  Kanalwechsel unter 5. „Kommunikationsverbindungen während des Marsches“.
+- **Abgeleitet wird an einer Stelle** (`pdf.feld`, `schliessender`, `platz_fuehrung`,
+  `aerztliche_versorgung`, `durchschnitt_kmh`, `marschpausen`, `marschraum`, die `*_STANDARD`-Texte);
+  die Word-Vorlage ruft dieselben Funktionen. Geraten wird nicht: ohne Sonderfunktion
+  „Führungsfahrzeug“ bleibt der Platz der Führungskraft leer.
+- **Marschpausen a) / b)**: Technischer Halt sowie Tank- und Wartungshalt unter a), **jeder** andere
+  Halt unter b) — damit kein Halt aus dem Befehl fällt.
+- **Abgangsdatum/-zeit = Export**, nicht der Marschbeginn; der steht unter „Ablaufzeit“.
+- Felder: Migration `0076`. Das alte `versorgung` bleibt als „Ergänzend“ unter 4.; ein Freitext
+  lässt sich nicht verlässlich auf die vier Unterpunkte verteilen. `update_convoy` leert die Felder
+  aus `MARSCHBEFEHL_FELDER` bei mitgeschicktem `null` (das Formular schickt geleerte Felder so).
+- Tests: `tests/test_marschbefehl_fwdv.py` (Reihenfolge im PDF und in der Beispielvorlage,
+  Ableitungen, Leeren) und `frontend/e2e/marschbefehl-formular.spec.ts` (Gliederung des
+  Formulars, jedes Feld in seine Spalte, geleert = `null`, Pflichtfelder). Ein neues Feld
+  gehört in `BEFEHL_FWDV` im Formular **und** in die Liste der Spec. Ändert sich die Gliederung, zieht die Website mit
+  (`src/data/marschbefehl.ts`, `scripts/marschbefehl-vorlage.py` im Website-Repo).
+
 ### Marschbefehl aus der Word-Vorlage: die Vorlage ist fremder Code
 
 Neben dem fest gesetzten PDF (`services/pdf.py`) exportiert `GET /api/convoys/{id}/export/docx`
@@ -1428,9 +1459,23 @@ Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste
   YAML-Datei heraus**, statt es nachzubauen — ein Nachbau prüft die Kopie. Wer
   dort einen weiteren Test anlegt, braucht nichts zu verdrahten: der Job
   sammelt `test_*.sh` aus allen vier Verzeichnissen ein.
-- **Container** — Trivy scannt alle sechs Images (`backend`, `frontend`,
+- **Container** — Trivy scannt die sechs Images (`backend`, `frontend`,
   `graphhopper`, `updater`, `osmium`, `medien`) auf HIGH/CRITICAL mit verfügbarem Fix.
-  Ausnahmen gehören mit Begründung in `.trivyignore`.
+  Ausnahmen gehören mit Begründung in `.trivyignore`. Auf PR und Queue nur die, deren
+  Kontext sich geändert hat (alle bei `ci.yml`, `.trivyignore`, `docker-spiegel`),
+  wöchentlich alle ohne Cache; welche, entscheidet `changes` (Ausgabe `images`,
+  `.github/workflows/tests/test_ci_aenderungen.sh`). Ein siebtes Image kommt dort in
+  `kontexte` und in `caches-images`.
+- **Wann CI läuft** — PR, Merge Queue, wöchentlich, täglich, von Hand; **nicht** beim
+  Push auf `main`, denn die Queue hat genau diesen Stand schon geprüft. Caches sieht
+  jeder PR nur, wenn sie auf `main` liegen; die füllen deshalb die Jobs `caches*` im
+  täglichen Lauf — mit **denselben** Schlüsseln wie die Jobs, die sie lesen. Wer dort
+  einen Schlüssel oder Pfad ändert (Extracts, pip, npm, Buildx-Scope), zieht ihn mit.
+  Die E2E-Suite läuft in zwei Teilen; Pflicht-Check ist der Sammeljob
+  `Frontend – E2E (Playwright)`. Das Grenzrouting (`region-merge`) läuft nur bei
+  Änderungen an `graphhopper/`, `docker/osmium/`, `docker/updater/` (Ausgabe
+  `grenzrouting`); der Regionswechsel bleibt bei `region`, weil er als einziger Test
+  den Backend-Container startet.
 - **Medien** — Job `Medien – ffmpeg und Metadaten` baut `docker/medien` und fährt
   `docker/medien/tests/test_medien.sh` gegen echte Handyvideos aus `tests/proben/`
   (GPS, Gerät, Aufnahmezeit weg; hochkant aufrecht; 720p/30 fps; zu lang abgelehnt).

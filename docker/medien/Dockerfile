@@ -61,7 +61,19 @@ FROM debian:trixie-slim
 
 # `upgrade` vor `install`, wie in den anderen Images: das Basisimage hinkt den
 # Sicherheitsaktualisierungen hinterher.
-RUN apt-get update \
+#
+# `DEBIAN_SICHERHEITSSTAND` erzwingt einen frischen `upgrade`. Docker cached
+# die RUN-Zeile, solange sich weder sie noch das Basisimage ändern — Debians
+# Sicherheitsupdates kommen dann nie an, obwohl `upgrade` dasteht. Im CI baut
+# der Scan mit GHA-Cache (nur der wöchentliche Lauf ohne), und
+# `build-or-reuse` verwendet das Image weiter, solange Quelltext und Base-Digest
+# stehen. So lief am 2026-11-13 der medien-Scan mit einem zlib von vor DSA-6613
+# rot, während osmium mit gleicher Basis grün war. Meldet Trivy einen Befund,
+# den Debian schon behoben hat: Datum hochsetzen. Die Änderung bewegt den
+# Tree-Hash, also baut auch das ausgelieferte Image neu.
+ARG DEBIAN_SICHERHEITSSTAND=2026-11-13
+RUN echo "Debian-Sicherheitsstand ${DEBIAN_SICHERHEITSSTAND}" \
+ && apt-get update \
  && apt-get upgrade -y \
  && apt-get install -y --no-install-recommends libx264-164 python3 \
  && rm -rf /var/lib/apt/lists/*
