@@ -35,6 +35,9 @@ def main() -> None:
     handler = functools.partial(_Handler, directory=wurzel)
     server = http.server.ThreadingHTTPServer(("0.0.0.0", port), handler)
     kontext = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    # Nur in der CI, aber trotzdem: kein TLS 1.0/1.1 (CodeQL
+    # py/insecure-protocol). curl im Updater spricht ohnehin 1.2+.
+    kontext.minimum_version = ssl.TLSVersion.TLSv1_2
     kontext.load_cert_chain(zertifikat, schluessel)
     server.socket = kontext.wrap_socket(server.socket, server_side=True)
     print(f"Geofabrik-Spiegel auf Port {port}, Wurzel {wurzel}", flush=True)
