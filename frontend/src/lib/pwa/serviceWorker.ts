@@ -18,6 +18,11 @@ export async function serviceWorkerAnmelden(): Promise<void> {
 		const { registerSW } = await import('virtual:pwa-register');
 		registerSW({
 			immediate: true,
+			// Übernimmt ein wartender Worker (nur nach `skipWaiting`, heute ruft das
+			// niemand), lädt die Hülle sonst jeden offenen Tab neu, auch den Fahrer-Link
+			// mitten im Einsatz. Leer heißt: die Seite läuft weiter, der neue Code gilt ab
+			// dem nächsten Aufruf. Wer neu laden will, tut es selbst und nur auf Klick.
+			onNeedReload() {},
 			onRegisterError(fehler: unknown) {
 				// Ohne Service Worker läuft die App weiter, nur ohne Offline-Kacheln.
 				console.warn('Service Worker nicht angemeldet:', fehler);

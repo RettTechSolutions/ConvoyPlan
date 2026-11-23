@@ -134,3 +134,52 @@ test('eine Navigation beantwortet der Server, nicht der Service Worker', async (
 	expect(antwort?.fromServiceWorker()).toBe(false);
 	expect(antwort?.status()).toBe(200);
 });
+
+test('übernimmt ein neuer Service Worker, lädt die offene Seite nicht neu', async ({ page, baseURL }) => {
+	// Die Hülle aus `virtual:pwa-register` lädt im Modus `prompt` die Seite neu, sobald ein
+	// wartender Worker übernimmt — in jedem offenen Tab, auch im Fahrer-Link. Heute ruft
+	// niemand `skipWaiting`; dieser Test tut es, wie es ein künftiger Update-Knopf täte,
+	// und verlangt, dass `onNeedReload` in `$lib/pwa/serviceWorker.ts` das Neuladen abfängt.
+	await bereit(page);
+	// Neu laden heißt hier: Die Hülle meldet sich an, während die Seite schon gesteuert ist.
+	// Nur dann hält sie die Übernahme für ein Update und lädt neu; das ist jeder Aufruf
+	// nach dem ersten.
+	await page.reload();
+	await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+	// Der Hülle Zeit geben, sich anzumelden (onMount, dynamischer Import).
+	await page.waitForTimeout(500);
+
+	let navigationen = 0;
+	page.on('framenavigated', (rahmen) => {
+		if (rahmen === page.mainFrame()) navigationen++;
+	});
+	await page.evaluate(() => {
+		(window as unknown as { __marke: string }).__marke = 'vor dem Update';
+	});
+
+	// Ein neuer Stand. Das Skript des Service Workers holt der Browser an `context.route`
+	// vorbei; eine andere Adresse im selben Scope erzwingt die Installation trotzdem.
+	await page.evaluate(async () => {
+		const reg = await navigator.serviceWorker.register('/sw.js?stand=2', { scope: '/' });
+		const neu = reg.installing ?? reg.waiting;
+		if (!neu) throw new Error('kein neuer Service Worker');
+		if (neu.state !== 'installed') {
+			await new Promise<void>((fertig) =>
+				neu.addEventListener('statechange', () => neu.state === 'installed' && fertig()),
+			);
+		}
+		const uebernommen = new Promise<void>((fertig) =>
+			navigator.serviceWorker.addEventListener('controllerchange', () => fertig(), { once: true }),
+		);
+		// Was ein Update-Knopf über `updateServiceWorker()` täte.
+		neu.postMessage({ type: 'SKIP_WAITING' });
+		await uebernommen;
+	});
+
+	// Ein Neuladen setzte direkt im `controlling`-Handler ein; eine Sekunde Spielraum.
+	await page.waitForTimeout(1000);
+	expect(navigationen).toBe(0);
+	expect(await page.evaluate(() => (window as unknown as { __marke?: string }).__marke)).toBe('vor dem Update');
+	// Gegenprobe, dass die Übernahme wirklich stattfand.
+	expect(await page.evaluate(() => navigator.serviceWorker.controller?.scriptURL)).toBe(`${baseURL}/sw.js?stand=2`);
+});
