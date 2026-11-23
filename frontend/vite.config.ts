@@ -1,8 +1,7 @@
 import adapter from '@sveltejs/adapter-node';
-import { sveltekit } from '@sveltejs/kit/vite';
-import { SvelteKitPWA } from '@vite-pwa/sveltekit';
-import { defineConfig, type Plugin, type PluginOption, type ResolvedConfig } from 'vite';
-import { existsSync, readFileSync } from 'fs';
+import { withPwa } from '@vite-pwa/sveltekit';
+import { defineConfig } from 'vite';
+import { readFileSync } from 'fs';
 
 const pkg = JSON.parse(readFileSync('package.json', 'utf-8'));
 const gitSha = process.env.GIT_SHA?.slice(0, 7);
@@ -14,73 +13,6 @@ const baseVersion = (process.env.APP_VERSION?.trim() || pkg.version).replace(/^v
 // so the footer shows it exactly once.
 const hasCommit = /[-+]g?[0-9a-f]{7,}/i.test(baseVersion);
 const appVersion = gitSha && !hasCommit ? `${baseVersion}+${gitSha}` : baseVersion;
-
-/**
- * Brücke zwischen `@vite-pwa/sveltekit` (für SvelteKit 2 geschrieben) und SvelteKit 3.
- *
- * Das Plugin erzeugt den Service Worker im `closeBundle` des SSR-Builds und erkennt
- * den an `build.ssr` der Vite-Konfiguration. SvelteKit 3 baut Client und Server
- * über die Environment-API in *einem* Durchgang, die Bedingung wird nie wahr — und
- * ohne Fehlermeldung fehlte `sw.js` im Build und mit ihm die Offline-Kacheln.
- *
- * SvelteKit ruft den Adapter in einem `buildApp`-Haken mit `order: 'post'` auf,
- * ausdrücklich nach den `buildApp`-Haken anderer Plugins. Dazwischen liegen beide
- * Bundles in `.svelte-kit/output`, und hier lässt sich der Schritt nachholen, den
- * das Plugin sonst selbst getan hätte. Fällt weg, sobald `@vite-pwa/sveltekit`
- * SvelteKit 3 unterstützt.
- */
-function pwaFuerSvelteKit3(plugins: PluginOption[]): PluginOption[] {
-	const build = (plugins as Plugin[]).find((p) => p?.name === 'vite-plugin-pwa:sveltekit:build');
-	if (!build) throw new Error('@vite-pwa/sveltekit: Build-Plugin nicht gefunden');
-	const closeBundle = build.closeBundle as { handler: () => Promise<void> };
-	const generateBundle = build.generateBundle as (this: unknown, ...args: unknown[]) => Promise<void>;
-	let root = '';
-	return [
-		...(plugins as Plugin[]).filter((p) => p !== build).map((p) =>
-			p?.name !== 'vite-plugin-pwa'
-				? p
-				: {
-						...p,
-						// `sw.js` landet unter `build.outDir` und wird von dort in den Client
-						// kopiert. SvelteKit 3 setzt das Ziel des SSR-Builds nur noch an dessen
-						// Environment; oben stünde `dist`.
-						configResolved(config: ResolvedConfig) {
-							const outDir = config.environments.ssr.build.outDir;
-							return (p.configResolved as (c: unknown) => unknown)({ ...config, build: { ...config.build, outDir } });
-						},
-					},
-		),
-		{
-			...build,
-			// Nicht `pre` wie das Original: Der eigene `buildApp` muss nach dem von
-			// SvelteKit laufen, der `.svelte-kit/output` zu Beginn leert.
-			enforce: undefined,
-			configResolved(config) {
-				root = config.root;
-				// `build.ssr` fest auf wahr: `closeBundle` arbeitet nur dann, wir rufen es selbst.
-				(build.configResolved as (c: unknown) => void)({ root, build: { ssr: true } });
-			},
-			// `registerSW.js` gehört nur in den Client-Build, nicht zusätzlich in den Server.
-			async generateBundle(...args) {
-				if (this.environment.config.consumer !== 'client') return;
-				(build.configResolved as (c: unknown) => void)({ root, build: { ssr: false } });
-				try {
-					await generateBundle.apply(this, args);
-				} finally {
-					(build.configResolved as (c: unknown) => void)({ root, build: { ssr: true } });
-				}
-			},
-			writeBundle: undefined,
-			closeBundle: undefined,
-			async buildApp() {
-				await closeBundle.handler();
-				// Lieber ein roter Build als ein stiller: so fiel das Fehlen zuerst nicht auf.
-				const sw = `${root}/.svelte-kit/output/client/sw.js`;
-				if (!existsSync(sw)) throw new Error(`Service Worker fehlt: ${sw}`);
-			},
-		},
-	];
-}
 
 export default defineConfig({
 	define: {
@@ -94,7 +26,11 @@ export default defineConfig({
 	},
 	plugins: [
 		// SvelteKit 3 liest keine `svelte.config.js` mehr; die Konfiguration steht hier.
-		sveltekit({
+		// `withPwa` ruft `sveltekit()` mit ihr selbst auf (seit @vite-pwa/sveltekit 2.0)
+		// und erzeugt den Service Worker im `adapt()` des Adapters, nach beiden
+		// Bundles. Die Brücke für SvelteKit 3, die das bis dahin von Hand nachholte,
+		// ist damit entfallen.
+		...withPwa({
 			compilerOptions: {
 				// Runes für das Projekt erzwingen, nicht für Bibliotheken. Kann mit Svelte 6 weg.
 				runes: ({ filename }) => (filename.split(/[/\\]/).includes('node_modules') ? undefined : true),
@@ -103,8 +39,7 @@ export default defineConfig({
 			// SvelteKit 3 kennt `$lib` nicht mehr von selbst (Nachfolger: `#lib`).
 			// Der Alias hält die bestehenden Importe gültig.
 			alias: { $lib: 'src/lib' },
-		}),
-		pwaFuerSvelteKit3(SvelteKitPWA({
+		}, {
 			// Manifest bewusst abgeschaltet: Das Plugin würde sonst ein drittes
 			// Manifest (Name "ConvoyPlan", scope "/") generieren UND dessen
 			// <link rel="manifest"> auf JEDER Route automatisch in den <head>
@@ -124,39 +59,46 @@ export default defineConfig({
 			// Plugins (die lädt die Seite bei einem Update neu). `registerSW.js` braucht
 			// es deshalb nicht.
 			injectRegister: false,
-			// SvelteKit 3 setzt Vites `base` relativ (`./`). Die App liegt unter `/`.
-			kit: { base: '/' },
-			workbox: {
-				// Kein Navigations-Fallback. Das Plugin setzt sonst `navigateFallback = base`,
-				// und Workbox beantwortet dann *jede* Navigation mit der precachten Seite `/`,
-				// online wie offline. Die App rendert per SSR, `/` steht gar nicht im Precache,
-				// und `createHandlerBoundToURL('/')` wirft schon beim Auswerten von `sw.js`
-				// (`non-precached-url`). So hätte sich der Service Worker nie installiert.
-				// Offline zeigt eine Navigation deshalb die Fehlerseite des Browsers. Eine
-				// gecachte Seitenhülle zeigte veraltete Sitzungs- und Konvoidaten. Eine bereits
-				// geöffnete Tracking-Ansicht läuft weiter; sie braucht nur Kacheln und Chunks.
-				navigateFallback: null,
-				// Nur die gehashten Bundles. Logos, Icons und SVGs standen mit 22 MB im
-				// Precache: `globIgnores: ['logo/**']` griff nie, weil die Pfade hier mit
-				// `client/` beginnen. Die Bilder lädt der Browser ohnehin, wenn er sie braucht.
-				// Die Bundles sind etwa 3 MB, mit Brotli rund 0,7 MB über die Leitung,
-				// einmal je Gerät und danach nur, was sich geändert hat. Alle statt nur
-				// derer für /track: Den Graphen der Chunks aus SvelteKits Ausgabe
-				// herauszulesen, wäre brüchig, und der größte Brocken (MapLibre) gehört
-				// ohnehin zu /track. Nutzen offline: nachgeladene Teile einer offenen Seite.
-				// Nutzen bei einem Deploy: Eine offene Seite findet ihre alten Chunks
-				// weiter, obwohl der Server sie nicht mehr hat.
-				// `modifyURLPrefix` hält das Plugin davon ab, eigene Muster anzuhängen
-				// (`client/**/*.{png,svg,…}`, `*.webmanifest`).
+			// SvelteKit 3 setzt Vites `base` relativ (`./`); die App liegt aber unter `/`,
+			// und der Service Worker gilt für alle Routen (Scope `/`, umfasst `/track`).
+			base: '/',
+			maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+			// In 1.x `workbox`, seit 2.0 nach der Strategie benannt.
+			generateSW: {
+				// Das Plugin hängt `prerendered/**` an die Muster an; mit adapter-node wird
+				// nichts vorgerendert, das Verzeichnis fehlt. Seit 2.0 bricht ein leeres
+				// Muster den Build sonst ab („One of the glob patterns doesn't match").
+				globStrict: false,
+				// Kein Navigations-Fallback. Steht der Schlüssel nicht da, setzt das Plugin
+				// (1.x wie 2.0) `navigateFallback = base`, und Workbox beantwortet *jede*
+				// Navigation mit der precachten Seite `/` (bzw. `./`), online wie offline. Die
+				// App rendert per SSR, die Seite steht nie im Precache, und
+				// `createHandlerBoundToURL` wirft schon beim Auswerten von `sw.js`
+				// (`non-precached-url`): Der Service Worker installierte sich nie. Der Schlüssel
+				// muss deshalb *vorhanden* sein, mit `undefined`; das Plugin fragt mit `in`.
+				// Offline zeigt eine Navigation die Fehlerseite des Browsers. Eine gecachte
+				// Seitenhülle zeigte veraltete Sitzungs- und Konvoidaten. Eine geöffnete
+				// Tracking-Ansicht läuft weiter; sie braucht nur Kacheln und Chunks.
+				navigateFallback: undefined,
+				//
+				// Precache nur die gehashten Bundles (etwa 3 MB, mit Brotli rund 0,7 MB, einmal
+				// je Gerät, danach nur, was sich geändert hat). Gesucht wird ab
+				// `.svelte-kit/output`, deshalb die Wurzel `client/`. Logos, Icons und SVGs
+				// standen mit 22 MB drin (das alte `globIgnores: ['logo/**']` griff nie); die
+				// lädt der Browser, wenn er sie braucht. Alle Bundles statt nur derer für /track:
+				// Den Graphen der Chunks aus SvelteKits Ausgabe zu lesen, wäre brüchig, und der
+				// größte Brocken (MapLibre) gehört ohnehin dazu. Nutzen: Eine offene Seite
+				// findet nach einem Deploy ihre alten Chunks weiter, auch offline.
 				globPatterns: ['client/_app/immutable/**/*.{js,css}'],
+				// Hält das Plugin davon ab, eigene Muster anzuhängen (`client/*.webmanifest`,
+				// `prerendered/**`); die Präfixe streicht seine Transformation ohnehin.
 				modifyURLPrefix: { 'client/': '' },
-				maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
-				// Erste Installation: sofort übernehmen, ohne Neuladen. Sonst liefe ein
-				// frisch geöffneter Fahrer-Link bis zum nächsten Aufruf ohne Service Worker,
-				// und seine vorab geladenen Kacheln kämen im Funkloch nicht an.
+				// Erste Installation: sofort übernehmen, ohne Neuladen. Sonst liefe ein frisch
+				// geöffneter Fahrer-Link bis zum nächsten Aufruf ohne Service Worker, und
+				// seine vorab geladenen Kacheln kämen im Funkloch nicht an.
 				// Updates: kein `skipWaiting`. Der neue Stand wartet, bis alle Seiten der
 				// Instanz zu sind; `clientsClaim` greift erst bei dieser Aktivierung. Ein
-				// Neuladen mitten im Einsatz gibt es also nicht, auch nicht im Nightly-Kanal.
+				// Neuladen mitten im Einsatz gibt es nicht, auch nicht im Nightly-Kanal.
 				clientsClaim: true,
 				skipWaiting: false,
 				runtimeCaching: [
@@ -174,6 +116,6 @@ export default defineConfig({
 					},
 				],
 			},
-		})),
+		}),
 	],
 });

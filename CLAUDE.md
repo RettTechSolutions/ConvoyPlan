@@ -991,20 +991,22 @@ nicht den Service Worker. Vier Entscheidungen, begründet in `vite.config.ts`:
 - **Precache nur `client/_app/immutable/**/*.{js,css}`** (etwa 3 MB, mit Brotli rund
   0,7 MB). Vorher waren es 27,6 MB: Logos und Icons, weil `globIgnores: ['logo/**']` an
   Pfaden mit `client/` davor nie griff. `modifyURLPrefix` hält das Plugin davon ab,
-  eigene Muster anzuhängen. Der Nutzen: Eine offene Seite findet nach einem Deploy ihre
-  alten Chunks weiter.
-- **Kein Navigations-Fallback** (`navigateFallback: null`). Das Plugin setzte sonst
-  `navigateFallback = base`, und das ist kein Offline-Rückfall. Workbox beantwortet damit
-  *jede* Navigation mit der precachten Seite `/`. Die stand nie im Precache (SSR), und
-  `createHandlerBoundToURL('/')` warf schon beim Auswerten von `sw.js`. Offline zeigt eine
+  eigene Muster anzuhängen (`*.webmanifest`, `prerendered/**`). Der Nutzen: Eine offene
+  Seite findet nach einem Deploy ihre alten Chunks weiter.
+- **Kein Navigations-Fallback** (`navigateFallback: undefined`, der Schlüssel muss
+  *dastehen*). Fehlt er, setzt das Plugin `navigateFallback = base`, in 1.x wie in 2.0.
+  Das ist kein Offline-Rückfall: Workbox beantwortet damit *jede* Navigation mit der
+  precachten Seite. Die gibt es unter SSR nicht, und `createHandlerBoundToURL` wirft beim
+  Auswerten von `sw.js`, der Service Worker installiert sich nie. Offline zeigt eine
   Navigation die Fehlerseite des Browsers. Eine gecachte Hülle zeigte veraltete Sitzungs-
   und Konvoidaten.
 
 In den E2E-Tests ist der Service Worker blockiert (`serviceWorkers: 'block'` in
 `playwright.config.ts`). Sonst beantwortet er Kachelanfragen, die die `page.route`-Mocks
 der übrigen Specs nicht mehr sehen. Erlaubt ist er nur in `frontend/e2e/service-worker.spec.ts`:
-Anmeldung auf `/`, `/track` und `/track/<slug>`, Precache-Inhalt, und eine vorab geladene
-bzw. angezeigte Kachel kommt offline aus `osm-tiles`. Wer den Cache-Namen ändert, zieht
+Anmeldung auf `/`, `/track` und `/track/<slug>`, Precache-Inhalt, Navigation vom Server
+(`fromServiceWorker()`, am Verhalten, weil `sw.js` seit 2.0 minifizierte Namen trägt), und
+eine vorab geladene bzw. angezeigte Kachel kommt offline aus `osm-tiles`. Wer den Cache-Namen ändert, zieht
 `tileCache.ts` mit.
 
 ### Saison-Designs: ein Easter Egg, nur auf Klick
@@ -1506,7 +1508,7 @@ Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste
   `<style>`-Block aus `src/app.html` in die Seite und setzt `__APP_VERSION__` —
   ein Test, der Geometrie misst, misst sonst gegen Farben und Schriftgrößen, die
   es in der App gar nicht gibt. Der Job läuft im **Playwright-Image**
-  (`mcr.microsoft.com/playwright:v1.64.1-noble`), weil `npx playwright install` auf
+  (`mcr.microsoft.com/playwright:v1.65.1-noble`), weil `npx playwright install` auf
   dem Runner nach dem Download beim Entpacken stehenblieb — ohne Ausgabe, ohne
   Abbruch. Dessen Marke muss zur Fassung von `@playwright/test` passen: Wer die
   Abhängigkeit hebt, hebt die Marke in `ci.yml` mit.
@@ -1515,7 +1517,7 @@ Was in `.github/workflows/ci.yml` blockierend läuft, ist die verbindliche Liste
   in `frontend/`. Bleibt der Befehl nach dem Download ohne Ausgabe stehen, liegt
   es an der Node-Fassung — dann entweder eine ältere nehmen oder die Suite im
   selben Image fahren wie die CI:
-  `docker run --rm -v "$PWD":/w -w /w/frontend mcr.microsoft.com/playwright:v1.64.1-noble
+  `docker run --rm -v "$PWD":/w -w /w/frontend mcr.microsoft.com/playwright:v1.65.1-noble
   sh -c 'npm ci && npm run test:e2e'`.
 - **Shell** — die Suiten unter `docker/updater/tests/` und für den
   GraphHopper-Entrypoint; sie tragen den Regionswechsel und laufen im Job

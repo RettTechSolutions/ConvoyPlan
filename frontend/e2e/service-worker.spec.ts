@@ -51,19 +51,28 @@ for (const pfad of ['/', '/track', `/track/${SLUG}`]) {
 
 test('der Precache hält nur die gehashten Bundles, keine Logos und keine Seiten', async ({ request }) => {
 	const sw = await (await request.get('/sw.js')).text();
-	const urls = [...sw.matchAll(/url:"([^"]+)"/g)].map((m) => m[1]);
+	// Das Format wechselt mit der Workbox-Fassung (1.x: "…", 2.0: `…`).
+	const urls = [...sw.matchAll(/url:\s*["'`]([^"'`]+)["'`]/g)].map((m) => m[1]);
 	expect(urls.length).toBeGreaterThan(0);
 	// Bilder lädt der Browser, wenn er sie braucht. Mit den Logos lag der Precache bei 27 MB.
 	expect(urls.filter((u) => !u.startsWith('_app/immutable/'))).toEqual([]);
-	// Kein Navigations-Fallback: Die App rendert per SSR, eine gecachte Hülle wäre
-	// veraltet, und `/` steht nicht im Precache (der Service Worker installierte sich
-	// mit ihm gar nicht).
-	expect(sw).not.toContain('NavigationRoute');
 	// Kein Neuladen mitten im Einsatz: Ein neuer Stand wartet, bis alle Seiten zu sind.
 	// Übrig bleibt nur der Nachrichten-Haken von Workbox, und den ruft niemand.
-	const ohneNachricht = sw.replace(/"SKIP_WAITING"===\w+\.data\.type&&self\.skipWaiting\(\)/, '');
+	const ohneNachricht = sw.replace(/SKIP_WAITING[^&]*&&\s*self\.skipWaiting\(\)/, '');
 	expect(ohneNachricht).not.toContain('skipWaiting()');
-	expect(sw).toContain('clientsClaim()');
+});
+
+test('eine Navigation beantwortet der Server, nicht der Service Worker', async ({ page }) => {
+	// Ein Navigations-Fallback (das Plugin setzt ihn ohne `navigateFallback` von selbst)
+	// beantwortete jede Navigation mit einer precachten Seite, und die gibt es unter SSR
+	// nicht. Geprüft am Verhalten: Die Namen im gebauten `sw.js` sind minifiziert.
+	await blockExternal(page);
+	await mockTrack(page, { scope: 'driver' });
+	await page.goto('/', { waitUntil: 'domcontentloaded' });
+	await gesteuert(page);
+	const antwort = await page.goto(`/track/${SLUG}`, { waitUntil: 'domcontentloaded' });
+	expect(antwort?.fromServiceWorker()).toBe(false);
+	expect(antwort?.status()).toBe(200);
 });
 
 test('eine vorab geladene Kachel kommt im Funkloch aus "osm-tiles"', async ({ page, context }) => {

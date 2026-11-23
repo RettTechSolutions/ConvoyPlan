@@ -15,15 +15,16 @@
 		"wiki:bilder": "playwright test -c playwright.wiki.config.ts"
 	},
 	"devDependencies": {
-		"@playwright/test": "^1.64.1",
+		"@playwright/test": "^1.65.1",
 		"@sveltejs/adapter-node": "^6.0.5",
 		"@sveltejs/kit": "^3.4.0",
 		"@sveltejs/vite-plugin-svelte": "^7.3.1",
 		"@types/geojson": "^7946.0.16",
 		"@types/node": "^26.6.1",
 		"@types/qrcode": "^1.5.6",
-		"@vite-pwa/sveltekit": "^1.1.0",
+		"@vite-pwa/sveltekit": "^2.0.3",
 		"jsqr": "^1.4.0",
+		"magicast": "^0.5.5",
 		"svelte": "^5.58.0",
 		"svelte-check": "^4.7.8",
 		"typescript": "^6.0.2",
@@ -38,15 +39,8 @@
 		"browserslist": "^4.28.9",
 		"brace-expansion": "^5.0.12",
 		"minimatch": "^11.0.1",
-		"glob": "^14.0.2",
-		"postcss": "^8.5.28",
-		"vite-plugin-pwa": {
-			"vite": "^7.3.5"
-		},
-		"@vite-pwa/sveltekit": {
-			"@sveltejs/kit": "$@sveltejs/kit"
-		},
-		"glob": "^14.0.6"
+		"glob": "^14.0.6",
+		"postcss": "^8.5.28"
 	},
 	"dependencies": {
 		"maplibre-gl": "^6.19.0",
