@@ -147,6 +147,24 @@ einen fälligen Regionswechsel zurück, solange gebaut wird — das Backend lehn
 den *sofortigen* ab, geplante dürfen liegen (`test_region_schedule.sh`, Fälle 9–16).
 Zwei Umsetzungen derselben Regel; wer eine ändert, zieht die andere mit.
 
+### Geofabrik-Adressen: der Pfad bleibt, die Adresse wird gehoben
+
+Seit November 2026 legt Geofabrik jede Region in ein eigenes Verzeichnis:
+`europe/germany/berlin/berlin-latest.osm.pbf` statt `europe/germany/berlin-latest.osm.pbf`
+(die alte Adresse liefert 404, ohne Weiterleitung; Kontinente lagen vorher in der Wurzel).
+Der **Regionspfad** (`europe/germany/berlin`) ist derselbe geblieben, und an ihm hängt alles
+Bestehende: `OSM_SOURCES`, der Hash im Dateinamen einer Kombination und damit der
+Graph-Fingerprint. Der Dateiname einer Einzelregion (`berlin-latest.osm.pbf`) ändert sich auch
+nicht — ein Update baut deshalb keinen Graphen neu.
+
+Adressen im alten Schema stehen auf Bestandsinstallationen in `.env`, `.region` und
+geplanten Wechseln. Sie werden **gehoben**, nicht abgelehnt, an drei Stellen mit derselben Regel
+(neues Schema = die letzten beiden Segmente des Dateistamms sind gleich):
+`geofabrik.pfad_aus_stamm`/`pbf_url` (auch in `validate_region_url`), der Kopf von
+`graphhopper/entrypoint.sh` und `_geofabrik_neu`/`_geofabrik_url` in `switch-region.sh`. Wer eine
+ändert, zieht die anderen mit. Tests: `tests/test_geofabrik_neue_pfade.py`,
+`test_entrypoint_region.sh` (Fälle 4–8), `test_switch_region.sh` (1g, 1h).
+
 ### Speicher: Import im Heap, Betrieb per MMAP
 
 `graphhopper/entrypoint.sh` startet in **zwei Phasen**, wenn `GH_COMMAND=server`
