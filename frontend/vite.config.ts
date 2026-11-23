@@ -120,13 +120,45 @@ export default defineConfig({
 			// (siehe +layout.svelte und TrackingPwaHead.svelte).
 			// Das Plugin erzeugt/registriert hier nur noch den Service Worker.
 			manifest: false,
-			// SvelteKit 3 setzt Vites `base` relativ (`./`); das Plugin machte daraus den
-			// Navigations-Fallback des Service Workers. Die App liegt unter `/`.
+			// Angemeldet wird in `$lib/pwa/serviceWorker.ts`, ohne die Workbox-Hülle des
+			// Plugins (die lädt die Seite bei einem Update neu). `registerSW.js` braucht
+			// es deshalb nicht.
+			injectRegister: false,
+			// SvelteKit 3 setzt Vites `base` relativ (`./`). Die App liegt unter `/`.
 			kit: { base: '/' },
 			workbox: {
-				globPatterns: ['**/*.{js,css,html,svg,ico}'],
-				globIgnores: ['logo/**', 'icons/**'],
+				// Kein Navigations-Fallback. Das Plugin setzt sonst `navigateFallback = base`,
+				// und Workbox beantwortet dann *jede* Navigation mit der precachten Seite `/`,
+				// online wie offline. Die App rendert per SSR, `/` steht gar nicht im Precache,
+				// und `createHandlerBoundToURL('/')` wirft schon beim Auswerten von `sw.js`
+				// (`non-precached-url`). So hätte sich der Service Worker nie installiert.
+				// Offline zeigt eine Navigation deshalb die Fehlerseite des Browsers. Eine
+				// gecachte Seitenhülle zeigte veraltete Sitzungs- und Konvoidaten. Eine bereits
+				// geöffnete Tracking-Ansicht läuft weiter; sie braucht nur Kacheln und Chunks.
+				navigateFallback: null,
+				// Nur die gehashten Bundles. Logos, Icons und SVGs standen mit 22 MB im
+				// Precache: `globIgnores: ['logo/**']` griff nie, weil die Pfade hier mit
+				// `client/` beginnen. Die Bilder lädt der Browser ohnehin, wenn er sie braucht.
+				// Die Bundles sind etwa 3 MB, mit Brotli rund 0,7 MB über die Leitung,
+				// einmal je Gerät und danach nur, was sich geändert hat. Alle statt nur
+				// derer für /track: Den Graphen der Chunks aus SvelteKits Ausgabe
+				// herauszulesen, wäre brüchig, und der größte Brocken (MapLibre) gehört
+				// ohnehin zu /track. Nutzen offline: nachgeladene Teile einer offenen Seite.
+				// Nutzen bei einem Deploy: Eine offene Seite findet ihre alten Chunks
+				// weiter, obwohl der Server sie nicht mehr hat.
+				// `modifyURLPrefix` hält das Plugin davon ab, eigene Muster anzuhängen
+				// (`client/**/*.{png,svg,…}`, `*.webmanifest`).
+				globPatterns: ['client/_app/immutable/**/*.{js,css}'],
+				modifyURLPrefix: { 'client/': '' },
 				maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+				// Erste Installation: sofort übernehmen, ohne Neuladen. Sonst liefe ein
+				// frisch geöffneter Fahrer-Link bis zum nächsten Aufruf ohne Service Worker,
+				// und seine vorab geladenen Kacheln kämen im Funkloch nicht an.
+				// Updates: kein `skipWaiting`. Der neue Stand wartet, bis alle Seiten der
+				// Instanz zu sind; `clientsClaim` greift erst bei dieser Aktivierung. Ein
+				// Neuladen mitten im Einsatz gibt es also nicht, auch nicht im Nightly-Kanal.
+				clientsClaim: true,
+				skipWaiting: false,
 				runtimeCaching: [
 					{
 						// Cache map tiles as they are viewed so the map keeps rendering

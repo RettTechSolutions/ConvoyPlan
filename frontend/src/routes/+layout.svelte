@@ -9,6 +9,7 @@
 	import { versionStore } from '$lib/stores/version.svelte';
 	import { formatVersion } from '$lib/version';
 	import { printConsoleBanner } from '$lib/console-banner';
+	import { serviceWorkerAnmelden } from '$lib/pwa/serviceWorker';
 	import InstallPrompt from '$lib/components/InstallPrompt.svelte';
 	import ChangelogModal from '$lib/components/ChangelogModal.svelte';
 	import LizenzAblaufHinweis from '$lib/components/LizenzAblaufHinweis.svelte';
@@ -70,6 +71,10 @@
 		auth.init();
 
 		printConsoleBanner();
+
+		// Für jede Seite der Instanz, nicht nur /track: Scope "/" umfasst beides,
+		// und die Karte der Planung zieht aus demselben Kachel-Cache.
+		serviceWorkerAnmelden();
 
 		// Load build version info (public, non-blocking)
 		versionStore.load();

@@ -473,7 +473,10 @@ Tracking-ID.
 - Positionen werden serverseitig gespeichert und sind Teil des
   Einsatzprotokolls; der Retention-Container löscht sie nach Ablauf der Frist
   (siehe [Sicherheit und Datenschutz](Sicherheit-und-Datenschutz))
-- Die Karten-Kacheln der Route lassen sich für den Offline-Betrieb vorladen
+- Die Karten-Kacheln entlang der Route werden beim Öffnen vorgeladen. Reißt
+  die Verbindung ab, zeigt die **geöffnete** Seite die Karte weiter. Ohne Netz
+  neu laden geht nicht; dann erscheint die Fehlerseite des Browsers. Deshalb
+  im Funkloch nicht neu laden.
 
 ---
 

@@ -23,6 +23,11 @@ export default defineConfig({
 		// Kein Netz nach draußen: Die Tests fangen alles ab, was sie brauchen.
 		// Was trotzdem hinausginge (Kartenkacheln), soll auffallen statt hängen.
 		navigationTimeout: 15_000,
+		// Seit der Service Worker angemeldet wird (`$lib/pwa/serviceWorker.ts`), beantwortet
+		// er Kachelanfragen selbst, und die sieht `page.route` nicht mehr. Die übrigen
+		// Specs fangen `/api/tiles` aber genau dort ab. Erlaubt ist er nur in
+		// `e2e/service-worker.spec.ts`, das ihn prüft.
+		serviceWorkers: 'block',
 	},
 	projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 	webServer: [

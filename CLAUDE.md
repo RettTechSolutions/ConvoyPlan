@@ -971,6 +971,42 @@ untereinander. Die Anmelde- und Demo-Karten halten mindestens `1rem` Rand
 `frontend/e2e/fahrer-link-am-telefon.spec.ts`, `frontend/e2e/share-link-am-telefon.spec.ts`,
 `frontend/e2e/seiten-am-telefon.spec.ts`.
 
+### Service Worker: angemeldet, schlank, ohne Neuladen
+
+`@vite-pwa/sveltekit` baut `sw.js`, registriert ihn unter SvelteKit aber nicht. Bis 2026-11
+tat es auch sonst niemand. Die Kacheln, die `$lib/tracking/tileCache.ts` vorab in den Cache
+`osm-tiles` legt, lieferte deshalb nie jemand aus. Am Fahrer-Link und in der
+Tracking-Ansicht blieb die Karte im Funkloch leer, und online sah alles gleich aus.
+Angemeldet wird jetzt im Wurzel-Layout über `$lib/pwa/serviceWorker.ts`, Scope `/`. Der
+Scope umfasst `/track`; das eigene Manifest von `/track` betrifft nur die Installation,
+nicht den Service Worker. Vier Entscheidungen, begründet in `vite.config.ts`:
+
+- **Kein `virtual:pwa-register`.** Dessen Workbox-Hülle lädt im Modus `prompt` die Seite
+  bei `controlling` neu (`injectRegister: false`, kein `registerSW.js`).
+- **Erste Installation übernimmt sofort, Updates warten** (`clientsClaim: true`, kein
+  `skipWaiting`). Ein frisch geöffneter Fahrer-Link ist ohne Neuladen gesteuert. Ein neuer
+  Stand (Nightly: mehrmals täglich) aktiviert sich erst, wenn alle Seiten der Instanz zu
+  sind. Ein Neuladen mitten im Einsatz gibt es nicht. Wer ein „Neue Version"-Angebot
+  baut, ruft `skipWaiting` nur auf Klick auf, nie in der Tracking-Ansicht von selbst.
+- **Precache nur `client/_app/immutable/**/*.{js,css}`** (etwa 3 MB, mit Brotli rund
+  0,7 MB). Vorher waren es 27,6 MB: Logos und Icons, weil `globIgnores: ['logo/**']` an
+  Pfaden mit `client/` davor nie griff. `modifyURLPrefix` hält das Plugin davon ab,
+  eigene Muster anzuhängen. Der Nutzen: Eine offene Seite findet nach einem Deploy ihre
+  alten Chunks weiter.
+- **Kein Navigations-Fallback** (`navigateFallback: null`). Das Plugin setzte sonst
+  `navigateFallback = base`, und das ist kein Offline-Rückfall. Workbox beantwortet damit
+  *jede* Navigation mit der precachten Seite `/`. Die stand nie im Precache (SSR), und
+  `createHandlerBoundToURL('/')` warf schon beim Auswerten von `sw.js`. Offline zeigt eine
+  Navigation die Fehlerseite des Browsers. Eine gecachte Hülle zeigte veraltete Sitzungs-
+  und Konvoidaten.
+
+In den E2E-Tests ist der Service Worker blockiert (`serviceWorkers: 'block'` in
+`playwright.config.ts`). Sonst beantwortet er Kachelanfragen, die die `page.route`-Mocks
+der übrigen Specs nicht mehr sehen. Erlaubt ist er nur in `frontend/e2e/service-worker.spec.ts`:
+Anmeldung auf `/`, `/track` und `/track/<slug>`, Precache-Inhalt, und eine vorab geladene
+bzw. angezeigte Kachel kommt offline aus `osm-tiles`. Wer den Cache-Namen ändert, zieht
+`tileCache.ts` mit.
+
 ### Saison-Designs: ein Easter Egg, nur auf Klick
 
 Halloween (30.10.–1.11.), Advent (1.–26.12., am 5.12. Gruß zum Tag des Ehrenamts),
