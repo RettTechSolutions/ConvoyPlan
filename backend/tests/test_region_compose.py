@@ -53,13 +53,13 @@ def test_namenspraefix_ohne_echte_hierarchie_wird_nicht_erkannt():
 
 def test_pfad_aus_url():
     assert path_from_url(
-        "https://download.geofabrik.de/europe/germany-latest.osm.pbf"
+        "https://download.geofabrik.de/europe/germany/germany-latest.osm.pbf"
     ) == "europe/germany"
 
 
 def test_pfad_aus_url_mehrstufig():
     assert path_from_url(
-        "https://download.geofabrik.de/europe/germany/bayern-latest.osm.pbf"
+        "https://download.geofabrik.de/europe/germany/bayern/bayern-latest.osm.pbf"
     ) == "europe/germany/bayern"
 
 
@@ -67,8 +67,8 @@ def test_pfad_und_hash_hangen_zusammen():
     """Der Rundlauf, auf dem das ganze Verfahren beruht: aus URLs werden Pfade,
     aus sortierten Pfaden der Hash, aus dem Hash der Dateiname."""
     urls = [
-        "https://download.geofabrik.de/europe/poland-latest.osm.pbf",
-        "https://download.geofabrik.de/europe/germany-latest.osm.pbf",
+        "https://download.geofabrik.de/europe/poland/poland-latest.osm.pbf",
+        "https://download.geofabrik.de/europe/germany/germany-latest.osm.pbf",
     ]
     paths = [path_from_url(u) for u in urls]
     assert merged_filename(paths) == merged_filename(["europe/germany", "europe/poland"])

@@ -545,7 +545,7 @@ const quellen = new URLSearchParams(location.search).get('quellen')?.split(',') 
 
 export const regionApi = {
 	current: async () => ({
-		url: `https://download.geofabrik.de/${quellen[0]}-latest.osm.pbf`,
+		url: `https://download.geofabrik.de/${quellen[0]}/${quellen[0].split('/').pop()}-latest.osm.pbf`,
 		filename: quellen.length > 1 ? 'merged-19b731a7.osm.pbf' : 'dach-latest.osm.pbf',
 		java_opts: '-Xmx8g',
 		sources: quellen,
@@ -559,7 +559,7 @@ export const regionApi = {
 		duration_minutes: [45, 75], verdict: 'ok', reason: 'Reicht.',
 	}),
 	list: async () => [
-		{ id: 'europe/poland', name: 'Poland', path: 'Europe › Poland', url: 'https://download.geofabrik.de/europe/poland-latest.osm.pbf' },
+		{ id: 'europe/poland', name: 'Poland', path: 'Europe › Poland', url: 'https://download.geofabrik.de/europe/poland/poland-latest.osm.pbf' },
 	],
 	status: async (): Promise<RegionStatus> => {
 		const gb = GRAPH_BUILD[bau];
