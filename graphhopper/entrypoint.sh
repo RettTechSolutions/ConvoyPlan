@@ -13,7 +13,7 @@ GRAPH_DIR="${GRAPH_DIR:-/data/graph}"
 GH_COMMAND="${GH_COMMAND:-server}"
 OSM_FILENAME="${OSM_FILENAME:-dach-latest.osm.pbf}"
 OSM_FILE="$OSM_DIR/$OSM_FILENAME"
-DOWNLOAD_URL="${OSM_DOWNLOAD_URL:-https://download.geofabrik.de/europe/dach-latest.osm.pbf}"
+DOWNLOAD_URL="${OSM_DOWNLOAD_URL:-https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf}"
 JAVA_OPTS="${JAVA_OPTS:--Xmx8g -Xms1g -XX:+UseG1GC}"
 
 # .region hat Vorrang vor den obigen Env-Vorgaben: ein Regionswechsel aus dem
@@ -31,6 +31,25 @@ JAVA_OPTS="${JAVA_OPTS:--Xmx8g -Xms1g -XX:+UseG1GC}"
 # OSM_DOWNLOAD_URL weiterhin auf die alte Region.
 OSM_FILE="$OSM_DIR/$OSM_FILENAME"
 DOWNLOAD_URL="${OSM_DOWNLOAD_URL:-$DOWNLOAD_URL}"
+
+# Geofabrik legt seit November 2026 jede Region in ein eigenes Verzeichnis:
+# `europe/dach/dach-latest.osm.pbf` statt `europe/dach-latest.osm.pbf` (404).
+# Eine Bestandsinstallation traegt die alte Adresse in .env oder .region; ohne
+# dieses Heben scheiterte sie erst, wenn der Graph neu gebaut werden muss —
+# also genau dann, wenn Routing ohnehin ausfaellt. Der Dateiname bleibt
+# derselbe, der Fingerprint (aus OSM_FILENAME) also auch. Dieselbe Regel steht
+# in backend/app/services/geofabrik.py und docker/updater/switch-region.sh.
+case "$DOWNLOAD_URL" in
+    https://download.geofabrik.de/*-latest.osm.pbf)
+        _gf_stamm="${DOWNLOAD_URL#https://download.geofabrik.de/}"
+        _gf_stamm="${_gf_stamm%-latest.osm.pbf}"
+        _gf_name="${_gf_stamm##*/}"
+        _gf_dir="${_gf_stamm%/*}"
+        if [ "$_gf_dir" = "$_gf_stamm" ] || [ "${_gf_dir##*/}" != "$_gf_name" ]; then
+            DOWNLOAD_URL="https://download.geofabrik.de/$_gf_stamm/$_gf_name-latest.osm.pbf"
+        fi
+        ;;
+esac
 # ── ENTRYPOINT_HEADER_ENDE ─────────────────────────────────────────────────
 # Testmarker (inhaltlich verankert, nicht an Zeilennummern): tests/test_entrypoint_region.sh
 # schneidet den Skriptkopf bis inklusive dieser Zeile heraus und sourct ihn

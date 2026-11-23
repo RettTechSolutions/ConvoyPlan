@@ -51,7 +51,7 @@ public_router = APIRouter(prefix="/region", tags=["region"])
 # (noch kein Wechsel seit der Installation durchgefuehrt), gilt die in
 # docker-compose.yml hinterlegte Werkseinstellung (DACH) als aktiv.
 _REGION_FILE_NAME = ".region"
-_DEFAULT_REGION_URL = "https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+_DEFAULT_REGION_URL = "https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf"
 _DEFAULT_REGION_FILENAME = "dach-latest.osm.pbf"
 
 # Read-only in docker-compose.yml gemountet (siehe dort) — das Backend

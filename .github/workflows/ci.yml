@@ -521,7 +521,7 @@ jobs:
       # wirklich weichen), nicht zu einem Wechsel auf dieselbe Region.
       # Liechtenstein ist auch in GraphHoppers eigenen Beispielen die
       # Standard-Winzregion für genau diesen Zweck.
-      OSM_DOWNLOAD_URL: https://download.geofabrik.de/europe/liechtenstein-latest.osm.pbf
+      OSM_DOWNLOAD_URL: https://download.geofabrik.de/europe/liechtenstein/liechtenstein-latest.osm.pbf
       OSM_FILENAME: liechtenstein-latest.osm.pbf
       JAVA_OPTS: "-Xmx2g -Xms512m -XX:+UseG1GC"
       # PR-Stand statt der veröffentlichten Images von GHCR — sonst würde
@@ -601,7 +601,7 @@ jobs:
             # Wie in `region-merge`: nach .part laden und erst danach
             # umbenennen, damit ein halber Download die brauchbare Datei aus
             # einem frueheren Cache nicht ueberschreibt.
-            url=https://download.geofabrik.de/europe/liechtenstein-latest.osm.pbf
+            url=https://download.geofabrik.de/europe/liechtenstein/liechtenstein-latest.osm.pbf
             if curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 \
                     --retry-max-time 600 -o osm/liechtenstein-latest.osm.pbf.part "$url"; then
               mv osm/liechtenstein-latest.osm.pbf.part osm/liechtenstein-latest.osm.pbf
@@ -634,7 +634,7 @@ jobs:
       # einem Fehler im Updater aussieht, obwohl nur die Quelle fehlt.
       - name: Geofabrik erreichbar? (Berlin-Extract fuer den Wechsel)
         run: |
-          url=https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf
+          url=https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf
           if ! curl -fsSIL --max-time 60 --retry 3 --retry-all-errors --retry-delay 10 "$url" >/dev/null; then
             echo "::error::Geofabrik liefert $url nicht aus. Der Regionswechsel laedt Berlin selbst von dort und kann ohne die Quelle nicht geprueft werden — das liegt nicht am Stand dieses PRs. Den Job neu starten, sobald Geofabrik wieder antwortet."
             exit 1
@@ -678,7 +678,7 @@ jobs:
 
       - name: Regionswechsel auf Berlin auslösen
         run: |
-          printf '%s' '{"url":"https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf","filename":"berlin-latest.osm.pbf","java_opts":"-Xmx3g -Xms512m -XX:+UseG1GC","requested_by":"ci@convoyplan"}' \
+          printf '%s' '{"url":"https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf","filename":"berlin-latest.osm.pbf","java_opts":"-Xmx3g -Xms512m -XX:+UseG1GC","requested_by":"ci@convoyplan"}' \
             | docker compose exec -T updater tee /update_status/region_request.json >/dev/null
 
       - name: Auf Abschluss warten (max. 40 min)
@@ -890,8 +890,8 @@ jobs:
           # ueberschreiben.
           ok=1
           for entry in \
-            "osm/sachsen.osm.pbf|https://download.geofabrik.de/europe/germany/sachsen-latest.osm.pbf" \
-            "osm/dolnoslaskie.osm.pbf|https://download.geofabrik.de/europe/poland/dolnoslaskie-latest.osm.pbf"
+            "osm/sachsen.osm.pbf|https://download.geofabrik.de/europe/germany/sachsen/sachsen-latest.osm.pbf" \
+            "osm/dolnoslaskie.osm.pbf|https://download.geofabrik.de/europe/poland/dolnoslaskie/dolnoslaskie-latest.osm.pbf"
           do
             file="${entry%%|*}"
             url="${entry##*|}"
@@ -1004,7 +1004,7 @@ jobs:
           docker run -d --name gh -p 8989:8989 \
             -v "$PWD/osm:/data/osm" -v gh_merge_graph:/data/graph \
             -e OSM_FILENAME=merged.osm.pbf \
-            -e OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/sachsen-latest.osm.pbf \
+            -e OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/sachsen/sachsen-latest.osm.pbf \
             -e JAVA_OPTS=-Xmx6g \
             -e REGION_SOURCE_SCRIPT=/dev/null \
             gh-merge:latest
@@ -1122,7 +1122,7 @@ jobs:
           li=false; sd=false
           if [ "$LI_HIT" != true ]; then
             if laden osm/liechtenstein-latest.osm.pbf \
-                 https://download.geofabrik.de/europe/liechtenstein-latest.osm.pbf; then
+                 https://download.geofabrik.de/europe/liechtenstein/liechtenstein-latest.osm.pbf; then
               li=true
             else
               echo "::warning::Liechtenstein nicht geladen."
@@ -1130,9 +1130,9 @@ jobs:
           fi
           if [ "$SD_HIT" != true ]; then
             if laden osm/sachsen.osm.pbf \
-                 https://download.geofabrik.de/europe/germany/sachsen-latest.osm.pbf &&
+                 https://download.geofabrik.de/europe/germany/sachsen/sachsen-latest.osm.pbf &&
                laden osm/dolnoslaskie.osm.pbf \
-                 https://download.geofabrik.de/europe/poland/dolnoslaskie-latest.osm.pbf; then
+                 https://download.geofabrik.de/europe/poland/dolnoslaskie/dolnoslaskie-latest.osm.pbf; then
               sd=true
             else
               echo "::warning::Sachsen/Niederschlesien nicht geladen."
