@@ -208,7 +208,12 @@ def validate_region_url(url: str) -> str:
             "Der Pfad darf nur Kleinbuchstaben, Ziffern, '/', '-' und '.' "
             "enthalten."
         )
-    return f"https://{_HOST}{parsed.path}"
+    # Eine Adresse im alten Schema (`<pfad>-latest.osm.pbf`) wird hier auf das
+    # neue (`<pfad>/<name>/<name>-latest.osm.pbf`) gehoben — sie kommt aus
+    # Bestandsdaten (`.region`, `.env`, gespeicherte Planung) und lieferte bei
+    # Geofabrik seit der Umstellung nur noch 404. Die Segmente bleiben die
+    # geprueften; es wird nur das letzte wiederholt, also kein neues Zeichen.
+    return pbf_url(path_from_pbf_url(f"https://{_HOST}{parsed.path}"))
 
 
 async def _head_final_response(client, url: str):
@@ -567,16 +572,54 @@ async def region_outlines(paths: list[str]) -> dict[str, dict]:
     return out
 
 
-def path_from_pbf_url(url: str) -> str:
-    """`https://download.geofabrik.de/europe/dach-latest.osm.pbf` -> `europe/dach`.
+def pfad_aus_stamm(stamm: str) -> str:
+    """Dateistamm ohne `-latest.osm.pbf` -> Regionspfad, fuer beide Schemata.
 
-    Dieselbe Abbildung wie `region_compose.path_from_url()`, hier noch einmal
-    ohne dessen Import: `region_compose` beschreibt das Zusammenfuehren
-    mehrerer Regionen und haette in einem reinen Geofabrik-Adapter nichts zu
-    suchen — die Abhaengigkeit liefe der Schichtung entgegen. Die Fassung hier
-    ist strenger, weil sie ausschliesslich auf Index-URLs angewandt wird: Sie
-    verlangt Host und Suffix und liefert sonst einen leeren Pfad, der in
-    keiner Auswahl vorkommt.
+    Geofabrik hat die Ablage im November 2026 umgestellt: Jede Region liegt
+    jetzt in einem eigenen Verzeichnis, die Datei heisst wie das Verzeichnis.
+
+      alt: `europe/germany/berlin-latest.osm.pbf`        Stamm `europe/germany/berlin`
+      neu: `europe/germany/berlin/berlin-latest.osm.pbf` Stamm `europe/germany/berlin/berlin`
+
+    Der Regionspfad (`europe/germany/berlin`) bleibt in beiden Faellen derselbe
+    — und er ist es, der in Hash, `OSM_SOURCES` und der Auswahl steht. Haengte
+    der neue Stamm unverkuerzt dort, waere jede zusammengesetzte Region nach
+    dem Update eine andere, und der Updater baute sie neu.
+
+    Erkannt wird das neue Schema an den beiden gleichen letzten Segmenten
+    (eine Region, die so heisst wie ihre Elternregion, ist bei Geofabrik nicht
+    bekannt). Die Kontinente passen dazu: `europe-latest.osm.pbf` lag in der
+    Wurzel, neu ist es `europe/europe-latest.osm.pbf`.
+    Dieselbe Regel steht in `graphhopper/entrypoint.sh` und
+    `docker/updater/switch-region.sh`; wer sie aendert, zieht beide mit.
+    """
+    stamm = stamm.strip("/")
+    teile = stamm.split("/")
+    if len(teile) >= 2 and teile[-1] == teile[-2]:
+        return "/".join(teile[:-1])
+    return stamm
+
+
+def pbf_url(path: str) -> str:
+    """Regionspfad -> Download-Adresse im neuen Schema.
+
+    `europe/dach` -> `https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf`
+    """
+    path = path.strip("/")
+    name = path.rsplit("/", 1)[-1]
+    return f"https://{_HOST}/{path}/{name}{_SUFFIX}"
+
+
+def path_from_pbf_url(url: str) -> str:
+    """Geofabrik-Adresse -> Regionspfad, altes wie neues Schema.
+
+    `https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf` -> `europe/dach`
+    `https://download.geofabrik.de/europe/dach-latest.osm.pbf`      -> `europe/dach`
+
+    Dieselbe Abbildung wie `region_compose.path_from_url()`, das die Regel
+    hier mitbenutzt. Die Fassung hier ist strenger, weil sie ausschliesslich
+    auf Index-URLs angewandt wird: Sie verlangt Host und Suffix und liefert
+    sonst einen leeren Pfad, der in keiner Auswahl vorkommt.
     """
     parsed = urlparse(url)
     if parsed.netloc != _HOST:
@@ -584,4 +627,4 @@ def path_from_pbf_url(url: str) -> str:
     path = parsed.path.lstrip("/")
     if not path.endswith(_SUFFIX):
         return ""
-    return path[: -len(_SUFFIX)]
+    return pfad_aus_stamm(path[: -len(_SUFFIX)])
