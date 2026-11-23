@@ -8,7 +8,7 @@
 # — nur POSIX-sh-Konstrukte.
 #
 # Dateiformat (von Task 5 / GET /api/admin/region bereits festgelegt):
-#   OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf
+#   OSM_DOWNLOAD_URL=https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf
 #   OSM_FILENAME=berlin-latest.osm.pbf
 #   JAVA_OPTS=-Xmx3g -Xms1g -XX:+UseG1GC
 # Optional (nur bei zusammengesetzten Regionen, siehe Mehrere-Regionen-Spec):
