@@ -1039,11 +1039,24 @@ aber nie angemeldet — und hätte auch nicht gestartet. Vier Dinge, die man ken
 - **Kein erzwungenes Update** (`skipWaiting: false`, `registerType: 'prompt'` ohne Dialog):
   ein neuer Worker wartet, bis alle Tabs zu sind — Nightly deployt mehrmals täglich, und
   ein Fahrer-Link darf sich nicht im Einsatz neu laden. Dafür `clientsClaim: true`: beim
-  ersten Einrichten übernimmt er die offene Seite sofort.
+  ersten Einrichten übernimmt er die offene Seite sofort. **Abgestellte Falle:** Die Hülle aus
+  `virtual:pwa-register` hängt im Modus `prompt`, sobald ein neuer Worker wartet, ein
+  `location.reload()` an dessen Übernahme (`controlling`) — in **jedem** offenen Tab, auch
+  im Fahrer-Link. `onNeedReload() {}` in `$lib/pwa/serviceWorker.ts` ersetzt das (seit 2.x);
+  der neue Code gilt dann ab dem nächsten Aufruf. Nicht entfernen: Ein künftiger
+  „Neue Version laden"-Knopf (`updateServiceWorker()`) lädt sonst jeden Tab der Instanz
+  neu. Wer neu laden will, tut es selbst, auf Klick und nie in Tracking-Ansicht oder
+  Fahrer-Link.
 
 Alle übrigen E2E-Specs laufen mit `serviceWorkers: 'block'` (`playwright.config.ts`);
 `frontend/e2e/service-worker.spec.ts` lässt ihn zu und prüft Anmeldung, Scope, Übernahme,
-eine vorab abgelegte Kachel offline (samt Gegenprobe) und den Precache ohne Logos.
+eine vorab abgelegte und eine einmal angezeigte Kachel offline (samt Gegenprobe), den
+Precache ohne Logos und dass Navigationen vom Server kommen (`fromServiceWorker()`, am
+Verhalten, weil `sw.js` minifizierte Namen trägt) und dass die Übernahme durch einen neuen
+Worker die Seite nicht neu lädt (`onNeedReload`; der Test lädt einmal neu, weil die Hülle nur
+bei einer schon gesteuerten Seite von einem Update ausgeht, und meldet den neuen Stand über
+`/sw.js?stand=2` an — das Skript selbst holt der Browser an `context.route` vorbei). Die zweite Kachel holt der Service Worker
+selbst, deshalb steht ihr Mock an `context.route`, nicht an `page.route`.
 
 ### Handbücher als PDF: öffentlich ist, was im Wiki steht
 

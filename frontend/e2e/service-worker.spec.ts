@@ -93,3 +93,93 @@ test('Logos und App-Icons liegen nicht im Precache, der Code der App schon', asy
 	expect(urls.some((u) => u.startsWith('/_app/immutable/'))).toBe(true);
 	expect(urls.filter((u) => u.startsWith('/logo/') || u.startsWith('/icons/'))).toEqual([]);
 });
+
+test('eine einmal angezeigte Kachel landet in "osm-tiles" und kommt offline wieder', async ({ page, context }) => {
+	// Der zweite Weg in den Cache neben tileCache.ts: StaleWhileRevalidate legt jede
+	// Kachel ab, die die Karte online holt. Daran hängt, dass auch der Ausschnitt
+	// neben dem vorgeladenen Korridor im Funkloch stehen bleibt.
+	await bereit(page);
+	const kachel = '/api/tiles/12/2201/1343.png';
+	let ausDemNetz = 0;
+	// Die Anfrage stellt der Service Worker, nicht die Seite: `page.route` sähe sie nicht.
+	await context.route('**/api/tiles/**', async (route) => {
+		ausDemNetz++;
+		await route.fulfill({ body: PNG, contentType: 'image/png' });
+	});
+
+	expect(await page.evaluate(async (url) => (await fetch(url)).status, kachel)).toBe(200);
+	expect(ausDemNetz).toBe(1);
+	// Abgelegt wird nach dem Ausliefern; darauf warten, nicht raten.
+	await expect
+		.poll(() => page.evaluate(async (url) => !!(await (await caches.open('osm-tiles')).match(url)), kachel))
+		.toBe(true);
+
+	await context.unroute('**/api/tiles/**');
+	await context.route('**/api/tiles/**', (route) => route.abort('internetdisconnected'));
+	await context.setOffline(true);
+	const antwort = await page.evaluate(async (url) => {
+		const r = await fetch(url);
+		return { status: r.status, laenge: (await r.arrayBuffer()).byteLength };
+	}, kachel);
+	expect(antwort).toEqual({ status: 200, laenge: PNG.length });
+});
+
+test('eine Navigation beantwortet der Server, nicht der Service Worker', async ({ page }) => {
+	// Ohne `navigateFallback: null` baut das Plugin einen Navigations-Fallback auf die
+	// Basis, und Workbox beantwortete jede Navigation mit einer precachten Seite, die es
+	// unter SSR nicht gibt. Geprüft am Verhalten: die Namen in `sw.js` sind minifiziert,
+	// eine Suche nach "NavigationRoute" bestünde immer.
+	await bereit(page);
+	const antwort = await page.goto('/status');
+	expect(antwort?.fromServiceWorker()).toBe(false);
+	expect(antwort?.status()).toBe(200);
+});
+
+test('übernimmt ein neuer Service Worker, lädt die offene Seite nicht neu', async ({ page, baseURL }) => {
+	// Die Hülle aus `virtual:pwa-register` lädt im Modus `prompt` die Seite neu, sobald ein
+	// wartender Worker übernimmt — in jedem offenen Tab, auch im Fahrer-Link. Heute ruft
+	// niemand `skipWaiting`; dieser Test tut es, wie es ein künftiger Update-Knopf täte,
+	// und verlangt, dass `onNeedReload` in `$lib/pwa/serviceWorker.ts` das Neuladen abfängt.
+	await bereit(page);
+	// Neu laden heißt hier: Die Hülle meldet sich an, während die Seite schon gesteuert ist.
+	// Nur dann hält sie die Übernahme für ein Update und lädt neu; das ist jeder Aufruf
+	// nach dem ersten.
+	await page.reload();
+	await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+	// Der Hülle Zeit geben, sich anzumelden (onMount, dynamischer Import).
+	await page.waitForTimeout(500);
+
+	let navigationen = 0;
+	page.on('framenavigated', (rahmen) => {
+		if (rahmen === page.mainFrame()) navigationen++;
+	});
+	await page.evaluate(() => {
+		(window as unknown as { __marke: string }).__marke = 'vor dem Update';
+	});
+
+	// Ein neuer Stand. Das Skript des Service Workers holt der Browser an `context.route`
+	// vorbei; eine andere Adresse im selben Scope erzwingt die Installation trotzdem.
+	await page.evaluate(async () => {
+		const reg = await navigator.serviceWorker.register('/sw.js?stand=2', { scope: '/' });
+		const neu = reg.installing ?? reg.waiting;
+		if (!neu) throw new Error('kein neuer Service Worker');
+		if (neu.state !== 'installed') {
+			await new Promise<void>((fertig) =>
+				neu.addEventListener('statechange', () => neu.state === 'installed' && fertig()),
+			);
+		}
+		const uebernommen = new Promise<void>((fertig) =>
+			navigator.serviceWorker.addEventListener('controllerchange', () => fertig(), { once: true }),
+		);
+		// Was ein Update-Knopf über `updateServiceWorker()` täte.
+		neu.postMessage({ type: 'SKIP_WAITING' });
+		await uebernommen;
+	});
+
+	// Ein Neuladen setzte direkt im `controlling`-Handler ein; eine Sekunde Spielraum.
+	await page.waitForTimeout(1000);
+	expect(navigationen).toBe(0);
+	expect(await page.evaluate(() => (window as unknown as { __marke?: string }).__marke)).toBe('vor dem Update');
+	// Gegenprobe, dass die Übernahme wirklich stattfand.
+	expect(await page.evaluate(() => navigator.serviceWorker.controller?.scriptURL)).toBe(`${baseURL}/sw.js?stand=2`);
+});
