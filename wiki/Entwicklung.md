@@ -177,7 +177,9 @@ Der lokale Pre-Commit-Hook (`ruff` + `svelte-check`) lässt sich einmalig instal
 
 ## Native App / PWA
 
-Das Frontend ist als Progressive Web App konfiguriert und kann im Browser installiert werden. Für native Apps ist Capacitor vorbereitet:
+Das Frontend ist als Progressive Web App konfiguriert und kann im Browser installiert werden. Der Service Worker (`@vite-pwa/sveltekit` 2.x) trägt die Offline-Kacheln der Tracking-Ansicht und wird in `$lib/pwa/serviceWorker.ts` von Hand angemeldet — SvelteKit hat keine `index.html`, in die das Plugin ein Skript setzen könnte. Navigationen gehen immer ans Netz (`navigateFallback: null`), Logos und Icons liegen nicht im Precache, und ein Update wird nie erzwungen: ein neuer Worker wartet, bis alle Tabs geschlossen sind, und lädt keine offene Seite neu. Geprüft wird das in `frontend/e2e/service-worker.spec.ts`; alle übrigen E2E-Specs laufen mit blockiertem Service Worker.
+
+Für native Apps ist Capacitor vorbereitet:
 
 ```bash
 cd frontend
@@ -200,6 +202,7 @@ CI-Checks (Backend-Tests, Frontend-Typecheck, E2E-Tests, Docker-Build, Container
 - **Container-Scan nur für geänderte Images:** Auf PR und Queue scannt Trivy nur die Images, deren Build-Kontext sich geändert hat; bei Änderungen an `ci.yml`, `.trivyignore` oder der Spiegel-Action alle.
 - **E2E in zwei Teilen:** Die Playwright-Suite läuft in zwei Shards. Pflicht-Check ist der Sammeljob `Frontend – E2E (Playwright)`.
 - **Grenzrouting nur bei Bedarf:** Der Test `region-merge` läuft nur bei Änderungen an `graphhopper/`, `docker/osmium/` oder `docker/updater/`.
+- **Regionswechsel ohne Geofabrik:** Der Job `region-switch` lädt Berlin nicht von Geofabrik, sondern von einem Spiegel (`.github/region-spiegel/`), der im Compose-Netz unter dem Namen `download.geofabrik.de` antwortet — mit einem Zertifikat einer Test-CA, der nur der Updater dort vertraut. Der Updater und seine Allowlist bleiben unverändert; ein Nachweisschritt verlangt, dass HEAD, `.md5` und Download im Protokoll des Spiegels stehen. Eine Störung bei Geofabrik trifft damit nur noch den täglichen Cache-Lauf, nicht jeden PR.
 
 Die Versionierung folgt dem kalenderbasierten Schema **`YYYY.MASTER.FIX`** (z. B. `2026.1.1`): `YYYY` ist die Jahreszahl, `MASTER` das Master-Release (größere Feature-Veröffentlichung innerhalb des Jahres) und `FIX` das Fix-/Beta-Release (Bugfixes, Sicherheits-Patches, Dependabot-Wellen). Das Schema löst die frühere semantische Versionierung ab; das erste Release nach `1.0.2` ist `2026.1.1`.
 
