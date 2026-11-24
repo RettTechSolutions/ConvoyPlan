@@ -71,7 +71,7 @@ Retention-Container → periodischer Daten-Purge
 |---|---|
 | Frontend | SvelteKit, Svelte 5, TypeScript, Vite |
 | Karte | MapLibre GL, OpenStreetMap |
-| Backend | Python 3.12, FastAPI, Uvicorn |
+| Backend | Python 3.15, FastAPI, Uvicorn |
 | Datenbank | PostgreSQL 15, PostGIS |
 | ORM / Migrationen | SQLAlchemy Async, Alembic |
 | Authentifizierung | JWT (python-jose, passlib), MFA/TOTP |

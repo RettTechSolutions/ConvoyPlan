@@ -477,6 +477,9 @@ Tracking-ID.
   Ausgeliefert werden sie im Funkloch vom Service Worker der App; der wird beim
   ersten Aufruf eingerichtet (rund 5 MB) und gilt für eine **schon geöffnete**
   Seite. Ein Neuladen ohne Netz geht nicht — die Seite also offen lassen.
+- Eine neue Version der Instanz lädt eine offene Seite **nicht** neu — auch
+  nicht den Fahrer-Link im Einsatz. Sie gilt ab dem nächsten Aufruf, nachdem
+  alle Tabs der Instanz geschlossen waren.
 
 ---
 

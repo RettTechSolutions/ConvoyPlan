@@ -326,6 +326,15 @@ openssl rand -hex 32
 > einschließlich Phase 3 (Graph-Bau); ab dem Schwenk ist kein Abbruch mehr
 > vorgesehen.
 >
+> **Neue Geofabrik-Adressen (seit November 2026):** Geofabrik legt jede Region
+> in ein eigenes Verzeichnis, z. B.
+> `europe/germany/berlin/berlin-latest.osm.pbf` statt
+> `europe/germany/berlin-latest.osm.pbf`; die alte Adresse liefert 404. Eine
+> Adresse im alten Schema — in der `.env`, in `.region` oder in einem geplanten
+> Wechsel — wird automatisch auf das neue gehoben, auch eine von Hand
+> eingegebene eigene URL. Der Dateiname der Region bleibt gleich, ein Update
+> baut deshalb **keinen** Graphen neu. Zu tun ist nichts.
+>
 > **Wenn Geofabrik hakt:** Die Größenabfrage vor dem Wechsel läuft für alle
 > Bestandteile gleichzeitig und wiederholt einen Fehlversuch zweimal (1 s, 3 s
 > Pause). Bleibt sie erfolglos, nennt die Meldung die betroffene Region. Sie
