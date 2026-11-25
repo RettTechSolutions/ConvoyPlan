@@ -13,7 +13,10 @@ WORKDIR /app
 # (fpdf2) laden DejaVu aus /usr/share/fonts — das Slim-Image hat keine Schriften.
 # Bis #521 kamen sie unbemerkt über libgdal-dev → fontconfig mit. Der `test`
 # lässt den Bau scheitern, statt dass erst der erste PDF-Export mit 500 endet.
+# Debian 13 security fix for CVE-2026-124851. Assert the installed version
+# so a stale base layer cannot silently leave the vulnerable library in place.
 RUN apt-get update && apt-get upgrade -y \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libzstd1)" ge '1.5.7+dfsg-1+deb13u1' \
     && apt-get install -y --no-install-recommends fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/* \
     && test -f /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf \
