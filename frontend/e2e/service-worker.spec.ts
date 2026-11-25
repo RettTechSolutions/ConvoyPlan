@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { blockExternal } from './fixtures';
+import { blockExternal, trackPayload } from './fixtures';
 
 /**
  * Der Service Worker trägt die Offline-Kacheln: `$lib/tracking/tileCache.ts`
@@ -182,4 +182,90 @@ test('übernimmt ein neuer Service Worker, lädt die offene Seite nicht neu', as
 	expect(await page.evaluate(() => (window as unknown as { __marke?: string }).__marke)).toBe('vor dem Update');
 	// Gegenprobe, dass die Übernahme wirklich stattfand.
 	expect(await page.evaluate(() => navigator.serviceWorker.controller?.scriptURL)).toBe(`${baseURL}/sw.js?stand=2`);
+});
+
+// ── Fahrer-Link: der Korridor der Route liegt vorab im Cache ─────────────────
+//
+// Bis 2026-11 lud nur die angemeldete Tracking-Ansicht den Korridor vor. Der
+// Fahrer-Link hatte offline nur die Übersicht, die er gerade zeigte; beim
+// Hineinzoomen gab es nichts als hochgezogene Übersichtskacheln. Vorgeladen wird
+// nur mit Fahrerrechten (`driver`): ein Lese-Link sitzt selten im Fahrzeug, und
+// das Vorladen kostet Mobilfunkvolumen.
+
+/** Rund 10 km Route, damit der Korridor klein bleibt und der Test schnell. */
+const ROUTE = Array.from({ length: 10 }, (_, i) => [11.58 - 0.009 * i, 48.14 + 0.007 * i]);
+
+function kachelVon(lon: number, lat: number, z: number) {
+	const r = (lat * Math.PI) / 180;
+	const x = Math.floor(((lon + 180) / 360) * 2 ** z);
+	const y = Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * 2 ** z);
+	return `/api/tiles/${z}/${x}/${y}.png`;
+}
+
+async function linkMitRoute(page: import('@playwright/test').Page, context: import('@playwright/test').BrowserContext, scope: 'track' | 'driver') {
+	const geholt = { config: 0 };
+	// Kachelanfragen stellt teils der Service Worker; `context.route` sieht beide.
+	await context.route('**/api/tiles/config', async (route) => {
+		geholt.config++;
+		await route.fulfill({ json: { prefetch: { zooms: [12, 13, 14], max_tiles: 1500 } } });
+	});
+	await context.route(/\/api\/tiles\/\d+\/\d+\/\d+\.png$/, async (route) => {
+		await route.fulfill({ body: PNG, contentType: 'image/png' });
+	});
+	await blockExternal(page);
+	await page.route('**/api/track/*', (route) =>
+		route.fulfill({ json: { ...trackPayload(scope), geojson: { type: 'LineString', coordinates: ROUTE } } }),
+	);
+	await page.goto(`/track/${SLUG_ROUTE}`, { waitUntil: 'domcontentloaded' });
+	await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 30_000 });
+	return geholt;
+}
+
+const SLUG_ROUTE = 'R0uteVor';
+
+/** Anzahl der Kacheln je Zoomstufe im Cache `osm-tiles`. */
+function imCache(page: import('@playwright/test').Page) {
+	return page.evaluate(async () => {
+		const z: Record<string, number> = {};
+		for (const k of await (await caches.open('osm-tiles')).keys()) {
+			const n = new URL(k.url).pathname.split('/')[3];
+			z[n] = (z[n] ?? 0) + 1;
+		}
+		return z;
+	});
+}
+
+test('der Fahrer-Link lädt den Korridor der Route vor, und eine Detailkachel kommt im Funkloch', async ({ page, context }) => {
+	const geholt = await linkMitRoute(page, context, 'driver');
+	const mitte = ROUTE[5];
+	// Zoom 14 ist die letzte Stufe, die vorgeladen wird; liegt ihre Kachel aus der Mitte
+	// der Route im Cache, sind 12 und 13 schon durch.
+	const detail = kachelVon(mitte[0], mitte[1], 14);
+
+	await expect
+		.poll(() => page.evaluate(async (u) => !!(await (await caches.open('osm-tiles')).match(u)), detail), { timeout: 30_000 })
+		.toBe(true);
+	expect(geholt.config).toBe(1);
+	const z = await imCache(page);
+	for (const stufe of ['12', '13', '14']) expect(z[stufe], `Zoomstufe ${stufe}`).toBeGreaterThan(0);
+
+	// Funkloch: Die Detailkachel kommt aus dem Cache.
+	await context.unroute(/\/api\/tiles\/\d+\/\d+\/\d+\.png$/);
+	await context.route('**/api/tiles/**', (route) => route.abort('internetdisconnected'));
+	await context.setOffline(true);
+	const antwort = await page.evaluate(async (u) => {
+		const r = await fetch(u);
+		return { status: r.status, laenge: (await r.arrayBuffer()).byteLength };
+	}, detail);
+	expect(antwort).toEqual({ status: 200, laenge: PNG.length });
+});
+
+test('ein reiner Lese-Link lädt nichts vor', async ({ page, context }) => {
+	const geholt = await linkMitRoute(page, context, 'track');
+	// Jedes Vorladen fragt zuerst `/api/tiles/config` ab, sonst tut das niemand. Nach
+	// Kacheln ab Zoom 12 zu fragen, ginge nicht: Eine 10-km-Route zeigt die Karte selbst
+	// schon so nah. Zeit lassen, die ein Vorladen bräuchte, um anzufangen.
+	await expect(page.locator('.maplibregl-canvas').first()).toBeVisible();
+	await page.waitForTimeout(3_000);
+	expect(geholt.config).toBe(0);
 });

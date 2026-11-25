@@ -7,6 +7,10 @@
 // warms the tile cache along the whole route corridor while still online, so
 // the route stays visible offline.
 //
+// Aufgerufen aus der angemeldeten Tracking-Ansicht und aus dem Fahrer-Link
+// (`/track/[slug]`, nur mit `scope: driver`). Der Fahrer-Link lud bis 2026-11 nicht
+// vor; geprüft von `e2e/service-worker.spec.ts`.
+//
 // Why write the Cache Storage directly instead of relying on the Service
 // Worker interception: on the very first visit the SW is installed but does
 // not yet *control* the page, so plain `fetch()` calls would NOT be routed

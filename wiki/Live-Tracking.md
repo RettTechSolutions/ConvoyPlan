@@ -473,9 +473,10 @@ Tracking-ID.
 - Positionen werden serverseitig gespeichert und sind Teil des
   Einsatzprotokolls; der Retention-Container löscht sie nach Ablauf der Frist
   (siehe [Sicherheit und Datenschutz](Sicherheit-und-Datenschutz))
-- Die Karten-Kacheln der Route lassen sich für den Offline-Betrieb vorladen.
+- Die Karten-Kacheln entlang der Route werden für den Offline-Betrieb vorgeladen —
+  in der Tracking-Ansicht und im **Fahrer-Link** (nicht im reinen Lese-Link).
   Ausgeliefert werden sie im Funkloch vom Service Worker der App; der wird beim
-  ersten Aufruf eingerichtet (rund 5 MB) und gilt für eine **schon geöffnete**
+  ersten Aufruf eingerichtet (rund 3 MB, komprimiert unter 1 MB) und gilt für eine **schon geöffnete**
   Seite. Ein Neuladen ohne Netz geht nicht — die Seite also offen lassen.
 - Eine neue Version der Instanz lädt eine offene Seite **nicht** neu — auch
   nicht den Fahrer-Link im Einsatz. Sie gilt ab dem nächsten Aufruf, nachdem
