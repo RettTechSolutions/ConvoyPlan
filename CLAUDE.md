@@ -1025,7 +1025,13 @@ Schlittenkonvoi (nicht bei reduzierter Bewegung). Test: `e2e/adventskalender.spe
 Der Service Worker (`@vite-pwa/sveltekit` 2.x, `generateSW` in `frontend/vite.config.ts`)
 trägt die Offline-Kacheln: `$lib/tracking/tileCache.ts` legt den Korridor einer Route in
 den Cache `osm-tiles`, ausliefern kann ihn im Funkloch nur er. Bis 2026-11 wurde er gebaut,
-aber nie angemeldet — und hätte auch nicht gestartet. Vier Dinge, die man kennen muss:
+aber nie angemeldet — und hätte auch nicht gestartet. Vorgeladen wird an zwei Stellen: in der
+angemeldeten Tracking-Ansicht und im Fahrer-Link, dort **nur mit `scope: driver`** (ein
+Lese-Link sitzt selten im Fahrzeug, und das Vorladen kostet Mobilfunkvolumen; wie viel, sagt
+`/api/tiles/config`). Der Fahrer-Link lud bis 2026-11 gar nicht vor: offline blieb nur die
+gerade angezeigte Übersicht, beim Hineinzoomen nichts als hochgezogene Übersichtskacheln. Der
+erste Aufruf legt ohne Vorladen auch nichts ab — die Karte holt ihre ersten Kacheln, bevor der
+frische Service Worker die Seite übernimmt. Vier Dinge, die man kennen muss:
 
 - **Angemeldet wird von Hand** (`$lib/pwa/serviceWorker.ts`, aus dem Wurzel-Layout,
   `injectRegister: false`). SvelteKit hat keine `index.html`, in die das Plugin ein Skript
@@ -1033,7 +1039,8 @@ aber nie angemeldet — und hätte auch nicht gestartet. Vier Dinge, die man ken
 - **`navigateFallback: null`.** Sonst baut das Plugin einen Fallback auf die Basis, die
   nicht im Precache liegt (SSR, nichts vorgerendert), und Workbox wirft schon beim Laden
   (`non-precached-url`) — der Worker startet nie. Navigationen gehen immer ans Netz.
-- **Precache ohne `client/logo/**` und `client/icons/**`** (4,8 statt 26,3 MB je Gerät).
+- **Precache ohne `client/logo/**` und `client/icons/**`** (rund 3 MB, mit Brotli unter 1 MB, statt 26,3 MB je Gerät; die
+  Wurzel-SVGs sind seit #775 weg).
   Die Muster beginnen mit `client/`, weil ab `.svelte-kit/output` gesucht wird; ohne das
   stünde jedes Asset doppelt da, und eine Ausnahme ohne `client/` greift nie.
 - **Kein erzwungenes Update** (`skipWaiting: false`, `registerType: 'prompt'` ohne Dialog):
@@ -1055,7 +1062,10 @@ Precache ohne Logos und dass Navigationen vom Server kommen (`fromServiceWorker(
 Verhalten, weil `sw.js` minifizierte Namen trägt) und dass die Übernahme durch einen neuen
 Worker die Seite nicht neu lädt (`onNeedReload`; der Test lädt einmal neu, weil die Hülle nur
 bei einer schon gesteuerten Seite von einem Update ausgeht, und meldet den neuen Stand über
-`/sw.js?stand=2` an — das Skript selbst holt der Browser an `context.route` vorbei). Die zweite Kachel holt der Service Worker
+`/sw.js?stand=2` an — das Skript selbst holt der Browser an `context.route` vorbei), dass der
+Fahrer-Link mit `driver` den Korridor vorlädt und eine Detailkachel offline kommt, und dass ein
+Lese-Link nicht vorlädt (keine Abfrage von `/api/tiles/config`, die jedes Vorladen zuerst
+stellt). Die zweite Kachel holt der Service Worker
 selbst, deshalb steht ihr Mock an `context.route`, nicht an `page.route`.
 
 ### Handbücher als PDF: öffentlich ist, was im Wiki steht

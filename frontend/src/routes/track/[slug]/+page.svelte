@@ -25,6 +25,7 @@
 		statusColor, statusLabel,
 	} from '$lib/tracking/status';
 	import { distanceAlongRoute, routeCoords } from '$lib/tracking/eta';
+	import { prefetchRouteTiles } from '$lib/tracking/tileCache';
 	import { maneuverFrom, stepRows } from '$lib/tracking/maneuver';
 	import { buildRoutePoints, computeConvoyProgress, formatDistance, type RoutePoint } from '$lib/tracking/progress';
 	import { notifySignal } from '$lib/tracking/notify';
@@ -622,6 +623,18 @@
 	// Fahrzeug mit bekannter Position steht deshalb keiner da — auch nicht für
 	// Beobachter. Die Rechnung ist dieselbe wie in der Companion-App.
 	let routeLine = $derived(data?.geojson ? routeCoords(data.geojson) : []);
+
+	// Den Kachelkorridor der Route vorladen, solange Netz da ist: Im Funkloch liefert
+	// ihn der Service Worker aus `osm-tiles`. Ohne das hatte der Fahrer-Link offline nur
+	// die Übersicht, die er gerade angezeigt hatte, und beim Hineinzoomen nichts als
+	// hochgezogene Übersichtskacheln. Nur mit Fahrerrechten (`driver`): Ein reiner
+	// Lese-Link sitzt selten im Fahrzeug, und das Vorladen kostet Mobilfunkvolumen
+	// (wie viel, sagt der Server über `/api/tiles/config`).
+	$effect(() => {
+		if (!isDriver || routeLine.length === 0) return;
+		const coords = routeLine;
+		untrack(() => prefetchRouteTiles(coords, `track:${slug}`));
+	});
 	let maneuver = $derived.by(() => {
 		const steps = data?.route_steps;
 		if (!isDriver || !myVehicleId || !steps?.length || routeLine.length < 2) return null;
