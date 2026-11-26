@@ -8,7 +8,7 @@ Nein. ConvoyPlan läuft vollständig im Browser. Eine Installation auf Endgerät
 ---
 
 **Funktioniert ConvoyPlan offline?**
-Kartenkacheln können für eine begrenzte Offline-Nutzung zwischengespeichert werden. Die Routen-Berechnung, Live-Tracking und Synchronisation erfordern jedoch eine aktive Internetverbindung.
+Die Kartenkacheln entlang der Route werden in der Tracking-Ansicht und im Fahrer-Link automatisch vorgeladen und stehen im Funkloch zur Verfügung, solange die Seite geöffnet bleibt (der reine Lese-Link lädt nicht vor, um Mobilfunkvolumen zu sparen). Die Routen-Berechnung, Live-Tracking und Synchronisation erfordern jedoch eine aktive Internetverbindung.
 
 ---
 

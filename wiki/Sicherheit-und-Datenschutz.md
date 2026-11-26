@@ -76,8 +76,9 @@ Tracking-Link. Die CSP lässt keinen fremden Kachelserver mehr zu.
 | `TILE_CACHE_MAX_AGE_DAYS` | `7` | Danach wird eine Kachel neu geholt; bei Ausfall des Kachelservers kommt die alte |
 | `TILE_RATE_LIMIT_PER_MINUTE` | `1200` | Abrufe je Client-IP und Minute — der Endpunkt ist ohne Anmeldung erreichbar |
 
-**Vorabladen entlang der Route.** Damit die Karte im Funkloch nicht leer wird, lädt
-die Tracking-Ansicht den Korridor der Route vorab. Beim öffentlichen OSM-Server nur
+**Vorabladen entlang der Route.** Damit die Karte im Funkloch nicht leer wird, laden
+die Tracking-Ansicht und der Fahrer-Link (nur mit Fahrerrecht, nicht der reine
+Lese-Link) den Korridor der Route vorab. Beim öffentlichen OSM-Server nur
 Zoom 12–14 und höchstens 1.500 Kacheln — dessen
 [Nutzungsregeln](https://operations.osmfoundation.org/policies/tiles/) sehen
 Massenabrufe nicht vor. Mit eigenem oder kommerziellem Kachelserver in

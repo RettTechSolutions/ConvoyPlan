@@ -177,7 +177,7 @@ Der lokale Pre-Commit-Hook (`ruff` + `svelte-check`) lässt sich einmalig instal
 
 ## Native App / PWA
 
-Das Frontend ist als Progressive Web App konfiguriert und kann im Browser installiert werden. Der Service Worker (`@vite-pwa/sveltekit` 2.x) trägt die Offline-Kacheln der Tracking-Ansicht und wird in `$lib/pwa/serviceWorker.ts` von Hand angemeldet — SvelteKit hat keine `index.html`, in die das Plugin ein Skript setzen könnte. Navigationen gehen immer ans Netz (`navigateFallback: null`), Logos und Icons liegen nicht im Precache, und ein Update wird nie erzwungen: ein neuer Worker wartet, bis alle Tabs geschlossen sind, und lädt keine offene Seite neu. Geprüft wird das in `frontend/e2e/service-worker.spec.ts`; alle übrigen E2E-Specs laufen mit blockiertem Service Worker.
+Das Frontend ist als Progressive Web App konfiguriert und kann im Browser installiert werden. Der Service Worker (`@vite-pwa/sveltekit` 2.x) trägt die Offline-Kacheln der Tracking-Ansicht und des Fahrer-Links (vorgeladen nur mit `scope: driver`) und wird in `$lib/pwa/serviceWorker.ts` von Hand angemeldet — SvelteKit hat keine `index.html`, in die das Plugin ein Skript setzen könnte. Navigationen gehen immer ans Netz (`navigateFallback: null`), Logos und Icons liegen nicht im Precache, und ein Update wird nie erzwungen: ein neuer Worker wartet, bis alle Tabs geschlossen sind, und lädt keine offene Seite neu. Geprüft wird das in `frontend/e2e/service-worker.spec.ts`; alle übrigen E2E-Specs laufen mit blockiertem Service Worker.
 
 Für native Apps ist Capacitor vorbereitet:
 
